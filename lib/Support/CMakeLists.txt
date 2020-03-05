@@ -9,6 +9,8 @@ target_link_libraries(Support
                       PUBLIC
                         LLVMSupport
                         Miniz
-                        glog::glog)
+                        glog::glog
+                        folly_jemalloc
+                        )
 
 add_subdirectory(TensorPool)

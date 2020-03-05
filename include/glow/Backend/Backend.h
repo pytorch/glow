@@ -219,6 +219,15 @@ public:
     return llvm::StringMap<std::string>();
   };
 
+  /// \returns true if network supports Type Lowering from \p T1 to \p T2.
+  /// Populates PrecisionConfiguration with black list of operations that can't
+  /// be converted.
+  virtual bool
+  canDoIndexTypeDemotion(ElemKind fromTy, ElemKind toTy,
+                         PrecisionConfiguration &precConfig) const {
+    return false;
+  };
+
 protected:
   /// Parses the graph \F and builds a TraceInfo structure from any found
   /// TraceEventNodes.

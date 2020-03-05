@@ -209,9 +209,11 @@ public:
 
   /// A wrapper around runNetwork that provides a blocking interface for an
   /// inference request. Runs the network provided in \p networkName using \p
-  /// context. \returns an Error indicating success or failure.
+  /// context. \returns an Error indicating success or failure. Upon return,
+  /// regardless of success or failure, \p context will be filled with the
+  /// return context from running the network.
   Error runNetworkBlocking(llvm::StringRef networkName,
-                           std::unique_ptr<ExecutionContext> context);
+                           std::unique_ptr<ExecutionContext> &context);
 
   /// A wrapper around runNetwork that provides a blocking interface for an
   /// inference request. Runs the network provided in \p networkName using \p

@@ -194,6 +194,35 @@ llvm::cl::opt<bool> skipCorrectnessCheck(
     "skip_correctness_check", llvm::cl::desc("Skip correctness check"),
     llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<std::string>
+    glowDumpTraceFile("glow_dump_debug_traces_file",
+                      llvm::cl::desc("Dump glow trace file"),
+                      llvm::cl::Optional, llvm::cl::init(std::string("")),
+                      llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<unsigned> glowMaxActiveRequests(
+    "glow_max_active_requests",
+    llvm::cl::desc(
+        "Number of active requests before host manager start queuing"),
+    llvm::cl::Optional, llvm::cl::init(48), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<unsigned> glowMaxQueueSize(
+    "glow_max_queue_size",
+    llvm::cl::desc(
+        "Max number of pending requeusts in glow's host manager queue before "
+        "rejecting new request"),
+    llvm::cl::Optional, llvm::cl::init(100), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<unsigned> glowExecutorThreads(
+    "glow_executor_threads",
+    llvm::cl::desc("Number of executor threads for host manager"),
+    llvm::cl::Optional, llvm::cl::init(10), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<bool> glowSaturateHost(
+    "glow_saturate_host",
+    llvm::cl::desc("Duplicate netowrk on all available devices"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
 void parseCommandLine(int argc, char **argv) {
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
   llvm::cl::ParseCommandLineOptions(
@@ -283,7 +312,11 @@ int run() {
   auto mod = glow::make_unique<Module>();
   Function *F = mod->createFunction("test");
   Error err = Error::empty();
-  { ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *F, &err, /*zipMode*/ true); }
+  bool usingGlowCustomOps = false;
+  {
+    ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *F, &err, /*zipMode*/ true);
+    usingGlowCustomOps = onnxLD.usingGlowCustomOps();
+  }
   CHECK(!ERR_TO_BOOL(std::move(err)))
       << "ONNXModelLoader failed to load model: " << modelPathOpt;
 
@@ -374,9 +407,14 @@ int run() {
 
   auto configs = runtime::generateDeviceConfigs(numDevicesOpt, ExecutionBackend,
                                                 deviceMemoryOpt);
+  runtime::HostConfig hostConfig;
+  hostConfig.maxActiveRequests = glowMaxActiveRequests;
+  hostConfig.maxQueueSize = glowMaxQueueSize;
+  hostConfig.executorThreads = glowExecutorThreads;
+
   auto hostManager =
-      glow::make_unique<runtime::HostManager>(std::move(configs));
-  EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
+      glow::make_unique<runtime::HostManager>(std::move(configs), hostConfig);
+  EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx, glowSaturateHost));
 
   // Parse all input and output files ahead of inference.
   std::vector<::ONNX_NAMESPACE::GraphProto> parsedInputs;
@@ -445,7 +483,8 @@ int run() {
     const auto &inputGroup = parsedInputs[ioIndex];
     fillPlaceholders(inputGroup, &bindings,
                      /*partialTensorPayloads */
-                     enablePartialTensor ? &partialTensorPayloads : nullptr);
+                     enablePartialTensor ? &partialTensorPayloads : nullptr,
+                     usingGlowCustomOps);
     inputs.emplace_back(std::make_pair(std::move(ctx), ioIndex));
   }
 
@@ -543,7 +582,7 @@ int run() {
           CHECK(tensor) << "Missing " << tp.name() << " in output placeholder";
           if (dumpOutputsOpt) {
             auto *t = outputG.add_initializer();
-            ONNXModelWriter::writeTensor(*tensor, t);
+            ONNXModelWriter::writeTensor(*tensor, t, usingGlowCustomOps);
             t->set_name(tp.name());
           }
           bool equal = tensorRef.isEqual(*tensor, thresholdOpt, true);
@@ -571,13 +610,19 @@ int run() {
 
   if (glowDumpTrace) {
     llvm::SmallString<64> path;
-    auto tempFileRes =
-        llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
-    if (tempFileRes.value() != 0) {
-      LOG(ERROR) << "Failed to create temp file for Glow trace events: "
-                 << tempFileRes;
+    if (glowDumpTraceFile.empty()) {
+      auto tempFileRes =
+          llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
+      if (tempFileRes.value() != 0) {
+        LOG(ERROR) << "Failed to create temp file for Glow trace events: "
+                   << tempFileRes;
+      } else {
+        LOG(INFO) << "Trace path=" << path.c_str();
+        mergedTraceContext.dump(path);
+      }
     } else {
-      mergedTraceContext.dump(path);
+      LOG(INFO) << "Trace path=" << path.c_str();
+      mergedTraceContext.dump(glowDumpTraceFile);
     }
   }
 

@@ -19,7 +19,7 @@
 #include "glow/Support/Support.h"
 
 #include <mutex>
-#include <torch/csrc/jit/argument_spec.h>
+#include <torch/csrc/jit/runtime/argument_spec.h>
 #include <torch/csrc/utils/hash.h>
 
 namespace glow {
@@ -43,70 +43,143 @@ size_t CachingGraphRunner::computeGraphHash(
   return hash;
 }
 
-Expected<CachingGraphRunner::PerGlowGraphInfo *>
-CachingGraphRunner::loadImpl(torch::jit::Stack &stack) {
+void CachingGraphRunner::aggregateAndDumpTraces(TraceContext *traceContext,
+                                                bool flush) {
+  if (!traceContext && !flush) {
+    return;
+  }
+
+  size_t numTracesPerDump = settings_.numTracesPerDump;
+
+  std::unique_lock<std::mutex> lock(tracesMutex_);
+
+  auto numTraces = ++numTraces_;
+
+  if (flush) {
+    if (mergedTraceContext_) {
+      size_t dumpNum = numTraces / numTracesPerDump;
+      std::string filename = strFormat("glow-trace-%zu.json", dumpNum);
+      if (traceContext) {
+        mergedTraceContext_->merge(traceContext);
+      }
+      mergedTraceContext_->dump(filename);
+      mergedTraceContext_ = nullptr;
+    }
+    return;
+  }
+
+  if (!mergedTraceContext_) {
+    mergedTraceContext_ = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
+  }
+
+  mergedTraceContext_->merge(traceContext);
+
+  if (numTraces % numTracesPerDump == 0) {
+    size_t dumpNum = (numTraces / numTracesPerDump) - 1;
+    std::string filename = strFormat("glow-trace-%zu.json", dumpNum);
+    mergedTraceContext_->dump(filename);
+    mergedTraceContext_ = nullptr;
+  }
+}
+
+Expected<std::shared_ptr<CachingGraphRunner::PerGlowGraphInfo>>
+CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
+                             TraceContext *traceContext) {
+  TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME, "torch_glow::loadImpl");
   const auto inputs = torch::jit::last(stack, graph_->inputs().size());
 
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "computeGraphHash");
   size_t hash = computeGraphHash(stack);
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "computeGraphHash");
 
   // If we already have a Glow function compiled for this graph with and the
   // given inputs then use that.
-  auto it = perGlowGraphInfoMap_.find(hash);
-  if (it != perGlowGraphInfoMap_.end()) {
-    return it->second.get();
+  {
+    std::shared_lock<std::shared_timed_mutex> rlock(graphInfoMapMutex);
+    auto it = perGlowGraphInfoMap_.find(hash);
+    if (it != perGlowGraphInfoMap_.end()) {
+      return it->second;
+    }
   }
 
+  std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
+  auto it = perGlowGraphInfoMap_.find(hash);
+  if (it != perGlowGraphInfoMap_.end()) {
+    return it->second;
+  }
   auto info = std::make_shared<PerGlowGraphInfo>();
   info->functionName = strFormat("pt_function_%lu", hash);
 
   std::unique_ptr<Module> module = glow::make_unique<Module>();
   Function *f = module->createFunction(info->functionName);
 
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "loadJITGraph");
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
       *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
-      getPyTorchLoaderSettings(), inputs, {}));
+      outputCorrectType_, getPyTorchLoaderSettings(), inputs, {}));
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "loadJITGraph");
 
   glow::CompilationContext cctx;
 
   if (settings_.convertToFP16) {
     cctx.precisionConfig.convertToFP16 = true;
+    cctx.precisionConfig.precisionModeKindSet.insert(
+        Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind);
+    cctx.precisionConfig.precisionModeKindSet.insert(
+        Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind);
   }
 
   if (settings_.dumpFinalGlowGraph) {
     cctx.dumpFinalGraph = true;
   }
 
+  cctx.backendOpts.backendSpecificOpts = settings_.backendSpecificOpts;
+
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "addNetwork");
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(module), cctx));
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "addNetwork");
 
-  perGlowGraphInfoMap_[hash] = std::move(info);
+  auto ret = perGlowGraphInfoMap_.emplace(hash, info);
+  CHECK(ret.second);
 
-  return perGlowGraphInfoMap_[hash].get();
+  return ret.first->second;
 }
 
-Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
-                                  torch::jit::Stack &stack) const {
+Error CachingGraphRunner::runImpl(
+    const PerGlowGraphInfo &info, torch::jit::Stack &stack,
+    std::unique_ptr<ExecutionContext> &ctx) const {
+
+  TraceContext *traceContext = ctx->getTraceContext();
+
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "torch_glow::runImpl");
+
+  auto *bindings = ctx->getPlaceholderBindings();
+
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "adjustInputs");
+
   size_t numInputs = graph_->inputs().size();
   const auto inputs = torch::jit::last(stack, numInputs);
-
-  std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
-  auto *bindings = ctx->getPlaceholderBindings();
 
   // We only hold placeholders for tensor inputs so indexing them is different
   // than indexing all inputs.
   size_t placeholderI = 0;
   for (const auto &input : inputs) {
     if (input.isTensor()) {
+
       glow::Placeholder *ph = info.inputPlaceholders[placeholderI++];
       glow::TypeRef ty = ph->getType();
 
-      auto pttensor = input.toTensor();
-      glow::Tensor t;
-      if (!pttensor.is_contiguous()) {
-        pttensor = pttensor.contiguous();
-        t = glow::Tensor(pttensor.data_ptr(), ty).clone();
-      } else {
-        t = glow::Tensor(pttensor.data_ptr(), ty);
+      auto ptTensor = input.toTensor();
+
+      if (ptTensor.is_quantized()) {
+        ptTensor = convertQuantizedToDtype(ptTensor, at::kQInt8);
       }
+
+      glow::Tensor t;
+      if (!ptTensor.is_contiguous()) {
+        ptTensor = ptTensor.contiguous();
+      }
+      t = glow::Tensor(ptTensor.data_ptr(), ty).clone();
 
       bindings->insert(ph, std::move(t));
     } else if (input.isObject()) {
@@ -116,6 +189,9 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       return MAKE_ERR("Only Tensor and Object IValue inputs are accepted");
     }
   }
+
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "adjustInputs");
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "setupOutput");
 
   std::vector<at::IValue> outputs;
   for (auto *ph : info.outputPlaceholders) {
@@ -132,32 +208,81 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     bindings->insert(ph, std::move(t));
   }
 
-  auto err =
-      hostManager_->runNetworkBlocking(info.functionName, std::move(ctx));
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "setupOutput");
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "runNetwork");
+
+  auto err = hostManager_->runNetworkBlocking(info.functionName, ctx);
+
+  // Reset the traceContext again in case it was changed during run.
+  traceContext = ctx->getTraceContext();
+
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "runNetwork");
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "setOutputs");
 
   torch::jit::drop(stack, numInputs);
 
-  for (auto &output : outputs) {
-    auto var = torch::autograd::make_variable(output.toTensor());
+  for (int i = 0; i < outputs.size(); i++) {
+    auto &output = outputs[i];
+    auto ptTensor = output.toTensor();
+    if (ptTensor.is_quantized()) {
+      c10::ScalarType dtype = outputCorrectType_[i];
+      if (dtype == c10::ScalarType::QUInt8 || dtype == c10::ScalarType::QInt8) {
+        ptTensor = convertQuantizedToDtype(ptTensor, dtype);
+      } else {
+        return MAKE_ERR(
+            strFormat("Fail to propagate quantized dtype to output"));
+      }
+    }
+    auto var = torch::autograd::make_variable(ptTensor);
     stack.push_back(at::IValue(var));
   }
 
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "setOutputs");
+
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "torch_glow::runImpl");
   return err;
 }
 
 Error CachingGraphRunner::run(torch::jit::Stack &stack) {
-  PerGlowGraphInfo *info;
-  ASSIGN_VALUE_OR_RETURN_ERR(info, loadImpl(stack));
-  return runImpl(*DCHECK_NOTNULL(info), stack);
+  std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
+
+  TraceContext *traceContext = nullptr;
+  if (getSettings().enableGlowTracing) {
+    ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
+    traceContext = ctx->getTraceContext();
+    traceContext->setThreadName("torch_glow");
+  }
+
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "torch_glow::run");
+
+  std::shared_ptr<PerGlowGraphInfo> info;
+  ASSIGN_VALUE_OR_RETURN_ERR(info, loadImpl(stack, traceContext));
+  auto err = runImpl(*DCHECK_NOTNULL(info.get()), stack, ctx);
+
+  // Reset the traceContext again in case it was changed during run.
+  traceContext = ctx->getTraceContext();
+
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "torch_glow::run");
+
+  aggregateAndDumpTraces(traceContext);
+
+  return err;
 }
 
 Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
-  if (perGlowGraphInfoMap_.size() != 1) {
-    return MAKE_ERR(strFormat(
-        "There should be one and only one compiled graph, but got %lu",
-        perGlowGraphInfoMap_.size()));
+  std::shared_ptr<PerGlowGraphInfo> info;
+  {
+    std::shared_lock<std::shared_timed_mutex> rlock(graphInfoMapMutex);
+    if (perGlowGraphInfoMap_.size() != 1) {
+      return MAKE_ERR(strFormat(
+          "There should be one and only one compiled graph, but got %lu",
+          perGlowGraphInfoMap_.size()));
+    }
+    info = perGlowGraphInfoMap_.at(0);
   }
-  return runImpl(*DCHECK_NOTNULL(perGlowGraphInfoMap_[0].get()), stack);
+
+  std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
+  return runImpl(*DCHECK_NOTNULL(info.get()), stack, ctx);
 }
 
 Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
@@ -169,6 +294,7 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
     return MAKE_ERR("No graph found!");
   }
 
+  std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
   if (perGlowGraphInfoMap_.size() != 0) {
     return MAKE_ERR(strFormat("There is already a compiled graph!"));
   }
@@ -181,14 +307,14 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
 
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
       *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
-      getPyTorchLoaderSettings(), {}, inputMeta));
+      outputCorrectType_, getPyTorchLoaderSettings(), {}, inputMeta));
 
   glow::CompilationContext cctx;
 
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(glowModule), cctx));
   // Randomly picked one key. There should be only one element in the map
   // when model is precompiled.
-  perGlowGraphInfoMap_[0] = std::move(info);
+  perGlowGraphInfoMap_[0] = info;
   return Error::success();
 }
 
@@ -203,7 +329,10 @@ CachingGraphRunner::CachingGraphRunner(
     : graph_(graph), hostManager_(hostManager), settings_(settings) {}
 
 CachingGraphRunner::~CachingGraphRunner() {
+  aggregateAndDumpTraces(nullptr, /* flush */ true);
+
   // Remove Glow functions saved in HostManager when being destroyed.
+  std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
   for (auto &kv : perGlowGraphInfoMap_) {
     ERR_TO_BOOL(hostManager_->removeNetwork(kv.second->functionName));
   }

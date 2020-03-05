@@ -43,6 +43,9 @@ bool GlowForceSLSAccumFP16 = false;
 bool GlowClipFP16 = false;
 bool GlowClipFP16SkipInputs = true;
 bool GlowUseSparseNNPartitioningScheme = false;
+size_t GlowMaxActiveRequests = 48;
+size_t GlowMaxQueueSize = 100;
+size_t GlowExecutorThreads = 10;
 
 static llvm::cl::opt<int32_t, true>
     GlowNumDevicesOpt("glow-num-devices",
@@ -104,7 +107,14 @@ HostManagerBackend::createHostManager(llvm::StringRef backendName) {
   } else {
     configs = runtime::DeviceManager::generateDeviceConfigs(backendName);
   }
-  return glow::make_unique<runtime::HostManager>(std::move(configs));
+
+  runtime::HostConfig hostConfig;
+  hostConfig.maxActiveRequests = GlowMaxActiveRequests;
+  hostConfig.maxQueueSize = GlowMaxQueueSize;
+  hostConfig.executorThreads = GlowExecutorThreads;
+
+  return glow::make_unique<runtime::HostManager>(std::move(configs),
+                                                 hostConfig);
 }
 
 void HostManagerBackend::runNetwork(const Graph *graph,
@@ -270,9 +280,12 @@ void dumpTraces(TraceContext *traceContext) {
 onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
                                  EventPtr outputEvent,
                                  onnxTraceEventList *traceEvents) {
+  auto threadId = threads::getThreadId();
+  auto startTime = TraceEvent::now();
+
   backendPtr_->runNetwork(
       this, std::move(ctx),
-      [outputEvent, traceEvents,
+      [outputEvent, traceEvents, threadId, startTime,
        this](runtime::RunIdentifierTy runId, Error err,
              std::unique_ptr<ExecutionContext> ctx) mutable {
         TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::RUNTIME,
@@ -290,6 +303,15 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
 
         auto *traceContext = ctx->getTraceContext();
         if (traceContext) {
+          // We want to log the async start event with the original caller's
+          // threadId. This way, chrome UI will put the async event next to the
+          // caller thread.
+          traceContext->logTraceEvent("glow e2e", TraceLevel::RUNTIME,
+                                      TraceEvent::AsyncBeginType, startTime, {},
+                                      threadId, runId);
+          traceContext->logTraceEvent(
+              "glow e2e", TraceLevel::RUNTIME, TraceEvent::AsyncEndType,
+              TraceEvent::now(), {}, threads::getThreadId(), runId);
           setTraceEvents(traceEvents, traceContext);
         }
 
@@ -297,16 +319,25 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
         outputEvent->signal(ONNXIFI_STATUS_SUCCESS);
 
         if (traceContext && GlowDumpDebugTraces) {
-          std::unique_lock<std::mutex> lock(tracesMutex_);
-          if (!mergedTraceContext_) {
-            mergedTraceContext_ =
-                glow::make_unique<TraceContext>(TraceLevel::STANDARD);
-          }
-          mergedTraceContext_->merge(traceContext);
+          // Dumping traces to a file can take a while. So avoid tracesMutex_
+          // while we call dumpTraces.
+          std::unique_ptr<TraceContext> toDump;
+          {
+            std::unique_lock<std::mutex> lock(tracesMutex_);
+            if (!mergedTraceContext_) {
+              mergedTraceContext_ =
+                  glow::make_unique<TraceContext>(TraceLevel::STANDARD);
+            }
+            mergedTraceContext_->merge(traceContext);
 
-          if (++numTracesToDump_ >= GlowNumDebugTracesPerDump) {
-            numTracesToDump_ = 0;
-            dumpTraces(mergedTraceContext_.release());
+            if (++numTracesToDump_ >= GlowNumDebugTracesPerDump) {
+              numTracesToDump_ = 0;
+              toDump.reset(mergedTraceContext_.release());
+            }
+          }
+
+          if (toDump) {
+            dumpTraces(toDump.get());
           }
         }
       });
@@ -321,7 +352,7 @@ HostManagerGraph::~HostManagerGraph() {
   if (GlowDumpDebugTraces) {
     std::unique_lock<std::mutex> lock(tracesMutex_);
     if (mergedTraceContext_ && numTracesToDump_ > 0) {
-      dumpTraces(mergedTraceContext_.release());
+      dumpTraces(mergedTraceContext_.get());
     }
   }
 }

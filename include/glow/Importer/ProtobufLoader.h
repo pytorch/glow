@@ -21,8 +21,8 @@
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
-
 #include "glow/Support/Error.h"
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -106,6 +106,19 @@ Expected<std::vector<float>> getFloats(const AttrType *arg) {
   return dim;
 }
 
+/// Load a string record vector from \p arg into a vector. \returns the vector
+/// if there is no error, or an error otherwise.
+template <typename AttrType>
+Expected<std::vector<std::string>> getStrings(const AttrType *arg) {
+  RETURN_ERR_IF_NOT(arg, "Node has no strings attribute with this name");
+  RETURN_ERR_IF_NOT(arg->strings_size() > 0, "Node has no strings values");
+  std::vector<std::string> strs;
+  for (const auto &s : arg->strings()) {
+    strs.push_back(s);
+  }
+  return strs;
+}
+
 /// Returns canonical name for a given operator: either \p name() from proto,
 /// or its type name.
 template <typename T> std::string loadOperatorName(const T &op) {
@@ -140,15 +153,18 @@ protected:
   /// Create a new constant that's initialized with \p tensor, and register it
   /// under the name \p name. If an existing Placeholder is already registered
   /// under the same name then the tensor is thrown out and no new Constant
-  /// is created.
-  Error createAndRegisterConstant(llvm::StringRef name, Tensor &&tensor);
+  /// is created. The Constant will have Layout \p layout.
+  Error createAndRegisterConstant(llvm::StringRef name, Tensor &&tensor,
+                                  const std::string &layout = ANY_LAYOUT);
 
   /// Create a new Placeholder of type \p T, and register it
   /// under the name \p name. If \p isStatic is true register the Placeholder as
-  /// a static placeholder. \returns The newly created placeholder.
-  Expected<Placeholder *> createAndRegisterPlaceholder(llvm::StringRef name,
-                                                       TypeRef T,
-                                                       bool isStatic = false);
+  /// a static placeholder. \p isTrainable and \p layout are set in the
+  /// Placeholder accoringly. \returns The newly created placeholder.
+  Expected<Placeholder *>
+  createAndRegisterPlaceholder(llvm::StringRef name, TypeRef T,
+                               bool isStatic = false, bool isTrainable = false,
+                               const std::string &layout = ANY_LAYOUT);
 
   /// \returns the NodeValue that was registered with the name \p name or
   /// a nullptr wrapped in a NodeValue if no node has been registered with this

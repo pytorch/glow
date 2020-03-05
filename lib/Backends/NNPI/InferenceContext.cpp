@@ -52,13 +52,16 @@ bool InferenceContext::init(
     const std::unordered_set<const Placeholder *> &staticInputs,
     std::shared_ptr<NNPIDeviceTracing> deviceTracing,
     StaticPlaceholderMap *staticPlaceholderMap,
-    const NNPIDeviceOptions *deviceOptions) {
+    const NNPIDeviceOptions *deviceOptions, const std::string &functionName,
+    unsigned deviceId) {
   deviceOptions_ = deviceOptions;
   nnpiNetwork_ = network;
   device_ = device;
   compilationConfig_ = config;
   partialInputs_ = &partialInputs;
   deviceTracing_ = deviceTracing;
+  functionName_ = functionName;
+  deviceId_ = deviceId;
 
   LOG_AND_RETURN_IF(ERROR, staticPlaceholderMap == nullptr,
                     "InferenceContext Init was called with an invalid "
@@ -258,7 +261,9 @@ void InferenceContext::execute(RunIdentifierTy runId,
   TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::REQUEST,
                     TRACING_BACKEND_EXECUTE);
   if (ctx->getTraceContext()) {
-    ctx->getTraceContext()->setThreadName("InferenceContext");
+    ctx->getTraceContext()->setThreadName(
+        llvm::formatv("Inf ctx - device: {0}: {1}", deviceId_, functionName_)
+            .str());
   }
 
   // Pre inference input preparation.

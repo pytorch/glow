@@ -206,8 +206,7 @@ void InstrBuilder::emitCloner(std::ostream &os) const {
 
 std::string getOpElementType(const std::string &name) {
   const std::string elemKindPrefix = "ElemKind::";
-  if (name == "IndexElemKind" ||
-      name.substr(0, elemKindPrefix.size()) == elemKindPrefix) {
+  if (name.substr(0, elemKindPrefix.size()) == elemKindPrefix) {
     return name;
   }
   return "get" + name + "()->getElementType()";

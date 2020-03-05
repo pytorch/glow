@@ -41,6 +41,7 @@ public:
 
   /// \return the single output value of the node.
   NodeValue getOutput() { return getNthResult(0); }
+  const NodeValue getOutput() const { return getNthResult(0); }
 
   /// Declare the standard Node methods.
   /// @{
@@ -133,7 +134,7 @@ public:
 
   bool isDataParallel() const { return false; }
 
-  std::string getDebugDesc() const;
+  std::string getDebugDesc(bool skipUsers = false) const;
 
   llvm::hash_code getHash() const;
 
@@ -187,7 +188,7 @@ public:
 
   bool isDataParallel() const { return false; }
 
-  std::string getDebugDesc() const;
+  std::string getDebugDesc(bool skipUsers = false) const;
 
   llvm::hash_code getHash() const;
 };
@@ -256,7 +257,7 @@ inline std::pair<dim_t, dim_t> calculateConvTransposeOutputDims(
 enum PaddingMode { CONSTANT = 0, REFLECT, EDGE };
 
 /// Different lengths modes used for SLS variants.
-enum class LengthsMode { High, Low, AllOne };
+enum class LengthsMode { Variable, AllOne };
 
 /// Convolution Layouts.
 enum ConvolutionLayout { NHWC = 0, NCHW };
@@ -354,6 +355,22 @@ public:
   }
 #include "glow/AutoGenNodes.def"
 };
+
+/// Signifiers for exporting and importing properties of Nodes.
+constexpr char layoutSignifier[] = "layout";
+constexpr char staticSignifier[] = "offline";
+constexpr char trainableSignifier[] = "trainable";
+constexpr char elemKindSignifier[] = "elemKind";
+constexpr char saveNameSignifier[] = "saveName";
+constexpr char qScaleSignifier[] = "qScale";
+constexpr char qOffsetSignifier[] = "qOffset";
+constexpr char shapeSignifier[] = "shape";
+
+/// \returns the string ID for a type attribute property for a specific \p resNo
+/// and \p signifier, e.g. to retrieve result number 0's shape.
+inline std::string getTypeAttrID(unsigned resNo, const std::string &signifier) {
+  return "o" + std::to_string(resNo) + "_" + signifier;
+}
 
 } // namespace glow
 

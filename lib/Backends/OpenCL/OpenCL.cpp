@@ -586,6 +586,12 @@ void OpenCLFunction::executeNCHWConvolution(
   addStringOption(options, "v_pad_A", "0");
   addStringOption(options, "v_pad_B", "0");
 
+  if (CC->getFusedActivation() == FusedActivation::RELU) {
+    addIntOption(options, "v_fuse_relu", 1);
+  } else {
+    addIntOption(options, "v_fuse_relu", 0);
+  }
+
   // Determine the work groups sizes along h and w.
   size_t WIS[3];
   cl_int err =
@@ -704,7 +710,7 @@ void OpenCLFunction::executeNCHWConvolution(
 template <typename T>
 static void topK(Tensor &outW, Tensor &indW, Tensor &inW, size_t k) {
   auto values = outW.getHandle<T>();
-  auto indices = indW.getHandle<sdim_t>();
+  auto indices = indW.getHandle<int64_t>();
   auto in = inW.getHandle<T>();
   size_t n = in.dims().back();
 
@@ -854,6 +860,16 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
                 quantization::quantizeScaleOffset32To8(resultScale, 0);
             setKernelArg(kernel, ++numArgs, resultScaleParams);
           }
+        } else if (auto *RI = dyn_cast<ReluInst>(&I)) {
+          int32_t destOffset = RI->getDest()->getType()->getOffset();
+          float destScale = RI->getDest()->getType()->getScale();
+
+          auto srcTy = RI->getSrc()->getType();
+
+          auto srcScaleParams = quantization::quantizeScaleOffset32To8(
+              srcTy->getScale() / destScale, srcTy->getOffset());
+          setKernelArg(kernel, ++numArgs, destOffset);
+          setKernelArg(kernel, ++numArgs, srcScaleParams);
         }
         // Quantize floating point tensor. Scale and Offset are based on return
         // type of the instruction \p I.
@@ -1151,6 +1167,10 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       if (CC->getLayout() == NCHW) {
         executeNCHWConvolution(CC, context, clBindings);
         continue;
+      }
+
+      if (CC->getFusedActivation() == FusedActivation::RELU) {
+        kernelName += "_ReLU";
       }
 
       // This is a naive implementation that parallelizes using three dims:
@@ -1757,7 +1777,7 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::SplatNodeKind:
   case Kinded::Kind::TransposeNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Int8QTy, IndexElemKind});
+        {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy});
 
   case Kinded::Kind::PowNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
@@ -1778,6 +1798,7 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::SliceNodeKind:
   case Kinded::Kind::InsertTensorNodeKind:
   case Kinded::Kind::AvgPoolNodeKind:
+  case Kinded::Kind::ReluNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy});
 
@@ -1785,7 +1806,7 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
                {MaxPoolNode::ArgmaxIdx}) &&
-           (NI.getOutElemTy(MaxPoolNode::ArgmaxIdx) == IndexElemKind);
+           (NI.getOutElemTy(MaxPoolNode::ArgmaxIdx) == ElemKind::Int64ITy);
 
   case Kinded::Kind::ConvolutionNodeKind:
     if (!NI.getInTy(ConvolutionNode::InputIdx)->isQuantizedType()) {
@@ -1799,7 +1820,7 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
                {TopKNode::IndicesIdx}) &&
-           (NI.getOutElemTy(TopKNode::IndicesIdx) == IndexElemKind);
+           (NI.getOutElemTy(TopKNode::IndicesIdx) == ElemKind::Int64ITy);
 
   case Kinded::Kind::BatchedAddNodeKind:
     if (!NI.getInTy(BatchedAddNode::BatchIdx)->isQuantizedType()) {
@@ -1813,12 +1834,12 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::GatherNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy},
                                                   {GatherNode::IndicesIdx}) &&
-           (NI.getInElemTy(GatherNode::IndicesIdx) == IndexElemKind);
+           (NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int64ITy);
 
   case Kinded::Kind::ScatterDataNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy}, {ScatterDataNode::IndicesIdx}) &&
-           (NI.getInElemTy(ScatterDataNode::IndicesIdx) == IndexElemKind);
+           (NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int64ITy);
 
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -1826,7 +1847,7 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
                {SparseLengthsWeightedSumNode::IndicesIdx,
                 SparseLengthsWeightedSumNode::LengthsIdx}) &&
            (NI.getInElemTy(SparseLengthsWeightedSumNode::IndicesIdx) ==
-            IndexElemKind) &&
+            ElemKind::Int64ITy) &&
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
 
@@ -1836,10 +1857,10 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
                {MaxPoolGradNode::OriginalOutputForArgmaxIdx,
                 MaxPoolGradNode::GradOfOriginalOutputNamedArgmaxIdx}) &&
            (NI.getInElemTy(MaxPoolGradNode::OriginalOutputForArgmaxIdx) ==
-            IndexElemKind) &&
+            ElemKind::Int64ITy) &&
            (NI.getInElemTy(
                 MaxPoolGradNode::GradOfOriginalOutputNamedArgmaxIdx) ==
-            IndexElemKind);
+            ElemKind::Int64ITy);
 
   case Kinded::Kind::SparseLengthsWeightedSumGradNodeKind:
     // GradOfInputNamedIndicesIdx and GradOfInputNamedLengthsIdx do not need to
@@ -1852,7 +1873,7 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
                 SparseLengthsWeightedSumGradNode::
                     GradOfInputNamedLengthsIdx}) &&
            (NI.getInElemTy(SparseLengthsWeightedSumGradNode::IndicesIdx) ==
-            IndexElemKind) &&
+            ElemKind::Int64ITy) &&
            (NI.getInElemTy(SparseLengthsWeightedSumGradNode::LengthsIdx) ==
             ElemKind::Int32ITy);
 
@@ -1895,7 +1916,7 @@ bool OCLBackend::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy}, {SoftMaxGradNode::SelectedIdx},
                {SoftMaxGradNode::GradOfInputNamedSelectedIdx}) &&
-           (NI.getInElemTy(SoftMaxGradNode::SelectedIdx) == IndexElemKind);
+           (NI.getInElemTy(SoftMaxGradNode::SelectedIdx) == ElemKind::Int64ITy);
 
   case Kinded::Kind::SaveNodeKind:
   case Kinded::Kind::ReshapeNodeKind:
@@ -1932,7 +1953,10 @@ bool OCLBackend::verify(const Function &F, bool verbose) const {
     return false;
   }
   for (const Node &N : F.getNodes()) {
-    if (!checkNoFusionForNode(N)) {
+    if (!(N.getKind() == Kinded::Kind::ConvolutionNodeKind &&
+          llvm::cast<ConvolutionNode>(&N)->getFusedActivation() ==
+              FusedActivation::RELU) &&
+        !checkNoFusionForNode(N)) {
       return false;
     }
     switch (N.getKind()) {
@@ -1987,7 +2011,11 @@ bool OCLBackend::verify(const Function &F, bool verbose) const {
 
 bool OCLBackend::verify(const IRFunction &IR) const {
   for (const auto &I : IR.getInstrs()) {
-    if (!checkNoFusionForInstr(I)) {
+    // Only support convolution+relu fusions for now.
+    if (!(I.getKind() == Kinded::Kind::ConvolutionInstKind &&
+          llvm::cast<ConvolutionInst>(&I)->getFusedActivation() ==
+              FusedActivation::RELU) &&
+        !checkNoFusionForInstr(I)) {
       return false;
     }
     switch (I.getKind()) {

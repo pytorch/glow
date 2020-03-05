@@ -689,6 +689,59 @@ static bool parallelizeFunction(Function *F, CompilationContext &cctx) {
     numChunks[BMM] = numParallelChunks;
   }
 
+  // Split Tanh layers in data parallel fashion
+  for (auto &node : F->getNodes()) {
+    auto *TH = llvm::dyn_cast<TanhNode>(&node);
+    if (!TH) {
+      continue;
+    }
+    if (TH->getInput().dims().size() < 2) {
+      continue;
+    }
+    size_t N = TH->getInput().dims()[1];
+    if (N < 4096) {
+      continue;
+    }
+    changed = true;
+    parOpts[TH] = ParallelTransformKind::Data;
+    numChunks[TH] = numParallelChunks;
+  }
+
+  // Split Mul layers in data parallel fashion
+  for (auto &node : F->getNodes()) {
+    auto *M = llvm::dyn_cast<MulNode>(&node);
+    if (!M) {
+      continue;
+    }
+    if (M->getLHS().dims().size() < 2) {
+      continue;
+    }
+    size_t N = M->getLHS().dims()[1];
+    if (N < 4096) {
+      continue;
+    }
+    changed = true;
+    parOpts[M] = ParallelTransformKind::Data;
+    numChunks[M] = numParallelChunks;
+  }
+
+  // Clip parallelization.
+  // If a Clip follows a parallel op, mirror that.
+  for (auto &node : F->getNodes()) {
+    auto *C = llvm::dyn_cast<ClipNode>(&node);
+    if (!C) {
+      continue;
+    }
+
+    Node *inputNode = C->getInput().getNode();
+    if (numChunks.find(inputNode) != numChunks.end() &&
+        parOpts.find(inputNode) != parOpts.end()) {
+      changed = true;
+      parOpts[C] = parOpts[inputNode];
+      numChunks[C] = numChunks[inputNode];
+    }
+  }
+
   // Now actually do the parallelization.
   bool verify = parallelizeOps(F, numChunks, parOpts, numParallelChunks);
   DCHECK(verify) << "Error during parallelization occurred.";

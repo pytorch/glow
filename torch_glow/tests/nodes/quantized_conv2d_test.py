@@ -87,6 +87,41 @@ class TestQuantizedConv2d(unittest.TestCase):
             },
         )
 
+    def test_quantized_conv2d_packed_cut_q_dq(self):
+        """Basic test of PyTorch quantize::conv2d Node with packed weights on Glow, with quantize and dequantize excluded."""
+
+        x = torch.tensor(range(5), dtype=torch.float)
+        x = torch.cat((x, x, x, x, x))
+        x = torch.cat((x, x, x))
+        x = torch.reshape(x, [1, 3, 5, 5])
+        q = torch.nn.quantized.Quantize(0.1, 2, torch.quint8)
+        conv = torch.nn.Conv2d(3, 3, [2, 2], groups=3)
+        dq = torch.nn.quantized.DeQuantize()
+
+        # Due to the off-by-one error, we cannot let the weights, bias & input
+        # to be totally random.
+        conv.weight.data.fill_(2.0)
+        conv.bias.data.fill_(1.0)
+
+        model = torch.nn.Sequential(q, conv, dq)
+        model.eval()
+        model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
+
+        torch.quantization.prepare(model, inplace=True)
+        torch.quantization.convert(model, inplace=True)
+
+        jitVsGlow(
+            model,
+            x,
+            expected_fused_ops={
+                "quantized::conv2d",
+            },
+            black_list=[
+                "aten::quantize_per_tensor",
+                "aten::dequantize",
+            ]
+        )
+
     def test_quantized_conv2d_packed_channelwise(self):
         """Basic test of PyTorch quantize::conv2d Node with packed channelwise weights on Glow."""
 

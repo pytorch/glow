@@ -658,9 +658,7 @@ protected:
       auto *dequantize =
           llvm::dyn_cast<DequantizeNode>((*val.getUsers().begin()).getUser());
       TypeRef outTy = val.getType();
-      auto name =
-          NodeValue::generateNodeOutputName(dequantize->getName(), outNum);
-
+      auto name = dequantize->getResult().generateNodeOutputName();
       nodeToTQP_[name] = {outTy->getScale(), outTy->getOffset()};
     }
   } // namespace
@@ -850,7 +848,8 @@ public:
                 SLWS->getName(), dataC->getPayloadMutable(), weightsF,
                 SLWS->getIndices(), SLWS->getLengths(),
                 /* fusedElemKind */ ElemKind::UInt8FusedQTy,
-                /* useFP16Accumulation */ false, SLWS->getLengthsMode());
+                /* useFP16Accumulation */ false, SLWS->getLengthsMode(),
+                SLWS->getAvgLength());
 
         // Fused RWQSLWS stores the fused scales and offsets in trailing
         // columns. If the input was single dimensional then it adds extra

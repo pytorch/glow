@@ -118,12 +118,19 @@ public:
 
   /// Get the full node output name based on the node name and output number.
   /// The following format is used: nodename:outputNumber
-  static std::string generateNodeOutputName(const std::string &nodeName,
-                                            unsigned outputNumber = 0) {
-    return nodeName + ":" + std::to_string(outputNumber);
+  static std::string
+  generateNodeOutputName(const std::string &nodeName, unsigned outputNumber = 0,
+                         bool stripResNoFor0thInput = false) {
+    return nodeName + ((stripResNoFor0thInput && outputNumber == 0)
+                           ? ""
+                           : ":" + std::to_string(outputNumber));
   }
 
-  std::string generateNodeOutputName() const;
+  /// \returns a unique name for this NodeValue, where the name of the node is
+  /// appended with a colon followed by \ref resNo_.
+  /// If \p stripResNoFor0thInput then the result number for the 0th input will
+  /// not be appended (i.e. no ":0" will be appended).
+  std::string generateNodeOutputName(bool stripResNoFor0thInput = false) const;
 };
 
 /// Struct containing the output name string and node kind for use in the

@@ -72,6 +72,27 @@ using namespace glow;
     llvm_unreachable("Type is not supported");                                 \
   }
 
+#define dispatchFloatingPointAndIndexImpl(functionName, elemTy, elemTyIndex,   \
+                                          ...)                                 \
+  switch (elemTy) {                                                            \
+  case ElemKind::FloatTy:                                                      \
+    if (elemTyIndex == ElemKind::Int64ITy) {                                   \
+      functionName<float, int64_t>(__VA_ARGS__);                               \
+    } else if (elemTyIndex == ElemKind::Int32ITy) {                            \
+      functionName<float, int32_t>(__VA_ARGS__);                               \
+    }                                                                          \
+    break;                                                                     \
+  case ElemKind::Float16Ty:                                                    \
+    if (elemTyIndex == ElemKind::Int64ITy) {                                   \
+      functionName<float16, int64_t>(__VA_ARGS__);                             \
+    } else if (elemTyIndex == ElemKind::Int32ITy) {                            \
+      functionName<float16, int32_t>(__VA_ARGS__);                             \
+    }                                                                          \
+    break;                                                                     \
+  default:                                                                     \
+    llvm_unreachable("Type is not supported");                                 \
+  }
+
 #define dispatchIndexTypeImpl(functionName, elemTy, ...)                       \
   switch (elemTy) {                                                            \
   case ElemKind::Int32ITy:                                                     \
@@ -840,9 +861,9 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Tensor *argmaxW,
   ShapeHW kdim(kernelSizes);
   ShapeHW sdim(strides);
 
-  llvm::Optional<Handle<sdim_t>> argmaxH;
+  llvm::Optional<Handle<int64_t>> argmaxH;
   if (argmaxW) {
-    argmaxH = argmaxW->getHandle<sdim_t>();
+    argmaxH = argmaxW->getHandle<int64_t>();
   }
   // For each input in the batch:
   for (dim_t n = 0; n < odim.n; n++) {
@@ -1211,7 +1232,7 @@ void BoundInterpreterFunction::fwdMaxPoolWithArgmaxGradInst(
   ShapeNHWC idim(inG.dims());
   ShapeNHWC odim(outW.dims());
 
-  auto argmax = getWeightHandle<sdim_t>(I->getArgmax());
+  auto argmax = getWeightHandle<int64_t>(I->getArgmax());
 
   // For each input in the batch:
   for (dim_t n = 0; n < odim.n; n++) {
@@ -1366,7 +1387,7 @@ void BoundInterpreterFunction::fwdSoftMaxGradInst(const SoftMaxGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto idim = inG.dims();
   auto outW = getWeightHandle(I->getOrigDest());
-  auto selectedH = getWeightHandle<sdim_t>(I->getSelected());
+  auto selectedH = getWeightHandle<int64_t>(I->getSelected());
 
   inG.clear();
 
@@ -1386,7 +1407,7 @@ void BoundInterpreterFunction::fwdCrossEntropyLossInstFloatImpl(
   staticAssertFloatingPointType(ElemTy);
 
   auto P = getWeightHandle<ElemTy>(I->getP());
-  auto labels = getWeightHandle<sdim_t>(I->getLabels());
+  auto labels = getWeightHandle<int64_t>(I->getLabels());
   auto CE = getWeightHandle<ElemTy>(I->getCE());
   auto dims = P.dims();
   CE.clear();
@@ -1407,7 +1428,7 @@ void BoundInterpreterFunction::fwdCrossEntropyLossInst(
 void BoundInterpreterFunction::fwdCrossEntropyLossGradInst(
     const CrossEntropyLossGradInst *I) {
   auto P = getWeightHandle(I->getP());
-  auto Labels = getWeightHandle<sdim_t>(I->getLabels());
+  auto Labels = getWeightHandle<int64_t>(I->getLabels());
   auto PGrad = getWeightHandle(I->getPgrad());
   auto dims = PGrad.dims();
   PGrad.clear();
@@ -1686,7 +1707,7 @@ void BoundInterpreterFunction::fwdScatterDataInstCopyImpl(
   const dim_t dataSliceSize = slicesT->size() / slicesT->dims()[0] *
                               slicesT->getType().getElementSize();
 
-  auto IH = indicesT->getHandle<sdim_t>();
+  auto IH = indicesT->getHandle<int64_t>();
   // For each index, copy from the slice at that index into the location in data
   // given the offset from the indices tensor.
   for (dim_t i = 0, end = indicesT->dims()[0]; i < end; i++) {
@@ -1713,7 +1734,7 @@ void BoundInterpreterFunction::fwdScatterDataInstAddFloatImpl(
 
   const size_t numSlices = slicesT->size() / slicesT->dims()[0];
 
-  auto IH = indicesT->getHandle<sdim_t>();
+  auto IH = indicesT->getHandle<int64_t>();
   // For each index, copy from the slice at that index into the location in data
   // given the offset from the indices tensor.
   assert(indicesT->dims().size() == 2 &&
@@ -1748,7 +1769,7 @@ void BoundInterpreterFunction::fwdScatterDataInstAddQuantizedImpl(
   TensorQuantizationParams sliceQ{slicesT->getType().getScale(),
                                   slicesT->getType().getOffset()};
 
-  auto IH = indicesT->getHandle<sdim_t>();
+  auto IH = indicesT->getHandle<int64_t>();
   // For each index, copy from the slice at that index into the location in data
   // given the offset from the indices tensor.
   assert(indicesT->dims().size() == 2 &&
@@ -3240,7 +3261,7 @@ void BoundInterpreterFunction::fwdSparseLengthsSumInstI8Impl(
 
   out->zero();
 
-  auto IH = indices->getHandle<sdim_t>();
+  auto IH = indices->getHandle<int64_t>();
   auto LH = lengths->getHandle<int32_t>();
 
   size_t segments = lengths->dims()[0];
@@ -3290,7 +3311,7 @@ void BoundInterpreterFunction::fwdSparseLengthsSumInstFloatImpl(
 
   out->zero();
 
-  auto IH = indices->getHandle<sdim_t>();
+  auto IH = indices->getHandle<int64_t>();
   auto LH = lengths->getHandle<int32_t>();
 
   size_t segments = lengths->dims()[0];
@@ -3339,7 +3360,7 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInstFloatImpl(
 
   out->zero();
 
-  auto IH = indices->getHandle<sdim_t>();
+  auto IH = indices->getHandle<int64_t>();
   auto LH = lengths->getHandle<int32_t>();
 
   size_t segments = lengths->dims()[0];
@@ -3379,7 +3400,7 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInstI8Impl(
 
   out->zero();
 
-  auto IH = indices->getHandle<sdim_t>();
+  auto IH = indices->getHandle<int64_t>();
   auto LH = lengths->getHandle<int32_t>();
 
   dim_t segments = lengths->dims()[0];
@@ -3453,7 +3474,7 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumGradInst(
   dataGrad->zero();
 
   auto LH = lengths->getHandle<int32_t>();
-  auto IH = indices->getHandle<sdim_t>();
+  auto IH = indices->getHandle<int64_t>();
 
   size_t segments = lengths->dims()[0];
   size_t totalLength = 0;
@@ -3510,8 +3531,8 @@ void BoundInterpreterFunction::fwdEmbeddingBagInstFloatImpl(
 
   out->zero();
 
-  auto IH = indices->getHandle<sdim_t>();
-  auto OFFH = offsets->getHandle<sdim_t>();
+  auto IH = indices->getHandle<int64_t>();
+  auto OFFH = offsets->getHandle<int64_t>();
 
   // If an end offset is present to mark the end of the last segment then this
   // must be subtracted to get the correct number of segments
@@ -3567,7 +3588,7 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
 
   out->zero();
 
-  auto IH = indices->getHandle<sdim_t>();
+  auto IH = indices->getHandle<int64_t>();
   auto LH = lengths->getHandle<int32_t>();
 
   dim_t segments = lengths->dims()[0];
@@ -3639,7 +3660,7 @@ void BoundInterpreterFunction::
 
   out->zero();
 
-  auto IH = indices->getHandle<sdim_t>();
+  auto IH = indices->getHandle<int64_t>();
   auto LH = lengths->getHandle<int32_t>();
 
   size_t segments = lengths->dims()[0];
@@ -3737,8 +3758,8 @@ void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
 
   out->zero();
 
-  auto IH = indices->getHandle<sdim_t>();
-  auto OFFH = offsets->getHandle<sdim_t>();
+  auto IH = indices->getHandle<int64_t>();
+  auto OFFH = offsets->getHandle<int64_t>();
 
   // If an end offset is present to mark the end of the last segment then this
   // must be subtracted to get the correct number of segments
@@ -3850,7 +3871,7 @@ void BoundInterpreterFunction::fwdSparseToDenseInstFloatImpl(
 
   out->zero();
 
-  auto IH = indices->getHandle<sdim_t>();
+  auto IH = indices->getHandle<int64_t>();
 
   size_t numIndices = indices->dims()[0];
   size_t numOutDims = out->dims().size();
@@ -3900,7 +3921,7 @@ void BoundInterpreterFunction::fwdSparseToDenseMaskInst(
   auto values = getTensor(I->getValues());
   auto defaultValue = getTensor(I->getDefaultValue());
 
-  auto indicesH = getTensor(I->getIndices())->getHandle<sdim_t>();
+  auto indicesH = getTensor(I->getIndices())->getHandle<int64_t>();
   auto lengthsH = getTensor(I->getLengths())->getHandle<int32_t>();
 
   const std::vector<dim_t> &mask = I->getMask();
@@ -3953,10 +3974,10 @@ void BoundInterpreterFunction::fwdSparseToDenseMaskInst(
 //===----------------------------------------------------------------------===//
 //                Instructions used by RNN
 //===----------------------------------------------------------------------===//
-template <typename T>
+template <typename T, typename TI>
 static void fwdTopK(Tensor *outW, Tensor *indW, Tensor *inW, size_t k) {
   auto values = outW->getHandle<T>();
-  auto indices = indW->getHandle<sdim_t>();
+  auto indices = indW->getHandle<TI>();
   auto in = inW->getHandle<T>();
   size_t n = in.dims().back();
 
@@ -3986,7 +4007,7 @@ static void fwdTopK(Tensor *outW, Tensor *indW, Tensor *inW, size_t k) {
 
 template <typename T>
 static void fwdArgMax(Tensor *argmaxW, Tensor *inW, size_t axis) {
-  auto argmaxH = argmaxW->getHandle<sdim_t>();
+  auto argmaxH = argmaxW->getHandle<int64_t>();
   auto inH = inW->getHandle<T>();
 
   auto idim = inW->dims();
@@ -4037,11 +4058,17 @@ void BoundInterpreterFunction::fwdTopKInst(const TopKInst *I) {
   size_t k = I->getK();
 
   if (inW->getType().isQuantizedType()) {
-    fwdTopK<int8_t>(outW, indW, inW, k);
+    if (indW->getElementType() == ElemKind::Int64ITy) {
+
+      fwdTopK<int8_t, int64_t>(outW, indW, inW, k);
+    } else if (indW->getElementType() == ElemKind::Int32ITy) {
+      fwdTopK<int8_t, int32_t>(outW, indW, inW, k);
+    }
     return;
   }
 
-  dispatchFloatingPointImpl(fwdTopK, inW->getElementType(), outW, indW, inW, k);
+  dispatchFloatingPointAndIndexImpl(fwdTopK, inW->getElementType(),
+                                    indW->getElementType(), outW, indW, inW, k);
 }
 
 void BoundInterpreterFunction::fwdArgMaxInst(const ArgMaxInst *I) {

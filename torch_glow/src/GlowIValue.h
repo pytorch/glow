@@ -236,6 +236,35 @@ public:
   Error fromIValue(const at::IValue &ival);
 };
 
+/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toDouble,
+/// propogate any Errors.
+Expected<double> iValToDouble(Expected<GlowIValue *> expectedIVal);
+
+/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toInt,
+/// propogate any Errors.
+Expected<int64_t> iValToInt(Expected<GlowIValue *> expectedIVal);
+
+/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toBool,
+/// propogate any Errors.
+Expected<bool> iValToBool(Expected<GlowIValue *> expectedIVal);
+
+/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toIntList,
+/// propogate any Errors.
+Expected<std::vector<int64_t> *>
+iValToIntList(Expected<GlowIValue *> expectedIVal);
+
+/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toPTTensor,
+/// propogate any Errors.
+Expected<at::Tensor *> iValToPTTensor(Expected<GlowIValue *> expectedIVal);
+
+/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toGenericMap,
+/// propogate any Errors.
+Expected<GlowIValueMap *> iValToGenericMap(Expected<GlowIValue *> expectedIVal);
+
+/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toString,
+/// propogate any Errors.
+Expected<std::string *> iValToString(Expected<GlowIValue *> expectedIVal);
+
 } // namespace glow
 
 #endif // GLOW_TORCH_GLOW_SRC_GLOWIVALUE_H

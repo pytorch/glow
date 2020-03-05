@@ -304,16 +304,16 @@ static void libjit_extract_tensor(ElemTy *tensor, ElemTy *slice, dim_t *offset,
 }
 
 /// Helper struct for TopK
-template <typename T> struct value_index {
-  size_t index;
+template <typename T, typename TI> struct value_index {
+  TI index;
   T value;
 };
 
 /// Helper function for TopK
-template <typename T>
+template <typename T, typename TI>
 static int value_index_sort(const void *va, const void *vb) {
-  value_index<T> *a = (value_index<T> *)va;
-  value_index<T> *b = (value_index<T> *)vb;
+  value_index<T, TI> *a = (value_index<T, TI> *)va;
+  value_index<T, TI> *b = (value_index<T, TI> *)vb;
   if (a->value != b->value)
     return a->value > b->value ? -1 : 1;
   return a->index < b->index ? -1 : 1;
@@ -322,21 +322,21 @@ static int value_index_sort(const void *va, const void *vb) {
 /// Generic Top-K function. Here, \p scratch is some allocated buffer space, \p
 /// size is the size of the input, and \p n is the size of the last dimension of
 /// the input.
-template <typename T>
-static void libjit_topk(T *values, dim_t *indices, const T *input,
-                        size_t *scratch, dim_t k, dim_t n, dim_t size) {
+template <typename T, typename TI>
+static void libjit_topk(T *values, TI *indices, const T *input, TI *scratch,
+                        dim_t k, dim_t n, dim_t size) {
   dim_t in = 0;
   dim_t out = 0;
 
-  value_index<T> *buffer = (value_index<T> *)scratch;
+  value_index<T, TI> *buffer = (value_index<T, TI> *)scratch;
 
   // Specialize TopK for the case where K is 1.
   if (k == 1) {
     while (in < size) {
       // Find the largest value by iterating over the array instead of calling
       // 'sort'.
-      value_index<T> mx = {0, input[in]};
-      for (dim_t i = 1; i < n; i++) {
+      value_index<T, TI> mx = {0, input[in]};
+      for (TI i = 1; i < n; i++) {
         if (input[i + in] > mx.value) {
           mx = {i, input[i + in]};
         }
@@ -354,7 +354,7 @@ static void libjit_topk(T *values, dim_t *indices, const T *input,
       buffer[i].index = i;
       buffer[i].value = input[in++];
     }
-    qsort(buffer, n, sizeof(value_index<T>), value_index_sort<T>);
+    qsort(buffer, n, sizeof(value_index<T, TI>), value_index_sort<T, TI>);
     for (dim_t i = 0; i < k; i++) {
       indices[out] = buffer[i].index;
       values[out] = buffer[i].value;
@@ -427,9 +427,9 @@ static void libjit_gatherranges(T *output, U *lengths, const T *data,
   }
 }
 
-template <typename T>
+template <typename T, typename T2>
 static void libjit_scatterdatacopy(T *data, const dim_t *dataDims,
-                                   const dim_t *indices, const T *slices,
+                                   const T2 *indices, const T *slices,
                                    dim_t numIndices, dim_t indexSize,
                                    dim_t sliceSize) {
   for (dim_t i = 0; i < numIndices; i++) {
@@ -443,9 +443,9 @@ static void libjit_scatterdatacopy(T *data, const dim_t *dataDims,
   }
 }
 
-template <typename T>
+template <typename T, typename T2>
 static void libjit_scatterdataaddfloat(T *data, const dim_t *dataDims,
-                                       const dim_t *indices, const T *slices,
+                                       const T2 *indices, const T *slices,
                                        dim_t numIndices, dim_t indexSize,
                                        dim_t sliceSize) {
   for (dim_t i = 0; i < numIndices; i++) {
@@ -460,11 +460,13 @@ static void libjit_scatterdataaddfloat(T *data, const dim_t *dataDims,
   }
 }
 
-template <typename T>
-static void libjit_scatterdataaddquantized(
-    T *data, const dim_t *dataDims, const dim_t *indices, const T *slices,
-    dim_t numIndices, dim_t indexSize, dim_t sliceSize, float dataScale,
-    int32_t dataOffset, float sliceScale, int32_t sliceOffset) {
+template <typename T, typename T2>
+static void libjit_scatterdataaddquantized(T *data, const dim_t *dataDims,
+                                           const T2 *indices, const T *slices,
+                                           dim_t numIndices, dim_t indexSize,
+                                           dim_t sliceSize, float dataScale,
+                                           int32_t dataOffset, float sliceScale,
+                                           int32_t sliceOffset) {
 
   for (size_t i = 0; i < numIndices; i++) {
     size_t destDataIdx = indices[i * indexSize];
@@ -648,9 +650,9 @@ static void libjit_max_pool_generic(const T *inW, T *outW, const dim_t *inWdims,
   }       // N
 }
 
-template <typename T>
+template <typename T, typename T2>
 static void
-libjit_max_pool_argmax_generic(const T *inW, T *outW, dim_t *argmax,
+libjit_max_pool_argmax_generic(const T *inW, T *outW, T2 *argmax,
                                const dim_t *inWdims, const dim_t *outWdims,
                                dim_t *kernels, dim_t *strides, dim_t *pads) {
   dim_t pad_t = pads[0];
@@ -703,9 +705,9 @@ libjit_max_pool_argmax_generic(const T *inW, T *outW, dim_t *argmax,
   }       // N
 }
 
-template <typename T>
-static void libjit_arg_max_generic(const T *inW, dim_t *outW,
-                                   const dim_t *inWdims, size_t axis) {
+template <typename T, typename T2>
+static void libjit_arg_max_generic(const T *inW, T2 *outW, const dim_t *inWdims,
+                                   size_t axis) {
 
   dim_t a, b, c, d = 0;
 
@@ -884,6 +886,148 @@ static void libjit_reducemin(T *dest, const T *batch, size_t destSize,
   }
 }
 
+template <typename T, typename T2>
+static void libjit_cross_entropy_loss_generic(T *CE, T *P, T2 *labels,
+                                              dim_t *dims) {
+  CE[0] = 0.0;
+  for (dim_t n = 0; n < dims[0]; ++n) {
+    auto y = labels[n];
+    auto p_n = P[libjit_getXY(dims, n, y)];
+    CE[0] -= log(p_n);
+  }
+}
+
+template <typename T, typename T2>
+static void libjit_sparse_lengths_sum_generic(T *dest, T *data, T2 *indices,
+                                              int32_t *lengths, dim_t segments,
+                                              dim_t lineSize) {
+  memset(dest, 0, segments * lineSize * sizeof(float));
+  dim_t curIndex = 0;
+  for (dim_t i = 0; i < segments; i++) {
+    for (int32_t j = 0; j < lengths[i]; j++) {
+      dim_t line = indices[curIndex];
+      for (dim_t k = 0; k < lineSize; k++) {
+        dest[i * lineSize + k] += data[line * lineSize + k];
+      }
+      curIndex++;
+    }
+  }
+}
+
+template <typename T, typename T2>
+static void
+libjit_sparse_lengths_weighted_sum_generic(T *dest, T *data, float *weights,
+                                           T2 *indices, int32_t *lengths,
+                                           dim_t segments, dim_t lineSize) {
+  memset(dest, 0, segments * lineSize * sizeof(float));
+  dim_t curIndex = 0;
+  for (dim_t i = 0; i < segments; i++) {
+    for (int32_t j = 0; j < lengths[i]; j++) {
+      float weight = weights[curIndex];
+      dim_t line = indices[curIndex];
+      for (dim_t k = 0; k < lineSize; k++) {
+        dest[i * lineSize + k] += weight * data[line * lineSize + k];
+      }
+      curIndex++;
+    }
+  }
+}
+
+template <typename T, typename T2>
+static void libjit_sparse_lengths_weighted_sum_grad_generic(
+    const T *destGrad, T *dataGrad, T *weightsGrad, const T *data,
+    const T *weights, const T2 *indices, const int32_t *lengths, dim_t segments,
+    dim_t lineSize, dim_t dataGradRawSize) {
+  // The data gradients not touched by this operation should
+  // be 0, so set the entire buffer to 0 to start with.
+  memset(dataGrad, 0, dataGradRawSize);
+
+  for (dim_t i = 0, curIndex = 0; i < segments; ++i) {
+    for (int32_t j = 0; j < lengths[i]; ++j, ++curIndex) {
+      // For each index in each segment:
+      //    1) accumulate into the corresponding data gradient the product of
+      //    the gradient of the result it was added to and the weight that it
+      //    was multiplied by during the SparseLengthsWeightedSum operation.
+      //
+      //    2) accumulate into each weight gradient the reduced sum of the
+      //    elementwise product of the result slice that the corresponding
+      //    weight produced and the input slice that the weight was multiplied
+      //    with.
+      float weightGrad = 0.0f;
+      float weight = weights[curIndex];
+      dim_t line = indices[curIndex];
+      for (dim_t k = 0; k < lineSize; ++k) {
+        dataGrad[line * lineSize + k] += weight * destGrad[i * lineSize + k];
+        weightGrad += destGrad[i * lineSize + k] * data[line * lineSize + k];
+      }
+      weightsGrad[curIndex] = weightGrad;
+    }
+  }
+}
+
+template <typename T, typename T2>
+static void libjit_rowwise_quantized_sparse_lengths_weighted_sum_generic(
+    T *dest, uint8_t *data, T *scales, T *offsets, T *weights, T2 *indices,
+    int32_t *lengths, dim_t segments, dim_t lineSize) {
+  memset(dest, 0, segments * lineSize * sizeof(float));
+  dim_t curIndex = 0;
+  for (dim_t i = 0; i < segments; i++) {
+    for (int32_t j = 0; j < lengths[i]; j++) {
+      const float weight = weights[curIndex];
+      const dim_t line = indices[curIndex];
+      const float scale = scales[line];
+      const float offset = offsets[line];
+      for (dim_t k = 0; k < lineSize; k++) {
+        const float fData = scale * data[line * lineSize + k] + offset;
+        dest[i * lineSize + k] += weight * fData;
+      }
+      curIndex++;
+    }
+  }
+}
+
+template <typename T, typename T2>
+static void libjit_fused_rowwise_quantized_sparse_lengths_weighted_sum_generic(
+    T *dest, int8_t *data, T *weights, T2 *indices, int32_t *lengths,
+    dim_t segments, dim_t inLineSize, dim_t outLineSize) {
+  memset(dest, 0, segments * outLineSize * sizeof(float));
+  dim_t curIndex = 0;
+  for (dim_t i = 0; i < segments; i++) {
+    for (int32_t j = 0, e = lengths[i]; j < e; j++) {
+      const float weight = weights[curIndex];
+      const dim_t line = indices[curIndex];
+      const int8_t *currRowScaleOffsetPtr =
+          data + ((line + 1) * inLineSize) - 2 * sizeof(float);
+      float scale, offset;
+      memcpy(&scale, currRowScaleOffsetPtr, sizeof(float));
+      memcpy(&offset, currRowScaleOffsetPtr + sizeof(float), sizeof(float));
+      for (dim_t k = 0; k < outLineSize; k++) {
+        const float fData =
+            (scale * (uint8_t)(data[line * inLineSize + k])) + offset;
+        dest[i * outLineSize + k] += weight * fData;
+      }
+      curIndex++;
+    }
+  }
+}
+
+template <typename T, typename T2>
+static void libjit_sparse_to_dense_generic(T *dest, const T2 *indices,
+                                           const T *values, dim_t numIndices,
+                                           dim_t destSize, dim_t valueSize) {
+  memset(dest, 0, destSize * sizeof(float));
+
+  for (dim_t i = 0, valuesOffset = 0; i < numIndices;
+       ++i, valuesOffset += valueSize) {
+    dim_t idx = indices[i];
+    dim_t destOffset = idx * valueSize;
+
+    for (size_t j = 0; j < valueSize; ++j) {
+      dest[destOffset + j] += values[valuesOffset + j];
+    }
+  }
+}
+
 struct ClassBox {
   float score{0.0f};
   size_t index{0};
@@ -983,9 +1127,9 @@ static bool checkIOU(const Box &sb, const Box &cb, float iouThreshold,
 template <typename T>
 static void
 libjit_nms_generic(T *indices, T *numDetected, const float *boxTensor,
-                   const size_t *boxTensorDims, size_t boxTensorDimSize,
-                   const float *scoresTensor, const size_t *scoresTensorDims,
-                   size_t scoresTensorDimSize, const size_t *resultTensorDims,
+                   const dim_t *boxTensorDims, size_t boxTensorDimSize,
+                   const float *scoresTensor, const dim_t *scoresTensorDims,
+                   size_t scoresTensorDimSize, const dim_t *resultTensorDims,
                    size_t resultTensorDimSize, unsigned centerPointBox,
                    unsigned maxOutputBoxesPerClass, float iouThreshold,
                    float scoreThreshold, bool isV4) {
@@ -1110,6 +1254,43 @@ libjit_nms_generic(T *indices, T *numDetected, const float *boxTensor,
     }
   }
 }
+
+template <typename T, typename T2>
+void libjit_softmax_grad_generic(T *inG, T *outW, const T2 *selectedW,
+                                 const dim_t *idim, const dim_t *selectdim) {
+  for (dim_t n = 0; n < idim[0]; n++) {
+    for (dim_t i = 0; i < idim[1]; i++) {
+      float delta = (selectedW[libjit_getXY(selectdim, n, 0)] == i);
+      inG[libjit_getXY(idim, n, i)] = outW[libjit_getXY(idim, n, i)] - delta;
+    }
+  }
+}
+
+template <typename T, typename T2>
+void libjit_max_pool_argmax_grad_generic(T *inG, const T *outG,
+                                         const T2 *argmax, const dim_t *inGdims,
+                                         const dim_t *outWdims) {
+  // NHWC format is assumed
+  for (dim_t n = 0; n < outWdims[0]; n++) {
+    for (dim_t z = 0; z < outWdims[3]; z++) {
+      // Clear inG
+      for (dim_t x = 0; x < inGdims[1]; x++) {
+        for (dim_t y = 0; y < inGdims[2]; y++) {
+          inG[libjit_getXYZW(inGdims, n, x, y, z)] = 0.0;
+        }
+      }
+
+      for (dim_t ax = 0; ax < outWdims[1]; ax++) {
+        for (dim_t ay = 0; ay < outWdims[2]; ay++) {
+          // Reuse precomputed linear index of max element from argmax.
+          const dim_t flatIndex = libjit_getXYZW(outWdims, n, ax, ay, z);
+          float df = outG[flatIndex];
+          inG[argmax[flatIndex]] += df;
+        } // W
+      }   // H
+    }     // C
+  }       // N
+}
 } // namespace
 
 extern "C" {
@@ -1185,13 +1366,19 @@ DEFINE_DATA_PARALLEL_KERNEL(libjit_copy_kernel_i32, int32_t, LHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_copy_kernel_b, int8_t, LHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_add_kernel_f, float,
                             LHS[idx] + RHS[idx])
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_add_kernel_i32, int32_t,
+                            LHS[idx] + RHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_sub_kernel_f, float,
                             LHS[idx] - RHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_div_kernel_f, float,
                             LHS[idx] / RHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_div_kernel_u, int64_t,
                             LHS[idx] / RHS[idx])
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_div_kernel_i32, int32_t,
+                            LHS[idx] / RHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_mul_kernel_f, float,
+                            LHS[idx] * RHS[idx])
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_mul_kernel_i32, int32_t,
                             LHS[idx] * RHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_pow_kernel_f, float,
                             pow(LHS[idx], RHS[idx]))
@@ -1249,6 +1436,11 @@ int32_t libjit_element_modulo_kernel_no_sign_follow_i32(dim_t idx,
 
 int8_t libjit_element_cmp_eq_kernel_u(dim_t idx, const size_t *LHS,
                                       const size_t *RHS) {
+  return LHS[idx] == RHS[idx] ? 1 : 0;
+}
+
+int8_t libjit_element_cmp_eq_kernel_i32(size_t idx, const int32_t *LHS,
+                                        const int32_t *RHS) {
   return LHS[idx] == RHS[idx] ? 1 : 0;
 }
 
@@ -1465,14 +1657,14 @@ void libjit_batchedreduceadd_i8(int8_t *dest, const int8_t *batch,
   }
 }
 
-void libjit_cross_entropy_loss_f(float *CE, float *P, dim_t *labels,
-                                 dim_t *dims) {
-  CE[0] = 0.0;
-  for (dim_t n = 0; n < dims[0]; ++n) {
-    auto y = labels[n];
-    auto p_n = P[libjit_getXY(dims, n, y)];
-    CE[0] -= log(p_n);
-  }
+void libjit_cross_entropy_loss_f_u(float *CE, float *P, size_t *labels,
+                                   dim_t *dims) {
+  libjit_cross_entropy_loss_generic(CE, P, labels, dims);
+}
+
+void libjit_cross_entropy_loss_f_i32(float *CE, float *P, int32_t *labels,
+                                     dim_t *dims) {
+  libjit_cross_entropy_loss_generic(CE, P, labels, dims);
 }
 
 void libjit_gather64_f(float *dest, const float *data, const int64_t *indices,
@@ -1517,6 +1709,13 @@ void libjit_gather32_u(int64_t *dest, const int64_t *data,
                 sampleSize);
 }
 
+void libjit_gather32_i32(int32_t *dest, const int32_t *data,
+                         const int32_t *indices, dim_t numIndices,
+                         dim_t sliceSize, dim_t numSamples, dim_t sampleSize) {
+  libjit_gather(dest, data, indices, numIndices, sliceSize, numSamples,
+                sampleSize);
+}
+
 void libjit_gatherranges64_f(float *output, int64_t *lengths, const float *data,
                              const int64_t *ranges, dim_t numExamples,
                              dim_t exampleSize) {
@@ -1553,6 +1752,12 @@ void libjit_gatherranges32_u(uint64_t *output, int32_t *lengths,
   libjit_gatherranges(output, lengths, data, ranges, numExamples, exampleSize);
 }
 
+void libjit_gatherranges32_i32(int32_t *output, int32_t *lengths,
+                               const int32_t *data, const int32_t *ranges,
+                               size_t numExamples, size_t exampleSize) {
+  libjit_gatherranges(output, lengths, data, ranges, numExamples, exampleSize);
+}
+
 void libjit_lengths_range_fill_i32(const int32_t *lengths, int32_t *output,
                                    const dim_t lengthsSize) {
   dim_t curIdx = 0;
@@ -1563,10 +1768,10 @@ void libjit_lengths_range_fill_i32(const int32_t *lengths, int32_t *output,
   }
 }
 
-void libjit_scatterdata_f(float *data, const dim_t *dataDims,
-                          const dim_t *indices, const float *slices,
-                          dim_t numIndices, dim_t indexSize, dim_t sliceSize,
-                          bool isCumulative) {
+void libjit_scatterdata_f_i32(float *data, const dim_t *dataDims,
+                              const int32_t *indices, const float *slices,
+                              dim_t numIndices, dim_t indexSize,
+                              dim_t sliceSize, bool isCumulative) {
   if (isCumulative) {
     libjit_scatterdataaddfloat(data, dataDims, indices, slices, numIndices,
                                indexSize, sliceSize);
@@ -1576,12 +1781,28 @@ void libjit_scatterdata_f(float *data, const dim_t *dataDims,
   }
 }
 
-void libjit_scatterdata_i8(int8_t *data, const dim_t *dataDims,
-                           const dim_t *indices, const int8_t *slices,
-                           dim_t numIndices, dim_t indexSize, dim_t sliceSize,
-                           bool isCumulative, float dataScale,
-                           int32_t dataOffset, float sliceScale,
-                           int32_t sliceOffset) {
+void libjit_scatterdata_i8_u(int8_t *data, const dim_t *dataDims,
+                             const size_t *indices, const int8_t *slices,
+                             size_t numIndices, size_t indexSize,
+                             size_t sliceSize, bool isCumulative,
+                             float dataScale, int32_t dataOffset,
+                             float sliceScale, int32_t sliceOffset) {
+  if (isCumulative) {
+    libjit_scatterdataaddquantized(data, dataDims, indices, slices, numIndices,
+                                   indexSize, sliceSize, dataScale, dataOffset,
+                                   sliceScale, sliceOffset);
+  } else {
+    libjit_scatterdatacopy(data, dataDims, indices, slices, numIndices,
+                           indexSize, sliceSize);
+  }
+}
+
+void libjit_scatterdata_i8_i32(int8_t *data, const dim_t *dataDims,
+                               const int32_t *indices, const int8_t *slices,
+                               size_t numIndices, size_t indexSize,
+                               size_t sliceSize, bool isCumulative,
+                               float dataScale, int32_t dataOffset,
+                               float sliceScale, int32_t sliceOffset) {
   if (isCumulative) {
     libjit_scatterdataaddquantized(data, dataDims, indices, slices, numIndices,
                                    indexSize, sliceSize, dataScale, dataOffset,
@@ -1603,42 +1824,38 @@ void libjit_lengths_to_ranges_i32(int32_t *ranges, const int32_t *lengths,
   }
 }
 
-void libjit_sparse_lengths_sum_f(float *dest, float *data, dim_t *indices,
-                                 int32_t *lengths, dim_t segments,
-                                 dim_t lineSize) {
-  memset(dest, 0, segments * lineSize * sizeof(float));
-  dim_t curIndex = 0;
-  for (dim_t i = 0; i < segments; i++) {
-    for (int32_t j = 0; j < lengths[i]; j++) {
-      dim_t line = indices[curIndex];
-      for (dim_t k = 0; k < lineSize; k++) {
-        dest[i * lineSize + k] += data[line * lineSize + k];
-      }
-      curIndex++;
-    }
-  }
+void libjit_sparse_lengths_sum_f_u(float *dest, float *data, size_t *indices,
+                                   int32_t *lengths, dim_t segments,
+                                   dim_t lineSize) {
+  libjit_sparse_lengths_sum_generic(dest, data, indices, lengths, segments,
+                                    lineSize);
 }
 
-void libjit_sparse_lengths_weighted_sum_f(float *dest, float *data,
-                                          float *weights, dim_t *indices,
-                                          int32_t *lengths, dim_t segments,
-                                          dim_t lineSize) {
-  memset(dest, 0, segments * lineSize * sizeof(float));
-  dim_t curIndex = 0;
-  for (dim_t i = 0; i < segments; i++) {
-    for (int32_t j = 0; j < lengths[i]; j++) {
-      float weight = weights[curIndex];
-      dim_t line = indices[curIndex];
-      for (dim_t k = 0; k < lineSize; k++) {
-        dest[i * lineSize + k] += weight * data[line * lineSize + k];
-      }
-      curIndex++;
-    }
-  }
+void libjit_sparse_lengths_sum_f_i32(float *dest, float *data, int32_t *indices,
+                                     int32_t *lengths, dim_t segments,
+                                     dim_t lineSize) {
+  libjit_sparse_lengths_sum_generic(dest, data, indices, lengths, segments,
+                                    lineSize);
+}
+
+void libjit_sparse_lengths_weighted_sum_f_u(float *dest, float *data,
+                                            float *weights, size_t *indices,
+                                            int32_t *lengths, dim_t segments,
+                                            dim_t lineSize) {
+  libjit_sparse_lengths_weighted_sum_generic(dest, data, weights, indices,
+                                             lengths, segments, lineSize);
+}
+
+void libjit_sparse_lengths_weighted_sum_f_i32(float *dest, float *data,
+                                              float *weights, int32_t *indices,
+                                              int32_t *lengths, dim_t segments,
+                                              dim_t lineSize) {
+  libjit_sparse_lengths_weighted_sum_generic(dest, data, weights, indices,
+                                             lengths, segments, lineSize);
 }
 
 void libjit_embedding_bag_f(float *dest, float *data, float *weights,
-                            dim_t *indices, dim_t *offsets, dim_t segments,
+                            size_t *indices, size_t *offsets, dim_t segments,
                             dim_t lineSize, dim_t totalLength,
                             bool hasEndOffset) {
   if (hasEndOffset) {
@@ -1661,56 +1878,54 @@ void libjit_embedding_bag_f(float *dest, float *data, float *weights,
   }
 }
 
-void libjit_sparse_lengths_weighted_sum_grad_f(
+void libjit_sparse_lengths_weighted_sum_grad_f_u(
     const float *destGrad, float *dataGrad, float *weightsGrad,
-    const float *data, const float *weights, const dim_t *indices,
+    const float *data, const float *weights, const size_t *indices,
     const int32_t *lengths, dim_t segments, dim_t lineSize,
     dim_t dataGradRawSize) {
-  // The data gradients not touched by this operation should
-  // be 0, so set the entire buffer to 0 to start with.
-  memset(dataGrad, 0, dataGradRawSize);
-
-  for (dim_t i = 0, curIndex = 0; i < segments; ++i) {
-    for (int32_t j = 0; j < lengths[i]; ++j, ++curIndex) {
-      // For each index in each segment:
-      //    1) accumulate into the corresponding data gradient the product of
-      //    the gradient of the result it was added to and the weight that it
-      //    was multiplied by during the SparseLengthsWeightedSum operation.
-      //
-      //    2) accumulate into each weight gradient the reduced sum of the
-      //    elementwise product of the result slice that the corresponding
-      //    weight produced and the input slice that the weight was multiplied
-      //    with.
-      float weightGrad = 0.0f;
-      float weight = weights[curIndex];
-      dim_t line = indices[curIndex];
-      for (dim_t k = 0; k < lineSize; ++k) {
-        dataGrad[line * lineSize + k] += weight * destGrad[i * lineSize + k];
-        weightGrad += destGrad[i * lineSize + k] * data[line * lineSize + k];
-      }
-      weightsGrad[curIndex] = weightGrad;
-    }
-  }
+  libjit_sparse_lengths_weighted_sum_grad_generic(
+      destGrad, dataGrad, weightsGrad, data, weights, indices, lengths,
+      segments, lineSize, dataGradRawSize);
 }
 
-void libjit_rowwise_quantized_sparse_lengths_weighted_sum_f(
+void libjit_sparse_lengths_weighted_sum_grad_f_i32(
+    const float *destGrad, float *dataGrad, float *weightsGrad,
+    const float *data, const float *weights, const int32_t *indices,
+    const int32_t *lengths, dim_t segments, dim_t lineSize,
+    dim_t dataGradRawSize) {
+  libjit_sparse_lengths_weighted_sum_grad_generic(
+      destGrad, dataGrad, weightsGrad, data, weights, indices, lengths,
+      segments, lineSize, dataGradRawSize);
+}
+
+void libjit_rowwise_quantized_sparse_lengths_weighted_sum_f_u(
     float *dest, uint8_t *data, float *scales, float *offsets, float *weights,
-    dim_t *indices, int32_t *lengths, dim_t segments, dim_t lineSize) {
-  memset(dest, 0, segments * lineSize * sizeof(float));
-  dim_t curIndex = 0;
-  for (dim_t i = 0; i < segments; i++) {
-    for (int32_t j = 0; j < lengths[i]; j++) {
-      const float weight = weights[curIndex];
-      const dim_t line = indices[curIndex];
-      const float scale = scales[line];
-      const float offset = offsets[line];
-      for (dim_t k = 0; k < lineSize; k++) {
-        const float fData = scale * data[line * lineSize + k] + offset;
-        dest[i * lineSize + k] += weight * fData;
-      }
-      curIndex++;
-    }
-  }
+    size_t *indices, int32_t *lengths, dim_t segments, dim_t lineSize) {
+  libjit_rowwise_quantized_sparse_lengths_weighted_sum_generic(
+      dest, data, scales, offsets, weights, indices, lengths, segments,
+      lineSize);
+}
+
+void libjit_rowwise_quantized_sparse_lengths_weighted_sum_f_i32(
+    float *dest, uint8_t *data, float *scales, float *offsets, float *weights,
+    int32_t *indices, int32_t *lengths, dim_t segments, dim_t lineSize) {
+  libjit_rowwise_quantized_sparse_lengths_weighted_sum_generic(
+      dest, data, scales, offsets, weights, indices, lengths, segments,
+      lineSize);
+}
+
+void libjit_fused_rowwise_quantized_sparse_lengths_weighted_sum_f_u(
+    float *dest, int8_t *data, float *weights, size_t *indices,
+    int32_t *lengths, dim_t segments, dim_t inLineSize, dim_t outLineSize) {
+  libjit_fused_rowwise_quantized_sparse_lengths_weighted_sum_generic(
+      dest, data, weights, indices, lengths, segments, inLineSize, outLineSize);
+}
+
+void libjit_fused_rowwise_quantized_sparse_lengths_weighted_sum_f_i32(
+    float *dest, int8_t *data, float *weights, int32_t *indices,
+    int32_t *lengths, dim_t segments, dim_t inLineSize, dim_t outLineSize) {
+  libjit_fused_rowwise_quantized_sparse_lengths_weighted_sum_generic(
+      dest, data, weights, indices, lengths, segments, inLineSize, outLineSize);
 }
 
 void libjit_fused_rowwise_quantized_sparse_lengths_weighted_sum_f(
@@ -1738,7 +1953,7 @@ void libjit_fused_rowwise_quantized_sparse_lengths_weighted_sum_f(
 }
 
 void libjit_embedding_bag_byte_rowwise_offsets_f(
-    float *dest, int8_t *data, float *weights, dim_t *indices, dim_t *offsets,
+    float *dest, int8_t *data, float *weights, size_t *indices, size_t *offsets,
     dim_t segments, dim_t numIndices, dim_t inLineSize, dim_t outLineSize,
     bool hasEndOffset) {
   if (hasEndOffset) {
@@ -1766,20 +1981,18 @@ void libjit_embedding_bag_byte_rowwise_offsets_f(
   }
 }
 
-void libjit_sparse_to_dense_f(float *dest, const dim_t *indices,
-                              const float *values, dim_t numIndices,
-                              dim_t destSize, dim_t valueSize) {
-  memset(dest, 0, destSize * sizeof(float));
+void libjit_sparse_to_dense_f_u(float *dest, const size_t *indices,
+                                const float *values, dim_t numIndices,
+                                dim_t destSize, dim_t valueSize) {
+  libjit_sparse_to_dense_generic(dest, indices, values, numIndices, destSize,
+                                 valueSize);
+}
 
-  for (dim_t i = 0, valuesOffset = 0; i < numIndices;
-       ++i, valuesOffset += valueSize) {
-    dim_t idx = indices[i];
-    dim_t destOffset = idx * valueSize;
-
-    for (dim_t j = 0; j < valueSize; ++j) {
-      dest[destOffset + j] += values[valuesOffset + j];
-    }
-  }
+void libjit_sparse_to_dense_f_i32(float *dest, const int32_t *indices,
+                                  const float *values, dim_t numIndices,
+                                  dim_t destSize, dim_t valueSize) {
+  libjit_sparse_to_dense_generic(dest, indices, values, numIndices, destSize,
+                                 valueSize);
 }
 
 void libjit_lengths_sum_f(float *dest, const float *data,
@@ -1891,53 +2104,69 @@ void libjit_max_pool_f(const float *inW, float *outW, const dim_t *inWdims,
                           pads);
 }
 
-void libjit_max_pool_argmax_i8(const int8_t *inW, int8_t *outW, dim_t *argmax,
-                               const dim_t *inWdims, const dim_t *outWdims,
-                               dim_t *kernels, dim_t *strides, dim_t *pads) {
+void libjit_max_pool_argmax_i8_u(const int8_t *inW, int8_t *outW,
+                                 int64_t *argmax, const dim_t *inWdims,
+                                 const dim_t *outWdims, dim_t *kernels,
+                                 dim_t *strides, dim_t *pads) {
   libjit_max_pool_argmax_generic(inW, outW, argmax, inWdims, outWdims, kernels,
                                  strides, pads);
 }
 
-void libjit_max_pool_argmax_f(const float *inW, float *outW, dim_t *argmax,
-                              const dim_t *inWdims, const dim_t *outWdims,
-                              dim_t *kernels, dim_t *strides, dim_t *pads) {
+void libjit_max_pool_argmax_f_u(const float *inW, float *outW, int64_t *argmax,
+                                const dim_t *inWdims, const dim_t *outWdims,
+                                dim_t *kernels, dim_t *strides, dim_t *pads) {
   libjit_max_pool_argmax_generic(inW, outW, argmax, inWdims, outWdims, kernels,
                                  strides, pads);
 }
 
-void libjit_arg_max_i8(const int8_t *inW, dim_t *outW, const dim_t *inWdims,
-                       size_t axis) {
+void libjit_max_pool_argmax_i8_i32(const int8_t *inW, int8_t *outW,
+                                   int32_t *argmax, const dim_t *inWdims,
+                                   const dim_t *outWdims, dim_t *kernels,
+                                   dim_t *strides, dim_t *pads) {
+  libjit_max_pool_argmax_generic(inW, outW, argmax, inWdims, outWdims, kernels,
+                                 strides, pads);
+}
+
+void libjit_max_pool_argmax_f_i32(const float *inW, float *outW,
+                                  int32_t *argmax, const dim_t *inWdims,
+                                  const dim_t *outWdims, dim_t *kernels,
+                                  dim_t *strides, dim_t *pads) {
+  libjit_max_pool_argmax_generic(inW, outW, argmax, inWdims, outWdims, kernels,
+                                 strides, pads);
+}
+
+void libjit_arg_max_i8_u(const int8_t *inW, int64_t *outW, const dim_t *inWdims,
+                         size_t axis) {
   libjit_arg_max_generic(inW, outW, inWdims, axis);
 }
 
-void libjit_arg_max_f(const float *inW, dim_t *outW, const dim_t *inWdims,
-                      size_t axis) {
+void libjit_arg_max_i8_i32(const int8_t *inW, int32_t *outW,
+                           const dim_t *inWdims, size_t axis) {
   libjit_arg_max_generic(inW, outW, inWdims, axis);
 }
 
-void libjit_max_pool_argmax_grad_f(float *inG, const float *outG,
-                                   const dim_t *argmax, const dim_t *inGdims,
-                                   const dim_t *outWdims) {
-  // NHWC format is assumed
-  for (dim_t n = 0; n < outWdims[0]; n++) {
-    for (dim_t z = 0; z < outWdims[3]; z++) {
-      // Clear inG
-      for (dim_t x = 0; x < inGdims[1]; x++) {
-        for (dim_t y = 0; y < inGdims[2]; y++) {
-          inG[libjit_getXYZW(inGdims, n, x, y, z)] = 0.0;
-        }
-      }
+void libjit_arg_max_f_u(const float *inW, int64_t *outW, const dim_t *inWdims,
+                        size_t axis) {
+  libjit_arg_max_generic(inW, outW, inWdims, axis);
+}
 
-      for (dim_t ax = 0; ax < outWdims[1]; ax++) {
-        for (dim_t ay = 0; ay < outWdims[2]; ay++) {
-          // Reuse precomputed linear index of max element from argmax.
-          const dim_t flatIndex = libjit_getXYZW(outWdims, n, ax, ay, z);
-          float df = outG[flatIndex];
-          inG[argmax[flatIndex]] += df;
-        } // W
-      }   // H
-    }     // C
-  }       // N
+void libjit_arg_max_f_i32(const float *inW, int32_t *outW, const dim_t *inWdims,
+                          size_t axis) {
+  libjit_arg_max_generic(inW, outW, inWdims, axis);
+}
+
+void libjit_max_pool_argmax_grad_f_u(float *inG, const float *outG,
+                                     const int64_t *argmax,
+                                     const dim_t *inGdims,
+                                     const dim_t *outWdims) {
+  libjit_max_pool_argmax_grad_generic(inG, outG, argmax, inGdims, outWdims);
+}
+
+void libjit_max_pool_argmax_grad_f_i32(float *inG, const float *outG,
+                                       const int32_t *argmax,
+                                       const dim_t *inGdims,
+                                       const dim_t *outWdims) {
+  libjit_max_pool_argmax_grad_generic(inG, outG, argmax, inGdims, outWdims);
 }
 
 void libjit_avg_pool_i8(const int8_t *inW, int8_t *outW, const dim_t *inWdims,
@@ -2163,14 +2392,15 @@ void libjit_softmax_f(const float *inW, float *outW, const dim_t *idim,
   } // N
 }
 
-void libjit_softmax_grad_f(float *inG, float *outW, const dim_t *selectedW,
-                           const dim_t *idim, const dim_t *selectdim) {
-  for (dim_t n = 0; n < idim[0]; n++) {
-    for (dim_t i = 0; i < idim[1]; i++) {
-      float delta = (selectedW[libjit_getXY(selectdim, n, 0)] == i);
-      inG[libjit_getXY(idim, n, i)] = outW[libjit_getXY(idim, n, i)] - delta;
-    }
-  }
+void libjit_softmax_grad_f_u(float *inG, float *outW, const size_t *selectedW,
+                             const dim_t *idim, const dim_t *selectdim) {
+  libjit_softmax_grad_generic(inG, outW, selectedW, idim, selectdim);
+}
+
+void libjit_softmax_grad_f_i32(float *inG, float *outW,
+                               const int32_t *selectedW, const dim_t *idim,
+                               const dim_t *selectdim) {
+  libjit_softmax_grad_generic(inG, outW, selectedW, idim, selectdim);
 }
 
 void libjit_sigmoid_f(const float *inW, float *outW, dim_t numElem) {
@@ -2180,13 +2410,23 @@ void libjit_sigmoid_f(const float *inW, float *outW, dim_t numElem) {
   }
 }
 
-void libjit_topk_f(float *values, dim_t *indices, const float *input,
-                   size_t *scratch, dim_t k, dim_t n, dim_t size) {
+void libjit_topk_f_u(float *values, size_t *indices, const float *input,
+                     size_t *scratch, dim_t k, dim_t n, dim_t size) {
   libjit_topk(values, indices, input, scratch, k, n, size);
 }
 
-void libjit_topk_i8(int8_t *values, dim_t *indices, const int8_t *input,
-                    size_t *scratch, dim_t k, dim_t n, dim_t size) {
+void libjit_topk_f_i32(float *values, int32_t *indices, const float *input,
+                       int32_t *scratch, dim_t k, dim_t n, dim_t size) {
+  libjit_topk(values, indices, input, scratch, k, n, size);
+}
+
+void libjit_topk_i8_u(int8_t *values, size_t *indices, const int8_t *input,
+                      size_t *scratch, dim_t k, dim_t n, dim_t size) {
+  libjit_topk(values, indices, input, scratch, k, n, size);
+}
+
+void libjit_topk_i8_i32(int8_t *values, int32_t *indices, const int8_t *input,
+                        int32_t *scratch, dim_t k, dim_t n, dim_t size) {
   libjit_topk(values, indices, input, scratch, k, n, size);
 }
 
@@ -2248,6 +2488,14 @@ void libjit_insert_tensor_f(float *tensor, float *slice, dim_t *offset,
                             dim_t *tensorDim, dim_t *sliceDim,
                             dim_t numDimsTensor, dim_t numDimsSlice,
                             dim_t offsetDim, dim_t count, dim_t axis) {
+  libjit_insert_tensor(tensor, slice, offset, tensorDim, sliceDim,
+                       numDimsTensor, numDimsSlice, offsetDim, count, axis);
+}
+
+void libjit_insert_tensor_i32(int32_t *tensor, int32_t *slice, dim_t *offset,
+                              dim_t *tensorDim, dim_t *sliceDim,
+                              dim_t numDimsTensor, dim_t numDimsSlice,
+                              dim_t offsetDim, dim_t count, dim_t axis) {
   libjit_insert_tensor(tensor, slice, offset, tensorDim, sliceDim,
                        numDimsTensor, numDimsSlice, offsetDim, count, axis);
 }
@@ -2482,9 +2730,9 @@ libjit_quantization_profile(float *inputTensor, dim_t tensorSize,
 
 __attribute__((noinline)) void
 libjit_nms_u(size_t *indices, size_t *numDetected, const float *boxTensor,
-             const size_t *boxTensorDims, size_t boxTensorDimSize,
-             const float *scoresTensor, const size_t *scoresTensorDims,
-             size_t scoresTensorDimSize, const size_t *resultTensorDims,
+             const dim_t *boxTensorDims, size_t boxTensorDimSize,
+             const float *scoresTensor, const dim_t *scoresTensorDims,
+             size_t scoresTensorDimSize, const dim_t *resultTensorDims,
              size_t resultTensorDimSize, unsigned centerPointBox,
              unsigned maxOutputBoxesPerClass, float iouThreshold,
              float scoreThreshold, bool isV4) {
@@ -2497,9 +2745,9 @@ libjit_nms_u(size_t *indices, size_t *numDetected, const float *boxTensor,
 
 __attribute__((noinline)) void
 libjit_nms_i32(int32_t *indices, int32_t *numDetected, const float *boxTensor,
-               const size_t *boxTensorDims, size_t boxTensorDimSize,
-               const float *scoresTensor, const size_t *scoresTensorDims,
-               size_t scoresTensorDimSize, const size_t *resultTensorDims,
+               const dim_t *boxTensorDims, size_t boxTensorDimSize,
+               const float *scoresTensor, const dim_t *scoresTensorDims,
+               size_t scoresTensorDimSize, const dim_t *resultTensorDims,
                size_t resultTensorDimSize, unsigned centerPointBox,
                unsigned maxOutputBoxesPerClass, float iouThreshold,
                float scoreThreshold, bool isV4) {

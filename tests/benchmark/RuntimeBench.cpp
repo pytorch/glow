@@ -570,7 +570,7 @@ std::unique_ptr<DAG> createSingleNodeDAG(
   root->children.emplace_back(singleNode.get());
 
   singleNode->parents.emplace_back(root.get());
-  singleNode->deviceIDs = {0};
+  singleNode->deviceRuntimeInfos[0] = DeviceRuntimeInfo();
   singleNode->name = "singleNode";
   singleNode->runtimeBundle = glow::make_unique<RuntimeBundle>(
       compiledFunctions["singleNode"]->getRuntimeBundle());

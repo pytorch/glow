@@ -31,7 +31,9 @@ public:
     /// Entry name for the IR function.
     std::string entryName;
     /// Saved IRFunction.
-    const IRFunction *savedF;
+    const IRFunction *savedF{nullptr};
+    /// LLVM IR function created for this IR function.
+    llvm::Function *llvmF{nullptr};
   };
   /// WeightInfo represents a constant weight and a constant it is produced
   /// from.
@@ -65,8 +67,8 @@ private:
   void emitBundleConfig();
   /// Emit the symbol table for a bundle.
   void emitSymbolTable();
-  /// Emit the entry function for the bundle.
-  void emitBundleEntryFunction();
+  /// Emit the entry function for the saved function \p savedF.
+  void emitBundleEntryFunction(SavedIRFunction &savedF);
   /// Set current IRFunction.
   void setIRFunction(llvm::StringRef mainEntryName, const IRFunction *F);
   /// Returns a set of placeholders associated with IR functions inside this

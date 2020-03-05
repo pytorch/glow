@@ -28,6 +28,7 @@ namespace onnxifi {
 bool GlowSaveOnnxifiModel = false;
 bool GlowSaveOnnxifiIO = false;
 bool GlowEnablePartialTensors = true;
+bool GlowUseCustomOpsForExport = true;
 
 extern bool GlowDumpDebugTraces;
 
@@ -40,7 +41,10 @@ void saveOnnxifiModel(Function *F) {
   LOG(INFO) << "Saving model to " << fname;
   Error err = Error::empty();
   constexpr size_t kIrVer = 7, kOpsetVer = 9;
-  { ONNXModelWriter onnxWR(fname, *F, kIrVer, kOpsetVer, &err, false, true); }
+  {
+    ONNXModelWriter onnxWR(fname, *F, kIrVer, kOpsetVer, &err, false, true,
+                           GlowUseCustomOpsForExport);
+  }
   if (ERR_TO_BOOL(std::move(err))) {
     LOG(ERROR) << "ONNXModelWriter failed to write model: " << fname;
   }
@@ -269,7 +273,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
         size_t unpaddedSize = inputTensor.getUnpaddedSizeInBytes();
         size_t tensorSize = inputTensor.getSizeInBytes();
         if (unpaddedSize == tensorSize) {
-          ONNXModelWriter::writeTensor(inputTensor, t);
+          ONNXModelWriter::writeTensor(inputTensor, t,
+                                       GlowUseCustomOpsForExport);
         } else {
           // If the input is a partial tensor, then save only the part that has
           // data.
@@ -277,7 +282,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
           auto dims = ty.dims().vec();
           dims[0] = dims[0] * unpaddedSize / tensorSize;
           const auto &resized = inputTensor.getUnowned(dims);
-          ONNXModelWriter::writeTensor(resized, t);
+          ONNXModelWriter::writeTensor(resized, t, GlowUseCustomOpsForExport);
           VLOG(1) << "Writing partial tensor " << p.first->getName().str()
                   << " full size=" << inputTensor.getType().toString()
                   << " partial size=" << inputTensor.getUnpaddedSizeInBytes()
@@ -350,7 +355,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
         auto &outPhPtr = outPhIt->getValue();
         Tensor outputTensor(outOnnxBuffer, outPhPtr->getType());
         auto *t = inputG.add_initializer();
-        ONNXModelWriter::writeTensor(outputTensor, t);
+        ONNXModelWriter::writeTensor(outputTensor, t,
+                                     GlowUseCustomOpsForExport);
         t->set_name(outPhPtr->getName());
       }
       std::string buffer;

@@ -53,12 +53,14 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   ReportedNodes reportedNodes_;
   /// Whether we use zip mode or not
   bool zipMode_;
+  /// Whether to use custom ONNX ops.
+  bool useGlowCustomOps_;
   /// A dedicated list of initializers in case the tensors get too big and don't
   /// fit into the model.
   std::list<TensorType> initializers_;
   /// Writes tensor shape from placeholder \p PH into protpbuf \p valueProto.
-  static void tensorShapeFromPlaceholder(const Placeholder *PH,
-                                         ValueInfoType *valueProto);
+  void tensorShapeFromPlaceholder(const Placeholder *PH,
+                                  ValueInfoType *valueProto);
   /// Writes all inputs and outputs with operator name \p opName from give Node
   /// \p node into protobuf \p proto.
   static Error writeAllWithNode(const std::string &opName, const Node *node,
@@ -67,8 +69,6 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   /// \p node into created node protobuf using \p graph.
   static Error writeAll(const std::string &opName, const Node *node,
                         GraphType &graph);
-  /// Finds if uses of \p node have node with the provided \p kind.
-  static bool hasUsesOfKind(const Node *node, Kinded::Kind kind);
 
   /// Add an initializer. Depending on \ref zipMode_, it will add directly to
   /// the \p graph or to a separate list.
@@ -79,11 +79,17 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   Error writeTensorwiseQuantizedConvolution(const ConvolutionNode *node,
                                             GraphType &graph);
 
+  /// Write \p node to \p graph using custom Glow Nodes, exported via
+  /// auto-generated export logic in NodeGen.
+  Error writeGlowCustomOperator(const Node *node, GraphType &graph);
+
 public:
   /// Converts \p glowType to \p protoType.
   static typename TensorType::DataType convertType(const Type &glowType);
-  /// Writes Glow tensor \p T to proto output \p out.
-  static void writeTensor(const Tensor &T, TensorType *out);
+  /// Writes Glow tensor \p T to proto output \p out. Depending on
+  /// \p useGlowCustomOps meta info will be annotated differently.
+  static void writeTensor(const Tensor &T, TensorType *out,
+                          bool useGlowCustomOps = false);
 
   /// Creates an ONNX model writer to serialize \p F graph into file
   /// \p modelFilename, writing \p irVersion and \p opsetVersion.
@@ -91,11 +97,14 @@ public:
   /// there otherwise if an error occurs it will abort. It also supports
   /// serialization with text format or binary format depending on \p textMode.
   /// If \p zipMode is true, it will save weights into individual TensorProto
-  /// file along with the model file and package them into a zip file.
+  /// file along with the model file and package them into a zip file. If
+  /// \p useGlowCustomOps then it will use auto-generated export logic via
+  /// NodeGen to export all Glow Nodes as is via custom ops, instead of trying
+  /// to abide by the official ONNX ops.
   ONNXModelWriter(const std::string &modelFilename, Function &F,
                   size_t irVersion, size_t opsetVersion,
                   Error *errPtr = nullptr, bool textMode = false,
-                  bool zipMode = false);
+                  bool zipMode = false, bool useGlowCustomOps = false);
 
 private:
   /// \returns error for the unexpected node kind.

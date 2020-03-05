@@ -82,6 +82,56 @@ TEST_F(HostManagerTest, addNetwork) {
   ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
 }
 
+TEST_F(HostManagerTest, queueOverflow) {
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
+
+  Function *F = module->createFunction("main");
+  auto *X = module->createPlaceholder(ElemKind::FloatTy, {10}, "X", false);
+  auto *pow = F->createPow("Pow1", X, 2.0);
+  pow = F->createPow("Pow1", pow, 2.0);
+  auto *save = F->createSave("save", pow);
+  std::vector<std::unique_ptr<ExecutionContext>> contexts;
+  for (int i = 0; i < 100; ++i) {
+    std::unique_ptr<ExecutionContext> context =
+        glow::make_unique<ExecutionContext>();
+    auto *XTensor = context->getPlaceholderBindings()->allocate(X);
+    XTensor->getHandle() = {1., 2., 3., 1., 2., 3., 1., 2., 3., 1.};
+    context->getPlaceholderBindings()->allocate(save->getPlaceholder());
+    contexts.emplace_back(std::move(context));
+  }
+
+  HostConfig hostConfig;
+  hostConfig.maxQueueSize = 1;
+  hostConfig.maxActiveRequests = 1;
+  auto hostManager = createHostManager("CPU", hostConfig);
+  CompilationContext cctx;
+  ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
+
+  std::vector<std::promise<void>> requests(100);
+  std::list<std::future<void>> futures;
+  for (auto &r : requests) {
+    futures.emplace_back(r.get_future());
+  }
+
+  for (int i = 0; i < 100; ++i) {
+    auto &context = contexts[i];
+    auto &request = requests[i];
+    hostManager->runNetwork(
+        "main", std::move(context),
+        [&request](RunIdentifierTy runID, Error err,
+                   std::unique_ptr<ExecutionContext> context_) {
+          TRACE_EVENT_SCOPE(context_->getTraceContext(), TraceLevel::RUNTIME,
+                            "HostManager::runNetwork");
+          ERR_TO_BOOL(std::move(err));
+          request.set_value();
+        });
+  }
+
+  for (auto &f : futures) {
+    f.wait();
+  }
+}
+
 TEST_F(HostManagerTest, runNetwork) {
   std::unique_ptr<Module> module = glow::make_unique<Module>();
   std::unique_ptr<ExecutionContext> context =

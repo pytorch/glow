@@ -20,7 +20,7 @@
 #include "PyTorchCommon.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Support/Error.h"
-#include <torch/csrc/jit/import.h>
+#include <torch/csrc/jit/serialization/import.h>
 
 namespace glow {
 

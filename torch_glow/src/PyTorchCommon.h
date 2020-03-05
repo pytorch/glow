@@ -22,7 +22,7 @@
 
 #include "glow/Runtime/HostManager/HostManager.h"
 
-#include <torch/csrc/jit/ir.h>
+#include <torch/csrc/jit/ir/ir.h>
 
 namespace glow {
 
@@ -74,10 +74,23 @@ struct PyTorchLoaderSettings {
 
   /// Dump Glow dot graph to file after Glow compilation is finished.
   bool dumpFinalGlowGraph = false;
+
+  /// Enable tracing inside of Glow.
+  bool enableGlowTracing = false;
+
+  /// Number of traces per json trace file dump.
+  size_t numTracesPerDump = 1;
+
+  /// Backend-specific options to be put into the CompilationContext and passed
+  /// to the Glow backend.
+  std::map<std::string, std::string> backendSpecificOpts;
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
 ElemKind scalarTypeToElemKind(c10::ScalarType ty);
+
+// Given a Glow ElemKind \p ty, \returns a matching PyTorch ScalarType.
+c10::ScalarType elemKindToScalarType(glow::ElemKind ty);
 
 /// Given a c10 typekind \p ty, \returns a matching Glow ElemKind.
 ElemKind typeKindToElemKind(c10::TypeKind ty);
@@ -106,6 +119,11 @@ const c10::Symbol &getGlowSymbol();
 /// Given a PyTorch TensorType \p ptType, \returns a matching Glow Type.
 glow::Type ptTypeToGlowType(const c10::TensorType &ptType);
 
+/// Given a PyTorch Tensor \p ptTensor and a PyTorch scalar type \p dtype,
+/// returns a new tensor which is \p ptTensor converted to \p dtype.
+at::Tensor convertQuantizedToDtype(const at::Tensor ptTensor,
+                                   c10::ScalarType dtype);
+
 /// Given a PyTorch Tensor \p ptTensor, \returns an unowned Glow Tensor with a
 /// matching type backed by the same memory as ptTensor.
 glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor);
@@ -113,11 +131,6 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor);
 /// Given a Glow Type \p glowType, \returns an empty PyTorch Tensor with a
 /// matching type.
 at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
-
-/// Given a Glow Tensor \p glowTensor, \returns a PyTorch Tensor with the same
-/// type, shape and content.
-at::Tensor glowTensorToPTTensor(const glow::Tensor &glowTensor,
-                                const at::ScalarType &torch_type);
 
 } // namespace glow
 

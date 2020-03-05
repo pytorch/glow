@@ -56,6 +56,13 @@ public:
   createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
     return createCPUDeviceManager(deviceConfig);
   }
+
+  /// \returns true if network supports Type Lowering from \p T1 to \p T2.
+  /// Populates PrecisionConfiguration with black list of operations that can't
+  /// be converted.
+  virtual bool
+  canDoIndexTypeDemotion(ElemKind fromTy, ElemKind toTy,
+                         PrecisionConfiguration &precConfig) const override;
   /// @}
 
 public:

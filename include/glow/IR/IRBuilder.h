@@ -52,14 +52,14 @@ public:
   /// @name High-level, operation-level IRBuilder.
   ///@{
 
-  MaxPoolWithArgmaxInst *
-  createMaxPoolWithArgmaxOp(llvm::StringRef name, Value *input,
-                            llvm::ArrayRef<unsigned_t> kernels,
-                            llvm::ArrayRef<unsigned_t> strides,
-                            llvm::ArrayRef<unsigned_t> pads, unsigned_t layout);
+  MaxPoolWithArgmaxInst *createMaxPoolWithArgmaxOp(
+      llvm::StringRef name, Value *input, llvm::ArrayRef<unsigned_t> kernels,
+      llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+      unsigned_t layout, ElemKind argMaxIndicesTy);
 
   ArgMaxInst *createArgMaxOp(llvm::StringRef name, Value *input,
-                             unsigned_t axis, bool keepDims);
+                             unsigned_t axis, bool keepDims,
+                             ElemKind outIndicesTy);
 
   AvgPoolInst *createAvgPoolOp(Value *input, llvm::ArrayRef<unsigned_t> kernels,
                                llvm::ArrayRef<unsigned_t> strides,
@@ -78,7 +78,8 @@ public:
       llvm::StringRef name, Value *input, size_t halfWindowSize = 2,
       float alpha = 1e-4, float beta = 0.75, float k = 2.0);
 
-  TopKInst *createTopKOp(llvm::StringRef name, Value *input, size_t k);
+  TopKInst *createTopKOp(llvm::StringRef name, Value *input, size_t k,
+                         ElemKind outIndicesTy);
 
   Value *createReturnOp(Value *input);
 

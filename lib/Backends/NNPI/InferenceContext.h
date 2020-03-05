@@ -64,6 +64,12 @@ private:
   std::vector<Placeholder *> netInputPlaceholders_;
   std::vector<Placeholder *> netOutputPlaceholders_;
 
+  // Name for the function that we are executing.
+  std::string functionName_;
+
+  // Logical device ID this context maps to.
+  unsigned deviceId_;
+
 public:
   InferenceContext();
   ~InferenceContext();
@@ -79,7 +85,8 @@ public:
       const std::unordered_set<const Placeholder *> &staticInputs,
       std::shared_ptr<NNPIDeviceTracing> deviceTracing,
       StaticPlaceholderMap *staticPlaceholderMap,
-      const NNPIDeviceOptions *deviceOptions);
+      const NNPIDeviceOptions *deviceOptions, const std::string &functionName,
+      unsigned deviceId);
 };
 
 } // namespace runtime

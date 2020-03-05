@@ -548,7 +548,7 @@ static void createSimpleSparseNNModule(Module &mod, bool shareSplatWeights) {
   for (int table = 0; table < 5; table++) {
     Tensor data(ElemKind::FloatTy, {tableEntries, tableWidth});
     auto *indices = mod.createPlaceholder(
-        IndexElemKind, {numIndices * batchSize}, "indices", false);
+        ElemKind::Int64ITy, {numIndices * batchSize}, "indices", false);
     if (!shareSplatWeights) {
       weights = mod.createPlaceholder(ElemKind::FloatTy,
                                       {numIndices * batchSize}, "w", false)
@@ -869,7 +869,7 @@ TEST_F(PartitionerTest, graphMemInfoCalculation1) {
   auto *inp2 =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 1, 3}, "input", false);
   auto *indices =
-      mod_.createPlaceholder(IndexElemKind, {4, 1, 2}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int64ITy, {4, 1, 2}, "indices", false);
 
   auto *R1 = F_->createTopK("TopK1", inp1, 2);
   auto *R2 = F_->createTopK("TopK2", inp2, 2);

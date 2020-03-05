@@ -27,6 +27,7 @@
 #include <atomic>
 #include <functional>
 #include <map>
+#include <mutex>
 #include <string>
 
 namespace glow {
@@ -47,6 +48,10 @@ class DeviceManager : public DeviceTensorTransferManager {
 protected:
   /// Configuration object for the device.
   DeviceConfig config_;
+
+  /// Lock to protect allocations_ from being accessed concurrently. This can
+  /// occur when multiple networks are added concurrently.
+  std::mutex bufferLock_;
 
   /// String for logging available memory for the device.
   const std::string availableMemoryKey_{"glow.device.available_memory.device"};
@@ -115,6 +120,7 @@ public:
   /// satistfies any requirements for pinning/alignment for transferring to/from
   /// the device. The lifetime of this buffer is managed by the device manager.
   virtual void *allocateDeviceIOBuffer(dim_t size) {
+    std::lock_guard<std::mutex> lock(bufferLock_);
     void *buffer = alignedAlloc(size, TensorAlignment);
     allocations_.insert(buffer);
     return buffer;
@@ -122,6 +128,7 @@ public:
 
   /// Free all allocated buffers associated with /p PH.
   virtual void freeAllocatedDeviceIOBuffer(void *buffer) {
+    std::lock_guard<std::mutex> lock(bufferLock_);
     auto it = allocations_.find(buffer);
     if (it != allocations_.end()) {
       alignedFree(buffer);
