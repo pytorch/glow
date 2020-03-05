@@ -25,6 +25,8 @@ struct BlacklistInitializer {
         {
             {"AdaptiveAvgPool/0", TestBlacklist::AnyDeviceAnyEngine},
             {"AdaptiveAvgPoolNonSquare/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"add_int32/0", TestBlacklist::AnyDeviceHWEngine},
+            {"add_int64/0", TestBlacklist::AnyDeviceHWEngine},
             {"batchedPairwiseDotProduct/0", TestBlacklist::AnyDeviceAnyEngine},
             {"batchedReduceMinMultiAxis_Float/0",
              TestBlacklist::AnyDeviceAnyEngine},
@@ -101,6 +103,8 @@ struct BlacklistInitializer {
             {"ModuloInt32SignFollow/0", TestBlacklist::AnyDeviceAnyEngine},
             {"ModuloInt64NoSignFollow/0", TestBlacklist::AnyDeviceAnyEngine},
             {"ModuloInt64SignFollow/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"mul_int32/0", TestBlacklist::AnyDeviceHWEngine},
+            {"mul_int64/0", TestBlacklist::AnyDeviceHWEngine},
             {"NonCubicKernelConv3D/0", TestBlacklist::AnyDeviceAnyEngine},
             {"NonCubicKernelConv3DQuantized/0",
              TestBlacklist::AnyDeviceAnyEngine},
