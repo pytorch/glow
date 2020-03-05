@@ -658,9 +658,7 @@ protected:
       auto *dequantize =
           llvm::dyn_cast<DequantizeNode>((*val.getUsers().begin()).getUser());
       TypeRef outTy = val.getType();
-      auto name =
-          NodeValue::generateNodeOutputName(dequantize->getName(), outNum);
-
+      auto name = dequantize->getResult().generateNodeOutputName();
       nodeToTQP_[name] = {outTy->getScale(), outTy->getOffset()};
     }
   } // namespace
