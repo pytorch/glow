@@ -219,7 +219,9 @@ public:
   ///@{
   ~OCLBackend() override = default;
 
-  std::string getBackendName() const override { return getName(); }
+  std::string getBackendName() const override {
+    return Named::getName().empty() ? getName() : Named::getName().str();
+  }
   static std::string getName() { return "OpenCL"; }
   static unsigned numDevices() { return 1; }
 
@@ -242,8 +244,15 @@ public:
 
   bool shouldLower(const Node *N) const override {
     // The group convolution is supported in OpenCL slow convolution kernel.
-    if (N->getKind() == Kinded::Kind::ConvolutionNodeKind)
+    if (N->getKind() == Kinded::Kind::ConvolutionNodeKind) {
       return false;
+    }
+    // Do not lower ReLU to max, but let it pass to the backend where we
+    // can implement it with a unary max(0, x) kernel. This also enables fusing
+    // convolution with ReLU.
+    if (N->getKind() == Kinded::Kind::ReluNodeKind) {
+      return false;
+    }
     return true;
   }
 
@@ -252,6 +261,14 @@ public:
 
   runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig) override;
+
+  /// \returns whether the backend supports fusing \p activation into \p parent.
+  bool supportsFusedActivation(Node *parent, Node *activation) const override {
+    // Only support convolution+relu fusions for now.
+    bool V = parent->getKind() == Kinded::Kind::ConvolutionNodeKind &&
+             activation->getKind() == Kinded::Kind::ReluNodeKind;
+    return V;
+  }
 
 private:
   /// Parses the graph \F and builds a TraceInfo structure from any found

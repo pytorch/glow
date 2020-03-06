@@ -17,6 +17,7 @@
 #include "NNPICompiledFunction.h"
 #include "NNPIDeviceManager.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 #include "glow/Optimizer/Lower/Lower.h"
 #include "llvm/Support/CommandLine.h"
@@ -37,6 +38,15 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true>
                        "always lower BatchMatMul to a "
                        "series of MatMuls."),
         llvm::cl::location(GlowNNPILowerAllBatchMatMul), llvm::cl::Optional,
+        llvm::cl::init(false), llvm::cl::cat(optionsForNNPI));
+
+bool GlowNNPIAcceptUnarySLS = false;
+static llvm::cl::opt<bool, /* ExternalStorage */ true>
+    GlowNNPIAcceptUnarySLSOpt(
+        "glow_nnpi_accept_unary_sls",
+        llvm::cl::desc(
+            "Whether to accept unary SLS ops during ONNXIFI loading."),
+        llvm::cl::location(GlowNNPIAcceptUnarySLS), llvm::cl::Optional,
         llvm::cl::init(false), llvm::cl::cat(optionsForNNPI));
 
 namespace onnxifi {
@@ -60,7 +70,6 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true>
         llvm::cl::location(GlowUsePerPartitionIcetConfig), llvm::cl::Optional,
         llvm::cl::init(false), llvm::cl::cat(optionsForNNPI));
 
-bool GlowDumpGraph = false;
 bool GlowDisableNNPITransforms = false;
 bool GlowDisableNNPIPrivateTransforms = false;
 int32_t GlowNNPINumParallelChunks = 1;
@@ -86,6 +95,35 @@ unsigned NNPIBackend::numDevices() {
   }
   // TODO: Fall back to emulator since GLOW_NNPI is set. This feels hacky.
   return 1;
+}
+
+/// \returns whether \p type is 2 dimensional and unary. Usually the data input
+/// of SparseLengths(Weighted)Sum is passed in here.
+static bool isUnaryLookup(TypeRef type) {
+  if (type->dims().size() != 2) {
+    return false;
+  }
+  return type->dims()[1] == 1;
+}
+
+bool NNPIBackend::acceptForExecution(const NodeInfo &NI) const {
+  if (!isOpSupported(NI)) {
+    return false;
+  }
+
+  // For performance reasons, only accept for execution SLS/SLWS with non-unary
+  // data inputs.
+  switch (NI.getKind()) {
+  case Kinded::Kind::SparseLengthsSumNodeKind:
+    return GlowNNPIAcceptUnarySLS ||
+           !isUnaryLookup(NI.getInTy(SparseLengthsSumNode::DataIdx));
+  case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
+    return GlowNNPIAcceptUnarySLS ||
+           !isUnaryLookup(NI.getInTy(SparseLengthsWeightedSumNode::DataIdx));
+
+  default:
+    return true;
+  }
 }
 
 bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
@@ -118,6 +156,10 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
+
+  case Kinded::Kind::BatchNormalizationNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty});
 
   case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::PReluNodeKind:
@@ -251,6 +293,20 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
             ElemKind::Int32QTy) &&
            (NI.getOutElemTy(RowwiseQuantizedFullyConnectedNode::ResultIdx) ==
+            ElemKind::Int8QTy);
+
+  case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
+    return (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::InputIdx) ==
+            ElemKind::Int8QTy) &&
+           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::FilterIdx) ==
+            ElemKind::Int8QTy) &&
+           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
+            ElemKind::Int32QTy) &&
+           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::ScalesIdx) ==
+            ElemKind::FloatTy) &&
+           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::OffsetsIdx) ==
+            ElemKind::Int32ITy) &&
+           (NI.getOutElemTy(ChannelwiseQuantizedConvolutionNode::ResultIdx) ==
             ElemKind::Int8QTy);
 
   case Kinded::Kind::SparseLengthsSumNodeKind:
@@ -387,6 +443,8 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::BatchedReduceMeanNodeKind:
   case Kinded::Kind::BatchedReduceMinNodeKind:
   case Kinded::Kind::BatchMatMulNodeKind:
+  case Kinded::Kind::BatchNormalizationNodeKind:
+  case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
     return false;
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
     const FusedRowwiseQuantizedSparseLengthsSumNode *SLSN =
@@ -424,11 +482,6 @@ NNPIBackend::createDeviceManager(const runtime::DeviceConfig &deviceConfig) {
 
 Expected<std::unique_ptr<CompiledFunction>>
 NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
-  if (glow::onnxifi::GlowDumpGraph) {
-    std::string fname = "Graph_" + F->getName().str() + ".dot";
-    LOG(INFO) << "Dumping net to " << fname;
-    F->dumpDAG(fname);
-  }
   std::unique_ptr<NNPICompiledFunction> compiledFunc =
       glow::make_unique<NNPICompiledFunction>(F);
   auto compileHasError = compiledFunc->compile(F, opts);
@@ -524,6 +577,178 @@ static bool removeClipsBlockingFusion(Function *F) {
   return changed;
 }
 
+/// Parallelize \p F according to NNPINumParallelChunks found in
+/// backendOpts.backendSpecificOpts from \p cctx. \returns whether \p F was
+/// modified.
+static bool parallelizeFunction(Function *F, CompilationContext &cctx) {
+  // Split FC layers in model/data parallel fashion
+  llvm::DenseMap<Node *, size_t> numChunks;
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  int32_t numParallelChunks = 1;
+
+  // If GlowNNPINumParallelChunks is set via flags then override what's passed
+  // in via backend options in cctx.
+  if (glow::onnxifi::GlowNNPINumParallelChunks > 1) {
+    cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+        std::to_string(glow::onnxifi::GlowNNPINumParallelChunks);
+  }
+
+  if (cctx.backendOpts.backendSpecificOpts.find(
+          std::string("NNPINumParallelChunks")) !=
+      cctx.backendOpts.backendSpecificOpts.end()) {
+    numParallelChunks = std::stoi(std::string(
+        cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"]));
+  }
+
+  if (numParallelChunks <= 1) {
+    return false;
+  }
+
+  bool changed = false;
+
+  // Find all FC layers to split
+  for (auto &node : F->getNodes()) {
+    auto *FC = llvm::dyn_cast<FullyConnectedNode>(&node);
+    if (!FC) {
+      continue;
+    }
+    size_t K = FC->getWeights().dims()[1];
+    if (K >= 512) {
+      changed = true;
+      parOpts[FC] = ParallelTransformKind::Model;
+      numChunks[FC] = numParallelChunks;
+      continue;
+    }
+    size_t M = FC->getInput().dims()[0];
+    if (M >= 256) {
+      changed = true;
+      parOpts[FC] = ParallelTransformKind::Data;
+      numChunks[FC] = numParallelChunks;
+      continue;
+    }
+  }
+
+  // Relu parallelization.
+  // If a Relu follows FC, mirror FC split so that they fuse.
+  // Otherwise, use data parallelism.
+  for (auto &node : F->getNodes()) {
+    auto *R = llvm::dyn_cast<ReluNode>(&node);
+    if (!R) {
+      continue;
+    }
+
+    // For Relus that arent preceded by FC, do data parallelism
+    Node *inputNode = R->getInput().getNode();
+    auto FC = llvm::dyn_cast<FullyConnectedNode>(inputNode);
+    if (!FC) {
+      changed = true;
+      parOpts[R] = ParallelTransformKind::Data;
+      numChunks[R] = numParallelChunks;
+      continue;
+    }
+
+    // Otherwise, mirror FC split.
+    if (R->getInput().dims().size() < 2) {
+      continue;
+    }
+    size_t K = R->getInput().dims()[1];
+    if (K >= 512) {
+      changed = true;
+      parOpts[R] = ParallelTransformKind::Model;
+      numChunks[R] = numParallelChunks;
+      continue;
+    }
+    size_t M = R->getInput().dims()[0];
+    if (M >= 256) {
+      changed = true;
+      parOpts[R] = ParallelTransformKind::Data;
+      numChunks[R] = numParallelChunks;
+      continue;
+    }
+  }
+
+  // Split transpose layers in data parallel fashion
+  for (auto &node : F->getNodes()) {
+    auto *TP = llvm::dyn_cast<TransposeNode>(&node);
+    if (!TP) {
+      continue;
+    }
+    changed = true;
+    parOpts[TP] = ParallelTransformKind::Data;
+    numChunks[TP] = numParallelChunks;
+  }
+
+  // Split BMM layers in data parallel fashion
+  for (auto &node : F->getNodes()) {
+    auto *BMM = llvm::dyn_cast<BatchMatMulNode>(&node);
+    if (!BMM) {
+      continue;
+    }
+    changed = true;
+    parOpts[BMM] = ParallelTransformKind::Data;
+    numChunks[BMM] = numParallelChunks;
+  }
+
+  // Split Tanh layers in data parallel fashion
+  for (auto &node : F->getNodes()) {
+    auto *TH = llvm::dyn_cast<TanhNode>(&node);
+    if (!TH) {
+      continue;
+    }
+    if (TH->getInput().dims().size() < 2) {
+      continue;
+    }
+    size_t N = TH->getInput().dims()[1];
+    if (N < 4096) {
+      continue;
+    }
+    changed = true;
+    parOpts[TH] = ParallelTransformKind::Data;
+    numChunks[TH] = numParallelChunks;
+  }
+
+  // Split Mul layers in data parallel fashion
+  for (auto &node : F->getNodes()) {
+    auto *M = llvm::dyn_cast<MulNode>(&node);
+    if (!M) {
+      continue;
+    }
+    if (M->getLHS().dims().size() < 2) {
+      continue;
+    }
+    size_t N = M->getLHS().dims()[1];
+    if (N < 4096) {
+      continue;
+    }
+    changed = true;
+    parOpts[M] = ParallelTransformKind::Data;
+    numChunks[M] = numParallelChunks;
+  }
+
+  // Clip parallelization.
+  // If a Clip follows a parallel op, mirror that.
+  for (auto &node : F->getNodes()) {
+    auto *C = llvm::dyn_cast<ClipNode>(&node);
+    if (!C) {
+      continue;
+    }
+
+    Node *inputNode = C->getInput().getNode();
+    if (numChunks.find(inputNode) != numChunks.end() &&
+        parOpts.find(inputNode) != parOpts.end()) {
+      changed = true;
+      parOpts[C] = parOpts[inputNode];
+      numChunks[C] = numChunks[inputNode];
+    }
+  }
+
+  // Now actually do the parallelization.
+  bool verify = parallelizeOps(F, numChunks, parOpts, numParallelChunks);
+  DCHECK(verify) << "Error during parallelization occurred.";
+
+  return changed;
+}
+
 bool NNPIBackend::transformPostLowering(
     Function *F, CompilationContext &cctx,
     const glow::runtime::DeviceInfo *devInfo) const {
@@ -535,15 +760,11 @@ bool NNPIBackend::transformPostLowering(
 
   bool changed = removeClipsBlockingFusion(F);
   changed |= lowerRequiredNodes(F, cctx);
+  changed |= parallelizeFunction(F, cctx);
 
 #if FACEBOOK_INTERNAL
   if (glow::onnxifi::GlowDisableNNPIPrivateTransforms) {
     return changed;
-  }
-
-  if (glow::onnxifi::GlowNNPINumParallelChunks > 1) {
-    cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
-        std::to_string(glow::onnxifi::GlowNNPINumParallelChunks);
   }
   changed |= transformPrivate(F, cctx);
 #endif /* FACEBOOK_INTERNAL */

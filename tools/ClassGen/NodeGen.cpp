@@ -19,19 +19,23 @@
 #include <iostream>
 
 int main(int argc, char **argv) {
-  if (argc != 4) {
-    std::cerr << "Usage: " << argv[0] << " output.h output.cpp output.def\n";
+  if (argc != 6) {
+    std::cerr << "Usage: " << argv[0]
+              << " output.h output.cpp output.def import.h export.h\n";
     return -1;
   }
 
   std::cout << "Writing node descriptors to:\n\t" << argv[1] << "\n\t"
-            << argv[2] << "\n\t" << argv[3] << "\n";
+            << argv[2] << "\n\t" << argv[3] << "\n\t" << argv[4] << "\n\t"
+            << argv[5] << "\n";
 
   std::ofstream hFile(argv[1]);
   std::ofstream cFile(argv[2]);
   std::ofstream dFile(argv[3]);
+  std::ofstream iFile(argv[4]);
+  std::ofstream eFile(argv[5]);
 
-  Builder BB(hFile, cFile, dFile);
+  Builder BB(hFile, cFile, dFile, iFile, eFile);
 
   //===--------------------------------------------------------------------===//
   //                    Input/Output nodes
@@ -52,6 +56,7 @@ int main(int argc, char **argv) {
       .addOverwrittenInput("Output")
       .setHasSideEffects(true)
       .dataParallel()
+      .skipAutogenSerialization()
       .setDocstring("Specifies a node whose Input will be copied to Output."
                     "This node prevents graph optimizations from eliminating "
                     "this node and all of its ancestor nodes. Generally "
@@ -111,6 +116,20 @@ int main(int argc, char **argv) {
                     "Bias tensors, as well as provided Kernels, Strides, Pads, "
                     "and Group. Quantization parameters are provided by Scales "
                     "and Offsets.");
+
+  BB.newNode("ConvTranspose")
+      .addInput("Input")
+      .addInput("Filter")
+      .addInput("Bias")
+      .addMember(MemberType::VectorUnsigned, "Kernels")
+      .addMember(MemberType::VectorUnsigned, "Strides")
+      .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::Unsigned, "Dilation")
+      .addResultFromCtorArg()
+      .setDocstring("Performs 2D Transposed Convolution using a given Input,"
+                    "Filter, and Bias tensors, as well as provided Kernels,"
+                    "Strides, Pads, and Group.");
 
   BB.newNode("Convolution3D")
       .addInput("Input")
@@ -492,6 +511,8 @@ int main(int argc, char **argv) {
       .addInput("Data")
       .addInput("Indices")
       .addInput("Lengths")
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
+      .addMember(MemberType::Float, "AvgLength")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
@@ -506,6 +527,8 @@ int main(int argc, char **argv) {
       .addInput("Weights")
       .addInput("Indices")
       .addInput("Lengths")
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
+      .addMember(MemberType::Float, "AvgLength")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
@@ -524,6 +547,8 @@ int main(int argc, char **argv) {
       .addInput("Indices")
       .addInput("Offsets")
       .addMember(MemberType::Boolean, "HasEndOffset")
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
+      .addMember(MemberType::Float, "AvgLength")
       .addResultFromCtorArg()
       .setDocstring(
           "Gathers slices of the outer-most dimension of Data "
@@ -544,6 +569,8 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Boolean, "UseFP16Accumulation",
                  /* addSetter */ true)
       .addMember(MemberType::Boolean, "HasEndOffset")
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
+      .addMember(MemberType::Float, "AvgLength")
       .addResultFromCtorArg()
       .setDocstring("Same as FusedRowwiseQuantizedSparseLengthsWeightedSum but "
                     "using offsets instead of lengths.");
@@ -557,6 +584,8 @@ int main(int argc, char **argv) {
       .addInput("Lengths")
       .addMember(MemberType::Boolean, "UseFP16Accumulation",
                  /* addSetter */ true)
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
+      .addMember(MemberType::Float, "AvgLength")
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "
@@ -577,6 +606,8 @@ int main(int argc, char **argv) {
       .addInput("Lengths")
       .addMember(MemberType::Boolean, "UseFP16Accumulation",
                  /* addSetter */ true)
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
+      .addMember(MemberType::Float, "AvgLength")
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "
@@ -597,6 +628,8 @@ int main(int argc, char **argv) {
       .addInput("Lengths")
       .addMember(MemberType::Boolean, "UseFP16Accumulation",
                  /* addSetter */ true)
+      .addMember(MEMBER_TYPE_INFO(glow::LengthsMode), "LengthsMode")
+      .addMember(MemberType::Float, "AvgLength")
       .addResultFromCtorArg()
       .setDocstring("Gathers slices of the outer-most dimension of Data "
                     "indexed by Indices vector, and then accumulates them into "

@@ -18,7 +18,6 @@
 
 #include "glow/Backend/Backend.h"
 #include "glow/Backends/DeviceManager.h"
-#include "glow/Base/SharedMutex.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Runtime/Executor/Executor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
@@ -152,7 +151,8 @@ class HostManager final {
 
   /// Execution stats update.
   void updateExecutionStats(uint64_t startTime,
-                            std::unique_ptr<ExecutionContext> &context);
+                            std::unique_ptr<ExecutionContext> &context,
+                            llvm::StringRef name, const Error &error);
 
   /// Keeps the stats exporter registry object alive till destructor.
   std::shared_ptr<StatsExporterRegistry> statsExporterRegistry_;
@@ -209,9 +209,11 @@ public:
 
   /// A wrapper around runNetwork that provides a blocking interface for an
   /// inference request. Runs the network provided in \p networkName using \p
-  /// context. \returns an Error indicating success or failure.
+  /// context. \returns an Error indicating success or failure. Upon return,
+  /// regardless of success or failure, \p context will be filled with the
+  /// return context from running the network.
   Error runNetworkBlocking(llvm::StringRef networkName,
-                           std::unique_ptr<ExecutionContext> context);
+                           std::unique_ptr<ExecutionContext> &context);
 
   /// A wrapper around runNetwork that provides a blocking interface for an
   /// inference request. Runs the network provided in \p networkName using \p

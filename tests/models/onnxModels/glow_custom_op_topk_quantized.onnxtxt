@@ -1,0 +1,126 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "input"
+    output: "TopK"
+    output: "TopK:1"
+    name: "TopK"
+    op_type: "Glow_TopK"
+    attribute {
+      name: "o0_elemKind"
+      s: "i8"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 1
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "o0_qScale"
+      f: 1.2
+      type: FLOAT
+    }
+    attribute {
+      name: "o0_qOffset"
+      i: 5
+      type: INT
+    }
+    attribute {
+      name: "o1_elemKind"
+      s: "index64"
+      type: STRING
+    }
+    attribute {
+      name: "o1_shape"
+      ints: 3
+      ints: 1
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "K"
+      i: 3
+      type: INT
+    }
+  }
+  node {
+    input: "TopK:1"
+    output: "save_indices"
+    name: "save_indices_save"
+    op_type: "Identity"
+  }
+  node {
+    input: "TopK"
+    output: "save_values"
+    name: "save_values_save"
+    op_type: "Identity"
+  }
+  name: "glow"
+  input {
+    name: "input"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 5
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:1.20000004768372$qOffset:5"
+  }
+  output {
+    name: "save_values"
+    type {
+      tensor_type {
+        elem_type: 3
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:i8$qScale:1.20000004768372$qOffset:5$saveName:save_values_save"
+  }
+  output {
+    name: "save_indices"
+    type {
+      tensor_type {
+        elem_type: 7
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:index64$saveName:save_indices_save"
+  }
+}
+opset_import {
+  version: 9
+}

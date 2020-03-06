@@ -25,7 +25,8 @@ namespace glow {
 
 /// This is the IR-interpreter. It owns the IR, and the heap, and is able to
 /// execute the instructions one at a time.
-class Interpreter final : public BackendUsingGlowIR {
+class Interpreter final : public BackendUsingGlowIR,
+                          public IRInstructionProcessingHandler {
 public:
   /// Ctor.
   Interpreter() = default;
@@ -35,7 +36,9 @@ public:
   ///@{
   ~Interpreter() override = default;
 
-  std::string getBackendName() const override { return getName(); }
+  std::string getBackendName() const override {
+    return Named::getName().empty() ? getName() : Named::getName().str();
+  }
   static std::string getName() { return "Interpreter"; }
   static unsigned numDevices() { return std::thread::hardware_concurrency(); }
 

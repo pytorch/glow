@@ -24,10 +24,10 @@
 #include "glow/Support/Support.h"
 
 #include <ATen/core/grad_mode.h>
-#include <torch/csrc/jit/custom_operator.h>
-#include <torch/csrc/jit/operator_options.h>
-#include <torch/csrc/jit/pass_manager.h>
 #include <torch/csrc/jit/passes/lower_graph.h>
+#include <torch/csrc/jit/passes/pass_manager.h>
+#include <torch/csrc/jit/runtime/custom_operator.h>
+#include <torch/csrc/jit/runtime/operator_options.h>
 
 namespace glow {
 
@@ -73,9 +73,14 @@ Error loadJitGraphToGlowFunction(
   const auto numInputs = graphInputs.size();
   auto inputs = torch::jit::last(stack, numInputs);
 
+  // FileLoader not yet support quantized inputs/outputs.
+  // These is just dummy type vectors for API.
+  std::vector<c10::ScalarType> dummyOutputType;
+
   // Load JIT Graph into Glow Function.
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
-      f, graph, inputPlaceholders, outputPlaceholders, settings, inputs, {}));
+      f, graph, inputPlaceholders, outputPlaceholders, dummyOutputType,
+      settings, inputs, {}));
 
   // Remove from stack input parameters.
   torch::jit::drop(stack, numInputs);

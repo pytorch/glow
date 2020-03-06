@@ -592,8 +592,122 @@ void NodeBuilder::emitCppMethods(std::ostream &os) const {
   }
 }
 
+bool NodeBuilder::hasCtorTypeParams(llvm::StringRef res) const {
+  for (const std::string &s : ctorTypeParams_) {
+    if (s == res) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void NodeBuilder::emitImportMethods(std::ostream &os) const {
+  os << "if (typeName == \"Glow_" << name_ << "\") {\n";
+
+  // Load all the inputs.
+  for (size_t i = 0, e = nodeInputs_.size(); i < e; i++) {
+    auto &op = nodeInputs_[i];
+    os << "  NodeValue " << op << ";\n";
+    os << "  ASSIGN_VALUE_OR_RETURN_ERR(" << op
+       << ", getNodeValueByName(op.input(" << i << ")));\n\n";
+  }
+
+  // Load all the output types.
+  for (size_t i = 0, e = nodeOutputs_.size(); i < e; i++) {
+    auto &op = nodeOutputs_[i];
+    if (hasCtorTypeParams(op.second)) {
+      os << "  TypeRef " << op.second << "OutTy;\n";
+      os << "  ASSIGN_VALUE_OR_RETURN_ERR(" << op.second
+         << "OutTy, loadTypeFromAttributes(" << std::to_string(i)
+         << ", dict));\n\n";
+    }
+  }
+
+  // Load the members.
+  for (const auto &op : members_) {
+    auto ty = getCtorArgTypename(&op.first);
+    os << "  " << ty << " " << op.second << ";\n";
+    os << "  ASSIGN_VALUE_OR_RETURN_ERR(" << op.second;
+    os << ", loadAttribute<" << ty << ">(dict.at(\"" << op.second
+       << "\"), *this));\n\n";
+  }
+
+  // We have all items needed to construct the node, so do so.
+  const auto nodeName = name_ + "Node";
+  os << "  " << nodeName << " *loadedNode = G_.addNode(new " << nodeName
+     << "(opName";
+  for (const auto &op : nodeOutputs_) {
+    if (hasCtorTypeParams(op.second)) {
+      os << ", " << op.second << "OutTy";
+    }
+  }
+  for (size_t i = 0, e = nodeInputs_.size(); i < e; i++) {
+    auto &op = nodeInputs_[i];
+    os << ", " << op;
+  }
+  for (const auto &op : members_) {
+    os << ", " << op.second;
+  }
+  os << "));\n\n";
+
+  // Now load a predicate if one exists.
+  os << "  if (dict.count(\"Predicate\")) {\n";
+  os << "    NodeValue Predicate;\n";
+  os << "    ASSIGN_VALUE_OR_RETURN_ERR(Predicate, "
+        "loadAttribute<NodeValue>(dict.at(\"Predicate\"), *this));\n";
+  os << "    loadedNode->setPredicate(Predicate);\n";
+  os << "  }\n\n";
+
+  // Add the node to the Function and return success.
+  os << "  RETURN_IF_ERR(addNodeAsOutput(op, loadedNode));\n";
+  os << "  return true;\n";
+  os << "}\n\n";
+}
+
+void NodeBuilder::emitExportMethods(std::ostream &os) const {
+  os << "case glow::Kinded::Kind::" << name_ << "NodeKind: {\n";
+  os << "  auto *N__ = llvm::cast<" << name_ << "Node>(node);\n";
+
+  // Add the node. Note that Glow custom ops are prefixed with "Glow_"
+  os << "  auto *opProto = graph.add_node();\n";
+  os << "  opProto->set_op_type(\"Glow_" << name_ << "\");\n";
+  os << "  opProto->set_name(N__->getName());\n";
+
+  // Add all of the node's inputs.
+  for (const auto &op : nodeInputs_) {
+    os << "  opProto->add_input(N__->get" << op
+       << "().generateNodeOutputName(/* stripResNoFor0thInput */ true));\n";
+  }
+
+  // Add all of the node's outputs.
+  for (const auto &op : nodeOutputs_) {
+    os << "  opProto->add_output(N__->get" << op.second
+       << "().generateNodeOutputName(/* stripResNoFor0thInput */ true));\n";
+    if (hasCtorTypeParams(op.second)) {
+      os << "  addTypeAttributes(opProto, N__->get" << op.second << "());\n";
+    }
+  }
+
+  // Add any members the node has.
+  for (const auto &op : members_) {
+    os << "  addValueAttribute(opProto, \"" << op.second << "\", N__->get"
+       << op.second << "());\n";
+  }
+
+  // Check if the node has a predicate and add it if so.
+  os << "  if (N__->hasPredicate()) {\n";
+  os << "    addValueAttribute(opProto, \"Predicate\",  "
+        "N__->getPredicate().generateNodeOutputName(/* stripResNoFor0thInput "
+        "*/ true));\n";
+  os << "  }\n";
+
+  os << "  break;\n";
+  os << "}\n\n";
+}
+
 NodeBuilder &NodeBuilder::addGradient() {
-  NodeBuilder GN(hStream, cStream, dStream, name_ + "Grad", isBackendSpecific_);
+  NodeBuilder GN(hStream, cStream, dStream, iStream, eStream, name_ + "Grad",
+                 isBackendSpecific_);
 
   // The new 'Grad' class will have all of the fields of the current class.
   GN.members_ = members_;
@@ -659,4 +773,8 @@ NodeBuilder &NodeBuilder::addGradient() {
 NodeBuilder::~NodeBuilder() {
   emitNodeClass(hStream);
   emitCppMethods(cStream);
+  if (!skipAutogenSerialization_) {
+    emitImportMethods(iStream);
+    emitExportMethods(eStream);
+  }
 }

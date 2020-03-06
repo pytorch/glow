@@ -13,7 +13,7 @@ export IMAGES_DIR=${GLOW_SRC}/tests/images/
 
 # Pass in which tests to run (one of {test, test_unopt}).
 run_unit_tests() {
-    CTEST_PARALLEL_LEVEL=4 ninja "${1}" || ( cat Testing/Temporary/LastTest.log && exit 1 )
+    CTEST_PARALLEL_LEVEL=4 GLOG_minloglevel=3 ninja "${1}" || ( cat Testing/Temporary/LastTest.log && exit 1 )
 }
 
 run_and_check_lenet_mnist_bundle() {
@@ -52,6 +52,7 @@ run_pytorch_tests() {
       export PATH="/tmp/sccache:$PATH"
     fi
     source /tmp/venv/bin/activate
+    pip install pytest-xdist
     python "${GLOW_SRC}/torch_glow/setup.py" test --run_cmake
     cd -
     if hash sccache 2>/dev/null; then

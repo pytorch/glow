@@ -195,6 +195,11 @@ template <class T> inline constexpr unsigned convertEnumToUnsigned(T e) {
 #define LOG_CUSTOM_LOC(severity, FILE_, LINE_)                                 \
   COMPACT_GOOGLE_LOG_CUSTOM_LOC_##severity(FILE_, LINE_).stream()
 
+/// Char used for signifying the start of an attribute name to value mapping.
+constexpr char startChar = '$';
+/// Char used for separating attribute name from attribute value.
+constexpr char sepChar = ':';
+
 } // namespace glow
 
 #endif // GLOW_SUPPORT_SUPPORT_H

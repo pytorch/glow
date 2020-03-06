@@ -198,11 +198,22 @@ protected:
       std::unordered_map<std::string, const AttrType *>;
 
   /// \returns True if the operator has broadcasting activated.
-  virtual Expected<bool> getBroadcast(const ArgumentDictionaryTy &dict) = 0;
+  virtual Expected<bool> getBroadcast(ArgumentDictionaryTy &dict) = 0;
 
   /// \returns True if the operator with the name \p typeName has support
   /// for multidirectional broadcasting.
   virtual bool hasMultidirectionalBroadcast(const llvm::StringRef typeName) = 0;
+
+  inline Expected<LengthsMode> getLengthsMode(ArgumentDictionaryTy &dict) {
+    bool length1 = false;
+    if (dict.count("length1")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(length1, loadInt(dict["length1"]));
+    }
+    if (length1) {
+      return LengthsMode::AllOne;
+    }
+    return LengthsMode::Variable;
+  }
 
   /// Associate the name of operation outputs to a NodeValues corresponding to
   /// node \p node. If \p numOutputs is lower than 0, then all outputs are
@@ -564,8 +575,9 @@ protected:
     }
 
     std::vector<dim_t> split;
-    if (dict.count("split"))
-      split = getShape(dict["split"]);
+    if (dict.count("split")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(split, getShape<dim_t>(dict["split"]));
+    }
 
     std::vector<SliceNode *> outputs;
     G_.createSplit(opName, in, op.output_size(), axis, split, outputs);
@@ -600,7 +612,9 @@ protected:
     } else if (dict.count("shape")) {
       RETURN_ERR_IF_NOT(op.input_size() == 1,
                         "Cannot specify new shape by both argument and input.");
-      std::vector<int64_t> protoDims = getShape<int64_t>(dict["shape"]);
+      std::vector<int64_t> protoDims;
+      ASSIGN_VALUE_OR_RETURN_ERR(protoDims, getShape<int64_t>(dict["shape"]));
+
       for (auto dim : protoDims) {
         requestedDims.push_back(dim);
       }
@@ -654,7 +668,8 @@ protected:
     // There is a difference between ONNX and Caffe2 specs for Transpose:
     // one contains permutation under name "perm", the other contains it under
     // argument name "axes". That's why the name is passed as a parameter.
-    std::vector<unsigned_t> perm = getShape<unsigned_t>(dict[permArgName]);
+    std::vector<unsigned_t> perm;
+    ASSIGN_VALUE_OR_RETURN_ERR(perm, getShape<unsigned_t>(dict[permArgName]));
     if (perm.empty()) {
       // Empty permutation argument means reversing axes order.
       size_t N = in.dims().size();
@@ -730,7 +745,7 @@ protected:
 
     std::vector<unsigned_t> shapeAxes = {};
     if (dict.count("axes")) {
-      shapeAxes = getShape<unsigned_t>(dict["axes"]);
+      ASSIGN_VALUE_OR_RETURN_ERR(shapeAxes, getShape<unsigned_t>(dict["axes"]));
     } else {
       shapeAxes.resize(in.dims().size());
       std::iota(shapeAxes.begin(), shapeAxes.end(), 0);
@@ -797,19 +812,23 @@ protected:
     return Error::success();
   }
 
-  Error loadSparseLengthsSum(const OpType &op) {
+  Error loadSparseLengthsSum(const OpType &op, ArgumentDictionaryTy &dict) {
     NodeValue in0;
     ASSIGN_VALUE_OR_RETURN_ERR(in0, getNodeValueByName(op.input(0)));
     NodeValue in1;
     ASSIGN_VALUE_OR_RETURN_ERR(in1, getNodeValueByName(op.input(1)));
     NodeValue in2;
     ASSIGN_VALUE_OR_RETURN_ERR(in2, getNodeValueByName(op.input(2)));
-    auto *node = G_.createSparseLengthsSum(loadOperatorName(op), in0, in1, in2);
+    LengthsMode lengthsMode;
+    ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
+    auto *node = G_.createSparseLengthsSum(loadOperatorName(op), in0, in1, in2,
+                                           lengthsMode);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
 
-  Error loadSparseLengthsWeightedSum(const OpType &op) {
+  Error loadSparseLengthsWeightedSum(const OpType &op,
+                                     ArgumentDictionaryTy &dict) {
     NodeValue in0;
     ASSIGN_VALUE_OR_RETURN_ERR(in0, getNodeValueByName(op.input(0)));
     NodeValue in1;
@@ -818,13 +837,15 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in2, getNodeValueByName(op.input(2)));
     NodeValue in3;
     ASSIGN_VALUE_OR_RETURN_ERR(in3, getNodeValueByName(op.input(3)));
+    LengthsMode lengthsMode;
+    ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
     auto *node = G_.createSparseLengthsWeightedSum(loadOperatorName(op), in0,
-                                                   in1, in2, in3);
+                                                   in1, in2, in3, lengthsMode);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
 
-  Error loadEmbeddingBag(const OpType &op) {
+  Error loadEmbeddingBag(const OpType &op, ArgumentDictionaryTy &dict) {
     NodeValue in0;
     ASSIGN_VALUE_OR_RETURN_ERR(in0, getNodeValueByName(op.input(0)));
     NodeValue in1;
@@ -833,8 +854,10 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in2, getNodeValueByName(op.input(2)));
     NodeValue in3;
     ASSIGN_VALUE_OR_RETURN_ERR(in3, getNodeValueByName(op.input(3)));
-    auto *node =
-        G_.createEmbeddingBag(loadOperatorName(op), in0, in1, in2, in3);
+    LengthsMode lengthsMode;
+    ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
+    auto *node = G_.createEmbeddingBag(loadOperatorName(op), in0, in1, in2, in3,
+                                       /* hasEndOffset */ false, lengthsMode);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -870,7 +893,7 @@ protected:
     return Error::success();
   }
 
-  Error loadReplaceNaN(const OpType &op, const ArgumentDictionaryTy &dict) {
+  Error loadReplaceNaN(const OpType &op, ArgumentDictionaryTy &dict) {
     // Load the input and NaN replacement value:
     NodeValue input;
     ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
@@ -899,21 +922,19 @@ protected:
     return Error::success();
   }
 
-  Error loadExpandDims(const OpType &op, const ArgumentDictionaryTy &dict) {
+  Error loadExpandDims(const OpType &op, ArgumentDictionaryTy &dict) {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto dims = dict.find("dims");
-    if (dims == dict.end()) {
-      RETURN_ERR("Missing dims argument for ExpandDims operator.");
-    }
-    Node *node =
-        G_.createExpandDims(loadOperatorName(op), in, getShape(dims->second));
+    std::vector<dim_t> shape;
+    ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict["dims"]));
+
+    Node *node = G_.createExpandDims(loadOperatorName(op), in, shape);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
 
     return Error::success();
   }
 
-  Error loadClip(const OpType &op, const ArgumentDictionaryTy &dict) {
+  Error loadClip(const OpType &op, ArgumentDictionaryTy &dict) {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     float cmin = std::numeric_limits<float>::lowest();
@@ -931,7 +952,7 @@ protected:
     return Error::success();
   }
 
-  Error loadSparseToDense(const OpType &op, const ArgumentDictionaryTy &dict) {
+  Error loadSparseToDense(const OpType &op, ArgumentDictionaryTy &dict) {
     if (op.input_size() != 3) {
       RETURN_ERR("SparseToDense operator must have three inputs.");
     }
@@ -949,8 +970,7 @@ protected:
     return Error::success();
   }
 
-  Error loadSparseToDenseMask(const OpType &op,
-                              const ArgumentDictionaryTy &dict) {
+  Error loadSparseToDenseMask(const OpType &op, ArgumentDictionaryTy &dict) {
     size_t inputSize = op.input_size();
     if (inputSize != 3 && inputSize != 4) {
       RETURN_ERR("SparseToDenseMask operator must have 3 or 4 inputs.");
@@ -976,10 +996,8 @@ protected:
       lengths = lengthsConstant->getOutput();
     }
 
-    auto maskIt = dict.find("mask");
-    RETURN_ERR_IF_NOT(maskIt != dict.end(),
-                      "Require mask when loading SparseToDenseMask.");
-    auto mask = getShape(maskIt->second);
+    std::vector<dim_t> mask;
+    ASSIGN_VALUE_OR_RETURN_ERR(mask, getShape<dim_t>(dict["mask"]));
 
     auto *node = G_.createSparseToDenseMask(
         loadOperatorName(op), indices, values, defaultValue, lengths, mask);
@@ -988,7 +1006,7 @@ protected:
   }
 
   Error loadGatherOps(const std::string &typeName, const OpType &op,
-                      const ArgumentDictionaryTy &dict) {
+                      ArgumentDictionaryTy &dict) {
 
     NodeValue data;
     ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
@@ -1012,7 +1030,7 @@ protected:
   }
 
   Error loadGatherRanges(const std::string &typeName, const OpType &op,
-                         const ArgumentDictionaryTy &dict) {
+                         ArgumentDictionaryTy &dict) {
     NodeValue data;
     ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
     RETURN_ERR_IF_NOT(data.dims().size() == 1, "Data must be a 1D vector.");
@@ -1036,7 +1054,7 @@ protected:
   }
 
   // Loads Less operator. Internally it's a cmpLT Node.
-  Error loadLess(const OpType &op, const ArgumentDictionaryTy &dict) {
+  Error loadLess(const OpType &op, ArgumentDictionaryTy &dict) {
     // Input Type.
     NodeValue xNV;
     ASSIGN_VALUE_OR_RETURN_ERR(xNV, getNodeValueByName(op.input(0)));
@@ -1161,15 +1179,15 @@ protected:
       return true;
     }
     if (typeName == "SparseLengthsSum") {
-      RETURN_IF_ERR(loadSparseLengthsSum(op));
+      RETURN_IF_ERR(loadSparseLengthsSum(op, dict));
       return true;
     }
     if (typeName == "SparseLengthsWeightedSum") {
-      RETURN_IF_ERR(loadSparseLengthsWeightedSum(op));
+      RETURN_IF_ERR(loadSparseLengthsWeightedSum(op, dict));
       return true;
     }
     if (typeName == "EmbeddingBag") {
-      RETURN_IF_ERR(loadEmbeddingBag(op));
+      RETURN_IF_ERR(loadEmbeddingBag(op, dict));
       return true;
     }
     if (typeName == "LengthsToRanges") {

@@ -212,7 +212,7 @@ Provisioner::generateDeviceAssignments(
   // Update nodes in logicalDevices with their assignments.
   for (auto &assignment : deviceAssignment) {
     for (auto &node : logicalDevices[assignment.first]) {
-      node->deviceIDs.push_back(assignment.second);
+      node->deviceRuntimeInfos[assignment.second] = DeviceRuntimeInfo();
     }
   }
   return deviceAssignment;
@@ -347,6 +347,14 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
           return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_DEVICE_NOT_FOUND,
                           "Unable to find device of type: " +
                               deviceBackendName);
+        }
+
+        if (cctx.dumpFinalGraph) {
+          auto fname =
+              strFormat("final_graph_%s_%s.dot", deviceBackendName.c_str(),
+                        function->getName().str().c_str());
+          LOG(INFO) << "Dumping final graph to " << fname;
+          function->dumpDAG(fname);
         }
 
         auto compiledOrErr =

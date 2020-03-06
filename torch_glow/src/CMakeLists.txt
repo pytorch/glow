@@ -26,11 +26,19 @@ target_compile_options(PyTorchModelLoader
 target_link_libraries(PyTorchModelLoader
                       PRIVATE
                         torch_cpu
-                        c10
-                        Support
-                        HostManager
+                        c10)
+target_link_libraries(PyTorchModelLoader
+                      PUBLIC
+                        Backends
+                        ExecutionContext
+                        ExecutionEngine
+                        Exporter
                         Graph
-                        Importer)
+                        HostManager
+                        Importer
+                        GraphOptimizer
+                        Quantization
+                        Runtime)
 
 add_library(PyTorchFileLoader
                      PyTorchFileLoader.cpp)
@@ -38,7 +46,7 @@ target_compile_options(PyTorchFileLoader
                       PRIVATE
                         -frtti -fexceptions -DC10_USE_GLOG)
 target_link_libraries(PyTorchFileLoader
-                      PRIVATE
+                      PUBLIC
                         PyTorchModelLoader)
 
 pybind11_add_module(_torch_glow

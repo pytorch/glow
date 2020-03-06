@@ -116,6 +116,10 @@ struct OptimizationOptions {
   /// The number of cores to assign to non-SLS partition when using SparseNN
   /// partitioning scheme
   unsigned int sparseNNPartitioningSchemeNumCoresOther{1};
+
+  /// If true does int64 to int32 type demotion if backend supports for specific
+  /// nodes.
+  bool enableTypeDemotion{true};
 };
 
 /// Context for compilation.
@@ -153,9 +157,15 @@ struct CompilationContext {
   /// support.
   runtime::DeferredWeightLoader *deferredWeightLoader{nullptr};
 
-  // Whether to print out issues/logging during compilation. Used for example to
-  // disable printing issues encountered during ConstantFolding.
+  /// Whether to print out issues/logging during compilation. Used for example
+  /// to disable printing issues encountered during ConstantFolding.
   bool verboseCompile{true};
+
+  /// Call dumpDag on each Function passed to the backend for compilation.
+  bool dumpFinalGraph = false;
+
+  /// Whether to skip stripping the module.
+  bool skipModuleStrip{false};
 
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)

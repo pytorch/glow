@@ -1389,6 +1389,177 @@ public:
   }
 };
 
+class ChannelwiseQuantizedConvolutionNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+
+    auto *glowChannelwiseQuantizedConv =
+        llvm::dyn_cast<ChannelwiseQuantizedConvolutionNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowChannelwiseQuantizedConv, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    LOG_AND_RETURN_IF_NOT(
+        ERROR,
+        glowChannelwiseQuantizedConv->getInput().getType()->getOffset() == 0.f,
+        (std::string("Bad input offset value") +
+         std::to_string(
+             glowChannelwiseQuantizedConv->getInput().getType()->getOffset())),
+        NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(
+        ERROR,
+        glowChannelwiseQuantizedConv->getResult().getType()->getOffset() == 0.f,
+        (std::string("Bad result offset value") +
+         std::to_string(
+             glowChannelwiseQuantizedConv->getResult().getType()->getOffset())),
+        NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(
+        ERROR,
+        !(glowChannelwiseQuantizedConv->getOffsets()) ||
+            importer.zeroes(
+                nodeValueName(glowChannelwiseQuantizedConv->getOffsets())
+                    .c_str()),
+        "Bad offset value", NNPI_INVALID_PARAM);
+
+    const uint32_t SPATIAL_DIMS2 = 2;
+    LOG_AND_RETURN_IF_NOT(
+        ERROR,
+        glowChannelwiseQuantizedConv->getKernels().size() == SPATIAL_DIMS2,
+        "[Conv] Invalid number of kernel sizes", NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(ERROR,
+                          glowChannelwiseQuantizedConv->getPads().size() ==
+                              2 * SPATIAL_DIMS2,
+                          "[Conv] Invalid number of pads", NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(
+        ERROR,
+        glowChannelwiseQuantizedConv->getStrides().size() == SPATIAL_DIMS2,
+        "[Conv] Invalid number of strides", NNPI_INVALID_PARAM);
+
+    uint32_t kernel[SPATIAL_DIMS2] = {
+        glowChannelwiseQuantizedConv->getKernels()[0],
+        glowChannelwiseQuantizedConv->getKernels()[1]};
+    uint32_t paddingStart[SPATIAL_DIMS2] = {
+        glowChannelwiseQuantizedConv->getPads()[0],
+        glowChannelwiseQuantizedConv->getPads()[1]};
+    uint32_t paddingEnd[SPATIAL_DIMS2] = {
+        glowChannelwiseQuantizedConv->getPads()[2],
+        glowChannelwiseQuantizedConv->getPads()[3]};
+    uint32_t stride[SPATIAL_DIMS2] = {
+        glowChannelwiseQuantizedConv->getStrides()[0],
+        glowChannelwiseQuantizedConv->getStrides()[1]};
+    uint32_t dilation[SPATIAL_DIMS2] = {1, 1}; // No dilation, default values
+
+    // Add internal tensor for Symlowp input.
+    std::string symlowpInputName =
+        NNPIImporter::internalName_ +
+        nodeValueName(glowChannelwiseQuantizedConv->getInput()).c_str() +
+        "_symlowp";
+    auto *inType = glowChannelwiseQuantizedConv->getInput().getType();
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(symlowpInputName, inType,
+                          /* alternativeLayout */ inType->dims().size() == 4,
+                          /* input */ false, /* output */ false, {}, {},
+                          /* forceSymlowp */ true),
+        "Failed to add value");
+
+    // Add internal tensor for Symlowp output.
+    std::string symlowpOutputName =
+        NNPIImporter::internalName_ +
+        nodeValueName(glowChannelwiseQuantizedConv->getResult()).c_str() +
+        "_symlowp";
+    auto *outType = glowChannelwiseQuantizedConv->getResult().getType();
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(symlowpOutputName, outType,
+                          /* alternativeLayout */ outType->dims().size() == 4,
+                          /* input */ false, /* output */ false, {}, {},
+                          /* forceSymlowp */ true),
+        "Failed to add value");
+
+    // Add convert op from Gemmlowp input to Symlowp.
+    std::string convertInputName =
+        NNPIImporter::internalName_ +
+        glowChannelwiseQuantizedConv->getName().begin() + "_convert_input";
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        nnpiNetworkAddConvertOp(
+            importer.getNetwork(), convertInputName.c_str(),
+            nodeValueName(glowChannelwiseQuantizedConv->getInput()).c_str(),
+            symlowpInputName.c_str()),
+        "Failed to add layer");
+
+    // Add convert op from Symlowp output to Gemmlowp.
+    std::string convertOutputName =
+        NNPIImporter::internalName_ +
+        glowChannelwiseQuantizedConv->getName().begin() + "_convert_output";
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        nnpiNetworkAddConvertOp(
+            importer.getNetwork(), convertOutputName.c_str(),
+            symlowpOutputName.c_str(),
+            nodeValueName(glowChannelwiseQuantizedConv->getResult()).c_str()),
+        "Failed to add layer");
+
+    // Create the weights with no offset tensor.
+    // Assert weights & biases have no offset or all zeroes.
+
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addTensor(
+            nodeValueName(glowChannelwiseQuantizedConv->getFilter()),
+            /* alternativeLayout */ true,
+            nodeValueName(glowChannelwiseQuantizedConv->getScales()),
+            nodeValueName(glowChannelwiseQuantizedConv->getOffsets()),
+            /* forceSymlowp */ true),
+        "Failed to add tensor to NNPI");
+
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addTensor(
+            nodeValueName(glowChannelwiseQuantizedConv->getBias()),
+            /* alternativeLayout */ false, {}, {},
+            /* forceSymlowp */ true),
+        "Failed to add tensor to NNPI");
+
+    // Overwrite input/output values for layout.
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(
+            nodeValueName(glowChannelwiseQuantizedConv->getInput()),
+            glowChannelwiseQuantizedConv->getInput().getType(),
+            glowChannelwiseQuantizedConv->getInput().getType()->dims().size() ==
+                4),
+        "Failed to add tensor to NNPI");
+
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(
+            nodeValueName(glowChannelwiseQuantizedConv->getResult()),
+            glowChannelwiseQuantizedConv->getResult().getType(),
+            glowChannelwiseQuantizedConv->getResult()
+                    .getType()
+                    ->dims()
+                    .size() == 4),
+        "Failed to add tensor to NNPI");
+
+    importer.setUsedTensors(
+        {
+            nodeValueName(glowChannelwiseQuantizedConv->getInput()),
+            nodeValueName(glowChannelwiseQuantizedConv->getFilter()),
+            nodeValueName(glowChannelwiseQuantizedConv->getBias()),
+            symlowpInputName,
+            symlowpOutputName,
+        },
+        {
+            nodeValueName(glowChannelwiseQuantizedConv->getResult()),
+            symlowpInputName,
+            symlowpOutputName,
+        });
+
+    return nnpiNetworkAddConvolutionOp(
+        importer.getNetwork(), glowChannelwiseQuantizedConv->getName().begin(),
+        symlowpInputName.c_str(), symlowpOutputName.c_str(),
+        nodeValueName(glowChannelwiseQuantizedConv->getFilter()).c_str(),
+        glowChannelwiseQuantizedConv->getBias()
+            ? nodeValueName(glowChannelwiseQuantizedConv->getBias()).c_str()
+            : nullptr,
+        kernel, paddingStart, paddingEnd, stride, dilation, SPATIAL_DIMS2,
+        glowChannelwiseQuantizedConv->getGroup());
+  }
+};
+
 class ReplaceNaNNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -1674,6 +1845,28 @@ public:
   }
 };
 
+class BatchNormalizationNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowBN = llvm::dyn_cast<BatchNormalizationNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowBN, "Bad node type", NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors(
+        {nodeValueName(glowBN->getInput()), nodeValueName(glowBN->getScale())},
+        {nodeValueName(glowBN->getBias()), nodeValueName(glowBN->getMean()),
+         nodeValueName(glowBN->getVar()), nodeValueName(glowBN->getResult())});
+
+    return nnpiNetworkAddBatchNormOp(
+        importer.getNetwork(), glowBN->getName().begin(),
+        nodeValueName(glowBN->getInput()).c_str(),
+        nodeValueName(glowBN->getResult()).c_str(),
+        nodeValueName(glowBN->getMean()).c_str(),
+        nodeValueName(glowBN->getVar()).c_str(),
+        nodeValueName(glowBN->getScale()).c_str(),
+        nodeValueName(glowBN->getBias()).c_str(), glowBN->getEpsilon());
+  }
+};
+
 //////////////////////////////////////////////////////////////////////////
 namespace {
 std::unordered_map<
@@ -1760,6 +1953,9 @@ std::unordered_map<
     {"NNPICustomDSP", glow::make_unique<NNPICustomDSPNodeImporter>()},
     {"SpaceToDepth", glow::make_unique<SpaceToDepthNodeImporter>()},
     {"Clip", glow::make_unique<ClipNodeImporter>()},
+    {"BatchNormalization", glow::make_unique<BatchNormalizationNodeImporter>()},
+    {"ChannelwiseQuantizedConvolution",
+     glow::make_unique<ChannelwiseQuantizedConvolutionNodeImporter>()},
 };
 }
 

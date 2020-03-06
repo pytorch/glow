@@ -17,7 +17,7 @@
 #ifndef GLOW_TORCH_GLOW_SRC_FUSE_KNOWN_PATERNS_H
 #define GLOW_TORCH_GLOW_SRC_FUSE_KNOWN_PATERNS_H
 
-#include <torch/csrc/jit/ir.h>
+#include <torch/csrc/jit/ir/ir.h>
 
 namespace glow {
 /// Fuse known node patterns in \p graph to assist the PyTorchModelLoader.

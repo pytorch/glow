@@ -29,6 +29,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <atomic>
+#include <cfloat>
 #include <fstream>
 #include <future>
 #include <iostream>
@@ -155,6 +156,12 @@ llvm::cl::opt<unsigned>
            llvm::cl::init(0), llvm::cl::value_desc("W"),
            llvm::cl::cat(imageLoaderCat));
 
+llvm::cl::opt<unsigned> excludedFirstWarmupRuns(
+    "excluded-first-warmup-runs",
+    llvm::cl::desc("Exclude the time of the given number of first warmup runs "
+                   "from the total time"),
+    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(imageLoaderCat));
+
 std::mutex eventLock;
 std::unique_ptr<TraceContext> traceContext;
 
@@ -234,6 +241,7 @@ static std::pair<Placeholder *, Placeholder *>
 buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
                                   TypeRef inputImageType) {
   auto LD = createProtobufLoader(loader, inputImageType);
+  loader.postModelLoad(bindings, *LD.get(), inputImageType->dims()[0]);
 
   // Allocate tensors to back all inputs and outputs.
   bindings.allocate(loader.getModule()->getPlaceholders());
@@ -459,11 +467,31 @@ static void runInference(runtime::HostManager *hostManager, std::string name,
                          std::unique_ptr<ExecutionContext> batch,
                          std::promise<void> &runPromise,
                          std::atomic<unsigned> &inflight,
-                         std::atomic<int> &dispatched, unsigned warmUp) {
+                         std::atomic<int> &dispatched, unsigned warmUp,
+                         llvm::Timer *restRunsTimer = nullptr,
+                         llvm::Timer *firstRunsTimer = nullptr,
+                         double *bestRunTime = nullptr) {
+  static std::atomic<unsigned> firstRunsDone(0);
   auto start = TraceEvent::now();
+  if (firstRunsTimer != nullptr && !firstRunsTimer->isRunning() &&
+      firstRunsDone < excludedFirstWarmupRuns) {
+    firstRunsTimer->startTimer();
+  } else if (restRunsTimer != nullptr &&
+             firstRunsDone >= excludedFirstWarmupRuns &&
+             !restRunsTimer->hasTriggered()) {
+    restRunsTimer->startTimer();
+  }
+
+  llvm::Timer *bestRunTimer = nullptr;
+  if (bestRunTime != nullptr) {
+    bestRunTimer = new llvm::Timer("Best Run", "Best Inference Run");
+    bestRunTimer->startTimer();
+  }
+
   hostManager->runNetwork(
       name, std::move(batch),
       [&runPromise, &inflight, &dispatched, hostManager, name, warmUp,
+       restRunsTimer, firstRunsTimer, bestRunTime, bestRunTimer,
        start](runtime::RunIdentifierTy, Error err,
               std::unique_ptr<ExecutionContext> contextPtr) {
         EXIT_ON_ERR(std::move(err));
@@ -482,12 +510,30 @@ static void runInference(runtime::HostManager *hostManager, std::string name,
             contextPtr->getTraceContext()->getTraceEvents().clear();
           }
         }
+        firstRunsDone++;
+        if (firstRunsTimer != nullptr && firstRunsTimer->isRunning() &&
+            firstRunsDone == excludedFirstWarmupRuns) {
+          firstRunsTimer->stopTimer();
+        }
+        if (bestRunTime != nullptr) {
+          bestRunTimer->stopTimer();
+          double wallTime = bestRunTimer->getTotalTime().getWallTime();
+          if (wallTime < *bestRunTime)
+            *bestRunTime = wallTime;
+          bestRunTimer->clear();
+          delete bestRunTimer;
+        }
+
         // Kick off another run.
         if (dispatched.fetch_sub(1) > 0) {
           inflight++;
           runInference(hostManager, name, std::move(contextPtr), runPromise,
-                       inflight, dispatched, warmUp > 0 ? warmUp - 1 : 0);
+                       inflight, dispatched, warmUp > 0 ? warmUp - 1 : 0,
+                       restRunsTimer, firstRunsTimer, bestRunTime);
+        } else if (restRunsTimer != nullptr) {
+          restRunsTimer->stopTimer();
         }
+
         if (--inflight == 0) {
           runPromise.set_value();
         }
@@ -502,7 +548,10 @@ static void runInference(runtime::HostManager *hostManager, std::string name,
 static void
 runBenchmark(std::string name, Loader &loader,
              std::vector<std::unique_ptr<ExecutionContext>> contexts,
-             unsigned requestCount, unsigned warmUp) {
+             unsigned requestCount, unsigned warmUp,
+             llvm::Timer *restRunsTimer = nullptr,
+             llvm::Timer *firstRunsTimer = nullptr,
+             double *bestRunTime = nullptr) {
   runtime::HostManager *hostManager = loader.getHostManager();
   std::atomic<unsigned> inflight(0);
   std::atomic<int> dispatched(requestCount + warmUp * contexts.size());
@@ -515,8 +564,10 @@ runBenchmark(std::string name, Loader &loader,
     inflight++;
     dispatched--;
     runInference(hostManager, name, std::move(batch), runPromise, inflight,
-                 dispatched, warmUp);
+                 dispatched, warmUp, restRunsTimer, firstRunsTimer,
+                 bestRunTime);
   }
+
   // Wait for all to finish.
   fut.wait();
 }
@@ -540,6 +591,20 @@ setupContextPool(Placeholder *outputPH, Placeholder *inputImagePH,
     contexts.push_back(std::move(newContext));
   }
   return contexts;
+}
+
+/// This function is a placeholder for registering Loader extensions to the
+/// loader. A loader extension in an instance of a loader extension class that
+/// must derive from class LoaderExtension. Any number of loader extensions
+/// can be registered to the Loader.
+static void registerLoaderExtensions(Loader &loader) {
+  // Example :
+  // class myLoaderExtension : public LoaderExtension {
+  //    // implement pure virtuel methods of class LoaderExtension.
+  // };
+  // loader.registerExtension(
+  //   std::unique_ptr<LoaderExtension>(new myLoaderExtension()));
+  (void)loader;
 }
 
 int main(int argc, char **argv) {
@@ -573,6 +638,10 @@ int main(int argc, char **argv) {
     }
   }
 
+  if (excludedFirstWarmupRuns && excludedFirstWarmupRuns >= warmup) {
+    llvm::errs() << "Excluding all warmup runs does not make sense\n";
+    return 1;
+  }
   // Stream input mode.
   const bool streamInputFilenamesMode =
       inputImageFilenames.size() == 1 && inputImageFilenames.front() == "-";
@@ -613,6 +682,10 @@ int main(int argc, char **argv) {
           glow::make_unique<TraceContext>(TraceLevel::STANDARD));
     }
     Loader loader;
+
+    // Register Loader extensions.
+    registerLoaderExtensions(loader);
+
     // Used to make sure we only compile once, and run only once if not
     // streaming.
     bool isFirstRun = true;
@@ -689,6 +762,11 @@ int main(int argc, char **argv) {
       if (iterationsOpt) {
         break;
       }
+
+      // Minibatch inference initialization of loader extensions
+      loader.inferInitMiniBatch(bindings, miniBatchIndex - miniBatch,
+                                miniBatch);
+
       // About to run inference, so update the input image Placeholder's backing
       // Tensor with inputImageData.
       updateInputPlaceholders(bindings, {inputImagePH}, {&inputImageData});
@@ -707,6 +785,9 @@ int main(int argc, char **argv) {
         numErrors += processAndPrintResults(bindings.get(outputPH),
                                             inputImageBatchFilenames);
       }
+
+      // Minibatch inference initialization of loader extensions
+      loader.inferEndMiniBatch(bindings, miniBatchIndex - miniBatch, miniBatch);
     }
 
     if (iterationsOpt) {
@@ -715,17 +796,34 @@ int main(int argc, char **argv) {
           setupContextPool(outputPH, inputImagePH, inputImageData);
 
       std::string name = loader.getFunctionName();
-      llvm::Timer timer("Infer", "Infer");
+      std::unique_ptr<llvm::Timer> restRunsTimer = nullptr;
+      std::unique_ptr<llvm::Timer> firstRunsTimer = nullptr;
+      std::unique_ptr<double> bestRunTime = nullptr;
       if (timeOpt) {
-        timer.startTimer();
+        if (excludedFirstWarmupRuns) {
+          firstRunsTimer.reset(
+              new llvm::Timer("First Runs", "First inference runs"));
+          restRunsTimer.reset(
+              new llvm::Timer("Rest Inferences", "Rest of the inference runs"));
+        } else {
+          restRunsTimer.reset(
+              new llvm::Timer("Inferences", "All inference runs"));
+        }
+        bestRunTime.reset(new double);
+        *bestRunTime = DBL_MAX;
       }
       unsigned requestCount = miniBatch ? iterationsOpt / miniBatch : 1;
-      runBenchmark(name, loader, std::move(contexts), requestCount, warmup);
+
+      runBenchmark(name, loader, std::move(contexts), requestCount, warmup,
+                   restRunsTimer.get(), firstRunsTimer.get(),
+                   bestRunTime.get());
       if (timeOpt) {
-        timer.stopTimer();
-        llvm::outs() << llvm::formatv("Wall time per item (s): {0:f4}\n",
-                                      timer.getTotalTime().getWallTime() /
-                                          (iterationsOpt + warmup));
+        double wallTime = restRunsTimer->getTotalTime().getWallTime();
+        llvm::outs() << llvm::formatv(
+            "Average wall time per item (s): {0:f4}\n",
+            wallTime / (iterationsOpt + warmup - excludedFirstWarmupRuns));
+        llvm::outs() << llvm::formatv(
+            "            Best wall time (s): {0:f4}\n", *bestRunTime);
       }
     }
 

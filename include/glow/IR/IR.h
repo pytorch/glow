@@ -169,6 +169,10 @@ public:
     }
   }
 
+  /// Clone the current instruction.
+  /// \returns a cloned instruction.
+  Instruction *clone() const;
+
   /// \returns True if this instruction may reuse the memory buffer read by
   /// operand \p srcIdx for writing the result of the operand at \p dstIdx.
   bool isInplaceOp(unsigned dstIdx, unsigned srcIdx) const { return false; }
@@ -219,6 +223,56 @@ public:
 protected:
   /// Dump the operands of the instruction into the stream \p os.
   void dumpOperands(llvm::raw_ostream &os) const;
+};
+
+/// Different stages of processing an IR instruction. Transitions between stages
+/// always happen in the same order as they are defined below, i.e.
+/// PROCESSING -> POSTPROCESSING
+/// In particular, there is no possibility for any transition in the backwards
+/// direction.
+enum class IRInstructionProcessingStage {
+  /// Instruction is being processed.
+  PROCESSING,
+  /// Instruction was just processed.
+  POSTPROCESSING,
+};
+
+/// A function for processing instructions e.g. during a code generation or
+/// during a code execution of instructions by backends. A processing function
+/// takes an instruction \p I, a current instruction execution stage \p
+/// executionStage and current context \p ctx as inputs, processes the
+/// instruction and \returns true if the client should proceed to the next
+/// execution stage or false if the client should proceed with the current
+/// execution stage. The processing of the instruction will continue by the
+/// caller (e.g. by a backend) from this stage. For example, if this processing
+/// function has processed the instruction it may decide to return a stage
+/// indicating that the processing has finished so that the caller does not
+/// process it anymore. The passed \p ctx can be anything, e.g. a backend, an
+/// ExecutionContext, etc.
+using IRInstructionProcessingFn =
+    std::function<bool(const Instruction *I,
+                       IRInstructionProcessingStage executionStage, void *ctx)>;
+
+/// The interface class for IR instruction handlers. Useful for intercepting IR
+/// instructions processing.
+class IRInstructionProcessingHandler {
+public:
+  IRInstructionProcessingHandler() = default;
+  virtual ~IRInstructionProcessingHandler() = default;
+  /// Set the handler to be used for IR instruction processing.
+  virtual void
+  setIRInstructionProcessingHandler(IRInstructionProcessingFn hook) {
+    handler_ = hook;
+  }
+  /// \returns the handler to be used for IR instructions processing.
+  virtual const IRInstructionProcessingFn &
+  getIRInstructionProcessingHandler() const {
+    return handler_;
+  }
+
+protected:
+  /// The handler function to be used for instruction processing.
+  glow::IRInstructionProcessingFn handler_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -288,6 +342,28 @@ public:
   /// again for another round of code generation.
   void clear();
 
+  /// Clone the current IR function into a new function with the name \p newName
+  /// in the same module. If \p map is non-null then the procedure records the
+  /// mapping between the old node to the new node in \p map. If \p currToNewMap
+  /// is non-null it is used as the initial state of the currToNew map inside
+  /// the cloner.
+  /// \returns a new function that is a copy of the current function.
+  IRFunction *
+  clone(llvm::StringRef newName,
+        llvm::DenseMap<const Value *, Value *> *map = nullptr,
+        llvm::DenseMap<const Value *, Value *> *currToNewMap = nullptr);
+
+  /// Clone the current function into a user-provided function \p newF. The
+  /// function \p newF is not automatically added to a module by the clone call.
+  /// If \p map is non-null then the procedure records the mapping between the
+  /// old node to the new node in \p map. If \p currToNewMap is non-null it is
+  /// used as the initial state of the currToNew map inside the cloner. \returns
+  /// a user-provided function \p newF that now contains a clone of the current
+  /// function.
+  IRFunction *
+  clone(IRFunction *newF, llvm::DenseMap<const Value *, Value *> *map = nullptr,
+        llvm::DenseMap<const Value *, Value *> *currToNewMap = nullptr) const;
+
   /// \returns a reference to the high-level graph.
   Function *getGraph() { return G_; }
 
@@ -328,6 +404,9 @@ public:
 
   /// \returns the variable map.
   VariableMap &getVariableMap() { return variableMap_; }
+
+  /// \returns the variable map.
+  const VariableMap &getVariableMap() const { return variableMap_; }
 
   /// Returns a list of constants associated with function.
   std::vector<const Constant *> findConstants() const;

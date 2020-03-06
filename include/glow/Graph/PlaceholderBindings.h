@@ -105,6 +105,10 @@ public:
   /// \p P must be a valid Placeholder registered in the bindings.
   void erase(Placeholder *P);
 
+  /// Removes the existing Tensor backing Placeholder \p P; Bind \p T to \P.
+  /// \p P must be a valid Placeholder registered in the bindings.
+  void update(Placeholder *P, Tensor &&T);
+
   /// \returns a copy of the PlaceholderBindings, with each placeholder mapped
   /// to a new Tensor, with their own memory.
   PlaceholderBindings clone() const;

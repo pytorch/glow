@@ -32,6 +32,14 @@ target_link_libraries(Repro
                         Importer
                         Exporter)
 
+# Repro binary
+add_executable(Scrambler
+               NameScrambler.cpp)
+target_link_libraries(Scrambler
+                      PRIVATE
+                        Importer
+                        Support)
+
 # Test executables, sorted alphabetically.
 
 add_executable(BasicIRTest
@@ -81,6 +89,26 @@ add_glow_test(NAME Caffe2ImporterTest
               COMMAND ${GLOW_BINARY_DIR}/tests/Caffe2ImporterTest
                   --gtest_output=xml:Caffe2ImporterTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(LoaderTest
+               LoaderTest.cpp ../../tools/loader/Loader.cpp)
+target_link_libraries(LoaderTest
+                                PRIVATE
+                                  Backends
+                                  Base
+                                  Graph
+                                  HostManager
+                                  Importer
+                                  GraphOptimizer
+                                  ExecutionEngine
+                                  Quantization
+                                  gtest
+                                  TestMain)
+add_glow_test(NAME LoaderTest
+                        COMMAND ${GLOW_BINARY_DIR}/tests/LoaderTest
+                           -m=model
+                           --gtest_output=xml:LoaderTest.xml
+                        WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(ThreadPoolExecutorTest
         ThreadPoolExecutorTest.cpp)
@@ -135,6 +163,9 @@ add_glow_test(NAME GlowOnnxifiManagerTest
               COMMAND ${GLOW_BINARY_DIR}/tests/GlowOnnxifiManagerTest
                   --gtest_output=xml:GlowOnnxifiManagerTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(FollyTest FollyTest.cpp)
+target_link_libraries(FollyTest PRIVATE folly_jemalloc gtest TestMain)
 
 add_executable(GraphGradTest
                GraphGradTest.cpp)
@@ -377,6 +408,21 @@ add_glow_test(NAME OnnxExporterTest
                   --gtest_output=xml:OnnxExporterTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(TypeAToTypeBFunctionConverterTest
+               TypeAToTypeBFunctionConverterTest.cpp)
+target_link_libraries(TypeAToTypeBFunctionConverterTest
+                      PRIVATE
+                        Backend
+                        Converter
+                        Graph
+                        GraphOptimizer
+                        gtest
+                        TestMain)
+add_glow_test(NAME TypeAToTypeBFunctionConverterTest
+              COMMAND ${GLOW_BINARY_DIR}/tests/TypeAToTypeBFunctionConverterTest
+                  --gtest_output=xml:TypeAToTypeBFunctionConverterTest.xml
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Loop through all backends present in lib/Backends (see FindBackends.cmake)
 # and instantiate a backend-parameterized test for each of them.
 foreach(backend ${GLOW_BACKENDS})
@@ -386,7 +432,16 @@ foreach(backend ${GLOW_BACKENDS})
   add_backend_test(TEST GradCheckTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST MLTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST OperatorGradTest BACKEND "${backend}" UNOPT)
-  add_backend_test(TEST OperatorTest BACKEND "${backend}" UNOPT)
+  add_backend_test(TEST OperatorTest BACKEND "${backend}" UNOPT PRIVATE
+                        Backend
+                        Backends
+                        Graph
+                        GraphOptimizer
+                        Importer
+                        Exporter
+                        ExecutionEngine
+                        gtest
+)
   add_backend_test(TEST NumericsTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST TensorLayoutTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST
@@ -406,13 +461,6 @@ foreach(backend ${GLOW_BACKENDS})
                    PRIVATE
                    HostManager
                    Runtime)
-
-  add_backend_test(TEST
-                   TypeAToTypeBFunctionConverterTest
-                   BACKEND
-                   "${backend}"
-                   Converter
-                   Graph)
 endforeach()
 
 add_executable(PartitionerTest
@@ -526,7 +574,6 @@ add_executable(UtilsTest
                StrCheck.cpp
                SupportTest.cpp
                TaggedListTest.cpp
-               SharedMutexTest.cpp
                UtilsTest.cpp)
 target_link_libraries(UtilsTest
                       PRIVATE

@@ -35,14 +35,6 @@
 
 using namespace glow;
 
-namespace glow {
-namespace onnxifi {
-#ifdef GLOW_WITH_NNPI
-extern bool GlowDumpGraph;
-#endif
-} // namespace onnxifi
-} // namespace glow
-
 namespace {
 llvm::cl::OptionCategory reproTestCat("Repro Category");
 llvm::cl::opt<std::string> modelPathOpt("model", llvm::cl::desc("Input models"),
@@ -111,12 +103,12 @@ llvm::cl::opt<bool>
 llvm::cl::opt<bool> globalFp16ConstantsOpt(
     "glow_global_fp16_constants",
     llvm::cl::desc("Enable fp16 conversion for Constants"), llvm::cl::Optional,
-    llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+    llvm::cl::init(true), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool> globalFp16PlaceholdersOpt(
     "glow_global_fp16_placeholders",
     llvm::cl::desc("Enable fp16 conversion for Placeholders"),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+    llvm::cl::Optional, llvm::cl::init(true), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool> sliceConcatFp32Opt(
     "glow_slice_concat_fp32",
@@ -144,7 +136,7 @@ llvm::cl::opt<bool>
 llvm::cl::opt<bool> ClipFp16SkipInputsOpt(
     "glow_clip_fp16_skip_inputs",
     llvm::cl::desc("Force glow to skip clipping fp16 Node inputs to min/max"),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+    llvm::cl::Optional, llvm::cl::init(true), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool>
     forceFP16AccumSLSOpt("glow_global_force_sls_fp16_accum",
@@ -188,10 +180,48 @@ llvm::cl::opt<int32_t> sparseNNPartitioningSchemeNumCoresOther(
         "Num cores used for non-SLS in SparseNN partitioning scheme"),
     llvm::cl::Optional, llvm::cl::init(6), llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<int32_t> glowNNPINumParallelChunks(
+    "glow_nnpi_num_parallel_chunks",
+    llvm::cl::desc("Number of parallel splits to apply to certain ops"),
+    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
+
 llvm::cl::opt<bool> glowDumpTrace("glow_dump_debug_traces",
                                   llvm::cl::desc("Dump glow trace"),
                                   llvm::cl::Optional, llvm::cl::init(false),
                                   llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<bool> skipCorrectnessCheck(
+    "skip_correctness_check", llvm::cl::desc("Skip correctness check"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<std::string>
+    glowDumpTraceFile("glow_dump_debug_traces_file",
+                      llvm::cl::desc("Dump glow trace file"),
+                      llvm::cl::Optional, llvm::cl::init(std::string("")),
+                      llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<unsigned> glowMaxActiveRequests(
+    "glow_max_active_requests",
+    llvm::cl::desc(
+        "Number of active requests before host manager start queuing"),
+    llvm::cl::Optional, llvm::cl::init(48), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<unsigned> glowMaxQueueSize(
+    "glow_max_queue_size",
+    llvm::cl::desc(
+        "Max number of pending requeusts in glow's host manager queue before "
+        "rejecting new request"),
+    llvm::cl::Optional, llvm::cl::init(100), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<unsigned> glowExecutorThreads(
+    "glow_executor_threads",
+    llvm::cl::desc("Number of executor threads for host manager"),
+    llvm::cl::Optional, llvm::cl::init(10), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<bool> glowSaturateHost(
+    "glow_saturate_host",
+    llvm::cl::desc("Duplicate netowrk on all available devices"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
 void parseCommandLine(int argc, char **argv) {
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
@@ -199,18 +229,6 @@ void parseCommandLine(int argc, char **argv) {
       argc, argv,
       " The Glow compiler\n\n"
       "Glow is a compiler for neural network accelerators.\n");
-}
-
-::ONNX_NAMESPACE::GraphProto parseIO(const std::string &filename) {
-  ::ONNX_NAMESPACE::GraphProto g;
-  std::ifstream ff(filename, std::ios::in | std::ios::binary);
-  CHECK(ff) << "Can't find the input file for " << filename.c_str();
-  google::protobuf::io::IstreamInputStream fileStream(&ff);
-  google::protobuf::io::CodedInputStream codedStream(&fileStream);
-  codedStream.SetTotalBytesLimit(MAX_PROTO_SIZE, MAX_PROTO_SIZE);
-  bool yes = g.ParseFromCodedStream(&codedStream);
-  CHECK(yes) << "Failed to parse GraphProto";
-  return g;
 }
 
 struct InferenceResult {
@@ -274,7 +292,7 @@ public:
   ::glow::Tensor *getTensor() override { return currentTensor_.get(); }
 
   void setTypeInfo(std::map<std::string, ::glow::Type> info) override {
-    typeInfo_ = info;
+    typeInfo_ = std::move(info);
   }
 
 private:
@@ -294,12 +312,17 @@ int run() {
   auto mod = glow::make_unique<Module>();
   Function *F = mod->createFunction("test");
   Error err = Error::empty();
-  { ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *F, &err, /*zipMode*/ true); }
+  bool usingGlowCustomOps = false;
+  {
+    ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *F, &err, /*zipMode*/ true);
+    usingGlowCustomOps = onnxLD.usingGlowCustomOps();
+  }
   CHECK(!ERR_TO_BOOL(std::move(err)))
       << "ONNXModelLoader failed to load model: " << modelPathOpt;
 
   // Build host manager and compile the module.
-  PrecisionConfiguration precConfig;
+  CompilationContext cctx;
+  PrecisionConfiguration &precConfig = cctx.precisionConfig;
   if (globalFp16Opt) {
     precConfig.convertToFP16 = globalFp16Opt;
     if (sliceConcatFp32Opt) {
@@ -310,11 +333,11 @@ int run() {
   }
   if (globalFp16PlaceholdersOpt) {
     precConfig.convertPlaceholdersToFP16 = globalFp16PlaceholdersOpt;
-    llvm::outs() << "Conversion of Placeholders to fp16 enabled";
+    llvm::outs() << "Conversion of Placeholders to fp16 enabled\n";
   }
   if (globalFp16ConstantsOpt) {
     precConfig.convertConstantsToFP16 = globalFp16ConstantsOpt;
-    llvm::outs() << "Conversion of Constants to fp16 enabled";
+    llvm::outs() << "Conversion of Constants to fp16 enabled\n";
   }
   if (fuseScaleOffsetFp16Opt) {
     precConfig.convertFusedToFP16 = fuseScaleOffsetFp16Opt;
@@ -326,14 +349,16 @@ int run() {
   }
   if (ClipFp16SkipInputsOpt) {
     precConfig.clipFP16SkipInputs = ClipFp16SkipInputsOpt;
-    llvm::outs() << "Skipping clipping for fp16 Node inputs fp16";
+    llvm::outs() << "Skipping clipping for fp16 Node inputs fp16\n";
   }
   if (forceFP16AccumSLSOpt) {
     precConfig.forceFP16AccumSLS = true;
     llvm::outs() << "Forcing fp16 accumulation for SLS ops enabled\n";
   }
-  CompilationContext cctx;
-  cctx.precisionConfig = precConfig;
+  if (glowDumpGraphOpt) {
+    cctx.dumpFinalGraph = true;
+  }
+
   if (useSparseNNPartitioningScheme) {
     cctx.optimizationOpts.useSparseNNPartitioningScheme =
         useSparseNNPartitioningScheme;
@@ -345,6 +370,11 @@ int run() {
         sparseNNPartitioningSchemeNumCoresSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
         sparseNNPartitioningSchemeNumCoresOther;
+  }
+
+  if (glowNNPINumParallelChunks > 1) {
+    cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+        std::to_string(glowNNPINumParallelChunks);
   }
 
   // Load deferred weights if applicable
@@ -377,9 +407,14 @@ int run() {
 
   auto configs = runtime::generateDeviceConfigs(numDevicesOpt, ExecutionBackend,
                                                 deviceMemoryOpt);
+  runtime::HostConfig hostConfig;
+  hostConfig.maxActiveRequests = glowMaxActiveRequests;
+  hostConfig.maxQueueSize = glowMaxQueueSize;
+  hostConfig.executorThreads = glowExecutorThreads;
+
   auto hostManager =
-      glow::make_unique<runtime::HostManager>(std::move(configs));
-  EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
+      glow::make_unique<runtime::HostManager>(std::move(configs), hostConfig);
+  EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx, glowSaturateHost));
 
   // Parse all input and output files ahead of inference.
   std::vector<::ONNX_NAMESPACE::GraphProto> parsedInputs;
@@ -388,10 +423,10 @@ int run() {
   if (inputGroupSize) {
     for (int i = 0; i < inputGroupSize; ++i) {
       llvm::outs() << "Loading input file: " << inputsOpt[i] << "\n";
-      auto inputGroup = parseIO(inputsOpt[i]);
+      auto inputGroup = parseOnnxFile(inputsOpt[i]);
       parsedInputs.push_back(std::move(inputGroup));
       llvm::outs() << "Loading output file: " << outputsOpt[i] << "\n";
-      auto outputGroup = parseIO(outputsOpt[i]);
+      auto outputGroup = parseOnnxFile(outputsOpt[i]);
       parsedOutputs.push_back(std::move(outputGroup));
     }
   } else if (!inputPatternOpt.empty() && !outputPatternOpt.empty() &&
@@ -407,12 +442,12 @@ int run() {
       std::string copy = inputPatternOpt;
       copy.replace(input_iter, 2, std::to_string(seqStartOpt + i));
       llvm::outs() << "Loading input file: " << copy << "\n";
-      auto inputGroup = parseIO(copy);
+      auto inputGroup = parseOnnxFile(copy);
       parsedInputs.push_back(std::move(inputGroup));
       copy = outputPatternOpt;
       copy.replace(output_iter, 2, std::to_string(seqStartOpt + i));
       llvm::outs() << "Loading output file: " << copy << "\n";
-      auto outputGroup = parseIO(copy);
+      auto outputGroup = parseOnnxFile(copy);
       parsedOutputs.push_back(std::move(outputGroup));
     }
   }
@@ -446,45 +481,10 @@ int run() {
     }
 
     const auto &inputGroup = parsedInputs[ioIndex];
-    for (const auto &tp : inputGroup.initializer()) {
-      auto *tensor = bindings.get(bindings.getPlaceholderByName(tp.name()));
-      CHECK(tensor) << "Unable to get tensor for " << tp.name();
-      size_t fullSize = tensor->getSizeInBytes();
-      const auto fullType = tensor->getType();
-
-      auto error = loadTensor(tp, tensor);
-      bool hasError = ERR_TO_BOOL(std::move(error));
-      CHECK(!hasError) << "Cannot load input tensor";
-      size_t loadedSize = tensor->getSizeInBytes();
-      if (loadedSize != fullSize) {
-        if (enablePartialTensor) {
-          VLOG(1) << "Loading " << tp.name()
-                  << " as a partial tensor: partial size="
-                  << tensor->getType().toString()
-                  << " full size=" << fullType.toString();
-          Tensor fullTensor(tensor->getUnsafePtr(), &fullType,
-                            tensor->getSizeInBytes());
-          // 'fullTensor' doesn't own the underlying data. 'tensor' does. So
-          // we want to keep the original tensor object around until inference
-          // is finished.
-          partialTensorPayloads.emplace_back(std::move(*tensor));
-          *tensor = std::move(fullTensor);
-        } else {
-          // pad with 0
-          VLOG(1) << "Loading and padding " << tp.name()
-                  << " as a partial tensor: partial size="
-                  << tensor->getType().toString()
-                  << " full size=" << fullType.toString();
-          Tensor fullTensor(&fullType);
-          std::memcpy(fullTensor.getUnsafePtr(), tensor->getUnsafePtr(),
-                      tensor->getSizeInBytes());
-          std::memset(fullTensor.getUnsafePtr() + tensor->getSizeInBytes(), 0,
-                      fullTensor.getSizeInBytes() - tensor->getSizeInBytes());
-
-          *tensor = std::move(fullTensor);
-        }
-      }
-    }
+    fillPlaceholders(inputGroup, &bindings,
+                     /*partialTensorPayloads */
+                     enablePartialTensor ? &partialTensorPayloads : nullptr,
+                     usingGlowCustomOps);
     inputs.emplace_back(std::make_pair(std::move(ctx), ioIndex));
   }
 
@@ -550,12 +550,13 @@ int run() {
   }
 
   llvm::outs() << "Checking results\n";
+  TraceContext mergedTraceContext(TraceLevel::STANDARD);
   for (auto &future : futures) {
     future.wait();
     auto result = future.get();
 
     if (result.error) {
-      llvm::outs() << "Inference failed!";
+      llvm::outs() << "Inference failed!\n";
       ++numFailed;
     } else {
       const auto &bindings = *result.ctx->getPlaceholderBindings();
@@ -569,26 +570,29 @@ int run() {
         of.open(ss.str(), std::ios::binary);
         CHECK(of) << "Cannot create output dump file: " << ss.str();
       }
-      for (const auto &tp : outputGroup.initializer()) {
-        Tensor tensorRef;
-        auto error = loadTensor(tp, &tensorRef);
-        CHECK(!ERR_TO_BOOL(std::move(error)))
-            << "Cannot load output ref tensor";
-        const auto *tensor =
-            bindings.get(bindings.getPlaceholderByName(tp.name()));
-        CHECK(tensor) << "Missing " << tp.name() << " in output placeholder";
-        if (dumpOutputsOpt) {
-          auto *t = outputG.add_initializer();
-          ONNXModelWriter::writeTensor(*tensor, t);
-          t->set_name(tp.name());
-        }
-        bool equal = tensorRef.isEqual(*tensor, thresholdOpt, true);
-        if (!equal) {
-          llvm::outs() << "Verification failed at input/output pair "
-                       << result.index << " for output tensor " << tp.name()
-                       << "\n";
-          ++numFailed;
-          break;
+
+      if (!skipCorrectnessCheck) {
+        for (const auto &tp : outputGroup.initializer()) {
+          Tensor tensorRef;
+          auto error = loadTensor(tp, &tensorRef);
+          CHECK(!ERR_TO_BOOL(std::move(error)))
+              << "Cannot load output ref tensor";
+          const auto *tensor =
+              bindings.get(bindings.getPlaceholderByName(tp.name()));
+          CHECK(tensor) << "Missing " << tp.name() << " in output placeholder";
+          if (dumpOutputsOpt) {
+            auto *t = outputG.add_initializer();
+            ONNXModelWriter::writeTensor(*tensor, t, usingGlowCustomOps);
+            t->set_name(tp.name());
+          }
+          bool equal = tensorRef.isEqual(*tensor, thresholdOpt, true);
+          if (!equal) {
+            llvm::outs() << "Verification failed at input/output pair "
+                         << result.index << " for output tensor " << tp.name()
+                         << "\n";
+            ++numFailed;
+            break;
+          }
         }
       }
       if (dumpOutputsOpt) {
@@ -597,18 +601,28 @@ int run() {
         of << buffer;
       }
 
-      if (glowDumpTrace) {
-        llvm::SmallString<64> path;
-        auto tempFileRes =
-            llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
-        if (tempFileRes.value() != 0) {
-          LOG(ERROR) << "Failed to create temp file for Glow trace events: "
-                     << tempFileRes;
-        } else {
-          auto traceContext = result.ctx->getTraceContext();
-          traceContext->dump(path);
-        }
+      auto *traceContext = result.ctx->getTraceContext();
+      if (traceContext) {
+        mergedTraceContext.merge(traceContext);
       }
+    }
+  }
+
+  if (glowDumpTrace) {
+    llvm::SmallString<64> path;
+    if (glowDumpTraceFile.empty()) {
+      auto tempFileRes =
+          llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
+      if (tempFileRes.value() != 0) {
+        LOG(ERROR) << "Failed to create temp file for Glow trace events: "
+                   << tempFileRes;
+      } else {
+        LOG(INFO) << "Trace path=" << path.c_str();
+        mergedTraceContext.dump(path);
+      }
+    } else {
+      LOG(INFO) << "Trace path=" << path.c_str();
+      mergedTraceContext.dump(glowDumpTraceFile);
     }
   }
 
@@ -624,10 +638,5 @@ int run() {
 
 int main(int argc, char **argv) {
   parseCommandLine(argc, argv);
-  if (glowDumpGraphOpt) {
-#ifdef GLOW_WITH_NNPI
-    glow::onnxifi::GlowDumpGraph = true;
-#endif
-  }
   return run();
 }

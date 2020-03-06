@@ -22,6 +22,9 @@
 #include "llvm/ADT/STLExtras.h"
 
 namespace glow {
+namespace runtime {
+class DeviceManager;
+}
 
 /// Sub-classed per backend, this holds Device specific per-function information
 /// if that is necessary on that particular backend.

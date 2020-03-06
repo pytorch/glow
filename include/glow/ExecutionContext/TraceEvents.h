@@ -20,6 +20,7 @@
 #include "glow/Support/ThreadPool.h"
 #include "llvm/ADT/DenseMap.h"
 
+#include <list>
 #include <map>
 #include <mutex>
 #include <vector>
@@ -94,7 +95,7 @@ struct TraceEvent {
         id(d), level(l), args(a) {}
 
   static void
-  dumpTraceEvents(std::vector<TraceEvent> &events, llvm::StringRef filename,
+  dumpTraceEvents(std::list<TraceEvent> &events, llvm::StringRef filename,
                   const std::string &processName = "",
                   const std::map<int, std::string> &threadNames = {});
 
@@ -160,7 +161,7 @@ struct TraceInfo {
 /// partitioned CompiledFunctions).
 class TraceContext {
   /// The list of materialized Events filled out with timestamp and metadata.
-  std::vector<TraceEvent> traceEvents_;
+  std::list<TraceEvent> traceEvents_;
 
   /// Human readable name mapping for trace Threads.
   std::map<int, std::string> threadNames_;
@@ -175,10 +176,7 @@ public:
   TraceContext(int level) : traceLevel_(level) {}
 
   /// \returns TraceEvents for the last run.
-  std::vector<TraceEvent> &getTraceEvents() { return traceEvents_; }
-
-  /// \returns TraceEvents for the last run.
-  llvm::ArrayRef<TraceEvent> getTraceEvents() const { return traceEvents_; }
+  std::list<TraceEvent> &getTraceEvents() { return traceEvents_; }
 
   /// \returns the level of verbosity allowed for TraceEvents.
   int getTraceLevel() { return traceLevel_; }

@@ -183,6 +183,9 @@ protected:
                                              &optimizedBindings, allowedError));
   }
 
+  /// Verify the module is still valid at the end of the test.
+  virtual void TearDown() override { EXPECT_TRUE(mod_.verify()); }
+
   /// ExecutionEngine instance for running functions to check numerical
   /// equivalence.
   ExecutionEngine EE_;
@@ -202,6 +205,7 @@ protected:
 
 /// MockBackend used only for unit testing.
 class MockBackend : public Backend {
+public:
   class MockFunction : public CompiledFunction {
   public:
     MockFunction(runtime::RuntimeBundle &&bundle)
@@ -209,10 +213,10 @@ class MockBackend : public Backend {
 
     Error execute(ExecutionContext *) override { return Error::success(); }
 
-    std::string getCompileBackendName() const override { return "Interpreter"; }
+    std::string getCompileBackendName() const override { return "MockBackend"; }
   };
 
-  std::string getBackendName() const override { return "Interpreter"; }
+  std::string getBackendName() const override { return "MockBackend"; }
 
   Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &) const override {

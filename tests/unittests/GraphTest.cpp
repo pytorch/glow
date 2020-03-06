@@ -510,7 +510,7 @@ TEST(Graph, quantizeGather) {
   auto *F = mod.createFunction("main");
   auto *input =
       mod.createPlaceholder(ElemKind::Int8QTy, {2, 2}, 0.4, 2, "input", true);
-  auto *indices = mod.createPlaceholder(IndexElemKind, {1}, "index", true);
+  auto *indices = mod.createPlaceholder(ElemKind::Int64ITy, {1}, "index", true);
   auto *gather = F->createGather("gather", input, indices);
   PlaceholderBindings bindings;
   F->createSave("ret", gather);
@@ -768,7 +768,7 @@ TEST(Graph, nodesWithPredicates) {
   PlaceholderBindings bindings;
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 32, 32, 3}, "input", true);
-  auto *ex = mod.createPlaceholder(IndexElemKind, {1, 1}, "exp", true);
+  auto *ex = mod.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "exp", true);
   auto *pred =
       mod.createPlaceholder(ElemKind::Int64ITy, {1}, "predicate", false);
   bindings.allocate(input);
@@ -1295,7 +1295,7 @@ TEST(Graph, setType) {
       M.createPlaceholder(ElemKind::FloatTy, inputDims, "input", true);
   TopKNode *topK = F->createTopK("add", input, 5);
   TypeRef origTopKRes0 = M.uniqueType(ElemKind::FloatTy, top5Dims);
-  TypeRef origTopKRes1 = M.uniqueType(IndexElemKind, top5Dims);
+  TypeRef origTopKRes1 = M.uniqueType(ElemKind::Int64ITy, top5Dims);
 
   EXPECT_EQ(topK->getType(TopKNode::ValuesIdx), origTopKRes0);
   EXPECT_EQ(topK->getType(TopKNode::IndicesIdx), origTopKRes1);
@@ -1544,11 +1544,11 @@ TEST(Graph, hookTest) {
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
 
   // Hook the first relu and verify that the hooked graph looks right.
-  auto hooked = glow::hookOutput(F, relu1);
+  auto hooked = glow::hookNode(F, relu1);
   auto const &nodes = hooked.function->getNodes();
   ASSERT_EQ(mod.getPlaceholders().size(), 3);
   ASSERT_EQ(nodes.size(), 2);
-  auto const *hookSave = *hooked.saves.begin();
+  auto const *hookSave = *hooked.outputSaves.begin();
   ASSERT_TRUE(hookSave);
   auto *inp = llvm::dyn_cast<ReluNode>(hookSave->getInput());
   ASSERT_TRUE(inp);
@@ -1867,8 +1867,8 @@ TEST(Graph, testDumpStructure) {
 name : "input"
 layout : *
 output : float<4 x 320 x 200 x 100 x 3>
-users : 0
 trainable : 1
+users : 0
 )";
   EXPECT_EQ(mesN, expectMes);
   EXPECT_EQ(mesN, osN1.str());
@@ -1885,7 +1885,7 @@ trainable : 1
   llvm::raw_string_ostream osF1(storageF1);
   F2->dump(osF1);
   std::string mesF = F2->toString();
-  std::string expectMesF = DIM_T_BITWIDTH == 64 ? R"(Graph structure F2:
+  std::string expectMesF = R"(Graph structure F2:
 TopK
 name : topk
 Input : float<10 x 10>
@@ -1893,15 +1893,12 @@ K : 3
 users : 0
 Values : float<10 x 3>
 Indices : index64<10 x 3>
-)"
-                                                : R"(Graph structure F2:
-TopK
-name : topk
-Input : float<10 x 10>
-K : 3
-users : 0
-Values : float<10 x 3>
-Indices : index32<10 x 3>
+Placeholder
+name : "input__1"
+layout : *
+output : float<10 x 10>
+trainable : 1
+users : 1
 )";
   EXPECT_EQ(mesF, expectMesF);
   EXPECT_EQ(mesF, osF1.str());
@@ -1909,6 +1906,25 @@ Indices : index32<10 x 3>
   llvm::raw_string_ostream osF2(storageF2);
   osF2 << F2;
   EXPECT_EQ(mesF, osF2.str());
+  storageF1.clear();
+  F2->dump(osF1, /* skipUsersForStorage */ true);
+  mesF = F2->toString(/* skipUsersForStorage */ true);
+  expectMesF = R"(Graph structure F2:
+TopK
+name : topk
+Input : float<10 x 10>
+K : 3
+users : 0
+Values : float<10 x 3>
+Indices : index64<10 x 3>
+Placeholder
+name : "input__1"
+layout : *
+output : float<10 x 10>
+trainable : 1
+)";
+  EXPECT_EQ(mesF, expectMesF);
+  EXPECT_EQ(mesF, osF1.str());
   // Test Module
   MD.createConstant(ElemKind::FloatTy, {1, 1}, "dummy");
   std::string storageM1;
@@ -1922,8 +1938,22 @@ layout : *
 output : float<1 x 1>
 users : 0
 
-Function:F
-Function:F2
+Placeholder
+name : "input__1"
+layout : *
+output : float<10 x 10>
+trainable : 1
+users : 1
+
+Placeholder
+name : "input"
+layout : *
+output : float<4 x 320 x 200 x 100 x 3>
+trainable : 1
+users : 0
+
+Function : F2
+Function : F
 )";
   EXPECT_EQ(mesM, expectMesM);
   EXPECT_EQ(mesM, osM1.str());

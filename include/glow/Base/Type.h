@@ -261,9 +261,6 @@ enum class ElemKind : unsigned char {
   BoolTy,
 };
 
-constexpr ElemKind IndexElemKind =
-    (sizeof(dim_t) == 4) ? ElemKind::Int32ITy : ElemKind::Int64ITy;
-
 /// \returns whether \p e is a quantized ElemKind.
 inline bool isQuantizedElemKind(ElemKind e) {
   return e == ElemKind::Int8QTy || e == ElemKind::UInt8QTy ||

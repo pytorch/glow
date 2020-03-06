@@ -59,10 +59,10 @@ TEST(BundleSaver, testSaveMultipleFunctions) {
   // Create a simple graph.
   Function *F2 = M.createFunction("F2");
   Node *inputPH2 = M.createPlaceholder(ElemKind::FloatTy, {1}, "input2", false);
-  Node *addConst2 = M.createConstant(ElemKind::FloatTy, {1}, "const2");
-  Node *addNode21 = F2->createAdd("add", inputPH2, addConst);
-  Node *addNode22 = F2->createAdd("add", addNode21, addConst2);
-  F2->createSave("output", addNode22);
+  Node *subConst2 = M.createConstant(ElemKind::FloatTy, {1}, "const2");
+  Node *subNode21 = F2->createSub("sub", inputPH2, addConst);
+  Node *subNode22 = F2->createSub("sub", subNode21, subConst2);
+  F2->createSave("output", subNode22);
 
   // Save a bundle with multiple functions.
   llvm::StringRef outputDir = ".";

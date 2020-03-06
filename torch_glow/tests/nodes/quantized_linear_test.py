@@ -38,6 +38,39 @@ class TestQuantizedLinear(unittest.TestCase):
             },
         )
 
+    def test_quantized_linear_packed_dq_cut(self):
+        """Basic test of the PyTorch quantized::linear Node on Glow, with dequantize excluded. """
+
+        q = torch.nn.quantized.Quantize(
+            scale=1 / 25, zero_point=17, dtype=torch.quint8)
+        dq = torch.nn.quantized.DeQuantize()
+
+        linear = torch.nn.Linear(5, 5)
+
+        linear.weight.data.fill_(1.2)
+        linear.bias.data.fill_(3.0)
+
+        model = torch.nn.Sequential(q, linear, dq)
+        model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
+        torch.quantization.prepare(model, inplace=True)
+        torch.quantization.convert(model, inplace=True)
+
+        x = torch.tensor(range(5), dtype=torch.float)
+        x = torch.cat((x, x, x, x, x))
+        x = torch.reshape(x, [5, 5])
+
+        jitVsGlow(
+            model,
+            x,
+            expected_fused_ops={
+                "aten::quantize_per_tensor",
+                "quantized::linear",
+            },
+            black_list=[
+                "aten::dequantize",
+            ]
+        )
+
     @unittest.skip(reason="random input could cause flaky")
     def test_quantized_linear_random_input(self):
         """Basic test of the PyTorch quantized::linear Node on Glow."""

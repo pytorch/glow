@@ -305,6 +305,118 @@ TEST_F(Caffe2ImporterTest, convGroupQuantized) {
   EXPECT_EQ(mod.getConstants().size(), 4);
 }
 
+/// Helper method to run the ConvTranspose operator test cases.
+/// \p filename contains the model .onnxtxt.
+/// \p expectedDims: output Tensor dimensions.
+/// \p expectedValues : output Tensor values expected.
+/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
+/// strides is {1, 1}, group is 1. Pads can vary.
+static void convTransposeTestHelper(std::string &netname, std::string &initname,
+                                    llvm::ArrayRef<dim_t> expectedDims,
+                                    llvm::ArrayRef<float> expectedValues) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename =
+      std::string(GLOW_DATA_PATH "tests/models/caffe2Models/") + netname;
+
+  std::string NetWeightFilename =
+      std::string(GLOW_DATA_PATH "tests/models/caffe2Models/") + initname;
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Tensor data;
+    getNCHWData(&data, 1, 1, 2, 2);
+    data.getHandle() = {2., 3., 4., 5.};
+
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"gpu_0/data_0"}, {&data.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"gpu_0/data_0"}, {&data});
+  }
+
+  auto res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+
+  EE.run(bindings);
+  auto result = res->getHandle();
+
+  EXPECT_TRUE(result.dims() == expectedDims);
+  for (dim_t i = 0, e = expectedValues.size(); i < e; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+/// Test loading ConvTranspose op from a ONNX model.
+/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
+/// strides is {1, 1}, pads is {0, 0, 0, 0}, group is 1.
+TEST(caffe2, importConvTranspose) {
+  std::string netname("convtranspose.pbtxt");
+  std::string initname("convtranspose_init.pbtxt");
+  std::vector<dim_t> expectedDims = {1, 1, 4, 4};
+  std::vector<float> expectedValues = {5,  13, 18,  13, 19, 50, 64, 42,
+                                       37, 92, 106, 66, 33, 77, 86, 51};
+  convTransposeTestHelper(netname, initname, expectedDims, expectedValues);
+}
+
+/// Test loading ConvTranspose op from a ONNX model.
+/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
+/// strides is {1, 1}, pads is {1, 1, 1, 1}, group is 1.
+TEST(onnx, importConvTransposePads) {
+  std::string netname("convtranspose_pads.pbtxt");
+  std::string initname("convtranspose_init.pbtxt");
+  std::vector<dim_t> expectedDims = {1, 1, 2, 2};
+  std::vector<float> expectedValues = {50, 64, 92, 106};
+  convTransposeTestHelper(netname, initname, expectedDims, expectedValues);
+}
+
+/// Test loading conv op from a Caffe2 model.
+/// The input is N*H*W*C (1*3*3*1), the kernel is 2,
+/// stride is 1, pad is 1, group is 1.
+TEST(caffe2, convTransposeNHWC) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/convtranspose_nhwc.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/convtranspose_nhwc_init.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  Tensor inputs(ElemKind::FloatTy, {1, 2, 2, 1});
+  inputs.getHandle() = {2., 3., 4., 5.};
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"inputs"},
+                               {&inputs.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+  }
+
+  // High level check on the content of the graph. We have 1 conv and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 2);
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *convTransposeNode =
+      llvm::dyn_cast<ConvTransposeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(convTransposeNode);
+
+  // We have 2 placeholders:  1 input and 1 output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+  // We have 2 constants: Weights and bias.
+  EXPECT_EQ(mod.getConstants().size(), 2);
+}
+
 /// Test loading MaxPool with NHWC order input.
 TEST_F(Caffe2ImporterTest, maxPoolNHWC) {
   ExecutionEngine EE{};
@@ -1215,7 +1327,7 @@ TEST_F(Caffe2ImporterTest, dotProduct1D) {
   Placeholder *output;
 
   // Input tensors.
-  constexpr std::size_t kDataSize = 10;
+  constexpr dim_t kDataSize = 10;
   auto type = mod.uniqueType(ElemKind::FloatTy, {kDataSize});
 
   // Destroy the loader after the graph is loaded to ensure the function F
@@ -1257,8 +1369,8 @@ TEST_F(Caffe2ImporterTest, dotProduct2D) {
   Placeholder *output;
 
   // Input tensors.
-  constexpr std::size_t kRows = 10;
-  constexpr std::size_t kCols = 20;
+  constexpr dim_t kRows = 10;
+  constexpr dim_t kCols = 20;
   auto type = mod.uniqueType(ElemKind::FloatTy, {kRows, kCols});
 
   // Destroy the loader after the graph is loaded to ensure the function F
@@ -1306,8 +1418,8 @@ TEST_F(Caffe2ImporterTest, batchBoxCox) {
   Placeholder *output;
 
   // Input tensors.
-  const size_t kRows = 10;
-  const size_t kCols = 5;
+  const dim_t kRows = 10;
+  const dim_t kCols = 5;
   Tensor data(ElemKind::FloatTy, {kRows, kCols});
   Tensor lambda1(ElemKind::FloatTy, {kCols});
   Tensor lambda2(ElemKind::FloatTy, {kCols});
@@ -1354,7 +1466,7 @@ TEST_F(Caffe2ImporterTest, EQ1D) {
   PlaceholderBindings bindings;
 
   // Input tensors.
-  const size_t kDataSize = 10;
+  const dim_t kDataSize = 10;
   Tensor X(ElemKind::FloatTy, {kDataSize});
   Tensor Y(ElemKind::FloatTy, {kDataSize});
 
@@ -1427,7 +1539,7 @@ TEST_F(Caffe2ImporterTest, Logit) {
   Placeholder *output;
 
   // Input tensors.
-  const std::size_t kDataSize = 10;
+  const dim_t kDataSize = 10;
   Tensor X(ElemKind::FloatTy, {kDataSize});
 
   // Destroy the loader after the graph is loaded
@@ -1465,11 +1577,11 @@ TEST_F(Caffe2ImporterTest, sparseToDense) {
   PlaceholderBindings bindings;
 
   // Create inputs.
-  constexpr size_t kNumIndices = 5;
-  constexpr size_t kMaxIndex = 20;
-  constexpr size_t kRows = 10;
-  constexpr size_t kCols = 5;
-  Tensor indices(IndexElemKind, {kNumIndices});
+  constexpr dim_t kNumIndices = 5;
+  constexpr dim_t kMaxIndex = 20;
+  constexpr dim_t kRows = 10;
+  constexpr dim_t kCols = 5;
+  Tensor indices(ElemKind::Int64ITy, {kNumIndices});
   Tensor values(ElemKind::FloatTy, {kNumIndices, kRows, kCols});
   Tensor dataToInferDim(ElemKind::FloatTy, {kMaxIndex, kRows, kCols});
 
@@ -1517,7 +1629,7 @@ TEST_F(Caffe2ImporterTest, SparseToDenseMask) {
   Placeholder *output;
   PlaceholderBindings bindings;
 
-  Tensor indices(IndexElemKind, {4});
+  Tensor indices(ElemKind::Int64ITy, {4});
   Tensor values(ElemKind::FloatTy, {4, 10, 20, 30});
   Tensor defaultValue(ElemKind::FloatTy, {10, 20, 30});
 
@@ -2104,7 +2216,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSum8BitsRowwise) {
   Placeholder *output, *indices, *lengths;
   PlaceholderBindings bindings;
 
-  TypeRef indicesType = F->getParent()->uniqueType(IndexElemKind, {8});
+  TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {4});
 
   // Destroy the loader after the graph is loaded since the following execution
@@ -2124,7 +2236,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSum8BitsRowwise) {
   ASSERT_TRUE(indices);
   ASSERT_TRUE(lengths);
 
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -2209,7 +2321,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsSum8BitsRowwise) {
   Placeholder *output, *indices, *lengths;
   PlaceholderBindings bindings;
 
-  TypeRef indicesType = F->getParent()->uniqueType(IndexElemKind, {8});
+  TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {5});
 
   // Destroy the loader after the graph is loaded since the following execution
@@ -2229,7 +2341,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsSum8BitsRowwise) {
   ASSERT_TRUE(indices);
   ASSERT_TRUE(lengths);
 
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -2300,7 +2412,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSumFused8BitRowwise) {
   Placeholder *output, *indices, *lengths;
   PlaceholderBindings bindings;
 
-  TypeRef indicesType = F->getParent()->uniqueType(IndexElemKind, {8});
+  TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {4});
 
   // Destroy the loader after the graph is loaded since the following execution
@@ -2320,7 +2432,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSumFused8BitRowwise) {
   ASSERT_TRUE(indices);
   ASSERT_TRUE(lengths);
 
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -2405,7 +2517,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsSumFused8BitRowwise) {
   Placeholder *output, *indices, *lengths;
   PlaceholderBindings bindings;
 
-  TypeRef indicesType = F->getParent()->uniqueType(IndexElemKind, {8});
+  TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {5});
 
   // Destroy the loader after the graph is loaded since the following execution
@@ -2425,7 +2537,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsSumFused8BitRowwise) {
   ASSERT_TRUE(indices);
   ASSERT_TRUE(lengths);
 
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -2465,6 +2577,103 @@ TEST_F(Caffe2ImporterTest, SparseLengthsSumFused8BitRowwise) {
   EXPECT_TRUE(expected.isEqual(result, 0.02f));
 }
 
+/// Test loading SparseLengthsSumFused8BitRowwise with all lookup lengths equal
+/// to one. This is created as a RowwiseQuantizedSparseLengthsWeightedSumNode
+/// with `AllLengthsOne=true`. The following inputs/outputs are used/expected
+/// for this test. Note that the DATA input is rowwise-quantized in the init_net
+/// proto.
+///    DATA  = [
+///        [1.0, 1.2],
+///        [2.3, 3.4],
+///        [4.5, 5.7],
+///    ]
+///    INDICES = [2, 0, 1, 2, 0]
+///    LENGTHS = [1, 1, 1, 1, 1]
+///    OUTPUT = [
+///        [4.5, 5.7],
+///        [1.0, 1.2],
+///        [2.3, 3.4],
+///        [4.5, 5.7],
+///        [1.0, 1.2],
+///    ]
+TEST_F(Caffe2ImporterTest, SparseLengthsSumFused8BitRowwiseAllLengthsOne) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/"
+      "fused_rowwise_quantized_sparse_lengths_sum_predict_net_length1.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/"
+      "fused_rowwise_quantized_sparse_lengths_sum_init_net.pbtxt");
+
+  Placeholder *output, *indices, *lengths;
+  PlaceholderBindings bindings;
+
+  TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {5});
+  TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {5});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"indices", "lengths"},
+                               {indicesType, lengthsType}, *F);
+
+    indices = llvm::dyn_cast<Placeholder>(
+        EXIT_ON_ERR(caffe2LD.getNodeValueByName("indices")));
+    lengths = llvm::dyn_cast<Placeholder>(
+        EXIT_ON_ERR(caffe2LD.getNodeValueByName("lengths")));
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+  }
+
+  ASSERT_TRUE(indices);
+  ASSERT_TRUE(lengths);
+
+  bindings.allocate(indices)->getHandle<int64_t>() = {
+      2, 0, 1, 2, 0,
+  };
+  bindings.allocate(lengths)->getHandle<int32_t>() = {
+      1, 1, 1, 1, 1,
+  };
+
+  // High level check on the content of the graph. We have 1 rowwise-quantized
+  // SLS and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 2);
+  SaveNode *saveNode = getSaveNodeFromDest(output);
+  FusedRowwiseQuantizedSparseLengthsSumNode *FRWQSLS =
+      llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(
+          saveNode->getInput().getNode());
+  ASSERT_TRUE(FRWQSLS);
+  EXPECT_EQ(FRWQSLS->getLengthsMode(), LengthsMode::AllOne);
+  // Check that the data input is a Constant node with expected ElemKind.
+  Constant *data = llvm::dyn_cast<Constant>(FRWQSLS->getData().getNode());
+  ASSERT_TRUE(data);
+  EXPECT_TRUE(data->getElementType() == ElemKind::UInt8FusedQTy);
+
+  // We have 3 placeholders: 1 for save, and then indices and lengths.
+  EXPECT_EQ(mod.getPlaceholders().size(), 3);
+
+  // We have 1 constant: data.
+  EXPECT_EQ(mod.getConstants().size(), 1);
+
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+
+  EE.run(bindings);
+
+  Tensor &result = *bindings.get(output);
+  Tensor expected(ElemKind::FloatTy, {5, 2});
+  expected.getHandle() = {
+      4.5f, 5.7f, 1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f, 1.0f, 1.2f,
+  };
+
+  EXPECT_TRUE(expected.isEqual(result, 0.02f));
+}
+
 /// Test loading SparseLengthsSumFused4BitRowwise.
 TEST_F(Caffe2ImporterTest, SparseLengthsSumFused4BitRowwise) {
   ExecutionEngine EE{};
@@ -2483,7 +2692,7 @@ TEST_F(Caffe2ImporterTest, SparseLengthsSumFused4BitRowwise) {
   Placeholder *output, *indices, *lengths;
   PlaceholderBindings bindings;
 
-  TypeRef indicesType = F->getParent()->uniqueType(IndexElemKind, {8});
+  TypeRef indicesType = F->getParent()->uniqueType(ElemKind::Int64ITy, {8});
   TypeRef lengthsType = F->getParent()->uniqueType(ElemKind::Int32ITy, {5});
 
   // Destroy the loader after the graph is loaded since the following execution
@@ -2548,8 +2757,8 @@ TEST_F(Caffe2ImporterTest, validateNodeOrder) {
   PlaceholderBindings bindings;
 
   // Input tensors.
-  const size_t kRows = 10;
-  const size_t kCols = 5;
+  const dim_t kRows = 10;
+  const dim_t kCols = 5;
   Tensor data(ElemKind::FloatTy, {kRows, kCols});
   Tensor lambda1(ElemKind::FloatTy, {kCols});
   Tensor lambda2(ElemKind::FloatTy, {kCols});

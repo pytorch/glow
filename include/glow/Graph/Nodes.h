@@ -41,6 +41,7 @@ public:
 
   /// \return the single output value of the node.
   NodeValue getOutput() { return getNthResult(0); }
+  const NodeValue getOutput() const { return getNthResult(0); }
 
   /// Declare the standard Node methods.
   /// @{
@@ -133,7 +134,7 @@ public:
 
   bool isDataParallel() const { return false; }
 
-  std::string getDebugDesc() const;
+  std::string getDebugDesc(bool skipUsers = false) const;
 
   llvm::hash_code getHash() const;
 
@@ -187,7 +188,7 @@ public:
 
   bool isDataParallel() const { return false; }
 
-  std::string getDebugDesc() const;
+  std::string getDebugDesc(bool skipUsers = false) const;
 
   llvm::hash_code getHash() const;
 };
@@ -231,8 +232,32 @@ inline ShapeHWD calculate3DConvPoolOutputDims(
   return ShapeHWD(llvm::makeArrayRef(outDims));
 }
 
+/// Calculate the size of the output tensor based on the ConvTranspose
+/// parameters.
+inline std::pair<dim_t, dim_t> calculateConvTransposeOutputDims(
+    size_t sx, size_t sy, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+    unsigned_t dilation = 1) {
+  PaddingTLBR pdim(pads);
+  ShapeHW kdim(kernels);
+  ShapeHW sdim(strides);
+
+  assert((dilation == 1) &&
+         "ConvTranspose output calculation doesn't support dilation");
+
+  size_t outsx = (sx - 1) * sdim.height + (kdim.height - 1) * (dilation - 1) -
+                 pdim.top - pdim.bottom + kdim.height;
+  size_t outsy = (sy - 1) * sdim.width + (kdim.width - 1) * (dilation - 1) -
+                 pdim.left - pdim.right + kdim.width;
+
+  return {outsx, outsy};
+}
+
 /// Modes of the padding operation.
 enum PaddingMode { CONSTANT = 0, REFLECT, EDGE };
+
+/// Different lengths modes used for SLS variants.
+enum class LengthsMode { Variable, AllOne };
 
 /// Convolution Layouts.
 enum ConvolutionLayout { NHWC = 0, NCHW };
@@ -244,6 +269,7 @@ enum FusedActivation { NONE = 0, RELU, TANH, SIGMOID };
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ConvolutionLayout layout);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                               FusedActivation fusedActivation);
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, LengthsMode lengthsMode);
 
 /// Support for hashing the Nodes. This is required for using
 /// llvm::hash_combine.
@@ -329,6 +355,22 @@ public:
   }
 #include "glow/AutoGenNodes.def"
 };
+
+/// Signifiers for exporting and importing properties of Nodes.
+constexpr char layoutSignifier[] = "layout";
+constexpr char staticSignifier[] = "offline";
+constexpr char trainableSignifier[] = "trainable";
+constexpr char elemKindSignifier[] = "elemKind";
+constexpr char saveNameSignifier[] = "saveName";
+constexpr char qScaleSignifier[] = "qScale";
+constexpr char qOffsetSignifier[] = "qOffset";
+constexpr char shapeSignifier[] = "shape";
+
+/// \returns the string ID for a type attribute property for a specific \p resNo
+/// and \p signifier, e.g. to retrieve result number 0's shape.
+inline std::string getTypeAttrID(unsigned resNo, const std::string &signifier) {
+  return "o" + std::to_string(resNo) + "_" + signifier;
+}
 
 } // namespace glow
 

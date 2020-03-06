@@ -53,8 +53,9 @@ struct DAG;
 } // namespace runtime
 
 // This is the interface that glow backends need to implement.
-class Backend {
+class Backend : public Named {
 public:
+  Backend() : Named("") {}
   /// Dtor.
   virtual ~Backend() = default;
 
@@ -115,8 +116,19 @@ public:
     return false;
   }
 
+  /// \returns true if Constants must be actually quantized before
+  /// Post-Lowering, false if it must be done after post-lowering.
+  virtual bool shouldPreQuantizeConstants() const { return true; }
+
   /// \returns whether the provided \p NI is supported by the backend.
   virtual bool isOpSupported(const NodeInfo &NI) const = 0;
+
+  /// \returns whether the backend would like to accept \p NI for execution. By
+  /// default falls back to just checking for support via \ref isOpSupported(),
+  /// however can also take into account things like performance considerations.
+  virtual bool acceptForExecution(const NodeInfo &NI) const {
+    return isOpSupported(NI);
+  }
 
   /// \returns whether all nodes inside \p F are supported. \p verbose
   /// represents whether to print Nodes that are unsupported.
@@ -207,6 +219,15 @@ public:
     return llvm::StringMap<std::string>();
   };
 
+  /// \returns true if network supports Type Lowering from \p T1 to \p T2.
+  /// Populates PrecisionConfiguration with black list of operations that can't
+  /// be converted.
+  virtual bool
+  canDoIndexTypeDemotion(ElemKind fromTy, ElemKind toTy,
+                         PrecisionConfiguration &precConfig) const {
+    return false;
+  };
+
 protected:
   /// Parses the graph \F and builds a TraceInfo structure from any found
   /// TraceEventNodes.
@@ -246,6 +267,27 @@ public:
   };                                                                           \
   static RegisterFactory<std::string, FactoryName, Backend>                    \
       FactoryName##_REGISTERED;
+
+/// Perform dynamic Backend Factory registration. Register the backend factory
+/// under the provided \p Name and use \p CreateFn expression to create new
+/// instances of the backends.
+#define REGISTER_DYNAMIC_GLOW_BACKEND_FACTORY(FactoryName, BackendClass, Name, \
+                                              CreateFn)                        \
+  class FactoryName : public BaseFactory<std::string, Backend> {               \
+  public:                                                                      \
+    FactoryName() : registrationKey_(Name) {}                                  \
+    Backend *create() override { return CreateFn; }                            \
+    std::string getRegistrationKey() const override {                          \
+      return registrationKey_;                                                 \
+    }                                                                          \
+    unsigned numDevices() const override {                                     \
+      return BackendClass::numDevices();                                       \
+    }                                                                          \
+                                                                               \
+  private:                                                                     \
+    std::string registrationKey_;                                              \
+  };                                                                           \
+  RegisterFactory<std::string, FactoryName, Backend> FactoryName##_REGISTERED;
 
 /// \returns the set of names for all available, registered backends.
 std::vector<std::string> getAvailableBackends();

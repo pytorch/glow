@@ -1,3 +1,4 @@
+add_subdirectory(Debugger)
 add_subdirectory(ClassGen)
 add_subdirectory(IncludeBin)
 if(PNG_FOUND)
