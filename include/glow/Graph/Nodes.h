@@ -366,10 +366,12 @@ constexpr char qScaleSignifier[] = "qScale";
 constexpr char qOffsetSignifier[] = "qOffset";
 constexpr char shapeSignifier[] = "shape";
 
-/// \returns the string ID for a type attribute property for a specific \p resNo
-/// and \p signifier, e.g. to retrieve result number 0's shape.
-inline std::string getTypeAttrID(unsigned resNo, const std::string &signifier) {
-  return "o" + std::to_string(resNo) + "_" + signifier;
+/// \returns the string ID for a type attribute property for a specific \p ioNum
+/// and \p signifier and whether \p isInput. E.g. to retrieve result number 0's
+/// shape, you'd pass `(0, "shape", false)`.
+inline std::string getTypeAttrID(unsigned ioNum, const std::string &signifier,
+                                 bool isInput = false) {
+  return (isInput ? "i" : "o") + std::to_string(ioNum) + "_" + signifier;
 }
 
 } // namespace glow
