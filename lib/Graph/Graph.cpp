@@ -4188,10 +4188,14 @@ Constant *Function::createFFTTwiddleFactors(llvm::StringRef name,
 
 Constant *Function::createFFTBitReverseIndices(llvm::StringRef name,
                                                dim_t fftLength) {
+  assert(fftLength >= 1 && "FFT length must be at least 1!");
   // Local function to reverse the bits of a number.
   auto reverseBits = [](uint64_t bits, dim_t numBits) -> uint64_t {
     assert(((0 <= numBits) && (numBits <= 64)) &&
            "Maximum number of bits exceeded for 'reverseBits' function!");
+    if (numBits <= 0) {
+      return 0;
+    }
     uint64_t bitsRev = 0;
     uint64_t bitsMask = 1;
     uint64_t bitsRevMask = 1 << (numBits - 1);
@@ -4204,10 +4208,10 @@ Constant *Function::createFFTBitReverseIndices(llvm::StringRef name,
     }
     return bitsRev;
   };
-  dim_t numBits = std::log2((double)fftLength);
   auto bitReverseIndices =
       getParent()->createConstant(ElemKind::Int32ITy, {fftLength}, name);
   auto bitReverseIndicesH = bitReverseIndices->getHandle<int32_t>();
+  dim_t numBits = std::log2((double)fftLength);
   for (dim_t idx = 0; idx < fftLength; idx++) {
     bitReverseIndicesH.raw(idx) =
         static_cast<int32_t>(reverseBits(idx, numBits));
