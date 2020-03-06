@@ -1156,7 +1156,7 @@ createAndInitBasicAudioSpectrogramTest(glow::PlaceholderBindings &bindings,
 }
 
 #define TEST_AUDIO_SPECTROGRAM(WCOUNT, WSIZE, MSQUARED, TOL)                   \
-  TEST_P(OperatorTest,                                                         \
+  TEST_P(OperatorStatelessTest,                                                \
          AudioSpectrogram_##WCOUNT##x##WSIZE##_##MSQUARED##_Float) {           \
     ENABLED_BACKENDS("Interpreter", "CPU");                                    \
     compareAgainstInterpreter(                                                 \
@@ -1217,7 +1217,7 @@ createAndInitBasicMFCCTest(glow::PlaceholderBindings &bindings,
 }
 
 #define TEST_MFCC(WNUM, SLEN, TOL)                                             \
-  TEST_P(OperatorTest, MFCC_##WNUM##x##SLEN##_Float) {                         \
+  TEST_P(OperatorStatelessTest, MFCC_##WNUM##x##SLEN##_Float) {                \
     ENABLED_BACKENDS("Interpreter", "CPU");                                    \
     compareAgainstInterpreter(getBackendName(),                                \
                               createAndInitBasicMFCCTest<WNUM, SLEN>,          \
