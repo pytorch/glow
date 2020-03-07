@@ -33,12 +33,13 @@ namespace {
 /// Given a Function \p F and input names \p inpuTensorNames and input types \p
 /// inputTensorTypes, writes the function to file and reads it back using the
 /// ONNXModelWriter and ONNXModelReader respectively then \returns the
-/// reloaded function.
+/// reloaded function. \p useGlowCustomOps is used for determining the format
+/// for ONNXModelWriter to write with.
 Expected<Function *>
 saveAndReloadFunction(Function *F, llvm::ArrayRef<const char *> inpuTensorNames,
                       llvm::ArrayRef<TypeRef> inputTensorTypes,
                       size_t irVer = 5, size_t opsetVer = 10,
-                      bool zipMode = false) {
+                      bool zipMode = false, bool useGlowCustomOps = false) {
   auto &mod = *F->getParent();
 
   llvm::SmallString<64> path;
@@ -54,7 +55,7 @@ saveAndReloadFunction(Function *F, llvm::ArrayRef<const char *> inpuTensorNames,
   {
     Error err = Error::empty();
     ONNXModelWriter onnxWR(outputFilename, *F, irVer, opsetVer, &err, !zipMode,
-                           zipMode);
+                           zipMode, useGlowCustomOps);
 
     if (err) {
       llvm::sys::fs::remove(outputFilename);
@@ -95,12 +96,15 @@ void testLoadAndSaveONNXModel(const std::string &name, bool zipMode) {
 
   size_t irVer = 0, opsetVer = 0;
 
+  bool useGlowCustomOps = false;
+
   // Load model from file.
   {
     Error err = Error::empty();
     ONNXModelLoader onnxLD(name, {}, {}, *F, &err);
     irVer = onnxLD.getIrVersion();
     opsetVer = onnxLD.getOpSetVersion();
+    useGlowCustomOps = onnxLD.usingGlowCustomOps();
 
     if (err) {
       llvm::errs() << "ONNXModelLoader failed to load model: " << name << "\n";
@@ -108,8 +112,9 @@ void testLoadAndSaveONNXModel(const std::string &name, bool zipMode) {
     FAIL_TEST_IF_ERR(std::move(err));
   }
 
-  FAIL_TEST_IF_ERR(
-      saveAndReloadFunction(F, {}, {}, irVer, opsetVer, zipMode).takeError());
+  FAIL_TEST_IF_ERR(saveAndReloadFunction(F, {}, {}, irVer, opsetVer, zipMode,
+                                         useGlowCustomOps)
+                       .takeError());
 }
 
 bool endsWith(const std::string &full, const std::string &ending) {

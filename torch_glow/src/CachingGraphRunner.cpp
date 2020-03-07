@@ -133,6 +133,8 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
     cctx.dumpFinalGraph = true;
   }
 
+  cctx.backendOpts.backendSpecificOpts = settings_.backendSpecificOpts;
+
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "addNetwork");
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(module), cctx));
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "addNetwork");

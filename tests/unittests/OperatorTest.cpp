@@ -17,14 +17,17 @@
 #include "BackendTestUtils.h"
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Importer/ONNXModelLoader.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Quantization/Base/Base.h"
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <functional>
@@ -37,6 +40,9 @@ class OperatorStatelessTest : public BackendStatelessTest {};
 class OperatorTest : public BackendTest {
 protected:
   PlaceholderBindings bindings_;
+  /// Use this for storing tensors that are unowned, i.e. if they would normally
+  /// be stack local and so they cannot be read in TearDown.
+  std::vector<Tensor> unownedTensors_;
   virtual void SetUp() override {
     // Skip stripping the module so that we can inspect Constants after
     // compilation.
@@ -53,6 +59,94 @@ protected:
 
     ASSERT_TRUE(F_->verify(&EE_.getBackend()))
         << "Function must pass verification.";
+
+    // Now export the model to later import it back in.
+    llvm::SmallString<64> path;
+    auto tempFileRes =
+        llvm::sys::fs::createTemporaryFile("exporter", "output.onnxtxt", path);
+    ASSERT_EQ(tempFileRes.value(), 0)
+        << "Failed to create temp file to write into.";
+    std::string pathToModel(path.c_str());
+
+    Error err = Error::empty();
+    ONNXModelWriter onnxWR(pathToModel, *F_, 7, 9, &err,
+                           /* textMode */ true, /* zipMode */ false,
+                           /* useGlowCustomOps */ true);
+    ASSERT_FALSE(ERR_TO_BOOL(std::move(err))) << "Error exporting model";
+
+    // Now that we've exported, load it back into a new module/function, run it,
+    // and compare results from the original run.
+    PlaceholderBindings loadedBindings;
+    ExecutionEngine loadedEE{getBackendName()};
+    Module &loadedMod = loadedEE.getModule();
+    Function *loadedF = loadedMod.createFunction(F_->getName());
+    {
+      Error err = Error::empty();
+      // Note: We disable constant folding here because we only need it to
+      // calculate shapes that are the result of constant compute in the proto,
+      // but this won't be the case when using useGlowCustomOps exporting.
+      ONNXModelLoader onnxLD(
+          pathToModel, {}, {}, *loadedF, &err, /* zipMode */ false,
+          /* disableConstFoldInLoader */ true, &loadedEE.getBackend());
+      if (ERR_TO_BOOL(std::move(err))) {
+        llvm::sys::fs::remove(pathToModel);
+        FAIL() << "Error loading exported model";
+      }
+    }
+
+    // Note that we use the backend for verification here, because the function
+    // is post optimization pipeline and so has backend-specific requirements
+    // built in, e.g. for required layout.
+    ASSERT_TRUE(loadedF->verify(&loadedEE.getBackend()))
+        << "Loaded Function must pass verification";
+
+    // String representations of original and loaded functions must be the same.
+    // Note that we skip printing users for Storage because some tests have
+    // other Functions sharing Storage for testing purposes.
+    EXPECT_EQ(F_->toString(/* skipUsersForStorage */ true),
+              loadedF->toString(/* skipUsersForStorage */ true));
+
+    // Copy over inputs from previous bindings to newly loaded bindings. We have
+    // new Placeholders so can't reuse the bindings from before.
+    for (const auto &p : bindings_.pairs()) {
+      if (!isInput(p.first, *F_)) {
+        continue;
+      }
+
+      // Look for an input PH by the same name as the original Function.
+      Placeholder *inputPH = loadedMod.getPlaceholderByName(p.first->getName());
+      ASSERT_TRUE(inputPH);
+      loadedBindings.insert(inputPH, p.second->getUnowned(inputPH->dims()));
+    }
+
+    // Allocate all other PHs/tensors that need it (i.e. result PHs/tensors).
+    loadedBindings.allocate(loadedF->findPlaceholders());
+
+    // Skip the optimization pipeline for loadedF (via onlyLowerFuns), as we
+    // already passed it through the optimization pipeline before exporting it.
+    CompilationContext cctx;
+    cctx.optimizationOpts.onlyLowerFuns.insert(loadedF);
+    loadedEE.compile(cctx);
+    loadedEE.run(loadedBindings);
+
+    // Now bitwise-equal compare result tensors from before and after.
+    for (const auto &p : bindings_.pairs()) {
+      const Placeholder *resultPH = p.first;
+      if (!isOutput(resultPH, *F_)) {
+        continue;
+      }
+      const Tensor *resultT = p.second;
+
+      // Find the result PH by the same name in the loaded Function.
+      Placeholder *loadedResultPH =
+          loadedMod.getPlaceholderByName(resultPH->getName());
+      ASSERT_TRUE(loadedResultPH);
+      const Tensor *loadedResultT = loadedBindings.get(loadedResultPH);
+
+      EXPECT_TRUE(resultT->isBitwiseEqual(*loadedResultT, /* verbose */ true));
+    }
+
+    llvm::sys::fs::remove(pathToModel);
   }
 };
 
@@ -1424,18 +1518,18 @@ TEST_P(OperatorTest, pow) {
 
   EE_.run(bindings_);
 
-  auto HX = bindings_.get(savePlaceholder1)->getHandle();
-  EXPECT_NEAR(HX.at({0, 0, 0}), 25, 1E-5);
-  EXPECT_NEAR(HX.at({0, 0, 1}), 0.01, 1E-5);
-  EXPECT_NEAR(HX.at({0, 0, 2}), 9, 1E-5);
+  auto H_X = bindings_.get(savePlaceholder1)->getHandle();
+  EXPECT_NEAR(H_X.at({0, 0, 0}), 25, 1E-5);
+  EXPECT_NEAR(H_X.at({0, 0, 1}), 0.01, 1E-5);
+  EXPECT_NEAR(H_X.at({0, 0, 2}), 9, 1E-5);
 
-  auto HY = bindings_.get(savePlaceholder2)->getHandle();
-  EXPECT_NEAR(HY.at({0}), sqrt(2.0), 1E-5);
-  EXPECT_NEAR(HY.at({1}), 10, 1E-5);
+  auto H_Y = bindings_.get(savePlaceholder2)->getHandle();
+  EXPECT_NEAR(H_Y.at({0}), sqrt(2.0), 1E-5);
+  EXPECT_NEAR(H_Y.at({1}), 10, 1E-5);
 
-  auto HZ = bindings_.get(savePlaceholder3)->getHandle();
-  EXPECT_NEAR(HZ.at({0}), 4, 1E-5);
-  EXPECT_NEAR(HZ.at({1}), 0.01, 1E-5);
+  auto H_Z = bindings_.get(savePlaceholder3)->getHandle();
+  EXPECT_NEAR(H_Z.at({0}), 4, 1E-5);
+  EXPECT_NEAR(H_Z.at({1}), 0.01, 1E-5);
 }
 
 /// Helper to test ReplaceNaN using \p DTy.
@@ -9233,13 +9327,20 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
     EE_.run(paddedBindings);
     ASSERT_TRUE(bindings_.get(outPH)->isEqual(*paddedBindings.get(outPH)));
   }
+
+  // Keep these around so their memory is not freed at the end of the
+  // test/scope. This is so that inside TearDown during import/export testing
+  // the data is still around.
+  unownedTensors_.push_back(std::move(indicesReal));
+  unownedTensors_.push_back(std::move(lengthsReal));
 }
 
 /// Helper to test gathers using partial inputs using \p ITy.
 template <typename IndicesType>
-static void testPartialGather(glow::PlaceholderBindings &bindings,
-                              glow::Module &mod, glow::Function *F,
-                              glow::ExecutionEngine &EE, ElemKind ITy) {
+static void
+testPartialGather(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                  glow::Function *F, glow::ExecutionEngine &EE,
+                  std::vector<Tensor> &unownedTensors, ElemKind ITy) {
   /*
     The acutal input we care about has the following shape/result:
 
@@ -9285,20 +9386,27 @@ static void testPartialGather(glow::PlaceholderBindings &bindings,
   for (dim_t i = 0; i < 6; ++i) {
     EXPECT_EQ(expectedH.at({i}), resultH.at({i}));
   }
+
+  // Keep this around so their memory is not freed at the end of the
+  // test/scope. This is so that inside TearDown during import/export testing
+  // the data is still around.
+  unownedTensors.push_back(std::move(indicesReal));
 }
 
 TEST_P(OperatorTest, GatherWithInt64PartialTensors) {
   CHECK_IF_ENABLED();
   // This test is only meaningful if the backend supports partial tensors.
   ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
-  testPartialGather<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+  testPartialGather<int64_t>(bindings_, mod_, F_, EE_, unownedTensors_,
+                             ElemKind::Int64ITy);
 }
 
 TEST_P(OperatorTest, GatherWithInt32PartialTensors) {
   CHECK_IF_ENABLED();
   // This test is only meaningful if the backend supports partial tensors.
   ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
-  testPartialGather<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+  testPartialGather<int32_t>(bindings_, mod_, F_, EE_, unownedTensors_,
+                             ElemKind::Int32ITy);
 }
 
 /// Helper to test FusedRowwiseQuantizedSparseLengthsWeightedSum using \p DTy.

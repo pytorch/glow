@@ -41,6 +41,7 @@ public:
 
   /// \return the single output value of the node.
   NodeValue getOutput() { return getNthResult(0); }
+  const NodeValue getOutput() const { return getNthResult(0); }
 
   /// Declare the standard Node methods.
   /// @{
@@ -354,6 +355,24 @@ public:
   }
 #include "glow/AutoGenNodes.def"
 };
+
+/// Signifiers for exporting and importing properties of Nodes.
+constexpr char layoutSignifier[] = "layout";
+constexpr char staticSignifier[] = "offline";
+constexpr char trainableSignifier[] = "trainable";
+constexpr char elemKindSignifier[] = "elemKind";
+constexpr char saveNameSignifier[] = "saveName";
+constexpr char qScaleSignifier[] = "qScale";
+constexpr char qOffsetSignifier[] = "qOffset";
+constexpr char shapeSignifier[] = "shape";
+
+/// \returns the string ID for a type attribute property for a specific \p ioNum
+/// and \p signifier and whether \p isInput. E.g. to retrieve result number 0's
+/// shape, you'd pass `(0, "shape", false)`.
+inline std::string getTypeAttrID(unsigned ioNum, const std::string &signifier,
+                                 bool isInput = false) {
+  return (isInput ? "i" : "o") + std::to_string(ioNum) + "_" + signifier;
+}
 
 } // namespace glow
 

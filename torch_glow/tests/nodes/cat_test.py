@@ -19,3 +19,30 @@ class TestCat(unittest.TestCase):
         y = torch.randn(2, 3, 4)
 
         jitVsGlow(test_f, x, y, expected_fused_ops={"prim::FusedConcat"})
+
+    def test_cat_neg_dim(self):
+        """Test negative dimension index for the PyTorch cat Node on Glow."""
+
+        def test_f(a, b):
+            c = torch.cat((a, b), -3)
+            d = torch.cat((c, c), -2)
+            return torch.cat((d, d), -1)
+
+        x = torch.randn(2, 3, 4)
+        y = torch.randn(2, 3, 4)
+
+        jitVsGlow(test_f, x, y, expected_fused_ops={"prim::FusedConcat"})
+
+    def test_cat_oob_neg_dim(self):
+        """Test out of bounds negative dimension index for the PyTorch cat Node on Glow."""
+
+        def test_f(a, b):
+            c = torch.cat((a, b), -4)
+            d = torch.cat((c, c), -2)
+            return torch.cat((d, d), -1)
+
+        x = torch.randn(2, 3, 4)
+        y = torch.randn(2, 3, 4)
+
+        with self.assertRaises(IndexError):
+            jitVsGlow(test_f, x, y, expected_fused_ops={"prim::FusedConcat"})

@@ -19,19 +19,23 @@
 #include <iostream>
 
 int main(int argc, char **argv) {
-  if (argc != 4) {
-    std::cerr << "Usage: " << argv[0] << " output.h output.cpp output.def\n";
+  if (argc != 6) {
+    std::cerr << "Usage: " << argv[0]
+              << " output.h output.cpp output.def import.h export.h\n";
     return -1;
   }
 
   std::cout << "Writing node descriptors to:\n\t" << argv[1] << "\n\t"
-            << argv[2] << "\n\t" << argv[3] << "\n";
+            << argv[2] << "\n\t" << argv[3] << "\n\t" << argv[4] << "\n\t"
+            << argv[5] << "\n";
 
   std::ofstream hFile(argv[1]);
   std::ofstream cFile(argv[2]);
   std::ofstream dFile(argv[3]);
+  std::ofstream iFile(argv[4]);
+  std::ofstream eFile(argv[5]);
 
-  Builder BB(hFile, cFile, dFile);
+  Builder BB(hFile, cFile, dFile, iFile, eFile);
 
   //===--------------------------------------------------------------------===//
   //                    Input/Output nodes
@@ -52,6 +56,7 @@ int main(int argc, char **argv) {
       .addOverwrittenInput("Output")
       .setHasSideEffects(true)
       .dataParallel()
+      .skipAutogenSerialization()
       .setDocstring("Specifies a node whose Input will be copied to Output."
                     "This node prevents graph optimizations from eliminating "
                     "this node and all of its ancestor nodes. Generally "

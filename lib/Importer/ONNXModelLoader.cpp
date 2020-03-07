@@ -108,6 +108,8 @@ getProtoShape(const ONNX_NAMESPACE::TensorShapeProto &shapeProto) {
   return dim;
 }
 
+/// Given some \p onnxType, sets \p elemTy to a corresponding Glow
+/// ElemKind. \returns whether an ElemKind was successfully selected.
 Error onnxTensorDataTypeToElemKind(int32_t onnxType, ElemKind *elemTy) {
   if (onnxType == ONNX_NAMESPACE::TensorProto::FLOAT) {
     *elemTy = ElemKind::FloatTy;
@@ -124,7 +126,13 @@ Error onnxTensorDataTypeToElemKind(int32_t onnxType, ElemKind *elemTy) {
   } else if (onnxType == ONNX_NAMESPACE::TensorProto::UINT8) {
     *elemTy = ElemKind::UInt8FusedQTy;
     return Error::success();
-  } else if (ONNX_NAMESPACE::TensorProto::BOOL) {
+  } else if (onnxType == ONNX_NAMESPACE::TensorProto::INT8) {
+    *elemTy = ElemKind::Int8QTy;
+    return Error::success();
+  } else if (onnxType == ONNX_NAMESPACE::TensorProto::INT16) {
+    *elemTy = ElemKind::Int16QTy;
+    return Error::success();
+  } else if (onnxType == ONNX_NAMESPACE::TensorProto::BOOL) {
     *elemTy = ElemKind::BoolTy;
     return Error::success();
   } else {
@@ -134,69 +142,288 @@ Error onnxTensorDataTypeToElemKind(int32_t onnxType, ElemKind *elemTy) {
   }
 }
 
-/// Creates tensor \p T from the input \p in. Note, there is no data associated
-/// with the Tensor. This method makes sure that the tensor is created with the
-/// proper shape and element type.
-Error setTensorType(const ONNX_NAMESPACE::TypeProto &in, Tensor *T) {
-  std::vector<dim_t> dim;
-  ASSIGN_VALUE_OR_RETURN_ERR(dim, getProtoShape(in.tensor_type().shape()));
-
-  ElemKind kind = ElemKind::FloatTy;
-  RETURN_IF_ERR(
-      onnxTensorDataTypeToElemKind(in.tensor_type().elem_type(), &kind));
-  if (kind == ElemKind::UInt8FusedQTy || kind == ElemKind::UInt4FusedFP16QTy) {
-    T->reset(kind, dim, 0.0, 0);
-  } else {
-    T->reset(kind, dim);
-  }
-  return Error::success();
+/// Convert a string to int. \returns the int or Error if problem parsing.
+Expected<int> getIntFromStr(llvm::StringRef input) {
+  const char *start = input.data();
+  char *end;
+  int val = std::strtol(start, &end, 10);
+  RETURN_ERR_IF_NOT(!(end == start || *end != '\0'),
+                    "Integer was not properly specified.");
+  return val;
 }
 
-/// Given a docstring encoding \p str of a type and its dimension \p
-/// dims, parses the string and \returns a Glow Type from it or Error if parsing
-/// failed. Expected format of str is either "ElemKind" or
-/// "ElemKind:scale:offset".
-Expected<Type> parseTypeFromDocString(const std::string &str,
-                                      llvm::ArrayRef<dim_t> dims) {
+/// Finds an attribute from the doc_string and \returns it. If it does not exist
+/// then \returns Error. The expected structure here is that each attribute
+/// starts with startChar and is separated from its value by a sepChar.
+Expected<std::string> getAttrFromDocString(const std::string &attr,
+                                           const std::string &docStr) {
+  const std::string attrAndSep = attr + sepChar;
   size_t begin = 0;
-
-  float scale = 1.0;
-  int32_t offset = 0;
-
-  // Find Elemkind string
-  size_t end = str.find(':', begin);
-
-  // If a ':' isn't found then assume the whole string is ElemKind (for
-  // backwards compatibility reasons) otherwise look for scale and offset
-  // strings.
-  std::string elemKindStr;
-  if (end == std::string::npos) {
-    elemKindStr = str.substr(0, str.size());
-  } else {
-    elemKindStr = str.substr(begin, end - begin);
-
-    // Get scale string.
-    begin = end + 1;
-    end = str.find(':', begin);
-    if (end == std::string::npos) {
-      return MAKE_ERR("scale not found");
-    }
-    std::string scaleStr = str.substr(begin, end - begin);
-
-    // Get offset string.
-    begin = end + 1;
-    end = str.size();
-    if (end - begin == 0) {
-      return MAKE_ERR("offset not found");
+  while (true) {
+    begin = docStr.find(startChar, begin);
+    if (begin == std::string::npos) {
+      return MAKE_ERR(strFormat("Didn't find PH attribute '%s'", attr.c_str()));
     }
 
-    std::string offsetStr = str.substr(begin, end - begin);
-
-    scale = std::stof(scaleStr);
-    offset = std::stoi(offsetStr);
+    // Note: +1 here and following line to account for the leading startChar.
+    if (!docStr.compare(begin + 1, attrAndSep.size(), attrAndSep)) {
+      // If we found the attribute then set begin to just after attrAndSep.
+      begin += attrAndSep.size() + 1;
+      break;
+    }
+    // Move past the current non-matching attribute to try the next attribute.
+    begin = begin + attrAndSep.size();
   }
 
-  ElemKind elemKind = Type::getElementKindFromName(elemKindStr);
+  return docStr.substr(begin, docStr.find(startChar, begin) - begin);
+}
+
+Expected<std::pair<float, int32_t>>
+getQuantParamsFromDocString(const std::string &docStr) {
+  std::string scaleStr;
+  ASSIGN_VALUE_OR_RETURN_ERR(scaleStr,
+                             getAttrFromDocString(qScaleSignifier, docStr));
+  float scale = std::strtof(scaleStr.c_str(), NULL);
+
+  std::string offsetStr;
+  ASSIGN_VALUE_OR_RETURN_ERR(offsetStr,
+                             getAttrFromDocString(qOffsetSignifier, docStr));
+  int32_t offset;
+  ASSIGN_VALUE_OR_RETURN_ERR(offset, getIntFromStr(offsetStr));
+  return std::make_pair(scale, offset);
+}
+
+/// Used for retrieving an attribute of type \p T from \p attr. Some
+/// specializations used \p loader if necessary.
+template <bool IsInteger, typename T> struct AttributeRetriever {
+  static Expected<T> get(const ONNX_NAMESPACE::AttributeProto *attr,
+                         const ProtobufLoader &loader);
+};
+
+/// Specialization for std::vector<float>.
+template <> struct AttributeRetriever<false, std::vector<float>> {
+  static Expected<std::vector<float>>
+  get(const ONNX_NAMESPACE::AttributeProto *attr,
+      const ProtobufLoader & /* unused */) {
+    return getFloats(attr);
+  }
+};
+
+/// Specialization for std::vector<NodeValue>.
+template <> struct AttributeRetriever<false, std::vector<NodeValue>> {
+  static Expected<std::vector<NodeValue>>
+  get(const ONNX_NAMESPACE::AttributeProto *attr,
+      const ProtobufLoader &loader) {
+    // Retrieve the names from the proto which map to NodeValues.
+    std::vector<std::string> strs;
+    ASSIGN_VALUE_OR_RETURN_ERR(strs, getStrings(attr));
+
+    // Get NodeValues corresponding to these names from the loader.
+    std::vector<NodeValue> NVs;
+    for (const auto &str : strs) {
+      NodeValue NV;
+      ASSIGN_VALUE_OR_RETURN_ERR(NV, loader.getNodeValueByName(str));
+      NVs.push_back(NV);
+    }
+    return NVs;
+  }
+};
+
+/// Specialization for NodeValue.
+template <> struct AttributeRetriever<false, NodeValue> {
+  static Expected<NodeValue> get(const ONNX_NAMESPACE::AttributeProto *attr,
+                                 const ProtobufLoader &loader) {
+    // Retrieve the name from the proto, which is mapped to a NodeValue.
+    std::string str;
+    ASSIGN_VALUE_OR_RETURN_ERR(str, loadStr(attr));
+
+    // Get/return the corresponding NodeValue for this name from the loader.
+    NodeValue NV;
+    ASSIGN_VALUE_OR_RETURN_ERR(NV, loader.getNodeValueByName(str));
+    return NV;
+  }
+};
+
+/// Specialization for std::vector<T>. Fall back for integer types.
+template <typename T> struct AttributeRetriever<false, std::vector<T>> {
+  static Expected<std::vector<T>>
+  get(const ONNX_NAMESPACE::AttributeProto *attr,
+      const ProtobufLoader & /* unused */) {
+    return getShape<T>(attr, /* allowEmptyShape */ true);
+  }
+};
+
+/// Specialization for integer types.
+template <typename T> struct AttributeRetriever<true, T> {
+  static Expected<T> get(const ONNX_NAMESPACE::AttributeProto *attr,
+                         const ProtobufLoader & /* unused */) {
+    return loadInt(attr);
+  }
+};
+
+/// Specialization for LengthsMode.
+template <> struct AttributeRetriever<false, LengthsMode> {
+  static Expected<LengthsMode> get(const ONNX_NAMESPACE::AttributeProto *attr,
+                                   const ProtobufLoader & /* unused */) {
+    std::string str;
+    ASSIGN_VALUE_OR_RETURN_ERR(str, loadStr(attr));
+    if (str == "AllOne") {
+      return LengthsMode::AllOne;
+    } else if (str == "Variable") {
+      return LengthsMode::Variable;
+    } else {
+      return MAKE_ERR("Invalid LengthsMode");
+    }
+  }
+};
+
+/// Specialization for FusedActivation.
+template <> struct AttributeRetriever<false, FusedActivation> {
+  static Expected<FusedActivation>
+  get(const ONNX_NAMESPACE::AttributeProto *attr,
+      const ProtobufLoader & /* unused */) {
+    std::string str;
+    ASSIGN_VALUE_OR_RETURN_ERR(str, loadStr(attr));
+    if (str == "NONE") {
+      return FusedActivation::NONE;
+    } else if (str == "RELU") {
+      return FusedActivation::RELU;
+    } else if (str == "TANH") {
+      return FusedActivation::TANH;
+    } else if (str == "SIGMOID") {
+      return FusedActivation::SIGMOID;
+    } else {
+      return MAKE_ERR("Invalid FusedActivation");
+    }
+  }
+};
+
+/// Specialization for ConvolutionLayout.
+template <> struct AttributeRetriever<false, ConvolutionLayout> {
+  static Expected<ConvolutionLayout>
+  get(const ONNX_NAMESPACE::AttributeProto *attr,
+      const ProtobufLoader & /* unused */) {
+    std::string str;
+    ASSIGN_VALUE_OR_RETURN_ERR(str, loadStr(attr));
+    if (str == "NHWC") {
+      return ConvolutionLayout::NHWC;
+    } else if (str == "NCHW") {
+      return ConvolutionLayout::NCHW;
+    } else {
+      return MAKE_ERR("Invalid ConvolutionLayout");
+    }
+  }
+};
+
+/// Specialization for PaddingMode.
+template <> struct AttributeRetriever<false, PaddingMode> {
+  static Expected<PaddingMode> get(const ONNX_NAMESPACE::AttributeProto *attr,
+                                   const ProtobufLoader & /* unused */) {
+    std::string str;
+    ASSIGN_VALUE_OR_RETURN_ERR(str, loadStr(attr));
+    if (str == "CONSTANT") {
+      return PaddingMode::CONSTANT;
+    } else if (str == "REFLECT") {
+      return PaddingMode::REFLECT;
+    } else if (str == "EDGE") {
+      return PaddingMode::EDGE;
+    } else {
+      return MAKE_ERR("Invalid PaddingMode");
+    }
+  }
+};
+
+/// Specialization for float.
+template <> struct AttributeRetriever<false, float> {
+  static Expected<float> get(const ONNX_NAMESPACE::AttributeProto *attr,
+                             const ProtobufLoader & /* unused */) {
+    return loadFloat(attr);
+  }
+};
+
+/// Specialization for std::string.
+template <> struct AttributeRetriever<false, std::string> {
+  static Expected<std::string> get(const ONNX_NAMESPACE::AttributeProto *attr,
+                                   const ProtobufLoader & /* unused */) {
+    return loadStr(attr);
+  }
+};
+
+/// Forwards to the correct AttributeRetriever specialization.
+template <typename T>
+Expected<T> loadAttribute(const ONNX_NAMESPACE::AttributeProto *attr,
+                          const ProtobufLoader &loader) {
+  RETURN_ERR_IF_NOT(attr, "No such attribute");
+  return AttributeRetriever<std::numeric_limits<T>::is_integer, T>::get(attr,
+                                                                        loader);
+}
+
+} // namespace
+
+using ArgumentDictionaryTy =
+    std::unordered_map<std::string, const ONNX_NAMESPACE::AttributeProto *>;
+
+/// Given a docstring encoding \p str of a type and its dimension \p
+/// dims, parses the string and \returns a Glow Type from it or Error if
+/// parsing failed. Expected format of str is either elemKindSignifier or
+/// "ElemKind:scale:offset".
+Expected<Type> parseTypeFromDocString(const std::string &str,
+                                      llvm::ArrayRef<dim_t> dims,
+                                      bool useGlowCustomOps) {
+  float scale = 1.0;
+  int32_t offset = 0;
+  ElemKind elemKind = ElemKind::FloatTy;
+
+  if (useGlowCustomOps) {
+    std::string elemKindStr;
+    ASSIGN_VALUE_OR_RETURN_ERR(elemKindStr,
+                               getAttrFromDocString(elemKindSignifier, str));
+    elemKind = Type::getElementKindFromName(elemKindStr);
+
+    if (isQuantizedElemKind(elemKind)) {
+      std::pair<float, int32_t> scaleOffsetPair;
+      ASSIGN_VALUE_OR_RETURN_ERR(scaleOffsetPair,
+                                 getQuantParamsFromDocString(str));
+      std::tie(scale, offset) = scaleOffsetPair;
+    }
+  } else {
+    size_t begin = 0;
+
+    // Find Elemkind string
+    size_t end = str.find(':', begin);
+
+    // If a ':' isn't found then assume the whole string is ElemKind (for
+    // backwards compatibility reasons) otherwise look for scale and offset
+    // strings.
+    std::string elemKindStr;
+    if (end == std::string::npos) {
+      elemKindStr = str.substr(0, str.size());
+    } else {
+      elemKindStr = str.substr(begin, end - begin);
+
+      // Get scale string.
+      begin = end + 1;
+      end = str.find(':', begin);
+      if (end == std::string::npos) {
+        return MAKE_ERR("scale not found");
+      }
+      std::string scaleStr = str.substr(begin, end - begin);
+
+      // Get offset string.
+      begin = end + 1;
+      end = str.size();
+      if (end - begin == 0) {
+        return MAKE_ERR("offset not found");
+      }
+
+      std::string offsetStr = str.substr(begin, end - begin);
+
+      scale = std::stof(scaleStr);
+      offset = std::stoi(offsetStr);
+    }
+
+    elemKind = Type::getElementKindFromName(elemKindStr);
+  }
 
   if (isQuantizedElemKind(elemKind)) {
     return Type(elemKind, dims, scale, offset);
@@ -204,10 +431,6 @@ Expected<Type> parseTypeFromDocString(const std::string &str,
     return Type(elemKind, dims);
   }
 }
-} // namespace
-
-using ArgumentDictionaryTy =
-    std::unordered_map<std::string, const ONNX_NAMESPACE::AttributeProto *>;
 
 /// Translates the protocol buffer node \p op into a random access map.
 static ArgumentDictionaryTy
@@ -237,14 +460,15 @@ ONNX_NAMESPACE::GraphProto glow::parseOnnxFile(const std::string &fileName) {
 
 void glow::fillPlaceholders(const ONNX_NAMESPACE::GraphProto &inputGroup,
                             PlaceholderBindings *bindings,
-                            std::vector<Tensor> *partialTensorPayloads) {
+                            std::vector<Tensor> *partialTensorPayloads,
+                            bool usingGlowCustomOps) {
   for (const auto &tensorProto : inputGroup.initializer()) {
     auto *tensor =
         bindings->get(bindings->getPlaceholderByName(tensorProto.name()));
     CHECK(tensor);
     size_t fullSize = tensor->getSizeInBytes();
     const auto fullType = tensor->getType();
-    auto error = loadTensor(tensorProto, tensor);
+    auto error = loadTensor(tensorProto, tensor, usingGlowCustomOps);
     bool hasError = ERR_TO_BOOL(std::move(error));
     CHECK(!hasError) << "Cannot load input tensor";
     size_t loadedSize = tensor->getSizeInBytes();
@@ -280,13 +504,16 @@ void glow::fillPlaceholders(const ONNX_NAMESPACE::GraphProto &inputGroup,
 
 void glow::fillPlaceholders(const std::string &fileName,
                             PlaceholderBindings *bindings,
-                            std::vector<Tensor> *partialTensorPayloads) {
+                            std::vector<Tensor> *partialTensorPayloads,
+                            bool usingGlowCustomOps) {
   const ONNX_NAMESPACE::GraphProto &inputGroup = parseOnnxFile(fileName);
-  fillPlaceholders(inputGroup, bindings, partialTensorPayloads);
+  fillPlaceholders(inputGroup, bindings, partialTensorPayloads,
+                   usingGlowCustomOps);
 }
 
 /// Loads tensor \p T from the input \p in.
-Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
+Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
+                       bool useGlowCustomOps) {
   std::vector<dim_t> dim;
   for (auto d : in.dims()) {
     dim.push_back(d);
@@ -335,8 +562,8 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT8) {
     Type ty;
-    ASSIGN_VALUE_OR_RETURN_ERR(ty,
-                               parseTypeFromDocString(in.doc_string(), dim));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        ty, parseTypeFromDocString(in.doc_string(), dim, useGlowCustomOps));
     T->reset(ty);
 
     if (in.has_raw_data()) {
@@ -346,11 +573,24 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
       RETURN_ERR("Unsupported Tensor format.",
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
+  } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT16) {
+    Type ty;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        ty, parseTypeFromDocString(in.doc_string(), dim, useGlowCustomOps));
+    T->reset(ty);
+
+    if (in.has_raw_data()) {
+      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+      inStream.read(T->getUnsafePtr(), T->size() * sizeof(int16_t));
+    } else {
+      RETURN_ERR("Unsupported Tensor format.",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+    }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT32) {
     if (in.has_doc_string()) {
       Type ty;
-      ASSIGN_VALUE_OR_RETURN_ERR(ty,
-                                 parseTypeFromDocString(in.doc_string(), dim));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          ty, parseTypeFromDocString(in.doc_string(), dim, useGlowCustomOps));
       T->reset(ty);
     } else {
       // There are few cases when we will have int32 tensors. For example, the
@@ -373,8 +613,8 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::UINT8) {
     Type ty;
-    ASSIGN_VALUE_OR_RETURN_ERR(ty,
-                               parseTypeFromDocString(in.doc_string(), dim));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        ty, parseTypeFromDocString(in.doc_string(), dim, useGlowCustomOps));
     T->reset(ty);
 
     if (in.has_raw_data()) {
@@ -401,6 +641,46 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T) {
   return Error::success();
 }
 
+Error ONNXModelLoader::setTensorType(const ONNX_NAMESPACE::ValueInfoProto &in,
+                                     Tensor *T) {
+  auto type = in.type();
+
+  std::vector<dim_t> dim;
+  ASSIGN_VALUE_OR_RETURN_ERR(dim, getProtoShape(type.tensor_type().shape()));
+
+  ElemKind kind = ElemKind::FloatTy;
+  float scale = 1.0;
+  int32_t offset = 0;
+  if (useGlowCustomOps_) {
+    std::string elemKindStr;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        elemKindStr, getAttrFromDocString(elemKindSignifier, in.doc_string()));
+    kind = Type::getElementKindFromName(elemKindStr);
+    if (isQuantizedElemKind(kind)) {
+      std::pair<float, int32_t> scaleOffsetPair;
+      ASSIGN_VALUE_OR_RETURN_ERR(scaleOffsetPair,
+                                 getQuantParamsFromDocString(in.doc_string()));
+      std::tie(scale, offset) = scaleOffsetPair;
+    }
+  } else {
+    // Retrieve the ElemKind from the ONNX type, including considerations for
+    // whether the datatype is quantized.
+    RETURN_IF_ERR(
+        onnxTensorDataTypeToElemKind(type.tensor_type().elem_type(), &kind));
+  }
+
+  // If quantized then retrieve the scale and offset if provided (may not be for
+  // fused quantized types since they're ignored anyway).
+  if (isQuantizedElemKind(kind)) {
+    assert(useGlowCustomOps_ &&
+           "Quantized loading not fully supported without custom Glow ops.");
+    T->reset(kind, dim, scale, offset);
+  } else {
+    T->reset(kind, dim);
+  }
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
                                   bool loadInputsAsPlaceholders) {
   for (const auto &in : net.input()) {
@@ -411,17 +691,28 @@ Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
 
     if (loadInputsAsPlaceholders) {
       Tensor T;
-      RETURN_IF_ERR(setTensorType(in.type(), &T));
+      RETURN_IF_ERR(setTensorType(in, &T));
+
+      std::string isTrainable = "0";
+      std::string layout = ANY_LAYOUT;
+      if (useGlowCustomOps_) {
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            isTrainable,
+            getAttrFromDocString(trainableSignifier, in.doc_string()));
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            layout, getAttrFromDocString(layoutSignifier, in.doc_string()));
+      }
 
       Placeholder *placeholder;
       ASSIGN_VALUE_OR_RETURN_ERR(
           placeholder,
           createAndRegisterPlaceholder(in.name(), &T.getType(),
-                                       staticInputs_.count(in.name())));
+                                       staticInputs_.count(in.name()),
+                                       isTrainable != "0", layout));
       inputVarsByName_.try_emplace(in.name(), placeholder);
     } else {
       Tensor T;
-      RETURN_IF_ERR(setTensorType(in.type(), &T));
+      RETURN_IF_ERR(setTensorType(in, &T));
       RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(T)));
     }
   }
@@ -671,13 +962,24 @@ Error ONNXModelLoader::loadConstant(const ONNX_NAMESPACE::NodeProto &op,
     return Error::success();
   }
 
-  RETURN_ERR_IF_NOT(dict.at("value")->type() ==
-                        ONNX_NAMESPACE::AttributeProto::TENSOR,
+  const auto &type = dict.at("value")->type();
+  RETURN_ERR_IF_NOT((type == ONNX_NAMESPACE::AttributeProto::TENSOR ||
+                     type == ONNX_NAMESPACE::AttributeProto::INTS),
                     "Only Tensor type constants are supported.",
                     ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
 
   Tensor T;
-  RETURN_IF_ERR(loadTensor(dict.at("value")->t(), &T));
+  if (type == ONNX_NAMESPACE::AttributeProto::TENSOR) {
+    RETURN_IF_ERR(loadTensor(dict.at("value")->t(), &T, useGlowCustomOps_));
+  } else {
+    std::vector<int64_t> ints;
+    ASSIGN_VALUE_OR_RETURN_ERR(ints, getShape<int64_t>(dict["value"]));
+    T = Tensor(ElemKind::Int64ITy, {(dim_t)ints.size()});
+    auto TH = T.getHandle<int64_t>();
+    for (dim_t i = 0, e = ints.size(); i < e; ++i) {
+      TH.at({i}) = ints[i];
+    }
+  }
   RETURN_IF_ERR(createAndRegisterConstant(name, std::move(T)));
 
   return Error::success();
@@ -1646,7 +1948,7 @@ Error ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
   T.getHandle().raw(0) = 0.0;
 
   if (dict.count("value")) {
-    RETURN_IF_ERR(loadTensor(dict.at("value")->t(), &T));
+    RETURN_IF_ERR(loadTensor(dict.at("value")->t(), &T, useGlowCustomOps_));
     if (!isSplat) {
       // Validate tensor only for ConstantOfShape operator.
       RETURN_ERR_IF_NOT(T.dims().size() == 1, "Value must be a 1D vector.");
@@ -2781,9 +3083,70 @@ Error ONNXModelLoader::loadFlip(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Expected<TypeRef>
+ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
+                                        ArgumentDictionaryTy &dict) {
+  Module &mod = *G_.getParent();
+
+  // Load ElemKind.
+  std::string elemKindStr;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      elemKindStr, loadStr(dict[getTypeAttrID(resNo, elemKindSignifier)]));
+  const ElemKind k = Type::getElementKindFromName(elemKindStr);
+
+  // Load Shape. Note that we allow for empty shapes here because 0 dimensional
+  // shapes are allowed (representing scalars).
+  std::vector<dim_t> shape;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      shape, getShape<dim_t>(dict[getTypeAttrID(resNo, shapeSignifier)],
+                             /* allowEmptyShape */ true));
+
+  // Create and return uniqued non-quantized Type.
+  if (!isQuantizedElemKind(k)) {
+    return mod.uniqueType(k, shape);
+  }
+
+  // Must be quantized kind, so get scale/offset and create and return uniqued
+  // quantized Type.
+  float scale;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      scale, loadFloat(dict[getTypeAttrID(resNo, qScaleSignifier)]));
+  int32_t offset;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      offset, loadInt(dict[getTypeAttrID(resNo, qOffsetSignifier)]));
+  return mod.uniqueType(k, shape, scale, offset);
+}
+
+Expected<bool>
+ONNXModelLoader::tryLoadGlowCustomOp(llvm::StringRef typeName,
+                                     const ONNX_NAMESPACE::NodeProto &op,
+                                     ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+// Try all automatically generated import cases.
+#include "glow/AutoGenNodesImport.h"
+
+  // If we get here then no case handled the op, so return false.
+  return false;
+}
+
 Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.op_type();
+
+  if (useGlowCustomOps_) {
+    bool tryLoadGlowCustomOpResult;
+    ASSIGN_VALUE_OR_RETURN_ERR(tryLoadGlowCustomOpResult,
+                               tryLoadGlowCustomOp(typeName, op, dict));
+    if (tryLoadGlowCustomOpResult) {
+      return Error::success();
+    }
+
+    // Identity is the only official ONNX op used with useGlowCustomOps.
+    if (typeName != "Identity") {
+      return MAKE_ERR(strFormat("Unable to load op %s", typeName.data()));
+    }
+  }
 
   // Check if operator is supported in parent class, CommonOperatorLoader.
   bool tryLoadCommonOperatorResult;
@@ -2968,8 +3331,15 @@ Error ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
   // Load the network initializers:
   for (const auto &in : net.initializer()) {
     Tensor T;
-    RETURN_IF_ERR(loadTensor(in, &T));
-    RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(T)));
+    RETURN_IF_ERR(loadTensor(in, &T, useGlowCustomOps_));
+
+    std::string layout = ANY_LAYOUT;
+    if (useGlowCustomOps_) {
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          layout, getAttrFromDocString(layoutSignifier, in.doc_string()));
+    }
+
+    RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(T), layout));
   }
   return Error::success();
 }
@@ -2984,9 +3354,29 @@ Error ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
     NodeValue r;
     ASSIGN_VALUE_OR_RETURN_ERR(r, getNodeValueByName(outputName));
 
-    Placeholder *placeholder =
-        G_.getParent()->createPlaceholder(r.getType(), outputName, false);
-    SaveNode *SN = G_.createSave("save_" + outputName, r, placeholder);
+    const std::string &docString = net.output(i).doc_string();
+
+    Expected<std::string> saveName =
+        getAttrFromDocString(saveNameSignifier, docString);
+
+    const bool hasSpecifiedSaveName =
+        !ERR_TO_BOOL(saveName.takeError(), /* log */ false);
+    const std::string &saveNodeName =
+        hasSpecifiedSaveName ? saveName.get() : outputName;
+
+    std::string isTrainable = "0";
+    std::string layout = ANY_LAYOUT;
+    if (useGlowCustomOps_) {
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          isTrainable, getAttrFromDocString(trainableSignifier, docString));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          layout, getAttrFromDocString(layoutSignifier, docString));
+    }
+
+    Placeholder *placeholder = G_.getParent()->createPlaceholder(
+        r.getType(), outputName, isTrainable != "0", layout);
+    SaveNode *SN =
+        G_.createSave(saveNodeName, r, placeholder, hasSpecifiedSaveName);
     outputVarsByName_[outputName] = SN->getPlaceholder();
   }
 
@@ -3024,7 +3414,16 @@ Error ONNXModelLoader::collectStaticInputs(ONNX_NAMESPACE::GraphProto &net) {
   for (int i = 0; i < net.input_size(); i++) {
     const ONNX_NAMESPACE::ValueInfoProto &valueInfo = net.input(i);
     const std::string &inputName = valueInfo.name();
-    if (valueInfo.has_doc_string() && valueInfo.doc_string() == "offline") {
+    if (useGlowCustomOps_) {
+      std::string isStatic;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          isStatic,
+          getAttrFromDocString(staticSignifier, valueInfo.doc_string()));
+      if (isStatic == "1") {
+        staticInputs_.emplace(inputName);
+      }
+    } else if (valueInfo.has_doc_string() &&
+               valueInfo.doc_string() == staticSignifier) {
       staticInputs_.emplace(inputName);
     }
   }
@@ -3062,7 +3461,8 @@ Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
                           "Mismatch between input image and ONNX input shape");
       }
 
-      if (valueInfo.has_doc_string() && valueInfo.doc_string() == "offline") {
+      if (valueInfo.has_doc_string() &&
+          valueInfo.doc_string() == staticSignifier) {
         staticInputs_.emplace(inputName);
       }
     }
@@ -3074,7 +3474,8 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  llvm::ArrayRef<const char *> tensorNames,
                                  llvm::ArrayRef<TypeRef> types, Function &F,
                                  Error *errPtr, bool zipMode,
-                                 bool disableConstFoldInLoader)
+                                 bool disableConstFoldInLoader,
+                                 const Backend *B)
     : CommonOperatorLoader(tensorNames, types, F, errPtr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
@@ -3109,6 +3510,8 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
       ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(modelDescFilename));
     }
 
+    useGlowCustomOps_ = modelDef.producer_name() == "GlowONNXModelWriter";
+
     RETURN_IF_ERR(setVersion(modelDef));
 
     ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
@@ -3126,7 +3529,7 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
 
     RETURN_IF_ERR(setOutputNodes(graphDef));
 
-    RETURN_ERR_IF_NOT(F.verify(), "Function verification failed.");
+    RETURN_ERR_IF_NOT(F.verify(B), "Function verification failed.");
 
     deleteUnusedConstants();
 
@@ -3158,6 +3561,8 @@ ONNXModelLoader::ONNXModelLoader(
   auto setup = [&]() -> Error {
     ONNX_NAMESPACE::ModelProto modelDef;
     ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(model, modelSize));
+
+    useGlowCustomOps_ = modelDef.producer_name() == "GlowONNXModelWriter";
 
     RETURN_IF_ERR(setVersion(modelDef));
 

@@ -1800,15 +1800,17 @@ Error PyTorchModelLoader::loadSize(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       dim, iValToInt(getGlowIValueForValue(inputs[SizeInputs::dim])));
 
-  if (dim == -1) {
-    dim = input.dims().size() - 1;
+  // Convert negative dimension index into corresponding positive index
+  auto origDim = dim;
+  if (dim < 0) {
+    dim += input.dims().size();
   }
 
-  // Index must a valid index of input.
-  RETURN_ERR_IF_NOT(input.dims().size() - 1 >= dim,
-                    strFormat("Trying to access the size of dim %d of a tensor "
-                              "with only %d dimensions",
-                              (int32_t)dim, (int32_t)input.dims().size()));
+  RETURN_ERR_IF_NOT(dim < input.dims().size() && dim >= 0,
+                    strFormat("Dim value of %ld is out of range. Valid values "
+                              "are in the range [-%ld, %ld]",
+                              origDim, input.dims().size(),
+                              input.dims().size() - 1));
 
   GlowIValue glowIVal;
   glowIVal.fromInt(input.dims()[dim]);
@@ -1875,15 +1877,30 @@ Error PyTorchModelLoader::loadFusedConcat(const torch::jit::Node *ptNode) {
 
   int64_t dim = ptNode->i(at::attr::dim);
 
-  RETURN_ERR_IF_NOT(dim >= 0, "Negative concat dims not supported yet.");
-
   std::vector<glow::NodeValue> glowInputs;
+
+  // Get number of input dimensions
+  glow::NodeValue glowInput0;
+  ASSIGN_VALUE_OR_RETURN_ERR(glowInput0, getGlowNodeValueForValue(inputs[0]));
+  size_t numInputDims = glowInput0.dims().size();
+
+  // Convert negative dimension index into corresponding positive index
+  auto origDim = dim;
+  if (dim < 0) {
+    dim += numInputDims;
+  }
+
   for (size_t i = 0; i < inputs.size(); ++i) {
     glow::NodeValue glowInput;
     ASSIGN_VALUE_OR_RETURN_ERR(glowInput, getGlowNodeValueForValue(inputs[i]));
 
-    RETURN_ERR_IF_NOT(dim < glowInput.dims().size(),
-                      "Dim must be less than the rank of inputs");
+    RETURN_ERR_IF_NOT(numInputDims == glowInput.dims().size(),
+                      "All inputs must have the same number of dimensions.");
+
+    RETURN_ERR_IF_NOT(dim < numInputDims && dim >= 0,
+                      strFormat("Dim value of %ld is out of range. Valid "
+                                "values are in the range [-%ld, %ld]",
+                                origDim, numInputDims, numInputDims - 1));
 
     glowInputs.push_back(std::move(glowInput));
   }
@@ -2687,6 +2704,30 @@ Error PyTorchModelLoader::loadTranspose(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       dim1, iValToInt(getGlowIValueForValue(inputs[TransposeInputs::dim1])));
 
+  // Adjust dim0 for negative dimensions
+  auto origDim0 = dim0;
+  if (dim0 < 0) {
+    dim0 += input.dims().size();
+  }
+
+  RETURN_ERR_IF_NOT(dim0 < input.dims().size() && dim0 >= 0,
+                    strFormat("Dim0 value of %ld is out of range. Valid values "
+                              "are in the range [-%ld, %ld]",
+                              origDim0, input.dims().size(),
+                              input.dims().size() - 1));
+
+  // Adjust dim1 for negative dimensions
+  auto origDim1 = dim1;
+  if (dim1 < 0) {
+    dim1 += input.dims().size();
+  }
+
+  RETURN_ERR_IF_NOT(dim1 < input.dims().size() && dim1 >= 0,
+                    strFormat("Dim1 value of %ld is out of range. Valid values "
+                              "are in the range [-%ld, %ld]",
+                              origDim1, input.dims().size(),
+                              input.dims().size() - 1));
+
   std::vector<glow::unsigned_t> shuffle(input.dims().size());
   std::iota(shuffle.begin(), shuffle.end(), 0);
   std::swap(shuffle[dim0], shuffle[dim1]);
@@ -3067,10 +3108,20 @@ Error PyTorchModelLoader::loadSoftMax(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       in, getGlowNodeValueForValue(inputs[SoftMaxInputs::input]));
 
-  glow::unsigned_t dim;
+  int64_t dim;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      dim, static_cast_expected<glow::unsigned_t>(
-               iValToInt(getGlowIValueForValue(inputs[SoftMaxInputs::dim]))));
+      dim, iValToInt(getGlowIValueForValue(inputs[SoftMaxInputs::dim])));
+
+  // Convert negative dimension index into corresponding positive index
+  auto origDim = dim;
+  if (dim < 0) {
+    dim += in.dims().size();
+  }
+
+  RETURN_ERR_IF_NOT(dim < in.dims().size() && dim >= 0,
+                    strFormat("Dim value of %ld is out of range. Valid values "
+                              "are in the range [-%ld, %ld]",
+                              origDim, in.dims().size(), in.dims().size() - 1));
 
   auto selected = F_.getParent()->createConstant(glow::ElemKind::Int64ITy,
                                                  {in.dims()[0], 1}, "selected");

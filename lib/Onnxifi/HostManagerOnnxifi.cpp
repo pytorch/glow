@@ -280,9 +280,12 @@ void dumpTraces(TraceContext *traceContext) {
 onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
                                  EventPtr outputEvent,
                                  onnxTraceEventList *traceEvents) {
+  auto threadId = threads::getThreadId();
+  auto startTime = TraceEvent::now();
+
   backendPtr_->runNetwork(
       this, std::move(ctx),
-      [outputEvent, traceEvents,
+      [outputEvent, traceEvents, threadId, startTime,
        this](runtime::RunIdentifierTy runId, Error err,
              std::unique_ptr<ExecutionContext> ctx) mutable {
         TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::RUNTIME,
@@ -300,6 +303,15 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
 
         auto *traceContext = ctx->getTraceContext();
         if (traceContext) {
+          // We want to log the async start event with the original caller's
+          // threadId. This way, chrome UI will put the async event next to the
+          // caller thread.
+          traceContext->logTraceEvent("glow e2e", TraceLevel::RUNTIME,
+                                      TraceEvent::AsyncBeginType, startTime, {},
+                                      threadId, runId);
+          traceContext->logTraceEvent(
+              "glow e2e", TraceLevel::RUNTIME, TraceEvent::AsyncEndType,
+              TraceEvent::now(), {}, threads::getThreadId(), runId);
           setTraceEvents(traceEvents, traceContext);
         }
 

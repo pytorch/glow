@@ -338,6 +338,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
   case ElemKind::FloatTy:
     T = llvm::Type::getFloatPtrTy(getLLVMContext());
     break;
+  case ElemKind::Float16Ty:
+    T = llvm::Type::getInt16PtrTy(getLLVMContext());
+    break;
   case ElemKind::Int8QTy:
     T = llvm::Type::getInt8PtrTy(getLLVMContext());
     break;

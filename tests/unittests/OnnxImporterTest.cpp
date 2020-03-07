@@ -3155,3 +3155,123 @@ TEST_F(OnnxImporterTest, importFRWQSLWS) {
   EXPECT_EQ(lengths->dims().vec(), std::vector<dim_t>({5}));
   EXPECT_EQ(lengths->getType()->getElementType(), ElemKind::Int32ITy);
 }
+
+/// Test loading a custom ONNX Glow quantized TopK.
+TEST_F(OnnxImporterTest, CustomGlowTopKQuantized) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  std::string netFilename(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/glow_custom_op_topk_quantized.onnxtxt");
+  Placeholder *valuesPH, *indicesPH;
+  {
+    ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
+    valuesPH = EXIT_ON_ERR(onnxLD.getOutputByName("save_values"));
+    indicesPH = EXIT_ON_ERR(onnxLD.getOutputByName("save_indices"));
+  }
+
+  // Verify structure: PH -> TopK -> Save -> PH.
+  //                           \
+  //                            v
+  //                          Save -> PH
+  EXPECT_EQ(mod.getPlaceholders().size(), 3);
+  // TopK, Save nodes
+  EXPECT_EQ(F->getNodes().size(), 3);
+
+  auto *values = getSaveNodeFromDest(valuesPH);
+  ASSERT_TRUE(values);
+  EXPECT_EQ(values->getInput().getType()->getElementType(), ElemKind::Int8QTy);
+  EXPECT_EQ(values->getInput().getType()->getScale(), 1.2f);
+  EXPECT_EQ(values->getInput().getType()->getOffset(), 5);
+  EXPECT_EQ(values->getInput().dims().vec(), std::vector<dim_t>({3, 1, 3}));
+
+  auto *indices = getSaveNodeFromDest(indicesPH);
+  ASSERT_TRUE(indices);
+  EXPECT_EQ(indices->getInput().getType()->getElementType(),
+            ElemKind::Int64ITy);
+  EXPECT_EQ(indices->getInput().dims().vec(), std::vector<dim_t>({3, 1, 3}));
+
+  EXPECT_EQ(indices->getInput().getNode(), values->getInput().getNode());
+
+  auto *TKN = llvm::dyn_cast<TopKNode>(indices->getInput());
+  ASSERT_TRUE(TKN);
+  EXPECT_EQ(TKN->getK(), 3);
+
+  auto *input = llvm::dyn_cast<Placeholder>(TKN->getInput());
+  ASSERT_TRUE(input);
+  EXPECT_EQ(input->dims().vec(), std::vector<dim_t>({3, 1, 5}));
+  EXPECT_EQ(input->getType()->getElementType(), ElemKind::Int8QTy);
+  EXPECT_EQ(input->getType()->getScale(), 1.2f);
+  EXPECT_EQ(input->getType()->getOffset(), 5);
+}
+
+/// Test loading a custom ONNX Glow ChannelwiseQuantizedGroupConvolution.
+TEST_F(OnnxImporterTest, CustomGlowChannelwiseQuantizedGroupConvolution) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/"
+                     "glow_custom_op_channelwise_quantized_group_conv.onnxtxt");
+  Placeholder *outputPH;
+  {
+    ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
+    outputPH = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  }
+
+  // Verify structure:
+  // {(PH -> Quantize), Constant, Constant, Constant, Constant} ->
+  // ChannelwiseQuantizedConvolution -> Save -> PH.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+  EXPECT_EQ(mod.getConstants().size(), 4);
+  // ChannelwiseQuantizedConvolution, Save, Quantize, Dequantize
+  EXPECT_EQ(F->getNodes().size(), 4);
+
+  auto *save = getSaveNodeFromDest(outputPH);
+  ASSERT_TRUE(save);
+
+  auto *DQN = llvm::dyn_cast<DequantizeNode>(save->getInput());
+  ASSERT_TRUE(DQN);
+  EXPECT_EQ(DQN->getInput().getType()->getElementType(), ElemKind::Int8QTy);
+  EXPECT_EQ(DQN->getInput().getType()->getScale(), 1.0f);
+  EXPECT_EQ(DQN->getInput().getType()->getOffset(), 0);
+  EXPECT_EQ(DQN->getInput().dims().vec(), std::vector<dim_t>({1, 1, 3, 4}));
+
+  auto *CN =
+      llvm::dyn_cast<ChannelwiseQuantizedConvolutionNode>(DQN->getInput());
+  ASSERT_TRUE(CN);
+  EXPECT_EQ(CN->getKernels().vec(), std::vector<unsigned_t>({2, 1}));
+  EXPECT_EQ(CN->getStrides().vec(), std::vector<unsigned_t>({1, 1}));
+  EXPECT_EQ(CN->getPads().vec(), std::vector<unsigned_t>({0, 0, 0, 0}));
+  EXPECT_EQ(CN->getGroup(), 2);
+
+  auto *QN = llvm::dyn_cast<QuantizeNode>(CN->getInput());
+  ASSERT_TRUE(QN);
+  EXPECT_EQ(QN->getResult().getType()->getElementType(), ElemKind::Int8QTy);
+  EXPECT_EQ(QN->getResult().getType()->getScale(), 1.0f);
+  EXPECT_EQ(QN->getResult().getType()->getOffset(), 0);
+  EXPECT_EQ(QN->getResult().dims().vec(), std::vector<dim_t>({1, 2, 3, 2}));
+  EXPECT_TRUE(llvm::isa<Placeholder>(QN->getInput()));
+
+  auto *filter = llvm::dyn_cast<Constant>(CN->getFilter());
+  ASSERT_TRUE(filter);
+  EXPECT_EQ(filter->getOutput().getType()->getElementType(), ElemKind::Int8QTy);
+  EXPECT_EQ(filter->getOutput().dims().vec(), std::vector<dim_t>({4, 2, 1, 1}));
+
+  auto *bias = llvm::dyn_cast<Constant>(CN->getBias());
+  ASSERT_TRUE(bias);
+  EXPECT_EQ(bias->getOutput().getType()->getElementType(), ElemKind::Int32QTy);
+  EXPECT_EQ(bias->getOutput().dims().vec(), std::vector<dim_t>({4}));
+
+  auto *scales = llvm::dyn_cast<Constant>(CN->getScales());
+  ASSERT_TRUE(scales);
+  EXPECT_EQ(scales->getOutput().getType()->getElementType(), ElemKind::FloatTy);
+  EXPECT_EQ(scales->getOutput().dims().vec(), std::vector<dim_t>({4}));
+
+  auto *offsets = llvm::dyn_cast<Constant>(CN->getOffsets());
+  ASSERT_TRUE(offsets);
+  EXPECT_EQ(offsets->getOutput().getType()->getElementType(),
+            ElemKind::Int32ITy);
+  EXPECT_EQ(offsets->getOutput().dims().vec(), std::vector<dim_t>({4}));
+}
