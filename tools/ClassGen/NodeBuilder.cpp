@@ -677,15 +677,21 @@ void NodeBuilder::emitExportMethods(std::ostream &os) const {
   for (const auto &op : nodeInputs_) {
     os << "  opProto->add_input(N__->get" << op
        << "().generateNodeOutputName(/* stripResNoFor0thInput */ true));\n";
+    // Note: Add each input's type attributes so that other tools have easy
+    // visibility into types. This info may go ignored by the importer.
+    os << "  addTypeAttributes(opProto, N__, " << name_ << "Node::" << op
+       << "Idx, /* isInput */ true);\n";
   }
 
   // Add all of the node's outputs.
   for (const auto &op : nodeOutputs_) {
     os << "  opProto->add_output(N__->get" << op.second
        << "().generateNodeOutputName(/* stripResNoFor0thInput */ true));\n";
-    if (hasCtorTypeParams(op.second)) {
-      os << "  addTypeAttributes(opProto, N__->get" << op.second << "());\n";
-    }
+    // Note: export the type attributes even if not needed by the importer, so
+    // that other tools have easy visibility into types. This info may go
+    // ignored by the importer.
+    os << "  addTypeAttributes(opProto, N__, " << name_ << "Node::" << op.second
+       << "Idx, /* isInput */ false);\n";
   }
 
   // Add any members the node has.

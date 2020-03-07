@@ -118,28 +118,31 @@ void addValueAttribute(ONNX_NAMESPACE::NodeProto *proto,
                     T>::assign(attr, container);
 }
 
-/// Add the type attributes from \p NV to \p proto. This includes the ElemKind,
-/// the Shape, and scale/offset if ElemKind is quantized. Note that the result
-/// name is prefixed onto the specific attribute being appended, as some ops
-/// have multiple outputs and so this allows differentiating between them.
-void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, NodeValue NV) {
+/// Add the type attributes from the \p ioNum number input or output (depending
+/// on \p isInput) of \p N to \p proto. This includes the ElemKind, the Shape,
+/// and scale/offset if ElemKind is quantized. Note that 'i' or 'o' along with
+/// \p ioNum is prefixed onto the specific attribute being appended, as ops may
+/// have multiple inputs/outputs.
+void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, const Node *N,
+                       unsigned ioNum, bool isInput) {
+  NodeValue NV = isInput ? N->getNthInput(ioNum) : N->getNthResult(ioNum);
   const TypeRef ty = NV.getType();
 
   // Add ElemKind.
   auto *elemKindAttr = proto->add_attribute();
-  elemKindAttr->set_name(getTypeAttrID(NV.getResNo(), elemKindSignifier));
+  elemKindAttr->set_name(getTypeAttrID(ioNum, elemKindSignifier, isInput));
   AttributeAssigner<false, false, llvm::StringRef>::assign(
       elemKindAttr, ty->getElementName());
 
   // Add Shape.
-  addValueAttribute(proto, getTypeAttrID(NV.getResNo(), shapeSignifier),
+  addValueAttribute(proto, getTypeAttrID(ioNum, shapeSignifier, isInput),
                     NV.dims());
 
   // Write out scale/offset if quantized ElemKind.
   if (isQuantizedElemKind(ty->getElementType())) {
-    addValueAttribute(proto, getTypeAttrID(NV.getResNo(), qScaleSignifier),
+    addValueAttribute(proto, getTypeAttrID(ioNum, qScaleSignifier, isInput),
                       ty->getScale());
-    addValueAttribute(proto, getTypeAttrID(NV.getResNo(), qOffsetSignifier),
+    addValueAttribute(proto, getTypeAttrID(ioNum, qOffsetSignifier, isInput),
                       ty->getOffset());
   }
 }
