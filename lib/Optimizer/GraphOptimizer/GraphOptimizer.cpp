@@ -2838,6 +2838,9 @@ bool OptimizeConversions::run(Function *F, const CompilationContext &cctx) {
       if (auto *BN = llvm::dyn_cast<Constant>(CN->getInput())) {
         auto newConst =
             convertConstant(*F->getParent(), *BN, CN->getResult().getType());
+        if (newConst == NodeValue()) {
+          continue;
+        }
         LOG_ASSERT(newConst) << "Constant conversion failed.";
         CN->getResult().replaceAllUsesOfWith(newConst, F);
         changed = true;
