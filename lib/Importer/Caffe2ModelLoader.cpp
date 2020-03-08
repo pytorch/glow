@@ -2021,6 +2021,20 @@ Caffe2ModelLoader::Caffe2ModelLoader(
 
     RETURN_IF_ERR(loadInputs(networkDef, loadInputsAsPlaceholders));
 
+    // Identify primary input sequence
+    std::unordered_set<std::string> weights;
+    for (uint32_t i = 0; i < weightsCount; ++i) {
+      weights.emplace(weightDescriptors[i].name);
+    }
+    for (const auto &input : networkDef.external_input()) {
+      if (!weights.count(input)) {
+        positionalInputNames_.emplace_back(input);
+      }
+    }
+    for (const auto &output : networkDef.external_output()) {
+      positionalOutputNames_.emplace_back(output);
+    }
+
     // TODO: in Caffe2ModelLoader, setOutputNodes is actually inside
     // loadNetwork, maybe we should make it a separate function?
     RETURN_IF_ERR(loadNetwork(networkDef));
