@@ -2732,6 +2732,37 @@ TEST_F(OnnxImporterTest, importLess) {
   EXPECT_EQ(CMPLT->getResult().dims()[2], 1);
 }
 
+TEST(onnx, importLessEqual) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/CmpLTE.onnxtxt");
+
+  Placeholder *out = nullptr;
+  {
+    Tensor X(ElemKind::FloatTy, {1, 4, 1});
+    Tensor Y(ElemKind::FloatTy, {4, 1, 1});
+    X.zero();
+    Y.zero();
+
+    ONNXModelLoader onnxLD(netFilename, {"X", "Y"},
+                           {&X.getType(), &Y.getType()}, *F);
+    out = EXIT_ON_ERR(onnxLD.getOutputByName("Out"));
+  }
+
+  auto *save = getSaveNodeFromDest(out);
+
+  CmpLTENode *CMPLTE = llvm::dyn_cast<CmpLTENode>(save->getInput().getNode());
+
+  ASSERT_TRUE(CMPLTE);
+  ASSERT_EQ(CMPLTE->getResult().dims().size(), 3);
+  EXPECT_EQ(CMPLTE->getResult().dims()[0], 4);
+  EXPECT_EQ(CMPLTE->getResult().dims()[1], 4);
+  EXPECT_EQ(CMPLTE->getResult().dims()[2], 1);
+}
+
 /// Test loading NMS using initializer nodes op from an ONNX model.
 TEST_F(OnnxImporterTest, importNMSInitializer) {
   ExecutionEngine EE{};
