@@ -421,9 +421,8 @@ protected:
   ///
   /// \pre One of t\p val's type and \p destTy must be FloatTy and
   ///      the other must be a quantized type.
-  Node *createConversion(Function &function, const Node &node,
-                         NodeValue &val, TypeRef destTy,
-                         bool /* isInput */) override {
+  Node *createConversion(Function &function, const Node &node, NodeValue &val,
+                         TypeRef destTy, bool /* isInput */) override {
     assert((&function == &function_) &&
            "Trying to add quantize/dequantize conversion to a function other "
            "than the function being quantized.");
