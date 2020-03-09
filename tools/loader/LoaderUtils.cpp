@@ -18,17 +18,22 @@
 
 using namespace glow;
 
-static void checkCond(bool cond, llvm::StringRef errMsg) {
+void glow::exitWithErr(llvm::StringRef errMsg) {
+  llvm::errs() << "ERROR: " << errMsg << "\n";
+  std::exit(1);
+}
+
+void glow::checkCond(bool cond, llvm::StringRef errMsg) {
   if (!cond) {
-    llvm::errs() << "GLOW ERROR: " << errMsg << "\n";
+    llvm::errs() << "ERROR: " << errMsg << "\n";
     std::exit(1);
   }
 }
 
-UnlabeledDataSet glow::readUnlabeledDataSet(llvm::StringRef dataSetFile,
-                                            llvm::StringRef dataSetDirPath) {
-  // Verify the dataset directory path is valid.
-  checkCond(llvm::sys::fs::is_directory(dataSetDirPath),
+UnlabeledDataSet glow::readUnlabeledDataSetFromFile(llvm::StringRef dataSetFile,
+                                                    llvm::StringRef dataSetDirPath) {
+  // Verify the dataset directory path is valid (if not empty).
+  checkCond(dataSetDirPath.empty() || llvm::sys::fs::is_directory(dataSetDirPath),
             strFormat("The dataset path '%s' is not a directory!",
                       dataSetDirPath.data()));
   // Parse the dataset file.
@@ -55,6 +60,24 @@ UnlabeledDataSet glow::readUnlabeledDataSet(llvm::StringRef dataSetFile,
     checkCond(llvm::sys::fs::exists(dataPath),
               strFormat("Data path '%s' does not exist!", dataPath.c_str()));
     dataset.emplace_back(dataPath);
+  }
+  return dataset;
+}
+
+UnlabeledDataSet glow::readUnlabeledDataSetFromDir(llvm::StringRef dataSetDirPath) {
+  // Verify the dataset directory path is valid.
+  checkCond(llvm::sys::fs::is_directory(dataSetDirPath),
+            strFormat("The dataset path '%s' is not a directory!",
+                      dataSetDirPath.data()));
+  std::error_code code;
+  llvm::sys::fs::directory_iterator dirIt(dataSetDirPath, code);
+  UnlabeledDataSet dataset;
+  while (!code && dirIt != llvm::sys::fs::directory_iterator()) {
+    auto path = dirIt->path();
+    if (llvm::sys::fs::is_regular_file(path)) {
+      dataset.emplace_back(path);
+    }
+    dirIt.increment(code);
   }
   return dataset;
 }

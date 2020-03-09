@@ -83,6 +83,24 @@ target_link_libraries(model-compiler
                         Quantization
                         LLVMSupport)
 
+add_executable(model-profiler
+  Loader.cpp
+  LoaderUtils.cpp
+  ModelProfiler.cpp)
+
+target_link_libraries(model-profiler
+                      PRIVATE
+                        Backends
+                        Base
+                        Converter
+                        Graph
+                        HostManager
+                        Importer
+                        ExecutionEngine
+                        GraphOptimizer
+                        Quantization
+                        LLVMSupport)
+
 add_executable(model-tuner
   Loader.cpp
   LoaderUtils.cpp
