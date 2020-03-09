@@ -2591,7 +2591,9 @@ Error ONNXModelLoader::loadCmpLTE(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue RHS;
   ASSIGN_VALUE_OR_RETURN_ERR(RHS, getNodeValueByName(op.input(1)));
 
-  Node *N = G_.createCmpLTE(loadOperatorName(op), LHS, RHS);
+  int axis = -1;
+  Node *N = G_.createNodeWithBroadcast<CmpLTENode>(loadOperatorName(op), axis,
+                                                   LHS, RHS);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();

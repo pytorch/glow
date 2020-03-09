@@ -868,6 +868,21 @@ public:
   DECLARE_BROADCAST_NODE(Add, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Sub, /* NUM_INPUTS */ 2)
 
+#define DECLARE_CMP_BROADCAST_NODE(NODE_NAME)                                  \
+  template <class T, class... Args>                                            \
+  typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
+  createNodeWithBroadcast(const std::string &name, int axis,                   \
+                          Args &&... inputArgs) {                              \
+    BROADCAST_FUNC_COMMON_CODE(2)                                              \
+    return create##NODE_NAME(name, inputs[0], inputs[1]);                      \
+  }
+
+  /// Template function that creates a node and normalizes its input shapes
+  /// with the use of BroadCast nodes. If axis is -1, it calculates it
+  /// automatically for multi directional broadcast.
+  DECLARE_CMP_BROADCAST_NODE(CmpLT)
+  DECLARE_CMP_BROADCAST_NODE(CmpLTE)
+
   /// Template function that creates a node and normalizes its input shapes
   /// with the use of BroadCast nodes. If axis is -1, it calculates it
   /// automatically for multi directional broadcast.
@@ -880,19 +895,9 @@ public:
                         inputs[2]);
   }
 
-  /// Template function that creates a node and normalizes its input shapes
-  /// with the use of BroadCast nodes. If axis is -1, it calculates it
-  /// automatically for multi directional broadcast.
-  template <class T, class... Args>
-  typename enable_if_same_t<T, CmpLTNode>::type *
-  createNodeWithBroadcast(const std::string &name, int axis,
-                          Args &&... inputArgs) {
-    BROADCAST_FUNC_COMMON_CODE(2)
-    return createCmpLT(name, inputs[0], inputs[1]);
-  }
-
 #undef BROADCAST_FUNC_COMMON_CODE
 #undef DECLARE_BROADCAST_NODE
+#undef DECLARE_CMP_BROADCAST_NODE
 #undef BROADCAST_FUNC_COMMON_CODE
 
   /// Create a node that produces an boolean output of the same shape as
