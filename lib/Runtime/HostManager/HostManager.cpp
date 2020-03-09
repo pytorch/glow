@@ -84,6 +84,26 @@ Expected<DAG *> HostManager::getNetworkDAG(llvm::StringRef network) {
   return &it->second.dag;
 }
 
+Error HostManager::startDeviceTrace() {
+  for (auto &dev : devices_) {
+    Error err = dev.second->startDeviceTrace(hostTraceContext_.get());
+    if (err) {
+      return err;
+    }
+  }
+  return Error::success();
+}
+
+Error HostManager::stopDeviceTrace() {
+  for (auto &dev : devices_) {
+    Error err = dev.second->stopDeviceTrace(hostTraceContext_.get());
+    if (err) {
+      return err;
+    }
+  }
+  return Error::success();
+}
+
 Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
   DeviceIDTy deviceCount = 0;
 
