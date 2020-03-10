@@ -110,6 +110,11 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
        ConvergenceMode::OnePass,
        {CompilationMode::Infer}},
 
+      // Fold MatMul + Add into FullyConnected.
+      {FunctionPassID::FoldMatMulAddIntoFullyConnected,
+       ConvergenceMode::OnePass,
+       {CompilationMode::Infer}},
+
       // Merge batch normalization operations.
       // Do after transpose constant folding, as weight transposes can prevent
       // the optimization from triggering.
