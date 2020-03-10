@@ -260,6 +260,8 @@ struct BlacklistInitializer {
              TestBlacklist::AnyDeviceAnyEngine},
             {"convTransposeConvolutionCompareSimpleK5S1P2I3/0",
              TestBlacklist::AnyDeviceAnyEngine},
+            {"ChannelwiseQuantizedGroupConvolution/0",
+             TestBlacklist::AnyDeviceAnyEngine},
         };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);

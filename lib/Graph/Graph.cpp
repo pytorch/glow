@@ -2584,48 +2584,6 @@ Convolution3DNode *Function::createConv3D(PlaceholderBindings &bindings,
                       pads, group);
 }
 
-/// Channelwise quantize the given float \p bias as int32 using \p inputScale,
-/// per-channel \p scales and \p offsets. \returns the channelwise quantized
-/// bias tensor or Error if one occurred.
-static Expected<Tensor> channelwiseQuantizeFloatBias(NodeValue bias,
-                                                     NodeValue scales,
-                                                     NodeValue offsets,
-                                                     float inputScale) {
-  Constant *biasC = dyn_cast<Constant>(bias.getNode());
-  RETURN_ERR_IF_NOT(biasC, "bias input to ChannelwiseQuantizedConvolutionNode "
-                           "must be a Constant in order to quantize the bias");
-
-  Constant *scalesC = dyn_cast<Constant>(scales.getNode());
-  RETURN_ERR_IF_NOT(scalesC,
-                    "scales input to ChannelwiseQuantizedConvolutionNode must "
-                    "be a Constant in order to quantize the bias");
-
-  Constant *offsetsC = dyn_cast<Constant>(offsets.getNode());
-  RETURN_ERR_IF_NOT(offsetsC,
-                    "offsets input to ChannelwiseQuantizedConvolutionNode must "
-                    "be a Constant in order to quantize the bias");
-
-  const auto &biasUnquantizedH = biasC->getPayload().getHandle<float>();
-  const auto &scalesH = scalesC->getPayload().getHandle<float>();
-
-  // biasQuantizedT is Int32QTy but the quantization parameters on the tensor
-  // are not real, instead quantization parameters are from scales and offsets
-  // inputs.
-  auto biasQuantizedT = Tensor(ElemKind::Int32QTy, biasUnquantizedH.dims(),
-                               /* scale */ 1.0, /* offset */ 0);
-  auto biasQuantizedH = biasQuantizedT.getHandle<int32_t>();
-
-  for (dim_t i = 0; i < biasQuantizedH.size(); ++i) {
-    TensorQuantizationParams tqp;
-    tqp.scale = inputScale * scalesH.raw(i);
-    tqp.offset = 0;
-    biasQuantizedH.raw(i) =
-        quantization::quantize<int32_t>(biasUnquantizedH.raw(i), tqp);
-  }
-
-  return Expected<Tensor>(std::move(biasQuantizedT));
-}
-
 ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
     llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
     NodeValue scales, NodeValue offsets, TypeRef outTy,
@@ -2633,23 +2591,29 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
     llvm::ArrayRef<unsigned_t> pads, unsigned_t group) {
   assertConvDims(input, filter, bias, kernels, strides, pads, group);
   auto OT = getParent()->uniqueType(*outTy);
-  auto biasType = bias.getElementType();
-  if (biasType == ElemKind::Int32QTy) {
-    // Nothing to do
-  } else if (biasType == ElemKind::FloatTy) {
-    if (auto qBiasTensorOrErr = channelwiseQuantizeFloatBias(
-            bias, scales, offsets, input.getType()->getScale())) {
-      bias = getParent()->createConstant("quantized_bias", *qBiasTensorOrErr);
-    } else {
-      LOG(DFATAL) << "Error while quantizing bias for "
-                     "ChannelwiseQuantizedConvolutionNode: "
-                  << ERR_TO_STRING(qBiasTensorOrErr.takeError());
-    }
-  } else {
+  auto biasElemKind = bias.getElementType();
+
+  if (biasElemKind != ElemKind::Int32QTy && biasElemKind != ElemKind::FloatTy) {
     LOG(DFATAL)
         << "Unsupported element type for ChannelwiseQuantizedConvolution bias: "
-        << Type::getElementName(biasType).str();
+        << Type::getElementName(biasElemKind).str();
   }
+
+  DCHECK(dyn_cast<Constant>(bias.getNode()))
+      << "bias input to ChannelwiseQuantizedConvolutionNode must be a Constant";
+
+  DCHECK(dyn_cast<Constant>(filter.getNode()))
+      << "filter input to ChannelwiseQuantizedConvolutionNode must be a "
+         "Constant";
+  "must be a Constant.";
+
+  DCHECK(dyn_cast<Constant>(scales.getNode()))
+      << "scales input to ChannelwiseQuantizedConvolutionNode must a Constant";
+  "be a Constant in order to quantize the bias";
+
+  DCHECK(dyn_cast<Constant>(offsets.getNode()))
+      << "offsets input to ChannelwiseQuantizedConvolutionNode must be a"
+         "Constant";
 
   return addNode(new ChannelwiseQuantizedConvolutionNode(
       name, OT, input, filter, bias, scales, offsets, kernels, strides, pads,
