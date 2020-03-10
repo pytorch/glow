@@ -94,6 +94,12 @@ llvm::cl::opt<bool> glowDumpGraphOpt(
     llvm::cl::desc("Dump the glow Graph into files before compilation"),
     llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<bool> glowDumpGraphAfterLoadOpt(
+    "glow_dump_graph_after_load",
+    llvm::cl::desc(
+        "Dump the glow Graph into files immediately after loading from ONNX"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
 llvm::cl::opt<bool>
     globalFp16Opt("glow_global_fp16",
                   llvm::cl::desc("Enable fp16 lowering for all ops on the net"),
@@ -223,6 +229,19 @@ llvm::cl::opt<bool> glowSaturateHost(
     llvm::cl::desc("Duplicate netowrk on all available devices"),
     llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<int32_t> topKCompare(
+    "topKCompare", llvm::cl::desc("Compare the topk results against reference"),
+    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<bool> logTopKResultsPerExample(
+    "log_topk_results_per_example",
+    llvm::cl::desc("Whether to log topk results vs reference for each example"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<bool> onnxLoaderZipMode(
+    "zip_mode", llvm::cl::desc("zipMode to use with OnnxModelLoader"),
+    llvm::cl::Optional, llvm::cl::init(true), llvm::cl::cat(reproTestCat));
+
 void parseCommandLine(int argc, char **argv) {
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
   llvm::cl::ParseCommandLineOptions(
@@ -305,8 +324,30 @@ private:
   size_t i_{0};
 };
 
+/// Given a float Tensor \p t, \returns a vector of pairs of entries in t with
+/// the first element in the pair being the value and the second element being
+/// the original index of that value in t. The vector is partially sorted such
+/// that the first \p k elements are the k elements from t with the greatest
+/// values.
+static std::vector<std::pair<float, size_t>>
+partialSortFloatTensor(const Tensor &t, size_t k) {
+  std::vector<std::pair<float, size_t>> vec;
+  auto handle = t.getHandle<float>();
+  for (size_t i = 0; i < handle.size(); ++i) {
+    vec.push_back({handle.raw(i), i});
+  }
+  std::partial_sort(
+      vec.begin(), vec.begin() + k, vec.end(),
+      [](const auto &p1, const auto &p2) { return p1.first > p2.first; });
+  return vec;
+}
+
 int run() {
   int numFailed = 0;
+
+  int numTop1Matches = 0;
+  int numTopKMatches = 0;
+  int numTotalTopKCompares = 0;
 
   // Build the execution engine and deserialize the Function.
   auto mod = glow::make_unique<Module>();
@@ -314,11 +355,16 @@ int run() {
   Error err = Error::empty();
   bool usingGlowCustomOps = false;
   {
-    ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *F, &err, /*zipMode*/ true);
+    ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *F, &err, onnxLoaderZipMode);
     usingGlowCustomOps = onnxLD.usingGlowCustomOps();
   }
   CHECK(!ERR_TO_BOOL(std::move(err)))
       << "ONNXModelLoader failed to load model: " << modelPathOpt;
+  llvm::outs() << "End onnx model load\n";
+
+  if (glowDumpGraphAfterLoadOpt) {
+    F->dumpDAG("dag.dot");
+  }
 
   // Build host manager and compile the module.
   CompilationContext cctx;
@@ -571,15 +617,49 @@ int run() {
         CHECK(of) << "Cannot create output dump file: " << ss.str();
       }
 
-      if (!skipCorrectnessCheck) {
-        for (const auto &tp : outputGroup.initializer()) {
-          Tensor tensorRef;
-          auto error = loadTensor(tp, &tensorRef);
-          CHECK(!ERR_TO_BOOL(std::move(error)))
-              << "Cannot load output ref tensor";
-          const auto *tensor =
-              bindings.get(bindings.getPlaceholderByName(tp.name()));
-          CHECK(tensor) << "Missing " << tp.name() << " in output placeholder";
+      for (const auto &tp : outputGroup.initializer()) {
+        Tensor tensorRef;
+        auto error = loadTensor(tp, &tensorRef);
+        CHECK(!ERR_TO_BOOL(std::move(error)))
+            << "Cannot load output ref tensor";
+        const auto *tensor =
+            bindings.get(bindings.getPlaceholderByName(tp.name()));
+        CHECK(tensor) << "Missing " << tp.name() << " in output placeholder";
+
+        if (topKCompare > 0) {
+          numTotalTopKCompares++;
+          assert(tensor->size() == tensorRef.size());
+          auto sortedResults = partialSortFloatTensor(*tensor, topKCompare);
+          auto sortedRefs = partialSortFloatTensor(tensorRef, topKCompare);
+          assert(sortedResults.size() == topKCompare &&
+                 sortedResults.size() == topKCompare);
+
+          bool allKMatch = true;
+          std::stringstream ss;
+          for (auto i = 0; i < topKCompare; i++) {
+            if (sortedResults[i].second == sortedRefs[i].second) {
+              if (i == 0) {
+                numTop1Matches++;
+              }
+            } else {
+              allKMatch = false;
+            }
+            if (logTopKResultsPerExample) {
+              ss << i << ": Test result: " << sortedResults[i].second
+                 << " (p=" << sortedResults[i].first
+                 << ") Reference result: " << sortedRefs[i].second
+                 << " (p=" << sortedRefs[i].first << ")\n";
+            }
+          }
+          if (logTopKResultsPerExample) {
+            llvm::outs() << ss.str() << "\n";
+          }
+          if (allKMatch) {
+            numTopKMatches++;
+          }
+        }
+
+        if (!skipCorrectnessCheck) {
           if (dumpOutputsOpt) {
             auto *t = outputG.add_initializer();
             ONNXModelWriter::writeTensor(*tensor, t, usingGlowCustomOps);
@@ -595,6 +675,7 @@ int run() {
           }
         }
       }
+
       if (dumpOutputsOpt) {
         std::string buffer;
         outputG.SerializeToString(&buffer);
@@ -626,11 +707,22 @@ int run() {
     }
   }
 
-  if (numFailed == 0) {
-    llvm::outs() << "All passed!\n";
-  } else {
-    llvm::outs() << numFailed << " inferences failed to match reference.\n";
+  if (!skipCorrectnessCheck) {
+    if (numFailed == 0) {
+      llvm::outs() << "All passed!\n";
+    } else {
+      llvm::outs() << numFailed << " inferences failed to match reference.\n";
+    }
   }
+
+  if (topKCompare > 0) {
+    llvm::outs() << "Num top1 matches: " << numTop1Matches << "/"
+                 << numTotalTopKCompares << "\n";
+    llvm::outs() << "Num topK matches (k=" << topKCompare
+                 << "): " << numTopKMatches << "/" << numTotalTopKCompares
+                 << "\n";
+  }
+
   return numFailed;
 }
 
