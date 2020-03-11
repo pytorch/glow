@@ -32,6 +32,9 @@ namespace {
 /// a glow graph in order to eliminate intermediate values that are unnecessary
 /// to Glow such as those created by quantization packing nodes.
 void registerDummyOperator(const char *opName) {
+  auto options = c10::OperatorOptions();
+  options.setAliasAnalysis(at::AliasAnalysisKind::PURE_FUNCTION);
+
   torch::jit::RegisterOperators op({torch::jit::Operator(
       at::Symbol::fromQualString(opName),
       [](const torch::jit::Node *node) -> torch::jit::Operation {
@@ -39,7 +42,7 @@ void registerDummyOperator(const char *opName) {
                    << "\" has no implementation and is meant only as a "
                       "placeholder while fusing ops to run with Glow";
       },
-      at::AliasAnalysisKind::PURE_FUNCTION)});
+      options)});
 }
 
 void removeExceptionsImpl(torch::jit::Block *block) {
