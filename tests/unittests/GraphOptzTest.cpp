@@ -4059,7 +4059,7 @@ TEST_F(GraphOptz, FoldMatMulAddIntoFullyConnected) {
   F_->createSave("save", add);
 
   // The optimized function should replace the MatMul + Add into a
-  // FullyConnected and a Reshape for the Bias.
+  // FullyConnected and a Reshape to 1D for the Bias.
   optimizedF_ = optimizeFunction(F_);
   EXPECT_EQ(3, F_->getNodes().size());
   EXPECT_EQ(3, optimizedF_->getNodes().size());

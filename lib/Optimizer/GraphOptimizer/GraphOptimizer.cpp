@@ -1816,12 +1816,14 @@ bool FoldMatMulAddIntoFullyConnected::run(Function *F,
       continue;
     }
 
-    // Reshape the bias to 1D.
-    biasNode =
-        F->createReshape(biasNode.getNode()->getName().str() + ".reshape",
-                         biasNode, {biasNode.getType()->size()});
+    // Reshape the bias to 1D (if needed).
+    if (biasNode.dims().size() > 1) {
+      biasNode =
+          F->createReshape(biasNode.getNode()->getName().str() + ".reshape",
+                           biasNode, {biasNode.getType()->size()});
+    }
 
-    // Create a FullyConnected node and verify it.
+    // Create a new FullyConnected node.
     auto *newFC = F->createFullyConnected(
         matMulNode->getName(), matMulNode->getLHS(), matMulNode->getRHS(),
         biasNode, addNode->getResult().getType());
