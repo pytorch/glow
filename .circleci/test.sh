@@ -7,7 +7,7 @@ set -euxo pipefail
 export GLOW_SRC=$PWD
 export GLOW_BUILD_DIR=${GLOW_SRC}/build
 export LOADER=${GLOW_BUILD_DIR}/bin/image-classifier
-export LSAN_OPTIONS="suppressions=$GLOW_SRC/.circleci/suppressions.txt"
+export LSAN_OPTIONS="suppressions=$GLOW_SRC/.circleci/lsan_suppressions.txt"
 export ASAN_SYMBOLIZER_PATH=/usr/bin/llvm-symbolizer
 export IMAGES_DIR=${GLOW_SRC}/tests/images/
 
@@ -67,10 +67,6 @@ case ${CIRCLE_JOB} in
         run_unit_tests check
         ;;
     OPENCL)
-        run_unit_tests check
-        ;;
-    TSAN)
-        # Run only Glow tests.
         run_unit_tests check
         ;;
     DEBUG)
