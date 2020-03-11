@@ -15,6 +15,7 @@
  */
 
 #include "BackendTestUtils.h"
+#include "folly/executors/CPUThreadPoolExecutor.h"
 #include "glow/Backend/Backend.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Exporter/ONNXModelWriter.h"
@@ -32,6 +33,7 @@
 #include <glog/logging.h>
 
 #include <fstream>
+#include <iostream>
 #include <string>
 
 using namespace glow;
@@ -255,6 +257,7 @@ struct InferenceResult {
   Error error = Error::empty();
   std::unique_ptr<ExecutionContext> ctx;
   int index = 0;
+  std::chrono::time_point<std::chrono::steady_clock> endTime;
 };
 
 class ZipFileBackedDeferredBlobLoader
@@ -504,110 +507,109 @@ int run() {
     return -1;
   }
 
-  llvm::outs() << "Preparing inference inputs\n";
-
-  std::list<std::pair<std::unique_ptr<ExecutionContext>, int>> inputs;
-  std::list<std::future<InferenceResult>> futures;
-  // This holds the tensor that actually owns the data for all the partial
-  // inputs.
-  std::vector<Tensor> partialTensorPayloads;
-
+  llvm::outs() << "Starting inference\n";
+  TraceContext mergedTraceContext(TraceLevel::STANDARD);
+  folly::CPUThreadPoolExecutor threadPool(concurrentRequestsOpt);
+  std::mutex mutex;
+  std::condition_variable cv;
   int numTotalInferences = inputGroupSize * itersOpt;
+  int numFinishedInferences = 0;
+
+  std::list<InferenceResult> results;
+
+  auto startTime = std::chrono::steady_clock::now();
   for (int ioIndex = 0, numInferencesIssued = 0;
        numInferencesIssued < numTotalInferences;
        ++numInferencesIssued, ioIndex = numInferencesIssued % inputGroupSize) {
-    // Setup the inputs.
-    auto ctx = glow::make_unique<ExecutionContext>();
 
-    auto &bindings = *ctx->getPlaceholderBindings();
-    bindings.clear();
-    bindings.allocate(nonStaticPlaceholderList);
-    const auto &ps = bindings.pairs();
-    for (const auto &kv : ps) {
-      VLOG(1) << "Placeholder allocated: " << kv.first->getName().str();
-    }
+    results.emplace_back(InferenceResult());
+    auto &result = results.back();
 
-    const auto &inputGroup = parsedInputs[ioIndex];
-    fillPlaceholders(inputGroup, &bindings,
-                     /*partialTensorPayloads */
-                     enablePartialTensor ? &partialTensorPayloads : nullptr,
-                     usingGlowCustomOps);
-    inputs.emplace_back(std::make_pair(std::move(ctx), ioIndex));
+    threadPool.add([&parsedInputs, &nonStaticPlaceholderList, ioIndex,
+                    &mergedTraceContext, &hostManager, &result, &cv, &mutex,
+                    numTotalInferences, &numFinishedInferences,
+                    usingGlowCustomOps]() {
+      // Setup the inputs.
+      auto ctx = glow::make_unique<ExecutionContext>();
+
+      TraceContext *traceContext = nullptr;
+      if (glowDumpTrace) {
+        ctx->setTraceContext(
+            glow::make_unique<TraceContext>(TraceLevel::STANDARD));
+        traceContext = ctx->getTraceContext();
+        traceContext->setThreadName("Caller");
+      }
+      TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
+                        "Dispatch to prep input and dispatch");
+
+      auto &bindings = *ctx->getPlaceholderBindings();
+      bindings.clear();
+      bindings.allocate(nonStaticPlaceholderList);
+      const auto &ps = bindings.pairs();
+      for (const auto &kv : ps) {
+        VLOG(1) << "Placeholder allocated: " << kv.first->getName().str();
+      }
+
+      const auto &inputGroup = parsedInputs[ioIndex];
+      // This holds the tensor that actually owns the data for all the partial
+      // inputs.
+      std::vector<Tensor> partialTensorPayloads;
+      fillPlaceholders(inputGroup, &bindings,
+                       enablePartialTensor ? &partialTensorPayloads : nullptr,
+                       usingGlowCustomOps);
+
+      std::promise<void> promise;
+      auto future = promise.get_future();
+
+      hostManager->runNetwork(
+          "test", std::move(ctx),
+          [&promise, index = ioIndex,
+           &result](runtime::RunIdentifierTy, Error err,
+                    std::unique_ptr<ExecutionContext> contextPtr) mutable {
+            result.error = std::move(err);
+            result.ctx = std::move(contextPtr);
+            result.index = index;
+            result.endTime = std::chrono::steady_clock::now();
+            promise.set_value();
+          });
+
+      // wait for glow to finish.
+      future.wait();
+      traceContext = result.ctx->getTraceContext();
+      if (traceContext) {
+        // merge() has internal lock and is thread safe.
+        mergedTraceContext.merge(traceContext);
+      }
+
+      if (skipCorrectnessCheck) {
+        // if skipping correctness check, throw away the context to keep
+        // memory usage low.
+        result.ctx.reset();
+      }
+
+      std::unique_lock<std::mutex> lock(mutex);
+      if (++numFinishedInferences >= numTotalInferences) {
+        lock.unlock();
+        cv.notify_all();
+      }
+    });
   }
 
-  llvm::outs() << "Starting inference\n";
-  std::mutex mutex;
-  std::condition_variable cv;
-  int numOutstandingInferences = 0;
-  int numFinishedInferences = 0;
-  auto timer = std::chrono::steady_clock::now();
-  std::list<std::promise<InferenceResult>> promises;
+  // wait for all inferneces to finish
+  std::unique_lock<std::mutex> lock(mutex);
+  cv.wait(lock, [&]() { return numFinishedInferences >= numTotalInferences; });
 
-  while (!inputs.empty()) {
-    std::unique_lock<std::mutex> lock(mutex);
-    cv.wait(lock,
-            [&] { return numOutstandingInferences < concurrentRequestsOpt; });
-    ++numOutstandingInferences;
-
-    // dispatch inference
-    promises.emplace_back(std::promise<InferenceResult>());
-    auto &promise = promises.back();
-    futures.emplace_back(promise.get_future());
-    std::unique_ptr<ExecutionContext> ctx(std::move(inputs.front().first));
-    int ioIndex = inputs.front().second;
-    inputs.pop_front();
-
-    TraceContext *traceContext = nullptr;
-    if (glowDumpTrace) {
-      CHECK(ctx);
-      ctx->setTraceContext(
-          glow::make_unique<TraceContext>(TraceLevel::STANDARD));
-      traceContext = ctx->getTraceContext();
-      traceContext->setThreadName("main");
+  auto endTime = startTime;
+  llvm::outs() << "All inferences done. Checking results\n";
+  for (auto &result : results) {
+    if (result.endTime > endTime) {
+      endTime = result.endTime;
     }
-    TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
-                      "Dispatch to host manager");
-
-    hostManager->runNetwork(
-        "test", std::move(ctx),
-        [&promise, index = ioIndex, &numOutstandingInferences,
-         &numFinishedInferences, &numTotalInferences, &mutex, &cv,
-         &timer](runtime::RunIdentifierTy, Error err,
-                 std::unique_ptr<ExecutionContext> contextPtr) mutable {
-          InferenceResult result;
-          result.error = std::move(err);
-          result.ctx = std::move(contextPtr);
-          result.index = index;
-          promise.set_value(std::move(result));
-
-          {
-            std::unique_lock<std::mutex> lock(mutex);
-            --numOutstandingInferences;
-            if (++numFinishedInferences == numTotalInferences) {
-              std::chrono::duration<double, std::milli> duration =
-                  std::chrono::steady_clock::now() - timer;
-              LOG(INFO) << "Executed " << numTotalInferences
-                        << " inferences in " << duration.count() << "ms";
-              LOG(INFO) << "Avg inference latency: "
-                        << (duration / numTotalInferences).count() << "ms";
-            }
-          }
-          cv.notify_all();
-        });
-  }
-
-  llvm::outs() << "Checking results\n";
-  TraceContext mergedTraceContext(TraceLevel::STANDARD);
-  for (auto &future : futures) {
-    future.wait();
-    auto result = future.get();
 
     if (result.error) {
       llvm::outs() << "Inference failed!\n";
       ++numFailed;
     } else {
-      const auto &bindings = *result.ctx->getPlaceholderBindings();
-
       const auto &outputGroup = parsedOutputs[result.index];
       ONNX_NAMESPACE::GraphProto outputG;
       std::ofstream of;
@@ -618,61 +620,66 @@ int run() {
         CHECK(of) << "Cannot create output dump file: " << ss.str();
       }
 
-      for (const auto &tp : outputGroup.initializer()) {
-        Tensor tensorRef;
-        auto error = loadTensor(tp, &tensorRef);
-        CHECK(!ERR_TO_BOOL(std::move(error)))
-            << "Cannot load output ref tensor";
-        const auto *tensor =
-            bindings.get(bindings.getPlaceholderByName(tp.name()));
-        CHECK(tensor) << "Missing " << tp.name() << " in output placeholder";
+      if (!skipCorrectnessCheck || topKCompare > 0) {
+        CHECK(result.ctx);
+        const auto &bindings = *result.ctx->getPlaceholderBindings();
+        for (const auto &tp : outputGroup.initializer()) {
+          Tensor tensorRef;
+          auto error = loadTensor(tp, &tensorRef);
+          CHECK(!ERR_TO_BOOL(std::move(error)))
+              << "Cannot load output ref tensor";
+          const auto *tensor =
+              bindings.get(bindings.getPlaceholderByName(tp.name()));
+          CHECK(tensor) << "Missing " << tp.name() << " in output placeholder";
 
-        if (topKCompare > 0) {
-          numTotalTopKCompares++;
-          assert(tensor->size() == tensorRef.size());
-          auto sortedResults = partialSortFloatTensor(*tensor, topKCompare);
-          auto sortedRefs = partialSortFloatTensor(tensorRef, topKCompare);
-          assert(sortedResults.size() == topKCompare &&
-                 sortedResults.size() == topKCompare);
+          if (topKCompare > 0) {
+            numTotalTopKCompares++;
+            assert(tensor->size() == tensorRef.size());
+            auto sortedResults = partialSortFloatTensor(*tensor, topKCompare);
+            auto sortedRefs = partialSortFloatTensor(tensorRef, topKCompare);
+            assert(sortedResults.size() == topKCompare &&
+                   sortedResults.size() == topKCompare);
 
-          bool allKMatch = true;
-          std::stringstream ss;
-          for (auto i = 0; i < topKCompare; i++) {
-            if (sortedResults[i].second == sortedRefs[i].second) {
-              if (i == 0) {
-                numTop1Matches++;
+            bool allKMatch = true;
+            std::stringstream ss;
+            for (auto i = 0; i < topKCompare; i++) {
+              if (sortedResults[i].second == sortedRefs[i].second) {
+                if (i == 0) {
+                  numTop1Matches++;
+                }
+              } else {
+                allKMatch = false;
               }
-            } else {
-              allKMatch = false;
+              if (logTopKResultsPerExample) {
+                ss << i << ": Test result: " << sortedResults[i].second
+                   << " (p=" << sortedResults[i].first
+                   << ") Reference result: " << sortedRefs[i].second
+                   << " (p=" << sortedRefs[i].first << ")\n";
+              }
             }
             if (logTopKResultsPerExample) {
-              ss << i << ": Test result: " << sortedResults[i].second
-                 << " (p=" << sortedResults[i].first
-                 << ") Reference result: " << sortedRefs[i].second
-                 << " (p=" << sortedRefs[i].first << ")\n";
+              llvm::outs() << ss.str() << "\n";
+            }
+            if (allKMatch) {
+              numTopKMatches++;
             }
           }
-          if (logTopKResultsPerExample) {
-            llvm::outs() << ss.str() << "\n";
-          }
-          if (allKMatch) {
-            numTopKMatches++;
-          }
-        }
 
-        if (!skipCorrectnessCheck) {
           if (dumpOutputsOpt) {
             auto *t = outputG.add_initializer();
             ONNXModelWriter::writeTensor(*tensor, t, usingGlowCustomOps);
             t->set_name(tp.name());
           }
-          bool equal = tensorRef.isEqual(*tensor, thresholdOpt, true);
-          if (!equal) {
-            llvm::outs() << "Verification failed at input/output pair "
-                         << result.index << " for output tensor " << tp.name()
-                         << "\n";
-            ++numFailed;
-            break;
+
+          if (!skipCorrectnessCheck) {
+            bool equal = tensorRef.isEqual(*tensor, thresholdOpt, true);
+            if (!equal) {
+              llvm::outs() << "Verification failed at input/output pair "
+                           << result.index << " for output tensor " << tp.name()
+                           << "\n";
+              ++numFailed;
+              break;
+            }
           }
         }
       }
@@ -681,11 +688,6 @@ int run() {
         std::string buffer;
         outputG.SerializeToString(&buffer);
         of << buffer;
-      }
-
-      auto *traceContext = result.ctx->getTraceContext();
-      if (traceContext) {
-        mergedTraceContext.merge(traceContext);
       }
     }
   }
@@ -723,6 +725,13 @@ int run() {
                  << "): " << numTopKMatches << "/" << numTotalTopKCompares
                  << "\n";
   }
+
+  std::chrono::duration<double, std::milli> duration = endTime - startTime;
+  std::cout << "Total inference duration (ms): " << duration.count() << "\n";
+  std::cout << "Avg inference duration (ms): "
+            << duration.count() / numTotalInferences << "\n";
+  std::cout << "Avg inference per second: "
+            << numTotalInferences * 1000 / duration.count() << "\n";
 
   return numFailed;
 }
