@@ -18,6 +18,7 @@
 #include "CustomPyTorchOpLoader.h"
 #include "PyTorchCommon.h"
 
+#include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
@@ -348,6 +349,20 @@ bool isPackedQParamNode(const torch::jit::Node *node) {
   }
 
   return false;
+}
+
+/// Writes the given Function \p F to file using ONNXModelWriter. If \p zipMode
+/// is set then zipMode will be used for the writer. \returns an Error if one
+/// occurred.
+Error dumpOnnxModel(glow::Function &F, bool zipMode) {
+  constexpr size_t kIrVer = 7, kOpsetVer = 9;
+  std::string fileName = F.getName().str() + (zipMode ? ".zip" : ".onnxtxt");
+  LOG(INFO) << "Writing ONNX model to " << fileName;
+  Error err = Error::empty();
+  ONNXModelWriter onnxWriter(fileName, F, kIrVer, kOpsetVer, &err,
+                             /* textMode */ !zipMode, /* zipMode */ zipMode,
+                             /* useGlowCustomOps */ true);
+  return err;
 }
 
 /// Indexes of aten::_convolution inputs.
@@ -3688,6 +3703,10 @@ PyTorchModelLoader::PyTorchModelLoader(
 
     if (settings.dumpGlowDag) {
       F_.dumpDAG(strFormat("%s.dot", F_.getName().data()));
+    }
+
+    if (settings.writeToOnnx) {
+      RETURN_IF_ERR(dumpOnnxModel(F, /* zipMode */ false));
     }
 
     return Error::success();

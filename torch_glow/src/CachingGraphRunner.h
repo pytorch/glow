@@ -74,6 +74,10 @@ class CachingGraphRunner {
   /// Lock for concurrent accessing to perGlowGraphInfoMap_.
   std::shared_timed_mutex graphInfoMapMutex;
 
+  /// The number of times any Glow graph managed by this CachingGraphRunner has
+  /// been run.
+  mutable std::atomic<size_t> numRuns_{0};
+
   /// Given a PyTorch input stack \p stack, this generates a hash from the
   /// values on the stack and checks to see if a matching function was loaded
   /// previously. If a matching function was loaded previously then its cached
