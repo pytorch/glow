@@ -191,7 +191,7 @@ class CommonOperatorLoader : public ProtobufLoader {
 
 protected:
   CommonOperatorLoader(llvm::ArrayRef<const char *> names,
-                       llvm::ArrayRef<TypeRef> types, Function &F)
+                       llvm::ArrayRef<TypeRef> types, Function *F)
       : ProtobufLoader(names, types, F) {}
 
   using ArgumentDictionaryTy =
@@ -233,7 +233,7 @@ protected:
     const std::string &opName = loadOperatorName(op);
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto *R = G_.createRELU(opName, in);
+    auto *R = G_->createRELU(opName, in);
     RETURN_IF_ERR(addNodeAsOutput(op, R));
     return Error::success();
   }
@@ -255,8 +255,8 @@ protected:
     // Sets the axis of each inputs so that the trailing-most dimensions of
     // input tensors and the target shape are aligned.
     int axis = targetDim.size() - slope.dims().size();
-    auto *finalSlope = G_.createBroadcast(opName, slope, targetDim, axis);
-    auto *R = G_.createPRELU(opName, in, finalSlope);
+    auto *finalSlope = G_->createBroadcast(opName, slope, targetDim, axis);
+    auto *R = G_->createPRELU(opName, in, finalSlope);
     RETURN_IF_ERR(addNodeAsOutput(op, R));
     return Error::success();
   }
@@ -265,7 +265,7 @@ protected:
     const std::string &opName = loadOperatorName(op);
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto *S = G_.createSigmoid(opName, in);
+    auto *S = G_->createSigmoid(opName, in);
     RETURN_IF_ERR(addNodeAsOutput(op, S));
     return Error::success();
   }
@@ -274,7 +274,7 @@ protected:
     const std::string &opName = loadOperatorName(op);
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto *T = G_.createTanh(opName, in);
+    auto *T = G_->createTanh(opName, in);
     RETURN_IF_ERR(addNodeAsOutput(op, T));
     return Error::success();
   }
@@ -283,7 +283,7 @@ protected:
     const std::string &opName = loadOperatorName(op);
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto *E = G_.createExp(opName, in);
+    auto *E = G_->createExp(opName, in);
     RETURN_IF_ERR(addNodeAsOutput(op, E));
     return Error::success();
   }
@@ -307,7 +307,7 @@ protected:
     const std::string &opName = loadOperatorName(op);
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto *R = G_.createPow(opName, in, 0.5f);
+    auto *R = G_->createPow(opName, in, 0.5f);
     RETURN_IF_ERR(addNodeAsOutput(op, R));
     return Error::success();
   }
@@ -317,7 +317,7 @@ protected:
     const std::string &opName = loadOperatorName(op);
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto *R = G_.createPow(opName, in, 2.0f);
+    auto *R = G_->createPow(opName, in, 2.0f);
     RETURN_IF_ERR(addNodeAsOutput(op, R));
     return Error::success();
   }
@@ -328,7 +328,7 @@ protected:
     const std::string &opName = loadOperatorName(op);
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto *R = G_.createPow(opName, in, -1.0f);
+    auto *R = G_->createPow(opName, in, -1.0f);
     RETURN_IF_ERR(addNodeAsOutput(op, R));
     return Error::success();
   }
@@ -344,7 +344,7 @@ protected:
       ASSIGN_VALUE_OR_RETURN_ERR(in0, getNodeValueByName(op.input(0)));
       NodeValue in1;
       ASSIGN_VALUE_OR_RETURN_ERR(in1, getNodeValueByName(op.input(1)));
-      auto *node = G_.createAdd(opName, in0, in1);
+      auto *node = G_->createAdd(opName, in0, in1);
       RETURN_IF_ERR(addNodeAsOutput(op, node));
     } else {
       const std::string &opName = loadOperatorName(op);
@@ -354,10 +354,10 @@ protected:
       for (unsigned i = 0; i < numInputs; i++) {
         NodeValue in;
         ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(i)));
-        inputs.push_back(G_.createExpandDims(opName, in, {0}));
+        inputs.push_back(G_->createExpandDims(opName, in, {0}));
       }
-      ConcatNode *concat = G_.createConcat(opName, inputs, /* axis */ 0);
-      Node *node = G_.createBatchedReduceAdd(opName, concat, /* axis */ {0});
+      ConcatNode *concat = G_->createConcat(opName, inputs, /* axis */ 0);
+      Node *node = G_->createBatchedReduceAdd(opName, concat, /* axis */ {0});
       RETURN_IF_ERR(addNodeAsOutput(op, node));
     }
     return Error::success();
@@ -372,7 +372,7 @@ protected:
     RETURN_ERR_IF_NOT(in.dims().size() >= 2, "SoftMax input dims must be >= 2");
 
     // Create a constant to store labels to be used in SoftMaxGradNode.
-    auto selected = G_.getParent()->createConstant(
+    auto selected = G_->getParent()->createConstant(
         ElemKind::Int64ITy, {in.dims()[0], 1}, "selected");
 
     // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
@@ -382,13 +382,13 @@ protected:
       ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
     }
 
-    auto *FN = G_.createFlatten("reshapeInput", in, axis);
+    auto *FN = G_->createFlatten("reshapeInput", in, axis);
 
-    auto *SM = G_.createSoftMax(opName, FN, selected);
+    auto *SM = G_->createSoftMax(opName, FN, selected);
 
     // The output should have the same shape as the original input.
     auto origInDims = in.getType()->dims();
-    auto *RN = G_.createReshape("reshapeOutput", SM, origInDims);
+    auto *RN = G_->createReshape("reshapeOutput", SM, origInDims);
     RETURN_IF_ERR(addNodeAsOutput(op, RN));
     return Error::success();
   }
@@ -407,12 +407,12 @@ protected:
     float k;
     ASSIGN_VALUE_OR_RETURN_ERR(k, loadFloat(dict["bias"]));
 
-    auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
+    auto *tr = G_->createTranspose(opName, in, NCHW2NHWC);
 
-    auto *node = G_.createLocalResponseNormalization(opName, tr, size / 2,
-                                                     alpha, beta, k);
+    auto *node = G_->createLocalResponseNormalization(opName, tr, size / 2,
+                                                      alpha, beta, k);
 
-    auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
+    auto *N = G_->createTranspose(opName, node, NHWC2NCHW);
 
     // LRN in Caffe2 has a scale_ output, but I believe it's unused for
     // inference. So explicitly only set output 0.
@@ -430,9 +430,9 @@ protected:
 
     Node *node = nullptr;
     if (typeName == "Min") {
-      node = G_.createMin(opName, in0, in1);
+      node = G_->createMin(opName, in0, in1);
     } else if (typeName == "Max") {
-      node = G_.createMax(opName, in0, in1);
+      node = G_->createMax(opName, in0, in1);
     } else {
       RETURN_ERR("Invalid min or max operator");
     }
@@ -442,7 +442,7 @@ protected:
   }
 
   static Expected<NodeValue>
-  handleBatchMatMulTranspose(Function &F, ArgumentDictionaryTy &dict,
+  handleBatchMatMulTranspose(Function *F, ArgumentDictionaryTy &dict,
                              llvm::StringRef key, NodeValue input) {
     if (!dict.count(key)) {
       return input;
@@ -463,8 +463,8 @@ protected:
       shuffle.push_back(i + 1);
       shuffle.push_back(i);
 
-      return F.createTranspose(input.getNode()->getName().str() + ".transpose",
-                               input, shuffle);
+      return F->createTranspose(input.getNode()->getName().str() + ".transpose",
+                                input, shuffle);
     }
 
     return input;
@@ -488,9 +488,9 @@ protected:
     // BatchMatMul sometimes is actually just a matmul, depending on dimensions
     // of inputs. Thus, only do batch matmul if LHS is 3-dimensional.
     if (isBatched && LHS.dims().size() == 3) {
-      node = G_.createBatchMatMul(opName, LHS, RHS);
+      node = G_->createBatchMatMul(opName, LHS, RHS);
     } else {
-      node = G_.createMatMul(opName, LHS, RHS);
+      node = G_->createMatMul(opName, LHS, RHS);
     }
 
     RETURN_IF_ERR(addNodeAsOutput(op, node));
@@ -537,25 +537,25 @@ protected:
     Node *node = nullptr;
     if (broadcast) {
       if (typeName == "Mul") {
-        node = G_.createNodeWithBroadcast<MulNode>(opName, axis, in0, in1);
+        node = G_->createNodeWithBroadcast<MulNode>(opName, axis, in0, in1);
       } else if (typeName == "Add") {
-        node = G_.createNodeWithBroadcast<AddNode>(opName, axis, in0, in1);
+        node = G_->createNodeWithBroadcast<AddNode>(opName, axis, in0, in1);
       } else if (typeName == "Sub") {
-        node = G_.createNodeWithBroadcast<SubNode>(opName, axis, in0, in1);
+        node = G_->createNodeWithBroadcast<SubNode>(opName, axis, in0, in1);
       } else if (typeName == "Div") {
-        node = G_.createNodeWithBroadcast<DivNode>(opName, axis, in0, in1);
+        node = G_->createNodeWithBroadcast<DivNode>(opName, axis, in0, in1);
       } else {
         RETURN_ERR("Unsupported arithmetic typeName");
       }
     } else {
       if (typeName == "Mul") {
-        node = G_.createMul(opName, in0, in1);
+        node = G_->createMul(opName, in0, in1);
       } else if (typeName == "Add") {
-        node = G_.createAdd(opName, in0, in1);
+        node = G_->createAdd(opName, in0, in1);
       } else if (typeName == "Sub") {
-        node = G_.createSub(opName, in0, in1);
+        node = G_->createSub(opName, in0, in1);
       } else if (typeName == "Div") {
-        node = G_.createDiv(opName, in0, in1);
+        node = G_->createDiv(opName, in0, in1);
       } else {
         RETURN_ERR("Unsupported arithmetic typeName");
       }
@@ -580,7 +580,7 @@ protected:
     }
 
     std::vector<SliceNode *> outputs;
-    G_.createSplit(opName, in, op.output_size(), axis, split, outputs);
+    G_->createSplit(opName, in, op.output_size(), axis, split, outputs);
 
     for (int i = 0, e = op.output_size(); i < e; i++) {
       // Each output from Split is a SliceNode which only has a single output,
@@ -651,7 +651,7 @@ protected:
       outputDims[negOneIndex] = in.getType()->size() / dimProduct;
     }
 
-    auto *node = G_.createReshape(opName, in, outputDims);
+    auto *node = G_->createReshape(opName, in, outputDims);
 
     // Caffe2 sometimes outputs old_shape which goes unused. We do not currently
     // support it, so explicitly only set the first output.
@@ -677,7 +677,7 @@ protected:
         perm.push_back(i);
     }
 
-    auto *T = G_.createTranspose(opName, in, perm);
+    auto *T = G_->createTranspose(opName, in, perm);
 
     RETURN_IF_ERR(addNodeAsOutput(op, T));
     return Error::success();
@@ -691,7 +691,7 @@ protected:
     if (dict.count("axis")) {
       ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
     }
-    auto *node = G_.createFlatten(opName, in, axis);
+    auto *node = G_->createFlatten(opName, in, axis);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -732,7 +732,7 @@ protected:
     RETURN_ERR_IF_NOT(axis == lastDim,
                       "Currently only support axis being last dimension.");
 
-    auto *R = G_.createTopK(opName, in, k);
+    auto *R = G_->createTopK(opName, in, k);
     RETURN_IF_ERR(addNodeAsOutput(op, R));
     return Error::success();
   }
@@ -773,11 +773,11 @@ protected:
 
     NodeValue node;
     if (typeName == "ReduceMean") {
-      node = G_.createBatchedReduceMean(opName, in, axes);
+      node = G_->createBatchedReduceMean(opName, in, axes);
     } else if (typeName == "ReduceSum") {
-      node = G_.createBatchedReduceAdd(opName, in, axes);
+      node = G_->createBatchedReduceAdd(opName, in, axes);
     } else if (typeName == "ReduceMin") {
-      node = G_.createBatchedReduceMin(opName, in, axes);
+      node = G_->createBatchedReduceMin(opName, in, axes);
     } else {
       RETURN_ERR("Unsupported Reduce Op " + typeName.str());
     }
@@ -791,7 +791,7 @@ protected:
       for (const auto &axis : shapeAxes) {
         shape.insert(shape.begin() + axis, 1);
       }
-      node = G_.createReshape(opName, node, shape);
+      node = G_->createReshape(opName, node, shape);
     }
 
     RETURN_IF_ERR(addNodeAsOutput(op, node));
@@ -807,7 +807,7 @@ protected:
     NodeValue values;
     ASSIGN_VALUE_OR_RETURN_ERR(values, getNodeValueByName(op.input(2)));
 
-    auto *node = G_.createBatchOneHot(opName, data, lengths, values);
+    auto *node = G_->createBatchOneHot(opName, data, lengths, values);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -821,8 +821,8 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in2, getNodeValueByName(op.input(2)));
     LengthsMode lengthsMode;
     ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
-    auto *node = G_.createSparseLengthsSum(loadOperatorName(op), in0, in1, in2,
-                                           lengthsMode);
+    auto *node = G_->createSparseLengthsSum(loadOperatorName(op), in0, in1, in2,
+                                            lengthsMode);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -839,8 +839,8 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in3, getNodeValueByName(op.input(3)));
     LengthsMode lengthsMode;
     ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
-    auto *node = G_.createSparseLengthsWeightedSum(loadOperatorName(op), in0,
-                                                   in1, in2, in3, lengthsMode);
+    auto *node = G_->createSparseLengthsWeightedSum(loadOperatorName(op), in0,
+                                                    in1, in2, in3, lengthsMode);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -856,8 +856,9 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in3, getNodeValueByName(op.input(3)));
     LengthsMode lengthsMode;
     ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
-    auto *node = G_.createEmbeddingBag(loadOperatorName(op), in0, in1, in2, in3,
-                                       /* hasEndOffset */ false, lengthsMode);
+    auto *node =
+        G_->createEmbeddingBag(loadOperatorName(op), in0, in1, in2, in3,
+                               /* hasEndOffset */ false, lengthsMode);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -865,7 +866,7 @@ protected:
   Error loadLengthsToRanges(const OpType &op) {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto *node = G_.createLengthsToRanges(loadOperatorName(op), in);
+    auto *node = G_->createLengthsToRanges(loadOperatorName(op), in);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -878,7 +879,7 @@ protected:
     NodeValue lambda2;
     ASSIGN_VALUE_OR_RETURN_ERR(lambda2, getNodeValueByName(op.input(2)));
     auto *node =
-        G_.createBatchBoxCox(loadOperatorName(op), data, lambda1, lambda2);
+        G_->createBatchBoxCox(loadOperatorName(op), data, lambda1, lambda2);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -888,7 +889,7 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(X, getNodeValueByName(op.input(0)));
     NodeValue Y;
     ASSIGN_VALUE_OR_RETURN_ERR(Y, getNodeValueByName(op.input(1)));
-    auto *node = G_.createDotProduct(loadOperatorName(op), X, Y);
+    auto *node = G_->createDotProduct(loadOperatorName(op), X, Y);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -902,7 +903,7 @@ protected:
     if (valueIt != dict.end()) {
       ASSIGN_VALUE_OR_RETURN_ERR(value, loadFloat(valueIt->second));
     }
-    auto *node = G_.createReplaceNaN(loadOperatorName(op), input, value);
+    auto *node = G_->createReplaceNaN(loadOperatorName(op), input, value);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -917,7 +918,7 @@ protected:
     RETURN_ERR_IF_NOT(lengths.dims().size() == 1,
                       "Lengths must be a 1D vector.");
 
-    auto *node = G_.createLengthsSum(opName, data, lengths);
+    auto *node = G_->createLengthsSum(opName, data, lengths);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -928,7 +929,7 @@ protected:
     std::vector<dim_t> shape;
     ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict["dims"]));
 
-    Node *node = G_.createExpandDims(loadOperatorName(op), in, shape);
+    Node *node = G_->createExpandDims(loadOperatorName(op), in, shape);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
 
     return Error::success();
@@ -947,7 +948,7 @@ protected:
       ASSIGN_VALUE_OR_RETURN_ERR(cmax, loadFloat(dict.find("max")->second));
     }
 
-    auto *node = G_.createClip(loadOperatorName(op), in, cmin, cmax);
+    auto *node = G_->createClip(loadOperatorName(op), in, cmin, cmax);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -964,8 +965,8 @@ protected:
     NodeValue dataToInferDim;
     ASSIGN_VALUE_OR_RETURN_ERR(dataToInferDim, getNodeValueByName(op.input(2)));
 
-    auto *node = G_.createSparseToDense(loadOperatorName(op), indices, values,
-                                        dataToInferDim);
+    auto *node = G_->createSparseToDense(loadOperatorName(op), indices, values,
+                                         dataToInferDim);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -989,7 +990,7 @@ protected:
     } else {
       // If Lengths input is not present, create scalar containing number of
       // index-value pairs.
-      auto *lengthsConstant = G_.getParent()->createConstant(
+      auto *lengthsConstant = G_->getParent()->createConstant(
           ElemKind::Int32ITy, {}, "lengthsConstant");
       lengthsConstant->getPayloadMutable().template getHandle<int32_t>().raw(
           0) = indices.dims()[0];
@@ -999,7 +1000,7 @@ protected:
     std::vector<dim_t> mask;
     ASSIGN_VALUE_OR_RETURN_ERR(mask, getShape<dim_t>(dict["mask"]));
 
-    auto *node = G_.createSparseToDenseMask(
+    auto *node = G_->createSparseToDenseMask(
         loadOperatorName(op), indices, values, defaultValue, lengths, mask);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
@@ -1024,7 +1025,7 @@ protected:
       batchDims = axis;
     }
 
-    Node *GN = G_.createGather(loadOperatorName(op), data, indices, batchDims);
+    Node *GN = G_->createGather(loadOperatorName(op), data, indices, batchDims);
     RETURN_IF_ERR(addNodeAsOutput(op, GN));
     return Error::success();
   }
@@ -1047,8 +1048,8 @@ protected:
     unsigned_t maxOutputSize;
     ASSIGN_VALUE_OR_RETURN_ERR(maxOutputSize, loadInt(maxOutputSizeIt->second));
 
-    Node *GR = G_.createGatherRanges(loadOperatorName(op), data, ranges,
-                                     maxOutputSize);
+    Node *GR = G_->createGatherRanges(loadOperatorName(op), data, ranges,
+                                      maxOutputSize);
     RETURN_IF_ERR(addNodeAsOutput(op, GR));
     return Error::success();
   }
@@ -1066,8 +1067,8 @@ protected:
     auto *xNode = xNV.getNode();
     auto *yNode = yNV.getNode();
 
-    Node *N = G_.createNodeWithBroadcast<CmpLTNode>(opName, /* axis */ -1,
-                                                    xNode, yNode);
+    Node *N = G_->createNodeWithBroadcast<CmpLTNode>(opName, /* axis */ -1,
+                                                     xNode, yNode);
 
     RETURN_IF_ERR(addNodeAsOutput(op, N));
     return Error::success();
