@@ -46,6 +46,9 @@ class CachingGraphRunner {
   /// for.
   std::shared_ptr<torch::jit::Graph> graph_;
 
+  /// GraphExecutor used to execute graph_ on PyTorch for debugging purposes.
+  torch::jit::GraphExecutor ptGraphExecutor_;
+
   /// The HostManager used to store and run Glow graphs.
   std::shared_ptr<runtime::HostManager> hostManager_;
 
@@ -76,7 +79,7 @@ class CachingGraphRunner {
 
   /// The number of times any Glow graph managed by this CachingGraphRunner has
   /// been run.
-  mutable std::atomic<size_t> numRuns_{0};
+  std::atomic<size_t> numRuns_{0};
 
   /// Given a PyTorch input stack \p stack, this generates a hash from the
   /// values on the stack and checks to see if a matching function was loaded
@@ -92,7 +95,11 @@ class CachingGraphRunner {
   /// PerGlowGraphInfo in the shape of the inputs with the given \p stack with
   /// the given ExecutionContext \p ctx.
   Error runImpl(const PerGlowGraphInfo &info, torch::jit::Stack &stack,
-                std::unique_ptr<ExecutionContext> &ctx) const;
+                std::unique_ptr<ExecutionContext> &ctx);
+
+  /// Run the graph_ on \p stack on using ptGraphExecutor_. This is for
+  /// debugging purposes only.
+  void runOnJit(torch::jit::Stack &stack);
 
   /// Given a \p stack of inputs, computes the hash for the inputs on the stack.
   size_t computeGraphHash(const c10::ArrayRef<c10::IValue> inputs) const;
