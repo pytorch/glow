@@ -29,6 +29,7 @@
 
 #include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/io/zero_copy_stream_impl.h"
+#include <glog/logging.h>
 
 #include <fstream>
 #include <string>
@@ -729,6 +730,8 @@ int run() {
 } // namespace
 
 int main(int argc, char **argv) {
+  google::InitGoogleLogging(argv[0]);
+  google::InstallFailureSignalHandler();
   parseCommandLine(argc, argv);
   return run();
 }
