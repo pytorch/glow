@@ -453,9 +453,6 @@ HostManager::runNetwork(llvm::StringRef networkName,
 
   TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
                     "HostManager::runNetwork");
-  if (context->getTraceContext()) {
-    context->getTraceContext()->setThreadName("Caller");
-  }
   auto currentRun = totalRequestCount_++;
 
   NetworkData *network = nullptr;

@@ -116,13 +116,11 @@ fi
 CMAKE_ARGS+=("-DCMAKE_CXX_FLAGS=-Werror")
 CMAKE_ARGS+=("-DGLOW_WITH_CPU=ON")
 CMAKE_ARGS+=("-DGLOW_WITH_HABANA=OFF")
+
 if [[ "${CIRCLE_JOB}" == "ASAN" ]]; then
     CMAKE_ARGS+=("-DGLOW_USE_SANITIZER='Address;Undefined'")
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
-elif [[ "${CIRCLE_JOB}" == "TSAN" ]]; then
-    CMAKE_ARGS+=("-DGLOW_USE_SANITIZER='Thread'")
-    CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
 elif [[ "$CIRCLE_JOB" == "RELEASE_WITH_EXPENSIVE_TESTS" ]]; then
     # Download the models and tell cmake where to find them.
     MODELS_DIR="$GLOW_DIR/downloaded_models"
