@@ -43,6 +43,16 @@ llvm::cl::list<std::string> inputDatasetOpts(
         "           first argument in the <opts> list. If a second argument  \n"
         "           is given in the <opts> list (optional), that will be     \n"
         "           concatenated (prepended) to all the paths from the file. \n"
+        "           The dataset file must contain only ONE PATH PER LINE.    \n"
+        "           After the first comma or space character, the rest of the\n"
+        "           line is ignored. All the examples below are valid:       \n"
+        "               data0.bin                                            \n"
+        "               data1.bin,                                           \n"
+        "               data2.bin 'cat'                                      \n"
+        "               data3.bin,dog                                        \n"
+        "               data4.bin ,2                                         \n"
+        "               data5.bin,1                                          \n"
+        "           Do NOT use file paths which contain spaces.              \n"
         "         - 'dir': the dataset is specified as all the files from a  \n"
         "           given directory listed alphabetically. The directory path\n"
         "           is specified with the first argument in the <opts> list. \n"
@@ -56,7 +66,7 @@ llvm::cl::list<std::string> inputDatasetOpts(
         "    'dataset.csv' file which could have the following content:      \n"
         "        /data_folder/data0.dat,                                     \n"
         "        /data_folder/data1.dat,                                     \n"
-        "        .........................                                   \n"
+        "        .......................                                     \n"
         "    All the files listed are assumed to be in binary format ('bin').\n"
         "\nExample 2:                                                        \n"
         "    -input-dataset=input2,bin,file,dataset.csv,/data_folder         \n"
@@ -224,9 +234,9 @@ int main(int argc, char **argv) {
       std::string filePath = inputDatasets[inputIdx][entryIdx];
       std::string fileFormat = inputFormats[inputIdx];
       if (fileFormat == "bin") {
-        // inputTensor->loadFromBinaryFile(filePath);
+        inputTensor->loadFromRawBinaryFile(filePath.c_str());
       } else if (fileFormat == "txt") {
-        // inputTensor->loadFromTextFile(filePath);
+        inputTensor->loadFromRawTextFile(filePath.c_str());
       } else {
         exitWithErr(strFormat("Input dataset format '%s' invalid!",
                               fileFormat.c_str()));

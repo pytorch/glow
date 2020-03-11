@@ -551,6 +551,22 @@ public:
   /// Dump a textual representation of the shape of this Tensor to std::string.
   std::string getShapeToString() const;
 
+  /// Dump the data content of the tensor to a raw-binary file.
+  void dumpToRawBinaryFile(const char *filename);
+
+  /// Dump the data content of the tensor to a raw-text file (no formatting
+  /// other than "," separator between elements).
+  void dumpToRawTextFile(const char *filename);
+
+  /// Load the data content of the tensor from a raw-binary file. Assume that
+  /// all tensor configuration (type, shape) is set before loading the data.
+  void loadFromRawBinaryFile(const char *filename);
+
+  /// Load the data content of the tensor from a raw-text file (no formatting
+  /// other than "," separator between elements). Assume that all tensor
+  /// configuration (type, shape) is set before loading the data.
+  void loadFromRawTextFile(const char *filename);
+
   /// \returns true if the content of the other tensor \p other is identical to
   /// this one, given some \p allowedError. If \p verbose and the tensors are
   /// not equal, then we will log information about the mismatch (number of

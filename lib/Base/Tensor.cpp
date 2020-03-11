@@ -20,6 +20,7 @@
 
 #include "llvm/Support/NativeFormatting.h"
 #include "llvm/Support/raw_ostream.h"
+#include <fstream>
 #include <glog/logging.h>
 
 using namespace glow;
@@ -377,6 +378,60 @@ std::string Tensor::toString(unsigned maxNumElem) const {
   llvm::raw_string_ostream os(storage);
   dumpImpl(this, os, maxNumElem);
   return os.str();
+}
+
+void Tensor::dumpToRawBinaryFile(const char *filename) {
+  std::ofstream fs;
+  fs.open(filename, std::ios::out | std::ios::binary);
+  DCHECK(fs.is_open()) << "Failed to open file: " << filename;
+  auto handle = getHandle<>();
+  for (dim_t rdi = 0; rdi < actualSize(); rdi++) {
+    fs.write((char *)&handle.raw(rdi), sizeof(handle.raw(rdi)));
+  }
+  fs.close();
+}
+
+void Tensor::dumpToRawTextFile(const char *filename) {
+  std::ofstream fs;
+  fs.open(filename);
+  DCHECK(fs.is_open()) << "Failed to open file: " << filename;
+  auto handle = getHandle<>();
+  for (dim_t rdi = 0; rdi < actualSize(); rdi++) {
+    fs << handle.raw(rdi) << ", ";
+  }
+  fs.close();
+}
+
+void Tensor::loadFromRawBinaryFile(const char *filename) {
+  std::ifstream fs;
+  fs.open(filename, std::ios::in | std::ios::binary);
+  DCHECK(fs.is_open()) << "Failed to open file: " << filename;
+  auto handle = getHandle<>();
+  for (dim_t rdi = 0; rdi < actualSize(); rdi++) {
+    fs.read((char *)&handle.raw(rdi), sizeof(handle.raw(rdi)));
+  }
+  fs.close();
+}
+
+void Tensor::loadFromRawTextFile(const char *filename) {
+  std::ifstream fs;
+  fs.open(filename);
+  DCHECK(fs.is_open()) << "Failed to open file: " << filename;
+  char ch;
+  auto handle = getHandle<>();
+  if ((getElementType() == ElemKind::FloatTy) ||
+      (getElementType() == ElemKind::Float16Ty)) {
+    float fval;
+    for (dim_t rdi = 0; rdi < actualSize() - 1; rdi++) {
+      fs >> fval;
+      handle.raw(rdi) = fval;
+      fs >> ch;
+      DCHECK(ch == ',') << "[broken format] - expecting \',\'";
+    }
+    fs >> fval;
+    handle.raw(actualSize() - 1) = fval;
+  }
+  fs.close();
 }
 
 /// Dump a textual representation of a specific number of elements in the Tensor

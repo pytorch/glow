@@ -1293,3 +1293,41 @@ TEST(Tensor, differentAlignment) {
   T2H.at({1, 0}) = 1;
   EXPECT_FALSE(T1.isEqual(T2));
 }
+
+// Check that both write / read of tensors data from / to raw-text files is
+// working properly.
+TEST(Tensor, accessToRawTextFile) {
+  Tensor Tref = {0.75f,  0.23f, 0.76f,  0.99f,  1.00f,
+                 -0.78f, 0.23f, -0.97f, -0.37f, 0.00f};
+  Tref.dumpToRawTextFile("raw_text_file");
+  Tensor Ttest(ElemKind::FloatTy, {10});
+  Ttest.loadFromRawTextFile("raw_text_file");
+
+  auto Href = Tref.getHandle<>();
+  auto Htest = Ttest.getHandle<>();
+
+  EXPECT_EQ(Href.size(), Htest.size());
+  EXPECT_EQ(Href.actualSize(), Htest.actualSize());
+  for (size_t rcnt = 0; rcnt < Ttest.actualSize(); rcnt++) {
+    EXPECT_FLOAT_EQ(Htest.raw(rcnt), Href.raw(rcnt));
+  }
+}
+
+// Check that both write / read of tensors data from / to raw-binary files is
+// working properly.
+TEST(Tensor, accessToRawBinaryFile) {
+  Tensor Tref = {0.75f,  0.23f, 0.76f,  0.99f,  1.00f,
+                 -0.78f, 0.23f, -0.97f, -0.37f, 0.00f};
+  Tref.dumpToRawBinaryFile("raw_binary_file");
+  Tensor Ttest(ElemKind::FloatTy, {10});
+  Ttest.loadFromRawBinaryFile("raw_binary_file");
+
+  auto Href = Tref.getHandle<>();
+  auto Htest = Ttest.getHandle<>();
+
+  EXPECT_EQ(Href.size(), Htest.size());
+  EXPECT_EQ(Href.actualSize(), Htest.actualSize());
+  for (size_t rcnt = 0; rcnt < Ttest.actualSize(); rcnt++) {
+    EXPECT_FLOAT_EQ(Htest.raw(rcnt), Href.raw(rcnt));
+  }
+}
