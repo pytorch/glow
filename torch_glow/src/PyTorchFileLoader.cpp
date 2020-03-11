@@ -113,8 +113,6 @@ Error evaluateModuleGraph(std::shared_ptr<torch::jit::script::Module> &module,
 /// and operator.
 struct RegisterCustomFusionPass {
   RegisterCustomFusionPass() {
-    auto options = c10::OperatorOptions();
-    options.setAliasAnalysis(at::AliasAnalysisKind::PURE_FUNCTION);
     torch::jit::RegisterOperators op({torch::jit::Operator(
         getFusionSymbol(),
         [](const torch::jit::Node *node) -> torch::jit::Operation {
@@ -131,7 +129,7 @@ struct RegisterCustomFusionPass {
             return 0;
           };
         },
-        options)});
+        at::AliasAnalysisKind::PURE_FUNCTION)});
 
     torch::jit::RegisterPass pass([&](std::shared_ptr<torch::jit::Graph> &g) {
       // Trigger custom fusion pass only if local thread Glow Function is set.
