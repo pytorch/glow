@@ -30,10 +30,12 @@ void glow::checkCond(bool cond, llvm::StringRef errMsg) {
   }
 }
 
-UnlabeledDataSet glow::readUnlabeledDataSetFromFile(llvm::StringRef dataSetFile,
-                                                    llvm::StringRef dataSetDirPath) {
+UnlabeledDataSet
+glow::readUnlabeledDataSetFromFile(llvm::StringRef dataSetFile,
+                                   llvm::StringRef dataSetDirPath) {
   // Verify the dataset directory path is valid (if not empty).
-  checkCond(dataSetDirPath.empty() || llvm::sys::fs::is_directory(dataSetDirPath),
+  checkCond(dataSetDirPath.empty() ||
+                llvm::sys::fs::is_directory(dataSetDirPath),
             strFormat("The dataset path '%s' is not a directory!",
                       dataSetDirPath.data()));
   // Parse the dataset file.
@@ -48,15 +50,20 @@ UnlabeledDataSet glow::readUnlabeledDataSetFromFile(llvm::StringRef dataSetFile,
     while (line.find(",") != std::string::npos) {
       line.replace(line.find(","), 1, " ");
     }
-    // Read data path.
-    std::istringstream lineStream(line);
+    // Read data path. Add one extra space to make sure the string stream
+    // can read strings from lines without extra separators.
+    std::istringstream lineStream(line + " ");
     checkCond((lineStream >> dataPath).good(),
               strFormat("Failed parsing the unlabeled dataset file '%s'! Check "
                         "the file has the right format!",
                         dataSetFile.data()));
-    // Prepend dataset directory path.
-    dataPath = std::string(dataSetDirPath) +
-               std::string(llvm::sys::path::get_separator()) + dataPath;
+    // Concatenate (prepend) dataset directory path (if not empty).
+    if (!dataSetDirPath.empty()) {
+      llvm::StringRef sep = llvm::sys::path::get_separator();
+      dataPath = std::string(dataSetDirPath) +
+                 (dataSetDirPath.endswith(sep) ? "" : std::string(sep)) +
+                 dataPath;
+    }
     checkCond(llvm::sys::fs::exists(dataPath),
               strFormat("Data path '%s' does not exist!", dataPath.c_str()));
     dataset.emplace_back(dataPath);
@@ -64,7 +71,8 @@ UnlabeledDataSet glow::readUnlabeledDataSetFromFile(llvm::StringRef dataSetFile,
   return dataset;
 }
 
-UnlabeledDataSet glow::readUnlabeledDataSetFromDir(llvm::StringRef dataSetDirPath) {
+UnlabeledDataSet
+glow::readUnlabeledDataSetFromDir(llvm::StringRef dataSetDirPath) {
   // Verify the dataset directory path is valid.
   checkCond(llvm::sys::fs::is_directory(dataSetDirPath),
             strFormat("The dataset path '%s' is not a directory!",
@@ -79,6 +87,9 @@ UnlabeledDataSet glow::readUnlabeledDataSetFromDir(llvm::StringRef dataSetDirPat
     }
     dirIt.increment(code);
   }
+  // The paths retrieved by the directory iterator are not sorted.
+  // Sort the paths alphabetically in increasing order.
+  std::sort(dataset.begin(), dataset.end());
   return dataset;
 }
 
