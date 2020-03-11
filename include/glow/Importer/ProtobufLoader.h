@@ -135,7 +135,7 @@ template <typename T> std::string loadOperatorName(const T &op) {
 class ProtobufLoader {
 protected:
   /// The graph that we are constructing.
-  Function &G_;
+  Function *G_;
   /// Saves network nodes by name.
   llvm::StringMap<NodeValue> nodeValueByName_;
   /// A map from names of the external outputs of the network to Variables.
@@ -204,7 +204,7 @@ public:
   /// if an error occurs it will get assigned there otherwise if an error
   /// occurs it will abort.
   ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
-                 llvm::ArrayRef<TypeRef> types, Function &F,
+                 llvm::ArrayRef<TypeRef> types, Function *F,
                  Error *errPtr = nullptr);
 
   ProtobufLoader(const ProtobufLoader &other) = delete;

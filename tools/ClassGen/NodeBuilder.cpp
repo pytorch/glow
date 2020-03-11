@@ -634,7 +634,7 @@ void NodeBuilder::emitImportMethods(std::ostream &os) const {
 
   // We have all items needed to construct the node, so do so.
   const auto nodeName = name_ + "Node";
-  os << "  " << nodeName << " *loadedNode = G_.addNode(new " << nodeName
+  os << "  " << nodeName << " *loadedNode = G_->addNode(new " << nodeName
      << "(opName";
   for (const auto &op : nodeOutputs_) {
     if (hasCtorTypeParams(op.second)) {
