@@ -2605,11 +2605,10 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
   DCHECK(dyn_cast<Constant>(filter.getNode()))
       << "filter input to ChannelwiseQuantizedConvolutionNode must be a "
          "Constant";
-  "must be a Constant.";
 
   DCHECK(dyn_cast<Constant>(scales.getNode()))
-      << "scales input to ChannelwiseQuantizedConvolutionNode must a Constant";
-  "be a Constant in order to quantize the bias";
+      << "scales input to ChannelwiseQuantizedConvolutionNode must a Constant "
+         "in order to quantize the bias";
 
   DCHECK(dyn_cast<Constant>(offsets.getNode()))
       << "offsets input to ChannelwiseQuantizedConvolutionNode must be a"
