@@ -99,7 +99,7 @@ Error loadJitGraphToGlowFunction(
 
 /// Runs Module forward pass, triggers custom fusion pass if local thread
 /// Glow function is set.
-Error evaluateModuleGraph(std::shared_ptr<torch::jit::script::Module> &module,
+Error evaluateModuleGraph(std::shared_ptr<torch::jit::Module> &module,
                           const std::vector<torch::jit::IValue> &inputs) {
   try {
     module->forward(inputs);
@@ -145,9 +145,9 @@ struct RegisterCustomFusionPass {
 /*static*/
 Error PyTorchFileLoader::loadPyTorchModel(
     const std::string &fileName,
-    std::shared_ptr<torch::jit::script::Module> &module) {
+    std::shared_ptr<torch::jit::Module> &module) {
   try {
-    module = std::make_shared<torch::jit::script::Module>(
+    module = std::make_shared<torch::jit::Module>(
         torch::jit::load(fileName));
   } catch (const std::exception &x) {
     RETURN_ERR(strFormat("Cannot load model from file: %s, , reason: %s",
@@ -169,7 +169,7 @@ Error PyTorchFileLoader::loadPyTorchGraph(
   settings.weightFreezingEnabled = false;
 
   // Convert PyTorch model into JIT Module.
-  std::shared_ptr<torch::jit::script::Module> module;
+  std::shared_ptr<torch::jit::Module> module;
   RETURN_IF_ERR(PyTorchFileLoader::loadPyTorchModel(fileName, module));
 
   // Disable gradient nodes generation.
@@ -192,7 +192,7 @@ Error PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
     std::vector<glow::Placeholder *> &outputPlaceholders) {
 
   // Convert PyTorch model into JIT Module.
-  std::shared_ptr<torch::jit::script::Module> module;
+  std::shared_ptr<torch::jit::Module> module;
   RETURN_IF_ERR(PyTorchFileLoader::loadPyTorchModel(fileName, module));
 
   // Disable gradient nodes generation.
