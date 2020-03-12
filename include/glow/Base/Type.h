@@ -81,28 +81,54 @@ struct ShapeNHWC {
   }
 };
 
-struct ShapeNHWDC {
+struct ShapeNTHWC {
+  dim_t n; // Number of samples
+  dim_t t; // Temporal frames
+  dim_t h; // Height
+  dim_t w; // Width
+  dim_t c; // Number of Channels
+
+  template <typename T> explicit ShapeNTHWC(llvm::ArrayRef<T> shape) {
+    assert(shape.size() == 5 && "Invalid shape");
+    n = shape[0];
+    t = shape[1];
+    h = shape[2];
+    w = shape[3];
+    c = shape[4];
+  }
+
+  ShapeNTHWC(dim_t samples, dim_t temporal_frames, dim_t height, dim_t width,
+             dim_t channels)
+      : n(samples), t(temporal_frames), h(height), w(width), c(channels) {}
+
+  bool equals(const ShapeNTHWC &other) const {
+    return n == other.n && t == other.t && h == other.h && w == other.w &&
+           c == other.c;
+  }
+};
+
+struct ShapeNHWTC {
   dim_t n; // Number of samples
   dim_t h; // Height
   dim_t w; // Width
-  dim_t d; // Depth
+  dim_t t; // Temporal_frames
   dim_t c; // Number of Channels
 
-  template <typename T> explicit ShapeNHWDC(llvm::ArrayRef<T> shape) {
+  template <typename T> explicit ShapeNHWTC(llvm::ArrayRef<T> shape) {
     assert(shape.size() == 5 && "Invalid shape");
     n = shape[0];
     h = shape[1];
     w = shape[2];
-    d = shape[3];
+    t = shape[3];
     c = shape[4];
   }
 
-  ShapeNHWDC(size_t samples, size_t height, size_t width, size_t depth,
-             size_t channels)
-      : n(samples), h(height), w(width), d(depth), c(channels) {}
+  ShapeNHWTC(size_t samples, size_t height, size_t width,
+             size_t temporal_frames, size_t channels)
+      : n(samples), h(height), w(width), t(temporal_frames), c(channels) {}
 
-  bool equals(const ShapeNHWDC &other) const {
-    return n == other.n && h == other.h && w == other.w && d == other.d &&
+  bool equals(const ShapeNHWTC &other) const {
+    return n == other.n && h == other.h && w == other.w && t == other.t &&
            c == other.c;
   }
 };
@@ -126,6 +152,32 @@ struct ShapeNCHW {
 
   bool equals(const ShapeNCHW &other) const {
     return n == other.n && h == other.h && w == other.w && c == other.c;
+  }
+};
+
+struct ShapeNCTHW {
+  dim_t n; // Number of samples
+  dim_t c; // Number of Channels
+  dim_t t; // Temporal frames
+  dim_t h; // Height
+  dim_t w; // Width
+
+  explicit ShapeNCTHW(llvm::ArrayRef<dim_t> shape) {
+    assert(shape.size() == 5 && "Invalid shape");
+    n = shape[0];
+    c = shape[1];
+    t = shape[2];
+    h = shape[3];
+    w = shape[4];
+  }
+
+  ShapeNCTHW(dim_t samples, dim_t channels, dim_t temporal_frames, dim_t height,
+             dim_t width)
+      : n(samples), c(channels), t(temporal_frames), h(height), w(width) {}
+
+  bool equals(const ShapeNCTHW &other) const {
+    return n == other.n && t == other.t && h == other.h && w == other.w &&
+           c == other.c;
   }
 };
 
@@ -172,6 +224,30 @@ struct PaddingTLNBRF {
   }
 };
 
+struct PaddingNFTBLR {
+  dim_t near;
+  dim_t far;
+  dim_t top;
+  dim_t bottom;
+  dim_t left;
+  dim_t right;
+
+  template <typename T> explicit PaddingNFTBLR(llvm::ArrayRef<T> pads) {
+    assert(pads.size() == 6 && "Invalid padding");
+    near = pads[0];
+    far = pads[1];
+    top = pads[2];
+    bottom = pads[3];
+    left = pads[4];
+    right = pads[5];
+  }
+
+  bool equalPadding() const {
+    return top == left && top == bottom && top == right && top == near &&
+           top == far;
+  }
+};
+
 struct ShapeHW {
   dim_t height;
   dim_t width;
@@ -185,19 +261,34 @@ struct ShapeHW {
   bool isSquare() const { return height == width; }
 };
 
-struct ShapeHWD {
+struct ShapeHWT {
   dim_t height;
   dim_t width;
-  dim_t depth;
+  dim_t temporal_frames;
 
-  template <typename T> explicit ShapeHWD(llvm::ArrayRef<T> shape) {
+  template <typename T> explicit ShapeHWT(llvm::ArrayRef<T> shape) {
     assert(shape.size() == 3 && "Invalid shape");
     height = shape[0];
     width = shape[1];
-    depth = shape[2];
+    temporal_frames = shape[2];
   }
 
-  bool isCube() const { return height == width && height == depth; }
+  bool isCube() const { return height == width && height == temporal_frames; }
+};
+
+struct ShapeTHW {
+  dim_t temporal_frames;
+  dim_t height;
+  dim_t width;
+
+  template <typename T> explicit ShapeTHW(llvm::ArrayRef<T> shape) {
+    assert(shape.size() == 3 && "Invalid shape");
+    temporal_frames = shape[0];
+    height = shape[1];
+    width = shape[2];
+  }
+
+  bool isCube() const { return height == width && height == temporal_frames; }
 };
 
 /// Collapse a tensor shape into two sizes: the first n dimensions and the size
@@ -225,7 +316,7 @@ inline bool operator==(const ShapeNCHW &LHS, const ShapeNCHW &RHS) {
   return LHS.equals(RHS);
 }
 
-inline bool operator==(const ShapeNHWDC &LHS, const ShapeNHWDC &RHS) {
+inline bool operator==(const ShapeNHWTC &LHS, const ShapeNHWTC &RHS) {
   return LHS.equals(RHS);
 }
 

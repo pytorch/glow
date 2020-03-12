@@ -6868,9 +6868,9 @@ TEST_P(OperatorTest, NonCubicPaddingConv3D) {
     for (dim_t j = 0; j < 4; j++) {
       for (dim_t k = 0; k < 4; k++) {
         IH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
-      } // D
-    }   // W
-  }     // H
+      } // W
+    }   // H
+  }     // T
 
   auto *filter = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 2, 1},
                                         "filter", false);
@@ -6882,11 +6882,12 @@ TEST_P(OperatorTest, NonCubicPaddingConv3D) {
       mod_.createPlaceholder(ElemKind::FloatTy, {2}, "bias", false);
   bindings_.allocate(zeroBias)->zero();
 
-  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 4, 8, 12, 2});
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 12, 4, 8, 2});
 
   Convolution3DNode *CN =
       F_->createConv3D("Conv3D", input, filter, zeroBias, outTy, {2, 2, 2},
-                       {1, 1, 1}, {0, 2, 5, 1, 3, 4}, 1);
+                       {1, 1, 1}, // {0, 2, 5, 1, 3, 4},
+                       {5, 4, 0, 1, 2, 3}, 1);
   SaveNode *S = F_->createSave("save", CN);
   bindings_.allocate(S->getPlaceholder());
 
@@ -6897,18 +6898,18 @@ TEST_P(OperatorTest, NonCubicPaddingConv3D) {
 
   // Create the reference conv3D operator whose input is the same as the
   // after-padding-input above.
-  auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 9, 13, 1},
+  auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 13, 5, 9, 1},
                                         "input1", false);
   bindings_.allocate(input1)->zero();
   auto IH1 = bindings_.get(input1)->getHandle();
   nextVal = 1;
-  for (dim_t i = 0; i < 4; i++) {
-    for (dim_t j = 2; j < 6; j++) {
-      for (dim_t k = 5; k < 9; k++) {
+  for (dim_t i = 5; i < 9; i++) {
+    for (dim_t j = 0; j < 4; j++) {
+      for (dim_t k = 2; k < 6; k++) {
         IH1.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
-      } // D
-    }   // W
-  }     // H
+      } // W
+    }   // H
+  }     // T
 
   Function *refF = mod_.createFunction("mainRef");
   CN = refF->createConv3D("Conv3D_1", input1, filter, zeroBias, outTy,
@@ -7906,9 +7907,9 @@ TEST_P(OperatorTest, NonCubicStrideConv3D) {
     for (dim_t j = 0; j < 4; j++) {
       for (dim_t k = 0; k < 4; k++) {
         IH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
-      } // D
-    }   // W
-  }     // H
+      } // W
+    }   // H
+  }     // T
 
   auto *filter = mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 2, 1},
                                         "filter", false);
@@ -7918,9 +7919,9 @@ TEST_P(OperatorTest, NonCubicStrideConv3D) {
     for (dim_t j = 0; j < 2; j++) {
       for (dim_t k = 0; k < 2; k++) {
         FH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
-      } // D
-    }   // W
-  }     // H
+      } // W
+    }   // H
+  }     // T
 
   auto *zeroBias =
       mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
@@ -7930,7 +7931,8 @@ TEST_P(OperatorTest, NonCubicStrideConv3D) {
 
   Convolution3DNode *CN =
       F_->createConv3D("Conv3D", input, filter, zeroBias, outTy, {2, 2, 2},
-                       {3, 2, 3}, {0, 0, 0, 1, 1, 1}, 1);
+                       {3, 3, 2}, //{0, 0, 0, 1, 1, 1}, 1);
+                       {0, 1, 0, 1, 0, 1}, 1);
   SaveNode *S = F_->createSave("save", CN);
   bindings_.allocate(S->getPlaceholder());
 
@@ -7940,7 +7942,7 @@ TEST_P(OperatorTest, NonCubicStrideConv3D) {
   EE_.run(bindings_);
   Tensor &result = *bindings_.get(S->getPlaceholder());
 
-  static const float ref[] = {560, 296, 848, 424, 524, 220, 604, 252};
+  static const float ref[] = {560, 632, 366, 394, 524, 544, 185, 191};
   for (size_t i = 0; i < 8; i++) {
     EXPECT_EQ(result.getHandle().raw(i), ref[i]);
   }

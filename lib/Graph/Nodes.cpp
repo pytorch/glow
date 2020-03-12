@@ -211,37 +211,38 @@ static bool verifyConvolution3D(NodeValue src, NodeValue dest, NodeValue filter,
                               bias.getElementType() == ElemKind::Int32QTy,
                           true, parent);
   }
-  ShapeNHWDC idim(src.getType()->dims());
-  ShapeNHWDC odim(dest.getType()->dims());
-  PaddingTLNBRF pdim(pads);
-  ShapeHWD kdim(kernels);
+  ShapeNTHWC idim(src.getType()->dims());
+  ShapeNTHWC odim(dest.getType()->dims());
+  PaddingNFTBLR pdim(pads);
+  ShapeTHW kdim(kernels);
   isValid &= expectCompareTrue("buffer height too small for selected stride",
                                idim.h + pdim.top + pdim.bottom, kdim.height,
                                parent, CompareOperatorGreaterEqual<dim_t>());
   isValid &= expectCompareTrue("buffer width too small for selected stride",
                                idim.w + pdim.left + pdim.right, kdim.width,
                                parent, CompareOperatorGreaterEqual<dim_t>());
-  isValid &= expectCompareTrue("buffer time too small for selected stride",
-                               idim.d + pdim.near + pdim.far, kdim.depth,
-                               parent, CompareOperatorGreaterEqual<dim_t>());
+  isValid &=
+      expectCompareTrue("buffer time too small for selected stride",
+                        idim.t + pdim.near + pdim.far, kdim.temporal_frames,
+                        parent, CompareOperatorGreaterEqual<dim_t>());
   isValid &= expectCompareTrue("channels number must be divisible by groups",
                                idim.c % group, dim_t(0), parent);
 
-  auto outSz = calculate3DConvPoolOutputDims(idim.h, idim.w, idim.d, kernels,
+  auto outSz = calculate3DConvPoolOutputDims(idim.t, idim.h, idim.w, kernels,
                                              strides, pads);
   isValid &=
       expectCompareTrue("Invalid output dimension N", odim.n, idim.n, parent);
+  isValid &= expectCompareTrue("Invalid output dimension T", odim.t,
+                               outSz.temporal_frames, parent);
   isValid &= expectCompareTrue("Invalid output dimension H", odim.h,
                                outSz.height, parent);
   isValid &= expectCompareTrue("Invalid output dimension W", odim.w,
                                outSz.width, parent);
-  isValid &= expectCompareTrue("Invalid output dimension D", odim.d,
-                               outSz.depth, parent);
   isValid &= expectCompareTrue("Invalid output dimension C", odim.c % group,
                                dim_t(0), parent);
 
-  const dim_t filterDims[] = {odim.c, kdim.height, kdim.width, kdim.depth,
-                              idim.c / group};
+  const dim_t filterDims[] = {odim.c, kdim.temporal_frames, kdim.height,
+                              kdim.width, idim.c / group};
   isValid &=
       expectCompareTrue("Invalid filter dimensions", filter.getType()->dims(),
                         llvm::makeArrayRef(filterDims), parent);

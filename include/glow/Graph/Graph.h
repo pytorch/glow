@@ -1777,8 +1777,12 @@ bool isInput(const Placeholder *PH, const Function &F);
 /// Helper vectors for common transpose shuffles.
 #define NCHW2NHWC                                                              \
   { 0u, 2u, 3u, 1u }
+#define NCTHW2NTHWC                                                            \
+  { 0u, 2u, 3u, 4u, 1u }
 #define NHWC2NCHW                                                              \
   { 0u, 3u, 1u, 2u }
+#define NTHWC2NCTHW                                                            \
+  { 0u, 4u, 1u, 2u, 3u }
 #define HWCN2NHWC                                                              \
   { 3u, 0u, 1u, 2u }
 #define NHWC2HWNC                                                              \

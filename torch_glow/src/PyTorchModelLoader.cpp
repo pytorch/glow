@@ -2141,33 +2141,54 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[ConvInputs::input]));
 
-  input = F_.createTranspose("conv_input_transposed", input, NCHW2NHWC);
-  glow::ShapeNHWC inputShape(input.dims());
-
   // Glow expects conv weights to be in CRSK but PyTorch keeps them in CKRS
   // so we transpose them. C - output_depth, R - filter_height, S -
   // filter_width, K - input_depth.
   glow::NodeValue weights;
   ASSIGN_VALUE_OR_RETURN_ERR(
       weights, getGlowNodeValueForValue(inputs[ConvInputs::weights]));
-  weights = F_.createTranspose("conv_weights_transposed", weights, NCHW2NHWC);
-  glow::ShapeNHWC weightsShape(weights.dims());
+
+  RETURN_ERR_IF_NOT((input.dims().size() == 4 || input.dims().size() == 5) &&
+                        input.dims().size() == weights.dims().size(),
+                    "Expect 4 dims in input and weights for conv2d and 5 dims "
+                    "in input and weights for conv3d");
+  bool isConv3d = input.dims().size() == 5;
+  if (isConv3d) {
+    input = F_.createTranspose("conv_input_transposed", input, NCTHW2NTHWC);
+    weights =
+        F_.createTranspose("conv_weights_transposed", weights, NCTHW2NTHWC);
+  } else {
+    input = F_.createTranspose("conv_input_transposed", input, NCHW2NHWC);
+    weights = F_.createTranspose("conv_weights_transposed", weights, NCHW2NHWC);
+  }
 
   // If a bias was provided then use it otherwise create a 0 bias.
+  glow::dim_t biasDim = weights.dims()[0];
   glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
       inputs[ConvInputs::bias], "conv_bias",
-      glow::Type(ElemKind::FloatTy, {weightsShape.n}), 0);
+      glow::Type(ElemKind::FloatTy, {biasDim}), 0);
 
   std::vector<glow::unsigned_t> strides;
   ASSIGN_VALUE_OR_RETURN_ERR(
       strides, castVector<glow::unsigned_t>(expandIntIValIfNeeded(
-                   getGlowIValueForValue(inputs[ConvInputs::stride]), 2)));
+                   getGlowIValueForValue(inputs[ConvInputs::stride]),
+                   input.dims().size() - 2)));
 
-  glow::unsigned_t pad;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      pad, static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
-               getGlowIValueForValue(inputs[ConvInputs::padding]))));
-  std::vector<glow::unsigned_t> pads = {pad, pad, pad, pad};
+  std::vector<glow::unsigned_t> pads;
+  if (isConv3d) {
+    std::vector<glow::unsigned_t> pad;
+
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        pad, castVector<glow::unsigned_t>(expandIntIValIfNeeded(
+                 getGlowIValueForValue(inputs[ConvInputs::padding]), 3)));
+    pads = {pad[0], pad[0], pad[1], pad[1], pad[2], pad[2]};
+  } else {
+    glow::unsigned_t pad;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        pad, static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
+                 getGlowIValueForValue(inputs[ConvInputs::padding]))));
+    pads = {pad, pad, pad, pad};
+  }
 
   glow::unsigned_t dilation;
   ASSIGN_VALUE_OR_RETURN_ERR(
@@ -2184,24 +2205,49 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       groups, static_cast_expected<glow::unsigned_t>(iValToInt(
                   getGlowIValueForValue(inputs[ConvInputs::groups]))));
+  std::vector<glow::unsigned_t> kernels;
+  if (isConv3d) {
+    glow::ShapeNTHWC weights3DShape(weights.dims());
+    kernels = {static_cast<glow::unsigned_t>(weights3DShape.t),
+               static_cast<glow::unsigned_t>(weights3DShape.h),
+               static_cast<glow::unsigned_t>(weights3DShape.w)};
+  } else {
+    glow::ShapeNHWC weightsShape(weights.dims());
+    kernels = {static_cast<glow::unsigned_t>(weightsShape.h),
+               static_cast<glow::unsigned_t>(weightsShape.w)};
+  }
 
-  std::vector<glow::unsigned_t> kernels = {
-      static_cast<glow::unsigned_t>(weightsShape.h),
-      static_cast<glow::unsigned_t>(weightsShape.w)};
+  glow::TypeRef outTy;
+  if (isConv3d) {
+    glow::ShapeNTHWC input3DShape(input.dims());
+    auto outSz = glow::calculate3DConvPoolOutputDims(
+        input3DShape.t, input3DShape.h, input3DShape.w, kernels, strides, pads);
+    std::array<glow::dim_t, 5> outDims = {{input.dims()[0],
+                                           outSz.temporal_frames, outSz.height,
+                                           outSz.width, weights.dims()[0]}};
+    outTy = F_.getParent()->uniqueType(glow::ElemKind::FloatTy, outDims);
+  } else {
+    glow::ShapeNHWC inputShape(input.dims());
+    auto outSz = glow::calculateConvPoolOutputDims(
+        inputShape.h, inputShape.w, kernels, strides, pads, dilation);
+    std::array<glow::dim_t, 4> outDims = {
+        {input.dims()[0], outSz.first, outSz.second, weights.dims()[0]}};
+    outTy = F_.getParent()->uniqueType(glow::ElemKind::FloatTy, outDims);
+  }
 
-  auto outSz = glow::calculateConvPoolOutputDims(
-      inputShape.h, inputShape.w, kernels, strides, pads, dilation);
-  std::array<glow::dim_t, 4> outDims = {
-      {input.dims()[0], outSz.first, outSz.second, weightsShape.n}};
-  glow::TypeRef outTy =
-      F_.getParent()->uniqueType(glow::ElemKind::FloatTy, outDims);
-
-  glow::ConvolutionNode *conv =
-      F_.createConv("conv", input, weights, bias, outTy, kernels, strides, pads,
-                    groups, dilation);
-  glow::TransposeNode *output = F_.createTranspose(
-      "conv_output_transposed", conv->getResult(), NHWC2NCHW);
-
+  glow::TransposeNode *output = nullptr;
+  if (isConv3d) {
+    glow::Convolution3DNode *conv = F_.createConv3D(
+        "conv3d", input, weights, bias, outTy, kernels, strides, pads, groups);
+    output = F_.createTranspose("conv_output_transposed", conv->getResult(),
+                                NTHWC2NCTHW);
+  } else {
+    glow::ConvolutionNode *conv =
+        F_.createConv("conv", input, weights, bias, outTy, kernels, strides,
+                      pads, groups, dilation);
+    output = F_.createTranspose("conv_output_transposed", conv->getResult(),
+                                NHWC2NCHW);
+  }
   return addValueMapping(outputs[0], output->getResult());
 }
 
