@@ -555,7 +555,8 @@ bool ChannelwiseQuantizedConvolutionNode::verify() const {
                                    getBias(), Kernels_, Strides_, Pads_, Group_,
                                    /* dilation */ 1, /* checkBiasType */ false);
 
-  isValid &= checkType(getBias(), ElemKind::Int32QTy, this);
+  isValid &=
+      checkType(getBias(), {ElemKind::Int32QTy, ElemKind::FloatTy}, this);
   isValid &= checkType(getInput(), ElemKind::Int8QTy, this);
 
   // check qparam types

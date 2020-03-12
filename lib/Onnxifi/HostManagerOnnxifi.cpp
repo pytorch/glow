@@ -244,9 +244,7 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
           onnxModel, onnxModelSize, weightCount, weightDescriptors, *function,
           true /*loadInputsAsPlaceholders*/, backendPtr_->getUseOnnx()));
 
-  onnxInputToPlaceholder_ = loader->getInputVarsMapping();
-  onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();
-
+  bindPlaceholders(*loader);
   setZeroLengthSequence(maxSeqLength);
   // Make sure the pool is ready to go.
   for (auto &obj : onnxInputToPlaceholder_) {

@@ -261,6 +261,21 @@ void scramble() {
     }
     t.set_name(name_map.at(name));
   }
+  // Look for attributes of a list of strings matching a name and swap for
+  // scrambled version. Note that this should be fine because we currently only
+  // use a list of strings for vector<NodeValue>.
+  for (auto &n : *g->mutable_node()) {
+    for (auto &a : *n.mutable_attribute()) {
+      if (a.name() == "Predicate") {
+        LOG(FATAL) << "Predicate NodeValue unhandled.";
+      }
+      for (auto &s : *a.mutable_strings()) {
+        if (name_map.count(s)) {
+          s = name_map[s];
+        }
+      }
+    }
+  }
 
   {
     LOG(INFO) << "Writing output model to " << outputModelPathOpt;

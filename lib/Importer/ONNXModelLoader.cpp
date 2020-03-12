@@ -1125,7 +1125,7 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Create the IR node.
-  Node *SN = G_.createSlice(opName, data, newStarts, newEnds);
+  Node *SN = G_->createSlice(opName, data, newStarts, newEnds);
   RETURN_IF_ERR(addNodeAsOutput(op, SN));
 
   return Error::success();
@@ -1167,7 +1167,7 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   // weights in the format CRSK. ONNX stores the operators as KCRS.
   // C - output_depth, R - filter_height, S - filter_width, K - input_depth.
   TransposeNode *filterTransposeNode =
-      G_.createTranspose(opName, filterValue, NCHW2NHWC);
+      G_->createTranspose(opName, filterValue, NCHW2NHWC);
 
   // The structure of the conv weights is: CRSK. We take the C, which is the
   // number of filters. We use this value to calculate the size of the bias
@@ -1208,11 +1208,11 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   if (!bias) {
     Tensor biasTensor(ElemKind::FloatTy, {depth});
     biasTensor.zero();
-    bias = G_.getParent()->createConstant("conv.bias", std::move(biasTensor));
+    bias = G_->getParent()->createConstant("conv.bias", std::move(biasTensor));
   }
 
   // ONNX passes the input as NCHW, and we expect the input to be NHWC.
-  auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
+  auto *tr = G_->createTranspose(opName, in, NCHW2NHWC);
 
   // Calculate the size and allocate the output buffer.
   ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
@@ -1228,13 +1228,13 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides,
                                            pads, dilation);
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
-  auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  auto outTy = G_->getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
-  auto *node = G_.createConv(opName, tr, filterTransposeNode, bias, outTy,
-                             kernelShape, strides, pads, group, dilation);
+  auto *node = G_->createConv(opName, tr, filterTransposeNode, bias, outTy,
+                              kernelShape, strides, pads, group, dilation);
 
   // Transpose the output back.
-  auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
+  auto *N = G_->createTranspose(opName, node, NHWC2NCHW);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
 
   return Error::success();
@@ -1272,11 +1272,11 @@ Error ONNXModelLoader::loadTensorwiseQuantizedConvolution(
       calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
   std::array<dim_t, 4> outDims = {
       {idim.n, outSz.first, outSz.second, biasValue.dims()[0]}};
-  auto outTy = G_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
-                                          outOffset);
+  auto outTy = G_->getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
+                                           outOffset);
 
-  auto *node = G_.createConv(opName, input, filterValue, biasValue, outTy,
-                             kernels, strides, pads, groups);
+  auto *node = G_->createConv(opName, input, filterValue, biasValue, outTy,
+                              kernels, strides, pads, groups);
 
   return addNodeAsOutput(op, node);
 }
@@ -1317,10 +1317,10 @@ Error ONNXModelLoader::loadChannelwiseQuantizedConvolution(
       calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
   std::array<dim_t, 4> outDims = {
       {idim.n, outSz.first, outSz.second, biasValue.dims()[0]}};
-  auto outTy = G_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
-                                          outOffset);
+  auto outTy = G_->getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
+                                           outOffset);
 
-  auto *node = G_.createChannelwiseQuantizedConv(
+  auto *node = G_->createChannelwiseQuantizedConv(
       opName, input, filterValue, biasValue, scalesValue, offsetsValue, outTy,
       kernels, strides, pads, groups);
 
@@ -1355,7 +1355,7 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
   // weights in the format CRSK. ONNX stores the operators as KCRS.
   // C - output_depth, R - filter_height, S - filter_width, K - input_depth.
   TransposeNode *filterTransposeNode =
-      G_.createTranspose(opName, filterValue, CNHW2NHWC /* flip matrix */);
+      G_->createTranspose(opName, filterValue, CNHW2NHWC /* flip matrix */);
 
   // The structure of the conv weigts is: NHWC. We take the C, which is the
   // number of filters. We use this value to calculate the size of the bias
@@ -1396,11 +1396,11 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
   if (!bias) {
     Tensor biasTensor(ElemKind::FloatTy, {depth});
     biasTensor.zero();
-    bias = G_.getParent()->createConstant("conv.bias", std::move(biasTensor));
+    bias = G_->getParent()->createConstant("conv.bias", std::move(biasTensor));
   }
 
   // ONNX passes the input as NCHW, and we expect the input to be NHWC.
-  auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
+  auto *tr = G_->createTranspose(opName, in, NCHW2NHWC);
 
   // Calculate the size and allocate the output buffer.
   ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
@@ -1441,14 +1441,14 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
                                              pads, dilation);
   }
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
-  auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  auto outTy = G_->getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
   auto *node =
-      G_.createConvTranspose(opName, tr, filterTransposeNode, bias, outTy,
-                             kernels, strides, pads, group, dilation);
+      G_->createConvTranspose(opName, tr, filterTransposeNode, bias, outTy,
+                              kernels, strides, pads, group, dilation);
 
   // Transpose the output back.
-  auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
+  auto *N = G_->createTranspose(opName, node, NHWC2NCHW);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
 
   return Error::success();
@@ -1476,7 +1476,7 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
                ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
   }
 
-  auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
+  auto *tr = G_->createTranspose(opName, in, NCHW2NHWC);
 
   // If 'global_pooling' is set then the operation will pool over the size of
   // the input by doing: kernel = height/width.
@@ -1501,20 +1501,20 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
     }
 
-    node = G_.createMaxPool(opName, tr, kernels, strides, pads);
-    auto *res = G_.createTranspose(opName, NodeValue(node, 0), NHWC2NCHW);
-    auto *argmax = G_.createTranspose(opName, NodeValue(node, 1), NHWC2NCHW);
+    node = G_->createMaxPool(opName, tr, kernels, strides, pads);
+    auto *res = G_->createTranspose(opName, NodeValue(node, 0), NHWC2NCHW);
+    auto *argmax = G_->createTranspose(opName, NodeValue(node, 1), NHWC2NCHW);
     RETURN_IF_ERR(assignNodeOutputs(op, {res, argmax}));
   } else {
     size_t idx = 0;
     if (typeName == "MaxPool") {
-      node = G_.createMaxPool(opName, tr, kernels, strides, pads);
+      node = G_->createMaxPool(opName, tr, kernels, strides, pads);
       idx = MaxPoolNode::ResultIdx;
     } else {
-      node = G_.createAvgPool(opName, tr, kernels, strides, pads);
+      node = G_->createAvgPool(opName, tr, kernels, strides, pads);
       idx = AvgPoolNode::ResultIdx;
     }
-    auto *N = G_.createTranspose(opName, NodeValue(node, idx), NHWC2NCHW);
+    auto *N = G_->createTranspose(opName, NodeValue(node, idx), NHWC2NCHW);
     RETURN_IF_ERR(addNodeAsOutput(op, N));
   }
   return Error::success();
@@ -1555,16 +1555,16 @@ Error ONNXModelLoader::loadTensorwiseQuantizedPool(
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
     }
 
-    Node *maxpool = G_.createMaxPool(opName, in, kernels, strides, pads);
+    Node *maxpool = G_->createMaxPool(opName, in, kernels, strides, pads);
     auto res = maxpool->getNthResult(MaxPoolNode::ResultIdx);
     auto argmax = maxpool->getNthResult(MaxPoolNode::ArgmaxIdx);
     RETURN_IF_ERR(assignNodeOutputs(op, {res, argmax}));
   } else {
     Node *poolNode;
     if (typeName == "MaxPool") {
-      poolNode = G_.createMaxPool(opName, in, kernels, strides, pads);
+      poolNode = G_->createMaxPool(opName, in, kernels, strides, pads);
     } else {
-      poolNode = G_.createAvgPool(opName, in, kernels, strides, pads);
+      poolNode = G_->createAvgPool(opName, in, kernels, strides, pads);
     }
     RETURN_IF_ERR(addNodeAsOutput(op, poolNode));
   }
@@ -1585,7 +1585,7 @@ Error ONNXModelLoader::loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
   if (dict.count("keepDims")) {
     ASSIGN_VALUE_OR_RETURN_ERR(keepDims, loadInt(dict.at("keepDims")));
   }
-  Node *node = G_.createArgMax(opName, in, axis, keepDims);
+  Node *node = G_->createArgMax(opName, in, axis, keepDims);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
 }
@@ -1610,9 +1610,9 @@ Error ONNXModelLoader::loadGlobalAveragePool(
   ASSIGN_VALUE_OR_RETURN_ERR(
       pads, getPads(dict, kernels, strides, kernels /* input sizes*/));
 
-  auto *tr = G_.createTranspose(opName, in, NCHW2NHWC);
-  Node *node = G_.createAvgPool(opName, tr, kernels, strides, pads);
-  auto *N = G_.createTranspose(opName, node, NHWC2NCHW);
+  auto *tr = G_->createTranspose(opName, in, NCHW2NHWC);
+  Node *node = G_->createAvgPool(opName, tr, kernels, strides, pads);
+  auto *N = G_->createTranspose(opName, node, NHWC2NCHW);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
 }
@@ -1625,7 +1625,7 @@ Error ONNXModelLoader::loadSqueeze(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   std::vector<dim_t> axes;
   ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<dim_t>(dict["axes"]));
-  Node *node = G_.createSqueeze(opName, in, axes);
+  Node *node = G_->createSqueeze(opName, in, axes);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
 }
@@ -1638,7 +1638,7 @@ Error ONNXModelLoader::loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   std::vector<dim_t> axes;
   ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<dim_t>(dict["axes"]));
-  Node *node = G_.createExpandDims(opName, in, axes);
+  Node *node = G_->createExpandDims(opName, in, axes);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
 }
@@ -1663,8 +1663,8 @@ Error ONNXModelLoader::loadBatchNormalization(
     ASSIGN_VALUE_OR_RETURN_ERR(epsilon, loadFloat(epsilonIt->second));
   }
 
-  auto *node = G_.createBatchNormalization(opName, in, bias, scale, mean, var,
-                                           1, epsilon);
+  auto *node = G_->createBatchNormalization(opName, in, bias, scale, mean, var,
+                                            1, epsilon);
 
   // BatchNormalization has 4 optional outputs that are not supported by glow.
   // Then: 1/ In case the optional outputs are present and used by other
@@ -1692,7 +1692,7 @@ Error ONNXModelLoader::loadConcat(const ONNX_NAMESPACE::NodeProto &op,
 
   int axis;
   ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
-  Node *node = G_.createConcat(opName, inputs, axis);
+  Node *node = G_->createConcat(opName, inputs, axis);
 
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
@@ -1709,7 +1709,7 @@ Error ONNXModelLoader::loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
     if (dict.count("axis")) {
       ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
     }
-    in = G_.createFlatten("fc.in", in, axis);
+    in = G_->createFlatten("fc.in", in, axis);
   }
 
   unsigned_t axis_w = 1;
@@ -1726,13 +1726,13 @@ Error ONNXModelLoader::loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
     auto wDims = flattenCdr(W->dims(), axis_w);
     tmp.reset(ElemKind::FloatTy, {wDims.first, wDims.second});
     tmp.copyRawFrom(&W->getPayload());
-    W = G_.getParent()->createConstant(W->getName(), tmp);
+    W = G_->getParent()->createConstant(W->getName(), tmp);
   }
 
   Constant *B;
   ASSIGN_VALUE_OR_RETURN_ERR(B, getConstantByName(op.input(2)));
 
-  auto *node = G_.createFullyConnected(opName, in, W, B);
+  auto *node = G_->createFullyConnected(opName, in, W, B);
 
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
@@ -1762,17 +1762,17 @@ Error ONNXModelLoader::loadGemm(const ONNX_NAMESPACE::NodeProto &op,
   // TODO: support alpha * A * B + beta * C
 
   if (transA)
-    A = G_.createTranspose(opName, A, {1, 0});
+    A = G_->createTranspose(opName, A, {1, 0});
   if (transB)
-    B = G_.createTranspose(opName, B, {1, 0});
+    B = G_->createTranspose(opName, B, {1, 0});
 
-  MatMulNode *mul = G_.createMatMul(opName, A, B);
+  MatMulNode *mul = G_->createMatMul(opName, A, B);
   if (broadcastC) {
     int axis = mul->getResult().dims().size() - C.dims().size();
-    C = G_.createBroadcast(opName, C, mul->getResult().dims(), axis);
+    C = G_->createBroadcast(opName, C, mul->getResult().dims(), axis);
   }
 
-  Node *node = G_.createAdd(opName, mul, C);
+  Node *node = G_->createAdd(opName, mul, C);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
 }
@@ -1788,10 +1788,10 @@ Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
 
   /// For dimension size equal to 3 use batchedMatMul
   if (LHS.dims().size() == 3) {
-    Node *node = G_.createBatchMatMul(opName, LHS, RHS);
+    Node *node = G_->createBatchMatMul(opName, LHS, RHS);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
   } else {
-    Node *node = G_.createMatMul(opName, LHS, RHS);
+    Node *node = G_->createMatMul(opName, LHS, RHS);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
   }
   return Error::success();
@@ -1817,10 +1817,10 @@ Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Create the node.
-  auto splatType = G_.getParent()->uniqueType(ElemKind::FloatTy, input.dims());
+  auto splatType = G_->getParent()->uniqueType(ElemKind::FloatTy, input.dims());
   const std::string &opName = loadOperatorName(op);
-  Node *splatN = G_.createSplat(opName + "Alpha", splatType, alphaVal);
-  Node *N = G_.createPRELU(opName, input, splatN);
+  Node *splatN = G_->createSplat(opName + "Alpha", splatType, alphaVal);
+  Node *N = G_->createPRELU(opName, input, splatN);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
 
@@ -1873,10 +1873,10 @@ Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
                       "The padding can't remove all elements of a dimension");
     outDims[i] = new_dim;
   }
-  auto outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  auto outTy = G_->getParent()->uniqueType(ElemKind::FloatTy, outDims);
 
   // Create the IR node.
-  Node *N = G_.createPad(opName, input, outTy, mode, pads, value);
+  Node *N = G_->createPad(opName, input, outTy, mode, pads, value);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
 
   return Error::success();
@@ -1910,7 +1910,7 @@ Error ONNXModelLoader::loadCast(const ONNX_NAMESPACE::NodeProto &op,
                     "Unsupported Cast");
 
   // Create the IR node.
-  Node *N = G_.createConvertTo(opName, input, targetKind);
+  Node *N = G_->createConvertTo(opName, input, targetKind);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
 
   return Error::success();
@@ -1932,9 +1932,9 @@ Error ONNXModelLoader::loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
 
   // Create the node.
   std::string opName = loadOperatorName(op);
-  auto *tr = G_.createTranspose(opName, input, NCHW2NHWC);
-  Node *nd = G_.createSpaceToDepth(opName, tr, blockSize);
-  auto *N = G_.createTranspose(opName, nd, NHWC2NCHW);
+  auto *tr = G_->createTranspose(opName, input, NCHW2NHWC);
+  Node *nd = G_->createSpaceToDepth(opName, tr, blockSize);
+  auto *N = G_->createTranspose(opName, nd, NHWC2NCHW);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
 
@@ -1975,7 +1975,7 @@ Error ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
     auto end = begin + TH.actualSize();
     ShapeVector outputDims(begin, end);
 
-    ty = G_.getParent()->uniqueType(T.getType().getElementType(), outputDims);
+    ty = G_->getParent()->uniqueType(T.getType().getElementType(), outputDims);
     switch (T.getType().getElementType()) {
     case ElemKind::Int64ITy: {
       int64_t v = T.getHandle<int64_t>().raw(0);
@@ -1983,7 +1983,7 @@ Error ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
           v == static_cast<int64_t>(static_cast<float>(v)),
           "This ConstantOfShape implementation may cause losses for value " +
               std::to_string(v) + " .");
-      SN = G_.createSplat(loadOperatorName(op), ty, v);
+      SN = G_->createSplat(loadOperatorName(op), ty, v);
       break;
     }
     case ElemKind::Int32ITy: {
@@ -1992,15 +1992,15 @@ Error ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
           v == static_cast<int32_t>(static_cast<float>(v)),
           "This ConstantOfShape implementation may cause losses for value " +
               std::to_string(v) + " .");
-      SN = G_.createSplat(loadOperatorName(op), ty, v);
+      SN = G_->createSplat(loadOperatorName(op), ty, v);
       break;
     }
     default:
-      SN = G_.createSplat(loadOperatorName(op), ty, T.getHandle().raw(0));
+      SN = G_->createSplat(loadOperatorName(op), ty, T.getHandle().raw(0));
     }
   } else {
-    ty = G_.getParent()->uniqueType(T.getType().getElementType(), T.dims());
-    SN = G_.createSplat(loadOperatorName(op), ty, T.getHandle().raw(0));
+    ty = G_->getParent()->uniqueType(T.getType().getElementType(), T.dims());
+    SN = G_->createSplat(loadOperatorName(op), ty, T.getHandle().raw(0));
   }
   RETURN_IF_ERR(addNodeAsOutput(op, SN));
   return Error::success();
@@ -2029,7 +2029,7 @@ Error ONNXModelLoader::loadTile(const ONNX_NAMESPACE::NodeProto &op,
     auto tiles = rh.raw(i);
     if (tiles != 1) {
       std::string name = opName + "." + std::to_string(i);
-      N = G_.createTile(name, N, tiles, /*axis*/ i);
+      N = G_->createTile(name, N, tiles, /*axis*/ i);
     }
   }
 
@@ -2055,14 +2055,14 @@ ONNXModelLoader::foldOperator(const ONNX_NAMESPACE::NodeProto &op) {
 
   // Create a temporary lightweight loader to construct function representing
   // current Op, and then constant fold the function using Interp backend.
-  Function *tmpF = G_.getParent()->createFunction("eval_const_fold__");
+  Function *tmpF = G_->getParent()->createFunction("eval_const_fold__");
   ONNXModelLoader tmpLoader(*tmpF);
   tmpLoader.opsetVersion_ = opsetVersion_;
   bool foldStatus = !ERR_TO_BOOL(
       constantFoldInLoader<ONNXModelLoader, ONNX_NAMESPACE::NodeProto>(
           tmpF, tmpLoader, this, op),
       /* log */ false);
-  G_.getParent()->eraseFunction(tmpF);
+  G_->getParent()->eraseFunction(tmpF);
   return foldStatus;
 }
 
@@ -2079,7 +2079,7 @@ Error ONNXModelLoader::loadWhere(const ONNX_NAMESPACE::NodeProto &op,
 
   // Passing -1 for multi directional broadcast, axis will be computed
   // automatically.
-  Node *N = G_.createNodeWithBroadcast<SelectNode>(opName, -1, cNV, xNV, yNV);
+  Node *N = G_->createNodeWithBroadcast<SelectNode>(opName, -1, cNV, xNV, yNV);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -2136,7 +2136,7 @@ static Function::RnnActivation RnnActivationSigmoid(Function &F) {
 /// Currenlty only Sigmoid, Tahn and ReLU activations are supported.
 static Error
 getRnnActivations(const ONNX_NAMESPACE::NodeProto &op,
-                  ArgumentDictionaryTy &dict, Function &F,
+                  ArgumentDictionaryTy &dict, Function *F,
                   std::vector<Function::RnnActivation> &activations) {
 
   // Activation alpha not supported (Optional)(Default:activation dependent).
@@ -2160,11 +2160,11 @@ getRnnActivations(const ONNX_NAMESPACE::NodeProto &op,
     for (size_t actIdx = 0; actIdx < actNum; actIdx++) {
       std::string actStr = dict.at("activations")->strings().Get(actIdx);
       if (actStr == "Relu") {
-        activations[actIdx] = RnnActivationRelu(F);
+        activations[actIdx] = RnnActivationRelu(*F);
       } else if (actStr == "Tanh") {
-        activations[actIdx] = RnnActivationTanh(F);
+        activations[actIdx] = RnnActivationTanh(*F);
       } else if (actStr == "Sigmoid") {
-        activations[actIdx] = RnnActivationSigmoid(F);
+        activations[actIdx] = RnnActivationSigmoid(*F);
       } else {
         RETURN_ERR("ONNX " + op.op_type() + " activation '" + actStr +
                        "' not supported!",
@@ -2193,9 +2193,9 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
   // Get activations as lambdas (Optional)(Default:f=Tanh).
   std::vector<Function::RnnActivation> activations;
   if (direction == Function::RnnDirection::Bidirectional) {
-    activations = {RnnActivationTanh(G_), RnnActivationTanh(G_)};
+    activations = {RnnActivationTanh(*G_), RnnActivationTanh(*G_)};
   } else {
-    activations = {RnnActivationTanh(G_)};
+    activations = {RnnActivationTanh(*G_)};
   }
   RETURN_IF_ERR(getRnnActivations(op, dict, G_, activations));
 
@@ -2262,7 +2262,7 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
 
   // Create Y_h (hidden state) output placeholder.
   Placeholder *Y_h_ph;
-  TypeRef Htype = G_.getParent()->uniqueTypeWithNewShape(
+  TypeRef Htype = G_->getParent()->uniqueTypeWithNewShape(
       X.getType(), {numDirections, batchSize, hiddenSize});
   std::string Hname = opName + ".Y_h";
   ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
@@ -2275,11 +2275,11 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
 
   // Create ONNX RNN.
   NodeValue Y, Y_h;
-  G_.createOnnxRNN(opName, X, W, R, B, Y_h_init, Y, Y_h, hiddenSize, direction,
-                   activations);
+  G_->createOnnxRNN(opName, X, W, R, B, Y_h_init, Y, Y_h, hiddenSize, direction,
+                    activations);
 
   // Save RNN state in the state placeholder.
-  G_.createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
+  G_->createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
 
   // Add node.
   const int numOutputs = op.output_size();
@@ -2311,10 +2311,10 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
   // Get activations as lambdas (Optional)(Default:f=Sigmoid, g=Tanh).
   std::vector<Function::RnnActivation> activations;
   if (direction == Function::RnnDirection::Bidirectional) {
-    activations = {RnnActivationSigmoid(G_), RnnActivationTanh(G_),
-                   RnnActivationSigmoid(G_), RnnActivationTanh(G_)};
+    activations = {RnnActivationSigmoid(*G_), RnnActivationTanh(*G_),
+                   RnnActivationSigmoid(*G_), RnnActivationTanh(*G_)};
   } else {
-    activations = {RnnActivationSigmoid(G_), RnnActivationTanh(G_)};
+    activations = {RnnActivationSigmoid(*G_), RnnActivationTanh(*G_)};
   }
   RETURN_IF_ERR(getRnnActivations(op, dict, G_, activations));
 
@@ -2388,7 +2388,7 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
 
   // Create Y_h (hidden state) output placeholder.
   Placeholder *Y_h_ph;
-  TypeRef Htype = G_.getParent()->uniqueTypeWithNewShape(
+  TypeRef Htype = G_->getParent()->uniqueTypeWithNewShape(
       X.getType(), {numDirections, batchSize, hiddenSize});
   std::string Hname = opName + ".Y_h";
   ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
@@ -2401,11 +2401,11 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
 
   // Create ONNX GRU.
   NodeValue Y, Y_h;
-  G_.createOnnxGRU(opName, X, W, R, B, Y_h_init, Y, Y_h, hiddenSize, direction,
-                   activations, (bool)linearBeforeReset);
+  G_->createOnnxGRU(opName, X, W, R, B, Y_h_init, Y, Y_h, hiddenSize, direction,
+                    activations, (bool)linearBeforeReset);
 
   // Save GRU state in the state placeholder.
-  G_.createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
+  G_->createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
 
   // Add node.
   const int numOutputs = op.output_size();
@@ -2437,12 +2437,12 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   // Get activations as lambdas (Optional)(Default:f=Sigmoid, g=Tanh, h=Tanh).
   std::vector<Function::RnnActivation> activations;
   if (direction == Function::RnnDirection::Bidirectional) {
-    activations = {RnnActivationSigmoid(G_), RnnActivationTanh(G_),
-                   RnnActivationTanh(G_),    RnnActivationSigmoid(G_),
-                   RnnActivationTanh(G_),    RnnActivationTanh(G_)};
+    activations = {RnnActivationSigmoid(*G_), RnnActivationTanh(*G_),
+                   RnnActivationTanh(*G_),    RnnActivationSigmoid(*G_),
+                   RnnActivationTanh(*G_),    RnnActivationTanh(*G_)};
   } else {
-    activations = {RnnActivationSigmoid(G_), RnnActivationTanh(G_),
-                   RnnActivationTanh(G_)};
+    activations = {RnnActivationSigmoid(*G_), RnnActivationTanh(*G_),
+                   RnnActivationTanh(*G_)};
   }
   RETURN_IF_ERR(getRnnActivations(op, dict, G_, activations));
 
@@ -2527,7 +2527,7 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
 
   // Create Y_h (hidden state) output placeholder.
   Placeholder *Y_h_ph;
-  TypeRef Htype = G_.getParent()->uniqueTypeWithNewShape(
+  TypeRef Htype = G_->getParent()->uniqueTypeWithNewShape(
       X.getType(), {numDirections, batchSize, hiddenSize});
   std::string Hname = opName + ".Y_h";
   ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
@@ -2536,7 +2536,7 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
 
   // Create Y_c (cell state) output placeholder.
   Placeholder *Y_c_ph;
-  TypeRef Ctype = G_.getParent()->uniqueTypeWithNewShape(
+  TypeRef Ctype = G_->getParent()->uniqueTypeWithNewShape(
       X.getType(), {numDirections, batchSize, hiddenSize});
   std::string Cname = opName + ".Y_c";
   ASSIGN_VALUE_OR_RETURN_ERR(Y_c_ph,
@@ -2550,12 +2550,12 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
 
   // Create ONNX LSTM.
   NodeValue Y, Y_h, Y_c;
-  G_.createOnnxLSTM(opName, X, W, R, B, Y_h_init, Y_c_init, P, Y, Y_h, Y_c,
-                    hiddenSize, direction, activations, (bool)inputForget);
+  G_->createOnnxLSTM(opName, X, W, R, B, Y_h_init, Y_c_init, P, Y, Y_h, Y_c,
+                     hiddenSize, direction, activations, (bool)inputForget);
 
   // Save LSTM state in the state placeholders.
-  G_.createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
-  G_.createSave(opName + ".Y_c.save", Y_c, Y_c_ph);
+  G_->createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
+  G_->createSave(opName + ".Y_c.save", Y_c, Y_c_ph);
 
   // Add node.
   const int numOutputs = op.output_size();
@@ -2578,7 +2578,7 @@ Error ONNXModelLoader::loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue RHS;
   ASSIGN_VALUE_OR_RETURN_ERR(RHS, getNodeValueByName(op.input(1)));
 
-  Node *N = G_.createCmpEQ(loadOperatorName(op), LHS, RHS);
+  Node *N = G_->createCmpEQ(loadOperatorName(op), LHS, RHS);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -2591,7 +2591,7 @@ Error ONNXModelLoader::loadCmpLTE(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue RHS;
   ASSIGN_VALUE_OR_RETURN_ERR(RHS, getNodeValueByName(op.input(1)));
 
-  Node *N = G_.createCmpLTE(loadOperatorName(op), LHS, RHS);
+  Node *N = G_->createCmpLTE(loadOperatorName(op), LHS, RHS);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -2609,8 +2609,8 @@ Error ONNXModelLoader::loadSelect(const ONNX_NAMESPACE::NodeProto &op,
   std::vector<dim_t> shape;
   ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict["shape"]));
 
-  auto outTy = G_.getParent()->uniqueType(LHS.getElementType(), shape);
-  Node *N = G_.createSelect(loadOperatorName(op), outTy, Cond, LHS, RHS);
+  auto outTy = G_->getParent()->uniqueType(LHS.getElementType(), shape);
+  Node *N = G_->createSelect(loadOperatorName(op), outTy, Cond, LHS, RHS);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -2631,8 +2631,8 @@ Error ONNXModelLoader::loadQuantize(const ONNX_NAMESPACE::NodeProto &op,
   ElemKind elemKind = Type::getElementKindFromName(elemKindStr);
 
   auto outDims = in.getType()->dims();
-  auto outTy = G_.getParent()->uniqueType(elemKind, outDims, scale, offset);
-  Node *N = G_.createQuantize(loadOperatorName(op), in, outTy);
+  auto outTy = G_->getParent()->uniqueType(elemKind, outDims, scale, offset);
+  Node *N = G_->createQuantize(loadOperatorName(op), in, outTy);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -2654,8 +2654,8 @@ Error ONNXModelLoader::loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,
 
   auto type = ElemKind::FloatTy;
   RETURN_IF_ERR(onnxTensorDataTypeToElemKind(t.data_type(), &type));
-  auto outTy = G_.getParent()->uniqueType(type, shape);
-  Node *N = G_.createConvertTo(loadOperatorName(op), in, outTy);
+  auto outTy = G_->getParent()->uniqueType(type, shape);
+  Node *N = G_->createConvertTo(loadOperatorName(op), in, outTy);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -2666,7 +2666,7 @@ Error ONNXModelLoader::loadDequantize(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
-  Node *N = G_.createDequantize(loadOperatorName(op), in);
+  Node *N = G_->createDequantize(loadOperatorName(op), in);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -2679,7 +2679,7 @@ Error ONNXModelLoader::loadRegression(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue expected;
   ASSIGN_VALUE_OR_RETURN_ERR(expected, getNodeValueByName(op.input(1)));
 
-  Node *N = G_.createRegression(loadOperatorName(op), in, expected);
+  Node *N = G_->createRegression(loadOperatorName(op), in, expected);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -2692,7 +2692,7 @@ Error ONNXModelLoader::loadBatchedAdd(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue sample;
   ASSIGN_VALUE_OR_RETURN_ERR(sample, getNodeValueByName(op.input(1)));
 
-  Node *N = G_.createBatchedAdd(loadOperatorName(op), batch, sample);
+  Node *N = G_->createBatchedAdd(loadOperatorName(op), batch, sample);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -2730,7 +2730,7 @@ Error ONNXModelLoader::loadCumSum(const ONNX_NAMESPACE::NodeProto &op,
     ASSIGN_VALUE_OR_RETURN_ERR(reverse, loadInt(dict.at("reverse")));
   }
 
-  Node *N = G_.createCumSum(loadOperatorName(op), input, exclusive, reverse);
+  Node *N = G_->createCumSum(loadOperatorName(op), input, exclusive, reverse);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
 }
@@ -2744,7 +2744,7 @@ Error ONNXModelLoader::loadScatterAssign(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue slices;
   ASSIGN_VALUE_OR_RETURN_ERR(slices, getNodeValueByName(op.input(2)));
 
-  Node *N = G_.createScatterData(loadOperatorName(op), data, indices, slices);
+  Node *N = G_->createScatterData(loadOperatorName(op), data, indices, slices);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -2760,8 +2760,8 @@ Error ONNXModelLoader::loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
   std::vector<dim_t> shape;
   ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict["shape"]));
 
-  auto outTy = G_.getParent()->uniqueType(in.getElementType(), shape);
-  Node *N = G_.createIntLookupTable(loadOperatorName(op), in, values, outTy);
+  auto outTy = G_->getParent()->uniqueType(in.getElementType(), shape);
+  Node *N = G_->createIntLookupTable(loadOperatorName(op), in, values, outTy);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -2774,7 +2774,7 @@ Error ONNXModelLoader::loadLengthsRangeFill(const ONNX_NAMESPACE::NodeProto &op,
   unsigned_t size;
   ASSIGN_VALUE_OR_RETURN_ERR(size, loadInt(dict.at("size")));
 
-  Node *N = G_.createLengthsRangeFill(loadOperatorName(op), lengths, size);
+  Node *N = G_->createLengthsRangeFill(loadOperatorName(op), lengths, size);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -2790,10 +2790,10 @@ Error ONNXModelLoader::loadRescaleQuantized(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(offset, loadInt(dict.at("offset")));
 
   auto inTy = in.getType();
-  auto outTy = G_.getParent()->uniqueType(inTy->getElementType(), inTy->dims(),
-                                          scale, offset);
+  auto outTy = G_->getParent()->uniqueType(inTy->getElementType(), inTy->dims(),
+                                           scale, offset);
 
-  Node *N = G_.createRescaleQuantized(loadOperatorName(op), in, outTy);
+  Node *N = G_->createRescaleQuantized(loadOperatorName(op), in, outTy);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -2816,7 +2816,7 @@ Error ONNXModelLoader::loadRowwiseQuantizedSparseLengthsWeightedSum(
   LengthsMode lengthsMode;
   ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
 
-  Node *N = G_.createRowwiseQuantizedSparseLengthsWeightedSum(
+  Node *N = G_->createRowwiseQuantizedSparseLengthsWeightedSum(
       loadOperatorName(op), data, scales, offsets, weights, indices, lengths,
       /* precision */ ElemKind::FloatTy, /* useFP16Accumulation */ false,
       lengthsMode);
@@ -2838,7 +2838,7 @@ Error ONNXModelLoader::loadFusedRowwiseQuantizedSparseLengthsWeightedSum(
   LengthsMode lengthsMode;
   ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
 
-  Node *N = G_.createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+  Node *N = G_->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
       loadOperatorName(op), data, weights, indices, lengths,
       /* useFP16Accumulation */ false, lengthsMode);
 
@@ -2858,7 +2858,7 @@ Error ONNXModelLoader::loadFusedRowwiseQuantizedSparseLengthsSum(
   ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
 
   Storage *dataS = llvm::dyn_cast<Storage>(data);
-  Node *N = G_.createFusedRowwiseQuantizedSparseLengthsSum(
+  Node *N = G_->createFusedRowwiseQuantizedSparseLengthsSum(
       loadOperatorName(op), dataS, indices, lengths,
       /* useFP16Accumulation */ false, lengthsMode);
 
@@ -2884,7 +2884,7 @@ Error ONNXModelLoader::loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   Node *N =
-      G_.createFullyConnected(loadOperatorName(op), in, W, B ? B : b, axis);
+      G_->createFullyConnected(loadOperatorName(op), in, W, B ? B : b, axis);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -2916,11 +2916,11 @@ Error ONNXModelLoader::loadRowwiseQuantizedFullyConnected(
   int32_t outOffset;
   ASSIGN_VALUE_OR_RETURN_ERR(outOffset, loadInt(dict.at("out_offset")));
 
-  auto outTy = G_.getParent()->uniqueType(ElemKind::Int8QTy,
-                                          {input.dims()[0], weights.dims()[0]},
-                                          outScale, outOffset);
+  auto outTy = G_->getParent()->uniqueType(ElemKind::Int8QTy,
+                                           {input.dims()[0], weights.dims()[0]},
+                                           outScale, outOffset);
 
-  Node *N = G_.createRowwiseQuantizedFullyConnected(
+  Node *N = G_->createRowwiseQuantizedFullyConnected(
       "rowwise_quantized_fc", input, weightsC, scalesC, offsetsC, biasC, outTy);
 
   return addNodeAsOutput(op, N);
@@ -2994,13 +2994,13 @@ Error ONNXModelLoader::loadNonMaxSuppression(
   Node *N = nullptr;
 
   if (isV4) {
-    N = G_.createNonMaxSuppressionV4(opName, boxesNV, scoresNV, centerPointBox,
-                                     maxOutputBoxesPerClass, iouThreshold,
-                                     scoreThreshold);
+    N = G_->createNonMaxSuppressionV4(opName, boxesNV, scoresNV, centerPointBox,
+                                      maxOutputBoxesPerClass, iouThreshold,
+                                      scoreThreshold);
   } else {
-    N = G_.createNonMaxSuppressionONNX(opName, boxesNV, scoresNV,
-                                       centerPointBox, maxOutputBoxesPerClass,
-                                       iouThreshold, scoreThreshold);
+    N = G_->createNonMaxSuppressionONNX(opName, boxesNV, scoresNV,
+                                        centerPointBox, maxOutputBoxesPerClass,
+                                        iouThreshold, scoreThreshold);
   }
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -3031,8 +3031,8 @@ Error ONNXModelLoader::loadInsertTensor(const ONNX_NAMESPACE::NodeProto &op,
     ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
   }
 
-  Node *N = G_.createInsertTensor(loadOperatorName(op), big, small, start,
-                                  count, axis);
+  Node *N = G_->createInsertTensor(loadOperatorName(op), big, small, start,
+                                   count, axis);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -3059,10 +3059,10 @@ Error ONNXModelLoader::loadAdaptiveAvgPool(const ONNX_NAMESPACE::NodeProto &op,
 
   ShapeNHWC idim(input.dims());
 
-  auto outTy = G_.getParent()->uniqueTypeWithNewShape(
+  auto outTy = G_->getParent()->uniqueTypeWithNewShape(
       input.getType(), {idim.n, outputShape[0], outputShape[1], idim.c});
 
-  Node *N = G_.createAdaptiveAvgPool(opName, input, outTy);
+  Node *N = G_->createAdaptiveAvgPool(opName, input, outTy);
 
   return addNodeAsOutput(op, N);
 }
@@ -3077,7 +3077,7 @@ Error ONNXModelLoader::loadFlip(const ONNX_NAMESPACE::NodeProto &op,
     ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
   }
 
-  Node *N = G_.createFlip("flip", input, axis);
+  Node *N = G_->createFlip("flip", input, axis);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -3086,7 +3086,7 @@ Error ONNXModelLoader::loadFlip(const ONNX_NAMESPACE::NodeProto &op,
 Expected<TypeRef>
 ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
                                         ArgumentDictionaryTy &dict) {
-  Module &mod = *G_.getParent();
+  Module &mod = *G_->getParent();
 
   // Load ElemKind.
   std::string elemKindStr;
@@ -3373,10 +3373,10 @@ Error ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
           layout, getAttrFromDocString(layoutSignifier, docString));
     }
 
-    Placeholder *placeholder = G_.getParent()->createPlaceholder(
+    Placeholder *placeholder = G_->getParent()->createPlaceholder(
         r.getType(), outputName, isTrainable != "0", layout);
     SaveNode *SN =
-        G_.createSave(saveNodeName, r, placeholder, hasSpecifiedSaveName);
+        G_->createSave(saveNodeName, r, placeholder, hasSpecifiedSaveName);
     outputVarsByName_[outputName] = SN->getPlaceholder();
   }
 
@@ -3406,7 +3406,7 @@ Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
 }
 
 ONNXModelLoader::ONNXModelLoader(Function &F, Error *errPtr)
-    : CommonOperatorLoader({}, {}, F, errPtr) {
+    : CommonOperatorLoader({}, {}, &F, errPtr) {
   deleteUnusedConstants();
 }
 
@@ -3476,7 +3476,7 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  Error *errPtr, bool zipMode,
                                  bool disableConstFoldInLoader,
                                  const Backend *B)
-    : CommonOperatorLoader(tensorNames, types, F, errPtr) {
+    : CommonOperatorLoader(tensorNames, types, &F, errPtr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
@@ -3547,7 +3547,7 @@ ONNXModelLoader::ONNXModelLoader(
     const void *model, uint32_t modelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
     bool loadInputsAsPlaceholders, Error *errPtr, bool constFoldInLoader)
-    : CommonOperatorLoader({}, {}, F, errPtr) {
+    : CommonOperatorLoader({}, {}, &F, errPtr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;

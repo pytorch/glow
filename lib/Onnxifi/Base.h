@@ -159,6 +159,22 @@ protected:
   /// placeholder for output.
   llvm::StringMap<Placeholder *> onnxOutputToPlaceholder_;
 
+  /// A list of input names ordered by their position in ONNXIFI input
+  /// descriptor array.
+  std::vector<std::string> onnxInputNames_;
+
+  /// A list of input placeholders ordered by their position in ONNXIFI input
+  /// descriptor array.
+  std::vector<Placeholder *> onnxInputPlaceholders_;
+
+  /// A list of output names ordered by their position in ONNXIFI output
+  /// descriptor array.
+  std::vector<std::string> onnxOutputNames_;
+
+  /// A list of output placeholders ordered by their position in ONNXIFI output
+  /// descriptor array.
+  std::vector<Placeholder *> onnxOutputPlaceholders_;
+
   /// An object pool for tensors, to share allocations.
   TensorPool tensorPool_;
 
@@ -167,6 +183,9 @@ protected:
 
   /// Set the zero length tensor
   void setZeroLengthSequence(dim_t maxSeqLength);
+
+  /// Bind input/output placeholders
+  void bindPlaceholders(const ONNXIFIModelLoader &loader);
 
 private:
   /// inference dump counter

@@ -692,3 +692,75 @@ bool Interpreter::shouldLower(const Node *N) const {
     return true;
   }
 }
+
+/// Channelwise quantize the given float \p bias as int32 using \p inputScale,
+/// per-channel \p scales and \p offsets. \returns false if the bias was already
+/// quantized and thus no change was made and true otherwise.
+static bool channelwiseQuantizeFloatBias(
+    Function *F, ChannelwiseQuantizedConvolutionNode &channelwiseConv) {
+  // If bias is already quantized then quit.
+  if (channelwiseConv.getBias().getElementType() == ElemKind::Int32QTy) {
+    return false;
+  }
+
+  assert(channelwiseConv.getBias().getElementType() == ElemKind::FloatTy &&
+         "Bias type must be a float in order to quantize it.");
+
+  auto *inType = channelwiseConv.getInput().getType();
+
+  Constant *biasC =
+      llvm::dyn_cast<Constant>(channelwiseConv.getBias().getNode());
+  assert(biasC && "bias input to ChannelwiseQuantizedConvolutionNode "
+                  "must be a Constant in order to quantize the bias");
+
+  Constant *scalesC =
+      llvm::dyn_cast<Constant>(channelwiseConv.getScales().getNode());
+  assert(scalesC && "scales input to ChannelwiseQuantizedConvolutionNode must "
+                    "be a Constant in order to quantize the bias");
+
+  const auto &biasUnquantizedH = biasC->getPayload().getHandle<float>();
+  const auto &scalesH = scalesC->getPayload().getHandle<float>();
+
+  // biasQuantizedT is Int32QTy but the quantization parameters on the tensor
+  // are not real, instead quantization parameters are from scales and offsets
+  // inputs.
+  auto biasQuantizedT = Tensor(ElemKind::Int32QTy, biasUnquantizedH.dims(),
+                               /* scale */ 1.0, /* offset */ 0);
+  auto biasQuantizedH = biasQuantizedT.getHandle<int32_t>();
+
+  for (dim_t i = 0; i < biasQuantizedH.size(); ++i) {
+    TensorQuantizationParams tqp;
+    tqp.scale = inType->getScale() * scalesH.raw(i);
+    tqp.offset = 0;
+    biasQuantizedH.raw(i) =
+        quantization::quantize<int32_t>(biasUnquantizedH.raw(i), tqp);
+  }
+
+  auto biasQuantizedC = F->getParent()->createConstant(
+      biasC->getName(), std::move(biasQuantizedT));
+
+  auto newChannelwiseConv = F->createChannelwiseQuantizedConv(
+      channelwiseConv.getName(), channelwiseConv.getInput(),
+      channelwiseConv.getFilter(), biasQuantizedC, channelwiseConv.getScales(),
+      channelwiseConv.getOffsets(), channelwiseConv.getResult().getType(),
+      channelwiseConv.getKernels(), channelwiseConv.getStrides(),
+      channelwiseConv.getPads(), channelwiseConv.getGroup());
+
+  channelwiseConv.getResult().replaceAllUsesOfWith(newChannelwiseConv);
+  return true;
+}
+
+bool Interpreter::transformPostLowering(
+    Function *F, CompilationContext &cctx,
+    const glow::runtime::DeviceInfo *devInfo) const {
+  LOG_SCOPE(F->getLogContext(), "Interpreter::transformPostLowering")
+
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    if (auto *channelwiseConv =
+            llvm::dyn_cast<ChannelwiseQuantizedConvolutionNode>(&node)) {
+      changed |= channelwiseQuantizeFloatBias(F, *channelwiseConv);
+    }
+  }
+  return changed;
+}

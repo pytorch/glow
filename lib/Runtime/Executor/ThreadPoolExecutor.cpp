@@ -62,7 +62,9 @@ void InflightBarrier::wait() {
 ThreadPoolExecutor::ThreadPoolExecutor(const DeviceManagerMapTy &deviceManagers,
                                        unsigned numWorkers,
                                        const std::string &name)
-    : threadPool_(numWorkers, name), deviceManagers_(deviceManagers) {}
+    : threadPool_(numWorkers,
+                  std::make_shared<folly::NamedThreadFactory>(name)),
+      deviceManagers_(deviceManagers) {}
 
 void ThreadPoolExecutor::shutdown() {
   // Prevent more requests from being processed.
@@ -72,6 +74,9 @@ void ThreadPoolExecutor::shutdown() {
   // processed before starting to destroy state that is used in
   // handleDeviceManagerResult().
   inflightBarrier_.wait();
+
+  threadPool_.stop();
+  threadPool_.join();
 }
 
 void ThreadPoolExecutor::run(const DAGNode *root,
@@ -83,8 +88,9 @@ void ThreadPoolExecutor::run(const DAGNode *root,
                     "ThreadPoolExecutor::run");
 
   if (context->getTraceContext()) {
-    for (auto id : threadPool_.getThreadIds()) {
-      context->getTraceContext()->setThreadName(id, "ThreadPoolExecutor");
+    auto tid = threads::getThreadId();
+    if (!context->getTraceContext()->getThreadNames().count(tid)) {
+      context->getTraceContext()->setThreadName(tid, "ThreadPoolExecutor");
     }
   }
 
@@ -169,18 +175,17 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
 
         // Immediately move the handling of the result onto this run's executor
         // to avoid doing work on the DeviceManager thread.
-        threadPool_.getExecutor()->submit(
-            [this, executionState, node, err = std::move(err), currentDevice,
-             id, ctx = std::move(resultCtx)]() mutable {
-              TRACE_EVENT_LOG_ID(ctx->getTraceContext(), TraceLevel::REQUEST,
-                                 "handle result queuing",
-                                 TraceEvent::AsyncEndType, TraceEvent::now(),
-                                 id);
+        threadPool_.add([this, executionState, node, err = std::move(err),
+                         currentDevice, id,
+                         ctx = std::move(resultCtx)]() mutable {
+          TRACE_EVENT_LOG_ID(ctx->getTraceContext(), TraceLevel::REQUEST,
+                             "handle result queuing", TraceEvent::AsyncEndType,
+                             TraceEvent::now(), id);
 
-              node->markFinished(currentDevice);
-              this->handleDeviceManagerResult(executionState, std::move(err),
-                                              std::move(ctx), node);
-            });
+          node->markFinished(currentDevice);
+          this->handleDeviceManagerResult(executionState, std::move(err),
+                                          std::move(ctx), node);
+        });
       });
 }
 

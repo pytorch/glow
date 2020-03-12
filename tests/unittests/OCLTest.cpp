@@ -82,7 +82,7 @@ TEST(OpenCLCorrectnessTest, softmaxGradTest) {
   inputs.getHandle().initXavier(1, PRNG);
   weights.getHandle().randomize(0.0, 0.5, PRNG);
   bias.getHandle().randomize(-0.2, 0.0, PRNG);
-  auto selectedH = selected.getHandle<sdim_t>();
+  auto selectedH = selected.getHandle<int64_t>();
   for (size_t i = 0; i < 8; i++) {
     selectedH.raw(i) = PRNG.nextRandInt(0, 22);
   }

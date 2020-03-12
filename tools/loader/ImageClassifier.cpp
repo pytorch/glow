@@ -700,7 +700,16 @@ int main(int argc, char **argv) {
     if ((!miniBatchMode) && (!streamInputFilenamesMode)) {
       inputImageBatchFilenames = inputImageFilenames;
     }
-
+    if (!tracePath.empty()) {
+      loader.getHostManager()->setTraceContext(
+          glow::make_unique<TraceContext>(traceLevel));
+      Error err = loader.getHostManager()->startDeviceTrace();
+      if (err) {
+        llvm::outs() << "Failed to start device trace.";
+      } else {
+        llvm::outs() << "Device trace started.";
+      }
+    }
     while ((streamInputFilenamesMode &&
             getNextImageFilenames(&inputImageBatchFilenames)) ||
            (miniBatchMode &&
@@ -831,6 +840,14 @@ int main(int argc, char **argv) {
     // have run inference one or more times to gather the profile.
     if (profilingGraph()) {
       loader.generateAndSerializeQuantizationInfos(bindings);
+    }
+    if (!tracePath.empty()) {
+      Error err = loader.getHostManager()->stopDeviceTrace();
+      if (err) {
+        llvm::outs() << "Failed to stop device trace:";
+      } else {
+        traceContext->merge(loader.getHostManager()->getTraceContext());
+      }
     }
   };
 
