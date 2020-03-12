@@ -81,10 +81,6 @@ jobs:
     environment:
       DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang8-ubuntu16.04:283"
     <<: *linux_default
-  TSAN:
-    environment:
-      DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang8-ubuntu16.04:283"
-    <<: *linux_default
   32B_DIM_T:
     environment:
       DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang8-ubuntu16.04:283"
@@ -108,7 +104,6 @@ workflows:
       - DEBUG
       - OPENCL
       - ASAN
-      - TSAN
       - 32B_DIM_T
       - RELEASE_WITH_EXPENSIVE_TESTS
       - PYTORCH

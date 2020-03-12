@@ -364,6 +364,9 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   }
   TRACE_EVENT_SCOPE_END_NAMED(soEvent);
 
+  if (ctx->getTraceContext()) {
+    ctx->getTraceContext()->setThreadName("Caller");
+  }
   auto ret = run(std::move(ctx), outputEvent, traceEvents);
   if (GlowSaveOnnxifiIO) {
     // We need to wait for the execution to finish in order to extract output
