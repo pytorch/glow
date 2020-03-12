@@ -396,9 +396,9 @@ void Tensor::loadFromRawBinaryFile(llvm::StringRef filename) {
   auto tensorSize = getSizeInBytes();
   fs.seekg(0, std::ios::end);
   std::streampos fileSize = fs.tellg();
-  DCHECK(fileSize == tensorSize) << "Error loading raw binary file '"
-      << filename.data() << "' with size " << fileSize
-      << " bytes into tensor with size " << tensorSize << " bytes!";
+  DCHECK(fileSize == tensorSize)
+      << "Error loading raw binary file '" << filename.data() << "' with size "
+      << fileSize << " bytes into tensor with size " << tensorSize << " bytes!";
   // Read data.
   fs.seekg(0, std::ios::beg);
   fs.read(getData(), tensorSize);
@@ -406,7 +406,8 @@ void Tensor::loadFromRawBinaryFile(llvm::StringRef filename) {
 }
 
 template <class ElemTy>
-static void dumpToRawTextFileImpl(Handle<ElemTy> handle, llvm::StringRef filename) {
+static void dumpToRawTextFileImpl(Handle<ElemTy> handle,
+                                  llvm::StringRef filename) {
   std::ofstream fs;
   fs.open(filename.data());
   DCHECK(fs.is_open()) << "Failed to open file: " << filename.data();
@@ -448,7 +449,8 @@ void Tensor::dumpToRawTextFile(llvm::StringRef filename) {
 }
 
 template <class ElemTy>
-static void loadFromRawTextFileImpl(Handle<ElemTy> handle, llvm::StringRef filename) {
+static void loadFromRawTextFileImpl(Handle<ElemTy> handle,
+                                    llvm::StringRef filename) {
   std::ifstream fs;
   fs.open(filename.data());
   DCHECK(fs.is_open()) << "Failed to open file: " << filename.data();
@@ -458,8 +460,10 @@ static void loadFromRawTextFileImpl(Handle<ElemTy> handle, llvm::StringRef filen
     fs >> val >> ch;
     handle.raw(idx) = val;
     if (idx < e - 1) {
-      DCHECK(ch == ',') << "Invalid format when loading raw text file '"
-          << filename.data() << "' into tensor! Delimiter is expected to be ',' but character '" << ch << "' found!";
+      DCHECK(ch == ',')
+          << "Invalid format when loading raw text file '" << filename.data()
+          << "' into tensor! Delimiter is expected to be ',' but character '"
+          << ch << "' found!";
     }
   }
   fs.close();
