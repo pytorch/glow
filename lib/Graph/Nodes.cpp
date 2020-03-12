@@ -311,6 +311,8 @@ static bool verifyFullyConnected(NodeValue src, NodeValue weights,
                                    src.dims().size(), parent);
   isValid &= expectCompareTrue("FC weights must be 2D", size_t(2),
                                weights.dims().size(), parent);
+  isValid &= expectCompareTrue("FC bias must be 1D", size_t(1),
+                               bias.dims().size(), parent);
   isValid &= expectCompareTrue("Mismatch between source and dest dimensions",
                                src.dims()[0], dest.dims()[0], parent);
   isValid &= expectCompareTrue("Mismatch between source and weight dimensions",

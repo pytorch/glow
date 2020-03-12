@@ -1783,6 +1783,57 @@ bool FoldBatchNormalizationWithArithmeticChain::run(
   return changed;
 }
 
+/// Fold MatMul + Add into FullyConnected. This is useful for backends which
+/// have an atomic implementation for the FullyConnected node. It is also needed
+/// for ONNX which does not have a representation for the FullyConnected node.
+bool FoldMatMulAddIntoFullyConnected::run(Function *F,
+                                          const CompilationContext &cctx) {
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *addNode = dyn_cast<AddNode>(&node);
+    if (!addNode) {
+      continue;
+    }
+
+    // Check for MatMul node being either RHS or LHS.
+    auto *matMulNode_LHS = dyn_cast<MatMulNode>(addNode->getLHS());
+    auto *matMulNode_RHS = dyn_cast<MatMulNode>(addNode->getRHS());
+    auto *matMulNode = matMulNode_LHS ? matMulNode_LHS : matMulNode_RHS;
+    NodeValue biasNode = matMulNode_LHS ? addNode->getRHS() : addNode->getLHS();
+    if (!matMulNode) {
+      continue;
+    }
+
+    // The corresponding length of the FullyConnected Bias operand.
+    auto fcBiasLen = matMulNode->getRHS().dims()[1];
+
+    // TODO: If Bias is a constant 2D tensor (e.g. [2,10]) we should also
+    // verify if the Bias is broadcasted from a 1D tensor (e.g. [10]) in
+    // order to instantiate a batched FullyConnected using the Bias slice.
+
+    // Verify the bias size.
+    if (biasNode.getType()->size() != fcBiasLen) {
+      continue;
+    }
+
+    // Reshape the bias to 1D (if needed).
+    if (biasNode.dims().size() > 1) {
+      biasNode =
+          F->createReshape(biasNode.getNode()->getName().str() + ".reshape",
+                           biasNode, {biasNode.getType()->size()});
+    }
+
+    // Create a new FullyConnected node.
+    auto *newFC = F->createFullyConnected(
+        matMulNode->getName(), matMulNode->getLHS(), matMulNode->getRHS(),
+        biasNode, addNode->getResult().getType());
+    addNode->getResult().replaceAllUsesOfWith(newFC);
+    changed = true;
+  }
+
+  return changed;
+}
+
 // Fold Add after ConvTranspose into ConvTranspose's bias, if such Add was a
 // broadcasted Add. Examine by looking into Tensor repetitions. Fold this:
 //
