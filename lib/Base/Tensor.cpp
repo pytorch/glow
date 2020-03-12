@@ -380,58 +380,120 @@ std::string Tensor::toString(unsigned maxNumElem) const {
   return os.str();
 }
 
-void Tensor::dumpToRawBinaryFile(const char *filename) {
+void Tensor::dumpToRawBinaryFile(llvm::StringRef filename) {
   std::ofstream fs;
-  fs.open(filename, std::ios::out | std::ios::binary);
-  DCHECK(fs.is_open()) << "Failed to open file: " << filename;
-  auto handle = getHandle<>();
-  for (dim_t rdi = 0; rdi < actualSize(); rdi++) {
-    fs.write((char *)&handle.raw(rdi), sizeof(handle.raw(rdi)));
-  }
+  fs.open(filename.data(), std::ios::out | std::ios::binary);
+  DCHECK(fs.is_open()) << "Failed to open file: " << filename.data();
+  fs.write(getData(), getSizeInBytes());
   fs.close();
 }
 
-void Tensor::dumpToRawTextFile(const char *filename) {
+void Tensor::loadFromRawBinaryFile(llvm::StringRef filename) {
+  std::ifstream fs;
+  fs.open(filename.data(), std::ios::in | std::ios::binary);
+  DCHECK(fs.is_open()) << "Failed to open file: " << filename.data();
+  // Verify file size matches tensor size in bytes.
+  auto tensorSize = getSizeInBytes();
+  fs.seekg(0, std::ios::end);
+  std::streampos fileSize = fs.tellg();
+  DCHECK(fileSize == tensorSize) << "Error loading raw binary file '"
+      << filename.data() << "' with size " << fileSize
+      << " bytes into tensor with size " << tensorSize << " bytes!";
+  // Read data.
+  fs.seekg(0, std::ios::beg);
+  fs.read(getData(), tensorSize);
+  fs.close();
+}
+
+template <class ElemTy>
+static void dumpToRawTextFileImpl(Handle<ElemTy> handle, llvm::StringRef filename) {
   std::ofstream fs;
-  fs.open(filename);
-  DCHECK(fs.is_open()) << "Failed to open file: " << filename;
-  auto handle = getHandle<>();
-  for (dim_t rdi = 0; rdi < actualSize(); rdi++) {
-    fs << handle.raw(rdi) << ", ";
+  fs.open(filename.data());
+  DCHECK(fs.is_open()) << "Failed to open file: " << filename.data();
+  for (dim_t idx = 0, e = handle.actualSize(); idx < e; idx++) {
+    fs << handle.raw(idx) << ", ";
   }
   fs.close();
 }
 
-void Tensor::loadFromRawBinaryFile(const char *filename) {
-  std::ifstream fs;
-  fs.open(filename, std::ios::in | std::ios::binary);
-  DCHECK(fs.is_open()) << "Failed to open file: " << filename;
-  auto handle = getHandle<>();
-  for (dim_t rdi = 0; rdi < actualSize(); rdi++) {
-    fs.read((char *)&handle.raw(rdi), sizeof(handle.raw(rdi)));
+void Tensor::dumpToRawTextFile(llvm::StringRef filename) {
+  switch (getElementType()) {
+  case ElemKind::FloatTy:
+    return dumpToRawTextFileImpl(getHandle<float>(), filename);
+  case ElemKind::Float16Ty:
+    return dumpToRawTextFileImpl(getHandle<float16_t>(), filename);
+  case ElemKind::Int8QTy:
+    return dumpToRawTextFileImpl(getHandle<int8_t>(), filename);
+  case ElemKind::UInt8QTy:
+    return dumpToRawTextFileImpl(getHandle<uint8_t>(), filename);
+  case ElemKind::Int16QTy:
+    return dumpToRawTextFileImpl(getHandle<int16_t>(), filename);
+  case ElemKind::Int32QTy:
+    return dumpToRawTextFileImpl(getHandle<int32_t>(), filename);
+  case ElemKind::Int32ITy:
+    return dumpToRawTextFileImpl(getHandle<int32_t>(), filename);
+  case ElemKind::Int64ITy:
+    return dumpToRawTextFileImpl(getHandle<int64_t>(), filename);
+  case ElemKind::UInt8FusedQTy:
+    return dumpToRawTextFileImpl(getHandle<uint8_t>(), filename);
+  case ElemKind::UInt8FusedFP16QTy:
+    return dumpToRawTextFileImpl(getHandle<uint8_t>(), filename);
+  case ElemKind::UInt4FusedFP16QTy:
+    return dumpToRawTextFileImpl(getHandle<uint8_t>(), filename);
+  case ElemKind::BoolTy:
+    return dumpToRawTextFileImpl(getHandle<bool>(), filename);
+  default:
+    llvm_unreachable("Precision type not supported!");
   }
-  fs.close();
 }
 
-void Tensor::loadFromRawTextFile(const char *filename) {
+template <class ElemTy>
+static void loadFromRawTextFileImpl(Handle<ElemTy> handle, llvm::StringRef filename) {
   std::ifstream fs;
-  fs.open(filename);
-  DCHECK(fs.is_open()) << "Failed to open file: " << filename;
+  fs.open(filename.data());
+  DCHECK(fs.is_open()) << "Failed to open file: " << filename.data();
   char ch;
-  auto handle = getHandle<>();
-  if ((getElementType() == ElemKind::FloatTy) ||
-      (getElementType() == ElemKind::Float16Ty)) {
-    float fval;
-    for (dim_t rdi = 0; rdi < actualSize() - 1; rdi++) {
-      fs >> fval;
-      handle.raw(rdi) = fval;
-      fs >> ch;
-      DCHECK(ch == ',') << "[broken format] - expecting \',\'";
+  float val;
+  for (dim_t idx = 0, e = handle.actualSize(); idx < e; idx++) {
+    fs >> val >> ch;
+    handle.raw(idx) = val;
+    if (idx < e - 1) {
+      DCHECK(ch == ',') << "Invalid format when loading raw text file '"
+          << filename.data() << "' into tensor! Delimiter is expected to be ',' but character '" << ch << "' found!";
     }
-    fs >> fval;
-    handle.raw(actualSize() - 1) = fval;
   }
   fs.close();
+}
+
+void Tensor::loadFromRawTextFile(llvm::StringRef filename) {
+  switch (getElementType()) {
+  case ElemKind::FloatTy:
+    return loadFromRawTextFileImpl(getHandle<float>(), filename);
+  case ElemKind::Float16Ty:
+    return loadFromRawTextFileImpl(getHandle<float16_t>(), filename);
+  case ElemKind::Int8QTy:
+    return loadFromRawTextFileImpl(getHandle<int8_t>(), filename);
+  case ElemKind::UInt8QTy:
+    return loadFromRawTextFileImpl(getHandle<uint8_t>(), filename);
+  case ElemKind::Int16QTy:
+    return loadFromRawTextFileImpl(getHandle<int16_t>(), filename);
+  case ElemKind::Int32QTy:
+    return loadFromRawTextFileImpl(getHandle<int32_t>(), filename);
+  case ElemKind::Int32ITy:
+    return loadFromRawTextFileImpl(getHandle<int32_t>(), filename);
+  case ElemKind::Int64ITy:
+    return loadFromRawTextFileImpl(getHandle<int64_t>(), filename);
+  case ElemKind::UInt8FusedQTy:
+    return loadFromRawTextFileImpl(getHandle<uint8_t>(), filename);
+  case ElemKind::UInt8FusedFP16QTy:
+    return loadFromRawTextFileImpl(getHandle<uint8_t>(), filename);
+  case ElemKind::UInt4FusedFP16QTy:
+    return loadFromRawTextFileImpl(getHandle<uint8_t>(), filename);
+  case ElemKind::BoolTy:
+    return loadFromRawTextFileImpl(getHandle<bool>(), filename);
+  default:
+    llvm_unreachable("Precision type not supported!");
+  }
 }
 
 /// Dump a textual representation of a specific number of elements in the Tensor

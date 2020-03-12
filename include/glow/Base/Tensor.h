@@ -551,21 +551,35 @@ public:
   /// Dump a textual representation of the shape of this Tensor to std::string.
   std::string getShapeToString() const;
 
-  /// Dump the data content of the tensor to a raw-binary file.
-  void dumpToRawBinaryFile(const char *filename);
+  /// Dump the data content of the tensor to a raw-binary file without any
+  /// other meta information (data type and shape). The binary representation
+  /// of data is guaranteed to preserve data precision (bit exactness) upon
+  /// round-trips (dump/load).
+  void dumpToRawBinaryFile(llvm::StringRef filename);
 
-  /// Dump the data content of the tensor to a raw-text file (no formatting
-  /// other than "," separator between elements).
-  void dumpToRawTextFile(const char *filename);
+  /// Load the data content of the tensor from a raw-binary file. The tensor
+  /// configuration (data type and shape) must be set before loading the data
+  /// since the raw binary file is assumed to contain only the data. The binary
+  /// representation of data is guaranteed to preserve data precision (bit
+  /// exactness) upon round-trips (dump/load).
+  void loadFromRawBinaryFile(llvm::StringRef filename);
 
-  /// Load the data content of the tensor from a raw-binary file. Assume that
-  /// all tensor configuration (type, shape) is set before loading the data.
-  void loadFromRawBinaryFile(const char *filename);
+  /// Dump the data content of the tensor to a raw-text file without any other
+  /// meta information (data type and shape). The data will be listed as a 1D
+  /// array of values separated by comma (",") without other formatting. The
+  /// text representation of data is NOT guaranteed to preserve data precision
+  /// (bit exactness) upon round-trips (dump/load) but is used for human
+  /// readability.
+  void dumpToRawTextFile(llvm::StringRef filename);
 
-  /// Load the data content of the tensor from a raw-text file (no formatting
-  /// other than "," separator between elements). Assume that all tensor
-  /// configuration (type, shape) is set before loading the data.
-  void loadFromRawTextFile(const char *filename);
+  /// Load the data content of the tensor from a raw-text file. The tensor
+  /// configuration (data type and shape) must be set before loading the data
+  /// since the raw text file is assumed to contain only the data. The values
+  /// in the text file are expected to be listed as a 1D array of values,
+  /// separated by comma (",") without other formatting. The text representation
+  /// of data is NOT guaranteed to preserve data precision (bit exactness) upon
+  /// round-trips (dump/load) but is used for human readability.
+  void loadFromRawTextFile(llvm::StringRef filename);
 
   /// \returns true if the content of the other tensor \p other is identical to
   /// this one, given some \p allowedError. If \p verbose and the tensors are
