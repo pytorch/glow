@@ -4238,6 +4238,20 @@ bool glow::parallelizeOps(
                                   ClipNode::ResultIdx, splitDims, 0);
         break;
       }
+      case Kinded::Kind::QuantizeNodeKind: {
+        splitDims[QuantizeNode::InputIdx] = 0;
+        parallelizeAndReplaceNode(F, curNode, numOfChunks,
+                                  QuantizeNode::InputIdx,
+                                  QuantizeNode::ResultIdx, splitDims, 0);
+        break;
+      }
+      case Kinded::Kind::DequantizeNodeKind: {
+        splitDims[DequantizeNode::InputIdx] = 0;
+        parallelizeAndReplaceNode(F, curNode, numOfChunks,
+                                  DequantizeNode::InputIdx,
+                                  DequantizeNode::ResultIdx, splitDims, 0);
+        break;
+      }
       case Kinded::Kind::ConvertToNodeKind: {
         splitDims[ConvertToNode::InputIdx] = 0;
         parallelizeAndReplaceNode(F, curNode, numOfChunks,
