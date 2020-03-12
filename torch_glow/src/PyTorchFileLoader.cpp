@@ -144,11 +144,9 @@ struct RegisterCustomFusionPass {
 
 /*static*/
 Error PyTorchFileLoader::loadPyTorchModel(
-    const std::string &fileName,
-    std::shared_ptr<torch::jit::Module> &module) {
+    const std::string &fileName, std::shared_ptr<torch::jit::Module> &module) {
   try {
-    module = std::make_shared<torch::jit::Module>(
-        torch::jit::load(fileName));
+    module = std::make_shared<torch::jit::Module>(torch::jit::load(fileName));
   } catch (const std::exception &x) {
     RETURN_ERR(strFormat("Cannot load model from file: %s, , reason: %s",
                          fileName.c_str(), x.what()));
