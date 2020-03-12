@@ -110,11 +110,6 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
        ConvergenceMode::OnePass,
        {CompilationMode::Infer}},
 
-      // Fold MatMul + Add into FullyConnected.
-      {FunctionPassID::FoldMatMulAddIntoFullyConnected,
-       ConvergenceMode::OnePass,
-       {CompilationMode::Infer}},
-
       // Merge batch normalization operations.
       // Do after transpose constant folding, as weight transposes can prevent
       // the optimization from triggering.
@@ -147,6 +142,9 @@ FunctionPassPipeline glow::createDefaultFoldPassPipeline() {
 
       // Fold Reshape->Transpose->Reshape into ChannelShuffle when applicable.
       {FunctionPassID::FoldChannelShuffle},
+
+      // Fold MatMul->Add into FullyConnected.
+      {FunctionPassID::FoldMatMulAddIntoFullyConnected},
 
       // Perform Dead Code Elimination.
       getDCEPassConfig(),
