@@ -255,7 +255,8 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     for (auto &node : nodeList) {
       // Note: currently getNextNetworkExecutionState assumes that pool size is
       // >= currentInFlight requests, so we set pool size to maxActiveRequests.
-      executor_->createPool(node.root.get(), config_.maxActiveRequests);
+      executor_->createPool(node.root.get(), config_.maxActiveRequests,
+                            cctx.enableStaticAssignment);
     }
   }
   // Clear constants contents from the module then put it in a

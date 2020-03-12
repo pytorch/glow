@@ -114,6 +114,7 @@ add_executable(ThreadPoolExecutorTest
         ThreadPoolExecutorTest.cpp)
 target_link_libraries(ThreadPoolExecutorTest
         PRIVATE
+        Backend
         Backends
         Executor
         Graph

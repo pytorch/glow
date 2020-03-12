@@ -78,7 +78,9 @@ void NetworkExecutionState::bind(std::unique_ptr<ExecutionContext> resultCtx,
   }
 }
 
-void NetworkExecutionState::init(const DeviceManagerMapTy &devices) {
+void NetworkExecutionState::init(
+    const DeviceManagerMapTy &devices,
+    std::unordered_map<DAGNode *, DeviceIDTy> &staticAssignment) {
   // Create a queue for the breadth-first traversal through the graph.
   std::queue<DAGNode *> bfsQueue;
   // Marking the default err as checked so we don't get an unchecked error in
@@ -111,6 +113,12 @@ void NetworkExecutionState::init(const DeviceManagerMapTy &devices) {
 
     // Make an (empty) context for the node.
     auto intermediateContext = glow::make_unique<ExecutionContext>();
+    auto it = staticAssignment.find(node);
+    // If an assignment is provided for this context set it here.
+    if (it != staticAssignment.end()) {
+      auto dm = devices.find(it->second)->second.get();
+      intermediateContext->setBoundDeviceManager(dm);
+    }
     // Get a device to do allocation we can use the first device since the
     // allocation is not device specific.
     auto &device = devices.begin()->second;
@@ -149,6 +157,25 @@ void NetworkExecutionState::init(const DeviceManagerMapTy &devices) {
 
     // Insert the prepared ExecutionContext into the input contexts map.
     intermediateContexts_.emplace(node, std::move(intermediateContext));
+  }
+  // If we used a static assignment call backend->bindContexts() on the new
+  // contexts.
+  if (staticAssignment.size()) {
+    std::vector<runtime::ContextBinding> contexts;
+    for (auto &intermediate : intermediateContexts_) {
+      runtime::ContextBinding intermediateBinding;
+      intermediateBinding.context = intermediate.second.get();
+      intermediateBinding.networkName = intermediate.first->name;
+      intermediateBinding.device = intermediate.second->getBoundDeviceManager();
+      contexts.push_back(intermediateBinding);
+    }
+    const auto &backendName = devices.begin()->second->getBackendName();
+    // Create a backend to call bindContexts on, since bindContexts only puts
+    // state in the DeviceManager and Context we can safely discard this backend
+    // once we are done with it.
+    std::unique_ptr<Backend> newBackend(createBackend(backendName));
+
+    EXIT_ON_ERR(newBackend->bindContexts(contexts, root_));
   }
   initialized_ = true;
 }
