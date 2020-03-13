@@ -214,32 +214,32 @@ be loaded during run-time.
   - `<opts>` extra options dependent on the `<source>` field.
   - This option will be used for each of the model inputs.
   - Example 1:
-      `-input-dataset=input1,bin,file,dataset.csv`
-      The dataset paths for the 'input1' model input are read from the
-      'dataset.csv' file which could have the following content:
-      ```
-      /data_folder/data0.dat,
-      /data_folder/data1.dat,
-      .......................
-      ```
-      All the files listed are assumed to be in binary format (`bin`).
+    `-input-dataset=input1,bin,file,dataset.csv`
+    The dataset paths for the 'input1' model input are read from the
+    'dataset.csv' file which could have the following content:
+    ```
+    /data_folder/data0.dat,
+    /data_folder/data1.dat,
+    .......................
+    ```
+    All the files listed are assumed to be in binary format (`bin`).
   - Example 2:
-      `-input-dataset=input2,bin,file,dataset.csv,/data_folder`
-      The dataset files for the 'input2' model input are read from the
-      'dataset.csv' file which could have the following content:
-      ```
-      data0.dat,
-      data1.dat,
-      ..........
-      ```
-      All the file paths listed will be concatenated (prepended) with
-      the '/data_folder' base directory path when loading. All the
-      files listed are assumed to be in binary format (`bin`).
+    `-input-dataset=input2,bin,file,dataset.csv,/data_folder`
+    The dataset files for the 'input2' model input are read from the
+    'dataset.csv' file which could have the following content:
+    ```
+    data0.dat,
+    data1.dat,
+    ..........
+    ```
+    All the file paths listed will be concatenated (prepended) with
+    the '/data_folder' base directory path when loading. All the
+    files listed are assumed to be in binary format (`bin`).
   - Example 3:
-      `-input-dataset=input3,txt,dir,/data_folder`
-      The dataset files for the 'input3' model input are all the files
-      from the '/data_folder' directory listed alphabetically. The
-      files are assumed to be in text format (`txt`).
+    `-input-dataset=input3,txt,dir,/data_folder`
+    The dataset files for the 'input3' model input are all the files
+    from the '/data_folder' directory listed alphabetically. The
+    files are assumed to be in text format (`txt`).
 
 In order for the profiling phase to be correct, make sure the data used to feed the network
 is pre-processed in the same way as it would be in the case of inference. For example, for
