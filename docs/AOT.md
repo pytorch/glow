@@ -141,9 +141,9 @@ The procedure used for quantizing the model is called **profile-guided quantizat
 details [here](./Quantization.md)). Before the model is quantized and compiled with the
 *model-compiler* tool, the quantization profile must be acquired.
 
-In order to compute the quantization profile, the **model-profiler** tool is used. This
-application is generic and can be used with any model and requires a set of files (in
-either text or binary format) corresponding to the model input tensors in order to
+In order to compute the quantization profile, one option is to use the **model-profiler**
+tool. This application is generic and can be used with any model and requires a set of files
+(in either text or binary format) corresponding to the model input tensors in order to
 feed the model with a dataset and get the profile. The command has the following format:
 ```
 model-profiler -model=<model-path> -dump-profile=profile.yaml \

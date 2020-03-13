@@ -33,7 +33,7 @@
 
 namespace glow {
 
-/// Print message and exit with return code.
+/// Print message and exit with error code.
 void exitWithErr(llvm::StringRef errMsg);
 
 /// Check condition and if false print message and exit with error code.
@@ -62,7 +62,8 @@ using UnlabeledDataSet = std::vector<UnlabeledData>;
 UnlabeledDataSet readUnlabeledDataSetFromFile(llvm::StringRef dataSetFile,
                                               llvm::StringRef dataSetDirPath);
 
-/// Read an unlabeled data set as all the files from the given directory.
+/// Read an unlabeled data set as all the files from the given directory
+/// \p dataSetDirPath.
 UnlabeledDataSet readUnlabeledDataSetFromDir(llvm::StringRef dataSetDirPath);
 
 /// Typedefs for labeled datasets consisting in pairs of data paths and integer
