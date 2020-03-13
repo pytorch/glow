@@ -15,6 +15,7 @@
  */
 
 #include "glow/Base/Tensor.h"
+#include "glow/Base/TensorSerialization.h"
 #include "glow/Quantization/Base/Base.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -1294,40 +1295,40 @@ TEST(Tensor, differentAlignment) {
   EXPECT_FALSE(T1.isEqual(T2));
 }
 
-// Check that both write / read of tensors data from / to raw-text files is
+// Check that write/read of tensors data from/to raw-text files is
 // working properly.
 TEST(Tensor, accessToRawTextFile) {
-  Tensor Tref = {0.75f,  0.23f, 0.76f,  0.99f,  1.00f,
-                 -0.78f, 0.23f, -0.97f, -0.37f, 0.00f};
-  Tref.dumpToRawTextFile("raw_text_file");
-  Tensor Ttest(ElemKind::FloatTy, {10});
-  Ttest.loadFromRawTextFile("raw_text_file");
+  Tensor tensorRef = {0.75f,  0.23f, 0.76f,  0.99f,  1.00f,
+                      -0.78f, 0.23f, -0.97f, -0.37f, 0.00f};
+  dumpToRawTextFile(tensorRef, "tensor.txt");
+  Tensor tensorTest(ElemKind::FloatTy, {10});
+  loadFromRawTextFile(tensorTest, "tensor.txt");
 
-  auto Href = Tref.getHandle<>();
-  auto Htest = Ttest.getHandle<>();
+  auto handleRef = tensorRef.getHandle<>();
+  auto handleTest = tensorTest.getHandle<>();
 
-  EXPECT_EQ(Href.size(), Htest.size());
-  EXPECT_EQ(Href.actualSize(), Htest.actualSize());
-  for (size_t rcnt = 0; rcnt < Ttest.actualSize(); rcnt++) {
-    EXPECT_FLOAT_EQ(Htest.raw(rcnt), Href.raw(rcnt));
+  EXPECT_EQ(handleRef.size(), handleTest.size());
+  EXPECT_EQ(handleRef.actualSize(), handleTest.actualSize());
+  for (size_t rcnt = 0; rcnt < tensorTest.actualSize(); rcnt++) {
+    EXPECT_FLOAT_EQ(handleTest.raw(rcnt), handleRef.raw(rcnt));
   }
 }
 
-// Check that both write / read of tensors data from / to raw-binary files is
+// Check that write/read of tensors data from/to raw-binary files is
 // working properly.
 TEST(Tensor, accessToRawBinaryFile) {
-  Tensor Tref = {0.75f,  0.23f, 0.76f,  0.99f,  1.00f,
-                 -0.78f, 0.23f, -0.97f, -0.37f, 0.00f};
-  Tref.dumpToRawBinaryFile("raw_binary_file");
-  Tensor Ttest(ElemKind::FloatTy, {10});
-  Ttest.loadFromRawBinaryFile("raw_binary_file");
+  Tensor tensorRef = {0.75f,  0.23f, 0.76f,  0.99f,  1.00f,
+                      -0.78f, 0.23f, -0.97f, -0.37f, 0.00f};
+  dumpToRawBinaryFile(tensorRef, "tensor.bin");
+  Tensor tensorTest(ElemKind::FloatTy, {10});
+  loadFromRawBinaryFile(tensorTest, "tensor.bin");
 
-  auto Href = Tref.getHandle<>();
-  auto Htest = Ttest.getHandle<>();
+  auto handleRef = tensorRef.getHandle<>();
+  auto handleTest = tensorTest.getHandle<>();
 
-  EXPECT_EQ(Href.size(), Htest.size());
-  EXPECT_EQ(Href.actualSize(), Htest.actualSize());
-  for (size_t rcnt = 0; rcnt < Ttest.actualSize(); rcnt++) {
-    EXPECT_FLOAT_EQ(Htest.raw(rcnt), Href.raw(rcnt));
+  EXPECT_EQ(handleRef.size(), handleTest.size());
+  EXPECT_EQ(handleRef.actualSize(), handleTest.actualSize());
+  for (size_t rcnt = 0; rcnt < tensorTest.actualSize(); rcnt++) {
+    EXPECT_FLOAT_EQ(handleTest.raw(rcnt), handleRef.raw(rcnt));
   }
 }

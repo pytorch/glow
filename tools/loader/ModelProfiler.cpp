@@ -30,11 +30,30 @@ llvm::cl::list<std::string> inputDatasetOpts(
         "Provide a dataset for a model input as a set of file paths by using \n"
         "this option with the following format:                              \n"
         "    -input-dataset=<name>,<format>,<source>,<opts>                  \n"
-        "<name>   the name of the model input placeholder where the dataset  \n"
-        "         files will be loaded during run-time.                      \n"
+        "<name>   the name of the model input placeholder (tensor) where the \n"
+        "         dataset files will be loaded during run-time.              \n"
         "<format> the format of all the files from the given dataset:        \n"
-        "         - 'bin': raw binary format                                 \n"
-        "         - 'txt': text format                                       \n"
+        "         - 'bin': raw binary format. Each binary file corresponds to\n"
+        "           a tensor and contains the data serialized as a binary    \n"
+        "           blob without extra meta information (tensor data type or \n"
+        "           shape) because the tensor is statically configured before\n"
+        "           loading the data. The data is expected to be serialized  \n"
+        "           with the correct size and layout as the tensor in which  \n"
+        "           it will be loaded. For example, for a float32 tensor with\n"
+        "           shape [2,3], the binary file is expected to have the size\n"
+        "           2 x 3 x 4 (float32) = 24 bytes.                          \n"
+        "         - 'txt': raw text format. Each text file corresponds to a  \n"
+        "           tensor and contains the data serialized as a linear list \n"
+        "           of comma separated values in text format without extra   \n"
+        "           meta information (tensor data type or shape) because the \n"
+        "           tensor is statically configured before loading the data. \n"
+        "           The data is expected to be serialized with the correct   \n"
+        "           size and layout as the tensor in which it will be loaded.\n"
+        "           For example, for a float32 tensor with shape [2,3], the  \n"
+        "           text file is expected to contain a list of 6 values      \n"
+        "           separated by comma like this (extra spaces and newlines  \n"
+        "           are allowed):                                            \n"
+        "               1.0, 2.0, 3.0, 4.0, 5.0, 6.0,                        \n"
         "<source> specifies the dataset source:                              \n"
         "         - 'file': the dataset is specified as a text file which    \n"
         "           contains the relative or absolute paths of all the files \n"
@@ -234,9 +253,9 @@ int main(int argc, char **argv) {
       std::string filePath = inputDatasets[inputIdx][entryIdx];
       std::string fileFormat = inputFormats[inputIdx];
       if (fileFormat == "bin") {
-        inputTensor->loadFromRawBinaryFile(filePath.c_str());
+        glow::loadFromRawBinaryFile(*inputTensor, filePath.c_str());
       } else if (fileFormat == "txt") {
-        inputTensor->loadFromRawTextFile(filePath.c_str());
+        glow::loadFromRawTextFile(*inputTensor, filePath.c_str());
       } else {
         exitWithErr(strFormat("Input dataset format '%s' invalid!",
                               fileFormat.c_str()));
