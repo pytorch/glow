@@ -149,7 +149,7 @@ feed the model with a dataset and get the profile. The command has the following
 model-profiler -model=<model-path> -dump-profile=profile.yaml \
     -quantization-schema=<schema>                             \
     -input-dataset=<name1,format1,source1,opts1>              \
-    -input-dataset=<name1,format1,source1,opts1>              \
+    -input-dataset=<name2,format2,source2,opts2>              \
     ............................................
 ```
 

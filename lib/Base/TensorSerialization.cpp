@@ -43,7 +43,7 @@ static void loadFromRawTextFileImpl(Handle<ElemTy> handle,
   fs.open(filename.data());
   CHECK(fs.is_open()) << "Error opening file '" << filename.data() << "'!";
   char ch;
-  float val;
+  double val;
   for (dim_t idx = 0, e = handle.actualSize(); idx < e; idx++) {
     CHECK(fs >> val) << "Error loading raw text file '" << filename.data()
                      << "'! Only " << idx
