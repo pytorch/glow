@@ -264,23 +264,6 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     auto &output = outputs[i];
     auto ptTensor = output.toTensor();
 
-    if (settings_.writeToOnnx) {
-      glow::Tensor glowT = ptTensorToGlowTensor(ptTensor);
-      auto *onnxT = outputG.add_initializer();
-      onnxT->set_name(info.outputPlaceholders[i]->getName());
-      ONNXModelWriter::writeTensor(glowT, onnxT, /*useGlowCustomOps*/ true);
-    }
-
-    if (settings_.writeToOnnx) {
-      auto &jitOutput = torch::jit::peek(copyStack, i, outputs.size());
-      auto jitPtTensor = jitOutput.toTensor();
-      glow::Tensor jitGlowT = ptTensorToGlowTensor(jitPtTensor);
-      auto *jitOnnxT = jitOutputG.add_initializer();
-      jitOnnxT->set_name(info.outputPlaceholders[i]->getName());
-      ONNXModelWriter::writeTensor(jitGlowT, jitOnnxT,
-                                   /*useGlowCustomOps*/ true);
-    }
-
     if (ptTensor.is_quantized()) {
       c10::ScalarType dtype = outputCorrectType_[i];
       if (dtype == c10::ScalarType::QUInt8 || dtype == c10::ScalarType::QInt8) {
@@ -290,12 +273,30 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
             strFormat("Fail to propagate quantized dtype to output"));
       }
     }
+
+    if (settings_.writeToOnnx) {
+      glow::Tensor glowT = ptTensorToGlowTensor(ptTensor);
+      auto *onnxT = outputG.add_initializer();
+      onnxT->set_name(info.outputPlaceholders[i]->getName());
+      ONNXModelWriter::writeTensor(glowT, onnxT, /*useGlowCustomOps*/ true);
+    }
+
+    if (settings_.writeToOnnx) {
+      auto &jitOutput = torch::jit::peek(copyStack, i, outputs.size());
+      auto jitPtTensor = jitOutput.toTensor().contiguous();
+      glow::Tensor jitGlowT = ptTensorToGlowTensor(jitPtTensor);
+      auto *jitOnnxT = jitOutputG.add_initializer();
+      jitOnnxT->set_name(info.outputPlaceholders[i]->getName());
+      ONNXModelWriter::writeTensor(jitGlowT, jitOnnxT,
+                                   /*useGlowCustomOps*/ true);
+    }
+
     auto var = torch::autograd::make_variable(ptTensor);
     stack.push_back(at::IValue(var));
   }
 
   if (settings_.writeToOnnx) {
-    std::string filename = strFormat("output_%zu.onnx", runId);
+    std::string filename = strFormat("glow_output_%zu.onnx", runId);
     std::ofstream of(filename, std::ios::binary);
     if (!of) {
       LOG(ERROR) << "Cannot create output file " << filename;
@@ -307,7 +308,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   }
 
   if (settings_.writeToOnnx) {
-    std::string filename = strFormat("jit_output_%zu.onnx", runId);
+    std::string filename = strFormat("pytorch_output_%zu.onnx", runId);
     std::ofstream of(filename, std::ios::binary);
     if (!of) {
       LOG(ERROR) << "Cannot create output file " << filename;
