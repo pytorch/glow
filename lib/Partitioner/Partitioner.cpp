@@ -900,6 +900,61 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig,
   return std::move(partitions);
 }
 
+Expected<DAGListTy>
+Partitioner::setupPrepartitionedModule(const PrePartitionedConfig &config) {
+  // Prepare the mapping between BackendName and BackendInfo.
+  std::vector<Backend *> backends;
+  genBackendMap(backendMap_, backendHolder, backends);
+
+  const std::vector<Function *> &funcs = config.funcs;
+
+  NodeToFunctionMap partitionMap;
+  // Create partitions based on the given number and names.
+  for (size_t i = 0, e = funcs.size(); i < e; i++) {
+    partitionMap.createPartition(funcs[i], deviceInfo_[i].backendName);
+  }
+
+  // Map the nodes the the partitions.
+  for (Function *F : funcs) {
+    for (auto &node : F->getNodes()) {
+      partitionMap.add(&node, F);
+    }
+  }
+
+  // Validate memory usage.
+  for (Function *F : funcs) {
+    partitionMap.setGraphMemInfo(F, getGraphMemInfo(F));
+  }
+  RETURN_IF_ERR(memoryUsageValidation(partitionMap, backendMap_));
+
+  // If logical device assignments are provided use them otherwise assign them.
+  DCHECK(funcs.size() == config.logicalIDs.size());
+  for (size_t i = 0; i < funcs.size(); i++) {
+    Function *F = funcs[i];
+    for (auto logicalDevice : config.logicalIDs[i]) {
+      partitionMap.appendLogicalDeviceID(F, logicalDevice);
+    }
+  }
+  RETURN_IF_ERR(logicalDevicesValidation(partitionMap, backendMap_));
+
+  // Do partition.
+  DAGListTy partitions =
+      doPartitioning(config.funcName, funcs, module_, partitionMap,
+                     /* saveDAG */ true, /* skipCloning */ true);
+
+  // DAG validation.
+  RETURN_IF_ERR(dagValidation(partitions[0]));
+
+  // Verify the function.
+  for (Function *F : funcs) {
+    DCHECK(F->verify()) << "Conversion led to invalid function";
+  }
+
+  RETURN_IF_ERR(finalize(partitions, partitionMap));
+
+  return std::move(partitions);
+}
+
 template <typename SLSType>
 void Partitioner::appendSLSTable(
     Node &node, std::vector<Partitioner::SLSTableInfo> &slsTables) {
@@ -1202,6 +1257,10 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
 }
 
 Expected<DAGListTy> Partitioner::partition(CompilationContext &cctx) {
+  if (cctx.prepartitionedConfig) {
+    return setupPrepartitionedModule(*cctx.prepartitionedConfig);
+  }
+
   if (cctx.partitionConfig) {
     partitionConfig_ = *cctx.partitionConfig;
   }

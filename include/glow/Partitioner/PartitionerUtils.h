@@ -54,6 +54,9 @@ GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSet &currNodes,
 /// Return the memory usage of a given nodes set.
 GraphMemInfo getGraphMemInfo(const NodesSet &nodes);
 
+/// Return the memory usage of a Function \p F.
+GraphMemInfo getGraphMemInfo(Function *F);
+
 /// Return the memory usage of \p func function.
 GraphMemInfo getFunctionMemory(Function *func);
 

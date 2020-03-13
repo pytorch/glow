@@ -493,6 +493,16 @@ GraphMemInfo getGraphMemInfo(const NodesSet &nodes) {
   return ret;
 }
 
+GraphMemInfo getGraphMemInfo(Function *F) {
+  GraphMemInfo ret;
+  NodesSet nodeSet;
+  for (auto &N : F->getNodes()) {
+    ret = updateGraphMemInfoByAddingNode(nodeSet, ret, &N);
+    nodeSet.insert(&N);
+  }
+  return ret;
+}
+
 GraphMemInfo getFunctionMemory(Function *func) {
   GraphMemInfo graphMem;
 

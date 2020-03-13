@@ -40,10 +40,13 @@ public:
 protected:
   /// Given the node-function mapping \p mapping, do the actual partitioning. If
   /// \p saveDAG is true, the DAG will be generated. \returns the final
-  /// partitions or an empty partition (If \p saveDAG is false).
-  DAGListTy doPartitioning(llvm::StringRef funcName, std::vector<Function *>,
-                           Module *module, NodeToFunctionMap &mapping,
-                           bool saveDAG);
+  /// partitions or an empty partition (If \p saveDAG is false). If
+  /// \p skipCloning then nodes will not be cloned into new Functions from
+  /// \p funcs into new Functions.
+  DAGListTy doPartitioning(llvm::StringRef funcName,
+                           std::vector<Function *> funcs, Module *module,
+                           NodeToFunctionMap &mapping, bool saveDAG,
+                           bool skipCloning = false);
 };
 } // namespace glow
 #endif // GLOW_PARTITIONER_PARTITIONER_H
