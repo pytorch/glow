@@ -28,7 +28,7 @@ static void dumpToRawTextFileImpl(Handle<ElemTy> handle,
                                   llvm::StringRef filename) {
   std::ofstream fs;
   fs.open(filename.data());
-  DCHECK(fs.is_open()) << "Error opening file '" << filename.data() << "'!";
+  CHECK(fs.is_open()) << "Error opening file '" << filename.data() << "'!";
   for (dim_t idx = 0, e = handle.actualSize(); idx < e; idx++) {
     fs << handle.raw(idx) << ", ";
   }
@@ -41,56 +41,54 @@ static void loadFromRawTextFileImpl(Handle<ElemTy> handle,
                                     llvm::StringRef filename) {
   std::ifstream fs;
   fs.open(filename.data());
-  DCHECK(fs.is_open()) << "Error opening file '" << filename.data() << "'!";
+  CHECK(fs.is_open()) << "Error opening file '" << filename.data() << "'!";
   char ch;
   float val;
   for (dim_t idx = 0, e = handle.actualSize(); idx < e; idx++) {
-    DCHECK(fs >> val) << "Error loading raw text file '" << filename.data()
-                      << "'! "
-                      << "Only " << idx
-                      << " values were given for loading a tensor "
-                      << "with " << e << " elements!";
+    CHECK(fs >> val) << "Error loading raw text file '" << filename.data()
+                     << "'! Only " << idx
+                     << " values were given for loading a tensor "
+                     << "with " << e << " elements!";
+    handle.raw(idx) = val;
     if (idx < e - 1) {
-      DCHECK(fs >> ch) << "Error loading raw text file '" << filename.data()
-                       << "'! "
-                       << "Delimiter character ',' not found!";
-      DCHECK(ch == ',')
-          << "Error loading raw text file '" << filename.data() << "'! "
-          << "Delimiter character is expected to be ',' but character '" << ch
-          << "' was found!";
+      CHECK(fs >> ch) << "Error loading raw text file '" << filename.data()
+                      << "'! Delimiter character ',' not found!";
+      CHECK(ch == ',')
+          << "Error loading raw text file '" << filename.data()
+          << "'! Delimiter character is expected to be ',' but character '"
+          << ch << "' was found!";
     } else {
       fs >> ch;
     }
   }
-  DCHECK(!(fs >> val)) << "Error loading raw text file '" << filename.data()
-                       << "'! "
-                       << "Too many values given for loading a tensor with "
-                       << handle.actualSize() << " elements!";
+  CHECK(!(fs >> val)) << "Error loading raw text file '" << filename.data()
+                      << "'! Too many values given for loading a tensor with "
+                      << handle.actualSize() << " elements!";
   fs.close();
 }
 } // namespace
 
 void glow::dumpToRawBinaryFile(Tensor &tensor, llvm::StringRef filename) {
   std::ofstream fs;
-  fs.open(filename.data(), std::ios::out | std::ios::binary);
-  DCHECK(fs.is_open()) << "Error opening file '" << filename.data() << "'!";
-  DCHECK(tensor.getUnsafePtr())
-      << "Tensor data not initialized before dumping to raw binary file!";
+  fs.open(filename.data(), std::ios::binary);
+  CHECK(fs.is_open()) << "Error opening file '" << filename.data() << "'!";
+  CHECK(tensor.getUnsafePtr())
+      << "Tensor not initialized before dumping to raw binary file!";
   fs.write(tensor.getUnsafePtr(), tensor.getSizeInBytes());
   fs.close();
 }
 
 void glow::loadFromRawBinaryFile(Tensor &tensor, llvm::StringRef filename) {
   std::ifstream fs;
-  fs.open(filename.data(), std::ios::in | std::ios::binary);
-  DCHECK(fs.is_open()) << "Error opening file '" << filename.data() << "'!";
-  DCHECK(tensor.getUnsafePtr())
-      << "Tensor data not initialized before loading from raw binary file!";
+  fs.open(filename.data(), std::ios::binary);
+  CHECK(fs.is_open()) << "Error opening file '" << filename.data() << "'!";
+  CHECK(tensor.getUnsafePtr())
+      << "Tensor not initialized before loading from raw binary file!";
   // Verify file size matches tensor size in bytes.
   auto tensorSize = tensor.getSizeInBytes();
   fs.seekg(0, std::ios::end);
   std::streampos fileSize = fs.tellg();
-  DCHECK(fileSize == tensorSize)
+  CHECK(fileSize == tensorSize)
       << "Error loading raw binary file '" << filename.data() << "' with size "
       << fileSize << " bytes into tensor with size " << tensorSize << " bytes!";
   // Read data.
@@ -100,8 +98,8 @@ void glow::loadFromRawBinaryFile(Tensor &tensor, llvm::StringRef filename) {
 }
 
 void glow::dumpToRawTextFile(Tensor &tensor, llvm::StringRef filename) {
-  DCHECK(tensor.getUnsafePtr())
-      << "Tensor data not initialized before dumping to raw text file!";
+  CHECK(tensor.getUnsafePtr())
+      << "Tensor not initialized before dumping to raw text file!";
   switch (tensor.getElementType()) {
   case ElemKind::FloatTy:
     return dumpToRawTextFileImpl(tensor.getHandle<float>(), filename);
@@ -133,8 +131,8 @@ void glow::dumpToRawTextFile(Tensor &tensor, llvm::StringRef filename) {
 }
 
 void glow::loadFromRawTextFile(Tensor &tensor, llvm::StringRef filename) {
-  DCHECK(tensor.getUnsafePtr())
-      << "Tensor data not initialized before loading from raw text file!";
+  CHECK(tensor.getUnsafePtr())
+      << "Tensor not initialized before loading from raw text file!";
   switch (tensor.getElementType()) {
   case ElemKind::FloatTy:
     return loadFromRawTextFileImpl(tensor.getHandle<float>(), filename);
