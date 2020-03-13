@@ -553,17 +553,17 @@ void BoundInterpreterFunction::fwdConvolution3DInstFloatImpl(
   auto filterW = getWeightHandle<ElemTy>(filterV);
   auto biasW = getWeightHandle<ElemTy>(biasV);
 
-  ShapeNHWDC odim(outW.dims());
-  ShapeNHWDC idim(inW.dims());
-  ShapeHWD kdim(kernelSizes);
-  ShapeHWD sdim(strides);
+  ShapeNTHWC odim(outW.dims());
+  ShapeNTHWC idim(inW.dims());
+  ShapeTHW kdim(kernelSizes);
+  ShapeTHW sdim(strides);
 
   assert(idim.c % group == 0 && "Input channels must be divisible by group.");
   assert(odim.c % group == 0 && "Output channels must be divisible by group.");
   dim_t inCperG = idim.c / group;
   dim_t outCperG = odim.c / group;
 
-  PaddingTLNBRF pdim(pads);
+  PaddingNFTBLR pdim(pads);
 
   // For each input in the batch:
   for (dim_t n = 0; n < idim.n; n++) {
@@ -574,31 +574,30 @@ void BoundInterpreterFunction::fwdConvolution3DInstFloatImpl(
       // For each output channel in the group:
       for (dim_t og = ig * outCperG; og < (ig + 1) * outCperG; og++) {
 
-        // For each convolution 'jump' in the input tensor:
-        ssize_t x = -ssize_t(pdim.top);
-        for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
-          ssize_t y = -ssize_t(pdim.left);
-          for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
-            ssize_t z = -ssize_t(pdim.near);
-            for (dim_t az = 0; az < odim.d; z += sdim.depth, az++) {
-
+        ssize_t t = -ssize_t(pdim.near);
+        for (dim_t at = 0; at < odim.t; t += sdim.temporal_frames, at++) {
+          // For each convolution 'jump' in the input tensor:
+          ssize_t x = -ssize_t(pdim.top);
+          for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+            ssize_t y = -ssize_t(pdim.left);
+            for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
               // For each element in the 3D convolution-filter:
               float sum = 0;
-              for (dim_t fx = 0; fx < kdim.height; fx++) {
-                for (dim_t fy = 0; fy < kdim.width; fy++) {
-                  for (dim_t fz = 0; fz < kdim.depth; fz++) {
+              for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
+                for (dim_t fx = 0; fx < kdim.height; fx++) {
+                  for (dim_t fy = 0; fy < kdim.width; fy++) {
+                    sdim_t ot = t + ft;
                     sdim_t ox = x + fx;
                     sdim_t oy = y + fy;
-                    sdim_t oz = z + fz;
 
                     // Ignore index access below zero (this is due to padding).
-                    if (ox < 0 || oy < 0 || oz < 0 || ox >= ssize_t(idim.h) ||
-                        oy >= ssize_t(idim.w) || oz >= ssize_t(idim.d)) {
+                    if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
+                        ox >= ssize_t(idim.h) || oy >= ssize_t(idim.w)) {
                       continue;
                     }
                     for (dim_t fg = 0; fg < inCperG; fg++) {
-                      sum += float(filterW.at({og, fx, fy, fz, fg}) *
-                                   inW.at({n, (dim_t)ox, (dim_t)oy, (dim_t)oz,
+                      sum += float(filterW.at({og, ft, fx, fy, fg}) *
+                                   inW.at({n, (dim_t)ot, (dim_t)ox, (dim_t)oy,
                                            ig * inCperG + fg}));
                     }
                   }
@@ -606,7 +605,7 @@ void BoundInterpreterFunction::fwdConvolution3DInstFloatImpl(
               }
 
               sum += float(biasW.at({og}));
-              outW.at({n, ax, ay, az, og}) = ElemTy(sum);
+              outW.at({n, at, ax, ay, og}) = ElemTy(sum);
             } // D
           }   // W
         }     // H
@@ -626,17 +625,17 @@ void BoundInterpreterFunction::fwdConvolution3DInstQuantizedImpl(
   auto filterW = getWeightHandle<ElemTy>(filterV);
   auto biasW = getWeightHandle<BiasElemTy>(biasV);
 
-  ShapeNHWDC odim(outW.dims());
-  ShapeNHWDC idim(inW.dims());
-  ShapeHWD kdim(kernelSizes);
-  ShapeHWD sdim(strides);
+  ShapeNTHWC odim(outW.dims());
+  ShapeNTHWC idim(inW.dims());
+  ShapeTHW kdim(kernelSizes);
+  ShapeTHW sdim(strides);
 
   assert(idim.c % group == 0 && "Input channels must be divisible by group.");
   assert(odim.c % group == 0 && "Output channels must be divisible by group.");
   dim_t inCperG = idim.c / group;
   dim_t outCperG = odim.c / group;
 
-  PaddingTLNBRF pdim(pads);
+  PaddingNFTBLR pdim(pads);
 
   auto outTy = outV->getType();
   auto inTy = inV->getType();
@@ -667,32 +666,32 @@ void BoundInterpreterFunction::fwdConvolution3DInstQuantizedImpl(
       for (dim_t og = ig * outCperG; og < (ig + 1) * outCperG; og++) {
 
         // For each convolution 'jump' in the input tensor:
-        ssize_t x = -ssize_t(pdim.top);
-        for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
-          ssize_t y = -ssize_t(pdim.left);
-          for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
-            ssize_t z = -ssize_t(pdim.near);
-            for (dim_t az = 0; az < odim.d; z += sdim.depth, az++) {
+        ssize_t t = -ssize_t(pdim.near);
+        for (dim_t at = 0; at < odim.t; t += sdim.temporal_frames, at++) {
+          ssize_t x = -ssize_t(pdim.top);
+          for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+            ssize_t y = -ssize_t(pdim.left);
+            for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
 
               // For each element in the convolution-filter:
               AccumulatorTy sum = 0;
-              for (dim_t fx = 0; fx < kdim.height; fx++) {
-                for (dim_t fy = 0; fy < kdim.width; fy++) {
-                  for (dim_t fz = 0; fz < kdim.depth; fz++) {
+              for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
+                for (dim_t fx = 0; fx < kdim.height; fx++) {
+                  for (dim_t fy = 0; fy < kdim.width; fy++) {
+                    ssize_t ot = t + ft;
                     ssize_t ox = x + fx;
                     ssize_t oy = y + fy;
-                    ssize_t oz = z + fz;
 
                     // Ignore index access below zero (this is due to padding).
-                    if (ox < 0 || oy < 0 || oz < 0 || ox >= ssize_t(idim.h) ||
-                        oy >= ssize_t(idim.w) || oz >= ssize_t(idim.d)) {
+                    if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
+                        ox >= ssize_t(idim.h) || oy >= ssize_t(idim.w)) {
                       continue;
                     }
                     for (dim_t fg = 0; fg < inCperG; fg++) {
 
-                      AccumulatorTy F = filterW.at({og, fx, fy, fz, fg});
-                      AccumulatorTy I = inW.at({n, (dim_t)ox, (dim_t)oy,
-                                                (dim_t)oz, ig * inCperG + fg});
+                      AccumulatorTy F = filterW.at({og, ft, fx, fy, fg});
+                      AccumulatorTy I = inW.at({n, (dim_t)ot, (dim_t)ox,
+                                                (dim_t)oy, ig * inCperG + fg});
                       // We represent the element multiplication with offset as
                       // (value - offset).
                       sum += (F - filterOffset) * (I - inOffset);
@@ -709,7 +708,7 @@ void BoundInterpreterFunction::fwdConvolution3DInstQuantizedImpl(
               sum += B;
 
               // Scale the result back to the expected destination scale.
-              outW.at({n, ax, ay, az, og}) =
+              outW.at({n, at, ax, ay, og}) =
                   quantization::clip<AccumulatorTy, ElemTy>(std::round(
                       float(sum) * (matMulScale / outScale) + outOffset));
             } // D

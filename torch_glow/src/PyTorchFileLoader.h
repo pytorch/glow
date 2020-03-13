@@ -33,9 +33,8 @@ class PyTorchFileLoader {
 public:
   /// Takes a model file \p fileName, loads model into torch Module \p module,
   /// \returns error if any.
-  static Error
-  loadPyTorchModel(const std::string &fileName,
-                   std::shared_ptr<torch::jit::Module> &module);
+  static Error loadPyTorchModel(const std::string &fileName,
+                                std::shared_ptr<torch::jit::Module> &module);
 
   /// Takes a model file \p fileName, loads optimized graph and a
   /// stack of \p inputs into Glow Function \p F and fills out input \p

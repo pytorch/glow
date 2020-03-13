@@ -32,6 +32,8 @@
 #include "google/protobuf/io/zero_copy_stream_impl.h"
 #include <glog/logging.h>
 
+#include "folly/stats/Histogram.h"
+
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -232,14 +234,33 @@ llvm::cl::opt<bool> glowSaturateHost(
     llvm::cl::desc("Duplicate netowrk on all available devices"),
     llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
-llvm::cl::opt<int32_t> topKCompare(
-    "topKCompare", llvm::cl::desc("Compare the topk results against reference"),
-    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(reproTestCat));
+llvm::cl::opt<int32_t>
+    topKCompare("topk_compare",
+                llvm::cl::desc("Compare the topk results against reference"),
+                llvm::cl::Optional, llvm::cl::init(0),
+                llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<float> top1Threshold(
+    "top1_threshold",
+    llvm::cl::desc(
+        "Percentage of top1 matches to reference that must be achieved"),
+    llvm::cl::Optional, llvm::cl::init(0.0), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool> logTopKResultsPerExample(
     "log_topk_results_per_example",
     llvm::cl::desc("Whether to log topk results vs reference for each example"),
     llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<bool> cosineSimilarityStats(
+    "cosine_similarity_stats",
+    llvm::cl::desc("Whether to compute cosine similarity stats"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<float> cosineSimilarityThreshold(
+    "p50_cosine_similarity_threshold",
+    llvm::cl::desc(
+        "Percentage of top1 matches to reference that must be achieved"),
+    llvm::cl::Optional, llvm::cl::init(0.0), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool> onnxLoaderZipMode(
     "zip_mode", llvm::cl::desc("zipMode to use with OnnxModelLoader"),
@@ -251,6 +272,14 @@ void parseCommandLine(int argc, char **argv) {
       argc, argv,
       " The Glow compiler\n\n"
       "Glow is a compiler for neural network accelerators.\n");
+
+  if (top1Threshold > 0.0 && topKCompare == 0) {
+    topKCompare = 1;
+  }
+
+  if (cosineSimilarityThreshold > 0.0) {
+    cosineSimilarityStats = true;
+  }
 }
 
 struct InferenceResult {
@@ -346,12 +375,42 @@ partialSortFloatTensor(const Tensor &t, size_t k) {
   return vec;
 }
 
+static float dotProd(const Tensor &t1, const Tensor &t2) {
+  CHECK(t1.getElementType() == ElemKind::FloatTy);
+  CHECK(t2.getElementType() == ElemKind::FloatTy);
+  auto t1H = t1.getHandle<float>();
+  auto t2H = t2.getHandle<float>();
+  CHECK_EQ(t1H.size(), t2H.size());
+  float res = 0.0f;
+  for (dim_t i = 0; i < t1H.size(); i++) {
+    res += t1H.raw(i) * t2H.raw(i);
+  }
+  return res;
+}
+
+static float cosineSimilarity(const Tensor &t1, const Tensor &t2) {
+  auto fn = [](const Tensor &t1, const Tensor &t2) {
+    return dotProd(t1, t2) /
+           (std::sqrt(dotProd(t1, t1)) * std::sqrt(dotProd(t2, t2)));
+  };
+  if (t1.getType().isQuantizedType()) {
+    auto t1Float = quantization::dequantizeTensor(t1, ElemKind::FloatTy);
+    auto t2Float = quantization::dequantizeTensor(t2, ElemKind::FloatTy);
+    return fn(t1Float, t2Float);
+  } else {
+    return fn(t1, t2);
+  }
+}
+
 int run() {
   int numFailed = 0;
 
   int numTop1Matches = 0;
   int numTopKMatches = 0;
   int numTotalTopKCompares = 0;
+
+  folly::Histogram<float> cosineHist(/* bucketSize */ 0.1f, /* min */ 0.0f,
+                                     /* max */ 1.0f);
 
   // Build the execution engine and deserialize the Function.
   auto mod = glow::make_unique<Module>();
@@ -620,17 +679,21 @@ int run() {
         CHECK(of) << "Cannot create output dump file: " << ss.str();
       }
 
-      if (!skipCorrectnessCheck || topKCompare > 0) {
+      if (!skipCorrectnessCheck || topKCompare > 0 || cosineSimilarityStats) {
         CHECK(result.ctx);
         const auto &bindings = *result.ctx->getPlaceholderBindings();
         for (const auto &tp : outputGroup.initializer()) {
           Tensor tensorRef;
-          auto error = loadTensor(tp, &tensorRef);
+          auto error = loadTensor(tp, &tensorRef, usingGlowCustomOps);
           CHECK(!ERR_TO_BOOL(std::move(error)))
               << "Cannot load output ref tensor";
           const auto *tensor =
               bindings.get(bindings.getPlaceholderByName(tp.name()));
           CHECK(tensor) << "Missing " << tp.name() << " in output placeholder";
+
+          if (cosineSimilarityStats) {
+            cosineHist.addValue(cosineSimilarity(*tensor, tensorRef));
+          }
 
           if (topKCompare > 0) {
             numTotalTopKCompares++;
@@ -719,11 +782,44 @@ int run() {
   }
 
   if (topKCompare > 0) {
-    llvm::outs() << "Num top1 matches: " << numTop1Matches << "/"
+    llvm::outs() << "Num top1 exact matches: " << numTop1Matches << "/"
                  << numTotalTopKCompares << "\n";
-    llvm::outs() << "Num topK matches (k=" << topKCompare
+    llvm::outs() << "Num topK exact matches (k=" << topKCompare
                  << "): " << numTopKMatches << "/" << numTotalTopKCompares
                  << "\n";
+
+    if (top1Threshold > 0.0) {
+      float top1MatchRate = float(numTop1Matches) / numTotalTopKCompares;
+      if (top1MatchRate < top1Threshold) {
+        llvm::outs() << "Expected top1 match rate of at least " << top1Threshold
+                     << " but only achieved " << top1MatchRate << "\n";
+        return numTotalTopKCompares - numTop1Matches;
+      }
+    }
+  }
+
+  if (cosineSimilarityStats) {
+    float p50Similarity = cosineHist.getPercentileEstimate(0.5);
+    llvm::outs() << "cosine similarity stats:\n"
+                 << "p01: " << cosineHist.getPercentileEstimate(0.01) << "\n"
+                 << "p02: " << cosineHist.getPercentileEstimate(0.02) << "\n"
+                 << "p05: " << cosineHist.getPercentileEstimate(0.05) << "\n"
+                 << "p10: " << cosineHist.getPercentileEstimate(0.1) << "\n"
+                 << "p25: " << cosineHist.getPercentileEstimate(0.25) << "\n"
+                 << "p50: " << p50Similarity << "\n"
+                 << "p75: " << cosineHist.getPercentileEstimate(0.75) << "\n"
+                 << "p90: " << cosineHist.getPercentileEstimate(0.90) << "\n"
+                 << "p95: " << cosineHist.getPercentileEstimate(0.95) << "\n"
+                 << "p98: " << cosineHist.getPercentileEstimate(0.98) << "\n"
+                 << "p99: " << cosineHist.getPercentileEstimate(0.99) << "\n";
+    if (cosineSimilarityThreshold > 0.0) {
+      if (p50Similarity < cosineSimilarityThreshold) {
+        llvm::outs() << "Expected p50 cosine similarity of at least "
+                     << cosineSimilarityThreshold << " but only achieved "
+                     << p50Similarity << "\n";
+        return 1;
+      }
+    }
   }
 
   std::chrono::duration<double, std::milli> duration = endTime - startTime;
