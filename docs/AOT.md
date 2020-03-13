@@ -183,9 +183,9 @@ be loaded during run-time.
       text file is expected to contain a list of 6 values
       separated by comma like this (extra spaces and newlines
       are allowed):
-          ```
-          1.0, 2.0, 3.0, 4.0, 5.0, 6.0,
-          ```
+      ```
+      1.0, 2.0, 3.0, 4.0, 5.0, 6.0,
+      ```
   - `<source>` specifies the dataset source:
     - `file`: the dataset is specified as a text file which
       contains the relative or absolute paths of all the files
@@ -197,14 +197,14 @@ be loaded during run-time.
       The dataset file must contain only ONE PATH PER LINE.
       After the first comma or space character, the rest of the
       line is ignored. All the examples below are valid:
-          ```
-          data0.bin
-          data1.bin,
-          data2.bin 'cat'
-          data3.bin,dog
-          data4.bin ,2
-          data5.bin,1
-          ```
+      ```
+      data0.bin
+      data1.bin,
+      data2.bin 'cat'
+      data3.bin,dog
+      data4.bin ,2
+      data5.bin,1
+      ```
       Do NOT use file paths which contain spaces.
     - `dir`: the dataset is specified as all the files from a
       given directory listed alphabetically. The directory path
@@ -217,21 +217,21 @@ be loaded during run-time.
       `-input-dataset=input1,bin,file,dataset.csv`
       The dataset paths for the 'input1' model input are read from the
       'dataset.csv' file which could have the following content:
-          ```
-          /data_folder/data0.dat,
-          /data_folder/data1.dat,
-          .......................
-          ```
+      ```
+      /data_folder/data0.dat,
+      /data_folder/data1.dat,
+      .......................
+      ```
       All the files listed are assumed to be in binary format (`bin`).
   - Example 2:
       `-input-dataset=input2,bin,file,dataset.csv,/data_folder`
       The dataset files for the 'input2' model input are read from the
       'dataset.csv' file which could have the following content:
-          ```
-          data0.dat,
-          data1.dat,
-          ..........
-          ```
+      ```
+      data0.dat,
+      data1.dat,
+      ..........
+      ```
       All the file paths listed will be concatenated (prepended) with
       the '/data_folder' base directory path when loading. All the
       files listed are assumed to be in binary format (`bin`).
