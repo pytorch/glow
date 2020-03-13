@@ -89,8 +89,8 @@ public:
       bias = mod->createPlaceholder(ElemKind::Int32QTy, {n_}, 1.0, 0,
                                     "bias" + std::to_string(layer), false);
 
-      bindings_.allocate(weights)->getHandle<int8_t>().clear(0);
-      bindings_.allocate(bias)->getHandle<int32_t>().clear(0);
+      bindings_.allocate(weights)->getHandle<int8_t>().clear(1);
+      bindings_.allocate(bias)->getHandle<int32_t>().clear(2);
 
       fc = fn->createFullyConnected("fc_" + std::to_string(layer), cur, weights,
                                     bias);
@@ -104,9 +104,26 @@ public:
     fn->createSave("save1", cur, output);
     ::glow::convertPlaceholdersToConstants(fn, bindings_, {input, output});
 
-    // Split weights
-    executeVerticalFCWeightsSplit(fn, numSplits_, n_);
+    // Model parallelize FCs
+    llvm::DenseMap<Node *, size_t> numOfChunks;
+    llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+    for (auto &N : fn->getNodes()) {
+      if (N.getKind() == Kinded::Kind::FullyConnectedNodeKind) {
+        numOfChunks[&N] = numSplits_;
+        parOpts[&N] = ParallelTransformKind::Model;
+      }
+    }
 
+    // Parallelize Quantize/Dequantize
+    for (auto &N : fn->getNodes()) {
+      if (N.getKind() == Kinded::Kind::QuantizeNodeKind ||
+          N.getKind() == Kinded::Kind::DequantizeNodeKind) {
+        numOfChunks[&N] = numSplits_;
+        parOpts[&N] = ParallelTransformKind::Data;
+      }
+    }
+    parallelizeOps(fn, numOfChunks, parOpts, 1);
+    optimize(fn, CompilationMode::Infer);
     CompilationContext ctx;
     EXIT_ON_ERR(hostManager_->addNetwork(std::move(mod), ctx));
   }
