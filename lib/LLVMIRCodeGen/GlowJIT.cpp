@@ -84,7 +84,7 @@ public:
     // Inform the debugger about the loaded object file. This should allow for
     // more complete stack traces under debugger. And even it should even enable
     // the stepping functionality on platforms supporting it.
-#if LLVM_VERSION_MAJOR == 7 || FACEBOOK_INTERNAL
+#if LLVM_VERSION_MAJOR == 7 || (LLVM_VERSION_MAJOR <= 8 && FACEBOOK_INTERNAL)
     // This fails sometimes with the following assertion:
     // lib/ExecutionEngine/GDBRegistrationListener.cpp:168: virtual void
     // {anonymous}::GDBJITRegistrationListener::NotifyObjectEmitted(const
@@ -135,8 +135,10 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
                    }),
 #else
       SSP_(std::make_shared<SymbolStringPool>()), ES_(SSP_),
+#if !FACEBOOK_INTERNAL
       cxxSymbolOverride_(
           [this](const std::string &name) { return mangle(name); }),
+#endif
       resolver_(createLegacyLookupResolver(
           ES_,
           [this](const std::string &name) -> JITSymbol {
@@ -145,11 +147,13 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
             } else if (auto Err = localSym.takeError()) {
               return std::move(Err);
             }
+#if !FACEBOOK_INTERNAL
             // Some symbols are overridden, in particular __dso_handle and
             // __cxa_atexit .
             if (auto overriddenSym = cxxSymbolOverride_.searchOverrides(name)) {
               return overriddenSym;
             }
+#endif
             // FIXME: looking for symbols external to libjit in the process is
             // dangerous because it can be environment dependent. For example,
             // we get cases where a symbol is found in the Linux environment,
@@ -168,7 +172,7 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
             return nullptr;
           },
           [](Error Err) { cantFail(std::move(Err), "lookupFlags failed"); })),
-#if LLVM_VERSION_MAJOR == 7 || FACEBOOK_INTERNAL
+#if LLVM_VERSION_MAJOR == 7 || (LLVM_VERSION_MAJOR <= 8 && FACEBOOK_INTERNAL)
       objectLayer_(ES_,
                    [this](llvm::orc::VModuleKey) {
                      return RTDyldObjectLinkingLayer::Resources{
@@ -192,8 +196,10 @@ GlowJIT::GlowJIT(llvm::TargetMachine &TM)
 }
 
 GlowJIT::~GlowJIT() {
+#if !FACEBOOK_INTERNAL
   // Run any destructor registered with __cxa_atexit.
   cxxSymbolOverride_.runDestructors();
+#endif
   // Run any destructor discovered in the LLVM IR of the JIT modules.
   for (auto &dtorRunner : irStaticDestructorRunners_) {
     cantFail(dtorRunner.runViaLayer(compileLayer_));
@@ -221,7 +227,7 @@ GlowJIT::ModuleHandle GlowJIT::addModule(std::unique_ptr<llvm::Module> M) {
 
   cantFail(compileLayer_.addModule(K, std::move(M)));
 
-#if LLVM_VERSION_MAJOR == 7 || FACEBOOK_INTERNAL
+#if LLVM_VERSION_MAJOR == 7 || (LLVM_VERSION_MAJOR <= 8 && FACEBOOK_INTERNAL)
   CtorDtorRunner<decltype(compileLayer_)> ctorRunner(std::move(ctorNames), K);
 #else
   LegacyCtorDtorRunner<decltype(compileLayer_)> ctorRunner(std::move(ctorNames),
