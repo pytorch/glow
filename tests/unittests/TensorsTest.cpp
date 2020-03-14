@@ -17,6 +17,8 @@
 #include "glow/Base/Tensor.h"
 #include "glow/Base/TensorSerialization.h"
 #include "glow/Quantization/Base/Base.h"
+
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "gtest/gtest.h"
@@ -1300,9 +1302,12 @@ TEST(Tensor, differentAlignment) {
 TEST(Tensor, accessToRawTextFile) {
   Tensor tensorRef = {0.75f,  0.23f, 0.76f,  0.99f,  1.00f,
                       -0.78f, 0.23f, -0.97f, -0.37f, 0.00f};
-  dumpToRawTextFile(tensorRef, "tensor.txt");
+  llvm::SmallString<64> path;
+  auto tempFileRes = llvm::sys::fs::createTemporaryFile("tensor", ".txt", path);
+  dumpToRawTextFile(tensorRef, path);
   Tensor tensorTest(ElemKind::FloatTy, {10});
-  loadFromRawTextFile(tensorTest, "tensor.txt");
+  loadFromRawTextFile(tensorTest, path);
+  llvm::sys::fs::remove(path);
 
   auto handleRef = tensorRef.getHandle<>();
   auto handleTest = tensorTest.getHandle<>();
@@ -1319,9 +1324,12 @@ TEST(Tensor, accessToRawTextFile) {
 TEST(Tensor, accessToRawBinaryFile) {
   Tensor tensorRef = {0.75f,  0.23f, 0.76f,  0.99f,  1.00f,
                       -0.78f, 0.23f, -0.97f, -0.37f, 0.00f};
-  dumpToRawBinaryFile(tensorRef, "tensor.bin");
+  llvm::SmallString<64> path;
+  auto tempFileRes = llvm::sys::fs::createTemporaryFile("tensor", ".bin", path);
+  dumpToRawBinaryFile(tensorRef, path);
   Tensor tensorTest(ElemKind::FloatTy, {10});
-  loadFromRawBinaryFile(tensorTest, "tensor.bin");
+  loadFromRawBinaryFile(tensorTest, path);
+  llvm::sys::fs::remove(path);
 
   auto handleRef = tensorRef.getHandle<>();
   auto handleTest = tensorTest.getHandle<>();
