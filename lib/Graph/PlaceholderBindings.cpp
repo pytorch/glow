@@ -241,7 +241,7 @@ PlaceholderBindings::PlaceholderBindings(
     auto *orig = inputs[i];
     /// Create a reference to the original tensor and hand it to the
     /// PlaceholderBindings.
-    Tensor ptrT = orig->getUnowned(orig->dims());
+    Tensor ptrT = orig->getUnowned();
     insert(placeholders[i], std::move(ptrT));
   }
 }
