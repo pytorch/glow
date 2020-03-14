@@ -28,14 +28,16 @@
 using namespace glow;
 
 ExecutionEngine::ExecutionEngine(llvm::StringRef backend, uint64_t deviceMemory,
-                                 bool ignoreUserDeviceConfig)
+                                 bool ignoreUserDeviceConfig,
+                                 unsigned numDevices)
     : deviceMemory_(deviceMemory),
       ignoreUserDeviceConfig_(ignoreUserDeviceConfig) {
-  setBackendName(backend);
+  setBackendName(backend, numDevices);
 }
 
 /// Set the code generator to the given \p backend.
-void ExecutionEngine::setBackendName(llvm::StringRef backend) {
+void ExecutionEngine::setBackendName(llvm::StringRef backend,
+                                     size_t numDevices) {
   clear();
   module_.reset(new Module);
   rawModule_ = module_.get();
@@ -56,11 +58,13 @@ void ExecutionEngine::setBackendName(llvm::StringRef backend) {
     CHECK(backendName_ == configs[0]->backendName)
         << "Expected backend name to match the ExecutionEngine";
   } else {
-    auto config = glow::make_unique<runtime::DeviceConfig>(backendName_);
-    if (deviceMemory_) {
-      config->setDeviceMemory(deviceMemory_);
+    for (size_t i = 0; i < numDevices; i++) {
+      auto config = glow::make_unique<runtime::DeviceConfig>(backendName_);
+      if (deviceMemory_) {
+        config->setDeviceMemory(deviceMemory_);
+      }
+      configs.push_back(std::move(config));
     }
-    configs.push_back(std::move(config));
   }
   hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
 }
@@ -143,7 +147,7 @@ void ExecutionEngine::runInternal(ExecutionContext &context,
 }
 
 void ExecutionEngine::run(ExecutionContext &context) {
-  assert(compiledFunctions_.size() == 1 &&
+  assert((compiledFunctions_.size() == 1 || allowMultiFunction_) &&
          "Expected exactly one compiled function.");
   runInternal(context, *compiledFunctions_.begin());
 }
@@ -153,7 +157,7 @@ void ExecutionEngine::run(ExecutionContext &context, llvm::StringRef name) {
 }
 
 void ExecutionEngine::run(PlaceholderBindings &bindings) {
-  assert(compiledFunctions_.size() == 1 &&
+  assert((compiledFunctions_.size() == 1 || allowMultiFunction_) &&
          "Expected exactly one compiled function.");
   std::unique_ptr<PlaceholderBindings> bindingsPtr(&bindings);
   ExecutionContext context(std::move(bindingsPtr));
@@ -275,8 +279,28 @@ void ExecutionEngine::compile(CompilationContext &cctx) {
     cctx.skipModuleStrip = true;
   }
 
-  for (auto &function : module_->getFunctions()) {
-    compiledFunctions_.insert(function->getName());
+  if (cctx.prepartitionedConfig) {
+    if (cctx.prepartitionedConfig->funcs.size() > 1) {
+      allowMultiFunction_ = true;
+    }
+
+    // If we are compiling a prepartitioned model then we should add the name of
+    // the prepartitioned config, which is later used as the root of the DAG,
+    // and also used to kick off running.
+    compiledFunctions_.insert(cctx.prepartitionedConfig->funcName);
+  }
+
+  for (auto *F : module_->getFunctions()) {
+    // Check to see if this Function is part of the prepartitioned config if it
+    // exists, as we do not kick off execution for the partitions individually.
+    bool skipAdding = false;
+    if (cctx.prepartitionedConfig) {
+      auto &pFuns = cctx.prepartitionedConfig->funcs;
+      skipAdding = std::find(pFuns.begin(), pFuns.end(), F) != pFuns.end();
+    }
+    if (!skipAdding) {
+      compiledFunctions_.insert(F->getName());
+    }
   }
 
   EXIT_ON_ERR(hostManager_->addNetwork(std::move(module_), cctx));

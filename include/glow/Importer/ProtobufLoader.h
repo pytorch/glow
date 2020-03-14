@@ -136,8 +136,15 @@ class ProtobufLoader {
 protected:
   /// The graph that we are constructing.
   Function *G_;
+  /// The module containing the graph(s) that we are constructing.
+  Module &mod_;
+  /// A map from partition names to Function for it.
+  llvm::StringMap<Function *> partNameToFun_;
   /// Saves network nodes by name.
   llvm::StringMap<NodeValue> nodeValueByName_;
+  /// Saves intermediate PHs by name, i.e. those that are used to communicate
+  /// between partitions.
+  llvm::StringMap<Placeholder *> intermediatePHsByName_;
   /// A map from names of the external outputs of the network to Variables.
   llvm::StringMap<Placeholder *> outputVarsByName_;
   /// A map from names of the external inputs of the network to Variables.
@@ -172,8 +179,13 @@ protected:
 
   /// \returns the NodeValue that was registered with the name \p name or
   /// a nullptr wrapped in a NodeValue if no node has been registered with this
-  /// name.
-  NodeValue getNodeValueByNameOrNullNodeValue(llvm::StringRef name) const;
+  /// name. Storage NodeValues are always returned if found. Otherwise, if
+  /// \ref G_ is the same as the parent of the NodeValue (or if
+  /// \p ignoreSrcFun), then the direct mapping is returned from
+  /// \ref nodeValueByName_. Otherwise, a SaveNode will be created and output to
+  /// a Placeholder, which will be added to \ref nodeValueByName_ and returned.
+  NodeValue getNodeValueByNameOrNullNodeValue(llvm::StringRef name,
+                                              bool ignoreSrcFun = false);
 
   Placeholder *getStaticPlaceholderByNameOrNull(llvm::StringRef name) const;
 
@@ -190,10 +202,20 @@ protected:
   /// name.
   bool hasConstantByName(llvm::StringRef name) const;
 
+  /// Sets up a new Loader based on \p tensorNames, \p types, and sets any error
+  /// in \p errPtr.
+  void setupLoader(llvm::ArrayRef<const char *> tensorNames,
+                   llvm::ArrayRef<TypeRef> types, Error *errPtr);
+
 public:
-  /// \returns the NodeValue that was registered with the name \p name.
+  /// \returns the NodeValue that was registered with the name \p name.  If
+  /// looking up a NodeValue which is produced from a different Function (and if
+  /// not \p ignoreSrcFun) then this returns (and creates if doesn't yet exist)
+  /// a new SaveNode and Placeholder to connect the two Nodes from different
+  /// Functions.
   /// \pre hasNodeByName(name)
-  Expected<NodeValue> getNodeValueByName(llvm::StringRef name) const;
+  Expected<NodeValue> getNodeValueByName(llvm::StringRef name,
+                                         bool ignoreSrcFun = false);
 
   /// \returns True if the node that's registered using \p name exists.
   bool hasNodeByName(llvm::StringRef name) const;
@@ -205,6 +227,15 @@ public:
   /// occurs it will abort.
   ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                  llvm::ArrayRef<TypeRef> types, Function *F,
+                 Error *errPtr = nullptr);
+
+  /// Constructs new ProtobufLoader object. It will populate the network into
+  /// \p mod. The list \p types and \p names are used to initialize the inputs
+  /// of the model with specific names and types. If \p errPtr is not null then
+  /// if an error occurs it will get assigned there otherwise if an error
+  /// occurs it will abort.
+  ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
+                 llvm::ArrayRef<TypeRef> types, Module &mod,
                  Error *errPtr = nullptr);
 
   ProtobufLoader(const ProtobufLoader &other) = delete;
