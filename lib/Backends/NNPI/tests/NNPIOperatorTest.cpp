@@ -262,6 +262,8 @@ struct BlacklistInitializer {
              TestBlacklist::AnyDeviceAnyEngine},
             {"ChannelwiseQuantizedGroupConvolution/0",
              TestBlacklist::AnyDeviceAnyEngine},
+            {"ChannelwiseQuantizedGroupConvolutionNonZero/0",
+             TestBlacklist::AnyDeviceAnyEngine},
         };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);
