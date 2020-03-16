@@ -1774,11 +1774,10 @@ bool ResizeNearestNode::verify() const {
                                size_t(4), this);
   for (size_t i = 0; i < scale.size(); i++) {
     isValid &= expectCompareTrue("Unexpected output",
-                                 size_t(std::floor(inputDims[i] * scale[i])),
+                                 dim_t(std::floor(inputDims[i] * scale[i])),
                                  outputDims[i], this);
-    isValid &=
-      expectCompareTrue("Invalid scale", scale[i], float(0.0),
-                        this, CompareOperatorGreaterThan<float>());
+    isValid &= expectCompareTrue("Invalid scale", scale[i], float(0.0), this,
+                                 CompareOperatorGreaterThan<float>());
   }
 
   return isValid;

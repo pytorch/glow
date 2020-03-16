@@ -2307,8 +2307,8 @@ ResizeNearestNode *Function::createResizeNearest(llvm::StringRef name,
   DCHECK_EQ(inputDim.size(), scale.size())
       << "Input Dimension size: " << inputDim.size()
       << " Scale size: " << scale.size() << " should be same.";
-  
-  std::vector<size_t> newDim;
+
+  std::vector<dim_t> newDim;
 
   for (size_t i = 0; i < scale.size(); i++) {
     auto newD = dim_t(std::floor(inputDim[i] * scale[i]));
@@ -2318,8 +2318,7 @@ ResizeNearestNode *Function::createResizeNearest(llvm::StringRef name,
   }
 
   auto outTy = getParent()->uniqueTypeWithNewShape(input.getType(), newDim);
-  return addNode(
-      new ResizeNearestNode(name, outTy, input, scale));
+  return addNode(new ResizeNearestNode(name, outTy, input, scale));
 }
 
 QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,

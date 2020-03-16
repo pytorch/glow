@@ -901,10 +901,9 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     scales.push_back(1.0f);
     scales.push_back(heightScale);
     scales.push_back(widthScale);
-    scales.push_back(1.0f);    
+    scales.push_back(1.0f);
 
-    auto *node =
-        G_->createResizeNearest(opName, finalIn, scales);
+    auto *node = G_->createResizeNearest(opName, finalIn, scales);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
