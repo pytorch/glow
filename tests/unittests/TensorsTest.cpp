@@ -1304,6 +1304,9 @@ TEST(Tensor, accessToRawTextFile) {
                       -0.78f, 0.23f, -0.97f, -0.37f, 0.00f};
   llvm::SmallString<64> path;
   auto tempFileRes = llvm::sys::fs::createTemporaryFile("tensor", ".txt", path);
+  if (tempFileRes.value() != 0) {
+    FAIL() << "Failed to create temp file to write into.";
+  }
   dumpToRawTextFile(tensorRef, path);
   Tensor tensorTest(ElemKind::FloatTy, {10});
   loadFromRawTextFile(tensorTest, path);
@@ -1326,6 +1329,9 @@ TEST(Tensor, accessToRawBinaryFile) {
                       -0.78f, 0.23f, -0.97f, -0.37f, 0.00f};
   llvm::SmallString<64> path;
   auto tempFileRes = llvm::sys::fs::createTemporaryFile("tensor", ".bin", path);
+  if (tempFileRes.value() != 0) {
+    FAIL() << "Failed to create temp file to write into.";
+  }
   dumpToRawBinaryFile(tensorRef, path);
   Tensor tensorTest(ElemKind::FloatTy, {10});
   loadFromRawBinaryFile(tensorTest, path);
