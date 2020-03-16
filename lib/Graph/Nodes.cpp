@@ -324,9 +324,10 @@ static bool verifyFullyConnected(NodeValue src, NodeValue weights,
 
   if (src.getElementType() == ElemKind::Int8QTy) {
     isValid &=
-        expectCompareTrue("Bias type should be Int8 or Int32 for FC",
+        expectCompareTrue("Bias type should be Int8, Int32 or FP32 for FC",
                           bias.getElementType() == ElemKind::Int8QTy ||
-                              bias.getElementType() == ElemKind::Int32QTy,
+                              bias.getElementType() == ElemKind::Int32QTy ||
+                              bias.getElementType() == ElemKind::FloatTy,
                           true, parent);
   }
   return isValid;

@@ -113,7 +113,9 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                 {ElemKind::Int8QTy}, {FullyConnectedNode::BiasIdx}) &&
             (NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::Int8QTy ||
              NI.getInElemTy(FullyConnectedNode::BiasIdx) ==
-                 ElemKind::Int32QTy)) ||
+                 ElemKind::Int32QTy ||
+             NI.getInElemTy(FullyConnectedNode::BiasIdx) ==
+                 ElemKind::FloatTy)) ||
            (NI.allInputsAndOutputsHaveSameElemKind(
                 {ElemKind::Int16QTy}, {FullyConnectedNode::BiasIdx}) &&
             (NI.getInElemTy(FullyConnectedNode::BiasIdx) ==
@@ -693,6 +695,45 @@ bool Interpreter::shouldLower(const Node *N) const {
   }
 }
 
+/// Quantize the given float \p bias as int32 using \p inputScale,
+/// weight \p scales and \p offset=0. \returns false if the bias was already
+/// quantized and thus no change was made and true otherwise.
+static bool quantizeFloatBias(Function *F, FullyConnectedNode &fullyConnected) {
+  if (fullyConnected.getBias().getType()->isQuantizedType() ||
+      (!fullyConnected.getWeights().getType()->isQuantizedType())) {
+    return false;
+  }
+  assert(fullyConnected.getBias().getElementType() == ElemKind::FloatTy &&
+         "Bias type must be a float in order to quantize it.");
+  Constant *biasC =
+      llvm::dyn_cast<Constant>(fullyConnected.getBias().getNode());
+  assert(biasC && "bias input to ChannelwiseQuantizedConvolutionNode "
+                  "must be a Constant in order to quantize the bias");
+  const auto &biasUnquantizedH = biasC->getPayload().getHandle<float>();
+  // biasQuantizedT is Int32QTy
+  const float inputScale = fullyConnected.getInput().getType()->getScale();
+  const float weigthScale = fullyConnected.getWeights().getType()->getScale();
+  const float scale = inputScale * weigthScale;
+  auto biasQuantizedT = Tensor(ElemKind::Int32QTy, biasUnquantizedH.dims(),
+                               /* scale */ scale, /* offset */ 0);
+  auto biasQuantizedH = biasQuantizedT.getHandle<int32_t>();
+  TensorQuantizationParams tqp;
+  tqp.scale = scale;
+  tqp.offset = 0;
+  for (dim_t i = 0; i < biasQuantizedH.size(); ++i) {
+    biasQuantizedH.raw(i) =
+        quantization::quantize<int32_t>(biasUnquantizedH.raw(i), tqp);
+  }
+  auto biasQuantizedC = F->getParent()->createConstant(
+      biasC->getName(), std::move(biasQuantizedT));
+  auto newFullyConnectedNode = F->createFullyConnected(
+      fullyConnected.getName(), fullyConnected.getInput(),
+      fullyConnected.getWeights(), biasQuantizedC,
+      fullyConnected.getResult().getType(), /* axis doens't matter */ 1);
+  fullyConnected.getResult().replaceAllUsesOfWith(newFullyConnectedNode);
+  return true;
+}
+
 /// Channelwise quantize the given float \p bias as int32 using \p inputScale,
 /// per-channel \p scales and \p offsets. \returns false if the bias was already
 /// quantized and thus no change was made and true otherwise.
@@ -760,6 +801,9 @@ bool Interpreter::transformPostLowering(
     if (auto *channelwiseConv =
             llvm::dyn_cast<ChannelwiseQuantizedConvolutionNode>(&node)) {
       changed |= channelwiseQuantizeFloatBias(F, *channelwiseConv);
+    } else if (auto *fullyConnected =
+                   llvm::dyn_cast<FullyConnectedNode>(&node)) {
+      changed |= quantizeFloatBias(F, *fullyConnected);
     }
   }
   return changed;
