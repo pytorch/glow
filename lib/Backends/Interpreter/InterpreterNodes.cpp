@@ -2811,7 +2811,7 @@ void BoundInterpreterFunction::fwdFullyConnectedInstQuantizedImpl(
 
       // Scale the result back to the expected destination scale.
       outW.at({i, j}) = quantization::clip<AccumulatorTy, ElemTy>(
-          std::round(float(sum) * (matMulScale / outScale) + outOffset));
+          std::round(float(sum) * (matMulScale / outScale)) + outOffset);
     }
   }
 }
