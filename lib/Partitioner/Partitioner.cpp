@@ -611,6 +611,9 @@ Expected<DAGListTy> Partitioner::loadBalancedPartition(CompilationContext &cctx,
   // Check if the memory usage meets the device memory limitation.
   RETURN_IF_ERR(memoryUsageValidation(partitionMap, backendMap_));
 
+  // assignLogicalDeviceID adds all partitions to their logical device, clear
+  // the existing first to prevent duplication.
+  partitionMap.clearLogicalDeviceID();
   logicalDeviceID_ = assignLogicalDeviceID(partitionMap, backendMap_);
   RETURN_IF_ERR(logicalDevicesValidation(partitionMap, backendMap_));
 
