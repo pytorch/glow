@@ -134,6 +134,24 @@ public:
                     llvm::ArrayRef<TypeRef> types, Function &F,
                     Error *errPtr = nullptr);
 
+  /// Loads the caffe2 model that's represented by a network description file,
+  /// serialized in \p netDescFilename, and weights file, serialized in
+  /// \p netWeightFilename, and populates the network in \p mod.
+  /// Any Functions created in \p mod will have name (or prefixed name for
+  /// pre-partitioned protos) \p funNamePrefix.  \p PPC is used to store the
+  /// pre-partitioned config for the model if relevant.
+  /// The list \p types and \p names are used to initialized the inputs and
+  /// outputs with specific names and types.
+  /// If \p errPtr is not null then if an error occurs it will get assigned
+  /// there otherwise if an error occurs it will abort.
+  Caffe2ModelLoader(const std::string &netDescFilename,
+                    const std::string &netWeightFilename,
+                    llvm::ArrayRef<const char *> names,
+                    llvm::ArrayRef<TypeRef> types, Module &mod,
+                    llvm::StringRef funNamePrefix,
+                    runtime::PrePartitionedConfig *PPC = nullptr,
+                    Error *errPtr = nullptr);
+
   /// Creates a Caffe2 model loader to build \p F.
   /// If \p errPtr is not null then if an error occurs it will get assigned
   /// there otherwise if an error occurs it will abort.

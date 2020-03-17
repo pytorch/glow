@@ -127,20 +127,53 @@ ProtobufLoader::getInputByName(llvm::StringRef name) const {
 }
 
 NodeValue
-ProtobufLoader::getNodeValueByNameOrNullNodeValue(llvm::StringRef name) const {
+ProtobufLoader::getNodeValueByNameOrNullNodeValue(llvm::StringRef name,
+                                                  bool ignoreSrcFun) {
   auto it = nodeValueByName_.find(name);
-  if (it != nodeValueByName_.end()) {
-    return it->second;
+  if (it == nodeValueByName_.end()) {
+    return NodeValue(nullptr);
   }
 
-  return NodeValue(nullptr);
+  // Always return the NV of a storage Node since Storage lives in the Module
+  // and is accessible to any Node.
+  NodeValue NV = it->second;
+  if (llvm::isa<Storage>(NV)) {
+    return NV;
+  }
+
+  // Check if the current Function G_ we are loading into is the same as the
+  // Function of the NV we found; if so then return it.
+  Function *srcF = NV.getNode()->getParent();
+  if (srcF == G_ || ignoreSrcFun) {
+    return NV;
+  }
+
+  // Otherwise we must be looking up a NV from a different Function in the
+  // Module, so look for an intermediate Placeholder linking the two if it
+  // exists, or otherwise create one and remember it.
+  assert(partNameToFun_.size() > 0 &&
+         "Must be loading a pre-partitioned model.");
+  auto itPH = intermediatePHsByName_.find(name);
+  Placeholder *intermedPH = nullptr;
+  // Create the intermediate PH and SaveNode if it does not yet exist. Note that
+  // we store these intermediate PHs separately from nodeValueByName_ because we
+  // want future users from the same Function as the NV to still use the Node
+  // directly through nodeValueByName_.
+  if (itPH == intermediatePHsByName_.end()) {
+    auto *save = srcF->createSave("tmp_" + NV.getNode()->getName().str(), NV);
+    intermedPH = save->getPlaceholder();
+    intermediatePHsByName_[name] = intermedPH;
+  } else {
+    intermedPH = itPH->second;
+  }
+  return intermedPH->getOutput();
 }
 
-Expected<NodeValue>
-ProtobufLoader::getNodeValueByName(llvm::StringRef name) const {
+Expected<NodeValue> ProtobufLoader::getNodeValueByName(llvm::StringRef name,
+                                                       bool ignoreSrcFun) {
   RETURN_ERR_IF_NOT(hasNodeByName(name),
                     llvm::Twine("No node under name ", name).str());
-  auto node = getNodeValueByNameOrNullNodeValue(name);
+  auto node = getNodeValueByNameOrNullNodeValue(name, ignoreSrcFun);
   RETURN_ERR_IF_NOT(node.getNode(), "Null is under that name??");
   return node;
 }
@@ -157,8 +190,7 @@ Error ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
   }
   // Note: We do not support training from models loaded from protos, so
   // trainable is always set to false here.
-  Constant *node =
-      G_->getParent()->createConstant(name, std::move(tensor), layout);
+  Constant *node = mod_.createConstant(name, std::move(tensor), layout);
   nodeValueByName_[name] = node->getOutput();
   return Error::success();
 }
@@ -179,7 +211,7 @@ void ProtobufLoader::deleteUnusedConstants() {
     auto *c = llvm::dyn_cast<Constant>(it->second.getNode());
     DCHECK(c) << "NodeValue with name " << name
               << " was expected to have been a Constant";
-    G_->getParent()->eraseConstant(c);
+    mod_.eraseConstant(c);
     nodeValueByName_.erase(it);
   }
 }
@@ -191,21 +223,32 @@ ProtobufLoader::createAndRegisterPlaceholder(llvm::StringRef name, TypeRef T,
   RETURN_ERR_IF_NOT(
       !hasNodeByName(name),
       llvm::Twine("Creating an already existing node ", name).str());
-  Placeholder *node =
-      G_->getParent()->createPlaceholder(T, name, isTrainable, layout);
+  Placeholder *node = mod_.createPlaceholder(T, name, isTrainable, layout);
   node->setStatic(isStatic);
   nodeValueByName_[name] = node->getOutput();
   return node;
 }
 
 bool ProtobufLoader::hasNodeByName(llvm::StringRef name) const {
-  return getNodeValueByNameOrNullNodeValue(name).getNode() != nullptr;
+  return nodeValueByName_.find(name) != nodeValueByName_.end();
+}
+
+ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
+                               llvm::ArrayRef<TypeRef> types, Module &mod,
+                               Error *errPtr)
+    : G_(nullptr), mod_(mod) {
+  setupLoader(tensorNames, types, errPtr);
 }
 
 ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                                llvm::ArrayRef<TypeRef> types, Function *F,
                                Error *errPtr)
-    : G_(F) {
+    : G_(F), mod_(*F->getParent()) {
+  setupLoader(tensorNames, types, errPtr);
+}
+
+void ProtobufLoader::setupLoader(llvm::ArrayRef<const char *> tensorNames,
+                                 llvm::ArrayRef<TypeRef> types, Error *errPtr) {
   // Verify that the version of the library that we linked against is
   // compatible with the version of the headers we compiled against.
   GOOGLE_PROTOBUF_VERIFY_VERSION;
