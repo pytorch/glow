@@ -58,6 +58,10 @@ public:
 
   bool shouldLower(const Node *N) const override;
 
+  bool transformPostLowering(
+      Function *F, CompilationContext &cctx,
+      const glow::runtime::DeviceInfo *devInfo = nullptr) const override;
+
   /// @}
   //
   /// \returns the size of metrics collected for a single TraceEvent.

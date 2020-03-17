@@ -33,6 +33,12 @@
 
 namespace glow {
 
+/// Print message and exit with error code.
+void exitWithErr(llvm::StringRef errMsg);
+
+/// Check condition and if false print message and exit with error code.
+void checkCond(bool cond, llvm::StringRef errMsg);
+
 /// Typedefs for unlabeled datasets consisting only in data paths.
 using UnlabeledData = std::string;
 using UnlabeledDataSet = std::vector<UnlabeledData>;
@@ -50,10 +56,15 @@ using UnlabeledDataSet = std::vector<UnlabeledData>;
 ///   image1.png,this,will,be,ignored,
 ///   ...............................
 /// The file names are concatenated (prepended) with a common directory path
-/// given by \p dataSetDirPath. This function validates that all the data paths
-/// are valid and \returns the unlabeled data set.
-UnlabeledDataSet readUnlabeledDataSet(llvm::StringRef dataSetFile,
-                                      llvm::StringRef dataSetDirPath);
+/// given by \p dataSetDirPath. If the \p dataSetDirPath is empty then it will
+/// not be used. This function validates that all the data paths are valid and
+/// \returns the unlabeled data set.
+UnlabeledDataSet readUnlabeledDataSetFromFile(llvm::StringRef dataSetFile,
+                                              llvm::StringRef dataSetDirPath);
+
+/// Read an unlabeled data set as all the files from the given directory
+/// \p dataSetDirPath.
+UnlabeledDataSet readUnlabeledDataSetFromDir(llvm::StringRef dataSetDirPath);
 
 /// Typedefs for labeled datasets consisting in pairs of data paths and integer
 /// labels.

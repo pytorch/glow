@@ -158,7 +158,7 @@ Error ProtobufLoader::createAndRegisterConstant(llvm::StringRef name,
   // Note: We do not support training from models loaded from protos, so
   // trainable is always set to false here.
   Constant *node =
-      G_.getParent()->createConstant(name, std::move(tensor), layout);
+      G_->getParent()->createConstant(name, std::move(tensor), layout);
   nodeValueByName_[name] = node->getOutput();
   return Error::success();
 }
@@ -179,7 +179,7 @@ void ProtobufLoader::deleteUnusedConstants() {
     auto *c = llvm::dyn_cast<Constant>(it->second.getNode());
     DCHECK(c) << "NodeValue with name " << name
               << " was expected to have been a Constant";
-    G_.getParent()->eraseConstant(c);
+    G_->getParent()->eraseConstant(c);
     nodeValueByName_.erase(it);
   }
 }
@@ -192,7 +192,7 @@ ProtobufLoader::createAndRegisterPlaceholder(llvm::StringRef name, TypeRef T,
       !hasNodeByName(name),
       llvm::Twine("Creating an already existing node ", name).str());
   Placeholder *node =
-      G_.getParent()->createPlaceholder(T, name, isTrainable, layout);
+      G_->getParent()->createPlaceholder(T, name, isTrainable, layout);
   node->setStatic(isStatic);
   nodeValueByName_[name] = node->getOutput();
   return node;
@@ -203,7 +203,7 @@ bool ProtobufLoader::hasNodeByName(llvm::StringRef name) const {
 }
 
 ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
-                               llvm::ArrayRef<TypeRef> types, Function &F,
+                               llvm::ArrayRef<TypeRef> types, Function *F,
                                Error *errPtr)
     : G_(F) {
   // Verify that the version of the library that we linked against is

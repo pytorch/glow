@@ -216,20 +216,22 @@ inline std::pair<dim_t, dim_t> calculateConvPoolOutputDims(
 /// Calculate the size of the output tensor based on the 3D convolution/pooling
 /// parameters \p inH \p inW, \p inT which are the input's height, width, and
 /// depth respectively.
-inline ShapeHWD calculate3DConvPoolOutputDims(
-    size_t inH, size_t inW, size_t inD, llvm::ArrayRef<unsigned_t> kernels,
+inline ShapeTHW calculate3DConvPoolOutputDims(
+    size_t inT, size_t inH, size_t inW, llvm::ArrayRef<unsigned_t> kernels,
     llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads) {
-  PaddingTLNBRF pdim(pads);
-  ShapeHWD kdim(kernels);
-  ShapeHWD sdim(strides);
+  PaddingNFTBLR pdim(pads);
+  ShapeTHW kdim(kernels);
+  ShapeTHW sdim(strides);
 
+  size_t outT = ((inT + pdim.near + pdim.far - kdim.temporal_frames) /
+                     sdim.temporal_frames +
+                 1);
   size_t outH =
       ((inH + pdim.top + pdim.bottom - kdim.height) / sdim.height + 1);
   size_t outW = ((inW + pdim.left + pdim.right - kdim.width) / sdim.width + 1);
-  size_t outD = ((inD + pdim.near + pdim.far - kdim.depth) / sdim.depth + 1);
 
-  llvm::SmallVector<size_t, 3> outDims{outH, outW, outD};
-  return ShapeHWD(llvm::makeArrayRef(outDims));
+  llvm::SmallVector<size_t, 3> outDims{outT, outH, outW};
+  return ShapeTHW(llvm::makeArrayRef(outDims));
 }
 
 /// Calculate the size of the output tensor based on the ConvTranspose
@@ -366,10 +368,12 @@ constexpr char qScaleSignifier[] = "qScale";
 constexpr char qOffsetSignifier[] = "qOffset";
 constexpr char shapeSignifier[] = "shape";
 
-/// \returns the string ID for a type attribute property for a specific \p resNo
-/// and \p signifier, e.g. to retrieve result number 0's shape.
-inline std::string getTypeAttrID(unsigned resNo, const std::string &signifier) {
-  return "o" + std::to_string(resNo) + "_" + signifier;
+/// \returns the string ID for a type attribute property for a specific \p ioNum
+/// and \p signifier and whether \p isInput. E.g. to retrieve result number 0's
+/// shape, you'd pass `(0, "shape", false)`.
+inline std::string getTypeAttrID(unsigned ioNum, const std::string &signifier,
+                                 bool isInput = false) {
+  return (isInput ? "i" : "o") + std::to_string(ioNum) + "_" + signifier;
 }
 
 } // namespace glow

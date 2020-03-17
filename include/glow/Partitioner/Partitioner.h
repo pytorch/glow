@@ -40,7 +40,7 @@ class Partitioner final : public PartitionerBase {
   std::vector<DeviceInfo> deviceInfo_;
 
   /// The backends created in Partitioner. Used for function optimization.
-  std::vector<std::unique_ptr<Backend>> backendHolder;
+  std::vector<std::unique_ptr<Backend>> backendHolder_;
 
   /// The raw backend pointers.
   std::vector<Backend *> backends_;
@@ -175,6 +175,12 @@ public:
   Expected<DAGListTy>
   partitionFromConfig(const PartitionConfig &partitionConfig,
                       CompilationContext &cctx);
+
+  /// Based on \p config, setup all data structures needed for a DAG. \p config
+  /// contains the Functions which are already partitioned and connected via
+  /// Placeholders.
+  Expected<DAGListTy>
+  setupPrepartitionedModule(const PrePartitionedConfig &config);
 
   /// This partition approach is used in Glow Quantization Profiling flow. The
   /// backendBasedPartition is applied first in case there are heterogeneous

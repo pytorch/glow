@@ -421,18 +421,18 @@ protected:
   ///
   /// \pre One of t\p val's type and \p destTy must be FloatTy and
   ///      the other must be a quantized type.
-  Node *createConversion(Function &function, const Node & /* unused */,
-                         NodeValue &val, TypeRef destTy,
-                         bool /* isInput */) override {
+  Node *createConversion(Function &function, const Node &node, NodeValue &val,
+                         TypeRef destTy, bool /* isInput */) override {
     assert((&function == &function_) &&
            "Trying to add quantize/dequantize conversion to a function other "
            "than the function being quantized.");
+    std::string nodeName = node.getName();
     if (destTy->isQuantizedType()) {
-      return function.createQuantize("quantize", val, destTy);
+      return function.createQuantize(nodeName + "_quantize", val, destTy);
     }
     assert(destTy->getElementType() == ElemKind::FloatTy &&
            "Can't dequantize to any type except float.");
-    return function.createDequantize("dequantize", val);
+    return function.createDequantize(nodeName + "_dequantize", val);
   }
 
   /// All IRConstraint cases below assume that the input and output index that

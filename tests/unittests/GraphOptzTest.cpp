@@ -717,7 +717,7 @@ TEST_F(GraphOptz, transposeConstantWithPredicate) {
 }
 
 TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
-  Node *A =
+  Placeholder *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
   Node *CV = F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);
   Node *BN =
@@ -726,10 +726,11 @@ TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
-  ::glow::optimize(F_, CompilationMode::Train);
-  EXPECT_EQ(F_->getNodes().size(), 3);
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+  ::glow::optimize(optimizedF_, CompilationMode::Train);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
 
-  ASSERT_EQ(A->getNumUsers(), 1);
+  ASSERT_EQ(A->getNumUsers(), 2);
   Node *curCV = A->getUsers().begin()->getUser();
   EXPECT_EQ(curCV, CV);
   ASSERT_EQ(curCV->getNumUsers(), 1);
@@ -738,6 +739,10 @@ TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
   ASSERT_EQ(curBN->getNumUsers(), 1);
   Node *save = curBN->getUsers().begin()->getUser();
   EXPECT_TRUE(llvm::isa<SaveNode>(save));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
 }
 
 TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
@@ -4038,4 +4043,29 @@ TEST_F(GraphOptz, FoldConvTransposeAddIntoBiasAddRHS) {
 TEST_F(GraphOptz, FoldConvTransposeAddIntoBiasAddLHS) {
   foldConvTransposeAddIntoBiasAdd(bindings_, mod_, F_, optimizedF_, true);
   checkNumericalEquivalence();
+}
+
+/// Test that MatMul + Add is folded into FullyConnected.
+TEST_F(GraphOptz, FoldMatMulAddIntoFullyConnected) {
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", false);
+  auto *weights =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 5}, "weights", false);
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5}, "bias", false);
+
+  MatMulNode *matmul = F_->createMatMul("matmul", input, weights);
+  AddNode *add = F_->createAdd("add", matmul, bias);
+  F_->createSave("save", add);
+  EXPECT_EQ(3, F_->getNodes().size());
+
+  // The folding should replace the MatMul + Add into a FullyConnected and a
+  // Reshape to 1D for the Bias.
+  CompilationContext cctx;
+  ::glow::fold(F_, cctx);
+  EXPECT_EQ(3, F_->getNodes().size());
+  EXPECT_EQ(0, countNodeKind(F_, Kinded::Kind::AddNodeKind));
+  EXPECT_EQ(0, countNodeKind(F_, Kinded::Kind::MatMulNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ReshapeNodeKind));
 }

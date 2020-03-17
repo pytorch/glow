@@ -153,6 +153,35 @@ void Graph::setZeroLengthSequence(dim_t maxSeqLength) {
   zeroLengthSequence_.zero();
 }
 
+void Graph::bindPlaceholders(const ONNXIFIModelLoader &loader) {
+  onnxInputToPlaceholder_ = loader.getInputVarsMapping();
+  onnxOutputToPlaceholder_ = loader.getOutputVarsMapping();
+  onnxInputNames_ = loader.getPositionalInputNames();
+  onnxInputPlaceholders_.reserve(onnxInputNames_.size());
+  for (const auto &i : onnxInputNames_) {
+    const auto it = onnxInputToPlaceholder_.find(i);
+    if (it == onnxInputToPlaceholder_.end()) {
+      break;
+    }
+    onnxInputPlaceholders_.push_back(it->second);
+  }
+  if (onnxInputPlaceholders_.size() != onnxInputToPlaceholder_.size()) {
+    onnxInputPlaceholders_.clear();
+  }
+  onnxOutputNames_ = loader.getPositionalOutputNames();
+  onnxOutputPlaceholders_.reserve(onnxOutputNames_.size());
+  for (const auto &i : onnxOutputNames_) {
+    const auto it = onnxOutputToPlaceholder_.find(i);
+    if (it == onnxOutputToPlaceholder_.end()) {
+      break;
+    }
+    onnxOutputPlaceholders_.push_back(it->second);
+  }
+  if (onnxOutputPlaceholders_.size() != onnxOutputToPlaceholder_.size()) {
+    onnxOutputPlaceholders_.clear();
+  }
+}
+
 onnxStatus Graph::adjustInputs(uint32_t inputsCount,
                                const onnxTensorDescriptorV1 *inputDescriptors,
                                ExecutionContext *ctx) {
@@ -335,6 +364,9 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   }
   TRACE_EVENT_SCOPE_END_NAMED(soEvent);
 
+  if (ctx->getTraceContext()) {
+    ctx->getTraceContext()->setThreadName("Caller");
+  }
   auto ret = run(std::move(ctx), outputEvent, traceEvents);
   if (GlowSaveOnnxifiIO) {
     // We need to wait for the execution to finish in order to extract output

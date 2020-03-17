@@ -27,7 +27,7 @@
 TEST(ModelLoaderTest, Loader) {
   const std::string fileName{GLOW_DATA_PATH
                              "tests/models/pytorchModels/resnet18.pt"};
-  std::shared_ptr<torch::jit::script::Module> module;
+  std::shared_ptr<torch::jit::Module> module;
   glow::Error err = glow::PyTorchFileLoader::loadPyTorchModel(fileName, module);
   EXPECT_FALSE(err);
 }

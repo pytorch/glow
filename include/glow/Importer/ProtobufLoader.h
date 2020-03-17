@@ -135,13 +135,17 @@ template <typename T> std::string loadOperatorName(const T &op) {
 class ProtobufLoader {
 protected:
   /// The graph that we are constructing.
-  Function &G_;
+  Function *G_;
   /// Saves network nodes by name.
   llvm::StringMap<NodeValue> nodeValueByName_;
   /// A map from names of the external outputs of the network to Variables.
   llvm::StringMap<Placeholder *> outputVarsByName_;
   /// A map from names of the external inputs of the network to Variables.
   llvm::StringMap<Placeholder *> inputVarsByName_;
+  /// A vector of input names ordered by their position of inference interface
+  std::vector<std::string> positionalInputNames_;
+  /// A vector of output names ordered by their position of inference interface
+  std::vector<std::string> positionalOutputNames_;
   /// Whether to try constant folding as we load each op from a protobuf.
   bool constFoldInLoader_{true};
 
@@ -200,7 +204,7 @@ public:
   /// if an error occurs it will get assigned there otherwise if an error
   /// occurs it will abort.
   ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
-                 llvm::ArrayRef<TypeRef> types, Function &F,
+                 llvm::ArrayRef<TypeRef> types, Function *F,
                  Error *errPtr = nullptr);
 
   ProtobufLoader(const ProtobufLoader &other) = delete;
@@ -215,6 +219,16 @@ public:
   /// \returns mapping between external names and actual Glow input nodes.
   const llvm::StringMap<Placeholder *> &getInputVarsMapping() const {
     return inputVarsByName_;
+  }
+
+  /// \returns vector of primary input names based on their position
+  const std::vector<std::string> &getPositionalInputNames() const {
+    return positionalInputNames_;
+  }
+
+  /// \returns vector of primary output names based on their position
+  const std::vector<std::string> &getPositionalOutputNames() const {
+    return positionalOutputNames_;
   }
 
   /// \returns the single final output of the network. The function assumes

@@ -678,6 +678,28 @@ static bool parallelizeFunction(Function *F, CompilationContext &cctx) {
     numChunks[TP] = numParallelChunks;
   }
 
+  // Split Quantize layers in data parallel fashion
+  for (auto &node : F->getNodes()) {
+    auto *QN = llvm::dyn_cast<QuantizeNode>(&node);
+    if (!QN) {
+      continue;
+    }
+    changed = true;
+    parOpts[QN] = ParallelTransformKind::Data;
+    numChunks[QN] = numParallelChunks;
+  }
+
+  // Split Dequantize layers in data parallel fashion
+  for (auto &node : F->getNodes()) {
+    auto *DQN = llvm::dyn_cast<DequantizeNode>(&node);
+    if (!DQN) {
+      continue;
+    }
+    changed = true;
+    parOpts[DQN] = ParallelTransformKind::Data;
+    numChunks[DQN] = numParallelChunks;
+  }
+
   // Split BMM layers in data parallel fashion
   for (auto &node : F->getNodes()) {
     auto *BMM = llvm::dyn_cast<BatchMatMulNode>(&node);

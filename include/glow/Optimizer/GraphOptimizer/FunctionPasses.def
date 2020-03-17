@@ -48,6 +48,7 @@ FUN_PASS(ConstantFold)
 FUN_PASS(FoldTileAddIntoBatchedAdd)
 FUN_PASS(FoldElemKindConversionIntoOutputs)
 FUN_PASS(FoldElemKindConversionIntoInputs)
+FUN_PASS(FoldMatMulAddIntoFullyConnected)
 
 // NOTE: This pass must be last; it's used to count the total number of passes.
 FUN_PASS(EmptyPass)

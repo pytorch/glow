@@ -22,6 +22,8 @@
 
 #include "gtest/gtest.h"
 
+#include "llvm/ADT/StringMap.h"
+
 #ifndef GLOW_DATA_PATH
 #define GLOW_DATA_PATH
 #endif
@@ -64,6 +66,7 @@ public:
   /// Called once after ONNX or Caffe2 model loading.
   virtual void postModelLoad(Loader &loader, PlaceholderBindings &bindings,
                              ProtobufLoader &protobufLoader,
+                             llvm::StringMap<Placeholder *> &outputMap,
                              size_t compilationBatchSize) {
     // To check the method was executed.
     stage_ = 1;
@@ -114,7 +117,7 @@ public:
 
   /// Called once after ONNX or Caffe2 model loading.
   virtual void postModelLoad(Loader &, PlaceholderBindings &, ProtobufLoader &,
-                             size_t) {
+                             llvm::StringMap<Placeholder *> &, size_t) {
     stage_ = 1;
   }
   /// Called once at the beginning of the mini-batch inference.
@@ -147,6 +150,7 @@ TEST_F(LoaderTest, LoaderExtension) {
     std::unique_ptr<ExecutionContext> exContext =
         glow::make_unique<ExecutionContext>();
     PlaceholderBindings &bindings = *exContext->getPlaceholderBindings();
+    llvm::StringMap<Placeholder *> outputMap;
 
     // Create a loader object.
     Loader loader;
@@ -182,7 +186,8 @@ TEST_F(LoaderTest, LoaderExtension) {
 
     // Get bindings and call post model load extensions.
     ASSERT_EQ(testLoaderExtension::stage_, 0);
-    loader.postModelLoad(bindings, caffe2LD, inputData.getType().dims()[0]);
+    loader.postModelLoad(bindings, caffe2LD, outputMap,
+                         inputData.getType().dims()[0]);
     ASSERT_EQ(testLoaderExtension::stage_, 1);
     ASSERT_EQ(testLoaderExtension::loader_, &loader);
     ASSERT_EQ(testLoaderExtension::bindings_, &bindings);

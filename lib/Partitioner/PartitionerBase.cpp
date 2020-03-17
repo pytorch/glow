@@ -23,12 +23,24 @@
 using namespace glow;
 using llvm::isa;
 
+/// Creates and \returns a new DAGNode from \p F given \p mapping.
+static std::unique_ptr<DAGNode>
+createDAGNodeFromFun(Function *F, NodeToFunctionMap &mapping) {
+  std::unique_ptr<DAGNode> DN = glow::make_unique<DAGNode>();
+  DN->name = F->getName();
+  DN->logicalDevices = mapping.getLogicalDeviceIDList(F);
+  DN->backendName = mapping.getPartitionBackendName(F);
+  DN->size = mapping.getGraphMemInfo(F).getTotalMemSize();
+  DN->backendHints = mapping.getBackendHints(F);
+  return DN;
+}
+
 // Current only partition the representative function.
 DAGListTy PartitionerBase::doPartitioning(llvm::StringRef funcName,
                                           std::vector<Function *> funcs,
                                           Module *module,
                                           NodeToFunctionMap &mapping,
-                                          bool saveDAG) {
+                                          bool saveDAG, bool skipCloning) {
   DAGListTy partitions;
   // Add a dummy node to make sure that a DAG has a single entrance.
   DAGNodePtr DAGRoot = glow::make_unique<DAGNode>();
@@ -40,12 +52,14 @@ DAGListTy PartitionerBase::doPartitioning(llvm::StringRef funcName,
 
   llvm::DenseMap<Node *, Node *> currToNew;
 
-  // Clone nodes into target partition.
-  for (size_t i = 0, e = funcs.size(); i < e; i++) {
-    for (auto &N : funcs[i]->getNodes()) {
-      auto *clone = N.clone();
-      currToNew[&N] = clone;
-      mapping[&N]->addNode(clone);
+  if (!skipCloning) {
+    // Clone nodes into target partition.
+    for (size_t i = 0, e = funcs.size(); i < e; i++) {
+      for (auto &N : funcs[i]->getNodes()) {
+        auto *clone = N.clone();
+        currToNew[&N] = clone;
+        mapping[&N]->addNode(clone);
+      }
     }
   }
 
@@ -55,12 +69,7 @@ DAGListTy PartitionerBase::doPartitioning(llvm::StringRef funcName,
   llvm::DenseMap<Function *, DAGNode *> funcDAG;
   for (auto *subF : mapping.getPartitions()) {
     if (funcDAG.find(subF) == funcDAG.end()) {
-      std::unique_ptr<DAGNode> subDAG = glow::make_unique<DAGNode>();
-      subDAG->name = subF->getName();
-      subDAG->logicalDevices = mapping.getLogicalDeviceIDList(subF);
-      subDAG->backendName = mapping.getPartitionBackendName(subF);
-      subDAG->size = mapping.getGraphMemInfo(subF).getTotalMemSize();
-      subDAG->backendHints = mapping.getBackendHints(subF);
+      std::unique_ptr<DAGNode> subDAG = createDAGNodeFromFun(subF, mapping);
       funcDAG[subF] = subDAG.get();
       nodes.push_back(std::move(subDAG));
     }
@@ -100,12 +109,8 @@ DAGListTy PartitionerBase::doPartitioning(llvm::StringRef funcName,
         // Check if a DAGNode for subF's parent is created or not. If not,
         // create one.
         if (funcDAG.find(inputF) == funcDAG.end()) {
-          std::unique_ptr<DAGNode> subDAG = glow::make_unique<DAGNode>();
-          subDAG->name = inputF->getName();
-          subDAG->logicalDevices = mapping.getLogicalDeviceIDList(inputF);
-          subDAG->backendName = mapping.getPartitionBackendName(inputF);
-          subDAG->size = mapping.getGraphMemInfo(inputF).getTotalMemSize();
-          subDAG->backendHints = mapping.getBackendHints(inputF);
+          std::unique_ptr<DAGNode> subDAG =
+              createDAGNodeFromFun(inputF, mapping);
           funcDAG[inputF] = subDAG.get();
           nodes.push_back(std::move(subDAG));
         }
@@ -139,18 +144,20 @@ DAGListTy PartitionerBase::doPartitioning(llvm::StringRef funcName,
     partitions.push_back(std::move(dag));
   }
 
-  // Update links between nodes in the cloned functions. Add placeholders (and
-  // save nodes) where a link crosses a partition boundary.
-  for (auto *subF : mapping.getPartitions()) {
-    for (auto &N : subF->getNodes()) {
-      for (int inp = 0, e = N.getNumInputs(); inp < e; inp++) {
-        auto input = N.getNthInput(inp);
-        if (isa<Storage>(input.getNode())) {
-          continue;
+  if (!skipCloning) {
+    // Update links between nodes in the cloned functions. Add placeholders (and
+    // save nodes) where a link crosses a partition boundary.
+    for (auto *subF : mapping.getPartitions()) {
+      for (auto &N : subF->getNodes()) {
+        for (int inp = 0, e = N.getNumInputs(); inp < e; inp++) {
+          auto input = N.getNthInput(inp);
+          if (isa<Storage>(input.getNode())) {
+            continue;
+          }
+          // Link this node to the clone of its input.
+          auto *clone = currToNew[input.getNode()];
+          N.setNthInput(inp, NodeValue(clone, input.getResNo()));
         }
-        // Link this node to the clone of its input.
-        auto *clone = currToNew[input.getNode()];
-        N.setNthInput(inp, NodeValue(clone, input.getResNo()));
       }
     }
   }

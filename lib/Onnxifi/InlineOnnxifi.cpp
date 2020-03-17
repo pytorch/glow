@@ -55,8 +55,7 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
           onnxModel, onnxModelSize, weightCount, weightDescriptors, *function_,
           true /*loadInputsAsPlaceholders*/, backendPtr_->getUseOnnx()));
 
-  onnxInputToPlaceholder_ = loader->getInputVarsMapping();
-  onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();
+  bindPlaceholders(*loader);
   if (GlowSaveOnnxifiModel) {
     saveOnnxifiModel(function_);
   }

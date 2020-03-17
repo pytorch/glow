@@ -16,6 +16,7 @@
 
 #include "CachingGraphRunner.h"
 
+#include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Support/Support.h"
 
 #include <mutex>
@@ -145,12 +146,28 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
   return ret.first->second;
 }
 
-Error CachingGraphRunner::runImpl(
-    const PerGlowGraphInfo &info, torch::jit::Stack &stack,
-    std::unique_ptr<ExecutionContext> &ctx) const {
+void CachingGraphRunner::runOnJit(torch::jit::Stack &stack) {
+  static std::mutex runJitLock;
+  std::lock_guard<std::mutex> guard(runJitLock);
+  bool temp = getPyTorchLoaderSettings().fusionPassEnabled;
+  getPyTorchLoaderSettings().fusionPassEnabled = false;
+  ptGraphExecutor_.run(stack);
+  getPyTorchLoaderSettings().fusionPassEnabled = temp;
+}
+
+Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
+                                  torch::jit::Stack &stack,
+                                  std::unique_ptr<ExecutionContext> &ctx) {
+  size_t runId = numRuns_++;
+
+  // Run the subgraph using JIT for comparison with Glow.
+  torch::jit::Stack copyStack;
+  if (settings_.writeToOnnx) {
+    copyStack = stack;
+    runOnJit(copyStack);
+  }
 
   TraceContext *traceContext = ctx->getTraceContext();
-
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "torch_glow::runImpl");
 
   auto *bindings = ctx->getPlaceholderBindings();
@@ -163,6 +180,7 @@ Error CachingGraphRunner::runImpl(
   // We only hold placeholders for tensor inputs so indexing them is different
   // than indexing all inputs.
   size_t placeholderI = 0;
+  ONNX_NAMESPACE::GraphProto inputG;
   for (const auto &input : inputs) {
     if (input.isTensor()) {
 
@@ -181,12 +199,31 @@ Error CachingGraphRunner::runImpl(
       }
       t = glow::Tensor(ptTensor.data_ptr(), ty).clone();
 
+      // Write input tesnor to ONNX
+      if (settings_.writeToOnnx) {
+        auto *onnxT = inputG.add_initializer();
+        onnxT->set_name(ph->getName());
+        ONNXModelWriter::writeTensor(t, onnxT, /*useGlowCustomOps*/ true);
+      }
+
       bindings->insert(ph, std::move(t));
     } else if (input.isObject()) {
       // Objects are only used for loading attributes at compile time.
       continue;
     } else {
       return MAKE_ERR("Only Tensor and Object IValue inputs are accepted");
+    }
+  }
+
+  if (settings_.writeToOnnx) {
+    std::string filename = strFormat("input_%zu.onnx", runId);
+    std::ofstream of(filename, std::ios::binary);
+    if (!of) {
+      LOG(ERROR) << "Cannot create input file " << filename;
+    } else {
+      std::string buffer;
+      inputG.SerializeToString(&buffer);
+      of << buffer;
     }
   }
 
@@ -221,9 +258,12 @@ Error CachingGraphRunner::runImpl(
 
   torch::jit::drop(stack, numInputs);
 
+  ONNX_NAMESPACE::GraphProto outputG;
+  ONNX_NAMESPACE::GraphProto jitOutputG;
   for (int i = 0; i < outputs.size(); i++) {
     auto &output = outputs[i];
     auto ptTensor = output.toTensor();
+
     if (ptTensor.is_quantized()) {
       c10::ScalarType dtype = outputCorrectType_[i];
       if (dtype == c10::ScalarType::QUInt8 || dtype == c10::ScalarType::QInt8) {
@@ -233,8 +273,50 @@ Error CachingGraphRunner::runImpl(
             strFormat("Fail to propagate quantized dtype to output"));
       }
     }
+
+    if (settings_.writeToOnnx) {
+      glow::Tensor glowT = ptTensorToGlowTensor(ptTensor);
+      auto *onnxT = outputG.add_initializer();
+      onnxT->set_name(info.outputPlaceholders[i]->getName());
+      ONNXModelWriter::writeTensor(glowT, onnxT, /*useGlowCustomOps*/ true);
+    }
+
+    if (settings_.writeToOnnx) {
+      auto &jitOutput = torch::jit::peek(copyStack, i, outputs.size());
+      auto jitPtTensor = jitOutput.toTensor().contiguous();
+      glow::Tensor jitGlowT = ptTensorToGlowTensor(jitPtTensor);
+      auto *jitOnnxT = jitOutputG.add_initializer();
+      jitOnnxT->set_name(info.outputPlaceholders[i]->getName());
+      ONNXModelWriter::writeTensor(jitGlowT, jitOnnxT,
+                                   /*useGlowCustomOps*/ true);
+    }
+
     auto var = torch::autograd::make_variable(ptTensor);
     stack.push_back(at::IValue(var));
+  }
+
+  if (settings_.writeToOnnx) {
+    std::string filename = strFormat("glow_output_%zu.onnx", runId);
+    std::ofstream of(filename, std::ios::binary);
+    if (!of) {
+      LOG(ERROR) << "Cannot create output file " << filename;
+    } else {
+      std::string buffer;
+      outputG.SerializeToString(&buffer);
+      of << buffer;
+    }
+  }
+
+  if (settings_.writeToOnnx) {
+    std::string filename = strFormat("pytorch_output_%zu.onnx", runId);
+    std::ofstream of(filename, std::ios::binary);
+    if (!of) {
+      LOG(ERROR) << "Cannot create output file " << filename;
+    } else {
+      std::string buffer;
+      jitOutputG.SerializeToString(&buffer);
+      of << buffer;
+    }
   }
 
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "setOutputs");
@@ -326,7 +408,8 @@ CachingGraphRunner::CachingGraphRunner(
     std::shared_ptr<torch::jit::Graph> graph,
     std::shared_ptr<runtime::HostManager> hostManager,
     PyTorchLoaderSettings settings)
-    : graph_(graph), hostManager_(hostManager), settings_(settings) {}
+    : graph_(graph), ptGraphExecutor_(graph, "forward"),
+      hostManager_(hostManager), settings_(settings) {}
 
 CachingGraphRunner::~CachingGraphRunner() {
   aggregateAndDumpTraces(nullptr, /* flush */ true);

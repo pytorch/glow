@@ -101,9 +101,6 @@ setGraphRunnerForKey(const std::string &key,
 }
 
 void registerGlowOp(const c10::Symbol &symbol) {
-  auto options = c10::OperatorOptions();
-  options.setAliasAnalysis(at::AliasAnalysisKind::PURE_FUNCTION);
-
   torch::jit::RegisterOperators op({torch::jit::Operator(
       symbol,
       [](const torch::jit::Node *node) -> torch::jit::Operation {
@@ -147,7 +144,7 @@ void registerGlowOp(const c10::Symbol &symbol) {
           return 0;
         };
       },
-      options)});
+      at::AliasAnalysisKind::PURE_FUNCTION)});
 }
 
 void registerGlowFusionPass(std::function<bool()> enablePassFn) {
