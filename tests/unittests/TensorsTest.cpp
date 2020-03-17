@@ -1132,7 +1132,7 @@ TEST(Tensor, unpaddedSize) {
   EXPECT_EQ(moved.getSizeInBytes(), paddedBytes);
 
   // Test getting an unowned tensor from a padded tensor.
-  auto copy = moved.getUnowned(moved.dims());
+  auto copy = moved.getUnowned();
   EXPECT_EQ(copy.getUnpaddedSizeInBytes(), bytes);
   EXPECT_EQ(copy.getSizeInBytes(), paddedBytes);
 

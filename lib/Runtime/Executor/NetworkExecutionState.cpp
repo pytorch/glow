@@ -70,9 +70,9 @@ void NetworkExecutionState::bind(std::unique_ptr<ExecutionContext> resultCtx,
     for (auto binding : externalIntermediates_[PH]) {
       auto resultTensor = resultPHBindings->get(PH);
       if (binding->get(PH)) {
-        binding->update(PH, resultTensor->getUnowned(PH->dims()));
+        binding->update(PH, resultTensor->getUnowned());
       } else {
-        binding->insert(PH, resultTensor->getUnowned(PH->dims()));
+        binding->insert(PH, resultTensor->getUnowned());
       }
     }
   }
