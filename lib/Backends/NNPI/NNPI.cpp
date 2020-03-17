@@ -315,7 +315,9 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
                {SparseLengthsSumNode::IndicesIdx,
                 SparseLengthsSumNode::LengthsIdx}) &&
            (NI.getInElemTy(SparseLengthsSumNode::IndicesIdx) ==
-            ElemKind::Int64ITy) &&
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(SparseLengthsSumNode::IndicesIdx) ==
+                ElemKind::Int32ITy) &&
            (NI.getInElemTy(SparseLengthsSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
@@ -324,7 +326,9 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
                {SparseLengthsWeightedSumNode::IndicesIdx,
                 SparseLengthsWeightedSumNode::LengthsIdx}) &&
            (NI.getInElemTy(SparseLengthsWeightedSumNode::IndicesIdx) ==
-            ElemKind::Int64ITy) &&
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(SparseLengthsWeightedSumNode::IndicesIdx) ==
+                ElemKind::Int32ITy) &&
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
 
@@ -341,7 +345,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
             dataK == ElemKind::UInt8FusedFP16QTy ||
             dataK == ElemKind::UInt4FusedFP16QTy) &&
            (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
-           (indicesK == ElemKind::Int64ITy) && (lengthsK == ElemKind::Int32ITy);
+           (indicesK == ElemKind::Int64ITy || indicesK == ElemKind::Int32ITy) &&
+           (lengthsK == ElemKind::Int32ITy);
   }
 
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind: {
@@ -360,7 +365,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
             dataK == ElemKind::UInt4FusedFP16QTy) &&
            (weightsK == ElemKind::FloatTy || weightsK == ElemKind::Float16Ty) &&
            (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
-           (indicesK == ElemKind::Int64ITy) && (lengthsK == ElemKind::Int32ITy);
+           (indicesK == ElemKind::Int64ITy || indicesK == ElemKind::Int32ITy) &&
+           (lengthsK == ElemKind::Int32ITy);
   }
 
   case Kinded::Kind::RowwiseQuantizedSparseLengthsWeightedSumNodeKind:
@@ -374,7 +380,10 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
             ElemKind::UInt8QTy) &&
            (NI.getInElemTy(
                 RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx) ==
-            ElemKind::Int64ITy) &&
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(
+                RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx) ==
+                ElemKind::Int32ITy) &&
            (NI.getInElemTy(
                 RowwiseQuantizedSparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);

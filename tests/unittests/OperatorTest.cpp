@@ -8585,10 +8585,10 @@ TEST_P(OperatorTest, LengthsSum) {
 }
 
 /// Helper to test SLS using \p DTy.
-template <typename DataType>
+template <typename DataType, typename IndexType>
 static void testSLS(glow::PlaceholderBindings &bindings, glow::Module &mod,
                     glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
-                    float allowedError) {
+                    ElemKind ITy, float allowedError) {
   /*
     DATA  = [
         [1.0, 1.2],
@@ -8606,15 +8606,14 @@ static void testSLS(glow::PlaceholderBindings &bindings, glow::Module &mod,
     ]
   */
   auto *data = mod.createPlaceholder(DTy, {3, 2}, "data", false);
-  auto *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
+  auto *indices = mod.createPlaceholder(ITy, {8}, "indices", false);
   auto *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {5}, "lengths", false);
 
   bindings.allocate(data)->getHandle<DataType>() = {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
-  bindings.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<IndexType>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -8638,16 +8637,32 @@ static void testSLS(glow::PlaceholderBindings &bindings, glow::Module &mod,
   EXPECT_TRUE(expected.isEqual(result, allowedError));
 }
 
-/// Test that SLS is correctly supported in FloatTy.
+/// Test that SLS is correctly supported in FloatTy with int64 indices.
 TEST_P(OperatorTest, SparseLengthsSum_Float) {
   CHECK_IF_ENABLED();
-  testSLS<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001);
+  testSLS<float, int64_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          ElemKind::Int64ITy, 0.0001);
 }
 
-/// Test that SLS is correctly supported in Float16Ty.
+/// Test that SLS is correctly supported in FloatTy with int32 indices.
+TEST_P(OperatorTest, SparseLengthsSum_Float_Int32) {
+  CHECK_IF_ENABLED();
+  testSLS<float, int32_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          ElemKind::Int32ITy, 0.0001);
+}
+
+/// Test that SLS is correctly supported in Float16Ty with int64 indices.
 TEST_P(OperatorTest, SparseLengthsSum_Float16) {
   CHECK_IF_ENABLED();
-  testSLS<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.002);
+  testSLS<float16_t, int64_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              ElemKind::Int64ITy, 0.002);
+}
+
+/// Test that SLS is correctly supported in Float16Ty with int32 indices.
+TEST_P(OperatorTest, SparseLengthsSum_Float16_Int32) {
+  CHECK_IF_ENABLED();
+  testSLS<float16_t, int32_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              ElemKind::Int32ITy, 0.002);
 }
 
 TEST_P(OperatorTest, SparseLengthsSumI8) {
@@ -9135,10 +9150,10 @@ TEST_P(OperatorTest,
 }
 
 /// Helper to test RowwiseQuantizedSparseLengthsWeightedSum using \p DTy.
-template <typename DataType>
+template <typename DataType, typename IndexType>
 static void testRowwiseQuantizedSparseLengthsWeightedSum(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
-    glow::ExecutionEngine &EE, ElemKind DTy, float allowedError,
+    glow::ExecutionEngine &EE, ElemKind DTy, ElemKind ITy, float allowedError,
     bool useFP16Accumulation = false) {
   /*
     DATA  =   [2.0, -0.5, 13]
@@ -9159,14 +9174,13 @@ static void testRowwiseQuantizedSparseLengthsWeightedSum(
       3., 1., 0., 0., 0., 0., 2., -0.5,
   };
 
-  Placeholder *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
-                            /* isTrainable */ false);
+  Placeholder *indices = mod.createPlaceholder(ITy, {8}, "indices",
+                                               /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
 
-  bindings.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<IndexType>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -9200,8 +9214,8 @@ static void testRowwiseQuantizedSparseLengthsWeightedSum(
 /// Test RWQ-SLWS with Float Weights, Scales, Offsets, and Output.
 TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsWeightedSum_Float) {
   CHECK_IF_ENABLED();
-  testRowwiseQuantizedSparseLengthsWeightedSum<float>(
-      bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001);
+  testRowwiseQuantizedSparseLengthsWeightedSum<float, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy, 0.0001);
 }
 
 /// Test RWQ-SLWS with Float16 Weights, Scales, Offsets, and Output. Uses Float
@@ -9209,8 +9223,8 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsWeightedSum_Float) {
 TEST_P(OperatorTest,
        RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
-  testRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
+  testRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy, 0.0001,
       /* useFP16Accumulation */ false);
 }
 
@@ -9219,8 +9233,36 @@ TEST_P(OperatorTest,
 TEST_P(OperatorTest,
        RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
-  testRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
+  testRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy, 0.0001,
+      /* useFP16Accumulation */ true);
+}
+
+/// Test RWQ-SLWS with Float Weights, Scales, Offsets, and Output. Int32
+/// indices.
+TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsWeightedSum_Float_Int32) {
+  CHECK_IF_ENABLED();
+  testRowwiseQuantizedSparseLengthsWeightedSum<float, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int32ITy, 0.0001);
+}
+
+/// Test RWQ-SLWS with Float16 Weights, Scales, Offsets, and Output. Uses Float
+/// accumulation. Int32 indices.
+TEST_P(OperatorTest,
+       RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat_Int32) {
+  CHECK_IF_ENABLED();
+  testRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy, 0.0001,
+      /* useFP16Accumulation */ false);
+}
+
+/// Test RWQ-SLWS with Float16 Weights, Scales, Offsets, and Output. Uses
+/// Float16 accumulation. Int32 indices.
+TEST_P(OperatorTest,
+       RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16_Int32) {
+  CHECK_IF_ENABLED();
+  testRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy, 0.0001,
       /* useFP16Accumulation */ true);
 }
 
@@ -9508,11 +9550,11 @@ TEST_P(OperatorTest, GatherWithInt32PartialTensors) {
 }
 
 /// Helper to test FusedRowwiseQuantizedSparseLengthsWeightedSum using \p DTy.
-template <typename DataType>
+template <typename DataType, typename IndexType>
 static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
-    glow::ExecutionEngine &EE, ElemKind fusedDTy, float allowedError,
-    bool useFP16Accumulation = false) {
+    glow::ExecutionEngine &EE, ElemKind fusedDTy, ElemKind ITy,
+    float allowedError, bool useFP16Accumulation = false) {
   /*
     DATA  =   [[2.0, -0.5, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -9535,14 +9577,13 @@ static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
       3., 1., 0., 0., 0., 0., 2., -0.5,
   };
 
-  Placeholder *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
-                            /* isTrainable */ false);
+  Placeholder *indices = mod.createPlaceholder(ITy, {8}, "indices",
+                                               /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
 
-  bindings.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<IndexType>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -9575,16 +9616,18 @@ static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
 /// Test Fused-RWQ-SLWS in Float.
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsWeightedSum_Float) {
   CHECK_IF_ENABLED();
-  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float>(
-      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, 0.0001);
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, ElemKind::Int64ITy,
+      0.0001);
 }
 
 /// Test Fused-RWQ-SLWS in Float16. Uses Float accumulation.
 TEST_P(OperatorTest,
        FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
-  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, ElemKind::Int64ITy,
+      0.0001,
       /* useFP16Accumulation */ false);
 }
 
@@ -9592,8 +9635,39 @@ TEST_P(OperatorTest,
 TEST_P(OperatorTest,
        FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
-  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, ElemKind::Int64ITy,
+      0.0001,
+      /* useFP16Accumulation */ true);
+}
+
+/// Test Fused-RWQ-SLWS in Float. Int32 indices.
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSparseLengthsWeightedSum_Float_Int32) {
+  CHECK_IF_ENABLED();
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, ElemKind::Int32ITy,
+      0.0001);
+}
+
+/// Test Fused-RWQ-SLWS in Float16. Uses Float accumulation. Int32 indices.
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat_Int32) {
+  CHECK_IF_ENABLED();
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, ElemKind::Int32ITy,
+      0.0001,
+      /* useFP16Accumulation */ false);
+}
+
+/// Test Fused-RWQ-SLWS in Float16. Uses Float16 accumulation. Int32 indices.
+TEST_P(
+    OperatorTest,
+    FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16_Int32) {
+  CHECK_IF_ENABLED();
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, ElemKind::Int32ITy,
+      0.0001,
       /* useFP16Accumulation */ true);
 }
 
