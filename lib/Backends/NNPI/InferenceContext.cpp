@@ -52,16 +52,24 @@ bool InferenceContext::init(
     const std::unordered_set<const Placeholder *> &staticInputs,
     std::shared_ptr<NNPIDeviceTracing> deviceTracing,
     StaticPlaceholderMap *staticPlaceholderMap,
-    const NNPIDeviceOptions *deviceOptions, const std::string &functionName,
-    unsigned deviceId) {
+    std::shared_ptr<NNPIDeviceOptions> deviceOptions,
+    const std::string &functionName, unsigned deviceId) {
   deviceOptions_ = deviceOptions;
+  deviceId_ = deviceId;
   nnpiNetwork_ = network;
   device_ = device;
   compilationConfig_ = config;
   partialInputs_ = &partialInputs;
   deviceTracing_ = deviceTracing;
   functionName_ = functionName;
-  deviceId_ = deviceId;
+
+  // Initialize trace context titles with device ID.
+  std::stringstream deviceInfo;
+  deviceInfo << "[Device #" << deviceId_ << "] ";
+  traceBackendExecuteContextName_ = deviceInfo.str() + TRACING_BACKEND_EXECUTE;
+  tracePreProcessContextName_ = deviceInfo.str() + TRACING_PRE_PROCESS;
+  traceInferenceContextName_ = deviceInfo.str() + TRACING_INFERENCE;
+  tracePostProcessContextName_ = deviceInfo.str() + TRACING_POST_PROCESS;
 
   LOG_AND_RETURN_IF(ERROR, staticPlaceholderMap == nullptr,
                     "InferenceContext Init was called with an invalid "
@@ -95,7 +103,7 @@ bool InferenceContext::init(
           ERROR, !NNPIResource::UpdateResourceDescFromTensorDesc(&rDesc, &desc),
           "Failed to update ResourceDesc", false);
       LOG_AND_RETURN_IF(ERROR,
-                        !inputResources_.back()->Init(
+                        !inputResources_.back()->init(
                             name, deviceOptions_, adapter, device_, &rDesc,
                             NNPIResource::ResourceUsage::InputResource),
                         "Failed to init input resource", false);
@@ -116,7 +124,7 @@ bool InferenceContext::init(
           ERROR, !NNPIResource::UpdateResourceDescFromTensorDesc(&rDesc, &desc),
           "Failed to update ResourceDesc", false);
       LOG_AND_RETURN_IF(ERROR,
-                        !outputResources_.back()->Init(
+                        !outputResources_.back()->init(
                             name, deviceOptions_, adapter, device_, &rDesc,
                             NNPIResource::ResourceUsage::OutputResource),
                         "Failed to init input resource", false);
@@ -141,6 +149,8 @@ bool InferenceContext::init(
     LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
         nnpiHostNetworkGetInputDesc(hostNetwork, i, name, &desc),
         "Failed to query NNPI host network input");
+    memset(&desc.hostAttrib, 0, sizeof(desc.hostAttrib));
+    memset(&desc.deviceAttrib, 0, sizeof(desc.deviceAttrib));
 
     const auto isStaticInput = staticPlaceholders.count(name);
     if (isStaticInput) {
@@ -154,7 +164,7 @@ bool InferenceContext::init(
         // Create a new static placeholder.
         inputResources_.emplace_back(std::make_shared<NNPIResource>());
         LOG_AND_RETURN_IF(ERROR,
-                          !inputResources_.back()->Init(
+                          !inputResources_.back()->init(
                               name, deviceOptions_, adapter, device_, &desc,
                               NNPIResource::ResourceUsage::StaticInputResource),
                           "Failed to init static input resource", false);
@@ -164,7 +174,7 @@ bool InferenceContext::init(
       // Regular input resource - create it here.
       inputResources_.emplace_back(std::make_shared<NNPIResource>());
       LOG_AND_RETURN_IF(ERROR,
-                        !inputResources_.back()->Init(
+                        !inputResources_.back()->init(
                             name, deviceOptions_, adapter, device_, &desc,
                             NNPIResource::ResourceUsage::InputResource),
                         "Failed to init input resource", false);
@@ -181,10 +191,11 @@ bool InferenceContext::init(
       LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
           nnpiHostNetworkGetOutputDesc(hostNetwork, i, name, &desc),
           "Failed to query NNPI host network output");
-
+      memset(&desc.hostAttrib, 0, sizeof(desc.hostAttrib));
+      memset(&desc.deviceAttrib, 0, sizeof(desc.deviceAttrib));
       outputResources_.emplace_back(std::make_shared<NNPIResource>());
       LOG_AND_RETURN_IF(ERROR,
-                        !outputResources_.back()->Init(
+                        !outputResources_.back()->init(
                             name, deviceOptions_, adapter, device_, &desc,
                             NNPIResource::ResourceUsage::OutputResource),
                         "Failed to init output resource", false);
@@ -259,11 +270,14 @@ void InferenceContext::execute(RunIdentifierTy runId,
                                std::unique_ptr<ExecutionContext> ctx,
                                runtime::ResultCBTy resultCB) {
   TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::REQUEST,
-                    TRACING_BACKEND_EXECUTE);
+                    traceBackendExecuteContextName_);
   if (ctx->getTraceContext()) {
     ctx->getTraceContext()->setThreadName(
         llvm::formatv("Inf ctx - device: {0}: {1}", deviceId_, functionName_)
             .str());
+  }
+  if (deviceTracing_) {
+    deviceTracing_->start(ctx->getTraceContext(), device_);
   }
 
   // Pre inference input preparation.
@@ -307,7 +321,7 @@ void InferenceContext::execute(RunIdentifierTy runId,
     }
   }
   TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::COPY,
-                    TRACING_PRE_PROCESS);
+                    tracePreProcessContextName_);
 
   // Pre-inference
   std::vector<void *> rawInputs, rawOutputs;
@@ -331,9 +345,9 @@ void InferenceContext::execute(RunIdentifierTy runId,
     if (deviceOptions_->enabledCommandLists < 1) {
       // No command lists (schedule individual commands).
       TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
-                      TRACING_PRE_PROCESS);
+                      tracePreProcessContextName_);
       TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::OPERATOR,
-                        TRACING_INFERENCE);
+                        traceInferenceContextName_);
       // Queue inference.
       LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
           nnpiInferCommandQueue(inferCmd_, 0), "Failed to queue infer command.",
@@ -363,10 +377,9 @@ void InferenceContext::execute(RunIdentifierTy runId,
       }
 
       TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
-                      TRACING_PRE_PROCESS);
+                      tracePreProcessContextName_);
       TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::OPERATOR,
-                        TRACING_INFERENCE);
-
+                        traceInferenceContextName_);
       // Queue Command list
       LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
           nnpiCommandListQueue(commandList_, &(cmdConfigs_.at(0)), usedConfigs),
@@ -435,9 +448,9 @@ void InferenceContext::execute(RunIdentifierTy runId,
   }
 
   TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::OPERATOR,
-                  TRACING_INFERENCE);
+                  traceInferenceContextName_);
   TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::COPY,
-                    TRACING_POST_PROCESS);
+                    tracePostProcessContextName_);
 
   // Post inference output handling.
   for (unsigned i = 0, e = outputResources_.size(); i < e; ++i) {
@@ -448,9 +461,12 @@ void InferenceContext::execute(RunIdentifierTy runId,
         ERROR, outputResources_[i]->PostInference(t) == NNPI_INF_NO_ERROR,
         "Failed in output PostInference", runId, ctx, resultCB);
   }
-  TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
-                  TRACING_POST_PROCESS);
 
+  TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
+                  tracePostProcessContextName_);
+  if (deviceTracing_) {
+    deviceTracing_->stopAndUpdate(ctx->getTraceContext(), device_);
+  }
   TRACE_EVENT_SCOPE_END(); // we move context in the line below
 
   // Invoke CB.
