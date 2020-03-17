@@ -132,6 +132,37 @@ replacePlaceholderWithConstant(ONNX_NAMESPACE::ModelProto &model,
 }
 
 /// Performs constant folding test on the given model file \p NetFilename
+/// with single output and then checking against expected values
+/// \p expectedValues and \returns true if the test completes without error.
+Error checkConstFoldLegalName(std::string NetFilename,
+                              std::vector<float> expectedValues) {
+  Tensor T(glow::ElemKind::FloatTy, {3, 2});
+  T.getHandle<float>() = expectedValues;
+  ONNX_NAMESPACE::ModelProto modelDef;
+  ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(NetFilename));
+  setConstantFoldLoaderOpsFlag(true);
+
+  // It is expected that loading will fold the whole graph and output
+  // nodes will become constants during the loading process.
+  ExecutionEngine EE;
+  Module &mod = EE.getModule();
+  Function *F = mod.createFunction("temp");
+  ONNXModelLoader onnxLD(NetFilename, {}, {}, *F);
+
+  setConstantFoldLoaderOpsFlag(false);
+
+  // The folded output tensors are expected to be constants and should
+  // match the expected values.
+  NodeValue NV;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      NV, onnxLD.getNodeValueByName(modelDef.graph().output(0).name()));
+  auto *constOut = llvm::dyn_cast<Constant>(NV.getNode());
+  RETURN_ERR_IF_NOT(constOut, "Failed cast to Constant");
+  EXPECT_TRUE(T.isEqual(constOut->getPayload()));
+  return Error::success();
+}
+
+/// Performs constant folding test on the given model file \p NetFilename
 /// by replacing input tensors with name \p tensorNames, and values \p tensors
 /// and then checking against expected output expectedTensors. \returns true
 /// if the test completes without error.
@@ -170,6 +201,14 @@ Error checkConstFoldedOutput(std::string NetFilename,
     EXPECT_TRUE(expectedTensors[i]->isEqual(constOut->getPayload()));
   }
   return Error::success();
+}
+
+/// Test loading constant+relu ops with numeric input names from an ONNX model.
+TEST(onnx, reluConstFoldLegalName) {
+  std::string NetFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/constRelu.onnxtxt");
+  FAIL_TEST_IF_ERR(
+      checkConstFoldLegalName(NetFilename, {1.0, 0.0, 0.0, 1.0, 1.0, 1.0}));
 }
 
 template <class OpType>
