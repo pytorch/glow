@@ -1673,23 +1673,26 @@ TEST_P(OperatorTest, Logit_Float16) {
   testLogit<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.002);
 }
 
-TEST_P(OperatorTest, CmpEQ) {
-  CHECK_IF_ENABLED();
+/// Helper to test CmpEQ using \p DTy.
+template <typename DataType>
+static void testCmpEQ(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                      glow::Function *F, glow::ExecutionEngine &EE,
+                      ElemKind DTy) {
+  auto *X = mod.createPlaceholder(DTy, {2, 7}, "X", false);
+  // Values listed here in the dynamic range of both int32_t and int64_t
+  bindings.allocate(X)->getHandle<DataType>() = {
+      0, 1, 17, 876, 1000, 44444, 65535, 0, 1, 17, 876, 1000, 44444, 65535};
+  auto *Y = mod.createPlaceholder(DTy, {2, 7}, "Y", false);
+  bindings.allocate(Y)->getHandle<DataType>() = {
+      1, 2, 16, 900, 1111, 44544, 65534, 0, 1, 17, 876, 1000, 44444, 65535};
 
-  auto *X = mod_.createPlaceholder(ElemKind::Int64ITy, {2, 7}, "X", false);
-  bindings_.allocate(X)->getHandle<int64_t>() = {
-      0, 1, 17, 876, 1000, 44444, 9999999, 0, 1, 17, 876, 1000, 44444, 9999999};
-  auto *Y = mod_.createPlaceholder(ElemKind::Int64ITy, {2, 7}, "Y", false);
-  bindings_.allocate(Y)->getHandle<int64_t>() = {
-      1, 2, 16, 900, 1111, 44544, 1999999, 0, 1, 17, 876, 1000, 44444, 9999999};
+  auto *cmpEQ = F->createCmpEQ("cmpEQ", X, Y);
+  auto *save = F->createSave("save", cmpEQ);
+  auto *saveTensor = bindings.allocate(save->getPlaceholder());
 
-  auto *cmpEQ = F_->createCmpEQ("cmpEQ", X, Y);
-  auto *save = F_->createSave("save", cmpEQ);
-  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
+  EE.compile(CompilationMode::Infer);
 
-  EE_.compile(CompilationMode::Infer);
-
-  EE_.run(bindings_);
+  EE.run(bindings);
 
   auto saveH = saveTensor->getHandle<bool>();
   for (dim_t i = 0; i < 7; ++i) {
@@ -1698,6 +1701,18 @@ TEST_P(OperatorTest, CmpEQ) {
   for (dim_t i = 0; i < 7; ++i) {
     EXPECT_TRUE(saveH.at({1, i}));
   }
+}
+
+/// Test the CmpEQ operator using Int64ITy.
+TEST_P(OperatorTest, CmpEQ_Int64) {
+  CHECK_IF_ENABLED();
+  testCmpEQ<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+
+/// Test the CmpEQ operator using Int32ITy.
+TEST_P(OperatorTest, CmpEQ_Int32) {
+  CHECK_IF_ENABLED();
+  testCmpEQ<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
 }
 
 /// Check that the add operator works properly with FP16.

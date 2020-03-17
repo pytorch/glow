@@ -190,6 +190,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "ParallelBatchMatMul_Float16/0",
     "ChannelwiseQuantizedGroupConvolution/0",
     "ChannelwiseQuantizedGroupConvolutionNonZero/0",
+    "CmpEQ_Int32/0",
     "SLWSAllLengthsOne_Float16_AccumFloat/0",
     "FusedRowwiseQuantizedSLWSAllLengthsOne_Float16_AccumFloat/0",
     "FusedRowwiseQuantizedSLWSAllLengthsOne_Float16_AccumFloat16/0",

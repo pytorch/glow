@@ -187,8 +187,9 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::CmpEQNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int64ITy}, {},
-               {CmpEQNode::ResultIdx}) &&
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int32ITy,
+                ElemKind::Int64ITy},
+               {}, {CmpEQNode::ResultIdx}) &&
            (NI.getOutElemTy(CmpEQNode::ResultIdx) == ElemKind::BoolTy);
 
   case Kinded::Kind::ModuloNodeKind:
