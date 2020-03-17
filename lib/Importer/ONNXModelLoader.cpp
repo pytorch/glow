@@ -212,8 +212,7 @@ template <> struct AttributeRetriever<false, std::vector<float>> {
 /// Specialization for std::vector<NodeValue>.
 template <> struct AttributeRetriever<false, std::vector<NodeValue>> {
   static Expected<std::vector<NodeValue>>
-  get(const ONNX_NAMESPACE::AttributeProto *attr,
-      const ProtobufLoader &loader) {
+  get(const ONNX_NAMESPACE::AttributeProto *attr, ProtobufLoader &loader) {
     // Retrieve the names from the proto which map to NodeValues.
     std::vector<std::string> strs;
     ASSIGN_VALUE_OR_RETURN_ERR(strs, getStrings(attr));
@@ -232,7 +231,7 @@ template <> struct AttributeRetriever<false, std::vector<NodeValue>> {
 /// Specialization for NodeValue.
 template <> struct AttributeRetriever<false, NodeValue> {
   static Expected<NodeValue> get(const ONNX_NAMESPACE::AttributeProto *attr,
-                                 const ProtobufLoader &loader) {
+                                 ProtobufLoader &loader) {
     // Retrieve the name from the proto, which is mapped to a NodeValue.
     std::string str;
     ASSIGN_VALUE_OR_RETURN_ERR(str, loadStr(attr));
@@ -352,7 +351,7 @@ template <> struct AttributeRetriever<false, std::string> {
 /// Forwards to the correct AttributeRetriever specialization.
 template <typename T>
 Expected<T> loadAttribute(const ONNX_NAMESPACE::AttributeProto *attr,
-                          const ProtobufLoader &loader) {
+                          ProtobufLoader &loader) {
   RETURN_ERR_IF_NOT(attr, "No such attribute");
   return AttributeRetriever<std::numeric_limits<T>::is_integer, T>::get(attr,
                                                                         loader);
@@ -1208,7 +1207,7 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   if (!bias) {
     Tensor biasTensor(ElemKind::FloatTy, {depth});
     biasTensor.zero();
-    bias = G_->getParent()->createConstant("conv.bias", std::move(biasTensor));
+    bias = mod_.createConstant("conv.bias", std::move(biasTensor));
   }
 
   // ONNX passes the input as NCHW, and we expect the input to be NHWC.
@@ -1228,7 +1227,7 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides,
                                            pads, dilation);
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
-  auto outTy = G_->getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
 
   auto *node = G_->createConv(opName, tr, filterTransposeNode, bias, outTy,
                               kernelShape, strides, pads, group, dilation);
@@ -1272,8 +1271,7 @@ Error ONNXModelLoader::loadTensorwiseQuantizedConvolution(
       calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
   std::array<dim_t, 4> outDims = {
       {idim.n, outSz.first, outSz.second, biasValue.dims()[0]}};
-  auto outTy = G_->getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
-                                           outOffset);
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, outDims, outScale, outOffset);
 
   auto *node = G_->createConv(opName, input, filterValue, biasValue, outTy,
                               kernels, strides, pads, groups);
@@ -1317,8 +1315,7 @@ Error ONNXModelLoader::loadChannelwiseQuantizedConvolution(
       calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
   std::array<dim_t, 4> outDims = {
       {idim.n, outSz.first, outSz.second, biasValue.dims()[0]}};
-  auto outTy = G_->getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
-                                           outOffset);
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, outDims, outScale, outOffset);
 
   auto *node = G_->createChannelwiseQuantizedConv(
       opName, input, filterValue, biasValue, scalesValue, offsetsValue, outTy,
@@ -1396,7 +1393,7 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
   if (!bias) {
     Tensor biasTensor(ElemKind::FloatTy, {depth});
     biasTensor.zero();
-    bias = G_->getParent()->createConstant("conv.bias", std::move(biasTensor));
+    bias = mod_.createConstant("conv.bias", std::move(biasTensor));
   }
 
   // ONNX passes the input as NCHW, and we expect the input to be NHWC.
@@ -1441,7 +1438,7 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
                                              pads, dilation);
   }
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
-  auto outTy = G_->getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
 
   auto *node =
       G_->createConvTranspose(opName, tr, filterTransposeNode, bias, outTy,
@@ -1726,7 +1723,7 @@ Error ONNXModelLoader::loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
     auto wDims = flattenCdr(W->dims(), axis_w);
     tmp.reset(ElemKind::FloatTy, {wDims.first, wDims.second});
     tmp.copyRawFrom(&W->getPayload());
-    W = G_->getParent()->createConstant(W->getName(), tmp);
+    W = mod_.createConstant(W->getName(), tmp);
   }
 
   Constant *B;
@@ -1817,7 +1814,7 @@ Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Create the node.
-  auto splatType = G_->getParent()->uniqueType(ElemKind::FloatTy, input.dims());
+  auto splatType = mod_.uniqueType(ElemKind::FloatTy, input.dims());
   const std::string &opName = loadOperatorName(op);
   Node *splatN = G_->createSplat(opName + "Alpha", splatType, alphaVal);
   Node *N = G_->createPRELU(opName, input, splatN);
@@ -1873,7 +1870,7 @@ Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
                       "The padding can't remove all elements of a dimension");
     outDims[i] = new_dim;
   }
-  auto outTy = G_->getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
 
   // Create the IR node.
   Node *N = G_->createPad(opName, input, outTy, mode, pads, value);
@@ -1975,7 +1972,7 @@ Error ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
     auto end = begin + TH.actualSize();
     ShapeVector outputDims(begin, end);
 
-    ty = G_->getParent()->uniqueType(T.getType().getElementType(), outputDims);
+    ty = mod_.uniqueType(T.getType().getElementType(), outputDims);
     switch (T.getType().getElementType()) {
     case ElemKind::Int64ITy: {
       int64_t v = T.getHandle<int64_t>().raw(0);
@@ -1999,7 +1996,7 @@ Error ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
       SN = G_->createSplat(loadOperatorName(op), ty, T.getHandle().raw(0));
     }
   } else {
-    ty = G_->getParent()->uniqueType(T.getType().getElementType(), T.dims());
+    ty = mod_.uniqueType(T.getType().getElementType(), T.dims());
     SN = G_->createSplat(loadOperatorName(op), ty, T.getHandle().raw(0));
   }
   RETURN_IF_ERR(addNodeAsOutput(op, SN));
@@ -2055,14 +2052,14 @@ ONNXModelLoader::foldOperator(const ONNX_NAMESPACE::NodeProto &op) {
 
   // Create a temporary lightweight loader to construct function representing
   // current Op, and then constant fold the function using Interp backend.
-  Function *tmpF = G_->getParent()->createFunction("eval_const_fold__");
+  Function *tmpF = mod_.createFunction("eval_const_fold__");
   ONNXModelLoader tmpLoader(*tmpF);
   tmpLoader.opsetVersion_ = opsetVersion_;
   bool foldStatus = !ERR_TO_BOOL(
       constantFoldInLoader<ONNXModelLoader, ONNX_NAMESPACE::NodeProto>(
           tmpF, tmpLoader, this, op),
       /* log */ false);
-  G_->getParent()->eraseFunction(tmpF);
+  mod_.eraseFunction(tmpF);
   return foldStatus;
 }
 
@@ -2262,7 +2259,7 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
 
   // Create Y_h (hidden state) output placeholder.
   Placeholder *Y_h_ph;
-  TypeRef Htype = G_->getParent()->uniqueTypeWithNewShape(
+  TypeRef Htype = mod_.uniqueTypeWithNewShape(
       X.getType(), {numDirections, batchSize, hiddenSize});
   std::string Hname = opName + ".Y_h";
   ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
@@ -2388,7 +2385,7 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
 
   // Create Y_h (hidden state) output placeholder.
   Placeholder *Y_h_ph;
-  TypeRef Htype = G_->getParent()->uniqueTypeWithNewShape(
+  TypeRef Htype = mod_.uniqueTypeWithNewShape(
       X.getType(), {numDirections, batchSize, hiddenSize});
   std::string Hname = opName + ".Y_h";
   ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
@@ -2527,7 +2524,7 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
 
   // Create Y_h (hidden state) output placeholder.
   Placeholder *Y_h_ph;
-  TypeRef Htype = G_->getParent()->uniqueTypeWithNewShape(
+  TypeRef Htype = mod_.uniqueTypeWithNewShape(
       X.getType(), {numDirections, batchSize, hiddenSize});
   std::string Hname = opName + ".Y_h";
   ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
@@ -2536,7 +2533,7 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
 
   // Create Y_c (cell state) output placeholder.
   Placeholder *Y_c_ph;
-  TypeRef Ctype = G_->getParent()->uniqueTypeWithNewShape(
+  TypeRef Ctype = mod_.uniqueTypeWithNewShape(
       X.getType(), {numDirections, batchSize, hiddenSize});
   std::string Cname = opName + ".Y_c";
   ASSIGN_VALUE_OR_RETURN_ERR(Y_c_ph,
@@ -2609,7 +2606,7 @@ Error ONNXModelLoader::loadSelect(const ONNX_NAMESPACE::NodeProto &op,
   std::vector<dim_t> shape;
   ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict["shape"]));
 
-  auto outTy = G_->getParent()->uniqueType(LHS.getElementType(), shape);
+  auto outTy = mod_.uniqueType(LHS.getElementType(), shape);
   Node *N = G_->createSelect(loadOperatorName(op), outTy, Cond, LHS, RHS);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
@@ -2631,7 +2628,7 @@ Error ONNXModelLoader::loadQuantize(const ONNX_NAMESPACE::NodeProto &op,
   ElemKind elemKind = Type::getElementKindFromName(elemKindStr);
 
   auto outDims = in.getType()->dims();
-  auto outTy = G_->getParent()->uniqueType(elemKind, outDims, scale, offset);
+  auto outTy = mod_.uniqueType(elemKind, outDims, scale, offset);
   Node *N = G_->createQuantize(loadOperatorName(op), in, outTy);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
@@ -2654,7 +2651,7 @@ Error ONNXModelLoader::loadConvertTo(const ONNX_NAMESPACE::NodeProto &op,
 
   auto type = ElemKind::FloatTy;
   RETURN_IF_ERR(onnxTensorDataTypeToElemKind(t.data_type(), &type));
-  auto outTy = G_->getParent()->uniqueType(type, shape);
+  auto outTy = mod_.uniqueType(type, shape);
   Node *N = G_->createConvertTo(loadOperatorName(op), in, outTy);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
@@ -2760,7 +2757,7 @@ Error ONNXModelLoader::loadIntLookupTable(const ONNX_NAMESPACE::NodeProto &op,
   std::vector<dim_t> shape;
   ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<dim_t>(dict["shape"]));
 
-  auto outTy = G_->getParent()->uniqueType(in.getElementType(), shape);
+  auto outTy = mod_.uniqueType(in.getElementType(), shape);
   Node *N = G_->createIntLookupTable(loadOperatorName(op), in, values, outTy);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
@@ -2790,8 +2787,8 @@ Error ONNXModelLoader::loadRescaleQuantized(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(offset, loadInt(dict.at("offset")));
 
   auto inTy = in.getType();
-  auto outTy = G_->getParent()->uniqueType(inTy->getElementType(), inTy->dims(),
-                                           scale, offset);
+  auto outTy =
+      mod_.uniqueType(inTy->getElementType(), inTy->dims(), scale, offset);
 
   Node *N = G_->createRescaleQuantized(loadOperatorName(op), in, outTy);
 
@@ -2916,9 +2913,9 @@ Error ONNXModelLoader::loadRowwiseQuantizedFullyConnected(
   int32_t outOffset;
   ASSIGN_VALUE_OR_RETURN_ERR(outOffset, loadInt(dict.at("out_offset")));
 
-  auto outTy = G_->getParent()->uniqueType(ElemKind::Int8QTy,
-                                           {input.dims()[0], weights.dims()[0]},
-                                           outScale, outOffset);
+  auto outTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {input.dims()[0], weights.dims()[0]},
+                      outScale, outOffset);
 
   Node *N = G_->createRowwiseQuantizedFullyConnected(
       "rowwise_quantized_fc", input, weightsC, scalesC, offsetsC, biasC, outTy);
@@ -3059,7 +3056,7 @@ Error ONNXModelLoader::loadAdaptiveAvgPool(const ONNX_NAMESPACE::NodeProto &op,
 
   ShapeNHWC idim(input.dims());
 
-  auto outTy = G_->getParent()->uniqueTypeWithNewShape(
+  auto outTy = mod_.uniqueTypeWithNewShape(
       input.getType(), {idim.n, outputShape[0], outputShape[1], idim.c});
 
   Node *N = G_->createAdaptiveAvgPool(opName, input, outTy);
@@ -3373,7 +3370,7 @@ Error ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
           layout, getAttrFromDocString(layoutSignifier, docString));
     }
 
-    Placeholder *placeholder = G_->getParent()->createPlaceholder(
+    Placeholder *placeholder = mod_.createPlaceholder(
         r.getType(), outputName, isTrainable != "0", layout);
     SaveNode *SN =
         G_->createSave(saveNodeName, r, placeholder, hasSpecifiedSaveName);

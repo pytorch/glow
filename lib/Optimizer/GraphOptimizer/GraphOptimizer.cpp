@@ -1744,12 +1744,12 @@ bool FoldBatchNormalizationWithArithmeticChain::run(
 
     auto *newScaleC =
         F->getParent()->createConstant(scaleC->getType(), scaleC->getName());
-    Tensor scaleT = scaleC->getPayload().getUnowned(scaleC->dims());
+    Tensor scaleT = scaleC->getPayload().getUnowned();
     newScaleC->assign(&scaleT);
 
     auto *newBiasC =
         F->getParent()->createConstant(biasC->getType(), biasC->getName());
-    Tensor biasT = biasC->getPayload().getUnowned(biasC->dims());
+    Tensor biasT = biasC->getPayload().getUnowned();
     newBiasC->assign(&biasT);
 
     // Collect the chain and compute the new scale and bias.
@@ -2889,7 +2889,9 @@ bool OptimizeConversions::run(Function *F, const CompilationContext &cctx) {
       if (auto *BN = llvm::dyn_cast<Constant>(CN->getInput())) {
         auto newConst =
             convertConstant(*F->getParent(), *BN, CN->getResult().getType());
-        LOG_ASSERT(newConst) << "Constant conversion failed.";
+        if (newConst == NodeValue()) {
+          continue;
+        }
         CN->getResult().replaceAllUsesOfWith(newConst, F);
         changed = true;
         continue;

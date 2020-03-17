@@ -1683,23 +1683,26 @@ TEST_P(OperatorTest, Logit_Float16) {
   testLogit<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.002);
 }
 
-TEST_P(OperatorTest, CmpEQ) {
-  CHECK_IF_ENABLED();
+/// Helper to test CmpEQ using \p DTy.
+template <typename DataType>
+static void testCmpEQ(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                      glow::Function *F, glow::ExecutionEngine &EE,
+                      ElemKind DTy) {
+  auto *X = mod.createPlaceholder(DTy, {2, 7}, "X", false);
+  // Values listed here in the dynamic range of both int32_t and int64_t
+  bindings.allocate(X)->getHandle<DataType>() = {
+      0, 1, 17, 876, 1000, 44444, 65535, 0, 1, 17, 876, 1000, 44444, 65535};
+  auto *Y = mod.createPlaceholder(DTy, {2, 7}, "Y", false);
+  bindings.allocate(Y)->getHandle<DataType>() = {
+      1, 2, 16, 900, 1111, 44544, 65534, 0, 1, 17, 876, 1000, 44444, 65535};
 
-  auto *X = mod_.createPlaceholder(ElemKind::Int64ITy, {2, 7}, "X", false);
-  bindings_.allocate(X)->getHandle<int64_t>() = {
-      0, 1, 17, 876, 1000, 44444, 9999999, 0, 1, 17, 876, 1000, 44444, 9999999};
-  auto *Y = mod_.createPlaceholder(ElemKind::Int64ITy, {2, 7}, "Y", false);
-  bindings_.allocate(Y)->getHandle<int64_t>() = {
-      1, 2, 16, 900, 1111, 44544, 1999999, 0, 1, 17, 876, 1000, 44444, 9999999};
+  auto *cmpEQ = F->createCmpEQ("cmpEQ", X, Y);
+  auto *save = F->createSave("save", cmpEQ);
+  auto *saveTensor = bindings.allocate(save->getPlaceholder());
 
-  auto *cmpEQ = F_->createCmpEQ("cmpEQ", X, Y);
-  auto *save = F_->createSave("save", cmpEQ);
-  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
+  EE.compile(CompilationMode::Infer);
 
-  EE_.compile(CompilationMode::Infer);
-
-  EE_.run(bindings_);
+  EE.run(bindings);
 
   auto saveH = saveTensor->getHandle<bool>();
   for (dim_t i = 0; i < 7; ++i) {
@@ -1708,6 +1711,18 @@ TEST_P(OperatorTest, CmpEQ) {
   for (dim_t i = 0; i < 7; ++i) {
     EXPECT_TRUE(saveH.at({1, i}));
   }
+}
+
+/// Test the CmpEQ operator using Int64ITy.
+TEST_P(OperatorTest, CmpEQ_Int64) {
+  CHECK_IF_ENABLED();
+  testCmpEQ<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+
+/// Test the CmpEQ operator using Int32ITy.
+TEST_P(OperatorTest, CmpEQ_Int32) {
+  CHECK_IF_ENABLED();
+  testCmpEQ<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
 }
 
 /// Check that the add operator works properly with FP16.
@@ -6650,6 +6665,87 @@ TEST_P(OperatorTest, DilatedConvolution) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0}), 4);
   EXPECT_FLOAT_EQ(result.at({0, 2, 0, 0}), 1);
   EXPECT_FLOAT_EQ(result.at({0, 3, 0, 0}), 2);
+}
+
+/// Test the functionality of channelwise quantized group convolution using
+/// ChannelwiseQuantizedConvNode with non-zero offsets and biases.
+TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolutionNonZero) {
+  CHECK_IF_ENABLED();
+
+  constexpr size_t groups = 2;
+  constexpr dim_t output_channel = 4;
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 2}, "input", false);
+  auto IH = bindings_.allocate(input)->getHandle<float>();
+  for (size_t i = 0; i < 2 * 3 * 2; i++) {
+    IH.raw(i) = i + 1;
+  }
+
+  auto *qInTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 2, 3, 2}, 2.5, 3);
+  auto *qInput = F_->createQuantize("qInput", input, qInTy);
+
+  auto filterT = Tensor(ElemKind::Int8QTy, {4, 2, 1, 1}, 1.0, 0);
+  for (dim_t i = 0; i < 4; i++) {
+    for (dim_t j = 0; j < 2; j++) {
+      for (dim_t k = 0; k < 1; k++) {
+        for (dim_t l = 0; l < 1; l++) {
+          filterT.getHandle<int8_t>().at({i, j, k, l}) = j + 1;
+        }
+      }
+    }
+  }
+  auto *filter = mod_.createConstant("filter", std::move(filterT));
+
+  auto biasT = Tensor(ElemKind::FloatTy, {4});
+  for (dim_t i = 0; i < 4; i++) {
+    biasT.getHandle<float>().raw(i) = i + 1;
+  }
+  auto *bias = mod_.createConstant("bias", std::move(biasT));
+
+  auto scalesT = Tensor(ElemKind::FloatTy, {output_channel});
+  for (size_t i = 0; i < scalesT.size(); i++) {
+    scalesT.getHandle<float>().raw(i) = 1;
+  }
+  auto *scales = mod_.createConstant("scales", std::move(scalesT));
+
+  auto offsetsT = Tensor(ElemKind::Int32ITy, {output_channel});
+  offsetsT.zero();
+
+  auto *offsets = mod_.createConstant("offsets", std::move(offsetsT));
+
+  auto *outTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 1, 3, 4}, 2, 2);
+  ChannelwiseQuantizedConvolutionNode *CQC = F_->createChannelwiseQuantizedConv(
+      "channelwiseQuantizedConv", qInput, filter, bias, scales, offsets, outTy,
+      {2, 1}, {1, 1}, {0, 0, 0, 0}, groups);
+
+  DequantizeNode *dq = F_->createDequantize("dequantize", CQC);
+  SaveNode *S = F_->createSave("save", dq);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+
+  std::vector<dim_t> expectedDims = {1, 1, 3, 4};
+  ASSERT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), 16);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1}), 18);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 2}), 20);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 3}), 22);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 0}), 22);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 1}), 26);
+
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 2}), 28);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 3}), 30);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 0}), 26);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 1}), 28);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 2}), 32);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 3}), 36);
 }
 
 TEST_P(OperatorTest, GroupDilatedConvolution) {
