@@ -1388,7 +1388,10 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
         "Only use FP16 accumulation with FP16 version of RWQ-SLWS.",
         result.getType()->getElementType(), ElemKind::Float16Ty, parent);
   }
-  isValid &= checkType(indices, ElemKind::Int64ITy, parent);
+  isValid &= checkType(
+      indices,
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+      parent);
   // For EmbeddingBagByteRowwiseOffsets lengths are really offsets and should be
   // Int64ITy.
   if (isEmbeddingBagByteRowwiseOffsets) {

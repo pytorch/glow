@@ -278,7 +278,9 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {SparseLengthsSumNode::IndicesIdx,
                 SparseLengthsSumNode::LengthsIdx}) &&
            (NI.getInElemTy(SparseLengthsSumNode::IndicesIdx) ==
-            ElemKind::Int64ITy) &&
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(SparseLengthsSumNode::IndicesIdx) ==
+                ElemKind::Int32ITy) &&
            (NI.getInElemTy(SparseLengthsSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
 
@@ -288,7 +290,9 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                {SparseLengthsWeightedSumNode::IndicesIdx,
                 SparseLengthsWeightedSumNode::LengthsIdx}) &&
            (NI.getInElemTy(SparseLengthsWeightedSumNode::IndicesIdx) ==
-            ElemKind::Int64ITy) &&
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(SparseLengthsWeightedSumNode::IndicesIdx) ==
+                ElemKind::Int32ITy) &&
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
 
@@ -326,7 +330,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
             ElemKind::UInt8QTy) &&
            (NI.getInElemTy(
                 RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx) ==
-            ElemKind::Int64ITy) &&
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(
+                RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx) ==
+                ElemKind::Int32ITy) &&
            (NI.getInElemTy(
                 RowwiseQuantizedSparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
@@ -357,9 +364,12 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   }
 
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind: {
-    if (NI.getInElemTy(
-            FusedRowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx) !=
-            ElemKind::Int64ITy ||
+    if ((NI.getInElemTy(
+             FusedRowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx) !=
+             ElemKind::Int64ITy &&
+         NI.getInElemTy(
+             FusedRowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx) !=
+             ElemKind::Int32ITy) ||
         NI.getInElemTy(
             FusedRowwiseQuantizedSparseLengthsWeightedSumNode::LengthsIdx) !=
             ElemKind::Int32ITy) {

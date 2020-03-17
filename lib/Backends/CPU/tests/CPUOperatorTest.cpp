@@ -88,6 +88,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "CumSum_ExclusiveReverse/0",
     "CumSum_WithZeroes/0",
     "SparseLengthsSum_Float16/0",
+    "SparseLengthsSum_Float16_Int32/0",
     "SparseLengthsSumI8/0",
     "SparseLengthsWeightedSum_1D_Float16/0",
     "SparseLengthsWeightedSum_2D_Float16/0",
@@ -100,8 +101,13 @@ std::set<std::string> glow::backendTestBlacklist = {
     "RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16/0",
     "RowwiseQuantizedSparseLengthsSum_Float16_AccumFloat/0",
     "RowwiseQuantizedSparseLengthsSum_Float16_AccumFloat16/0",
+    "RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16_Int32/0",
+    "RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat_Int32/0",
     "FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat/0",
     "FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16/0",
+    "FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat_Int32/0",
+    "FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16_Int32/"
+    "0",
     "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16/0",
     "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_back_to_"
     "back/0",
