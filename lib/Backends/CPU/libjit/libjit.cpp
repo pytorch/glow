@@ -1127,10 +1127,10 @@ static bool checkIOU(const Box &sb, const Box &cb, float iouThreshold,
 template <typename T>
 static void
 libjit_nms_generic(T *indices, T *numDetected, const float *boxTensor,
-                   const dim_t *boxTensorDims, size_t boxTensorDimSize,
+                   const dim_t *boxTensorDims, dim_t boxTensorDimSize,
                    const float *scoresTensor, const dim_t *scoresTensorDims,
-                   size_t scoresTensorDimSize, const dim_t *resultTensorDims,
-                   size_t resultTensorDimSize, unsigned centerPointBox,
+                   dim_t scoresTensorDimSize, const dim_t *resultTensorDims,
+                   dim_t resultTensorDimSize, unsigned centerPointBox,
                    unsigned maxOutputBoxesPerClass, float iouThreshold,
                    float scoreThreshold, bool isV4) {
   int boxesBoxDim = boxTensorDimSize - 2;
@@ -1439,7 +1439,7 @@ int8_t libjit_element_cmp_eq_kernel_u(dim_t idx, const size_t *LHS,
   return LHS[idx] == RHS[idx] ? 1 : 0;
 }
 
-int8_t libjit_element_cmp_eq_kernel_i32(size_t idx, const int32_t *LHS,
+int8_t libjit_element_cmp_eq_kernel_i32(dim_t idx, const int32_t *LHS,
                                         const int32_t *RHS) {
   return LHS[idx] == RHS[idx] ? 1 : 0;
 }
@@ -1754,7 +1754,7 @@ void libjit_gatherranges32_u(uint64_t *output, int32_t *lengths,
 
 void libjit_gatherranges32_i32(int32_t *output, int32_t *lengths,
                                const int32_t *data, const int32_t *ranges,
-                               size_t numExamples, size_t exampleSize) {
+                               dim_t numExamples, dim_t exampleSize) {
   libjit_gatherranges(output, lengths, data, ranges, numExamples, exampleSize);
 }
 
@@ -1782,11 +1782,11 @@ void libjit_scatterdata_f_i32(float *data, const dim_t *dataDims,
 }
 
 void libjit_scatterdata_i8_u(int8_t *data, const dim_t *dataDims,
-                             const size_t *indices, const int8_t *slices,
-                             size_t numIndices, size_t indexSize,
-                             size_t sliceSize, bool isCumulative,
-                             float dataScale, int32_t dataOffset,
-                             float sliceScale, int32_t sliceOffset) {
+                             const int64_t *indices, const int8_t *slices,
+                             dim_t numIndices, dim_t indexSize, dim_t sliceSize,
+                             bool isCumulative, float dataScale,
+                             int32_t dataOffset, float sliceScale,
+                             int32_t sliceOffset) {
   if (isCumulative) {
     libjit_scatterdataaddquantized(data, dataDims, indices, slices, numIndices,
                                    indexSize, sliceSize, dataScale, dataOffset,
@@ -1799,8 +1799,8 @@ void libjit_scatterdata_i8_u(int8_t *data, const dim_t *dataDims,
 
 void libjit_scatterdata_i8_i32(int8_t *data, const dim_t *dataDims,
                                const int32_t *indices, const int8_t *slices,
-                               size_t numIndices, size_t indexSize,
-                               size_t sliceSize, bool isCumulative,
+                               dim_t numIndices, dim_t indexSize,
+                               dim_t sliceSize, bool isCumulative,
                                float dataScale, int32_t dataOffset,
                                float sliceScale, int32_t sliceOffset) {
   if (isCumulative) {
@@ -2729,11 +2729,11 @@ libjit_quantization_profile(float *inputTensor, dim_t tensorSize,
 }
 
 __attribute__((noinline)) void
-libjit_nms_u(size_t *indices, size_t *numDetected, const float *boxTensor,
-             const dim_t *boxTensorDims, size_t boxTensorDimSize,
+libjit_nms_u(uint64_t *indices, uint64_t *numDetected, const float *boxTensor,
+             const dim_t *boxTensorDims, dim_t boxTensorDimSize,
              const float *scoresTensor, const dim_t *scoresTensorDims,
-             size_t scoresTensorDimSize, const dim_t *resultTensorDims,
-             size_t resultTensorDimSize, unsigned centerPointBox,
+             dim_t scoresTensorDimSize, const dim_t *resultTensorDims,
+             dim_t resultTensorDimSize, unsigned centerPointBox,
              unsigned maxOutputBoxesPerClass, float iouThreshold,
              float scoreThreshold, bool isV4) {
   libjit_nms_generic(indices, numDetected, boxTensor, boxTensorDims,
@@ -2745,10 +2745,10 @@ libjit_nms_u(size_t *indices, size_t *numDetected, const float *boxTensor,
 
 __attribute__((noinline)) void
 libjit_nms_i32(int32_t *indices, int32_t *numDetected, const float *boxTensor,
-               const dim_t *boxTensorDims, size_t boxTensorDimSize,
+               const dim_t *boxTensorDims, dim_t boxTensorDimSize,
                const float *scoresTensor, const dim_t *scoresTensorDims,
-               size_t scoresTensorDimSize, const dim_t *resultTensorDims,
-               size_t resultTensorDimSize, unsigned centerPointBox,
+               dim_t scoresTensorDimSize, const dim_t *resultTensorDims,
+               dim_t resultTensorDimSize, unsigned centerPointBox,
                unsigned maxOutputBoxesPerClass, float iouThreshold,
                float scoreThreshold, bool isV4) {
   libjit_nms_generic(indices, numDetected, boxTensor, boxTensorDims,

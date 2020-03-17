@@ -15,7 +15,10 @@
  */
 
 #include "glow/Base/Tensor.h"
+#include "glow/Base/TensorSerialization.h"
 #include "glow/Quantization/Base/Base.h"
+
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "gtest/gtest.h"
@@ -1292,4 +1295,54 @@ TEST(Tensor, differentAlignment) {
   EXPECT_TRUE(T1.isEqual(T2));
   T2H.at({1, 0}) = 1;
   EXPECT_FALSE(T1.isEqual(T2));
+}
+
+// Check that write/read of tensors data from/to raw-text files is
+// working properly.
+TEST(Tensor, accessToRawTextFile) {
+  Tensor tensorRef = {0.75f,  0.23f, 0.76f,  0.99f,  1.00f,
+                      -0.78f, 0.23f, -0.97f, -0.37f, 0.00f};
+  llvm::SmallString<64> path;
+  auto tempFileRes = llvm::sys::fs::createTemporaryFile("tensor", ".txt", path);
+  if (tempFileRes.value() != 0) {
+    FAIL() << "Failed to create temp file to write into.";
+  }
+  dumpToRawTextFile(tensorRef, path);
+  Tensor tensorTest(ElemKind::FloatTy, {10});
+  loadFromRawTextFile(tensorTest, path);
+  llvm::sys::fs::remove(path);
+
+  auto handleRef = tensorRef.getHandle<>();
+  auto handleTest = tensorTest.getHandle<>();
+
+  EXPECT_EQ(handleRef.size(), handleTest.size());
+  EXPECT_EQ(handleRef.actualSize(), handleTest.actualSize());
+  for (size_t rcnt = 0; rcnt < tensorTest.actualSize(); rcnt++) {
+    EXPECT_FLOAT_EQ(handleTest.raw(rcnt), handleRef.raw(rcnt));
+  }
+}
+
+// Check that write/read of tensors data from/to raw-binary files is
+// working properly.
+TEST(Tensor, accessToRawBinaryFile) {
+  Tensor tensorRef = {0.75f,  0.23f, 0.76f,  0.99f,  1.00f,
+                      -0.78f, 0.23f, -0.97f, -0.37f, 0.00f};
+  llvm::SmallString<64> path;
+  auto tempFileRes = llvm::sys::fs::createTemporaryFile("tensor", ".bin", path);
+  if (tempFileRes.value() != 0) {
+    FAIL() << "Failed to create temp file to write into.";
+  }
+  dumpToRawBinaryFile(tensorRef, path);
+  Tensor tensorTest(ElemKind::FloatTy, {10});
+  loadFromRawBinaryFile(tensorTest, path);
+  llvm::sys::fs::remove(path);
+
+  auto handleRef = tensorRef.getHandle<>();
+  auto handleTest = tensorTest.getHandle<>();
+
+  EXPECT_EQ(handleRef.size(), handleTest.size());
+  EXPECT_EQ(handleRef.actualSize(), handleTest.actualSize());
+  for (size_t rcnt = 0; rcnt < tensorTest.actualSize(); rcnt++) {
+    EXPECT_FLOAT_EQ(handleTest.raw(rcnt), handleRef.raw(rcnt));
+  }
 }

@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-#define X_MIN -(ssize_t)CONVK_PADS_TOP
-#define Y_MIN -(ssize_t)CONVK_PADS_LEFT
+#define X_MIN -(sdim_t)CONVK_PADS_TOP
+#define Y_MIN -(sdim_t)CONVK_PADS_LEFT
 
 #define X_MAX (X_MIN + (CONVK_ODIM_H - 1) * CONVK_STRIDES_H)
 #define Y_MAX (Y_MIN + (CONVK_ODIM_W - 1) * CONVK_STRIDES_W)
@@ -28,8 +28,8 @@
  * per-node specialized using compile time constants passed as macros.
  */
 /// \returns the index of the element at w, h, c, n
-inline size_t getNHWC(dim_t sw, dim_t sh, dim_t sc, unsigned sn, unsigned h,
-                      unsigned w, unsigned c) {
+inline dim_t getNHWC(dim_t sw, dim_t sh, dim_t sc, unsigned sn, unsigned h,
+                     unsigned w, unsigned c) {
   return (sn * sc * sw * sh) + (h * sc * sw) + (w * sc) + c;
 }
 
@@ -38,38 +38,37 @@ kernel void convolutionK(global float *restrict dest,
                          const global float *restrict filter,
                          const global float *restrict bias,
                          const int fuseReLU) {
-  size_t ax = get_global_id(0);
-  size_t ay = get_global_id(1);
-  size_t d = get_global_id(2);
-  const size_t inCperG = CONVK_IDIM_C / CONVK_GROUP;
-  const size_t outCperG = CONVK_ODIM_C / CONVK_GROUP;
-  const size_t inChannelOffset = d / outCperG * inCperG;
+  dim_t ax = get_global_id(0);
+  dim_t ay = get_global_id(1);
+  dim_t d = get_global_id(2);
+  const dim_t inCperG = CONVK_IDIM_C / CONVK_GROUP;
+  const dim_t outCperG = CONVK_ODIM_C / CONVK_GROUP;
+  const dim_t inChannelOffset = d / outCperG * inCperG;
 
-  typedef int ssize_t;
   // For each convolution 'jump' in the input tensor:
-  ssize_t x = -(ssize_t)CONVK_PADS_TOP + ax * CONVK_STRIDES_H;
-  ssize_t y = -(ssize_t)CONVK_PADS_LEFT + ay * CONVK_STRIDES_W;
+  sdim_t x = -(sdim_t)CONVK_PADS_TOP + ax * CONVK_STRIDES_H;
+  sdim_t y = -(sdim_t)CONVK_PADS_LEFT + ay * CONVK_STRIDES_W;
 
   // For each input in the batch:
-  for (size_t n = 0; n < CONVK_BATCHES; n++) {
+  for (dim_t n = 0; n < CONVK_BATCHES; n++) {
 
     // For each element in the convolution-filter:
     float sum = 0;
-    for (size_t fx = 0; fx < CONVK_KERNEL_H; fx++) {
-      for (size_t fy = 0; fy < CONVK_KERNEL_W; fy++) {
-        ssize_t ox = x + fx * CONVK_DILATION;
-        ssize_t oy = y + fy * CONVK_DILATION;
+    for (dim_t fx = 0; fx < CONVK_KERNEL_H; fx++) {
+      for (dim_t fy = 0; fy < CONVK_KERNEL_W; fy++) {
+        sdim_t ox = x + fx * CONVK_DILATION;
+        sdim_t oy = y + fy * CONVK_DILATION;
 
         // Ignore index access below zero (this is due to padding).
         // Use compile time evaluated predicates to expose branches
         // that will never be taken and thus can be removed at compile
         // time.
         if ((X_MIN < 0 && ox < 0) || (Y_MIN < 0 && oy < 0) ||
-            (OX_MAX >= (ssize_t)CONVK_IDIM_H && ox >= (ssize_t)CONVK_IDIM_H) ||
-            (OY_MAX >= (ssize_t)CONVK_IDIM_W && oy >= (ssize_t)CONVK_IDIM_W)) {
+            (OX_MAX >= (sdim_t)CONVK_IDIM_H && ox >= (sdim_t)CONVK_IDIM_H) ||
+            (OY_MAX >= (sdim_t)CONVK_IDIM_W && oy >= (sdim_t)CONVK_IDIM_W)) {
           continue;
         }
-        for (size_t fd = 0; fd < inCperG; fd++) {
+        for (dim_t fd = 0; fd < inCperG; fd++) {
           sum += filter[getNHWC(CONVK_FILTER_W, CONVK_FILTER_H, CONVK_FILTER_C,
                                 d, fx, fy, fd)] *
                  src[getNHWC(CONVK_IDIM_W, CONVK_IDIM_H, CONVK_IDIM_C, n,

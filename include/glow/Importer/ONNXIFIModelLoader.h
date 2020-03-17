@@ -44,6 +44,16 @@ public:
     return core_->getOutputVarsMapping();
   }
 
+  /// \returns vector of primary input names based on their position
+  const std::vector<std::string> &getPositionalInputNames() const {
+    return core_->getPositionalInputNames();
+  }
+
+  /// \returns vector of primary output names based on their position
+  const std::vector<std::string> &getPositionalOutputNames() const {
+    return core_->getPositionalOutputNames();
+  }
+
   /// \returns a unique_ptr<ONNXIFIModelLoader> if \p onnxModel can be
   /// parsed and static weights can be loaded from the \p wightDescriptors.
   /// \returns Error otherwise. \p loadInputsAsPlaceholders is passed to

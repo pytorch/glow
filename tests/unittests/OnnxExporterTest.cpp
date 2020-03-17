@@ -265,12 +265,6 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
       ElemKind::Int8QTy, {batchSize, inSide, inSide, inChannels}, 1.2, 3,
       "input", /* isTrainable */ false);
 
-  Placeholder *weights = mod.createPlaceholder(
-      ElemKind::Int8QTy,
-      {outChannels, filterSide, filterSide, inChannels / groups}, 2.5, 1,
-      "weights",
-      /* isTrainable */ false);
-
   Constant *biasConstant =
       mod.createConstant(ElemKind::FloatTy, {outChannels}, "bias");
 
@@ -279,6 +273,11 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
 
   Constant *offsetsConstant =
       mod.createConstant(ElemKind::Int32ITy, {outChannels}, "offsets");
+
+  Constant *weightsConstant = mod.createConstant(
+      ElemKind::Int8QTy,
+      {outChannels, filterSide, filterSide, inChannels / groups}, 2.5, 1,
+      "offsets");
 
   std::vector<unsigned_t> kernels = {filterSide, filterSide};
   std::vector<unsigned_t> strides = {1, 1};
@@ -291,8 +290,8 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
       {batchSize, outSize.first, outSize.second, outChannels}, 3.8, 4);
 
   auto *cqConv = F->createChannelwiseQuantizedConv(
-      "cqconv", input, weights, biasConstant, scalesConstant, offsetsConstant,
-      outTy, kernels, strides, pads, groups);
+      "cqconv", input, weightsConstant, biasConstant, scalesConstant,
+      offsetsConstant, outTy, kernels, strides, pads, groups);
 
   auto *save = F->createSave("save_out", cqConv);
 
@@ -301,8 +300,7 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
   ASSERT_TRUE(F->verify());
 
   PlaceholderBindings bindings;
-  bindings.allocate({weights, input, output});
-  convertPlaceholdersToConstants(F, bindings, {input, output});
+  bindings.allocate({input, output});
 
   // Save and reload F.
   Function *R;
