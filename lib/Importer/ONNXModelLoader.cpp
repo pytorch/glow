@@ -3109,8 +3109,8 @@ Error ONNXModelLoader::loadAudioSpectrogram(const ONNX_NAMESPACE::NodeProto &op,
     magnitudeSquared = dict.at("magnitude_squared")->i();
   }
 
-  Node *N = G_.createAudioSpectrogram(loadOperatorName(op), input, windowSize,
-                                      windowStride, (bool)magnitudeSquared);
+  Node *N = G_->createAudioSpectrogram(loadOperatorName(op), input, windowSize,
+                                       windowStride, (bool)magnitudeSquared);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -3155,9 +3155,9 @@ Error ONNXModelLoader::loadMFCC(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(numCoefficients,
                              loadInt(dict.at("num_coefficients")));
 
-  Node *N = G_.createMFCC(loadOperatorName(op), spectrogram, sampleRate,
-                          lowerFrequency, upperFrequency, filterBankCount,
-                          numCoefficients);
+  Node *N = G_->createMFCC(loadOperatorName(op), spectrogram, sampleRate,
+                           lowerFrequency, upperFrequency, filterBankCount,
+                           numCoefficients);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
