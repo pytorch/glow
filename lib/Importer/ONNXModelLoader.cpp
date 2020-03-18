@@ -827,6 +827,10 @@ ONNXModelLoader::loadProto(const std::string &filename) {
   return loadProto(fileStream);
 }
 
+template <typename T> T ceil(float val) {
+  return (val - (T)val) > 0 ? (T)(val + 1) : (T)val;
+}
+
 namespace {
 /// Helper type for pads.
 using Pads = std::vector<unsigned_t>;
@@ -841,6 +845,10 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
                        llvm::ArrayRef<unsigned_t> sdim,
                        llvm::ArrayRef<unsigned_t> idim) {
   if (dict.count("pads")) {
+    if (dict.at("pads")->ints_size() == 2) { // For maxPool1D
+      return Pads({0, (unsigned_t)dict.at("pads")->ints(0), 0,
+                   (unsigned_t)dict.at("pads")->ints(1)});
+    }
     return getShape<unsigned_t>(dict["pads"]);
   }
   if (dict.count("auto_pad")) {
@@ -861,8 +869,10 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
       //         + kernel_spatial_shape[i] - input_spatial_shape[i]
       // Use the smallest padding possible out of the possible options.
       llvm::SmallVector<unsigned_t, 2> pdim(2); // Total Paddding, HW.
+      llvm::SmallVector<unsigned_t, 2> odim(2);
       for (size_t i = 0, e = pdim.size(); i < e; i++) {
-        pdim[i] = sdim[i] * (idim[i] - 1) + kdim[i] - idim[i];
+        odim[i] = ceil<unsigned_t>((float)idim[i] / (float)sdim[i]);
+        pdim[i] = sdim[i] * (odim[i] - 1) + kdim[i] - idim[i];
       }
       if (padStr == "SAME_UPPER") {
         // SAME_UPPPER: if odd number for pdim[i], use extra padding at the end.
@@ -1459,13 +1469,35 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
   // Load the inputs:
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-  std::vector<unsigned_t> strides(2, 1);
-  if (dict.count("strides")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(strides, getShape<unsigned_t>(dict["strides"]));
-  }
-  std::vector<unsigned_t> kernels;
-  ASSIGN_VALUE_OR_RETURN_ERR(kernels,
+
+  std::vector<unsigned_t> kernelsShape;
+  ASSIGN_VALUE_OR_RETURN_ERR(kernelsShape,
                              getShape<unsigned_t>(dict["kernel_shape"]));
+
+  std::vector<unsigned_t> strides(2, 1);
+
+  size_t inDim = in.dims().size();
+  size_t kerDim = kernelsShape.size();
+
+  std::vector<unsigned_t> kernels = {1, kernelsShape[kerDim - 1]};
+
+  // For maxPool1D inDim = 3
+  if (inDim == 3) {
+    in = G_->createExpandDims(opName, in, 2);
+  }
+
+  if (kerDim == 2) {
+    kernels[0] = kernelsShape[0];
+    if (dict.count("strides")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(strides,
+                                 getShape<unsigned_t>(dict["strides"]));
+    }
+  } else if (kerDim == 1) { // For maxPool1D
+    if (dict.count("strides")) {
+      strides[1] = dict.at("strides")->ints(0);
+      strides[0] = 1;
+    }
+  }
 
   if (in.dims().size() != 4 || kernels.size() != 2) {
     // Glow only handles 2D pooling currently.
@@ -1485,8 +1517,8 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
 
   // NHWC
   llvm::SmallVector<unsigned_t, 2> idimHW(2);
-  idimHW[0] = in.dims()[1];
-  idimHW[1] = in.dims()[2];
+  idimHW[0] = in.dims()[2]; // As per NCHW format
+  idimHW[1] = in.dims()[3];
 
   Pads pads;
   ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict, kernels, strides, idimHW));
@@ -1512,6 +1544,16 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
       idx = AvgPoolNode::ResultIdx;
     }
     auto *N = G_->createTranspose(opName, NodeValue(node, idx), NHWC2NCHW);
+
+    // For maxPool1D
+    if (inDim == 3) {
+      auto *Nr = G_->createTranspose(opName, N, NCHW2NHWC);
+      auto *R = G_->createSqueeze(opName, Nr, 1);
+      auto *RR = G_->createTranspose(opName, R, {0, 2, 1});
+      RETURN_IF_ERR(addNodeAsOutput(op, RR));
+      return Error::success();
+    }
+
     RETURN_IF_ERR(addNodeAsOutput(op, N));
   }
   return Error::success();
