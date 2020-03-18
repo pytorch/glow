@@ -370,10 +370,13 @@ constexpr char shapeSignifier[] = "shape";
 
 /// \returns the string ID for a type attribute property for a specific \p ioNum
 /// and \p signifier and whether \p isInput. E.g. to retrieve result number 0's
-/// shape, you'd pass `(0, "shape", false)`.
+/// shape, you'd pass `(0, "shape", false)`. \p addPrefix is an additional
+/// prefix to include at the front of the returned ID.
 inline std::string getTypeAttrID(unsigned ioNum, const std::string &signifier,
-                                 bool isInput = false) {
-  return (isInput ? "i" : "o") + std::to_string(ioNum) + "_" + signifier;
+                                 bool isInput = false,
+                                 const std::string &addPrefix = "") {
+  return addPrefix + (isInput ? "i" : "o") + std::to_string(ioNum) + "_" +
+         signifier;
 }
 
 } // namespace glow
