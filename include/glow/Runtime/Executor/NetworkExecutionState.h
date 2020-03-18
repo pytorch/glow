@@ -37,8 +37,12 @@ public:
   /// Destructor.
   ~NetworkExecutionState();
 
-  /// Does the BFS traversal and initializes the NetworkExecutionState.
-  void init(const DeviceManagerMapTy &devices);
+  /// Does the BFS traversal and initializes the NetworkExecutionState. Takes in
+  /// a map of all deviceManagers \p devices , and \p staticAssignment , a map
+  /// between each node an a deviceManager. If this is an empty map no
+  /// assignment is made.
+  void init(const DeviceManagerMapTy &devices,
+            std::unordered_map<DAGNode *, DeviceIDTy> &staticAssignment);
 
   /// Binds the state to a new run. This moves the result ctx and cb to be owned
   /// by the networkExecutionState for the duration of the run.
