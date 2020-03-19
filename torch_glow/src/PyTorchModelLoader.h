@@ -51,6 +51,10 @@ class ValueMapping {
   /// Tag of which member is valid. Only one member is valid at a time.
   ValueMappingType mappingType_;
 
+  // The original data type of this jit value in PyTorch.
+  // Useful when we quantize an uint8 PyTorch tensor to int8 in Glow.
+  c10::ScalarType correctType_;
+
   /// Members that store either a NodeValue or a pointer to a GlowIValue
   /// depending on what the PyTorch Value being mapped is.
   NodeValue nodeValue_;
@@ -59,6 +63,13 @@ class ValueMapping {
 public:
   /// \returns the ValueMappingType representing the type that is mapped.
   ValueMappingType getMappingType() const;
+
+  /// \return the correctType_ representing the original PyTorch data type.
+  c10::ScalarType getCorrectType() const;
+
+  /// Set the correctType_ to be \p dtype.
+  /// \returns error on failure.
+  void setCorrectType(c10::ScalarType dtype);
 
   /// Create a ValueMapping from a NodeValue \p nodeValue. \p wasFrozen should
   /// be set to true if this NodeValue comes from weight freezing.
@@ -180,6 +191,7 @@ public:
   loadJITGraph(glow::Function &F, const torch::jit::Graph &graph,
                std::vector<glow::Placeholder *> &inputPlaceholders,
                std::vector<glow::Placeholder *> &outputPlaceholders,
+               std::vector<c10::ScalarType> &outputCorrectType,
                const PyTorchLoaderSettings &settings,
                const at::ArrayRef<torch::jit::IValue> inputs,
                const std::vector<InputMeta> &inputMeta);
@@ -205,6 +217,7 @@ private:
   PyTorchModelLoader(glow::Function &F, const torch::jit::Graph &graph,
                      std::vector<glow::Placeholder *> &inputPlaceholders,
                      std::vector<glow::Placeholder *> &outputPlaceholders,
+                     std::vector<c10::ScalarType> &outputCorrectType,
                      Error &error, const PyTorchLoaderSettings &settings,
                      std::set<size_t> *frozenInputIndices,
                      const at::ArrayRef<torch::jit::IValue> inputs,
@@ -238,12 +251,33 @@ public:
   Error addValueMapping(const torch::jit::Value *value,
                         glow::NodeValue nodeValue, bool wasFrozen = false);
 
+  /// Add a new mapping from the PyTorch Value \p value and its original type in
+  /// PyTorch \p correctType to the Glow NodeValue \p nodeValue. Set \p
+  /// wasFrozen to true if this comes from a from a frozen input. \returns error
+  /// on failure.
+  Error addValueMapping(const torch::jit::Value *value,
+                        glow::NodeValue nodeValue, c10::ScalarType correctType,
+                        bool wasFrozen = false);
+
   /// Add a new mapping from the PyTorch Value \p value to the GlowIValue
   /// \p glowIValue. Set \p wasFrozen to true if this comes from a from a frozen
   /// input.
   /// \returns error on failure.
   Error addValueMapping(const torch::jit::Value *value,
                         glow::GlowIValue glowIValue, bool wasFrozen = false);
+
+  /// Add a new mapping from the PyTorch Value \p value and its original type in
+  /// PyTorch \p correctType to the Glow IValue \p nodeValue. Set \p wasFrozen
+  /// to true if this comes from a from a frozen input.
+  /// \returns error on failure.
+  Error addValueMapping(const torch::jit::Value *value,
+                        glow::GlowIValue glowIValue,
+                        c10::ScalarType correctType, bool wasFrozen = false);
+
+  /// Get the correctType of \p src from valueMap_, and save it to \p dest.
+  /// \returns error on failure.
+  Error getCorrectTypeMapping(c10::ScalarType &dest,
+                              const torch::jit::Value *src);
 
   /// Remove any ValueMapping associated with \p value.
   void removeValueMapping(const torch::jit::Value *value);
@@ -261,10 +295,13 @@ public:
   /// If a NodeValue is mapped to \p value then return it, otherwise look for a
   /// float or integer IValue mapped to \p value, create a Glow Constant by
   /// broadcasting that value to a tensor of size \p dims and return the result
-  /// of that Constant.
+  /// of that Constant.  If the optional flag \p makeFloat is true, generates a
+  /// tensor with floating point elements (default if flag omitted).  Otherwise,
+  /// generates a tensor with integer elements.
   Expected<glow::NodeValue>
   loadNodeValueOrBroadcastedIValue(const torch::jit::Value *value,
-                                   llvm::ArrayRef<glow::dim_t> dims);
+                                   llvm::ArrayRef<glow::dim_t> dims,
+                                   bool makeFloat = true);
 
   /// If there is a NodeValue mapped to \p value then return it, otherwise
   /// create a Constant with type \p ty, name \p name, and value \p val

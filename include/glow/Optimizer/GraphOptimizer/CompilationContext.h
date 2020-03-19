@@ -24,6 +24,7 @@
 namespace glow {
 namespace runtime {
 struct PartitionConfig;
+struct PrePartitionedConfig;
 class DeferredWeightLoader;
 } // namespace runtime
 
@@ -116,6 +117,10 @@ struct OptimizationOptions {
   /// The number of cores to assign to non-SLS partition when using SparseNN
   /// partitioning scheme
   unsigned int sparseNNPartitioningSchemeNumCoresOther{1};
+
+  /// If true does int64 to int32 type demotion if backend supports for specific
+  /// nodes.
+  bool enableTypeDemotion{true};
 };
 
 /// Context for compilation.
@@ -125,6 +130,9 @@ struct CompilationContext {
 
   /// Allows the user to specify user defined partitioning.
   runtime::PartitionConfig *partitionConfig{nullptr};
+
+  /// Allows a loader to store a pre-partitioned config.
+  runtime::PrePartitionedConfig *prepartitionedConfig{nullptr};
 
   /// Used during Quantization and Profiling.
   LoweredInfoMap *loweredInfoMap{nullptr};
@@ -153,9 +161,18 @@ struct CompilationContext {
   /// support.
   runtime::DeferredWeightLoader *deferredWeightLoader{nullptr};
 
-  // Whether to print out issues/logging during compilation. Used for example to
-  // disable printing issues encountered during ConstantFolding.
+  /// Whether to print out issues/logging during compilation. Used for example
+  /// to disable printing issues encountered during ConstantFolding.
   bool verboseCompile{true};
+
+  /// Call dumpDag on each Function passed to the backend for compilation.
+  bool dumpFinalGraph = false;
+
+  /// Whether to skip stripping the module.
+  bool skipModuleStrip{false};
+
+  /// Whether to enable P2P and DRT at runtime.
+  bool enableStaticAssignment{false};
 
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)

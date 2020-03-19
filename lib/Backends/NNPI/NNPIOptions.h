@@ -211,6 +211,10 @@ public:
       reserveResources, bool, "ResourceReservation",
       "Reserve execution resources for the network on the device.",
       "NNPI_RESOURCE_RESERVATION", "0");
+  /// Disable constant folding during compilation.
+  DECLARE_NNPI_OPTION(disableConstFolding, bool, "DisableConstFolding",
+                      "Disable constant folding during compilation.",
+                      "NNPI_DISABLE_CONSTFOLD", "1");
 
   NNPICompilationOptions(const std::map<std::string, std::string> &parameters) {
     INIT_NNPI_OPTIONS(useIceT, parameters);
@@ -224,6 +228,7 @@ public:
     INIT_NNPI_OPTIONS(compilationLogLevel, parameters);
     INIT_NNPI_OPTIONS(debugCompileConfigFile, parameters);
     INIT_NNPI_OPTIONS(reserveResources, parameters);
+    INIT_NNPI_OPTIONS(disableConstFolding, parameters);
     setLogLevel(this->compilationLogLevel);
   }
 

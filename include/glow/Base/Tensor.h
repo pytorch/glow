@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "glow/Base/DeviceTensorTransferManager.h"
+#include "glow/Base/TensorSerialization.h"
 #include "glow/Base/Type.h"
 #include "glow/Support/Compiler.h"
 #include "glow/Support/Memory.h"
@@ -346,6 +347,9 @@ public:
   /// scaled/offsets will not be modified.
   void init(InitKind init, float val, PseudoRNG &PRNG);
 
+  /// \returns an unowned tensor with the exact same dimensions as this.
+  Tensor getUnowned() const { return getUnowned(dims()); }
+
   /// \returns unowned tensor using the same data buffer as the current tensor
   /// but having different dimensions \p dims. \p offsets represents an optional
   /// offset into the tensor representing the location of the first element to
@@ -574,9 +578,9 @@ public:
 
   /// \returns true if the content of the other tensor \p other is bitwise
   /// identical to this one.
-  bool isBitwiseEqual(const Tensor &other) const {
+  bool isBitwiseEqual(const Tensor &other, bool verbose = false) const {
     return isEqualImpl(other, /*isBitwise=*/true, /*allowedError=*/0.0,
-                       /*verbose=*/false);
+                       verbose);
   }
 
   bool isEqualImpl(const Tensor &other, bool isBitwise, float allowedError,
@@ -618,8 +622,9 @@ public:
     }
 
     // Bitwise compare.
-    if (isBitwise)
-      return isBitwiseEqualImpl(other);
+    if (isBitwise) {
+      return isBitwiseEqualImpl(other, verbose);
+    }
 
     switch (getElementType()) {
     case ElemKind::FloatTy:
@@ -896,15 +901,24 @@ private:
     return numExceedingError == 0;
   }
 
-  bool isBitwiseEqualImpl(const Tensor &other) const {
+  bool isBitwiseEqualImpl(const Tensor &other, bool verbose) const {
     assert(!isDeviceResident() && "Tensor must reside on host to access data.");
     auto const *myData = getUnsafePtr();
     auto const *otherData = other.getUnsafePtr();
+    dim_t mismatchCount = 0;
     for (size_t i = 0, e = getSizeInBytes(); i < e; i++) {
-      if (myData[i] != otherData[i])
-        return false;
+      if (myData[i] != otherData[i]) {
+        if (!verbose) {
+          return false;
+        }
+        ++mismatchCount;
+      }
     }
-    return true;
+    if (mismatchCount != 0) {
+      LOG(INFO) << "Tensors not bitwise equal: " << mismatchCount
+                << " bytes out of " << getSizeInBytes() << " mismatched.";
+    }
+    return mismatchCount == 0;
   }
 };
 

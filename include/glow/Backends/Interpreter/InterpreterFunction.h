@@ -42,7 +42,8 @@ class Constant;
 #include "glow/AutoGenInstr.def"
 
 /// Function "compiled" for execution by the interpreter.
-class InterpreterFunction final : public CompiledFunction {
+class InterpreterFunction final : public CompiledFunction,
+                                  public IRInstructionProcessingHandler {
   /// The IR to be executed.
   std::unique_ptr<IRFunction> F_;
 
@@ -80,7 +81,7 @@ public:
 };
 
 /// An InterpreterFunction bound to a specific invocation.
-class BoundInterpreterFunction {
+class BoundInterpreterFunction : public IRInstructionProcessingHandler {
   /// Maps values to Tensors, that are owned by this class.
   std::unordered_map<const Value *, Tensor *> tensors_;
 
@@ -302,13 +303,15 @@ private:
   template <typename ElemTy>
   void fwdScatterDataInstAddQuantizedImpl(const ScatterDataInst *I);
 
-  void fwdSparseLengthsSumInstI8Impl(const SparseLengthsSumInst *I);
   template <typename ElemTy>
+  void fwdSparseLengthsSumInstI8Impl(const SparseLengthsSumInst *I);
+  template <typename ElemTy, typename TI>
   void fwdSparseLengthsSumInstFloatImpl(const SparseLengthsSumInst *I);
 
+  template <typename ElemTy>
   void
   fwdSparseLengthsWeightedSumInstI8Impl(const SparseLengthsWeightedSumInst *I);
-  template <typename ElemTy>
+  template <typename ElemTy, typename TI>
   void fwdSparseLengthsWeightedSumInstFloatImpl(
       const SparseLengthsWeightedSumInst *I);
 
@@ -325,11 +328,11 @@ private:
 
   template <typename ElemTy> void fwdModuloInstImpl(glow::ModuloInst const *I);
 
-  template <typename T, typename AccumT>
+  template <typename T, typename AccumT, typename TI>
   void fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
       const RowwiseQuantizedSparseLengthsWeightedSumInst *I);
 
-  template <typename T, typename AccumT>
+  template <typename T, typename AccumT, typename TI>
   void fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl(
       const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I);
 

@@ -82,6 +82,56 @@ TEST_F(HostManagerTest, addNetwork) {
   ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
 }
 
+TEST_F(HostManagerTest, queueOverflow) {
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
+
+  Function *F = module->createFunction("main");
+  auto *X = module->createPlaceholder(ElemKind::FloatTy, {10}, "X", false);
+  auto *pow = F->createPow("Pow1", X, 2.0);
+  pow = F->createPow("Pow1", pow, 2.0);
+  auto *save = F->createSave("save", pow);
+  std::vector<std::unique_ptr<ExecutionContext>> contexts;
+  for (int i = 0; i < 100; ++i) {
+    std::unique_ptr<ExecutionContext> context =
+        glow::make_unique<ExecutionContext>();
+    auto *XTensor = context->getPlaceholderBindings()->allocate(X);
+    XTensor->getHandle() = {1., 2., 3., 1., 2., 3., 1., 2., 3., 1.};
+    context->getPlaceholderBindings()->allocate(save->getPlaceholder());
+    contexts.emplace_back(std::move(context));
+  }
+
+  HostConfig hostConfig;
+  hostConfig.maxQueueSize = 1;
+  hostConfig.maxActiveRequests = 1;
+  auto hostManager = createHostManager("CPU", hostConfig);
+  CompilationContext cctx;
+  ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
+
+  std::vector<std::promise<void>> requests(100);
+  std::list<std::future<void>> futures;
+  for (auto &r : requests) {
+    futures.emplace_back(r.get_future());
+  }
+
+  for (int i = 0; i < 100; ++i) {
+    auto &context = contexts[i];
+    auto &request = requests[i];
+    hostManager->runNetwork(
+        "main", std::move(context),
+        [&request](RunIdentifierTy runID, Error err,
+                   std::unique_ptr<ExecutionContext> context_) {
+          TRACE_EVENT_SCOPE(context_->getTraceContext(), TraceLevel::RUNTIME,
+                            "HostManager::runNetwork");
+          ERR_TO_BOOL(std::move(err));
+          request.set_value();
+        });
+  }
+
+  for (auto &f : futures) {
+    f.wait();
+  }
+}
+
 TEST_F(HostManagerTest, runNetwork) {
   std::unique_ptr<Module> module = glow::make_unique<Module>();
   std::unique_ptr<ExecutionContext> context =
@@ -182,6 +232,48 @@ TEST_F(HostManagerTest, ConcurrentAddRemoveDuplicate) {
   }
 }
 
+/// Run several requests concurrently.
+TEST_F(HostManagerTest, runNetworkConcurrent) {
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
+
+  Function *F = module->createFunction("main");
+  auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
+  auto *pow = F->createPow("Pow1", X, 2.0);
+  F->createSave("save", pow);
+  auto *savePH = module->getPlaceholderByName("save");
+
+  auto hostManager = createHostManager("CPU");
+  CompilationContext cctx;
+
+  ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
+
+  std::vector<std::future<void>> ready;
+  for (int i = 0; i < 50; i++) {
+    auto runNetwork = std::make_shared<std::promise<void>>();
+    ready.push_back(runNetwork->get_future());
+    std::unique_ptr<ExecutionContext> context =
+        glow::make_unique<ExecutionContext>();
+    auto *XTensor = context->getPlaceholderBindings()->allocate(X);
+    XTensor->getHandle() = {1., 2., 3.};
+    auto *saveTensor = context->getPlaceholderBindings()->allocate(savePH);
+    hostManager->runNetwork(
+        "main", std::move(context),
+        [runNetwork, saveTensor](RunIdentifierTy runID, Error err,
+                                 std::unique_ptr<ExecutionContext> context_) {
+          auto HX = saveTensor->getHandle();
+          EXPECT_NEAR(HX.at({0}), 1, 1E-5);
+          EXPECT_NEAR(HX.at({1}), 4, 1E-5);
+          EXPECT_NEAR(HX.at({2}), 9, 1E-5);
+          EXPECT_FALSE(std::move(err));
+          runNetwork->set_value();
+        });
+  }
+
+  for (auto &r : ready) {
+    r.wait();
+  }
+}
+
 /// Test that the HostManager respects it's configuration parameters.
 TEST_F(HostManagerTest, ConfigureHostManager) {
   HostConfig config;
@@ -276,4 +368,151 @@ TEST_F(HostManagerTest, QueueTest) {
   // Should expect them to finish in order: 1, 3, 2. Check atomic value
   EXPECT_GT(res3, res1);
   EXPECT_GT(res2, res3);
+}
+
+// This test creates a network that is split into two partitions. P0,P1. P0 is
+// loaded on one device, P1 is loaded on two devices. This test then enables
+// static assignment which allows for P2P testing. We then run the network twice
+// to test the alternating static assignments.
+TEST_F(HostManagerTest, testStaticAssignment) {
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
+  std::unique_ptr<ExecutionContext> context =
+      glow::make_unique<ExecutionContext>();
+
+  Function *F = module->createFunction("main");
+  auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
+  auto *XTensor = context->getPlaceholderBindings()->allocate(X);
+  XTensor->getHandle() = {1., 2., 3.};
+  auto *pow = F->createPow("Pow1", X, 2.0);
+  auto *save = F->createSave("save", pow);
+  auto *saveTensor =
+      context->getPlaceholderBindings()->allocate(save->getPlaceholder());
+
+  std::vector<std::unique_ptr<DeviceConfig>> configs;
+  auto deviceConfig = glow::make_unique<DeviceConfig>("CPU");
+  auto deviceConfig2 = glow::make_unique<DeviceConfig>("CPU");
+  auto deviceConfig3 = glow::make_unique<DeviceConfig>("CPU");
+  configs.push_back(std::move(deviceConfig));
+  configs.push_back(std::move(deviceConfig2));
+  configs.push_back(std::move(deviceConfig3));
+  std::unique_ptr<HostManager> hostManager =
+      glow::make_unique<HostManager>(std::move(configs), HostConfig());
+  CompilationContext cctx;
+  cctx.enableStaticAssignment = true;
+
+  // Setup forced partitioning.
+  PartitionConfig partitionConfig;
+  partitionConfig.funcName = "main";
+  partitionConfig.numOfPartitions = 2;
+  partitionConfig.backendNames = {"CPU", "CPU"};
+  partitionConfig.partitionNames = {"p0", "p1"};
+  partitionConfig.nodeToPartition = {{"Pow1", 0}, {"save", 1}};
+  partitionConfig.logicalIDs = {{0}, {1, 2}};
+  cctx.partitionConfig = &partitionConfig;
+
+  ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
+
+  std::promise<void> runNetwork;
+  auto ready = runNetwork.get_future();
+
+  std::unique_ptr<Error> runErr;
+  hostManager->runNetwork("main", std::move(context),
+                          [&runNetwork, &saveTensor, &context, &runErr](
+                              RunIdentifierTy runID, Error err,
+                              std::unique_ptr<ExecutionContext> context_) {
+                            auto HX = saveTensor->getHandle();
+                            EXPECT_NEAR(HX.at({0}), 1, 1E-5);
+                            EXPECT_NEAR(HX.at({1}), 4, 1E-5);
+                            EXPECT_NEAR(HX.at({2}), 9, 1E-5);
+                            context = std::move(context_);
+                            runErr = glow::make_unique<Error>(std::move(err));
+                            runNetwork.set_value();
+                          });
+
+  ready.wait();
+  EXPECT_FALSE(ERR_TO_BOOL(std::move(*DCHECK_NOTNULL(runErr.get()))));
+
+  // reset runErr
+  runErr = nullptr;
+
+  std::promise<void> newRun;
+  ready = newRun.get_future();
+  hostManager->runNetwork("main", std::move(context),
+                          [&newRun, &saveTensor, &runErr](
+                              RunIdentifierTy runID, Error err,
+                              std::unique_ptr<ExecutionContext> context_) {
+                            auto HX = saveTensor->getHandle();
+                            EXPECT_NEAR(HX.at({0}), 1, 1E-5);
+                            EXPECT_NEAR(HX.at({1}), 4, 1E-5);
+                            EXPECT_NEAR(HX.at({2}), 9, 1E-5);
+                            runErr = glow::make_unique<Error>(std::move(err));
+                            newRun.set_value();
+                          });
+
+  ready.wait();
+  EXPECT_FALSE(ERR_TO_BOOL(std::move(*DCHECK_NOTNULL(runErr.get()))));
+}
+
+// This test creates a network that is split into two partitions. P0,P1. P0 is
+// loaded on one device, P1 is loaded on two devices. This test then enables
+// static assignment which allows for P2P testing. We then run the network
+// multiple requests concurrently.
+TEST_F(HostManagerTest, testStaticAssignmentConcurrent) {
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
+
+  Function *F = module->createFunction("main");
+  auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
+  auto *pow = F->createPow("Pow1", X, 2.0);
+  F->createSave("save", pow);
+  auto *savePH = module->getPlaceholderByName("save");
+
+  std::vector<std::unique_ptr<DeviceConfig>> configs;
+  auto deviceConfig = glow::make_unique<DeviceConfig>("CPU");
+  auto deviceConfig2 = glow::make_unique<DeviceConfig>("CPU");
+  auto deviceConfig3 = glow::make_unique<DeviceConfig>("CPU");
+  configs.push_back(std::move(deviceConfig));
+  configs.push_back(std::move(deviceConfig2));
+  configs.push_back(std::move(deviceConfig3));
+  std::unique_ptr<HostManager> hostManager =
+      glow::make_unique<HostManager>(std::move(configs), HostConfig());
+  CompilationContext cctx;
+  cctx.enableStaticAssignment = true;
+
+  // Setup forced partitioning.
+  PartitionConfig partitionConfig;
+  partitionConfig.funcName = "main";
+  partitionConfig.numOfPartitions = 2;
+  partitionConfig.backendNames = {"CPU", "CPU"};
+  partitionConfig.partitionNames = {"p0", "p1"};
+  partitionConfig.nodeToPartition = {{"Pow1", 0}, {"save", 1}};
+  partitionConfig.logicalIDs = {{0}, {1, 2}};
+  cctx.partitionConfig = &partitionConfig;
+
+  ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
+
+  std::vector<std::future<void>> ready;
+  for (int i = 0; i < 50; i++) {
+    auto runNetwork = std::make_shared<std::promise<void>>();
+    ready.push_back(runNetwork->get_future());
+    std::unique_ptr<ExecutionContext> context =
+        glow::make_unique<ExecutionContext>();
+    auto *XTensor = context->getPlaceholderBindings()->allocate(X);
+    XTensor->getHandle() = {1., 2., 3.};
+    auto *saveTensor = context->getPlaceholderBindings()->allocate(savePH);
+    hostManager->runNetwork(
+        "main", std::move(context),
+        [runNetwork, saveTensor](RunIdentifierTy runID, Error err,
+                                 std::unique_ptr<ExecutionContext> context_) {
+          auto HX = saveTensor->getHandle();
+          EXPECT_NEAR(HX.at({0}), 1, 1E-5);
+          EXPECT_NEAR(HX.at({1}), 4, 1E-5);
+          EXPECT_NEAR(HX.at({2}), 9, 1E-5);
+          EXPECT_FALSE(std::move(err));
+          runNetwork->set_value();
+        });
+  }
+
+  for (auto &r : ready) {
+    r.wait();
+  }
 }

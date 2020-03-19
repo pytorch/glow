@@ -73,19 +73,34 @@ To get them, from the glow directory, run:
   git submodule update --init --recursive
   ```
 
+#### Source dependencies
+
+Glow depends on `fmt`, which must be built from source:
+```bash
+git clone https://github.com/fmtlib/fmt
+mkdir fmt/build
+cd fmt/build
+cmake ..
+make
+sudo make install
+```
+
 #### macOS
 
 Install the required dependencies using either [Homebrew](https://brew.sh/) or
 [MacPorts](https://www.macports.org/). If using Homebrew, run:
 
   ```bash
-  brew install cmake graphviz libpng ninja protobuf wget glog autopep8 llvm
+  brew install cmake graphviz libpng ninja protobuf wget glog autopep8 llvm   \
+      boost double-conversion gflags jemalloc libevent lz4 openssl pkg-config \
+      snappy xz
   ```
 
 If using MacPorts, run:
 
   ```bash
-  port install cmake graphviz libpng ninja protobuf-cpp wget google-glog
+  port install cmake graphviz libpng ninja protobuf-cpp wget google-glog \
+      boost double-conversion gflags jemalloc libevent lz4 openssl snappy xz
   # Choose version >= 7
   export LLVM_VERSION=7
   port install llvm-$LLVM_VERSION.0 
@@ -129,8 +144,11 @@ following command should install the required dependencies:
   ```bash
   sudo apt-get install clang clang-8 cmake graphviz libpng-dev \
       libprotobuf-dev llvm-8 llvm-8-dev ninja-build protobuf-compiler wget \
-      opencl-headers libgoogle-glog-dev
+      opencl-headers libgoogle-glog-dev libboost-all-dev \
+      libdouble-conversion-dev libevent-dev libssl-dev libgflags-dev \
+      libjemalloc-dev libpthread-stubs0-dev
   ```
+
 [Note: Ubuntu 16.04 and 18.04 ship with llvm-6 and need to be upgraded before building Glow. Building Glow on Ubuntu 16.04 with llvm-7 fails because llvm-7 xenial distribution uses an older c++ ABI, however building Glow on Ubuntu 18.04 with llvm-7 has been tested and is successful]
 
 It may be desirable to use `update-alternatives` to manage the version of

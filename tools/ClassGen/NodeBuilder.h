@@ -60,6 +60,10 @@ class NodeBuilder {
   std::ofstream &cStream;
   /// Def file stream.
   std::ofstream &dStream;
+  /// Import file stream.
+  std::ofstream &iStream;
+  /// Export file stream.
+  std::ofstream &eStream;
   /// Documentation string printed with the class definition.
   std::string docstring_;
   /// Whether node has side effects. By default there are no side effects.
@@ -70,11 +74,14 @@ class NodeBuilder {
   bool isDataParallel_{false};
   /// Specifies if this Node can have extra results.
   bool hasExtraResults_{false};
+  /// Specifies if this Node should skip serialization autogen.
+  bool skipAutogenSerialization_{false};
 
 public:
   NodeBuilder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
-              const std::string &name, bool isBackendSpecific)
-      : name_(name), hStream(H), cStream(C), dStream(D),
+              std::ofstream &I, std::ofstream &E, const std::string &name,
+              bool isBackendSpecific)
+      : name_(name), hStream(H), cStream(C), dStream(D), iStream(I), eStream(E),
         isBackendSpecific_(isBackendSpecific) {
     dStream << "DEF_NODE(" << name << "Node, " << name << ")\n";
   }
@@ -179,6 +186,11 @@ public:
     return *this;
   }
 
+  NodeBuilder &skipAutogenSerialization() {
+    skipAutogenSerialization_ = true;
+    return *this;
+  }
+
   /// Constructs a new gradient node that is based on the current node that we
   /// are building. The gradient node will produce one gradient output for each
   /// input. The rule is that each output becomes an input (named "Output", to
@@ -242,21 +254,33 @@ private:
   /// Emit the methods that go into the CPP file and implement the methods that
   /// were declared in the header file.
   void emitCppMethods(std::ostream &os) const;
+
+  /// Emit cases for importing to \p os.
+  void emitImportMethods(std::ostream &os) const;
+
+  /// Emit cases for exporting to \p os.
+  void emitExportMethods(std::ostream &os) const;
+
+  // \returns whether \p res is contained in \ref ctorTypeParams_.
+  bool hasCtorTypeParams(llvm::StringRef res) const;
 };
 
 class Builder {
   std::ofstream &hStream;
   std::ofstream &cStream;
   std::ofstream &dStream;
+  std::ofstream &iStream;
+  std::ofstream &eStream;
 
 public:
   /// Create a new top-level builder that holds the three output streams that
   /// point to the header file, cpp file and enum definition file.
-  Builder(std::ofstream &H, std::ofstream &C, std::ofstream &D)
-      : hStream(H), cStream(C), dStream(D) {
+  Builder(std::ofstream &H, std::ofstream &C, std::ofstream &D,
+          std::ofstream &I, std::ofstream &E)
+      : hStream(H), cStream(C), dStream(D), iStream(I), eStream(E) {
     cStream << "#include \"glow/Graph/Nodes.h\"\n"
                "#include \"glow/Base/Type.h\"\n"
-               "#include \"glow/Support/Support.h\"\n\n"
+               "#include \"glow/Support/Support.h\"\n"
                "using namespace glow;\n";
     dStream << "#ifndef DEF_NODE\n#error The macro DEF_NODE was not declared.\n"
                "#endif\n";
@@ -267,13 +291,15 @@ public:
   /// Declare a new node and generate code for it.
   NodeBuilder newNode(const std::string &name) {
     const bool isBackendSpecific = false;
-    return NodeBuilder(hStream, cStream, dStream, name, isBackendSpecific);
+    return NodeBuilder(hStream, cStream, dStream, iStream, eStream, name,
+                       isBackendSpecific);
   }
 
   /// Declare a new backend specific node and generate code for it.
   NodeBuilder newBackendSpecificNode(const std::string &name) {
     const bool isBackendSpecific = true;
-    return NodeBuilder(hStream, cStream, dStream, name, isBackendSpecific);
+    return NodeBuilder(hStream, cStream, dStream, iStream, eStream, name,
+                       isBackendSpecific);
   }
 
   /// Declare the node in the def file but don't generate code for it.

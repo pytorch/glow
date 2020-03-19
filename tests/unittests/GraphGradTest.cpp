@@ -56,7 +56,7 @@ TEST(GraphAutoGrad, autoGrad) {
   auto *FCL1 = F->createFullyConnected(bindings, "fc3", MP1->getResult(), 10);
   auto *RL2 = F->createRELU("relu3", FCL1);
   auto *selected =
-      mod.createPlaceholder(IndexElemKind, {10, 1}, "selected", false);
+      mod.createPlaceholder(ElemKind::Int64ITy, {10, 1}, "selected", false);
 
   auto *SM = F->createSoftMax("sm", RL2, selected);
 
@@ -86,7 +86,7 @@ TEST(GraphAutoGrad, checkLRNGen) {
   auto *FCL1 = F->createFullyConnected(bindings, "fc3", CV0, 10);
   auto *RL2 = F->createRELU("relu3", FCL1);
   auto *selected =
-      mod.createPlaceholder(IndexElemKind, {10, 1}, "selected", false);
+      mod.createPlaceholder(ElemKind::Int64ITy, {10, 1}, "selected", false);
 
   auto *SM = F->createSoftMax("sm", RL2, selected);
 
@@ -301,12 +301,13 @@ TEST(GraphAutoGrad, checkGatherGrad1DIndexTest) {
   Function *F = Mod.createFunction("main");
 
   auto *Data = Mod.createPlaceholder(ElemKind::FloatTy, {3, 4}, "Data", false);
-  auto *Indices = Mod.createPlaceholder(IndexElemKind, {2}, "Indices", false);
+  auto *Indices =
+      Mod.createPlaceholder(ElemKind::Int64ITy, {2}, "Indices", false);
 
   auto HandleData = Bindings.allocate(Data)->getHandle<float>();
   HandleData.randomize(-3.0, 3.0, Mod.getPRNG());
 
-  Bindings.allocate(Indices)->getHandle<sdim_t>() = {0, 2};
+  Bindings.allocate(Indices)->getHandle<int64_t>() = {0, 2};
 
   auto *G = F->createGather("gather", Data, Indices, 0 /*batchDims*/);
   auto *R = F->createSave("save", G);
@@ -326,12 +327,12 @@ TEST(GraphAutoGrad, checkGatherGrad2DIndexTest) {
 
   auto *Data = Mod.createPlaceholder(ElemKind::FloatTy, {8, 4}, "Data", false);
   auto *Indices =
-      Mod.createPlaceholder(IndexElemKind, {2, 2}, "Indices", false);
+      Mod.createPlaceholder(ElemKind::Int64ITy, {2, 2}, "Indices", false);
 
   auto HandleData = Bindings.allocate(Data)->getHandle<float>();
   HandleData.randomize(-3.0, 3.0, Mod.getPRNG());
 
-  Bindings.allocate(Indices)->getHandle<sdim_t>() = {0, 2, 1, 3};
+  Bindings.allocate(Indices)->getHandle<int64_t>() = {0, 2, 1, 3};
 
   auto *G = F->createGather("gather", Data, Indices, 0 /*batchDims*/);
   auto *R = F->createSave("save", G);
@@ -351,12 +352,12 @@ TEST(GraphAutoGrad, checkGatherGrad3DIndexTest) {
 
   auto *Data = Mod.createPlaceholder(ElemKind::FloatTy, {8, 4}, "Data", false);
   auto *Indices =
-      Mod.createPlaceholder(IndexElemKind, {2, 2, 2}, "Indices", false);
+      Mod.createPlaceholder(ElemKind::Int64ITy, {2, 2, 2}, "Indices", false);
 
   auto HandleData = Bindings.allocate(Data)->getHandle<float>();
   HandleData.randomize(-3.0, 3.0, Mod.getPRNG());
 
-  Bindings.allocate(Indices)->getHandle<sdim_t>() = {0, 2, 1, 3, 4, 5, 7, 6};
+  Bindings.allocate(Indices)->getHandle<int64_t>() = {0, 2, 1, 3, 4, 5, 7, 6};
 
   auto *G = F->createGather("gather", Data, Indices, 0 /*batchDims*/);
   auto *R = F->createSave("save", G);

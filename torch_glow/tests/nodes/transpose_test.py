@@ -61,3 +61,31 @@ class TestTranspose(unittest.TestCase):
         x = torch.randn(2, 3, 4)
 
         jitVsGlow(test_f, x, expected_fused_ops={"aten::transpose_"})
+
+    def test_transpose_neg_dim(self):
+        """Test negative dimension index for PyTorch aten::transpose on Glow."""
+
+        def test_f(a):
+            b = a + a
+            return b.transpose(-2, -1)
+
+        def expected_f(a):
+            b = a + a
+            return b.transpose(1, 2)
+
+        x = torch.randn(2, 3, 4)
+
+        jitVsGlow(test_f, x, expected_fused_ops={"aten::transpose"})
+        self.assertTrue(test_f(x).equal(expected_f(x)))
+
+    def test_transpose_oob_neg_dim(self):
+        """Test out of bounds negative dimension index for PyTorch aten::transpose on Glow."""
+
+        def test_f(a):
+            b = a + a
+            return b.transpose(-2, -4)
+
+        x = torch.randn(2, 3, 4)
+
+        with self.assertRaises(IndexError):
+            jitVsGlow(test_f, x, expected_fused_ops={"aten::transpose"})

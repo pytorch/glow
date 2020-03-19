@@ -188,6 +188,20 @@ Do this in VS terminal opened as admin
 
 Open VS solution and build x64 configurations you need.
 
+#####FOLLY
+Need to get and install VCPKG first
+
+    git clone https://github.com/Microsoft/vcpkg.git
+    cd vcpckg
+    .\bootstrap-vcpkg.bat
+
+Get and build folly and other dependencies.
+At the time of this writing vcpkg does not list fmt as dependency for latest Folly, so need to fetch it manually.
+
+    .\vcpkg.exe install fmt:x64-windows
+    .\vcpkg.exe install jemalloc:x64-windows
+    .\vcpkg.exe install folly:x64-windows --head
+
 
 #####Misc Issues
 If you are experiencing linking error "linker ran out of memory". Try modifying C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\Common7\IDE\VC\VCTargets\Microsoft.Cpp.props
@@ -197,7 +211,7 @@ More info if you want to do it per project: https://developercommunity.visualstu
 
 
 ####Glow CMake configuration Command
-    cmake ../glow -DCMAKE_GENERATOR_PLATFORM=x64 -DGLOW_WITH_OPENCL=0 -DCMAKE_PREFIX_PATH="C:\projects\llvm\llvmbuilddir64;C:\projects\glowWindowsSupportLibraries\tools\glogInstall;C:\projects\glowWindowsSupportLibraries\tools\libpngInstall;C:\projects\glowWindowsSupportLibraries\tools\protobufInstall"  -Dgtest_force_shared_crt=TRUE  -Dgtest_force_shared_crt=TRUE -DLINK_PROTOBUF_AS_DLL=ON
+    cmake ../glow -DCMAKE_GENERATOR_PLATFORM=x64 -DGLOW_WITH_OPENCL=0 -DCMAKE_PREFIX_PATH="C:\projects\llvm\llvmbuilddir64;C:\projects\glowWindowsSupportLibraries\tools\glogInstall;C:\projects\glowWindowsSupportLibraries\tools\libpngInstall;C:\projects\glowWindowsSupportLibraries\tools\protobufInstall;C:\projects\gitlab\vcpkg\installed\x64-windows"  -Dgtest_force_shared_crt=TRUE  -Dgtest_force_shared_crt=TRUE -DLINK_PROTOBUF_AS_DLL=ON
 
 
 ####Running Glow

@@ -18,7 +18,6 @@
 
 #include "glow/Backend/Backend.h"
 #include "glow/Backends/DeviceManager.h"
-#include "glow/Base/SharedMutex.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Runtime/Executor/Executor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
@@ -106,6 +105,8 @@ class HostManager final {
   /// Configuration parameters for this Runtime Host.
   const HostConfig config_{};
 
+  std::unique_ptr<TraceContext> hostTraceContext_;
+
   /// A map from a networkName to a network, which is represented by struct DAG.
   std::unordered_map<std::string, NetworkData> networks_;
 
@@ -152,7 +153,8 @@ class HostManager final {
 
   /// Execution stats update.
   void updateExecutionStats(uint64_t startTime,
-                            std::unique_ptr<ExecutionContext> &context);
+                            std::unique_ptr<ExecutionContext> &context,
+                            llvm::StringRef name, const Error &error);
 
   /// Keeps the stats exporter registry object alive till destructor.
   std::shared_ptr<StatsExporterRegistry> statsExporterRegistry_;
@@ -209,9 +211,11 @@ public:
 
   /// A wrapper around runNetwork that provides a blocking interface for an
   /// inference request. Runs the network provided in \p networkName using \p
-  /// context. \returns an Error indicating success or failure.
+  /// context. \returns an Error indicating success or failure. Upon return,
+  /// regardless of success or failure, \p context will be filled with the
+  /// return context from running the network.
   Error runNetworkBlocking(llvm::StringRef networkName,
-                           std::unique_ptr<ExecutionContext> context);
+                           std::unique_ptr<ExecutionContext> &context);
 
   /// A wrapper around runNetwork that provides a blocking interface for an
   /// inference request. Runs the network provided in \p networkName using \p
@@ -226,6 +230,22 @@ public:
 
   /// Get the network DAG for \p network if it exists.
   Expected<DAG *> getNetworkDAG(llvm::StringRef network);
+
+  /// \returns a non-owning pointer to the TraceContext.
+  TraceContext *getTraceContext() { return hostTraceContext_.get(); }
+
+  /// Sets the TraceContext and \returns the existing value.
+  std::unique_ptr<TraceContext>
+  setTraceContext(std::unique_ptr<TraceContext> traceContext) {
+    std::swap(hostTraceContext_, traceContext);
+    return traceContext;
+  }
+
+  /// Triggers start tracing of all active devices \returns Error if fails.
+  Error startDeviceTrace();
+
+  /// Triggers stop tracing of all active devices \returns Error if fails.
+  Error stopDeviceTrace();
 
   /// \returns a reference to the backend with name \p backendName owned by the
   /// Provisioner.

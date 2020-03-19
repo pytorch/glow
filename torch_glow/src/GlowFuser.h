@@ -17,7 +17,7 @@
 #ifndef GLOW_TORCH_GLOW_SRC_GLOW_FUSER_H
 #define GLOW_TORCH_GLOW_SRC_GLOW_FUSER_H
 
-#include <torch/csrc/jit/ir.h>
+#include <torch/csrc/jit/ir/ir.h>
 
 #include "PyTorchCommon.h"
 

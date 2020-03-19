@@ -39,6 +39,7 @@ public:
   Expected<std::unique_ptr<CompiledFunction>>
   compile(Function *F, const BackendOptions &opts) const override;
 
+  bool acceptForExecution(const NodeInfo &NI) const override;
   bool isOpSupported(const NodeInfo &NI) const override;
   bool shouldLower(const Node *N) const override;
   bool shouldShareBuffers() const override { return false; }
@@ -75,8 +76,6 @@ private:
 
   static NNPIBackendOptions backendOptions_;
 };
-
-Backend *createNNPIBackend(const runtime::DeviceConfig &deviceConfig);
 
 } // namespace glow
 #endif // GLOW_NNPI_BACKEND_H

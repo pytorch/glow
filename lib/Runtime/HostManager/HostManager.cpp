@@ -84,6 +84,26 @@ Expected<DAG *> HostManager::getNetworkDAG(llvm::StringRef network) {
   return &it->second.dag;
 }
 
+Error HostManager::startDeviceTrace() {
+  for (auto &dev : devices_) {
+    Error err = dev.second->startDeviceTrace(hostTraceContext_.get());
+    if (err) {
+      return err;
+    }
+  }
+  return Error::success();
+}
+
+Error HostManager::stopDeviceTrace() {
+  for (auto &dev : devices_) {
+    Error err = dev.second->stopDeviceTrace(hostTraceContext_.get());
+    if (err) {
+      return err;
+    }
+  }
+  return Error::success();
+}
+
 Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
   DeviceIDTy deviceCount = 0;
 
@@ -101,7 +121,8 @@ Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
     deviceCount++;
   }
   provisioner_.reset(new Provisioner(devices_));
-  executor_.reset(new ThreadPoolExecutor(devices_, config_.executorThreads));
+  executor_.reset(
+      new ThreadPoolExecutor(devices_, config_.executorThreads, "HostManager"));
   exportMemoryCounters();
   return Error::success();
 }
@@ -228,10 +249,22 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     return err;
   }
 
+  {
+    std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+    // Create pool of cachedExecutionStates.
+    for (auto &node : nodeList) {
+      // Note: currently getNextNetworkExecutionState assumes that pool size is
+      // >= currentInFlight requests, so we set pool size to maxActiveRequests.
+      executor_->createPool(node.root.get(), config_.maxActiveRequests,
+                            cctx.enableStaticAssignment);
+    }
+  }
   // Clear constants contents from the module then put it in a
   // shared_ptr to be shared between all of the networks created from each
   // function in the module.
-  module->strip();
+  if (!cctx.skipModuleStrip) {
+    module->strip();
+  }
   auto sharedModule = std::shared_ptr<Module>(std::move(module));
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
@@ -273,9 +306,11 @@ Error HostManager::removeNetwork(llvm::StringRef networkName) {
 
   OneErrOnly err;
   auto &nodes = networkIterator->second.dag.nodes;
+  // Free the pool of executionStates.
+  executor_->freePool(networkIterator->second.dag.root.get());
   for (auto &node : nodes) {
-    for (auto device : node->deviceIDs) {
-      Error evictErr = provisioner_->evictFunction(node->name, device);
+    for (auto device : node->deviceRuntimeInfos) {
+      Error evictErr = provisioner_->evictFunction(node->name, device.first);
       err.set(std::move(evictErr));
     }
     // Also remove compiledFunction from Provisioner.
@@ -345,20 +380,24 @@ Error HostManager::runNetworkBlocking(llvm::StringRef networkName,
 }
 
 Error HostManager::runNetworkBlocking(
-    llvm::StringRef networkName, std::unique_ptr<ExecutionContext> context) {
+    llvm::StringRef networkName, std::unique_ptr<ExecutionContext> &context) {
   std::promise<void> runPromise;
   auto fut = runPromise.get_future();
-  std::unique_ptr<Error> runErr;
-  runNetwork(
-      networkName, std::move(context),
-      [&runPromise, &runErr](runtime::RunIdentifierTy, Error err,
-                             std::unique_ptr<ExecutionContext> contextPtr) {
-        runErr = glow::make_unique<Error>(std::move(err));
-        runPromise.set_value();
-      });
+  Error runErr = Error::empty();
+  std::unique_ptr<ExecutionContext> tempContext;
+
+  runNetwork(networkName, std::move(context),
+             [&runPromise, &runErr,
+              &tempContext](runtime::RunIdentifierTy, Error err,
+                            std::unique_ptr<ExecutionContext> resultCtxt) {
+               runErr = std::move(err);
+               tempContext = std::move(resultCtxt);
+               runPromise.set_value();
+             });
 
   fut.wait();
-  return std::move(*DCHECK_NOTNULL(runErr.get()));
+  context = std::move(tempContext);
+  return runErr;
 }
 
 void HostManager::dispatchNextRun() {
@@ -386,17 +425,13 @@ void HostManager::dispatchNextRun() {
 
   assert(pRequest.hasValue());
   InferRequest request = std::move(pRequest.getValue());
-  TRACE_EVENT_CREATE(beginTraceEvent, TraceLevel::REQUEST,
-                     "network_execution_e2e", TraceEvent::AsyncBeginType,
-                     requestId);
   auto startTime = TraceEvent::now();
   executor_->run(
       networks_[request.networkName].dag.root.get(), std::move(request.context),
       request.requestID,
-      [this, callback = request.callback, name = request.networkName, startTime,
-       requestId, beginTraceEvent = std::move(beginTraceEvent)](
-          RunIdentifierTy runID, Error err,
-          std::unique_ptr<ExecutionContext> context) mutable {
+      [this, callback = request.callback, name = request.networkName,
+       startTime](RunIdentifierTy runID, Error err,
+                  std::unique_ptr<ExecutionContext> context) mutable {
         {
           std::shared_lock<std::shared_timed_mutex> netLock(networkLock_);
           auto it = networks_.find(name);
@@ -404,12 +439,8 @@ void HostManager::dispatchNextRun() {
             it->second.refcount--;
           }
         }
-        TRACE_EVENT_LOG_PRE_CREATED(context->getTraceContext(),
-                                    beginTraceEvent);
-        TRACE_EVENT_LOG_ID(context->getTraceContext(), TraceLevel::REQUEST,
-                           "network_execution_e2e", TraceEvent::AsyncEndType,
-                           TraceEvent::now(), requestId);
-        updateExecutionStats(startTime, context);
+
+        updateExecutionStats(startTime, context, name, err);
         callback(runID, std::move(err), std::move(context));
         dispatchNextRun();
       });
@@ -423,9 +454,6 @@ HostManager::runNetwork(llvm::StringRef networkName,
 
   TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
                     "HostManager::runNetwork");
-  if (context->getTraceContext()) {
-    context->getTraceContext()->setThreadName("Caller");
-  }
   auto currentRun = totalRequestCount_++;
 
   NetworkData *network = nullptr;
@@ -445,9 +473,6 @@ HostManager::runNetwork(llvm::StringRef networkName,
           std::move(context));
       return currentRun;
     }
-    // Setup the request
-    InferRequest queuedRequest(networkName, std::move(context), callback,
-                               priority, currentRun);
     // Put the request in the queue.
     {
       std::shared_lock<std::shared_timed_mutex> lock(inferQueueLock_);
@@ -467,6 +492,9 @@ HostManager::runNetwork(llvm::StringRef networkName,
         return currentRun;
       }
     }
+    // Setup the request
+    InferRequest queuedRequest(networkName, std::move(context), callback,
+                               priority, currentRun);
     {
       std::unique_lock<std::shared_timed_mutex> lock(inferQueueLock_);
       inferQueue_.push(std::move(queuedRequest));
@@ -485,14 +513,19 @@ HostManager::runNetwork(llvm::StringRef networkName,
 
 /// Helper to update execution stats
 void HostManager::updateExecutionStats(
-    uint64_t startTime, std::unique_ptr<ExecutionContext> &context) {
+    uint64_t startTime, std::unique_ptr<ExecutionContext> &context,
+    llvm::StringRef networkName, const Error &error) {
   auto duration = TraceEvent::now() - startTime;
-  statsExporterRegistry_->addTimeSeriesValue("network_execution_e2e", duration);
-  statsExporterRegistry_->incrementCounter("network_execution");
-  if (context && context->getPlaceholderBindings() && duration > 0) {
-    statsExporterRegistry_->addTimeSeriesValue(
-        "network_execution_throughput",
-        context->getPlaceholderBindings()->getDataSize() * 1000000 / duration);
+  statsExporterRegistry_->addTimeSeriesValue(
+      ("glow.execution_duration_e2e." + networkName).str(), duration);
+  statsExporterRegistry_->incrementCounter(
+      ("glow.requests_processed." + networkName).str());
+  if (error.peekErrorValue()) {
+    statsExporterRegistry_->incrementCounter(
+        ("glow.requests_failed." + networkName).str());
+  } else {
+    statsExporterRegistry_->incrementCounter(
+        ("glow.requests_succeeded." + networkName).str());
   }
 }
 

@@ -18,6 +18,7 @@
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Runtime/RuntimeTypes.h"
 #include "glow/Support/Error.h"
 
 #include "llvm/Support/Casting.h"
@@ -179,8 +180,7 @@ static ArgumentDictionaryTy loadArgumentMap(const caffe2::OperatorDef &op) {
   return dict;
 }
 
-static Expected<std::vector<unsigned_t>>
-getPads(const ArgumentDictionaryTy &dict) {
+static Expected<std::vector<unsigned_t>> getPads(ArgumentDictionaryTy &dict) {
   if (dict.count("pad")) {
     int pad;
     ASSIGN_VALUE_OR_RETURN_ERR(pad, loadInt(dict.at("pad")));
@@ -199,14 +199,16 @@ getPads(const ArgumentDictionaryTy &dict) {
     return pads;
   }
   if (dict.count("pads")) {
-    return getShape<unsigned_t>(dict.at("pads"));
+    std::vector<unsigned_t> shape;
+    ASSIGN_VALUE_OR_RETURN_ERR(shape, getShape<unsigned_t>(dict["pads"]));
+    return shape;
   }
   // Return default value 0 for pads.
   return std::vector<unsigned_t>{0, 0, 0, 0};
 }
 
 /// Translates the "order" field of dictionary \p dict into a channel number.
-static Expected<unsigned_t> getChannel(const ArgumentDictionaryTy &dict) {
+static Expected<unsigned_t> getChannel(ArgumentDictionaryTy &dict) {
   std::string order = "NCHW"; // default
   auto orderIt = dict.find("order");
   if (orderIt != dict.end()) {
@@ -236,7 +238,7 @@ static Expected<std::vector<unsigned_t>> getSizeHW(ArgumentDictionaryTy &dict,
     return result;
   }
   if (dict.count(name + "s")) {
-    return getShape<unsigned_t>(dict.at(name + "s"));
+    return getShape<unsigned_t>(dict[name + "s"]);
   }
   return std::vector<unsigned_t>{defaultValue, defaultValue};
 }
@@ -281,8 +283,7 @@ Expected<caffe2::NetDef> Caffe2ModelLoader::loadProto(const void *c2Model,
   return MP;
 }
 
-Expected<bool>
-Caffe2ModelLoader::getBroadcast(const ArgumentDictionaryTy &dict) {
+Expected<bool> Caffe2ModelLoader::getBroadcast(ArgumentDictionaryTy &dict) {
   if (!dict.count("broadcast")) {
     return false;
   }
@@ -333,7 +334,7 @@ Error Caffe2ModelLoader::loadConv(const caffe2::OperatorDef &op,
   // Caffe2 "Conv" op always stores the weight as CKRS.
   Tensor wT;
   w->getPayload().transpose(&wT, NCHW2NHWC);
-  w = G_.getParent()->createConstant(w->getName(), std::move(wT), "NHWC");
+  w = mod_.createConstant(w->getName(), std::move(wT), "NHWC");
 
   // The structure of the conv weights is: CRSK. We take the C, which is the
   // number of filters. We use this value to calculate the size of the bias
@@ -343,7 +344,7 @@ Error Caffe2ModelLoader::loadConv(const caffe2::OperatorDef &op,
   // We expect the input to be NHWC.
   NodeValue finalIn;
   if (order == "NCHW") {
-    finalIn = G_.createTranspose(opName, in, NCHW2NHWC)->getResult();
+    finalIn = G_->createTranspose(opName, in, NCHW2NHWC)->getResult();
   } else {
     finalIn = in;
   }
@@ -366,19 +367,19 @@ Error Caffe2ModelLoader::loadConv(const caffe2::OperatorDef &op,
   if (!bias) {
     Tensor b(ElemKind::FloatTy, {depth});
     b.zero();
-    bias = G_.getParent()->createConstant("conv.bias", std::move(b));
+    bias = mod_.createConstant("conv.bias", std::move(b));
   }
 
-  TypeRef outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  TypeRef outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
 
-  Node *node = G_.createConv(opName, finalIn, w, bias, outTy, kernels, strides,
-                             pads, group, dilation);
+  Node *node = G_->createConv(opName, finalIn, w, bias, outTy, kernels, strides,
+                              pads, group, dilation);
   if (op.type() == "ConvRelu") {
-    node = G_.createRELU(opName + ".relu", node);
+    node = G_->createRELU(opName + ".relu", node);
   }
   if (order == "NCHW") {
     // Transpose the output back.
-    node = G_.createTranspose(opName, node, NHWC2NCHW);
+    node = G_->createTranspose(opName, node, NHWC2NCHW);
   }
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
@@ -434,7 +435,7 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
   if (order != "NHWC") {
     Tensor wT;
     w->getPayload().transpose(&wT, NCHW2NHWC);
-    w = G_.getParent()->createConstant(w->getName(), std::move(wT), "NHWC");
+    w = mod_.createConstant(w->getName(), std::move(wT), "NHWC");
   }
 
   // The structure of the conv weights is: CRSK. We take the C, which is the
@@ -445,7 +446,7 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
   // We expect the input to be NHWC.
   NodeValue finalIn;
   if (order == "NCHW") {
-    finalIn = G_.createTranspose(opName, in, NCHW2NHWC)->getResult();
+    finalIn = G_->createTranspose(opName, in, NCHW2NHWC)->getResult();
   } else {
     finalIn = in;
   }
@@ -475,7 +476,7 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
   if (!bias) {
     Tensor b(ElemKind::Int32QTy, {depth}, 1.0, 0);
     b.zero();
-    bias = G_.getParent()->createConstant("conv.bias", std::move(b));
+    bias = mod_.createConstant("conv.bias", std::move(b));
   }
 
   RETURN_ERR_IF_NOT(bias->getPayload().size() == depth,
@@ -486,8 +487,8 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
   ASSIGN_VALUE_OR_RETURN_ERR(scale, loadFloat(dict["Y_scale"]));
   int32_t offset;
   ASSIGN_VALUE_OR_RETURN_ERR(offset, loadInt(dict["Y_zero_point"]));
-  outTy = G_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, scale,
-                                     offset - OFFSETSHIFT);
+  outTy =
+      mod_.uniqueType(ElemKind::Int8QTy, outDims, scale, offset - OFFSETSHIFT);
 
   Node *node;
 
@@ -499,9 +500,9 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
     ASSIGN_VALUE_OR_RETURN_ERR(wScales, getConstantByName(wScalesName));
     ASSIGN_VALUE_OR_RETURN_ERR(wOffsets, getConstantByName(wOffsetsName));
 
-    node = G_.createChannelwiseQuantizedConv(opName, finalIn, w, bias, wScales,
-                                             wOffsets, outTy, kernels, strides,
-                                             pads, group);
+    node = G_->createChannelwiseQuantizedConv(opName, finalIn, w, bias, wScales,
+                                              wOffsets, outTy, kernels, strides,
+                                              pads, group);
   } else {
     // If the bias isn't quantized for a non group quantized conv, quantize it.
     const Tensor &biasTensor = bias->getPayload();
@@ -516,20 +517,20 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
       Tensor quantizedBiasTensor =
           quantization::quantizeTensor(biasTensor, tqp, ElemKind::Int32QTy);
 
-      bias = G_.getParent()->createConstant("conv.bias", quantizedBiasTensor);
+      bias = mod_.createConstant("conv.bias", quantizedBiasTensor);
     }
 
-    node = G_.createConv(opName, finalIn, w, bias, outTy, kernels, strides,
-                         pads, group, dilation);
+    node = G_->createConv(opName, finalIn, w, bias, outTy, kernels, strides,
+                          pads, group, dilation);
   }
 
   if (op.type() == "Int8ConvRelu") {
-    node = G_.createRELU(opName + ".relu", node);
+    node = G_->createRELU(opName + ".relu", node);
   }
 
   if (order == "NCHW") {
     // Transpose the output back.
-    node = G_.createTranspose(opName, node, NHWC2NCHW);
+    node = G_->createTranspose(opName, node, NHWC2NCHW);
   }
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
@@ -552,13 +553,13 @@ Expected<bool> Caffe2ModelLoader::foldOperator(const caffe2::OperatorDef &op) {
 
   // Create a temporary lightweight loader to construct function representing
   // current Op, and then constant fold the function using Interp backend.
-  Function *tmpF = G_.getParent()->createFunction("eval_const_fold__");
+  Function *tmpF = mod_.createFunction("eval_const_fold__");
   Caffe2ModelLoader tmpLoader(*tmpF, nullptr);
   bool foldStatus =
       !ERR_TO_BOOL(constantFoldInLoader<Caffe2ModelLoader, caffe2::OperatorDef>(
                        tmpF, tmpLoader, this, op),
                    /* log */ false);
-  G_.getParent()->eraseFunction(tmpF);
+  mod_.eraseFunction(tmpF);
   return foldStatus;
 }
 
@@ -598,7 +599,7 @@ Error Caffe2ModelLoader::loadConvTranspose(const caffe2::OperatorDef &op,
   // Caffe2 "ConvTranspose" op always stores the weight as KCRS.
   Tensor wT;
   weight->getPayload().transpose(&wT, CNHW2NHWC);
-  weight = G_.getParent()->createConstant(weight->getName(), std::move(wT));
+  weight = mod_.createConstant(weight->getName(), std::move(wT));
 
   // The structure of the conv weights is: CRSK. We take the C, which is the
   // number of filters. We use this value to calculate the size of the bias
@@ -608,7 +609,7 @@ Error Caffe2ModelLoader::loadConvTranspose(const caffe2::OperatorDef &op,
   // We expect the input to be NHWC.
   NodeValue finalIn;
   if (order == "NCHW") {
-    finalIn = G_.createTranspose(opName, in, NCHW2NHWC)->getResult();
+    finalIn = G_->createTranspose(opName, in, NCHW2NHWC)->getResult();
   } else {
     finalIn = in;
   }
@@ -631,17 +632,17 @@ Error Caffe2ModelLoader::loadConvTranspose(const caffe2::OperatorDef &op,
   if (!bias) {
     Tensor b(ElemKind::FloatTy, {depth});
     b.zero();
-    bias = G_.getParent()->createConstant("conv.bias", std::move(b));
+    bias = mod_.createConstant("conv.bias", std::move(b));
   }
 
-  TypeRef outTy = G_.getParent()->uniqueType(ElemKind::FloatTy, outDims);
+  TypeRef outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
 
-  Node *node = G_.createConvTranspose(opName, finalIn, weight, bias, outTy,
-                                      kernels, strides, pads, group, dilation);
+  Node *node = G_->createConvTranspose(opName, finalIn, weight, bias, outTy,
+                                       kernels, strides, pads, group, dilation);
 
   if (order == "NCHW") {
     // Transpose the output back.
-    node = G_.createTranspose(opName, node, NHWC2NCHW);
+    node = G_->createTranspose(opName, node, NHWC2NCHW);
   }
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
@@ -688,16 +689,20 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(yScale, loadFloat(dict["Y_scale"]));
     int yZeroPoint;
     ASSIGN_VALUE_OR_RETURN_ERR(yZeroPoint, loadInt(dict["Y_zero_point"]));
-    auto outTy = G_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, yScale,
-                                            yZeroPoint - OFFSETSHIFT);
-    auto *add = G_.createAdd(opName + ".sum", outTy, in0, in1);
-    auto *relu = G_.createRELU(opName + ".relu", add);
+    auto outTy = mod_.uniqueType(ElemKind::Int8QTy, outDims, yScale,
+                                 yZeroPoint - OFFSETSHIFT);
+    auto *add = G_->createAdd(opName + ".sum", outTy, in0, in1);
+    auto *relu = G_->createRELU(opName + ".relu", add);
     RETURN_IF_ERR(addNodeAsOutput(op, relu));
     return Error::success();
   }
 
   if (typeName == "Int8Relu") {
     RETURN_ERR_IF_NOT(op.input_size() == 1, "Only one input is supported.");
+    RETURN_ERR_IF_NOT(dict.count("Y_zero_point"),
+                      "missing zero point for quantized outout type");
+    RETURN_ERR_IF_NOT(dict.count("Y_scale"),
+                      "missing Y_scale for quantized output type");
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     auto outDims = in.getType()->dims();
@@ -705,9 +710,9 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(yScale, loadFloat(dict["Y_scale"]));
     int yZeroPoint;
     ASSIGN_VALUE_OR_RETURN_ERR(yZeroPoint, loadInt(dict["Y_zero_point"]));
-    auto outTy = G_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, yScale,
-                                            yZeroPoint - OFFSETSHIFT);
-    auto *relu = G_.createRELU(opName, in, outTy);
+    auto outTy = mod_.uniqueType(ElemKind::Int8QTy, outDims, yScale,
+                                 yZeroPoint - OFFSETSHIFT);
+    auto *relu = G_->createRELU(opName, in, outTy);
     RETURN_IF_ERR(addNodeAsOutput(op, relu));
     return Error::success();
   }
@@ -724,9 +729,9 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(yScale, loadFloat(dict["Y_scale"]));
     int yZeroPoint;
     ASSIGN_VALUE_OR_RETURN_ERR(yZeroPoint, loadInt(dict["Y_zero_point"]));
-    auto outTy = G_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, yScale,
-                                            yZeroPoint - OFFSETSHIFT);
-    Node *N = G_.createQuantize(opName, in, outTy);
+    auto outTy = mod_.uniqueType(ElemKind::Int8QTy, outDims, yScale,
+                                 yZeroPoint - OFFSETSHIFT);
+    Node *N = G_->createQuantize(opName, in, outTy);
     RETURN_IF_ERR(addNodeAsOutput(op, N));
     return Error::success();
   }
@@ -734,7 +739,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "Int8Dequantize") {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto *node = G_.createDequantize(opName, in);
+    auto *node = G_->createDequantize(opName, in);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -757,7 +762,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // We expect the input to be NHWC.
     NodeValue finalIn;
     if (order == "NCHW") {
-      finalIn = G_.createTranspose(opName, in, NCHW2NHWC)->getResult();
+      finalIn = G_->createTranspose(opName, in, NCHW2NHWC)->getResult();
     } else {
       finalIn = in;
     }
@@ -802,20 +807,21 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       if (typeName == "Int8MaxPool") {
         // Int8Maxpool output quantization should be same as the input, so
         // just ignore the given params.
-        node = G_.createMaxPool(opName, finalIn, kernels, strides, pads);
+        node = G_->createMaxPool(opName, finalIn, kernels, strides, pads);
       } else {
         float yScale;
         ASSIGN_VALUE_OR_RETURN_ERR(yScale, loadFloat(dict["Y_scale"]));
         int yZeroPoint;
         ASSIGN_VALUE_OR_RETURN_ERR(yZeroPoint, loadInt(dict["Y_zero_point"]));
-        auto outTy = G_.getParent()->uniqueType(
-            ElemKind::Int8QTy, outDims, yScale, yZeroPoint - OFFSETSHIFT);
-        node = G_.createAvgPool(opName, finalIn, outTy, kernels, strides, pads);
+        auto outTy = mod_.uniqueType(ElemKind::Int8QTy, outDims, yScale,
+                                     yZeroPoint - OFFSETSHIFT);
+        node =
+            G_->createAvgPool(opName, finalIn, outTy, kernels, strides, pads);
       }
     } else if (typeName == "MaxPool") {
-      node = G_.createMaxPool(opName, finalIn, kernels, strides, pads);
+      node = G_->createMaxPool(opName, finalIn, kernels, strides, pads);
     } else {
-      node = G_.createAvgPool(opName, finalIn, kernels, strides, pads);
+      node = G_->createAvgPool(opName, finalIn, kernels, strides, pads);
     }
     if (order == "NCHW") {
       unsigned resIdx = 0;
@@ -827,7 +833,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
         RETURN_ERR("Expected either Max or Avg Pool.");
       }
       // Transpose the output back.
-      node = G_.createTranspose(opName, node->getNthResult(resIdx), NHWC2NCHW);
+      node = G_->createTranspose(opName, node->getNthResult(resIdx), NHWC2NCHW);
     }
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
@@ -852,8 +858,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     unsigned_t channel;
     ASSIGN_VALUE_OR_RETURN_ERR(channel, getChannel(dict));
-    auto *node = G_.createBatchNormalization(opName, in, bias, scale, mean, var,
-                                             channel, epsilon);
+    auto *node = G_->createBatchNormalization(opName, in, bias, scale, mean,
+                                              var, channel, epsilon);
 
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
@@ -864,8 +870,9 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     RETURN_ERR_IF_NOT(dict.count("boundaries"),
                       "Bucketize: Expected a boundaries member vector");
-    std::vector<float> boundaries = getFloats(dict["boundaries"]);
-    auto *node = G_.createBucketizeNode(opName, in, boundaries);
+    std::vector<float> boundaries;
+    ASSIGN_VALUE_OR_RETURN_ERR(boundaries, getFloats(dict["boundaries"]));
+    auto *node = G_->createBucketizeNode(opName, in, boundaries);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -881,7 +888,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // We expect the input to be NHWC.
     NodeValue finalIn;
     if (order == "NCHW") {
-      finalIn = G_.createTranspose(opName, in, NCHW2NHWC)->getResult();
+      finalIn = G_->createTranspose(opName, in, NCHW2NHWC)->getResult();
     } else {
       finalIn = in;
     }
@@ -892,7 +899,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(widthScale, loadFloat(dict["width_scale"]));
 
     auto *node =
-        G_.createResizeNearest(opName, finalIn, heightScale, widthScale);
+        G_->createResizeNearest(opName, finalIn, heightScale, widthScale);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -915,7 +922,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(channel, getChannel(dict));
     }
 
-    Node *node = G_.createConcat(opName, inputs, channel);
+    Node *node = G_->createConcat(opName, inputs, channel);
 
     unsigned_t addAxis = 0;
     if (dict.count("add_axis")) {
@@ -939,7 +946,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
         ++i;
       }
       outputDims.insert(outputDims.begin() + channel, numInputs);
-      node = G_.createReshape(opName, node, outputDims);
+      node = G_->createReshape(opName, node, outputDims);
     }
 
     // If we add the axis then node is a Reshape, otherwise it should be
@@ -992,13 +999,13 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                   W->getType()->getScale(), W->getType()->getOffset());
       }
       tmp.copyRawFrom(&W->getPayload());
-      W = G_.getParent()->createConstant(W->getName(), tmp);
+      W = mod_.createConstant(W->getName(), tmp);
     }
 
     if (typeName == "FC" || typeName == "Int8FC" || typeName == "FbFCPacked") {
       Tensor tmp;
       W->getPayloadMutable().transpose(&tmp, {1, 0});
-      W = G_.getParent()->createConstant(W->getName(), tmp);
+      W = mod_.createConstant(W->getName(), tmp);
     }
 
     Constant *B;
@@ -1015,27 +1022,27 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(yScale, loadFloat(dict["Y_scale"]));
       int yZeroPoint;
       ASSIGN_VALUE_OR_RETURN_ERR(yZeroPoint, loadInt(dict["Y_zero_point"]));
-      auto outTy = G_.getParent()->uniqueType(
+      auto outTy = mod_.uniqueType(
           ElemKind::Int8QTy, {in.getType()->dims()[0], B->getType()->dims()[0]},
           yScale, yZeroPoint - OFFSETSHIFT);
-      node = G_.createFullyConnected(opName, in, W, B, outTy, axis);
+      node = G_->createFullyConnected(opName, in, W, B, outTy, axis);
     } else if (typeName == "FbFCPacked") {
       auto fp16InputType =
-          G_.getParent()->uniqueType(ElemKind::Float16Ty, in.getType()->dims());
-      in = G_.createConvertTo("ConvertInput", in, fp16InputType);
+          mod_.uniqueType(ElemKind::Float16Ty, in.getType()->dims());
+      in = G_->createConvertTo("ConvertInput", in, fp16InputType);
 
       auto fp16BiasType =
-          G_.getParent()->uniqueType(ElemKind::Float16Ty, B->getType()->dims());
-      auto *fp16Bias = G_.createConvertTo("ConvertBias", B, fp16BiasType);
-      TypeRef OT = G_.getParent()->uniqueType(
-          ElemKind::Float16Ty, {in.dims()[0], B->getType()->dims()[0]});
+          mod_.uniqueType(ElemKind::Float16Ty, B->getType()->dims());
+      auto *fp16Bias = G_->createConvertTo("ConvertBias", B, fp16BiasType);
+      TypeRef OT = mod_.uniqueType(ElemKind::Float16Ty,
+                                   {in.dims()[0], B->getType()->dims()[0]});
 
-      auto fc = G_.createFullyConnected(opName, in, W, fp16Bias, OT, axis);
+      auto fc = G_->createFullyConnected(opName, in, W, fp16Bias, OT, axis);
       auto outputType =
-          G_.getParent()->uniqueType(ElemKind::FloatTy, fc->getResult().dims());
-      node = G_.createConvertTo("ConvertOutput", fc, outputType);
+          mod_.uniqueType(ElemKind::FloatTy, fc->getResult().dims());
+      node = G_->createConvertTo("ConvertOutput", fc, outputType);
     } else {
-      node = G_.createFullyConnected(opName, in, W, B, axis);
+      node = G_->createFullyConnected(opName, in, W, B, axis);
     }
 
     // If number of original input dims is greater than 2, expand the output
@@ -1059,7 +1066,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                         strFormat("Cannot reshape from size %lu to size %lu",
                                   totalOriginalOutputSize, totalReshapeSize));
 
-      node = G_.createReshape("fc.out", node, reshapeDims);
+      node = G_->createReshape("fc.out", node, reshapeDims);
     }
 
     // Save the outputs:
@@ -1076,7 +1083,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     size_t kernel;
     ASSIGN_VALUE_OR_RETURN_ERR(kernel, loadInt(dict["kernel"]));
 
-    Node *node = G_.createChannelShuffle(opName, in, group, kernel);
+    Node *node = G_->createChannelShuffle(opName, in, group, kernel);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -1084,8 +1091,9 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "Squeeze") {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto dims = getShape(dict["dims"]);
-    Node *node = G_.createSqueeze(opName, in, dims);
+    std::vector<dim_t> dims;
+    ASSIGN_VALUE_OR_RETURN_ERR(dims, getShape<dim_t>(dict["dims"]));
+    Node *node = G_->createSqueeze(opName, in, dims);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -1095,7 +1103,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     // Create the log:
-    auto *R = G_.createLog(opName, in);
+    auto *R = G_->createLog(opName, in);
     RETURN_IF_ERR(addNodeAsOutput(op, R));
     return Error::success();
   }
@@ -1111,7 +1119,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(eps, loadFloat(epsIt->second));
     }
 
-    auto *node = G_.createLogit(opName, input, eps);
+    auto *node = G_->createLogit(opName, input, eps);
     // Save the outputs:
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
@@ -1122,7 +1130,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(in0, getNodeValueByName(op.input(0)));
     NodeValue in1;
     ASSIGN_VALUE_OR_RETURN_ERR(in1, getNodeValueByName(op.input(1)));
-    auto *node = G_.createCmpEQ(opName, in0, in1);
+    auto *node = G_->createCmpEQ(opName, in0, in1);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -1135,7 +1143,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     unsigned_t axis;
     ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
 
-    auto *node = G_.createTile(opName, in, tiles, axis);
+    auto *node = G_->createTile(opName, in, tiles, axis);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -1160,7 +1168,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "NCHW2NHWC") {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto *node = G_.createTranspose(opName, in, NCHW2NHWC);
+    auto *node = G_->createTranspose(opName, in, NCHW2NHWC);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -1169,10 +1177,14 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       typeName == "Copy" || typeName == "EnsureCPUOutput" ||
       typeName == "EnsureDense") {
     // Glow does not support any of these ops now, so implement them as
-    // no-ops.
+    // no-ops. Note: Implement this as a no-op reshape because these ops may
+    // have partition information, and we need a node to maintain the parent
+    // Function partition it specified. This reshape will get eliminated later
+    // on during graph optimizations.
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    RETURN_IF_ERR(addNodeAsOutput(op, in));
+    ReshapeNode *RN = G_->createReshape(in.getNode()->getName(), in, in.dims());
+    RETURN_IF_ERR(addNodeAsOutput(op, RN));
     return Error::success();
   }
 
@@ -1180,8 +1192,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     NodeValue data;
     ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
 
-    auto starts = getShape<ssize_t>(dict["starts"]);
-    auto ends = getShape<ssize_t>(dict["ends"]);
+    std::vector<ssize_t> starts;
+    ASSIGN_VALUE_OR_RETURN_ERR(starts, getShape<ssize_t>(dict["starts"]));
+    std::vector<ssize_t> ends;
+    ASSIGN_VALUE_OR_RETURN_ERR(ends, getShape<ssize_t>(dict["ends"]));
 
     std::vector<dim_t> newStarts, newEnds;
     RETURN_ERR_IF_NOT(starts.size() == ends.size(),
@@ -1202,7 +1216,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       newEnds.push_back(newEnd);
     }
 
-    Node *SN = G_.createSlice(opName, data, newStarts, newEnds);
+    Node *SN = G_->createSlice(opName, data, newStarts, newEnds);
     RETURN_IF_ERR(addNodeAsOutput(op, SN));
     return Error::success();
   }
@@ -1242,8 +1256,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     auto convertedType =
-        G_.getParent()->uniqueType(ElemKind::FloatTy, in.getType()->dims());
-    auto *R = G_.createConvertTo("ConvertInput", in, convertedType);
+        mod_.uniqueType(ElemKind::FloatTy, in.getType()->dims());
+    auto *R = G_->createConvertTo("ConvertInput", in, convertedType);
     RETURN_IF_ERR(addNodeAsOutput(op, R));
     return Error::success();
   }
@@ -1258,8 +1272,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     assert(indices.dims().size() == 1 && "Indices should be 1-dimensional!");
     NodeValue indices2D =
-        G_.createReshape("indices.2d", indices, {indices.dims()[0], 1});
-    Node *SAN = G_.createScatterData(opName, data, indices2D, slices);
+        G_->createReshape("indices.2d", indices, {indices.dims()[0], 1});
+    Node *SAN = G_->createScatterData(opName, data, indices2D, slices);
     RETURN_IF_ERR(addNodeAsOutput(op, SAN));
     return Error::success();
   }
@@ -1276,7 +1290,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     NodeValue targets;
     ASSIGN_VALUE_OR_RETURN_ERR(targets, getNodeValueByName(op.input(1)));
     Node *SCEL =
-        G_.createSigmoidCrossEntropyWithLogits(opName, logits, targets);
+        G_->createSigmoidCrossEntropyWithLogits(opName, logits, targets);
     RETURN_IF_ERR(addNodeAsOutput(op, SCEL));
     return Error::success();
   }
@@ -1296,7 +1310,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
     }
 
-    Node *EL = G_.createElementwiseLinear(opName, X, w, b, axis);
+    Node *EL = G_->createElementwiseLinear(opName, X, w, b, axis);
     RETURN_IF_ERR(addNodeAsOutput(op, EL));
     return Error::success();
   }
@@ -1304,7 +1318,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "AveragedLoss") {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto *node = G_.createBatchedReduceMean(opName, in, 0);
+    auto *node = G_->createBatchedReduceMean(opName, in, 0);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -1323,7 +1337,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                                  loadInt(dict["sign_follow_divisor"]));
     }
 
-    auto *node = G_.createModulo(opName, in, divisor, signFollowDivisor);
+    auto *node = G_->createModulo(opName, in, divisor, signFollowDivisor);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
 
     return Error::success();
@@ -1378,6 +1392,9 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     RETURN_ERR_IF_NOT(lengths.dims().size() == 1, "lengths must be a vector.");
     RETURN_ERR_IF_NOT(indices.dims().size() == 1, "indices must be a vector.");
 
+    LengthsMode lengthsMode;
+    ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
+
     Node *node;
     if (isFused) {
       // There is no specific fused quantized type in Caffe2, so we will load
@@ -1389,9 +1406,9 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                           "Data must be UInt8QTy.");
         // Use dummy 0.0/0 as scale/offset, since the actual scales/offsets
         // are fused inline with the data.
-        TypeRef fusedTy = G_.getParent()->uniqueType(
-            is4Bit ? ElemKind::UInt4FusedFP16QTy : ElemKind::UInt8FusedQTy,
-            dataS->dims(), 0.0, 0);
+        TypeRef fusedTy = mod_.uniqueType(is4Bit ? ElemKind::UInt4FusedFP16QTy
+                                                 : ElemKind::UInt8FusedQTy,
+                                          dataS->dims(), 0.0, 0);
         dataS->setType(Storage::OutputIdx, fusedTy);
         // If the node is a Constant set the payload type as well.
         if (auto dataConstant = llvm::dyn_cast<Constant>(data)) {
@@ -1402,15 +1419,17 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       // No other work to do, since the data is already loaded fused, so just
       // create the new node with its inputs.
       if (isWeighted) {
-        node = G_.createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-            opName, dataS, weights, indices, lengths);
+        node = G_->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+            opName, dataS, weights, indices, lengths,
+            /* useFP16Accumulation */ false, lengthsMode);
       } else {
-        node = G_.createFusedRowwiseQuantizedSparseLengthsSum(opName, dataS,
-                                                              indices, lengths);
+        node = G_->createFusedRowwiseQuantizedSparseLengthsSum(
+            opName, dataS, indices, lengths, /* useFP16Accumulation */ false,
+            lengthsMode);
       }
 
       if (is4Bit) {
-        node = G_.createConvertTo(opName, node, ElemKind::FloatTy);
+        node = G_->createConvertTo(opName, node, ElemKind::FloatTy);
       }
     } else {
       NodeValue scalesBiases;
@@ -1428,10 +1447,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                         "Second dim of scale_bias has to be equal to 2.");
 
       // Now strip out the scales and biases into their own tensors.
-      Constant *dataScales = G_.getParent()->createConstant(
-          ElemKind::FloatTy, {numRows}, "dataScales");
-      Constant *dataOffsets = G_.getParent()->createConstant(
-          ElemKind::FloatTy, {numRows}, "dataOffsets");
+      Constant *dataScales =
+          mod_.createConstant(ElemKind::FloatTy, {numRows}, "dataScales");
+      Constant *dataOffsets =
+          mod_.createConstant(ElemKind::FloatTy, {numRows}, "dataOffsets");
 
       auto dataScalesH = dataScales->getHandle<float>();
       auto dataOffsetsH = dataOffsets->getHandle<float>();
@@ -1443,11 +1462,15 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
       // Now create the actual node.
       if (isWeighted) {
-        node = G_.createRowwiseQuantizedSparseLengthsWeightedSum(
-            opName, dataS, dataScales, dataOffsets, weights, indices, lengths);
+        node = G_->createRowwiseQuantizedSparseLengthsWeightedSum(
+            opName, dataS, dataScales, dataOffsets, weights, indices, lengths,
+            /* precision */ ElemKind::FloatTy,
+            /* useFP16Accumulation */ false, lengthsMode);
       } else {
-        node = G_.createRowwiseQuantizedSparseLengthsSum(
-            opName, dataS, dataScales, dataOffsets, indices, lengths);
+        node = G_->createRowwiseQuantizedSparseLengthsSum(
+            opName, dataS, dataScales, dataOffsets, indices, lengths,
+            /* precision */ ElemKind::FloatTy,
+            /* useFP16Accumulation */ false, lengthsMode);
       }
     }
 
@@ -1467,7 +1490,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     unsigned_t maxOutputSize;
     ASSIGN_VALUE_OR_RETURN_ERR(maxOutputSize, loadInt(maxOutputSizeIt->second));
 
-    auto *LRF = G_.createLengthsRangeFill(opName, lengths, maxOutputSize);
+    auto *LRF = G_->createLengthsRangeFill(opName, lengths, maxOutputSize);
     RETURN_IF_ERR(addNodeAsOutput(op, LRF));
 
     return Error::success();
@@ -1575,12 +1598,25 @@ Error Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
   // Make a claim on the unique name of all output Placeholders.
   for (int i = 0; i < net.external_output_size(); i++) {
     auto &outputName = net.external_output(i);
-    G_.getParent()->registerStorageName(legalizeName(outputName));
+    mod_.registerStorageName(legalizeName(outputName));
   }
 
   /// Load the network operators:
   for (int i = 0; i < net.op_size(); i++) {
     auto &op = net.op(i);
+
+    // Set up current partition to load into if relevant.
+    if (partNameToFun_.size()) {
+      auto &pName = op.device_option().node_name();
+      auto it = partNameToFun_.find(pName);
+      RETURN_ERR_IF_NOT(
+          it != partNameToFun_.end(),
+          strFormat("Did not find partition with name %s", pName.c_str()));
+      G_ = it->second;
+    } else {
+      assert(G_ && "G_ should be non-null when not loading partitions.");
+    }
+
     if (constFoldInLoader_) {
       auto tryFold = foldOperator(op);
       if (!tryFold) {
@@ -1602,15 +1638,24 @@ Error Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
   for (int i = 0; i < net.external_output_size(); i++) {
     auto &outputName = net.external_output(i);
     NodeValue r;
-    ASSIGN_VALUE_OR_RETURN_ERR(r, getNodeValueByName(outputName));
+    // We want to create the save node in the same Function as the original
+    // NodeValue. Thus here we ignore the source function when getting the NV,
+    // which avoids copying the NV to whatever G_ currently is via an
+    // intermediate Placeholder.
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        r, getNodeValueByName(outputName, /* ignoreSrcFun */ true));
 
-    PlaceholderList &PHList = G_.getParent()->getPlaceholders();
+    PlaceholderList &PHList = mod_.getPlaceholders();
     // Create a Placeholder with the previously claimed name.
-    auto *PH = new Placeholder(legalizeName(outputName),
-                               G_.getParent()->uniqueType(*r.getType()), false,
-                               ANY_LAYOUT);
+    auto *PH =
+        new Placeholder(legalizeName(outputName), mod_.uniqueType(*r.getType()),
+                        false, ANY_LAYOUT);
     PHList.push_back(PH);
-    auto *SN = G_.createSave("save_" + outputName, r, PH);
+    // If r is storage then just use the current last Function to save, since
+    // we're just saving directly from a Storage node anyway.
+    Function *F = llvm::isa<Storage>(r) ? G_ : r.getNode()->getParent();
+    assert(F && "F must be valid here.");
+    auto *SN = F->createSave(outputName, r, PH);
     outputVarsByName_[outputName] = SN->getPlaceholder();
   }
   return Error::success();
@@ -1660,7 +1705,12 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
      *   }
      * }
      */
-    auto dim = getShape(dict["shape"]);
+
+    // Note: Explicitly allow for an empty dim here, representing a scalar value
+    // will be loaded below.
+    std::vector<dim_t> dim;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        dim, getShape<dim_t>(dict["shape"], /* allowEmptyShape */ true));
     auto const &values = dict["values"];
     RETURN_ERR_IF_NOT(op.output_size() == 1,
                       "GivenTensorFill must have exactly 1 output");
@@ -1702,7 +1752,8 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       if (getConstantByNameOrNull(o)) {
         continue;
       }
-      auto dim = getShape(dict["shape"]);
+      std::vector<dim_t> dim;
+      ASSIGN_VALUE_OR_RETURN_ERR(dim, getShape<dim_t>(dict["shape"]));
       T.reset(ElemKind::UInt8QTy, dim, 0.0, 0);
       auto TH = T.getHandle<uint8_t>();
       RETURN_ERR_IF_NOT(
@@ -1758,7 +1809,8 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
         continue;
       }
 
-      auto dim = getShape(dict["shape"]);
+      std::vector<dim_t> dim;
+      ASSIGN_VALUE_OR_RETURN_ERR(dim, getShape<dim_t>(dict["shape"]));
 
       RETURN_ERR_IF_NOT(dict.count("Y_zero_point"),
                         "missing zero point for quantized output type");
@@ -1825,7 +1877,7 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     // tensor. Shape takes priority over input.
     std::vector<dim_t> dims;
     if (dict.count("shape")) {
-      dims = getShape(dict["shape"]);
+      ASSIGN_VALUE_OR_RETURN_ERR(dims, getShape<dim_t>(dict["shape"]));
     } else {
       RETURN_ERR_IF_NOT(op.input_size() > 0,
                         "If no shape provided, must have input shape.");
@@ -1894,7 +1946,8 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     */
     const auto &name = op.output(0);
     Tensor T;
-    auto dim = getShape(dict["shape"]);
+    std::vector<dim_t> dim;
+    ASSIGN_VALUE_OR_RETURN_ERR(dim, getShape<dim_t>(dict["shape"]));
     T.reset(ElemKind::FloatTy, dim);
     auto TH = T.getHandle<>();
     float tensorMin;
@@ -1908,7 +1961,7 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
 
     // Uniformly generate random numbers in [tensorMin; tensorMax).
     for (auto &elem : TH) {
-      elem = G_.getParent()->getPRNG().nextRandReal(tensorMin, tensorMax);
+      elem = mod_.getPRNG().nextRandReal(tensorMin, tensorMax);
     }
 
     RETURN_IF_ERR(createAndRegisterConstant(name, std::move(T)));
@@ -1927,7 +1980,7 @@ Error Caffe2ModelLoader::loadWeightsFromNet(caffe2::NetDef &net) {
 }
 
 Caffe2ModelLoader::Caffe2ModelLoader(Function &F, Error *errPtr)
-    : CommonOperatorLoader({}, {}, F, errPtr) {
+    : CommonOperatorLoader({}, {}, &F, errPtr) {
   deleteUnusedConstants();
 }
 
@@ -1936,7 +1989,7 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
                                      llvm::ArrayRef<const char *> names,
                                      llvm::ArrayRef<TypeRef> types, Function &F,
                                      Error *errPtr)
-    : CommonOperatorLoader(names, types, F, errPtr) {
+    : CommonOperatorLoader(names, types, &F, errPtr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
@@ -1973,11 +2026,88 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
   }
 }
 
+Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
+                                     const std::string &netWeightFilename,
+                                     llvm::ArrayRef<const char *> names,
+                                     llvm::ArrayRef<TypeRef> types, Module &mod,
+                                     llvm::StringRef funNamePrefix,
+                                     runtime::PrePartitionedConfig *PPC,
+                                     Error *errPtr)
+    : CommonOperatorLoader(names, types, mod, errPtr) {
+  // if errPtr already contains an error then don't continue with constructor
+  if (errPtr && *errPtr) {
+    return;
+  }
+
+  // Lambda to setup the Caffe2ModelLoader and return any Errors that
+  // were raised.
+  auto setup = [&]() -> Error {
+    // The caffe2 network descriptor that we are deserializing.
+    caffe2::NetDef networkDef;
+    ASSIGN_VALUE_OR_RETURN_ERR(networkDef, loadProtoFile(netDescFilename));
+
+    // The caffe2 weights that we are deserializing.
+    caffe2::NetDef weightsDef;
+    ASSIGN_VALUE_OR_RETURN_ERR(weightsDef, loadProtoFile(netWeightFilename));
+
+    // Look for any partitions that will be needed. If there is no
+    // partition_info then we create a single Function to load into. Otherwise
+    // we create multiple Functions and switch between them as we load each
+    // operator.
+    std::unordered_map<Function *, std::unordered_set<unsigned>> funToIDs;
+    if (networkDef.partition_info_size() == 0) {
+      mod_.createFunction(funNamePrefix);
+    } else {
+      for (int i = 0; i < networkDef.partition_info_size(); i++) {
+        const std::string &pName = networkDef.partition_info(i).name();
+        const std::string funName = funNamePrefix.str() + "_" + pName;
+        Function *PF = mod_.createFunction(funName);
+        partNameToFun_[pName] = PF;
+        for (auto i : networkDef.partition_info(i).device_id()) {
+          funToIDs[PF].insert(i);
+        }
+      }
+    }
+
+    RETURN_IF_ERR(loadWeightsFromNet(weightsDef));
+    RETURN_IF_ERR(loadNetwork(networkDef));
+
+    // Now setup the pre-partitioned config if relevant.
+    if (partNameToFun_.size()) {
+      RETURN_ERR_IF_NOT(
+          PPC, "Partitioned model but no config to store meta information in.");
+      PPC->funcName = funNamePrefix.str();
+
+      PPC->funcs.reserve(partNameToFun_.size());
+      PPC->logicalIDs.reserve(partNameToFun_.size());
+      for (auto &SF : partNameToFun_) {
+        Function *F = SF.getValue();
+        // This is to ensure that the same processing done with
+        // the same network, even if order of operators is different.
+        F->orderNodes();
+        PPC->funcs.push_back(F);
+        PPC->logicalIDs.push_back(funToIDs[F]);
+        RETURN_ERR_IF_NOT(F->verify(), "Function verification failed.");
+      }
+    }
+
+    deleteUnusedConstants();
+
+    return Error::success();
+  };
+
+  if (errPtr) {
+    *errPtr = setup();
+  } else {
+    EXIT_ON_ERR(setup());
+  }
+}
+
 Caffe2ModelLoader::Caffe2ModelLoader(
     const void *model, uint32_t modelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
     bool loadInputsAsPlaceholders, Error *errPtr, bool constFoldInLoader)
-    : CommonOperatorLoader({}, {}, F, errPtr) {
+    : CommonOperatorLoader({}, {}, &F, errPtr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
@@ -1995,6 +2125,20 @@ Caffe2ModelLoader::Caffe2ModelLoader(
     RETURN_IF_ERR(loadWeights(weightsCount, weightDescriptors));
 
     RETURN_IF_ERR(loadInputs(networkDef, loadInputsAsPlaceholders));
+
+    // Identify primary input sequence
+    std::unordered_set<std::string> weights;
+    for (uint32_t i = 0; i < weightsCount; ++i) {
+      weights.emplace(weightDescriptors[i].name);
+    }
+    for (const auto &input : networkDef.external_input()) {
+      if (!weights.count(input)) {
+        positionalInputNames_.emplace_back(input);
+      }
+    }
+    for (const auto &output : networkDef.external_output()) {
+      positionalOutputNames_.emplace_back(output);
+    }
 
     // TODO: in Caffe2ModelLoader, setOutputNodes is actually inside
     // loadNetwork, maybe we should make it a separate function?

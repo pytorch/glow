@@ -28,6 +28,7 @@ namespace onnxifi {
 bool GlowSaveOnnxifiModel = false;
 bool GlowSaveOnnxifiIO = false;
 bool GlowEnablePartialTensors = true;
+bool GlowUseCustomOpsForExport = true;
 
 extern bool GlowDumpDebugTraces;
 
@@ -40,7 +41,10 @@ void saveOnnxifiModel(Function *F) {
   LOG(INFO) << "Saving model to " << fname;
   Error err = Error::empty();
   constexpr size_t kIrVer = 7, kOpsetVer = 9;
-  { ONNXModelWriter onnxWR(fname, *F, kIrVer, kOpsetVer, &err, false, true); }
+  {
+    ONNXModelWriter onnxWR(fname, *F, kIrVer, kOpsetVer, &err, false, true,
+                           GlowUseCustomOpsForExport);
+  }
   if (ERR_TO_BOOL(std::move(err))) {
     LOG(ERROR) << "ONNXModelWriter failed to write model: " << fname;
   }
@@ -96,8 +100,8 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
 
   const auto &nodes = function->getNodes();
   for (const auto &node : nodes) {
-    if (!glowBackend_->isOpSupported(node)) {
-      LOG(ERROR) << "ONNXIFI: Not supported op: " << node.getDebugDesc();
+    if (!glowBackend_->acceptForExecution(node)) {
+      LOG(ERROR) << "ONNXIFI: Op rejected by backend: " << node.getDebugDesc();
       // TODO: Use a more specific ONNXIFI error code here to denote what
       // about this operator is not supported (shape, type, etc).
       return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
@@ -149,24 +153,38 @@ void Graph::setZeroLengthSequence(dim_t maxSeqLength) {
   zeroLengthSequence_.zero();
 }
 
-onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
-                              const onnxTensorDescriptorV1 *inputDescriptors,
-                              uint32_t outputsCount,
-                              const onnxTensorDescriptorV1 *outputDescriptors,
-                              EventPtr outputEvent,
-                              onnxTraceEventList *traceEvents) {
-  auto ctx = glow::make_unique<ExecutionContext>();
-
-  TraceContext *traceContext = nullptr;
-  if (traceEvents || GlowDumpDebugTraces) {
-    ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
-    traceContext = ctx->getTraceContext();
-    traceContext->setThreadName("Onnxifi");
+void Graph::bindPlaceholders(const ONNXIFIModelLoader &loader) {
+  onnxInputToPlaceholder_ = loader.getInputVarsMapping();
+  onnxOutputToPlaceholder_ = loader.getOutputVarsMapping();
+  onnxInputNames_ = loader.getPositionalInputNames();
+  onnxInputPlaceholders_.reserve(onnxInputNames_.size());
+  for (const auto &i : onnxInputNames_) {
+    const auto it = onnxInputToPlaceholder_.find(i);
+    if (it == onnxInputToPlaceholder_.end()) {
+      break;
+    }
+    onnxInputPlaceholders_.push_back(it->second);
   }
-  TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME, "Onnxifi::setIOAndRun");
-  TRACE_EVENT_SCOPE_NAMED(traceContext, TraceLevel::RUNTIME, "adjustInputs",
-                          aiEvent);
+  if (onnxInputPlaceholders_.size() != onnxInputToPlaceholder_.size()) {
+    onnxInputPlaceholders_.clear();
+  }
+  onnxOutputNames_ = loader.getPositionalOutputNames();
+  onnxOutputPlaceholders_.reserve(onnxOutputNames_.size());
+  for (const auto &i : onnxOutputNames_) {
+    const auto it = onnxOutputToPlaceholder_.find(i);
+    if (it == onnxOutputToPlaceholder_.end()) {
+      break;
+    }
+    onnxOutputPlaceholders_.push_back(it->second);
+  }
+  if (onnxOutputPlaceholders_.size() != onnxOutputToPlaceholder_.size()) {
+    onnxOutputPlaceholders_.clear();
+  }
+}
 
+onnxStatus Graph::adjustInputs(uint32_t inputsCount,
+                               const onnxTensorDescriptorV1 *inputDescriptors,
+                               ExecutionContext *ctx) {
   // Create tensors for input placeholders
   for (unsigned i = 0; i < inputsCount; ++i) {
     const auto &inOnnxTensor = inputDescriptors[i];
@@ -242,6 +260,31 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
       ctx->getPlaceholderBindings()->insert(inPhPtr, inputTensor);
     }
   }
+  return ONNXIFI_STATUS_SUCCESS;
+}
+
+onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
+                              const onnxTensorDescriptorV1 *inputDescriptors,
+                              uint32_t outputsCount,
+                              const onnxTensorDescriptorV1 *outputDescriptors,
+                              EventPtr outputEvent,
+                              onnxTraceEventList *traceEvents) {
+  auto ctx = glow::make_unique<ExecutionContext>();
+
+  TraceContext *traceContext = nullptr;
+  if (traceEvents || GlowDumpDebugTraces) {
+    ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
+    traceContext = ctx->getTraceContext();
+    traceContext->setThreadName("Onnxifi");
+  }
+  TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME, "Onnxifi::setIOAndRun");
+  TRACE_EVENT_SCOPE_NAMED(traceContext, TraceLevel::RUNTIME, "adjustInputs",
+                          aiEvent);
+
+  auto r = adjustInputs(inputsCount, inputDescriptors, ctx.get());
+  if (r != ONNXIFI_STATUS_SUCCESS) {
+    return r;
+  }
 
   size_t seq = 0;
   if (GlowSaveOnnxifiIO) {
@@ -259,7 +302,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
         size_t unpaddedSize = inputTensor.getUnpaddedSizeInBytes();
         size_t tensorSize = inputTensor.getSizeInBytes();
         if (unpaddedSize == tensorSize) {
-          ONNXModelWriter::writeTensor(inputTensor, t);
+          ONNXModelWriter::writeTensor(inputTensor, t,
+                                       GlowUseCustomOpsForExport);
         } else {
           // If the input is a partial tensor, then save only the part that has
           // data.
@@ -267,7 +311,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
           auto dims = ty.dims().vec();
           dims[0] = dims[0] * unpaddedSize / tensorSize;
           const auto &resized = inputTensor.getUnowned(dims);
-          ONNXModelWriter::writeTensor(resized, t);
+          ONNXModelWriter::writeTensor(resized, t, GlowUseCustomOpsForExport);
           VLOG(1) << "Writing partial tensor " << p.first->getName().str()
                   << " full size=" << inputTensor.getType().toString()
                   << " partial size=" << inputTensor.getUnpaddedSizeInBytes()
@@ -320,6 +364,9 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   }
   TRACE_EVENT_SCOPE_END_NAMED(soEvent);
 
+  if (ctx->getTraceContext()) {
+    ctx->getTraceContext()->setThreadName("Caller");
+  }
   auto ret = run(std::move(ctx), outputEvent, traceEvents);
   if (GlowSaveOnnxifiIO) {
     // We need to wait for the execution to finish in order to extract output
@@ -340,7 +387,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
         auto &outPhPtr = outPhIt->getValue();
         Tensor outputTensor(outOnnxBuffer, outPhPtr->getType());
         auto *t = inputG.add_initializer();
-        ONNXModelWriter::writeTensor(outputTensor, t);
+        ONNXModelWriter::writeTensor(outputTensor, t,
+                                     GlowUseCustomOpsForExport);
         t->set_name(outPhPtr->getName());
       }
       std::string buffer;

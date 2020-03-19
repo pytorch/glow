@@ -13,7 +13,7 @@ when we fix bugs.  Both regression tests and feature tests are found under the
 
 We rely on external test suites to test the compiler. We use the data sets
 CIFAR10 and MNIST (located in the "example/" directory) to test the correctness
-of the whole system.  The script under 'utils/' download and extract the data
+of the whole system.  The script under 'utils/' downloads and extracts the data
 set.
 
 ## Model Loader
@@ -23,7 +23,7 @@ models and executing them end-to-end.
 
 ### Image Classification
 
-The program `image-classifier` loads a model, a png file, and runs a single pass
+The program `image-classifier` loads a model, a PNG file, and runs a single pass
 of inference. If everything goes right the output of the program is identical to
 the output of the original (Caffe2 or ONNX) model. Unfortunately, the models do
 not usually describe what the input format should be. Should the pixels be

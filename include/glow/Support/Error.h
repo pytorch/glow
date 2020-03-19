@@ -89,7 +89,9 @@
     if (rhsOrErrV) {                                                           \
       lhs = std::move(rhsOrErrV.get());                                        \
     } else {                                                                   \
-      FAIL() << errorToString(rhsOrErr.takeError());                           \
+      auto err = rhsOrErrV.takeError();                                        \
+      err.addToStack(__FILE__, __LINE__);                                      \
+      FAIL() << errorToString(std::move(err));                                 \
     }                                                                          \
   } while (0)
 
@@ -111,6 +113,7 @@
     if (auto errV = std::forward<glow::detail::GlowError>(err)) {              \
       static_assert(glow::detail::IsError<decltype(errV)>::value,              \
                     "Expected value to be a Error");                           \
+      errV.addToStack(__FILE__, __LINE__);                                     \
       FAIL() << errorToString(std::move(errV));                                \
     }                                                                          \
   } while (0)
@@ -148,10 +151,10 @@ namespace detail {
 /// enableCheckingErrors is used to enable assertions that every Error and
 /// Expected has its status checked before it is destroyed. This should be
 /// enabled in debug builds but turned off otherwise.
-#ifndef NDEBUG
-static constexpr bool enableCheckingErrors = true;
-#else
+#ifdef NDEBUG
 static constexpr bool enableCheckingErrors = false;
+#else
+static constexpr bool enableCheckingErrors = true;
 #endif
 
 /// Is true_type only if applied to Error or a descendant.
@@ -186,6 +189,9 @@ public:
 
   /// Destructor that is used to ensure that base classes have been checked.
   ~CheckState() { ensureChecked(); }
+
+  /// NOTE: Only use for testing!
+  bool isChecked() const { return checked_; }
 };
 
 /// Specialization of CheckState with checking disabled.
@@ -193,6 +199,8 @@ template <> class CheckState<false> {
 public:
   inline void setChecked(bool checked) {}
   inline void ensureChecked() const {}
+  /// NOTE: Only use for testing!
+  bool isChecked() const { return true; }
 };
 
 /// Opaque is an aligned opaque container for some type T. It holds a T in-situ
@@ -210,7 +218,7 @@ public:
   T &get() { return *reinterpret_cast<T *>(payload_); }
 
   /// Gets the value within this Opaque container.
-  const T &get() const { return *reinterpret_cast<T *>(payload_); }
+  const T &get() const { return *reinterpret_cast<const T *>(payload_); }
 
   /// Call the destructor of the value in this container.
   void destroy() { get().~T(); }
@@ -448,6 +456,15 @@ public:
     }
     return hasError;
   }
+
+  /// \returns a pointer to the contained ErrorValue or nullptr if no
+  /// ErrorValue is contained in this Error.
+  inline const GlowErrorValue *peekErrorValue() const {
+    return errorValue_.get();
+  }
+
+  /// NOTE: Only use for testing!
+  bool isChecked_() const { return isChecked(); }
 };
 
 /// ErrorSuccess is a special Error that is used to mark the absents of an
@@ -698,6 +715,15 @@ public:
     return GlowError::success();
   }
 
+  /// \returns a pointer to the contained ErrorValue or nullptr if no
+  /// ErrorValue is contained in this Expected.
+  inline const GlowErrorValue *peekErrorValue() const {
+    if (getIsError()) {
+      return payload_.asErrorValue.get().get();
+    }
+    return nullptr;
+  }
+
   T *operator->() { return getValue(); }
 
   const T *operator->() const { return getValue(); }
@@ -705,6 +731,9 @@ public:
   T &operator*() { return *getValue(); }
 
   const T &operator*() const { return *getValue(); }
+
+  /// NOTE: Only use for testing!
+  bool isChecked_() const { return isChecked(); }
 };
 
 /// Given an Expected<T>, asserts that it contains a value T and \returns it. If
@@ -766,7 +795,7 @@ void errorToVoid(const char *fileName, size_t lineNumber, GlowError error,
 /// added when the class already holds an Error, it will discard the new Error
 /// in favor of the original one. All methods in OneErrOnly are thread-safe.
 class OneErrOnly {
-  Error err_ = Error::success();
+  Error err_ = Error::empty();
   std::mutex m_;
 
 public:

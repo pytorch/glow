@@ -22,6 +22,9 @@
 #include "llvm/ADT/STLExtras.h"
 
 namespace glow {
+namespace runtime {
+class DeviceManager;
+}
 
 /// Sub-classed per backend, this holds Device specific per-function information
 /// if that is necessary on that particular backend.
@@ -45,6 +48,11 @@ public:
 class ExecutionContext {
   std::unique_ptr<PlaceholderBindings> placeholderBindings_;
   std::unique_ptr<DeviceBindings> deviceBindings_;
+
+  /// Pointer to DeviceManager this context is bound to, use for P2P/DRT
+  /// enablement. Unused otherwise.
+  runtime::DeviceManager *boundDeviceManager_{nullptr};
+
   std::unique_ptr<TraceContext> traceContext_;
 
   /// Trace Events recorded during this run.
@@ -82,6 +90,19 @@ public:
   /// \returns a const non-owning pointer to the DeviceBindings.
   const DeviceBindings *getDeviceBindings() const {
     return deviceBindings_.get();
+  }
+
+  /// \returns a non-owning pointer the the deviceManager this context is bound
+  /// to.
+  runtime::DeviceManager *getBoundDeviceManager() {
+    return boundDeviceManager_;
+  }
+
+  /// Sets which device this context is bound to. NOTE this should not be
+  /// changed once set.
+  void setBoundDeviceManager(runtime::DeviceManager *device) {
+    DCHECK(boundDeviceManager_ == nullptr);
+    boundDeviceManager_ = device;
   }
 
   /// Sets the DeviceBindings and \returns the existing value.

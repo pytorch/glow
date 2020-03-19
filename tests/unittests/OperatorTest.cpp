@@ -17,14 +17,17 @@
 #include "BackendTestUtils.h"
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Graph/Graph.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Importer/ONNXModelLoader.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Quantization/Base/Base.h"
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <functional>
@@ -37,6 +40,114 @@ class OperatorStatelessTest : public BackendStatelessTest {};
 class OperatorTest : public BackendTest {
 protected:
   PlaceholderBindings bindings_;
+  /// Use this for storing tensors that are unowned, i.e. if they would normally
+  /// be stack local and so they cannot be read in TearDown.
+  std::vector<Tensor> unownedTensors_;
+  virtual void SetUp() override {
+    // Skip stripping the module so that we can inspect Constants after
+    // compilation.
+    EE_.setSkipModuleStrip(true);
+  }
+
+  virtual void TearDown() override {
+    if (::testing::Test::IsSkipped()) {
+      return;
+    }
+
+    EXPECT_TRUE(F_->getNodes().size() != 0)
+        << "Functions should have nodes at the end of the test.";
+
+    ASSERT_TRUE(F_->verify(&EE_.getBackend()))
+        << "Function must pass verification.";
+
+    // Now export the model to later import it back in.
+    llvm::SmallString<64> path;
+    auto tempFileRes =
+        llvm::sys::fs::createTemporaryFile("exporter", "output.onnxtxt", path);
+    ASSERT_EQ(tempFileRes.value(), 0)
+        << "Failed to create temp file to write into.";
+    std::string pathToModel(path.c_str());
+
+    Error err = Error::empty();
+    ONNXModelWriter onnxWR(pathToModel, *F_, 7, 9, &err,
+                           /* textMode */ true, /* zipMode */ false,
+                           /* useGlowCustomOps */ true);
+    ASSERT_FALSE(ERR_TO_BOOL(std::move(err))) << "Error exporting model";
+
+    // Now that we've exported, load it back into a new module/function, run it,
+    // and compare results from the original run.
+    PlaceholderBindings loadedBindings;
+    ExecutionEngine loadedEE{getBackendName()};
+    Module &loadedMod = loadedEE.getModule();
+    Function *loadedF = loadedMod.createFunction(F_->getName());
+    {
+      Error err = Error::empty();
+      // Note: We disable constant folding here because we only need it to
+      // calculate shapes that are the result of constant compute in the proto,
+      // but this won't be the case when using useGlowCustomOps exporting.
+      ONNXModelLoader onnxLD(
+          pathToModel, {}, {}, *loadedF, &err, /* zipMode */ false,
+          /* disableConstFoldInLoader */ true, &loadedEE.getBackend());
+      if (ERR_TO_BOOL(std::move(err))) {
+        llvm::sys::fs::remove(pathToModel);
+        FAIL() << "Error loading exported model";
+      }
+    }
+
+    // Note that we use the backend for verification here, because the function
+    // is post optimization pipeline and so has backend-specific requirements
+    // built in, e.g. for required layout.
+    ASSERT_TRUE(loadedF->verify(&loadedEE.getBackend()))
+        << "Loaded Function must pass verification";
+
+    // String representations of original and loaded functions must be the same.
+    // Note that we skip printing users for Storage because some tests have
+    // other Functions sharing Storage for testing purposes.
+    EXPECT_EQ(F_->toString(/* skipUsersForStorage */ true),
+              loadedF->toString(/* skipUsersForStorage */ true));
+
+    // Copy over inputs from previous bindings to newly loaded bindings. We have
+    // new Placeholders so can't reuse the bindings from before.
+    for (const auto &p : bindings_.pairs()) {
+      if (!isInput(p.first, *F_)) {
+        continue;
+      }
+
+      // Look for an input PH by the same name as the original Function.
+      Placeholder *inputPH = loadedMod.getPlaceholderByName(p.first->getName());
+      ASSERT_TRUE(inputPH);
+      loadedBindings.insert(inputPH, p.second->getUnowned(inputPH->dims()));
+    }
+
+    // Allocate all other PHs/tensors that need it (i.e. result PHs/tensors).
+    loadedBindings.allocate(loadedF->findPlaceholders());
+
+    // Skip the optimization pipeline for loadedF (via onlyLowerFuns), as we
+    // already passed it through the optimization pipeline before exporting it.
+    CompilationContext cctx;
+    cctx.optimizationOpts.onlyLowerFuns.insert(loadedF);
+    loadedEE.compile(cctx);
+    loadedEE.run(loadedBindings);
+
+    // Now bitwise-equal compare result tensors from before and after.
+    for (const auto &p : bindings_.pairs()) {
+      const Placeholder *resultPH = p.first;
+      if (!isOutput(resultPH, *F_)) {
+        continue;
+      }
+      const Tensor *resultT = p.second;
+
+      // Find the result PH by the same name in the loaded Function.
+      Placeholder *loadedResultPH =
+          loadedMod.getPlaceholderByName(resultPH->getName());
+      ASSERT_TRUE(loadedResultPH);
+      const Tensor *loadedResultT = loadedBindings.get(loadedResultPH);
+
+      EXPECT_TRUE(resultT->isBitwiseEqual(*loadedResultT, /* verbose */ true));
+    }
+
+    llvm::sys::fs::remove(pathToModel);
+  }
 };
 
 /// Helper to create a Placeholder; if \p T is quantized, then it will include a
@@ -1407,18 +1518,18 @@ TEST_P(OperatorTest, pow) {
 
   EE_.run(bindings_);
 
-  auto HX = bindings_.get(savePlaceholder1)->getHandle();
-  EXPECT_NEAR(HX.at({0, 0, 0}), 25, 1E-5);
-  EXPECT_NEAR(HX.at({0, 0, 1}), 0.01, 1E-5);
-  EXPECT_NEAR(HX.at({0, 0, 2}), 9, 1E-5);
+  auto H_X = bindings_.get(savePlaceholder1)->getHandle();
+  EXPECT_NEAR(H_X.at({0, 0, 0}), 25, 1E-5);
+  EXPECT_NEAR(H_X.at({0, 0, 1}), 0.01, 1E-5);
+  EXPECT_NEAR(H_X.at({0, 0, 2}), 9, 1E-5);
 
-  auto HY = bindings_.get(savePlaceholder2)->getHandle();
-  EXPECT_NEAR(HY.at({0}), sqrt(2.0), 1E-5);
-  EXPECT_NEAR(HY.at({1}), 10, 1E-5);
+  auto H_Y = bindings_.get(savePlaceholder2)->getHandle();
+  EXPECT_NEAR(H_Y.at({0}), sqrt(2.0), 1E-5);
+  EXPECT_NEAR(H_Y.at({1}), 10, 1E-5);
 
-  auto HZ = bindings_.get(savePlaceholder3)->getHandle();
-  EXPECT_NEAR(HZ.at({0}), 4, 1E-5);
-  EXPECT_NEAR(HZ.at({1}), 0.01, 1E-5);
+  auto H_Z = bindings_.get(savePlaceholder3)->getHandle();
+  EXPECT_NEAR(H_Z.at({0}), 4, 1E-5);
+  EXPECT_NEAR(H_Z.at({1}), 0.01, 1E-5);
 }
 
 /// Helper to test ReplaceNaN using \p DTy.
@@ -1491,8 +1602,8 @@ template <typename DataType>
 static void testLogit(glow::PlaceholderBindings &bindings, glow::Module &mod,
                       glow::Function *F, glow::ExecutionEngine &EE,
                       ElemKind DTy, float allowedError) {
-  constexpr auto eps = 1E-6f;      // the default in Caffe2
-  constexpr std::size_t size = 10; // sample size for randomized tests
+  constexpr auto eps = 1E-6f; // the default in Caffe2
+  constexpr dim_t size = 10;  // sample size for randomized tests
 
   auto *input = mod.createPlaceholder(DTy, {size}, "input", false);
   // generate the input data in (0.0f, 1.0f) (probabilites including degenerate
@@ -1562,23 +1673,26 @@ TEST_P(OperatorTest, Logit_Float16) {
   testLogit<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.002);
 }
 
-TEST_P(OperatorTest, CmpEQ) {
-  CHECK_IF_ENABLED();
+/// Helper to test CmpEQ using \p DTy.
+template <typename DataType>
+static void testCmpEQ(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                      glow::Function *F, glow::ExecutionEngine &EE,
+                      ElemKind DTy) {
+  auto *X = mod.createPlaceholder(DTy, {2, 7}, "X", false);
+  // Values listed here in the dynamic range of both int32_t and int64_t
+  bindings.allocate(X)->getHandle<DataType>() = {
+      0, 1, 17, 876, 1000, 44444, 65535, 0, 1, 17, 876, 1000, 44444, 65535};
+  auto *Y = mod.createPlaceholder(DTy, {2, 7}, "Y", false);
+  bindings.allocate(Y)->getHandle<DataType>() = {
+      1, 2, 16, 900, 1111, 44544, 65534, 0, 1, 17, 876, 1000, 44444, 65535};
 
-  auto *X = mod_.createPlaceholder(ElemKind::Int64ITy, {2, 7}, "X", false);
-  bindings_.allocate(X)->getHandle<int64_t>() = {
-      0, 1, 17, 876, 1000, 44444, 9999999, 0, 1, 17, 876, 1000, 44444, 9999999};
-  auto *Y = mod_.createPlaceholder(ElemKind::Int64ITy, {2, 7}, "Y", false);
-  bindings_.allocate(Y)->getHandle<int64_t>() = {
-      1, 2, 16, 900, 1111, 44544, 1999999, 0, 1, 17, 876, 1000, 44444, 9999999};
+  auto *cmpEQ = F->createCmpEQ("cmpEQ", X, Y);
+  auto *save = F->createSave("save", cmpEQ);
+  auto *saveTensor = bindings.allocate(save->getPlaceholder());
 
-  auto *cmpEQ = F_->createCmpEQ("cmpEQ", X, Y);
-  auto *save = F_->createSave("save", cmpEQ);
-  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
+  EE.compile(CompilationMode::Infer);
 
-  EE_.compile(CompilationMode::Infer);
-
-  EE_.run(bindings_);
+  EE.run(bindings);
 
   auto saveH = saveTensor->getHandle<bool>();
   for (dim_t i = 0; i < 7; ++i) {
@@ -1587,6 +1701,18 @@ TEST_P(OperatorTest, CmpEQ) {
   for (dim_t i = 0; i < 7; ++i) {
     EXPECT_TRUE(saveH.at({1, i}));
   }
+}
+
+/// Test the CmpEQ operator using Int64ITy.
+TEST_P(OperatorTest, CmpEQ_Int64) {
+  CHECK_IF_ENABLED();
+  testCmpEQ<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+
+/// Test the CmpEQ operator using Int32ITy.
+TEST_P(OperatorTest, CmpEQ_Int32) {
+  CHECK_IF_ENABLED();
+  testCmpEQ<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
 }
 
 /// Check that the add operator works properly with FP16.
@@ -1673,7 +1799,7 @@ TEST_P(OperatorTest, matmul_ParCloneTest10) {
 
 /// Test that compareAgainstInterpreter works correctly along with quantization
 /// and parallel cloning.
-TEST_P(OperatorTest, matmulQuantized_InterpCompareParClone) {
+TEST_P(OperatorStatelessTest, matmulQuantized_InterpCompareParClone) {
   CHECK_IF_ENABLED();
 
   constexpr unsigned parallelCount = 10;
@@ -2740,7 +2866,7 @@ TEST_P(OperatorTest, TopK) {
   auto *values =
       mod_.createPlaceholder(ElemKind::FloatTy, {3, 1, 3}, "values", false);
   auto *indices =
-      mod_.createPlaceholder(IndexElemKind, {3, 1, 3}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int64ITy, {3, 1, 3}, "indices", false);
 
   bindings_.allocate(inp)->getHandle() = {
       28, 4, 411, 19, 42, 0.4f, 0.4f, 0.4f, -0.4f, 0.45f, 7, 5, 9, 8, 100,
@@ -2758,7 +2884,7 @@ TEST_P(OperatorTest, TopK) {
   EE_.run(bindings_);
 
   auto V = bindings_.get(values)->getHandle();
-  auto I = bindings_.get(indices)->getHandle<sdim_t>();
+  auto I = bindings_.get(indices)->getHandle<int64_t>();
 
   EXPECT_FLOAT_EQ(V.at({0, 0, 0}), 411);
   EXPECT_EQ(I.at({0, 0, 0}), 2);
@@ -2788,8 +2914,8 @@ static void testArgMaxKeepDim(glow::PlaceholderBindings &bindings,
                               glow::ExecutionEngine &EE, ElemKind DTy) {
   auto *input = createPlaceholderConditionallyQuantized(mod, DTy, {2, 3, 2, 2},
                                                         "input", false, "NHWC");
-  auto *argmax = mod.createPlaceholder(IndexElemKind, {1, 3, 2, 2}, "argmax",
-                                       false, "NHWC");
+  auto *argmax = mod.createPlaceholder(ElemKind::Int64ITy, {1, 3, 2, 2},
+                                       "argmax", false, "NHWC");
 
   bindings.allocate(input)->getHandle<DataType>() = {
       11, 24, 33, 41, 15, 26, 37, 48, 12, 28, 31, 42,
@@ -2802,7 +2928,7 @@ static void testArgMaxKeepDim(glow::PlaceholderBindings &bindings,
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  auto I = bindings.get(argmax)->getHandle<sdim_t>();
+  auto I = bindings.get(argmax)->getHandle<int64_t>();
   EXPECT_EQ(I.raw(0), 1);
   EXPECT_EQ(I.raw(1), 0);
   EXPECT_EQ(I.raw(2), 1);
@@ -2834,7 +2960,7 @@ static void testArgMaxNoKeepDim(glow::PlaceholderBindings &bindings,
   auto *input = createPlaceholderConditionallyQuantized(mod, DTy, {2, 3, 2, 2},
                                                         "input", false, "NHWC");
   auto *argmax =
-      mod.createPlaceholder(IndexElemKind, {2, 2, 2}, "argmax", false);
+      mod.createPlaceholder(ElemKind::Int64ITy, {2, 2, 2}, "argmax", false);
 
   bindings.allocate(input)->getHandle<DataType>() = {
       11, 24, 33, 41, 15, 26, 37, 48, 12, 28, 31, 42,
@@ -2847,7 +2973,7 @@ static void testArgMaxNoKeepDim(glow::PlaceholderBindings &bindings,
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  auto I = bindings.get(argmax)->getHandle<sdim_t>();
+  auto I = bindings.get(argmax)->getHandle<int64_t>();
   EXPECT_EQ(I.raw(0), 1);
   EXPECT_EQ(I.raw(1), 2);
   EXPECT_EQ(I.raw(2), 1);
@@ -2877,7 +3003,7 @@ TEST_P(OperatorTest, ConcatTopK) {
   auto *inp2 =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 1, 3}, "input", false);
   auto *indices =
-      mod_.createPlaceholder(IndexElemKind, {4, 1, 2}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int64ITy, {4, 1, 2}, "indices", false);
 
   bindings_.allocate(inp1)->getHandle() = {1, 2, 3, 17.4f, -0.1f, -10.1f};
   bindings_.allocate(inp2)->getHandle() = {1, 2, -3, -17.4f, -0.1f, -10.1f};
@@ -2903,7 +3029,7 @@ TEST_P(OperatorTest, ConcatTopK) {
   EE_.run(bindings_);
 
   auto V = saveValuesTensor->getHandle();
-  auto I = saveIndicesTensor->getHandle<sdim_t>();
+  auto I = saveIndicesTensor->getHandle<int64_t>();
 
   EXPECT_FLOAT_EQ(V.at({0, 0, 0}), 3);
   EXPECT_FLOAT_EQ(I.at({0, 0, 0}), 2);
@@ -2980,10 +3106,10 @@ TEST_P(OperatorTest, matmul2) {
   EXPECT_FLOAT_EQ(R2.at({0, 1}), -2.1213202);
 }
 
-// Check the TopK operator for the special case of K=1.
-TEST_P(OperatorTest, TopK1) {
-  CHECK_IF_ENABLED();
-
+template <typename HandleTy>
+static void topK1Template(Module &mod_, Function *F_, ExecutionEngine &EE_,
+                          PlaceholderBindings &bindings_,
+                          ElemKind topKElemKind) {
   auto *inp =
       mod_.createPlaceholder(ElemKind::FloatTy, {3, 1, 5}, "input", false);
 
@@ -2991,7 +3117,7 @@ TEST_P(OperatorTest, TopK1) {
       0, 18, 7, 16, 5, 14, 33, 2, 41, 0, 1, -23, 34, 4, -5,
   };
 
-  auto *R = F_->createTopK("TopK", inp, 1);
+  auto *R = F_->createTopK("TopK", inp, 1, topKElemKind);
 
   auto *values = F_->createSave("save.values", {R, 0});
   bindings_.allocate(values->getPlaceholder());
@@ -3003,7 +3129,7 @@ TEST_P(OperatorTest, TopK1) {
   EE_.run(bindings_);
 
   auto V = bindings_.get(values->getPlaceholder())->getHandle();
-  auto I = bindings_.get(indices->getPlaceholder())->getHandle<sdim_t>();
+  auto I = bindings_.get(indices->getPlaceholder())->getHandle<HandleTy>();
 
   EXPECT_FLOAT_EQ(V.at({0, 0, 0}), 18);
   EXPECT_EQ(I.at({0, 0, 0}), 1);
@@ -3011,6 +3137,19 @@ TEST_P(OperatorTest, TopK1) {
   EXPECT_EQ(I.at({1, 0, 0}), 3);
   EXPECT_FLOAT_EQ(V.at({2, 0, 0}), 34);
   EXPECT_EQ(I.at({2, 0, 0}), 2);
+}
+// Check the TopK operator for the special case of K=1.
+TEST_P(OperatorTest, TopK1) {
+  CHECK_IF_ENABLED();
+
+  topK1Template<int64_t>(mod_, F_, EE_, bindings_, ElemKind::Int64ITy);
+}
+
+// Check the TopK operator for the special case of K=1.
+TEST_P(OperatorTest, TopK1int32) {
+  CHECK_IF_ENABLED();
+
+  topK1Template<int32_t>(mod_, F_, EE_, bindings_, ElemKind::Int32ITy);
 }
 
 TEST_P(OperatorTest, QuantizedTopK) {
@@ -3033,7 +3172,7 @@ TEST_P(OperatorTest, QuantizedTopK) {
   EE_.run(bindings_);
 
   auto VH = bindings_.get(values->getPlaceholder())->getHandle<int8_t>();
-  auto IH = bindings_.get(indices->getPlaceholder())->getHandle<sdim_t>();
+  auto IH = bindings_.get(indices->getPlaceholder())->getHandle<int64_t>();
 
   EXPECT_EQ(VH.at({0, 0, 0}), 8);
   EXPECT_EQ(IH.at({0, 0, 0}), 3);
@@ -3809,12 +3948,12 @@ TEST_P(OperatorTest, GatherSizeT) {
   auto *data =
       mod_.createPlaceholder(ElemKind::Int64ITy, {3, 2}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(IndexElemKind, {2, 4}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 4}, "indices", false);
 
   bindings_.allocate(data)->getHandle<int64_t>() = {
       1, 2, 3, 4, 5, 6,
   };
-  bindings_.allocate(indices)->getHandle<sdim_t>() = {
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
       0, 1, 0, 1, 1, 2, 2, 0,
   };
 
@@ -3866,12 +4005,13 @@ TEST_P(OperatorTest, BatchedGather) {
    ]
    */
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 4}, "data", false);
-  auto *indices = mod_.createPlaceholder(IndexElemKind, {2}, "indices", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "indices", false);
 
   bindings_.allocate(data)->getHandle() = {
       1.0f, 1.2f, 2.4f, 4.5f, 2.3f, 3.4f, 3.6f, 2.3f, 4.5f, 5.7f, 1.2f, 4.5f,
   };
-  bindings_.allocate(indices)->getHandle<sdim_t>() = {
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
       0,
       2,
   };
@@ -3899,12 +4039,12 @@ TEST_P(OperatorTest, ScatterData) {
 
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {5, 2}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(IndexElemKind, {2, 1}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 1}, "indices", false);
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "slices", false);
 
   bindings_.allocate(data)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-  bindings_.allocate(indices)->getHandle<sdim_t>() = {1, 3};
+  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 3};
   bindings_.allocate(slices)->getHandle() = {-3, -4, -7, -8};
 
   auto *R = F_->createScatterData("scatterdata", data, indices, slices);
@@ -3934,12 +4074,12 @@ TEST_P(OperatorTest, ScatterDataQuantized) {
 
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {5, 2}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(IndexElemKind, {2, 1}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 1}, "indices", false);
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "slices", false);
 
   bindings_.allocate(data)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-  bindings_.allocate(indices)->getHandle<sdim_t>() = {1, 3};
+  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 3};
   bindings_.allocate(slices)->getHandle() = {-3, -4, -7, -8};
 
   auto qParams = glow::quantization::chooseQuantizationParams(-11, 11);
@@ -3982,7 +4122,7 @@ TEST_P(OperatorTest, ScatterDataNDimensionalSimple) {
   // Result = {{1,2},{-3,-4},{5,6}}
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(IndexElemKind, {2, 2}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 2}, "indices", false);
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {2}, "slices", false);
 
@@ -3990,7 +4130,7 @@ TEST_P(OperatorTest, ScatterDataNDimensionalSimple) {
   std::vector<float> init(6);
   std::iota(init.begin(), init.end(), 1);
   bindings_.allocate(data)->getHandle() = init;
-  bindings_.allocate(indices)->getHandle<sdim_t>() = {1, 0, 1, 1};
+  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 0, 1, 1};
   bindings_.allocate(slices)->getHandle() = {-3., -4.};
   auto *R = F_->createScatterData("scatterdata", data, indices, slices);
 
@@ -4027,7 +4167,7 @@ TEST_P(OperatorTest, ScatterDataNDimensional) {
   auto *data =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 4, 4, 3}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(IndexElemKind, {2, 2}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 2}, "indices", false);
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 4, 3}, "slices", false);
 
@@ -4035,7 +4175,7 @@ TEST_P(OperatorTest, ScatterDataNDimensional) {
   std::vector<float> init(2 * 4 * 4 * 3);
   std::iota(init.begin(), init.end(), 0);
   bindings_.allocate(data)->getHandle() = init;
-  bindings_.allocate(indices)->getHandle<sdim_t>() = {0, 3, 1, 1};
+  bindings_.allocate(indices)->getHandle<int64_t>() = {0, 3, 1, 1};
   std::vector<float> initUpdates;
   for (int32_t i = -1; i > -25; i--) {
     initUpdates.push_back(static_cast<float>(i));
@@ -4087,12 +4227,12 @@ TEST_P(OperatorTest, ScatterAddQuantized) {
 
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {5, 2}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(IndexElemKind, {2, 1}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 1}, "indices", false);
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "slices", false);
 
   bindings_.allocate(data)->getHandle() = {1, 2, -3, -8, 5, 6, 7, 8, 9, 10};
-  bindings_.allocate(indices)->getHandle<sdim_t>() = {1, 3};
+  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 3};
   bindings_.allocate(slices)->getHandle() = {3, -8, -7, 8};
 
   auto qParams = glow::quantization::chooseQuantizationParams(-11, 11);
@@ -4136,7 +4276,7 @@ TEST_P(OperatorTest, ScatterAddNDimensionalSimple) {
   // Result = {{1,2},{0,0},{5,6}}
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(IndexElemKind, {2, 2}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2, 2}, "indices", false);
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {2}, "slices", false);
 
@@ -4146,7 +4286,7 @@ TEST_P(OperatorTest, ScatterAddNDimensionalSimple) {
     init.push_back(static_cast<float>(i));
   }
   bindings_.allocate(data)->getHandle() = init;
-  bindings_.allocate(indices)->getHandle<sdim_t>() = {1, 0, 1, 1};
+  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 0, 1, 1};
   bindings_.allocate(slices)->getHandle() = {-3., -4.};
   auto *R = F_->createScatterData("scatteradd", data, indices, slices,
                                   /*Cumulative*/ true);
@@ -4175,7 +4315,7 @@ TEST_P(OperatorTest, ScatterAddNDimensionalDuplicatingIndices) {
   // Result = {{1,2},{-3,-4},{5,6}}
   auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 2}, "data", false);
   auto *indices =
-      mod_.createPlaceholder(IndexElemKind, {4, 2}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int64ITy, {4, 2}, "indices", false);
   auto *slices =
       mod_.createPlaceholder(ElemKind::FloatTy, {4}, "slices", false);
 
@@ -4185,7 +4325,7 @@ TEST_P(OperatorTest, ScatterAddNDimensionalDuplicatingIndices) {
     init.push_back(static_cast<float>(i));
   }
   bindings_.allocate(data)->getHandle() = init;
-  bindings_.allocate(indices)->getHandle<sdim_t>() = {1, 0, 1, 1, 1, 0, 1, 1};
+  bindings_.allocate(indices)->getHandle<int64_t>() = {1, 0, 1, 1, 1, 0, 1, 1};
   bindings_.allocate(slices)->getHandle() = {-3., -4., -3., -4.};
   auto *R = F_->createScatterData("scatteradd", data, indices, slices,
                                   /*Cumulative*/ true);
@@ -4732,10 +4872,10 @@ TEST_P(OperatorTest, EntropyLossTest) {
   CHECK_IF_ENABLED();
 
   auto *P = mod_.createPlaceholder(ElemKind::FloatTy, {2, 3}, "P", false);
-  auto *Y = mod_.createPlaceholder(IndexElemKind, {2}, "Y", false);
+  auto *Y = mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "Y", false);
 
   bindings_.allocate(P)->getHandle() = {0.2f, 0.5f, 0.3f, 0.4f, 0.3f, 0.3f};
-  bindings_.allocate(Y)->getHandle<sdim_t>() = {1, 2};
+  bindings_.allocate(Y)->getHandle<int64_t>() = {1, 2};
   auto *ceLoss = F_->createCrossEntropyLoss("CELoss", P, Y);
   auto *L = F_->createSave("save", ceLoss);
   bindings_.allocate(L->getPlaceholder());
@@ -4810,7 +4950,7 @@ TEST_P(OperatorTest, RescaleNode) {
 TEST_P(OperatorTest, QuantizedArithmeticRescaled) {
   CHECK_IF_ENABLED();
 
-  const size_t len = 100;
+  const dim_t len = 100;
 
   // In this test we check the correctness of the quantized Max, Min, Add,
   // Sub, Mul, and Div nodes as well as how they interact with the rescaling
@@ -4942,7 +5082,7 @@ TEST_P(OperatorStatelessTest, QuantizedTranspose) {
 TEST_P(OperatorTest, QuantizedArithmeticUnrescaled) {
   CHECK_IF_ENABLED();
 
-  const size_t len = 1000;
+  const dim_t len = 1000;
 
   // In this test we check the correctness of the quantized Max, Min, Add,
   // Sub, Mul, and Div operations.
@@ -5032,7 +5172,7 @@ TEST_P(OperatorTest, QuantizedCmpLTEAndSelect) {
 
   // In this test we check the correctness of the quantized
   // less-than-or-equal-to comparison operator.
-  const size_t len = 1000;
+  const dim_t len = 1000;
   auto TQA = mod_.uniqueType(ElemKind::Int8QTy, {len}, 1.1, -3);
   auto TQB = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.9, 5);
   auto TQC = mod_.uniqueType(ElemKind::Int8QTy, {len}, 0.8, 3);
@@ -5095,7 +5235,7 @@ TEST_P(OperatorTest, QuantizedCmpLTEAndSelect) {
 TEST_P(OperatorTest, TestQuantizedRescaleSequence) {
   CHECK_IF_ENABLED();
 
-  const size_t len = 100;
+  const dim_t len = 100;
 
   auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {len}, "A", false);
 
@@ -5134,48 +5274,6 @@ TEST_P(OperatorTest, TestQuantizedRescaleSequence) {
   for (dim_t i = 0; i < len; i++) {
     EXPECT_NEAR(AH.at({i}), OH.at({i}), 1.0);
   }
-}
-
-TEST_P(OperatorTest, FCGradientCheck) {
-  CHECK_IF_ENABLED();
-
-  // Create net representing A*X+Y=B, where X and Y are trainable, while
-  // A and B are fixed. Record gradients for X and Y after 3 steps and compare
-  // with reference values.
-  TrainingConfig TC;
-
-  // This variable records the number of the next sample to be used for
-  // training.
-  size_t sampleCounter = 0;
-
-  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {2, 1}, "A", false);
-  auto *B = mod_.createPlaceholder(ElemKind::FloatTy, {2, 1}, "B", false);
-  auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1}, "X", true);
-  auto *Y = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "Y", true);
-
-  bindings_.allocate(A);
-  bindings_.allocate(B);
-  bindings_.allocate(X)->init(Tensor::InitKind::Broadcast, -1.26274,
-                              mod_.getPRNG());
-  bindings_.allocate(Y)->init(Tensor::InitKind::Broadcast, 0.1, mod_.getPRNG());
-
-  auto *FC = F_->createFullyConnected("fc", A, X, Y);
-  auto *S = F_->createRegression("reg", FC, B);
-  auto *save = F_->createSave("ret", S);
-  bindings_.allocate(save->getPlaceholder());
-
-  Tensor initA(ElemKind::FloatTy, {2, 1});
-  Tensor initB(ElemKind::FloatTy, {2, 1});
-  initA.getHandle() = {4.2f, 9.875f};
-  initB.getHandle() = {-13.1f, 3.14f};
-
-  Function *DF = glow::differentiate(F_, TC, "d_main");
-  auto dfName = DF->getName();
-  EE_.compile(CompilationMode::Train);
-  runBatch(EE_, bindings_, 3, sampleCounter, {A, B}, {&initA, &initB}, dfName);
-
-  EXPECT_NEAR(bindings_.get(X)->getHandle().raw(0), -0.21294, 1E-5);
-  EXPECT_NEAR(bindings_.get(Y)->getHandle().raw(0), 0.01656, 1E-5);
 }
 
 /// Helper to test concatVectors using \p DTy.
@@ -5769,7 +5867,7 @@ TEST_P(OperatorTest, ChannelShuffle) {
     EXPECT_FLOAT_EQ(results.at({0, i, 0, 0}), expected[i]);
 }
 
-TEST_P(OperatorTest, Squeeze) {
+TEST_P(OperatorTest, SqueezeOneAxis) {
   CHECK_IF_ENABLED();
 
   auto *inputs =
@@ -5778,77 +5876,77 @@ TEST_P(OperatorTest, Squeeze) {
 
   std::vector<float> expectedValues = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
-  // Test 1:
-  {
-    std::vector<dim_t> axes = {0};
-    Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
-    SaveNode *S = F_->createSave("save", SQZ);
-    bindings_.allocate(S->getPlaceholder());
+  std::vector<dim_t> axes = {0};
+  Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
+  SaveNode *S = F_->createSave("save", SQZ);
+  bindings_.allocate(S->getPlaceholder());
 
-    EE_.compile(CompilationMode::Infer);
-    EE_.run(bindings_);
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
 
-    auto results = bindings_.get(S->getPlaceholder())->getHandle();
-    std::vector<dim_t> expectedDims = {2, 1, 5};
-    EXPECT_TRUE(results.dims().vec() == expectedDims);
-    for (size_t i = 0; i < 10; i++)
-      EXPECT_FLOAT_EQ(results.raw(i), expectedValues[i]);
-  }
-  bindings_.clear();
-  EE_.setBackendName(getBackendName());
-  // Test 2:
-  {
-    auto mod = &EE_.getModule();
-    F_ = mod->createFunction("main");
-    inputs = mod->createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 5}, "inputs",
-                                    false);
-    bindings_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-    std::vector<dim_t> axes = {0, 2, 2};
-    Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
-    SaveNode *S = F_->createSave("save", SQZ);
-    bindings_.allocate(S->getPlaceholder());
+  auto results = bindings_.get(S->getPlaceholder())->getHandle();
+  std::vector<dim_t> expectedDims = {2, 1, 5};
+  EXPECT_TRUE(results.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 10; i++)
+    EXPECT_FLOAT_EQ(results.raw(i), expectedValues[i]);
+}
 
-    EE_.compile(CompilationMode::Infer);
-    EE_.run(bindings_);
+TEST_P(OperatorTest, SqueezeTwoAxes) {
+  CHECK_IF_ENABLED();
 
-    auto results = bindings_.get(S->getPlaceholder())->getHandle();
-    std::vector<dim_t> expectedDims = {2, 5};
-    EXPECT_TRUE(results.dims().vec() == expectedDims);
-    for (size_t i = 0; i < 10; i++)
-      EXPECT_FLOAT_EQ(results.raw(i), expectedValues[i]);
-  }
-  bindings_.clear();
-  EE_.setBackendName(getBackendName());
-  // Test 3: 0-dimensional Tensor
-  {
-    auto mod = &EE_.getModule();
-    F_ = mod->createFunction("main");
-    inputs = mod->createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 5}, "inputs",
-                                    false);
-    bindings_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-    auto *emptyInput =
-        mod->createPlaceholder(ElemKind::FloatTy, {1}, "emptyInput", false);
-    bindings_.allocate(emptyInput)->getHandle() = {42.0};
+  auto mod = &EE_.getModule();
+  auto *inputs =
+      mod->createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 5}, "inputs", false);
+  bindings_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
-    std::vector<dim_t> axes = {0};
-    Node *SQZ = F_->createSqueeze("SQZ", emptyInput, axes);
-    SaveNode *S1 = F_->createSave("save", SQZ);
-    Node *UnSQZ = F_->createExpandDims("UnSQZ", SQZ, axes);
-    SaveNode *S2 = F_->createSave("save", UnSQZ);
+  std::vector<float> expectedValues = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
-    bindings_.allocate(S1->getPlaceholder());
-    bindings_.allocate(S2->getPlaceholder());
+  std::vector<dim_t> axes = {0, 2, 2};
+  Node *SQZ = F_->createSqueeze("SQZ", inputs, axes);
+  SaveNode *S = F_->createSave("save", SQZ);
+  bindings_.allocate(S->getPlaceholder());
 
-    EE_.compile(CompilationMode::Infer);
-    EE_.run(bindings_);
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
 
-    auto res1 = bindings_.get(S1->getPlaceholder())->getHandle();
-    EXPECT_TRUE(res1.dims().vec() == std::vector<dim_t>());
-    EXPECT_FLOAT_EQ(res1.raw(0), 42.0);
-    auto res2 = bindings_.get(S2->getPlaceholder())->getHandle();
-    EXPECT_TRUE(res2.dims().vec() == std::vector<dim_t>(1, 1));
-    EXPECT_FLOAT_EQ(res2.raw(0), 42.0);
-  }
+  auto results = bindings_.get(S->getPlaceholder())->getHandle();
+  std::vector<dim_t> expectedDims = {2, 5};
+  EXPECT_TRUE(results.dims().vec() == expectedDims);
+  for (size_t i = 0; i < 10; i++)
+    EXPECT_FLOAT_EQ(results.raw(i), expectedValues[i]);
+}
+
+TEST_P(OperatorTest, SqueezeExpand) {
+  CHECK_IF_ENABLED();
+
+  auto mod = &EE_.getModule();
+  auto *inputs =
+      mod->createPlaceholder(ElemKind::FloatTy, {1, 2, 1, 5}, "inputs", false);
+  bindings_.allocate(inputs)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+  auto *emptyInput =
+      mod->createPlaceholder(ElemKind::FloatTy, {1}, "emptyInput", false);
+  bindings_.allocate(emptyInput)->getHandle() = {42.0};
+
+  std::vector<float> expectedValues = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+
+  std::vector<dim_t> axes = {0};
+  Node *SQZ = F_->createSqueeze("SQZ", emptyInput, axes);
+  SaveNode *S1 = F_->createSave("save", SQZ);
+  Node *UnSQZ = F_->createExpandDims("UnSQZ", SQZ, axes);
+  SaveNode *S2 = F_->createSave("save", UnSQZ);
+
+  bindings_.allocate(S1->getPlaceholder());
+  bindings_.allocate(S2->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto res1 = bindings_.get(S1->getPlaceholder())->getHandle();
+  EXPECT_TRUE(res1.dims().vec() == std::vector<dim_t>());
+  EXPECT_FLOAT_EQ(res1.raw(0), 42.0);
+  auto res2 = bindings_.get(S2->getPlaceholder())->getHandle();
+  EXPECT_TRUE(res2.dims().vec() == std::vector<dim_t>(1, 1));
+  EXPECT_FLOAT_EQ(res2.raw(0), 42.0);
 }
 
 /// Helper to test ExpandDims using \p DTy.
@@ -5975,7 +6073,7 @@ TEST_P(OperatorTest, IntRelu) {
   const float rescaleScale = 2.0;
   const int32_t reluOffset = -128;
   const int32_t offset = 5;
-  const size_t size = 5;
+  const dim_t size = 5;
 
   auto inTy = mod_.uniqueType(ElemKind::Int8QTy, {size}, scale, offset);
   auto rescaleTy =
@@ -5997,7 +6095,7 @@ TEST_P(OperatorTest, IntRelu) {
 
   auto result = bindings_.get(save->getPlaceholder())->getHandle();
   float expectedValue = std::max(0.0f, inVal);
-  for (size_t i = 0; i < result.size(); i++) {
+  for (dim_t i = 0; i < result.size(); i++) {
     EXPECT_EQ(expectedValue, result.raw(i));
   }
 }
@@ -6010,7 +6108,7 @@ TEST_P(OperatorTest, IntSplat) {
   const float splatValue = 10;
   const float scale = 1.0;
   const int32_t offset = 5;
-  const size_t size = 3;
+  const dim_t size = 3;
 
   auto *in = mod_.createPlaceholder(ElemKind::Int8QTy, {size}, scale, offset,
                                     "in", false);
@@ -6026,7 +6124,7 @@ TEST_P(OperatorTest, IntSplat) {
   EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
-  for (size_t i = 0; i < resultH.size(); i++) {
+  for (dim_t i = 0; i < resultH.size(); i++) {
     EXPECT_EQ(splatValue, resultH.raw(i));
   }
 }
@@ -6037,7 +6135,7 @@ TEST_P(OperatorTest, Fp16Splat) {
   CHECK_IF_ENABLED();
 
   const float splatValue = 10;
-  const size_t size = 3;
+  const dim_t size = 3;
 
   auto *in = mod_.createPlaceholder(ElemKind::Float16Ty, {size}, "in", false);
   auto splatTy = mod_.uniqueType(ElemKind::Float16Ty, {size});
@@ -6052,7 +6150,7 @@ TEST_P(OperatorTest, Fp16Splat) {
   EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
-  for (size_t i = 0; i < resultH.size(); i++) {
+  for (dim_t i = 0; i < resultH.size(); i++) {
     EXPECT_EQ(float16_t(splatValue), resultH.raw(i));
   }
 }
@@ -6442,7 +6540,7 @@ TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolution) {
   CHECK_IF_ENABLED();
 
   constexpr size_t groups = 2;
-  constexpr size_t output_channel = 4;
+  constexpr dim_t output_channel = 4;
 
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 2}, "input", false);
@@ -6557,6 +6655,87 @@ TEST_P(OperatorTest, DilatedConvolution) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0}), 4);
   EXPECT_FLOAT_EQ(result.at({0, 2, 0, 0}), 1);
   EXPECT_FLOAT_EQ(result.at({0, 3, 0, 0}), 2);
+}
+
+/// Test the functionality of channelwise quantized group convolution using
+/// ChannelwiseQuantizedConvNode with non-zero offsets and biases.
+TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolutionNonZero) {
+  CHECK_IF_ENABLED();
+
+  constexpr size_t groups = 2;
+  constexpr dim_t output_channel = 4;
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 2}, "input", false);
+  auto IH = bindings_.allocate(input)->getHandle<float>();
+  for (size_t i = 0; i < 2 * 3 * 2; i++) {
+    IH.raw(i) = i + 1;
+  }
+
+  auto *qInTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 2, 3, 2}, 2.5, 3);
+  auto *qInput = F_->createQuantize("qInput", input, qInTy);
+
+  auto filterT = Tensor(ElemKind::Int8QTy, {4, 2, 1, 1}, 1.0, 0);
+  for (dim_t i = 0; i < 4; i++) {
+    for (dim_t j = 0; j < 2; j++) {
+      for (dim_t k = 0; k < 1; k++) {
+        for (dim_t l = 0; l < 1; l++) {
+          filterT.getHandle<int8_t>().at({i, j, k, l}) = j + 1;
+        }
+      }
+    }
+  }
+  auto *filter = mod_.createConstant("filter", std::move(filterT));
+
+  auto biasT = Tensor(ElemKind::FloatTy, {4});
+  for (dim_t i = 0; i < 4; i++) {
+    biasT.getHandle<float>().raw(i) = i + 1;
+  }
+  auto *bias = mod_.createConstant("bias", std::move(biasT));
+
+  auto scalesT = Tensor(ElemKind::FloatTy, {output_channel});
+  for (size_t i = 0; i < scalesT.size(); i++) {
+    scalesT.getHandle<float>().raw(i) = 1;
+  }
+  auto *scales = mod_.createConstant("scales", std::move(scalesT));
+
+  auto offsetsT = Tensor(ElemKind::Int32ITy, {output_channel});
+  offsetsT.zero();
+
+  auto *offsets = mod_.createConstant("offsets", std::move(offsetsT));
+
+  auto *outTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 1, 3, 4}, 2, 2);
+  ChannelwiseQuantizedConvolutionNode *CQC = F_->createChannelwiseQuantizedConv(
+      "channelwiseQuantizedConv", qInput, filter, bias, scales, offsets, outTy,
+      {2, 1}, {1, 1}, {0, 0, 0, 0}, groups);
+
+  DequantizeNode *dq = F_->createDequantize("dequantize", CQC);
+  SaveNode *S = F_->createSave("save", dq);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+
+  std::vector<dim_t> expectedDims = {1, 1, 3, 4};
+  ASSERT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), 16);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1}), 18);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 2}), 20);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 3}), 22);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 0}), 22);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 1}), 26);
+
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 2}), 28);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 3}), 30);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 0}), 26);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 1}), 28);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 2}), 32);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 3}), 36);
 }
 
 TEST_P(OperatorTest, GroupDilatedConvolution) {
@@ -6785,9 +6964,9 @@ TEST_P(OperatorTest, NonCubicPaddingConv3D) {
     for (dim_t j = 0; j < 4; j++) {
       for (dim_t k = 0; k < 4; k++) {
         IH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
-      } // D
-    }   // W
-  }     // H
+      } // W
+    }   // H
+  }     // T
 
   auto *filter = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 2, 1},
                                         "filter", false);
@@ -6799,11 +6978,12 @@ TEST_P(OperatorTest, NonCubicPaddingConv3D) {
       mod_.createPlaceholder(ElemKind::FloatTy, {2}, "bias", false);
   bindings_.allocate(zeroBias)->zero();
 
-  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 4, 8, 12, 2});
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 12, 4, 8, 2});
 
   Convolution3DNode *CN =
       F_->createConv3D("Conv3D", input, filter, zeroBias, outTy, {2, 2, 2},
-                       {1, 1, 1}, {0, 2, 5, 1, 3, 4}, 1);
+                       {1, 1, 1}, // {0, 2, 5, 1, 3, 4},
+                       {5, 4, 0, 1, 2, 3}, 1);
   SaveNode *S = F_->createSave("save", CN);
   bindings_.allocate(S->getPlaceholder());
 
@@ -6814,18 +6994,18 @@ TEST_P(OperatorTest, NonCubicPaddingConv3D) {
 
   // Create the reference conv3D operator whose input is the same as the
   // after-padding-input above.
-  auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 9, 13, 1},
+  auto *input1 = mod_.createPlaceholder(ElemKind::FloatTy, {1, 13, 5, 9, 1},
                                         "input1", false);
   bindings_.allocate(input1)->zero();
   auto IH1 = bindings_.get(input1)->getHandle();
   nextVal = 1;
-  for (dim_t i = 0; i < 4; i++) {
-    for (dim_t j = 2; j < 6; j++) {
-      for (dim_t k = 5; k < 9; k++) {
+  for (dim_t i = 5; i < 9; i++) {
+    for (dim_t j = 0; j < 4; j++) {
+      for (dim_t k = 2; k < 6; k++) {
         IH1.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
-      } // D
-    }   // W
-  }     // H
+      } // W
+    }   // H
+  }     // T
 
   Function *refF = mod_.createFunction("mainRef");
   CN = refF->createConv3D("Conv3D_1", input1, filter, zeroBias, outTy,
@@ -7243,7 +7423,7 @@ static float16_t refTanHFp16(float x) {
 static void testTanHFp16Sweep(glow::PlaceholderBindings &bindings,
                               glow::Module &mod, glow::Function *F,
                               glow::ExecutionEngine &EE) {
-  constexpr size_t N = 100;
+  constexpr dim_t N = 100;
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {N}, "input", false);
   auto inputH = bindings.allocate(input)->getHandle();
 
@@ -7251,7 +7431,7 @@ static void testTanHFp16Sweep(glow::PlaceholderBindings &bindings,
   constexpr float rangeEnd = 15;
   constexpr float delta = (rangeEnd - rangeStart) / N;
 
-  for (size_t i = 0; i < N; i++) {
+  for (dim_t i = 0; i < N; i++) {
     inputH.raw(i) = rangeStart + i * delta;
   }
 
@@ -7315,8 +7495,8 @@ static void testMaxPoolWithArgmax(glow::PlaceholderBindings &bindings,
   out1.getHandle<DataType>() = {6, 7, 8, 8};
   EXPECT_TRUE(out1.isEqual(*result));
 
-  Tensor out2(IndexElemKind, {1, 2, 2, 1});
-  out2.getHandle<sdim_t>() = {3, 2, 7, 7};
+  Tensor out2(ElemKind::Int64ITy, {1, 2, 2, 1});
+  out2.getHandle<int64_t>() = {3, 2, 7, 7};
   EXPECT_TRUE(out2.isEqual(*argmax));
 }
 
@@ -7371,9 +7551,9 @@ testMaxPoolWithArgmaxTransposed(glow::PlaceholderBindings &bindings,
   out1.getHandle<DataType>() = {11, 22, 33};
   EXPECT_TRUE(out1.isEqual(*result));
 
-  Tensor out2(IndexElemKind, {1, 3, 1, 1});
-  out2.getHandle<sdim_t>() = {0 + 2 * 3 + 2 * 12, 1 + 2 * 3 + 2 * 12,
-                              2 + 2 * 3 + 2 * 12};
+  Tensor out2(ElemKind::Int64ITy, {1, 3, 1, 1});
+  out2.getHandle<int64_t>() = {0 + 2 * 3 + 2 * 12, 1 + 2 * 3 + 2 * 12,
+                               2 + 2 * 3 + 2 * 12};
   EXPECT_TRUE(out2.isEqual(*argmax));
 }
 
@@ -7407,7 +7587,7 @@ TEST_P(OperatorStatelessTest, Tanh_Float16) {
 TEST_P(OperatorTest, Tanh) {
   CHECK_IF_ENABLED();
 
-  constexpr size_t size = 10;
+  constexpr dim_t size = 10;
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
   bindings_.allocate(input)->getHandle().randomize(-10.0, 10.0, mod_.getPRNG());
@@ -7823,9 +8003,9 @@ TEST_P(OperatorTest, NonCubicStrideConv3D) {
     for (dim_t j = 0; j < 4; j++) {
       for (dim_t k = 0; k < 4; k++) {
         IH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
-      } // D
-    }   // W
-  }     // H
+      } // W
+    }   // H
+  }     // T
 
   auto *filter = mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 2, 1},
                                         "filter", false);
@@ -7835,9 +8015,9 @@ TEST_P(OperatorTest, NonCubicStrideConv3D) {
     for (dim_t j = 0; j < 2; j++) {
       for (dim_t k = 0; k < 2; k++) {
         FH.at({0, i, j, k, 0}) = static_cast<float>(nextVal++);
-      } // D
-    }   // W
-  }     // H
+      } // W
+    }   // H
+  }     // T
 
   auto *zeroBias =
       mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
@@ -7847,7 +8027,8 @@ TEST_P(OperatorTest, NonCubicStrideConv3D) {
 
   Convolution3DNode *CN =
       F_->createConv3D("Conv3D", input, filter, zeroBias, outTy, {2, 2, 2},
-                       {3, 2, 3}, {0, 0, 0, 1, 1, 1}, 1);
+                       {3, 3, 2}, //{0, 0, 0, 1, 1, 1}, 1);
+                       {0, 1, 0, 1, 0, 1}, 1);
   SaveNode *S = F_->createSave("save", CN);
   bindings_.allocate(S->getPlaceholder());
 
@@ -7857,7 +8038,7 @@ TEST_P(OperatorTest, NonCubicStrideConv3D) {
   EE_.run(bindings_);
   Tensor &result = *bindings_.get(S->getPlaceholder());
 
-  static const float ref[] = {560, 296, 848, 424, 524, 220, 604, 252};
+  static const float ref[] = {560, 632, 366, 394, 524, 544, 185, 191};
   for (size_t i = 0; i < 8; i++) {
     EXPECT_EQ(result.getHandle().raw(i), ref[i]);
   }
@@ -8021,7 +8202,7 @@ template <typename DataType>
 static void testSigmoid(glow::PlaceholderBindings &bindings, glow::Module &mod,
                         glow::Function *F, glow::ExecutionEngine &EE,
                         ElemKind DTy) {
-  constexpr size_t size = 10;
+  constexpr dim_t size = 10;
   auto *input = mod.createPlaceholder(DTy, {size}, "input", false);
   bindings.allocate(input)->getHandle<DataType>().randomize(-10.0, 10.0,
                                                             mod.getPRNG());
@@ -8057,7 +8238,7 @@ TEST_P(OperatorTest, Sigmoid_Float16) {
 TEST_P(OperatorTest, IntLookupTable) {
   CHECK_IF_ENABLED();
 
-  constexpr size_t size = 6;
+  constexpr dim_t size = 6;
   auto *input =
       mod_.createPlaceholder(ElemKind::Int8QTy, {size}, 1, 0, "input", false);
   bindings_.allocate(input)->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5};
@@ -8143,12 +8324,9 @@ TEST_P(OperatorTest, testBatchAdd_Float16) {
   testBatchAdd<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
-static void quantizedBatchAdd(ExecutionEngine &EE,
+static void quantizedBatchAdd(ExecutionEngine &EE, Function *F,
                               PlaceholderBindings &bindings, ElemKind Ty) {
-  EE.setBackendName(EE.getBackendName());
   auto &mod = EE.getModule();
-  auto *F = mod.createFunction("main");
-  bindings.clear();
   unsigned numSlices = 10;
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {numSlices, 10, 10},
                                       "input", false);
@@ -8198,13 +8376,18 @@ static void quantizedBatchAdd(ExecutionEngine &EE,
   }
 }
 
-/// Tests quantized batched-add arithmetic.
-TEST_P(OperatorTest, testQuantizedBatchAdd) {
+/// Tests quantized batched-add arithmetic on Int8QTy.
+TEST_P(OperatorTest, testQuantizedBatchAdd_Int8) {
   CHECK_IF_ENABLED();
-  // Test Int8QTy Slice.
-  quantizedBatchAdd(EE_, bindings_, ElemKind::Int8QTy);
-  // Test Int32QTy Slice.
-  quantizedBatchAdd(EE_, bindings_, ElemKind::Int32QTy);
+
+  quantizedBatchAdd(EE_, F_, bindings_, ElemKind::Int8QTy);
+}
+
+/// Tests quantized batched-add arithmetic on Int32QTy.
+TEST_P(OperatorTest, testQuantizedBatchAdd_Int32) {
+  CHECK_IF_ENABLED();
+
+  quantizedBatchAdd(EE_, F_, bindings_, ElemKind::Int32QTy);
 }
 
 template <typename DataType>
@@ -8402,10 +8585,10 @@ TEST_P(OperatorTest, LengthsSum) {
 }
 
 /// Helper to test SLS using \p DTy.
-template <typename DataType>
+template <typename DataType, typename IndexType>
 static void testSLS(glow::PlaceholderBindings &bindings, glow::Module &mod,
                     glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
-                    float allowedError) {
+                    ElemKind ITy, float allowedError) {
   /*
     DATA  = [
         [1.0, 1.2],
@@ -8423,14 +8606,14 @@ static void testSLS(glow::PlaceholderBindings &bindings, glow::Module &mod,
     ]
   */
   auto *data = mod.createPlaceholder(DTy, {3, 2}, "data", false);
-  auto *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices", false);
+  auto *indices = mod.createPlaceholder(ITy, {8}, "indices", false);
   auto *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {5}, "lengths", false);
 
   bindings.allocate(data)->getHandle<DataType>() = {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<IndexType>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -8454,16 +8637,32 @@ static void testSLS(glow::PlaceholderBindings &bindings, glow::Module &mod,
   EXPECT_TRUE(expected.isEqual(result, allowedError));
 }
 
-/// Test that SLS is correctly supported in FloatTy.
+/// Test that SLS is correctly supported in FloatTy with int64 indices.
 TEST_P(OperatorTest, SparseLengthsSum_Float) {
   CHECK_IF_ENABLED();
-  testSLS<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001);
+  testSLS<float, int64_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          ElemKind::Int64ITy, 0.0001);
 }
 
-/// Test that SLS is correctly supported in Float16Ty.
+/// Test that SLS is correctly supported in FloatTy with int32 indices.
+TEST_P(OperatorTest, SparseLengthsSum_Float_Int32) {
+  CHECK_IF_ENABLED();
+  testSLS<float, int32_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          ElemKind::Int32ITy, 0.0001);
+}
+
+/// Test that SLS is correctly supported in Float16Ty with int64 indices.
 TEST_P(OperatorTest, SparseLengthsSum_Float16) {
   CHECK_IF_ENABLED();
-  testSLS<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.002);
+  testSLS<float16_t, int64_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              ElemKind::Int64ITy, 0.002);
+}
+
+/// Test that SLS is correctly supported in Float16Ty with int32 indices.
+TEST_P(OperatorTest, SparseLengthsSum_Float16_Int32) {
+  CHECK_IF_ENABLED();
+  testSLS<float16_t, int32_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              ElemKind::Int32ITy, 0.002);
 }
 
 TEST_P(OperatorTest, SparseLengthsSumI8) {
@@ -8487,14 +8686,15 @@ TEST_P(OperatorTest, SparseLengthsSumI8) {
   */
   auto *data =
       mod_.createPlaceholder(ElemKind::Int8QTy, {3, 2}, 0.1f, 1, "data", false);
-  auto *indices = mod_.createPlaceholder(IndexElemKind, {8}, "indices", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
   auto *lengths =
       mod_.createPlaceholder(ElemKind::Int32ITy, {5}, "lengths", false);
 
   bindings_.allocate(data)->getHandle<int8_t>() = {
       11, 13, 24, 35, 46, 58,
   };
-  bindings_.allocate(indices)->getHandle<sdim_t>() = {
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
   bindings_.allocate(lengths)->getHandle<int32_t>() = {
@@ -8535,7 +8735,8 @@ static void testSLWS(glow::PlaceholderBindings &bindings, glow::Module &mod,
 
   auto *data = mod.createPlaceholder(DTy, idims, "data", false);
   auto *weights = mod.createPlaceholder(DTy, {8}, "weights", false);
-  auto *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices", false);
+  auto *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
   auto *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths", false);
 
@@ -8547,7 +8748,7 @@ static void testSLWS(glow::PlaceholderBindings &bindings, glow::Module &mod,
   bindings.allocate(weights)->getHandle<DataType>() = {
       3, 1, 0, 0, 0, 0, 2, -0.5,
   };
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -8619,7 +8820,8 @@ TEST_P(OperatorTest, SparseLengthsWeightedSumI8) {
       mod_.createPlaceholder(ElemKind::Int8QTy, {3}, 0.5, 0, "data", false);
   auto *weights =
       mod_.createPlaceholder(ElemKind::Int8QTy, {8}, 0.5, 0, "weights", false);
-  auto *indices = mod_.createPlaceholder(IndexElemKind, {8}, "indices", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
   auto *lengths =
       mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths", false);
 
@@ -8631,7 +8833,7 @@ TEST_P(OperatorTest, SparseLengthsWeightedSumI8) {
   bindings_.allocate(weights)->getHandle<int8_t>() = {
       6, 2, 0, 0, 0, 0, 4, -1,
   };
-  bindings_.allocate(indices)->getHandle<sdim_t>() = {
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
   bindings_.allocate(lengths)->getHandle<int32_t>() = {
@@ -8694,32 +8896,32 @@ testEmbeddingBag(glow::PlaceholderBindings &bindings, glow::Module &mod,
   Placeholder *offsets;
   if (hasEndOffset) {
     weights = mod.createPlaceholder(DTy, {10}, "weights", false);
-    indices = mod.createPlaceholder(IndexElemKind, {10}, "indices", false);
-    offsets = mod.createPlaceholder(IndexElemKind, {5}, "offsets", false);
+    indices = mod.createPlaceholder(ElemKind::Int64ITy, {10}, "indices", false);
+    offsets = mod.createPlaceholder(ElemKind::Int64ITy, {5}, "offsets", false);
 
     bindings.allocate(weights)->getHandle<DataType>() = {
         3, 1, 0, 0, 0, 0, 2, -0.5, 42.0, 42.0,
     };
-    bindings.allocate(indices)->getHandle<sdim_t>() = {
+    bindings.allocate(indices)->getHandle<int64_t>() = {
         1, 0, 2, 0, 1, 2, 2, 0, 13, 10,
     };
-    bindings.allocate(offsets)->getHandle<sdim_t>() = {
+    bindings.allocate(offsets)->getHandle<int64_t>() = {
         0, 3, 3, 6,
         8, // extra end offset
     };
 
   } else {
     weights = mod.createPlaceholder(DTy, {8}, "weights", false);
-    indices = mod.createPlaceholder(IndexElemKind, {8}, "indices", false);
-    offsets = mod.createPlaceholder(IndexElemKind, {4}, "offsets", false);
+    indices = mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
+    offsets = mod.createPlaceholder(ElemKind::Int64ITy, {4}, "offsets", false);
 
     bindings.allocate(weights)->getHandle<DataType>() = {
         3, 1, 0, 0, 0, 0, 2, -0.5,
     };
-    bindings.allocate(indices)->getHandle<sdim_t>() = {
+    bindings.allocate(indices)->getHandle<int64_t>() = {
         1, 0, 2, 0, 1, 2, 2, 0,
     };
-    bindings.allocate(offsets)->getHandle<sdim_t>() = {
+    bindings.allocate(offsets)->getHandle<int64_t>() = {
         0,
         3,
         3,
@@ -8841,14 +9043,14 @@ static void testEmbeddingBagByteRowwiseOffsets(
         3., 1., 0., 0., 0., 0., 2., -0.5, 42.0, 35.0,
     };
 
-    indices = mod.createPlaceholder(IndexElemKind, {10}, "indices",
+    indices = mod.createPlaceholder(ElemKind::Int64ITy, {10}, "indices",
                                     /* isTrainable */ false);
-    offsets = mod.createPlaceholder(IndexElemKind, {5}, "offsets",
+    offsets = mod.createPlaceholder(ElemKind::Int64ITy, {5}, "offsets",
                                     /* isTrainable */ false);
 
-    bindings.allocate(indices)->getHandle<sdim_t>() = {1, 0, 2, 0, 1,
-                                                       2, 2, 0, 1, 5};
-    bindings.allocate(offsets)->getHandle<sdim_t>() = {
+    bindings.allocate(indices)->getHandle<int64_t>() = {1, 0, 2, 0, 1,
+                                                        2, 2, 0, 1, 5};
+    bindings.allocate(offsets)->getHandle<int64_t>() = {
         0, 3, 3, 6,
         8, // extra end offset
     };
@@ -8858,15 +9060,15 @@ static void testEmbeddingBagByteRowwiseOffsets(
         3., 1., 0., 0., 0., 0., 2., -0.5,
     };
 
-    indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
+    indices = mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
                                     /* isTrainable */ false);
-    offsets = mod.createPlaceholder(IndexElemKind, {4}, "offsets",
+    offsets = mod.createPlaceholder(ElemKind::Int64ITy, {4}, "offsets",
                                     /* isTrainable */ false);
 
-    bindings.allocate(indices)->getHandle<sdim_t>() = {
+    bindings.allocate(indices)->getHandle<int64_t>() = {
         1, 0, 2, 0, 1, 2, 2, 0,
     };
-    bindings.allocate(offsets)->getHandle<sdim_t>() = {
+    bindings.allocate(offsets)->getHandle<int64_t>() = {
         0,
         3,
         3,
@@ -8948,10 +9150,10 @@ TEST_P(OperatorTest,
 }
 
 /// Helper to test RowwiseQuantizedSparseLengthsWeightedSum using \p DTy.
-template <typename DataType>
+template <typename DataType, typename IndexType>
 static void testRowwiseQuantizedSparseLengthsWeightedSum(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
-    glow::ExecutionEngine &EE, ElemKind DTy, float allowedError,
+    glow::ExecutionEngine &EE, ElemKind DTy, ElemKind ITy, float allowedError,
     bool useFP16Accumulation = false) {
   /*
     DATA  =   [2.0, -0.5, 13]
@@ -8972,13 +9174,13 @@ static void testRowwiseQuantizedSparseLengthsWeightedSum(
       3., 1., 0., 0., 0., 0., 2., -0.5,
   };
 
-  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
+  Placeholder *indices = mod.createPlaceholder(ITy, {8}, "indices",
                                                /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
 
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<IndexType>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -9012,8 +9214,8 @@ static void testRowwiseQuantizedSparseLengthsWeightedSum(
 /// Test RWQ-SLWS with Float Weights, Scales, Offsets, and Output.
 TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsWeightedSum_Float) {
   CHECK_IF_ENABLED();
-  testRowwiseQuantizedSparseLengthsWeightedSum<float>(
-      bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001);
+  testRowwiseQuantizedSparseLengthsWeightedSum<float, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy, 0.0001);
 }
 
 /// Test RWQ-SLWS with Float16 Weights, Scales, Offsets, and Output. Uses Float
@@ -9021,8 +9223,8 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsWeightedSum_Float) {
 TEST_P(OperatorTest,
        RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
-  testRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
+  testRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy, 0.0001,
       /* useFP16Accumulation */ false);
 }
 
@@ -9031,8 +9233,36 @@ TEST_P(OperatorTest,
 TEST_P(OperatorTest,
        RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
-  testRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
+  testRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy, 0.0001,
+      /* useFP16Accumulation */ true);
+}
+
+/// Test RWQ-SLWS with Float Weights, Scales, Offsets, and Output. Int32
+/// indices.
+TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsWeightedSum_Float_Int32) {
+  CHECK_IF_ENABLED();
+  testRowwiseQuantizedSparseLengthsWeightedSum<float, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int32ITy, 0.0001);
+}
+
+/// Test RWQ-SLWS with Float16 Weights, Scales, Offsets, and Output. Uses Float
+/// accumulation. Int32 indices.
+TEST_P(OperatorTest,
+       RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat_Int32) {
+  CHECK_IF_ENABLED();
+  testRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy, 0.0001,
+      /* useFP16Accumulation */ false);
+}
+
+/// Test RWQ-SLWS with Float16 Weights, Scales, Offsets, and Output. Uses
+/// Float16 accumulation. Int32 indices.
+TEST_P(OperatorTest,
+       RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16_Int32) {
+  CHECK_IF_ENABLED();
+  testRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy, 0.0001,
       /* useFP16Accumulation */ true);
 }
 
@@ -9056,13 +9286,14 @@ createAndInitRWQSLWSAllSame(glow::PlaceholderBindings &bindings,
       0.2244578,  0.44881952, 0.42696562, 0.33007848, 0.4511249,  0.11568925,
       0.02629679, 0.33864713, 0.42614424};
 
-  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {21}, "indices",
-                                               /* isTrainable */ false);
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {21}, "indices",
+                            /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {2}, "lengths",
                             /* isTrainable */ false);
 
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       11, 8, 19, 8, 4, 11, 4, 19, 6, 18, 2, 6, 15, 5, 14, 14, 15, 13, 4, 6, 5,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {15, 6};
@@ -9077,7 +9308,7 @@ createAndInitRWQSLWSAllSame(glow::PlaceholderBindings &bindings,
   return std::make_pair(F, resultT);
 }
 
-TEST_P(OperatorTest, RWQSLWSAllSame_Float16_AccumFP16) {
+TEST_P(OperatorStatelessTest, RWQSLWSAllSame_Float16_AccumFP16) {
   CHECK_IF_ENABLED();
   compareAgainstInterpreter(
       getBackendName(), createAndInitRWQSLWSAllSame, ElemKind::Float16Ty,
@@ -9087,7 +9318,7 @@ TEST_P(OperatorTest, RWQSLWSAllSame_Float16_AccumFP16) {
       /* biasElemKind */ ElemKind::Int32QTy, /* forceFP16AccumSLS */ true);
 }
 
-TEST_P(OperatorTest, RWQSLWSAllSame_Float16_AccumFP32) {
+TEST_P(OperatorStatelessTest, RWQSLWSAllSame_Float16_AccumFP32) {
   CHECK_IF_ENABLED();
   compareAgainstInterpreter(
       getBackendName(), createAndInitRWQSLWSAllSame, ElemKind::Float16Ty,
@@ -9124,12 +9355,13 @@ static void testRowwiseQuantizedSparseLengthsSum(
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
 
-  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
-                                               /* isTrainable */ false);
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
+                            /* isTrainable */ false);
   Placeholder *lengths = mod.createPlaceholder(
       ElemKind::Int32ITy, {5}, "lengths", /* isTrainable */ false);
 
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -9185,18 +9417,18 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   // This test is only meaningful if the backend supports partial tensors.
   ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
 
-  constexpr size_t embeddingRows = 1275;
-  constexpr size_t numLengths = 20;
-  constexpr size_t maxIndices = 20000;
-  constexpr size_t numIndices = 20; // Must be less than sum(lengths).
-  constexpr size_t iterations = 33;
+  constexpr dim_t embeddingRows = 1275;
+  constexpr dim_t numLengths = 20;
+  constexpr dim_t maxIndices = 20000;
+  constexpr dim_t numIndices = 20; // Must be less than sum(lengths).
+  constexpr dim_t iterations = 33;
 
   auto *data =
       mod_.createConstant(ElemKind::FloatTy, {embeddingRows, 1}, "data");
   data->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
                                                          mod_.getPRNG());
-  auto *indices =
-      mod_.createPlaceholder(IndexElemKind, {maxIndices}, "indices", false);
+  auto *indices = mod_.createPlaceholder(ElemKind::Int64ITy, {maxIndices},
+                                         "indices", false);
   auto *lengths = mod_.createPlaceholder(ElemKind::Int32ITy, {numLengths},
                                          "lengths", false);
   auto *SLS = F_->createSparseLengthsSum("SLS", data, indices, lengths);
@@ -9204,9 +9436,9 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   auto *outPH = save->getPlaceholder();
   EE_.compile(CompilationMode::Infer);
 
-  Tensor indicesReal(IndexElemKind, {numIndices});
-  indicesReal.getHandle<sdim_t>().randomize(0, embeddingRows - 1,
-                                            mod_.getPRNG());
+  Tensor indicesReal(ElemKind::Int64ITy, {numIndices});
+  indicesReal.getHandle<int64_t>().randomize(0, embeddingRows - 1,
+                                             mod_.getPRNG());
   Tensor indicesPartial(indicesReal.getUnsafePtr(), indices->getType(),
                         indicesReal.getSizeInBytes());
   Tensor indicesPadded(indices->getType());
@@ -9230,18 +9462,25 @@ TEST_P(OperatorTest, RepeatedSLSWithPartialTensors) {
   paddedBindings.insert(lengths, std::move(lengthsPadded));
   paddedBindings.allocate(outPH);
 
-  for (size_t i = 0; i < iterations; i++) {
+  for (dim_t i = 0; i < iterations; i++) {
     EE_.run(bindings_);
     EE_.run(paddedBindings);
     ASSERT_TRUE(bindings_.get(outPH)->isEqual(*paddedBindings.get(outPH)));
   }
+
+  // Keep these around so their memory is not freed at the end of the
+  // test/scope. This is so that inside TearDown during import/export testing
+  // the data is still around.
+  unownedTensors_.push_back(std::move(indicesReal));
+  unownedTensors_.push_back(std::move(lengthsReal));
 }
 
 /// Helper to test gathers using partial inputs using \p ITy.
 template <typename IndicesType>
-static void testPartialGather(glow::PlaceholderBindings &bindings,
-                              glow::Module &mod, glow::Function *F,
-                              glow::ExecutionEngine &EE, ElemKind ITy) {
+static void
+testPartialGather(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                  glow::Function *F, glow::ExecutionEngine &EE,
+                  std::vector<Tensor> &unownedTensors, ElemKind ITy) {
   /*
     The acutal input we care about has the following shape/result:
 
@@ -9287,28 +9526,35 @@ static void testPartialGather(glow::PlaceholderBindings &bindings,
   for (dim_t i = 0; i < 6; ++i) {
     EXPECT_EQ(expectedH.at({i}), resultH.at({i}));
   }
+
+  // Keep this around so their memory is not freed at the end of the
+  // test/scope. This is so that inside TearDown during import/export testing
+  // the data is still around.
+  unownedTensors.push_back(std::move(indicesReal));
 }
 
 TEST_P(OperatorTest, GatherWithInt64PartialTensors) {
   CHECK_IF_ENABLED();
   // This test is only meaningful if the backend supports partial tensors.
   ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
-  testPartialGather<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+  testPartialGather<int64_t>(bindings_, mod_, F_, EE_, unownedTensors_,
+                             ElemKind::Int64ITy);
 }
 
 TEST_P(OperatorTest, GatherWithInt32PartialTensors) {
   CHECK_IF_ENABLED();
   // This test is only meaningful if the backend supports partial tensors.
   ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
-  testPartialGather<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+  testPartialGather<int32_t>(bindings_, mod_, F_, EE_, unownedTensors_,
+                             ElemKind::Int32ITy);
 }
 
 /// Helper to test FusedRowwiseQuantizedSparseLengthsWeightedSum using \p DTy.
-template <typename DataType>
+template <typename DataType, typename IndexType>
 static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
-    glow::ExecutionEngine &EE, ElemKind fusedDTy, float allowedError,
-    bool useFP16Accumulation = false) {
+    glow::ExecutionEngine &EE, ElemKind fusedDTy, ElemKind ITy,
+    float allowedError, bool useFP16Accumulation = false) {
   /*
     DATA  =   [[2.0, -0.5, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -9331,13 +9577,13 @@ static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
       3., 1., 0., 0., 0., 0., 2., -0.5,
   };
 
-  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
+  Placeholder *indices = mod.createPlaceholder(ITy, {8}, "indices",
                                                /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
 
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<IndexType>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -9370,16 +9616,18 @@ static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
 /// Test Fused-RWQ-SLWS in Float.
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsWeightedSum_Float) {
   CHECK_IF_ENABLED();
-  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float>(
-      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, 0.0001);
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, ElemKind::Int64ITy,
+      0.0001);
 }
 
 /// Test Fused-RWQ-SLWS in Float16. Uses Float accumulation.
 TEST_P(OperatorTest,
        FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
-  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, ElemKind::Int64ITy,
+      0.0001,
       /* useFP16Accumulation */ false);
 }
 
@@ -9387,8 +9635,39 @@ TEST_P(OperatorTest,
 TEST_P(OperatorTest,
        FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
-  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, ElemKind::Int64ITy,
+      0.0001,
+      /* useFP16Accumulation */ true);
+}
+
+/// Test Fused-RWQ-SLWS in Float. Int32 indices.
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSparseLengthsWeightedSum_Float_Int32) {
+  CHECK_IF_ENABLED();
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, ElemKind::Int32ITy,
+      0.0001);
+}
+
+/// Test Fused-RWQ-SLWS in Float16. Uses Float accumulation. Int32 indices.
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat_Int32) {
+  CHECK_IF_ENABLED();
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, ElemKind::Int32ITy,
+      0.0001,
+      /* useFP16Accumulation */ false);
+}
+
+/// Test Fused-RWQ-SLWS in Float16. Uses Float16 accumulation. Int32 indices.
+TEST_P(
+    OperatorTest,
+    FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16_Int32) {
+  CHECK_IF_ENABLED();
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, ElemKind::Int32ITy,
+      0.0001,
       /* useFP16Accumulation */ true);
 }
 
@@ -9416,13 +9695,14 @@ static void testRowwiseQuantizedSparseLengthsSum_ConvertedFloat16(
       3., 1., 0., 0., 0., 0., 2., -0.5,
   };
 
-  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
-                                               /* isTrainable */ false);
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
+                            /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
 
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -9505,13 +9785,14 @@ TEST_P(
   Constant *weights = mod_.createConstant(ElemKind::FloatTy, {1}, "weights");
   weights->getPayloadMutable().getHandle<float>() = {1.};
 
-  Placeholder *indices = mod_.createPlaceholder(IndexElemKind, {1}, "indices",
-                                                /* isTrainable */ false);
+  Placeholder *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {1}, "indices",
+                             /* isTrainable */ false);
   Placeholder *lengths =
       mod_.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                              /* isTrainable */ false);
 
-  bindings_.allocate(indices)->getHandle<sdim_t>() = {
+  bindings_.allocate(indices)->getHandle<int64_t>() = {
       0,
   };
   bindings_.allocate(lengths)->getHandle<int32_t>() = {
@@ -9576,7 +9857,7 @@ TEST_P(
                              /* isTrainable */ false);
 
   Placeholder *indices =
-      mod_.createPlaceholder(IndexElemKind, {10000}, "indices",
+      mod_.createPlaceholder(ElemKind::Int64ITy, {10000}, "indices",
                              /* isTrainable */ false);
   Placeholder *lengths =
       mod_.createPlaceholder(ElemKind::Int32ITy, {32}, "lengths",
@@ -9588,7 +9869,7 @@ TEST_P(
 
   Tensor *iT = bindings_.allocate(indices);
   iT->zero();
-  iT->getHandle<sdim_t>().at({0}) = 4124;
+  iT->getHandle<int64_t>().at({0}) = 4124;
 
   bindings_.allocate(lengths)->getHandle<int32_t>() = {
       0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -9615,7 +9896,7 @@ TEST_P(
   // set new indices.
   iT = bindings_.get(indices);
   iT->zero();
-  iT->getHandle<sdim_t>().at({0}) = 1256;
+  iT->getHandle<int64_t>().at({0}) = 1256;
   // set new lengths.
   bindings_.get(lengths)->getHandle<int32_t>() = {
       0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -9663,12 +9944,13 @@ static void testFusedRowwiseQuantizedSparseLengthsSum(
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
 
-  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
-                                               /* isTrainable */ false);
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
+                            /* isTrainable */ false);
   Placeholder *lengths = mod.createPlaceholder(
       ElemKind::Int32ITy, {5}, "lengths", /* isTrainable */ false);
 
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -9726,8 +10008,8 @@ TEST_P(OperatorTest,
       /* useFP16Accumulation */ true);
 }
 
-/// Helper to test SLWS with more columns in data input, with precision \p DTy,
-/// and precision for data \p dataDTy.
+/// Helper to test all variants of SLWS wiith all lengths as one, with precision
+/// \p DTy, and precision for data \p dataDTy.
 template <typename DataType>
 static void testSLWSTwoColumn(glow::PlaceholderBindings &bindings,
                               glow::Module &mod, glow::Function *F,
@@ -9764,14 +10046,15 @@ static void testSLWSTwoColumn(glow::PlaceholderBindings &bindings,
     data.getHandle<DataType>() = floatData;
   }
 
-  Placeholder *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices",
-                                               /* isTrainable */ false);
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
+                            /* isTrainable */ false);
   Placeholder *lengths = mod.createPlaceholder(
       ElemKind::Int32ITy, {5}, "lengths", /* isTrainable */ false);
   Placeholder *weights =
       mod.createPlaceholder(DTy, {8}, "weights", /* isTrainable */ false);
 
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -9855,13 +10138,147 @@ TEST_P(OperatorTest,
                                /* useFP16Accumulation */ true);
 }
 
+/// Helper to test SLWS with different lengths modes, with precision \p DTy,
+/// and precision for data \p dataDTy.
+template <typename DataType>
+static void testSLWSLengthsMode(glow::PlaceholderBindings &bindings,
+                                glow::Module &mod, glow::Function *F,
+                                glow::ExecutionEngine &EE, ElemKind dataDTy,
+                                float allowedError, bool useFP16Accumulation,
+                                LengthsMode lengthsMode) {
+  /*
+    DATA  = [
+        [1.0, 1.2],
+        [2.3, 3.4],
+        [4.5, 5.7],
+    ]
+    INDICES = [2, 0, 1, 2, 0]
+    LENGTHS = [1, 1, 1, 1, 1]
+    WEIGHTS = [1, -1, 1.5, 0.5, -1.5]
+    OUTPUT = [
+        [4.5, 5.7],
+        [-1.0, -1.2],
+        [3.45, 5.1],
+        [2.25, 2.85],
+        [-1.5, -1.8],
+    ]
+  */
+  const bool fusedData = isFusedQuantizedElemKind(dataDTy);
+  const ElemKind DTy =
+      fusedData ? getScaleOffsetElemKindFromFused(dataDTy) : dataDTy;
+
+  Tensor data(fusedData ? ElemKind::FloatTy : DTy, {3, 2});
+#define floatData                                                              \
+  { 1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f, }
+  if (fusedData) {
+    data.getHandle<float>() = floatData;
+  } else {
+    data.getHandle<DataType>() = floatData;
+  }
+
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {5}, "indices",
+                            /* isTrainable */ false);
+  Placeholder *lengths = mod.createPlaceholder(
+      ElemKind::Int32ITy, {5}, "lengths", /* isTrainable */ false);
+  Placeholder *weights =
+      mod.createPlaceholder(DTy, {5}, "weights", /* isTrainable */ false);
+
+  bindings.allocate(indices)->getHandle<int64_t>() = {
+      2, 0, 1, 2, 0,
+  };
+  auto LH = bindings.allocate(lengths)->getHandle<int32_t>();
+  Tensor expected(DTy, {5, 2});
+  LH = {1, 1, 1, 1, 1};
+  expected.getHandle<DataType>() = {
+      4.5, 5.7, -1.0, -1.2, 3.45, 5.1, 2.25, 2.85, -1.5, -1.8,
+  };
+  bindings.allocate(weights)->getHandle<DataType>() = {
+      1, -1, 1.5, 0.5, -1.5,
+  };
+
+  Node *SLWS = nullptr;
+  if (fusedData) {
+    SLWS = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+        "RQSLWS", data, weights, indices, lengths, dataDTy, useFP16Accumulation,
+        LengthsMode::AllOne);
+  } else {
+    Placeholder *dataP =
+        mod.createPlaceholder(&data.getType(), "data", /* isTrainable */ false);
+    bindings.insert(dataP, std::move(data));
+    SLWS = F->createSparseLengthsWeightedSum("SLWS", dataP, weights, indices,
+                                             lengths, LengthsMode::AllOne);
+  }
+  SaveNode *S = F->createSave("save", SLWS);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor &result = *bindings.get(S->getPlaceholder());
+
+  EXPECT_TRUE(expected.isEqual(result, allowedError));
+}
+
+/// Test SLWS in Float.
+TEST_P(OperatorTest, SLWSAllLengthsOne_Float) {
+  CHECK_IF_ENABLED();
+  testSLWSLengthsMode<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                             0.0001, /* useFP16Accumulation */ false,
+                             LengthsMode::AllOne);
+}
+
+/// Test SLWS in Float16.
+TEST_P(OperatorTest, SLWSAllLengthsOne_Float16_AccumFloat) {
+  CHECK_IF_ENABLED();
+  testSLWSLengthsMode<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.005,
+      /* useFP16Accumulation */ false, LengthsMode::AllOne);
+}
+
+/// Test Fused-RWQ-SLWS in Float.
+TEST_P(OperatorTest, FusedRowwiseQuantizedSLWSAllLengthsOne_Float) {
+  CHECK_IF_ENABLED();
+  testSLWSLengthsMode<float>(bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy,
+                             0.015, /* useFP16Accumulation */ false,
+                             LengthsMode::AllOne);
+}
+
+/// Test Fused-RWQ-SLWS in Float16. Uses Float accumulation.
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSLWSAllLengthsOne_Float16_AccumFloat) {
+  CHECK_IF_ENABLED();
+  testSLWSLengthsMode<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.015,
+      /* useFP16Accumulation */ false, LengthsMode::AllOne);
+}
+
+/// Test Fused-RWQ-SLWS in Float16. Uses Float16 accumulation.
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSLWSAllLengthsOne_Float16_AccumFloat16) {
+  CHECK_IF_ENABLED();
+  testSLWSLengthsMode<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.015,
+      /* useFP16Accumulation */ true, LengthsMode::AllOne);
+}
+
+/// Test Fused-RWQ-SLWS in Float16 wth 4-bit quantization for the embedding.
+/// Uses Float16 accumulation.
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSLWSAllLengthsOne_Fused4Bit_Float16_AccumFloat16) {
+  CHECK_IF_ENABLED();
+  testSLWSLengthsMode<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt4FusedFP16QTy, 0.1,
+      /* useFP16Accumulation */ true, LengthsMode::AllOne);
+}
+
 /// Test SLS when some input tensors are constants.
 TEST_P(OperatorTest, ConstantSLS) {
   CHECK_IF_ENABLED();
 
   auto *data = mod_.createConstant(ElemKind::FloatTy, {1024, 32}, "data");
   auto *indices =
-      mod_.createPlaceholder(IndexElemKind, {314}, "indices", false);
+      mod_.createPlaceholder(ElemKind::Int64ITy, {314}, "indices", false);
   auto *lengths = mod_.createConstant(ElemKind::Int32ITy, {20}, "lengths");
 
   // data
@@ -9873,7 +10290,7 @@ TEST_P(OperatorTest, ConstantSLS) {
   }
 
   // indices
-  auto IH = bindings_.allocate(indices)->getHandle<sdim_t>();
+  auto IH = bindings_.allocate(indices)->getHandle<int64_t>();
   std::iota(IH.begin(), IH.end(), 0);
 
   // lengths
@@ -9902,7 +10319,7 @@ TEST_P(OperatorTest, ConstantSLS) {
 }
 
 /// Test SLS when some "lengths" inputs are zero.
-TEST_P(OperatorTest, SLSWithZeroLengths) {
+TEST_P(OperatorStatelessTest, SLSWithZeroLengths) {
   CHECK_IF_ENABLED();
 
   compareAgainstInterpreter(
@@ -9910,17 +10327,17 @@ TEST_P(OperatorTest, SLSWithZeroLengths) {
       [](PlaceholderBindings &bindings, ExecutionEngine &EE) {
         auto &mod = EE.getModule();
         auto *F = mod.createFunction("main");
-        constexpr size_t embedWidth = 1000;
+        constexpr dim_t embedWidth = 1000;
         Tensor data(ElemKind::FloatTy, {embedWidth, 8});
         data.getHandle().randomize(-1, 1, mod.getPRNG());
         Constant *weights =
             mod.createConstant(ElemKind::FloatTy, {3000}, "weights");
         weights->getPayloadMutable().getHandle().clear(1.0f);
         auto *indices =
-            mod.createPlaceholder(IndexElemKind, {3000}, "indices", false);
+            mod.createPlaceholder(ElemKind::Int64ITy, {3000}, "indices", false);
         auto *lengths =
             mod.createPlaceholder(ElemKind::Int32ITy, {1000}, "lengths", false);
-        bindings.allocate(indices)->getHandle<sdim_t>().randomize(
+        bindings.allocate(indices)->getHandle<int64_t>().randomize(
             0, embedWidth - 1, mod.getPRNG());
         auto LH = bindings.allocate(lengths)->getHandle<int32_t>();
         LH.clear(0);
@@ -9953,11 +10370,11 @@ createAndInitZeroLengthsSLSTest(glow::PlaceholderBindings &bindings,
   Constant *weights = mod.createConstant(ElemKind::FloatTy, {3000}, "weights");
   weights->getPayloadMutable().getHandle().clear(1.0f);
   auto *indices =
-      mod.createPlaceholder(IndexElemKind, {3000}, "indices", false);
+      mod.createPlaceholder(ElemKind::Int64ITy, {3000}, "indices", false);
   auto *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {1000}, "lengths", false);
-  bindings.allocate(indices)->getHandle<sdim_t>().randomize(0, embedWidth - 1,
-                                                            mod.getPRNG());
+  bindings.allocate(indices)->getHandle<int64_t>().randomize(0, embedWidth - 1,
+                                                             mod.getPRNG());
   auto LH = bindings.allocate(lengths)->getHandle<int32_t>();
   LH.clear(0);
 
@@ -9978,7 +10395,7 @@ createAndInitZeroLengthsSLSTest(glow::PlaceholderBindings &bindings,
 }
 
 /// Test Fused RWQ-SLS when all "lengths" inputs are zero in FloatTy.
-TEST_P(OperatorTest, FusedRWQSLSAllZeroLengths_Float) {
+TEST_P(OperatorStatelessTest, FusedRWQSLSAllZeroLengths_Float) {
   CHECK_IF_ENABLED();
 
   compareAgainstInterpreter(
@@ -9989,7 +10406,7 @@ TEST_P(OperatorTest, FusedRWQSLSAllZeroLengths_Float) {
 }
 
 /// Test Fused RWQ-SLS when all "lengths" inputs are zero in Float16Ty.
-TEST_P(OperatorTest, FusedRWQSLSAllZeroLengths_Float16) {
+TEST_P(OperatorStatelessTest, FusedRWQSLSAllZeroLengths_Float16) {
   CHECK_IF_ENABLED();
 
   compareAgainstInterpreter(
@@ -10001,7 +10418,7 @@ TEST_P(OperatorTest, FusedRWQSLSAllZeroLengths_Float16) {
 }
 
 /// Test SLS when all "lengths" inputs are zero in FloatTy.
-TEST_P(OperatorTest, SLSAllZeroLengths_Float) {
+TEST_P(OperatorStatelessTest, SLSAllZeroLengths_Float) {
   CHECK_IF_ENABLED();
 
   compareAgainstInterpreter(getBackendName(),
@@ -10013,7 +10430,7 @@ TEST_P(OperatorTest, SLSAllZeroLengths_Float) {
 }
 
 /// Test SLS when all "lengths" inputs are zero in Float16Ty.
-TEST_P(OperatorTest, SLSAllZeroLengths_Float16) {
+TEST_P(OperatorStatelessTest, SLSAllZeroLengths_Float16) {
   CHECK_IF_ENABLED();
 
   compareAgainstInterpreter(getBackendName(),
@@ -10035,14 +10452,14 @@ TEST_P(OperatorTest, SparseToDense) {
   constexpr dim_t kCols = 5;
   constexpr dim_t kMaxIndex = 10;
 
-  auto *indices =
-      mod_.createPlaceholder(IndexElemKind, {kNumIndices}, "indices", false);
+  auto *indices = mod_.createPlaceholder(ElemKind::Int64ITy, {kNumIndices},
+                                         "indices", false);
   auto *values = mod_.createPlaceholder(
       ElemKind::FloatTy, {kNumIndices, kRows, kCols}, "data", false);
   auto *dataToInferDim = mod_.createPlaceholder(ElemKind::FloatTy, {kMaxIndex},
                                                 "dataToInferDim", false);
 
-  auto IH = bindings_.allocate(indices)->getHandle<sdim_t>();
+  auto IH = bindings_.allocate(indices)->getHandle<int64_t>();
   auto VH = bindings_.allocate(values)->getHandle();
 
   // Duplicate one index to test that the corresponding values are added.
@@ -10086,7 +10503,8 @@ TEST_P(OperatorTest, SparseToDenseMask1) {
     MASK = [2, 1, 0, 13, 42, 43]
     OUTPUT =  [[1.1, 1.1, 1e6, 11, 0.7, 1.1], [1.1, 1.1, 1.1, 3.5, 1.1, 1.1]]
   */
-  auto *indices = mod_.createPlaceholder(IndexElemKind, {6}, "indices", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {6}, "indices", false);
   auto *values =
       mod_.createPlaceholder(ElemKind::FloatTy, {6}, "values", false);
   auto *defaultValue =
@@ -10095,7 +10513,7 @@ TEST_P(OperatorTest, SparseToDenseMask1) {
       mod_.createPlaceholder(ElemKind::Int32ITy, {2}, "lengths", false);
   std::vector<dim_t> mask{2, 1, 0, 13, 42, 43};
 
-  bindings_.allocate(indices)->getHandle<sdim_t>() = {4, 42, 13, 0, 100, 13};
+  bindings_.allocate(indices)->getHandle<int64_t>() = {4, 42, 13, 0, 100, 13};
   bindings_.allocate(values)->getHandle<float>() = {-5.5, 0.7, 11, 1e6, 2, 3.5};
   bindings_.allocate(defaultValue)->getHandle<float>().raw(0) = 1.1;
   bindings_.allocate(lengths)->getHandle<int32_t>() = {4, 2};
@@ -10130,7 +10548,8 @@ TEST_P(OperatorTest, SparseToDenseMask2) {
     OUTPUT =  [[[2, -2], [2, 9]], [[-0.1, -0.2], [-0.3, -0.4]],
                [[0.1, 0.2], [0.3, 0.4]]]
   */
-  auto *indices = mod_.createPlaceholder(IndexElemKind, {4}, "indices", false);
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {4}, "indices", false);
   auto *values =
       mod_.createPlaceholder(ElemKind::FloatTy, {4, 2, 2}, "values", false);
   auto *defaultValue =
@@ -10139,7 +10558,7 @@ TEST_P(OperatorTest, SparseToDenseMask2) {
       mod_.createPlaceholder(ElemKind::Int32ITy, {}, "lengths", false);
   std::vector<dim_t> mask{100, 300, 1};
 
-  bindings_.allocate(indices)->getHandle<sdim_t>() = {300, 100, 101, 299};
+  bindings_.allocate(indices)->getHandle<int64_t>() = {300, 100, 101, 299};
   bindings_.allocate(values)->getHandle<float>() = {
       -0.1, -0.2, -0.3, -0.4, 2, -2, 2, 9, 15, 4.2, 10.3, 30.4, 0, 2, 3, 4.4};
   bindings_.allocate(defaultValue)->getHandle<float>() = {0.1, 0.2, 0.3, 0.4};
@@ -10514,7 +10933,11 @@ TEST_P(OperatorTest, DivSizeT) {
   auto *result = F_->createSave("save", R);
   bindings_.allocate(result->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer);
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  // Disabling this so that  division of Int64ITy/size_t can be tested.
+  cctx.optimizationOpts.enableTypeDemotion = false;
+  EE_.compile(cctx);
   EE_.run(bindings_);
 
   auto H = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
@@ -10868,7 +11291,8 @@ createAndInitBasicSLWSTest(glow::PlaceholderBindings &bindings,
   auto *data = mod.createPlaceholder(ElemKind::FloatTy, {3}, "data", false);
   auto *weights =
       mod.createPlaceholder(ElemKind::FloatTy, {8}, "weights", false);
-  auto *indices = mod.createPlaceholder(IndexElemKind, {8}, "indices", false);
+  auto *indices =
+      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
   auto *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths", false);
 
@@ -10880,7 +11304,7 @@ createAndInitBasicSLWSTest(glow::PlaceholderBindings &bindings,
   bindings.allocate(weights)->getHandle() = {
       3, 1, 0, 0, 0, 0, 2, -0.5,
   };
-  bindings.allocate(indices)->getHandle<sdim_t>() = {
+  bindings.allocate(indices)->getHandle<int64_t>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -10964,7 +11388,7 @@ TEST_P(OperatorTest, SoftMax) {
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 6}, "input", false);
   bindings_.allocate(input)->getHandle<float>() = {1., 3., 2.5, 5., 4., 2.};
   auto *selected =
-      mod_.createPlaceholder(IndexElemKind, {1, 1}, "expected", false);
+      mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "expected", false);
   auto *Pool = F_->createSoftMax("pool", input, selected);
   auto *S = F_->createSave("save", Pool);
   bindings_.allocate(S->getPlaceholder());
@@ -10992,7 +11416,7 @@ TEST_P(OperatorTest, FP16SoftMax) {
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 6}, "input", false);
   bindings_.allocate(input)->getHandle<float16_t>() = {1., 3., 2.5, 5., 4., 2.};
   auto *selected =
-      mod_.createPlaceholder(IndexElemKind, {1, 1}, "expected", false);
+      mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "expected", false);
   auto *Pool = F_->createSoftMax("pool", input, selected);
   auto *S = F_->createSave("save", Pool);
   bindings_.allocate(S->getPlaceholder());
@@ -11295,7 +11719,7 @@ static void testDotProduct1D(glow::PlaceholderBindings &bindings,
                              glow::Module &mod, glow::Function *F,
                              glow::ExecutionEngine &EE, ElemKind DTy) {
   // Input tensors.
-  constexpr std::size_t kDataSize = 10;
+  constexpr dim_t kDataSize = 10;
   auto *X = createPlaceholderConditionallyQuantized(mod, DTy, {kDataSize}, "X",
                                                     false, "N");
   auto *Y = createPlaceholderConditionallyQuantized(mod, DTy, {kDataSize}, "Y",
@@ -11355,8 +11779,8 @@ TEST_P(OperatorTest, batchedPairwiseDotProduct) {
   CHECK_IF_ENABLED();
 
   // Input tensors.
-  constexpr std::size_t kBatchSize = 2;
-  constexpr std::size_t kVectorSize = 6;
+  constexpr dim_t kBatchSize = 2;
+  constexpr dim_t kVectorSize = 6;
 
   auto *W = createPlaceholderConditionallyQuantized(
       mod_, ElemKind::FloatTy, {kBatchSize, kVectorSize}, "X", false);
@@ -11409,8 +11833,8 @@ TEST_P(OperatorTest, batchedPairwiseDotProduct) {
 TEST_P(OperatorTest, elementwiseLinear) {
   CHECK_IF_ENABLED();
 
-  constexpr std::size_t kRows = 10;
-  constexpr std::size_t kCols = 20;
+  constexpr dim_t kRows = 10;
+  constexpr dim_t kCols = 20;
 
   // Create and allocate input placeholders.
   auto *X =
@@ -11472,8 +11896,8 @@ static void testDotProduct2D(glow::PlaceholderBindings &bindings,
                              glow::Module &mod, glow::Function *F,
                              glow::ExecutionEngine &EE, ElemKind DTy) {
   // Input tensors.
-  constexpr std::size_t kRows = 10;
-  constexpr std::size_t kCols = 14;
+  constexpr dim_t kRows = 10;
+  constexpr dim_t kCols = 14;
   auto *X = createPlaceholderConditionallyQuantized(mod, DTy, {kRows, kCols},
                                                     "X", false);
   auto *Y = createPlaceholderConditionallyQuantized(mod, DTy, {kRows, kCols},
@@ -11542,8 +11966,8 @@ static void testBatchBoxCox(glow::PlaceholderBindings &bindings,
                             glow::ExecutionEngine &EE, ElemKind DTy,
                             float allowedError = 0.0001f) {
   // Input tensors.
-  const size_t kRows = 10;
-  const size_t kCols = 5;
+  const dim_t kRows = 10;
+  const dim_t kCols = 5;
   auto *data = mod.createPlaceholder(DTy, {kRows, kCols}, "data",
                                      /* isTrainable */ false);
   auto *lambda1 = mod.createPlaceholder(DTy, {kCols}, "lambda1",
@@ -11622,7 +12046,7 @@ TEST_P(OperatorTest, BatchBoxCox_Float16) {
 #define TEST_ARITH_OP_FLOAT(OP_NAME_, OP_)                                     \
   TEST_P(OperatorTest, OP_NAME_##ArithFloatTest) {                             \
     CHECK_IF_ENABLED();                                                        \
-    constexpr size_t size = 50;                                                \
+    constexpr dim_t size = 50;                                                 \
     auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {size}, "A", false);   \
     auto *B = mod_.createPlaceholder(ElemKind::FloatTy, {size}, "B", false);   \
     auto *AT = bindings_.allocate(A);                                          \
@@ -11784,6 +12208,306 @@ TEST_CAST_2WAYS(int64_t, int32_t, Int64ITy, Int32ITy, /* castIsNoOp */ false)
 TEST_CAST_2WAYS(int64_t, int64_t, Int64ITy, Int64ITy, /* castIsNoOp */ true)
 
 #undef TEST_CAST_2WAYS
+
+template <typename DataType>
+glow::Handle<DataType>
+mulHelper(glow::PlaceholderBindings &bindings, glow::Module &mod,
+          glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
+          llvm::ArrayRef<DataType> lhsValues,
+          llvm::ArrayRef<DataType> rhsValues, llvm::ArrayRef<dim_t> lhsDims,
+          llvm::ArrayRef<dim_t> rhsDims) {
+  auto *lhs = mod.createPlaceholder(DTy, lhsDims, "lhs", false);
+  auto *rhs = mod.createPlaceholder(DTy, rhsDims, "rhs", false);
+  bindings.allocate(lhs)->getHandle<DataType>() = lhsValues;
+  bindings.allocate(rhs)->getHandle<DataType>() = rhsValues;
+
+  auto *N = F->createMul("Mul", lhs, rhs);
+  auto *save = F->createSave("save", N);
+  auto *saveTensor = bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  return saveTensor->getHandle<DataType>();
+}
+
+/// Check that the Mul operator behaves correctly with int32.
+TEST_P(OperatorTest, mul_int32) {
+  CHECK_IF_ENABLED();
+
+  llvm::SmallVector<int32_t, 16> xValues = {
+      3, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1};
+
+  llvm::SmallVector<int32_t, 16> yValues = {
+      3, 4, 5, 7, 2, 5, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6};
+
+  llvm::SmallVector<dim_t, 4> xDims = {2, 2, 4, 4};
+  llvm::SmallVector<dim_t, 4> yDims = {2, 2, 4, 4};
+
+  Handle<int32_t> saveH =
+      mulHelper<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy, xValues,
+                         yValues, xDims, yDims);
+
+  int counter = 0;
+  for (dim_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (dim_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (dim_t k = 0; k < saveH.dims()[2]; ++k) {
+        for (dim_t f = 0; f < saveH.dims()[3]; ++f) {
+          EXPECT_EQ(xValues[counter] * yValues[counter],
+                    saveH.at({i, j, k, f}));
+          ++counter;
+        }
+      }
+    }
+  }
+}
+
+/// Check that the Mul operator behaves correctly with int64.
+TEST_P(OperatorTest, mul_int64) {
+  CHECK_IF_ENABLED();
+
+  llvm::SmallVector<int64_t, 16> xValues = {
+      3, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1};
+
+  llvm::SmallVector<int64_t, 16> yValues = {
+      3, 4, 5, 7, 2, 5, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6};
+
+  llvm::SmallVector<dim_t, 4> xDims = {2, 2, 4, 4};
+  llvm::SmallVector<dim_t, 4> yDims = {2, 2, 4, 4};
+
+  Handle<int64_t> saveH =
+      mulHelper<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy, xValues,
+                         yValues, xDims, yDims);
+
+  int counter = 0;
+  for (dim_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (dim_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (dim_t k = 0; k < saveH.dims()[2]; ++k) {
+        for (dim_t f = 0; f < saveH.dims()[3]; ++f) {
+          EXPECT_EQ(xValues[counter] * yValues[counter],
+                    saveH.at({i, j, k, f}));
+          ++counter;
+        }
+      }
+    }
+  }
+}
+/// Check that the Mul operator behaves correctly with float.
+TEST_P(OperatorTest, mul_float) {
+  CHECK_IF_ENABLED();
+
+  llvm::SmallVector<float, 16> xValues = {
+      3, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1};
+
+  llvm::SmallVector<float, 16> yValues = {
+      3, 4, 5, 7, 2, 5, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6};
+
+  llvm::SmallVector<dim_t, 4> xDims = {2, 2, 4, 4};
+  llvm::SmallVector<dim_t, 4> yDims = {2, 2, 4, 4};
+
+  Handle<float> saveH =
+      mulHelper<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, xValues,
+                       yValues, xDims, yDims);
+
+  int counter = 0;
+  for (dim_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (dim_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (dim_t k = 0; k < saveH.dims()[2]; ++k) {
+        for (dim_t f = 0; f < saveH.dims()[3]; ++f) {
+          EXPECT_FLOAT_EQ(xValues[counter] * yValues[counter],
+                          saveH.at({i, j, k, f}));
+          ++counter;
+        }
+      }
+    }
+  }
+}
+
+template <typename DataType>
+glow::Handle<DataType>
+addHelper(glow::PlaceholderBindings &bindings, glow::Module &mod,
+          glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
+          llvm::ArrayRef<DataType> lhsValues,
+          llvm::ArrayRef<DataType> rhsValues, llvm::ArrayRef<dim_t> lhsDims,
+          llvm::ArrayRef<dim_t> rhsDims) {
+  auto *lhs = mod.createPlaceholder(DTy, lhsDims, "lhs", false);
+  auto *rhs = mod.createPlaceholder(DTy, rhsDims, "rhs", false);
+  bindings.allocate(lhs)->getHandle<DataType>() = lhsValues;
+  bindings.allocate(rhs)->getHandle<DataType>() = rhsValues;
+
+  auto *N = F->createAdd("Add", lhs, rhs);
+  auto *save = F->createSave("save", N);
+  auto *saveTensor = bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  return saveTensor->getHandle<DataType>();
+}
+
+/// Check that the Mul operator behaves correctly with int32.
+TEST_P(OperatorTest, add_int32) {
+  CHECK_IF_ENABLED();
+
+  llvm::SmallVector<int32_t, 16> xValues = {
+      3, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1};
+
+  llvm::SmallVector<int32_t, 16> yValues = {
+      3, 4, 5, 7, 2, 5, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6};
+
+  llvm::SmallVector<dim_t, 4> xDims = {2, 2, 4, 4};
+  llvm::SmallVector<dim_t, 4> yDims = {2, 2, 4, 4};
+
+  Handle<int32_t> saveH =
+      addHelper<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy, xValues,
+                         yValues, xDims, yDims);
+
+  int counter = 0;
+  for (dim_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (dim_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (dim_t k = 0; k < saveH.dims()[2]; ++k) {
+        for (dim_t f = 0; f < saveH.dims()[3]; ++f) {
+          EXPECT_EQ(xValues[counter] + yValues[counter],
+                    saveH.at({i, j, k, f}));
+          ++counter;
+        }
+      }
+    }
+  }
+}
+
+/// Check that the Mul operator behaves correctly with int32.
+TEST_P(OperatorTest, add_int64) {
+  CHECK_IF_ENABLED();
+
+  llvm::SmallVector<int64_t, 16> xValues = {
+      3, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1};
+
+  llvm::SmallVector<int64_t, 16> yValues = {
+      3, 4, 5, 7, 2, 5, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6};
+
+  llvm::SmallVector<dim_t, 4> xDims = {2, 2, 4, 4};
+  llvm::SmallVector<dim_t, 4> yDims = {2, 2, 4, 4};
+
+  Handle<int64_t> saveH =
+      addHelper<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy, xValues,
+                         yValues, xDims, yDims);
+
+  int counter = 0;
+  for (dim_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (dim_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (dim_t k = 0; k < saveH.dims()[2]; ++k) {
+        for (dim_t f = 0; f < saveH.dims()[3]; ++f) {
+          EXPECT_EQ(xValues[counter] + yValues[counter],
+                    saveH.at({i, j, k, f}));
+          ++counter;
+        }
+      }
+    }
+  }
+}
+/// Check that the Mul operator behaves correctly with int32.
+TEST_P(OperatorTest, add_float) {
+  CHECK_IF_ENABLED();
+
+  llvm::SmallVector<float, 16> xValues = {
+      3, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1,
+
+      1, 2, 3, 6, 4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1};
+
+  llvm::SmallVector<float, 16> yValues = {
+      3, 4, 5, 7, 2, 5, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6,
+
+      3, 4, 5, 7, 2, 1, 0, 6, 4, 2, 1, 8, 5, 9, 2, 6};
+
+  llvm::SmallVector<dim_t, 4> xDims = {2, 2, 4, 4};
+  llvm::SmallVector<dim_t, 4> yDims = {2, 2, 4, 4};
+
+  Handle<float> saveH =
+      addHelper<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, xValues,
+                       yValues, xDims, yDims);
+
+  int counter = 0;
+  for (dim_t i = 0; i < saveH.dims()[0]; ++i) {
+    for (dim_t j = 0; j < saveH.dims()[1]; ++j) {
+      for (dim_t k = 0; k < saveH.dims()[2]; ++k) {
+        for (dim_t f = 0; f < saveH.dims()[3]; ++f) {
+          EXPECT_FLOAT_EQ(xValues[counter] + yValues[counter],
+                          saveH.at({i, j, k, f}));
+          ++counter;
+        }
+      }
+    }
+  }
+}
 
 INSTANTIATE_BACKEND_TEST(OperatorStatelessTest);
 INSTANTIATE_BACKEND_TEST(OperatorTest);

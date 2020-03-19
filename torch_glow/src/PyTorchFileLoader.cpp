@@ -24,10 +24,10 @@
 #include "glow/Support/Support.h"
 
 #include <ATen/core/grad_mode.h>
-#include <torch/csrc/jit/custom_operator.h>
-#include <torch/csrc/jit/operator_options.h>
-#include <torch/csrc/jit/pass_manager.h>
 #include <torch/csrc/jit/passes/lower_graph.h>
+#include <torch/csrc/jit/passes/pass_manager.h>
+#include <torch/csrc/jit/runtime/custom_operator.h>
+#include <torch/csrc/jit/runtime/operator_options.h>
 
 namespace glow {
 
@@ -73,9 +73,14 @@ Error loadJitGraphToGlowFunction(
   const auto numInputs = graphInputs.size();
   auto inputs = torch::jit::last(stack, numInputs);
 
+  // FileLoader not yet support quantized inputs/outputs.
+  // These is just dummy type vectors for API.
+  std::vector<c10::ScalarType> dummyOutputType;
+
   // Load JIT Graph into Glow Function.
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
-      f, graph, inputPlaceholders, outputPlaceholders, settings, inputs, {}));
+      f, graph, inputPlaceholders, outputPlaceholders, dummyOutputType,
+      settings, inputs, {}));
 
   // Remove from stack input parameters.
   torch::jit::drop(stack, numInputs);
@@ -94,7 +99,7 @@ Error loadJitGraphToGlowFunction(
 
 /// Runs Module forward pass, triggers custom fusion pass if local thread
 /// Glow function is set.
-Error evaluateModuleGraph(std::shared_ptr<torch::jit::script::Module> &module,
+Error evaluateModuleGraph(std::shared_ptr<torch::jit::Module> &module,
                           const std::vector<torch::jit::IValue> &inputs) {
   try {
     module->forward(inputs);
@@ -108,8 +113,6 @@ Error evaluateModuleGraph(std::shared_ptr<torch::jit::script::Module> &module,
 /// and operator.
 struct RegisterCustomFusionPass {
   RegisterCustomFusionPass() {
-    auto options = c10::OperatorOptions();
-    options.setAliasAnalysis(at::AliasAnalysisKind::PURE_FUNCTION);
     torch::jit::RegisterOperators op({torch::jit::Operator(
         getFusionSymbol(),
         [](const torch::jit::Node *node) -> torch::jit::Operation {
@@ -126,7 +129,7 @@ struct RegisterCustomFusionPass {
             return 0;
           };
         },
-        options)});
+        at::AliasAnalysisKind::PURE_FUNCTION)});
 
     torch::jit::RegisterPass pass([&](std::shared_ptr<torch::jit::Graph> &g) {
       // Trigger custom fusion pass only if local thread Glow Function is set.
@@ -141,11 +144,9 @@ struct RegisterCustomFusionPass {
 
 /*static*/
 Error PyTorchFileLoader::loadPyTorchModel(
-    const std::string &fileName,
-    std::shared_ptr<torch::jit::script::Module> &module) {
+    const std::string &fileName, std::shared_ptr<torch::jit::Module> &module) {
   try {
-    module = std::make_shared<torch::jit::script::Module>(
-        torch::jit::load(fileName));
+    module = std::make_shared<torch::jit::Module>(torch::jit::load(fileName));
   } catch (const std::exception &x) {
     RETURN_ERR(strFormat("Cannot load model from file: %s, , reason: %s",
                          fileName.c_str(), x.what()));
@@ -166,7 +167,7 @@ Error PyTorchFileLoader::loadPyTorchGraph(
   settings.weightFreezingEnabled = false;
 
   // Convert PyTorch model into JIT Module.
-  std::shared_ptr<torch::jit::script::Module> module;
+  std::shared_ptr<torch::jit::Module> module;
   RETURN_IF_ERR(PyTorchFileLoader::loadPyTorchModel(fileName, module));
 
   // Disable gradient nodes generation.
@@ -189,7 +190,7 @@ Error PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
     std::vector<glow::Placeholder *> &outputPlaceholders) {
 
   // Convert PyTorch model into JIT Module.
-  std::shared_ptr<torch::jit::script::Module> module;
+  std::shared_ptr<torch::jit::Module> module;
   RETURN_IF_ERR(PyTorchFileLoader::loadPyTorchModel(fileName, module));
 
   // Disable gradient nodes generation.

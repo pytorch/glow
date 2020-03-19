@@ -717,7 +717,7 @@ TEST_F(GraphOptz, transposeConstantWithPredicate) {
 }
 
 TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
-  Node *A =
+  Placeholder *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
   Node *CV = F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);
   Node *BN =
@@ -726,10 +726,11 @@ TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
 
   EXPECT_EQ(F_->getNodes().size(), 3);
 
-  ::glow::optimize(F_, CompilationMode::Train);
-  EXPECT_EQ(F_->getNodes().size(), 3);
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+  ::glow::optimize(optimizedF_, CompilationMode::Train);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
 
-  ASSERT_EQ(A->getNumUsers(), 1);
+  ASSERT_EQ(A->getNumUsers(), 2);
   Node *curCV = A->getUsers().begin()->getUser();
   EXPECT_EQ(curCV, CV);
   ASSERT_EQ(curCV->getNumUsers(), 1);
@@ -738,6 +739,10 @@ TEST_F(GraphOptz, BatchNormAfterConvNotOptimizeForTrain) {
   ASSERT_EQ(curBN->getNumUsers(), 1);
   Node *save = curBN->getUsers().begin()->getUser();
   EXPECT_TRUE(llvm::isa<SaveNode>(save));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
 }
 
 TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
@@ -1961,7 +1966,7 @@ TEST_F(GraphOptz, DCEPublicVars) {
   EXPECT_EQ(mod_.getPlaceholders().size(), 1);
 }
 
-TEST_F(GraphOptz, foldQuantizeIntoVar) {
+TEST_F(GraphOptz, foldQuantizeIntoConstant) {
   auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "input", true);
   *bindings_.allocate(input) = {10, 10, 10, 10};
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
@@ -1971,8 +1976,14 @@ TEST_F(GraphOptz, foldQuantizeIntoVar) {
 
   EXPECT_EQ(2, F_->getNodes().size());
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {S->getPlaceholder()});
+
+  // 'optimize' doesn't merge quantize nodes into Constant.
   ::glow::optimize(F_, CompilationMode::Infer);
-  // Quantization node was merged into input var.
+  EXPECT_EQ(2, F_->getNodes().size());
+
+  // 'convertQuantizedConstants' merges quantize nodes into Constant
+  CompilationContext cctx;
+  ::glow::convertQuantizedConstants(F_, cctx);
   EXPECT_EQ(1, F_->getNodes().size());
 
   auto quantizedInput = llvm::cast<Constant>(S->getInput());
@@ -1982,7 +1993,7 @@ TEST_F(GraphOptz, foldQuantizeIntoVar) {
   }
 }
 
-TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
+TEST_F(GraphOptz, foldQuantizeIntoConstantMultipleUsages) {
   auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "input", true);
   *bindings_.allocate(input) = {10, 10, 10, 10};
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
@@ -1993,7 +2004,9 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
 
   EXPECT_EQ(2, clonedF->getNodes().size());
   ::glow::convertPlaceholdersToConstants(clonedF, bindings_, {});
-  ::glow::optimize(clonedF, CompilationMode::Infer);
+  CompilationContext cctx;
+  ::glow::convertQuantizedConstants(clonedF, cctx);
+
   // F_ function should not be affected.
   EXPECT_EQ(2, F_->getNodes().size());
 
@@ -2011,6 +2024,81 @@ TEST_F(GraphOptz, foldQuantizeIntoVarMultipleUsages) {
   for (unsigned i = 0; i < 4; ++i) {
     EXPECT_EQ(5, quantizedValues.raw(i));
   }
+}
+
+/// Search for a unique Save node in input graph \p F and return it.
+/// Fails in case there is no Save node or more than one detected.
+static SaveNode *getUniqueSaveNode(Function *F) {
+  SaveNode *foundSaveNode = nullptr;
+  for (auto &node : F->getNodes()) {
+    if (auto *s = llvm::dyn_cast<SaveNode>(&node)) {
+      EXPECT_EQ(foundSaveNode, nullptr);
+      foundSaveNode = s;
+    }
+  }
+  EXPECT_NE(foundSaveNode, nullptr);
+  return foundSaveNode;
+}
+
+/// Mock backend that requests the pre-quantization of constants.
+class MockBackendPrequantizeConst : public MockBackend {
+  bool shouldPreQuantizeConstants() const override { return true; }
+  bool isOpSupported(const NodeInfo &) const override { return true; }
+  bool transformPostLowering(Function *F, CompilationContext &,
+                             const glow::runtime::DeviceInfo *) const override {
+    // Check the IR.
+    EXPECT_EQ(F->getNodes().size(), 1);
+    auto *save = getUniqueSaveNode(F);
+    EXPECT_TRUE(llvm::isa<Constant>(save->getInput()));
+
+    return false;
+  }
+};
+/// Mock backend that requests the non pre-quantization of constants.
+class MockBackendNotPrequantizeConst : public MockBackend {
+  bool shouldPreQuantizeConstants() const override { return false; }
+  bool isOpSupported(const NodeInfo &) const override { return true; }
+  bool transformPostLowering(Function *F, CompilationContext &,
+                             const glow::runtime::DeviceInfo *) const override {
+    // Check the IR.
+    EXPECT_EQ(F->getNodes().size(), 2);
+    auto *save = getUniqueSaveNode(F);
+    auto *quant = llvm::dyn_cast<QuantizeNode>(save->getInput());
+    EXPECT_TRUE(quant);
+    EXPECT_TRUE(llvm::isa<Constant>(quant->getInput()));
+
+    return false;
+  }
+};
+
+/// Test the actual constant quantization for backends.
+template <typename Backend>
+void testFoldQuantizeIntoConstant(Module &mod_, Function *F_) {
+  auto *input = mod_.createConstant(ElemKind::FloatTy, {4}, "input");
+  input->getHandle<float>() = {10, 10, 10, 10};
+  auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4}, 2, 0);
+  auto *Q = F_->createQuantize("quantize", input, qType);
+  auto *save = F_->createSave("save", Q);
+
+  CompilationContext cctx;
+  auto B = Backend();
+  // Note: the check that Quantize is or not folded into Constant before
+  // post-lowering is done in <backend>::transformPostLowering()
+  EXIT_ON_ERR(::glow::optimizeFunction(F_, B, cctx));
+
+  // Check the IR (the constant must have been quantized).
+  EXPECT_EQ(F_->getNodes().size(), 1);
+  EXPECT_TRUE(llvm::isa<Constant>(save->getInput()));
+}
+
+/// Check the backend actual constant quantization is done before post-lowering.
+TEST_F(GraphOptz, foldQuantizeIntoConstantBeforePostLowering) {
+  testFoldQuantizeIntoConstant<MockBackendPrequantizeConst>(mod_, F_);
+}
+
+/// Check the backend actual constant quantization is done after post-lowering.
+TEST_F(GraphOptz, foldQuantizeIntoConstantAfterPostLowering) {
+  testFoldQuantizeIntoConstant<MockBackendNotPrequantizeConst>(mod_, F_);
 }
 
 /// Check that the Quantize(Splat) -> Splat' optimization works.
@@ -3955,4 +4043,29 @@ TEST_F(GraphOptz, FoldConvTransposeAddIntoBiasAddRHS) {
 TEST_F(GraphOptz, FoldConvTransposeAddIntoBiasAddLHS) {
   foldConvTransposeAddIntoBiasAdd(bindings_, mod_, F_, optimizedF_, true);
   checkNumericalEquivalence();
+}
+
+/// Test that MatMul + Add is folded into FullyConnected.
+TEST_F(GraphOptz, FoldMatMulAddIntoFullyConnected) {
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3}, "input", false);
+  auto *weights =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 5}, "weights", false);
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5}, "bias", false);
+
+  MatMulNode *matmul = F_->createMatMul("matmul", input, weights);
+  AddNode *add = F_->createAdd("add", matmul, bias);
+  F_->createSave("save", add);
+  EXPECT_EQ(3, F_->getNodes().size());
+
+  // The folding should replace the MatMul + Add into a FullyConnected and a
+  // Reshape to 1D for the Bias.
+  CompilationContext cctx;
+  ::glow::fold(F_, cctx);
+  EXPECT_EQ(3, F_->getNodes().size());
+  EXPECT_EQ(0, countNodeKind(F_, Kinded::Kind::AddNodeKind));
+  EXPECT_EQ(0, countNodeKind(F_, Kinded::Kind::MatMulNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ReshapeNodeKind));
 }

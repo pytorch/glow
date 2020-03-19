@@ -126,6 +126,8 @@ add_library(NNPI
     NNPIOptions.cpp
     NNPITracing.cpp
     NNPIMLTraceWrapper.cpp
+    InferenceContext.cpp
+    NNPIResource.cpp
 )
 
 target_link_libraries(NNPI

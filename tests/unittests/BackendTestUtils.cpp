@@ -1106,7 +1106,7 @@ void inferMixedNet(Tensor *inputs, Tensor *out, llvm::StringRef kind) {
   Function *F = mod.createFunction("main");
   auto *var = createPlaceholder(mod, bindings, inputs, "var", "NCHW");
   auto *selected =
-      mod.createPlaceholder(IndexElemKind, {2, 1}, "selected", false);
+      mod.createPlaceholder(ElemKind::Int64ITy, {2, 1}, "selected", false);
 
   auto *tr = F->createTranspose("tr", var, NCHW2NHWC);
   auto *fc = F->createFullyConnected(bindings, "fc", tr, 16);

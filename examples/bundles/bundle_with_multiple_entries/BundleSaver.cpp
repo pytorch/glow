@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
 
   // Create a bundle with multiple entry points and save it.
   Module M;
-  constexpr size_t tensorSize = 64;
+  constexpr dim_t tensorSize = 64;
 
   Constant *addConst =
       M.createConstant(ElemKind::FloatTy, {tensorSize}, "const");

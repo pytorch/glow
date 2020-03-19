@@ -7,13 +7,13 @@ set -euxo pipefail
 export GLOW_SRC=$PWD
 export GLOW_BUILD_DIR=${GLOW_SRC}/build
 export LOADER=${GLOW_BUILD_DIR}/bin/image-classifier
-export LSAN_OPTIONS="suppressions=$GLOW_SRC/.circleci/suppressions.txt"
+export LSAN_OPTIONS="suppressions=$GLOW_SRC/.circleci/lsan_suppressions.txt"
 export ASAN_SYMBOLIZER_PATH=/usr/bin/llvm-symbolizer
 export IMAGES_DIR=${GLOW_SRC}/tests/images/
 
 # Pass in which tests to run (one of {test, test_unopt}).
 run_unit_tests() {
-    CTEST_PARALLEL_LEVEL=4 ninja "${1}" || ( cat Testing/Temporary/LastTest.log && exit 1 )
+    CTEST_PARALLEL_LEVEL=4 GLOG_minloglevel=3 ninja "${1}" || ( cat Testing/Temporary/LastTest.log && exit 1 )
 }
 
 run_and_check_lenet_mnist_bundle() {
@@ -52,6 +52,7 @@ run_pytorch_tests() {
       export PATH="/tmp/sccache:$PATH"
     fi
     source /tmp/venv/bin/activate
+    pip install pytest-xdist
     python "${GLOW_SRC}/torch_glow/setup.py" test --run_cmake
     cd -
     if hash sccache 2>/dev/null; then
@@ -68,10 +69,6 @@ case ${CIRCLE_JOB} in
     OPENCL)
         run_unit_tests check
         ;;
-    TSAN)
-        # Run only Glow tests.
-        run_unit_tests check
-        ;;
     DEBUG)
         run_unit_tests check
         run_unit_tests test_unopt
@@ -80,7 +77,9 @@ case ${CIRCLE_JOB} in
         # No tests with shared libs; it's similar to DEBUG.
         ;;
     32B_DIM_T)
-        # No tests with 32b dim_t; it's similar to DEBUG.
+        # A lot of 32b dim_t issues are not revealed at build time, thus
+        # run the unit test suite also.
+        run_unit_tests check
         ;;
     RELEASE_WITH_EXPENSIVE_TESTS)
         run_unit_tests check_expensive
