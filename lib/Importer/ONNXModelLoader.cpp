@@ -2580,7 +2580,6 @@ Error ONNXModelLoader::loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,
 
   Node *N = G_.createNodeWithBroadcast<CmpEQNode>(loadOperatorName(op),
                                                   /* axis */ -1, LHS, RHS);
-
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
 }
