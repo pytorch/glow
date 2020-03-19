@@ -905,6 +905,10 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig,
 
 Expected<DAGListTy>
 Partitioner::setupPrepartitionedModule(const PrePartitionedConfig &config) {
+  RETURN_ERR_IF_NOT(
+      !multiBackendNames_,
+      "Do not support multiple backend kinds in prepartitioned flow.");
+
   // Prepare the mapping between BackendName and BackendInfo.
   std::vector<Backend *> backends;
   genBackendMap(backendMap_, backendHolder_, backends);
@@ -914,7 +918,7 @@ Partitioner::setupPrepartitionedModule(const PrePartitionedConfig &config) {
   NodeToFunctionMap partitionMap;
   // Create partitions based on the given number and names.
   for (size_t i = 0, e = funcs.size(); i < e; i++) {
-    partitionMap.createPartition(funcs[i], deviceInfo_[i].backendName);
+    partitionMap.createPartition(funcs[i], deviceInfo_[0].backendName);
   }
 
   // Map the nodes the the partitions.

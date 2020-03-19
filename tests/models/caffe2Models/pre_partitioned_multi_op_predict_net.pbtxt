@@ -77,3 +77,7 @@ partition_info {
   name: "p2"
   device_id: 2
 }
+partition_info {
+  name: "unused_p3"
+  device_id: 2
+}
