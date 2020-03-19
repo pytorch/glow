@@ -3,11 +3,11 @@
 ### Introduction
 
 The CPU Backend is a JIT ("Just In Time") compiler that generates code in memory
-on demand for the host CPU. The host cpu can be X86, ARM or anything that LLVM
+on demand for the host CPU. The host cpu can be x86, ARM or anything that LLVM
 can target. In many ways, the JIT is similar to the interpreter. Both execute
 code on the host CPU, except that the JIT is able to further optimize the code.
 
-The Glow interpreter goes over the low-level IR one instruction at a time and
+The Glow interpreter goes over the low-level intermediate representation (IR) one instruction at a time and
 executes a switch statement that dispatches a C++ implementation for each
 instruction. This is suboptimal for a number of reasons. First, after each
 low-level instruction is executed, by calling a function call, we return to the
@@ -17,9 +17,9 @@ is being executed.
 
 The JIT, on the other hand, generates a single stream of highly optimized
 instructions that don't go back to the interpreter. Moreover, each instruction
-is optimized based on specific information on the context in which the
-instruction is executed. When a matrix multiplication is compiled the JIT knows
-exactly the dimensions of the matrices that are being executed. The knowledge enables
+is optimized based on specific information about the context in which the
+instruction is executed. For example, when a matrix multiplication is compiled, the JIT knows
+exactly the dimensions of the matrices that are being executed. This knowledge enables
 much better code generation and vectorization. The JIT is also able to eliminate
 all calls to 'malloc', because the memory is statically allocated. The whole
 network is allocated by a single malloc call, all inputs and outputs a single separate call.
@@ -27,16 +27,16 @@ network is allocated by a single malloc call, all inputs and outputs a single se
 ### How the JIT Works
 
 The JIT accepts the low-level IR. At this point the high-level optimizer and the
-low-level optimizers did their best to optimize the graph. This includes things
-like tiling and memory sharing of buffers. The first thing that the JIT does is
+low-level optimizers have done their best to optimize the graph. This includes things
+like tiling and buffer memory sharing. The first thing that the JIT does is
 allocate concrete memory addresses for the AllocActivation instructions in the
 module. The allocation is done by scanning the module and updating the memory
-allocator. After this process the allocator reports the high water mark, which
+allocator. After this process, the allocator reports the high water mark, which
 is the maximum number of bytes that the network consumes. The allocator assigns
 offsets for each alloc activation within the buffer. This information is stored
-in a runtimeBundle where a single call to malloc initializes the heap for activations.
+in a runtimeBundle where a single call to 'malloc' initializes the heap for activations.
 
-Next, the JIT opens a new LLVM functions and prepares for code generation. The
+Next, the JIT opens a new LLVM function and prepares for code generation. The
 compiler goes over each low-level instruction and generates a sequence of
 LLVM-IR. The next section describes how the LLVM-IR is generated.
 
@@ -51,13 +51,13 @@ During the compilation process, each Glow low-level instruction is converted int
 a sequence of LLVM-IR instructions. One way to implement this lowering is to
 use the IRBuilder to generate low-level programs. For example, the matmul
 instruction would translate to LLVM-IR by creating new basic blocks and encoding
-the internals of the multiplications. This is insane. Implementing and
+the internals of the multiplications. This is clearly not efficient - implementing and
 maintaining the low-level implementations of so many operations using the
 LLVM-IR is not scalable.
 
 Instead, the CPU backend compiles a small standard library into LLVM bitcode
 that it ships with the compiler. During the compilation process, Glow loads the
-bitcode from disk and specializes the operator implementations for the specific
+bitcode from disk and converts (specializes) the operator implementations for the specific
 context. Glow replaces function arguments that represent the dimensions of some
 tensor or buffer addresses with constants that LLVM can optimize to generate
 efficient code. The compiler can decide on the kind and level of operator
@@ -69,7 +69,7 @@ efficient code. Notice that by providing the exact tensor dimensions and loop
 trip count the vectorizer is able to generate efficient code that does not
 contain pre-header legality check and scalar loop to handle the remainder odd
 iterations. The convolution and matrix multiplication operations are
-hand-optimized in C++ using the clang extended OpenCL vector syntax, and LLVM
+hand-optimized in C++ using the clang-extended OpenCL vector syntax, and LLVM
 does a good job allocating registers and encoding the instructions, removing the
 need to use inline assembly.
 
@@ -118,8 +118,8 @@ mutable memory footprint of the network. From this point in the compilation
 pipeline the compiled code can refer to pointers in memory.
 
 Finally, the compiler performs efficient code generation for the non-convolution
-parts of the network. For example, below the generated assembly for some part of
-the network can be seen. The compiler fused two unrelated element-wise
+parts of the network. For example, the generated assembly for some part of
+the network can be seen below. The compiler has fused two unrelated element-wise
 operations into a single loop. The Add and Max operations are performed on the
 same memory buffer without reading the memory twice.
 

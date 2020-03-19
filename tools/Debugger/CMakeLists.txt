@@ -1,3 +1,4 @@
+if (GLOW_BUILD_TESTS)
 add_executable(network-debugger
                network-debugger.cpp
                NetworkComparator.cpp)
@@ -5,8 +6,7 @@ add_executable(network-debugger
 target_link_libraries(network-debugger
                       PRIVATE
                         BackendTestUtils
-                        HostManager
                         Importer
                         HostManager
-                        ExecutionEngine
-                        Exporter)
+                        ExecutionEngine)
+endif()

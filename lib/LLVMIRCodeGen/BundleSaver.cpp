@@ -458,6 +458,10 @@ void BundleSaver::emitSymbolTable() {
 void BundleSaver::produceBundle() {
   DCHECK(!isSaved_) << "produceBundle can be invoked only once";
   isSaved_ = true;
+  // Emit entry functions.
+  for (auto &savedFunction : savedIRFunctions_) {
+    emitBundleEntryFunction(savedFunction);
+  }
   // Finish code generation.
   irgen_->finishCodeGen();
   setIRFunction("<noname>", nullptr);
@@ -540,7 +544,8 @@ void BundleSaver::produceBundle() {
 /// the LLVM optimizer will constant propagate them into relative addressing
 /// computations and the like and produce a very efficient code that uses
 /// absolute addressing whenever possible.
-void BundleSaver::emitBundleEntryFunction() {
+void BundleSaver::emitBundleEntryFunction(
+    BundleSaver::SavedIRFunction &savedF) {
   // The bundle entry point has the following API:
   // void entry(uint8_t *baseConstantWeightVars, uint8_t *baseInoutWeightVars,
   // uint8_t *baseActivations);
@@ -550,7 +555,7 @@ void BundleSaver::emitBundleEntryFunction() {
       llvm::FunctionType::get(voidTy, {int8PtrTy, int8PtrTy, int8PtrTy}, false);
   auto *func =
       llvm::Function::Create(bundleFuncTy, llvm::Function::ExternalLinkage,
-                             irgen_->getMainEntryName(), &irgen_->getModule());
+                             savedF.entryName, &irgen_->getModule());
   llvm::BasicBlock *entry_bb =
       llvm::BasicBlock::Create(irgen_->getLLVMContext(), "entry", func);
   llvm::IRBuilder<> builder(entry_bb);
@@ -565,7 +570,7 @@ void BundleSaver::emitBundleEntryFunction() {
   initFunctionCallArgs.push_back(offsetsArray);
   // Invoke the main entry with constant arguments and let LLVM optimizer make
   // use of it.
-  auto *entryF = irgen_->getLLVMFunction();
+  auto *entryF = savedF.llvmF;
   entryF->setLinkage(llvm::Function::InternalLinkage);
   irgen_->createCall(builder, entryF, initFunctionCallArgs);
   // Terminate the function.
@@ -639,6 +644,5 @@ void BundleSaver::save(llvm::StringRef mainEntryName, const IRFunction *F) {
   performBundleMemoryAllocation();
   // Emit the code for the body of the entry function.
   irgen_->performCodeGen();
-  // Create the bundle entry function for F.
-  emitBundleEntryFunction();
+  savedIRFunctions_.back().llvmF = irgen_->getLLVMFunction();
 }

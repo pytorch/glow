@@ -101,3 +101,24 @@ void ExtractTensorInst::verify() const {
       "ExtractTensor offsets should have the same number of dims as Src type "
       "shape");
 }
+
+static void verifyRelu(TypeRef srcTy, TypeRef destTy) {
+  if (srcTy->isQuantizedType()) {
+    assert(srcTy->isQuantizedType() == destTy->isQuantizedType() &&
+           "Mismatching isQuantized");
+    assert(srcTy->dims() == destTy->dims() && "Mismatching dimensions");
+    assert(srcTy->getElementType() == destTy->getElementType() &&
+           "Mismatching element type");
+    return;
+  }
+  assert(destTy->isEqual(*srcTy) && "Mismatching types");
+}
+
+void ReluInst::verify() const {
+  verifyRelu(getSrc()->getType(), getDest()->getType());
+}
+
+void ReluGradInst::verify() const {
+  verifyRelu(getSrcGrad()->getType(), getDest()->getType());
+  verifyRelu(getSrcGrad()->getType(), getDestGrad()->getType());
+}

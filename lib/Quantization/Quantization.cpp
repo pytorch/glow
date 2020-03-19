@@ -146,8 +146,7 @@ static bool isBAFromLoweredFC(const BatchedAddNode *baN,
                               const LoweredInfoMap &loweredMap) {
   // Look for the set of NodeNameAndKinds corresponding to the
   // BatchedAdd. If one exists, this means it was lowered.
-  auto it = loweredMap.find(NodeQuantizationInfo::generateNodeOutputName(
-      baN->getName(), BatchedAddNode::ResultIdx));
+  auto it = loweredMap.find(baN->getResult().generateNodeOutputName());
   if (it == loweredMap.end()) {
     return false;
   }
@@ -175,10 +174,7 @@ protected:
   /// of \p out to match some IR constraints, but the final type still
   /// needs to be known to insert rescale nodes.
   TypeRef getTargetTypeForOutputImpl(const NodeValue &out) const {
-    const std::string nodeOutputName =
-        NodeQuantizationInfo::generateNodeOutputName(out.getNode()->getName(),
-                                                     out.getResNo());
-    auto outTQPIt = nodeToTQP_.find(nodeOutputName);
+    auto outTQPIt = nodeToTQP_.find(out.generateNodeOutputName());
     assert(outTQPIt != nodeToTQP_.end() &&
            "Missing quantization params for a node");
 
@@ -208,9 +204,7 @@ protected:
       return val.getType();
     }
 
-    std::string nodeOutputName = NodeQuantizationInfo::generateNodeOutputName(
-        val.getNode()->getName(), val.getResNo());
-    auto valTQPIt = nodeToTQP_.find(nodeOutputName);
+    auto valTQPIt = nodeToTQP_.find(val.generateNodeOutputName());
     assert(valTQPIt != nodeToTQP_.end() &&
            "Missing quantization params for a node");
 
@@ -414,9 +408,7 @@ protected:
   /// Helper that \returns whether quantization parameters exist
   /// in \ref nodeToTQP_ given the name and result number of \p val.
   bool quantizationParamsExist(const NodeValue &val) const {
-    std::string nodeOutputName = NodeQuantizationInfo::generateNodeOutputName(
-        val.getNode()->getName(), val.getResNo());
-    auto valTQPIt = nodeToTQP_.find(nodeOutputName);
+    auto valTQPIt = nodeToTQP_.find(val.generateNodeOutputName());
     return valTQPIt != nodeToTQP_.end();
   }
 
@@ -429,18 +421,18 @@ protected:
   ///
   /// \pre One of t\p val's type and \p destTy must be FloatTy and
   ///      the other must be a quantized type.
-  Node *createConversion(Function &function, const Node & /* unused */,
-                         NodeValue &val, TypeRef destTy,
-                         bool /* isInput */) override {
+  Node *createConversion(Function &function, const Node &node, NodeValue &val,
+                         TypeRef destTy, bool /* isInput */) override {
     assert((&function == &function_) &&
            "Trying to add quantize/dequantize conversion to a function other "
            "than the function being quantized.");
+    std::string nodeName = node.getName();
     if (destTy->isQuantizedType()) {
-      return function.createQuantize("quantize", val, destTy);
+      return function.createQuantize(nodeName + "_quantize", val, destTy);
     }
     assert(destTy->getElementType() == ElemKind::FloatTy &&
            "Can't dequantize to any type except float.");
-    return function.createDequantize("dequantize", val);
+    return function.createDequantize(nodeName + "_dequantize", val);
   }
 
   /// All IRConstraint cases below assume that the input and output index that
@@ -666,9 +658,7 @@ protected:
       auto *dequantize =
           llvm::dyn_cast<DequantizeNode>((*val.getUsers().begin()).getUser());
       TypeRef outTy = val.getType();
-      auto name = NodeQuantizationInfo::generateNodeOutputName(
-          dequantize->getName(), outNum);
-
+      auto name = dequantize->getResult().generateNodeOutputName();
       nodeToTQP_[name] = {outTy->getScale(), outTy->getOffset()};
     }
   } // namespace
@@ -823,10 +813,10 @@ public:
         }
       }
 
-      // Convert SLWS from normal quantized version to fused rowwise-quantized
-      // version if applicable. Data must be Constant for this to occur. We also
-      // will not quantize the weights as we do for the default normal quantized
-      // SLWS, as the rowwise version uses float weights.
+      // Convert SLWS from normal version to fused rowwise-quantized version if
+      // applicable. Data must be Constant for this to occur. We also will not
+      // quantize the weights as we do for the default normal quantized SLWS, as
+      // the rowwise version uses float weights.
       if (auto *SLWS =
               llvm::dyn_cast<SparseLengthsWeightedSumNode>(Q->getInput())) {
         NodeValue data = SLWS->getData();
@@ -856,7 +846,10 @@ public:
         auto *FRWQSLWS =
             function_.createFusedRowwiseQuantizedSparseLengthsWeightedSum(
                 SLWS->getName(), dataC->getPayloadMutable(), weightsF,
-                SLWS->getIndices(), SLWS->getLengths());
+                SLWS->getIndices(), SLWS->getLengths(),
+                /* fusedElemKind */ ElemKind::UInt8FusedQTy,
+                /* useFP16Accumulation */ false, SLWS->getLengthsMode(),
+                SLWS->getAvgLength());
 
         // Fused RWQSLWS stores the fused scales and offsets in trailing
         // columns. If the input was single dimensional then it adds extra
@@ -929,7 +922,7 @@ generateNodeQuantizationInfos(PlaceholderBindings &bindings, const Function *F,
       float min = CI.raw(0);
       float max = CI.raw(1);
 
-      std::string fullOutputName = NodeQuantizationInfo::generateNodeOutputName(
+      std::string fullOutputName = NodeValue::generateNodeOutputName(
           QPN->getProfiledNodeName(), QPN->getProfiledOutputNumber());
 
       ElemKind qPrec = quantizationPrecision;

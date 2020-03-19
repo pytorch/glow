@@ -164,7 +164,7 @@ TEST_P(MLTest, simpleRegression) {
   // Testing the regression layer. This test takes the first element from the
   // input vector, adds one to it and places the result in the second element of
   // the output vector.
-  const size_t numInputs = 4;
+  const dim_t numInputs = 4;
 
   // Learning a single input vector.
   TC.learningRate = 0.05;
@@ -405,7 +405,7 @@ unsigned numSamples = 230;
 /// L0, and the rest of the dots, away from the axis are L1.
 void generateCircleData(Tensor &coordinates, Tensor &labels, PseudoRNG &PRNG) {
   auto C = coordinates.getHandle<>();
-  auto L = labels.getHandle<sdim_t>();
+  auto L = labels.getHandle<int64_t>();
 
   for (dim_t i = 0; i < numSamples / 2; i++) {
     float r = PRNG.nextRand() * 0.4;
@@ -454,7 +454,8 @@ TEST_P(MLTest, circle) {
     F = mod.createFunction("circle");
     A = mod.createPlaceholder(ElemKind::FloatTy, {minibatchSize, 2}, "A",
                               false);
-    S = mod.createPlaceholder(IndexElemKind, {minibatchSize, 1}, "S", false);
+    S = mod.createPlaceholder(ElemKind::Int64ITy, {minibatchSize, 1}, "S",
+                              false);
 
     auto *FCL0 = F->createFullyConnected(inferBindings, "fc1", A, 8);
     auto *T0 = F->createTanh("tanh1", FCL0);
@@ -475,7 +476,7 @@ TEST_P(MLTest, circle) {
   trainingBindings.allocate(EET_.getModule().getPlaceholders());
 
   Tensor coordinates(ElemKind::FloatTy, {numSamples, 2});
-  Tensor labels(IndexElemKind, {numSamples, 1});
+  Tensor labels(ElemKind::Int64ITy, {numSamples, 1});
   generateCircleData(coordinates, labels, EET_.getModule().getPRNG());
 
   // Training:
@@ -827,7 +828,7 @@ enum class Sport : size_t { BASKETBALL = 0, SOCCER = 1 };
 void generatePlayerData(Tensor &players, Tensor &labels,
                         unsigned numTrainPlayers, PseudoRNG &PRNG) {
   auto P = players.getHandle<>();
-  auto L = labels.getHandle<sdim_t>();
+  auto L = labels.getHandle<int64_t>();
 
   // Auto generate height/weights for basketball players.
   for (dim_t i = 0; i < numTrainPlayers / 2; i++) {
@@ -875,7 +876,8 @@ TEST_P(MLTest, classifyPlayerSport) {
 
     A = mod.createPlaceholder(ElemKind::FloatTy, {numTrainPlayers, numFeatures},
                               "A", false);
-    S = mod.createPlaceholder(IndexElemKind, {numTrainPlayers, 1}, "S", false);
+    S = mod.createPlaceholder(ElemKind::Int64ITy, {numTrainPlayers, 1}, "S",
+                              false);
 
     auto *FC = F->createFullyConnected(inferBindings, "fc", A, numClasses);
     auto *SM = F->createSoftMax("softmax", FC, S);
@@ -892,7 +894,7 @@ TEST_P(MLTest, classifyPlayerSport) {
   EET_.compile(CompilationMode::Train);
 
   Tensor players(ElemKind::FloatTy, {numTrainPlayers, numFeatures});
-  Tensor labels(IndexElemKind, {numTrainPlayers, 1});
+  Tensor labels(ElemKind::Int64ITy, {numTrainPlayers, 1});
   generatePlayerData(players, labels, numTrainPlayers,
                      EET_.getModule().getPRNG());
 
@@ -1039,7 +1041,7 @@ TEST_P(MLTest, nonLinearClassifier) {
     F = mod.createFunction("nonLinearClassifier");
 
     A = mod.createPlaceholder(ElemKind::FloatTy, {batchSize, 2}, "A", false);
-    S = mod.createPlaceholder(IndexElemKind, {batchSize, 1}, "S", false);
+    S = mod.createPlaceholder(ElemKind::Int64ITy, {batchSize, 1}, "S", false);
 
     auto *FCL0 = F->createFullyConnected(inferBindings, "fc1", A, 8);
     auto *T0 = F->createTanh("tanh1", FCL0);
@@ -1062,7 +1064,7 @@ TEST_P(MLTest, nonLinearClassifier) {
   trainingBindings.allocate(EET_.getModule().getPlaceholders());
 
   Tensor samples(ElemKind::FloatTy, {numSamples, 2});
-  Tensor labels(IndexElemKind, {numSamples, 1});
+  Tensor labels(ElemKind::Int64ITy, {numSamples, 1});
 
   for (dim_t i = 0; i < numSamples; i++) {
     float x = EET_.getModule().getPRNG().nextRand();
@@ -1070,7 +1072,7 @@ TEST_P(MLTest, nonLinearClassifier) {
     dim_t label = (x < 0.0) ^ (y < 0.0);
     samples.getHandle<>().at({i, 0}) = x;
     samples.getHandle<>().at({i, 1}) = y;
-    labels.getHandle<sdim_t>().at({i, 0}) = label;
+    labels.getHandle<int64_t>().at({i, 0}) = label;
   }
 
   runBatch(EET_, trainingBindings, 500, sampleCounter, {A, S},
@@ -1097,7 +1099,7 @@ TEST_P(MLTest, nonLinearClassifier) {
 /// Generate images in two classes.
 /// A "line" is labeled as 0 and a "cross" is labeled as 1.
 static void generateImageData(Tensor &images, Tensor &labels, PseudoRNG &PRNG) {
-  auto L = labels.getHandle<sdim_t>();
+  auto L = labels.getHandle<int64_t>();
   auto image = images.getHandle<>();
   unsigned numSamples = images.dims()[0];
   images.zero();
@@ -1147,7 +1149,7 @@ TEST_P(MLTest, convNetForImageRecognition) {
         ElemKind::FloatTy, {batchSize, 8, 8, 1}, "input", false);
 
     Placeholder *ex =
-        mod.createPlaceholder(IndexElemKind, {batchSize, 1}, "exp", false);
+        mod.createPlaceholder(ElemKind::Int64ITy, {batchSize, 1}, "exp", false);
 
     auto *CV = F->createConv(inferBindings, "conv", input, 1, 3, 1, 0, 1);
     auto *TANH = F->createTanh("tanh", CV);
@@ -1168,7 +1170,7 @@ TEST_P(MLTest, convNetForImageRecognition) {
   inferBindings.copyTrainableWeightsTo(trainingBindings);
 
   Tensor images(ElemKind::FloatTy, {numSamples, 8, 8, 1});
-  Tensor labels(IndexElemKind, {numSamples, 1});
+  Tensor labels(ElemKind::Int64ITy, {numSamples, 1});
   generateImageData(images, labels, mod->getPRNG());
 
   // Training:
@@ -1216,7 +1218,7 @@ TEST_P(MLTest, convNetForImageRecognition) {
 
   // Generate the images used for testing.
   Tensor testImages(ElemKind::FloatTy, {batchSize, 8, 8, 1});
-  Tensor testLabels(IndexElemKind, {batchSize, 1});
+  Tensor testLabels(ElemKind::Int64ITy, {batchSize, 1});
   generateImageData(testImages, testLabels, mod->getPRNG());
   updateInputPlaceholders(inferBindings, {input}, {&testImages});
 
@@ -1225,7 +1227,7 @@ TEST_P(MLTest, convNetForImageRecognition) {
   Tensor *res = inferBindings.get(EEI_.getModule().getPlaceholderByName("ret"));
   auto SMH = res->getHandle<>();
   for (dim_t i = 0; i < batchSize; i++) {
-    bool isLine = testLabels.getHandle<sdim_t>().at({i, 0}) == 0;
+    bool isLine = testLabels.getHandle<int64_t>().at({i, 0}) == 0;
     auto lineWeight = SMH.at({i, 0});
     auto crossWeight = SMH.at({i, 1});
     EXPECT_TRUE((isLine && lineWeight > crossWeight) ||
@@ -1420,7 +1422,7 @@ static void generateMatrixRotationRecognitionData(Tensor &matricesA,
          "Size of the tensors is incompatible");
   auto handleMatricesA = matricesA.getHandle<float>();
   auto handleMatricesB = matricesB.getHandle<float>();
-  auto handleExpected = expected.getHandle<sdim_t>();
+  auto handleExpected = expected.getHandle<int64_t>();
 
   handleMatricesA.randomize<int>(0, 1, PRNG);
   handleMatricesB.randomize<int>(0, 1, PRNG);
@@ -1476,7 +1478,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
         ElemKind::FloatTy, {TC.batchSize, 3, 3}, "matrixA", false);
     varMatricesB = mod.createPlaceholder(
         ElemKind::FloatTy, {TC.batchSize, 3, 3}, "matrixB", false);
-    varExpected = mod.createPlaceholder(IndexElemKind, {TC.batchSize, 1},
+    varExpected = mod.createPlaceholder(ElemKind::Int64ITy, {TC.batchSize, 1},
                                         "expected", false);
 
     // Simply concatenating the matrices first would probability be as effective
@@ -1511,7 +1513,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
   const unsigned numSamples = 50;
   Tensor matricesA(ElemKind::FloatTy, {numSamples, 3, 3});
   Tensor matricesB(ElemKind::FloatTy, {numSamples, 3, 3});
-  Tensor expected(IndexElemKind, {numSamples, 1});
+  Tensor expected(ElemKind::Int64ITy, {numSamples, 1});
   generateMatrixRotationRecognitionData(matricesA, matricesB, expected,
                                         EET_.getModule().getPRNG());
 
@@ -1548,7 +1550,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
     // Note that the two softmax outputs always sum to 1, so we only look at
     // one. Index one is true if there is a rotation.
     float value = RHtrain.at({i, 1});
-    bool hasRotation = expected.getHandle<sdim_t>().at({batchStartIdx + i, 0});
+    bool hasRotation = expected.getHandle<int64_t>().at({batchStartIdx + i, 0});
     if ((value > 0.5) != hasRotation) {
       ++errors;
     }
@@ -1663,7 +1665,7 @@ TEST_P(MLTest, learnSparseLengthsWeightedSumEmbeddings) {
     F = mod.createFunction("SparseLengthsWeightedSum");
     dataP = mod.createPlaceholder(ElemKind::FloatTy, {10}, "dataP",
                                   /*isTrainable=*/true);
-    indicesP = mod.createPlaceholder(IndexElemKind, {10}, "indicesP",
+    indicesP = mod.createPlaceholder(ElemKind::Int64ITy, {10}, "indicesP",
                                      /*isTrainable=*/false);
     weightsP = mod.createPlaceholder(ElemKind::FloatTy, {10}, "weightsP",
                                      /*isTrainable=*/false);
@@ -1682,8 +1684,8 @@ TEST_P(MLTest, learnSparseLengthsWeightedSumEmbeddings) {
   DH.randomize(-5.0, 5.0, PRNG);
 
   // Allocate and set indices such that input embeddings are reversed.
-  inferBindings.allocate(indicesP)->getHandle<sdim_t>() = {9, 8, 7, 6, 5,
-                                                           4, 3, 2, 1, 0};
+  inferBindings.allocate(indicesP)->getHandle<int64_t>() = {9, 8, 7, 6, 5,
+                                                            4, 3, 2, 1, 0};
   // Allocate and set weights.
   inferBindings.allocate(weightsP)->getHandle() = {
       0.75, 0.25, 0.75, 0.25, 0.75, 0.25, 0.75, 0.25, 0.75, 0.25};
@@ -1757,7 +1759,7 @@ TEST_P(MLTest, learnSparseLengthsWeightedSumWeights) {
     F = mod.createFunction("SparseLengthsWeightedSum");
     dataP = mod.createPlaceholder(ElemKind::FloatTy, {10}, "dataP",
                                   /*isTrainable=*/false);
-    indicesP = mod.createPlaceholder(IndexElemKind, {10}, "indicesP",
+    indicesP = mod.createPlaceholder(ElemKind::Int64ITy, {10}, "indicesP",
                                      /*isTrainable=*/false);
     weightsP = mod.createPlaceholder(ElemKind::FloatTy, {10}, "weightsP",
                                      /*isTrainable=*/true);
@@ -1775,8 +1777,8 @@ TEST_P(MLTest, learnSparseLengthsWeightedSumWeights) {
   inferBindings.allocate(dataP)->getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
   // Allocate and set indices such that input embeddings are reversed.
-  inferBindings.allocate(indicesP)->getHandle<sdim_t>() = {9, 8, 7, 6, 5,
-                                                           4, 3, 2, 1, 0};
+  inferBindings.allocate(indicesP)->getHandle<int64_t>() = {9, 8, 7, 6, 5,
+                                                            4, 3, 2, 1, 0};
   // Allocate and randomly initialize weights.
   auto WH = inferBindings.allocate(weightsP)->getHandle();
   WH.randomize(-1.0, 1.0, PRNG);

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 #include "glow/Support/ThreadPool.h"
+#include "folly/system/ThreadName.h"
 
 namespace glow {
 
@@ -30,8 +31,13 @@ size_t createThreadId() { return thread_idx++; }
 
 } // namespace threads
 
-ThreadExecutor::ThreadExecutor()
-    : shouldStop_(false), worker_([this]() { threadPoolWorkerMain(); }) {}
+ThreadExecutor::ThreadExecutor(const std::string &name)
+    : shouldStop_(false), worker_([this, name]() {
+        if (!name.empty()) {
+          folly::setThreadName(name);
+        }
+        threadPoolWorkerMain();
+      }) {}
 
 ThreadExecutor::~ThreadExecutor() { stop(true); }
 
@@ -90,11 +96,11 @@ ThreadExecutor::submit(std::packaged_task<void(void)> &&task) {
   return future;
 }
 
-ThreadPool::ThreadPool(unsigned numWorkers) {
+ThreadPool::ThreadPool(unsigned numWorkers, const std::string &name) {
   // Intialize all workers and make each one run threadPoolWorkerMain.
   workers_.reserve(kNumWorkers);
   for (unsigned i = 0; i < numWorkers; i++) {
-    workers_.push_back(new ThreadExecutor());
+    workers_.push_back(new ThreadExecutor(name));
     size_t threadId{0};
     workers_.back()
         ->submit([&threadId] { threadId = threads::getThreadId(); })

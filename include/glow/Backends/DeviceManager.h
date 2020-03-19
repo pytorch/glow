@@ -27,6 +27,7 @@
 #include <atomic>
 #include <functional>
 #include <map>
+#include <mutex>
 #include <string>
 
 namespace glow {
@@ -48,6 +49,10 @@ protected:
   /// Configuration object for the device.
   DeviceConfig config_;
 
+  /// Lock to protect allocations_ from being accessed concurrently. This can
+  /// occur when multiple networks are added concurrently.
+  std::mutex bufferLock_;
+
   /// String for logging available memory for the device.
   const std::string availableMemoryKey_{"glow.device.available_memory.device"};
 
@@ -62,6 +67,10 @@ protected:
 
   /// Keeps the stats exporter registry object alive till destructor.
   std::shared_ptr<StatsExporterRegistry> statsExporterRegistry_;
+
+  /// Set of all buffer allocations, these should all be freed when the device
+  /// manager is destroyed.
+  std::set<void *> allocations_;
 
   /// Helper method to export memory usage counters.
   void exportMemoryCounters() {
@@ -86,7 +95,12 @@ public:
         maxMemoryBytes_(config_.getDeviceMemory(2000000000)),
         statsExporterRegistry_(StatsExporterRegistry::Stats()) {}
 
-  virtual ~DeviceManager() = default;
+  virtual ~DeviceManager() {
+    // Free all allocated buffers.
+    for (auto &buffer : allocations_) {
+      alignedFree(buffer);
+    }
+  }
 
   /// Create a device manager based on the device config \p config.
   static DeviceManager *createDeviceManager(const DeviceConfig &config);
@@ -104,10 +118,23 @@ public:
 
   /// \returns a pointer to a buffer of size \p size allocated on the host, that
   /// satistfies any requirements for pinning/alignment for transferring to/from
-  /// the device.
+  /// the device. The lifetime of this buffer is managed by the device manager.
   virtual void *allocateDeviceIOBuffer(dim_t size) {
-    return alignedAlloc(size, TensorAlignment);
+    std::lock_guard<std::mutex> lock(bufferLock_);
+    void *buffer = alignedAlloc(size, TensorAlignment);
+    allocations_.insert(buffer);
+    return buffer;
   };
+
+  /// Free all allocated buffers associated with /p PH.
+  virtual void freeAllocatedDeviceIOBuffer(void *buffer) {
+    std::lock_guard<std::mutex> lock(bufferLock_);
+    auto it = allocations_.find(buffer);
+    if (it != allocations_.end()) {
+      alignedFree(buffer);
+      allocations_.erase(it);
+    }
+  }
 
   /// Load the provided module into the device, readyCB will be called when
   /// ready to use.
@@ -201,6 +228,15 @@ public:
   virtual bool releaseDeviceTensor(void *locationContext) {
     DCHECK("Not Implemented");
     return false;
+  }
+
+  /// Starts device tracing \returns Error if fails.
+  virtual Error startDeviceTrace(TraceContext *traceContext) {
+    return Error::success();
+  }
+  /// Stops device tracing \returns Error if fails.
+  virtual Error stopDeviceTrace(TraceContext *traceContext) {
+    return Error::success();
   }
 };
 

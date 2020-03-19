@@ -33,49 +33,13 @@ class NNPICompiledFunction;
 
 namespace runtime {
 
+class NNPIResource;
+using StaticPlaceholderMap =
+    std::unordered_map<const Placeholder *, std::weak_ptr<NNPIResource>>;
+
 /// A class controlling a single "NNPI Device", a thread of execution in
 /// the IR-NNPI. Many NNPIFunctions may be added, but only one
 /// inference is executed at a time.
-class InferenceThreadEnv;
-
-class NNPIStaticPlaceholderContainer {
-  struct NamedResourceWithRef : public NamedResource {
-    uint64_t refCount = 0;
-    NamedResourceWithRef() : refCount(0) {}
-    NamedResourceWithRef(const NamedResource &nr)
-        : NamedResource(nr), refCount(0){};
-  };
-  std::unordered_map<const Placeholder *, NamedResourceWithRef>
-      staticPlaceholdersDeviceResource_;
-  /// NNPI Device Context handle.
-  NNPIDeviceContext device_;
-  // Given a Placeholder, erase its allocated NamedResourceWithRef and destory
-  // its DeviceResource
-  // return true on success, false otherwise
-  // NOTE: Doesn't check for remaining refs pointing at the DeviceResource.
-  bool eraseAndDestroyDeviceResource_(const Placeholder *PH);
-
-public:
-  NNPIStaticPlaceholderContainer() : device_(NNPI_INVALID_NNPIHANDLE){};
-  ~NNPIStaticPlaceholderContainer();
-
-  // Set the device that the container create and destroy device resource for
-  // return false if device is invalid.
-  bool setDevice(NNPIDeviceContext device);
-
-  // Acquire a device resource with a given static Placeholder and
-  // NamedResource
-  // returned NamedResource will contain the allocated handle
-  // caller should check the returned handle before using it.
-  NamedResource acquireDeviceResource(const Placeholder *,
-                                      const NamedResource &nr);
-
-  // Release a device resource given a static Placeholder
-  // return false if release failed.
-  bool releaseDeviceResource(const Placeholder *);
-};
-
-// thread pool per network
 class NNPIDeviceManager : public DeviceManager {
   /// Compiled function list by name.
   FunctionMapTy functions_;
@@ -105,8 +69,10 @@ class NNPIDeviceManager : public DeviceManager {
   std::mutex functionMapMutex_;
   /// Device Tracing control.
   std::shared_ptr<NNPIDeviceTracing> deviceTracing_;
-  /// Maps between static placeholders' names to their device resource.
-  NNPIStaticPlaceholderContainer staticPlaceholderContainer_;
+  /// Static placeholders known by the device manager (the device manager
+  /// doesn't own a ref on static resources, only networks added to the device
+  /// manager).
+  StaticPlaceholderMap staticPlaceholders_;
   /// NNPI Device options (environment variables + DeviceConfig options).
   NNPIDeviceOptions deviceOptions_;
 

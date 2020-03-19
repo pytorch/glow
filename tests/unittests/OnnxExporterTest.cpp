@@ -33,12 +33,13 @@ namespace {
 /// Given a Function \p F and input names \p inpuTensorNames and input types \p
 /// inputTensorTypes, writes the function to file and reads it back using the
 /// ONNXModelWriter and ONNXModelReader respectively then \returns the
-/// reloaded function.
+/// reloaded function. \p useGlowCustomOps is used for determining the format
+/// for ONNXModelWriter to write with.
 Expected<Function *>
 saveAndReloadFunction(Function *F, llvm::ArrayRef<const char *> inpuTensorNames,
                       llvm::ArrayRef<TypeRef> inputTensorTypes,
                       size_t irVer = 5, size_t opsetVer = 10,
-                      bool zipMode = false) {
+                      bool zipMode = false, bool useGlowCustomOps = false) {
   auto &mod = *F->getParent();
 
   llvm::SmallString<64> path;
@@ -54,7 +55,7 @@ saveAndReloadFunction(Function *F, llvm::ArrayRef<const char *> inpuTensorNames,
   {
     Error err = Error::empty();
     ONNXModelWriter onnxWR(outputFilename, *F, irVer, opsetVer, &err, !zipMode,
-                           zipMode);
+                           zipMode, useGlowCustomOps);
 
     if (err) {
       llvm::sys::fs::remove(outputFilename);
@@ -95,12 +96,15 @@ void testLoadAndSaveONNXModel(const std::string &name, bool zipMode) {
 
   size_t irVer = 0, opsetVer = 0;
 
+  bool useGlowCustomOps = false;
+
   // Load model from file.
   {
     Error err = Error::empty();
     ONNXModelLoader onnxLD(name, {}, {}, *F, &err);
     irVer = onnxLD.getIrVersion();
     opsetVer = onnxLD.getOpSetVersion();
+    useGlowCustomOps = onnxLD.usingGlowCustomOps();
 
     if (err) {
       llvm::errs() << "ONNXModelLoader failed to load model: " << name << "\n";
@@ -108,8 +112,9 @@ void testLoadAndSaveONNXModel(const std::string &name, bool zipMode) {
     FAIL_TEST_IF_ERR(std::move(err));
   }
 
-  FAIL_TEST_IF_ERR(
-      saveAndReloadFunction(F, {}, {}, irVer, opsetVer, zipMode).takeError());
+  FAIL_TEST_IF_ERR(saveAndReloadFunction(F, {}, {}, irVer, opsetVer, zipMode,
+                                         useGlowCustomOps)
+                       .takeError());
 }
 
 bool endsWith(const std::string &full, const std::string &ending) {
@@ -119,6 +124,34 @@ bool endsWith(const std::string &full, const std::string &ending) {
   } else {
     return false;
   }
+}
+
+/// Given a Function \p F, \returns a list of nodes with the Kind \p kind.
+std::vector<Node *> getNodesByType(Function *F, Kinded::Kind kind) {
+  std::vector<Node *> found;
+  for (auto &N : F->getNodes()) {
+    if (N.getKind() == kind) {
+      found.push_back(&N);
+    }
+  }
+  return found;
+}
+
+/// Given a function \p F and a Kind \p type, returns a casted pointer to the
+/// single node in F with that kind or an Error if one occurs.
+template <typename T>
+Expected<T *> getSingleNodeWithKind(Function *F, Kinded::Kind type) {
+  auto nodesWithKind = getNodesByType(F, type);
+
+  RETURN_ERR_IF_NOT(nodesWithKind.size() == 1,
+                    strFormat("Expected one node with kind %s but found %lu",
+                              Kinded::getKindName(type), nodesWithKind.size()));
+
+  T *node = llvm::dyn_cast<T>(nodesWithKind[0]);
+
+  RETURN_ERR_IF_NOT(node != nullptr, "Node is not of expected types");
+
+  return node;
 }
 } // namespace
 
@@ -232,23 +265,19 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
       ElemKind::Int8QTy, {batchSize, inSide, inSide, inChannels}, 1.2, 3,
       "input", /* isTrainable */ false);
 
-  Placeholder *weights = mod.createPlaceholder(
+  Constant *biasConstant =
+      mod.createConstant(ElemKind::FloatTy, {outChannels}, "bias");
+
+  Constant *scalesConstant =
+      mod.createConstant(ElemKind::FloatTy, {outChannels}, "scales");
+
+  Constant *offsetsConstant =
+      mod.createConstant(ElemKind::Int32ITy, {outChannels}, "offsets");
+
+  Constant *weightsConstant = mod.createConstant(
       ElemKind::Int8QTy,
       {outChannels, filterSide, filterSide, inChannels / groups}, 2.5, 1,
-      "weights",
-      /* isTrainable */ false);
-
-  Placeholder *bias =
-      mod.createPlaceholder(ElemKind::FloatTy, {outChannels}, "bias",
-                            /* isTrainable */ false);
-
-  Placeholder *scales =
-      mod.createPlaceholder(ElemKind::FloatTy, {outChannels}, "scales",
-                            /* isTrainable */ false);
-
-  Placeholder *offsets =
-      mod.createPlaceholder(ElemKind::Int32ITy, {outChannels}, "offsets",
-                            /* isTrainable */ false);
+      "offsets");
 
   std::vector<unsigned_t> kernels = {filterSide, filterSide};
   std::vector<unsigned_t> strides = {1, 1};
@@ -261,8 +290,8 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
       {batchSize, outSize.first, outSize.second, outChannels}, 3.8, 4);
 
   auto *cqConv = F->createChannelwiseQuantizedConv(
-      "cqconv", input, weights, bias, scales, offsets, outTy, kernels, strides,
-      pads, groups);
+      "cqconv", input, weightsConstant, biasConstant, scalesConstant,
+      offsetsConstant, outTy, kernels, strides, pads, groups);
 
   auto *save = F->createSave("save_out", cqConv);
 
@@ -271,21 +300,23 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
   ASSERT_TRUE(F->verify());
 
   PlaceholderBindings bindings;
-  bindings.allocate({weights, bias, scales, offsets, input, output});
-  convertPlaceholdersToConstants(F, bindings, {input, output});
+  bindings.allocate({input, output});
 
   // Save and reload F.
   Function *R;
   ASSIGN_VALUE_OR_FAIL_TEST(
       R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
 
-  // Verify reloaded function matches the original.
-  auto *cqConvReloaded = llvm::dyn_cast<ChannelwiseQuantizedConvolutionNode>(
-      R->getNodeByName("cqconv"));
-
-  ASSERT_TRUE(cqConvReloaded != nullptr);
+  ChannelwiseQuantizedConvolutionNode *cqConvReloaded;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      cqConvReloaded,
+      getSingleNodeWithKind<ChannelwiseQuantizedConvolutionNode>(
+          R, Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind));
 
   EXPECT_EQ(cqConvReloaded->getInput().getType(), cqConv->getInput().getType());
+  EXPECT_EQ(cqConvReloaded->getResult().getType(),
+            cqConv->getResult().getType());
+
   EXPECT_EQ(cqConvReloaded->getFilter().getType(),
             cqConv->getFilter().getType());
   EXPECT_EQ(cqConvReloaded->getBias().getType(), cqConv->getBias().getType());
@@ -356,12 +387,14 @@ TEST(exporter, QuantizedConvolution) {
       R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
 
   // Verify reloaded function matches the original.
-  auto *qConvReloaded =
-      llvm::dyn_cast<ConvolutionNode>(R->getNodeByName("qconv"));
-
-  ASSERT_TRUE(qConvReloaded != nullptr);
+  ConvolutionNode *qConvReloaded;
+  ASSIGN_VALUE_OR_FAIL_TEST(qConvReloaded,
+                            getSingleNodeWithKind<ConvolutionNode>(
+                                R, Kinded::Kind::ConvolutionNodeKind));
 
   EXPECT_EQ(qConvReloaded->getInput().getType(), qConv->getInput().getType());
+  EXPECT_EQ(qConvReloaded->getResult().getType(), qConv->getResult().getType());
+
   EXPECT_EQ(qConvReloaded->getFilter().getType(), qConv->getFilter().getType());
   EXPECT_EQ(qConvReloaded->getBias().getType(), qConv->getBias().getType());
 
@@ -370,4 +403,209 @@ TEST(exporter, QuantizedConvolution) {
   EXPECT_EQ(qConvReloaded->getPads(), qConv->getPads());
   EXPECT_EQ(qConvReloaded->getGroup(), qConv->getGroup());
   EXPECT_EQ(qConvReloaded->getDilation(), qConv->getDilation());
+}
+
+TEST(exporter, QuantizedMaxPool) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("F");
+
+  unsigned_t inChannels = 8;
+  unsigned_t inSide = 6;
+  unsigned_t batchSize = 8;
+  unsigned_t filterSide = 3;
+
+  Placeholder *input = mod.createPlaceholder(
+      ElemKind::Int8QTy, {batchSize, inSide, inSide, inChannels}, 1.2, 3,
+      "input", /* isTrainable */ false);
+
+  std::vector<unsigned_t> kernels = {filterSide, filterSide};
+  std::vector<unsigned_t> strides = {1, 1};
+  std::vector<unsigned_t> pads = {1, 1, 1, 1};
+
+  auto *maxPool = F->createMaxPool("maxpool", input, kernels, strides, pads);
+
+  auto *save = F->createSave("save_out", maxPool->getNthResult(0));
+
+  Placeholder *output = save->getPlaceholder();
+
+  ASSERT_TRUE(F->verify());
+
+  PlaceholderBindings bindings;
+  bindings.allocate({input, output});
+  convertPlaceholdersToConstants(F, bindings, {input, output});
+
+  // Save and reload F.
+  Function *R;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
+
+  // Verify reloaded function matches the original.
+  MaxPoolNode *maxPoolReloaded;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      maxPoolReloaded,
+      getSingleNodeWithKind<MaxPoolNode>(R, Kinded::Kind::MaxPoolNodeKind));
+
+  EXPECT_EQ(maxPoolReloaded->getInput().getType(),
+            maxPool->getInput().getType());
+  EXPECT_EQ(maxPoolReloaded->getResult().getType(),
+            maxPool->getResult().getType());
+
+  EXPECT_EQ(maxPoolReloaded->getKernels(), maxPool->getKernels());
+  EXPECT_EQ(maxPoolReloaded->getStrides(), maxPool->getStrides());
+  EXPECT_EQ(maxPoolReloaded->getPads(), maxPool->getPads());
+}
+
+TEST(exporter, QuantizedAvgPool) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("F");
+
+  unsigned_t inChannels = 8;
+  unsigned_t inSide = 6;
+  unsigned_t batchSize = 8;
+  unsigned_t filterSide = 3;
+
+  Placeholder *input = mod.createPlaceholder(
+      ElemKind::Int8QTy, {batchSize, inSide, inSide, inChannels}, 1.2, 3,
+      "input", /* isTrainable */ false);
+
+  std::vector<unsigned_t> kernels = {filterSide, filterSide};
+  std::vector<unsigned_t> strides = {1, 1};
+  std::vector<unsigned_t> pads = {1, 1, 1, 1};
+
+  auto *avgPool = F->createAvgPool("avgpool", input, kernels, strides, pads);
+
+  auto *save = F->createSave("save_out", avgPool->getNthResult(0));
+
+  Placeholder *output = save->getPlaceholder();
+
+  ASSERT_TRUE(F->verify());
+
+  PlaceholderBindings bindings;
+  bindings.allocate({input, output});
+  convertPlaceholdersToConstants(F, bindings, {input, output});
+
+  // Save and reload F.
+  Function *R;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
+
+  // Verify reloaded function matches the original.
+  AvgPoolNode *avgPoolReloaded;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      avgPoolReloaded,
+      getSingleNodeWithKind<AvgPoolNode>(R, Kinded::Kind::AvgPoolNodeKind));
+
+  EXPECT_EQ(avgPoolReloaded->getInput().getType(),
+            avgPool->getInput().getType());
+  EXPECT_EQ(avgPoolReloaded->getResult().getType(),
+            avgPool->getResult().getType());
+
+  EXPECT_EQ(avgPoolReloaded->getKernels(), avgPool->getKernels());
+  EXPECT_EQ(avgPoolReloaded->getStrides(), avgPool->getStrides());
+  EXPECT_EQ(avgPoolReloaded->getPads(), avgPool->getPads());
+}
+
+TEST(exporter, QuantizedAdaptiveAvgPool) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("F");
+
+  unsigned_t inChannels = 8;
+  unsigned_t inSide = 6;
+  unsigned_t batchSize = 8;
+
+  Placeholder *input = mod.createPlaceholder(
+      ElemKind::Int8QTy, {batchSize, inSide, inSide, inChannels}, 1.2, 3,
+      "input", /* isTrainable */ false);
+
+  auto *outTy = mod.uniqueTypeWithNewShape(input->getType(),
+                                           {batchSize, 3, 3, inChannels});
+
+  auto *adaptiveAvgPool =
+      F->createAdaptiveAvgPool("adaptive_avgpool", input, outTy);
+
+  auto *save = F->createSave("save_out", adaptiveAvgPool->getNthResult(0));
+
+  Placeholder *output = save->getPlaceholder();
+
+  ASSERT_TRUE(F->verify());
+
+  PlaceholderBindings bindings;
+  bindings.allocate({input, output});
+  convertPlaceholdersToConstants(F, bindings, {input, output});
+
+  // Save and reload F.
+  Function *R;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
+
+  // Verify reloaded function matches the original.
+  AdaptiveAvgPoolNode *adaptiveAvgPoolReloaded;
+  ASSIGN_VALUE_OR_FAIL_TEST(adaptiveAvgPoolReloaded,
+                            getSingleNodeWithKind<AdaptiveAvgPoolNode>(
+                                R, Kinded::Kind::AdaptiveAvgPoolNodeKind));
+
+  EXPECT_EQ(adaptiveAvgPoolReloaded->getInput().getType(),
+            adaptiveAvgPool->getInput().getType());
+  EXPECT_EQ(adaptiveAvgPoolReloaded->getResult().getType(),
+            adaptiveAvgPool->getResult().getType());
+}
+
+TEST(exporter, RowwiseQuantizedFullyConnected) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("F");
+
+  Placeholder *input = mod.createPlaceholder(
+      ElemKind::Int8QTy, {2, 100}, 1.2, 3, "input", /* isTrainable */ false);
+
+  Constant *weightsConstant =
+      mod.createConstant(ElemKind::Int8QTy, {10, 100}, 1.0, 0, "weights");
+
+  Constant *biasConstant =
+      mod.createConstant(ElemKind::Int32QTy, {10}, 1.0, 0, "bias");
+
+  Constant *scalesConstant =
+      mod.createConstant(ElemKind::FloatTy, {10}, "scales");
+
+  Constant *offsetsConstant =
+      mod.createConstant(ElemKind::Int32ITy, {10}, "offsets");
+
+  auto *outTy = mod.uniqueType(ElemKind::Int8QTy, {2, 10}, 3.8, 4);
+
+  auto *rwqFC = F->createRowwiseQuantizedFullyConnected(
+      "rwqFC", input, weightsConstant, scalesConstant, offsetsConstant,
+      biasConstant, outTy);
+
+  auto *save = F->createSave("save_out", rwqFC);
+
+  Placeholder *output = save->getPlaceholder();
+
+  ASSERT_TRUE(F->verify());
+
+  PlaceholderBindings bindings;
+  bindings.allocate({input, output});
+
+  // Save and reload F.
+  Function *R;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
+
+  RowwiseQuantizedFullyConnectedNode *rwqFCReloaded;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      rwqFCReloaded,
+      getSingleNodeWithKind<RowwiseQuantizedFullyConnectedNode>(
+          R, Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind));
+
+  EXPECT_EQ(rwqFCReloaded->getInput().getType(), rwqFC->getInput().getType());
+  EXPECT_EQ(rwqFCReloaded->getResult().getType(), rwqFC->getResult().getType());
+
+  EXPECT_EQ(rwqFCReloaded->getWeights().getType(),
+            rwqFC->getWeights().getType());
+  EXPECT_EQ(rwqFCReloaded->getBias().getType(), rwqFC->getBias().getType());
+  EXPECT_EQ(rwqFCReloaded->getScales().getType(), rwqFC->getScales().getType());
+  EXPECT_EQ(rwqFCReloaded->getOffsets().getType(),
+            rwqFC->getOffsets().getType());
 }

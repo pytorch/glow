@@ -25,7 +25,8 @@ namespace glow {
 
 /// This is the IR-interpreter. It owns the IR, and the heap, and is able to
 /// execute the instructions one at a time.
-class Interpreter final : public BackendUsingGlowIR {
+class Interpreter final : public BackendUsingGlowIR,
+                          public IRInstructionProcessingHandler {
 public:
   /// Ctor.
   Interpreter() = default;
@@ -56,6 +57,10 @@ public:
   bool verify(const IRFunction &IR) const override;
 
   bool shouldLower(const Node *N) const override;
+
+  bool transformPostLowering(
+      Function *F, CompilationContext &cctx,
+      const glow::runtime::DeviceInfo *devInfo = nullptr) const override;
 
   /// @}
   //

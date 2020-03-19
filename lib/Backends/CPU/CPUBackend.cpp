@@ -49,8 +49,12 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Int32ITy, ElemKind::Int64ITy});
 
   case Kinded::Kind::AddNodeKind:
-  case Kinded::Kind::SubNodeKind:
   case Kinded::Kind::MulNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int32ITy,
+         ElemKind::Int64ITy});
+
+  case Kinded::Kind::SubNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
   case Kinded::Kind::CPUMaxSplatNodeKind:
@@ -67,13 +71,15 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
                {MaxPoolNode::ArgmaxIdx}) &&
-           (NI.getOutElemTy(MaxPoolNode::ArgmaxIdx) == IndexElemKind);
+           (NI.getOutElemTy(MaxPoolNode::ArgmaxIdx) == ElemKind::Int64ITy ||
+            NI.getOutElemTy(MaxPoolNode::ArgmaxIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::ArgMaxNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
                {ArgMaxNode::ArgmaxIdx}) &&
-           (NI.getOutElemTy(ArgMaxNode::ArgmaxIdx) == IndexElemKind);
+           (NI.getOutElemTy(ArgMaxNode::ArgmaxIdx) == ElemKind::Int64ITy ||
+            NI.getOutElemTy(ArgMaxNode::ArgmaxIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::SaveNodeKind:
   case Kinded::Kind::ReshapeNodeKind:
@@ -89,17 +95,17 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ConcatNodeKind:
   case Kinded::Kind::SplatNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Int8QTy, IndexElemKind,
-         ElemKind::Int64ITy, ElemKind::BoolTy});
-
-  case Kinded::Kind::DivNodeKind:
+        {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy,
+         ElemKind::Int32ITy, ElemKind::BoolTy});
   case Kinded::Kind::SliceNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int32QTy,
-         ElemKind::Int64ITy});
+         ElemKind::Int32ITy, ElemKind::Int64ITy});
   case Kinded::Kind::SpaceToDepthNodeKind:
+  case Kinded::Kind::DivNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy});
+        {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy,
+         ElemKind::Int32ITy});
 
   case Kinded::Kind::TransposeNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -117,7 +123,9 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
                {ElemKind::FloatTy}, {SparseLengthsSumNode::IndicesIdx,
                                      SparseLengthsSumNode::LengthsIdx}) &&
            (NI.getInElemTy(SparseLengthsSumNode::IndicesIdx) ==
-            IndexElemKind) &&
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(SparseLengthsSumNode::IndicesIdx) ==
+                ElemKind::Int32ITy) &&
            (NI.getInElemTy(SparseLengthsSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
 
@@ -127,7 +135,9 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
                {SparseLengthsWeightedSumNode::IndicesIdx,
                 SparseLengthsWeightedSumNode::LengthsIdx}) &&
            (NI.getInElemTy(SparseLengthsWeightedSumNode::IndicesIdx) ==
-            IndexElemKind) &&
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(SparseLengthsWeightedSumNode::IndicesIdx) ==
+                ElemKind::Int32ITy) &&
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
 
@@ -135,8 +145,9 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy},
                {EmbeddingBagNode::IndicesIdx, EmbeddingBagNode::OffsetsIdx}) &&
-           (NI.getInElemTy(EmbeddingBagNode::IndicesIdx) == IndexElemKind) &&
-           (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == IndexElemKind);
+           (NI.getInElemTy(EmbeddingBagNode::IndicesIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == ElemKind::Int64ITy);
 
   case Kinded::Kind::SparseLengthsWeightedSumGradNodeKind:
     // GradOfInputNamedIndicesIdx and GradOfInputNamedLengthsIdx do not need to
@@ -149,7 +160,9 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
                 SparseLengthsWeightedSumGradNode::
                     GradOfInputNamedLengthsIdx}) &&
            (NI.getInElemTy(SparseLengthsWeightedSumGradNode::IndicesIdx) ==
-            IndexElemKind) &&
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(SparseLengthsWeightedSumGradNode::IndicesIdx) ==
+                ElemKind::Int32ITy) &&
            (NI.getInElemTy(SparseLengthsWeightedSumGradNode::LengthsIdx) ==
             ElemKind::Int32ITy);
 
@@ -168,7 +181,10 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
             ElemKind::FloatTy) &&
            (NI.getInElemTy(
                 RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx) ==
-            IndexElemKind) &&
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(
+                RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx) ==
+                ElemKind::Int32ITy) &&
            (NI.getInElemTy(
                 RowwiseQuantizedSparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy) &&
@@ -206,10 +222,15 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
                {MaxPoolGradNode::OriginalOutputForArgmaxIdx,
                 MaxPoolGradNode::GradOfOriginalOutputNamedArgmaxIdx}) &&
            (NI.getInElemTy(MaxPoolGradNode::OriginalOutputForArgmaxIdx) ==
-            IndexElemKind) &&
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(MaxPoolGradNode::OriginalOutputForArgmaxIdx) ==
+                ElemKind::Int32ITy) &&
            (NI.getInElemTy(
                 MaxPoolGradNode::GradOfOriginalOutputNamedArgmaxIdx) ==
-            IndexElemKind);
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(
+                MaxPoolGradNode::GradOfOriginalOutputNamedArgmaxIdx) ==
+                ElemKind::Int32ITy);
 
   case Kinded::Kind::ConvolutionNodeKind:
     if (!NI.getInTy(ConvolutionNode::InputIdx)->isQuantizedType()) {
@@ -237,20 +258,23 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::GatherNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy},
+               {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy,
+                ElemKind::Int32ITy},
                {GatherNode::IndicesIdx}) &&
            ((NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int32ITy) ||
-            (NI.getInElemTy(GatherNode::IndicesIdx) == IndexElemKind));
+            (NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int64ITy));
 
   case Kinded::Kind::GatherRangesNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy},
+               {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy,
+                ElemKind::Int32ITy},
                {GatherRangesNode::RangesIdx}, {GatherRangesNode::LengthsIdx}) &&
            ((NI.getInElemTy(GatherRangesNode::RangesIdx) ==
              NI.getOutElemTy(GatherRangesNode::LengthsIdx)) &&
             ((NI.getOutElemTy(GatherRangesNode::LengthsIdx) ==
               ElemKind::Int32ITy) ||
-             (NI.getOutElemTy(GatherRangesNode::LengthsIdx) == IndexElemKind)));
+             (NI.getOutElemTy(GatherRangesNode::LengthsIdx) ==
+              ElemKind::Int64ITy)));
 
   case Kinded::Kind::ScatterDataNodeKind:
     // ScatterData ==> Copy + ScatterData. Copy supports everything
@@ -259,12 +283,14 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Int8QTy},
                {ScatterDataNode::IndicesIdx}) &&
-           (NI.getInElemTy(ScatterDataNode::IndicesIdx) == IndexElemKind);
+           (NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int64ITy ||
+            NI.getInElemTy(ScatterDataNode::IndicesIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::SelectNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Int8QTy}, {SelectNode::CondIdx}) &&
-           (NI.getInElemTy(SelectNode::CondIdx) == ElemKind::BoolTy);
+               {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int32ITy},
+               {SelectNode::CondIdx}) &&
+           ((NI.getInElemTy(SelectNode::CondIdx) == ElemKind::BoolTy));
 
   case Kinded::Kind::CmpLTENodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -284,15 +310,17 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getOutElemTy(CmpLTENode::ResultIdx) == ElemKind::BoolTy);
 
   case Kinded::Kind::CmpEQNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int64ITy}, {},
-                                                  {CmpEQNode::ResultIdx}) &&
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::Int64ITy, ElemKind::Int32ITy}, {},
+               {CmpEQNode::ResultIdx}) &&
            (NI.getOutElemTy(CmpEQNode::ResultIdx) == ElemKind::BoolTy);
 
   case Kinded::Kind::TopKNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Int8QTy}, {},
                {TopKNode::IndicesIdx}) &&
-           (NI.getOutElemTy(TopKNode::IndicesIdx) == IndexElemKind);
+           (NI.getOutElemTy(TopKNode::IndicesIdx) == ElemKind::Int64ITy ||
+            NI.getOutElemTy(TopKNode::IndicesIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::QuantizeNodeKind:
     return (NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::FloatTy) &&
@@ -306,12 +334,16 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::SoftMaxNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy},
                                                   {SoftMaxNode::SelectedIdx}) &&
-           (NI.getInElemTy(SoftMaxNode::SelectedIdx) == IndexElemKind);
+           (NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int64ITy ||
+            NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::CrossEntropyLossNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy}, {CrossEntropyLossNode::LabelsIdx}) &&
-           (NI.getInElemTy(CrossEntropyLossNode::LabelsIdx) == IndexElemKind);
+           (NI.getInElemTy(CrossEntropyLossNode::LabelsIdx) ==
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(CrossEntropyLossNode::LabelsIdx) ==
+                ElemKind::Int32ITy);
 
   case Kinded::Kind::LengthsSumNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -324,9 +356,9 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::WeightsIdx) ==
             ElemKind::FloatTy) &&
            (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx) ==
-            IndexElemKind) &&
+            ElemKind::Int64ITy) &&
            (NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::OffsetsIdx) ==
-            IndexElemKind) &&
+            ElemKind::Int64ITy) &&
            (NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx) ==
             ElemKind::FloatTy);
 
@@ -336,8 +368,10 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
             ElemKind::UInt8FusedQTy) &&
            (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
                                WeightsIdx) == ElemKind::FloatTy) &&
-           (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                               IndicesIdx) == IndexElemKind) &&
+           ((NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                                IndicesIdx) == ElemKind::Int64ITy ||
+             NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                                IndicesIdx) == ElemKind::Int32ITy)) &&
            (NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
                                LengthsIdx) == ElemKind::Int32ITy) &&
            (NI.getOutElemTy(
@@ -363,13 +397,18 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::SparseToDenseNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy}, {SparseToDenseNode::IndicesIdx}) &&
-           (NI.getInElemTy(SparseToDenseNode::IndicesIdx) == IndexElemKind);
+           (NI.getInElemTy(SparseToDenseNode::IndicesIdx) ==
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(SparseToDenseNode::IndicesIdx) ==
+                ElemKind::Int32ITy);
 
   case Kinded::Kind::SoftMaxGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy}, {SoftMaxGradNode::SelectedIdx},
                {SoftMaxGradNode::GradOfInputNamedSelectedIdx}) &&
-           (NI.getInElemTy(SoftMaxGradNode::SelectedIdx) == IndexElemKind);
+           (NI.getInElemTy(SoftMaxGradNode::SelectedIdx) ==
+                ElemKind::Int64ITy ||
+            NI.getInElemTy(SoftMaxGradNode::SelectedIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::ConvolutionGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -381,10 +420,10 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
                {ElemKind::FloatTy}, {CrossEntropyLossGradNode::LabelsIdx},
                {CrossEntropyLossGradNode::GradOfInputNamedLabelsIdx}) &&
            (NI.getInElemTy(CrossEntropyLossGradNode::LabelsIdx) ==
-            IndexElemKind) &&
+            ElemKind::Int64ITy) &&
            (NI.getOutElemTy(
                 CrossEntropyLossGradNode::GradOfInputNamedLabelsIdx) ==
-            IndexElemKind);
+            ElemKind::Int64ITy);
 
   case Kinded::Kind::TraceEventNodeKind:
     return NI.getInElemTy(TraceEventNode::DataIdx) == ElemKind::Int64ITy;
@@ -403,10 +442,7 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
                 ElemKind::Int32ITy ||
             NI.getOutElemTy(
                 NonMaxSuppressionNode::NumberOfSelectedIndicesIdx) ==
-                ElemKind::Int64ITy) &&
-           (NI.getOutElemTy(
-                NonMaxSuppressionNode::NumberOfSelectedIndicesIdx) ==
-            NI.getOutElemTy(NonMaxSuppressionNode::IndicesIdx));
+                ElemKind::Int64ITy);
 
   case Kinded::Kind::ConvertToNodeKind:
     return ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::Int32ITy) &&
@@ -454,4 +490,21 @@ CPUBackend::createIRGen(const IRFunction *IR,
 llvm::StringRef CPUBackend::getLibjitBitcode() const {
   return llvm::StringRef(reinterpret_cast<const char *>(libjit_bc),
                          libjit_bc_size);
+}
+
+/// \returns true if network supports Type Lowering from \p T1 to \p T2.
+/// Populates PrecisionConfiguration with black list of operations that can't be
+/// converted.
+bool CPUBackend::canDoIndexTypeDemotion(
+    ElemKind fromTy, ElemKind toTy, PrecisionConfiguration &precConfig) const {
+  precConfig.precisionModeKindSet.insert(Kinded::Kind::EmbeddingBagNodeKind);
+  precConfig.precisionModeKindSet.insert(
+      Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind);
+  precConfig.precisionModeKindSet.insert(
+      Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind);
+  precConfig.precisionModeKindSet.insert(
+      Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind);
+  precConfig.precisionModeKindSet.insert(
+      Kinded::Kind::SparseToDenseMaskNodeKind);
+  return fromTy == ElemKind::Int64ITy && toTy == ElemKind::Int32ITy;
 }

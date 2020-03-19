@@ -411,9 +411,9 @@ createAndInitSLWSNet(glow::PlaceholderBindings &bindings,
 
   // Initialize indices to size of sum of lengths. Randomly set them to point
   // somewhere inside the embedding.
-  auto *indices =
-      mod.createPlaceholder(IndexElemKind, {sumOfLengths}, "indices", false);
-  bindings.allocate(indices)->getHandle<sdim_t>().randomize(
+  auto *indices = mod.createPlaceholder(ElemKind::Int64ITy, {sumOfLengths},
+                                        "indices", false);
+  bindings.allocate(indices)->getHandle<int64_t>().randomize(
       0, embeddingRows - 1, mod.getPRNG());
 
   // Xavier initialize the weights with the correct data type.

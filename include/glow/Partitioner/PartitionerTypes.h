@@ -156,6 +156,8 @@ public:
     return logicalDeviceIDMap_.at(F);
   }
 
+  void clearLogicalDeviceID() { logicalDeviceIDMap_.clear(); }
+
   void appendLogicalDeviceID(Function *F, DeviceIDTy id) {
     if (logicalDeviceIDMap_.find(F) == logicalDeviceIDMap_.end()) {
       logicalDeviceIDMap_.emplace(

@@ -179,7 +179,7 @@ public:
         (float)(1.0 / std::sqrt(((double)hiddenSize_) / ((double)numHeads_)));
 
     // Softmax expected output. Not needed for inference
-    Tensor expected_Tensor(IndexElemKind, {maxSequenceLength_ * batchSize_, 1});
+    Tensor expected_Tensor(ElemKind::Int64ITy, {maxSequenceLength_ * batchSize_, 1});
     Constant *expected = mod->createConstant("expected", expected_Tensor);
 
     // Weights/bias constants for FC1

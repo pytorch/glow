@@ -18,6 +18,7 @@
 
 #include "glow/Backend/Backend.h"
 #include "glow/Converter/Float16Converter.h"
+#include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Log.h"
 #include "glow/Graph/Node.h"
@@ -1743,12 +1744,12 @@ bool FoldBatchNormalizationWithArithmeticChain::run(
 
     auto *newScaleC =
         F->getParent()->createConstant(scaleC->getType(), scaleC->getName());
-    Tensor scaleT = scaleC->getPayload().getUnowned(scaleC->dims());
+    Tensor scaleT = scaleC->getPayload().getUnowned();
     newScaleC->assign(&scaleT);
 
     auto *newBiasC =
         F->getParent()->createConstant(biasC->getType(), biasC->getName());
-    Tensor biasT = biasC->getPayload().getUnowned(biasC->dims());
+    Tensor biasT = biasC->getPayload().getUnowned();
     newBiasC->assign(&biasT);
 
     // Collect the chain and compute the new scale and bias.
@@ -1776,6 +1777,57 @@ bool FoldBatchNormalizationWithArithmeticChain::run(
         BN->getVar(), BN->getChannelIdx(), BN->getEpsilon(), BN->getMomentum());
 
     chainEnd.replaceAllUsesOfWith(newBN);
+    changed = true;
+  }
+
+  return changed;
+}
+
+/// Fold MatMul + Add into FullyConnected. This is useful for backends which
+/// have an atomic implementation for the FullyConnected node. It is also needed
+/// for ONNX which does not have a representation for the FullyConnected node.
+bool FoldMatMulAddIntoFullyConnected::run(Function *F,
+                                          const CompilationContext &cctx) {
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *addNode = dyn_cast<AddNode>(&node);
+    if (!addNode) {
+      continue;
+    }
+
+    // Check for MatMul node being either RHS or LHS.
+    auto *matMulNode_LHS = dyn_cast<MatMulNode>(addNode->getLHS());
+    auto *matMulNode_RHS = dyn_cast<MatMulNode>(addNode->getRHS());
+    auto *matMulNode = matMulNode_LHS ? matMulNode_LHS : matMulNode_RHS;
+    NodeValue biasNode = matMulNode_LHS ? addNode->getRHS() : addNode->getLHS();
+    if (!matMulNode) {
+      continue;
+    }
+
+    // The corresponding length of the FullyConnected Bias operand.
+    auto fcBiasLen = matMulNode->getRHS().dims()[1];
+
+    // TODO: If Bias is a constant 2D tensor (e.g. [2,10]) we should also
+    // verify if the Bias is broadcasted from a 1D tensor (e.g. [10]) in
+    // order to instantiate a batched FullyConnected using the Bias slice.
+
+    // Verify the bias size.
+    if (biasNode.getType()->size() != fcBiasLen) {
+      continue;
+    }
+
+    // Reshape the bias to 1D (if needed).
+    if (biasNode.dims().size() > 1) {
+      biasNode =
+          F->createReshape(biasNode.getNode()->getName().str() + ".reshape",
+                           biasNode, {biasNode.getType()->size()});
+    }
+
+    // Create a new FullyConnected node.
+    auto *newFC = F->createFullyConnected(
+        matMulNode->getName(), matMulNode->getLHS(), matMulNode->getRHS(),
+        biasNode, addNode->getResult().getType());
+    addNode->getResult().replaceAllUsesOfWith(newFC);
     changed = true;
   }
 
@@ -2680,6 +2732,13 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
           tensorToBeModified, params, dstTy->getElementType());
       return constantToBeModified.getOutput();
     }
+    case ElemKind::Int32ITy: {
+      // Plain conversion: {FloatTy} -> {Int32ITy}.
+      Constant &constantToBeModified = modifyConstantTyAndGet();
+      constantToBeModified.getPayloadMutable().convertToType(
+          dstTy->getElementType());
+      return constantToBeModified.getOutput();
+    }
     default:
       // Quantization: {FloatTy, Float16Ty} -> Int[16|32]QTy.
       // Plain conversion: {FloatTy, Float16Ty} -> Int64ITy.
@@ -2695,7 +2754,27 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
         tensor.getCopyConvertedToType(dstTy->getElementType());
     return NC->getOutput();
   }
+  case ElemKind::Int64ITy:
+  case ElemKind::Int32ITy:
+    switch (dstTy->getElementType()) {
+    case ElemKind::Int32ITy:
+    case ElemKind::Int64ITy: {
+      // Plain conversion: {Int64ITy, Int32ITy} -> {Int64ITy, Int32ITy}.
+      Constant &constantToBeModified = modifyConstantTyAndGet();
+      constantToBeModified.getPayloadMutable().convertToType(
+          dstTy->getElementType());
+      return constantToBeModified.getOutput();
+    }
+    case ElemKind::FloatTy: {
+      Constant &constantToBeModified = modifyConstantTyAndGet();
+      constantToBeModified.getPayloadMutable().convertToType(
+          dstTy->getElementType());
+      return constantToBeModified.getOutput();
+    }
 
+    default:
+      return NodeValue();
+    }
   default:
     // For now we don't see other quantize, dequantize, or rescale nodes
     // directly attached to constants.
@@ -2810,6 +2889,9 @@ bool OptimizeConversions::run(Function *F, const CompilationContext &cctx) {
       if (auto *BN = llvm::dyn_cast<Constant>(CN->getInput())) {
         auto newConst =
             convertConstant(*F->getParent(), *BN, CN->getResult().getType());
+        if (newConst == NodeValue()) {
+          continue;
+        }
         CN->getResult().replaceAllUsesOfWith(newConst, F);
         changed = true;
         continue;
@@ -2878,6 +2960,18 @@ FUNCTION_ENABLE_IF_TEMPLATE(Max)
 FUNCTION_ENABLE_IF_TEMPLATE(MatMul)
 *createNode(Function &F, Args... args) { return F.createMatMul(args...); }
 
+FUNCTION_ENABLE_IF_TEMPLATE(AvgPool) *
+    createNewPool(Function &F, T *PN, RescaleQuantizedNode *rescale) {
+  return createNode<T>(F, PN->getName(), rescale->getInput(), PN->getKernels(),
+                       PN->getStrides(), PN->getPads());
+}
+FUNCTION_ENABLE_IF_TEMPLATE(MaxPool) *
+    createNewPool(Function &F, T *PN, RescaleQuantizedNode *rescale) {
+  return createNode<T>(F, PN->getName(), rescale->getInput(), PN->getKernels(),
+                       PN->getStrides(), PN->getPads(),
+                       PN->getArgmax().getElementType());
+}
+
 /// Sink Rescale down with Pooling node.
 /// PoolingNode(Rescale(X)) -> Rescale(PoolingNode(X)).
 /// Apply this transformation for AvgPool and MaxPool.
@@ -2888,8 +2982,7 @@ static bool sinkDownRescaleToPoolingNode(Function &F, T *PN) {
   bool changed = false;
 
   if (auto *rescale = dyn_cast<RescaleQuantizedNode>(PN->getInput())) {
-    T *newPN = createNode<T>(F, PN->getName(), rescale->getInput(),
-                             PN->getKernels(), PN->getStrides(), PN->getPads());
+    T *newPN = createNewPool(F, PN, rescale);
     auto rescaleOutTy = F.getParent()->uniqueTypeWithNewShape(
         rescale->getResult().getType(), PN->getResult().getType());
     auto *newRescale = F.createRescaleQuantized(
@@ -3137,21 +3230,6 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
         continue;
       }
 
-      if (auto *C = dyn_cast<Constant>(Q->getInput())) {
-        // Quantize(Constant) -> Constant
-        // Note, it does not really matter how many usages this Constant has.
-        // Quantized graph will use optimized Constant and other functions will
-        // refer to the floating point original Constant.
-        NodeValue NC =
-            convertConstant(*F->getParent(), *C, Q->getResult().getType());
-        if (NC == NodeValue()) {
-          continue;
-        }
-        changed = true;
-        Q->getResult().replaceAllUsesOfWith(NC);
-        continue;
-      }
-
       if (auto *SN = dyn_cast<SplatNode>(Q->getInput())) {
         // Quantize(Splat) -> Splat'
         changed = true;
@@ -3264,6 +3342,33 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
     changed = sinkRescaleQuantizedNode(F);
   }
   return changed;
+}
+
+void glow::convertQuantizedConstants(Function *F, CompilationContext &cctx) {
+  for (auto &node : F->getNodes()) {
+    auto *Q = dyn_cast<QuantizeNode>(&node);
+    if (!Q) {
+      continue;
+    }
+    auto *C = dyn_cast<Constant>(Q->getInput());
+    if (!C) {
+      continue;
+    }
+
+    // Quantize(Constant) -> Constant
+    // Note, it does not really matter how many usages this Constant has.
+    // Quantized graph will use optimized Constant and other functions will
+    // refer to the floating point original Constant.
+    NodeValue NC =
+        convertConstant(*F->getParent(), *C, Q->getResult().getType());
+    if (NC == NodeValue()) {
+      continue;
+    }
+    Q->getResult().replaceAllUsesOfWith(NC);
+  }
+
+  // Perform Dead Code Elimination.
+  runDCEPass(F, cctx);
 }
 
 void glow::convertPlaceholdersToConstants(Function *F,
@@ -3737,6 +3842,34 @@ static void setFP16AccumSLS(Function *F,
   } while (nodeIt != stopIt);
 }
 
+/// This funciton uses TypeAToTypeBFunctionConverter to do a whole graph
+/// demotion of Index type from INT64 to INT32.
+static void transformIndexTypeDemotion(const Backend &B, Function *F,
+                                       CompilationContext &cctx) {
+
+  // Does a coarse  check to make sure none of the indices potentially can
+  // overflow 32 bit. For now we just give up on the whole optimization, since
+  // this is probably a corner case.
+  for (auto &n : F->getNodes()) {
+    for (int i = 0, nOutputs = n.getNumResults(); i < nOutputs; ++i) {
+      if (n.getNthResult(i).getType()->actualSize() >=
+          std::numeric_limits<int32_t>::max()) {
+        return;
+      }
+    }
+  }
+
+  PrecisionConfiguration precConfig;
+  if (B.canDoIndexTypeDemotion(ElemKind::Int64ITy, ElemKind::Int32ITy,
+                               precConfig) &&
+      cctx.optimizationOpts.enableTypeDemotion) {
+    precConfig.precisionModeKindSet.insert(Kinded::Kind::TraceEventNodeKind);
+    TypeAToTypeBFunctionConverter converter(*F, ElemKind::Int64ITy,
+                                            ElemKind::Int32ITy, precConfig);
+    converter.convert();
+  }
+}
+
 void glow::transformForPrecisionMode(const Backend &B, Function *F,
                                      CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "transformForPrecisionMode")
@@ -3832,6 +3965,7 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   }
 
   RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx));
+
   // Lower the graph into a sequence of low-level linear algebra operations.
   const PrecisionConfiguration &precConfig = cctx.precisionConfig;
   if (precConfig.quantMode == QuantizationMode::Profile) {
@@ -3846,9 +3980,17 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
     ::glow::lower(F, cctx, &B);
   }
 
+  // Transforms the graph by demoting i64 to i32.
+  transformIndexTypeDemotion(B, F, cctx);
+
   // Transform given precision mode; may quantize, convert to fp16, or
   // instrument with profiling nodes. This must be done after lowering.
   transformForPrecisionMode(B, F, cctx);
+
+  // Fold activations before lowering to enable cases which would not fuse after
+  // lowering. This concerns particularly convolution&relu since relu will be
+  // lowered to max(0, x).
+  foldActivations(F, cctx, &B);
 
   // Lower once more, in case precision transform has introduced operators that
   // need to be lowered, e.g., Clip.
@@ -3873,13 +4015,24 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
     }
   }
 
-  // Allow the backend to transform the graph after lowering.
-  if (B.transformPostLowering(F, cctx, devInfo)) {
-    // If the backend made changes, optimize the graph again. Perform only
-    // passes that the Backend has requested so we do not interfere with the
-    // backend's transformations.
-    ::glow::optimize(F, cctx, B);
+  if (B.shouldPreQuantizeConstants()) {
+    // Do the actual float ->fix-point conversion of constant tensors before
+    // Post-lowering.
+    ::glow::convertQuantizedConstants(F, cctx);
   }
+
+  // Allow the backend to transform the graph after lowering.
+  B.transformPostLowering(F, cctx, devInfo);
+
+  if (!B.shouldPreQuantizeConstants()) {
+    // Do the actual float ->fix-point conversion of constant tensors after
+    // Post-lowering.
+    ::glow::convertQuantizedConstants(F, cctx);
+  }
+
+  // Optimize the graph again after the backend transformation.
+  // In particular, DCE is very likely to be useful.
+  ::glow::optimize(F, cctx, B);
 
   // We already started using backend specific verification when the function
   // state became lowered. Do one more verification pass to make sure everything
@@ -4132,6 +4285,26 @@ bool glow::parallelizeOps(
                                   ReluNode::ResultIdx, splitDims, 0);
         break;
       }
+      case Kinded::Kind::ClipNodeKind: {
+        splitDims[ClipNode::InputIdx] = 0;
+        parallelizeAndReplaceNode(F, curNode, numOfChunks, ClipNode::InputIdx,
+                                  ClipNode::ResultIdx, splitDims, 0);
+        break;
+      }
+      case Kinded::Kind::QuantizeNodeKind: {
+        splitDims[QuantizeNode::InputIdx] = 0;
+        parallelizeAndReplaceNode(F, curNode, numOfChunks,
+                                  QuantizeNode::InputIdx,
+                                  QuantizeNode::ResultIdx, splitDims, 0);
+        break;
+      }
+      case Kinded::Kind::DequantizeNodeKind: {
+        splitDims[DequantizeNode::InputIdx] = 0;
+        parallelizeAndReplaceNode(F, curNode, numOfChunks,
+                                  DequantizeNode::InputIdx,
+                                  DequantizeNode::ResultIdx, splitDims, 0);
+        break;
+      }
       case Kinded::Kind::ConvertToNodeKind: {
         splitDims[ConvertToNode::InputIdx] = 0;
         parallelizeAndReplaceNode(F, curNode, numOfChunks,
@@ -4165,6 +4338,15 @@ bool glow::parallelizeOps(
         splitDims[ReluNode::InputIdx] = 1;
         parallelizeAndReplaceNode(F, curNode, numOfChunks, ReluNode::InputIdx,
                                   ReluNode::ResultIdx, splitDims, 1);
+        break;
+      }
+      case Kinded::Kind::ClipNodeKind: {
+        if (curNode->getNthInput(ClipNode::InputIdx).dims().size() < 2) {
+          break;
+        }
+        splitDims[ClipNode::InputIdx] = 1;
+        parallelizeAndReplaceNode(F, curNode, numOfChunks, ClipNode::InputIdx,
+                                  ClipNode::ResultIdx, splitDims, 1);
         break;
       }
       default:

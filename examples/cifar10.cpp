@@ -55,7 +55,7 @@ llvm::cl::opt<ModelKind>
 /// The database contains 10000 images.
 /// Size: (1 + (32 * 32 * 3)) * 10000 = 30730000.
 const size_t cifarImageSize = 1 + (32 * 32 * 3);
-const size_t cifarNumImages = 10000;
+const dim_t cifarNumImages = 10000;
 const unsigned numLabels = 10;
 
 static Placeholder *createDefaultModel(PlaceholderBindings &bindings,
@@ -65,15 +65,16 @@ static Placeholder *createDefaultModel(PlaceholderBindings &bindings,
   auto *RL0 = F->createRELU("relu", CV0);
   auto *MP0 = F->createMaxPool("pool", RL0, 2, 2, 0);
 
-  auto *CV1 = F->createConv(bindings, "conv", MP0, 20, 5, 1, 2, 1);
+  auto *CV1 = F->createConv(bindings, "conv", MP0->getResult(), 20, 5, 1, 2, 1);
   auto *RL1 = F->createRELU("relu", CV1);
   auto *MP1 = F->createMaxPool("pool", RL1, 2, 2, 0);
 
-  auto *CV2 = F->createConv(bindings, "conv", MP1, 20, 5, 1, 2, 1);
+  auto *CV2 = F->createConv(bindings, "conv", MP1->getResult(), 20, 5, 1, 2, 1);
   auto *RL2 = F->createRELU("relu", CV2);
   auto *MP2 = F->createMaxPool("pool", RL2, 2, 2, 0);
 
-  auto *FCL1 = F->createFullyConnected(bindings, "fc", MP2, numLabels);
+  auto *FCL1 =
+      F->createFullyConnected(bindings, "fc", MP2->getResult(), numLabels);
   auto *SM = F->createSoftMax("softmax", FCL1, expected);
   auto *save = F->createSave("ret", SM);
   return save->getPlaceholder();

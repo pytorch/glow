@@ -83,22 +83,26 @@ Node *Storage::clone() const { llvm_unreachable("Storage can't be cloned."); }
 //                     Debug description methods
 //===----------------------------------------------------------------------===//
 
-std::string Constant::getDebugDesc() const {
+std::string Constant::getDebugDesc(bool skipUsers) const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()))
       .addParam("layout", getLayout())
-      .addParam("output", *getType())
-      .addParam("users", getNumUsers());
+      .addParam("output", *getType());
+  if (!skipUsers) {
+    db.addParam("users", getNumUsers());
+  }
   return db;
 }
 
-std::string Placeholder::getDebugDesc() const {
+std::string Placeholder::getDebugDesc(bool skipUsers) const {
   DescriptionBuilder db(getKindName());
   db.addParam("name", quote(getName()))
       .addParam("layout", getLayout())
       .addParam("output", *getType())
-      .addParam("users", getNumUsers())
       .addParam("trainable", isTraining());
+  if (!skipUsers) {
+    db.addParam("users", getNumUsers());
+  }
   return db;
 }
 
@@ -207,37 +211,38 @@ static bool verifyConvolution3D(NodeValue src, NodeValue dest, NodeValue filter,
                               bias.getElementType() == ElemKind::Int32QTy,
                           true, parent);
   }
-  ShapeNHWDC idim(src.getType()->dims());
-  ShapeNHWDC odim(dest.getType()->dims());
-  PaddingTLNBRF pdim(pads);
-  ShapeHWD kdim(kernels);
+  ShapeNTHWC idim(src.getType()->dims());
+  ShapeNTHWC odim(dest.getType()->dims());
+  PaddingNFTBLR pdim(pads);
+  ShapeTHW kdim(kernels);
   isValid &= expectCompareTrue("buffer height too small for selected stride",
                                idim.h + pdim.top + pdim.bottom, kdim.height,
                                parent, CompareOperatorGreaterEqual<dim_t>());
   isValid &= expectCompareTrue("buffer width too small for selected stride",
                                idim.w + pdim.left + pdim.right, kdim.width,
                                parent, CompareOperatorGreaterEqual<dim_t>());
-  isValid &= expectCompareTrue("buffer time too small for selected stride",
-                               idim.d + pdim.near + pdim.far, kdim.depth,
-                               parent, CompareOperatorGreaterEqual<dim_t>());
+  isValid &=
+      expectCompareTrue("buffer time too small for selected stride",
+                        idim.t + pdim.near + pdim.far, kdim.temporal_frames,
+                        parent, CompareOperatorGreaterEqual<dim_t>());
   isValid &= expectCompareTrue("channels number must be divisible by groups",
                                idim.c % group, dim_t(0), parent);
 
-  auto outSz = calculate3DConvPoolOutputDims(idim.h, idim.w, idim.d, kernels,
+  auto outSz = calculate3DConvPoolOutputDims(idim.t, idim.h, idim.w, kernels,
                                              strides, pads);
   isValid &=
       expectCompareTrue("Invalid output dimension N", odim.n, idim.n, parent);
+  isValid &= expectCompareTrue("Invalid output dimension T", odim.t,
+                               outSz.temporal_frames, parent);
   isValid &= expectCompareTrue("Invalid output dimension H", odim.h,
                                outSz.height, parent);
   isValid &= expectCompareTrue("Invalid output dimension W", odim.w,
                                outSz.width, parent);
-  isValid &= expectCompareTrue("Invalid output dimension D", odim.d,
-                               outSz.depth, parent);
   isValid &= expectCompareTrue("Invalid output dimension C", odim.c % group,
                                dim_t(0), parent);
 
-  const dim_t filterDims[] = {odim.c, kdim.height, kdim.width, kdim.depth,
-                              idim.c / group};
+  const dim_t filterDims[] = {odim.c, kdim.temporal_frames, kdim.height,
+                              kdim.width, idim.c / group};
   isValid &=
       expectCompareTrue("Invalid filter dimensions", filter.getType()->dims(),
                         llvm::makeArrayRef(filterDims), parent);
@@ -306,6 +311,8 @@ static bool verifyFullyConnected(NodeValue src, NodeValue weights,
                                    src.dims().size(), parent);
   isValid &= expectCompareTrue("FC weights must be 2D", size_t(2),
                                weights.dims().size(), parent);
+  isValid &= expectCompareTrue("FC bias must be 1D", size_t(1),
+                               bias.dims().size(), parent);
   isValid &= expectCompareTrue("Mismatch between source and dest dimensions",
                                src.dims()[0], dest.dims()[0], parent);
   isValid &= expectCompareTrue("Mismatch between source and weight dimensions",
@@ -317,9 +324,10 @@ static bool verifyFullyConnected(NodeValue src, NodeValue weights,
 
   if (src.getElementType() == ElemKind::Int8QTy) {
     isValid &=
-        expectCompareTrue("Bias type should be Int8 or Int32 for FC",
+        expectCompareTrue("Bias type should be Int8, Int32 or FP32 for FC",
                           bias.getElementType() == ElemKind::Int8QTy ||
-                              bias.getElementType() == ElemKind::Int32QTy,
+                              bias.getElementType() == ElemKind::Int32QTy ||
+                              bias.getElementType() == ElemKind::FloatTy,
                           true, parent);
   }
   return isValid;
@@ -467,7 +475,8 @@ static bool verifyRegression(NodeValue src, NodeValue dest,
 static bool verifySparseLengthsSum(NodeValue dest, NodeValue data,
                                    NodeValue indices, NodeValue lengths) {
   bool isValid = checkType(dest, data.getElementType(), dest.getNode());
-  isValid &= checkType(indices, IndexElemKind, dest.getNode());
+  isValid &= checkType(indices, {ElemKind::Int64ITy, ElemKind::Int32ITy},
+                       dest.getNode());
   isValid &= checkType(lengths, ElemKind::Int32ITy, dest.getNode());
   isValid &=
       expectCompareTrue("Indices must be a 1D vector", indices.dims().size(),
@@ -483,7 +492,8 @@ static bool verifySparseLengthsWeightedSum(NodeValue dest, NodeValue data,
                                            NodeValue lengths) {
   bool isValid = checkType(dest, data.getElementType(), dest.getNode());
   isValid &= checkType(weights, data.getElementType(), dest.getNode());
-  isValid &= checkType(indices, IndexElemKind, dest.getNode());
+  isValid &= checkType(indices, {ElemKind::Int64ITy, ElemKind::Int32ITy},
+                       dest.getNode());
   isValid &= checkType(lengths, ElemKind::Int32ITy, dest.getNode());
   isValid &=
       expectCompareTrue("Indices must be a 1D vector", indices.dims().size(),
@@ -506,8 +516,8 @@ static bool verifyEmbeddingBag(NodeValue dest, NodeValue data,
                                NodeValue offsets) {
   bool isValid = checkType(dest, data.getElementType(), dest.getNode());
   isValid &= checkType(weights, data.getElementType(), dest.getNode());
-  isValid &= checkType(indices, IndexElemKind, dest.getNode());
-  isValid &= checkType(offsets, IndexElemKind, dest.getNode());
+  isValid &= checkType(indices, ElemKind::Int64ITy, dest.getNode());
+  isValid &= checkType(offsets, ElemKind::Int64ITy, dest.getNode());
   isValid &=
       expectCompareTrue("Indices must be a 1D vector", indices.dims().size(),
                         size_t(1), dest.getNode());
@@ -549,7 +559,8 @@ bool ChannelwiseQuantizedConvolutionNode::verify() const {
                                    getBias(), Kernels_, Strides_, Pads_, Group_,
                                    /* dilation */ 1, /* checkBiasType */ false);
 
-  isValid &= checkType(getBias(), ElemKind::Int32QTy, this);
+  isValid &=
+      checkType(getBias(), {ElemKind::Int32QTy, ElemKind::FloatTy}, this);
   isValid &= checkType(getInput(), ElemKind::Int8QTy, this);
 
   // check qparam types
@@ -1377,11 +1388,14 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
         "Only use FP16 accumulation with FP16 version of RWQ-SLWS.",
         result.getType()->getElementType(), ElemKind::Float16Ty, parent);
   }
-  isValid &= checkType(indices, IndexElemKind, parent);
+  isValid &= checkType(
+      indices,
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+      parent);
   // For EmbeddingBagByteRowwiseOffsets lengths are really offsets and should be
   // Int64ITy.
   if (isEmbeddingBagByteRowwiseOffsets) {
-    isValid &= checkType(lengths, IndexElemKind, parent);
+    isValid &= checkType(lengths, ElemKind::Int64ITy, parent);
   } else {
     isValid &= checkType(lengths, ElemKind::Int32ITy, parent);
   }
@@ -1467,7 +1481,8 @@ bool LengthsRangeFillNode::verify() const {
 
 bool SparseToDenseNode::verify() const {
   bool isValid = checkType(getResult(), getValues().getElementType(), this);
-  isValid &= checkType(getIndices(), IndexElemKind, this);
+  isValid &=
+      checkType(getIndices(), {ElemKind::Int64ITy, ElemKind::Int32ITy}, this);
   isValid &= expectCompareTrue("Indices must be a 1D vector",
                                getIndices().dims().size(), size_t(1), this);
   isValid &=
@@ -1479,7 +1494,7 @@ bool SparseToDenseNode::verify() const {
 bool SparseToDenseMaskNode::verify() const {
   bool isValid = checkType(getResult(), getValues().getElementType(), this);
   isValid &= checkType(getResult(), getDefaultValue().getElementType(), this);
-  isValid &= checkType(getIndices(), IndexElemKind, this);
+  isValid &= checkType(getIndices(), ElemKind::Int64ITy, this);
   isValid &= checkType(getLengths(), ElemKind::Int32ITy, this);
   isValid &= expectCompareTrue("Indices must be a 1D vector",
                                getIndices().dims().size(), size_t(1), this);
@@ -1568,8 +1583,9 @@ bool ArgMaxNode::verify() const {
   bool isValid = true;
 
   // Check input type.
-  isValid &=
-      checkType(getArgmax(), llvm::ArrayRef<ElemKind>({IndexElemKind}), this);
+  isValid &= checkType(
+      getArgmax(),
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}), this);
 
   isValid &= expectCompareTrue("Input must be a 4D tensor",
                                getInput().dims().size(), size_t(4), this);
@@ -2017,6 +2033,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
                               FusedActivation fusedActivation) {
   switch (fusedActivation) {
   case FusedActivation::NONE:
+    os << "NONE";
     break;
   case FusedActivation::RELU:
     os << "RELU";
@@ -2038,6 +2055,18 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ConvolutionLayout layout) {
     break;
   case ConvolutionLayout::NHWC:
     os << "NHWC";
+    break;
+  }
+  return os;
+}
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, LengthsMode lengthsMode) {
+  switch (lengthsMode) {
+  case LengthsMode::AllOne:
+    os << "AllOne";
+    break;
+  case LengthsMode::Variable:
+    os << "Variable";
     break;
   }
   return os;

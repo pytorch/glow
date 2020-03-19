@@ -4,6 +4,12 @@
 # By default, we run with the enabled CPU backend and disabled OpenCL backend.
 set -ex
 
+# Add support for https apt sources.
+wget http://security.ubuntu.com/ubuntu/pool/main/a/apt/apt-transport-https_1.2.29ubuntu0.1_amd64.deb
+echo "960a44449fa1ec082a75adee8d6f6fe15577627570edc722a1822e495a8b8c57  apt-transport-https_1.2.29ubuntu0.1_amd64.deb" | sha256sum -c
+sudo dpkg -i apt-transport-https_1.2.29ubuntu0.1_amd64.deb
+rm apt-transport-https_1.2.29ubuntu0.1_amd64.deb
+
 export MAX_JOBS=8
 if [ "${CIRCLE_JOB}" != "COVERAGE" ]; then
     if hash sccache 2>/dev/null; then
@@ -38,6 +44,19 @@ install_pocl() {
    cd ../
 }
 
+install_fmt() {
+    git clone https://github.com/fmtlib/fmt
+    pushd fmt
+    mkdir build
+    cd build
+    cmake ..
+    make -j`nproc`
+    sudo make install
+    popd
+}
+
+GLOW_DEPS="libpng-dev libgoogle-glog-dev libboost-all-dev libdouble-conversion-dev libgflags-dev libjemalloc-dev libpthread-stubs0-dev libevent-dev libssl-dev"
+
 if [ "${CIRCLE_JOB}" == "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
     sudo -E apt-add-repository -y "ppa:ubuntu-toolchain-r/test"
     curl -sSL "https://build.travis-ci.org/files/gpg/llvm-toolchain-trusty-7.asc" | sudo -E apt-key add -
@@ -53,7 +72,8 @@ elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
     sudo ln -s /usr/bin/llvm-symbolizer-7 /usr/bin/llvm-symbolizer
     sudo ln -s /usr/bin/llvm-config-7 /usr/bin/llvm-config-7.0
 
-    sudo apt-get install -y libpng-dev libgoogle-glog-dev
+    sudo apt-get install -y ${GLOW_DEPS}
+    install_fmt
 else
     # Install Glow dependencies
     sudo apt-get update
@@ -64,7 +84,8 @@ else
     sudo ln -s /usr/bin/llvm-symbolizer-8 /usr/bin/llvm-symbolizer
     sudo ln -s /usr/bin/llvm-config-8 /usr/bin/llvm-config-8.0
 
-    sudo apt-get install -y libpng-dev libgoogle-glog-dev
+    sudo apt-get install -y ${GLOW_DEPS}
+    install_fmt
 fi
 
 # Since we are using llvm-7 in these two branches, we cannot use pip install cmake
@@ -95,13 +116,11 @@ fi
 CMAKE_ARGS+=("-DCMAKE_CXX_FLAGS=-Werror")
 CMAKE_ARGS+=("-DGLOW_WITH_CPU=ON")
 CMAKE_ARGS+=("-DGLOW_WITH_HABANA=OFF")
+
 if [[ "${CIRCLE_JOB}" == "ASAN" ]]; then
     CMAKE_ARGS+=("-DGLOW_USE_SANITIZER='Address;Undefined'")
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
     CMAKE_ARGS+=("-DCMAKE_BUILD_TYPE=Release")
-elif [[ "${CIRCLE_JOB}" == "TSAN" ]]; then
-    CMAKE_ARGS+=("-DGLOW_USE_SANITIZER='Thread'")
-    CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=OFF")
 elif [[ "$CIRCLE_JOB" == "RELEASE_WITH_EXPENSIVE_TESTS" ]]; then
     # Download the models and tell cmake where to find them.
     MODELS_DIR="$GLOW_DIR/downloaded_models"

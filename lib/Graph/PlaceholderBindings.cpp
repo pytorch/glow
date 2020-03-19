@@ -100,6 +100,20 @@ void PlaceholderBindings::insert(Placeholder *P, Tensor *T) {
   nameMap_[P->getName()] = P;
 }
 
+void PlaceholderBindings::update(Placeholder *P, Tensor &&T) {
+  DCHECK(map_.count(P)) << "Placeholder with name \"" << P->getName().str()
+                        << "\" is missing";
+  auto *tensor = map_[P];
+  if (auto *tensorPool = tensor->getOwningPool()) {
+    tensorPool->reclaim(tensor);
+  } else {
+    delete tensor;
+  }
+
+  // Take ownership over the tensor.
+  map_[P] = new Tensor(std::move(T));
+}
+
 void PlaceholderBindings::copyToTarget(llvm::StringRef name,
                                        PlaceholderBindings &dst) {
   auto *srcPH = this->getPlaceholderByName(name);
@@ -227,7 +241,7 @@ PlaceholderBindings::PlaceholderBindings(
     auto *orig = inputs[i];
     /// Create a reference to the original tensor and hand it to the
     /// PlaceholderBindings.
-    Tensor ptrT = orig->getUnowned(orig->dims());
+    Tensor ptrT = orig->getUnowned();
     insert(placeholders[i], std::move(ptrT));
   }
 }

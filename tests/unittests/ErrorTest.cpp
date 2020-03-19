@@ -143,6 +143,9 @@ TEST(Error, EmptyErrors) {
   EXPECT_TRUE(ERR_TO_BOOL(std::move(err)));
 }
 
+// Creating an unused OneErrOnly should be safe.
+TEST(Error, UntouchedOneErrOnly) { OneErrOnly foo; }
+
 TEST(Error, ExpectedConversion) {
   auto foo = []() -> Expected<int32_t> { return 42; };
 
@@ -152,4 +155,28 @@ TEST(Error, ExpectedConversion) {
   ASSIGN_VALUE_OR_FAIL_TEST(barRes, bar());
 
   EXPECT_EQ(barRes, 42);
+}
+
+TEST(Error, PeekError) {
+  const char *msg = "some error";
+  auto err = MAKE_ERR(msg);
+  auto str = err.peekErrorValue()->logToString();
+  EXPECT_NE(str.find(msg), std::string::npos)
+      << "Error should preserve the given message";
+#ifndef NDEBUG
+  EXPECT_FALSE(err.isChecked_());
+#endif
+  ERR_TO_VOID(std::move(err));
+}
+
+TEST(Error, PeekExpected) {
+  const char *msg = "some error";
+  Expected<int> intOrErr = MAKE_ERR(msg);
+  auto str = intOrErr.peekErrorValue()->logToString();
+  EXPECT_NE(str.find(msg), std::string::npos)
+      << "Error should preserve the given message";
+#ifndef NDEBUG
+  EXPECT_FALSE(intOrErr.isChecked_());
+#endif
+  ERR_TO_VOID(intOrErr.takeError());
 }

@@ -90,14 +90,12 @@ class SLSBench : public Benchmark {
   std::string backendStr_;
   std::vector<SLSParam> params_;
   std::string devId_;
-  float tableValue;
 
 public:
   SLSBench(dim_t batchSize_, dim_t asyncLaunchSize_, std::string backendStr_,
            std::vector<SLSParam> params_, std::string devId_ = std::string(""))
       : batchSize_(batchSize_), asyncLaunchSize_(asyncLaunchSize_),
-        backendStr_(backendStr_), params_(params_), devId_(devId_),
-        tableValue(1.0f) {}
+        backendStr_(backendStr_), params_(params_), devId_(devId_) {}
 
   double countSLSGbytes(SLSParam param) const {
 
@@ -153,25 +151,20 @@ public:
 
   void addSLSNode(std::unique_ptr<Module> &mod, Function *fn, SLSParam param) {
 
-    // Create and initialize data tensor
-    Tensor data(ElemKind::FloatTy,
-                {param.numTableEntries, param.numElementsPerRow});
-    data.getHandle().clear(tableValue);
-    tableValue += 1.0f;
-
     // Constant needed for Non-quantized case
-    Constant *dataConstant = nullptr;
+    Tensor dataConstantTensor;
     if ((param.slsKind == NONQUANTIZED_WEIGHTED) ||
         (param.slsKind == NONQUANTIZED_UNWEIGHTED)) {
-      Tensor dataConstantTensor(
-          param.dtype, {param.numTableEntries, param.numElementsPerRow});
-      if (param.dtype == ElemKind::FloatTy) {
-        dataConstantTensor.getHandle<float>().clear(1.0f);
-      } else {
-        dataConstantTensor.getHandle<float16_t>().clear(1.0f);
-      }
-      dataConstant = mod->createConstant("SLSData", dataConstantTensor);
+      dataConstantTensor =
+          Tensor(param.dtype, {param.numTableEntries, param.numElementsPerRow});
+    } else {
+      // If RWQ then we need to account for per-row scale/offset in the shape.
+      const dim_t numTotalColumns =
+          param.numElementsPerRow + 2 * sizeof(float16_t);
+      dataConstantTensor = Tensor(
+          param.fusedDtype, {param.numTableEntries, numTotalColumns}, 1.0, 0);
     }
+    Constant *dataConstant = mod->createConstant("SLSData", dataConstantTensor);
 
     // Create placeholders for weights, indices and lengths
     auto *weights = mod->createPlaceholder(
@@ -238,21 +231,26 @@ public:
     } // i
 
     // Create SLS node, optional clip node, and save node
+    const LengthsMode LM = param.numIndicesPerBatch == 1
+                               ? LengthsMode::AllOne
+                               : LengthsMode::Variable;
     Node *R = nullptr;
     if (param.slsKind == QUANTIZED_UNWEIGHTED) {
       R = fn->createFusedRowwiseQuantizedSparseLengthsSum(
-          getSLSDescription(param), data, indices, lengths, param.fusedDtype,
-          param.useFP16Accumulation);
+          getSLSDescription(param), dataConstant, indices, lengths,
+          param.useFP16Accumulation, LM, param.numIndicesPerBatch);
     } else if (param.slsKind == QUANTIZED_WEIGHTED) {
       R = fn->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-          getSLSDescription(param), data, weights, indices, lengths,
-          param.fusedDtype, param.useFP16Accumulation);
+          getSLSDescription(param), dataConstant, weights, indices, lengths,
+          param.useFP16Accumulation, LM, param.numIndicesPerBatch);
     } else if (param.slsKind == NONQUANTIZED_WEIGHTED) {
       R = fn->createSparseLengthsWeightedSum(
-          getSLSDescription(param), dataConstant, weights, indices, lengths);
+          getSLSDescription(param), dataConstant, weights, indices, lengths, LM,
+          param.numIndicesPerBatch);
     } else { // NonquantizedUnweighted
       R = fn->createSparseLengthsSum(getSLSDescription(param), dataConstant,
-                                     indices, lengths);
+                                     indices, lengths, LM,
+                                     param.numIndicesPerBatch);
     }
     SaveNode *S = nullptr;
     if (param.addClip) {
@@ -443,19 +441,19 @@ SLSParam parseArgs(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
 
   printf("SLS Microbenchmark\n");
-  printf(
-      "Usage: SLSBench batchSize(Int) numIndicesPerBatch(Int) "
-      "numIndicesPerBatchPad(Int) numTableEntries(Int) "
-      "numElementsPerRow(int) numReps(Int) "
-      "numAsyncLaunches(Int) numSLSNodes(Int) "
-      "slsKindStr(\"QuantizedWeighted\"|\"QuantizedUnweighted\"|"
-      "\"NonquantizedWeighted\"|"
-      "\"NonquantizedUnweighted\") "
-      "sortedStr(\"Sorted\"|\"Unsorted\") backendStr(String) "
-      "dtypeStr(\"Float16\"|\"Float32\") "
-      "addClipStr(\"True\"|\"False\")\nQuantized only options: "
-      "quantizationDtypeStr(\"Int8\"|\"Int4\") "
-      "useFP16AccumulationStr(\"True\"|\"False\") \nOptional: dev_id(Int)\n");
+  printf("Usage: SLSBench batchSize(Int) numIndicesPerBatch(Int) "
+         "numIndicesPerBatchPad(Int) numTableEntries(Int) "
+         "numElementsPerRow(int) numReps(Int) "
+         "numAsyncLaunches(Int) numSLSNodes(Int) "
+         "slsKindStr(\"QuantizedWeighted\"|\"QuantizedUnweighted\"|"
+         "\"NonquantizedWeighted\"|"
+         "\"NonquantizedUnweighted\") "
+         "sortedStr(\"Sorted\"|\"Unsorted\") backendStr(String) "
+         "dtypeStr(\"Float16\"|\"Float32\") "
+         "addClipStr(\"True\"|\"False\")\nQuantized only options: "
+         "quantizationDtypeStr(\"Int8\"|\"Int4\") "
+         "useFP16AccumulationStr(\"True\"|\"False\") \n"
+         "Optional: dev_id(Int)\n");
   printf("\n");
 
   std::vector<SLSParam> params;
@@ -488,7 +486,7 @@ int main(int argc, char *argv[]) {
     }
   }
   // Using command line
-  else if (argc == 14 || argc == 15 || argc == 16 || argc == 17) {
+  else if (argc == 14 || argc == 15 || argc == 16 || argc == 17 || argc == 18) {
     SLSParam param = parseArgs(argc, argv);
     params.push_back(param);
 

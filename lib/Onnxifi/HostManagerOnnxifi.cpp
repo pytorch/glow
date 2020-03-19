@@ -25,7 +25,7 @@ extern bool GlowDumpCompilationLog;
 namespace onnxifi {
 
 extern bool GlowSaveOnnxifiModel;
-;
+
 int32_t GlowNumDevices = 0;
 int32_t GlowSparseNNPartitioningSchemeNumCards = 1;
 int64_t GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard = 0;
@@ -37,11 +37,15 @@ bool GlowSaturateHost = false;
 bool GlowFP16 = false;
 bool GlowFP16Placeholders = true;
 bool GlowFP16Constants = true;
+bool GlowDumpGraph = false;
 bool GlowFusedScaleOffsetFP16 = false;
 bool GlowForceSLSAccumFP16 = false;
 bool GlowClipFP16 = false;
 bool GlowClipFP16SkipInputs = true;
 bool GlowUseSparseNNPartitioningScheme = false;
+size_t GlowMaxActiveRequests = 48;
+size_t GlowMaxQueueSize = 100;
+size_t GlowExecutorThreads = 10;
 
 static llvm::cl::opt<int32_t, true>
     GlowNumDevicesOpt("glow-num-devices",
@@ -103,7 +107,14 @@ HostManagerBackend::createHostManager(llvm::StringRef backendName) {
   } else {
     configs = runtime::DeviceManager::generateDeviceConfigs(backendName);
   }
-  return glow::make_unique<runtime::HostManager>(std::move(configs));
+
+  runtime::HostConfig hostConfig;
+  hostConfig.maxActiveRequests = GlowMaxActiveRequests;
+  hostConfig.maxQueueSize = GlowMaxQueueSize;
+  hostConfig.executorThreads = GlowExecutorThreads;
+
+  return glow::make_unique<runtime::HostManager>(std::move(configs),
+                                                 hostConfig);
 }
 
 void HostManagerBackend::runNetwork(const Graph *graph,
@@ -118,9 +129,11 @@ void HostManagerBackend::runNetwork(const Graph *graph,
 }
 
 onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
-                                          void *deferredBlobReader) {
+                                          void *deferredBlobReader,
+                                          runtime::PrePartitionedConfig *PPC) {
   CompilationContext cctx;
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
+  cctx.prepartitionedConfig = PPC;
 
   if (deferredBlobReader) {
     // Initialize loader and set field in cctx.
@@ -191,6 +204,9 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
         GlowSparseNNPartitioningSchemeNumCoresOther;
   }
+  if (GlowDumpGraph) {
+    cctx.dumpFinalGraph = true;
+  }
 
   auto err =
       hostManager_->addNetwork(std::move(module), cctx, GlowSaturateHost);
@@ -222,17 +238,16 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   netName_ = strFormat("onnxifi_function_%lu", makeUniqueGraphId());
 
   std::unique_ptr<Module> module = glow::make_unique<Module>();
-  Function *function = module->createFunction(netName_);
+  runtime::PrePartitionedConfig PPC;
 
   // TODO: make better error reporting.
   std::unique_ptr<ONNXIFIModelLoader> loader =
       EXIT_ON_ERR(ONNXIFIModelLoader::parse(
-          onnxModel, onnxModelSize, weightCount, weightDescriptors, *function,
-          true /*loadInputsAsPlaceholders*/, backendPtr_->getUseOnnx()));
+          onnxModel, onnxModelSize, weightCount, weightDescriptors, *module,
+          netName_, &PPC, true /*loadInputsAsPlaceholders*/,
+          backendPtr_->getUseOnnx()));
 
-  onnxInputToPlaceholder_ = loader->getInputVarsMapping();
-  onnxOutputToPlaceholder_ = loader->getOutputVarsMapping();
-
+  bindPlaceholders(*loader);
   setZeroLengthSequence(maxSeqLength);
   // Make sure the pool is ready to go.
   for (auto &obj : onnxInputToPlaceholder_) {
@@ -240,11 +255,13 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   }
 
   if (GlowSaveOnnxifiModel) {
-    saveOnnxifiModel(function);
+    for (Function *F : module->getFunctions()) {
+      saveOnnxifiModel(F);
+    }
   }
 
   return static_cast<HostManagerBackend *>(backendPtr_)
-      ->addNetwork(std::move(module), deferedBlobReader);
+      ->addNetwork(std::move(module), deferedBlobReader, &PPC);
 }
 
 namespace {
@@ -266,9 +283,12 @@ void dumpTraces(TraceContext *traceContext) {
 onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
                                  EventPtr outputEvent,
                                  onnxTraceEventList *traceEvents) {
+  auto threadId = threads::getThreadId();
+  auto startTime = TraceEvent::now();
+
   backendPtr_->runNetwork(
       this, std::move(ctx),
-      [outputEvent, traceEvents,
+      [outputEvent, traceEvents, threadId, startTime,
        this](runtime::RunIdentifierTy runId, Error err,
              std::unique_ptr<ExecutionContext> ctx) mutable {
         TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::RUNTIME,
@@ -286,6 +306,15 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
 
         auto *traceContext = ctx->getTraceContext();
         if (traceContext) {
+          // We want to log the async start event with the original caller's
+          // threadId. This way, chrome UI will put the async event next to the
+          // caller thread.
+          traceContext->logTraceEvent("glow e2e", TraceLevel::RUNTIME,
+                                      TraceEvent::AsyncBeginType, startTime, {},
+                                      threadId, runId);
+          traceContext->logTraceEvent(
+              "glow e2e", TraceLevel::RUNTIME, TraceEvent::AsyncEndType,
+              TraceEvent::now(), {}, threads::getThreadId(), runId);
           setTraceEvents(traceEvents, traceContext);
         }
 
@@ -293,16 +322,25 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
         outputEvent->signal(ONNXIFI_STATUS_SUCCESS);
 
         if (traceContext && GlowDumpDebugTraces) {
-          std::unique_lock<std::mutex> lock(tracesMutex_);
-          if (!mergedTraceContext_) {
-            mergedTraceContext_ =
-                glow::make_unique<TraceContext>(TraceLevel::STANDARD);
-          }
-          mergedTraceContext_->merge(traceContext);
+          // Dumping traces to a file can take a while. So avoid tracesMutex_
+          // while we call dumpTraces.
+          std::unique_ptr<TraceContext> toDump;
+          {
+            std::unique_lock<std::mutex> lock(tracesMutex_);
+            if (!mergedTraceContext_) {
+              mergedTraceContext_ =
+                  glow::make_unique<TraceContext>(TraceLevel::STANDARD);
+            }
+            mergedTraceContext_->merge(traceContext);
 
-          if (++numTracesToDump_ >= GlowNumDebugTracesPerDump) {
-            numTracesToDump_ = 0;
-            dumpTraces(mergedTraceContext_.release());
+            if (++numTracesToDump_ >= GlowNumDebugTracesPerDump) {
+              numTracesToDump_ = 0;
+              toDump.reset(mergedTraceContext_.release());
+            }
+          }
+
+          if (toDump) {
+            dumpTraces(toDump.get());
           }
         }
       });
@@ -317,7 +355,7 @@ HostManagerGraph::~HostManagerGraph() {
   if (GlowDumpDebugTraces) {
     std::unique_lock<std::mutex> lock(tracesMutex_);
     if (mergedTraceContext_ && numTracesToDump_ > 0) {
-      dumpTraces(mergedTraceContext_.release());
+      dumpTraces(mergedTraceContext_.get());
     }
   }
 }

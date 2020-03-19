@@ -8,8 +8,8 @@ graph and IR optimizers and some implementation details.
 Glow has two different optimizers: the graph optimizer and the IR optimizer.
 
 The graph optimizer performs optimizations on the graph representation of a
-neural network model. The nodes of the graph usually represent more coarse
-grained operations than those represented by the IR instructions. These
+neural network model. The nodes of the graph usually represent more coarse-grained 
+operations than those represented by the IR instructions. These
 operations also do not explicitly represent memory allocations and buffers.
 
 The IR optimizer performs a number of optimizations on the IR representation of a
@@ -26,7 +26,8 @@ representation.
 
 ### Set of supported graph optimizations
 
-Below you can see the list of currently supported graph optimizations:
+Below you can see the list of currently supported graph optimizations in Glow:
+
   * Dead code elimination (DCE)
 
     This optimization removes computations whose results or side-effects are
@@ -56,16 +57,16 @@ Below you can see the list of currently supported graph optimizations:
 
   * Optimizing of regression nodes in the inference mode
 
-    In inference mode Regression nodes simply forward their inputs.
+    In inference mode, Regression nodes simply forward their inputs.
 
   * Optimization of concat nodes
 
     This optimization merges multiple consequent concat nodes into a single concat
     node.
 
-  * Common sub-expression elimination
+  * Common sub-expression elimination (CSE)
 
-    This optimization performs a classic CSE with a goal of avoiding of any
+    This optimization performs a classic CSE with the goal of avoiding of any
     results that were computed already.
 
   * Optimization of ReduceMean nodes
@@ -78,6 +79,7 @@ Below you can see the list of currently supported graph optimizations:
 
 Majority of the common optimizations above can be used on a quantized graph.
 But in addition to those there are quantization specific optimizations:
+
   * Quantize(Dequantize(X)) -> RescaleQuantized(X)
 
     If the Quantize-Dequantize sequence does not change the type then this
@@ -113,6 +115,7 @@ But in addition to those there are quantization specific optimizations:
     operator supports this, e.g., add, mul, etc.
 
     This optimization can be applied to:
+    
       * Add
       * Sub
       * Mul
@@ -122,7 +125,7 @@ But in addition to those there are quantization specific optimizations:
       * Convolution
       * Splat
 
-  * Combine Arithemtic operations into Batch Normalization.
+  * Combine Arithmetic operations into Batch Normalization.
 
     When a chain of Arithmetic nodes (each operating on a constant on one side) is right
     below BatchNorm node, the chain is folded into the Batch Norm node.
@@ -161,8 +164,8 @@ But in addition to those there are quantization specific optimizations:
 
 The graph optimizations listed above are each formulated as a FunctionPass,
 which is run on a Function (graph). A series of FunctionPasses along with how to
-configure each (via a `FunctionPassConfig`) is what constitutes a pipeline,
-which is passed into a PassManager, the driver of performing passes. A pipeline
+configure each (via a `FunctionPassConfig`) are what constitutes a pipeline,
+which is passed into a PassManager, which executes them. A pipeline
 is simply a vector of `FunctionPassConfig`s. `FunctionPassConfig` is a class
 made up of:
 
