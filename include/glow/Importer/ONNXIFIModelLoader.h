@@ -55,17 +55,23 @@ public:
   }
 
   /// \returns a unique_ptr<ONNXIFIModelLoader> if \p onnxModel can be
-  /// parsed and static weights can be loaded from the \p wightDescriptors.
+  /// parsed and static weights can be loaded from the \p weightDescriptors.
   /// \returns Error otherwise. \p loadInputsAsPlaceholders is passed to
   /// loadInputs to determine whether graph inputs are loaded as Placeholders or
   /// Tensors. Loading inputs as Tensors is useful for when weights are not
   /// provided such as when the graph being loaded is actually a small patch of
   /// a larger graph because the graph inputs in this case may represent
   /// internal values for the larger graph. \p constFoldInLoader is used to
-  /// determine whether to try constant folding at load time.
+  /// determine whether to try constant folding at load time. \p mod will be
+  /// filled wth one or more Functions built. If the model is pre-partitioned,
+  /// then \p PPC will be filled with relevant configuration for partitioning,
+  /// and all Functions created will be named with prefix /p netName. Otherwise
+  /// \p PPC is ignored, and \p netName is used as the name of the single
+  /// Function that is created inside \p mod.
   static Expected<std::unique_ptr<ONNXIFIModelLoader>>
   parse(const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
-        const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
+        const onnxTensorDescriptorV1 *weightDescriptors, Module &mod,
+        llvm::StringRef netName, runtime::PrePartitionedConfig *PPC,
         bool loadInputsAsPlaceholders = true, bool use_onnx = true,
         bool constFoldInLoader = true);
 };

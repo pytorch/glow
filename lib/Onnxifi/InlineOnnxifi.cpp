@@ -48,12 +48,17 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
                        uint32_t weightCount,
                        const onnxTensorDescriptorV1 *weightDescriptors,
                        uint32_t maxSeqLength, void * /*unused */) {
-  function_ = executionEngine_.getModule().createFunction("function");
-
+  Module &mod = executionEngine_.getModule();
+  // Note: Pass in a nullptr for PPC here because we do not currently support
+  // pre-partitioned models here.
   std::unique_ptr<ONNXIFIModelLoader> loader =
       EXIT_ON_ERR(ONNXIFIModelLoader::parse(
-          onnxModel, onnxModelSize, weightCount, weightDescriptors, *function_,
-          true /*loadInputsAsPlaceholders*/, backendPtr_->getUseOnnx()));
+          onnxModel, onnxModelSize, weightCount, weightDescriptors, mod,
+          "function", /* PPC */ nullptr, true /*loadInputsAsPlaceholders*/,
+          backendPtr_->getUseOnnx()));
+
+  CHECK_EQ(mod.getFunctions().size(), 1) << "Should have exactly one Function.";
+  function_ = *mod.getFunctions().begin();
 
   bindPlaceholders(*loader);
   if (GlowSaveOnnxifiModel) {

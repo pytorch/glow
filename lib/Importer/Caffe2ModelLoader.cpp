@@ -1613,9 +1613,8 @@ Error Caffe2ModelLoader::loadNetwork(caffe2::NetDef &net) {
           it != partNameToFun_.end(),
           strFormat("Did not find partition with name %s", pName.c_str()));
       G_ = it->second;
-    } else {
-      assert(G_ && "G_ should be non-null when not loading partitions.");
     }
+    RETURN_ERR_IF_NOT(G_, "Internal Glow error; Graph was not valid.");
 
     if (constFoldInLoader_) {
       auto tryFold = foldOperator(op);
@@ -2026,6 +2025,54 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
   }
 }
 
+Error Caffe2ModelLoader::initWithModule(caffe2::NetDef &networkDef,
+                                        llvm::StringRef funNamePrefix,
+                                        runtime::PrePartitionedConfig *PPC) {
+  // Look for any partitions that will be needed. If there is no
+  // partition_info then we create a single Function to load into. Otherwise
+  // we create multiple Functions and switch between them as we load each
+  // operator.
+  std::unordered_map<Function *, std::unordered_set<unsigned>> funToIDs;
+  if (networkDef.partition_info_size() == 0) {
+    G_ = mod_.createFunction(funNamePrefix);
+  } else {
+    for (int i = 0; i < networkDef.partition_info_size(); i++) {
+      const std::string &pName = networkDef.partition_info(i).name();
+      const std::string funName = funNamePrefix.str() + "_" + pName;
+      Function *PF = mod_.createFunction(funName);
+      partNameToFun_[pName] = PF;
+      for (auto i : networkDef.partition_info(i).device_id()) {
+        funToIDs[PF].insert(i);
+      }
+    }
+  }
+
+  RETURN_IF_ERR(loadNetwork(networkDef));
+
+  // Now setup the pre-partitioned config if relevant.
+  if (partNameToFun_.size()) {
+    RETURN_ERR_IF_NOT(
+        PPC, "Partitioned model but no config to store meta information in.");
+    PPC->funcName = funNamePrefix.str();
+
+    PPC->funcs.reserve(partNameToFun_.size());
+    PPC->logicalIDs.reserve(partNameToFun_.size());
+    for (auto &SF : partNameToFun_) {
+      Function *F = SF.getValue();
+      // This is to ensure that the same processing done with
+      // the same network, even if order of operators is different.
+      F->orderNodes();
+      PPC->funcs.push_back(F);
+      PPC->logicalIDs.push_back(funToIDs[F]);
+      RETURN_ERR_IF_NOT(F->verify(), "Function verification failed.");
+    }
+  }
+
+  deleteUnusedConstants();
+
+  return Error::success();
+}
+
 Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
                                      const std::string &netWeightFilename,
                                      llvm::ArrayRef<const char *> names,
@@ -2050,50 +2097,9 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
     caffe2::NetDef weightsDef;
     ASSIGN_VALUE_OR_RETURN_ERR(weightsDef, loadProtoFile(netWeightFilename));
 
-    // Look for any partitions that will be needed. If there is no
-    // partition_info then we create a single Function to load into. Otherwise
-    // we create multiple Functions and switch between them as we load each
-    // operator.
-    std::unordered_map<Function *, std::unordered_set<unsigned>> funToIDs;
-    if (networkDef.partition_info_size() == 0) {
-      mod_.createFunction(funNamePrefix);
-    } else {
-      for (int i = 0; i < networkDef.partition_info_size(); i++) {
-        const std::string &pName = networkDef.partition_info(i).name();
-        const std::string funName = funNamePrefix.str() + "_" + pName;
-        Function *PF = mod_.createFunction(funName);
-        partNameToFun_[pName] = PF;
-        for (auto i : networkDef.partition_info(i).device_id()) {
-          funToIDs[PF].insert(i);
-        }
-      }
-    }
-
     RETURN_IF_ERR(loadWeightsFromNet(weightsDef));
-    RETURN_IF_ERR(loadNetwork(networkDef));
 
-    // Now setup the pre-partitioned config if relevant.
-    if (partNameToFun_.size()) {
-      RETURN_ERR_IF_NOT(
-          PPC, "Partitioned model but no config to store meta information in.");
-      PPC->funcName = funNamePrefix.str();
-
-      PPC->funcs.reserve(partNameToFun_.size());
-      PPC->logicalIDs.reserve(partNameToFun_.size());
-      for (auto &SF : partNameToFun_) {
-        Function *F = SF.getValue();
-        // This is to ensure that the same processing done with
-        // the same network, even if order of operators is different.
-        F->orderNodes();
-        PPC->funcs.push_back(F);
-        PPC->logicalIDs.push_back(funToIDs[F]);
-        RETURN_ERR_IF_NOT(F->verify(), "Function verification failed.");
-      }
-    }
-
-    deleteUnusedConstants();
-
-    return Error::success();
+    return initWithModule(networkDef, funNamePrefix, PPC);
   };
 
   if (errPtr) {
@@ -2105,9 +2111,10 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
 
 Caffe2ModelLoader::Caffe2ModelLoader(
     const void *model, uint32_t modelSize, uint32_t weightsCount,
-    const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
+    const onnxTensorDescriptorV1 *weightDescriptors, Module &mod,
+    llvm::StringRef funNamePrefix, runtime::PrePartitionedConfig *PPC,
     bool loadInputsAsPlaceholders, Error *errPtr, bool constFoldInLoader)
-    : CommonOperatorLoader({}, {}, &F, errPtr) {
+    : CommonOperatorLoader({}, {}, mod, errPtr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
@@ -2140,17 +2147,7 @@ Caffe2ModelLoader::Caffe2ModelLoader(
       positionalOutputNames_.emplace_back(output);
     }
 
-    // TODO: in Caffe2ModelLoader, setOutputNodes is actually inside
-    // loadNetwork, maybe we should make it a separate function?
-    RETURN_IF_ERR(loadNetwork(networkDef));
-
-    // This is to ensure that the same processing done with
-    // the same network, even if order of operators is different.
-    F.orderNodes();
-
-    deleteUnusedConstants();
-
-    return Error::success();
+    return initWithModule(networkDef, funNamePrefix, PPC);
   };
 
   if (errPtr) {
