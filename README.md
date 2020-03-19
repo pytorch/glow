@@ -1,7 +1,7 @@
 ![Glow Logo](./docs/logo.svg)
 
-[![Build Status](https://travis-ci.org/pytorch/glow.svg?branch=master)](https://travis-ci.org/pytorch/glow)
-[![Code Coverage](https://img.shields.io/badge/coverage-open-brightgreen.svg?style=flat)](https://fb-glow-assets.s3.amazonaws.com/coverage/coverage-master/index.html)
+[![pytorch](https://circleci.com/gh/pytorch/glow.svg?style=shield)](https://circleci.com/gh/pytorch/glow)
+
 
 Glow is a machine learning compiler and execution engine for hardware
 accelerators.  It is designed to be used as a backend for high-level machine
