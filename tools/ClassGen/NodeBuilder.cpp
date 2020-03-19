@@ -698,6 +698,15 @@ void NodeBuilder::emitExportMethods(std::ostream &os) const {
   for (const auto &op : members_) {
     os << "  addValueAttribute(opProto, \"" << op.second << "\", N__->get"
        << op.second << "());\n";
+
+    // If the member is a VectorNodeValue then also add the types of the NVs.
+    if (op.first.type == MemberType::VectorNodeValue) {
+      os << "  for (unsigned i = 0, e = N__->get" << op.second
+         << "().size(); i < e; i++) {\n";
+      os << "    addTypeAttributes(opProto, N__->get" << op.second
+         << "()[i], i, /* isInput */ true, \"" << op.second << "_\");\n";
+      os << "  }\n";
+    }
   }
 
   // Check if the node has a predicate and add it if so.

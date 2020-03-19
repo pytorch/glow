@@ -347,6 +347,9 @@ public:
   /// scaled/offsets will not be modified.
   void init(InitKind init, float val, PseudoRNG &PRNG);
 
+  /// \returns an unowned tensor with the exact same dimensions as this.
+  Tensor getUnowned() const { return getUnowned(dims()); }
+
   /// \returns unowned tensor using the same data buffer as the current tensor
   /// but having different dimensions \p dims. \p offsets represents an optional
   /// offset into the tensor representing the location of the first element to

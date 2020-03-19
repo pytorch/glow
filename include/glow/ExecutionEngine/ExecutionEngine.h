@@ -67,6 +67,10 @@ class ExecutionEngine final {
   /// the module. Used for testing purposes.
   bool skipModuleStrip_{false};
 
+  /// Whether to allow multiple functions when running. This is usually due to
+  /// running a pre-partitioned model.
+  bool allowMultiFunction_{false};
+
   /// Single execution of the given function, \p name with the given context
   /// \bindings.
   void runInternal(ExecutionContext &context, llvm::StringRef name);
@@ -74,17 +78,18 @@ class ExecutionEngine final {
 public:
   /// Constructor for an ExecutionEngine with \p backend and memory \p
   /// deviceMemory in bytes. If \p ignoreUserDeviceConfig then user device
-  /// configs will be ignored.
+  /// configs will be ignored. \p numDevices controls how many devices to create
+  /// for the EE.
   ExecutionEngine(llvm::StringRef backend = "Interpreter",
                   uint64_t deviceMemory = 0,
-                  bool ignoreUserDeviceConfig = false);
+                  bool ignoreUserDeviceConfig = false, unsigned numDevices = 1);
 
   ~ExecutionEngine();
 
   /// Set the code generator to \p backend. New code will be generated
   /// using this backend. This clears all previously loaded functions and resets
-  /// the Module.
-  void setBackendName(llvm::StringRef backend);
+  /// the Module. \p numDevices controls how many devices to create for the EE.
+  void setBackendName(llvm::StringRef backend, size_t numDevices = 1);
 
   /// Set the device memory to \p mem. This will reset the existing device,
   /// clearing all existing functions and resetting the module.

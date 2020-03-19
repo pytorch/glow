@@ -1678,26 +1678,45 @@ Error PyTorchModelLoader::loadGlowFusedLinear(const torch::jit::Node *ptNode) {
 }
 
 Expected<NodeValue> PyTorchModelLoader::loadNodeValueOrBroadcastedIValue(
-    const torch::jit::Value *value, llvm::ArrayRef<glow::dim_t> dims) {
+    const torch::jit::Value *value, llvm::ArrayRef<glow::dim_t> dims,
+    bool makeFloat) {
   if (hasGlowNodeValueForValue(value)) {
     return getGlowNodeValueForValue(value);
   } else {
     GlowIValue *ival;
     ASSIGN_VALUE_OR_RETURN_ERR(ival, getGlowIValueForValue(value));
-    float constVal;
-    if (ival->isInt()) {
-      ASSIGN_VALUE_OR_RETURN_ERR(constVal,
-                                 static_cast_expected<float>(ival->toInt()));
-    } else {
-      ASSIGN_VALUE_OR_RETURN_ERR(constVal,
-                                 static_cast_expected<float>(ival->toDouble()));
+
+    if (makeFloat) {
+      float constVal;
+      if (ival->isInt()) {
+        ASSIGN_VALUE_OR_RETURN_ERR(constVal,
+                                   static_cast_expected<float>(ival->toInt()));
+      } else {
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            constVal, static_cast_expected<float>(ival->toDouble()));
+      }
+      glow::Tensor t(glow::ElemKind::FloatTy, dims);
+      t.init(glow::Tensor::InitKind::Broadcast, constVal,
+             F_.getParent()->getPRNG());
+      return F_.getParent()
+          ->createConstant("constant", std::move(t))
+          ->getOutput();
+    } else /* makeInt */ {
+      int64_t constVal;
+      if (ival->isInt()) {
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            constVal, static_cast_expected<int64_t>(ival->toInt()));
+      } else {
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            constVal, static_cast_expected<int64_t>(ival->toDouble()));
+      }
+      glow::Tensor t(glow::ElemKind::Int64ITy, dims);
+      t.init(glow::Tensor::InitKind::Broadcast, constVal,
+             F_.getParent()->getPRNG());
+      return F_.getParent()
+          ->createConstant("constant", std::move(t))
+          ->getOutput();
     }
-    glow::Tensor t(glow::ElemKind::FloatTy, dims);
-    t.init(glow::Tensor::InitKind::Broadcast, constVal,
-           F_.getParent()->getPRNG());
-    return F_.getParent()
-        ->createConstant("constant", std::move(t))
-        ->getOutput();
   }
 }
 
@@ -1712,11 +1731,15 @@ PyTorchModelLoader::loadArithmeticNode(llvm::StringRef name,
   if (hasGlowNodeValueForValue(lhs)) {
     ASSIGN_VALUE_OR_RETURN_ERR(lhsInput, getGlowNodeValueForValue(lhs));
     ASSIGN_VALUE_OR_RETURN_ERR(
-        rhsInput, loadNodeValueOrBroadcastedIValue(rhs, lhsInput.dims()));
+        rhsInput,
+        loadNodeValueOrBroadcastedIValue(
+            rhs, lhsInput.dims(), isFloatElemKind(lhsInput.getElementType())));
   } else if (hasGlowNodeValueForValue(rhs)) {
     ASSIGN_VALUE_OR_RETURN_ERR(rhsInput, getGlowNodeValueForValue(rhs));
     ASSIGN_VALUE_OR_RETURN_ERR(
-        lhsInput, loadNodeValueOrBroadcastedIValue(lhs, rhsInput.dims()));
+        lhsInput,
+        loadNodeValueOrBroadcastedIValue(
+            lhs, rhsInput.dims(), isFloatElemKind(rhsInput.getElementType())));
   } else {
     return MAKE_ERR("Either lhs or rhs of arithmetic node must be a tensor");
   }

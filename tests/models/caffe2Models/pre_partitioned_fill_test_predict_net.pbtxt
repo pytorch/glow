@@ -1,0 +1,62 @@
+name: "prepartitioned_fill_test_dummy_net"
+op {
+  input: "tensor_fill_float"
+  output: "tensor_fill_float_copy"
+  name: ""
+  type: "Copy"
+  device_option {
+    node_name: "p0"
+  }
+}
+op {
+  input: "tensor_int_fill"
+  input: "tensor_int_fill"
+  output: "tensor_int_fill_copy"
+  name: ""
+  type: "Copy"
+  device_option {
+    node_name: "p1"
+  }
+}
+op {
+  input: "tensor_int64_fill"
+  input: "tensor_int64_fill"
+  output: "tensor_int64_fill_copy"
+  name: ""
+  type: "Copy"
+  device_option {
+    node_name: "p2"
+  }
+}
+op {
+  input: "tensor_string_to_uint8_fill"
+  input: "tensor_string_to_uint8_fill"
+  output: "tensor_string_to_uint8_fill_copy"
+  name: ""
+  type: "Copy"
+  device_option {
+    node_name: "p0"
+  }
+}
+external_input: "tensor_fill_float"
+external_input: "tensor_int_fill"
+external_input: "tensor_int64_fill"
+external_input: "tensor_string_to_uint8_fill"
+external_output: "tensor_fill_float_copy"
+external_output: "tensor_int_fill_copy"
+external_output: "tensor_int64_fill_copy"
+external_output: "tensor_string_to_uint8_fill_copy"
+
+partition_info {
+  name: "p0"
+  device_id: 0
+  device_id: 2
+}
+partition_info {
+  name: "p1"
+  device_id: 1
+}
+partition_info {
+  name: "p2"
+  device_id: 2
+}
