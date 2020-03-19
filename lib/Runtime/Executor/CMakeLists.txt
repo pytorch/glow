@@ -4,5 +4,7 @@ add_library(Executor
 
 target_link_libraries(Executor
                       PRIVATE
+                        Backend
+                        Backends
                         ExecutionContext
                         Graph)

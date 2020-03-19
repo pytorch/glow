@@ -84,6 +84,10 @@ struct PyTorchLoaderSettings {
   /// Backend-specific options to be put into the CompilationContext and passed
   /// to the Glow backend.
   std::map<std::string, std::string> backendSpecificOpts;
+
+  /// Whether or not to write the loaded Glow function and inputs and outputs to
+  /// and from the function to file as ONNX graphs.
+  bool writeToOnnx = false;
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.

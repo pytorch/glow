@@ -59,7 +59,8 @@ Error InferencePoolEnv::init(unsigned numWorkers, NNPIAdapter adapter,
     return MAKE_ERR("InferencePool already initialized!");
   }
   numWorkers_ = numWorkers;
-  workersPool_ = glow::make_unique<ThreadPool>(numWorkers_, "NNPI-worker");
+  workersPool_ = glow::make_unique<folly::CPUThreadPoolExecutor>(
+      numWorkers_, std::make_shared<folly::NamedThreadFactory>("NNPI-worker"));
   deviceTracing_ = deviceTracing;
 
   inferenceContexts_.resize(numWorkers_);
@@ -137,13 +138,18 @@ Error InferencePoolEnv::init(unsigned numWorkers, NNPIAdapter adapter,
   return Error::success();
 }
 
-void InferencePoolEnv::stop(bool block) { workersPool_->stop(block); }
+void InferencePoolEnv::stop(bool block) {
+  workersPool_->stop();
+  if (block) {
+    workersPool_->join();
+  }
+}
 
 void InferencePoolEnv::execute(RunIdentifierTy runId,
                                std::unique_ptr<ExecutionContext> ctx,
                                runtime::ResultCBTy resultCB) {
-  workersPool_->submit([this, runId, ctx = std::move(ctx),
-                        resultCB = std::move(resultCB)]() mutable {
+  workersPool_->add([this, runId, ctx = std::move(ctx),
+                     resultCB = std::move(resultCB)]() mutable {
     InferenceContext *infCtx = nullptr;
     {
       const std::lock_guard<std::mutex> lock(freeContextsLock_);

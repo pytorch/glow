@@ -669,16 +669,16 @@ static void checkKernelSize(ShapeNHWC idim, llvm::ArrayRef<unsigned_t> kernels,
 }
 
 /// Check the kernel size for 3D Conv/Pooling ops.
-static void check3DKernelSize(ShapeNHWDC idim,
+static void check3DKernelSize(ShapeNTHWC idim,
                               llvm::ArrayRef<unsigned_t> kernels,
                               llvm::ArrayRef<unsigned_t> pads) {
-  PaddingTLNBRF pdim(pads);
+  PaddingNFTBLR pdim(pads);
   (void)pdim;
-  ShapeHWD kdim(kernels);
+  ShapeTHW kdim(kernels);
   (void)kdim;
   assert((idim.w + pdim.left + pdim.right) >= kdim.width &&
          (idim.h + pdim.top + pdim.bottom) >= kdim.height &&
-         (idim.d + pdim.near + pdim.far) >= kdim.depth &&
+         (idim.t + pdim.near + pdim.far) >= kdim.temporal_frames &&
          "Kernel size is too large");
 }
 
@@ -743,21 +743,21 @@ static void assertConv3DDims(NodeValue input, NodeValue filter, NodeValue bias,
                              llvm::ArrayRef<unsigned_t> strides,
                              llvm::ArrayRef<unsigned_t> pads,
                              unsigned_t group) {
-  ShapeNHWDC idim(input.dims());
-  ShapeHWD kdim(kernels);
+  ShapeNTHWC idim(input.dims());
+  ShapeTHW kdim(kernels);
   (void)kdim;
   check3DKernelSize(idim, kernels, pads);
   assert(idim.c % group == 0 && "channels number must be divisible by groups");
 
-  // NOTE: here the N in NHWDC is abnormal because it is the number of filters
+  // NOTE: here the N in NTHWC is abnormal because it is the number of filters
   // (and therefore the number of output channels of the 3d conv) and not the
   // batch size. The rest of the dimensions are representative of the input
   // dimensions to the convolution.
-  ShapeNHWDC filterDims(filter.dims());
+  ShapeNTHWC filterDims(filter.dims());
   (void)filterDims;
 
   assert(filterDims.n % group == 0 && filterDims.h == kdim.height &&
-         filterDims.w == kdim.width && filterDims.d == kdim.depth &&
+         filterDims.w == kdim.width && filterDims.t == kdim.temporal_frames &&
          filterDims.c == idim.c / group && "Invalid filter dims");
 
   assert(bias.getType()->size() == filterDims.n && "Invalid bias size");
@@ -1163,8 +1163,12 @@ TransposeNode *Function::createTranspose(llvm::StringRef name, NodeValue input,
     // TODO: remove the shuffle and replace it with layout.
     if (compareShuffle(NCHW2NHWC) || compareShuffle(HWCN2NHWC)) {
       currLayout = "NHWC";
+    } else if (compareShuffle(NCTHW2NTHWC)) {
+      currLayout = "NTHWC";
     } else if (compareShuffle(NHWC2NCHW)) {
       currLayout = "NCHW";
+    } else if (compareShuffle(NTHWC2NCTHW)) {
+      currLayout = "NCTHW";
     } else if (compareShuffle(NHWC2HWNC)) {
       currLayout = "HWNC";
     } else if (compareShuffle(CNHW2NHWC)) {
@@ -2532,25 +2536,25 @@ Convolution3DNode *Function::createConv3D(PlaceholderBindings &bindings,
                                           llvm::ArrayRef<unsigned_t> strides,
                                           llvm::ArrayRef<unsigned_t> pads,
                                           unsigned_t group) {
-  ShapeNHWDC idim(input.dims());
-  ShapeHWD kdim(kernels);
+  ShapeNTHWC idim(input.dims());
+  ShapeTHW kdim(kernels);
 
   assert(group > 0 && "group should be larger than 0");
   assert(idim.c % group == 0 && "channels number must be divisible by groups");
   assert(outChannels % group == 0 && "outChannels must be divisible by groups");
 
   // Calculate the size and allocate the output buffer.
-  auto outSz = calculate3DConvPoolOutputDims(idim.h, idim.w, idim.d, kernels,
+  auto outSz = calculate3DConvPoolOutputDims(idim.t, idim.h, idim.w, kernels,
                                              strides, pads);
 
   std::array<dim_t, 5> outDims = {
-      {idim.n, outSz.height, outSz.width, outSz.depth, outChannels}};
+      {idim.n, outSz.temporal_frames, outSz.height, outSz.width, outChannels}};
 
   // Allocate the Filter and Bias tensors.
-  std::array<dim_t, 5> filterDim = {
-      {outChannels, kdim.height, kdim.width, kdim.depth, idim.c / group}};
+  std::array<dim_t, 5> filterDim = {{outChannels, kdim.temporal_frames,
+                                     kdim.height, kdim.width, idim.c / group}};
 
-  dim_t fanIn = kdim.height * kdim.width * kdim.depth * idim.c;
+  dim_t fanIn = kdim.temporal_frames * kdim.height * kdim.width * idim.c;
   ElemKind inputTy = input.getType()->getElementType();
   assert((inputTy == ElemKind::FloatTy || inputTy == ElemKind::Float16Ty) &&
          "Convolution3D on non-floating point type?");
@@ -2584,48 +2588,6 @@ Convolution3DNode *Function::createConv3D(PlaceholderBindings &bindings,
                       pads, group);
 }
 
-/// Channelwise quantize the given float \p bias as int32 using \p inputScale,
-/// per-channel \p scales and \p offsets. \returns the channelwise quantized
-/// bias tensor or Error if one occurred.
-static Expected<Tensor> channelwiseQuantizeFloatBias(NodeValue bias,
-                                                     NodeValue scales,
-                                                     NodeValue offsets,
-                                                     float inputScale) {
-  Constant *biasC = dyn_cast<Constant>(bias.getNode());
-  RETURN_ERR_IF_NOT(biasC, "bias input to ChannelwiseQuantizedConvolutionNode "
-                           "must be a Constant in order to quantize the bias");
-
-  Constant *scalesC = dyn_cast<Constant>(scales.getNode());
-  RETURN_ERR_IF_NOT(scalesC,
-                    "scales input to ChannelwiseQuantizedConvolutionNode must "
-                    "be a Constant in order to quantize the bias");
-
-  Constant *offsetsC = dyn_cast<Constant>(offsets.getNode());
-  RETURN_ERR_IF_NOT(offsetsC,
-                    "offsets input to ChannelwiseQuantizedConvolutionNode must "
-                    "be a Constant in order to quantize the bias");
-
-  const auto &biasUnquantizedH = biasC->getPayload().getHandle<float>();
-  const auto &scalesH = scalesC->getPayload().getHandle<float>();
-
-  // biasQuantizedT is Int32QTy but the quantization parameters on the tensor
-  // are not real, instead quantization parameters are from scales and offsets
-  // inputs.
-  auto biasQuantizedT = Tensor(ElemKind::Int32QTy, biasUnquantizedH.dims(),
-                               /* scale */ 1.0, /* offset */ 0);
-  auto biasQuantizedH = biasQuantizedT.getHandle<int32_t>();
-
-  for (dim_t i = 0; i < biasQuantizedH.size(); ++i) {
-    TensorQuantizationParams tqp;
-    tqp.scale = inputScale * scalesH.raw(i);
-    tqp.offset = 0;
-    biasQuantizedH.raw(i) =
-        quantization::quantize<int32_t>(biasUnquantizedH.raw(i), tqp);
-  }
-
-  return Expected<Tensor>(std::move(biasQuantizedT));
-}
-
 ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
     llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
     NodeValue scales, NodeValue offsets, TypeRef outTy,
@@ -2633,23 +2595,28 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
     llvm::ArrayRef<unsigned_t> pads, unsigned_t group) {
   assertConvDims(input, filter, bias, kernels, strides, pads, group);
   auto OT = getParent()->uniqueType(*outTy);
-  auto biasType = bias.getElementType();
-  if (biasType == ElemKind::Int32QTy) {
-    // Nothing to do
-  } else if (biasType == ElemKind::FloatTy) {
-    if (auto qBiasTensorOrErr = channelwiseQuantizeFloatBias(
-            bias, scales, offsets, input.getType()->getScale())) {
-      bias = getParent()->createConstant("quantized_bias", *qBiasTensorOrErr);
-    } else {
-      LOG(DFATAL) << "Error while quantizing bias for "
-                     "ChannelwiseQuantizedConvolutionNode: "
-                  << ERR_TO_STRING(qBiasTensorOrErr.takeError());
-    }
-  } else {
+  auto biasElemKind = bias.getElementType();
+
+  if (biasElemKind != ElemKind::Int32QTy && biasElemKind != ElemKind::FloatTy) {
     LOG(DFATAL)
         << "Unsupported element type for ChannelwiseQuantizedConvolution bias: "
-        << Type::getElementName(biasType).str();
+        << Type::getElementName(biasElemKind).str();
   }
+
+  DCHECK(dyn_cast<Constant>(bias.getNode()))
+      << "bias input to ChannelwiseQuantizedConvolutionNode must be a Constant";
+
+  DCHECK(dyn_cast<Constant>(filter.getNode()))
+      << "filter input to ChannelwiseQuantizedConvolutionNode must be a "
+         "Constant";
+
+  DCHECK(dyn_cast<Constant>(scales.getNode()))
+      << "scales input to ChannelwiseQuantizedConvolutionNode must a Constant "
+         "in order to quantize the bias";
+
+  DCHECK(dyn_cast<Constant>(offsets.getNode()))
+      << "offsets input to ChannelwiseQuantizedConvolutionNode must be a"
+         "Constant";
 
   return addNode(new ChannelwiseQuantizedConvolutionNode(
       name, OT, input, filter, bias, scales, offsets, kernels, strides, pads,

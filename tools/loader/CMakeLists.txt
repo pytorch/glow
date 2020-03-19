@@ -1,6 +1,8 @@
 add_executable(image-classifier
   Loader.cpp
-  ImageClassifier.cpp)
+  ImageClassifier.cpp
+  ExecutorCore.cpp
+  ExecutorCoreHelperFunctions.cpp)
 
 target_link_libraries(image-classifier
                       PRIVATE
@@ -71,6 +73,24 @@ add_executable(model-compiler
   ModelCompiler.cpp)
 
 target_link_libraries(model-compiler
+                      PRIVATE
+                        Backends
+                        Base
+                        Converter
+                        Graph
+                        HostManager
+                        Importer
+                        ExecutionEngine
+                        GraphOptimizer
+                        Quantization
+                        LLVMSupport)
+
+add_executable(model-profiler
+  Loader.cpp
+  LoaderUtils.cpp
+  ModelProfiler.cpp)
+
+target_link_libraries(model-profiler
                       PRIVATE
                         Backends
                         Base

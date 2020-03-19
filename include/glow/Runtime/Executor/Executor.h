@@ -48,7 +48,8 @@ public:
   virtual void shutdown() = 0;
 
   /// Setup context pool for new network.
-  virtual void createPool(const DAGNode *root, unsigned poolSize) = 0;
+  virtual void createPool(const DAGNode *root, unsigned poolSize,
+                          bool assignStatic = false) = 0;
 
   /// Free the context pool for given network.
   virtual void freePool(const DAGNode *root) = 0;

@@ -105,6 +105,8 @@ class HostManager final {
   /// Configuration parameters for this Runtime Host.
   const HostConfig config_{};
 
+  std::unique_ptr<TraceContext> hostTraceContext_;
+
   /// A map from a networkName to a network, which is represented by struct DAG.
   std::unordered_map<std::string, NetworkData> networks_;
 
@@ -228,6 +230,22 @@ public:
 
   /// Get the network DAG for \p network if it exists.
   Expected<DAG *> getNetworkDAG(llvm::StringRef network);
+
+  /// \returns a non-owning pointer to the TraceContext.
+  TraceContext *getTraceContext() { return hostTraceContext_.get(); }
+
+  /// Sets the TraceContext and \returns the existing value.
+  std::unique_ptr<TraceContext>
+  setTraceContext(std::unique_ptr<TraceContext> traceContext) {
+    std::swap(hostTraceContext_, traceContext);
+    return traceContext;
+  }
+
+  /// Triggers start tracing of all active devices \returns Error if fails.
+  Error startDeviceTrace();
+
+  /// Triggers stop tracing of all active devices \returns Error if fails.
+  Error stopDeviceTrace();
 
   /// \returns a reference to the backend with name \p backendName owned by the
   /// Provisioner.

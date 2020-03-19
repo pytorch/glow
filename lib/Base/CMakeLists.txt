@@ -1,5 +1,6 @@
 add_library(Base
               Tensor.cpp
+              TensorSerialization.cpp
               Type.cpp
               IO.cpp
               TaggedList.cpp)

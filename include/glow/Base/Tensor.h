@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "glow/Base/DeviceTensorTransferManager.h"
+#include "glow/Base/TensorSerialization.h"
 #include "glow/Base/Type.h"
 #include "glow/Support/Compiler.h"
 #include "glow/Support/Memory.h"
@@ -345,6 +346,9 @@ public:
   /// numbers. Note that if the tensor's kind is Fused, then the fused
   /// scaled/offsets will not be modified.
   void init(InitKind init, float val, PseudoRNG &PRNG);
+
+  /// \returns an unowned tensor with the exact same dimensions as this.
+  Tensor getUnowned() const { return getUnowned(dims()); }
 
   /// \returns unowned tensor using the same data buffer as the current tensor
   /// but having different dimensions \p dims. \p offsets represents an optional

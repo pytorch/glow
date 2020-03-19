@@ -19,8 +19,8 @@
 #include "InferenceContext.h"
 #include "NNPICompiledFunction.h"
 #include "NNPITracing.h"
+#include "folly/executors/CPUThreadPoolExecutor.h"
 #include "glow/Runtime/RuntimeTypes.h"
-#include "glow/Support/ThreadPool.h"
 #include "nnpi_inference.h"
 #include "nnpi_transformer.h"
 #include <atomic>
@@ -33,7 +33,7 @@ namespace runtime {
 
 class InferencePoolEnv {
   unsigned numWorkers_;
-  std::unique_ptr<ThreadPool> workersPool_;
+  std::unique_ptr<folly::CPUThreadPoolExecutor> workersPool_;
   std::vector<InferenceContext> inferenceContexts_;
   std::vector<InferenceContext *> freeContexts_;
   std::mutex freeContextsLock_;

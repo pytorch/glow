@@ -34,7 +34,7 @@ cd llvm_build
 # LLVM_INSTALL_UTILS adds the utilities like FileCheck to the install
 cmake ../llvm/ -G Ninja -DCMAKE_INSTALL_PREFIX="$BASE/llvm_install" \
       -DCMAKE_BUILD_TYPE=Release -DLLVM_INSTALL_UTILS=ON \
-      -DLLVM_ENABLE_PROJECTS=clang
+      -DLLVM_ENABLE_PROJECTS=clang -DLLVM_ENABLE_RTTI=ON
 cmake --build . --target install
 
 echo "Built LLVM into " "$BASE/llvm_install"

@@ -643,7 +643,7 @@ TEST(TypeAToTypeBFunctionConverter, OptimizeMiddleConversionsFloatToFloat16) {
   Tensor origWeights;
   origWeights.assign(&weights->getPayload());
   auto *bias =
-      mod.createConstant(mod.uniqueType(ElemKind::FloatTy, {10, 20}), "bias");
+      mod.createConstant(mod.uniqueType(ElemKind::FloatTy, {10}), "bias");
   bias->getPayloadMutable().getHandle().randomize(-5.0, 5.0, mod.getPRNG());
   Tensor origBias;
   origBias.assign(&bias->getPayload());

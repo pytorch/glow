@@ -183,7 +183,7 @@ LLVMIRGen::getOrCreateFunctionDebugInfo(llvm::Function *F, llvm::DIScope *scope,
     auto *DIFunctionTy = DIBuilder_->createSubroutineType(
         DIBuilder_->getOrCreateTypeArray(paramTys));
     // Create a debug information for the current function.
-#if LLVM_VERSION_MAJOR == 7 || FACEBOOK_INTERNAL
+#if LLVM_VERSION_MAJOR == 7 || (LLVM_VERSION_MAJOR <= 8 && FACEBOOK_INTERNAL)
     DIFunction = DIBuilder_->createFunction(
         scope, F->getName(), "", file, lineNo, DIFunctionTy,
         false /* internal linkage */, true /* definition */, lineNo,

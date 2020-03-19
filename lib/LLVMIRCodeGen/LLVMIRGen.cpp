@@ -338,6 +338,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
   case ElemKind::FloatTy:
     T = llvm::Type::getFloatPtrTy(getLLVMContext());
     break;
+  case ElemKind::Float16Ty:
+    T = llvm::Type::getInt16PtrTy(getLLVMContext());
+    break;
   case ElemKind::Int8QTy:
     T = llvm::Type::getInt8PtrTy(getLLVMContext());
     break;
@@ -2826,9 +2829,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *boxesDimVal = emitValueDims(builder, boxes);
     auto *scoreDimVal = emitValueDims(builder, scores);
     auto *indicesDimVal = emitValueDims(builder, indices);
-    auto *boxesDimSizeVal = emitConstSizeT(builder, boxes->dims().size());
-    auto *scoresDimSizeVal = emitConstSizeT(builder, scores->dims().size());
-    auto *indicesDimSizeVal = emitConstSizeT(builder, indices->dims().size());
+    auto *boxesDimSizeVal = emitConstDimT(builder, boxes->dims().size());
+    auto *scoresDimSizeVal = emitConstDimT(builder, scores->dims().size());
+    auto *indicesDimSizeVal = emitConstDimT(builder, indices->dims().size());
     auto *isV4Val = emitConstI1(builder, isV4);
 
     auto *F = getFunction("nms", indices->getElementType());

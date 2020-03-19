@@ -48,7 +48,7 @@ struct DeviceInfo;
 struct DeviceConfig;
 struct ContextBinding;
 
-struct DAG;
+struct DAGNode;
 
 } // namespace runtime
 
@@ -199,11 +199,12 @@ public:
   createDeviceManager(const runtime::DeviceConfig &deviceConfig);
 
   /// Walks the provided /p bindings and does any setup needed for copying data
-  /// to/from host or peers. Also has access to /p network, which contains
-  /// partition dependency and symbol information. Any state information should
-  /// be stored in the ExecutionContext or DeviceManager.
+  /// to/from host or peers. Also has access to /p root the root node of the
+  /// graph, which contains partition dependency and symbol information. Any
+  /// state information should be stored in the ExecutionContext or
+  /// DeviceManager.
   virtual Error bindContexts(llvm::ArrayRef<runtime::ContextBinding> bindings,
-                             const std::vector<runtime::DAG> &network) {
+                             const runtime::DAGNode *root) {
     return Error::success();
   }
 

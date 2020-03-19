@@ -229,6 +229,15 @@ public:
     DCHECK("Not Implemented");
     return false;
   }
+
+  /// Starts device tracing \returns Error if fails.
+  virtual Error startDeviceTrace(TraceContext *traceContext) {
+    return Error::success();
+  }
+  /// Stops device tracing \returns Error if fails.
+  virtual Error stopDeviceTrace(TraceContext *traceContext) {
+    return Error::success();
+  }
 };
 
 } // namespace runtime

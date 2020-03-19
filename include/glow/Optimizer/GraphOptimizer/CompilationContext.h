@@ -24,6 +24,7 @@
 namespace glow {
 namespace runtime {
 struct PartitionConfig;
+struct PrePartitionedConfig;
 class DeferredWeightLoader;
 } // namespace runtime
 
@@ -130,6 +131,9 @@ struct CompilationContext {
   /// Allows the user to specify user defined partitioning.
   runtime::PartitionConfig *partitionConfig{nullptr};
 
+  /// Allows a loader to store a pre-partitioned config.
+  runtime::PrePartitionedConfig *prepartitionedConfig{nullptr};
+
   /// Used during Quantization and Profiling.
   LoweredInfoMap *loweredInfoMap{nullptr};
 
@@ -166,6 +170,9 @@ struct CompilationContext {
 
   /// Whether to skip stripping the module.
   bool skipModuleStrip{false};
+
+  /// Whether to enable P2P and DRT at runtime.
+  bool enableStaticAssignment{false};
 
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)

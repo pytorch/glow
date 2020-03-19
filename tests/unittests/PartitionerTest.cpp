@@ -1442,3 +1442,92 @@ TEST_F(PartitionerTest, loadBalancedPartition) {
     EXPECT_TRUE(ref.isEqual(test));
   }
 }
+
+/// This tests the pre-partitioned flow.
+TEST_F(PartitionerTest, PrePartitionedTest) {
+  PrePartitionedConfig PPC;
+  Function *F0 = F_;
+  Function *F1 = mod_.createFunction("main_1");
+  Function *F2 = mod_.createFunction("main_2");
+  PPC.funcs.push_back(F0);
+  PPC.funcs.push_back(F1);
+  PPC.funcs.push_back(F2);
+  PPC.logicalIDs.resize(3);
+  PPC.logicalIDs[0].insert(0);
+  PPC.logicalIDs[1].insert(1);
+  PPC.logicalIDs[2].insert({1, 2});
+
+  auto *I0 = mod_.createPlaceholder(ElemKind::FloatTy, {5, 5}, "I0", false);
+  auto *I1 = mod_.createPlaceholder(ElemKind::FloatTy, {5, 5}, "I1", false);
+  auto *I2 = mod_.createPlaceholder(ElemKind::FloatTy, {5, 5}, "I1", false);
+
+  // Partition 0 is a MatMul and Save.
+  MatMulNode *MM = F0->createMatMul("MM", I0, I1);
+  SaveNode *SMM = F0->createSave("SMM", MM);
+
+  // Partition 1 loads from the Partition 0 MatMul.
+  AddNode *AN = F1->createAdd("AN", SMM->getPlaceholder(), I2);
+  SaveNode *SAN = F1->createSave("SAN", AN);
+
+  // Partition 2 loads from both Partition 0 and 1.
+  MulNode *MN = F2->createMul("MN", SMM->getPlaceholder(), I0);
+  SubNode *SN = F2->createSub("SN", SAN->getPlaceholder(), MN);
+  SaveNode *finalSave = F2->createSave("finalSave", SN);
+
+  const runtime::DeviceInfo dev{/* 16GB: */ 0x400000000, "Interpreter"};
+  const std::vector<runtime::DeviceInfo> devices(3, dev);
+  Partitioner partitioner(&mod_, devices);
+  DAGListTy d;
+  ASSIGN_VALUE_OR_FAIL_TEST(d, partitioner.setupPrepartitionedModule(PPC));
+
+  // Note: DAG should look like: F0 -> F1
+  //                               \   |
+  //                                v  v
+  //                                 F2
+
+  ASSERT_EQ(d.size(), 1);
+
+  DAGNodePtr &root = d[0].root;
+  EXPECT_EQ(root->module, &mod_);
+
+  ASSERT_EQ(root->children.size(), 1);
+  DAGNode *D0 = root->children[0];
+  ASSERT_EQ(D0->name, F0->getName());
+  ASSERT_EQ(D0->parents.size(), 1);
+  EXPECT_EQ(D0->parents[0], root.get());
+  ASSERT_EQ(D0->logicalDevices.size(), 1);
+  EXPECT_EQ(D0->logicalDevices[0], 0);
+  EXPECT_EQ(D0->size, I0->getType()->getSizeInBytes() +
+                          I1->getType()->getSizeInBytes() +
+                          SMM->getPlaceholder()->getType()->getSizeInBytes());
+
+  ASSERT_EQ(D0->children.size(), 2);
+  DAGNode *D1 = (D0->children[0]->name == F1->getName()) ? D0->children[0]
+                                                         : D0->children[1];
+  ASSERT_EQ(D1->parents.size(), 1);
+  EXPECT_EQ(D1->parents[0], D0);
+  ASSERT_EQ(D1->name, F1->getName());
+  ASSERT_EQ(D1->logicalDevices.size(), 1);
+  EXPECT_EQ(D1->logicalDevices[0], 1);
+  EXPECT_EQ(D1->size, I2->getType()->getSizeInBytes() +
+                          SAN->getPlaceholder()->getType()->getSizeInBytes() +
+                          SMM->getPlaceholder()->getType()->getSizeInBytes());
+
+  DAGNode *D2 = (D1 == D0->children[0]) ? D0->children[1] : D0->children[0];
+  ASSERT_EQ(D2->name, F2->getName());
+  ASSERT_EQ(D1->children.size(), 1);
+  EXPECT_EQ(D1->children[0], D2);
+  ASSERT_EQ(D2->parents.size(), 2);
+  EXPECT_TRUE(D2->parents[0] == D0 || D2->parents[1] == D0);
+  EXPECT_TRUE(D2->parents[0] == D1 || D2->parents[1] == D1);
+  EXPECT_NE(D2->parents[0], D2->parents[1]);
+  ASSERT_EQ(D2->logicalDevices.size(), 2);
+  EXPECT_TRUE(D2->logicalDevices[0] == 1 || D2->logicalDevices[0] == 2);
+  EXPECT_TRUE(D2->logicalDevices[1] == 1 || D2->logicalDevices[1] == 2);
+  EXPECT_NE(D2->logicalDevices[0], D2->logicalDevices[1]);
+  EXPECT_EQ(D2->size,
+            I0->getType()->getSizeInBytes() +
+                SAN->getPlaceholder()->getType()->getSizeInBytes() +
+                SMM->getPlaceholder()->getType()->getSizeInBytes() +
+                finalSave->getPlaceholder()->getType()->getSizeInBytes());
+}

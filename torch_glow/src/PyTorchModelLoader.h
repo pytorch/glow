@@ -295,10 +295,13 @@ public:
   /// If a NodeValue is mapped to \p value then return it, otherwise look for a
   /// float or integer IValue mapped to \p value, create a Glow Constant by
   /// broadcasting that value to a tensor of size \p dims and return the result
-  /// of that Constant.
+  /// of that Constant.  If the optional flag \p makeFloat is true, generates a
+  /// tensor with floating point elements (default if flag omitted).  Otherwise,
+  /// generates a tensor with integer elements.
   Expected<glow::NodeValue>
   loadNodeValueOrBroadcastedIValue(const torch::jit::Value *value,
-                                   llvm::ArrayRef<glow::dim_t> dims);
+                                   llvm::ArrayRef<glow::dim_t> dims,
+                                   bool makeFloat = true);
 
   /// If there is a NodeValue mapped to \p value then return it, otherwise
   /// create a Constant with type \p ty, name \p name, and value \p val

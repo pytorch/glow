@@ -1744,12 +1744,12 @@ bool FoldBatchNormalizationWithArithmeticChain::run(
 
     auto *newScaleC =
         F->getParent()->createConstant(scaleC->getType(), scaleC->getName());
-    Tensor scaleT = scaleC->getPayload().getUnowned(scaleC->dims());
+    Tensor scaleT = scaleC->getPayload().getUnowned();
     newScaleC->assign(&scaleT);
 
     auto *newBiasC =
         F->getParent()->createConstant(biasC->getType(), biasC->getName());
-    Tensor biasT = biasC->getPayload().getUnowned(biasC->dims());
+    Tensor biasT = biasC->getPayload().getUnowned();
     newBiasC->assign(&biasT);
 
     // Collect the chain and compute the new scale and bias.
@@ -1777,6 +1777,57 @@ bool FoldBatchNormalizationWithArithmeticChain::run(
         BN->getVar(), BN->getChannelIdx(), BN->getEpsilon(), BN->getMomentum());
 
     chainEnd.replaceAllUsesOfWith(newBN);
+    changed = true;
+  }
+
+  return changed;
+}
+
+/// Fold MatMul + Add into FullyConnected. This is useful for backends which
+/// have an atomic implementation for the FullyConnected node. It is also needed
+/// for ONNX which does not have a representation for the FullyConnected node.
+bool FoldMatMulAddIntoFullyConnected::run(Function *F,
+                                          const CompilationContext &cctx) {
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *addNode = dyn_cast<AddNode>(&node);
+    if (!addNode) {
+      continue;
+    }
+
+    // Check for MatMul node being either RHS or LHS.
+    auto *matMulNode_LHS = dyn_cast<MatMulNode>(addNode->getLHS());
+    auto *matMulNode_RHS = dyn_cast<MatMulNode>(addNode->getRHS());
+    auto *matMulNode = matMulNode_LHS ? matMulNode_LHS : matMulNode_RHS;
+    NodeValue biasNode = matMulNode_LHS ? addNode->getRHS() : addNode->getLHS();
+    if (!matMulNode) {
+      continue;
+    }
+
+    // The corresponding length of the FullyConnected Bias operand.
+    auto fcBiasLen = matMulNode->getRHS().dims()[1];
+
+    // TODO: If Bias is a constant 2D tensor (e.g. [2,10]) we should also
+    // verify if the Bias is broadcasted from a 1D tensor (e.g. [10]) in
+    // order to instantiate a batched FullyConnected using the Bias slice.
+
+    // Verify the bias size.
+    if (biasNode.getType()->size() != fcBiasLen) {
+      continue;
+    }
+
+    // Reshape the bias to 1D (if needed).
+    if (biasNode.dims().size() > 1) {
+      biasNode =
+          F->createReshape(biasNode.getNode()->getName().str() + ".reshape",
+                           biasNode, {biasNode.getType()->size()});
+    }
+
+    // Create a new FullyConnected node.
+    auto *newFC = F->createFullyConnected(
+        matMulNode->getName(), matMulNode->getLHS(), matMulNode->getRHS(),
+        biasNode, addNode->getResult().getType());
+    addNode->getResult().replaceAllUsesOfWith(newFC);
     changed = true;
   }
 
@@ -2838,7 +2889,9 @@ bool OptimizeConversions::run(Function *F, const CompilationContext &cctx) {
       if (auto *BN = llvm::dyn_cast<Constant>(CN->getInput())) {
         auto newConst =
             convertConstant(*F->getParent(), *BN, CN->getResult().getType());
-        LOG_ASSERT(newConst) << "Constant conversion failed.";
+        if (newConst == NodeValue()) {
+          continue;
+        }
         CN->getResult().replaceAllUsesOfWith(newConst, F);
         changed = true;
         continue;
@@ -4236,6 +4289,20 @@ bool glow::parallelizeOps(
         splitDims[ClipNode::InputIdx] = 0;
         parallelizeAndReplaceNode(F, curNode, numOfChunks, ClipNode::InputIdx,
                                   ClipNode::ResultIdx, splitDims, 0);
+        break;
+      }
+      case Kinded::Kind::QuantizeNodeKind: {
+        splitDims[QuantizeNode::InputIdx] = 0;
+        parallelizeAndReplaceNode(F, curNode, numOfChunks,
+                                  QuantizeNode::InputIdx,
+                                  QuantizeNode::ResultIdx, splitDims, 0);
+        break;
+      }
+      case Kinded::Kind::DequantizeNodeKind: {
+        splitDims[DequantizeNode::InputIdx] = 0;
+        parallelizeAndReplaceNode(F, curNode, numOfChunks,
+                                  DequantizeNode::InputIdx,
+                                  DequantizeNode::ResultIdx, splitDims, 0);
         break;
       }
       case Kinded::Kind::ConvertToNodeKind: {

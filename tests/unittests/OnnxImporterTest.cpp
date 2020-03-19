@@ -2526,7 +2526,7 @@ TEST_F(OnnxImporterTest, argMaxKeepDim) {
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  auto argmax = bindings.get(argmaxPH)->getHandle<sdim_t>();
+  auto argmax = bindings.get(argmaxPH)->getHandle<int64_t>();
   std::vector<dim_t> expectedDims = {2, 3, 1, 5};
   EXPECT_TRUE(argmax.dims().vec() == expectedDims);
 }
@@ -2553,7 +2553,7 @@ TEST_F(OnnxImporterTest, argMaxNoKeepDim) {
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  auto argmax = bindings.get(argmaxPH)->getHandle<sdim_t>();
+  auto argmax = bindings.get(argmaxPH)->getHandle<int64_t>();
   std::vector<dim_t> expectedDims = {2, 4, 5};
   EXPECT_TRUE(argmax.dims().vec() == expectedDims);
 }
@@ -2580,7 +2580,7 @@ TEST_F(OnnxImporterTest, argMaxDefault) {
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  auto argmax = bindings.get(argmaxPH)->getHandle<sdim_t>();
+  auto argmax = bindings.get(argmaxPH)->getHandle<int64_t>();
   std::vector<dim_t> expectedDims = {1, 3, 4, 5};
   EXPECT_TRUE(argmax.dims().vec() == expectedDims);
 }

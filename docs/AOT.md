@@ -141,11 +141,126 @@ The procedure used for quantizing the model is called **profile-guided quantizat
 details [here](./Quantization.md)). Before the model is quantized and compiled with the
 *model-compiler* tool, the quantization profile must be acquired.
 
-In order to compute the quantization profile, the **image-classifier** tool is used. This
-application is used for image classification models only and requires a set of images to do
-the inference and compute the profile:
+In order to compute the quantization profile, one option is to use the **model-profiler**
+tool. This application is generic and can be used with any model and requires a set of files
+(in either text or binary format) corresponding to the model input tensors in order to
+feed the model with a dataset and get the profile. The command has the following format:
 ```
-image-classifier <images> <image-opts> -model=<model-path> -model-input-name=<name> -dump-profile=profile.yaml
+model-profiler -model=<model-path> -dump-profile=profile.yaml \
+    -quantization-schema=<schema>                             \
+    -input-dataset=<name1,format1,source1,opts1>              \
+    -input-dataset=<name2,format2,source2,opts2>              \
+    ............................................
+```
+
+- The command above is for ONNX models. For Caffe2 models the user must also provide the
+information about the model inputs by using the option `model-input` similar to the
+**model-compiler** tool.
+- The option `dump-profile` specifies the file name used to dump the profile in YAML format.
+- The option `quantization-schema` specifies the schema used to compute the profile.
+- The option `input-dataset` specifies the dataset used to feed each of the model inputs.
+The option has the following comma separated fields:
+  - `<name>` the name of the model input placeholder (tensor) where the dataset files will
+be loaded during run-time.
+  - `<format>` the format of all the files from the given dataset:
+    - `bin`: raw binary format. Each binary file corresponds to
+      a tensor and contains the data serialized as a binary
+      blob without extra meta information (tensor data type or
+      shape) because the tensor is statically configured before
+      loading the data. The data is expected to be serialized
+      with the correct size and layout as the tensor in which
+      it will be loaded. For example, for a float32 tensor with
+      shape [2,3], the binary file is expected to have the size
+      2 x 3 x 4 (float32) = 24 bytes.
+    - `txt`: raw text format. Each text file corresponds to a
+      tensor and contains the data serialized as a linear list
+      of comma separated values in text format without extra
+      meta information (tensor data type or shape) because the
+      tensor is statically configured before loading the data.
+      The data is expected to be serialized with the correct
+      size and layout as the tensor in which it will be loaded.
+      For example, for a float32 tensor with shape [2,3], the
+      text file is expected to contain a list of 6 values
+      separated by comma like this (extra spaces and newlines
+      are allowed):
+      ```
+      1.0, 2.0, 3.0, 4.0, 5.0, 6.0,
+      ```
+  - `<source>` specifies the dataset source:
+    - `file`: the dataset is specified as a text file which
+      contains the relative or absolute paths of all the files
+      in the dataset, listed one per line, separated by comma
+      or not. The path of the dataset file is given as the
+      first argument in the `<opts>` list. If a second argument
+      is given in the `<opts>` list (optional), that will be
+      concatenated (prepended) to all the paths from the file.
+      The dataset file must contain only ONE PATH PER LINE.
+      After the first comma or space character, the rest of the
+      line is ignored. All the examples below are valid:
+      ```
+      data0.bin
+      data1.bin,
+      data2.bin 'cat'
+      data3.bin,dog
+      data4.bin ,2
+      data5.bin,1
+      ```
+      Do NOT use file paths which contain spaces.
+    - `dir`: the dataset is specified as all the files from a
+      given directory listed alphabetically. The directory path
+      is specified with the first argument in the `<opts>` list.
+      Make sure the directory does not contain other items than
+      the dataset files (folders, symlinks, etc).
+  - `<opts>` extra options dependent on the `<source>` field.
+  - This option will be used for each of the model inputs.
+  - Example 1:
+    `-input-dataset=input1,bin,file,dataset.csv`
+    The dataset paths for the 'input1' model input are read from the
+    'dataset.csv' file which could have the following content:
+    ```
+    /data_folder/data0.dat,
+    /data_folder/data1.dat,
+    .......................
+    ```
+    All the files listed are assumed to be in binary format (`bin`).
+  - Example 2:
+    `-input-dataset=input2,bin,file,dataset.csv,/data_folder`
+    The dataset files for the 'input2' model input are read from the
+    'dataset.csv' file which could have the following content:
+    ```
+    data0.dat,
+    data1.dat,
+    ..........
+    ```
+    All the file paths listed will be concatenated (prepended) with
+    the '/data_folder' base directory path when loading. All the
+    files listed are assumed to be in binary format (`bin`).
+  - Example 3:
+    `-input-dataset=input3,txt,dir,/data_folder`
+    The dataset files for the 'input3' model input are all the files
+    from the '/data_folder' directory listed alphabetically. The
+    files are assumed to be in text format (`txt`).
+
+In order for the profiling phase to be correct, make sure the data used to feed the network
+is pre-processed in the same way as it would be in the case of inference. For example, for
+an image classification model make sure the input raw data:
+- has the correct data layout (NHWC or NCHW)
+- has the correct channel order (RGB or BGR)
+- is scaled properly: the values are in the range [0,1], [-1,1], [-127,128], [0,255.0] etc.
+
+For more information about the options of the **model-profiler**  tool use:
+```
+model-profiler -help
+```
+
+Another tool used to compute the quantization profile is the **image-classifier** tool
+which is specialized for image classification models only and requires a set of images to do
+the inference and compute the profile. This application has the benefit that it provides
+a mechanism to load directly PNG images and also to pre-process them according to the
+model needs (layout conversion, channel ordering, scaling):
+```
+image-classifier <images> <image-opts> -model=<model-path> -model-input-name=<name> \
+    -dump-profile=profile.yaml -quantization-schema=<schema>
 ```
 
 - The image paths are specified one after the other, separated by space. Only images in **PNG**
@@ -153,6 +268,7 @@ format are supported (RGB or grayscale).
 - `model` specifies the path for the Caffe2 or ONNX model.
 - `model-input-name` specifies the name of the model input.
 - The option `dump-profile` specifies the file name used to dump the profile in YAML format.
+- The option `quantization-schema` specifies the schema used to compute the profile.
 
 Extra options are available to specify how the images are pre-processed before they are fed
 to the model during inference:
@@ -177,7 +293,7 @@ image-classifier -help
 After the quantization profile `profile.yaml` has been generated, we can use the **model-compiler**
 tool to compile the model into a bundle by loading the previously generated profile:
 ```
-model-compiler ... -load-profile=profile.yaml
+model-compiler ... -load-profile=profile.yaml -quantization-schema=<schema>
 ```
 
 If a specific quantization schema is desired, same schema must be provided during both
@@ -239,7 +355,7 @@ example the LLVM 8.0.1 has the following supported architectures:
 ```
 LLVM (http://llvm.org/):
   LLVM version 8.0.1
-  
+
   Optimized build.
   Default target: x86_64-pc-linux-gnu
   Host CPU: skylake
@@ -351,7 +467,7 @@ allocated by the user application code and provided through the bundle interface
     one of two possible formats:
     - binary format (`<network_name>.weights.bin`) used to initialize this memory
       region (allocated statically or dynamically) by loading the binary file
-      dynamically at run-time using standard C function like **fopen**. 
+      dynamically at run-time using standard C function like **fopen**.
     - text format (`<network_name>.weights.txt`) used to initialize this memory
       region (only if statically allocated) by including the text file statically
       at compile-time as a C array using the **#include** pre-processor directive.
@@ -378,7 +494,7 @@ application must:
 The required sizes for all the memory regions described above are provided in the bundle
 interface. Also all the memory regions must be allocated with a minimum alignment which
 is also provided in the interface (typically 64 bytes). For example, for aligning a
-statically allocated buffer one can use the following C syntax: 
+statically allocated buffer one can use the following C syntax:
 
 ```c++
 __attribute__((aligned(64)))
@@ -590,7 +706,7 @@ to the ONNX model file `mobilenet_v1_0.25_128.onnx`:
      --inputShape 128,128,3                               \
      --dstNodeName MobilenetV1/Predictions/Softmax        \
      --dstFramework onnx                                  \
-     --outputModel mobilenet_v1_0.25_128.onnx              
+     --outputModel mobilenet_v1_0.25_128.onnx
    ```
 
 In order to convert the model to ONNX format using the **tf2onnx** tool:
@@ -603,7 +719,7 @@ to the ONNX model file `mobilenet_v1_0.25_128.onnx`:
      --input mobilenet_v1_0.25_128_frozen.pb      \
      --inputs input:0                             \
      --outputs MobilenetV1/Predictions/Softmax:0  \
-     --output mobilenet_v1_0.25_128.onnx           
+     --output mobilenet_v1_0.25_128.onnx
    ```
 
 After converting the model to ONNX you can build a bundle using the Glow **model-compiler** tool with the command:
@@ -651,7 +767,7 @@ perform the actions defined below:
 
 - Decode an ONNX tensor from proto `tensor.pb` to text file `tensor.pbtxt`:
   ```
-  protoc onnx.proto --decode=onnx.TensorProto < tensor.pb > tensor.pbtxt 
+  protoc onnx.proto --decode=onnx.TensorProto < tensor.pb > tensor.pbtxt
   ```
 
 - Encode an ONNX tensor from text file `tensor.pbtxt` to proto `tensor.pb`:
