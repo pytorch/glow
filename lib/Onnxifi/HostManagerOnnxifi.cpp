@@ -240,12 +240,18 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   std::unique_ptr<Module> module = glow::make_unique<Module>();
   runtime::PrePartitionedConfig PPC;
 
-  // TODO: make better error reporting.
-  std::unique_ptr<ONNXIFIModelLoader> loader =
-      EXIT_ON_ERR(ONNXIFIModelLoader::parse(
-          onnxModel, onnxModelSize, weightCount, weightDescriptors, *module,
-          netName_, &PPC, true /*loadInputsAsPlaceholders*/,
-          backendPtr_->getUseOnnx()));
+  std::unique_ptr<ONNXIFIModelLoader> loader;
+  auto loaderOrErr = ONNXIFIModelLoader::parse(
+      onnxModel, onnxModelSize, weightCount, weightDescriptors, *module,
+      netName_, &PPC, true /*loadInputsAsPlaceholders*/,
+      backendPtr_->getUseOnnx());
+  if (loaderOrErr) {
+    loader = std::move(*loaderOrErr);
+  } else {
+    LOG(ERROR) << "Error when loading model: "
+               << ERR_TO_STRING(loaderOrErr.takeError());
+    return ONNXIFI_STATUS_INVALID_MODEL;
+  }
 
   bindPlaceholders(*loader);
   setZeroLengthSequence(maxSeqLength);

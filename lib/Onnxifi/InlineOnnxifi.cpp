@@ -51,11 +51,18 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   Module &mod = executionEngine_.getModule();
   // Note: Pass in a nullptr for PPC here because we do not currently support
   // pre-partitioned models here.
-  std::unique_ptr<ONNXIFIModelLoader> loader =
-      EXIT_ON_ERR(ONNXIFIModelLoader::parse(
-          onnxModel, onnxModelSize, weightCount, weightDescriptors, mod,
-          "function", /* PPC */ nullptr, true /*loadInputsAsPlaceholders*/,
-          backendPtr_->getUseOnnx()));
+  std::unique_ptr<ONNXIFIModelLoader> loader;
+  auto loaderOrErr = ONNXIFIModelLoader::parse(
+      onnxModel, onnxModelSize, weightCount, weightDescriptors, mod, "function",
+      /* PPC */ nullptr, true /*loadInputsAsPlaceholders*/,
+      backendPtr_->getUseOnnx());
+  if (loaderOrErr) {
+    loader = std::move(*loaderOrErr);
+  } else {
+    LOG(ERROR) << "Error when loading model: "
+               << ERR_TO_STRING(loaderOrErr.takeError());
+    return ONNXIFI_STATUS_INVALID_MODEL;
+  }
 
   CHECK_EQ(mod.getFunctions().size(), 1) << "Should have exactly one Function.";
   function_ = *mod.getFunctions().begin();
