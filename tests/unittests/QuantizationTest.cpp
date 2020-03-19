@@ -743,6 +743,8 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
   auto *FC = F->createFullyConnected(bindings, "FC", input, 100);
   auto *res = F->createSave("save", FC);
   bindings.allocate(res->getPlaceholder());
+  bindings.allocate(input);
+  bindings.get(input)->getHandle().randomize(-1.0, 6.0, mod.getPRNG());
 
   ::glow::convertPlaceholdersToConstants(F, bindings,
                                          {input, res->getPlaceholder()});

@@ -451,31 +451,73 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
   // For each node:
   for (auto &N : nodes) {
     auto *node = &N;
-    // Sink Transpose below batch normalization nodes:
-    if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
-      auto *TR = dyn_cast<TransposeNode>(BN->getInput());
 
-      if (!TR) {
+    // Sink Reshape/Transpose below BatchNormalization.
+    if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
+
+      // Sink Reshape below BatchNormalization.
+      if (auto *RS = dyn_cast<ReshapeNode>(BN->getInput())) {
+        auto inDims = RS->getInput().dims();
+        auto outDims = RS->getResult().dims();
+        unsigned_t newChannelIdx;
+
+        // Reshape should not change the BatchNorm ChannelIdx dimensions.
+        // Only NH[W]C and NCH[W] are allowed.
+        if (BN->getChannelIdx() == outDims.size() - 1) {
+          if (inDims[inDims.size() - 1] != outDims[outDims.size() - 1]) {
+            continue;
+          }
+          newChannelIdx = inDims.size() - 1;
+        } else if (BN->getChannelIdx() == 1) {
+          // Note: index '1' maps to C in NCH[W] layout.
+          if (inDims[1] != outDims[1]) {
+            continue;
+          }
+          newChannelIdx = 1;
+        } else {
+          continue;
+        }
+
+        // Reshape should not change the batch dimension.
+        if (inDims[0] != outDims[0]) {
+          continue;
+        }
+
+        if (!RS->hasOneUse()) {
+          continue;
+        }
+
+        auto *newBN = F->createBatchNormalization(
+            BN->getName(), RS->getInput(), BN->getBias(), BN->getScale(),
+            BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
+            BN->getMomentum());
+        RS->setNthInput(ReshapeNode::InputIdx, newBN);
+        BN->getResult().replaceAllUsesOfWith(RS);
+        changed = true;
         continue;
       }
 
-      // Figure out where we transposed the channel index for batch
-      // normalization.
-      unsigned_t idx = BN->getChannelIdx();
-      unsigned_t newChannelIdx = TR->getShuffle()[idx];
+      // Sink Transpose below batch normalization nodes:
+      if (auto *TR = dyn_cast<TransposeNode>(BN->getInput())) {
 
-      auto *NewBN = F->createBatchNormalization(
-          BN->getName(), TR->getInput(), BN->getBias(), BN->getScale(),
-          BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
-          BN->getMomentum());
-      NewBN->setPredicate(node->getPredicate());
-      auto *newTR = F->createTranspose(TR->getName(), NewBN, TR->getShuffle(),
-                                       TR->getLayout());
-      newTR->setPredicate(node->getPredicate());
+        // Figure out where we transposed the channel index for batch
+        // normalization.
+        unsigned_t idx = BN->getChannelIdx();
+        unsigned_t newChannelIdx = TR->getShuffle()[idx];
 
-      BN->getResult().replaceAllUsesOfWith(newTR);
-      changed = true;
-      continue;
+        auto *NewBN = F->createBatchNormalization(
+            BN->getName(), TR->getInput(), BN->getBias(), BN->getScale(),
+            BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
+            BN->getMomentum());
+        NewBN->setPredicate(node->getPredicate());
+        auto *newTR = F->createTranspose(TR->getName(), NewBN, TR->getShuffle(),
+                                         TR->getLayout());
+        newTR->setPredicate(node->getPredicate());
+
+        BN->getResult().replaceAllUsesOfWith(newTR);
+        changed = true;
+        continue;
+      }
     }
 
     if (auto *RL = dyn_cast<ReluNode>(node)) {
@@ -1548,6 +1590,12 @@ bool normalizeWeights(Module *M, ConvolutionNode &CV,
   Constant *cbiasC = getUniquelyUsedConstant(M, *CV.getBias().getNode());
 
   if (!filterC || !cbiasC) {
+    return false;
+  }
+
+  // Perform normalization when Convolution layout is NHWC and BatchNorm
+  // ChannelIdx points to C.
+  if (BN.getChannelIdx() != 3) {
     return false;
   }
 
