@@ -360,6 +360,11 @@ inline bool isQuantizedElemKind(ElemKind e) {
          e == ElemKind::UInt4FusedFP16QTy;
 }
 
+/// \returns whether \p e is a float ElemKind.
+inline bool isFloatElemKind(ElemKind e) {
+  return e == ElemKind::FloatTy || e == ElemKind::Float16Ty;
+}
+
 /// \returns whether \p e is a fused quantized ElemKind.
 inline bool isFusedQuantizedElemKind(ElemKind e) {
   return e == ElemKind::UInt8FusedQTy || e == ElemKind::UInt8FusedFP16QTy ||
