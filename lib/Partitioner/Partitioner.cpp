@@ -1260,7 +1260,8 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
 }
 
 Expected<DAGListTy> Partitioner::partition(CompilationContext &cctx) {
-  if (cctx.prepartitionedConfig) {
+  if (cctx.prepartitionedConfig &&
+      cctx.prepartitionedConfig->funcs.size() != 0) {
     return setupPrepartitionedModule(*cctx.prepartitionedConfig);
   }
 

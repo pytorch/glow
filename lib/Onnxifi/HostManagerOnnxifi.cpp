@@ -129,9 +129,11 @@ void HostManagerBackend::runNetwork(const Graph *graph,
 }
 
 onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
-                                          void *deferredBlobReader) {
+                                          void *deferredBlobReader,
+                                          runtime::PrePartitionedConfig *PPC) {
   CompilationContext cctx;
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
+  cctx.prepartitionedConfig = PPC;
 
   if (deferredBlobReader) {
     // Initialize loader and set field in cctx.
@@ -236,13 +238,14 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   netName_ = strFormat("onnxifi_function_%lu", makeUniqueGraphId());
 
   std::unique_ptr<Module> module = glow::make_unique<Module>();
-  Function *function = module->createFunction(netName_);
+  runtime::PrePartitionedConfig PPC;
 
   // TODO: make better error reporting.
   std::unique_ptr<ONNXIFIModelLoader> loader =
       EXIT_ON_ERR(ONNXIFIModelLoader::parse(
-          onnxModel, onnxModelSize, weightCount, weightDescriptors, *function,
-          true /*loadInputsAsPlaceholders*/, backendPtr_->getUseOnnx()));
+          onnxModel, onnxModelSize, weightCount, weightDescriptors, *module,
+          netName_, &PPC, true /*loadInputsAsPlaceholders*/,
+          backendPtr_->getUseOnnx()));
 
   bindPlaceholders(*loader);
   setZeroLengthSequence(maxSeqLength);
@@ -252,11 +255,13 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   }
 
   if (GlowSaveOnnxifiModel) {
-    saveOnnxifiModel(function);
+    for (Function *F : module->getFunctions()) {
+      saveOnnxifiModel(F);
+    }
   }
 
   return static_cast<HostManagerBackend *>(backendPtr_)
-      ->addNetwork(std::move(module), deferedBlobReader);
+      ->addNetwork(std::move(module), deferedBlobReader, &PPC);
 }
 
 namespace {
