@@ -2059,6 +2059,11 @@ Error Caffe2ModelLoader::initWithModule(caffe2::NetDef &networkDef,
     PPC->logicalIDs.reserve(partNameToFun_.size());
     for (auto &SF : partNameToFun_) {
       Function *F = SF.getValue();
+      // Remove unused Functions from the module and skip them.
+      if (F->getNodes().size() == 0) {
+        mod_.eraseFunction(SF.getValue());
+        continue;
+      }
       // This is to ensure that the same processing done with
       // the same network, even if order of operators is different.
       F->orderNodes();
