@@ -1,0 +1,453 @@
+/**
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#include "glow/Base/Image.h"
+#include "glow/Converter/TypeAToTypeBFunctionConverter.h"
+#include "glow/Importer/Caffe2ModelLoader.h"
+#include "glow/Importer/ONNXModelLoader.h"
+
+#include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Format.h"
+#include "llvm/Support/Timer.h"
+#include "llvm/Support/raw_ostream.h"
+
+#include <atomic>
+#include <cfloat>
+#include <fstream>
+#include <future>
+#include <iostream>
+#include <memory>
+#include <mutex>
+#include <queue>
+#include <sstream>
+#include <thread>
+
+#include "ExecutorCore.h"
+#include "ExecutorCoreHelperFunctions.h"
+
+extern llvm::cl::opt<unsigned> traceLevel;
+
+using namespace glow;
+
+class PostProcessingExecutor final {
+public:
+  /// Iterates over registered extensions for processing and printing results
+  /// and executes them.
+  /// \return accumulated errors. Value greater then 0 indicates one or more
+  /// errros have occured.
+  int processOutputs(const llvm::StringMap<Placeholder *> &PHM,
+                     PlaceholderBindings &bindings,
+                     llvm::ArrayRef<std::string> inputImageBatchFilenames);
+
+  /// Registers Post Processing Output extensions.
+  void registerPostProcessOutputExtensions(
+      const std::vector<
+          std::function<std::unique_ptr<PostProcessOutputDataExtension>()>>
+          &extVector);
+
+private:
+  std::vector<std::unique_ptr<PostProcessOutputDataExtension>> extensions_;
+};
+
+class PreProcessImageExecutor final {
+public:
+  /// Iterates over PreProcessInputDataExtension extensions and executes them
+  /// one by ene.
+  void preProcessInputData(Tensor &inputImageData, size_t startId, size_t endId,
+                           size_t batchSz);
+
+  /// Registers Input Data Preprocessing Extensions.
+  void registerInputDataPreProcessingExtension(
+      const std::vector<
+          std::function<std::unique_ptr<PreProcessInputDataExtension>()>>
+          &extVector);
+
+private:
+  std::vector<std::unique_ptr<PreProcessInputDataExtension>> extensions_;
+};
+
+void PostProcessingExecutor::registerPostProcessOutputExtensions(
+    const std::vector<
+        std::function<std::unique_ptr<PostProcessOutputDataExtension>()>>
+        &extVector) {
+  for (auto &f : extVector) {
+    extensions_.push_back(f());
+  }
+}
+
+/// Iterates over registered extensions for processing and Printing results
+/// and executes them.
+int PostProcessingExecutor::processOutputs(
+    const llvm::StringMap<Placeholder *> &PHM, PlaceholderBindings &bindings,
+    llvm::ArrayRef<std::string> inputImageBatchFilenames) {
+  int numErrors = 0;
+  for (auto &f : extensions_) {
+    numErrors += f->processOutputs(PHM, bindings, inputImageBatchFilenames);
+  }
+  return numErrors;
+}
+
+/// Iterates over PreProcessInputDataExtension extensions and executes them one
+/// by ene.
+void PreProcessImageExecutor::preProcessInputData(Tensor &inputImageData,
+                                                  size_t startId, size_t endId,
+                                                  size_t batchSz) {
+  for (auto &f : extensions_) {
+    f->processInputTensor(inputImageData, startId, endId, batchSz);
+  }
+}
+
+void PreProcessImageExecutor::registerInputDataPreProcessingExtension(
+    const std::vector<
+        std::function<std::unique_ptr<PreProcessInputDataExtension>()>>
+        &extVector) {
+  for (auto &f : extVector) {
+    extensions_.push_back(f());
+  }
+}
+
+/// Registers a Loader Extension that will be invoked after model is loaded.
+/// If multiple extensions are registered they will be executed in order they
+/// were registered.
+void Executor::registerLoaderExtension(
+    std::function<std::unique_ptr<LoaderExtension>()> func) {
+  loaderextensions_.push_back(func);
+}
+
+/// Registers an extension that will be invoked on Tensor containing current
+/// batch of input data. If multiple extensions are registered they will be
+/// executed in order they were registered.
+void Executor::registerInputDataPreProcessingExtension(
+    std::function<std::unique_ptr<PreProcessInputDataExtension>()> func) {
+  ppInputDataExtensions_.push_back(func);
+}
+
+/// Registers extension that will be invoked for each execution of the
+/// network. If multiple extensions are registered they will be executed in
+/// order they were registered.
+void Executor::registerPostProcessOutputExtension(
+    std::function<std::unique_ptr<PostProcessOutputDataExtension>()> func) {
+  ppOutputDataExtensions_.push_back(func);
+}
+
+/// Iterates over lambda expressions and registers them with each instance of a
+/// loader in main dispatch loop.
+void Executor::addLoaderExtensions(Loader &ld) {
+  for (auto &f : loaderextensions_) {
+    ld.registerExtension(f());
+  }
+}
+
+/// This will parse command line, load, build and execute a network.
+int Executor::executeNetwork(int argc, char **argv) {
+  // Verify/initialize command line parameters, and then loader initializes
+  // the ExecutionEngine and Function.
+  parseCommandLine(argc, argv);
+
+  if (inputImageListFile.empty() && inputImageFilenames.size() == 0) {
+    llvm::errs() << "Args: Either positional inputImageFilenames or "
+                    "-inputImageListFile "
+                    "must be used to specify input images.\n";
+    return 1;
+  }
+
+  if (!inputImageListFile.empty()) {
+    CHECK_EQ(inputImageFilenames.size(), 0)
+        << "When using -input-image-list-file all Input images must be "
+           "specified "
+           "using -input-image-list-file option.";
+    parseInputImageList(inputImageListFile);
+  }
+
+  if (excludedFirstWarmupRuns && excludedFirstWarmupRuns >= warmup) {
+    llvm::errs() << "Excluding all warmup runs does not make sense\n";
+    return 1;
+  }
+  // Stream input mode.
+  const bool streamInputFilenamesMode =
+      inputImageFilenames.size() == 1 && inputImageFilenames.front() == "-";
+
+  CHECK(!(streamInputFilenamesMode && emittingBundle()))
+      << "Cannot emit a bundle and also stream inputs.";
+
+  // If tracing is enabled, create a TraceContext to merge each runs events
+  // into.
+  if (!tracePath.empty()) {
+    traceContext = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
+  }
+
+  // Mini-batch mode.
+  const bool miniBatchMode = miniBatch > 0;
+  CHECK(((!miniBatchMode) || (!streamInputFilenamesMode)))
+      << "The minibatch option is not compatible with the stream input "
+         "image mode.";
+  CHECK(((!miniBatchMode) || (inputImageFilenames.size() % miniBatch == 0)))
+      << "The number of input images must be a multiple of the mini-batch.";
+
+  CHECK(((!iterationsOpt) || (!miniBatchMode) ||
+         (iterationsOpt % miniBatch == 0)))
+      << "Benchmark count must be a multiple of the mini-batch.";
+
+  // Print out the inferred image classification.
+  llvm::outs() << "Model: " << Loader::getModelOptPath() << "\n";
+  std::mutex ioMu;
+  int numErrors = 0;
+
+  // Process a set of minibatches with indices [startIndex, endIndex).
+  auto processImageRange = [&](size_t startIndex, size_t endIndex) {
+    std::unique_ptr<ExecutionContext> exContext =
+        glow::make_unique<ExecutionContext>();
+    PlaceholderBindings &bindings = *exContext->getPlaceholderBindings();
+    if (traceContext) {
+      exContext->setTraceContext(
+          glow::make_unique<TraceContext>(TraceLevel::STANDARD));
+    }
+    Loader loader;
+    PostProcessingExecutor ppResultExecutor;
+    PreProcessImageExecutor ppImageExecutor;
+
+    // Registering all the extensions per thread.
+    addLoaderExtensions(loader);
+    ppResultExecutor.registerPostProcessOutputExtensions(
+        ppOutputDataExtensions_);
+    ppImageExecutor.registerInputDataPreProcessingExtension(
+        ppInputDataExtensions_);
+
+    // Used to make sure we only compile once, and run only once if not
+    // streaming.
+    bool isFirstRun = true;
+
+    // These will be set during the first run.
+    Placeholder *inputImagePH = nullptr;
+    std::vector<Placeholder *> outputPHV;
+    llvm::StringMap<Placeholder *> PHM;
+
+    size_t miniBatchIndex = startIndex;
+    Tensor inputImageData;
+    std::vector<std::string> inputImageBatchFilenames;
+    if ((!miniBatchMode) && (!streamInputFilenamesMode)) {
+      inputImageBatchFilenames = inputImageFilenames;
+    }
+    if (!tracePath.empty()) {
+      loader.getHostManager()->setTraceContext(
+          glow::make_unique<TraceContext>(traceLevel));
+      Error err = loader.getHostManager()->startDeviceTrace();
+      if (err) {
+        LOG(INFO) << "Failed to start device trace.";
+        numErrors = 1;
+        return;
+      } else {
+        llvm::outs() << "Device trace started.";
+      }
+    }
+    while ((streamInputFilenamesMode &&
+            getNextImageFilenames(&inputImageBatchFilenames)) ||
+           (miniBatchMode &&
+            getNextMiniBatch(inputImageBatchFilenames, inputImageFilenames,
+                             miniBatchIndex, miniBatch, endIndex)) ||
+           isFirstRun) {
+      // Load and process the image data into the inputImageData Tensor.
+      loadImagesAndPreprocess(inputImageBatchFilenames, &inputImageData,
+                              imageNormMode, imageChannelOrder, imageLayout);
+
+      ppImageExecutor.preProcessInputData(inputImageData, startIndex, endIndex,
+                                          inputImageData.dims()[0]);
+      // It we are benchmarking reset the image data to the batch size we need.
+      if (iterationsOpt) {
+        ShapeVector imageSize(inputImageData.getType().dims().begin(),
+                              inputImageData.getType().dims().end());
+        if (miniBatch) {
+          imageSize[0] = miniBatch;
+        } else {
+          imageSize[0] = iterationsOpt;
+        }
+        // Resize the Tensor to the appropriate size.
+        inputImageData.reset(ElemKind::FloatTy, imageSize);
+      }
+      // If this is the first run, then we need to build and compile the model.
+      if (isFirstRun) {
+        isFirstRun = false;
+
+        // Build and compile the graph, and then get back the input Placeholder
+        // and output Placeholder.
+        std::pair<Placeholder *, llvm::StringMap<Placeholder *>>
+            inputOutputPair = buildAndCompileAndGetInAndOutPair(
+                loader, bindings, &inputImageData.getType());
+
+        // If in bundle mode, the bundle has been saved by the above call, so we
+        // can safely return.
+        if (emittingBundle()) {
+          LOG(INFO) << "Emit bndle mode is on. Network is compiled only.";
+          return;
+        }
+
+        inputImagePH = inputOutputPair.first;
+        PHM = inputOutputPair.second;
+        for (auto phI = PHM.begin(), e = PHM.end(); phI != e; ++phI) {
+          CHECK(phI->second) << "Placeholder in output map is NULL.";
+          outputPHV.push_back(phI->second);
+        }
+      }
+
+      CHECK(inputImagePH) << "Input must be valid.";
+      CHECK(!PHM.empty()) << "Output must be valid.";
+      CHECK(inputImagePH->dims() == inputImageData.dims())
+          << "New input shape does not match the compiled function: "
+          << inputImagePH->dims() << " vs " << inputImageData.dims();
+
+      // Convert the raw input to fp16. This must be done every time we get new
+      // image data.
+      if (convertInAndOutToFp16) {
+        inputImageData.convertToType(ElemKind::Float16Ty);
+      }
+
+      // If we are benchmarking we are done with the while loop.
+      if (iterationsOpt) {
+        break;
+      }
+
+      // Minibatch inference initialization of loader extensions
+      loader.inferInitMiniBatch(bindings, miniBatchIndex - miniBatch,
+                                miniBatch);
+
+      // About to run inference, so update the input image Placeholder's backing
+      // Tensor with inputImageData.
+      updateInputPlaceholders(bindings, {inputImagePH}, {&inputImageData});
+
+      // Perform the inference execution, updating output tensors.
+      auto batchSize = inputImageData.dims()[0];
+      loader.runInference(exContext.get(), batchSize);
+      if (traceContext) {
+        traceContext->merge(exContext->getTraceContext());
+      }
+
+      // Print the top-k results from the output Softmax tensor. Do this only
+      // when doing inference (and not profiling).
+      {
+        std::lock_guard<std::mutex> lock(ioMu);
+        numErrors += ppResultExecutor.processOutputs(PHM, bindings,
+                                                     inputImageBatchFilenames);
+      }
+
+      // Minibatch inference initialization of loader extensions
+      loader.inferEndMiniBatch(bindings, miniBatchIndex - miniBatch, miniBatch);
+    }
+
+    if (iterationsOpt) {
+      // Image tensors loaded up to be run at once for benchmark mode.
+      std::vector<std::unique_ptr<ExecutionContext>> contexts =
+          setupContextPool(outputPHV, inputImagePH, inputImageData);
+
+      std::string name = loader.getFunctionName();
+      std::unique_ptr<llvm::Timer> restRunsTimer = nullptr;
+      std::unique_ptr<llvm::Timer> firstRunsTimer = nullptr;
+      std::unique_ptr<double> bestRunTime = nullptr;
+      if (timeOpt) {
+        if (excludedFirstWarmupRuns) {
+          firstRunsTimer.reset(
+              new llvm::Timer("First Runs", "First inference runs"));
+          restRunsTimer.reset(
+              new llvm::Timer("Rest Inferences", "Rest of the inference runs"));
+        } else {
+          restRunsTimer.reset(
+              new llvm::Timer("Inferences", "All inference runs"));
+        }
+        bestRunTime.reset(new double);
+        *bestRunTime = DBL_MAX;
+      }
+      unsigned requestCount = miniBatch ? iterationsOpt / miniBatch : 1;
+
+      runBenchmark(name, loader, std::move(contexts), requestCount, warmup,
+                   restRunsTimer.get(), firstRunsTimer.get(),
+                   bestRunTime.get());
+      if (timeOpt) {
+        double wallTime = restRunsTimer->getTotalTime().getWallTime();
+        llvm::outs() << llvm::formatv(
+            "Average wall time per item (s): {0:f4}\n",
+            wallTime / (iterationsOpt + warmup - excludedFirstWarmupRuns));
+        llvm::outs() << llvm::formatv(
+            "            Best wall time (s): {0:f4}\n", *bestRunTime);
+      }
+    }
+
+    // If profiling, generate and serialize the quantization infos now that we
+    // have run inference one or more times to gather the profile.
+    if (profilingGraph()) {
+      loader.generateAndSerializeQuantizationInfos(bindings);
+    }
+    if (!tracePath.empty()) {
+      Error err = loader.getHostManager()->stopDeviceTrace();
+      if (err) {
+        LOG(INFO) << "Failed to stop device trace:";
+        numErrors = 1;
+        return;
+      } else {
+        traceContext->merge(loader.getHostManager()->getTraceContext());
+      }
+    }
+  };
+
+  // We will force single-threaded execution if:
+  // - Minibatch mode is disabled;
+  // - We are going to emit bundle and do not do inference;
+  // - We are collecting inference profile.
+  // Otherwise, there can be several minibatches of equal size.
+  const bool multiThreadingAllowed =
+      miniBatchMode && !emittingBundle() && !profilingGraph();
+  const size_t numBatches =
+      miniBatchMode ? inputImageFilenames.size() / miniBatch : 1u;
+  const size_t numThreads = multiThreadingAllowed
+                                ? std::min(size_t(miniBatchThreads), numBatches)
+                                : 1u;
+  if (miniBatchThreads > 1 && !multiThreadingAllowed) {
+    llvm::outs() << "WARNING: multi-threaded execution is not possible. Make "
+                    "sure that minibatch size is specified and you are not "
+                    "trying to dump profile or emit bundle.\n";
+  }
+
+  llvm::outs() << "Running " << numThreads << " thread(s).\n";
+  std::vector<std::thread> threads(numThreads);
+  const size_t miniBatchesPerThread =
+      (numBatches + numThreads - 1) / numThreads;
+  for (size_t i = 0; i < numThreads; i++) {
+    size_t startIndex, endIndex;
+    if (numThreads > 1) {
+      startIndex = i * miniBatchesPerThread * miniBatch;
+      endIndex = std::min((i + 1) * miniBatchesPerThread * miniBatch,
+                          inputImageFilenames.size());
+    } else {
+      startIndex = 0;
+      endIndex = inputImageFilenames.size();
+    }
+    auto worker = [&processImageRange, startIndex, endIndex]() {
+      processImageRange(startIndex, endIndex);
+    };
+    threads.push_back(std::thread(worker));
+  }
+
+  for (auto &t : threads) {
+    if (t.joinable()) {
+      t.join();
+    }
+  }
+
+  if (!tracePath.empty()) {
+    traceContext->dump(tracePath, appName_);
+  }
+
+  return numErrors;
+}

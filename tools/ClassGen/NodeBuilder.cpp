@@ -634,7 +634,7 @@ void NodeBuilder::emitImportMethods(std::ostream &os) const {
 
   // We have all items needed to construct the node, so do so.
   const auto nodeName = name_ + "Node";
-  os << "  " << nodeName << " *loadedNode = G_.addNode(new " << nodeName
+  os << "  " << nodeName << " *loadedNode = G_->addNode(new " << nodeName
      << "(opName";
   for (const auto &op : nodeOutputs_) {
     if (hasCtorTypeParams(op.second)) {
@@ -677,21 +677,36 @@ void NodeBuilder::emitExportMethods(std::ostream &os) const {
   for (const auto &op : nodeInputs_) {
     os << "  opProto->add_input(N__->get" << op
        << "().generateNodeOutputName(/* stripResNoFor0thInput */ true));\n";
+    // Note: Add each input's type attributes so that other tools have easy
+    // visibility into types. This info may go ignored by the importer.
+    os << "  addTypeAttributes(opProto, N__, " << name_ << "Node::" << op
+       << "Idx, /* isInput */ true);\n";
   }
 
   // Add all of the node's outputs.
   for (const auto &op : nodeOutputs_) {
     os << "  opProto->add_output(N__->get" << op.second
        << "().generateNodeOutputName(/* stripResNoFor0thInput */ true));\n";
-    if (hasCtorTypeParams(op.second)) {
-      os << "  addTypeAttributes(opProto, N__->get" << op.second << "());\n";
-    }
+    // Note: export the type attributes even if not needed by the importer, so
+    // that other tools have easy visibility into types. This info may go
+    // ignored by the importer.
+    os << "  addTypeAttributes(opProto, N__, " << name_ << "Node::" << op.second
+       << "Idx, /* isInput */ false);\n";
   }
 
   // Add any members the node has.
   for (const auto &op : members_) {
     os << "  addValueAttribute(opProto, \"" << op.second << "\", N__->get"
        << op.second << "());\n";
+
+    // If the member is a VectorNodeValue then also add the types of the NVs.
+    if (op.first.type == MemberType::VectorNodeValue) {
+      os << "  for (unsigned i = 0, e = N__->get" << op.second
+         << "().size(); i < e; i++) {\n";
+      os << "    addTypeAttributes(opProto, N__->get" << op.second
+         << "()[i], i, /* isInput */ true, \"" << op.second << "_\");\n";
+      os << "  }\n";
+    }
   }
 
   // Check if the node has a predicate and add it if so.

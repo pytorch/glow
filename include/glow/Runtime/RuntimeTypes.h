@@ -257,6 +257,16 @@ struct PartitionConfig {
   bool enabled() { return numOfPartitions > 0; }
 };
 
+/// Struct for a pre-partitioned network already made up of multiple Functions.
+struct PrePartitionedConfig {
+  /// The name of the root DAG node.
+  std::string funcName;
+  /// Functions from the module which are partitioned.
+  std::vector<Function *> funcs;
+  /// The logical IDs to assign to the partitions.
+  std::vector<std::unordered_set<unsigned>> logicalIDs;
+};
+
 /// A struct containing a mapping of ExecutionContext to a loaded network on a
 /// device.
 struct ContextBinding {

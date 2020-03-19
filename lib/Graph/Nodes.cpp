@@ -211,37 +211,38 @@ static bool verifyConvolution3D(NodeValue src, NodeValue dest, NodeValue filter,
                               bias.getElementType() == ElemKind::Int32QTy,
                           true, parent);
   }
-  ShapeNHWDC idim(src.getType()->dims());
-  ShapeNHWDC odim(dest.getType()->dims());
-  PaddingTLNBRF pdim(pads);
-  ShapeHWD kdim(kernels);
+  ShapeNTHWC idim(src.getType()->dims());
+  ShapeNTHWC odim(dest.getType()->dims());
+  PaddingNFTBLR pdim(pads);
+  ShapeTHW kdim(kernels);
   isValid &= expectCompareTrue("buffer height too small for selected stride",
                                idim.h + pdim.top + pdim.bottom, kdim.height,
                                parent, CompareOperatorGreaterEqual<dim_t>());
   isValid &= expectCompareTrue("buffer width too small for selected stride",
                                idim.w + pdim.left + pdim.right, kdim.width,
                                parent, CompareOperatorGreaterEqual<dim_t>());
-  isValid &= expectCompareTrue("buffer time too small for selected stride",
-                               idim.d + pdim.near + pdim.far, kdim.depth,
-                               parent, CompareOperatorGreaterEqual<dim_t>());
+  isValid &=
+      expectCompareTrue("buffer time too small for selected stride",
+                        idim.t + pdim.near + pdim.far, kdim.temporal_frames,
+                        parent, CompareOperatorGreaterEqual<dim_t>());
   isValid &= expectCompareTrue("channels number must be divisible by groups",
                                idim.c % group, dim_t(0), parent);
 
-  auto outSz = calculate3DConvPoolOutputDims(idim.h, idim.w, idim.d, kernels,
+  auto outSz = calculate3DConvPoolOutputDims(idim.t, idim.h, idim.w, kernels,
                                              strides, pads);
   isValid &=
       expectCompareTrue("Invalid output dimension N", odim.n, idim.n, parent);
+  isValid &= expectCompareTrue("Invalid output dimension T", odim.t,
+                               outSz.temporal_frames, parent);
   isValid &= expectCompareTrue("Invalid output dimension H", odim.h,
                                outSz.height, parent);
   isValid &= expectCompareTrue("Invalid output dimension W", odim.w,
                                outSz.width, parent);
-  isValid &= expectCompareTrue("Invalid output dimension D", odim.d,
-                               outSz.depth, parent);
   isValid &= expectCompareTrue("Invalid output dimension C", odim.c % group,
                                dim_t(0), parent);
 
-  const dim_t filterDims[] = {odim.c, kdim.height, kdim.width, kdim.depth,
-                              idim.c / group};
+  const dim_t filterDims[] = {odim.c, kdim.temporal_frames, kdim.height,
+                              kdim.width, idim.c / group};
   isValid &=
       expectCompareTrue("Invalid filter dimensions", filter.getType()->dims(),
                         llvm::makeArrayRef(filterDims), parent);
@@ -310,6 +311,8 @@ static bool verifyFullyConnected(NodeValue src, NodeValue weights,
                                    src.dims().size(), parent);
   isValid &= expectCompareTrue("FC weights must be 2D", size_t(2),
                                weights.dims().size(), parent);
+  isValid &= expectCompareTrue("FC bias must be 1D", size_t(1),
+                               bias.dims().size(), parent);
   isValid &= expectCompareTrue("Mismatch between source and dest dimensions",
                                src.dims()[0], dest.dims()[0], parent);
   isValid &= expectCompareTrue("Mismatch between source and weight dimensions",
@@ -321,9 +324,10 @@ static bool verifyFullyConnected(NodeValue src, NodeValue weights,
 
   if (src.getElementType() == ElemKind::Int8QTy) {
     isValid &=
-        expectCompareTrue("Bias type should be Int8 or Int32 for FC",
+        expectCompareTrue("Bias type should be Int8, Int32 or FP32 for FC",
                           bias.getElementType() == ElemKind::Int8QTy ||
-                              bias.getElementType() == ElemKind::Int32QTy,
+                              bias.getElementType() == ElemKind::Int32QTy ||
+                              bias.getElementType() == ElemKind::FloatTy,
                           true, parent);
   }
   return isValid;
@@ -555,7 +559,8 @@ bool ChannelwiseQuantizedConvolutionNode::verify() const {
                                    getBias(), Kernels_, Strides_, Pads_, Group_,
                                    /* dilation */ 1, /* checkBiasType */ false);
 
-  isValid &= checkType(getBias(), ElemKind::Int32QTy, this);
+  isValid &=
+      checkType(getBias(), {ElemKind::Int32QTy, ElemKind::FloatTy}, this);
   isValid &= checkType(getInput(), ElemKind::Int8QTy, this);
 
   // check qparam types
@@ -1383,7 +1388,10 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
         "Only use FP16 accumulation with FP16 version of RWQ-SLWS.",
         result.getType()->getElementType(), ElemKind::Float16Ty, parent);
   }
-  isValid &= checkType(indices, ElemKind::Int64ITy, parent);
+  isValid &= checkType(
+      indices,
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+      parent);
   // For EmbeddingBagByteRowwiseOffsets lengths are really offsets and should be
   // Int64ITy.
   if (isEmbeddingBagByteRowwiseOffsets) {

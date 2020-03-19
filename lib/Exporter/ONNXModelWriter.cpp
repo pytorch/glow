@@ -118,30 +118,45 @@ void addValueAttribute(ONNX_NAMESPACE::NodeProto *proto,
                     T>::assign(attr, container);
 }
 
-/// Add the type attributes from \p NV to \p proto. This includes the ElemKind,
-/// the Shape, and scale/offset if ElemKind is quantized. Note that the result
-/// name is prefixed onto the specific attribute being appended, as some ops
-/// have multiple outputs and so this allows differentiating between them.
-void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, NodeValue NV) {
+/// Adds the type attributes from \p NV to \p proto. \p ioNum, \p isInput, and
+/// \p addPrefix are used to format the name of the attribute.
+void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, const NodeValue NV,
+                       unsigned ioNum, bool isInput,
+                       const std::string &addPrefix = "") {
   const TypeRef ty = NV.getType();
 
   // Add ElemKind.
   auto *elemKindAttr = proto->add_attribute();
-  elemKindAttr->set_name(getTypeAttrID(NV.getResNo(), elemKindSignifier));
+  elemKindAttr->set_name(
+      getTypeAttrID(ioNum, elemKindSignifier, isInput, addPrefix));
   AttributeAssigner<false, false, llvm::StringRef>::assign(
       elemKindAttr, ty->getElementName());
 
   // Add Shape.
-  addValueAttribute(proto, getTypeAttrID(NV.getResNo(), shapeSignifier),
+  addValueAttribute(proto,
+                    getTypeAttrID(ioNum, shapeSignifier, isInput, addPrefix),
                     NV.dims());
 
   // Write out scale/offset if quantized ElemKind.
   if (isQuantizedElemKind(ty->getElementType())) {
-    addValueAttribute(proto, getTypeAttrID(NV.getResNo(), qScaleSignifier),
+    addValueAttribute(proto,
+                      getTypeAttrID(ioNum, qScaleSignifier, isInput, addPrefix),
                       ty->getScale());
-    addValueAttribute(proto, getTypeAttrID(NV.getResNo(), qOffsetSignifier),
-                      ty->getOffset());
+    addValueAttribute(
+        proto, getTypeAttrID(ioNum, qOffsetSignifier, isInput, addPrefix),
+        ty->getOffset());
   }
+}
+
+/// Add the type attributes from the \p ioNum number input or output (depending
+/// on \p isInput) of \p N to \p proto. This includes the ElemKind, the Shape,
+/// and scale/offset if ElemKind is quantized. Note that 'i' or 'o' along with
+/// \p ioNum is prefixed onto the specific attribute being appended, as ops may
+/// have multiple inputs/outputs.
+void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, const Node *N,
+                       unsigned ioNum, bool isInput) {
+  NodeValue NV = isInput ? N->getNthInput(ioNum) : N->getNthResult(ioNum);
+  return addTypeAttributes(proto, NV, ioNum, isInput);
 }
 
 /// Helper function to recursively rewind Tile \p node.

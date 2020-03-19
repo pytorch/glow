@@ -55,15 +55,17 @@ private:
   ExecutionSession ES_;
   /// Handles symbols that are overridden by the JIT engine (needed to manage
   /// C++ destructors for static objects).
+#if !FACEBOOK_INTERNAL
 #if LLVM_VERSION_MAJOR == 7 || FACEBOOK_INTERNAL
   LocalCXXRuntimeOverrides cxxSymbolOverride_;
 #else
   LegacyLocalCXXRuntimeOverrides cxxSymbolOverride_;
 #endif
+#endif
 
   std::shared_ptr<SymbolResolver> resolver_;
 #endif
-#if LLVM_VERSION_MAJOR == 7 || FACEBOOK_INTERNAL
+#if LLVM_VERSION_MAJOR == 7 || (LLVM_VERSION_MAJOR <= 8 && FACEBOOK_INTERNAL)
   RTDyldObjectLinkingLayer objectLayer_;
   IRCompileLayer<decltype(objectLayer_), SimpleCompiler> compileLayer_;
   /// Records C++ constructor/destructor names of static objects.

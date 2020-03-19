@@ -54,8 +54,6 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
                                             size_t onnxModelSize) {
   Module module;
 
-  auto function = module.createFunction(compatibilityFunctionName);
-
   std::unique_ptr<ONNXIFIModelLoader> loader;
   // Note: Because we are not loading inputs as Placeholders, we need to
   // explicitly not do constant folding in the loader. This is because the
@@ -64,11 +62,11 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   // Constants, such as a Convolution's weights. In the future we should clean
   // this up so that we load Constants and Placeholders based on the actual
   // eventual input graph.
-  auto loaderOrErr =
-      ONNXIFIModelLoader::parse(onnxModel, onnxModelSize, 0 /*weightCount*/,
-                                nullptr /*weightDescriptors*/, *function,
-                                false /*loadInputsAsPlaceholders*/,
-                                getUseOnnx(), /*constFoldInLoader*/ false);
+  auto loaderOrErr = ONNXIFIModelLoader::parse(
+      onnxModel, onnxModelSize, 0 /*weightCount*/,
+      nullptr /*weightDescriptors*/, module, compatibilityFunctionName,
+      /* PPC */ nullptr, false /*loadInputsAsPlaceholders*/, getUseOnnx(),
+      /*constFoldInLoader*/ false);
   if (loaderOrErr) {
     loader = std::move(*loaderOrErr);
   } else {
@@ -82,6 +80,12 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   if (!glowBackend_) {
     return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
+
+  if (module.getFunctions().size() != 1) {
+    LOG(ERROR) << "Should have exactly one Function in compatibiliity mode.";
+    return ONNXIFI_STATUS_INTERNAL_ERROR;
+  }
+  Function *function = *module.getFunctions().begin();
 
   CompilationContext cctx;
   cctx.compMode = CompilationMode::Infer;
@@ -151,6 +155,35 @@ void Graph::setZeroLengthSequence(dim_t maxSeqLength) {
   Type ty(ElemKind::Int64ITy, {maxSeqLength});
   zeroLengthSequence_.reset(ty);
   zeroLengthSequence_.zero();
+}
+
+void Graph::bindPlaceholders(const ONNXIFIModelLoader &loader) {
+  onnxInputToPlaceholder_ = loader.getInputVarsMapping();
+  onnxOutputToPlaceholder_ = loader.getOutputVarsMapping();
+  onnxInputNames_ = loader.getPositionalInputNames();
+  onnxInputPlaceholders_.reserve(onnxInputNames_.size());
+  for (const auto &i : onnxInputNames_) {
+    const auto it = onnxInputToPlaceholder_.find(i);
+    if (it == onnxInputToPlaceholder_.end()) {
+      break;
+    }
+    onnxInputPlaceholders_.push_back(it->second);
+  }
+  if (onnxInputPlaceholders_.size() != onnxInputToPlaceholder_.size()) {
+    onnxInputPlaceholders_.clear();
+  }
+  onnxOutputNames_ = loader.getPositionalOutputNames();
+  onnxOutputPlaceholders_.reserve(onnxOutputNames_.size());
+  for (const auto &i : onnxOutputNames_) {
+    const auto it = onnxOutputToPlaceholder_.find(i);
+    if (it == onnxOutputToPlaceholder_.end()) {
+      break;
+    }
+    onnxOutputPlaceholders_.push_back(it->second);
+  }
+  if (onnxOutputPlaceholders_.size() != onnxOutputToPlaceholder_.size()) {
+    onnxOutputPlaceholders_.clear();
+  }
 }
 
 onnxStatus Graph::adjustInputs(uint32_t inputsCount,
@@ -335,6 +368,9 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   }
   TRACE_EVENT_SCOPE_END_NAMED(soEvent);
 
+  if (ctx->getTraceContext()) {
+    ctx->getTraceContext()->setThreadName("Caller");
+  }
   auto ret = run(std::move(ctx), outputEvent, traceEvents);
   if (GlowSaveOnnxifiIO) {
     // We need to wait for the execution to finish in order to extract output

@@ -98,20 +98,33 @@ class Caffe2ModelLoader
   static Expected<caffe2::NetDef> loadProto(const void *c2Model,
                                             size_t c2ModelSize);
 
-  /// Creates a Caffe2 model loader to build \p F.
+  /// Creates a Caffe2 model loader to build one or more Functions in \p mod.
   /// Loads the ONNIXFI \p model from memory of \p modelSize size,
   /// and \p weightsCount, and \p onnxTensorDescriptorV1 correspondent
   /// descriptors. Converts inputs into placeholder if requested \p
   /// loadInputsAsPlaceholders. Reports success/failure through optional
   /// parameter \p errPtr. This constructor always overrides the default
-  /// constant folding in loader flag with \p constFoldInLoader.
+  /// constant folding in loader flag with \p constFoldInLoader. If the model is
+  /// pre-partitioned, then \p PPC will be filled with relevant configuration
+  /// for partitioning, and all Functions created will be named with prefix
+  /// /p funNamePrefix. Otherwise \p PPC is ignored, and \p funNamePrefix is
+  /// used as the name of the single Function that is created inside \p mod.
   Caffe2ModelLoader(const void *model, uint32_t modelSize,
                     uint32_t weightsCount,
                     const onnxTensorDescriptorV1 *weightDescriptors,
-                    Function &F, bool loadInputsAsPlaceholders,
-                    Error *errPtr = nullptr, bool constFoldInLoader = true);
+                    Module &mod, llvm::StringRef funNamePrefix,
+                    runtime::PrePartitionedConfig *PPC,
+                    bool loadInputsAsPlaceholders, Error *errPtr = nullptr,
+                    bool constFoldInLoader = true);
 
   friend class ONNXIFIModelLoader;
+
+  /// Complete initialization when loading a module, including loading
+  /// pre-partitioned models, given \p networkDef loaded from caller, as well as
+  /// \p funNamePrefix, and \p PPC forwarded from caller.
+  Error initWithModule(caffe2::NetDef &networkDef,
+                       llvm::StringRef funNamePrefix,
+                       runtime::PrePartitionedConfig *PPC);
 
   /// \returns success if the folding of operator \p op in the loader
   /// \p loader is successful. The folding utility uses temporary
@@ -132,6 +145,24 @@ public:
                     const std::string &netWeightFilename,
                     llvm::ArrayRef<const char *> names,
                     llvm::ArrayRef<TypeRef> types, Function &F,
+                    Error *errPtr = nullptr);
+
+  /// Loads the caffe2 model that's represented by a network description file,
+  /// serialized in \p netDescFilename, and weights file, serialized in
+  /// \p netWeightFilename, and populates the network in \p mod.
+  /// Any Functions created in \p mod will have name (or prefixed name for
+  /// pre-partitioned protos) \p funNamePrefix.  \p PPC is used to store the
+  /// pre-partitioned config for the model if relevant.
+  /// The list \p types and \p names are used to initialized the inputs and
+  /// outputs with specific names and types.
+  /// If \p errPtr is not null then if an error occurs it will get assigned
+  /// there otherwise if an error occurs it will abort.
+  Caffe2ModelLoader(const std::string &netDescFilename,
+                    const std::string &netWeightFilename,
+                    llvm::ArrayRef<const char *> names,
+                    llvm::ArrayRef<TypeRef> types, Module &mod,
+                    llvm::StringRef funNamePrefix,
+                    runtime::PrePartitionedConfig *PPC = nullptr,
                     Error *errPtr = nullptr);
 
   /// Creates a Caffe2 model loader to build \p F.

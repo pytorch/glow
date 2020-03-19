@@ -143,6 +143,9 @@ FunctionPassPipeline glow::createDefaultFoldPassPipeline() {
       // Fold Reshape->Transpose->Reshape into ChannelShuffle when applicable.
       {FunctionPassID::FoldChannelShuffle},
 
+      // Fold MatMul->Add into FullyConnected.
+      {FunctionPassID::FoldMatMulAddIntoFullyConnected},
+
       // Perform Dead Code Elimination.
       getDCEPassConfig(),
   };

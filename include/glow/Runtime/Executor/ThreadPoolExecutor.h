@@ -21,8 +21,8 @@
 #include <unordered_map>
 
 #include "NetworkExecutionState.h"
+#include "folly/executors/CPUThreadPoolExecutor.h"
 #include "glow/Runtime/Executor/Executor.h"
-#include "glow/Support/ThreadPool.h"
 
 namespace glow {
 namespace runtime {
@@ -65,7 +65,8 @@ public:
                               const std::string &name = "");
 
   /// Setup context pool for new network.
-  void createPool(const DAGNode *root, unsigned poolSize) override;
+  void createPool(const DAGNode *root, unsigned poolSize,
+                  bool assignStatic = false) override;
 
   /// Free the context pool for specified network.
   void freePool(const DAGNode *root) override;
@@ -100,7 +101,7 @@ private:
   /// The default number of workers in the thread pool.
   constexpr static unsigned kNumWorkers = 3;
   /// The thread pool used to drive execution.
-  ThreadPool threadPool_;
+  folly::CPUThreadPoolExecutor threadPool_;
 
   /// Map of networkExecutionState pools for each network.
   std::unordered_map<const DAGNode *,
