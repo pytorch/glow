@@ -4265,8 +4265,8 @@ NodeValue Function::getNodeValueByName(llvm::StringRef name) {
     return NodeValue(node);
   } else {
     unsigned resNo = 0;
-    assert(!strPair.second.getAsInteger(0, resNo) &&
-           "Invalid node value name!");
+    bool status = strPair.second.getAsInteger(0, resNo);
+    assert(!status && "Invalid node value name!");
     return NodeValue(node, resNo);
   }
 }
