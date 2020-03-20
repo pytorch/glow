@@ -454,13 +454,15 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   if (cctx.deferredWeightLoader) {
     LOG(INFO) << "Loading deferred weights";
 
+    auto startTime = std::chrono::steady_clock::now();
     auto loader = cctx.deferredWeightLoader;
     // Load the first weight.
     RETURN_IF_ERR(loader->loadNextWeight());
     std::string weightName = loader->getName();
     // Load weights while there are weights to be loaded.
     while (weightName != "") {
-      auto PH = module.getPlaceholderByName(weightName);
+      VLOG(1) << "Loading " << weightName;
+      const auto PH = module.getPlaceholderByName(weightName);
       if (!PH) {
         return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
                         llvm::formatv("Error loading deferred weight. Name: "
@@ -485,19 +487,17 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
           weight->convertToType(newK);
         }
       }
-
       // Transfer weight to all devices needed.
       for (const auto &device : placeholderToDeviceManager[PH]) {
-        std::promise<void> transferPromise;
-        Error transferError = Error::empty();
+        std::promise<Error> transferPromise;
         auto done = transferPromise.get_future();
         devices_[device]->transferStaticPlaceholderToDevice(
-            PH, weight, [&transferPromise, &transferError](Error err) {
-              transferError = std::move(err);
-              transferPromise.set_value();
+            PH, weight, [&transferPromise](Error err) {
+              transferPromise.set_value(std::move(err));
             });
-        RETURN_IF_ERR(transferError);
+        RETURN_IF_ERR(done.get());
       }
+
       RETURN_IF_ERR(loader->loadNextWeight());
       weightName = loader->getName();
       // Remove PH from map, this way we can know that we've added all static
@@ -508,6 +508,11 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
       return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
                       "Error not all static placeholders were initialized.");
     }
+
+    std::chrono::duration<double> duration =
+        std::chrono::steady_clock::now() - startTime;
+    LOG(INFO) << "Done loading deferred weights in " << duration.count()
+              << " seconds";
   }
 
   cleanupProvision(localActiveNames, {}, false);
