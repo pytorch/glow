@@ -371,6 +371,11 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   if (ctx->getTraceContext()) {
     ctx->getTraceContext()->setThreadName("Caller");
   }
+
+  // End trace scope before calling into run. run() can trigger the completion
+  // callback which deallocates ctx and traceContext. So it will no longer be
+  // safe to access the trace context after calling into run().
+  TRACE_EVENT_SCOPE_END();
   auto ret = run(std::move(ctx), outputEvent, traceEvents);
   if (GlowSaveOnnxifiIO) {
     // We need to wait for the execution to finish in order to extract output
