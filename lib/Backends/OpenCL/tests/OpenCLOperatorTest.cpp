@@ -342,4 +342,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "mul_int64/0",
     "add_int32/0",
     "add_int64/0",
+    "LayerNorm_Float16/0",
+    "LayerNorm_Int8/0",
 };

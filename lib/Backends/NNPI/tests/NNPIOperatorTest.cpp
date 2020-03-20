@@ -97,6 +97,7 @@ struct BlacklistInitializer {
             {"CumSum_Reverse/0", TestBlacklist::AnyDeviceAnyEngine},
             {"CumSum_ExclusiveReverse/0", TestBlacklist::AnyDeviceAnyEngine},
             {"CumSum_WithZeroes/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"LayerNorm_Float/0", TestBlacklist::AnyDeviceHWEngine},
             {"LengthsSum/0", TestBlacklist::AnyDeviceAnyEngine},
             {"LengthsToRanges/0", TestBlacklist::AnyDeviceAnyEngine},
             {"ModuloInt32NoSignFollow/0", TestBlacklist::AnyDeviceAnyEngine},

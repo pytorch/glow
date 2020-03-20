@@ -12521,5 +12521,58 @@ TEST_P(OperatorTest, add_float) {
   }
 }
 
+static FunctionTensorPair
+createAndInitLayerNormTest(glow::PlaceholderBindings &bindings,
+                           glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 4, 5, 5}, "in", false);
+
+  Tensor scaleT(ElemKind::FloatTy, {5, 5});
+  scaleT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+  Constant *scaleC = mod.createConstant("scale", std::move(scaleT));
+  Tensor biasT(ElemKind::FloatTy, {5, 5});
+  biasT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+  Constant *biasC = mod.createConstant("bias", std::move(biasT));
+
+  LayerNormalizationNode *LNN =
+      F->createLayerNormalization("LN", input, scaleC, biasC, 1e-5);
+
+  bindings.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+
+  auto *res = F->createSave("save", LNN);
+  ::glow::convertPlaceholdersToConstants(F, bindings,
+                                         {input, res->getPlaceholder()});
+  auto *resultTensor = bindings.allocate(res->getPlaceholder());
+
+  return std::make_pair(F, resultTensor);
+}
+
+/// Test LayerNorm with FloatTy.
+TEST_P(OperatorStatelessTest, LayerNorm_Float) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(getBackendName(), createAndInitLayerNormTest,
+                            ElemKind::FloatTy, ElemKind::FloatTy, 0.0001f,
+                            parCloneCountOpt);
+}
+
+/// Test LayerNorm with Float16Ty.
+TEST_P(OperatorStatelessTest, LayerNorm_Float16) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(getBackendName(), createAndInitLayerNormTest,
+                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.005f,
+                            parCloneCountOpt);
+}
+
+/// Test LayerNorm with Int8Ty.
+TEST_P(OperatorStatelessTest, LayerNorm_Int8) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(getBackendName(), createAndInitLayerNormTest,
+                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.04f,
+                            parCloneCountOpt);
+}
+
 INSTANTIATE_BACKEND_TEST(OperatorStatelessTest);
 INSTANTIATE_BACKEND_TEST(OperatorTest);

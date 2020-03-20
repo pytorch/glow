@@ -128,10 +128,6 @@ bool NNPIBackend::acceptForExecution(const NodeInfo &NI) const {
 
 bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
-  case Kinded::Kind::ClipNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::Float16Ty, ElemKind::Int8QTy});
-
   // General math fp32/fp16/i8.
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::SubNodeKind:
@@ -157,12 +153,17 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
 
+  case Kinded::Kind::LayerNormalizationNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
+
   case Kinded::Kind::BatchNormalizationNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty});
 
   case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::PReluNodeKind:
+  case Kinded::Kind::ClipNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::Int8QTy, ElemKind::Float16Ty});
 
@@ -466,6 +467,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
       return true;
     }
   }
+  case Kinded::Kind::LayerNormalizationNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
     // WA - lower until ICE-T implements it.
     if (NNPIBackend::backendOptions_.useIceT ||
