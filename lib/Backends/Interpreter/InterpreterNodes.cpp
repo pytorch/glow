@@ -3913,9 +3913,8 @@ void BoundInterpreterFunction::fwdLengthsRangeFillInst(
 }
 
 template <typename ElemTy>
-void BoundInterpreterFunction::fwdSparseToDenseInstFloatImpl(
+void BoundInterpreterFunction::fwdSparseToDenseInstImpl(
     const SparseToDenseInst *I) {
-  staticAssertFloatingPointType(ElemTy);
 
   auto out = getTensor(I->getDest());
   auto indices = getTensor(I->getIndices());
@@ -3963,8 +3962,8 @@ void BoundInterpreterFunction::fwdSparseToDenseInstFloatImpl(
 
 void BoundInterpreterFunction::fwdSparseToDenseInst(
     const SparseToDenseInst *I) {
-  dispatchFloatingPointImpl(fwdSparseToDenseInstFloatImpl,
-                            I->getDest()->getElementType(), I);
+  dispatchArithmeticImpl(fwdSparseToDenseInstImpl,
+                         I->getDest()->getElementType(), I);
 }
 
 void BoundInterpreterFunction::fwdSparseToDenseMaskInst(
