@@ -1102,15 +1102,14 @@ bool LayerNormalizationNode::verify() const {
   auto scale = getScale();
   auto bias = getBias();
 
-  bool isValid = true;
+  // Check all inputs/outputs have same ElemKind.
+  bool isValid = checkType(src, dest.getElementType(), this);
+  isValid &= checkType(src, scale.getElementType(), this);
+  isValid &= checkType(src, bias.getElementType(), this);
 
-  // Check inputs and outputs match.
-  isValid &= checkSameType(src, dest, this);
-
-  // Check that the types of scale and bias match and that they have the same
-  // ElemKind as input.
-  isValid &= checkTypeIgnoreShape(scale, src, this);
-  isValid &= checkSameType(scale, bias, this);
+  // Check inputs/outputs and scale/bias match shapes.
+  isValid &= checkSameShape(src, dest, this);
+  isValid &= checkSameShape(scale, bias, this);
 
   // Check that the dims of scale and bias match the end of src.
   auto srcDims = src.getType()->dims();
