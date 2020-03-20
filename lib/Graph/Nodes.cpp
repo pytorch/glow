@@ -1776,7 +1776,8 @@ bool ResizeNearestNode::verify() const {
                                size_t(4), this);
   isValid &= expectCompareTrue("Output must be a 4D tensor", outputDims.size(),
                                size_t(4), this);
-  for (size_t i = 0; i < scale.size(); i++) {
+
+  for (size_t i = 0, e = scale.size(); i < e; i++) {
     isValid &= expectCompareTrue("Unexpected output",
                                  dim_t(std::floor(inputDims[i] * scale[i])),
                                  outputDims[i], this);

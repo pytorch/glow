@@ -1263,11 +1263,12 @@ public:
                                        unsigned blockSize);
 
   /// Given \p input tensor of [N,H,W,C], where N is the batch, C is the channel
-  /// or depth, H is the height and W is the width, generates an Output tensor
-  /// with resized spatial dimensions using nearest neighbor interpolation. The
-  /// Output tensor is of shape [floor(N * \p batchScale),
-  /// floor(H * \p heightScale), floor(W * \p widthScale),
-  /// floor(C * \p channelScale)]
+  /// or depth, H is the height and W is the width, and \p scale tensor with
+  /// tensor format same as \p input then ResizeNearest generates an Output
+  /// tensor with resized spatial dimensions using nearest neighbor
+  /// interpolation. The Output tensor is of shape [floor(N * \p scale[0]),
+  /// floor(H * \p scale[1]), floor(W * \p scale[2]),
+  /// floor(C * \p scale[3])]
   ResizeNearestNode *createResizeNearest(llvm::StringRef name, NodeValue input,
                                          llvm::ArrayRef<float> scale);
 

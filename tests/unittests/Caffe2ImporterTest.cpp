@@ -1190,8 +1190,10 @@ TEST_F(Caffe2ImporterTest, importResizeNearest) {
   // We have one input and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
   auto scale = resizeNearestNode->getScale();
+  EXPECT_EQ(scale[0], 1);
   auto heightScale = scale[1];
   auto widthScale = scale[2];
+  EXPECT_EQ(scale[3], 1);
   EXPECT_NEAR(heightScale, 2.0, 0.00001);
   EXPECT_NEAR(widthScale, 1.5, 0.00001);
 }
