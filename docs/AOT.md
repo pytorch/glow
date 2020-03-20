@@ -141,13 +141,15 @@ The procedure used for quantizing the model is called **profile-guided quantizat
 details [here](./Quantization.md)). Before the model is quantized and compiled with the
 *model-compiler* tool, the quantization profile must be acquired.
 
+It is important to note that the profiling phase is independent on the quantization parameters
+so there is no need to specify the quantization schema, precision or other parameters.
+
 In order to compute the quantization profile, one option is to use the **model-profiler**
 tool. This application is generic and can be used with any model and requires a set of files
 (in either text or binary format) corresponding to the model input tensors in order to
 feed the model with a dataset and get the profile. The command has the following format:
 ```
 model-profiler -model=<model-path> -dump-profile=profile.yaml \
-    -quantization-schema=<schema>                             \
     -input-dataset=<name1,format1,source1,opts1>              \
     -input-dataset=<name2,format2,source2,opts2>              \
     ............................................
@@ -157,7 +159,6 @@ model-profiler -model=<model-path> -dump-profile=profile.yaml \
 information about the model inputs by using the option `model-input` similar to the
 **model-compiler** tool.
 - The option `dump-profile` specifies the file name used to dump the profile in YAML format.
-- The option `quantization-schema` specifies the schema used to compute the profile.
 - The option `input-dataset` specifies the dataset used to feed each of the model inputs.
 The option has the following comma separated fields:
   - `<name>` the name of the model input placeholder (tensor) where the dataset files will
@@ -260,7 +261,7 @@ a mechanism to load directly PNG images and also to pre-process them according t
 model needs (layout conversion, channel ordering, scaling):
 ```
 image-classifier <images> <image-opts> -model=<model-path> -model-input-name=<name> \
-    -dump-profile=profile.yaml -quantization-schema=<schema>
+    -dump-profile=profile.yaml
 ```
 
 - The image paths are specified one after the other, separated by space. Only images in **PNG**
@@ -268,7 +269,6 @@ format are supported (RGB or grayscale).
 - `model` specifies the path for the Caffe2 or ONNX model.
 - `model-input-name` specifies the name of the model input.
 - The option `dump-profile` specifies the file name used to dump the profile in YAML format.
-- The option `quantization-schema` specifies the schema used to compute the profile.
 
 Extra options are available to specify how the images are pre-processed before they are fed
 to the model during inference:
@@ -296,9 +296,21 @@ tool to compile the model into a bundle by loading the previously generated prof
 model-compiler ... -load-profile=profile.yaml -quantization-schema=<schema>
 ```
 
-If a specific quantization schema is desired, same schema must be provided during both
-profiling and compiling using the `quantization-schema` option. More details about the
-quantization schema can be found [here](./Quantization.md).
+When compiling a quantized bundle with the **model-compiler** some quantization parameters can
+be specified:
+- `quantization-schema` specifies the quantization schema:
+  - `asymmetric` for **Asymmetric** quantization schema (Default).
+  - `symmetric` for **Symmetric** quantization schema.
+  - `symmetric_with_uint8` for **SymmetricWithUint8** quantization schema.
+  - `symmetric_with_power2_scale` for **SymmetricWithPower2Scale** quantization schema.
+- `quantization-precision` specifies the precision used to quantized the nodes:
+  - `Int8` for int8 quantization (Default).
+  - `Int16` for int16 quantization.
+- `quantization-precision-bias` specifies the precision used to quantize the bias operand of
+  some of the nodes (e.g. FullyConnected, Convolution):
+  - `Int8` for int8 quantization.
+  - `Int32` for int32 quantization (Default).
+More details about the quantization parameters can be found [here](./Quantization.md).
 
 For example, in order to profile, quantize and compile the **ResNet50** model you can use the commands:
 ```

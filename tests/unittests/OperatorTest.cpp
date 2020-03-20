@@ -4082,7 +4082,7 @@ TEST_P(OperatorTest, ScatterDataQuantized) {
   bindings_.allocate(indices)->getHandle<int64_t>() = {1, 3};
   bindings_.allocate(slices)->getHandle() = {-3, -4, -7, -8};
 
-  auto qParams = glow::quantization::chooseQuantizationParams(-11, 11);
+  auto qParams = glow::quantization::chooseQuantizationParams({-11, 11});
   auto dataTy =
       mod_.uniqueType(ElemKind::Int8QTy, {5, 2}, qParams.scale, qParams.offset);
   auto slicesTy =
@@ -4235,7 +4235,7 @@ TEST_P(OperatorTest, ScatterAddQuantized) {
   bindings_.allocate(indices)->getHandle<int64_t>() = {1, 3};
   bindings_.allocate(slices)->getHandle() = {3, -8, -7, 8};
 
-  auto qParams = glow::quantization::chooseQuantizationParams(-11, 11);
+  auto qParams = glow::quantization::chooseQuantizationParams({-11, 11});
   auto dataTy =
       mod_.uniqueType(ElemKind::Int8QTy, {5, 2}, qParams.scale, qParams.offset);
   auto slicesTy =
@@ -5685,7 +5685,8 @@ TEST_P(OperatorTest, QuantizedTile) {
   auto *V = mod_.createPlaceholder(ElemKind::FloatTy, {4, 5}, "V", false);
   bindings_.allocate(V);
 
-  auto quantizationParams = glow::quantization::chooseQuantizationParams(0, 20);
+  auto quantizationParams =
+      glow::quantization::chooseQuantizationParams({0, 20});
   auto quantizeTy =
       mod_.uniqueType(ElemKind::Int8QTy, {4, 5}, quantizationParams.scale,
                       quantizationParams.offset);
@@ -7831,13 +7832,13 @@ static void Conv3DQuantizedTest(glow::PlaceholderBindings &bindings,
 
   // Quantized types.
   auto inputTQP = quantization::chooseQuantizationParams(
-      -1.0, 1.0, quantization::Schema::Asymmetric, elemKind);
+      {-1.0, 1.0}, quantization::Schema::Asymmetric, elemKind);
   auto filterTQP = quantization::chooseQuantizationParams(
-      -1.0, 1.0, quantization::Schema::Asymmetric, elemKind);
+      {-1.0, 1.0}, quantization::Schema::Asymmetric, elemKind);
   auto biasTQP = quantization::chooseQuantizationParams(
-      -1.0, 1.0, quantization::Schema::Asymmetric, biaselemKind);
+      {-1.0, 1.0}, quantization::Schema::Asymmetric, biaselemKind);
   auto outputTQP = quantization::chooseQuantizationParams(
-      -4.0, 4.0, quantization::Schema::Asymmetric, elemKind);
+      {-4.0, 4.0}, quantization::Schema::Asymmetric, elemKind);
 
   // Create quantized network.
   auto inputQTy = mod.uniqueType(elemKind, {1, 4, 4, 4, 1}, inputTQP.scale,

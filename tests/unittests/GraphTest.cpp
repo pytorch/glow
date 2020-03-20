@@ -83,8 +83,51 @@ TEST(Graph, clear) {
   EXPECT_EQ(M.getFunctions().size(), 0);
 }
 
-/// Check that a createConv can be run.
-TEST(Graph, simpleTestConv) {
+/// Test the graph nodes names and utilities.
+TEST(Graph, testGraphNames) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+
+  Node *op1 = MD.createPlaceholder(ElemKind::FloatTy, {1}, "op1",
+                                   false /*isTrainable*/);
+  Node *op2 = MD.createConstant(ElemKind::FloatTy, {1}, "op2");
+  Node *add = F->createAdd("add", op1, op2);
+  Node *save = F->createSave("out", add);
+
+  EXPECT_TRUE(MD.getPlaceholderByName("op1"));
+  EXPECT_TRUE(MD.getConstantByName("op2"));
+  EXPECT_TRUE(F->getNodeByName("add"));
+  EXPECT_TRUE(F->getNodeByName("out_save"));
+
+  NodeValue op1Res = op1->getNthResult(0);
+  NodeValue op2Res = op2->getNthResult(0);
+  NodeValue addRes = add->getNthResult(0);
+
+  auto op1ResName =
+      op1Res.generateNodeOutputName(false /*stripResNoFor0thInput*/);
+  auto op2ResName =
+      op2Res.generateNodeOutputName(false /*stripResNoFor0thInput*/);
+  auto addResName =
+      addRes.generateNodeOutputName(true /*stripResNoFor0thInput*/);
+
+  EXPECT_EQ(op1ResName, "op1:0");
+  EXPECT_EQ(op2ResName, "op2:0");
+  EXPECT_EQ(addResName, "add");
+
+  EXPECT_EQ(F->getNodeValueByName(op1ResName), op1Res);
+  EXPECT_EQ(F->getNodeValueByName(op2ResName), op2Res);
+  EXPECT_EQ(F->getNodeValueByName(addResName), addRes);
+
+  EXPECT_EQ(F->getNodeValueByName("op1"), op1Res);
+  EXPECT_EQ(F->getNodeValueByName("op2"), op2Res);
+  EXPECT_EQ(F->getNodeValueByName("add:0"), addRes);
+
+  // Verify the node value is invalid for the SaveNode which has no outputs.
+  EXPECT_EQ(F->getNodeValueByName(save->getName()).getNode(), nullptr);
+}
+
+/// Check node names.
+TEST(Graph, testNodeNames) {
   Module MD;
   Function *F = MD.createFunction("F");
   IRFunction M(F);

@@ -82,16 +82,12 @@ static Placeholder *createQuantizedPlaceholder(Module &mod,
 }
 
 /// Create and initialize a function using the argument \p createAndInitFunction
-/// then run the function in profiling mode to get the quantization parameters
-/// by using the specified quantization schema \p schema, the given element
-/// precision \p quantizationPrecision and the given bias precision
-/// \p quantizationPrecisionBias. \p count represents the number of times to
-/// clone the Function inside itself before profiling. \returns the quantization
-/// parameters for all the function nodes.
-static std::vector<NodeQuantizationInfo> profileAndGetNodeQuantizationInfo(
-    CreateAndInitFunction createAndInitFunction, quantization::Schema schema,
-    ElemKind quantizationPrecision, ElemKind quantizationPrecisionBias,
-    unsigned count) {
+/// then run the function in profiling mode to get the profiling parameters.
+/// \p count is the number of times to clone the Function inside itself before
+/// profiling. \returns the profiling parameters for all the function nodes.
+static std::vector<NodeProfilingInfo>
+profileAndGetNodeProfilingInfo(CreateAndInitFunction createAndInitFunction,
+                               unsigned count) {
   LoweredInfoMap loweredMapForProf;
   PlaceholderBindings pBindings;
   // Note: deviceMemory = 0 is a signal to use the defaultMemory.
@@ -109,9 +105,8 @@ static std::vector<NodeQuantizationInfo> profileAndGetNodeQuantizationInfo(
 
   // We get the new function using front() because the original function was
   // deleted as part of the Partitioner quantization flow.
-  return quantization::generateNodeQuantizationInfos(
-      pBindings, PEE.getModule().getFunctions().front(), loweredMapForProf,
-      schema, quantizationPrecision, quantizationPrecisionBias);
+  return quantization::generateNodeProfilingInfos(
+      pBindings, PEE.getModule().getFunctions().front(), loweredMapForProf);
 }
 
 /// Helper that sets up and \returns a pair of configs for both interpreter and
@@ -136,9 +131,8 @@ setupInterpAndBackendConfigs(
     if (isQuantizedElemKind(interpElemKind)) {
       // Note: We only do parallel cloning for the backend, so always use count
       // of 1 here.
-      auto NQII = profileAndGetNodeQuantizationInfo(
-          createAndInitFunction, schema, interpElemKind, biasElemKind,
-          /* count */ 1);
+      auto NQII =
+          profileAndGetNodeProfilingInfo(createAndInitFunction, /* count */ 1);
 
       precConfigI.quantMode = QuantizationMode::Quantize;
       precConfigI.quantConfig.infos = NQII;
@@ -152,8 +146,7 @@ setupInterpAndBackendConfigs(
     if (isQuantizedElemKind(backendElemKind)) {
       // Always clone count times here. This matches the Function the backend
       // will quantize.
-      auto NQIB = profileAndGetNodeQuantizationInfo(
-          createAndInitFunction, schema, backendElemKind, biasElemKind, count);
+      auto NQIB = profileAndGetNodeProfilingInfo(createAndInitFunction, count);
 
       precConfigB.quantMode = QuantizationMode::Quantize;
       precConfigB.quantConfig.infos = NQIB;
@@ -408,22 +401,22 @@ std::unordered_set<Tensor *> cloneFunInsideFun(FunctionTensorPair FTP,
   // Now erase the clone we used to copy in, as it's no longer needed.
   mod->eraseFunction(cloneF);
 
-  // Finally, duplicate all of the node quantization infos with the new expected
-  // clone's name so that the cloned copies will find the same quantization info
+  // Finally, duplicate all of the node profiling infos with the new expected
+  // clone's name so that the cloned copies will find the same profiling info
   // as the original node if being quantized.
   auto &origInfos = cctx.precisionConfig.quantConfig.infos;
   origInfos.reserve(count * origInfos.size());
-  std::vector<NodeQuantizationInfo> newInfos;
+  std::vector<NodeProfilingInfo> newInfos;
   newInfos.reserve((count - 1) * origInfos.size());
-  for (const auto &QI : origInfos) {
-    const size_t colonIdx = QI.nodeOutputName_.find(":");
+  for (const auto &PI : origInfos) {
+    const size_t colonIdx = PI.nodeOutputName_.find(":");
     assert(colonIdx != std::string::npos && "Name should always contain ':'");
     for (size_t i = 1; i < count; i++) {
-      std::string newName(QI.nodeOutputName_);
+      std::string newName(PI.nodeOutputName_);
       // Cloned nodes end up with the original name plus the count number
       // appended to their name due to uniquing. Replicate the same thing.
       newName.insert(colonIdx, std::to_string(i));
-      newInfos.emplace_back(newName, QI.tensorQuantizationParams_);
+      newInfos.emplace_back(newName, PI.tensorProfilingParams_);
     }
   }
   origInfos.insert(origInfos.end(), newInfos.begin(), newInfos.end());

@@ -181,11 +181,11 @@ public:
   void inferEndMiniBatch(PlaceholderBindings &, size_t minibatchIndex,
                          size_t minibatchSize);
 
-  /// Generates and serializes the quantization infos after gathering a profile
+  /// Generates and serializes the profiling infos after gathering a profile
   /// by running inference one or more times. \p bindings
   /// binds specific placeholders to concrete tensors. The concrete tensors
   /// include quantization profile guided information.
-  void generateAndSerializeQuantizationInfos(PlaceholderBindings &bindings);
+  void generateAndSerializeProfilingInfos(PlaceholderBindings &bindings);
 
   /// Create the Loader driver object.
   Loader();
