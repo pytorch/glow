@@ -535,7 +535,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::SparseToDenseNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Float16Ty},
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int64ITy},
                {SparseToDenseNode::IndicesIdx}) &&
            (NI.getInElemTy(SparseToDenseNode::IndicesIdx) ==
             ElemKind::Int64ITy);

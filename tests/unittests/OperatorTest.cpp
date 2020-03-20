@@ -10442,8 +10442,10 @@ TEST_P(OperatorStatelessTest, SLSAllZeroLengths_Float16) {
                             ElemKind::Float16Ty, ElemKind::Float16Ty);
 }
 
-TEST_P(OperatorTest, SparseToDense) {
-  CHECK_IF_ENABLED();
+template <typename DataType>
+static void testSparseToDense(glow::PlaceholderBindings &bindings,
+                              glow::Module &mod, glow::Function *F,
+                              glow::ExecutionEngine &EE, ElemKind DTy) {
 
   // Create and initialize inputs. Make input 3D to make sure
   // multidimensional values are handled properly.
@@ -10452,32 +10454,32 @@ TEST_P(OperatorTest, SparseToDense) {
   constexpr dim_t kCols = 5;
   constexpr dim_t kMaxIndex = 10;
 
-  auto *indices = mod_.createPlaceholder(ElemKind::Int64ITy, {kNumIndices},
-                                         "indices", false);
-  auto *values = mod_.createPlaceholder(
-      ElemKind::FloatTy, {kNumIndices, kRows, kCols}, "data", false);
-  auto *dataToInferDim = mod_.createPlaceholder(ElemKind::FloatTy, {kMaxIndex},
-                                                "dataToInferDim", false);
+  auto *indices = mod.createPlaceholder(ElemKind::Int64ITy, {kNumIndices},
+                                        "indices", false);
+  auto *values =
+      mod.createPlaceholder(DTy, {kNumIndices, kRows, kCols}, "data", false);
+  auto *dataToInferDim = mod.createPlaceholder(ElemKind::FloatTy, {kMaxIndex},
+                                               "dataToInferDim", false);
 
-  auto IH = bindings_.allocate(indices)->getHandle<int64_t>();
-  auto VH = bindings_.allocate(values)->getHandle();
+  auto IH = bindings.allocate(indices)->getHandle<int64_t>();
+  auto VH = bindings.allocate(values)->getHandle<DataType>();
 
   // Duplicate one index to test that the corresponding values are added.
   IH = {1, 3, 1, 9};
-  VH.randomize(-3.0, 3.0, mod_.getPRNG());
+  VH.randomize(-3.0, 3.0, mod.getPRNG());
 
-  auto *STDN = F_->createSparseToDense("STDN", indices, values, dataToInferDim);
-  auto *S = F_->createSave("save", STDN);
-  bindings_.allocate(S->getPlaceholder());
+  auto *STDN = F->createSparseToDense("STDN", indices, values, dataToInferDim);
+  auto *S = F->createSave("save", STDN);
+  bindings.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
 
-  Tensor &result = *bindings_.get(S->getPlaceholder());
+  Tensor &result = *bindings.get(S->getPlaceholder());
 
   // Compute expected output.
-  Tensor expected(ElemKind::FloatTy, {kMaxIndex, kRows, kCols});
-  auto EH = expected.getHandle();
+  Tensor expected(DTy, {kMaxIndex, kRows, kCols});
+  auto EH = expected.getHandle<DataType>();
 
   expected.zero();
   for (dim_t i = 0; i < kNumIndices; ++i) {
@@ -10490,6 +10492,16 @@ TEST_P(OperatorTest, SparseToDense) {
   }
 
   EXPECT_TRUE(expected.isEqual(result));
+}
+
+TEST_P(OperatorTest, SparseToDense_Float) {
+  CHECK_IF_ENABLED();
+  testSparseToDense<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, SparseToDense_Int64) {
+  CHECK_IF_ENABLED();
+  testSparseToDense<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
 TEST_P(OperatorTest, SparseToDenseMask1) {
