@@ -271,8 +271,8 @@ int main(int argc, char **argv) {
 
     // Tune the quantization for this node.
     auto nodeName = pInfosTune[nodeQIdx].nodeOutputName_.data();
-    llvm::outs() << strFormat("[%d/%d] Tuning node value \"%s\"\n", nodeQIdx + 1,
-                              nodeQNum, nodeName);
+    llvm::outs() << strFormat("[%d/%d] Tuning node value \"%s\"\n",
+                              nodeQIdx + 1, nodeQNum, nodeName);
     accVal = tuneQuantizationForNode(pInfosTune, datasetTune, nodeQIdx, accVal);
 
     // Display estimated remaining time and stats.
