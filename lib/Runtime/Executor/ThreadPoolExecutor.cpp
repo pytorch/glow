@@ -163,6 +163,10 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
     return;
   }
   DeviceManager *deviceManager = deviceManagerIt->second.get();
+  // If the context has a deviceManager bound use that instead.
+  if (nodeCtx->getBoundDeviceManager()) {
+    deviceManager = nodeCtx->getBoundDeviceManager();
+  }
   // Run the node using the DeviceManager.
   deviceManager->runFunction(
       node->name, std::move(nodeCtx),
@@ -260,12 +264,54 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
   inflightBarrier_.decrement();
 }
 
-void ThreadPoolExecutor::createPool(const DAGNode *root, unsigned poolSize) {
+void ThreadPoolExecutor::createPool(const DAGNode *root, unsigned poolSize,
+                                    bool assignStatic) {
+  std::unordered_map<DAGNode *, DeviceIDTy> assignment;
+
+  // For static assignment we need to track devices each node is assigned to.
+  std::unordered_map<DAGNode *, std::vector<DeviceIDTy>> assignments;
+  std::unordered_map<DAGNode *, unsigned> currentAssignment;
+  if (assignStatic) {
+    // Walk the nodes and get assignments.
+    std::queue<DAGNode *> remaining;
+    for (auto node : root->children) {
+      remaining.push(node);
+    }
+    while (remaining.size()) {
+      auto node = remaining.front();
+      remaining.pop();
+      // Add any new children to the queue.
+      for (auto child : node->children) {
+        auto it = assignments.find(child);
+        if (it == assignments.end()) {
+          remaining.push(child);
+        }
+      }
+      std::vector<DeviceIDTy> assignment;
+      for (auto dev : node->deviceRuntimeInfos) {
+        assignment.push_back(dev.first);
+      }
+      assignments[node] = assignment;
+      currentAssignment[node] = 0;
+    }
+  }
+
   std::unique_ptr<NetworkExecutionStatePool> pool =
       glow::make_unique<NetworkExecutionStatePool>();
   for (unsigned i = 0; i < poolSize; i++) {
     auto newState = glow::make_unique<NetworkExecutionState>(root);
-    newState->init(deviceManagers_);
+    // If assignStatic, calculate the device assignments for this
+    // executionState. For now we are assigning a round robin pattern per node.
+    if (assignStatic) {
+      for (auto it : currentAssignment) {
+        auto &nodeAssignments = assignments.at(it.first);
+        auto newAssignmentIdx = (it.second + 1) % nodeAssignments.size();
+        auto newAssignment = nodeAssignments[newAssignmentIdx];
+        assignment[it.first] = newAssignment;
+        currentAssignment[it.first] = newAssignmentIdx;
+      }
+    }
+    newState->init(deviceManagers_, assignment);
     pool->addNewState(std::move(newState));
   }
   states_[root] = std::move(pool);

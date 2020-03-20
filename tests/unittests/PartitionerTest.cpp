@@ -1445,7 +1445,9 @@ TEST_F(PartitionerTest, loadBalancedPartition) {
 
 /// This tests the pre-partitioned flow.
 TEST_F(PartitionerTest, PrePartitionedTest) {
+  CompilationContext cctx;
   PrePartitionedConfig PPC;
+  cctx.prepartitionedConfig = &PPC;
   Function *F0 = F_;
   Function *F1 = mod_.createFunction("main_1");
   Function *F2 = mod_.createFunction("main_2");
@@ -1478,7 +1480,7 @@ TEST_F(PartitionerTest, PrePartitionedTest) {
   const std::vector<runtime::DeviceInfo> devices(3, dev);
   Partitioner partitioner(&mod_, devices);
   DAGListTy d;
-  ASSIGN_VALUE_OR_FAIL_TEST(d, partitioner.setupPrepartitionedModule(PPC));
+  ASSIGN_VALUE_OR_FAIL_TEST(d, partitioner.setupPrepartitionedModule(cctx));
 
   // Note: DAG should look like: F0 -> F1
   //                               \   |
