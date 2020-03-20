@@ -4264,7 +4264,7 @@ NodeValue Function::getNodeValueByName(llvm::StringRef name) {
   if (node->getNumResults() == 1) {
     return NodeValue(node);
   } else {
-    unsigned resNo;
+    unsigned resNo = 0;
     assert(!strPair.second.getAsInteger(0, resNo) &&
            "Invalid node value name!");
     return NodeValue(node, resNo);
