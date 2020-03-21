@@ -88,20 +88,25 @@ TEST(Graph, testGraphNames) {
   Module MD;
   Function *F = MD.createFunction("F");
 
-  Node *op1 = MD.createPlaceholder(ElemKind::FloatTy, {1}, "op1",
+  Node *op1 = MD.createPlaceholder(ElemKind::FloatTy, {1, 10}, "op1",
                                    false /*isTrainable*/);
-  Node *op2 = MD.createConstant(ElemKind::FloatTy, {1}, "op2");
+  Node *op2 = MD.createConstant(ElemKind::FloatTy, {1, 10}, "op2");
   Node *add = F->createAdd("add", op1, op2);
-  Node *save = F->createSave("out", add);
+  auto *top = F->createTopK("top", add, 5);
+  Node *save = F->createSave("out", top->getValues());
 
   EXPECT_TRUE(MD.getPlaceholderByName("op1"));
   EXPECT_TRUE(MD.getConstantByName("op2"));
   EXPECT_TRUE(F->getNodeByName("add"));
+  EXPECT_TRUE(F->getNodeByName("top"));
   EXPECT_TRUE(F->getNodeByName("out_save"));
 
   NodeValue op1Res = op1->getNthResult(0);
   NodeValue op2Res = op2->getNthResult(0);
   NodeValue addRes = add->getNthResult(0);
+  EXPECT_TRUE(top->getNumResults() == 2);
+  NodeValue topValRes = top->getNthResult(0);
+  NodeValue topIndRes = top->getNthResult(1);
 
   auto op1ResName =
       op1Res.generateNodeOutputName(false /*stripResNoFor0thInput*/);
@@ -109,14 +114,22 @@ TEST(Graph, testGraphNames) {
       op2Res.generateNodeOutputName(false /*stripResNoFor0thInput*/);
   auto addResName =
       addRes.generateNodeOutputName(true /*stripResNoFor0thInput*/);
+  auto topValResName =
+      topValRes.generateNodeOutputName(false /*stripResNoFor0thInput*/);
+  auto topIndResName =
+      topIndRes.generateNodeOutputName(false /*stripResNoFor0thInput*/);
 
   EXPECT_EQ(op1ResName, "op1:0");
   EXPECT_EQ(op2ResName, "op2:0");
   EXPECT_EQ(addResName, "add");
+  EXPECT_EQ(topValResName, "top:0");
+  EXPECT_EQ(topIndResName, "top:1");
 
   EXPECT_EQ(F->getNodeValueByName(op1ResName), op1Res);
   EXPECT_EQ(F->getNodeValueByName(op2ResName), op2Res);
   EXPECT_EQ(F->getNodeValueByName(addResName), addRes);
+  EXPECT_EQ(F->getNodeValueByName(topValResName), topValRes);
+  EXPECT_EQ(F->getNodeValueByName(topIndResName), topIndRes);
 
   EXPECT_EQ(F->getNodeValueByName("op1"), op1Res);
   EXPECT_EQ(F->getNodeValueByName("op2"), op2Res);

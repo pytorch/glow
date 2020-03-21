@@ -709,7 +709,7 @@ public:
   /// true then if the backend does not support a node as quantized for the
   /// given \p quantizationPrecision then the program will exit with an error.
   FunctionQuantizer(Function &F, const Backend &B, quantization::Schema schema,
-                    const std::vector<NodeProfilingInfo> &profilingInfos,
+                    llvm::ArrayRef<NodeProfilingInfo> profilingInfos,
                     ElemKind quantizationPrecision,
                     const KindSet &doNotQuantizeKinds,
                     const LoweredInfoMap &loweredMap,
@@ -949,10 +949,11 @@ generateNodeProfilingInfos(PlaceholderBindings &bindings, const Function *F,
   return profilingInfos;
 }
 
-std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(
-    const std::vector<NodeProfilingInfo> &profilingInfos, Function *F,
-    const LoweredInfoMap &loweredMap, Schema schema,
-    ElemKind quantizationPrecision, ElemKind quantizationPrecisionBias) {
+std::vector<NodeQuantizationInfo>
+generateNodeQuantizationInfos(llvm::ArrayRef<NodeProfilingInfo> profilingInfos,
+                              Function *F, const LoweredInfoMap &loweredMap,
+                              Schema schema, ElemKind quantizationPrecision,
+                              ElemKind quantizationPrecisionBias) {
   std::vector<NodeQuantizationInfo> quantizationInfos;
   for (const auto &profilingInfo : profilingInfos) {
     // Get node value from node output name.

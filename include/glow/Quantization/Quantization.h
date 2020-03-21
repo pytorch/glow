@@ -53,7 +53,7 @@ generateNodeProfilingInfos(PlaceholderBindings &bindings, const Function *F,
 /// is the lowering map obtained during the quantization phase and is used
 /// to find lowering patterns for the bias operands.
 std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(
-    const std::vector<NodeProfilingInfo> &profilingInfos, Function *F,
+    llvm::ArrayRef<NodeProfilingInfo> profilingInfos, Function *F,
     const LoweredInfoMap &loweredMap = {}, Schema schema = Schema::Asymmetric,
     ElemKind quantizationPrecision = ElemKind::Int8QTy,
     ElemKind quantizationPrecisionBias = ElemKind::Int32QTy);
