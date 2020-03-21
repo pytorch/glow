@@ -955,6 +955,13 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
   }
   RETURN_IF_ERR(logicalDevicesValidation(partitionMap, backendMap_));
 
+  // Copy in backend-specific options that were loaded.
+  DCHECK(funcs.size() == config.backendSpecificOpts.size());
+  for (size_t i = 0, e = funcs.size(); i < e; i++) {
+    Function *F = funcs[i];
+    partitionMap.setBackendSpecificOpts(F, config.backendSpecificOpts[i]);
+  }
+
   // Do partition.
   DAGListTy partitions =
       doPartitioning(config.funcName, funcs, module_, partitionMap,

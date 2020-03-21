@@ -2033,6 +2033,7 @@ Error Caffe2ModelLoader::initWithModule(caffe2::NetDef &networkDef,
   // we create multiple Functions and switch between them as we load each
   // operator.
   std::unordered_map<Function *, std::unordered_set<unsigned>> funToIDs;
+  std::unordered_map<Function *, BackendSpecificOptions> funToOpts;
   if (networkDef.partition_info_size() == 0) {
     G_ = mod_.createFunction(funNamePrefix);
   } else {
@@ -2041,8 +2042,17 @@ Error Caffe2ModelLoader::initWithModule(caffe2::NetDef &networkDef,
       const std::string funName = funNamePrefix.str() + "_" + pName;
       Function *PF = mod_.createFunction(funName);
       partNameToFun_[pName] = PF;
-      for (auto i : networkDef.partition_info(i).device_id()) {
-        funToIDs[PF].insert(i);
+      for (auto id : networkDef.partition_info(i).device_id()) {
+        funToIDs[PF].insert(id);
+      }
+
+      // Now set up device options for this partition.
+      auto &optsMap = funToOpts[PF];
+      for (auto &backendOpts : networkDef.partition_info(i).backend_options()) {
+        const std::string &backendName = backendOpts.backend_name();
+        for (auto &keyVal : backendOpts.option()) {
+          optsMap[backendName + "_" + keyVal.key()] = keyVal.val();
+        }
       }
     }
   }
@@ -2068,7 +2078,8 @@ Error Caffe2ModelLoader::initWithModule(caffe2::NetDef &networkDef,
       // the same network, even if order of operators is different.
       F->orderNodes();
       PPC->funcs.push_back(F);
-      PPC->logicalIDs.push_back(funToIDs[F]);
+      PPC->logicalIDs.emplace_back(funToIDs[F]);
+      PPC->backendSpecificOpts.emplace_back(funToOpts[F]);
       RETURN_ERR_IF_NOT(F->verify(), "Function verification failed.");
     }
   }

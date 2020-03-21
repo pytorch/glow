@@ -3111,17 +3111,26 @@ TEST_F(Caffe2ImporterTest, PrePartitionedMultiOpTest) {
         P0 = F;
         ASSERT_EQ(PPC.logicalIDs[i].size(), 1);
         EXPECT_TRUE(PPC.logicalIDs[i].count(2));
+        EXPECT_EQ(PPC.backendSpecificOpts[i].size(), 0);
       } else if (F->getName() == "main_p1") {
         P1 = F;
         ASSERT_EQ(PPC.logicalIDs[i].size(), 2);
         EXPECT_TRUE(PPC.logicalIDs[i].count(0));
         EXPECT_TRUE(PPC.logicalIDs[i].count(1));
+        EXPECT_EQ(PPC.backendSpecificOpts[i].size(), 0);
       } else if (F->getName() == "main_p2") {
         P2 = F;
-      } else {
-        FAIL() << "Unknown Function found.";
         ASSERT_EQ(PPC.logicalIDs[i].size(), 1);
         EXPECT_TRUE(PPC.logicalIDs[i].count(2));
+        EXPECT_EQ(PPC.backendSpecificOpts[i].size(), 3);
+        ASSERT_TRUE(PPC.backendSpecificOpts[i].count("BackendA_opt1"));
+        EXPECT_EQ(PPC.backendSpecificOpts[i].at("BackendA_opt1"), "val1");
+        ASSERT_TRUE(PPC.backendSpecificOpts[i].count("BackendA_opt2"));
+        EXPECT_EQ(PPC.backendSpecificOpts[i].at("BackendA_opt2"), "val2");
+        ASSERT_TRUE(PPC.backendSpecificOpts[i].count("BackendB_opt3"));
+        EXPECT_EQ(PPC.backendSpecificOpts[i].at("BackendB_opt3"), "val3");
+      } else {
+        FAIL() << "Unknown Function found.";
       }
 
       // Check that the function was also found in the module.

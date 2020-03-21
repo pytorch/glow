@@ -123,6 +123,9 @@ struct DAGNode {
   /// reservation.
   BackendHints backendHints{};
 
+  /// Backend specific opts object, populated by the Partitioner.
+  BackendSpecificOptions backendSpecificOpts{};
+
   /// Pointer to module the function came from. This is so the executor can
   /// access the associated PHs for the function that are stored in the Module.
   Module *module{nullptr};
@@ -265,6 +268,8 @@ struct PrePartitionedConfig {
   std::vector<Function *> funcs;
   /// The logical IDs to assign to the partitions.
   std::vector<std::unordered_set<unsigned>> logicalIDs;
+  /// Backend-specific options for each Partition.
+  std::vector<BackendSpecificOptions> backendSpecificOpts;
 };
 
 /// A struct containing a mapping of ExecutionContext to a loaded network on a

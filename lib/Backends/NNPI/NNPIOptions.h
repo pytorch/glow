@@ -17,10 +17,14 @@
 #define GLOW_NNPI_ENV_VARIABLES_H
 
 #include "nnpi_transformer_types.h"
+
+#include "glow/Backends/BackendOptions.h"
+
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
+
 #include <map>
 #include <string>
 #include <vector>
@@ -71,7 +75,7 @@ template <> unsigned NNPIOptions::getStringAsType<unsigned>(std::string sVal);
                             OPT_DEFAULT)                                       \
   class {                                                                      \
   public:                                                                      \
-    inline static llvm::StringRef getName() { return OPT_NAME; }               \
+    inline static llvm::StringRef getName() { return "NNPI_" OPT_NAME; }       \
     inline static llvm::StringRef getDesc() { return OPT_DESC; }               \
     inline static llvm::StringRef getEnv() { return OPT_ENV; }                 \
     inline static llvm::StringRef getDefault() { return OPT_DEFAULT; }         \
@@ -216,7 +220,7 @@ public:
                       "Disable constant folding during compilation.",
                       "NNPI_DISABLE_CONSTFOLD", "1");
 
-  NNPICompilationOptions(const std::map<std::string, std::string> &parameters) {
+  NNPICompilationOptions(const BackendSpecificOptions &parameters) {
     INIT_NNPI_OPTIONS(useIceT, parameters);
     INIT_NNPI_OPTIONS(inferOnDevice, parameters);
     INIT_NNPI_OPTIONS(showVars, parameters);

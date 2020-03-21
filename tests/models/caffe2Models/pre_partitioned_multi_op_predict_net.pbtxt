@@ -76,6 +76,24 @@ partition_info {
 partition_info {
   name: "p2"
   device_id: 2
+  backend_options {
+    backend_name: "BackendA"
+    option {
+      key: "opt1"
+      val: "val1"
+    }
+    option {
+      key: "opt2"
+      val: "val2"
+    }
+  }
+  backend_options {
+    backend_name: "BackendB"
+    option {
+      key: "opt3"
+      val: "val3"
+    }
+  }
 }
 partition_info {
   name: "unused_p3"

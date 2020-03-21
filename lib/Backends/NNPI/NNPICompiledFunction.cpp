@@ -79,7 +79,7 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
               << F->getName().str() << " to "
               << std::to_string(opts.backendHints.executionUnits) << " cores ";
 
-    newOpts.backendSpecificOpts["IceCores"] =
+    newOpts.backendSpecificOpts["NNPI_IceCores"] =
         std::to_string(opts.backendHints.executionUnits);
   }
 
@@ -87,7 +87,7 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
     std::string icet_fname = std::string("icet_file_") + F->getName().str();
     LOG(INFO) << "Writing ICE_T compiled output to: " << icet_fname
               << std::endl;
-    newOpts.backendSpecificOpts["CompiledFile"] = icet_fname;
+    newOpts.backendSpecificOpts["NNPI_CompiledFile"] = icet_fname;
   }
 
   if (glow::onnxifi::GlowUsePerPartitionIcetConfig) {
@@ -95,7 +95,7 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
         std::string("icet_config_") + F->getName().str() + std::string(".json");
     LOG(INFO) << "Reading ICE_T config from: " << icet_config_fname
               << std::endl;
-    newOpts.backendSpecificOpts["CompilationDebugConfigFile"] =
+    newOpts.backendSpecificOpts["NNPI_CompilationDebugConfigFile"] =
         icet_config_fname;
   }
 
