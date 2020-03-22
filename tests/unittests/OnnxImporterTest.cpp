@@ -263,10 +263,10 @@ importArithMultiBroadcastTest(std::string fileName,
 
 /// Import maxPool1D
 static void importMaxPool1DTest(std::string &netFilename,
-                                std::vector<float> inputValues,
-                                std::vector<dim_t> inputShape,
-                                std::vector<dim_t> outputShape,
-                                std::vector<float> expectedValues) {
+                                llvm::ArrayRef<float> inputValues,
+                                llvm::ArrayRef<dim_t> inputShape,
+                                llvm::ArrayRef<dim_t> outputShape,
+                                llvm::ArrayRef<float> expectedValues) {
   float delta = 1e-08;
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
@@ -274,8 +274,6 @@ static void importMaxPool1DTest(std::string &netFilename,
   PlaceholderBindings bindings;
   Placeholder *graphOutputVar;
 
-  // Load the .onnxtxt model
-  // ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
   Type input_type(ElemKind::FloatTy, inputShape);
   ONNXModelLoader onnxLD(netFilename, {"x"}, {&input_type}, *F);
 
