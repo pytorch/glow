@@ -300,6 +300,61 @@ importArithMultiBroadcastTest(std::string fileName,
                                           {bindings.get(graphOutputVar)}));
 }
 
+/// Import maxPool1D
+static void importMaxPool1DTest(std::string &netFilename,
+                                llvm::ArrayRef<float> inputValues,
+                                llvm::ArrayRef<dim_t> inputShape,
+                                llvm::ArrayRef<dim_t> outputShape,
+                                llvm::ArrayRef<float> expectedValues) {
+  float delta = 1e-08;
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+
+  Type input_type(ElemKind::FloatTy, inputShape);
+  ONNXModelLoader onnxLD(netFilename, {"x"}, {&input_type}, *F);
+
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+  auto PH = mod.getPlaceholderByName("x");
+  auto *inTensor = bindings.allocate(PH);
+  inTensor->getHandle() = inputValues;
+
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+
+  auto result = bindings.get(graphOutputVar)->getHandle();
+  ASSERT_TRUE(result.dims() == (llvm::ArrayRef<dim_t>)outputShape);
+  for (size_t i = 0; i < result.getType().size(); i++) {
+    EXPECT_NEAR(result.raw(i), expectedValues[i], delta);
+  }
+}
+
+/// Test loading maxPool1D op from an ONNX model
+/// with different ouput shape.
+TEST(onnx, maxPool1D) {
+  std::vector<float> inputValues = {
+      1.4206449,  0.54408556, 1.3318906,  0.771925,   0.9450552,
+      0.08600737, 0.30009857, 1.4206449,  0.54408556, 1.3318906,
+      0.771925,   0.9450552,  0.08600737, 0.30009857};
+
+  std::vector<dim_t> inputShape = {1, 2, 7};
+  std::vector<dim_t> outputShape = {1, 2, 2};
+  std::vector<float> expectedValues = {
+      1.4206449,
+      0.9450552,
+      1.4206449,
+      0.9450552,
+  };
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/maxPool1D.onnxtxt");
+  importMaxPool1DTest(netFilename, inputValues, inputShape, outputShape,
+                      expectedValues);
+}
+
 /// Test loading LeakyRelu op from an ONNX model.
 TEST_F(OnnxImporterTest, leakyRelu) {
   ExecutionEngine EE{};

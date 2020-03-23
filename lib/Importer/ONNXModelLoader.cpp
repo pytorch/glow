@@ -827,6 +827,11 @@ ONNXModelLoader::loadProto(const std::string &filename) {
   return loadProto(fileStream);
 }
 
+/// Given an input \p val , ceil value is computed for a given datatype T
+template <typename T> T ceil(float val) {
+  return (val - (T)val) > 0 ? (T)(val + 1) : (T)val;
+}
+
 namespace {
 /// Helper type for pads.
 using Pads = std::vector<unsigned_t>;
@@ -841,6 +846,10 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
                        llvm::ArrayRef<unsigned_t> sdim,
                        llvm::ArrayRef<unsigned_t> idim) {
   if (dict.count("pads")) {
+    if (dict.at("pads")->ints_size() == 2) { // For maxPool1D
+      return Pads({0, (unsigned_t)dict.at("pads")->ints(0), 0,
+                   (unsigned_t)dict.at("pads")->ints(1)});
+    }
     return getShape<unsigned_t>(dict["pads"]);
   }
   if (dict.count("auto_pad")) {
@@ -861,8 +870,10 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
       //         + kernel_spatial_shape[i] - input_spatial_shape[i]
       // Use the smallest padding possible out of the possible options.
       llvm::SmallVector<unsigned_t, 2> pdim(2); // Total Paddding, HW.
+      unsigned_t odim;
       for (size_t i = 0, e = pdim.size(); i < e; i++) {
-        pdim[i] = sdim[i] * (idim[i] - 1) + kdim[i] - idim[i];
+        odim = ceil<unsigned_t>((float)idim[i] / (float)sdim[i]);
+        pdim[i] = sdim[i] * (odim - 1) + kdim[i] - idim[i];
       }
       if (padStr == "SAME_UPPER") {
         // SAME_UPPPER: if odd number for pdim[i], use extra padding at the end.
@@ -1459,13 +1470,40 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
   // Load the inputs:
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
   std::vector<unsigned_t> strides(2, 1);
-  if (dict.count("strides")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(strides, getShape<unsigned_t>(dict["strides"]));
-  }
-  std::vector<unsigned_t> kernels;
-  ASSIGN_VALUE_OR_RETURN_ERR(kernels,
+
+  size_t inDim = in.dims().size();
+
+  std::vector<unsigned_t> kernelsShape;
+  ASSIGN_VALUE_OR_RETURN_ERR(kernelsShape,
                              getShape<unsigned_t>(dict["kernel_shape"]));
+
+  size_t kerDim = kernelsShape.size();
+
+  std::vector<unsigned_t> kernels = {1, kernelsShape[kerDim - 1]};
+
+  // For maxPool1D inDim = 3
+  if (inDim == 3) {
+    in = G_->createExpandDims(opName, in, 2);
+    if (kerDim != 1) {
+      RETURN_ERR("Glow handles 1D pooling with kernel dimenstion size 1",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
+    } else {
+      if (dict.count("strides")) {
+        strides[1] = dict.at("strides")->ints(0);
+        strides[0] = 1;
+      }
+    }
+  }
+
+  if (kerDim == 2) { // For maxPool2D
+    kernels[0] = kernelsShape[0];
+    if (dict.count("strides")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(strides,
+                                 getShape<unsigned_t>(dict["strides"]));
+    }
+  }
 
   if (in.dims().size() != 4 || kernels.size() != 2) {
     // Glow only handles 2D pooling currently.
@@ -1485,8 +1523,8 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
 
   // NHWC
   llvm::SmallVector<unsigned_t, 2> idimHW(2);
-  idimHW[0] = in.dims()[1];
-  idimHW[1] = in.dims()[2];
+  idimHW[0] = in.dims()[2]; // As per NCHW format
+  idimHW[1] = in.dims()[3];
 
   Pads pads;
   ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict, kernels, strides, idimHW));
@@ -1511,7 +1549,15 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
       node = G_->createAvgPool(opName, tr, kernels, strides, pads);
       idx = AvgPoolNode::ResultIdx;
     }
-    auto *N = G_->createTranspose(opName, NodeValue(node, idx), NHWC2NCHW);
+
+    Node *N = nullptr;
+    if (inDim == 3) { // For maxPool1D
+      auto *R = G_->createSqueeze(opName, NodeValue(node, idx), 1);
+      N = G_->createTranspose(opName, R, {0, 2, 1});
+    } else {
+      N = G_->createTranspose(opName, NodeValue(node, idx), NHWC2NCHW);
+    }
+
     RETURN_IF_ERR(addNodeAsOutput(op, N));
   }
   return Error::success();
