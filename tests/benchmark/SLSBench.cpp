@@ -185,7 +185,7 @@ public:
       // Create and sort indices
       Tensor indicesReal(ElemKind::Int64ITy,
                          {param.numIndicesPerBatch * batchSize_});
-      indicesReal.getHandle<int64_t>().randomize(0, param.numTableEntries - 1,
+      indicesReal.getHandle<int64_t>().randomize(0, param.numTableEntries,
                                                  mod->getPRNG());
       // Sort each segment
       if (param.isSorted) {
