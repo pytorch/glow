@@ -423,6 +423,7 @@ SLSParam parseArgs(int argc, char *argv[]) {
     } else if (std::string(argv[ACCUM_TYPE]) == "False") {
       param.useFP16Accumulation = false;
     } else {
+      printf("Debug - Invalid useFP16Accumulation %s %d", argv[ACCUM_TYPE], std::string(argv[ACCUM_TYPE]) == "True");
       llvm_unreachable("Invalid useFP16Accumulation");
     }
   } else {
