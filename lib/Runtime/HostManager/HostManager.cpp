@@ -504,6 +504,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
   // If we haven't reached maxActiveRequests kick off next request.
   size_t activeRequestCount = activeRequestCount_++;
   if (activeRequestCount < config_.maxActiveRequests) {
+    TRACE_EVENT_SCOPE_END();
     dispatchNextRun();
     return currentRun;
   }

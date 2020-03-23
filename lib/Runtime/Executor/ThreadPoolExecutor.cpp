@@ -128,6 +128,11 @@ void ThreadPoolExecutor::run(const DAGNode *root,
                   "bind network execution state");
 
   currentState->incrementInflightNodes(numChildren);
+
+  // End the trace block before calling executeDAGNode() which can trigger the
+  // result cb. Once the result cb is called, it's no longer safe to access the
+  // trace context.
+  TRACE_EVENT_SCOPE_END();
   for (auto const &node : root->children) {
     // Run with cached state
     executeDAGNode(currentState, node);
@@ -167,6 +172,11 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
   if (nodeCtx->getBoundDeviceManager()) {
     deviceManager = nodeCtx->getBoundDeviceManager();
   }
+
+  // End the trace block before calling deviceManager->runFunction which can
+  // trigger the result cb in a different thread. Once the result cb is called,
+  // it's no longer safe to access the trace context.
+  TRACE_EVENT_SCOPE_END();
   // Run the node using the DeviceManager.
   deviceManager->runFunction(
       node->name, std::move(nodeCtx),
@@ -225,16 +235,19 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
   // Return intermediateContext to executionState.
   executionState->returnUniqueNodeContextPtr(node, std::move(ctx));
 
-  // Now, check if all nodes in the graph are done. If so, the callback can be
-  // called and all state associated with the run can be erased.
-  bool noNodesInflight = executionState->decrementInflightNodes();
-
+  // This needs to happen before decrementInflightNodes(). Otherwise a race
+  // condition can happen where two threads call into this function at the same
+  // time. Once decrementInflightNodes() is called, only the thread that get
+  // noNodesInflight == true can access executionState.
   if (traceContext) {
     TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME,
                     "ThreadPoolExecutor::handleResult");
-    // Lock is not necessary as we only access on this runs executor.
     executionState->insertIntoTraceContext(traceContext);
   }
+
+  // Now, check if all nodes in the graph are done. If so, the callback can be
+  // called and all state associated with the run can be erased.
+  bool noNodesInflight = executionState->decrementInflightNodes();
 
   if (noNodesInflight) {
     // If there are no nodes inflight, that means all nodes are done. Transfer
