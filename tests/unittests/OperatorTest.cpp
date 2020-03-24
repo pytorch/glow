@@ -7973,7 +7973,7 @@ TEST_P(OperatorTest, Conv3DQuantizedTest_Int8_BiasInt8) {
 
 /// Test Int8 Conv3D with Int32 bias.
 TEST_P(OperatorTest, Conv3DQuantizedTest_Int8_BiasInt32) {
-  ENABLED_BACKENDS("Interpreter");
+  ENABLED_BACKENDS("Interpreter", "NNPI");
   Conv3DQuantizedTest(bindings_, mod_, F_, EE_, ElemKind::Int8QTy,
                       ElemKind::Int32QTy);
 }

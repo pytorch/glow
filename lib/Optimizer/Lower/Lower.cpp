@@ -1221,6 +1221,108 @@ static void lowerClipNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, CN.getResult(), result);
 }
 
+static void lowerConvolution3DNode(Function *F, CompilationContext &cctx,
+                                   const Convolution3DNode &C3DN) {
+  VLOG(1) << "Lowering Convolution3D Node" << std::endl;
+  VLOG(1) << "Input " << C3DN.getInput().dims() << std::endl;
+  VLOG(1) << "Result " << C3DN.getResult().dims() << std::endl;
+  VLOG(1) << "Bias " << C3DN.getBias().dims() << std::endl;
+  VLOG(1) << "Filter " << C3DN.getFilter().dims() << std::endl;
+  VLOG(1) << "Pads " << C3DN.getPads() << std::endl;
+  VLOG(1) << "Kernels " << C3DN.getKernels() << std::endl;
+  VLOG(1) << "Strides " << C3DN.getStrides() << std::endl;
+  VLOG(1) << "Pads " << C3DN.getPads() << std::endl;
+
+  // Get dimensions
+  ShapeNTHWC is(C3DN.getInput().dims());
+  ShapeNTHWC ws(C3DN.getFilter().dims());
+  ShapeNTHWC os(C3DN.getResult().dims());
+  llvm::ArrayRef<unsigned_t> iker = C3DN.getKernels();
+  llvm::ArrayRef<unsigned_t> istr = C3DN.getStrides();
+  PaddingNFTBLR ipad(C3DN.getPads());
+  auto group = C3DN.getGroup();
+  auto dilation = 1;
+  auto layout = ConvolutionLayout::NHWC;
+
+  // Loop over T IFM dimension and concat OFM slices
+  std::vector<NodeValue> OFMSlices;
+  ssize_t t = -ssize_t(ipad.near); // pad.near
+  for (dim_t at = 0; at < os.t; t += istr[0], at++) {
+
+    // Loop over T filter dimension and sum partial OFM slice
+    NodeValue sumNode = nullptr;
+    for (dim_t ft = 0; ft < ws.t; ft++) {
+      sdim_t ot = t + ft;
+      VLOG(5) << "t: " << t << "\tat: " << at << "\tft: " << ft
+              << "\tot: " << ot << std::endl;
+      if ((ot < 0) || (ot >= is.t)) {
+        continue;
+      }
+      auto *slicedInput = F->createSlice(
+          C3DN.getName().str() + "_InputSlice", C3DN.getInput(),
+          {0, (dim_t)ot, 0, 0, 0}, {is.n, (dim_t)ot + 1, is.h, is.w, is.c});
+      auto *squeezedInput = F->createSqueeze(
+          C3DN.getName().str() + "_InputSqueeze", slicedInput, {1});
+
+      auto *slicedFilter = F->createSlice(C3DN.getName().str() + "_FilterSlice",
+                                          C3DN.getFilter(), {0, ft, 0, 0, 0},
+                                          {ws.n, ft + 1, ws.h, ws.w, ws.c});
+
+      auto *squeezedFilter = F->createSqueeze(
+          C3DN.getName().str() + "_FilterSqueeze", slicedFilter, {1});
+
+      // Expecting pads in TLBR
+      auto outSz = calculateConvPoolOutputDims(
+          is.h, is.w, {iker[1], iker[2]}, {istr[1], istr[2]},
+          {static_cast<unsigned int>(ipad.top),
+           static_cast<unsigned int>(ipad.left),
+           static_cast<unsigned int>(ipad.bottom),
+           static_cast<unsigned int>(ipad.right)});
+
+      auto partialOutTy = F->getParent()->uniqueTypeWithNewShape(
+          C3DN.getType(Convolution3DNode::ResultIdx),
+          {is.n, outSz.first, outSz.second, ws.n});
+
+      auto *partialOutput =
+          F->createConv(C3DN.getName().str() + "_PartialOutput", squeezedInput,
+                        squeezedFilter, C3DN.getBias(), partialOutTy,
+                        {iker[1], iker[2]}, {istr[1], istr[2]},
+                        {static_cast<unsigned int>(ipad.top),
+                         static_cast<unsigned int>(ipad.left),
+                         static_cast<unsigned int>(ipad.bottom),
+                         static_cast<unsigned int>(ipad.right)},
+                        group, dilation, layout);
+
+      VLOG(5) << "Partial output: " << partialOutput->dims(0) << std::endl;
+
+      auto *reshapedOutput =
+          F->createReshape(C3DN.getName().str() + "_ReshapedOutput",
+                           partialOutput, {os.n, 1, os.h, os.w, os.c});
+      if (!sumNode) {
+        sumNode = reshapedOutput;
+      } else {
+        sumNode = F->createAdd(C3DN.getName().str() + "_FilterAdd", sumNode,
+                               reshapedOutput);
+      }
+    }
+    if (!sumNode) {
+      auto reshapedPartialOutTy = F->getParent()->uniqueTypeWithNewShape(
+          C3DN.getType(Convolution3DNode::ResultIdx),
+          {os.n, 1, os.h, os.w, os.c});
+      sumNode = F->createSplat(C3DN.getName().str() + "_Splat",
+                               reshapedPartialOutTy, 0.0f);
+    }
+    OFMSlices.push_back(sumNode);
+  }
+
+  auto *concatedOutput =
+      F->createConcat(C3DN.getName().str() + "_ConcatOutput", OFMSlices, 1);
+
+  VLOG(5) << "concatedOutput" << concatedOutput->getResult().dims()
+          << std::endl;
+  replaceAllUsesOfWith(cctx.loweredInfoMap, C3DN.getResult(), concatedOutput);
+}
+
 bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
 #define CASE_LOWER(NODE_NAME_)                                                 \
   case Kinded::Kind::NODE_NAME_##NodeKind:                                     \
@@ -1258,6 +1360,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(FusedRowwiseQuantizedSparseLengthsSum);
     CASE_LOWER(BatchBoxCox);
     CASE_LOWER(Clip);
+    CASE_LOWER(Convolution3D);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
     if (CN->getGroup() > 1 && CN->hasFusedActivation()) {
