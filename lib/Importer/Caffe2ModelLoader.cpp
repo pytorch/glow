@@ -898,8 +898,13 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     float widthScale;
     ASSIGN_VALUE_OR_RETURN_ERR(widthScale, loadFloat(dict["width_scale"]));
 
-    auto *node =
-        G_->createResizeNearest(opName, finalIn, heightScale, widthScale);
+    std::vector<float> scales;
+    scales.push_back(1.0f);
+    scales.push_back(heightScale);
+    scales.push_back(widthScale);
+    scales.push_back(1.0f);
+
+    auto *node = G_->createResizeNearest(opName, finalIn, scales);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }

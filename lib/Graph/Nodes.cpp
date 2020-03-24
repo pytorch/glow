@@ -1765,6 +1765,7 @@ bool SpaceToDepthNode::verify() const {
 
 bool ResizeNearestNode::verify() const {
   auto input = getInput();
+  auto scale = getScale();
   auto result = getResult();
   auto inputDims = input.dims();
   auto outputDims = result.dims();
@@ -1774,22 +1775,14 @@ bool ResizeNearestNode::verify() const {
                                size_t(4), this);
   isValid &= expectCompareTrue("Output must be a 4D tensor", outputDims.size(),
                                size_t(4), this);
-  isValid &= expectCompareTrue("Batch size must be the same", inputDims[0],
-                               outputDims[0], this);
-  isValid &= expectCompareTrue("Depth must be the same", inputDims[3],
-                               outputDims[0], this);
-  isValid &= expectCompareTrue(
-      "Unexpected output height",
-      dim_t(std::floor(inputDims[1] * getHeightScale())), outputDims[1], this);
-  isValid &= expectCompareTrue(
-      "Unexpected output width",
-      dim_t(std::floor(inputDims[2] * getWidthScale())), outputDims[2], this);
-  isValid &=
-      expectCompareTrue("Invalid height scale", getHeightScale(), float(0.0),
-                        this, CompareOperatorGreaterThan<float>());
-  isValid &=
-      expectCompareTrue("Invalid width scale", getWidthScale(), float(0.0),
-                        this, CompareOperatorGreaterThan<float>());
+
+  for (size_t i = 0, e = scale.size(); i < e; i++) {
+    isValid &= expectCompareTrue("Unexpected output",
+                                 dim_t(std::floor(inputDims[i] * scale[i])),
+                                 outputDims[i], this);
+    isValid &= expectCompareTrue("Invalid scale", scale[i], float(0.0), this,
+                                 CompareOperatorGreaterThan<float>());
+  }
 
   return isValid;
 }

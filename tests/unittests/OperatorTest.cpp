@@ -1409,17 +1409,27 @@ static void testResizeNearest(glow::PlaceholderBindings &bindings,
 
   auto heightScaleUp = 2.0f;
   auto widthScaleUp = 1.5f;
+  std::vector<float> scaleUp;
+  scaleUp.push_back(1.0f);
+  scaleUp.push_back(heightScaleUp);
+  scaleUp.push_back(widthScaleUp);
+  scaleUp.push_back(1.0f);
 
-  auto *resizeNearestUp = F->createResizeNearest("resizeNearestUp", input,
-                                                 heightScaleUp, widthScaleUp);
+  auto *resizeNearestUp =
+      F->createResizeNearest("resizeNearestUp", input, scaleUp);
   auto *saveUp = F->createSave("saveUp", resizeNearestUp);
   auto *resultUp = bindings.allocate(saveUp->getPlaceholder());
 
   auto heightScaleDown = 0.9f;
   auto widthScaleDown = 0.6;
+  std::vector<float> scaleDown;
+  scaleDown.push_back(1.0f);
+  scaleDown.push_back(heightScaleDown);
+  scaleDown.push_back(widthScaleDown);
+  scaleDown.push_back(1.0f);
 
-  auto *resizeNearestDown = F->createResizeNearest(
-      "resizeNearestDown", input, heightScaleDown, widthScaleDown);
+  auto *resizeNearestDown =
+      F->createResizeNearest("resizeNearestDown", input, scaleDown);
   auto *saveDown = F->createSave("saveDown", resizeNearestDown);
   auto *resultDown = bindings.allocate(saveDown->getPlaceholder());
 
