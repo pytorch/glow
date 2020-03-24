@@ -536,6 +536,57 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
   return Error::success();
 }
 
+Error Caffe2ModelLoader::loadLayerNorm(const caffe2::OperatorDef &op,
+                                       ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  unsigned_t axis = 1; // Caffe2 default.
+  if (dict.count("axis")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
+  }
+
+  RETURN_ERR_IF_NOT(axis < in.dims().size(), "axis must fit inside input dims");
+
+  // Feature shape is based on the input dims, from the axis to the end.
+  ShapeVector featDims;
+  for (dim_t i = axis, e = in.dims().size(); i < e; ++i) {
+    featDims.push_back(in.dims()[i]);
+  }
+  TypeRef featTy = mod_.uniqueTypeWithNewShape(in.getType(), featDims);
+
+  NodeValue weight, bias;
+  if (op.input_size() > 1) {
+    RETURN_ERR_IF_NOT(op.input_size() == 3, "Must have both weight and bias");
+
+    ASSIGN_VALUE_OR_RETURN_ERR(weight, getNodeValueByName(op.input(1)));
+    RETURN_ERR_IF_NOT(weight.getType() == featTy, "Invalid weight shape");
+
+    ASSIGN_VALUE_OR_RETURN_ERR(bias, getNodeValueByName(op.input(2)));
+    RETURN_ERR_IF_NOT(bias.getType() == featTy, "Invalid bias shape");
+  } else {
+    // Caffe2 default to use weight 1 and bias 0.
+    weight = G_->createSplat(opName + "_weight_ones", featTy, 1.0)->getResult();
+    bias = G_->createSplat(opName + "_bias_zeros", featTy, 0.0)->getResult();
+  }
+
+  float eps = 0.001; // Caffe2 default.
+  if (dict.count("epsilon")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(eps, loadFloat(dict["epsilon"]));
+  }
+
+  LayerNormalizationNode *node =
+      G_->createLayerNormalization(opName, in, weight, bias, eps);
+
+  RETURN_ERR_IF_NOT(op.output_size() == 1,
+                    "Supporting only one output from LayerNorm");
+
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
+  return Error::success();
+}
+
 Expected<bool> Caffe2ModelLoader::foldOperator(const caffe2::OperatorDef &op) {
   const unsigned numInputs = op.input_size();
   const std::string &typeName = op.type();
@@ -671,6 +722,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Int8Conv" || typeName == "Int8ConvRelu") {
     return loadConvQuantized(op, dict);
+  }
+
+  if (typeName == "LayerNorm") {
+    return loadLayerNorm(op, dict);
   }
 
   if (typeName == "Int8SumRelu") {

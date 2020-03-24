@@ -1,0 +1,17 @@
+name: "layer_norm"
+op {
+  input: "input"
+  output: "result"
+  name: ""
+  type: "LayerNorm"
+  arg {
+    name: "axis"
+    i: 2
+  }
+  arg {
+    name: "epsilon"
+    f: 0.05
+  }
+}
+external_input: "input"
+external_output: "result"
