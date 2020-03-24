@@ -3504,7 +3504,7 @@ static void importUpsampleTest(std::string &netFilename) {
   std::vector<float> expectedResult = {1, 1, 1, 2, 2, 2, 1, 1, 1, 2, 2, 2,
                                        3, 3, 3, 4, 4, 4, 3, 3, 3, 4, 4, 4};
 
-  for (size_t i = 0; i < expectedResult.size(); i++) {
+  for (dim_t i = 0; i < expectedResult.size(); i++) {
     EXPECT_EQ(result.raw(i), expectedResult[i]);
   }
 }

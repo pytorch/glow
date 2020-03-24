@@ -1770,7 +1770,7 @@ Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
       RETURN_ERR("Scales Tensor should have float type.");
     }
     auto constH = scale->getPayload().getHandle<float>();
-    for (size_t i = 0; i < constH.size(); ++i) {
+    for (dim_t i = 0; i < constH.size(); ++i) {
       scales.push_back(constH.at({i}));
     }
   }
