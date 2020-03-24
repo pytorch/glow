@@ -190,6 +190,10 @@ class ONNXModelLoader
   Error loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
                    ArgumentDictionaryTy &dict);
 
+  /// Load Upsample ONNX operator.
+  Error loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
+                     ArgumentDictionaryTy &dict);
+
   /// Load BatchNormalization ONNX operator.
   Error loadBatchNormalization(const ONNX_NAMESPACE::NodeProto &op,
                                ArgumentDictionaryTy &dict);

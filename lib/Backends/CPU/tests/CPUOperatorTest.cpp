@@ -20,11 +20,8 @@ using namespace glow;
 std::set<std::string> glow::backendTestBlacklist = {
     "less_float16Cases/0",
     "less_int64Cases/0",
-    "ResizeNearest_Float/0",
     "ResizeNearest_Float16/0",
-    "ResizeNearest_Int8/0",
     "ResizeNearest_Int16/0",
-    "ResizeNearest_Int32/0",
     "replaceNaN_Float16/0",
     "Logit_Float16/0",
     "FP16Add/0",

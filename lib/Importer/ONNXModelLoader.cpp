@@ -1724,6 +1724,65 @@ Error ONNXModelLoader::loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
+                                    ArgumentDictionaryTy &dict) {
+
+  RETURN_ERR_IF_NOT(opsetVersion_ < 10,
+                    "Upsample Operator is deprecated for Opset 10 and above");
+
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  std::string mode;
+  if (dict.count("mode")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(mode, loadStr(dict.at("mode")));
+  }
+
+  /// Only Nearest Mode is supported
+  RETURN_ERR_IF_NOT(mode.compare("nearest") == 0,
+                    "Upsample Operator has nearest mode support only");
+
+  /// Scale is always float as per onnx documentation
+  std::vector<float> scales;
+
+  RETURN_ERR_IF_NOT(opsetVersion_ > 6,
+                    "Upsample Operator is supported for Opset 7 and above");
+
+  if (opsetVersion_ == 7) {
+    if (dict.count("scales")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(scales, getFloats(dict["scales"]));
+    }
+  }
+
+  if (opsetVersion_ > 7) {
+    Constant *scale;
+    ASSIGN_VALUE_OR_RETURN_ERR(scale, getConstantByName(op.input(1)));
+    if (scale->getElementType() != ElemKind::FloatTy) {
+      RETURN_ERR("Scales Tensor should have float type.");
+    }
+    auto constH = scale->getPayload().getHandle<float>();
+    for (size_t i = 0; i < constH.size(); ++i) {
+      scales.push_back(constH.at({i}));
+    }
+  }
+
+  /// NCHW2NHWC. scales tensor format is NHWC.
+
+  auto channel = scales[1];
+  auto height = scales[2];
+  auto weight = scales[3];
+
+  scales[1] = height;
+  scales[2] = weight;
+  scales[3] = channel;
+
+  auto *intr = G_->createTranspose(opName, in, NCHW2NHWC);
+  Node *node = G_->createResizeNearest(opName, intr, scales);
+  auto *N = G_->createTranspose(opName, node, NHWC2NCHW);
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadGlobalAveragePool(
     const ONNX_NAMESPACE::NodeProto &op, ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -3455,6 +3514,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Identity") {
     return loadIdentity(op, dict);
+  }
+  if (typeName == "Upsample") {
+    return loadUpsample(op, dict);
   }
 
   RETURN_ERR("Failed to load operator " + typeName + " .",

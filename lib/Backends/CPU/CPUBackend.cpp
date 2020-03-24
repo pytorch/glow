@@ -81,6 +81,11 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getOutElemTy(ArgMaxNode::ArgmaxIdx) == ElemKind::Int64ITy ||
             NI.getOutElemTy(ArgMaxNode::ArgmaxIdx) == ElemKind::Int32ITy);
 
+  case Kinded::Kind::ResizeNearestNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int32QTy,
+         ElemKind::Int32ITy, ElemKind::Int64ITy});
+
   case Kinded::Kind::SaveNodeKind:
   case Kinded::Kind::ReshapeNodeKind:
     // These are implemented via a Copy Instruction.
