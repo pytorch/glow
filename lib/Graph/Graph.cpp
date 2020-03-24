@@ -2302,25 +2302,23 @@ SpaceToDepthNode *Function::createSpaceToDepth(llvm::StringRef name,
 
 ResizeNearestNode *Function::createResizeNearest(llvm::StringRef name,
                                                  NodeValue input,
-                                                 float heightScale,
-                                                 float widthScale) {
+                                                 llvm::ArrayRef<float> scale) {
   auto inputDim = input.dims();
-  DCHECK_EQ(inputDim.size(), 4)
-      << "Dimension size: " << inputDim.size() << ", size of 4 is expected.";
-  DCHECK_GT(heightScale, 0.0) << "Height scale: " << heightScale
-                              << ", Scale larger than 0 is expected.";
-  DCHECK_GT(widthScale, 0.0)
-      << "Width scale: " << widthScale << ", Scale larger than 0 is expected.";
-  dim_t newH = std::floor(inputDim[1] * heightScale);
-  DCHECK_GT(newH, 0) << "Scaled height is " << newH
-                     << ", Scaled value needs to be larger than 0.";
-  dim_t newW = std::floor(inputDim[2] * widthScale);
-  DCHECK_GT(newW, 0) << "Scaled width is " << newW
-                     << ", Scaled value needs to be larger than 0.";
-  std::vector<dim_t> newDim = {inputDim[0], newH, newW, inputDim[3]};
+  DCHECK_EQ(inputDim.size(), scale.size())
+      << "Input Dimension size: " << inputDim.size()
+      << " Scale size: " << scale.size() << " should be same.";
+
+  std::vector<dim_t> newDim;
+
+  for (size_t i = 0; i < scale.size(); i++) {
+    auto newD = dim_t(std::floor(inputDim[i] * scale[i]));
+    DCHECK_GT(newD, 0) << "Scaled dim is " << newD
+                       << ", Scaled value needs to be larger than 0.";
+    newDim.push_back(newD);
+  }
+
   auto outTy = getParent()->uniqueTypeWithNewShape(input.getType(), newDim);
-  return addNode(
-      new ResizeNearestNode(name, outTy, input, heightScale, widthScale));
+  return addNode(new ResizeNearestNode(name, outTy, input, scale));
 }
 
 QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,

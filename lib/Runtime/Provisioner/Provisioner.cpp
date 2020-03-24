@@ -341,6 +341,12 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         // Compile and add to function map.
         auto options = cctx.backendOpts;
         options.backendHints = node->backendHints;
+        // Insert all options loaded in the Partitioner alongside options
+        // previously inserted, with Partitioner options taking precedence in
+        // case of a collision of keys.
+        for (auto &it : node->backendSpecificOpts) {
+          options.backendSpecificOpts[it.first] = it.second;
+        }
         Function *function = module.getFunction(node->name);
         if (backends_.find(deviceBackendName) == backends_.end()) {
           // Return error requested device type not found.

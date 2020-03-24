@@ -1,0 +1,50 @@
+ir_version: 5
+producer_name: "constfold-onnx-example"
+graph {
+  node {
+    output: "1"
+    op_type: "Constant"
+    attribute {
+      name: "value"
+      t {
+        dims: 3
+        dims: 2
+        data_type: 1
+        float_data: 1.0
+        float_data: -1.0
+        float_data: -1.0
+        float_data: 1.0
+        float_data: 1.0
+        float_data: 1.0
+        name: "const_tensor"
+      }
+      type: TENSOR
+    }
+  }
+  node {
+    input: "1"
+    output: "3"
+    op_type: "Relu"
+  }
+  name: "const-relu-node"
+  output {
+    name: "3"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  domain: ""
+  version: 11
+}

@@ -74,6 +74,10 @@ class Caffe2ModelLoader
   Error loadConvQuantized(const caffe2::OperatorDef &op,
                           ArgumentDictionaryTy &dict);
 
+  /// Load LayerNorm Caffe2 operator \p op given \p dict.
+  Error loadLayerNorm(const caffe2::OperatorDef &op,
+                      ArgumentDictionaryTy &dict);
+
   /// Reads a network (weights or structure) from the serialized protocol
   /// buffer file.
   Expected<caffe2::NetDef> loadProtoFile(const std::string &filename);

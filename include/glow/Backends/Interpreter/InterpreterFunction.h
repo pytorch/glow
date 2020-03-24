@@ -319,7 +319,7 @@ private:
   void fwdEmbeddingBagInstFloatImpl(const EmbeddingBagInst *I);
 
   template <typename ElemTy>
-  void fwdSparseToDenseInstFloatImpl(const SparseToDenseInst *I);
+  void fwdSparseToDenseInstImpl(const SparseToDenseInst *I);
 
   template <class eTy>
   void fwdRescaleQuantizedInstImpl(Value *src, Value *dest,

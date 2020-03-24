@@ -131,6 +131,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_"
     "NoFusedConvert_FP32Accum/0",
     "SLWSTwoColumn_Float16_AccumFloat/0",
+    "SparseToDense_Int64/0",
     "SparseToDenseMask1/0",
     "SparseToDenseMask2/0",
     "FP16Reshape/0",
@@ -201,4 +202,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "FusedRowwiseQuantizedSLWSAllLengthsOne_Float16_AccumFloat/0",
     "FusedRowwiseQuantizedSLWSAllLengthsOne_Float16_AccumFloat16/0",
     "FusedRowwiseQuantizedSLWSAllLengthsOne_Fused4Bit_Float16_AccumFloat16/0",
+    "LayerNorm_Float16/0",
+    "LayerNorm_Int8/0",
 };

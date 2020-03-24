@@ -35,12 +35,6 @@ enum class ValueMappingType {
              // glow::Placeholders, or the outputs of intermediary nodes in the
              // graph. It is safe to reason about the dimensions and data types
              // of these at load time but not about their values.
-
-  FrozenNodeValue // Tag representing NodeValues that are the outputs of
-                  // glow::Constant that were produced during weight freezing at
-                  // load time. Weight freezing is not guaranteed to happen and
-                  // thus it is also not safe to reason about the values of
-                  // these Constants at load time.
 };
 
 /// The class is effectively a union of GlowIValues and NodeValue and is used to
@@ -71,9 +65,8 @@ public:
   /// \returns error on failure.
   void setCorrectType(c10::ScalarType dtype);
 
-  /// Create a ValueMapping from a NodeValue \p nodeValue. \p wasFrozen should
-  /// be set to true if this NodeValue comes from weight freezing.
-  ValueMapping(NodeValue nodeValue, bool wasFrozen);
+  /// Create a ValueMapping from a NodeValue \p nodeValue.
+  ValueMapping(NodeValue nodeValue);
 
   /// Create a ValueMapping from a GlowIValue \p noglowIValuedeValue.
   ValueMapping(GlowIValue glowIValue);
@@ -119,11 +112,6 @@ private:
   /// during loading.
   std::unordered_map<const torch::jit::Value *, ValueMapping> valueMap_;
 
-  /// Indices of stack inputs that were frozen during loading. This set is
-  /// optionally provided by the user of PyTorchModelLoader and will be returned
-  /// to them after loading is complete.
-  std::set<size_t> *frozenInputIndices_ = nullptr;
-
   /// Flags if the memory held by aten::Constants of Tensor type should be
   /// copied.
   const bool copyTensorMemory_;
@@ -143,16 +131,9 @@ private:
     /// PyTorch node.
     LoadFn loadFn;
 
-    /// The set of inputs that should be loaded as Glow Constants instead of
-    /// as placeholders for inference because they should be expected to not
-    /// change between inferences. An example would be the weights for
-    /// convolutions.
-    const std::unordered_set<size_t> inputsToFreeze;
-
     MappingOfMemberFunctionsValue(std::vector<const char *> symbolsP,
-                                  LoadFn loadFnP,
-                                  std::unordered_set<size_t> inputsToFreezeP)
-        : symbols(symbolsP), loadFn(loadFnP), inputsToFreeze(inputsToFreezeP) {}
+                                  LoadFn loadFnP)
+        : symbols(symbolsP), loadFn(loadFnP) {}
   };
 
   /// Defines type for mapping Symbols to PyTorchModelLoader member functions
@@ -211,15 +192,12 @@ private:
   /// Takes a glow::Function \p F, a jit::Graph \p graph to load, and a
   /// stack of \p inputs for the graph to be loaded. Parameter \p settings
   /// control the fusion details. Output parameters \p inputPlaceholders and
-  /// \p outputPlaceholders are filled out. \p frozenInputIndices is an optional
-  /// parameter that, if provided, will be filled with the set of stack indices
-  /// that were frozen during loading.
+  /// \p outputPlaceholders are filled out.
   PyTorchModelLoader(glow::Function &F, const torch::jit::Graph &graph,
                      std::vector<glow::Placeholder *> &inputPlaceholders,
                      std::vector<glow::Placeholder *> &outputPlaceholders,
                      std::vector<c10::ScalarType> &outputCorrectType,
                      Error &error, const PyTorchLoaderSettings &settings,
-                     std::set<size_t> *frozenInputIndices,
                      const at::ArrayRef<torch::jit::IValue> inputs,
                      const std::vector<InputMeta> &inputMeta = {});
 
@@ -245,34 +223,29 @@ private:
   // operator loaders.
 public:
   /// Add a new mapping from the PyTorch Value \p value to the Glow NodeValue
-  /// \p nodeValue. Set \p wasFrozen to true if this comes from a from a frozen
-  /// input.
+  /// \p nodeValue.
   /// \returns error on failure.
   Error addValueMapping(const torch::jit::Value *value,
-                        glow::NodeValue nodeValue, bool wasFrozen = false);
+                        glow::NodeValue nodeValue);
 
   /// Add a new mapping from the PyTorch Value \p value and its original type in
-  /// PyTorch \p correctType to the Glow NodeValue \p nodeValue. Set \p
-  /// wasFrozen to true if this comes from a from a frozen input. \returns error
+  /// PyTorch \p correctType to the Glow NodeValue \p nodeValue. \returns error
   /// on failure.
   Error addValueMapping(const torch::jit::Value *value,
-                        glow::NodeValue nodeValue, c10::ScalarType correctType,
-                        bool wasFrozen = false);
+                        glow::NodeValue nodeValue, c10::ScalarType correctType);
 
   /// Add a new mapping from the PyTorch Value \p value to the GlowIValue
-  /// \p glowIValue. Set \p wasFrozen to true if this comes from a from a frozen
-  /// input.
+  /// \p glowIValue.
   /// \returns error on failure.
   Error addValueMapping(const torch::jit::Value *value,
-                        glow::GlowIValue glowIValue, bool wasFrozen = false);
+                        glow::GlowIValue glowIValue);
 
   /// Add a new mapping from the PyTorch Value \p value and its original type in
-  /// PyTorch \p correctType to the Glow IValue \p nodeValue. Set \p wasFrozen
-  /// to true if this comes from a from a frozen input.
+  /// PyTorch \p correctType to the Glow IValue \p nodeValue.
   /// \returns error on failure.
   Error addValueMapping(const torch::jit::Value *value,
                         glow::GlowIValue glowIValue,
-                        c10::ScalarType correctType, bool wasFrozen = false);
+                        c10::ScalarType correctType);
 
   /// Get the correctType of \p src from valueMap_, and save it to \p dest.
   /// \returns error on failure.
@@ -365,13 +338,6 @@ private:
   /// Returns error on failure.
   Expected<NodeValue> loadQuantizedConvImpl(const torch::jit::Node *ptNode,
                                             const bool isRelu);
-
-  /// For each Placeholder input to \p ptNode, if this input has been marked
-  /// as being an input that should be frozen in MappingOfMemberFunctions,
-  /// create a glow Constant for that Placeholder with the iValue from the stack
-  /// of inputs for this loader. \returns a ValueMap containing just these new
-  /// Constants.
-  Error freezeWeights(const torch::jit::Node *ptNode);
 
   // Load a PyTorch aten::embedding_bag node.
   // \returns error on failure.

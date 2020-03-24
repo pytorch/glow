@@ -827,6 +827,11 @@ ONNXModelLoader::loadProto(const std::string &filename) {
   return loadProto(fileStream);
 }
 
+/// Given an input \p val , ceil value is computed for a given datatype T
+template <typename T> T ceil(float val) {
+  return (val - (T)val) > 0 ? (T)(val + 1) : (T)val;
+}
+
 namespace {
 /// Helper type for pads.
 using Pads = std::vector<unsigned_t>;
@@ -841,6 +846,10 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
                        llvm::ArrayRef<unsigned_t> sdim,
                        llvm::ArrayRef<unsigned_t> idim) {
   if (dict.count("pads")) {
+    if (dict.at("pads")->ints_size() == 2) { // For maxPool1D
+      return Pads({0, (unsigned_t)dict.at("pads")->ints(0), 0,
+                   (unsigned_t)dict.at("pads")->ints(1)});
+    }
     return getShape<unsigned_t>(dict["pads"]);
   }
   if (dict.count("auto_pad")) {
@@ -861,8 +870,10 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
       //         + kernel_spatial_shape[i] - input_spatial_shape[i]
       // Use the smallest padding possible out of the possible options.
       llvm::SmallVector<unsigned_t, 2> pdim(2); // Total Paddding, HW.
+      unsigned_t odim;
       for (size_t i = 0, e = pdim.size(); i < e; i++) {
-        pdim[i] = sdim[i] * (idim[i] - 1) + kdim[i] - idim[i];
+        odim = ceil<unsigned_t>((float)idim[i] / (float)sdim[i]);
+        pdim[i] = sdim[i] * (odim - 1) + kdim[i] - idim[i];
       }
       if (padStr == "SAME_UPPER") {
         // SAME_UPPPER: if odd number for pdim[i], use extra padding at the end.
@@ -892,13 +903,13 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
 /// \p idim: input sizes (HW)
 static Expected<Pads> getConvTransposePadsfromOutput(
     ArgumentDictionaryTy &dict, llvm::ArrayRef<unsigned_t> kdim,
-    llvm::ArrayRef<unsigned_t> sdim, llvm::ArrayRef<unsigned_t> idim,
-    llvm::ArrayRef<unsigned_t> odim) {
+    llvm::ArrayRef<unsigned_t> sdim, unsigned_t dilation,
+    llvm::ArrayRef<unsigned_t> idim, llvm::ArrayRef<unsigned_t> odim) {
 
   llvm::SmallVector<unsigned_t, 2> pdim(2); // Total Paddding, HW.
   for (size_t i = 0, e = pdim.size(); i < e; i++) {
     pdim[i] = sdim[i] * (idim[i] - 1) /* + output_padding[0]*/ +
-              ((kdim[i] - 1) /* * dilations[i]*/ + 1) - odim[i];
+              ((kdim[i] - 1) * dilation + 1) - odim[i];
   }
 
   unsigned_t top, left, bottom, right;
@@ -1130,9 +1141,106 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadConv1D(const ONNX_NAMESPACE::NodeProto &op,
+                                  ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  // Load the attributes
+  std::vector<glow::unsigned_t> strides(2, 1);
+
+  strides[1] = dict.count("strides") ? dict.at("strides")->ints(0) : 1;
+  strides[0] = 1;
+
+  unsigned_t group = 1;
+  if (dict.count("group")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict.at("group")));
+  }
+
+  unsigned_t dilation =
+      dict.count("dilations") ? dict.at("dilations")->ints(0) : 1;
+
+  // Load the inputs
+  NodeValue in;
+  // input == NCW ---> NCHW
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  in = G_->createExpandDims(opName, in, 2);
+  // filtervalue == CKS ---> CKRS
+  NodeValue filterValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(filterValue, getNodeValueByName(op.input(1)));
+  filterValue = G_->createExpandDims(opName, filterValue, 2);
+  // Transpose the filter to the right format. Glow expects to read the
+  // weights in the format CRSK. ONNX stores the operators as CKRS.
+  // C - output_depth, R - filter_height, S - filter_width, K - input_depth.
+  // filtervalue == CKRS ---> CRSK
+  TransposeNode *filterTransposeNode =
+      G_->createTranspose(opName, filterValue, NCHW2NHWC);
+  // The structure of the conv weights is: CRSK. We take the C, which is the
+  // number of filters. We use this value to calculate the size of the bias
+  // if it is not specified.
+  const NodeValue filterTransposedValue = filterTransposeNode->getResult();
+  dim_t depth = filterTransposedValue.dims()[0];
+
+  // Construct the Bias field.
+  Constant *bias = nullptr;
+
+  // Check if we have a serialized bias vector.
+  if (op.input_size() > 2) {
+    auto &biasTensorName = op.input(2);
+    // Load the serialized bias vector.
+    ASSIGN_VALUE_OR_RETURN_ERR(bias, getConstantByName(biasTensorName));
+  }
+
+  // If a serialized bias wasn't found then create a zero bias.
+  if (!bias) {
+    Tensor biasTensor(ElemKind::FloatTy, {depth});
+    biasTensor.zero();
+    bias = mod_.createConstant("conv.bias", std::move(biasTensor));
+  }
+
+  // ONNX passes the input as NCHW, and we expect the input to be NHWC.
+  auto *tr = G_->createTranspose(opName, in, NCHW2NHWC);
+  // Calculate the size and allocate the output buffer.
+  ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
+  llvm::SmallVector<unsigned_t, 2> idimHW(2);
+  idimHW[0] = in.dims()[2];
+  idimHW[1] = in.dims()[3];
+
+  // Pads : {pad_top, pad_left, pad_bottom, pad_right}
+  Pads pads;
+  // Get the kernel shape.
+  llvm::SmallVector<unsigned_t, 2> kernelShape(2);
+  kernelShape[0] = filterTransposedValue.dims()[1];
+  kernelShape[1] = filterTransposedValue.dims()[2];
+
+  ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict, kernelShape, strides, idimHW));
+  auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides,
+                                           pads, dilation);
+  std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
+  auto *node = G_->createConv(opName, tr, filterTransposeNode, bias, outTy,
+                              kernelShape, strides, pads, group, dilation);
+
+  auto *N = G_->createSqueeze(opName, node, 1 /*axes*/);
+  // Transpose the output back
+  auto *RR = G_->createTranspose(opName, N, {0, 2, 1});
+  RETURN_IF_ERR(addNodeAsOutput(op, RR));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
                                 ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
+
+  // Load the inputs
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  if (in.dims().size() == 3) {
+    return loadConv1D(op, dict);
+  }
+
+  NodeValue filterValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(filterValue, getNodeValueByName(op.input(1)));
+
   // Load the attributes
   std::vector<unsigned_t> strides(2, 1);
   if (dict.count("strides")) {
@@ -1155,12 +1263,6 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
                       "are not supported currently. values must be same.");
     dilation = dilations[0];
   }
-
-  // Load the inputs
-  NodeValue in;
-  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-  NodeValue filterValue;
-  ASSIGN_VALUE_OR_RETURN_ERR(filterValue, getNodeValueByName(op.input(1)));
 
   // Transpose the filter to the right format. Glow expects to read the
   // weights in the format CRSK. ONNX stores the operators as KCRS.
@@ -1338,8 +1440,17 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   unsigned_t dilation = 1;
-  if (dict.count("dilation")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(dilation, loadInt(dict.at("dilation")));
+  if (dict.count("dilations")) {
+    std::vector<unsigned_t> dilations;
+    ASSIGN_VALUE_OR_RETURN_ERR(dilations,
+                               getShape<unsigned_t>(dict["dilations"]));
+    RETURN_ERR_IF_NOT(dilations.size() == 2,
+                      "ConvTranspose: dilations must be specified for 2 axes.");
+    RETURN_ERR_IF_NOT(
+        dilations[1] == dilations[0],
+        "ConvTranspose: different dilation values along different axes "
+        "are not supported currently. values must be same.");
+    dilation = dilations[0];
   }
 
   // Load the inputs
@@ -1418,8 +1529,8 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
     ASSIGN_VALUE_OR_RETURN_ERR(outShape,
                                getShape<unsigned_t>(dict["output_shape"]));
     ASSIGN_VALUE_OR_RETURN_ERR(
-        pads, getConvTransposePadsfromOutput(dict, kernels, strides, idimHW,
-                                             outShape));
+        pads, getConvTransposePadsfromOutput(dict, kernels, strides, dilation,
+                                             idimHW, outShape));
     outSz = {outShape[0], outShape[1]};
 
     std::pair<dim_t, dim_t> outSzTest = calculateConvTransposeOutputDims(
@@ -1459,13 +1570,40 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
   // Load the inputs:
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
   std::vector<unsigned_t> strides(2, 1);
-  if (dict.count("strides")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(strides, getShape<unsigned_t>(dict["strides"]));
-  }
-  std::vector<unsigned_t> kernels;
-  ASSIGN_VALUE_OR_RETURN_ERR(kernels,
+
+  size_t inDim = in.dims().size();
+
+  std::vector<unsigned_t> kernelsShape;
+  ASSIGN_VALUE_OR_RETURN_ERR(kernelsShape,
                              getShape<unsigned_t>(dict["kernel_shape"]));
+
+  size_t kerDim = kernelsShape.size();
+
+  std::vector<unsigned_t> kernels = {1, kernelsShape[kerDim - 1]};
+
+  // For maxPool1D inDim = 3
+  if (inDim == 3) {
+    in = G_->createExpandDims(opName, in, 2);
+    if (kerDim != 1) {
+      RETURN_ERR("Glow handles 1D pooling with kernel dimenstion size 1",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
+    } else {
+      if (dict.count("strides")) {
+        strides[1] = dict.at("strides")->ints(0);
+        strides[0] = 1;
+      }
+    }
+  }
+
+  if (kerDim == 2) { // For maxPool2D
+    kernels[0] = kernelsShape[0];
+    if (dict.count("strides")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(strides,
+                                 getShape<unsigned_t>(dict["strides"]));
+    }
+  }
 
   if (in.dims().size() != 4 || kernels.size() != 2) {
     // Glow only handles 2D pooling currently.
@@ -1485,8 +1623,8 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
 
   // NHWC
   llvm::SmallVector<unsigned_t, 2> idimHW(2);
-  idimHW[0] = in.dims()[1];
-  idimHW[1] = in.dims()[2];
+  idimHW[0] = in.dims()[2]; // As per NCHW format
+  idimHW[1] = in.dims()[3];
 
   Pads pads;
   ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict, kernels, strides, idimHW));
@@ -1511,7 +1649,15 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
       node = G_->createAvgPool(opName, tr, kernels, strides, pads);
       idx = AvgPoolNode::ResultIdx;
     }
-    auto *N = G_->createTranspose(opName, NodeValue(node, idx), NHWC2NCHW);
+
+    Node *N = nullptr;
+    if (inDim == 3) { // For maxPool1D
+      auto *R = G_->createSqueeze(opName, NodeValue(node, idx), 1);
+      N = G_->createTranspose(opName, R, {0, 2, 1});
+    } else {
+      N = G_->createTranspose(opName, NodeValue(node, idx), NHWC2NCHW);
+    }
+
     RETURN_IF_ERR(addNodeAsOutput(op, N));
   }
   return Error::success();
@@ -2588,8 +2734,8 @@ Error ONNXModelLoader::loadCmpLTE(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue RHS;
   ASSIGN_VALUE_OR_RETURN_ERR(RHS, getNodeValueByName(op.input(1)));
 
-  Node *N = G_->createCmpLTE(loadOperatorName(op), LHS, RHS);
-
+  Node *N = G_->createNodeWithBroadcast<CmpLTENode>(loadOperatorName(op),
+                                                    /* axis */ -1, LHS, RHS);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
 }

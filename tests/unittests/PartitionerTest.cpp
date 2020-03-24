@@ -1445,7 +1445,9 @@ TEST_F(PartitionerTest, loadBalancedPartition) {
 
 /// This tests the pre-partitioned flow.
 TEST_F(PartitionerTest, PrePartitionedTest) {
+  CompilationContext cctx;
   PrePartitionedConfig PPC;
+  cctx.prepartitionedConfig = &PPC;
   Function *F0 = F_;
   Function *F1 = mod_.createFunction("main_1");
   Function *F2 = mod_.createFunction("main_2");
@@ -1456,6 +1458,11 @@ TEST_F(PartitionerTest, PrePartitionedTest) {
   PPC.logicalIDs[0].insert(0);
   PPC.logicalIDs[1].insert(1);
   PPC.logicalIDs[2].insert({1, 2});
+  PPC.backendSpecificOpts.emplace_back(
+      BackendSpecificOptions{{"opt0", "val0"}, {"opt1", "val1"}});
+  PPC.backendSpecificOpts.emplace_back(
+      BackendSpecificOptions{{"opt2", "val2"}});
+  PPC.backendSpecificOpts.emplace_back(BackendSpecificOptions{});
 
   auto *I0 = mod_.createPlaceholder(ElemKind::FloatTy, {5, 5}, "I0", false);
   auto *I1 = mod_.createPlaceholder(ElemKind::FloatTy, {5, 5}, "I1", false);
@@ -1478,7 +1485,7 @@ TEST_F(PartitionerTest, PrePartitionedTest) {
   const std::vector<runtime::DeviceInfo> devices(3, dev);
   Partitioner partitioner(&mod_, devices);
   DAGListTy d;
-  ASSIGN_VALUE_OR_FAIL_TEST(d, partitioner.setupPrepartitionedModule(PPC));
+  ASSIGN_VALUE_OR_FAIL_TEST(d, partitioner.setupPrepartitionedModule(cctx));
 
   // Note: DAG should look like: F0 -> F1
   //                               \   |
@@ -1500,6 +1507,11 @@ TEST_F(PartitionerTest, PrePartitionedTest) {
   EXPECT_EQ(D0->size, I0->getType()->getSizeInBytes() +
                           I1->getType()->getSizeInBytes() +
                           SMM->getPlaceholder()->getType()->getSizeInBytes());
+  EXPECT_EQ(D0->backendSpecificOpts.size(), 2);
+  ASSERT_TRUE(D0->backendSpecificOpts.count("opt0"));
+  EXPECT_EQ(D0->backendSpecificOpts.at("opt0"), "val0");
+  ASSERT_TRUE(D0->backendSpecificOpts.count("opt1"));
+  EXPECT_EQ(D0->backendSpecificOpts.at("opt1"), "val1");
 
   ASSERT_EQ(D0->children.size(), 2);
   DAGNode *D1 = (D0->children[0]->name == F1->getName()) ? D0->children[0]
@@ -1512,6 +1524,9 @@ TEST_F(PartitionerTest, PrePartitionedTest) {
   EXPECT_EQ(D1->size, I2->getType()->getSizeInBytes() +
                           SAN->getPlaceholder()->getType()->getSizeInBytes() +
                           SMM->getPlaceholder()->getType()->getSizeInBytes());
+  EXPECT_EQ(D1->backendSpecificOpts.size(), 1);
+  ASSERT_TRUE(D1->backendSpecificOpts.count("opt2"));
+  EXPECT_EQ(D1->backendSpecificOpts.at("opt2"), "val2");
 
   DAGNode *D2 = (D1 == D0->children[0]) ? D0->children[1] : D0->children[0];
   ASSERT_EQ(D2->name, F2->getName());
@@ -1530,4 +1545,5 @@ TEST_F(PartitionerTest, PrePartitionedTest) {
                 SAN->getPlaceholder()->getType()->getSizeInBytes() +
                 SMM->getPlaceholder()->getType()->getSizeInBytes() +
                 finalSave->getPlaceholder()->getType()->getSizeInBytes());
+  EXPECT_EQ(D2->backendSpecificOpts.size(), 0);
 }

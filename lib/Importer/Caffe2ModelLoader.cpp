@@ -536,6 +536,57 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
   return Error::success();
 }
 
+Error Caffe2ModelLoader::loadLayerNorm(const caffe2::OperatorDef &op,
+                                       ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  unsigned_t axis = 1; // Caffe2 default.
+  if (dict.count("axis")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
+  }
+
+  RETURN_ERR_IF_NOT(axis < in.dims().size(), "axis must fit inside input dims");
+
+  // Feature shape is based on the input dims, from the axis to the end.
+  ShapeVector featDims;
+  for (dim_t i = axis, e = in.dims().size(); i < e; ++i) {
+    featDims.push_back(in.dims()[i]);
+  }
+  TypeRef featTy = mod_.uniqueTypeWithNewShape(in.getType(), featDims);
+
+  NodeValue weight, bias;
+  if (op.input_size() > 1) {
+    RETURN_ERR_IF_NOT(op.input_size() == 3, "Must have both weight and bias");
+
+    ASSIGN_VALUE_OR_RETURN_ERR(weight, getNodeValueByName(op.input(1)));
+    RETURN_ERR_IF_NOT(weight.getType() == featTy, "Invalid weight shape");
+
+    ASSIGN_VALUE_OR_RETURN_ERR(bias, getNodeValueByName(op.input(2)));
+    RETURN_ERR_IF_NOT(bias.getType() == featTy, "Invalid bias shape");
+  } else {
+    // Caffe2 default to use weight 1 and bias 0.
+    weight = G_->createSplat(opName + "_weight_ones", featTy, 1.0)->getResult();
+    bias = G_->createSplat(opName + "_bias_zeros", featTy, 0.0)->getResult();
+  }
+
+  float eps = 0.001; // Caffe2 default.
+  if (dict.count("epsilon")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(eps, loadFloat(dict["epsilon"]));
+  }
+
+  LayerNormalizationNode *node =
+      G_->createLayerNormalization(opName, in, weight, bias, eps);
+
+  RETURN_ERR_IF_NOT(op.output_size() == 1,
+                    "Supporting only one output from LayerNorm");
+
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
+  return Error::success();
+}
+
 Expected<bool> Caffe2ModelLoader::foldOperator(const caffe2::OperatorDef &op) {
   const unsigned numInputs = op.input_size();
   const std::string &typeName = op.type();
@@ -671,6 +722,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Int8Conv" || typeName == "Int8ConvRelu") {
     return loadConvQuantized(op, dict);
+  }
+
+  if (typeName == "LayerNorm") {
+    return loadLayerNorm(op, dict);
   }
 
   if (typeName == "Int8SumRelu") {
@@ -898,8 +953,13 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     float widthScale;
     ASSIGN_VALUE_OR_RETURN_ERR(widthScale, loadFloat(dict["width_scale"]));
 
-    auto *node =
-        G_->createResizeNearest(opName, finalIn, heightScale, widthScale);
+    std::vector<float> scales;
+    scales.push_back(1.0f);
+    scales.push_back(heightScale);
+    scales.push_back(widthScale);
+    scales.push_back(1.0f);
+
+    auto *node = G_->createResizeNearest(opName, finalIn, scales);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -2033,6 +2093,7 @@ Error Caffe2ModelLoader::initWithModule(caffe2::NetDef &networkDef,
   // we create multiple Functions and switch between them as we load each
   // operator.
   std::unordered_map<Function *, std::unordered_set<unsigned>> funToIDs;
+  std::unordered_map<Function *, BackendSpecificOptions> funToOpts;
   if (networkDef.partition_info_size() == 0) {
     G_ = mod_.createFunction(funNamePrefix);
   } else {
@@ -2041,8 +2102,17 @@ Error Caffe2ModelLoader::initWithModule(caffe2::NetDef &networkDef,
       const std::string funName = funNamePrefix.str() + "_" + pName;
       Function *PF = mod_.createFunction(funName);
       partNameToFun_[pName] = PF;
-      for (auto i : networkDef.partition_info(i).device_id()) {
-        funToIDs[PF].insert(i);
+      for (auto id : networkDef.partition_info(i).device_id()) {
+        funToIDs[PF].insert(id);
+      }
+
+      // Now set up device options for this partition.
+      auto &optsMap = funToOpts[PF];
+      for (auto &backendOpts : networkDef.partition_info(i).backend_options()) {
+        const std::string &backendName = backendOpts.backend_name();
+        for (auto &keyVal : backendOpts.option()) {
+          optsMap[backendName + "_" + keyVal.key()] = keyVal.val();
+        }
       }
     }
   }
@@ -2059,11 +2129,17 @@ Error Caffe2ModelLoader::initWithModule(caffe2::NetDef &networkDef,
     PPC->logicalIDs.reserve(partNameToFun_.size());
     for (auto &SF : partNameToFun_) {
       Function *F = SF.getValue();
+      // Remove unused Functions from the module and skip them.
+      if (F->getNodes().size() == 0) {
+        mod_.eraseFunction(SF.getValue());
+        continue;
+      }
       // This is to ensure that the same processing done with
       // the same network, even if order of operators is different.
       F->orderNodes();
       PPC->funcs.push_back(F);
-      PPC->logicalIDs.push_back(funToIDs[F]);
+      PPC->logicalIDs.emplace_back(funToIDs[F]);
+      PPC->backendSpecificOpts.emplace_back(funToOpts[F]);
       RETURN_ERR_IF_NOT(F->verify(), "Function verification failed.");
     }
   }
