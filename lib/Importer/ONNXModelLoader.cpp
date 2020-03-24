@@ -1141,9 +1141,106 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadConv1D(const ONNX_NAMESPACE::NodeProto &op,
+                                  ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  // Load the attributes
+  std::vector<glow::unsigned_t> strides(2, 1);
+
+  strides[1] = dict.count("strides") ? dict.at("strides")->ints(0) : 1;
+  strides[0] = 1;
+
+  unsigned_t group = 1;
+  if (dict.count("group")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict.at("group")));
+  }
+
+  unsigned_t dilation =
+      dict.count("dilations") ? dict.at("dilations")->ints(0) : 1;
+
+  // Load the inputs
+  NodeValue in;
+  // input == NCW ---> NCHW
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  in = G_->createExpandDims(opName, in, 2);
+  // filtervalue == CKS ---> CKRS
+  NodeValue filterValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(filterValue, getNodeValueByName(op.input(1)));
+  filterValue = G_->createExpandDims(opName, filterValue, 2);
+  // Transpose the filter to the right format. Glow expects to read the
+  // weights in the format CRSK. ONNX stores the operators as CKRS.
+  // C - output_depth, R - filter_height, S - filter_width, K - input_depth.
+  // filtervalue == CKRS ---> CRSK
+  TransposeNode *filterTransposeNode =
+      G_->createTranspose(opName, filterValue, NCHW2NHWC);
+  // The structure of the conv weights is: CRSK. We take the C, which is the
+  // number of filters. We use this value to calculate the size of the bias
+  // if it is not specified.
+  const NodeValue filterTransposedValue = filterTransposeNode->getResult();
+  dim_t depth = filterTransposedValue.dims()[0];
+
+  // Construct the Bias field.
+  Constant *bias = nullptr;
+
+  // Check if we have a serialized bias vector.
+  if (op.input_size() > 2) {
+    auto &biasTensorName = op.input(2);
+    // Load the serialized bias vector.
+    ASSIGN_VALUE_OR_RETURN_ERR(bias, getConstantByName(biasTensorName));
+  }
+
+  // If a serialized bias wasn't found then create a zero bias.
+  if (!bias) {
+    Tensor biasTensor(ElemKind::FloatTy, {depth});
+    biasTensor.zero();
+    bias = mod_.createConstant("conv.bias", std::move(biasTensor));
+  }
+
+  // ONNX passes the input as NCHW, and we expect the input to be NHWC.
+  auto *tr = G_->createTranspose(opName, in, NCHW2NHWC);
+  // Calculate the size and allocate the output buffer.
+  ShapeNHWC idim = ShapeNHWC(tr->getResult().dims());
+  llvm::SmallVector<unsigned_t, 2> idimHW(2);
+  idimHW[0] = in.dims()[2];
+  idimHW[1] = in.dims()[3];
+
+  // Pads : {pad_top, pad_left, pad_bottom, pad_right}
+  Pads pads;
+  // Get the kernel shape.
+  llvm::SmallVector<unsigned_t, 2> kernelShape(2);
+  kernelShape[0] = filterTransposedValue.dims()[1];
+  kernelShape[1] = filterTransposedValue.dims()[2];
+
+  ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict, kernelShape, strides, idimHW));
+  auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides,
+                                           pads, dilation);
+  std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
+  auto *node = G_->createConv(opName, tr, filterTransposeNode, bias, outTy,
+                              kernelShape, strides, pads, group, dilation);
+
+  auto *N = G_->createSqueeze(opName, node, 1 /*axes*/);
+  // Transpose the output back
+  auto *RR = G_->createTranspose(opName, N, {0, 2, 1});
+  RETURN_IF_ERR(addNodeAsOutput(op, RR));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
                                 ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
+
+  // Load the inputs
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  if (in.dims().size() == 3) {
+    return loadConv1D(op, dict);
+  }
+
+  NodeValue filterValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(filterValue, getNodeValueByName(op.input(1)));
+
   // Load the attributes
   std::vector<unsigned_t> strides(2, 1);
   if (dict.count("strides")) {
@@ -1166,12 +1263,6 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
                       "are not supported currently. values must be same.");
     dilation = dilations[0];
   }
-
-  // Load the inputs
-  NodeValue in;
-  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-  NodeValue filterValue;
-  ASSIGN_VALUE_OR_RETURN_ERR(filterValue, getNodeValueByName(op.input(1)));
 
   // Transpose the filter to the right format. Glow expects to read the
   // weights in the format CRSK. ONNX stores the operators as KCRS.

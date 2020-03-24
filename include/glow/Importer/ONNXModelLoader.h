@@ -147,6 +147,20 @@ class ONNXModelLoader
   Error loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
                           ArgumentDictionaryTy &dict);
 
+  /// Load Conv1D operator.
+  /// As per conv operation definition at
+  /// https://github.com/onnx/onnx/blob/master/docs/Operators.md#Conv ,
+  /// input is in format (NxCxD1x...xDn). If the input tensor dimension size is
+  /// 3 , we have kernel size of only 1 dimension and we call such a conv
+  /// operation as conv1d.
+  /// Conv1d is implemented using Conv2d as follows:
+  ///   a) Expand the input and kernel dimension to 4 using expand operator
+  ///   b) Do the necessary tensor format conversion as required for Conv2d
+  ///   c) Then use Conv2d for execution
+  ///   d) To reduce the output tensor dimension from 4 to 3, Squeeze is used
+  Error loadConv1D(const ONNX_NAMESPACE::NodeProto &op,
+                   ArgumentDictionaryTy &dict);
+
   /// Load MaxPool or AveragePool ONNX operator. \p typeName is the name of the
   /// ONNX operator being loaded, either MaxPool or AveragePool.
   Error loadPool(const ONNX_NAMESPACE::NodeProto &op,

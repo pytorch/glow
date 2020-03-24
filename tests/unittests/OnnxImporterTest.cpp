@@ -716,6 +716,69 @@ TEST_F(OnnxImporterTest, importConvAutoPadSameLower) {
   convTestHelper(filename, expectedDims, expectedValues);
 }
 
+/// Import conv1D
+static void importConv1DTest(std::string &netFilename,
+                             llvm::ArrayRef<float> inputXValues,
+                             llvm::ArrayRef<dim_t> inputXShape,
+                             llvm::ArrayRef<float> inputWValues,
+                             llvm::ArrayRef<dim_t> inputWShape,
+                             llvm::ArrayRef<dim_t> outputShape,
+                             llvm::ArrayRef<float> expectedValues) {
+  float delta = 1e-07;
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+
+  Type input_type_x(ElemKind::FloatTy, inputXShape);
+  Type input_type_w(ElemKind::FloatTy, inputWShape);
+  ONNXModelLoader onnxLD(netFilename, {"x", "w"},
+                         {&input_type_x, &input_type_w}, *F);
+
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+  auto PHX = mod.getPlaceholderByName("x");
+  auto *inTensorX = bindings.allocate(PHX);
+  inTensorX->getHandle() = inputXValues;
+
+  auto PHW = mod.getPlaceholderByName("w");
+  auto *inTensorW = bindings.allocate(PHW);
+  inTensorW->getHandle() = inputWValues;
+
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+
+  auto result = bindings.get(graphOutputVar)->getHandle();
+  ASSERT_TRUE(result.dims() == (llvm::ArrayRef<dim_t>)outputShape);
+  for (size_t i = 0; i < result.getType().size(); i++) {
+    EXPECT_NEAR(result.raw(i), expectedValues[i], delta);
+  }
+}
+
+/// Test Conv1D
+TEST(onnx, conv1D) {
+  std::vector<float> inputXValues = {
+      1.4206449,  -0.54408556, -1.3318906,  0.771925,   0.9450552,  0.08600737,
+      0.30009857, -0.36060193, -0.33999684, -0.9809143, -1.0172559, -0.4921318,
+      -1.0513021, 1.8671927,   -0.842103,   -0.8903683};
+  std::vector<float> inputWValues = {0.16575365, -0.42219377, 0.55620337,
+                                     -0.5700942, -1.1148645,  -0.33808824};
+  std::vector<dim_t> inputXShape = {1, 2, 8};
+  std::vector<dim_t> inputWShape = {3, 2, 1};
+  std::vector<dim_t> outputShape = {1, 3, 8};
+  std::vector<float> expectedValues = {
+      0.3790216,  0.32395172, 0.20871338,  0.33572435, 0.6004995,   -0.7740611,
+      0.40527308, 0.31613684, 0.9839977,   0.25659135, -0.16087033, 0.7099088,
+      1.1249841,  -1.0166382, 0.6469939,   0.30702582, -1.4688776,  0.9382173,
+      1.8287997,  -0.6942077, -0.69817555, -0.7271625, -0.04986412, 0.7030453};
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/conv1D.onnxtxt");
+  importConv1DTest(netFilename, inputXValues, inputXShape, inputWValues,
+                   inputWShape, outputShape, expectedValues);
+}
+
 /// Test to ensure error handling for missing bias
 /// input is handled correctly. Remaining input is
 /// still sane to make sure it only fails for the
