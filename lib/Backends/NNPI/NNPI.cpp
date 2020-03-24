@@ -190,6 +190,14 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
                                                   {ConvolutionNode::BiasIdx}) &&
            (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int32QTy);
 
+  case Kinded::Kind::Convolution3DNodeKind:
+    if (!NI.getInTy(Convolution3DNode::InputIdx)->isQuantizedType()) {
+      return NI.allInputsAndOutputsHaveSameElemKind(
+          {ElemKind::FloatTy, ElemKind::Float16Ty});
+    }
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::Int8QTy}, {Convolution3DNode::BiasIdx}) &&
+           (NI.getInElemTy(Convolution3DNode::BiasIdx) == ElemKind::Int32QTy);
   case Kinded::Kind::QuantizeNodeKind:
     return (NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::FloatTy ||
             NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::Float16Ty) &&

@@ -88,6 +88,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "concatVectorsRepeated_Float16/0",
     "concatVectorsRepeated_Int32/0",
     "concatVectorsRepeated_Int64/0",
+    "Conv3DQuantizedTest_Int8_BiasInt32",
     "ConvertFrom_Float16Ty_To_Float16Ty/0",
     "ConvertFrom_Float16Ty_To_Float16Ty_AndBack/0",
     "ConvertFrom_Float16Ty_To_FloatTy/0",
