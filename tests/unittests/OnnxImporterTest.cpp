@@ -947,6 +947,19 @@ TEST(onnx, importConvTransposeOutputShape) {
   convTransposeTestHelper(filename, expectedDims, expectedValues);
 }
 
+/// Test loading conv op from a ONNX model.
+/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
+/// strides is {1, 1}, dilations is {2, 2},
+/// auto_pad is not set, group is 1.
+TEST(onnx, importConvTransposeOutputShapeDilation) {
+  std::string filename("simpleConvTransposeOutShapeDilation.onnxtxt");
+  std::vector<dim_t> expectedDims = {1, 1, 6, 6};
+  std::vector<float> expectedValues = {
+      4,  6,  6,  9,  8,  12, 8,  10, 12, 15, 16, 20, 10, 15, 12, 18, 14, 21,
+      20, 25, 24, 30, 28, 35, 16, 24, 18, 27, 20, 30, 32, 40, 36, 45, 40, 50};
+  convTransposeTestHelper(filename, expectedDims, expectedValues);
+}
+
 /// Helper method to run the AveragePool operator test cases.
 /// \p filename contains the model .onnxtxt.
 /// \p expectedDims: output Tensor dimensions.

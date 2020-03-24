@@ -189,6 +189,8 @@ TEST(exporter, onnxModels) {
         name.find("Less.onnxtxt") != std::string::npos ||
         name.find("simpleConvTranspose.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShape.onnxtxt") != std::string::npos ||
+        name.find("simpleConvTransposeOutShapeDilation.onnxtxt") !=
+            std::string::npos ||
         name.find("simpleConvTransposePads.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeAutoPadValid.onnxtxt") !=
             std::string::npos ||

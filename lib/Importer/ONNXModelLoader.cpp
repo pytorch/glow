@@ -903,13 +903,13 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
 /// \p idim: input sizes (HW)
 static Expected<Pads> getConvTransposePadsfromOutput(
     ArgumentDictionaryTy &dict, llvm::ArrayRef<unsigned_t> kdim,
-    llvm::ArrayRef<unsigned_t> sdim, llvm::ArrayRef<unsigned_t> idim,
-    llvm::ArrayRef<unsigned_t> odim) {
+    llvm::ArrayRef<unsigned_t> sdim, unsigned_t dilation,
+    llvm::ArrayRef<unsigned_t> idim, llvm::ArrayRef<unsigned_t> odim) {
 
   llvm::SmallVector<unsigned_t, 2> pdim(2); // Total Paddding, HW.
   for (size_t i = 0, e = pdim.size(); i < e; i++) {
     pdim[i] = sdim[i] * (idim[i] - 1) /* + output_padding[0]*/ +
-              ((kdim[i] - 1) /* * dilations[i]*/ + 1) - odim[i];
+              ((kdim[i] - 1) * dilation + 1) - odim[i];
   }
 
   unsigned_t top, left, bottom, right;
@@ -1440,8 +1440,17 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   unsigned_t dilation = 1;
-  if (dict.count("dilation")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(dilation, loadInt(dict.at("dilation")));
+  if (dict.count("dilations")) {
+    std::vector<unsigned_t> dilations;
+    ASSIGN_VALUE_OR_RETURN_ERR(dilations,
+                               getShape<unsigned_t>(dict["dilations"]));
+    RETURN_ERR_IF_NOT(dilations.size() == 2,
+                      "ConvTranspose: dilations must be specified for 2 axes.");
+    RETURN_ERR_IF_NOT(
+        dilations[1] == dilations[0],
+        "ConvTranspose: different dilation values along different axes "
+        "are not supported currently. values must be same.");
+    dilation = dilations[0];
   }
 
   // Load the inputs
@@ -1520,8 +1529,8 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
     ASSIGN_VALUE_OR_RETURN_ERR(outShape,
                                getShape<unsigned_t>(dict["output_shape"]));
     ASSIGN_VALUE_OR_RETURN_ERR(
-        pads, getConvTransposePadsfromOutput(dict, kernels, strides, idimHW,
-                                             outShape));
+        pads, getConvTransposePadsfromOutput(dict, kernels, strides, dilation,
+                                             idimHW, outShape));
     outSz = {outShape[0], outShape[1]};
 
     std::pair<dim_t, dim_t> outSzTest = calculateConvTransposeOutputDims(

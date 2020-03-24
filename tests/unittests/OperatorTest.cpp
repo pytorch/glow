@@ -6361,6 +6361,82 @@ TEST_P(OperatorTest, sanityConvTransposeStrided) {
   EXPECT_FLOAT_EQ(result.at({0, 4, 4, 0}), 50);
 }
 
+/// ConvTranspose with easy to calculate output values. 2x2 input, 1-ch input,
+/// 1-ch output.
+TEST_P(OperatorTest, sanityConvTransposeDilated) {
+  CHECK_IF_ENABLED()
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 1}, "input", false);
+  bindings_.allocate(input)->getHandle() = {2., 3., 4., 5.};
+
+  auto *filter =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "filter", false);
+  bindings_.allocate(filter)->getHandle() = {2., 3., 4., 5., 6.,
+                                             7., 8., 9., 10.};
+
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
+  bindings_.allocate(bias)->zero();
+
+  std::pair<dim_t, dim_t> outWH =
+      calculateConvTransposeOutputDims(2, 2, {3, 3}, {1, 1}, {0, 0, 0, 0}, 2);
+  auto outTy =
+      mod_.uniqueType(ElemKind::FloatTy, {1, outWH.first, outWH.second, 1});
+
+  ConvTransposeNode *CN =
+      F_->createConvTranspose("ConvTranspose", input, filter, bias, outTy,
+                              {3, 3}, {1, 1}, {0, 0, 0, 0}, 1, 2);
+
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+  std::vector<dim_t> expectedDims = {1, 6, 6, 1};
+
+  ASSERT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), 4);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 0}), 6);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 0}), 6);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 3, 0}), 9);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 4, 0}), 8);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 5, 0}), 12);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0}), 8);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 1, 0}), 10);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 2, 0}), 12);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 3, 0}), 15);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 4, 0}), 16);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 5, 0}), 20);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 0, 0}), 10);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 1, 0}), 15);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 2, 0}), 12);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 3, 0}), 18);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 4, 0}), 14);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 5, 0}), 21);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 0, 0}), 20);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 1, 0}), 25);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 2, 0}), 24);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 3, 0}), 30);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 4, 0}), 28);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 5, 0}), 35);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 0, 0}), 16);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 1, 0}), 24);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 2, 0}), 18);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 3, 0}), 27);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 4, 0}), 20);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 5, 0}), 30);
+  EXPECT_FLOAT_EQ(result.at({0, 5, 0, 0}), 32);
+  EXPECT_FLOAT_EQ(result.at({0, 5, 1, 0}), 40);
+  EXPECT_FLOAT_EQ(result.at({0, 5, 2, 0}), 36);
+  EXPECT_FLOAT_EQ(result.at({0, 5, 3, 0}), 45);
+  EXPECT_FLOAT_EQ(result.at({0, 5, 4, 0}), 40);
+  EXPECT_FLOAT_EQ(result.at({0, 5, 5, 0}), 50);
+}
+
 /// ConvTranspose with easy to calculate output values. 2x2 input, 3-ch input,
 /// 1-ch output.
 TEST_P(OperatorTest, sanityConvTransposePads) {
