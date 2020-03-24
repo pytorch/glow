@@ -1,5 +1,5 @@
 ir_version: 6
-producer_name: "qcom-upsample-onnx-example"
+producer_name: "upsample-onnx-example"
 graph {
   node {
     input: "input"
