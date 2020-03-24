@@ -86,8 +86,10 @@ def jitVsGlow_(f_torch, f_glow, check_trace, atol, rtol, *inputs, expected_fused
             assert isinstance(torch_res, tuple) and isinstance(glow_res, tuple)
             assert len(torch_res) == len(glow_res)
             for i in range(len(torch_res)):
-                print("torch shape: {}".format(torch_res[i].shape), file=sys.stderr)
-                print("glow shape: {}".format(glow_res[i].shape), file=sys.stderr)
+                print("torch shape: {}".format(
+                    torch_res[i].shape), file=sys.stderr)
+                print("glow shape: {}".format(
+                    glow_res[i].shape), file=sys.stderr)
                 assert torch.allclose(
                     torch_res[i], glow_res[i], atol=atol, rtol=rtol)
         else:

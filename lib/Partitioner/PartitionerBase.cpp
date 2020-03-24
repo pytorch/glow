@@ -32,6 +32,7 @@ createDAGNodeFromFun(Function *F, NodeToFunctionMap &mapping) {
   DN->backendName = mapping.getPartitionBackendName(F);
   DN->size = mapping.getGraphMemInfo(F).getTotalMemSize();
   DN->backendHints = mapping.getBackendHints(F);
+  DN->backendSpecificOpts = mapping.getBackendSpecificOpts(F);
   return DN;
 }
 

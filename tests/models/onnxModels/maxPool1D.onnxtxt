@@ -1,0 +1,67 @@
+ir_version: 6
+producer_name: "maxpool1D-onnx-example"
+graph {
+  node {
+    input: "x"
+    output: "y"
+    op_type: "MaxPool"
+    attribute {
+      name: "auto_pad"
+      s: "SAME_UPPER"
+      type: STRING
+    }
+    attribute {
+      name: "kernel_shape"
+      ints: 5
+      type: INTS
+    }
+    attribute {
+      name: "strides"
+      ints: 5
+      type: INTS
+    }
+  }
+  name: "maxPool-node"
+  input {
+    name: "x"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 7
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "y"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  domain: ""
+  version: 11
+}

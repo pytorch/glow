@@ -34,6 +34,8 @@ struct BackendHints {
   std::vector<std::string> SRAMPrioritization;
 };
 
+using BackendSpecificOptions = std::map<std::string, std::string>;
+
 /// Options relevant to Backends during compilation.
 struct BackendOptions {
   /// Allocate and collect constant Tensors in the RuntimeBundle.
@@ -47,7 +49,7 @@ struct BackendOptions {
 
   /// Options that are specific to a backend. Backend is responsible for
   /// parsing.
-  std::map<std::string, std::string> backendSpecificOpts;
+  BackendSpecificOptions backendSpecificOpts;
 };
 
 }; // namespace glow

@@ -1958,7 +1958,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *filterPtr = emitValueAddress(builder, filter);
     auto *biasPtr = emitValueAddress(builder, bias);
 
-    assert(CI->getDilation() == 1 && "Dilation != 1 is not supported.");
     assert(CI->getGroup() == 1 && "Group != 1 is not supported.");
 
     auto *destDims = emitValueDims(builder, dest);

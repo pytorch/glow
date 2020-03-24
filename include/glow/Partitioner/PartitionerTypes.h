@@ -109,6 +109,9 @@ class NodeToFunctionMap {
 
   using BackendHintsMap = llvm::DenseMap<Function *, BackendHints>;
 
+  using BackendSpecificOptsMap =
+      llvm::DenseMap<Function *, BackendSpecificOptions>;
+
   /// Newly-created partitions.
   FunctionList functions_;
 
@@ -124,6 +127,9 @@ class NodeToFunctionMap {
 
   /// BackendHints for this sub-function
   BackendHintsMap backendHints_;
+
+  /// BackendSpecificOpts for this sub-function
+  BackendSpecificOptsMap backendSpecificOpts_;
 
   /// Map of partitions and the logicalDeviceID. The partitions with the same
   /// logcialDeviceID will be assigned into the same physical device.
@@ -194,6 +200,7 @@ public:
     functionToBackendName_.erase(func);
     partitionCost_.erase(func);
     backendHints_.erase(func);
+    backendSpecificOpts_.erase(func);
   }
 
   /// Set the memory consumption \p cost for a partition \p func.
@@ -220,6 +227,20 @@ public:
       return BackendHints{};
     }
     return backendHints_.find(func)->second;
+  }
+
+  /// Set the backend specific opts \p opts for a partition \p func.
+  void setBackendSpecificOpts(Function *func,
+                              const BackendSpecificOptions &opts) {
+    backendSpecificOpts_[func] = opts;
+  }
+
+  /// Get the backend hints for a partition \p func.
+  BackendSpecificOptions getBackendSpecificOpts(Function *func) const {
+    if (backendSpecificOpts_.find(func) == backendSpecificOpts_.end()) {
+      return BackendSpecificOptions{};
+    }
+    return backendSpecificOpts_.find(func)->second;
   }
 };
 

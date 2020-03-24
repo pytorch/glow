@@ -176,11 +176,10 @@ public:
   partitionFromConfig(const PartitionConfig &partitionConfig,
                       CompilationContext &cctx);
 
-  /// Based on \p config, setup all data structures needed for a DAG. \p config
-  /// contains the Functions which are already partitioned and connected via
-  /// Placeholders.
-  Expected<DAGListTy>
-  setupPrepartitionedModule(const PrePartitionedConfig &config);
+  /// Based on \p cctx, setup all data structures needed for a DAG.
+  /// cctx.prepartitionedConfig contains the Functions which are already
+  /// partitioned and connected via Placeholders.
+  Expected<DAGListTy> setupPrepartitionedModule(CompilationContext &cctx);
 
   /// This partition approach is used in Glow Quantization Profiling flow. The
   /// backendBasedPartition is applied first in case there are heterogeneous

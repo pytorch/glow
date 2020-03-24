@@ -904,17 +904,32 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig,
 }
 
 Expected<DAGListTy>
-Partitioner::setupPrepartitionedModule(const PrePartitionedConfig &config) {
+Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
+  const PrePartitionedConfig &config = *cctx.prepartitionedConfig;
+
+  RETURN_ERR_IF_NOT(
+      !multiBackendNames_,
+      "Do not support multiple backend kinds in prepartitioned flow.");
+
   // Prepare the mapping between BackendName and BackendInfo.
   std::vector<Backend *> backends;
   genBackendMap(backendMap_, backendHolder_, backends);
 
   const std::vector<Function *> &funcs = config.funcs;
 
+  // Optimize all Functions if necessary.
+  if (!optimized_) {
+    Backend *B = backends[0];
+    for (Function *F : funcs) {
+      RETURN_IF_ERR(::glow::optimizeFunction(
+          F, *B, cctx, &getDeviceInfoForBackend(B->getBackendName())));
+    }
+  }
+
   NodeToFunctionMap partitionMap;
   // Create partitions based on the given number and names.
   for (size_t i = 0, e = funcs.size(); i < e; i++) {
-    partitionMap.createPartition(funcs[i], deviceInfo_[i].backendName);
+    partitionMap.createPartition(funcs[i], deviceInfo_[0].backendName);
   }
 
   // Map the nodes the the partitions.
@@ -939,6 +954,13 @@ Partitioner::setupPrepartitionedModule(const PrePartitionedConfig &config) {
     }
   }
   RETURN_IF_ERR(logicalDevicesValidation(partitionMap, backendMap_));
+
+  // Copy in backend-specific options that were loaded.
+  DCHECK(funcs.size() == config.backendSpecificOpts.size());
+  for (size_t i = 0, e = funcs.size(); i < e; i++) {
+    Function *F = funcs[i];
+    partitionMap.setBackendSpecificOpts(F, config.backendSpecificOpts[i]);
+  }
 
   // Do partition.
   DAGListTy partitions =
@@ -1260,8 +1282,9 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
 }
 
 Expected<DAGListTy> Partitioner::partition(CompilationContext &cctx) {
-  if (cctx.prepartitionedConfig) {
-    return setupPrepartitionedModule(*cctx.prepartitionedConfig);
+  if (cctx.prepartitionedConfig &&
+      cctx.prepartitionedConfig->funcs.size() != 0) {
+    return setupPrepartitionedModule(cctx);
   }
 
   if (cctx.partitionConfig) {

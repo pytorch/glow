@@ -54,8 +54,6 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
                                             size_t onnxModelSize) {
   Module module;
 
-  auto function = module.createFunction(compatibilityFunctionName);
-
   std::unique_ptr<ONNXIFIModelLoader> loader;
   // Note: Because we are not loading inputs as Placeholders, we need to
   // explicitly not do constant folding in the loader. This is because the
@@ -64,11 +62,11 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   // Constants, such as a Convolution's weights. In the future we should clean
   // this up so that we load Constants and Placeholders based on the actual
   // eventual input graph.
-  auto loaderOrErr =
-      ONNXIFIModelLoader::parse(onnxModel, onnxModelSize, 0 /*weightCount*/,
-                                nullptr /*weightDescriptors*/, *function,
-                                false /*loadInputsAsPlaceholders*/,
-                                getUseOnnx(), /*constFoldInLoader*/ false);
+  auto loaderOrErr = ONNXIFIModelLoader::parse(
+      onnxModel, onnxModelSize, 0 /*weightCount*/,
+      nullptr /*weightDescriptors*/, module, compatibilityFunctionName,
+      /* PPC */ nullptr, false /*loadInputsAsPlaceholders*/, getUseOnnx(),
+      /*constFoldInLoader*/ false);
   if (loaderOrErr) {
     loader = std::move(*loaderOrErr);
   } else {
@@ -82,6 +80,12 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   if (!glowBackend_) {
     return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
+
+  if (module.getFunctions().size() != 1) {
+    LOG(ERROR) << "Should have exactly one Function in compatibiliity mode.";
+    return ONNXIFI_STATUS_INTERNAL_ERROR;
+  }
+  Function *function = *module.getFunctions().begin();
 
   CompilationContext cctx;
   cctx.compMode = CompilationMode::Infer;
@@ -367,6 +371,11 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   if (ctx->getTraceContext()) {
     ctx->getTraceContext()->setThreadName("Caller");
   }
+
+  // End trace scope before calling into run. run() can trigger the completion
+  // callback which deallocates ctx and traceContext. So it will no longer be
+  // safe to access the trace context after calling into run().
+  TRACE_EVENT_SCOPE_END();
   auto ret = run(std::move(ctx), outputEvent, traceEvents);
   if (GlowSaveOnnxifiIO) {
     // We need to wait for the execution to finish in order to extract output

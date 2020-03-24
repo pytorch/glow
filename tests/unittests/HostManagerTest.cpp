@@ -13,9 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "BackendTestUtils.h"
 
-#include "glow/Runtime/HostManager/HostManager.h"
 #include "glow/ExecutionContext/ExecutionContext.h"
+#include "glow/Runtime/HostManager/HostManager.h"
 
 #include "gtest/gtest.h"
 
@@ -27,7 +28,12 @@ using namespace glow::runtime;
 using DAGNodePairTy = std::pair<std::vector<std::unique_ptr<DAGNode>>,
                                 std::vector<std::unique_ptr<DAGNode>>>;
 
-class HostManagerTest : public ::testing::Test {};
+class HostManagerTest : public ::testing::TestWithParam<std::string> {
+public:
+  void SetUp() { backendName_ = GetParam(); }
+  std::string backendName_;
+};
+
 std::unique_ptr<Module> setupModule(unsigned functionCount) {
   std::unique_ptr<Module> module = glow::make_unique<Module>();
   for (unsigned int i = 0; i < functionCount; i++) {
@@ -73,16 +79,21 @@ void addAndRemoveNetwork(HostManager *manager, unsigned int functionNumber) {
   ERR_TO_BOOL(manager->removeNetwork(name));
 }
 
-TEST_F(HostManagerTest, newHostManager) { createHostManager("CPU"); }
+TEST_P(HostManagerTest, newHostManager) {
+  CHECK_IF_ENABLED();
+  createHostManager(backendName_);
+}
 
-TEST_F(HostManagerTest, addNetwork) {
+TEST_P(HostManagerTest, addNetwork) {
+  CHECK_IF_ENABLED();
   auto module = setupModule(6);
-  auto hostManager = createHostManager("CPU");
+  auto hostManager = createHostManager(backendName_);
   CompilationContext cctx;
   ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
 }
 
-TEST_F(HostManagerTest, queueOverflow) {
+TEST_P(HostManagerTest, queueOverflow) {
+  CHECK_IF_ENABLED();
   std::unique_ptr<Module> module = glow::make_unique<Module>();
 
   Function *F = module->createFunction("main");
@@ -103,7 +114,7 @@ TEST_F(HostManagerTest, queueOverflow) {
   HostConfig hostConfig;
   hostConfig.maxQueueSize = 1;
   hostConfig.maxActiveRequests = 1;
-  auto hostManager = createHostManager("CPU", hostConfig);
+  auto hostManager = createHostManager(backendName_, hostConfig);
   CompilationContext cctx;
   ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
 
@@ -132,7 +143,8 @@ TEST_F(HostManagerTest, queueOverflow) {
   }
 }
 
-TEST_F(HostManagerTest, runNetwork) {
+TEST_P(HostManagerTest, runNetwork) {
+  CHECK_IF_ENABLED();
   std::unique_ptr<Module> module = glow::make_unique<Module>();
   std::unique_ptr<ExecutionContext> context =
       glow::make_unique<ExecutionContext>();
@@ -146,7 +158,7 @@ TEST_F(HostManagerTest, runNetwork) {
   auto *saveTensor =
       context->getPlaceholderBindings()->allocate(save->getPlaceholder());
 
-  auto hostManager = createHostManager("CPU");
+  auto hostManager = createHostManager(backendName_);
   CompilationContext cctx;
   ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
 
@@ -193,10 +205,11 @@ TEST_F(HostManagerTest, runNetwork) {
 
 /// Test that HostManager properly handles concurrent add/remove requests with
 /// unique network names.
-TEST_F(HostManagerTest, ConcurrentAddRemoveUnique) {
+TEST_P(HostManagerTest, ConcurrentAddRemoveUnique) {
+  CHECK_IF_ENABLED();
   constexpr auto numThreads = 6;
   constexpr auto numItersPerThread = 20;
-  auto hostManager = createHostManager("CPU");
+  auto hostManager = createHostManager(backendName_);
   std::atomic<unsigned> counter{0};
   std::vector<std::thread> threads;
   for (auto i = 0; i < numThreads; ++i) {
@@ -214,10 +227,11 @@ TEST_F(HostManagerTest, ConcurrentAddRemoveUnique) {
 
 /// Test that HostManager properly handles concurrent add/remove requests with a
 /// duplicate network name.
-TEST_F(HostManagerTest, ConcurrentAddRemoveDuplicate) {
+TEST_P(HostManagerTest, ConcurrentAddRemoveDuplicate) {
+  CHECK_IF_ENABLED();
   constexpr auto numThreads = 6;
   constexpr auto numItersPerThread = 20;
-  auto hostManager = createHostManager("CPU");
+  auto hostManager = createHostManager(backendName_);
   std::vector<std::thread> threads;
   for (auto i = 0; i < numThreads; ++i) {
     threads.emplace_back([&]() {
@@ -233,7 +247,8 @@ TEST_F(HostManagerTest, ConcurrentAddRemoveDuplicate) {
 }
 
 /// Run several requests concurrently.
-TEST_F(HostManagerTest, runNetworkConcurrent) {
+TEST_P(HostManagerTest, runNetworkConcurrent) {
+  CHECK_IF_ENABLED();
   std::unique_ptr<Module> module = glow::make_unique<Module>();
 
   Function *F = module->createFunction("main");
@@ -242,7 +257,7 @@ TEST_F(HostManagerTest, runNetworkConcurrent) {
   F->createSave("save", pow);
   auto *savePH = module->getPlaceholderByName("save");
 
-  auto hostManager = createHostManager("CPU");
+  auto hostManager = createHostManager(backendName_);
   CompilationContext cctx;
 
   ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
@@ -275,7 +290,8 @@ TEST_F(HostManagerTest, runNetworkConcurrent) {
 }
 
 /// Test that the HostManager respects it's configuration parameters.
-TEST_F(HostManagerTest, ConfigureHostManager) {
+TEST_P(HostManagerTest, ConfigureHostManager) {
+  CHECK_IF_ENABLED();
   HostConfig config;
   config.maxActiveRequests = 1;
   config.maxQueueSize = 0;
@@ -310,7 +326,8 @@ TEST_F(HostManagerTest, ConfigureHostManager) {
 }
 
 /// Test that the HostManager properly enqueues requests.
-TEST_F(HostManagerTest, QueueTest) {
+TEST_P(HostManagerTest, QueueTest) {
+  CHECK_IF_ENABLED();
   HostConfig config;
   // Setup the hostmanager to allow 1 active and 2 queued requests for a total
   // of 3 requests in the system.
@@ -374,7 +391,8 @@ TEST_F(HostManagerTest, QueueTest) {
 // loaded on one device, P1 is loaded on two devices. This test then enables
 // static assignment which allows for P2P testing. We then run the network twice
 // to test the alternating static assignments.
-TEST_F(HostManagerTest, testStaticAssignment) {
+TEST_P(HostManagerTest, testStaticAssignment) {
+  CHECK_IF_ENABLED();
   std::unique_ptr<Module> module = glow::make_unique<Module>();
   std::unique_ptr<ExecutionContext> context =
       glow::make_unique<ExecutionContext>();
@@ -389,9 +407,9 @@ TEST_F(HostManagerTest, testStaticAssignment) {
       context->getPlaceholderBindings()->allocate(save->getPlaceholder());
 
   std::vector<std::unique_ptr<DeviceConfig>> configs;
-  auto deviceConfig = glow::make_unique<DeviceConfig>("CPU");
-  auto deviceConfig2 = glow::make_unique<DeviceConfig>("CPU");
-  auto deviceConfig3 = glow::make_unique<DeviceConfig>("CPU");
+  auto deviceConfig = glow::make_unique<DeviceConfig>(backendName_);
+  auto deviceConfig2 = glow::make_unique<DeviceConfig>(backendName_);
+  auto deviceConfig3 = glow::make_unique<DeviceConfig>(backendName_);
   configs.push_back(std::move(deviceConfig));
   configs.push_back(std::move(deviceConfig2));
   configs.push_back(std::move(deviceConfig3));
@@ -404,7 +422,7 @@ TEST_F(HostManagerTest, testStaticAssignment) {
   PartitionConfig partitionConfig;
   partitionConfig.funcName = "main";
   partitionConfig.numOfPartitions = 2;
-  partitionConfig.backendNames = {"CPU", "CPU"};
+  partitionConfig.backendNames = {backendName_, backendName_};
   partitionConfig.partitionNames = {"p0", "p1"};
   partitionConfig.nodeToPartition = {{"Pow1", 0}, {"save", 1}};
   partitionConfig.logicalIDs = {{0}, {1, 2}};
@@ -457,7 +475,8 @@ TEST_F(HostManagerTest, testStaticAssignment) {
 // loaded on one device, P1 is loaded on two devices. This test then enables
 // static assignment which allows for P2P testing. We then run the network
 // multiple requests concurrently.
-TEST_F(HostManagerTest, testStaticAssignmentConcurrent) {
+TEST_P(HostManagerTest, testStaticAssignmentConcurrent) {
+  CHECK_IF_ENABLED();
   std::unique_ptr<Module> module = glow::make_unique<Module>();
 
   Function *F = module->createFunction("main");
@@ -467,9 +486,9 @@ TEST_F(HostManagerTest, testStaticAssignmentConcurrent) {
   auto *savePH = module->getPlaceholderByName("save");
 
   std::vector<std::unique_ptr<DeviceConfig>> configs;
-  auto deviceConfig = glow::make_unique<DeviceConfig>("CPU");
-  auto deviceConfig2 = glow::make_unique<DeviceConfig>("CPU");
-  auto deviceConfig3 = glow::make_unique<DeviceConfig>("CPU");
+  auto deviceConfig = glow::make_unique<DeviceConfig>(backendName_);
+  auto deviceConfig2 = glow::make_unique<DeviceConfig>(backendName_);
+  auto deviceConfig3 = glow::make_unique<DeviceConfig>(backendName_);
   configs.push_back(std::move(deviceConfig));
   configs.push_back(std::move(deviceConfig2));
   configs.push_back(std::move(deviceConfig3));
@@ -482,7 +501,7 @@ TEST_F(HostManagerTest, testStaticAssignmentConcurrent) {
   PartitionConfig partitionConfig;
   partitionConfig.funcName = "main";
   partitionConfig.numOfPartitions = 2;
-  partitionConfig.backendNames = {"CPU", "CPU"};
+  partitionConfig.backendNames = {backendName_, backendName_};
   partitionConfig.partitionNames = {"p0", "p1"};
   partitionConfig.nodeToPartition = {{"Pow1", 0}, {"save", 1}};
   partitionConfig.logicalIDs = {{0}, {1, 2}};
@@ -516,3 +535,5 @@ TEST_F(HostManagerTest, testStaticAssignmentConcurrent) {
     r.wait();
   }
 }
+
+INSTANTIATE_BACKEND_TEST(HostManagerTest);
