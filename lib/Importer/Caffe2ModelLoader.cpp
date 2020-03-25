@@ -417,10 +417,6 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
   // Group quantization only applies if there is more than one group.
   quantizeGroupwise &= group > 1;
 
-  if (quantizeGroupwise && dilation > 1) {
-    RETURN_ERR("Dilation not supported for group quantized convolution");
-  }
-
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
@@ -500,9 +496,12 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
     ASSIGN_VALUE_OR_RETURN_ERR(wScales, getConstantByName(wScalesName));
     ASSIGN_VALUE_OR_RETURN_ERR(wOffsets, getConstantByName(wOffsetsName));
 
-    node = G_->createChannelwiseQuantizedConv(opName, finalIn, w, bias, wScales,
-                                              wOffsets, outTy, kernels, strides,
-                                              pads, group);
+    // Use nullptr for biasScales and biasOffsets. The implicit assumption is
+    // that the channel wise quantization parameters for bias are:
+    // biasScales[i] = inputScale * filterScales[i] and biasOffsets[i] = 0.
+    node = G_->createChannelwiseQuantizedConv(
+        opName, finalIn, w, bias, wScales, wOffsets, nullptr, nullptr, outTy,
+        kernels, strides, pads, group, dilation);
   } else {
     // If the bias isn't quantized for a non group quantized conv, quantize it.
     const Tensor &biasTensor = bias->getPayload();

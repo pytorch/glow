@@ -34,8 +34,10 @@ graph {
     input: "qInput"
     input: "filter"
     input: "quantized_bias"
-    input: "scales"
-    input: "offsets"
+    input: "filterScales"
+    input: "filterOffsets"
+    input: "biasScales"
+    input: "biasOffsets"
     output: "channelwiseQuantizedConv"
     name: "channelwiseQuantizedConv"
     op_type: "Glow_ChannelwiseQuantizedConvolution"
@@ -87,6 +89,11 @@ graph {
       i: 2
       type: INT
     }
+    attribute {
+      name: "Dilation"
+      i: 1
+      type: INT
+    }
   }
   node {
     input: "channelwiseQuantizedConv"
@@ -127,14 +134,28 @@ graph {
   initializer {
     dims: 4
     data_type: 1
-    name: "scales"
+    name: "filterScales"
     raw_data: "\000\000\200?\000\000\200?\000\000\200?\000\000\200?"
     doc_string: "$elemKind:float$layout:*"
   }
   initializer {
     dims: 4
     data_type: 6
-    name: "offsets"
+    name: "filterOffsets"
+    raw_data: "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000"
+    doc_string: "$elemKind:index32$layout:*"
+  }
+  initializer {
+    dims: 4
+    data_type: 1
+    name: "biasScales"
+    raw_data: "\000\000\200?\000\000\200?\000\000\200?\000\000\200?"
+    doc_string: "$elemKind:float$layout:*"
+  }
+  initializer {
+    dims: 4
+    data_type: 6
+    name: "biasOffsets"
     raw_data: "\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000"
     doc_string: "$elemKind:index32$layout:*"
   }

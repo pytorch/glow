@@ -123,7 +123,8 @@ setupInterpAndBackendConfigs(
     ElemKind interpElemKind, ElemKind backendElemKind,
     quantization::Schema schema, bool convertToRowwiseQuantization,
     CreateAndInitFunction createAndInitFunction, ElemKind biasElemKind,
-    bool forceFP16AccumSLS, unsigned count) {
+    bool forceFP16AccumSLS, unsigned count,
+    bool convertToChannelwiseQuantization) {
   CompilationContext cctxI{&iBindings, &ILIM};
   CompilationContext cctxB{&bBindings, &BLIM};
   PrecisionConfiguration &precConfigI = cctxI.precisionConfig;
@@ -143,6 +144,8 @@ setupInterpAndBackendConfigs(
       precConfigI.quantMode = QuantizationMode::Quantize;
       precConfigI.quantConfig.infos = NQII;
       precConfigI.quantConfig.enableRowwise = convertToRowwiseQuantization;
+      precConfigI.quantConfig.enableChannelwise =
+          convertToChannelwiseQuantization;
       precConfigI.quantConfig.schema = schema;
       precConfigI.quantConfig.precision = interpElemKind;
       precConfigI.quantConfig.assertAllNodesQuantized = true;
@@ -158,6 +161,8 @@ setupInterpAndBackendConfigs(
       precConfigB.quantMode = QuantizationMode::Quantize;
       precConfigB.quantConfig.infos = NQIB;
       precConfigB.quantConfig.enableRowwise = convertToRowwiseQuantization;
+      precConfigB.quantConfig.enableChannelwise =
+          convertToChannelwiseQuantization;
       precConfigB.quantConfig.schema = schema;
       precConfigB.quantConfig.precision = backendElemKind;
       precConfigB.quantConfig.assertAllNodesQuantized = true;
@@ -257,14 +262,12 @@ static Tensor convertToFloatIfNecessary(Tensor &T) {
   return T.getCopyConvertedToType(ElemKind::FloatTy);
 }
 
-void compareAgainstInterpreter(llvm::StringRef backendName,
-                               CreateAndInitFunction createAndInitFunction,
-                               ElemKind interpElemKind,
-                               ElemKind backendElemKind, float allowedError,
-                               unsigned count,
-                               bool convertToRowwiseQuantization,
-                               quantization::Schema schema,
-                               ElemKind biasElemKind, bool forceFP16AccumSLS) {
+void compareAgainstInterpreter(
+    llvm::StringRef backendName, CreateAndInitFunction createAndInitFunction,
+    ElemKind interpElemKind, ElemKind backendElemKind, float allowedError,
+    unsigned count, bool convertToRowwiseQuantization,
+    quantization::Schema schema, ElemKind biasElemKind, bool forceFP16AccumSLS,
+    bool convertToChannelwiseQuantization) {
   // Note: deviceMemory = 0 is a signal to use the defaultMemory.
   ExecutionEngine IEE{"Interpreter", /* deviceMemory */ 0,
                       /* ignoreUserDeviceConfig */ true};
@@ -291,7 +294,8 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   auto configs = setupInterpAndBackendConfigs(
       IF, IEE, iBindings, ILIM, bBindings, BLIM, interpElemKind,
       backendElemKind, schema, convertToRowwiseQuantization,
-      createAndInitFunction, biasElemKind, forceFP16AccumSLS, count);
+      createAndInitFunction, biasElemKind, forceFP16AccumSLS, count,
+      convertToChannelwiseQuantization);
   CompilationContext &cctxI = configs.first;
   CompilationContext &cctxB = configs.second;
 

@@ -1302,8 +1302,13 @@ Error ONNXModelLoader::loadChannelwiseQuantizedConvolution(
   std::vector<unsigned_t> pads;
   ASSIGN_VALUE_OR_RETURN_ERR(pads, getShape<unsigned_t>(dict["pads"]));
 
-  unsigned_t groups;
-  ASSIGN_VALUE_OR_RETURN_ERR(groups, loadInt(dict.at("group")));
+  unsigned_t group;
+  ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict.at("group")));
+
+  unsigned_t dilation = 1;
+  if (dict.count("dilation")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(dilation, loadInt(dict.at("dilation")));
+  }
 
   float outScale;
   ASSIGN_VALUE_OR_RETURN_ERR(outScale, loadFloat(dict.at("out_scale")));
@@ -1317,9 +1322,12 @@ Error ONNXModelLoader::loadChannelwiseQuantizedConvolution(
       {idim.n, outSz.first, outSz.second, biasValue.dims()[0]}};
   auto outTy = mod_.uniqueType(ElemKind::Int8QTy, outDims, outScale, outOffset);
 
+  // Use nullptr for biasScales and biasOffsets. The implicit assumption is
+  // that the channel wise quantization parameters for bias are:
+  // biasScales[i] = inputScale * filterScales[i] and biasOffsets[i] = 0.
   auto *node = G_->createChannelwiseQuantizedConv(
-      opName, input, filterValue, biasValue, scalesValue, offsetsValue, outTy,
-      kernels, strides, pads, groups);
+      opName, input, filterValue, biasValue, scalesValue, offsetsValue, nullptr,
+      nullptr, outTy, kernels, strides, pads, group, dilation);
 
   return addNodeAsOutput(op, node);
 }
