@@ -1736,13 +1736,16 @@ Error ONNXModelLoader::loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
 Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
                                     ArgumentDictionaryTy &dict) {
 
-  RETURN_ERR_IF_NOT(opsetVersion_ < 10,
-                    "Upsample Operator is deprecated for Opset 10 and above");
+  RETURN_ERR_IF_NOT(
+      (opsetVersion_ < 10) && (opsetVersion_ > 6),
+      "Upsample operator is supported for opset version between 7 and 9");
 
   const std::string &opName = loadOperatorName(op);
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-  std::string mode;
+
+  // Default mode of upsample operator is "nearest"
+  std::string mode("nearest");
   if (dict.count("mode")) {
     ASSIGN_VALUE_OR_RETURN_ERR(mode, loadStr(dict.at("mode")));
   }
@@ -1754,12 +1757,13 @@ Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
   /// Scale is always float as per onnx documentation
   std::vector<float> scales;
 
-  RETURN_ERR_IF_NOT(opsetVersion_ > 6,
-                    "Upsample Operator is supported for Opset 7 and above");
-
   if (opsetVersion_ == 7) {
     if (dict.count("scales")) {
+      /// As per onnx documentation this is a required field
+      /// and if not present then onnx.checker.check_model file check to fail
       ASSIGN_VALUE_OR_RETURN_ERR(scales, getFloats(dict["scales"]));
+    } else {
+      RETURN_ERR("Scales field is not present.");
     }
   }
 
@@ -1776,6 +1780,12 @@ Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   /// NCHW2NHWC. scales tensor format is NHWC.
+  RETURN_ERR_IF_NOT(scales.size() == 4, "Scales dimension should be 4");
+
+  for (auto &val : scales) {
+    RETURN_ERR_IF_NOT(val >= 1,
+                      "Scales value can only be greater than or equal to 1");
+  }
 
   auto channel = scales[1];
   auto height = scales[2];
@@ -1786,7 +1796,7 @@ Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
   scales[3] = channel;
 
   auto *intr = G_->createTranspose(opName, in, NCHW2NHWC);
-  Node *node = G_->createResizeNearest(opName, intr, scales);
+  auto *node = G_->createResizeNearest(opName, intr, scales);
   auto *N = G_->createTranspose(opName, node, NHWC2NCHW);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();

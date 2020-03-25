@@ -1944,8 +1944,7 @@ void BoundInterpreterFunction::fwdResizeNearestInst(
     return;
   }
 
-  dispatchFloatingPointImpl(fwdResizeNearestInstImpl,
-                            I->getSrc()->getElementType(), I);
+  dispatchImpl(fwdResizeNearestInstImpl, I->getSrc()->getElementType(), I);
 }
 
 //===----------------------------------------------------------------------===//

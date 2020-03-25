@@ -480,10 +480,8 @@ llvm::Value *LLVMIRGen::emitConstDimTArray(llvm::IRBuilder<> &builder,
   return emitConstArray(builder, elems, DimTType);
 }
 
-template <typename T>
 llvm::Value *LLVMIRGen::emitConstFloatArray(llvm::IRBuilder<> &builder,
-                                            llvm::ArrayRef<T> vals) {
-  assert(std::is_floating_point<T>() && "Can only emit const array of float");
+                                            llvm::ArrayRef<float> vals) {
   std::vector<llvm::Constant *> elems;
   for (auto I : vals) {
     elems.push_back(

@@ -208,9 +208,8 @@ protected:
 
   /// Generates LLVM IR that materializes the constant array \p vals. Note that
   /// float data type is accepted.
-  template <typename T>
   llvm::Value *emitConstFloatArray(llvm::IRBuilder<> &builder,
-                                   llvm::ArrayRef<T> vals);
+                                   llvm::ArrayRef<float> vals);
 
   /// Generates LLVM IR that materializes the constant array \p vals. Elements
   /// of vals have the type \p elemTy.
