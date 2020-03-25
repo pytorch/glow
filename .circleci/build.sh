@@ -4,13 +4,7 @@
 # By default, we run with the enabled CPU backend and disabled OpenCL backend.
 set -ex
 
-apt-get update && apt-get install sudo
-
-# Add support for https apt sources.
-wget http://security.ubuntu.com/ubuntu/pool/main/a/apt/apt-transport-https_1.2.29ubuntu0.1_amd64.deb
-echo "960a44449fa1ec082a75adee8d6f6fe15577627570edc722a1822e495a8b8c57  apt-transport-https_1.2.29ubuntu0.1_amd64.deb" | sha256sum -c
-sudo dpkg -i apt-transport-https_1.2.29ubuntu0.1_amd64.deb
-rm apt-transport-https_1.2.29ubuntu0.1_amd64.deb
+apt-get update && apt-get -y install sudo apt-transport-https
 
 export MAX_JOBS=8
 if [ "${CIRCLE_JOB}" != "COVERAGE" ]; then
