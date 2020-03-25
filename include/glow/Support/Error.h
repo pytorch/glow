@@ -96,7 +96,6 @@
   } while (0)
 
 /// Takes an Error and returns it if it's not success.
-// TODO: extend this to work with Expected as well.
 #define RETURN_IF_ERR(err)                                                     \
   do {                                                                         \
     if (auto errV = std::forward<glow::detail::GlowError>(err)) {              \
@@ -104,6 +103,18 @@
                     "Expected value to be a Error");                           \
       errV.addToStack(__FILE__, __LINE__);                                     \
       return std::forward<Error>(errV);                                        \
+    }                                                                          \
+  } while (0)
+
+/// Takes an Expected and returns it if it's not success.
+#define RETURN_IF_EXPECTED_IS_ERR(expV)                                        \
+  do {                                                                         \
+    static_assert(glow::detail::IsExpected<decltype(expV)>(),                  \
+                  "Expected value to be a Expected");                          \
+    if (!expV) {                                                               \
+      auto err = expV.takeError();                                             \
+      err.addToStack(__FILE__, __LINE__);                                      \
+      return std::forward<Error>(err);                                         \
     }                                                                          \
   } while (0)
 

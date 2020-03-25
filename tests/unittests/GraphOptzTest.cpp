@@ -2044,8 +2044,9 @@ static SaveNode *getUniqueSaveNode(Function *F) {
 class MockBackendPrequantizeConst : public MockBackend {
   bool shouldPreQuantizeConstants() const override { return true; }
   bool isOpSupported(const NodeInfo &) const override { return true; }
-  bool transformPostLowering(Function *F, CompilationContext &,
-                             const glow::runtime::DeviceInfo *) const override {
+  Expected<bool>
+  transformPostLowering(Function *F, CompilationContext &,
+                        const glow::runtime::DeviceInfo *) const override {
     // Check the IR.
     EXPECT_EQ(F->getNodes().size(), 1);
     auto *save = getUniqueSaveNode(F);
@@ -2058,8 +2059,9 @@ class MockBackendPrequantizeConst : public MockBackend {
 class MockBackendNotPrequantizeConst : public MockBackend {
   bool shouldPreQuantizeConstants() const override { return false; }
   bool isOpSupported(const NodeInfo &) const override { return true; }
-  bool transformPostLowering(Function *F, CompilationContext &,
-                             const glow::runtime::DeviceInfo *) const override {
+  Expected<bool>
+  transformPostLowering(Function *F, CompilationContext &,
+                        const glow::runtime::DeviceInfo *) const override {
     // Check the IR.
     EXPECT_EQ(F->getNodes().size(), 2);
     auto *save = getUniqueSaveNode(F);

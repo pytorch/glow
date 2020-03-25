@@ -790,7 +790,7 @@ static bool parallelizeFunction(Function *F, CompilationContext &cctx) {
   return changed;
 }
 
-bool NNPIBackend::transformPostLowering(
+Expected<bool> NNPIBackend::transformPostLowering(
     Function *F, CompilationContext &cctx,
     const glow::runtime::DeviceInfo *devInfo) const {
   LOG_SCOPE(F->getLogContext(), "NNPIBackend::transformPostLowering");

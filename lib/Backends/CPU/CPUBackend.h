@@ -44,7 +44,7 @@ public:
   static std::string getName() { return "CPU"; }
   static unsigned numDevices();
 
-  bool transformPostLowering(
+  Expected<bool> transformPostLowering(
       Function *F, CompilationContext &cctx,
       const glow::runtime::DeviceInfo *devInfo = nullptr) const override;
 

@@ -50,7 +50,7 @@ public:
   runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig) override;
 
-  bool transformPostLowering(
+  Expected<bool> transformPostLowering(
       Function *F, CompilationContext &cctx,
       const glow::runtime::DeviceInfo *devInfo = nullptr) const override;
 
