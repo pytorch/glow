@@ -586,8 +586,7 @@ static void quantizeTensorImpl(Tensor *dest, const Tensor &src,
          "Quantization step must divide dimension length!");
   assert(src.getElementType() == ElemKind::FloatTy &&
          "Tensor type should be float!");
-  dim_t groupNum = src.dims()[qDim] / qStep;
-  assert(TQP.size() == groupNum &&
+  assert(TQP.size() == (src.dims()[qDim] / qStep) &&
          "TensorQuantizationParams array size invalid!");
 
   // Get tensor views with maximum dimensions.

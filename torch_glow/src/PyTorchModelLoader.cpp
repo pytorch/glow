@@ -1083,8 +1083,6 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
 
   glow::NodeValue output_not_transposed;
   if (isPerChannelQuantized) {
-    RETURN_ERR_IF_NOT(dilation <= 1,
-                      "Dilation not supported for group quantized convolution");
 
     // extract qparams from ptWeightTensor.
     // Notice since the memory of qparams may not be continous
@@ -1119,9 +1117,13 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
         "channel_wised_offsets_of_qconv", std::move(wOffsetsTensor));
     wOffsets->ensureIsOwned();
 
+    // Use nullptr for biasScales and biasOffsets. The implicit assumption is
+    // that the channel wise quantization parameters for bias are:
+    // biasScales[i] = inputScale * filterScales[i] and biasOffsets[i] = 0.
     auto qconv = F_.createChannelwiseQuantizedConv(
         "qconv_channel_wised", input, weightConstant, biasConstant, wScales,
-        wOffsets, outTy, kernels, strides, pads, groups);
+        wOffsets, nullptr, nullptr, outTy, kernels, strides, pads, groups,
+        dilation);
     output_not_transposed = qconv->getResult();
   } else {
     auto qconv = F_.createConv("qconv", input, weight, bias, outTy, kernels,
