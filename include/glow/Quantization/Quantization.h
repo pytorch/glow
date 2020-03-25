@@ -30,16 +30,30 @@ class Backend;
 
 namespace quantization {
 
-/// Generate NodeQuantizationInfo for all required nodes from function \p F
-/// using the method specified by \p schema and target quantization precision \p
-/// quantizationPrecision. Profiling values will be written into context \p
-/// bindings. \p loweredMap maps from the NodeOutputName of a NodeValue which
-/// was lowered to a vector of the original NodeOutputNames which it replaced;
-/// this map is used to generate infos for the original unlowered NodeValues
-/// which no longer exist in \p F. The quantization precision for the bias of
-/// Convolution and FullyConnected is given by \p quantizationPrecisionBias.
+/// Generate NodeProfilingInfo for all the required nodes from function \p F
+/// using the profiling information stored in \p bindings obtained after
+/// running the network in profiling mode. During the profiling phase all the
+/// nodes are lowered. The map \p loweredMap maps the vector of NodeOutputNames
+/// obtained after lowering a NodeValue to the NodeOutputName of the lowered
+/// NodeValue. This map is used to replicate the profiling information for the
+/// unlowered NodeValues such that during the actual quantization, depending
+/// on the backend decision to lower some nodes or not, a profile will be found
+/// for any NodeValue.
+std::vector<NodeProfilingInfo>
+generateNodeProfilingInfos(PlaceholderBindings &bindings, const Function *F,
+                           const LoweredInfoMap &loweredMap = {});
+
+/// Generate NodeQuantizationInfo for all the required nodes from function \p F
+/// using the profiling information stored in \p profilingInfos obtained with
+/// the function \ref generateNodeProfilingInfos. The quantization schema is
+/// specified by \p schema and the target precision for quantization is given
+/// by \p quantizationPrecision for all the operands except the bias operands
+/// (used in nodes like Convolution and FullyConnected) for which the target
+/// precision is given by \p quantizationPrecisionBias. The map \p loweredMap
+/// is the lowering map obtained during the quantization phase and is used
+/// to find lowering patterns for the bias operands.
 std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(
-    PlaceholderBindings &bindings, const Function *F,
+    llvm::ArrayRef<NodeProfilingInfo> profilingInfos, Function *F,
     const LoweredInfoMap &loweredMap = {}, Schema schema = Schema::Asymmetric,
     ElemKind quantizationPrecision = ElemKind::Int8QTy,
     ElemKind quantizationPrecisionBias = ElemKind::Int32QTy);

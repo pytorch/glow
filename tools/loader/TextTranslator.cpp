@@ -416,10 +416,10 @@ int main(int argc, char **argv) {
     }
   }
 
-  // If profiling, generate and serialize the quantization infos now that we
+  // If profiling, generate and serialize the profiling infos now that we
   // have run inference to gather the profile.
   if (profilingGraph()) {
-    loader.generateAndSerializeQuantizationInfos(bindings);
+    loader.generateAndSerializeProfilingInfos(bindings);
   }
 
   return incorrectTranslationCount;

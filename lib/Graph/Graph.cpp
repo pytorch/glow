@@ -4248,6 +4248,26 @@ Node *Function::getNodeByName(llvm::StringRef name) {
   return nullptr;
 }
 
+NodeValue Function::getNodeValueByName(llvm::StringRef name) {
+  auto strPair = name.split(':');
+  // Search node, constant or placeholder.
+  auto nodeName = strPair.first;
+  Node *node = getNodeByName(nodeName);
+  node = node ? node : getParent()->getConstantByName(nodeName);
+  node = node ? node : getParent()->getPlaceholderByName(nodeName);
+  if (!node || (node->getNumResults() == 0)) {
+    return NodeValue();
+  }
+  // Get result number.
+  if (node->getNumResults() == 1) {
+    return NodeValue(node);
+  } else {
+    unsigned resNo = 0;
+    CHECK(!strPair.second.getAsInteger(0, resNo)) << "Invalid node value name!";
+    return NodeValue(node, resNo);
+  }
+}
+
 void Module::eraseConstant(ConstList::iterator I) {
   if (I == constants_.end())
     return;

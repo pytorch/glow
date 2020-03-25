@@ -1280,7 +1280,8 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   const auto biasMinMaxIdx = biasHandle.minMaxArg();
 
   const auto biasQParams = chooseQuantizationParams(
-      biasHandle.raw(biasMinMaxIdx.first), biasHandle.raw(biasMinMaxIdx.second),
+      {biasHandle.raw(biasMinMaxIdx.first),
+       biasHandle.raw(biasMinMaxIdx.second)},
       glow::quantization::Schema::Asymmetric, glow::ElemKind::Int32QTy);
 
   auto bias = biasConstant->getOutput();
@@ -1399,7 +1400,8 @@ Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
   const auto biasMinMaxIdx = biasHandle.minMaxArg();
 
   const auto biasQParams = chooseQuantizationParams(
-      biasHandle.raw(biasMinMaxIdx.first), biasHandle.raw(biasMinMaxIdx.second),
+      {biasHandle.raw(biasMinMaxIdx.first),
+       biasHandle.raw(biasMinMaxIdx.second)},
       glow::quantization::Schema::Asymmetric, glow::ElemKind::Int32QTy);
 
   const auto biasType =

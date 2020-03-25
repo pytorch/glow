@@ -1204,7 +1204,7 @@ TEST_P(MLTest, convNetForImageRecognition) {
   CompilationContext cctxQuant{&inferBindings, &loweredMapForQuant};
   PrecisionConfiguration &precConfig = cctxQuant.precisionConfig;
   cctxQuant.precisionConfig.quantMode = QuantizationMode::Quantize;
-  precConfig.quantConfig.infos = quantization::generateNodeQuantizationInfos(
+  precConfig.quantConfig.infos = quantization::generateNodeProfilingInfos(
       profileBindings, F, loweredMapForProf);
   precConfig.quantConfig.assertAllNodesQuantized = true;
 
@@ -1344,8 +1344,8 @@ TEST_P(MLTest, testFindPixelRegression) {
   cctxQuant.precisionConfig.quantMode = QuantizationMode::Quantize;
   cctxQuant.loweredInfoMap = &loweredMapForQuant;
   cctxQuant.precisionConfig.quantConfig.infos =
-      quantization::generateNodeQuantizationInfos(profileBindings, F,
-                                                  loweredMapForProf);
+      quantization::generateNodeProfilingInfos(profileBindings, F,
+                                               loweredMapForProf);
   cctxQuant.precisionConfig.quantConfig.assertAllNodesQuantized = true;
 
   F = mod->getFunction(fName);

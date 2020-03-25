@@ -1736,10 +1736,18 @@ public:
   /// \returns the list of nodes that the Function owns.
   NodesList &getNodes() { return nodes_; }
 
+  const NodesList &getNodes() const { return nodes_; }
+
   /// \returns a node with the name \p name or nullptr if no node was found.
   Node *getNodeByName(llvm::StringRef name);
 
-  const NodesList &getNodes() const { return nodes_; }
+  /// \returns a node value using the \p name which has the same format as the
+  /// one used by the \ref NodeValue::generateNodeOutputName which is
+  /// "nodeName:outputNumber". The returned node value has a nullptr for the
+  /// node if not found in the Function or if the node has no outputs (for
+  /// example SaveNode). The searched node value can be one of a graph node,
+  /// constant or placeholder.
+  NodeValue getNodeValueByName(llvm::StringRef name);
 
   /// \returns pointer to the class member for the nodes list.
   static NodesList Function::*getNodesMemberPtr() { return &Function::nodes_; }

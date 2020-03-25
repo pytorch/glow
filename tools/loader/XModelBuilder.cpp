@@ -344,7 +344,7 @@ int main(int argc, char **argv) {
 
   // Are we profiling? If so, spit out the profile.
   if (profilingGraph()) {
-    loader.generateAndSerializeQuantizationInfos(ioBindings);
+    loader.generateAndSerializeProfilingInfos(ioBindings);
   }
 
   return 0;

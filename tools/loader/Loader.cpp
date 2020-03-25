@@ -487,7 +487,7 @@ quantization::QuantizationConfiguration Loader::getQuantizationConfiguration() {
   quantConfig.enableRowwise = enableRowwiseOpt;
   quantConfig.assertAllNodesQuantized = assertAllNodesQuantizedOpt;
   if (!loadProfileFileOpt.empty()) {
-    quantConfig.infos = deserializeFromYaml(loadProfileFileOpt);
+    quantConfig.infos = deserializeProfilingInfosFromYaml(loadProfileFileOpt);
   }
   return quantConfig;
 }
@@ -660,25 +660,21 @@ void Loader::runInference(ExecutionContext *context, size_t batchSize) {
   }
 }
 
-static bool compareQI(const NodeQuantizationInfo &a,
-                      const NodeQuantizationInfo &b) {
+static bool comparePI(const NodeProfilingInfo &a, const NodeProfilingInfo &b) {
   return (a.nodeOutputName_.compare(b.nodeOutputName_) < 0);
 }
 
-void Loader::generateAndSerializeQuantizationInfos(
-    PlaceholderBindings &bindings) {
+void Loader::generateAndSerializeProfilingInfos(PlaceholderBindings &bindings) {
   assert(!dumpProfileFileOpt.empty() &&
          "Filename to dump serialized profile to must not be empty.");
-  std::vector<NodeQuantizationInfo> QI;
+  std::vector<NodeProfilingInfo> PI;
   for (auto F : getModule()->getFunctions()) {
-    std::vector<NodeQuantizationInfo> tmp =
-        quantization::generateNodeQuantizationInfos(
-            bindings, F, loweredMap_, quantizationSchema, quantizationPrecision,
-            quantizationPrecisionBias);
-    QI.insert(QI.end(), tmp.begin(), tmp.end());
+    std::vector<NodeProfilingInfo> tmp =
+        quantization::generateNodeProfilingInfos(bindings, F, loweredMap_);
+    PI.insert(PI.end(), tmp.begin(), tmp.end());
   }
-  std::sort(QI.begin(), QI.end(), compareQI);
-  serializeToYaml(dumpProfileFileOpt, QI);
+  std::sort(PI.begin(), PI.end(), comparePI);
+  serializeProfilingInfosToYaml(dumpProfileFileOpt, PI);
 }
 
 Loader &Loader::registerExtension(std::unique_ptr<LoaderExtension> extension) {
