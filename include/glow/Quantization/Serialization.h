@@ -23,12 +23,22 @@
 
 namespace glow {
 
+/// Serialize \p profilingInfos into the file named \p fileName.
+void serializeProfilingInfosToYaml(
+    llvm::StringRef fileName, llvm::ArrayRef<NodeProfilingInfo> profilingInfos);
+
+/// Deserialize profiling infos from the file \p fileName.
+std::vector<NodeProfilingInfo>
+deserializeProfilingInfosFromYaml(llvm::StringRef fileName);
+
 /// Serialize \p quantizationInfos into the file named \p fileName.
-void serializeToYaml(llvm::StringRef fileName,
-                     llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos);
+void serializeQuantizationInfosToYaml(
+    llvm::StringRef fileName,
+    llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos);
 
 /// Deserialize quantization infos from the file \p fileName.
-std::vector<NodeQuantizationInfo> deserializeFromYaml(llvm::StringRef fileName);
+std::vector<NodeQuantizationInfo>
+deserializeQuantizationInfosFromYaml(llvm::StringRef fileName);
 
 } // namespace glow
 

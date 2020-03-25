@@ -902,6 +902,7 @@ public:
   /// with the use of BroadCast nodes. If axis is -1, it calculates it
   /// automatically for multi directional broadcast.
   DECLARE_CMP_BROADCAST_NODE(CmpLT)
+  DECLARE_CMP_BROADCAST_NODE(CmpEQ)
   DECLARE_CMP_BROADCAST_NODE(CmpLTE)
 
   /// Template function that creates a node and normalizes its input shapes
@@ -1284,12 +1285,14 @@ public:
                                        unsigned blockSize);
 
   /// Given \p input tensor of [N,H,W,C], where N is the batch, C is the channel
-  /// or depth, H is the height and W is the width, generates an Output tensor
-  /// with resized spatial dimensions using nearest neighbor interpolation. The
-  /// Output tensor is of shape [N, floor(H * \p heightScale), floor(W * \p
-  /// widthScale), C]
+  /// or depth, H is the height and W is the width, and \p scale tensor with
+  /// tensor format same as \p input then ResizeNearest generates an Output
+  /// tensor with resized spatial dimensions using nearest neighbor
+  /// interpolation. The Output tensor is of shape [floor(N * \p scale[0]),
+  /// floor(H * \p scale[1]), floor(W * \p scale[2]),
+  /// floor(C * \p scale[3])]
   ResizeNearestNode *createResizeNearest(llvm::StringRef name, NodeValue input,
-                                         float heightScale, float widthScale);
+                                         llvm::ArrayRef<float> scale);
 
   /// Create quantization node which transforms floating point tensor to a
   /// quantized one with given Scale and Offset. Scale and Offset params are
@@ -1754,10 +1757,18 @@ public:
   /// \returns the list of nodes that the Function owns.
   NodesList &getNodes() { return nodes_; }
 
+  const NodesList &getNodes() const { return nodes_; }
+
   /// \returns a node with the name \p name or nullptr if no node was found.
   Node *getNodeByName(llvm::StringRef name);
 
-  const NodesList &getNodes() const { return nodes_; }
+  /// \returns a node value using the \p name which has the same format as the
+  /// one used by the \ref NodeValue::generateNodeOutputName which is
+  /// "nodeName:outputNumber". The returned node value has a nullptr for the
+  /// node if not found in the Function or if the node has no outputs (for
+  /// example SaveNode). The searched node value can be one of a graph node,
+  /// constant or placeholder.
+  NodeValue getNodeValueByName(llvm::StringRef name);
 
   /// \returns pointer to the class member for the nodes list.
   static NodesList Function::*getNodesMemberPtr() { return &Function::nodes_; }

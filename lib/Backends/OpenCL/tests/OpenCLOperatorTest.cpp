@@ -328,6 +328,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "sanityConvTranspose2OutCh/0",
     "sanityConvTranspose1OutCh/0",
     "sanityConvTransposeStrided/0",
+    "sanityConvTransposeDilated/0",
     "sanityConvTransposePads/0",
     "convTransposeCompareSimpleK8S1P0I3/0",
     "convTransposeCompareSimpleK6S1P1I4/0",

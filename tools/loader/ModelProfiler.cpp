@@ -267,7 +267,7 @@ int main(int argc, char **argv) {
   }
 
   // Dump the final profile.
-  loader.generateAndSerializeQuantizationInfos(bindings);
+  loader.generateAndSerializeProfilingInfos(bindings);
 
   return 0;
 }

@@ -368,7 +368,6 @@ void BoundInterpreterFunction::fwdConvTransposeInstFloatImpl(
 
   assert(idim.c % group == 0 && "Input channels must be divisible by group.");
   assert(odim.c % group == 0 && "Output channels must be divisible by group.");
-  assert(dilation == 1 && "Dilation must be 1.");
   assert(group == 1 && "Group must be 1.");
 
   dim_t inCperG = idim.c / group;
@@ -1929,21 +1928,21 @@ template <typename ElemTy>
 void BoundInterpreterFunction::fwdResizeNearestInstImpl(
     const ResizeNearestInst *I) {
   auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto scale = I->getScale();
   auto outW = getWeightHandle<ElemTy>(I->getDest());
 
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
 
-  auto heightScale = I->getHeightScale();
-  auto widthScale = I->getWidthScale();
-
   for (dim_t ob = 0; ob < odim.n; ++ob) {
+    auto ib = std::min(dim_t(ob / scale[0]), idim.n - 1);
     for (dim_t oh = 0; oh < odim.h; ++oh) {
-      auto ic = std::min(dim_t(oh / heightScale), idim.h - 1);
+      auto ih = std::min(dim_t(oh / scale[1]), idim.h - 1);
       for (dim_t ow = 0; ow < odim.w; ++ow) {
-        auto iw = std::min(dim_t(ow / widthScale), idim.w - 1);
+        auto iw = std::min(dim_t(ow / scale[2]), idim.w - 1);
         for (dim_t oc = 0; oc < odim.c; ++oc) {
-          outW.at({ob, oh, ow, oc}) = inW.at({ob, ic, iw, oc});
+          auto ic = std::min(dim_t(oc / scale[3]), idim.c - 1);
+          outW.at({ob, oh, ow, oc}) = inW.at({ib, ih, iw, ic});
         }
       }
     }

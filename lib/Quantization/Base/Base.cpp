@@ -337,8 +337,11 @@ void validateQuantizationParams(TensorQuantizationParams qParams, Schema schema,
   }
 }
 
-TensorQuantizationParams chooseQuantizationParams(float min, float max,
-                                                  Schema schema, ElemKind qTy) {
+TensorQuantizationParams
+chooseQuantizationParams(TensorProfilingParams profParams, Schema schema,
+                         ElemKind qTy) {
+  float min = profParams.min;
+  float max = profParams.max;
   assert(min <= max && "min must not be bigger than max");
 
   // Get the quantized range.

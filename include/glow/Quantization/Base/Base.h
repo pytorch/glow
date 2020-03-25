@@ -28,6 +28,13 @@
 
 namespace glow {
 
+/// Profiling parameters of a tensor consisting in the global minimum and global
+/// maximum values obtained for each tensor by profiling the network.
+struct TensorProfilingParams {
+  float min;
+  float max;
+};
+
 /// Main attributes of a quantized tensor.
 /// Scale and Offset allow quantization of a float tensor and dequantization of
 /// integer tensor back to float one.
@@ -57,6 +64,21 @@ struct QuantizationTransform32To8 {
     int rtn = (post > 0) ? (1 << (post - 1)) : 0;
     return ((((input >> pre) * scale) + rtn) >> post) + offset;
   }
+};
+
+/// Tensor profiling parameters for a given node.
+struct NodeProfilingInfo {
+  std::string nodeOutputName_;
+  TensorProfilingParams tensorProfilingParams_;
+
+  NodeProfilingInfo() = default;
+  NodeProfilingInfo(const std::string &nodeOutputName,
+                    const TensorProfilingParams &tensorProfilingParams)
+      : nodeOutputName_(nodeOutputName),
+        tensorProfilingParams_(tensorProfilingParams) {}
+
+  float Min() const { return tensorProfilingParams_.min; }
+  float Max() const { return tensorProfilingParams_.max; }
 };
 
 /// Tensor quantization parameters for a given node.
@@ -99,9 +121,10 @@ enum Schema {
 
 /// Configuration for Quantization, passed into \ref quantizeFunction().
 struct QuantizationConfiguration {
-  /// Infos to use when determining scale and offset for all Nodes inside, and
-  /// Placeholders and Constants referenced by, a Function being quantized.
-  std::vector<NodeQuantizationInfo> infos{};
+  /// Profiling infos to use when computing the scale and offset for all the
+  /// Nodes inside the function being quantized, including the referenced
+  /// Placeholders and Constants.
+  std::vector<NodeProfilingInfo> infos{};
 
   /// Precision to use when quantizing a Function.
   ElemKind precision{ElemKind::Int8QTy};
@@ -129,8 +152,7 @@ struct QuantizationConfiguration {
   ElemKind precisionBias{ElemKind::Int32QTy};
 
   QuantizationConfiguration() = default;
-  QuantizationConfiguration(llvm::ArrayRef<NodeQuantizationInfo> i)
-      : infos(i) {}
+  QuantizationConfiguration(llvm::ArrayRef<NodeProfilingInfo> i) : infos(i) {}
 };
 
 /// \returns the value \p in as clipped to the range of \p DestTy.
@@ -235,11 +257,12 @@ std::pair<int64_t, int64_t> getQuantizationRange(ElemKind qTy);
 void validateQuantizationParams(TensorQuantizationParams qParams, Schema schema,
                                 ElemKind qTy);
 
-/// Calculate TensorQuantizationParams based on the clipped \p min and \p max
-/// floating point range and using the base quantization type \p qTy and the
-/// quantization method described by \p schema.
+/// Calculate the TensorQuantizationParams from the TensorProfilingParams
+/// \p profParams using the quantization type \p qTy and the quantization
+/// method described by \p schema.
 TensorQuantizationParams
-chooseQuantizationParams(float min, float max, Schema schema = Asymmetric,
+chooseQuantizationParams(TensorProfilingParams profParams,
+                         Schema schema = Asymmetric,
                          ElemKind qTy = ElemKind::Int8QTy);
 
 /// Function to specialize the TensorQuantizationParams of the bias operand
@@ -315,7 +338,7 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
     // Handle rowwise quantization for FCs.
     if (offsetIsInt32) {
       TensorQuantizationParams qParams =
-          chooseQuantizationParams(min, max, schema);
+          chooseQuantizationParams({min, max}, schema);
       for (dim_t j = 0; j < idim.width; j++) {
         destH.at({i, j}) = quantization::quantize(srcH.at({i, j}), qParams);
       }

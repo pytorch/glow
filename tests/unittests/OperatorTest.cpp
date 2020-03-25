@@ -1409,17 +1409,27 @@ static void testResizeNearest(glow::PlaceholderBindings &bindings,
 
   auto heightScaleUp = 2.0f;
   auto widthScaleUp = 1.5f;
+  std::vector<float> scaleUp;
+  scaleUp.push_back(1.0f);
+  scaleUp.push_back(heightScaleUp);
+  scaleUp.push_back(widthScaleUp);
+  scaleUp.push_back(1.0f);
 
-  auto *resizeNearestUp = F->createResizeNearest("resizeNearestUp", input,
-                                                 heightScaleUp, widthScaleUp);
+  auto *resizeNearestUp =
+      F->createResizeNearest("resizeNearestUp", input, scaleUp);
   auto *saveUp = F->createSave("saveUp", resizeNearestUp);
   auto *resultUp = bindings.allocate(saveUp->getPlaceholder());
 
   auto heightScaleDown = 0.9f;
   auto widthScaleDown = 0.6;
+  std::vector<float> scaleDown;
+  scaleDown.push_back(1.0f);
+  scaleDown.push_back(heightScaleDown);
+  scaleDown.push_back(widthScaleDown);
+  scaleDown.push_back(1.0f);
 
-  auto *resizeNearestDown = F->createResizeNearest(
-      "resizeNearestDown", input, heightScaleDown, widthScaleDown);
+  auto *resizeNearestDown =
+      F->createResizeNearest("resizeNearestDown", input, scaleDown);
   auto *saveDown = F->createSave("saveDown", resizeNearestDown);
   auto *resultDown = bindings.allocate(saveDown->getPlaceholder());
 
@@ -4082,7 +4092,7 @@ TEST_P(OperatorTest, ScatterDataQuantized) {
   bindings_.allocate(indices)->getHandle<int64_t>() = {1, 3};
   bindings_.allocate(slices)->getHandle() = {-3, -4, -7, -8};
 
-  auto qParams = glow::quantization::chooseQuantizationParams(-11, 11);
+  auto qParams = glow::quantization::chooseQuantizationParams({-11, 11});
   auto dataTy =
       mod_.uniqueType(ElemKind::Int8QTy, {5, 2}, qParams.scale, qParams.offset);
   auto slicesTy =
@@ -4235,7 +4245,7 @@ TEST_P(OperatorTest, ScatterAddQuantized) {
   bindings_.allocate(indices)->getHandle<int64_t>() = {1, 3};
   bindings_.allocate(slices)->getHandle() = {3, -8, -7, 8};
 
-  auto qParams = glow::quantization::chooseQuantizationParams(-11, 11);
+  auto qParams = glow::quantization::chooseQuantizationParams({-11, 11});
   auto dataTy =
       mod_.uniqueType(ElemKind::Int8QTy, {5, 2}, qParams.scale, qParams.offset);
   auto slicesTy =
@@ -5685,7 +5695,8 @@ TEST_P(OperatorTest, QuantizedTile) {
   auto *V = mod_.createPlaceholder(ElemKind::FloatTy, {4, 5}, "V", false);
   bindings_.allocate(V);
 
-  auto quantizationParams = glow::quantization::chooseQuantizationParams(0, 20);
+  auto quantizationParams =
+      glow::quantization::chooseQuantizationParams({0, 20});
   auto quantizeTy =
       mod_.uniqueType(ElemKind::Int8QTy, {4, 5}, quantizationParams.scale,
                       quantizationParams.offset);
@@ -6349,6 +6360,82 @@ TEST_P(OperatorTest, sanityConvTransposeStrided) {
   EXPECT_FLOAT_EQ(result.at({0, 4, 2, 0}), 80);
   EXPECT_FLOAT_EQ(result.at({0, 4, 3, 0}), 45);
   EXPECT_FLOAT_EQ(result.at({0, 4, 4, 0}), 50);
+}
+
+/// ConvTranspose with easy to calculate output values. 2x2 input, 1-ch input,
+/// 1-ch output.
+TEST_P(OperatorTest, sanityConvTransposeDilated) {
+  CHECK_IF_ENABLED()
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 1}, "input", false);
+  bindings_.allocate(input)->getHandle() = {2., 3., 4., 5.};
+
+  auto *filter =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "filter", false);
+  bindings_.allocate(filter)->getHandle() = {2., 3., 4., 5., 6.,
+                                             7., 8., 9., 10.};
+
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
+  bindings_.allocate(bias)->zero();
+
+  std::pair<dim_t, dim_t> outWH =
+      calculateConvTransposeOutputDims(2, 2, {3, 3}, {1, 1}, {0, 0, 0, 0}, 2);
+  auto outTy =
+      mod_.uniqueType(ElemKind::FloatTy, {1, outWH.first, outWH.second, 1});
+
+  ConvTransposeNode *CN =
+      F_->createConvTranspose("ConvTranspose", input, filter, bias, outTy,
+                              {3, 3}, {1, 1}, {0, 0, 0, 0}, 1, 2);
+
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+  std::vector<dim_t> expectedDims = {1, 6, 6, 1};
+
+  ASSERT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), 4);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 0}), 6);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 0}), 6);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 3, 0}), 9);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 4, 0}), 8);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 5, 0}), 12);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0}), 8);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 1, 0}), 10);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 2, 0}), 12);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 3, 0}), 15);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 4, 0}), 16);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 5, 0}), 20);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 0, 0}), 10);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 1, 0}), 15);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 2, 0}), 12);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 3, 0}), 18);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 4, 0}), 14);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 5, 0}), 21);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 0, 0}), 20);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 1, 0}), 25);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 2, 0}), 24);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 3, 0}), 30);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 4, 0}), 28);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 5, 0}), 35);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 0, 0}), 16);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 1, 0}), 24);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 2, 0}), 18);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 3, 0}), 27);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 4, 0}), 20);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 5, 0}), 30);
+  EXPECT_FLOAT_EQ(result.at({0, 5, 0, 0}), 32);
+  EXPECT_FLOAT_EQ(result.at({0, 5, 1, 0}), 40);
+  EXPECT_FLOAT_EQ(result.at({0, 5, 2, 0}), 36);
+  EXPECT_FLOAT_EQ(result.at({0, 5, 3, 0}), 45);
+  EXPECT_FLOAT_EQ(result.at({0, 5, 4, 0}), 40);
+  EXPECT_FLOAT_EQ(result.at({0, 5, 5, 0}), 50);
 }
 
 /// ConvTranspose with easy to calculate output values. 2x2 input, 3-ch input,
@@ -8116,13 +8203,13 @@ static void Conv3DQuantizedTest(glow::PlaceholderBindings &bindings,
 
   // Quantized types.
   auto inputTQP = quantization::chooseQuantizationParams(
-      -1.0, 1.0, quantization::Schema::Asymmetric, elemKind);
+      {-1.0, 1.0}, quantization::Schema::Asymmetric, elemKind);
   auto filterTQP = quantization::chooseQuantizationParams(
-      -1.0, 1.0, quantization::Schema::Asymmetric, elemKind);
+      {-1.0, 1.0}, quantization::Schema::Asymmetric, elemKind);
   auto biasTQP = quantization::chooseQuantizationParams(
-      -1.0, 1.0, quantization::Schema::Asymmetric, biaselemKind);
+      {-1.0, 1.0}, quantization::Schema::Asymmetric, biaselemKind);
   auto outputTQP = quantization::chooseQuantizationParams(
-      -4.0, 4.0, quantization::Schema::Asymmetric, elemKind);
+      {-4.0, 4.0}, quantization::Schema::Asymmetric, elemKind);
 
   // Create quantized network.
   auto inputQTy = mod.uniqueType(elemKind, {1, 4, 4, 4, 1}, inputTQP.scale,
@@ -8172,7 +8259,7 @@ TEST_P(OperatorTest, Conv3DQuantizedTest_Int8_BiasInt8) {
 
 /// Test Int8 Conv3D with Int32 bias.
 TEST_P(OperatorTest, Conv3DQuantizedTest_Int8_BiasInt32) {
-  ENABLED_BACKENDS("Interpreter");
+  ENABLED_BACKENDS("Interpreter", "NNPI");
   Conv3DQuantizedTest(bindings_, mod_, F_, EE_, ElemKind::Int8QTy,
                       ElemKind::Int32QTy);
 }

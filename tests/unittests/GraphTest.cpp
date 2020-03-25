@@ -42,6 +42,17 @@ static const Node *nodeByName(const Function *F, const std::string &name) {
   return nullptr;
 }
 
+/// Mock backend that does lower FC nodes.
+class MockBackendNoLowerConv3D : public MockBackend {
+  bool shouldLower(const Node *N) const override {
+    if (N->getKind() == Kinded::Kind::Convolution3DNodeKind) {
+      return false;
+    } else {
+      return true;
+    }
+  }
+};
+
 TEST(Graph, testVariableErasure) {
   Module MD;
   auto &vars = MD.getConstants();
@@ -83,8 +94,64 @@ TEST(Graph, clear) {
   EXPECT_EQ(M.getFunctions().size(), 0);
 }
 
-/// Check that a createConv can be run.
-TEST(Graph, simpleTestConv) {
+/// Test the graph nodes names and utilities.
+TEST(Graph, testGraphNames) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+
+  Node *op1 = MD.createPlaceholder(ElemKind::FloatTy, {1, 10}, "op1",
+                                   false /*isTrainable*/);
+  Node *op2 = MD.createConstant(ElemKind::FloatTy, {1, 10}, "op2");
+  Node *add = F->createAdd("add", op1, op2);
+  auto *top = F->createTopK("top", add, 5);
+  Node *save = F->createSave("out", top->getValues());
+
+  EXPECT_TRUE(MD.getPlaceholderByName("op1"));
+  EXPECT_TRUE(MD.getConstantByName("op2"));
+  EXPECT_TRUE(F->getNodeByName("add"));
+  EXPECT_TRUE(F->getNodeByName("top"));
+  EXPECT_TRUE(F->getNodeByName("out_save"));
+
+  NodeValue op1Res = op1->getNthResult(0);
+  NodeValue op2Res = op2->getNthResult(0);
+  NodeValue addRes = add->getNthResult(0);
+  EXPECT_TRUE(top->getNumResults() == 2);
+  NodeValue topValRes = top->getNthResult(0);
+  NodeValue topIndRes = top->getNthResult(1);
+
+  auto op1ResName =
+      op1Res.generateNodeOutputName(false /*stripResNoFor0thInput*/);
+  auto op2ResName =
+      op2Res.generateNodeOutputName(false /*stripResNoFor0thInput*/);
+  auto addResName =
+      addRes.generateNodeOutputName(true /*stripResNoFor0thInput*/);
+  auto topValResName =
+      topValRes.generateNodeOutputName(false /*stripResNoFor0thInput*/);
+  auto topIndResName =
+      topIndRes.generateNodeOutputName(false /*stripResNoFor0thInput*/);
+
+  EXPECT_EQ(op1ResName, "op1:0");
+  EXPECT_EQ(op2ResName, "op2:0");
+  EXPECT_EQ(addResName, "add");
+  EXPECT_EQ(topValResName, "top:0");
+  EXPECT_EQ(topIndResName, "top:1");
+
+  EXPECT_EQ(F->getNodeValueByName(op1ResName), op1Res);
+  EXPECT_EQ(F->getNodeValueByName(op2ResName), op2Res);
+  EXPECT_EQ(F->getNodeValueByName(addResName), addRes);
+  EXPECT_EQ(F->getNodeValueByName(topValResName), topValRes);
+  EXPECT_EQ(F->getNodeValueByName(topIndResName), topIndRes);
+
+  EXPECT_EQ(F->getNodeValueByName("op1"), op1Res);
+  EXPECT_EQ(F->getNodeValueByName("op2"), op2Res);
+  EXPECT_EQ(F->getNodeValueByName("add:0"), addRes);
+
+  // Verify the node value is invalid for the SaveNode which has no outputs.
+  EXPECT_EQ(F->getNodeValueByName(save->getName()).getNode(), nullptr);
+}
+
+/// Check node names.
+TEST(Graph, testNodeNames) {
   Module MD;
   Function *F = MD.createFunction("F");
   IRFunction M(F);
@@ -203,7 +270,7 @@ TEST(Graph, float16Conv) {
 }
 
 /// Check that we can create conv3D with float16.
-TEST(Graph, float16Conv3D) {
+TEST(Graph, float16Conv3DLower) {
   Module MD;
   Function *F = MD.createFunction("F");
   PlaceholderBindings bindings;
@@ -218,6 +285,36 @@ TEST(Graph, float16Conv3D) {
   EXPECT_EQ(conv->getBias().getElementType(), ElemKind::Float16Ty);
 
   auto backend = MockBackend();
+  CompilationContext cctx;
+  lower(F, cctx, &backend);
+
+  IRFunction M(F);
+
+  M.generateIR(backend);
+  EXPECT_GT(M.getInstrs().size(), 0);
+  auto convIt = std::find_if(M.getInstrs().begin(), M.getInstrs().end(),
+                             [](const Instruction &inst) -> bool {
+                               return llvm::isa<Convolution3DInst>(inst);
+                             });
+  ASSERT_TRUE(convIt == M.getInstrs().end());
+}
+
+/// Check that we can create conv3D with float16.
+TEST(Graph, float16Conv3DNoLower) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  PlaceholderBindings bindings;
+  Node *K =
+      MD.createConstant(ElemKind::Float16Ty, {4, 320, 200, 200, 3}, "input");
+
+  auto *conv = F->createConv3D(bindings, "Conv3D", K, 16, 3, 2, 3, 1);
+  F->createSave("Save", conv);
+  EXPECT_TRUE(conv->verify());
+  EXPECT_EQ(conv->getResult().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(conv->getFilter().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(conv->getBias().getElementType(), ElemKind::Float16Ty);
+
+  auto backend = MockBackendNoLowerConv3D();
   CompilationContext cctx;
   lower(F, cctx, &backend);
 

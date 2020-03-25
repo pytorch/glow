@@ -72,31 +72,44 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   return Error::success();
 }
 
+/// Inserts into \p opts a mapping from \p optKey to \p optVal. If \p optKey
+/// already existed in \p opts then logs a warning about overriding it for \p F.
+static void insertOptLogOverride(const Function &F,
+                                 BackendSpecificOptions &opts,
+                                 const std::string &optKey,
+                                 const std::string &optVal) {
+  auto it = opts.find(optKey);
+  if (it != opts.end()) {
+    LOG(WARNING) << optKey << " was set to " << it->second << " for network "
+                 << F.getName().data() << "; overriding it with " << optVal;
+  }
+  opts[optKey] = optVal;
+}
+
 Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   BackendOptions newOpts = opts;
   if (opts.backendHints.executionUnits) {
-    LOG(INFO) << " Setting backendSpecificOpts cores for network: "
-              << F->getName().str() << " to "
-              << std::to_string(opts.backendHints.executionUnits) << " cores ";
-
-    newOpts.backendSpecificOpts["NNPI_IceCores"] =
-        std::to_string(opts.backendHints.executionUnits);
+    insertOptLogOverride(*F, newOpts.backendSpecificOpts, "NNPI_IceCores",
+                         std::to_string(opts.backendHints.executionUnits));
   }
 
   if (glow::onnxifi::GlowDumpNNPICompilerData) {
-    std::string icet_fname = std::string("icet_file_") + F->getName().str();
-    LOG(INFO) << "Writing ICE_T compiled output to: " << icet_fname
-              << std::endl;
-    newOpts.backendSpecificOpts["NNPI_CompiledFile"] = icet_fname;
+    const std::string icetFName =
+        std::string("icet_file_") + F->getName().str();
+    insertOptLogOverride(*F, newOpts.backendSpecificOpts, "NNPI_CompiledFile",
+                         icetFName);
   }
 
   if (glow::onnxifi::GlowUsePerPartitionIcetConfig) {
-    std::string icet_config_fname =
+    const std::string icetConfigFName =
         std::string("icet_config_") + F->getName().str() + std::string(".json");
-    LOG(INFO) << "Reading ICE_T config from: " << icet_config_fname
-              << std::endl;
-    newOpts.backendSpecificOpts["NNPI_CompilationDebugConfigFile"] =
-        icet_config_fname;
+    insertOptLogOverride(*F, newOpts.backendSpecificOpts,
+                         "NNPI_CompilationDebugConfigFile", icetConfigFName);
+  }
+
+  for (const auto &keyValPair : newOpts.backendSpecificOpts) {
+    LOG(INFO) << "Backend-specific option " << keyValPair.first << " set to "
+              << keyValPair.second << " for network " << F->getName().data();
   }
 
   compilationOptions_ = NNPICompilationOptions(newOpts.backendSpecificOpts);
