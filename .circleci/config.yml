@@ -71,7 +71,7 @@ linux_default: &linux_default
 jobs:
   DEBUG:
     environment:
-      DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang8-ubuntu16.04:283"
+      DOCKER_IMAGE: "neildhar/glow"
     <<: *linux_default
   OPENCL:
     environment:
