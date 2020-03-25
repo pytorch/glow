@@ -4022,7 +4022,7 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   }
 
   // Allow the backend to transform the graph after lowering.
-  B.transformPostLowering(F, cctx, devInfo);
+  RETURN_IF_EXPECTED_IS_ERR(B.transformPostLowering(F, cctx, devInfo));
 
   if (!B.shouldPreQuantizeConstants()) {
     // Do the actual float ->fix-point conversion of constant tensors after

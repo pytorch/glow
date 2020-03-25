@@ -27,7 +27,7 @@ using llvm::dyn_cast;
 using namespace glow;
 
 /// Perform OpenCL specific post-lowering graph transformation.
-bool OCLBackend::transformPostLowering(
+Expected<bool> OCLBackend::transformPostLowering(
     Function *F, CompilationContext &cctx,
     const glow::runtime::DeviceInfo *devInfo) const {
   // NCHW transformation is not supported in training mode yet, because of some
