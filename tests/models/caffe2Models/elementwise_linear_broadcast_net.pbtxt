@@ -1,0 +1,35 @@
+name: "elementwise_linear"
+op {
+  input: "X"
+  input: "w"
+  output: "i0"
+  name: ""
+  type: "Mul"
+  arg {
+    name: "axis"
+    i: 1
+  }
+  arg {
+    name: "broadcast"
+    i: 0
+  }
+}
+op {
+  input: "i0"
+  input: "b"
+  output: "el_result"
+  name: ""
+  type: "Add"
+  arg {
+    name: "axis"
+    i: 1
+  }
+  arg {
+    name: "broadcast"
+    i: 0
+  }
+}
+external_input: "X"
+external_input: "w"
+external_input: "b"
+external_output: "el_result"

@@ -580,10 +580,10 @@ Error Caffe2ModelLoader::loadLayerNorm(const caffe2::OperatorDef &op,
   LayerNormalizationNode *node =
       G_->createLayerNormalization(opName, in, weight, bias, eps);
 
-  RETURN_ERR_IF_NOT(op.output_size() == 1,
-                    "Supporting only one output from LayerNorm");
+  // We only support one output for LayoutNorm. Ignoring the
+  // rest of the outputs.
+  RETURN_IF_ERR(addNodeAsOutput(op, node, /* numOutputs */ 1));
 
-  RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
 }
 
