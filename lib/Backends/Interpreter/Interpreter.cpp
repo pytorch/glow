@@ -535,7 +535,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::SparseToDenseNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Float16Ty},
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int64ITy},
                {SparseToDenseNode::IndicesIdx}) &&
            (NI.getInElemTy(SparseToDenseNode::IndicesIdx) ==
             ElemKind::Int64ITy);
@@ -698,6 +698,7 @@ bool Interpreter::verify(const IRFunction &IR) const {
 bool Interpreter::shouldLower(const Node *N) const {
   switch (N->getKind()) {
   case Kinded::Kind::ConvolutionNodeKind:
+  case Kinded::Kind::Convolution3DNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
     return false;

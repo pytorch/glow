@@ -244,13 +244,10 @@ inline std::pair<dim_t, dim_t> calculateConvTransposeOutputDims(
   ShapeHW kdim(kernels);
   ShapeHW sdim(strides);
 
-  assert((dilation == 1) &&
-         "ConvTranspose output calculation doesn't support dilation");
-
-  size_t outsx = (sx - 1) * sdim.height + (kdim.height - 1) * (dilation - 1) -
-                 pdim.top - pdim.bottom + kdim.height;
-  size_t outsy = (sy - 1) * sdim.width + (kdim.width - 1) * (dilation - 1) -
-                 pdim.left - pdim.right + kdim.width;
+  size_t outsx = (sx - 1) * sdim.height + (kdim.height - 1) * dilation + 1 -
+                 pdim.top - pdim.bottom;
+  size_t outsy = (sy - 1) * sdim.width + (kdim.width - 1) * dilation + 1 -
+                 pdim.left - pdim.right;
 
   return {outsx, outsy};
 }

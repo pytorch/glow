@@ -1284,9 +1284,8 @@ Error ONNXModelWriter::writeBucketize(const BucketizeNode *node,
 Error ONNXModelWriter::writeResizeNearest(const ResizeNearestNode *node,
                                           GraphType &graph) {
   auto *proto = graph.add_node();
-  // Find dictionary entries.
-  addValueAttribute(proto, "height_scale", node->getHeightScale());
-  addValueAttribute(proto, "width_scale", node->getWidthScale());
+  // Add dictionary entries.
+  addValueAttribute(proto, "Scale", node->getScale());
 
   return writeAllWithNode(node->getName(), node, graph, proto);
 }

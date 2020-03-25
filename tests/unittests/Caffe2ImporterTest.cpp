@@ -1189,8 +1189,11 @@ TEST_F(Caffe2ImporterTest, importResizeNearest) {
   ASSERT_TRUE(resizeNearestNode);
   // We have one input and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
-  auto heightScale = resizeNearestNode->getHeightScale();
-  auto widthScale = resizeNearestNode->getWidthScale();
+  auto scale = resizeNearestNode->getScale();
+  EXPECT_EQ(scale[0], 1);
+  auto heightScale = scale[1];
+  auto widthScale = scale[2];
+  EXPECT_EQ(scale[3], 1);
   EXPECT_NEAR(heightScale, 2.0, 0.00001);
   EXPECT_NEAR(widthScale, 1.5, 0.00001);
 }
@@ -3111,17 +3114,26 @@ TEST_F(Caffe2ImporterTest, PrePartitionedMultiOpTest) {
         P0 = F;
         ASSERT_EQ(PPC.logicalIDs[i].size(), 1);
         EXPECT_TRUE(PPC.logicalIDs[i].count(2));
+        EXPECT_EQ(PPC.backendSpecificOpts[i].size(), 0);
       } else if (F->getName() == "main_p1") {
         P1 = F;
         ASSERT_EQ(PPC.logicalIDs[i].size(), 2);
         EXPECT_TRUE(PPC.logicalIDs[i].count(0));
         EXPECT_TRUE(PPC.logicalIDs[i].count(1));
+        EXPECT_EQ(PPC.backendSpecificOpts[i].size(), 0);
       } else if (F->getName() == "main_p2") {
         P2 = F;
-      } else {
-        FAIL() << "Unknown Function found.";
         ASSERT_EQ(PPC.logicalIDs[i].size(), 1);
         EXPECT_TRUE(PPC.logicalIDs[i].count(2));
+        EXPECT_EQ(PPC.backendSpecificOpts[i].size(), 3);
+        ASSERT_TRUE(PPC.backendSpecificOpts[i].count("BackendA_opt1"));
+        EXPECT_EQ(PPC.backendSpecificOpts[i].at("BackendA_opt1"), "val1");
+        ASSERT_TRUE(PPC.backendSpecificOpts[i].count("BackendA_opt2"));
+        EXPECT_EQ(PPC.backendSpecificOpts[i].at("BackendA_opt2"), "val2");
+        ASSERT_TRUE(PPC.backendSpecificOpts[i].count("BackendB_opt3"));
+        EXPECT_EQ(PPC.backendSpecificOpts[i].at("BackendB_opt3"), "val3");
+      } else {
+        FAIL() << "Unknown Function found.";
       }
 
       // Check that the function was also found in the module.
@@ -3238,4 +3250,119 @@ TEST_F(Caffe2ImporterTest, PrePartitionedMultiOpTest) {
 
   EXPECT_TRUE(resultPartitionedT->isBitwiseEqual(*resultUnpartitonedT,
                                                  /* verbose */ true));
+}
+
+/// Test importing a Caffe2 LayerNorm without weights and bias provided but with
+/// epsilon or axis.
+TEST_F(Caffe2ImporterTest, importLayerNormNoWeightBias) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/layernorm_pred_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  const ShapeVector inShape({4, 2, 5, 5});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Tensor data(ElemKind::FloatTy, inShape);
+    data.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&data.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&data});
+  }
+
+  // High level check on the content of the graph. We should have
+  // {Placeholder, Splat, Splat} => LayerNorm => Save
+  EXPECT_EQ(F->getNodes().size(), 4);
+  SaveNode *save = getSaveNodeFromDest(output);
+
+  auto *LN = llvm::dyn_cast<LayerNormalizationNode>(save->getInput().getNode());
+  ASSERT_TRUE(LN);
+  EXPECT_EQ(LN->getEpsilon(), 0.05f);
+  EXPECT_TRUE(LN->getInput().dims().equals(inShape));
+  EXPECT_TRUE(LN->getResult().dims().equals(inShape));
+
+  auto *scale = llvm::dyn_cast<SplatNode>(LN->getScale().getNode());
+  ASSERT_TRUE(scale);
+  EXPECT_EQ(scale->getValue(), 1.0f);
+
+  auto *bias = llvm::dyn_cast<SplatNode>(LN->getBias().getNode());
+  ASSERT_TRUE(bias);
+  EXPECT_EQ(bias->getValue(), 0.0f);
+
+  // Axis is 2, so check shape with second and third dims of inShape.
+  EXPECT_TRUE(scale->getResult().dims().equals({inShape[2], inShape[3]}));
+  EXPECT_TRUE(bias->getResult().dims().equals({inShape[2], inShape[3]}));
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+}
+
+/// Test importing a Caffe2 LayerNorm with weights and bias provided but no
+/// epsilon or axis.
+TEST_F(Caffe2ImporterTest, importLayerNormWithWeightBias) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/layernorm_weight_bias_pred_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/layernorm_weight_bias_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  const ShapeVector inShape({5, 4, 3});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Tensor data(ElemKind::FloatTy, inShape);
+    data.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&data.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&data});
+  }
+
+  // High level check on the content of the graph. We should have
+  // {Placeholder, Constant, Constant} => LayerNorm => Save
+  EXPECT_EQ(F->getNodes().size(), 2);
+  SaveNode *save = getSaveNodeFromDest(output);
+
+  auto *LN = llvm::dyn_cast<LayerNormalizationNode>(save->getInput().getNode());
+  ASSERT_TRUE(LN);
+  EXPECT_EQ(LN->getEpsilon(), 0.001f); // Caffe2 default.
+  EXPECT_TRUE(LN->getInput().dims().equals(inShape));
+  EXPECT_TRUE(LN->getResult().dims().equals(inShape));
+
+  auto *scale = llvm::dyn_cast<Constant>(LN->getScale().getNode());
+  ASSERT_TRUE(scale);
+
+  auto *bias = llvm::dyn_cast<Constant>(LN->getBias().getNode());
+  ASSERT_TRUE(bias);
+
+  // Default axis is 1 and it was unspecified in the input proto, so check shape
+  // with first and second dims of inShape.
+  EXPECT_TRUE(scale->getOutput().dims().equals({inShape[1], inShape[2]}));
+  EXPECT_TRUE(bias->getOutput().dims().equals({inShape[1], inShape[2]}));
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
 }

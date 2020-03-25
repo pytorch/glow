@@ -1867,6 +1867,29 @@ public:
   }
 };
 
+class LayerNormalizationNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowLN = llvm::dyn_cast<LayerNormalizationNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowLN, "Bad node type", NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors(
+        {nodeValueName(glowLN->getInput()), nodeValueName(glowLN->getScale())},
+        {nodeValueName(glowLN->getBias()), nodeValueName(glowLN->getResult())});
+
+    llvm::SmallVector<uint32_t, 4> normShape(glowLN->getScale().dims().begin(),
+                                             glowLN->getScale().dims().end());
+
+    return nnpiNetworkAddLayerNormOp(
+        importer.getNetwork(), glowLN->getName().begin(),
+        nodeValueName(glowLN->getInput()).c_str(),
+        nodeValueName(glowLN->getResult()).c_str(),
+        nodeValueName(glowLN->getScale()).c_str(),
+        nodeValueName(glowLN->getBias()).c_str(), normShape.data(),
+        normShape.size(), glowLN->getEpsilon());
+  }
+};
+
 //////////////////////////////////////////////////////////////////////////
 namespace {
 std::unordered_map<
@@ -1954,6 +1977,7 @@ std::unordered_map<
     {"SpaceToDepth", glow::make_unique<SpaceToDepthNodeImporter>()},
     {"Clip", glow::make_unique<ClipNodeImporter>()},
     {"BatchNormalization", glow::make_unique<BatchNormalizationNodeImporter>()},
+    {"LayerNormalization", glow::make_unique<LayerNormalizationNodeImporter>()},
     {"ChannelwiseQuantizedConvolution",
      glow::make_unique<ChannelwiseQuantizedConvolutionNodeImporter>()},
 };

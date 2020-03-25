@@ -132,6 +132,37 @@ replacePlaceholderWithConstant(ONNX_NAMESPACE::ModelProto &model,
 }
 
 /// Performs constant folding test on the given model file \p NetFilename
+/// with single output and then checking against expected values
+/// \p expectedValues and \returns true if the test completes without error.
+Error checkConstFoldLegalName(std::string NetFilename,
+                              std::vector<float> expectedValues) {
+  Tensor T(glow::ElemKind::FloatTy, {3, 2});
+  T.getHandle<float>() = expectedValues;
+  ONNX_NAMESPACE::ModelProto modelDef;
+  ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(NetFilename));
+  setConstantFoldLoaderOpsFlag(true);
+
+  // It is expected that loading will fold the whole graph and output
+  // nodes will become constants during the loading process.
+  ExecutionEngine EE;
+  Module &mod = EE.getModule();
+  Function *F = mod.createFunction("temp");
+  ONNXModelLoader onnxLD(NetFilename, {}, {}, *F);
+
+  setConstantFoldLoaderOpsFlag(false);
+
+  // The folded output tensors are expected to be constants and should
+  // match the expected values.
+  NodeValue NV;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      NV, onnxLD.getNodeValueByName(modelDef.graph().output(0).name()));
+  auto *constOut = llvm::dyn_cast<Constant>(NV.getNode());
+  RETURN_ERR_IF_NOT(constOut, "Failed cast to Constant");
+  EXPECT_TRUE(T.isEqual(constOut->getPayload()));
+  return Error::success();
+}
+
+/// Performs constant folding test on the given model file \p NetFilename
 /// by replacing input tensors with name \p tensorNames, and values \p tensors
 /// and then checking against expected output expectedTensors. \returns true
 /// if the test completes without error.
@@ -170,6 +201,14 @@ Error checkConstFoldedOutput(std::string NetFilename,
     EXPECT_TRUE(expectedTensors[i]->isEqual(constOut->getPayload()));
   }
   return Error::success();
+}
+
+/// Test loading constant+relu ops with numeric input names from an ONNX model.
+TEST(onnx, reluConstFoldLegalName) {
+  std::string NetFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/constRelu.onnxtxt");
+  FAIL_TEST_IF_ERR(
+      checkConstFoldLegalName(NetFilename, {1.0, 0.0, 0.0, 1.0, 1.0, 1.0}));
 }
 
 template <class OpType>
@@ -289,6 +328,39 @@ static void importExpandTest(const std::string &netFilename,
   }
 }
 
+/// Import maxPool1D
+static void importMaxPool1DTest(std::string &netFilename,
+                                llvm::ArrayRef<float> inputValues,
+                                llvm::ArrayRef<dim_t> inputShape,
+                                llvm::ArrayRef<dim_t> outputShape,
+                                llvm::ArrayRef<float> expectedValues) {
+  float delta = 1e-08;
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+
+  Type input_type(ElemKind::FloatTy, inputShape);
+  ONNXModelLoader onnxLD(netFilename, {"x"}, {&input_type}, *F);
+
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+  auto PH = mod.getPlaceholderByName("x");
+  auto *inTensor = bindings.allocate(PH);
+  inTensor->getHandle() = inputValues;
+
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+
+  auto result = bindings.get(graphOutputVar)->getHandle();
+  ASSERT_TRUE(result.dims() == (llvm::ArrayRef<dim_t>)outputShape);
+  for (size_t i = 0; i < result.getType().size(); i++) {
+    EXPECT_NEAR(result.raw(i), expectedValues[i], delta);
+  }
+}
+
 /// Test loading expand op from an ONNX model
 /// with different ouput shape.
 TEST(onnx, expandDiffShape) {
@@ -318,6 +390,28 @@ TEST(onnx, expandSameShape) {
   std::string netFilename(GLOW_DATA_PATH fileName);
   importExpandTest(netFilename, inputValues, inputShape, outputShape,
                    expectedValues);
+}
+
+/// Test loading maxPool1D op from an ONNX model
+/// with different ouput shape.
+TEST(onnx, maxPool1D) {
+  std::vector<float> inputValues = {
+      1.4206449,  0.54408556, 1.3318906,  0.771925,   0.9450552,
+      0.08600737, 0.30009857, 1.4206449,  0.54408556, 1.3318906,
+      0.771925,   0.9450552,  0.08600737, 0.30009857};
+
+  std::vector<dim_t> inputShape = {1, 2, 7};
+  std::vector<dim_t> outputShape = {1, 2, 2};
+  std::vector<float> expectedValues = {
+      1.4206449,
+      0.9450552,
+      1.4206449,
+      0.9450552,
+  };
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/maxPool1D.onnxtxt");
+  importMaxPool1DTest(netFilename, inputValues, inputShape, outputShape,
+                      expectedValues);
 }
 
 /// Test loading LeakyRelu op from an ONNX model.
@@ -681,6 +775,69 @@ TEST_F(OnnxImporterTest, importConvAutoPadSameLower) {
   convTestHelper(filename, expectedDims, expectedValues);
 }
 
+/// Import conv1D
+static void importConv1DTest(std::string &netFilename,
+                             llvm::ArrayRef<float> inputXValues,
+                             llvm::ArrayRef<dim_t> inputXShape,
+                             llvm::ArrayRef<float> inputWValues,
+                             llvm::ArrayRef<dim_t> inputWShape,
+                             llvm::ArrayRef<dim_t> outputShape,
+                             llvm::ArrayRef<float> expectedValues) {
+  float delta = 1e-07;
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+
+  Type input_type_x(ElemKind::FloatTy, inputXShape);
+  Type input_type_w(ElemKind::FloatTy, inputWShape);
+  ONNXModelLoader onnxLD(netFilename, {"x", "w"},
+                         {&input_type_x, &input_type_w}, *F);
+
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+  auto PHX = mod.getPlaceholderByName("x");
+  auto *inTensorX = bindings.allocate(PHX);
+  inTensorX->getHandle() = inputXValues;
+
+  auto PHW = mod.getPlaceholderByName("w");
+  auto *inTensorW = bindings.allocate(PHW);
+  inTensorW->getHandle() = inputWValues;
+
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+
+  auto result = bindings.get(graphOutputVar)->getHandle();
+  ASSERT_TRUE(result.dims() == (llvm::ArrayRef<dim_t>)outputShape);
+  for (size_t i = 0; i < result.getType().size(); i++) {
+    EXPECT_NEAR(result.raw(i), expectedValues[i], delta);
+  }
+}
+
+/// Test Conv1D
+TEST(onnx, conv1D) {
+  std::vector<float> inputXValues = {
+      1.4206449,  -0.54408556, -1.3318906,  0.771925,   0.9450552,  0.08600737,
+      0.30009857, -0.36060193, -0.33999684, -0.9809143, -1.0172559, -0.4921318,
+      -1.0513021, 1.8671927,   -0.842103,   -0.8903683};
+  std::vector<float> inputWValues = {0.16575365, -0.42219377, 0.55620337,
+                                     -0.5700942, -1.1148645,  -0.33808824};
+  std::vector<dim_t> inputXShape = {1, 2, 8};
+  std::vector<dim_t> inputWShape = {3, 2, 1};
+  std::vector<dim_t> outputShape = {1, 3, 8};
+  std::vector<float> expectedValues = {
+      0.3790216,  0.32395172, 0.20871338,  0.33572435, 0.6004995,   -0.7740611,
+      0.40527308, 0.31613684, 0.9839977,   0.25659135, -0.16087033, 0.7099088,
+      1.1249841,  -1.0166382, 0.6469939,   0.30702582, -1.4688776,  0.9382173,
+      1.8287997,  -0.6942077, -0.69817555, -0.7271625, -0.04986412, 0.7030453};
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/conv1D.onnxtxt");
+  importConv1DTest(netFilename, inputXValues, inputXShape, inputWValues,
+                   inputWShape, outputShape, expectedValues);
+}
+
 /// Test to ensure error handling for missing bias
 /// input is handled correctly. Remaining input is
 /// still sane to make sure it only fails for the
@@ -846,6 +1003,19 @@ TEST(onnx, importConvTransposeOutputShape) {
   std::vector<dim_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {4,  12, 17,  12, 18, 49, 63, 41,
                                        36, 91, 105, 65, 32, 76, 85, 50};
+  convTransposeTestHelper(filename, expectedDims, expectedValues);
+}
+
+/// Test loading conv op from a ONNX model.
+/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
+/// strides is {1, 1}, dilations is {2, 2},
+/// auto_pad is not set, group is 1.
+TEST(onnx, importConvTransposeOutputShapeDilation) {
+  std::string filename("simpleConvTransposeOutShapeDilation.onnxtxt");
+  std::vector<dim_t> expectedDims = {1, 1, 6, 6};
+  std::vector<float> expectedValues = {
+      4,  6,  6,  9,  8,  12, 8,  10, 12, 15, 16, 20, 10, 15, 12, 18, 14, 21,
+      20, 25, 24, 30, 28, 35, 16, 24, 18, 27, 20, 30, 32, 40, 36, 45, 40, 50};
   convTransposeTestHelper(filename, expectedDims, expectedValues);
 }
 
@@ -2789,6 +2959,68 @@ TEST_F(OnnxImporterTest, importLess) {
   EXPECT_EQ(CMPLT->getResult().dims()[0], 4);
   EXPECT_EQ(CMPLT->getResult().dims()[1], 4);
   EXPECT_EQ(CMPLT->getResult().dims()[2], 1);
+}
+
+TEST(onnx, importLessEqual) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/CmpLTE.onnxtxt");
+
+  Placeholder *out = nullptr;
+  {
+    Tensor X(ElemKind::FloatTy, {1, 4, 1});
+    Tensor Y(ElemKind::FloatTy, {4, 1, 1});
+    X.zero();
+    Y.zero();
+
+    ONNXModelLoader onnxLD(netFilename, {"X", "Y"},
+                           {&X.getType(), &Y.getType()}, *F);
+    out = EXIT_ON_ERR(onnxLD.getOutputByName("Out"));
+  }
+
+  auto *save = getSaveNodeFromDest(out);
+
+  CmpLTENode *CMPLTE = llvm::dyn_cast<CmpLTENode>(save->getInput().getNode());
+
+  ASSERT_TRUE(CMPLTE);
+  ASSERT_EQ(CMPLTE->getResult().dims().size(), 3);
+  EXPECT_EQ(CMPLTE->getResult().dims()[0], 4);
+  EXPECT_EQ(CMPLTE->getResult().dims()[1], 4);
+  EXPECT_EQ(CMPLTE->getResult().dims()[2], 1);
+}
+
+TEST(onnx, importEqual) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/Equal.onnxtxt");
+
+  Placeholder *out = nullptr;
+  {
+    Tensor X(ElemKind::FloatTy, {1, 4, 1});
+    Tensor Y(ElemKind::FloatTy, {4, 1, 1});
+    X.zero();
+    Y.zero();
+
+    ONNXModelLoader onnxLD(netFilename, {"X", "Y"},
+                           {&X.getType(), &Y.getType()}, *F);
+    out = EXIT_ON_ERR(onnxLD.getOutputByName("Out"));
+  }
+
+  auto *save = getSaveNodeFromDest(out);
+
+  CmpEQNode *CMPEQ = llvm::dyn_cast<CmpEQNode>(save->getInput().getNode());
+
+  ASSERT_TRUE(CMPEQ);
+  ASSERT_EQ(CMPEQ->getResult().dims().size(), 3);
+  EXPECT_EQ(CMPEQ->getResult().dims()[0], 4);
+  EXPECT_EQ(CMPEQ->getResult().dims()[1], 4);
+  EXPECT_EQ(CMPEQ->getResult().dims()[2], 1);
 }
 
 /// Test loading NMS using initializer nodes op from an ONNX model.

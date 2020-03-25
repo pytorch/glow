@@ -1,0 +1,11 @@
+name: "layer_norm"
+op {
+  input: "input"
+  input: "weight"
+  input: "bias"
+  output: "result"
+  name: ""
+  type: "LayerNorm"
+}
+external_input: "input"
+external_output: "result"

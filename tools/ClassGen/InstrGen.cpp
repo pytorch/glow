@@ -729,8 +729,7 @@ int main(int argc, char **argv) {
   BB.newInstr("ResizeNearest")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
-      .addMember(MemberType::Float, "HeightScale")
-      .addMember(MemberType::Float, "WidthScale")
+      .addMember(MemberType::VectorFloat, "Scale")
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen();
 

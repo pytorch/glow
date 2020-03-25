@@ -257,25 +257,6 @@ if(GLOW_WITH_HABANA)
 endif()
 
 if(GLOW_WITH_CPU)
-  add_executable(HostManagerTest
-          HostManagerTest.cpp)
-  target_link_libraries(HostManagerTest
-          PRIVATE
-          Backends
-          HostManager
-          ExecutionEngine
-          Executor
-          Graph
-          IR
-          Partitioner
-          Provisioner
-          gtest
-          TestMain)
-
-  add_glow_test(HostManagerTest
-                ${GLOW_BINARY_DIR}/tests/HostManagerTest
-                    --gtest_output=xml:ProvisionerTest.xml)
-
   add_executable(HyphenTest
                  HyphenTest.cpp)
   target_link_libraries(HyphenTest
@@ -431,6 +412,17 @@ foreach(backend ${GLOW_BACKENDS})
   add_backend_test(TEST BackendTest BACKEND "${backend}" UNOPT PRIVATE Backend HostManager)
   add_backend_test(TEST DeviceManagerTest BACKEND "${backend}")
   add_backend_test(TEST GradCheckTest BACKEND "${backend}" UNOPT)
+  add_backend_test(TEST HostManagerTest BACKEND "${backend}" UNOPT PRIVATE
+                        Backends
+                        HostManager
+                        ExecutionEngine
+                        Executor
+                        Graph
+                        IR
+                        Partitioner
+                        Provisioner
+                        gtest
+)
   add_backend_test(TEST MLTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST OperatorGradTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST OperatorTest BACKEND "${backend}" UNOPT PRIVATE
