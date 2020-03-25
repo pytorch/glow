@@ -552,8 +552,8 @@ getTensorQuantizationParams(const Tensor &tensor, Schema qSchema, ElemKind qTy,
   // Compute the quantization parameters for each group.
   std::vector<TensorQuantizationParams> TQP;
   for (dim_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {
-    TQP.push_back(chooseQuantizationParams(minArray[groupIdx],
-                                           maxArray[groupIdx], qSchema, qTy));
+    TQP.push_back(chooseQuantizationParams(
+        {minArray[groupIdx], maxArray[groupIdx]}, qSchema, qTy));
   }
   return TQP;
 }

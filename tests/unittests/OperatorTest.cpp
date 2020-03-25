@@ -6649,7 +6649,7 @@ static void testChannelwiseQuantizedConv(
 
   // Quantize input.
   auto inputTQP =
-      quantization::chooseQuantizationParams(-1.0, 1.0, schema, elemQKind);
+      quantization::chooseQuantizationParams({-1.0, 1.0}, schema, elemQKind);
   auto *inputQTy =
       mod.uniqueType(elemQKind, inputDims, inputTQP.scale, inputTQP.offset);
   auto *inputQ = F->createQuantize("inputQ", inputF, inputQTy);
@@ -6722,7 +6722,7 @@ static void testChannelwiseQuantizedConv(
   // particular values of the convolution parameters. If the convolution
   // sizes are changed than these parameters must be adjusted.
   auto outputTQP =
-      quantization::chooseQuantizationParams(-6.0, 6.0, schema, elemQKind);
+      quantization::chooseQuantizationParams({-6.0, 6.0}, schema, elemQKind);
   auto *outQTy =
       mod.uniqueType(elemQKind, outputDims, outputTQP.scale, outputTQP.offset);
 

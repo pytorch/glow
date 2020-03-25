@@ -509,9 +509,9 @@ static void quantizeTensorRowwise(quantization::Schema qSchema, ElemKind qTy) {
   float row2Min = tensorH.at({1, 0});
   float row2Max = tensorH.at({1, numCols - 1});
   auto TQP1 =
-      quantization::chooseQuantizationParams(row1Min, row1Max, qSchema, qTy);
+      quantization::chooseQuantizationParams({row1Min, row1Max}, qSchema, qTy);
   auto TQP2 =
-      quantization::chooseQuantizationParams(row2Min, row2Max, qSchema, qTy);
+      quantization::chooseQuantizationParams({row2Min, row2Max}, qSchema, qTy);
   Tensor row1Q = quantization::quantizeTensor(row1, TQP1, qTy);
   Tensor row2Q = quantization::quantizeTensor(row2, TQP2, qTy);
   auto row1QH = row1Q.getHandle<eTy>();
@@ -921,23 +921,11 @@ static void enableChannelwiseQuantizedConv(ElemKind qPrec, ElemKind qPrecBias,
   bindings.allocate(save->getPlaceholder());
 
   // Quantize function. Choose asymmetric ranges to test quantization params.
-  auto inputTQP =
-      quantization::chooseQuantizationParams(-2.0, 1.0, schema, qPrec);
-  auto filterTQP =
-      quantization::chooseQuantizationParams(-1.0, 2.0, schema, qPrec);
-  auto biasTQP =
-      quantization::chooseQuantizationParams(0.0, 3.0, schema, qPrecBias);
-  auto convTQP =
-      quantization::chooseQuantizationParams(-3.0, 0.0, schema, qPrec);
   quantization::QuantizationConfiguration quantConfig{{
-      {input->getOutput().generateNodeOutputName(),
-       {inputTQP.scale, inputTQP.offset}},
-      {filterC->getOutput().generateNodeOutputName(),
-       {filterTQP.scale, filterTQP.offset}},
-      {biasC->getOutput().generateNodeOutputName(),
-       {biasTQP.scale, biasTQP.offset}},
-      {conv->getResult().generateNodeOutputName(),
-       {convTQP.scale, convTQP.offset}},
+      {input->getOutput().generateNodeOutputName(), {-2.0, 1.0}},
+      {filterC->getOutput().generateNodeOutputName(), {-1.0, 2.0}},
+      {biasC->getOutput().generateNodeOutputName(), {0.0, 3.0}},
+      {conv->getResult().generateNodeOutputName(), {-3.0, 0.0}},
   }};
   quantConfig.schema = schema;
   quantConfig.precision = qPrec;
