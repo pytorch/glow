@@ -698,6 +698,7 @@ bool Interpreter::verify(const IRFunction &IR) const {
 bool Interpreter::shouldLower(const Node *N) const {
   switch (N->getKind()) {
   case Kinded::Kind::ConvolutionNodeKind:
+  case Kinded::Kind::Convolution3DNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
     return false;

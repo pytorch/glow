@@ -42,6 +42,17 @@ static const Node *nodeByName(const Function *F, const std::string &name) {
   return nullptr;
 }
 
+/// Mock backend that does lower FC nodes.
+class MockBackendNoLowerConv3D : public MockBackend {
+  bool shouldLower(const Node *N) const override {
+    if (N->getKind() == Kinded::Kind::Convolution3DNodeKind) {
+      return false;
+    } else {
+      return true;
+    }
+  }
+};
+
 TEST(Graph, testVariableErasure) {
   Module MD;
   auto &vars = MD.getConstants();
@@ -203,7 +214,7 @@ TEST(Graph, float16Conv) {
 }
 
 /// Check that we can create conv3D with float16.
-TEST(Graph, float16Conv3D) {
+TEST(Graph, float16Conv3DLower) {
   Module MD;
   Function *F = MD.createFunction("F");
   PlaceholderBindings bindings;
@@ -218,6 +229,36 @@ TEST(Graph, float16Conv3D) {
   EXPECT_EQ(conv->getBias().getElementType(), ElemKind::Float16Ty);
 
   auto backend = MockBackend();
+  CompilationContext cctx;
+  lower(F, cctx, &backend);
+
+  IRFunction M(F);
+
+  M.generateIR(backend);
+  EXPECT_GT(M.getInstrs().size(), 0);
+  auto convIt = std::find_if(M.getInstrs().begin(), M.getInstrs().end(),
+                             [](const Instruction &inst) -> bool {
+                               return llvm::isa<Convolution3DInst>(inst);
+                             });
+  ASSERT_TRUE(convIt == M.getInstrs().end());
+}
+
+/// Check that we can create conv3D with float16.
+TEST(Graph, float16Conv3DNoLower) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  PlaceholderBindings bindings;
+  Node *K =
+      MD.createConstant(ElemKind::Float16Ty, {4, 320, 200, 200, 3}, "input");
+
+  auto *conv = F->createConv3D(bindings, "Conv3D", K, 16, 3, 2, 3, 1);
+  F->createSave("Save", conv);
+  EXPECT_TRUE(conv->verify());
+  EXPECT_EQ(conv->getResult().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(conv->getFilter().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(conv->getBias().getElementType(), ElemKind::Float16Ty);
+
+  auto backend = MockBackendNoLowerConv3D();
   CompilationContext cctx;
   lower(F, cctx, &backend);
 
