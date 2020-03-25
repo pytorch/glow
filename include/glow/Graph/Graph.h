@@ -881,6 +881,7 @@ public:
   /// with the use of BroadCast nodes. If axis is -1, it calculates it
   /// automatically for multi directional broadcast.
   DECLARE_CMP_BROADCAST_NODE(CmpLT)
+  DECLARE_CMP_BROADCAST_NODE(CmpEQ)
   DECLARE_CMP_BROADCAST_NODE(CmpLTE)
 
   /// Template function that creates a node and normalizes its input shapes
