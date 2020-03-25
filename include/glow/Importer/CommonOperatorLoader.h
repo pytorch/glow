@@ -511,6 +511,26 @@ protected:
 
     bool broadcast;
     ASSIGN_VALUE_OR_RETURN_ERR(broadcast, getBroadcast(dict));
+    // Check implicit broadcast
+    if (!broadcast && in0.dims().size() != in1.dims().size()) {
+      bool validBroadcast = true;
+      auto dimsA = in0.dims();
+      auto dimsB = in1.dims();
+      for (int i = dimsA.size() - 1, j = dimsB.size() - 1; i >= 0 && j >= 0;) {
+        auto a = dimsA[i];
+        auto b = dimsB[j];
+        if (!(a == b || a == 1 || b == 1)) {
+          validBroadcast = false;
+          break;
+        }
+        --i;
+        --j;
+      }
+      if (!validBroadcast) {
+        LOG(WARNING) << "Invalid broadcast rule for inputs of " << opName;
+      }
+      broadcast = validBroadcast;
+    }
 
     int axis = -1;
 

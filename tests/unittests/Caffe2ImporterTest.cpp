@@ -2191,6 +2191,86 @@ TEST_F(Caffe2ImporterTest, elementwiseLinearUnspecifiedAxis) {
   EXPECT_EQ(mod.getPlaceholders().size(), 4);
 }
 
+/// Test loading an ElementwiseLinear operator with implicit broadcast
+TEST_F(Caffe2ImporterTest, elementwiseImplicitBroadcast) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/elementwise_linear_broadcast_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+
+  // Since the loader will assume that axis = 1, the 0th dim of the shapes of w
+  // and b must match the 1st dim of X.
+  Tensor X(ElemKind::FloatTy, {5, 10});
+  Tensor w(ElemKind::FloatTy, {10}), b(ElemKind::FloatTy, {10});
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"X", "w", "b"},
+                               {&X.getType(), &w.getType(), &b.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+  }
+
+  // Check that the shape of the output matches that of the input.
+  std::vector<dim_t> expectedDims = {5, 10};
+  EXPECT_TRUE(output->dims().vec() == expectedDims);
+
+  // High level checks on the content of the graph.
+  // It should look like this:
+  //
+  //            X           w            b
+  //            |           |            |
+  //            |           v            v
+  //            |        Reshape      Reshape
+  //            |           |            |
+  //            |           v            v
+  //            |         Tile         Tile
+  //            |         /             /
+  //            v  v------             /
+  //            Mul                   /
+  //             |   /---------------
+  //             v  v
+  //             Add
+  //              |
+  //              v
+  //             Save
+
+  EXPECT_EQ(F->getNodes().size(), 7);
+  auto *save = getSaveNodeFromDest(output);
+  auto *add = llvm::dyn_cast<AddNode>(save->getInput().getNode());
+  ASSERT_TRUE(add);
+  auto *mul = llvm::dyn_cast<MulNode>(add->getLHS().getNode());
+  ASSERT_TRUE(mul);
+  auto *bTile = llvm::dyn_cast<TileNode>(add->getRHS().getNode());
+  ASSERT_TRUE(bTile);
+  EXPECT_EQ(bTile->getAxis(), 0);
+  auto *XPH = llvm::dyn_cast<Placeholder>(mul->getLHS().getNode());
+  EXPECT_EQ(XPH, mod.getPlaceholderByName("X"));
+  auto *wTile = llvm::dyn_cast<TileNode>(mul->getRHS().getNode());
+  ASSERT_TRUE(wTile);
+  EXPECT_EQ(wTile->getAxis(), 0);
+  auto *bReshape = llvm::dyn_cast<ReshapeNode>(bTile->getInput().getNode());
+  ASSERT_TRUE(bReshape);
+  auto *wReshape = llvm::dyn_cast<ReshapeNode>(wTile->getInput().getNode());
+  ASSERT_TRUE(wReshape);
+  auto *wPH = llvm::dyn_cast<Placeholder>(wReshape->getInput().getNode());
+  EXPECT_EQ(wPH, mod.getPlaceholderByName("w"));
+  auto *bPH = llvm::dyn_cast<Placeholder>(bReshape->getInput().getNode());
+  EXPECT_EQ(bPH, mod.getPlaceholderByName("b"));
+
+  // We have three inputs and one output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 4);
+}
+
 /// Test loading SparseLengthsWeightedSum8BitsRowwise. This is created as a
 /// RowwiseQuantizedSparseLengthsWeightedSumNode. The following inputs/outputs
 /// are used/expected for this test. Note that the DATA input is
