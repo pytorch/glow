@@ -480,6 +480,16 @@ llvm::Value *LLVMIRGen::emitConstDimTArray(llvm::IRBuilder<> &builder,
   return emitConstArray(builder, elems, DimTType);
 }
 
+llvm::Value *LLVMIRGen::emitConstFloatArray(llvm::IRBuilder<> &builder,
+                                            llvm::ArrayRef<float> vals) {
+  std::vector<llvm::Constant *> elems;
+  for (auto I : vals) {
+    elems.push_back(
+        llvm::ConstantFP::get(llvm::Type::getFloatTy(ctx_), (float)I));
+  }
+  return emitConstArray(builder, elems, llvm::Type::getFloatTy(ctx_));
+}
+
 llvm::Value *LLVMIRGen::emitConstArray(llvm::IRBuilder<> &builder,
                                        llvm::ArrayRef<llvm::Constant *> vals,
                                        llvm::Type *elemTy) {
@@ -2800,6 +2810,26 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *dataPtr = emitValueAddress(builder, data);
     auto *F = getFunction("write_timestamp");
     createCall(builder, F, {dataPtr, offset});
+    break;
+  }
+
+  case Kinded::Kind::ResizeNearestInstKind: {
+    auto *RNI = llvm::cast<ResizeNearestInst>(I);
+    auto *result = RNI->getDest();
+    auto *input = RNI->getSrc();
+    auto *resultPtr = emitValueAddress(builder, result);
+    auto *inputPtr = emitValueAddress(builder, input);
+    std::vector<float> scaleFloatT;
+    for (auto D : RNI->getScale()) {
+      scaleFloatT.push_back(D);
+    }
+
+    auto *scalePtr =
+        emitConstFloatArray(builder, llvm::makeArrayRef(scaleFloatT));
+    auto *destDims = emitValueDims(builder, result);
+    auto *srcDims = emitValueDims(builder, input);
+    auto *F = getFunction("resizenearest", input->getElementType());
+    createCall(builder, F, {resultPtr, inputPtr, scalePtr, srcDims, destDims});
     break;
   }
 

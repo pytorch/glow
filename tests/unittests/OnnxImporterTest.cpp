@@ -3507,3 +3507,47 @@ TEST_F(OnnxImporterTest, CustomGlowChannelwiseQuantizedGroupConvolution) {
             ElemKind::Int32ITy);
   EXPECT_EQ(offsets->getOutput().dims().vec(), std::vector<dim_t>({4}));
 }
+
+/// Upsample Test Helper
+static void importUpsampleTest(std::string &netFilename) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *resultPH;
+  Tensor inputTensor(ElemKind::FloatTy, {1, 1, 2, 2});
+
+  inputTensor.getHandle() = {1, 2, 3, 4};
+
+  ONNXModelLoader onnxLD(netFilename, {"input"}, {&inputTensor.getType()}, *F);
+  resultPH = EXIT_ON_ERR(onnxLD.getOutputByName("Y"));
+  bindings.allocate(mod.getPlaceholders());
+  updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&inputTensor});
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = bindings.get(resultPH)->getHandle();
+  std::vector<dim_t> expectedDims = {1, 1, 4, 6};
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+
+  std::vector<float> expectedResult = {1, 1, 1, 2, 2, 2, 1, 1, 1, 2, 2, 2,
+                                       3, 3, 3, 4, 4, 4, 3, 3, 3, 4, 4, 4};
+
+  for (dim_t i = 0; i < expectedResult.size(); i++) {
+    EXPECT_EQ(result.raw(i), expectedResult[i]);
+  }
+}
+
+TEST(onnx, importUpsampleOpset7) {
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/upsampleOpset7.onnxtxt");
+  importUpsampleTest(netFilename);
+}
+
+TEST(onnx, importUpsampleOpset9) {
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/upsampleOpset9.onnxtxt");
+  importUpsampleTest(netFilename);
+}
