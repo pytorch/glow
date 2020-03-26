@@ -147,7 +147,9 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
     cctx.backendOpts.backendSpecificOpts.insert(loadBackendSpecificOpts);
   }
 
-  RETURN_IF_ERR(hostManager_->addNetwork(std::move(module), cctx));
+  RETURN_IF_ERR(hostManager_->addNetwork(std::move(module), cctx,
+                                         settings_.saturateHost));
+
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "addNetwork");
 
   auto ret = perGlowGraphInfoMap_.emplace(hash, info);
@@ -422,8 +424,6 @@ CachingGraphRunner::CachingGraphRunner(
       hostManager_(hostManager), settings_(settings) {}
 
 CachingGraphRunner::~CachingGraphRunner() {
-  aggregateAndDumpTraces(nullptr, /* flush */ true);
-
   // Remove Glow functions saved in HostManager when being destroyed.
   std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
   for (auto &kv : perGlowGraphInfoMap_) {
