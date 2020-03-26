@@ -5,6 +5,8 @@
 set -ex
 
 apt-get update && apt-get -y install sudo apt-transport-https
+curl https://sh.rustup.rs -sSf | sh
+cargo install sccache
 
 export MAX_JOBS=8
 if [ "${CIRCLE_JOB}" != "COVERAGE" ]; then
