@@ -2153,6 +2153,54 @@ Error ONNXModelLoader::loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadReduceL2(const ONNX_NAMESPACE::NodeProto &op,
+                                    const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  in = G_->createMul(opName, in, in);
+
+  // ReduceAdd.
+  std::vector<unsigned_t> shapeAxes = {};
+  if (dict.count("axes")) {
+    for (int32_t axisValue : dict.at("axes")->ints()) {
+      if (axisValue < 0) {
+        axisValue += in.dims().size();
+      }
+      shapeAxes.push_back((unsigned_t)axisValue);
+    }
+    std::sort(shapeAxes.begin(), shapeAxes.end());
+    if (shapeAxes.size() > 1) {
+      auto it = std::unique(shapeAxes.begin(), shapeAxes.end());
+      if (it != shapeAxes.end())
+        RETURN_ERR("Axes values are not unique",
+                   ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
+    }
+  } else {
+    shapeAxes.resize(in.dims().size());
+    std::iota(shapeAxes.begin(), shapeAxes.end(), 0);
+  }
+
+  bool keepDims = true;
+  if (dict.count("keepdims")) {
+    int keepdims;
+    ASSIGN_VALUE_OR_RETURN_ERR(keepdims, loadInt(dict.at("keepdims")));
+    keepDims = (bool)keepdims;
+  }
+
+  // Reduceadd works only for single axis as of now.
+  for (auto it = shapeAxes.rbegin(), e = shapeAxes.rend(); it != e; ++it) {
+    in = G_->createBatchedReduceAdd(opName, in, llvm::makeArrayRef(*it));
+    if (keepDims) {
+      in = G_->createExpandDims(opName, in, *it);
+    }
+  }
+
+  in = G_->createPow(opName, in, 0.5f);
+  RETURN_IF_ERR(addNodeAsOutput(op, in));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
                                            ArgumentDictionaryTy &dict,
                                            bool isSplat) {
@@ -3433,6 +3481,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "SpaceToDepth") {
     return loadSpaceToDepth(op, dict);
+  }
+  if (typeName == "ReduceL2") {
+    return loadReduceL2(op, dict);
   }
   if (typeName == "ConstantOfShape") {
     return loadConstantOfShape(op, dict, false /* isSplat */);

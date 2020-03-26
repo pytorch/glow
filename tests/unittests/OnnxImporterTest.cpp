@@ -203,6 +203,87 @@ Error checkConstFoldedOutput(std::string NetFilename,
   return Error::success();
 }
 
+static void importReduceL2Test(const std::string &netFilename,
+                               llvm::ArrayRef<float> inputValues,
+                               llvm::ArrayRef<dim_t> inputShape,
+                               llvm::ArrayRef<dim_t> outputShape,
+                               llvm::ArrayRef<float> expectedValues) {
+  float delta = 1e-08;
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+
+  // Load the .onnxtxt model.
+  Type inputType(ElemKind::FloatTy, inputShape);
+  ONNXModelLoader onnxLD(netFilename, {"input"}, {&inputType}, *F);
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  auto PH = mod.getPlaceholderByName("input");
+  auto *inTensor = bindings.allocate(PH);
+  inTensor->getHandle() = inputValues;
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+  auto result = bindings.get(graphOutputVar)->getHandle();
+  ASSERT_TRUE(result.dims() == (llvm::ArrayRef<dim_t>)outputShape);
+  for (size_t i = 0; i < result.getType().size(); i++) {
+    EXPECT_NEAR(result.raw(i), expectedValues[i], delta);
+  }
+}
+
+/// Test loading reduceL2 op from an ONNX model
+/// with axes = [].
+TEST(onnx, reduceL2NoAxis) {
+  std::vector<float> inputValues = {1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2};
+  std::vector<dim_t> inputShape = {2, 3, 2};
+  std::vector<dim_t> outputShape = {1, 1, 1};
+  std::vector<float> expectedValues = {5.477226};
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/ReduceL2NoAxis.onnxtxt");
+  importReduceL2Test(netFilename, inputValues, inputShape, outputShape,
+                     expectedValues);
+}
+
+/// Test loading reduceL2 op from an ONNX model
+/// with negative axis values.
+TEST(onnx, reduceL2NegAxis) {
+  std::vector<float> inputValues = {1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2};
+  std::vector<dim_t> inputShape = {2, 3, 2};
+  std::vector<dim_t> outputShape = {2, 1, 1};
+  std::vector<float> expectedValues = {3.8729835, 3.8729835};
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/ReduceL2NegAxis.onnxtxt");
+  importReduceL2Test(netFilename, inputValues, inputShape, outputShape,
+                     expectedValues);
+}
+
+/// Test loading reduceL2 op from an ONNX model
+/// with keepdims = True.
+TEST(onnx, reduceL2KeepDims) {
+  std::vector<float> inputValues = {1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2};
+  std::vector<dim_t> inputShape = {2, 3, 2};
+  std::vector<dim_t> outputShape = {2, 1, 1};
+  std::vector<float> expectedValues = {3.8729835, 3.8729835};
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/ReduceL2KeepDims.onnxtxt");
+  importReduceL2Test(netFilename, inputValues, inputShape, outputShape,
+                     expectedValues);
+}
+
+/// Test loading reduceL2 op from an ONNX model
+/// with keepdims = False.
+TEST(onnx, reduceL2NoKeepDims) {
+  std::vector<float> inputValues = {1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2};
+  std::vector<dim_t> inputShape = {2, 3, 2};
+  std::vector<dim_t> outputShape = {2};
+  std::vector<float> expectedValues = {3.8729835, 3.8729835};
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/ReduceL2NoKeepDims.onnxtxt");
+  importReduceL2Test(netFilename, inputValues, inputShape, outputShape,
+                     expectedValues);
+}
+
 /// Test loading constant+relu ops with numeric input names from an ONNX model.
 TEST(onnx, reluConstFoldLegalName) {
   std::string NetFilename(GLOW_DATA_PATH
