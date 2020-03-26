@@ -88,6 +88,13 @@ struct PyTorchLoaderSettings {
   /// Whether or not to write the loaded Glow function and inputs and outputs to
   /// and from the function to file as ONNX graphs.
   bool writeToOnnx = false;
+
+  /// Name of a YAML file containing backend specific options.
+  std::string backendOptionsFile;
+
+  /// Whether not to set the saturateHost flag (use all available device) when
+  /// adding networks to HostManager.
+  bool saturateHost = false;
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
