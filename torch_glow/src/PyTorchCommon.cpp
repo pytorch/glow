@@ -281,6 +281,10 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
     auto glowType =
         ptTypeToGlowType(*c10::TensorType::create(ptTensor), scale, offset);
     return glow::Tensor(ptTensor.data_ptr(), &glowType);
+  } else if (ptTensor.scalar_type() == at::kDouble) {
+    at::Tensor atTensor = ptTensor.to(at::kFloat);
+    auto glowType = ptTypeToGlowType(*c10::TensorType::create(atTensor));
+    return glow::Tensor(atTensor.data_ptr(), &glowType).clone();
   } else {
     auto glowType = ptTypeToGlowType(*c10::TensorType::create(ptTensor));
     return glow::Tensor(ptTensor.data_ptr(), &glowType);
