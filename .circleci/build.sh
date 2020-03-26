@@ -70,7 +70,7 @@ elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
 
     sudo apt-get install -y ${GLOW_DEPS}
     install_fmt
-else
+elif [ "${CIRCLE_JOB}" != "DEBUG" ]
     # Install Glow dependencies
     sudo apt-get update
 
@@ -85,15 +85,17 @@ else
 fi
 
 # Since we are using llvm-7 in these two branches, we cannot use pip install cmake
-if [ "${CIRCLE_JOB}" != "PYTORCH" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
+if [ "${CIRCLE_JOB}" != "PYTORCH" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ] && [ "${CIRCLE_JOB}" != "DEBUG" ]; then
 	sudo pip install cmake
 else
 	sudo apt-get install cmake
 fi
 
 # Install ninja, (newest version of) autopep8 through pip
-sudo pip install ninja autopep8
-hash cmake ninja
+if [ "${CIRCLE_JOB}" != "DEBUG" ]; then
+	sudo pip install ninja autopep8
+	hash cmake ninja
+fi
 
 # Build glow
 GLOW_DIR=$PWD
