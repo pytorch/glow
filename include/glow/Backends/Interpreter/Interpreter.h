@@ -74,6 +74,8 @@ public:
   createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
     return createInterpreterDeviceManager(deviceConfig);
   }
+
+  void parseBackendSpecificOptions(const BackendOptions &opts) const;
 };
 
 } // namespace glow

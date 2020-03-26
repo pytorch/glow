@@ -152,6 +152,11 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// HostManager.
   m.def("getGlowBackendNumDevices", []() { return getBackendNumDevices(); });
 
+  /// Inform host manager to load backend specific options from YAML file.
+  m.def("loadBackendSpecificOptions", [](const std::string &yamlFile) {
+    getPyTorchLoaderSettings().backendOptionsFile = yamlFile;
+  });
+
   /// Calls all of the fusion passes that get run before the PyTorchModelLoader
   /// run.
   /// NOTE: This is only exposed for testing.

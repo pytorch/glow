@@ -172,7 +172,9 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       names.push_back(name);
     }
   }
-  // Load backend-specific options if specified.
+
+  // Issue a warning when loading backend specific options from the command line
+  // and the compile context also contains backend specific options.
   if (!loadBackendSpecificOptionsOpt.empty()) {
     if (cctx.backendOpts.backendSpecificOpts.size() != 0) {
       VLOG_EVERY_N(1, 1000) << "Warning: backendSpecificOpts is set via the "
@@ -180,6 +182,15 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     }
     cctx.backendOpts.backendSpecificOpts =
         deserializeStrStrMapFromYaml(loadBackendSpecificOptionsOpt);
+  } else {
+    auto ctxLoadBackendSpecificOpt =
+        cctx.backendOpts.backendSpecificOpts.find("loadBackendSpecificOptions");
+
+    if (ctxLoadBackendSpecificOpt !=
+        cctx.backendOpts.backendSpecificOpts.end()) {
+      cctx.backendOpts.backendSpecificOpts =
+          deserializeStrStrMapFromYaml(ctxLoadBackendSpecificOpt->second);
+    }
   }
 
   std::vector<DeviceInfo> deviceInfo;

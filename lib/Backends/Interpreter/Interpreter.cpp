@@ -25,12 +25,21 @@
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/IROptimizer/IROptimizer.h"
 
+namespace glow {
+namespace runtime {
+extern unsigned GlowInterpreterMemory;
+}
+} // namespace glow
 using namespace glow;
 
 Expected<std::unique_ptr<CompiledFunction>>
 Interpreter::compile(Function *F, const BackendOptions &opts) const {
   TraceInfo traceInfo = buildManualTraceInfo(F);
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
+
+  if (!opts.backendSpecificOpts.empty()) {
+    parseBackendSpecificOptions(opts);
+  }
 
   if (opts.autoInstrument) {
     autoInstrument(traceInfo, IR.get());
@@ -819,4 +828,16 @@ Expected<bool> Interpreter::transformPostLowering(
     }
   }
   return changed;
+}
+
+void Interpreter::parseBackendSpecificOptions(
+    const BackendOptions &opts) const {
+  auto interpreterMaxMemOpt =
+      opts.backendSpecificOpts.find("interpreter-memory");
+  if (interpreterMaxMemOpt != opts.backendSpecificOpts.end()) {
+    glow::runtime::GlowInterpreterMemory =
+        std::stoi(interpreterMaxMemOpt->second);
+    llvm::outs() << "Interpreter memory set to "
+                 << glow::runtime::GlowInterpreterMemory << "\n";
+  }
 }

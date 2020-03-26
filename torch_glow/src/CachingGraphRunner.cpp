@@ -137,6 +137,16 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
   cctx.backendOpts.backendSpecificOpts = settings_.backendSpecificOpts;
 
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "addNetwork");
+  // If --load-backend-specific-opts was passed from python, add it to the
+  // compile context so the host manager knows to load backend options from
+  // yaml.
+
+  if (!settings_.backendOptionsFile.empty()) {
+    std::pair<std::string, std::string> loadBackendSpecificOpts(
+        "loadBackendSpecificOptions", settings_.backendOptionsFile);
+    cctx.backendOpts.backendSpecificOpts.insert(loadBackendSpecificOpts);
+  }
+
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(module), cctx));
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "addNetwork");
 
