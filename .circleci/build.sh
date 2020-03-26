@@ -70,7 +70,7 @@ elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
 
     sudo apt-get install -y ${GLOW_DEPS}
     install_fmt
-elif [ "${CIRCLE_JOB}" != "DEBUG" ]
+elif [ "${CIRCLE_JOB}" != "DEBUG" ]; then
     # Install Glow dependencies
     sudo apt-get update
 
