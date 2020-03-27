@@ -4,7 +4,7 @@
 # By default, we run with the enabled CPU backend and disabled OpenCL backend.
 set -ex
 
-apt-get update && apt-get -y install sudo apt-transport-https
+apt-get update && apt-get -y install sudo apt-transport-https curl
 curl https://sh.rustup.rs -sSf | sh
 cargo install sccache
 
