@@ -256,6 +256,24 @@ if(GLOW_WITH_HABANA)
                     --gtest_output=xml:HabanaTest.xml)
 endif()
 
+if(GLOW_WITH_NNPI)
+  add_executable(NNPIOptPipelineTest
+          NNPIOptPipelineTest.cpp)
+  target_link_libraries(NNPIOptPipelineTest
+          PRIVATE
+          BackendTestUtils
+          Backends
+          ExecutionEngine
+          GraphOptimizer
+          NNPI
+          Support
+          gtest
+          TestMain)
+  add_glow_test(NNPIOptPipelineTest
+                ${GLOW_BINARY_DIR}/tests/NNPIOptPipelineTest
+                    --gtest_output=xml:NNPIOptPipelineTest.xml)
+endif()
+
 if(GLOW_WITH_CPU)
   add_executable(HyphenTest
                  HyphenTest.cpp)
