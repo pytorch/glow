@@ -3691,3 +3691,69 @@ TEST(onnx, importUpsampleOpset9) {
                           "tests/models/onnxModels/upsampleOpset9.onnxtxt");
   importUpsampleTest(netFilename);
 }
+
+/// Test loading a custom ONNX Glow net with NodeOpts.
+TEST_F(OnnxImporterTest, CustomGlowWithNodeOpts) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  std::string netFilename(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/glow_custom_op_node_opts.onnxtxt");
+  Placeholder *outputPH;
+  BackendSpecificNodeInfo funNodeInfo;
+  {
+    ONNXModelLoader onnxLD(netFilename, {}, {}, *F, /* errPtr */ nullptr,
+                           /* zipMode */ false, &funNodeInfo);
+    outputPH = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  }
+
+  auto itF = funNodeInfo.find(F);
+  ASSERT_NE(itF, funNodeInfo.end());
+  auto &nodeInfo = itF->second;
+
+  SaveNode *save = getSaveNodeFromDest(outputPH);
+  ASSERT_TRUE(save);
+  // Verify that there are no options specified for the Save.
+  EXPECT_EQ(nodeInfo.find(save), nodeInfo.end());
+
+  // Verify that the options for the MatMul are loaded correctly.
+  MatMulNode *MN = llvm::dyn_cast<MatMulNode>(save->getInput());
+  auto itMN = nodeInfo.find(MN);
+  ASSERT_NE(itMN, nodeInfo.end());
+  llvm::StringMap<std::vector<std::string>> &opts = itMN->second;
+
+  // attribute {
+  //   name: "NodeOpt_BackendA_Option1"
+  //   strings: "1"
+  //   strings: "2"
+  //   type: STRINGS
+  // }
+  auto itOpt1 = opts.find("BackendA_Option1");
+  ASSERT_NE(itOpt1, opts.end());
+  EXPECT_EQ(itOpt1->second.size(), 2);
+  EXPECT_EQ(itOpt1->second[0], "1");
+  EXPECT_EQ(itOpt1->second[1], "2");
+
+  // attribute {
+  //   name: "NodeOpt_BackendA_Option2"
+  //   strings: "3"
+  //   type: STRINGS
+  // }
+  auto itOpt2 = opts.find("BackendA_Option2");
+  ASSERT_NE(itOpt2, opts.end());
+  EXPECT_EQ(itOpt2->second.size(), 1);
+  EXPECT_EQ(itOpt2->second[0], "3");
+
+  // attribute {
+  //   name: "NodeOpt_BackendB_Option3"
+  //   strings: "4"
+  //   strings: "5"
+  //   type: STRINGS
+  // }
+  auto itOpt3 = opts.find("BackendB_Option3");
+  ASSERT_NE(itOpt3, opts.end());
+  EXPECT_EQ(itOpt3->second.size(), 2);
+  EXPECT_EQ(itOpt3->second[0], "4");
+  EXPECT_EQ(itOpt3->second[1], "5");
+}
