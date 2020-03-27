@@ -2158,6 +2158,33 @@ static bool combineConcatSlices(ConcatNode *CN) {
   return true;
 }
 
+/// Eliminate Concat-Slice patterns which are unnecessary. E.g.:
+/// NodeA   NodeB             NodeA   NodeB
+///     \   /                   |       |
+///    ConcatC                  |       |
+///     /   \         ----->    |       |
+/// SliceD  SliceE              |       |
+///   |       |                 |       |
+/// NodeF   NodeG             NodeF   NodeG
+bool EliminateConcatSlice::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+
+  // For each node:
+  for (auto &node : nodes) {
+    auto *CN = dyn_cast<ConcatNode>(&node);
+    if (!CN) {
+      continue;
+    }
+    if (combineConcatSlices(CN)) {
+      changed = true;
+      continue;
+    }
+  }
+  return changed;
+}
+
 /// Optimize Concat nodes.
 bool OptimizeConcatNodes::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
@@ -2176,12 +2203,55 @@ bool OptimizeConcatNodes::run(Function *F, const CompilationContext &cctx) {
       changed = true;
       continue;
     }
+  }
+  return changed;
+}
 
-    if (combineConcatSlices(CN)) {
-      changed = true;
+/// Fold Slices into Constants. This will create new Constants if necessary.
+bool FoldSlicesIntoConstants::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+
+  // For each node:
+  for (auto &node : nodes) {
+    auto *SN = dyn_cast<SliceNode>(&node);
+    if (!SN) {
       continue;
     }
+    auto *C = dyn_cast<Constant>(SN->getInput());
+    if (!C) {
+      continue;
+    }
+
+    // Create new slice of the Constant.
+    Tensor outT = Tensor(SN->getResult().getType());
+
+    ElemKind k = outT.getElementType();
+#define TYPED_INSERT(TY, TYPEKIND)                                             \
+  if (k == TYPEKIND) {                                                         \
+    auto OH = outT.getHandle<TY>();                                            \
+    auto IH = C->getPayloadMutable().getHandle<TY>();                          \
+    IH.extractTensors(OH, SN->getStart());                                     \
   }
+
+    TYPED_INSERT(float, ElemKind::FloatTy);
+    TYPED_INSERT(float16_t, ElemKind::Float16Ty);
+    TYPED_INSERT(int8_t, ElemKind::Int8QTy);
+    TYPED_INSERT(int16_t, ElemKind::Int16QTy);
+    TYPED_INSERT(int32_t, ElemKind::Int32QTy);
+    TYPED_INSERT(int32_t, ElemKind::Int32ITy);
+    TYPED_INSERT(int64_t, ElemKind::Int64ITy);
+    TYPED_INSERT(bool, ElemKind::BoolTy);
+#undef TYPED_INSERT
+
+    // Create a new Constant NC to hold the sliced result.
+    auto *NC = F->getParent()->createConstant(C->getName(), std::move(outT));
+    // Connect all Slice users with the new Slice.
+    SN->getResult().replaceAllUsesOfWith(NC);
+    changed = true;
+  }
+
   return changed;
 }
 
