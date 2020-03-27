@@ -381,6 +381,34 @@ importArithMultiBroadcastTest(std::string fileName,
                                           {bindings.get(graphOutputVar)}));
 }
 
+static void importExpandTest(const std::string &netFilename,
+                             llvm::ArrayRef<float> inputValues,
+                             llvm::ArrayRef<dim_t> inputShape,
+                             llvm::ArrayRef<dim_t> outputShape,
+                             llvm::ArrayRef<float> expectedValues) {
+  float delta = 1e-08;
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+  // Load the .onnxtxt model.
+  Type inputType(ElemKind::FloatTy, inputShape);
+  ONNXModelLoader onnxLD(netFilename, {"x"}, {&inputType}, *F);
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  auto *PH = mod.getPlaceholderByName("x");
+  auto *inTensor = bindings.allocate(PH);
+  inTensor->getHandle() = inputValues;
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+  auto result = bindings.get(graphOutputVar)->getHandle();
+  ASSERT_TRUE(result.dims() == (llvm::ArrayRef<dim_t>)outputShape);
+  for (size_t i = 0; i < result.getType().size(); i++) {
+    EXPECT_NEAR(result.raw(i), expectedValues[i], delta);
+  }
+}
+
 /// Import maxPool1D
 static void importMaxPool1DTest(std::string &netFilename,
                                 llvm::ArrayRef<float> inputValues,
@@ -414,8 +442,39 @@ static void importMaxPool1DTest(std::string &netFilename,
   }
 }
 
+/// Test loading expand op from an ONNX model
+/// with different output shape.
+TEST(onnx, expandDiffShape) {
+  std::vector<float> inputValues = {1, 2, 3};
+  std::vector<dim_t> inputShape = {3, 1};
+  std::vector<dim_t> outputShape = {2, 3, 6};
+  std::vector<float> expectedValues = {
+      1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3,
+      1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3,
+  };
+  std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/expandnodeDiffShape.onnxtxt");
+  importExpandTest(netFilename, inputValues, inputShape, outputShape,
+                   expectedValues);
+}
+
+/// Test loading expand op from an ONNX model
+/// with same output shape.
+TEST(onnx, expandSameShape) {
+  std::vector<float> inputValues = {1, 2, 3};
+  std::vector<dim_t> inputShape = {3, 1};
+  std::vector<dim_t> outputShape = {3, 4};
+  std::vector<float> expectedValues = {
+      1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3,
+  };
+  std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/expandnodeSameShape.onnxtxt");
+  importExpandTest(netFilename, inputValues, inputShape, outputShape,
+                   expectedValues);
+}
+
 /// Test loading maxPool1D op from an ONNX model
-/// with different ouput shape.
+/// with different output shape.
 TEST(onnx, maxPool1D) {
   std::vector<float> inputValues = {
       1.4206449,  0.54408556, 1.3318906,  0.771925,   0.9450552,
