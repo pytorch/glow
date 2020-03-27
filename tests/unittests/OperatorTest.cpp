@@ -5559,9 +5559,15 @@ TEST_P(OperatorTest, sliceVectors_Int8) {
 }
 
 /// Test slicing with Int32QTy.
-TEST_P(OperatorTest, sliceVectors_Int32) {
+TEST_P(OperatorTest, sliceVectors_Int32Q) {
   CHECK_IF_ENABLED();
   testSliceVectors<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy);
+}
+
+/// Test slicing with Int32ITy.
+TEST_P(OperatorTest, sliceVectors_Int32I) {
+  CHECK_IF_ENABLED();
+  testSliceVectors<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
 }
 
 /// Helper to test SliceConcatVectors using \p DTy.

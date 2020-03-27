@@ -1551,6 +1551,7 @@ void BoundInterpreterFunction::fwdExtractTensorInst(
   TYPED_INSERT(float16_t, ElemKind::Float16Ty);
   TYPED_INSERT(int8_t, ElemKind::Int8QTy);
   TYPED_INSERT(int32_t, ElemKind::Int32QTy);
+  TYPED_INSERT(int32_t, ElemKind::Int32ITy);
 #undef TYPED_INSERT
 
   llvm_unreachable("Unsupported tensor type");

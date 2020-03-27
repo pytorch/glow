@@ -156,7 +156,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::SliceNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
-         ElemKind::Int32QTy, ElemKind::Int64ITy});
+         ElemKind::Int32QTy, ElemKind::Int64ITy, ElemKind::Int32ITy});
   case Kinded::Kind::DivNodeKind:
   case Kinded::Kind::SpaceToDepthNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
