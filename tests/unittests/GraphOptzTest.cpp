@@ -4071,3 +4071,35 @@ TEST_F(GraphOptz, FoldMatMulAddIntoFullyConnected) {
   EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind));
   EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ReshapeNodeKind));
 }
+
+/// Test that FoldSlicesIntoConstants pass works as expected.
+TEST_F(GraphOptz, FoldSlicesIntoConstantsTest) {
+  Constant *C = mod_.createConstant(ElemKind::FloatTy, {3, 4}, "C");
+  auto CH = C->getPayloadMutable().getHandle<float>();
+  CH = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+
+  SliceNode *S1 = F_->createSlice("s1", C, {0, 0}, {3, 2});
+  SliceNode *S2 = F_->createSlice("s2", C, {0, 2}, {3, 4});
+  SaveNode *SN1 = F_->createSave("save1", S1);
+  SaveNode *SN2 = F_->createSave("save2", S2);
+
+  FunctionPassManager FPM("TestFPM",
+                          {
+                              FunctionPassID::FoldSlicesIntoConstants,
+                              getDCEPassConfig(),
+                          });
+  FPM.run(F_, CompilationContext());
+
+  Constant *C1 = llvm::dyn_cast<Constant>(SN1->getInput());
+  ASSERT_TRUE(C1);
+  auto H1 = C1->getPayloadMutable().getHandle();
+  Constant *C2 = llvm::dyn_cast<Constant>(SN2->getInput());
+  ASSERT_TRUE(C2);
+  auto H2 = C2->getPayloadMutable().getHandle();
+  for (dim_t i = 0, e = 3; i < e; i++) {
+    for (dim_t j = 0, e = 2; j < e; j++) {
+      EXPECT_EQ(H1.at({i, j}), CH.at({i, j}));
+      EXPECT_EQ(H2.at({i, j}), CH.at({i, j + 2}));
+    }
+  }
+}
