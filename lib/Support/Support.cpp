@@ -191,4 +191,13 @@ deserializeStrStrMapFromYaml(llvm::StringRef fileName) {
   return deserializeFromYaml<std::map<std::string, std::string>>(fileName);
 }
 
+Expected<int> getIntFromStr(llvm::StringRef input) {
+  const char *start = input.data();
+  char *end;
+  int val = std::strtol(start, &end, 10);
+  RETURN_ERR_IF_NOT(!(end == start || *end != '\0'),
+                    "Integer was not properly specified.");
+  return val;
+}
+
 } // namespace glow
