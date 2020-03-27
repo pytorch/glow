@@ -345,7 +345,8 @@ Expected<DAGListTy> Partitioner::backendBasedPartition(
       mapping.appendLogicalDeviceID(func, logicalDeviceID++);
     }
   }
-  return doPartitioning(F->getName(), funcs, module_, mapping, genDAG);
+  return doPartitioning(F->getName(), funcs, module_, mapping, genDAG,
+                        cctx.backendOpts.backendSpecificNodeInfo);
 }
 
 void Partitioner::genBackendMap(
@@ -618,7 +619,8 @@ Expected<DAGListTy> Partitioner::loadBalancedPartition(CompilationContext &cctx,
   RETURN_IF_ERR(logicalDevicesValidation(partitionMap, backendMap_));
 
   partitions =
-      doPartitioning(origName, {F_}, module_, partitionMap, /* saveDAG */ true);
+      doPartitioning(origName, {F_}, module_, partitionMap, /* saveDAG */ true,
+                     cctx.backendOpts.backendSpecificNodeInfo);
   module_->eraseFunction(F_);
 
   if (saturateHost_ &&
@@ -764,7 +766,8 @@ Partitioner::heterogeneousPartition(CompilationContext &cctx) {
 
   // Step 4 : do the real partitioning for the function list.
   partitions =
-      doPartitioning(origName, funcs, module_, mapping, /* saveDAG */ true);
+      doPartitioning(origName, funcs, module_, mapping, /* saveDAG */ true,
+                     cctx.backendOpts.backendSpecificNodeInfo);
 
   // Step 5 : Post-partition optimization - Adjust the logicalDevice for each
   // DAGNode.
@@ -886,7 +889,8 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig,
 
   // Do partition.
   partitions = doPartitioning(F->getName(), {F}, module_, partitionMap,
-                              /* saveDAG */ true);
+                              /* saveDAG */ true,
+                              cctx.backendOpts.backendSpecificNodeInfo);
   module_->eraseFunction(F);
 
   // DAG validation.
@@ -963,9 +967,10 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
   }
 
   // Do partition.
-  DAGListTy partitions =
-      doPartitioning(config.funcName, funcs, module_, partitionMap,
-                     /* saveDAG */ true, /* skipCloning */ true);
+  DAGListTy partitions = doPartitioning(
+      config.funcName, funcs, module_, partitionMap,
+      /* saveDAG */ true, cctx.backendOpts.backendSpecificNodeInfo,
+      /* skipCloning */ true);
 
   // DAG validation.
   RETURN_IF_ERR(dagValidation(partitions[0]));

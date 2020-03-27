@@ -3412,7 +3412,7 @@ ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
   return mod.uniqueType(k, shape, scale, offset);
 }
 
-Expected<bool>
+Expected<Node *>
 ONNXModelLoader::tryLoadGlowCustomOp(llvm::StringRef typeName,
                                      const ONNX_NAMESPACE::NodeProto &op,
                                      ArgumentDictionaryTy &dict) {
@@ -3421,8 +3421,41 @@ ONNXModelLoader::tryLoadGlowCustomOp(llvm::StringRef typeName,
 // Try all automatically generated import cases.
 #include "glow/AutoGenNodesImport.h"
 
-  // If we get here then no case handled the op, so return false.
-  return false;
+  // If we get here then no case handled the op, so return nullptr.
+  return nullptr;
+}
+
+/// Load Node options for \p loadedNode from \p dict and set in \p nodeOpts.
+/// These are specified in the format "NodeOpt_BACKENDNAME_OPTIONNAME".
+static Error
+loadPerNodeOptions(const Node *loadedNode,
+                   llvm::StringMap<std::vector<std::string>> &nodeOpts,
+                   ArgumentDictionaryTy &dict) {
+  // Look through all attributes in the dict for ones that have NodeOpt_ prefix.
+  for (const auto &attrPair : dict) {
+    // Split across the first '_' and check if it has the "NodeOpt" prefix.
+    auto splitPair = llvm::StringRef(attrPair.first).split('_');
+    if (splitPair.first == attrPair.first && splitPair.first == "") {
+      // No '_' found, so continue.
+      continue;
+    }
+    if (splitPair.first != "NodeOpt") {
+      // Prefix is not "NodeOpt_", so continue.
+      continue;
+    }
+
+    // Must have a NodeOpt, so check it has strings and load them into nodeOpts.
+    const ONNX_NAMESPACE::AttributeProto *attr = attrPair.second;
+    RETURN_ERR_IF_NOT(attr->strings_size() > 0,
+                      strFormat("%s in %s has no strings",
+                                attrPair.first.c_str(),
+                                loadedNode->getName().data()));
+    std::vector<std::string> &attrVals = nodeOpts[splitPair.second];
+    for (const std::string &s : attr->strings()) {
+      attrVals.push_back(s);
+    }
+  }
+  return Error::success();
 }
 
 Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
@@ -3430,16 +3463,23 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   const std::string &typeName = op.op_type();
 
   if (useGlowCustomOps_) {
-    bool tryLoadGlowCustomOpResult;
-    ASSIGN_VALUE_OR_RETURN_ERR(tryLoadGlowCustomOpResult,
+    Node *loadedNode;
+    ASSIGN_VALUE_OR_RETURN_ERR(loadedNode,
                                tryLoadGlowCustomOp(typeName, op, dict));
-    if (tryLoadGlowCustomOpResult) {
-      return Error::success();
+    if (loadedNode) {
+      if (!perNodeOpts_) {
+        return Error::success();
+      }
+      return loadPerNodeOptions(
+          loadedNode, (*perNodeOpts_)[loadedNode->getParent()][loadedNode],
+          dict);
     }
 
-    // Identity is the only official ONNX op used with useGlowCustomOps.
+    // Identity is the only official ONNX op used with useGlowCustomOps. Let it
+    // fall through to logic to handle below, otherwise return error.
     if (typeName != "Identity") {
-      return MAKE_ERR(strFormat("Unable to load op %s", typeName.data()));
+      RETURN_ERR("Failed to load operator " + typeName + " .",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
     }
   }
 
@@ -3778,9 +3818,11 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  llvm::ArrayRef<const char *> tensorNames,
                                  llvm::ArrayRef<TypeRef> types, Function &F,
                                  Error *errPtr, bool zipMode,
+                                 BackendSpecificNodeInfo *perNodeOpts,
                                  bool disableConstFoldInLoader,
                                  const Backend *B)
-    : CommonOperatorLoader(tensorNames, types, &F, errPtr) {
+    : CommonOperatorLoader(tensorNames, types, &F, errPtr),
+      perNodeOpts_(perNodeOpts) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
