@@ -4925,6 +4925,52 @@ TEST_P(OperatorTest, FP16Max) {
   }
 }
 
+/// Helper to test Broadcast Max/Min using \p DTy.
+template <typename DataType>
+static void testBroadcastMaxMin(glow::PlaceholderBindings &bindings,
+                                glow::Module &mod, glow::Function *F,
+                                glow::ExecutionEngine &EE, ElemKind DTy,
+                                bool MaxOrMin) {
+
+  PseudoRNG PRNG;
+
+  auto *inputA = mod.createPlaceholder(DTy, {1, 3, 3, 1}, "A", false);
+  bindings.allocate(inputA)->getHandle<DataType>().randomize(-3.0, 3.0, PRNG);
+  auto *inputB = mod.createPlaceholder(DTy, {1, 3, 3, 1}, "B", false);
+  bindings.allocate(inputB)->getHandle<DataType>().randomize(-3.0, 3.0, PRNG);
+
+  Node *MaxorMinOp = nullptr;
+
+  if (MaxOrMin) {
+    MaxorMinOp = F->createNodeWithBroadcast<MaxNode>("max", -1 /*axis */,
+                                                     inputA, inputB);
+  } else {
+    MaxorMinOp = F->createNodeWithBroadcast<MinNode>("max", -1 /*axis */,
+                                                     inputA, inputB);
+  }
+
+  auto *S = F->createSave("save", MaxorMinOp);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  ASSERT_TRUE(F->verify(&EE.getBackend()))
+      << "Function must pass verification.";
+}
+
+TEST_P(OperatorTest, BroadCastMax) {
+  CHECK_IF_ENABLED();
+  testBroadcastMaxMin<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy,
+                               true);
+}
+
+TEST_P(OperatorTest, BroadCastMin) {
+  CHECK_IF_ENABLED();
+  testBroadcastMaxMin<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy,
+                               false);
+}
+
 TEST_P(OperatorTest, RescaleNode) {
   CHECK_IF_ENABLED();
 
