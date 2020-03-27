@@ -85,9 +85,10 @@ protected:
       // Note: We disable constant folding here because we only need it to
       // calculate shapes that are the result of constant compute in the proto,
       // but this won't be the case when using useGlowCustomOps exporting.
-      ONNXModelLoader onnxLD(
-          pathToModel, {}, {}, *loadedF, &err, /* zipMode */ false,
-          /* disableConstFoldInLoader */ true, &loadedEE.getBackend());
+      ONNXModelLoader onnxLD(pathToModel, {}, {}, *loadedF, &err,
+                             /* zipMode */ false, /* perNodeOpts */ nullptr,
+                             /* disableConstFoldInLoader */ true,
+                             &loadedEE.getBackend());
       if (ERR_TO_BOOL(std::move(err))) {
         llvm::sys::fs::remove(pathToModel);
         FAIL() << "Error loading exported model";
