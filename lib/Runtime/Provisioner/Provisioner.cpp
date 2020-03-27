@@ -355,6 +355,9 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
                               deviceBackendName);
         }
 
+        auto compiledOrErr =
+            backends_[deviceBackendName]->compile(function, options);
+
         if (cctx.dumpFinalGraph) {
           auto fname =
               strFormat("final_graph_%s_%s.dot", deviceBackendName.c_str(),
@@ -362,9 +365,6 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
           LOG(INFO) << "Dumping final graph to " << fname;
           function->dumpDAG(fname);
         }
-
-        auto compiledOrErr =
-            backends_[deviceBackendName]->compile(function, options);
 
         if (GlowDumpCompilationLog) {
           llvm::SmallString<64> path;

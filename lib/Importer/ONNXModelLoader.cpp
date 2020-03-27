@@ -142,16 +142,6 @@ Error onnxTensorDataTypeToElemKind(int32_t onnxType, ElemKind *elemTy) {
   }
 }
 
-/// Convert a string to int. \returns the int or Error if problem parsing.
-Expected<int> getIntFromStr(llvm::StringRef input) {
-  const char *start = input.data();
-  char *end;
-  int val = std::strtol(start, &end, 10);
-  RETURN_ERR_IF_NOT(!(end == start || *end != '\0'),
-                    "Integer was not properly specified.");
-  return val;
-}
-
 /// Finds an attribute from the doc_string and \returns it. If it does not exist
 /// then \returns Error. The expected structure here is that each attribute
 /// starts with startChar and is separated from its value by a sepChar.

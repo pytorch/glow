@@ -4194,17 +4194,23 @@ bool glow::executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
 /// \p splitDim represents what dimension to split for each of the inputs to
 /// \p curNode. \p resultDim is the dimension on which we are splitting and then
 /// concatenating the results. \p resultIdx represents the result index from
-/// \p curNode that is being split and later concatenated.
-static void parallelizeAndReplaceNode(Function *F, Node *curNode,
-                                      dim_t numOfChunksNode,
-                                      dim_t inputBatchIdx, dim_t resultIdx,
-                                      llvm::ArrayRef<int> splitDims,
-                                      size_t resultDim) {
+/// \p curNode that is being split and later concatenated. \returns an Expected
+/// of the ConcatNode that is created and replaces \p curNode, or otherwise an
+/// Error if parallelization had some issue.
+static Expected<ConcatNode *>
+parallelizeAndReplaceNode(Function *F, Node *curNode, dim_t numOfChunksNode,
+                          dim_t inputBatchIdx, dim_t resultIdx,
+                          llvm::ArrayRef<int> splitDims, size_t resultDim) {
   const int inputIdx = splitDims[inputBatchIdx];
   CHECK_GE(inputIdx, 0) << "Input batch idx must be split";
   const dim_t batchSize = curNode->getNthInput(inputBatchIdx).dims()[inputIdx];
   const dim_t elemPerChunk = batchSize / numOfChunksNode;
   const dim_t remain = batchSize % numOfChunksNode;
+
+  RETURN_ERR_IF_NOT(
+      batchSize >= numOfChunksNode,
+      "Invalid parallelization; batchSize " + std::to_string(batchSize) +
+          "must be >= numOfChunksNode " + std::to_string(numOfChunksNode));
 
   std::vector<NodeValue> newNodes(numOfChunksNode);
   for (dim_t i = 0; i < numOfChunksNode; ++i) {
@@ -4267,20 +4273,23 @@ static void parallelizeAndReplaceNode(Function *F, Node *curNode,
   auto *concat = F->createConcat("concat." + curNode->getName().str(), newNodes,
                                  resultDim);
   curNode->getNthResult(resultIdx).replaceAllUsesOfWith(concat);
+  return concat;
 }
 
-bool glow::parallelizeOps(
+Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
     Function *F, const llvm::DenseMap<Node *, size_t> &numOfChunksMap,
     const llvm::DenseMap<Node *, ParallelTransformKind> &parOpts,
     size_t numOfChunks) {
   // Since we will be transforming the original list of nodes, reverse iterate.
   auto &nodes = F->getNodes();
   size_t numProcessedNodes = 0;
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
   for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
     Node *curNode = &*it;
+    size_t curNumOfChunks = numOfChunks;
     auto numOfChunksIt = numOfChunksMap.find(curNode);
     if (numOfChunksIt != numOfChunksMap.end()) {
-      numOfChunks = numOfChunksIt->second;
+      curNumOfChunks = numOfChunksIt->second;
     }
 
     ParallelTransformKind parTransformMode = ParallelTransformKind::None;
@@ -4293,6 +4302,8 @@ bool glow::parallelizeOps(
     VLOG(1) << "Attempting to Parallelizing Node: " << curNode->getName().str()
             << "\n";
 
+    ConcatNode *CN = nullptr;
+
     // Use this vector to communicate what dims to split to
     // parallelizeAndReplaceNode(). -1 represents not splitting at all.
     llvm::SmallVector<int, 3> splitDims(curNode->getNumInputs(), -1);
@@ -4301,85 +4312,102 @@ bool glow::parallelizeOps(
       switch (curNode->getKind()) {
       case Kinded::Kind::FullyConnectedNodeKind: {
         splitDims[FullyConnectedNode::InputIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks,
-                                  FullyConnectedNode::InputIdx,
-                                  FullyConnectedNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, FullyConnectedNode::InputIdx,
+                    FullyConnectedNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::AddNodeKind: {
         splitDims[AddNode::LHSIdx] = 0;
         splitDims[AddNode::RHSIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks, AddNode::LHSIdx,
-                                  AddNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          AddNode::LHSIdx, AddNode::ResultIdx,
+                                          splitDims, 0));
         break;
       }
       case Kinded::Kind::BatchMatMulNodeKind: {
         splitDims[BatchMatMulNode::LHSIdx] = 0;
         splitDims[BatchMatMulNode::RHSIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks,
-                                  BatchMatMulNode::LHSIdx,
-                                  BatchMatMulNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, BatchMatMulNode::LHSIdx,
+                    BatchMatMulNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::MulNodeKind: {
         splitDims[AddNode::LHSIdx] = 0;
         splitDims[AddNode::RHSIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks, MulNode::LHSIdx,
-                                  MulNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          MulNode::LHSIdx, MulNode::ResultIdx,
+                                          splitDims, 0));
         break;
       }
       case Kinded::Kind::SigmoidNodeKind: {
         splitDims[SigmoidNode::InputIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks,
-                                  SigmoidNode::InputIdx, SigmoidNode::ResultIdx,
-                                  splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, SigmoidNode::InputIdx,
+                    SigmoidNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::TanhNodeKind: {
         splitDims[TanhNode::InputIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks, TanhNode::InputIdx,
-                                  TanhNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          TanhNode::InputIdx,
+                                          TanhNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::TransposeNodeKind: {
         splitDims[TransposeNode::InputIdx] = 0;
         unsigned_t resultDim = cast<TransposeNode>(curNode)->getShuffle()[0];
-        parallelizeAndReplaceNode(
-            F, curNode, numOfChunks, TransposeNode::InputIdx,
-            TransposeNode::ResultIdx, splitDims, resultDim);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, TransposeNode::InputIdx,
+                    TransposeNode::ResultIdx, splitDims, resultDim));
         break;
       }
       case Kinded::Kind::ReluNodeKind: {
         splitDims[ReluNode::InputIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks, ReluNode::InputIdx,
-                                  ReluNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          ReluNode::InputIdx,
+                                          ReluNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::ClipNodeKind: {
         splitDims[ClipNode::InputIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks, ClipNode::InputIdx,
-                                  ClipNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          ClipNode::InputIdx,
+                                          ClipNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::QuantizeNodeKind: {
         splitDims[QuantizeNode::InputIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks,
-                                  QuantizeNode::InputIdx,
-                                  QuantizeNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, QuantizeNode::InputIdx,
+                    QuantizeNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::DequantizeNodeKind: {
         splitDims[DequantizeNode::InputIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks,
-                                  DequantizeNode::InputIdx,
-                                  DequantizeNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, DequantizeNode::InputIdx,
+                    DequantizeNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::ConvertToNodeKind: {
         splitDims[ConvertToNode::InputIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks,
-                                  ConvertToNode::InputIdx,
-                                  ConvertToNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, ConvertToNode::InputIdx,
+                    ConvertToNode::ResultIdx, splitDims, 0));
         break;
       }
       default:
@@ -4396,9 +4424,10 @@ bool glow::parallelizeOps(
       case Kinded::Kind::FullyConnectedNodeKind: {
         splitDims[FullyConnectedNode::WeightsIdx] = 1;
         splitDims[FullyConnectedNode::BiasIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks,
-                                  FullyConnectedNode::WeightsIdx,
-                                  FullyConnectedNode::ResultIdx, splitDims, 1);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, FullyConnectedNode::WeightsIdx,
+                    FullyConnectedNode::ResultIdx, splitDims, 1));
         break;
       }
       case Kinded::Kind::ReluNodeKind: {
@@ -4406,8 +4435,10 @@ bool glow::parallelizeOps(
           break;
         }
         splitDims[ReluNode::InputIdx] = 1;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks, ReluNode::InputIdx,
-                                  ReluNode::ResultIdx, splitDims, 1);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          ReluNode::InputIdx,
+                                          ReluNode::ResultIdx, splitDims, 1));
         break;
       }
       case Kinded::Kind::ClipNodeKind: {
@@ -4415,8 +4446,10 @@ bool glow::parallelizeOps(
           break;
         }
         splitDims[ClipNode::InputIdx] = 1;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks, ClipNode::InputIdx,
-                                  ClipNode::ResultIdx, splitDims, 1);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          ClipNode::InputIdx,
+                                          ClipNode::ResultIdx, splitDims, 1));
         break;
       }
       default:
@@ -4431,15 +4464,18 @@ bool glow::parallelizeOps(
     case ParallelTransformKind::None:
       break;
     }
+
+    if (CN) {
+      replacedMap[curNode] = CN;
+    }
   }
 
   // Because we transformed Node types unsafely, make sure all types of the
   // Function still are valid.
-  bool ret = F->verify();
-  DCHECK(ret) << "Verification issue post parallelization";
+  RETURN_ERR_IF_NOT(F->verify(), "Verification issue post parallelization");
 
-  const bool allProcessed = numProcessedNodes == parOpts.size();
-  DCHECK(allProcessed) << "Not all Nodes specified in parOpts were processed.";
+  RETURN_ERR_IF_NOT(numProcessedNodes == parOpts.size(),
+                    "Not all Nodes specified in parOpts were processed.");
 
-  return ret && allProcessed;
+  return replacedMap;
 }

@@ -3848,7 +3848,10 @@ TEST_F(GraphOptz, ParallelizeGraph_FC_ModelParallel) {
   parOpts[relu1] = ParallelTransformKind::Model;
   parOpts[fc2] = ParallelTransformKind::Model;
   parOpts[relu2] = ParallelTransformKind::Model;
-  EXPECT_TRUE(::glow::parallelizeOps(F_, numChunks, parOpts, 12));
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(replacedMap,
+                            ::glow::parallelizeOps(F_, numChunks, parOpts));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
 
   runDCEPass(F_, cctx_);
 
@@ -3884,8 +3887,11 @@ TEST_F(GraphOptz, ParallelizeGraph_Add) {
   llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
   parOpts[add1] = ParallelTransformKind::Data;
 
-  EXPECT_TRUE(::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
-                                     parOpts, 12));
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap, ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
+                                          parOpts, 12));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
   runDCEPass(F_, cctx_);
 
   // We now have 12 Adds from add1, as well as the original add2 which is
@@ -3923,7 +3929,10 @@ TEST_F(GraphOptz, ParallelizeGraph_Transpose) {
   llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
   numChunks[trans1] = 2;
   parOpts[trans1] = ParallelTransformKind::Data;
-  EXPECT_TRUE(::glow::parallelizeOps(F_, numChunks, parOpts, 12));
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(replacedMap,
+                            ::glow::parallelizeOps(F_, numChunks, parOpts));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
 
   runDCEPass(F_, cctx_);
 
