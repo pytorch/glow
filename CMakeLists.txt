@@ -10,6 +10,7 @@ option(GLOW_WITH_LLVMIRCODEGEN "Build the LLVM-based code generation library" ON
 option(GLOW_WITH_OPENCL "Build the OpenCL backend" OFF)
 option(GLOW_WITH_NNPI "Build the NNPI backend" OFF)
 option(GLOW_WITH_HABANA "Build the Habana backend" OFF)
+option(GLOW_USE_PNG_IF_REQUIRED "Link with libpng if required" ON)
 option(GLOW_BUILD_EXAMPLES "Build the examples" ON)
 option(GLOW_BUILD_PYTORCH_INTEGRATION "Build integration for PyTorch" OFF)
 option(GLOW_BUILD_TESTS "Build the tests" ON)
@@ -96,9 +97,11 @@ execute_process(COMMAND
   ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
 add_definitions("-DGIT_DATE=\"${GIT_DATE}\"")
 
-find_package(PNG)
-if(PNG_FOUND)
-  add_definitions(-DWITH_PNG)
+if(GLOW_USE_PNG_IF_REQUIRED)
+  find_package(PNG)
+  if(PNG_FOUND)
+    add_definitions(-DWITH_PNG)
+  endif()
 endif()
 
 if(GLOW_WITH_LLVMIRCODEGEN)
