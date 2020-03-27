@@ -1,0 +1,122 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "lhs"
+    input: "rhs"
+    output: "MM"
+    name: "MM"
+    op_type: "Glow_MatMul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 3
+      ints: 2
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 2
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 3
+      ints: 1
+      type: INTS
+    }
+    attribute {
+      name: "NodeOpt_BackendA_Option1"
+      strings: "1"
+      strings: "2"
+      type: STRINGS
+    }
+    attribute {
+      name: "NodeOpt_BackendA_Option2"
+      strings: "3"
+      type: STRINGS
+    }
+    attribute {
+      name: "NodeOpt_BackendB_Option3"
+      strings: "4"
+      strings: "5"
+      type: STRINGS
+    }
+  }
+  node {
+    input: "MM"
+    output: "save"
+    name: "save_save"
+    op_type: "Identity"
+  }
+  name: "glow"
+  input {
+    name: "lhs"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  input {
+    name: "rhs"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  output {
+    name: "save"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 3
+          }
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float$saveName:save_save"
+  }
+}
+opset_import {
+  version: 9
+}

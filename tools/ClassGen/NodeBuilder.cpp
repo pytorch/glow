@@ -658,9 +658,9 @@ void NodeBuilder::emitImportMethods(std::ostream &os) const {
   os << "    loadedNode->setPredicate(Predicate);\n";
   os << "  }\n\n";
 
-  // Add the node to the Function and return success.
+  // Add the node to the Function and return it.
   os << "  RETURN_IF_ERR(addNodeAsOutput(op, loadedNode));\n";
-  os << "  return true;\n";
+  os << "  return loadedNode;\n";
   os << "}\n\n";
 }
 
