@@ -102,10 +102,11 @@ class ONNXModelLoader
   /// If this is a custom Glow op that was exported via NodeGen automatic export
   /// logic, try to load the op. \returns Expected<true> if the op is
   /// successfully loaded. \returns Expected<false> if op type is not supported.
-  /// \returns an Error if an error occurred while trying to load.
-  Expected<bool> tryLoadGlowCustomOp(llvm::StringRef typeName,
-                                     const ONNX_NAMESPACE::NodeProto &op,
-                                     ArgumentDictionaryTy &dict);
+  /// \returns an Error if an error occurred while trying to load, or otherwise
+  /// the single Node that was created.
+  Expected<Node *> tryLoadGlowCustomOp(llvm::StringRef typeName,
+                                       const ONNX_NAMESPACE::NodeProto &op,
+                                       ArgumentDictionaryTy &dict);
 
   /// \returns True if the operator\ op is successfully folded.
   Expected<bool> foldOperator(const ONNX_NAMESPACE::NodeProto &op);
@@ -469,8 +470,13 @@ public:
                   llvm::ArrayRef<const char *> tensorNames,
                   llvm::ArrayRef<TypeRef> types, Function &F,
                   Error *errPtr = nullptr, bool zipMode = false,
+                  BackendSpecificNodeInfo *perNodeOpts = nullptr,
                   bool disableConstFoldInLoader = false,
                   const Backend *B = nullptr);
+
+private:
+  /// Per-node options that may be specified in a proto.
+  BackendSpecificNodeInfo *perNodeOpts_{nullptr};
 };
 
 } // namespace glow
