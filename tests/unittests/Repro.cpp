@@ -417,8 +417,10 @@ int run() {
   Function *F = mod->createFunction("test");
   Error err = Error::empty();
   bool usingGlowCustomOps = false;
+  CompilationContext cctx;
   {
-    ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *F, &err, onnxLoaderZipMode);
+    ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *F, &err, onnxLoaderZipMode,
+                           &cctx.backendOpts.backendSpecificNodeInfo);
     usingGlowCustomOps = onnxLD.usingGlowCustomOps();
   }
   CHECK(!ERR_TO_BOOL(std::move(err)))
@@ -430,7 +432,6 @@ int run() {
   }
 
   // Build host manager and compile the module.
-  CompilationContext cctx;
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
   if (globalFp16Opt) {
     precConfig.convertToFP16 = globalFp16Opt;

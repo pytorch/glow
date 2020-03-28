@@ -1102,15 +1102,14 @@ bool LayerNormalizationNode::verify() const {
   auto scale = getScale();
   auto bias = getBias();
 
-  bool isValid = true;
+  // Check all inputs/outputs have same ElemKind.
+  bool isValid = checkType(src, dest.getElementType(), this);
+  isValid &= checkType(src, scale.getElementType(), this);
+  isValid &= checkType(src, bias.getElementType(), this);
 
-  // Check inputs and outputs match.
-  isValid &= checkSameType(src, dest, this);
-
-  // Check that the types of scale and bias match and that they have the same
-  // ElemKind as input.
-  isValid &= checkTypeIgnoreShape(scale, src, this);
-  isValid &= checkSameType(scale, bias, this);
+  // Check inputs/outputs and scale/bias match shapes.
+  isValid &= checkSameShape(src, dest, this);
+  isValid &= checkSameShape(scale, bias, this);
 
   // Check that the dims of scale and bias match the end of src.
   auto srcDims = src.getType()->dims();
@@ -1388,7 +1387,10 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
         "Only use FP16 accumulation with FP16 version of RWQ-SLWS.",
         result.getType()->getElementType(), ElemKind::Float16Ty, parent);
   }
-  isValid &= checkType(indices, ElemKind::Int64ITy, parent);
+  isValid &= checkType(
+      indices,
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+      parent);
   // For EmbeddingBagByteRowwiseOffsets lengths are really offsets and should be
   // Int64ITy.
   if (isEmbeddingBagByteRowwiseOffsets) {
@@ -1763,6 +1765,7 @@ bool SpaceToDepthNode::verify() const {
 
 bool ResizeNearestNode::verify() const {
   auto input = getInput();
+  auto scale = getScale();
   auto result = getResult();
   auto inputDims = input.dims();
   auto outputDims = result.dims();
@@ -1772,22 +1775,14 @@ bool ResizeNearestNode::verify() const {
                                size_t(4), this);
   isValid &= expectCompareTrue("Output must be a 4D tensor", outputDims.size(),
                                size_t(4), this);
-  isValid &= expectCompareTrue("Batch size must be the same", inputDims[0],
-                               outputDims[0], this);
-  isValid &= expectCompareTrue("Depth must be the same", inputDims[3],
-                               outputDims[0], this);
-  isValid &= expectCompareTrue(
-      "Unexpected output height",
-      dim_t(std::floor(inputDims[1] * getHeightScale())), outputDims[1], this);
-  isValid &= expectCompareTrue(
-      "Unexpected output width",
-      dim_t(std::floor(inputDims[2] * getWidthScale())), outputDims[2], this);
-  isValid &=
-      expectCompareTrue("Invalid height scale", getHeightScale(), float(0.0),
-                        this, CompareOperatorGreaterThan<float>());
-  isValid &=
-      expectCompareTrue("Invalid width scale", getWidthScale(), float(0.0),
-                        this, CompareOperatorGreaterThan<float>());
+
+  for (size_t i = 0, e = scale.size(); i < e; i++) {
+    isValid &= expectCompareTrue("Unexpected output",
+                                 dim_t(std::floor(inputDims[i] * scale[i])),
+                                 outputDims[i], this);
+    isValid &= expectCompareTrue("Invalid scale", scale[i], float(0.0), this,
+                                 CompareOperatorGreaterThan<float>());
+  }
 
   return isValid;
 }

@@ -2044,8 +2044,9 @@ static SaveNode *getUniqueSaveNode(Function *F) {
 class MockBackendPrequantizeConst : public MockBackend {
   bool shouldPreQuantizeConstants() const override { return true; }
   bool isOpSupported(const NodeInfo &) const override { return true; }
-  bool transformPostLowering(Function *F, CompilationContext &,
-                             const glow::runtime::DeviceInfo *) const override {
+  Expected<bool>
+  transformPostLowering(Function *F, CompilationContext &,
+                        const glow::runtime::DeviceInfo *) const override {
     // Check the IR.
     EXPECT_EQ(F->getNodes().size(), 1);
     auto *save = getUniqueSaveNode(F);
@@ -2058,8 +2059,9 @@ class MockBackendPrequantizeConst : public MockBackend {
 class MockBackendNotPrequantizeConst : public MockBackend {
   bool shouldPreQuantizeConstants() const override { return false; }
   bool isOpSupported(const NodeInfo &) const override { return true; }
-  bool transformPostLowering(Function *F, CompilationContext &,
-                             const glow::runtime::DeviceInfo *) const override {
+  Expected<bool>
+  transformPostLowering(Function *F, CompilationContext &,
+                        const glow::runtime::DeviceInfo *) const override {
     // Check the IR.
     EXPECT_EQ(F->getNodes().size(), 2);
     auto *save = getUniqueSaveNode(F);
@@ -3846,7 +3848,10 @@ TEST_F(GraphOptz, ParallelizeGraph_FC_ModelParallel) {
   parOpts[relu1] = ParallelTransformKind::Model;
   parOpts[fc2] = ParallelTransformKind::Model;
   parOpts[relu2] = ParallelTransformKind::Model;
-  EXPECT_TRUE(::glow::parallelizeOps(F_, numChunks, parOpts, 12));
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(replacedMap,
+                            ::glow::parallelizeOps(F_, numChunks, parOpts));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
 
   runDCEPass(F_, cctx_);
 
@@ -3882,8 +3887,11 @@ TEST_F(GraphOptz, ParallelizeGraph_Add) {
   llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
   parOpts[add1] = ParallelTransformKind::Data;
 
-  EXPECT_TRUE(::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
-                                     parOpts, 12));
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap, ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
+                                          parOpts, 12));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
   runDCEPass(F_, cctx_);
 
   // We now have 12 Adds from add1, as well as the original add2 which is
@@ -3921,7 +3929,10 @@ TEST_F(GraphOptz, ParallelizeGraph_Transpose) {
   llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
   numChunks[trans1] = 2;
   parOpts[trans1] = ParallelTransformKind::Data;
-  EXPECT_TRUE(::glow::parallelizeOps(F_, numChunks, parOpts, 12));
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(replacedMap,
+                            ::glow::parallelizeOps(F_, numChunks, parOpts));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
 
   runDCEPass(F_, cctx_);
 
@@ -4068,4 +4079,36 @@ TEST_F(GraphOptz, FoldMatMulAddIntoFullyConnected) {
   EXPECT_EQ(0, countNodeKind(F_, Kinded::Kind::MatMulNodeKind));
   EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind));
   EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ReshapeNodeKind));
+}
+
+/// Test that FoldSlicesIntoConstants pass works as expected.
+TEST_F(GraphOptz, FoldSlicesIntoConstantsTest) {
+  Constant *C = mod_.createConstant(ElemKind::FloatTy, {3, 4}, "C");
+  auto CH = C->getPayloadMutable().getHandle<float>();
+  CH = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+
+  SliceNode *S1 = F_->createSlice("s1", C, {0, 0}, {3, 2});
+  SliceNode *S2 = F_->createSlice("s2", C, {0, 2}, {3, 4});
+  SaveNode *SN1 = F_->createSave("save1", S1);
+  SaveNode *SN2 = F_->createSave("save2", S2);
+
+  FunctionPassManager FPM("TestFPM",
+                          {
+                              FunctionPassID::FoldSlicesIntoConstants,
+                              getDCEPassConfig(),
+                          });
+  FPM.run(F_, CompilationContext());
+
+  Constant *C1 = llvm::dyn_cast<Constant>(SN1->getInput());
+  ASSERT_TRUE(C1);
+  auto H1 = C1->getPayloadMutable().getHandle();
+  Constant *C2 = llvm::dyn_cast<Constant>(SN2->getInput());
+  ASSERT_TRUE(C2);
+  auto H2 = C2->getPayloadMutable().getHandle();
+  for (dim_t i = 0, e = 3; i < e; i++) {
+    for (dim_t j = 0, e = 2; j < e; j++) {
+      EXPECT_EQ(H1.at({i, j}), CH.at({i, j}));
+      EXPECT_EQ(H2.at({i, j}), CH.at({i, j + 2}));
+    }
+  }
 }

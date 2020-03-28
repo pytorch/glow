@@ -58,7 +58,7 @@ public:
 
   bool shouldLower(const Node *N) const override;
 
-  bool transformPostLowering(
+  Expected<bool> transformPostLowering(
       Function *F, CompilationContext &cctx,
       const glow::runtime::DeviceInfo *devInfo = nullptr) const override;
 
@@ -74,6 +74,8 @@ public:
   createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
     return createInterpreterDeviceManager(deviceConfig);
   }
+
+  void parseBackendSpecificOptions(const BackendOptions &opts) const;
 };
 
 } // namespace glow

@@ -160,7 +160,8 @@ struct Model {
     // Load the quantization profile and transform the graph.
     if (!loadProfileFileOpt.empty()) {
       precConfig.quantMode = QuantizationMode::Quantize;
-      precConfig.quantConfig.infos = deserializeFromYaml(loadProfileFileOpt);
+      precConfig.quantConfig.infos =
+          deserializeProfilingInfosFromYaml(loadProfileFileOpt);
       precConfig.quantConfig.assertAllNodesQuantized = true;
     }
 
@@ -403,9 +404,9 @@ void Model::translate(const std::vector<std::string> &batch) {
   }
 
   if (!dumpProfileFileOpt.empty()) {
-    std::vector<NodeQuantizationInfo> QI =
-        quantization::generateNodeQuantizationInfos(bindings, F_, loweredMap_);
-    serializeToYaml(dumpProfileFileOpt, QI);
+    std::vector<NodeProfilingInfo> PI =
+        quantization::generateNodeProfilingInfos(bindings, F_, loweredMap_);
+    serializeProfilingInfosToYaml(dumpProfileFileOpt, PI);
   }
 }
 

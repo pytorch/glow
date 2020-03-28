@@ -17,11 +17,16 @@
 #define GLOW_BACKENDS_BACKENDOPTIONS_H
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringMap.h"
+
 #include <map>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace glow {
+class Function;
+class Node;
 class Storage;
 
 /// Hints provided to the Backend, the backend is not required to honor them.
@@ -33,6 +38,20 @@ struct BackendHints {
   /// Storage nodes to be pinned to SRAM listed in order of priority.
   std::vector<std::string> SRAMPrioritization;
 };
+
+/// A flexible map used for storing options for a backend. Keys are usually
+/// prefixed with a Backend's name, e.g. "Interpreter_OptionA".
+using BackendSpecificOptions = std::map<std::string, std::string>;
+
+/// A structure used for storing backend-specific information for Nodes in a
+/// Function. The outer map with Functions as a key map to another map with
+/// Nodes as a key, where all Nodes in that map are children of the original
+/// Function. The StringMap for each Node maps from an option name to a vector
+/// of values for that option.
+using BackendSpecificNodeInfo = std::unordered_map<
+    const Function *,
+    std::unordered_map<const Node *,
+                       llvm::StringMap<std::vector<std::string>>>>;
 
 /// Options relevant to Backends during compilation.
 struct BackendOptions {
@@ -47,7 +66,13 @@ struct BackendOptions {
 
   /// Options that are specific to a backend. Backend is responsible for
   /// parsing.
-  std::map<std::string, std::string> backendSpecificOpts;
+  BackendSpecificOptions backendSpecificOpts;
+
+  /// Options that are specified per-Node. Note that this structure is keyed off
+  /// of Functions and then Nodes. The Node keys for this structure are Node
+  /// pointers, so any changes of Nodes should be tracked and propagated into
+  /// new Nodes once this is set.
+  BackendSpecificNodeInfo backendSpecificNodeInfo;
 };
 
 }; // namespace glow

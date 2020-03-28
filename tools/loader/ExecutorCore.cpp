@@ -384,10 +384,10 @@ int Executor::executeNetwork(int argc, char **argv) {
       }
     }
 
-    // If profiling, generate and serialize the quantization infos now that we
+    // If profiling, generate and serialize the profiling infos now that we
     // have run inference one or more times to gather the profile.
     if (profilingGraph()) {
-      loader.generateAndSerializeQuantizationInfos(bindings);
+      loader.generateAndSerializeProfilingInfos(bindings);
     }
     if (!tracePath.empty()) {
       Error err = loader.getHostManager()->stopDeviceTrace();

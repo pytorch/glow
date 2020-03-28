@@ -370,7 +370,6 @@ void BoundInterpreterFunction::fwdConvTransposeInstFloatImpl(
 
   assert(idim.c % group == 0 && "Input channels must be divisible by group.");
   assert(odim.c % group == 0 && "Output channels must be divisible by group.");
-  assert(dilation == 1 && "Dilation must be 1.");
   assert(group == 1 && "Group must be 1.");
 
   dim_t inCperG = idim.c / group;
@@ -1554,6 +1553,7 @@ void BoundInterpreterFunction::fwdExtractTensorInst(
   TYPED_INSERT(float16_t, ElemKind::Float16Ty);
   TYPED_INSERT(int8_t, ElemKind::Int8QTy);
   TYPED_INSERT(int32_t, ElemKind::Int32QTy);
+  TYPED_INSERT(int32_t, ElemKind::Int32ITy);
 #undef TYPED_INSERT
 
   llvm_unreachable("Unsupported tensor type");
@@ -1918,21 +1918,21 @@ template <typename ElemTy>
 void BoundInterpreterFunction::fwdResizeNearestInstImpl(
     const ResizeNearestInst *I) {
   auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto scale = I->getScale();
   auto outW = getWeightHandle<ElemTy>(I->getDest());
 
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
 
-  auto heightScale = I->getHeightScale();
-  auto widthScale = I->getWidthScale();
-
   for (dim_t ob = 0; ob < odim.n; ++ob) {
+    auto ib = std::min(dim_t(ob / scale[0]), idim.n - 1);
     for (dim_t oh = 0; oh < odim.h; ++oh) {
-      auto ic = std::min(dim_t(oh / heightScale), idim.h - 1);
+      auto ih = std::min(dim_t(oh / scale[1]), idim.h - 1);
       for (dim_t ow = 0; ow < odim.w; ++ow) {
-        auto iw = std::min(dim_t(ow / widthScale), idim.w - 1);
+        auto iw = std::min(dim_t(ow / scale[2]), idim.w - 1);
         for (dim_t oc = 0; oc < odim.c; ++oc) {
-          outW.at({ob, oh, ow, oc}) = inW.at({ob, ic, iw, oc});
+          auto ic = std::min(dim_t(oc / scale[3]), idim.c - 1);
+          outW.at({ob, oh, ow, oc}) = inW.at({ib, ih, iw, ic});
         }
       }
     }
@@ -1947,8 +1947,7 @@ void BoundInterpreterFunction::fwdResizeNearestInst(
     return;
   }
 
-  dispatchFloatingPointImpl(fwdResizeNearestInstImpl,
-                            I->getSrc()->getElementType(), I);
+  dispatchImpl(fwdResizeNearestInstImpl, I->getSrc()->getElementType(), I);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3250,6 +3249,7 @@ void BoundInterpreterFunction::fwdLengthsSumInst(const LengthsSumInst *I) {
                             I->getData()->getElementType(), I)
 }
 
+template <typename TI>
 void BoundInterpreterFunction::fwdSparseLengthsSumInstI8Impl(
     const SparseLengthsSumInst *I) {
 
@@ -3260,7 +3260,7 @@ void BoundInterpreterFunction::fwdSparseLengthsSumInstI8Impl(
 
   out->zero();
 
-  auto IH = indices->getHandle<int64_t>();
+  auto IH = indices->getHandle<TI>();
   auto LH = lengths->getHandle<int32_t>();
 
   size_t segments = lengths->dims()[0];
@@ -3298,7 +3298,7 @@ void BoundInterpreterFunction::fwdSparseLengthsSumInstI8Impl(
   }
 }
 
-template <typename ElemTy>
+template <typename ElemTy, typename TI>
 void BoundInterpreterFunction::fwdSparseLengthsSumInstFloatImpl(
     const SparseLengthsSumInst *I) {
   staticAssertFloatingPointType(ElemTy);
@@ -3310,7 +3310,7 @@ void BoundInterpreterFunction::fwdSparseLengthsSumInstFloatImpl(
 
   out->zero();
 
-  auto IH = indices->getHandle<int64_t>();
+  auto IH = indices->getHandle<TI>();
   auto LH = lengths->getHandle<int32_t>();
 
   size_t segments = lengths->dims()[0];
@@ -3340,13 +3340,16 @@ void BoundInterpreterFunction::fwdSparseLengthsSumInstFloatImpl(
 void BoundInterpreterFunction::fwdSparseLengthsSumInst(
     const SparseLengthsSumInst *I) {
   if (I->getDest()->getType()->isQuantizedType()) {
-    return fwdSparseLengthsSumInstI8Impl(I);
+    dispatchIndexTypeImpl(fwdSparseLengthsSumInstI8Impl,
+                          I->getIndices()->getElementType(), I);
+    return;
   }
-  dispatchFloatingPointImpl(fwdSparseLengthsSumInstFloatImpl,
-                            I->getData()->getElementType(), I);
+  dispatchFloatingPointAndIndexImpl(fwdSparseLengthsSumInstFloatImpl,
+                                    I->getData()->getElementType(),
+                                    I->getIndices()->getElementType(), I);
 }
 
-template <typename ElemTy>
+template <typename ElemTy, typename TI>
 void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInstFloatImpl(
     const SparseLengthsWeightedSumInst *I) {
   staticAssertFloatingPointType(ElemTy);
@@ -3359,7 +3362,7 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInstFloatImpl(
 
   out->zero();
 
-  auto IH = indices->getHandle<int64_t>();
+  auto IH = indices->getHandle<TI>();
   auto LH = lengths->getHandle<int32_t>();
 
   size_t segments = lengths->dims()[0];
@@ -3388,6 +3391,7 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInstFloatImpl(
   }
 }
 
+template <typename TI>
 void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInstI8Impl(
     const SparseLengthsWeightedSumInst *I) {
 
@@ -3399,7 +3403,7 @@ void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInstI8Impl(
 
   out->zero();
 
-  auto IH = indices->getHandle<int64_t>();
+  auto IH = indices->getHandle<TI>();
   auto LH = lengths->getHandle<int32_t>();
 
   dim_t segments = lengths->dims()[0];
@@ -3449,10 +3453,13 @@ void BoundInterpreterFunction::fwdSparseLengthsSumGradInst(
 void BoundInterpreterFunction::fwdSparseLengthsWeightedSumInst(
     const SparseLengthsWeightedSumInst *I) {
   if (I->getDest()->getType()->isQuantizedType()) {
-    return fwdSparseLengthsWeightedSumInstI8Impl(I);
+    dispatchIndexTypeImpl(fwdSparseLengthsWeightedSumInstI8Impl,
+                          I->getIndices()->getElementType(), I);
+    return;
   }
-  dispatchFloatingPointImpl(fwdSparseLengthsWeightedSumInstFloatImpl,
-                            I->getData()->getElementType(), I);
+  dispatchFloatingPointAndIndexImpl(fwdSparseLengthsWeightedSumInstFloatImpl,
+                                    I->getData()->getElementType(),
+                                    I->getIndices()->getElementType(), I);
 }
 
 void BoundInterpreterFunction::fwdSparseLengthsWeightedSumGradInst(
@@ -3574,7 +3581,7 @@ void BoundInterpreterFunction::fwdEmbeddingBagInst(const EmbeddingBagInst *I) {
                             I->getData()->getElementType(), I);
 }
 
-template <typename T, typename AccumT>
+template <typename T, typename AccumT, typename TI>
 void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
     const RowwiseQuantizedSparseLengthsWeightedSumInst *I) {
   auto *out = getTensor(I->getDest());
@@ -3587,7 +3594,7 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
 
   out->zero();
 
-  auto IH = indices->getHandle<int64_t>();
+  auto IH = indices->getHandle<TI>();
   auto LH = lengths->getHandle<int32_t>();
 
   dim_t segments = lengths->dims()[0];
@@ -3631,15 +3638,38 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
 
 void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
     const RowwiseQuantizedSparseLengthsWeightedSumInst *I) {
+  const auto ity = I->getIndices()->getElementType();
   switch (I->getDest()->getElementType()) {
   case ElemKind::FloatTy:
-    fwdRowwiseQuantizedSparseLengthsWeightedSumImpl<float, float>(I);
+    if (ity == ElemKind::Int32ITy) {
+      fwdRowwiseQuantizedSparseLengthsWeightedSumImpl<float, float, int32_t>(I);
+    } else if (ity == ElemKind::Int64ITy) {
+      fwdRowwiseQuantizedSparseLengthsWeightedSumImpl<float, float, int64_t>(I);
+    } else {
+      llvm_unreachable("Index type is not supported");
+    }
     break;
   case ElemKind::Float16Ty:
     if (I->getUseFP16Accumulation()) {
-      fwdRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t, float16_t>(I);
+      if (ity == ElemKind::Int32ITy) {
+        fwdRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t, float16_t,
+                                                        int32_t>(I);
+      } else if (ity == ElemKind::Int64ITy) {
+        fwdRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t, float16_t,
+                                                        int64_t>(I);
+      } else {
+        llvm_unreachable("Index type is not supported");
+      }
     } else {
-      fwdRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t, float>(I);
+      if (ity == ElemKind::Int32ITy) {
+        fwdRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t, float,
+                                                        int32_t>(I);
+      } else if (ity == ElemKind::Int64ITy) {
+        fwdRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t, float,
+                                                        int64_t>(I);
+      } else {
+        llvm_unreachable("Index type is not supported");
+      }
     }
     break;
   default:
@@ -3647,7 +3677,7 @@ void BoundInterpreterFunction::fwdRowwiseQuantizedSparseLengthsWeightedSumInst(
   }
 }
 
-template <typename T, typename AccumT>
+template <typename T, typename AccumT, typename TI>
 void BoundInterpreterFunction::
     fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl(
         const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I) {
@@ -3659,7 +3689,7 @@ void BoundInterpreterFunction::
 
   out->zero();
 
-  auto IH = indices->getHandle<int64_t>();
+  auto IH = indices->getHandle<TI>();
   auto LH = lengths->getHandle<int32_t>();
 
   size_t segments = lengths->dims()[0];
@@ -3728,16 +3758,40 @@ void BoundInterpreterFunction::
 void BoundInterpreterFunction::
     fwdFusedRowwiseQuantizedSparseLengthsWeightedSumInst(
         const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I) {
+  const auto ity = I->getIndices()->getElementType();
   switch (I->getDest()->getElementType()) {
   case ElemKind::FloatTy:
-    fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<float, float>(I);
+    if (ity == ElemKind::Int32ITy) {
+      fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<float, float,
+                                                           int32_t>(I);
+    } else if (ity == ElemKind::Int64ITy) {
+      fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<float, float,
+                                                           int64_t>(I);
+    } else {
+      llvm_unreachable("Index type is not supported");
+    }
     break;
   case ElemKind::Float16Ty:
     if (I->getUseFP16Accumulation()) {
-      fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t,
-                                                           float16_t>(I);
+      if (ity == ElemKind::Int32ITy) {
+        fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<
+            float16_t, float16_t, int32_t>(I);
+      } else if (ity == ElemKind::Int64ITy) {
+        fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<
+            float16_t, float16_t, int64_t>(I);
+      } else {
+        llvm_unreachable("Index type is not supported");
+      }
     } else {
-      fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t, float>(I);
+      if (ity == ElemKind::Int32ITy) {
+        fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t, float,
+                                                             int32_t>(I);
+      } else if (ity == ElemKind::Int64ITy) {
+        fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl<float16_t, float,
+                                                             int64_t>(I);
+      } else {
+        llvm_unreachable("Index type is not supported");
+      }
     }
     break;
   default:
@@ -3860,9 +3914,8 @@ void BoundInterpreterFunction::fwdLengthsRangeFillInst(
 }
 
 template <typename ElemTy>
-void BoundInterpreterFunction::fwdSparseToDenseInstFloatImpl(
+void BoundInterpreterFunction::fwdSparseToDenseInstImpl(
     const SparseToDenseInst *I) {
-  staticAssertFloatingPointType(ElemTy);
 
   auto out = getTensor(I->getDest());
   auto indices = getTensor(I->getIndices());
@@ -3910,8 +3963,8 @@ void BoundInterpreterFunction::fwdSparseToDenseInstFloatImpl(
 
 void BoundInterpreterFunction::fwdSparseToDenseInst(
     const SparseToDenseInst *I) {
-  dispatchFloatingPointImpl(fwdSparseToDenseInstFloatImpl,
-                            I->getDest()->getElementType(), I);
+  dispatchArithmeticImpl(fwdSparseToDenseInstImpl,
+                         I->getDest()->getElementType(), I);
 }
 
 void BoundInterpreterFunction::fwdSparseToDenseMaskInst(

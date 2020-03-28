@@ -183,12 +183,16 @@ TEST(exporter, onnxModels) {
         name.find("ArgMaxDefault.onnxtxt") != std::string::npos ||
         name.find("ArgMaxKeepDim.onnxtxt") != std::string::npos ||
         name.find("ArgMaxNoKeepDim.onnxtxt") != std::string::npos ||
+        name.find("upsampleOpset7.onnxtxt") != std::string::npos ||
+        name.find("upsampleOpset9.onnxtxt") != std::string::npos ||
         name.find("NonMaxSuppressionSSD_ONNX.onnxtxt") != std::string::npos ||
         name.find("NonMaxSuppression.onnxtxt") != std::string::npos ||
         name.find("NonMaxSuppressionSSD.onnxtxt") != std::string::npos ||
         name.find("Less.onnxtxt") != std::string::npos ||
         name.find("simpleConvTranspose.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShape.onnxtxt") != std::string::npos ||
+        name.find("simpleConvTransposeOutShapeDilation.onnxtxt") !=
+            std::string::npos ||
         name.find("simpleConvTransposePads.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeAutoPadValid.onnxtxt") !=
             std::string::npos ||

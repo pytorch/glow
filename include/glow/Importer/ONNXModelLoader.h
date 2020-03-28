@@ -102,10 +102,11 @@ class ONNXModelLoader
   /// If this is a custom Glow op that was exported via NodeGen automatic export
   /// logic, try to load the op. \returns Expected<true> if the op is
   /// successfully loaded. \returns Expected<false> if op type is not supported.
-  /// \returns an Error if an error occurred while trying to load.
-  Expected<bool> tryLoadGlowCustomOp(llvm::StringRef typeName,
-                                     const ONNX_NAMESPACE::NodeProto &op,
-                                     ArgumentDictionaryTy &dict);
+  /// \returns an Error if an error occurred while trying to load, or otherwise
+  /// the single Node that was created.
+  Expected<Node *> tryLoadGlowCustomOp(llvm::StringRef typeName,
+                                       const ONNX_NAMESPACE::NodeProto &op,
+                                       ArgumentDictionaryTy &dict);
 
   /// \returns True if the operator\ op is successfully folded.
   Expected<bool> foldOperator(const ONNX_NAMESPACE::NodeProto &op);
@@ -147,6 +148,20 @@ class ONNXModelLoader
   Error loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
                           ArgumentDictionaryTy &dict);
 
+  /// Load Conv1D operator.
+  /// As per conv operation definition at
+  /// https://github.com/onnx/onnx/blob/master/docs/Operators.md#Conv ,
+  /// input is in format (NxCxD1x...xDn). If the input tensor dimension size is
+  /// 3 , we have kernel size of only 1 dimension and we call such a conv
+  /// operation as conv1d.
+  /// Conv1d is implemented using Conv2d as follows:
+  ///   a) Expand the input and kernel dimension to 4 using expand operator
+  ///   b) Do the necessary tensor format conversion as required for Conv2d
+  ///   c) Then use Conv2d for execution
+  ///   d) To reduce the output tensor dimension from 4 to 3, Squeeze is used
+  Error loadConv1D(const ONNX_NAMESPACE::NodeProto &op,
+                   ArgumentDictionaryTy &dict);
+
   /// Load MaxPool or AveragePool ONNX operator. \p typeName is the name of the
   /// ONNX operator being loaded, either MaxPool or AveragePool.
   Error loadPool(const ONNX_NAMESPACE::NodeProto &op,
@@ -175,6 +190,10 @@ class ONNXModelLoader
   /// Load ArgMax ONNX operator.
   Error loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
                    ArgumentDictionaryTy &dict);
+
+  /// Load Upsample ONNX operator.
+  Error loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
+                     ArgumentDictionaryTy &dict);
 
   /// Load BatchNormalization ONNX operator.
   Error loadBatchNormalization(const ONNX_NAMESPACE::NodeProto &op,
@@ -212,6 +231,10 @@ class ONNXModelLoader
   Error loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
                          ArgumentDictionaryTy &dict);
 
+  /// Load ReduceL2 ONNX operator
+  Error loadReduceL2(const ONNX_NAMESPACE::NodeProto &op,
+                     const ArgumentDictionaryTy &dict);
+
   /// Load ConstantOfShape ONNX operator.
   Error loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
                             ArgumentDictionaryTy &dict, bool isSplat);
@@ -219,6 +242,10 @@ class ONNXModelLoader
   /// Load Tile ONNX operator.
   Error loadTile(const ONNX_NAMESPACE::NodeProto &op,
                  ArgumentDictionaryTy &dict);
+
+  /// Load Expand ONNX operator.
+  Error loadExpand(const ONNX_NAMESPACE::NodeProto &op,
+                   const ArgumentDictionaryTy &dict);
 
   /// Load Where ONNX operator.
   Error loadWhere(const ONNX_NAMESPACE::NodeProto &op,
@@ -451,8 +478,13 @@ public:
                   llvm::ArrayRef<const char *> tensorNames,
                   llvm::ArrayRef<TypeRef> types, Function &F,
                   Error *errPtr = nullptr, bool zipMode = false,
+                  BackendSpecificNodeInfo *perNodeOpts = nullptr,
                   bool disableConstFoldInLoader = false,
                   const Backend *B = nullptr);
+
+private:
+  /// Per-node options that may be specified in a proto.
+  BackendSpecificNodeInfo *perNodeOpts_{nullptr};
 };
 
 } // namespace glow

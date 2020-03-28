@@ -744,6 +744,28 @@ static void libjit_arg_max_generic(const T *inW, T2 *outW, const dim_t *inWdims,
   }
 }
 
+template <typename SrcTy, typename DstTy>
+void libjit_resizenearest_generic(DstTy *dst, const SrcTy *src,
+                                  const float *scale, const dim_t *inWdims,
+                                  const dim_t *outWdims) {
+
+  for (dim_t ob = 0; ob < outWdims[0]; ++ob) {
+    auto ib = std::min(dim_t(ob / (scale[0])), inWdims[0] - 1);
+    for (dim_t oh = 0; oh < outWdims[1]; ++oh) {
+      auto ih = std::min(dim_t(oh / (scale[1])), inWdims[1] - 1);
+      for (dim_t ow = 0; ow < outWdims[2]; ++ow) {
+        auto iw = std::min(dim_t(ow / (scale[2])), inWdims[2] - 1);
+        for (dim_t oc = 0; oc < outWdims[3]; ++oc) {
+          auto ic = std::min(dim_t(oc / (scale[3])), inWdims[3] - 1);
+          const dim_t inIndex = libjit_getXYZW(inWdims, ib, ih, iw, ic);
+          const dim_t outIndex = libjit_getXYZW(outWdims, ob, oh, ow, oc);
+          dst[outIndex] = src[inIndex];
+        }
+      }
+    }
+  }
+}
+
 template <typename T>
 static void
 libjit_batchedadd_quantized(int8_t *dest, const int8_t *batch, const T *slice,
@@ -2167,6 +2189,28 @@ void libjit_max_pool_argmax_grad_f_i32(float *inG, const float *outG,
                                        const dim_t *inGdims,
                                        const dim_t *outWdims) {
   libjit_max_pool_argmax_grad_generic(inG, outG, argmax, inGdims, outWdims);
+}
+
+void libjit_resizenearest_f(float *dst, const float *src, const float *scale,
+                            const dim_t *inWdims, const dim_t *outWdims) {
+  libjit_resizenearest_generic(dst, src, scale, inWdims, outWdims);
+}
+
+void libjit_resizenearest_i8(int8_t *dst, const int8_t *src, const float *scale,
+                             const dim_t *inWdims, const dim_t *outWdims) {
+  libjit_resizenearest_generic(dst, src, scale, inWdims, outWdims);
+}
+
+void libjit_resizenearest_i32(int32_t *dst, const int32_t *src,
+                              const float *scale, const dim_t *inWdims,
+                              const dim_t *outWdims) {
+  libjit_resizenearest_generic(dst, src, scale, inWdims, outWdims);
+}
+
+void libjit_resizenearest_u(int64_t *dst, const int64_t *src,
+                            const float *scale, const dim_t *inWdims,
+                            const dim_t *outWdims) {
+  libjit_resizenearest_generic(dst, src, scale, inWdims, outWdims);
 }
 
 void libjit_avg_pool_i8(const int8_t *inW, int8_t *outW, const dim_t *inWdims,

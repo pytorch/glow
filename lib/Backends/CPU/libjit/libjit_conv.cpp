@@ -579,8 +579,8 @@ void libjit_conv_transpose_f(float *outW, const float *inW,
 
             for (dim_t kx = 0; kx < kernel_h; kx++) {
               for (dim_t ky = 0; ky < kernel_w; ky++) {
-                ssize_t ax = x + kx;
-                ssize_t ay = y + ky;
+                ssize_t ax = x + kx * dilation;
+                ssize_t ay = y + ky * dilation;
 
                 if (ax < 0 || ay < 0 || ax >= (ssize_t)outWdims[1] ||
                     ay >= (ssize_t)outWdims[2]) {

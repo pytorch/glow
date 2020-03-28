@@ -128,6 +128,11 @@ void ThreadPoolExecutor::run(const DAGNode *root,
                   "bind network execution state");
 
   currentState->incrementInflightNodes(numChildren);
+
+  // End the trace block before calling executeDAGNode() which can trigger the
+  // result cb. Once the result cb is called, it's no longer safe to access the
+  // trace context.
+  TRACE_EVENT_SCOPE_END();
   for (auto const &node : root->children) {
     // Run with cached state
     executeDAGNode(currentState, node);
@@ -163,6 +168,15 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
     return;
   }
   DeviceManager *deviceManager = deviceManagerIt->second.get();
+  // If the context has a deviceManager bound use that instead.
+  if (nodeCtx->getBoundDeviceManager()) {
+    deviceManager = nodeCtx->getBoundDeviceManager();
+  }
+
+  // End the trace block before calling deviceManager->runFunction which can
+  // trigger the result cb in a different thread. Once the result cb is called,
+  // it's no longer safe to access the trace context.
+  TRACE_EVENT_SCOPE_END();
   // Run the node using the DeviceManager.
   deviceManager->runFunction(
       node->name, std::move(nodeCtx),
@@ -221,16 +235,19 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
   // Return intermediateContext to executionState.
   executionState->returnUniqueNodeContextPtr(node, std::move(ctx));
 
-  // Now, check if all nodes in the graph are done. If so, the callback can be
-  // called and all state associated with the run can be erased.
-  bool noNodesInflight = executionState->decrementInflightNodes();
-
+  // This needs to happen before decrementInflightNodes(). Otherwise a race
+  // condition can happen where two threads call into this function at the same
+  // time. Once decrementInflightNodes() is called, only the thread that get
+  // noNodesInflight == true can access executionState.
   if (traceContext) {
     TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME,
                     "ThreadPoolExecutor::handleResult");
-    // Lock is not necessary as we only access on this runs executor.
     executionState->insertIntoTraceContext(traceContext);
   }
+
+  // Now, check if all nodes in the graph are done. If so, the callback can be
+  // called and all state associated with the run can be erased.
+  bool noNodesInflight = executionState->decrementInflightNodes();
 
   if (noNodesInflight) {
     // If there are no nodes inflight, that means all nodes are done. Transfer
@@ -260,12 +277,54 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
   inflightBarrier_.decrement();
 }
 
-void ThreadPoolExecutor::createPool(const DAGNode *root, unsigned poolSize) {
+void ThreadPoolExecutor::createPool(const DAGNode *root, unsigned poolSize,
+                                    bool assignStatic) {
+  std::unordered_map<DAGNode *, DeviceIDTy> assignment;
+
+  // For static assignment we need to track devices each node is assigned to.
+  std::unordered_map<DAGNode *, std::vector<DeviceIDTy>> assignments;
+  std::unordered_map<DAGNode *, unsigned> currentAssignment;
+  if (assignStatic) {
+    // Walk the nodes and get assignments.
+    std::queue<DAGNode *> remaining;
+    for (auto node : root->children) {
+      remaining.push(node);
+    }
+    while (remaining.size()) {
+      auto node = remaining.front();
+      remaining.pop();
+      // Add any new children to the queue.
+      for (auto child : node->children) {
+        auto it = assignments.find(child);
+        if (it == assignments.end()) {
+          remaining.push(child);
+        }
+      }
+      std::vector<DeviceIDTy> assignment;
+      for (auto dev : node->deviceRuntimeInfos) {
+        assignment.push_back(dev.first);
+      }
+      assignments[node] = assignment;
+      currentAssignment[node] = 0;
+    }
+  }
+
   std::unique_ptr<NetworkExecutionStatePool> pool =
       glow::make_unique<NetworkExecutionStatePool>();
   for (unsigned i = 0; i < poolSize; i++) {
     auto newState = glow::make_unique<NetworkExecutionState>(root);
-    newState->init(deviceManagers_);
+    // If assignStatic, calculate the device assignments for this
+    // executionState. For now we are assigning a round robin pattern per node.
+    if (assignStatic) {
+      for (auto it : currentAssignment) {
+        auto &nodeAssignments = assignments.at(it.first);
+        auto newAssignmentIdx = (it.second + 1) % nodeAssignments.size();
+        auto newAssignment = nodeAssignments[newAssignmentIdx];
+        assignment[it.first] = newAssignment;
+        currentAssignment[it.first] = newAssignmentIdx;
+      }
+    }
+    newState->init(deviceManagers_, assignment);
     pool->addNewState(std::move(newState));
   }
   states_[root] = std::move(pool);

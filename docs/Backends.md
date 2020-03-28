@@ -52,7 +52,7 @@ are two pure virtual functions all backends must implement:
 
 Additionally, there are several virtual functions that backends can override:
 
-- `virtual bool transformPostLowering(Function *F, CompilationContext &cctx) const;`
+- `virtual Expected<bool> transformPostLowering(Function *F, CompilationContext &cctx) const;`
 
   - Allow the backend to transform the `Function *F` after [node
     lowering](https://github.com/pytorch/glow/blob/master/docs/IR.md#node-lowering)

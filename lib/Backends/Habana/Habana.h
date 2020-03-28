@@ -50,7 +50,7 @@ public:
 
   bool shouldLower(const Node *N) const override;
 
-  bool transformPostLowering(
+  Expected<bool> transformPostLowering(
       Function *F, CompilationContext &cctx,
       const glow::runtime::DeviceInfo *devInfo = nullptr) const override;
 

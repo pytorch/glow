@@ -194,6 +194,10 @@ protected:
                        llvm::ArrayRef<TypeRef> types, Function *F)
       : ProtobufLoader(names, types, F) {}
 
+  CommonOperatorLoader(llvm::ArrayRef<const char *> names,
+                       llvm::ArrayRef<TypeRef> types, Module &mod)
+      : ProtobufLoader(names, types, mod) {}
+
   using ArgumentDictionaryTy =
       std::unordered_map<std::string, const AttrType *>;
 
@@ -372,8 +376,8 @@ protected:
     RETURN_ERR_IF_NOT(in.dims().size() >= 2, "SoftMax input dims must be >= 2");
 
     // Create a constant to store labels to be used in SoftMaxGradNode.
-    auto selected = G_->getParent()->createConstant(
-        ElemKind::Int64ITy, {in.dims()[0], 1}, "selected");
+    auto selected =
+        mod_.createConstant(ElemKind::Int64ITy, {in.dims()[0], 1}, "selected");
 
     // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
     // softmax function. This is similar to a bitcast operation.
@@ -507,6 +511,26 @@ protected:
 
     bool broadcast;
     ASSIGN_VALUE_OR_RETURN_ERR(broadcast, getBroadcast(dict));
+    // Check implicit broadcast
+    if (!broadcast && in0.dims().size() != in1.dims().size()) {
+      bool validBroadcast = true;
+      auto dimsA = in0.dims();
+      auto dimsB = in1.dims();
+      for (int i = dimsA.size() - 1, j = dimsB.size() - 1; i >= 0 && j >= 0;) {
+        auto a = dimsA[i];
+        auto b = dimsB[j];
+        if (!(a == b || a == 1 || b == 1)) {
+          validBroadcast = false;
+          break;
+        }
+        --i;
+        --j;
+      }
+      if (!validBroadcast) {
+        LOG(WARNING) << "Invalid broadcast rule for inputs of " << opName;
+      }
+      broadcast = validBroadcast;
+    }
 
     int axis = -1;
 
@@ -990,8 +1014,8 @@ protected:
     } else {
       // If Lengths input is not present, create scalar containing number of
       // index-value pairs.
-      auto *lengthsConstant = G_->getParent()->createConstant(
-          ElemKind::Int32ITy, {}, "lengthsConstant");
+      auto *lengthsConstant =
+          mod_.createConstant(ElemKind::Int32ITy, {}, "lengthsConstant");
       lengthsConstant->getPayloadMutable().template getHandle<int32_t>().raw(
           0) = indices.dims()[0];
       lengths = lengthsConstant->getOutput();

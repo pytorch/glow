@@ -114,6 +114,7 @@ add_executable(ThreadPoolExecutorTest
         ThreadPoolExecutorTest.cpp)
 target_link_libraries(ThreadPoolExecutorTest
         PRIVATE
+        Backend
         Backends
         Executor
         Graph
@@ -255,26 +256,25 @@ if(GLOW_WITH_HABANA)
                     --gtest_output=xml:HabanaTest.xml)
 endif()
 
-if(GLOW_WITH_CPU)
-  add_executable(HostManagerTest
-          HostManagerTest.cpp)
-  target_link_libraries(HostManagerTest
+if(GLOW_WITH_NNPI)
+  add_executable(NNPIOptPipelineTest
+          NNPIOptPipelineTest.cpp)
+  target_link_libraries(NNPIOptPipelineTest
           PRIVATE
+          BackendTestUtils
           Backends
-          HostManager
           ExecutionEngine
-          Executor
-          Graph
-          IR
-          Partitioner
-          Provisioner
+          GraphOptimizer
+          NNPI
+          Support
           gtest
           TestMain)
+  add_glow_test(NNPIOptPipelineTest
+                ${GLOW_BINARY_DIR}/tests/NNPIOptPipelineTest
+                    --gtest_output=xml:NNPIOptPipelineTest.xml)
+endif()
 
-  add_glow_test(HostManagerTest
-                ${GLOW_BINARY_DIR}/tests/HostManagerTest
-                    --gtest_output=xml:ProvisionerTest.xml)
-
+if(GLOW_WITH_CPU)
   add_executable(HyphenTest
                  HyphenTest.cpp)
   target_link_libraries(HyphenTest
@@ -430,6 +430,17 @@ foreach(backend ${GLOW_BACKENDS})
   add_backend_test(TEST BackendTest BACKEND "${backend}" UNOPT PRIVATE Backend HostManager)
   add_backend_test(TEST DeviceManagerTest BACKEND "${backend}")
   add_backend_test(TEST GradCheckTest BACKEND "${backend}" UNOPT)
+  add_backend_test(TEST HostManagerTest BACKEND "${backend}" UNOPT PRIVATE
+                        Backends
+                        HostManager
+                        ExecutionEngine
+                        Executor
+                        Graph
+                        IR
+                        Partitioner
+                        Provisioner
+                        gtest
+)
   add_backend_test(TEST MLTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST OperatorGradTest BACKEND "${backend}" UNOPT)
   add_backend_test(TEST OperatorTest BACKEND "${backend}" UNOPT PRIVATE

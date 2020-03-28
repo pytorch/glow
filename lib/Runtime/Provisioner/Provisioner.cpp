@@ -341,6 +341,12 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         // Compile and add to function map.
         auto options = cctx.backendOpts;
         options.backendHints = node->backendHints;
+        // Insert all options loaded in the Partitioner alongside options
+        // previously inserted, with Partitioner options taking precedence in
+        // case of a collision of keys.
+        for (auto &it : node->backendSpecificOpts) {
+          options.backendSpecificOpts[it.first] = it.second;
+        }
         Function *function = module.getFunction(node->name);
         if (backends_.find(deviceBackendName) == backends_.end()) {
           // Return error requested device type not found.
@@ -349,6 +355,9 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
                               deviceBackendName);
         }
 
+        auto compiledOrErr =
+            backends_[deviceBackendName]->compile(function, options);
+
         if (cctx.dumpFinalGraph) {
           auto fname =
               strFormat("final_graph_%s_%s.dot", deviceBackendName.c_str(),
@@ -356,9 +365,6 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
           LOG(INFO) << "Dumping final graph to " << fname;
           function->dumpDAG(fname);
         }
-
-        auto compiledOrErr =
-            backends_[deviceBackendName]->compile(function, options);
 
         if (GlowDumpCompilationLog) {
           llvm::SmallString<64> path;

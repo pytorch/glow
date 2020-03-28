@@ -137,7 +137,19 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
   cctx.backendOpts.backendSpecificOpts = settings_.backendSpecificOpts;
 
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "addNetwork");
-  RETURN_IF_ERR(hostManager_->addNetwork(std::move(module), cctx));
+  // If --load-backend-specific-opts was passed from python, add it to the
+  // compile context so the host manager knows to load backend options from
+  // yaml.
+
+  if (!settings_.backendOptionsFile.empty()) {
+    std::pair<std::string, std::string> loadBackendSpecificOpts(
+        "loadBackendSpecificOptions", settings_.backendOptionsFile);
+    cctx.backendOpts.backendSpecificOpts.insert(loadBackendSpecificOpts);
+  }
+
+  RETURN_IF_ERR(hostManager_->addNetwork(std::move(module), cctx,
+                                         settings_.saturateHost));
+
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "addNetwork");
 
   auto ret = perGlowGraphInfoMap_.emplace(hash, info);
@@ -412,8 +424,6 @@ CachingGraphRunner::CachingGraphRunner(
       hostManager_(hostManager), settings_(settings) {}
 
 CachingGraphRunner::~CachingGraphRunner() {
-  aggregateAndDumpTraces(nullptr, /* flush */ true);
-
   // Remove Glow functions saved in HostManager when being destroyed.
   std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
   for (auto &kv : perGlowGraphInfoMap_) {

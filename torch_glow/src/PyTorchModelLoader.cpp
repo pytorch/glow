@@ -686,220 +686,73 @@ const PyTorchModelLoader::MappingOfMemberFunctions
 PyTorchModelLoader::buildSymbolsMapping() {
   // First build mapping with standard PyTorch operators.
   auto symbolLoaderMapping = MappingOfMemberFunctions({
-      {{"prim::Constant"}, &PyTorchModelLoader::loadConstant, {}},
-      {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul, {}},
-      {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv, {}},
-      {{"aten::add", "aten::add_"}, &PyTorchModelLoader::loadAdd, {}},
-      {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub, {}},
-      {{"aten::sigmoid", "aten::sigmoid_"},
-       &PyTorchModelLoader::loadSigmoid,
-       {}},
-      {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu, {}},
-      {{"aten::gelu"}, &PyTorchModelLoader::loadGelu, {}},
-      {{"aten::tanh", "aten::tanh_"}, &PyTorchModelLoader::loadTanh, {}},
-      {{"aten::t", "aten::t_"}, &PyTorchModelLoader::loadT, {}},
-      {{"aten::permute"}, &PyTorchModelLoader::loadPermute, {}},
+      {{"prim::Constant"}, &PyTorchModelLoader::loadConstant},
+      {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul},
+      {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv},
+      {{"aten::add", "aten::add_"}, &PyTorchModelLoader::loadAdd},
+      {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub},
+      {{"aten::sigmoid", "aten::sigmoid_"}, &PyTorchModelLoader::loadSigmoid},
+      {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu},
+      {{"aten::gelu"}, &PyTorchModelLoader::loadGelu},
+      {{"aten::tanh", "aten::tanh_"}, &PyTorchModelLoader::loadTanh},
+      {{"aten::t", "aten::t_"}, &PyTorchModelLoader::loadT},
+      {{"aten::permute"}, &PyTorchModelLoader::loadPermute},
       {{"aten::transpose", "aten::transpose_"},
-       &PyTorchModelLoader::loadTranspose,
-       {}},
-      {{"aten::min"}, &PyTorchModelLoader::loadMin, {}},
-      {{"aten::max"}, &PyTorchModelLoader::loadMax, {}},
-      {{"aten::exp"}, &PyTorchModelLoader::loadExp, {}},
-      {{"prim::FusedConcat"}, &PyTorchModelLoader::loadFusedConcat, {}},
-      {{"glow::fused_stack"}, &PyTorchModelLoader::loadFusedStack, {}},
-      {{"aten::mean"},
-       &PyTorchModelLoader::loadMean,
-       {MeanInputs::axis, MeanInputs::keepdims, MeanInputs::output}},
-      {{"aten::pow"},
-       &PyTorchModelLoader::loadPow,
-       {
-           PowInputs::exponent,
-       }},
-      {{"aten::dropout", "aten::dropout_"},
-       &PyTorchModelLoader::loadDropout,
-       {
-           DropoutInputs::p,
-           DropoutInputs::training,
-       }},
-
-      {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt, {}},
-      {{"aten::clamp"},
-       &PyTorchModelLoader::loadClamp,
-       {
-           ClampInputs::min,
-           ClampInputs::max,
-       }},
-      {{"quantized::add"},
-       &PyTorchModelLoader::loadQuantizedAdd,
-       {QuantizedAddInputs::scale, QuantizedAddInputs::zero_point}},
-      {{"quantized::add_relu"},
-       &PyTorchModelLoader::loadQuantizedAddRelu,
-       {QuantizedAddReluInputs::scale, QuantizedAddReluInputs::zero_point}},
-      {{"glow::fused_linear"},
-       &PyTorchModelLoader::loadGlowFusedLinear,
-       {GlowFusedLinearInputs::bias, GlowFusedLinearInputs::weights,
-        GlowFusedLinearInputs::dim, GlowFusedLinearInputs::add_scalar}},
+       &PyTorchModelLoader::loadTranspose},
+      {{"aten::min"}, &PyTorchModelLoader::loadMin},
+      {{"aten::max"}, &PyTorchModelLoader::loadMax},
+      {{"aten::exp"}, &PyTorchModelLoader::loadExp},
+      {{"prim::FusedConcat"}, &PyTorchModelLoader::loadFusedConcat},
+      {{"glow::fused_stack"}, &PyTorchModelLoader::loadFusedStack},
+      {{"aten::mean"}, &PyTorchModelLoader::loadMean},
+      {{"aten::pow"}, &PyTorchModelLoader::loadPow},
+      {{"aten::dropout", "aten::dropout_"}, &PyTorchModelLoader::loadDropout},
+      {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt},
+      {{"aten::clamp"}, &PyTorchModelLoader::loadClamp},
+      {{"quantized::add"}, &PyTorchModelLoader::loadQuantizedAdd},
+      {{"quantized::add_relu"}, &PyTorchModelLoader::loadQuantizedAddRelu},
+      {{"glow::fused_linear"}, &PyTorchModelLoader::loadGlowFusedLinear},
       {{"glow::unpacked_quantized_conv2d"},
-       &PyTorchModelLoader::loadQuantizedConvUnpacked,
-       {QuantizedUnpackedConv2dInputs::stride,
-        QuantizedUnpackedConv2dInputs::padding,
-        QuantizedUnpackedConv2dInputs::dilation,
-        QuantizedUnpackedConv2dInputs::group,
-        QuantizedUnpackedConv2dInputs::scale,
-        QuantizedUnpackedConv2dInputs::zero_point}},
+       &PyTorchModelLoader::loadQuantizedConvUnpacked},
       {{"glow::unpacked_quantized_linear"},
-       &PyTorchModelLoader::loadQuantizedLinearUnpacked,
-       {
-           QuantizedUnpackedLinearInputs::weight,
-           QuantizedUnpackedLinearInputs::bias,
-           QuantizedUnpackedLinearInputs::scale,
-           QuantizedUnpackedLinearInputs::zero_point,
-       }},
-      {{"quantized::linear"},
-       &PyTorchModelLoader::loadQuantizedLinear,
-       {
-           QuantizedLinearInputs::packed_weights,
-           QuantizedLinearInputs::scale,
-           QuantizedLinearInputs::zero_point,
-       }},
-      {{"quantized::conv2d"},
-       &PyTorchModelLoader::loadQuantizedConv,
-       {QuantizedConv2dInputs::packed_weights, QuantizedConv2dInputs::stride,
-        QuantizedConv2dInputs::padding, QuantizedConv2dInputs::dilation,
-        QuantizedConv2dInputs::group, QuantizedConv2dInputs::scale,
-        QuantizedConv2dInputs::zero_point}},
-      {{"quantized::conv2d_relu"},
-       &PyTorchModelLoader::loadQuantizedConvRelu,
-       {QuantizedConv2dInputs::packed_weights, QuantizedConv2dInputs::stride,
-        QuantizedConv2dInputs::padding, QuantizedConv2dInputs::dilation,
-        QuantizedConv2dInputs::group, QuantizedConv2dInputs::scale,
-        QuantizedConv2dInputs::zero_point}},
-      {{"aten::quantize_per_tensor"},
-       &PyTorchModelLoader::loadQuantize,
-       {QuantizeInputs::scale, QuantizeInputs::zero_point,
-        QuantizeInputs::dtype}},
-      {{"aten::dequantize"}, &PyTorchModelLoader::loadDequantize, {}},
-      {{"aten::size"}, &PyTorchModelLoader::loadSize, {SizeInputs::dim}},
-      // TODO: use -1 to freeze all inputs
-      {{"prim::ListConstruct"}, &PyTorchModelLoader::loadListConstruct, {}},
+       &PyTorchModelLoader::loadQuantizedLinearUnpacked},
+      {{"quantized::linear"}, &PyTorchModelLoader::loadQuantizedLinear},
+      {{"quantized::conv2d"}, &PyTorchModelLoader::loadQuantizedConv},
+      {{"quantized::conv2d_relu"}, &PyTorchModelLoader::loadQuantizedConvRelu},
+      {{"aten::quantize_per_tensor"}, &PyTorchModelLoader::loadQuantize},
+      {{"aten::dequantize"}, &PyTorchModelLoader::loadDequantize},
+      {{"aten::size"}, &PyTorchModelLoader::loadSize},
+      {{"prim::ListConstruct"}, &PyTorchModelLoader::loadListConstruct},
       {{"aten::reciprocal", "aten::reciprocal_"},
-       &PyTorchModelLoader::loadReciprocal,
-       {}},
+       &PyTorchModelLoader::loadReciprocal},
       {{"aten::adaptive_avg_pool2d"},
-       &PyTorchModelLoader::loadAdaptiveAvgPool2d,
-       {AdaptiveAvgPoolInputs::output_size}},
-      {{"aten::reshape"},
-       &PyTorchModelLoader::loadReshape,
-       {ReshapeInputs::shape}},
-      {{"aten::_convolution"},
-       &PyTorchModelLoader::loadConvolution,
-       {
-           ConvInputs::weights,
-           ConvInputs::bias,
-           ConvInputs::stride,
-           ConvInputs::padding,
-           ConvInputs::dilation,
-           ConvInputs::transposed,
-           ConvInputs::output_padding,
-           ConvInputs::groups,
-           ConvInputs::benchmark,
-           ConvInputs::deterministic,
-           ConvInputs::cudnn_enabled,
-       }},
-      {{"aten::batch_norm"},
-       &PyTorchModelLoader::loadBatchNorm,
-       {
-           BatchNormInputs::weights,
-           BatchNormInputs::bias,
-           BatchNormInputs::running_mean,
-           BatchNormInputs::running_var,
-           BatchNormInputs::training,
-           BatchNormInputs::momentum,
-           BatchNormInputs::eps,
-           BatchNormInputs::cuddnn_enabled,
-       }},
-      {{"aten::layer_norm"},
-       &PyTorchModelLoader::loadLayerNorm,
-       {
-           LayerNormInputs::normalized_shape,
-           LayerNormInputs::weight,
-           LayerNormInputs::bias,
-           LayerNormInputs::eps,
-           LayerNormInputs::cuddnn_enabled,
-       }},
-      {{"aten::max_pool2d"},
-       &PyTorchModelLoader::loadMaxPool2d,
-       {
-           MaxPoolInputs::kernel_size,
-           MaxPoolInputs::stride,
-           MaxPoolInputs::padding,
-           MaxPoolInputs::dilation,
-           MaxPoolInputs::ceil_mode,
-       }},
-      {{"aten::avg_pool2d"},
-       &PyTorchModelLoader::loadAvgPool2d,
-       {
-           AvgPoolInputs::kernel_size,
-           AvgPoolInputs::stride,
-           AvgPoolInputs::padding,
-           AvgPoolInputs::ceil_mode,
-           AvgPoolInputs::count_include_pad,
-           AvgPoolInputs::divisor_override,
-       }},
-      {{"aten::matmul"}, &PyTorchModelLoader::loadMatMul, {}},
-      {{"aten::mm"}, &PyTorchModelLoader::loadMM, {}},
-      {{"aten::bmm"}, &PyTorchModelLoader::loadBmm, {}},
-      {{"aten::addmm"},
-       &PyTorchModelLoader::loadAddMM,
-       {
-           AddMMInputs::alpha,
-           AddMMInputs::beta,
-       }},
-      {{"aten::flatten"},
-       &PyTorchModelLoader::loadFlatten,
-       {
-           FlattenInputs::start_dim,
-           FlattenInputs::end_dim,
-       }},
-      {{"aten::prelu"},
-       &PyTorchModelLoader::loadPRelu,
-       {
-           PReluInputs::weight,
-       }},
-      {{"aten::slice"},
-       &PyTorchModelLoader::loadSlice,
-       {
-           SliceInputs::dim,
-           SliceInputs::start,
-           SliceInputs::end,
-           SliceInputs::step,
-       }},
-      {{"aten::softmax"},
-       &PyTorchModelLoader::loadSoftMax,
-       {
-           SoftMaxInputs::dim,
-           SoftMaxInputs::dtype,
-       }},
-      {{"aten::topk"},
-       &PyTorchModelLoader::loadTopK,
-       {
-           TopKInputs::k,
-           TopKInputs::dim,
-           TopKInputs::largest,
-           TopKInputs::sorted,
-       }},
-      {{"prim::ConstantChunk"}, &PyTorchModelLoader::loadConstantChunk, {}},
-      {{"aten::embedding_bag"}, &PyTorchModelLoader::loadEmbeddingBag, {}},
+       &PyTorchModelLoader::loadAdaptiveAvgPool2d},
+      {{"aten::reshape"}, &PyTorchModelLoader::loadReshape},
+      {{"aten::_convolution"}, &PyTorchModelLoader::loadConvolution},
+      {{"aten::batch_norm"}, &PyTorchModelLoader::loadBatchNorm},
+      {{"aten::layer_norm"}, &PyTorchModelLoader::loadLayerNorm},
+      {{"aten::max_pool2d"}, &PyTorchModelLoader::loadMaxPool2d},
+      {{"aten::avg_pool2d"}, &PyTorchModelLoader::loadAvgPool2d},
+      {{"aten::matmul"}, &PyTorchModelLoader::loadMatMul},
+      {{"aten::mm"}, &PyTorchModelLoader::loadMM},
+      {{"aten::bmm"}, &PyTorchModelLoader::loadBmm},
+      {{"aten::addmm"}, &PyTorchModelLoader::loadAddMM},
+      {{"aten::flatten"}, &PyTorchModelLoader::loadFlatten},
+      {{"aten::prelu"}, &PyTorchModelLoader::loadPRelu},
+      {{"aten::slice"}, &PyTorchModelLoader::loadSlice},
+      {{"aten::softmax"}, &PyTorchModelLoader::loadSoftMax},
+      {{"aten::topk"}, &PyTorchModelLoader::loadTopK},
+      {{"prim::ConstantChunk"}, &PyTorchModelLoader::loadConstantChunk},
+      {{"aten::embedding_bag"}, &PyTorchModelLoader::loadEmbeddingBag},
       {{"fb::embedding_bag_byte_rowwise_offsets"},
-       &PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets,
-       {}},
+       &PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets},
   });
 
   // Add in custom operator loaders.
   for (const auto &symbolAndLoader : getCustomPyTorchOpLoaders()) {
     const char *symbolStr = symbolAndLoader.first.toQualString();
     MappingOfMemberFunctionsValue val({symbolStr},
-                                      &PyTorchModelLoader::loadCustomOp, {});
+                                      &PyTorchModelLoader::loadCustomOp);
     auto res = symbolLoaderMapping.insert({symbolAndLoader.first, val});
     DCHECK(res.second)
         << "Tried to create a custom op loader for a symbol that "
@@ -936,65 +789,6 @@ bool PyTorchModelLoader::isNodeSupported(const torch::jit::Node *ptNode) {
   return mapping.count(kind) != 0;
 }
 
-Error PyTorchModelLoader::freezeWeights(const torch::jit::Node *ptNode) {
-  const auto &mapping = getSymbolsMapping();
-  const auto it = mapping.find(ptNode->kind());
-
-  RETURN_ERR_IF_NOT(it != mapping.end(),
-                    glow::strFormat("Node kind %s is not supported by Glow",
-                                    ptNode->kind().toDisplayString()));
-
-  const auto &inputsToFreeze = it->second.inputsToFreeze;
-
-  const auto inputs = ptNode->inputs();
-
-  std::vector<glow::dim_t> frozenInputIndices;
-
-  for (size_t i = 0; i < inputs.size(); i++) {
-    // Skip inputs that are not marked to be frozen
-    if (!inputsToFreeze.count(i)) {
-      continue;
-    }
-
-    // Skip node inputs that don't have a Glow NodeValue.
-    if (!hasGlowNodeValueForValue(inputs[i])) {
-      continue;
-    }
-
-    glow::NodeValue phNodeValue;
-    ASSIGN_VALUE_OR_RETURN_ERR(phNodeValue,
-                               getGlowNodeValueForValue(inputs[i]));
-
-    glow::Placeholder *ph =
-        llvm::dyn_cast<glow::Placeholder>(phNodeValue.getNode());
-
-    // Skip inputs that aren't placeholders.
-    if (!ph) {
-      continue;
-    }
-
-    RETURN_ERR_IF_NOT(
-        inputPlaceholdersReverseIndex_.count(ph),
-        "Trying to freeze a NodeValue that did not come from the stack.");
-
-    size_t inputIndex = inputPlaceholdersReverseIndex_.at(ph);
-
-    const auto inputIVal = inputs_.at(inputIndex);
-
-    GlowIValue glowIVal;
-    RETURN_IF_ERR(glowIVal.fromIValue(inputIVal));
-
-    removeValueMapping(inputs[i]);
-    RETURN_IF_ERR(
-        addValueMapping(inputs[i], std::move(glowIVal), /*wasFrozen*/ true));
-
-    if (frozenInputIndices_) {
-      frozenInputIndices_->insert(inputIndex);
-    }
-  }
-  return Error::success();
-}
-
 Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
   const auto &mapping = getSymbolsMapping();
   // Nodes are topologically sorted.
@@ -1010,10 +804,6 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
     RETURN_ERR_IF_NOT(it != mapping.end(),
                       glow::strFormat("Node kind %s is not supported by Glow",
                                       node->kind().toDisplayString()));
-
-    // TODO: once we have weight unpacking for quantized parameters we can
-    // totally remove this.
-    RETURN_IF_ERR(freezeWeights(node));
 
     RETURN_IF_ERR((this->*it->second.loadFn)(node));
   }
@@ -1035,10 +825,9 @@ Error PyTorchModelLoader::getCorrectTypeMapping(c10::ScalarType &dest,
 
 Error PyTorchModelLoader::addValueMapping(const torch::jit::Value *value,
                                           glow::NodeValue nodeValue,
-                                          c10::ScalarType correctType,
-                                          bool wasFrozen) {
+                                          c10::ScalarType correctType) {
 
-  ValueMapping mapping(std::move(nodeValue), wasFrozen);
+  ValueMapping mapping(std::move(nodeValue));
   mapping.setCorrectType(correctType);
   auto p = valueMap_.emplace(value, std::move(mapping));
 
@@ -1048,11 +837,10 @@ Error PyTorchModelLoader::addValueMapping(const torch::jit::Value *value,
 }
 
 Error PyTorchModelLoader::addValueMapping(const torch::jit::Value *value,
-                                          glow::NodeValue nodeValue,
-                                          bool wasFrozen) {
+                                          glow::NodeValue nodeValue) {
   auto correctType =
       elemKindToScalarType(nodeValue.getType()->getElementType());
-  return addValueMapping(value, nodeValue, correctType, wasFrozen);
+  return addValueMapping(value, nodeValue, correctType);
 }
 
 void PyTorchModelLoader::removeValueMapping(const torch::jit::Value *value) {
@@ -1061,15 +849,14 @@ void PyTorchModelLoader::removeValueMapping(const torch::jit::Value *value) {
 
 Error PyTorchModelLoader::addValueMapping(const torch::jit::Value *value,
                                           glow::GlowIValue glowIValue,
-                                          c10::ScalarType correctType,
-                                          bool wasFrozen) {
+                                          c10::ScalarType correctType) {
   glow::Constant *glowConstant = nullptr;
   if (glowIValue.isTensor()) {
     glow::Tensor *t;
     ASSIGN_VALUE_OR_RETURN_ERR(t, glowIValue.toTensor());
     glowConstant = F_.getParent()->createConstant("constant", std::move(*t));
-    RETURN_IF_ERR(addValueMapping(value, glowConstant->getOutput(), correctType,
-                                  wasFrozen));
+    RETURN_IF_ERR(
+        addValueMapping(value, glowConstant->getOutput(), correctType));
   } else {
     ValueMapping mapping(std::move(glowIValue));
     mapping.setCorrectType(correctType);
@@ -1084,12 +871,11 @@ Error PyTorchModelLoader::addValueMapping(const torch::jit::Value *value,
 }
 
 Error PyTorchModelLoader::addValueMapping(const torch::jit::Value *value,
-                                          glow::GlowIValue glowIValue,
-                                          bool wasFrozen) {
+                                          glow::GlowIValue glowIValue) {
   auto correctType = c10::ScalarType::Undefined;
   // We dont propagate IValue's type unless the type is given,
   // since it has too many posibilities.
-  return addValueMapping(value, std::move(glowIValue), correctType, wasFrozen);
+  return addValueMapping(value, std::move(glowIValue), correctType);
 }
 
 bool PyTorchModelLoader::hasGlowNodeValueForValue(
@@ -1494,7 +1280,8 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   const auto biasMinMaxIdx = biasHandle.minMaxArg();
 
   const auto biasQParams = chooseQuantizationParams(
-      biasHandle.raw(biasMinMaxIdx.first), biasHandle.raw(biasMinMaxIdx.second),
+      {biasHandle.raw(biasMinMaxIdx.first),
+       biasHandle.raw(biasMinMaxIdx.second)},
       glow::quantization::Schema::Asymmetric, glow::ElemKind::Int32QTy);
 
   auto bias = biasConstant->getOutput();
@@ -1613,7 +1400,8 @@ Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
   const auto biasMinMaxIdx = biasHandle.minMaxArg();
 
   const auto biasQParams = chooseQuantizationParams(
-      biasHandle.raw(biasMinMaxIdx.first), biasHandle.raw(biasMinMaxIdx.second),
+      {biasHandle.raw(biasMinMaxIdx.first),
+       biasHandle.raw(biasMinMaxIdx.second)},
       glow::quantization::Schema::Asymmetric, glow::ElemKind::Int32QTy);
 
   const auto biasType =
@@ -1678,26 +1466,45 @@ Error PyTorchModelLoader::loadGlowFusedLinear(const torch::jit::Node *ptNode) {
 }
 
 Expected<NodeValue> PyTorchModelLoader::loadNodeValueOrBroadcastedIValue(
-    const torch::jit::Value *value, llvm::ArrayRef<glow::dim_t> dims) {
+    const torch::jit::Value *value, llvm::ArrayRef<glow::dim_t> dims,
+    bool makeFloat) {
   if (hasGlowNodeValueForValue(value)) {
     return getGlowNodeValueForValue(value);
   } else {
     GlowIValue *ival;
     ASSIGN_VALUE_OR_RETURN_ERR(ival, getGlowIValueForValue(value));
-    float constVal;
-    if (ival->isInt()) {
-      ASSIGN_VALUE_OR_RETURN_ERR(constVal,
-                                 static_cast_expected<float>(ival->toInt()));
-    } else {
-      ASSIGN_VALUE_OR_RETURN_ERR(constVal,
-                                 static_cast_expected<float>(ival->toDouble()));
+
+    if (makeFloat) {
+      float constVal;
+      if (ival->isInt()) {
+        ASSIGN_VALUE_OR_RETURN_ERR(constVal,
+                                   static_cast_expected<float>(ival->toInt()));
+      } else {
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            constVal, static_cast_expected<float>(ival->toDouble()));
+      }
+      glow::Tensor t(glow::ElemKind::FloatTy, dims);
+      t.init(glow::Tensor::InitKind::Broadcast, constVal,
+             F_.getParent()->getPRNG());
+      return F_.getParent()
+          ->createConstant("constant", std::move(t))
+          ->getOutput();
+    } else /* makeInt */ {
+      int64_t constVal;
+      if (ival->isInt()) {
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            constVal, static_cast_expected<int64_t>(ival->toInt()));
+      } else {
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            constVal, static_cast_expected<int64_t>(ival->toDouble()));
+      }
+      glow::Tensor t(glow::ElemKind::Int64ITy, dims);
+      t.init(glow::Tensor::InitKind::Broadcast, constVal,
+             F_.getParent()->getPRNG());
+      return F_.getParent()
+          ->createConstant("constant", std::move(t))
+          ->getOutput();
     }
-    glow::Tensor t(glow::ElemKind::FloatTy, dims);
-    t.init(glow::Tensor::InitKind::Broadcast, constVal,
-           F_.getParent()->getPRNG());
-    return F_.getParent()
-        ->createConstant("constant", std::move(t))
-        ->getOutput();
   }
 }
 
@@ -1712,11 +1519,15 @@ PyTorchModelLoader::loadArithmeticNode(llvm::StringRef name,
   if (hasGlowNodeValueForValue(lhs)) {
     ASSIGN_VALUE_OR_RETURN_ERR(lhsInput, getGlowNodeValueForValue(lhs));
     ASSIGN_VALUE_OR_RETURN_ERR(
-        rhsInput, loadNodeValueOrBroadcastedIValue(rhs, lhsInput.dims()));
+        rhsInput,
+        loadNodeValueOrBroadcastedIValue(
+            rhs, lhsInput.dims(), isFloatElemKind(lhsInput.getElementType())));
   } else if (hasGlowNodeValueForValue(rhs)) {
     ASSIGN_VALUE_OR_RETURN_ERR(rhsInput, getGlowNodeValueForValue(rhs));
     ASSIGN_VALUE_OR_RETURN_ERR(
-        lhsInput, loadNodeValueOrBroadcastedIValue(lhs, rhsInput.dims()));
+        lhsInput,
+        loadNodeValueOrBroadcastedIValue(
+            lhs, rhsInput.dims(), isFloatElemKind(rhsInput.getElementType())));
   } else {
     return MAKE_ERR("Either lhs or rhs of arithmetic node must be a tensor");
   }
@@ -3643,8 +3454,8 @@ Error PyTorchModelLoader::loadJITGraph(
     const std::vector<InputMeta> &inputMeta) {
   Error error = Error::empty();
   PyTorchModelLoader loader(F, graph, inputPlaceholders, outputPlaceholders,
-                            outputCorrectType, error, settings,
-                            /*frozenInputIndices*/ nullptr, inputs, inputMeta);
+                            outputCorrectType, error, settings, inputs,
+                            inputMeta);
   return error;
 }
 
@@ -3653,11 +3464,10 @@ PyTorchModelLoader::PyTorchModelLoader(
     std::vector<glow::Placeholder *> &inputPlaceholders,
     std::vector<glow::Placeholder *> &outputPlaceholders,
     std::vector<c10::ScalarType> &outputCorrectType, Error &error,
-    const PyTorchLoaderSettings &settings, std::set<size_t> *frozenInputIndices,
+    const PyTorchLoaderSettings &settings,
     const at::ArrayRef<torch::jit::IValue> inputs,
     const std::vector<InputMeta> &inputMeta)
-    : F_(F), inputs_(inputs), frozenInputIndices_(frozenInputIndices),
-      copyTensorMemory_(false) {
+    : F_(F), inputs_(inputs), copyTensorMemory_(false) {
   auto loadFn = [&]() -> Error {
     auto graphInputValues = graph.inputs();
 
@@ -3854,9 +3664,8 @@ void ValueMapping::setCorrectType(c10::ScalarType dtype) {
   correctType_ = dtype;
 }
 
-ValueMapping::ValueMapping(NodeValue nodeValue, bool wasFrozen) {
-  mappingType_ = wasFrozen ? ValueMappingType::FrozenNodeValue
-                           : ValueMappingType::NodeValue;
+ValueMapping::ValueMapping(NodeValue nodeValue) {
+  mappingType_ = ValueMappingType::NodeValue;
   nodeValue_ = std::move(nodeValue);
 }
 

@@ -85,9 +85,10 @@ protected:
       // Note: We disable constant folding here because we only need it to
       // calculate shapes that are the result of constant compute in the proto,
       // but this won't be the case when using useGlowCustomOps exporting.
-      ONNXModelLoader onnxLD(
-          pathToModel, {}, {}, *loadedF, &err, /* zipMode */ false,
-          /* disableConstFoldInLoader */ true, &loadedEE.getBackend());
+      ONNXModelLoader onnxLD(pathToModel, {}, {}, *loadedF, &err,
+                             /* zipMode */ false, /* perNodeOpts */ nullptr,
+                             /* disableConstFoldInLoader */ true,
+                             &loadedEE.getBackend());
       if (ERR_TO_BOOL(std::move(err))) {
         llvm::sys::fs::remove(pathToModel);
         FAIL() << "Error loading exported model";
@@ -1509,17 +1510,27 @@ static void testResizeNearest(glow::PlaceholderBindings &bindings,
 
   auto heightScaleUp = 2.0f;
   auto widthScaleUp = 1.5f;
+  std::vector<float> scaleUp;
+  scaleUp.push_back(1.0f);
+  scaleUp.push_back(heightScaleUp);
+  scaleUp.push_back(widthScaleUp);
+  scaleUp.push_back(1.0f);
 
-  auto *resizeNearestUp = F->createResizeNearest("resizeNearestUp", input,
-                                                 heightScaleUp, widthScaleUp);
+  auto *resizeNearestUp =
+      F->createResizeNearest("resizeNearestUp", input, scaleUp);
   auto *saveUp = F->createSave("saveUp", resizeNearestUp);
   auto *resultUp = bindings.allocate(saveUp->getPlaceholder());
 
   auto heightScaleDown = 0.9f;
   auto widthScaleDown = 0.6;
+  std::vector<float> scaleDown;
+  scaleDown.push_back(1.0f);
+  scaleDown.push_back(heightScaleDown);
+  scaleDown.push_back(widthScaleDown);
+  scaleDown.push_back(1.0f);
 
-  auto *resizeNearestDown = F->createResizeNearest(
-      "resizeNearestDown", input, heightScaleDown, widthScaleDown);
+  auto *resizeNearestDown =
+      F->createResizeNearest("resizeNearestDown", input, scaleDown);
   auto *saveDown = F->createSave("saveDown", resizeNearestDown);
   auto *resultDown = bindings.allocate(saveDown->getPlaceholder());
 
@@ -1773,23 +1784,26 @@ TEST_P(OperatorTest, Logit_Float16) {
   testLogit<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.002);
 }
 
-TEST_P(OperatorTest, CmpEQ) {
-  CHECK_IF_ENABLED();
+/// Helper to test CmpEQ using \p DTy.
+template <typename DataType>
+static void testCmpEQ(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                      glow::Function *F, glow::ExecutionEngine &EE,
+                      ElemKind DTy) {
+  auto *X = mod.createPlaceholder(DTy, {2, 7}, "X", false);
+  // Values listed here in the dynamic range of both int32_t and int64_t
+  bindings.allocate(X)->getHandle<DataType>() = {
+      0, 1, 17, 876, 1000, 44444, 65535, 0, 1, 17, 876, 1000, 44444, 65535};
+  auto *Y = mod.createPlaceholder(DTy, {2, 7}, "Y", false);
+  bindings.allocate(Y)->getHandle<DataType>() = {
+      1, 2, 16, 900, 1111, 44544, 65534, 0, 1, 17, 876, 1000, 44444, 65535};
 
-  auto *X = mod_.createPlaceholder(ElemKind::Int64ITy, {2, 7}, "X", false);
-  bindings_.allocate(X)->getHandle<int64_t>() = {
-      0, 1, 17, 876, 1000, 44444, 9999999, 0, 1, 17, 876, 1000, 44444, 9999999};
-  auto *Y = mod_.createPlaceholder(ElemKind::Int64ITy, {2, 7}, "Y", false);
-  bindings_.allocate(Y)->getHandle<int64_t>() = {
-      1, 2, 16, 900, 1111, 44544, 1999999, 0, 1, 17, 876, 1000, 44444, 9999999};
+  auto *cmpEQ = F->createCmpEQ("cmpEQ", X, Y);
+  auto *save = F->createSave("save", cmpEQ);
+  auto *saveTensor = bindings.allocate(save->getPlaceholder());
 
-  auto *cmpEQ = F_->createCmpEQ("cmpEQ", X, Y);
-  auto *save = F_->createSave("save", cmpEQ);
-  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
+  EE.compile(CompilationMode::Infer);
 
-  EE_.compile(CompilationMode::Infer);
-
-  EE_.run(bindings_);
+  EE.run(bindings);
 
   auto saveH = saveTensor->getHandle<bool>();
   for (dim_t i = 0; i < 7; ++i) {
@@ -1798,6 +1812,18 @@ TEST_P(OperatorTest, CmpEQ) {
   for (dim_t i = 0; i < 7; ++i) {
     EXPECT_TRUE(saveH.at({1, i}));
   }
+}
+
+/// Test the CmpEQ operator using Int64ITy.
+TEST_P(OperatorTest, CmpEQ_Int64) {
+  CHECK_IF_ENABLED();
+  testCmpEQ<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+
+/// Test the CmpEQ operator using Int32ITy.
+TEST_P(OperatorTest, CmpEQ_Int32) {
+  CHECK_IF_ENABLED();
+  testCmpEQ<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
 }
 
 /// Check that the add operator works properly with FP16.
@@ -4167,7 +4193,7 @@ TEST_P(OperatorTest, ScatterDataQuantized) {
   bindings_.allocate(indices)->getHandle<int64_t>() = {1, 3};
   bindings_.allocate(slices)->getHandle() = {-3, -4, -7, -8};
 
-  auto qParams = glow::quantization::chooseQuantizationParams(-11, 11);
+  auto qParams = glow::quantization::chooseQuantizationParams({-11, 11});
   auto dataTy =
       mod_.uniqueType(ElemKind::Int8QTy, {5, 2}, qParams.scale, qParams.offset);
   auto slicesTy =
@@ -4320,7 +4346,7 @@ TEST_P(OperatorTest, ScatterAddQuantized) {
   bindings_.allocate(indices)->getHandle<int64_t>() = {1, 3};
   bindings_.allocate(slices)->getHandle() = {3, -8, -7, 8};
 
-  auto qParams = glow::quantization::chooseQuantizationParams(-11, 11);
+  auto qParams = glow::quantization::chooseQuantizationParams({-11, 11});
   auto dataTy =
       mod_.uniqueType(ElemKind::Int8QTy, {5, 2}, qParams.scale, qParams.offset);
   auto slicesTy =
@@ -5634,9 +5660,15 @@ TEST_P(OperatorTest, sliceVectors_Int8) {
 }
 
 /// Test slicing with Int32QTy.
-TEST_P(OperatorTest, sliceVectors_Int32) {
+TEST_P(OperatorTest, sliceVectors_Int32Q) {
   CHECK_IF_ENABLED();
   testSliceVectors<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy);
+}
+
+/// Test slicing with Int32ITy.
+TEST_P(OperatorTest, sliceVectors_Int32I) {
+  CHECK_IF_ENABLED();
+  testSliceVectors<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
 }
 
 /// Helper to test SliceConcatVectors using \p DTy.
@@ -5770,7 +5802,8 @@ TEST_P(OperatorTest, QuantizedTile) {
   auto *V = mod_.createPlaceholder(ElemKind::FloatTy, {4, 5}, "V", false);
   bindings_.allocate(V);
 
-  auto quantizationParams = glow::quantization::chooseQuantizationParams(0, 20);
+  auto quantizationParams =
+      glow::quantization::chooseQuantizationParams({0, 20});
   auto quantizeTy =
       mod_.uniqueType(ElemKind::Int8QTy, {4, 5}, quantizationParams.scale,
                       quantizationParams.offset);
@@ -6434,6 +6467,82 @@ TEST_P(OperatorTest, sanityConvTransposeStrided) {
   EXPECT_FLOAT_EQ(result.at({0, 4, 2, 0}), 80);
   EXPECT_FLOAT_EQ(result.at({0, 4, 3, 0}), 45);
   EXPECT_FLOAT_EQ(result.at({0, 4, 4, 0}), 50);
+}
+
+/// ConvTranspose with easy to calculate output values. 2x2 input, 1-ch input,
+/// 1-ch output.
+TEST_P(OperatorTest, sanityConvTransposeDilated) {
+  CHECK_IF_ENABLED()
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 1}, "input", false);
+  bindings_.allocate(input)->getHandle() = {2., 3., 4., 5.};
+
+  auto *filter =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "filter", false);
+  bindings_.allocate(filter)->getHandle() = {2., 3., 4., 5., 6.,
+                                             7., 8., 9., 10.};
+
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
+  bindings_.allocate(bias)->zero();
+
+  std::pair<dim_t, dim_t> outWH =
+      calculateConvTransposeOutputDims(2, 2, {3, 3}, {1, 1}, {0, 0, 0, 0}, 2);
+  auto outTy =
+      mod_.uniqueType(ElemKind::FloatTy, {1, outWH.first, outWH.second, 1});
+
+  ConvTransposeNode *CN =
+      F_->createConvTranspose("ConvTranspose", input, filter, bias, outTy,
+                              {3, 3}, {1, 1}, {0, 0, 0, 0}, 1, 2);
+
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+  std::vector<dim_t> expectedDims = {1, 6, 6, 1};
+
+  ASSERT_TRUE(result.dims().vec() == expectedDims);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), 4);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 0}), 6);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 0}), 6);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 3, 0}), 9);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 4, 0}), 8);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 5, 0}), 12);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0}), 8);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 1, 0}), 10);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 2, 0}), 12);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 3, 0}), 15);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 4, 0}), 16);
+  EXPECT_FLOAT_EQ(result.at({0, 1, 5, 0}), 20);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 0, 0}), 10);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 1, 0}), 15);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 2, 0}), 12);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 3, 0}), 18);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 4, 0}), 14);
+  EXPECT_FLOAT_EQ(result.at({0, 2, 5, 0}), 21);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 0, 0}), 20);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 1, 0}), 25);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 2, 0}), 24);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 3, 0}), 30);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 4, 0}), 28);
+  EXPECT_FLOAT_EQ(result.at({0, 3, 5, 0}), 35);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 0, 0}), 16);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 1, 0}), 24);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 2, 0}), 18);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 3, 0}), 27);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 4, 0}), 20);
+  EXPECT_FLOAT_EQ(result.at({0, 4, 5, 0}), 30);
+  EXPECT_FLOAT_EQ(result.at({0, 5, 0, 0}), 32);
+  EXPECT_FLOAT_EQ(result.at({0, 5, 1, 0}), 40);
+  EXPECT_FLOAT_EQ(result.at({0, 5, 2, 0}), 36);
+  EXPECT_FLOAT_EQ(result.at({0, 5, 3, 0}), 45);
+  EXPECT_FLOAT_EQ(result.at({0, 5, 4, 0}), 40);
+  EXPECT_FLOAT_EQ(result.at({0, 5, 5, 0}), 50);
 }
 
 /// ConvTranspose with easy to calculate output values. 2x2 input, 3-ch input,
@@ -7916,13 +8025,13 @@ static void Conv3DQuantizedTest(glow::PlaceholderBindings &bindings,
 
   // Quantized types.
   auto inputTQP = quantization::chooseQuantizationParams(
-      -1.0, 1.0, quantization::Schema::Asymmetric, elemKind);
+      {-1.0, 1.0}, quantization::Schema::Asymmetric, elemKind);
   auto filterTQP = quantization::chooseQuantizationParams(
-      -1.0, 1.0, quantization::Schema::Asymmetric, elemKind);
+      {-1.0, 1.0}, quantization::Schema::Asymmetric, elemKind);
   auto biasTQP = quantization::chooseQuantizationParams(
-      -1.0, 1.0, quantization::Schema::Asymmetric, biaselemKind);
+      {-1.0, 1.0}, quantization::Schema::Asymmetric, biaselemKind);
   auto outputTQP = quantization::chooseQuantizationParams(
-      -4.0, 4.0, quantization::Schema::Asymmetric, elemKind);
+      {-4.0, 4.0}, quantization::Schema::Asymmetric, elemKind);
 
   // Create quantized network.
   auto inputQTy = mod.uniqueType(elemKind, {1, 4, 4, 4, 1}, inputTQP.scale,
@@ -7972,7 +8081,7 @@ TEST_P(OperatorTest, Conv3DQuantizedTest_Int8_BiasInt8) {
 
 /// Test Int8 Conv3D with Int32 bias.
 TEST_P(OperatorTest, Conv3DQuantizedTest_Int8_BiasInt32) {
-  ENABLED_BACKENDS("Interpreter");
+  ENABLED_BACKENDS("Interpreter", "NNPI");
   Conv3DQuantizedTest(bindings_, mod_, F_, EE_, ElemKind::Int8QTy,
                       ElemKind::Int32QTy);
 }
@@ -8670,10 +8779,10 @@ TEST_P(OperatorTest, LengthsSum) {
 }
 
 /// Helper to test SLS using \p DTy.
-template <typename DataType>
+template <typename DataType, typename IndexType>
 static void testSLS(glow::PlaceholderBindings &bindings, glow::Module &mod,
                     glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
-                    float allowedError) {
+                    ElemKind ITy, float allowedError) {
   /*
     DATA  = [
         [1.0, 1.2],
@@ -8691,15 +8800,14 @@ static void testSLS(glow::PlaceholderBindings &bindings, glow::Module &mod,
     ]
   */
   auto *data = mod.createPlaceholder(DTy, {3, 2}, "data", false);
-  auto *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
+  auto *indices = mod.createPlaceholder(ITy, {8}, "indices", false);
   auto *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {5}, "lengths", false);
 
   bindings.allocate(data)->getHandle<DataType>() = {
       1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f,
   };
-  bindings.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<IndexType>() = {
       2, 0, 1, 2, 0, 0, 0, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -8723,16 +8831,32 @@ static void testSLS(glow::PlaceholderBindings &bindings, glow::Module &mod,
   EXPECT_TRUE(expected.isEqual(result, allowedError));
 }
 
-/// Test that SLS is correctly supported in FloatTy.
+/// Test that SLS is correctly supported in FloatTy with int64 indices.
 TEST_P(OperatorTest, SparseLengthsSum_Float) {
   CHECK_IF_ENABLED();
-  testSLS<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001);
+  testSLS<float, int64_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          ElemKind::Int64ITy, 0.0001);
 }
 
-/// Test that SLS is correctly supported in Float16Ty.
+/// Test that SLS is correctly supported in FloatTy with int32 indices.
+TEST_P(OperatorTest, SparseLengthsSum_Float_Int32) {
+  CHECK_IF_ENABLED();
+  testSLS<float, int32_t>(bindings_, mod_, F_, EE_, ElemKind::FloatTy,
+                          ElemKind::Int32ITy, 0.0001);
+}
+
+/// Test that SLS is correctly supported in Float16Ty with int64 indices.
 TEST_P(OperatorTest, SparseLengthsSum_Float16) {
   CHECK_IF_ENABLED();
-  testSLS<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.002);
+  testSLS<float16_t, int64_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              ElemKind::Int64ITy, 0.002);
+}
+
+/// Test that SLS is correctly supported in Float16Ty with int32 indices.
+TEST_P(OperatorTest, SparseLengthsSum_Float16_Int32) {
+  CHECK_IF_ENABLED();
+  testSLS<float16_t, int32_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                              ElemKind::Int32ITy, 0.002);
 }
 
 TEST_P(OperatorTest, SparseLengthsSumI8) {
@@ -9220,10 +9344,10 @@ TEST_P(OperatorTest,
 }
 
 /// Helper to test RowwiseQuantizedSparseLengthsWeightedSum using \p DTy.
-template <typename DataType>
+template <typename DataType, typename IndexType>
 static void testRowwiseQuantizedSparseLengthsWeightedSum(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
-    glow::ExecutionEngine &EE, ElemKind DTy, float allowedError,
+    glow::ExecutionEngine &EE, ElemKind DTy, ElemKind ITy, float allowedError,
     bool useFP16Accumulation = false) {
   /*
     DATA  =   [2.0, -0.5, 13]
@@ -9244,14 +9368,13 @@ static void testRowwiseQuantizedSparseLengthsWeightedSum(
       3., 1., 0., 0., 0., 0., 2., -0.5,
   };
 
-  Placeholder *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
-                            /* isTrainable */ false);
+  Placeholder *indices = mod.createPlaceholder(ITy, {8}, "indices",
+                                               /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
 
-  bindings.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<IndexType>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -9285,8 +9408,8 @@ static void testRowwiseQuantizedSparseLengthsWeightedSum(
 /// Test RWQ-SLWS with Float Weights, Scales, Offsets, and Output.
 TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsWeightedSum_Float) {
   CHECK_IF_ENABLED();
-  testRowwiseQuantizedSparseLengthsWeightedSum<float>(
-      bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001);
+  testRowwiseQuantizedSparseLengthsWeightedSum<float, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy, 0.0001);
 }
 
 /// Test RWQ-SLWS with Float16 Weights, Scales, Offsets, and Output. Uses Float
@@ -9294,8 +9417,8 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsWeightedSum_Float) {
 TEST_P(OperatorTest,
        RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
-  testRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
+  testRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy, 0.0001,
       /* useFP16Accumulation */ false);
 }
 
@@ -9304,8 +9427,36 @@ TEST_P(OperatorTest,
 TEST_P(OperatorTest,
        RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
-  testRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
+  testRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy, 0.0001,
+      /* useFP16Accumulation */ true);
+}
+
+/// Test RWQ-SLWS with Float Weights, Scales, Offsets, and Output. Int32
+/// indices.
+TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsWeightedSum_Float_Int32) {
+  CHECK_IF_ENABLED();
+  testRowwiseQuantizedSparseLengthsWeightedSum<float, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int32ITy, 0.0001);
+}
+
+/// Test RWQ-SLWS with Float16 Weights, Scales, Offsets, and Output. Uses Float
+/// accumulation. Int32 indices.
+TEST_P(OperatorTest,
+       RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat_Int32) {
+  CHECK_IF_ENABLED();
+  testRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy, 0.0001,
+      /* useFP16Accumulation */ false);
+}
+
+/// Test RWQ-SLWS with Float16 Weights, Scales, Offsets, and Output. Uses
+/// Float16 accumulation. Int32 indices.
+TEST_P(OperatorTest,
+       RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16_Int32) {
+  CHECK_IF_ENABLED();
+  testRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy, 0.0001,
       /* useFP16Accumulation */ true);
 }
 
@@ -9593,11 +9744,11 @@ TEST_P(OperatorTest, GatherWithInt32PartialTensors) {
 }
 
 /// Helper to test FusedRowwiseQuantizedSparseLengthsWeightedSum using \p DTy.
-template <typename DataType>
+template <typename DataType, typename IndexType>
 static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
-    glow::ExecutionEngine &EE, ElemKind fusedDTy, float allowedError,
-    bool useFP16Accumulation = false) {
+    glow::ExecutionEngine &EE, ElemKind fusedDTy, ElemKind ITy,
+    float allowedError, bool useFP16Accumulation = false) {
   /*
     DATA  =   [[2.0, -0.5, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -9620,14 +9771,13 @@ static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
       3., 1., 0., 0., 0., 0., 2., -0.5,
   };
 
-  Placeholder *indices =
-      mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
-                            /* isTrainable */ false);
+  Placeholder *indices = mod.createPlaceholder(ITy, {8}, "indices",
+                                               /* isTrainable */ false);
   Placeholder *lengths =
       mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
                             /* isTrainable */ false);
 
-  bindings.allocate(indices)->getHandle<int64_t>() = {
+  bindings.allocate(indices)->getHandle<IndexType>() = {
       1, 0, 2, 0, 1, 2, 2, 0,
   };
   bindings.allocate(lengths)->getHandle<int32_t>() = {
@@ -9660,16 +9810,18 @@ static void testFusedRowwiseQuantizedSparseLengthsWeightedSum(
 /// Test Fused-RWQ-SLWS in Float.
 TEST_P(OperatorTest, FusedRowwiseQuantizedSparseLengthsWeightedSum_Float) {
   CHECK_IF_ENABLED();
-  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float>(
-      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, 0.0001);
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, ElemKind::Int64ITy,
+      0.0001);
 }
 
 /// Test Fused-RWQ-SLWS in Float16. Uses Float accumulation.
 TEST_P(OperatorTest,
        FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
-  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, ElemKind::Int64ITy,
+      0.0001,
       /* useFP16Accumulation */ false);
 }
 
@@ -9677,8 +9829,39 @@ TEST_P(OperatorTest,
 TEST_P(OperatorTest,
        FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
-  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t>(
-      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, ElemKind::Int64ITy,
+      0.0001,
+      /* useFP16Accumulation */ true);
+}
+
+/// Test Fused-RWQ-SLWS in Float. Int32 indices.
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSparseLengthsWeightedSum_Float_Int32) {
+  CHECK_IF_ENABLED();
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, ElemKind::Int32ITy,
+      0.0001);
+}
+
+/// Test Fused-RWQ-SLWS in Float16. Uses Float accumulation. Int32 indices.
+TEST_P(OperatorTest,
+       FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat_Int32) {
+  CHECK_IF_ENABLED();
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, ElemKind::Int32ITy,
+      0.0001,
+      /* useFP16Accumulation */ false);
+}
+
+/// Test Fused-RWQ-SLWS in Float16. Uses Float16 accumulation. Int32 indices.
+TEST_P(
+    OperatorTest,
+    FusedRowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat16_Int32) {
+  CHECK_IF_ENABLED();
+  testFusedRowwiseQuantizedSparseLengthsWeightedSum<float16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, ElemKind::Int32ITy,
+      0.0001,
       /* useFP16Accumulation */ true);
 }
 
@@ -10453,8 +10636,10 @@ TEST_P(OperatorStatelessTest, SLSAllZeroLengths_Float16) {
                             ElemKind::Float16Ty, ElemKind::Float16Ty);
 }
 
-TEST_P(OperatorTest, SparseToDense) {
-  CHECK_IF_ENABLED();
+template <typename DataType>
+static void testSparseToDense(glow::PlaceholderBindings &bindings,
+                              glow::Module &mod, glow::Function *F,
+                              glow::ExecutionEngine &EE, ElemKind DTy) {
 
   // Create and initialize inputs. Make input 3D to make sure
   // multidimensional values are handled properly.
@@ -10463,32 +10648,32 @@ TEST_P(OperatorTest, SparseToDense) {
   constexpr dim_t kCols = 5;
   constexpr dim_t kMaxIndex = 10;
 
-  auto *indices = mod_.createPlaceholder(ElemKind::Int64ITy, {kNumIndices},
-                                         "indices", false);
-  auto *values = mod_.createPlaceholder(
-      ElemKind::FloatTy, {kNumIndices, kRows, kCols}, "data", false);
-  auto *dataToInferDim = mod_.createPlaceholder(ElemKind::FloatTy, {kMaxIndex},
-                                                "dataToInferDim", false);
+  auto *indices = mod.createPlaceholder(ElemKind::Int64ITy, {kNumIndices},
+                                        "indices", false);
+  auto *values =
+      mod.createPlaceholder(DTy, {kNumIndices, kRows, kCols}, "data", false);
+  auto *dataToInferDim = mod.createPlaceholder(ElemKind::FloatTy, {kMaxIndex},
+                                               "dataToInferDim", false);
 
-  auto IH = bindings_.allocate(indices)->getHandle<int64_t>();
-  auto VH = bindings_.allocate(values)->getHandle();
+  auto IH = bindings.allocate(indices)->getHandle<int64_t>();
+  auto VH = bindings.allocate(values)->getHandle<DataType>();
 
   // Duplicate one index to test that the corresponding values are added.
   IH = {1, 3, 1, 9};
-  VH.randomize(-3.0, 3.0, mod_.getPRNG());
+  VH.randomize(-3.0, 3.0, mod.getPRNG());
 
-  auto *STDN = F_->createSparseToDense("STDN", indices, values, dataToInferDim);
-  auto *S = F_->createSave("save", STDN);
-  bindings_.allocate(S->getPlaceholder());
+  auto *STDN = F->createSparseToDense("STDN", indices, values, dataToInferDim);
+  auto *S = F->createSave("save", STDN);
+  bindings.allocate(S->getPlaceholder());
 
-  EE_.compile(CompilationMode::Infer);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
 
-  Tensor &result = *bindings_.get(S->getPlaceholder());
+  Tensor &result = *bindings.get(S->getPlaceholder());
 
   // Compute expected output.
-  Tensor expected(ElemKind::FloatTy, {kMaxIndex, kRows, kCols});
-  auto EH = expected.getHandle();
+  Tensor expected(DTy, {kMaxIndex, kRows, kCols});
+  auto EH = expected.getHandle<DataType>();
 
   expected.zero();
   for (dim_t i = 0; i < kNumIndices; ++i) {
@@ -10501,6 +10686,16 @@ TEST_P(OperatorTest, SparseToDense) {
   }
 
   EXPECT_TRUE(expected.isEqual(result));
+}
+
+TEST_P(OperatorTest, SparseToDense_Float) {
+  CHECK_IF_ENABLED();
+  testSparseToDense<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, SparseToDense_Int64) {
+  CHECK_IF_ENABLED();
+  testSparseToDense<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
 TEST_P(OperatorTest, SparseToDenseMask1) {
@@ -12518,6 +12713,59 @@ TEST_P(OperatorTest, add_float) {
       }
     }
   }
+}
+
+static FunctionTensorPair
+createAndInitLayerNormTest(glow::PlaceholderBindings &bindings,
+                           glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 4, 5, 5}, "in", false);
+
+  Tensor scaleT(ElemKind::FloatTy, {5, 5});
+  scaleT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+  Constant *scaleC = mod.createConstant("scale", std::move(scaleT));
+  Tensor biasT(ElemKind::FloatTy, {5, 5});
+  biasT.getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+  Constant *biasC = mod.createConstant("bias", std::move(biasT));
+
+  LayerNormalizationNode *LNN =
+      F->createLayerNormalization("LN", input, scaleC, biasC, 1e-5);
+
+  bindings.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod.getPRNG());
+
+  auto *res = F->createSave("save", LNN);
+  ::glow::convertPlaceholdersToConstants(F, bindings,
+                                         {input, res->getPlaceholder()});
+  auto *resultTensor = bindings.allocate(res->getPlaceholder());
+
+  return std::make_pair(F, resultTensor);
+}
+
+/// Test LayerNorm with FloatTy.
+TEST_P(OperatorStatelessTest, LayerNorm_Float) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(getBackendName(), createAndInitLayerNormTest,
+                            ElemKind::FloatTy, ElemKind::FloatTy, 0.0001f,
+                            parCloneCountOpt);
+}
+
+/// Test LayerNorm with Float16Ty.
+TEST_P(OperatorStatelessTest, LayerNorm_Float16) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(getBackendName(), createAndInitLayerNormTest,
+                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.005f,
+                            parCloneCountOpt);
+}
+
+/// Test LayerNorm with Int8Ty.
+TEST_P(OperatorStatelessTest, LayerNorm_Int8) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(getBackendName(), createAndInitLayerNormTest,
+                            ElemKind::FloatTy, ElemKind::Int8QTy, 0.04f,
+                            parCloneCountOpt);
 }
 
 INSTANTIATE_BACKEND_TEST(OperatorStatelessTest);

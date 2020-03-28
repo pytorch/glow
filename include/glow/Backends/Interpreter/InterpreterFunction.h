@@ -303,13 +303,15 @@ private:
   template <typename ElemTy>
   void fwdScatterDataInstAddQuantizedImpl(const ScatterDataInst *I);
 
-  void fwdSparseLengthsSumInstI8Impl(const SparseLengthsSumInst *I);
   template <typename ElemTy>
+  void fwdSparseLengthsSumInstI8Impl(const SparseLengthsSumInst *I);
+  template <typename ElemTy, typename TI>
   void fwdSparseLengthsSumInstFloatImpl(const SparseLengthsSumInst *I);
 
+  template <typename ElemTy>
   void
   fwdSparseLengthsWeightedSumInstI8Impl(const SparseLengthsWeightedSumInst *I);
-  template <typename ElemTy>
+  template <typename ElemTy, typename TI>
   void fwdSparseLengthsWeightedSumInstFloatImpl(
       const SparseLengthsWeightedSumInst *I);
 
@@ -317,7 +319,7 @@ private:
   void fwdEmbeddingBagInstFloatImpl(const EmbeddingBagInst *I);
 
   template <typename ElemTy>
-  void fwdSparseToDenseInstFloatImpl(const SparseToDenseInst *I);
+  void fwdSparseToDenseInstImpl(const SparseToDenseInst *I);
 
   template <class eTy>
   void fwdRescaleQuantizedInstImpl(Value *src, Value *dest,
@@ -326,11 +328,11 @@ private:
 
   template <typename ElemTy> void fwdModuloInstImpl(glow::ModuloInst const *I);
 
-  template <typename T, typename AccumT>
+  template <typename T, typename AccumT, typename TI>
   void fwdRowwiseQuantizedSparseLengthsWeightedSumImpl(
       const RowwiseQuantizedSparseLengthsWeightedSumInst *I);
 
-  template <typename T, typename AccumT>
+  template <typename T, typename AccumT, typename TI>
   void fwdFusedRowwiseQuantizedSparseLengthsWeightedSumImpl(
       const FusedRowwiseQuantizedSparseLengthsWeightedSumInst *I);
 

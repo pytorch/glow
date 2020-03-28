@@ -74,7 +74,7 @@ static Node *replaceQuantizedTanhWithLookupTable(Function &F,
   // The output quantization parameters are chosen to represent the floating
   // point range of [-1.0, 1.0].
   auto inputQuantizationParams =
-      glow::quantization::chooseQuantizationParams(-3.0, 3.0);
+      glow::quantization::chooseQuantizationParams({-3.0, 3.0});
   auto tanhInTy = F.getParent()->uniqueType(
       ElemKind::Int8QTy, TN.getResult().dims(), inputQuantizationParams.scale,
       inputQuantizationParams.offset);
@@ -85,7 +85,7 @@ static Node *replaceQuantizedTanhWithLookupTable(Function &F,
 
   // Make sure output is clipped in [-1.0, 1.0] floating point range.
   auto outputQuantizationParams =
-      glow::quantization::chooseQuantizationParams(-1.0, 1.0);
+      glow::quantization::chooseQuantizationParams({-1.0, 1.0});
   auto resultOutTy = F.getParent()->uniqueType(
       ElemKind::Int8QTy, rescaleInputNode->getResult().dims(),
       outputQuantizationParams.scale, outputQuantizationParams.offset);
@@ -113,7 +113,7 @@ static Node *replaceQuantizedSigmoidWithLookupTable(Function &F,
   // 0.997527 at -6.0 and 6.0 correspondingly. The output quantization
   // parameters are chosen to represent the floating point range of [0, 1.0].
   auto inputQuantizationParams =
-      glow::quantization::chooseQuantizationParams(-6.0, 6.0);
+      glow::quantization::chooseQuantizationParams({-6.0, 6.0});
   auto sigmoidInTy = F.getParent()->uniqueType(
       ElemKind::Int8QTy, SN.getResult().dims(), inputQuantizationParams.scale,
       inputQuantizationParams.offset);
@@ -124,7 +124,7 @@ static Node *replaceQuantizedSigmoidWithLookupTable(Function &F,
 
   // Make sure output is clipped in [0.0, 1.0] floating point range.
   auto outputQuantizationParams =
-      glow::quantization::chooseQuantizationParams(0.0, 1.0);
+      glow::quantization::chooseQuantizationParams({0.0, 1.0});
   auto resultOutTy = F.getParent()->uniqueType(
       ElemKind::Int8QTy, rescaleInputNode->getResult().dims(),
       outputQuantizationParams.scale, outputQuantizationParams.offset);
@@ -268,7 +268,6 @@ protected:
       return getBiasType(
           getTargetTypeForInput(use, ConvTransposeNode::InputIdx),
           getTargetTypeForInput(use, ConvTransposeNode::FilterIdx));
-
     } else if (use.getKind() == glow::Kinded::Kind::FullyConnectedNodeKind &&
                idx == FullyConnectedNode::BiasIdx) {
       // Get the input and weights types. This ensures the types will be
@@ -702,15 +701,15 @@ private:
   const ElemKind quantizationPrecisionBias_;
 
 public:
-  /// Creates a function quantizer for \p F using the quantization
-  /// parameters defined by \p quantizationInfos and target quantization
+  /// Creates a function quantizer for \p F using the profiling
+  /// parameters defined by \p profilingInfos and target quantization
   /// precision defined by \p quantizationPrecision.
   /// \p B and \p doNotQuantizeKinds are used to check which nodes shouldn't be
   /// converted. \p assertAllNodesQuantized is used as a debugging tool; if
   /// true then if the backend does not support a node as quantized for the
   /// given \p quantizationPrecision then the program will exit with an error.
   FunctionQuantizer(Function &F, const Backend &B, quantization::Schema schema,
-                    llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos,
+                    llvm::ArrayRef<NodeProfilingInfo> profilingInfos,
                     ElemKind quantizationPrecision,
                     const KindSet &doNotQuantizeKinds,
                     const LoweredInfoMap &loweredMap,
@@ -721,11 +720,18 @@ public:
         doNotQuantizeKinds_(doNotQuantizeKinds), loweredMap_(loweredMap),
         assertAllNodesQuantized_(assertAllNodesQuantized),
         quantizationPrecisionBias_(quantizationPrecisionBias) {
+
+    // Compute the TensorQuantizationParams using the profiling infos.
+    auto quantizationInfos = generateNodeQuantizationInfos(
+        profilingInfos, &F, loweredMap, schema, quantizationPrecision,
+        quantizationPrecisionBias);
+
     // Build a mapping between node name and TensorQuantizatonParams.
     for (const auto &quantizationInfo : quantizationInfos) {
       nodeToTQP_.emplace(quantizationInfo.nodeOutputName_,
                          quantizationInfo.tensorQuantizationParams_);
     }
+
     // Use for debug purposes.
     lastMorphedNodeWithTypeChanges = nullptr;
     (void)assertAllNodesQuantized_;
@@ -879,12 +885,12 @@ namespace quantization {
 /// Helper which, given the output name \p currName of some node, looks for
 /// corresponding names in \p loweredMap which represent any names that this
 /// node was lowered from. If any are found then they are inserted into \p
-/// quantizationInfos along with \p TQP.
+/// profilingInfos along with \p TPP.
 static void
 findAndInsertLoweredInfos(llvm::StringRef currName,
                           const LoweredInfoMap &loweredMap,
-                          std::vector<NodeQuantizationInfo> &quantizationInfos,
-                          const TensorQuantizationParams &TQP) {
+                          std::vector<NodeProfilingInfo> &profilingInfos,
+                          const TensorProfilingParams &TPP) {
   auto currSetIt = loweredMap.find(currName);
   if (currSetIt == loweredMap.end()) {
     return;
@@ -894,27 +900,26 @@ findAndInsertLoweredInfos(llvm::StringRef currName,
   // names that were originally lowered into currName.
   auto &currSet = currSetIt->getValue();
 
-  // For each of the names (currOrigName), insert them into quantizationInfos,
+  // For each of the names (currOrigName), insert them into profilingInfos,
   // and then recursively find and insert other names in case currOrigName was
   // also lowered from a previous node.
   for (auto i = currSet.begin(), e = currSet.end(); i != e; ++i) {
     llvm::StringRef currOrigName = i->getName();
-    quantizationInfos.emplace_back(currOrigName, TQP);
-    findAndInsertLoweredInfos(currOrigName, loweredMap, quantizationInfos, TQP);
+    profilingInfos.emplace_back(currOrigName, TPP);
+    findAndInsertLoweredInfos(currOrigName, loweredMap, profilingInfos, TPP);
   }
 }
 
-std::vector<NodeQuantizationInfo>
-generateNodeQuantizationInfos(PlaceholderBindings &bindings, const Function *F,
-                              const LoweredInfoMap &loweredMap, Schema schema,
-                              ElemKind quantizationPrecision,
-                              ElemKind quantizationPrecisionBias) {
-  std::vector<NodeQuantizationInfo> quantizationInfos;
-
+std::vector<NodeProfilingInfo>
+generateNodeProfilingInfos(PlaceholderBindings &bindings, const Function *F,
+                           const LoweredInfoMap &loweredMap) {
+  std::vector<NodeProfilingInfo> profilingInfos;
   for (auto &node : F->getNodes()) {
     auto *QPN = llvm::dyn_cast<QuantizationProfileNode>(&node);
-
     if (QPN) {
+
+      // Extract the profiling information from the placeholders after running
+      // the network in profiling mode.
       auto CI = bindings.get(QPN->getComputationInfoPlaceholder())
                     ->getHandle<float>();
       auto histogram =
@@ -922,65 +927,95 @@ generateNodeQuantizationInfos(PlaceholderBindings &bindings, const Function *F,
       float min = CI.raw(0);
       float max = CI.raw(1);
 
+      // Generate a name to be used as profiling information identifier.
       std::string fullOutputName = NodeValue::generateNodeOutputName(
           QPN->getProfiledNodeName(), QPN->getProfiledOutputNumber());
 
-      ElemKind qPrec = quantizationPrecision;
-
-      // During profiling, for a given node, the TQP params must be computed
-      // according to the target precision used during actual quantization.
-      // The code below reflects the same logic as the one used in the function
-      // FunctionQuantizer::getTargetTypeForInput for specializing the bias
-      // quantization precision.
-      // TODO: For better clarity and to remove logic duplication this code
-      // should be coupled tighter with the logic used in FunctionQuantizer.
-      NodeValue profNode = QPN->getInput();
-      for (const auto &use : profNode.getUsers()) {
-        const auto *user = use.getUser();
-        if ((user->getKind() == glow::Kinded::Kind::ConvolutionNodeKind) &&
-            (user->getNthInput(ConvolutionNode::BiasIdx) == profNode)) {
-          // Found bias for ConvolutionNode.
-          qPrec = quantizationPrecisionBias;
-          continue;
-        }
-        if ((user->getKind() == glow::Kinded::Kind::Convolution3DNodeKind) &&
-            (user->getNthInput(Convolution3DNode::BiasIdx) == profNode)) {
-          // Found bias for Convolution3DNode.
-          qPrec = quantizationPrecisionBias;
-          continue;
-        }
-        if ((user->getKind() == glow::Kinded::Kind::FullyConnectedNodeKind) &&
-            (user->getNthInput(FullyConnectedNode::BiasIdx) == profNode)) {
-          // Found bias for FullyConnectedNode.
-          qPrec = quantizationPrecisionBias;
-          continue;
-        }
-        if ((user->getKind() == glow::Kinded::Kind::BatchedAddNodeKind) &&
-            (user->getNthInput(BatchedAddNode::SliceIdx) == profNode)) {
-          // Find out if this BatchAddNode was lowered from FullyConnectedNode.
-          const auto *baN = llvm::cast<BatchedAddNode>(user);
-          if (isBAFromLoweredFC(baN, loweredMap)) {
-            // Found bias for lowered FullyConnectedNode.
-            qPrec = quantizationPrecisionBias;
-            continue;
-          }
-        }
-      }
-
-      // TODO: Ideally tensor quantization params should be calculated
+      // TODO: Ideally tensor quantization parameters should be calculated
       // based on the histogram distribution. Use simplistic approach for now.
       (void)histogram;
-      TensorQuantizationParams TQP =
-          chooseQuantizationParams(min, max, schema, qPrec);
-
-      quantizationInfos.emplace_back(fullOutputName, TQP);
+      TensorProfilingParams TPP;
+      TPP.min = min;
+      TPP.max = max;
+      profilingInfos.emplace_back(fullOutputName, TPP);
 
       // If the NodeValue represented by fullOutputName was created via lowering
-      // another original NodeValue, then generate node quantization info for
-      // the original NodeValue using the same quantization parameters.
-      findAndInsertLoweredInfos(fullOutputName, loweredMap, quantizationInfos,
-                                TQP);
+      // of another original NodeValue, then generate node profiling info for
+      // the original NodeValue using the same profiling parameters.
+      findAndInsertLoweredInfos(fullOutputName, loweredMap, profilingInfos,
+                                TPP);
     }
+  }
+  return profilingInfos;
+}
+
+std::vector<NodeQuantizationInfo>
+generateNodeQuantizationInfos(llvm::ArrayRef<NodeProfilingInfo> profilingInfos,
+                              Function *F, const LoweredInfoMap &loweredMap,
+                              Schema schema, ElemKind quantizationPrecision,
+                              ElemKind quantizationPrecisionBias) {
+  std::vector<NodeQuantizationInfo> quantizationInfos;
+  for (const auto &profilingInfo : profilingInfos) {
+    // Get node value from node output name.
+    std::string nodeOutputName = profilingInfo.nodeOutputName_;
+    NodeValue nodeOutput = F->getNodeValueByName(nodeOutputName);
+
+    // Skip if the node is not part of the graph.
+    if (!nodeOutput.getNode()) {
+      continue;
+    }
+
+    // Default target precision.
+    ElemKind qPrec = quantizationPrecision;
+
+    // The TensorQuantizationParams must be computed using the target
+    // precision used during the actual quantization. The code below
+    // reflects the same logic as the one used in the function
+    // FunctionQuantizer::getTargetTypeForInput for specializing the bias
+    // quantization precision.
+    for (const auto &use : nodeOutput.getUsers()) {
+      const auto *user = use.getUser();
+      if ((user->getKind() == glow::Kinded::Kind::ConvolutionNodeKind) &&
+          (user->getNthInput(ConvolutionNode::BiasIdx) == nodeOutput)) {
+        // Found bias for ConvolutionNode.
+        qPrec = quantizationPrecisionBias;
+        continue;
+      }
+      if ((user->getKind() == glow::Kinded::Kind::Convolution3DNodeKind) &&
+          (user->getNthInput(Convolution3DNode::BiasIdx) == nodeOutput)) {
+        // Found bias for Convolution3DNode.
+        qPrec = quantizationPrecisionBias;
+        continue;
+      }
+      if ((user->getKind() == glow::Kinded::Kind::ConvTransposeNodeKind) &&
+          (user->getNthInput(ConvTransposeNode::BiasIdx) == nodeOutput)) {
+        // Found bias for ConvTranspose.
+        qPrec = quantizationPrecisionBias;
+        continue;
+      }
+      if ((user->getKind() == glow::Kinded::Kind::FullyConnectedNodeKind) &&
+          (user->getNthInput(FullyConnectedNode::BiasIdx) == nodeOutput)) {
+        // Found bias for FullyConnectedNode.
+        qPrec = quantizationPrecisionBias;
+        continue;
+      }
+      if ((user->getKind() == glow::Kinded::Kind::BatchedAddNodeKind) &&
+          (user->getNthInput(BatchedAddNode::SliceIdx) == nodeOutput)) {
+        // Find out if this BatchAddNode was lowered from FullyConnectedNode.
+        const auto *baN = llvm::cast<BatchedAddNode>(user);
+        if (isBAFromLoweredFC(baN, loweredMap)) {
+          // Found bias for lowered FullyConnectedNode.
+          qPrec = quantizationPrecisionBias;
+          continue;
+        }
+      }
+    }
+
+    // Compute the TensorQuantizationParams using the profiling information
+    // and the target precision.
+    TensorProfilingParams TPP = profilingInfo.tensorProfilingParams_;
+    TensorQuantizationParams TQP = chooseQuantizationParams(TPP, schema, qPrec);
+    quantizationInfos.emplace_back(nodeOutputName, TQP);
   }
 
   return quantizationInfos;

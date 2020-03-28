@@ -48,7 +48,7 @@ struct DeviceInfo;
 struct DeviceConfig;
 struct ContextBinding;
 
-struct DAG;
+struct DAGNode;
 
 } // namespace runtime
 
@@ -109,8 +109,8 @@ public:
   /// giving the backend an opportunity to transform the graph before IRGen. The
   /// backend may insert backend and device-specific nodes. The backend is
   /// responsible for cleaning up after itself.
-  /// \returns True if the graph was modified.
-  virtual bool transformPostLowering(
+  /// \returns an Expected True if the graph was modified.
+  virtual Expected<bool> transformPostLowering(
       Function *F, CompilationContext &cctx,
       const glow::runtime::DeviceInfo *devInfo = nullptr) const {
     return false;
@@ -199,11 +199,12 @@ public:
   createDeviceManager(const runtime::DeviceConfig &deviceConfig);
 
   /// Walks the provided /p bindings and does any setup needed for copying data
-  /// to/from host or peers. Also has access to /p network, which contains
-  /// partition dependency and symbol information. Any state information should
-  /// be stored in the ExecutionContext or DeviceManager.
+  /// to/from host or peers. Also has access to /p root the root node of the
+  /// graph, which contains partition dependency and symbol information. Any
+  /// state information should be stored in the ExecutionContext or
+  /// DeviceManager.
   virtual Error bindContexts(llvm::ArrayRef<runtime::ContextBinding> bindings,
-                             const std::vector<runtime::DAG> &network) {
+                             const runtime::DAGNode *root) {
     return Error::success();
   }
 

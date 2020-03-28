@@ -244,13 +244,10 @@ inline std::pair<dim_t, dim_t> calculateConvTransposeOutputDims(
   ShapeHW kdim(kernels);
   ShapeHW sdim(strides);
 
-  assert((dilation == 1) &&
-         "ConvTranspose output calculation doesn't support dilation");
-
-  size_t outsx = (sx - 1) * sdim.height + (kdim.height - 1) * (dilation - 1) -
-                 pdim.top - pdim.bottom + kdim.height;
-  size_t outsy = (sy - 1) * sdim.width + (kdim.width - 1) * (dilation - 1) -
-                 pdim.left - pdim.right + kdim.width;
+  size_t outsx = (sx - 1) * sdim.height + (kdim.height - 1) * dilation + 1 -
+                 pdim.top - pdim.bottom;
+  size_t outsy = (sy - 1) * sdim.width + (kdim.width - 1) * dilation + 1 -
+                 pdim.left - pdim.right;
 
   return {outsx, outsy};
 }
@@ -370,10 +367,13 @@ constexpr char shapeSignifier[] = "shape";
 
 /// \returns the string ID for a type attribute property for a specific \p ioNum
 /// and \p signifier and whether \p isInput. E.g. to retrieve result number 0's
-/// shape, you'd pass `(0, "shape", false)`.
+/// shape, you'd pass `(0, "shape", false)`. \p addPrefix is an additional
+/// prefix to include at the front of the returned ID.
 inline std::string getTypeAttrID(unsigned ioNum, const std::string &signifier,
-                                 bool isInput = false) {
-  return (isInput ? "i" : "o") + std::to_string(ioNum) + "_" + signifier;
+                                 bool isInput = false,
+                                 const std::string &addPrefix = "") {
+  return addPrefix + (isInput ? "i" : "o") + std::to_string(ioNum) + "_" +
+         signifier;
 }
 
 } // namespace glow

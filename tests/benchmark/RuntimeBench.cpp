@@ -43,6 +43,7 @@ using namespace glow::runtime;
     }                                                                          \
     void setUpDAG(benchmark::State &state) override {                          \
       this->dag_ = dagCreator(this->deviceManagersFunctions_[0]);              \
+      this->dag_->root->module = this->mod_.get();                             \
     }                                                                          \
   };
 
@@ -344,8 +345,11 @@ protected:
         std::future<void> future = promise.get_future();
         hostManager_->runNetwork(
             function, std::move(ctx),
-            [&promise, &ctx](runtime::RunIdentifierTy /*runId*/, Error /*err*/,
+            [&promise, &ctx](runtime::RunIdentifierTy /*runId*/, Error err,
                              std::unique_ptr<ExecutionContext> result) {
+              // We don't care about the result but check the error to avoid
+              // uncheck error error.
+              ERR_TO_BOOL(std::move(err));
               ctx = std::move(result);
               promise.set_value();
             });
@@ -411,9 +415,10 @@ protected:
 
   virtual void setUpExecutor(benchmark::State &state) {
     setUpDeviceManagers(state);
-    executor_ =
-        std::unique_ptr<Executor>(new ThreadPoolExecutor(deviceManagers_));
+    executor_ = std::unique_ptr<ThreadPoolExecutor>(
+        new ThreadPoolExecutor(deviceManagers_));
     setUpDAG(state);
+    executor_->createPool(dag_->root.get(), 1);
   }
 
   virtual void tearDownExecutor(benchmark::State &state) {
@@ -445,8 +450,11 @@ protected:
       std::future<void> future = promise.get_future();
       executor_->run(
           (dag_->root).get(), std::move(ctx), /*runId=*/0,
-          [&promise, &ctx](runtime::RunIdentifierTy /*runId*/, Error /*err*/,
+          [&promise, &ctx](runtime::RunIdentifierTy /*runId*/, Error err,
                            std::unique_ptr<ExecutionContext> result) {
+            // We don't care about the result but check the error to avoid
+            // uncheck error error.
+            ERR_TO_BOOL(std::move(err));
             ctx = std::move(result);
             promise.set_value();
           });
@@ -508,8 +516,11 @@ protected:
         std::future<void> future = promise.get_future();
         deviceManager_->runFunction(
             func.first, std::move(ctx),
-            [&promise, &ctx](runtime::RunIdentifierTy /*runId*/, Error /*err*/,
+            [&promise, &ctx](runtime::RunIdentifierTy /*runId*/, Error err,
                              std::unique_ptr<ExecutionContext> result) {
+              // We don't care about the result but check the error to avoid
+              // uncheck error error.
+              ERR_TO_BOOL(std::move(err));
               ctx = std::move(result);
               promise.set_value();
             });

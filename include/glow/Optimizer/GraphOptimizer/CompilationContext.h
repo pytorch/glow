@@ -171,6 +171,9 @@ struct CompilationContext {
   /// Whether to skip stripping the module.
   bool skipModuleStrip{false};
 
+  /// Whether to enable P2P and DRT at runtime.
+  bool enableStaticAssignment{false};
+
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)
       : bindings(bindings_), loweredInfoMap(loweredInfoMap_) {}
