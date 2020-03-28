@@ -802,12 +802,26 @@ static bool channelwiseQuantizeFloatBias(
   auto biasQuantizedC = F->getParent()->createConstant(
       biasC->getName(), std::move(biasQuantizedT));
 
-  auto newChannelwiseConv = F->createChannelwiseQuantizedConv(
-      channelwiseConv.getName(), channelwiseConv.getInput(),
-      channelwiseConv.getFilter(), biasQuantizedC, channelwiseConv.getScales(),
-      channelwiseConv.getOffsets(), channelwiseConv.getResult().getType(),
-      channelwiseConv.getKernels(), channelwiseConv.getStrides(),
-      channelwiseConv.getPads(), channelwiseConv.getGroup());
+  bool isConv3d = (channelwiseConv.getInput().getType()->dims().size() == 5);
+  glow::ChannelwiseQuantizedConvolutionNode *newChannelwiseConv;
+  if (isConv3d) {
+    newChannelwiseConv = F->createChannelwiseQuantizedConv3D(
+        channelwiseConv.getName(), channelwiseConv.getInput(),
+        channelwiseConv.getFilter(), biasQuantizedC,
+        channelwiseConv.getScales(), channelwiseConv.getOffsets(),
+        channelwiseConv.getResult().getType(), channelwiseConv.getKernels(),
+        channelwiseConv.getStrides(), channelwiseConv.getPads(),
+        channelwiseConv.getGroup());
+
+  } else {
+    newChannelwiseConv = F->createChannelwiseQuantizedConv(
+        channelwiseConv.getName(), channelwiseConv.getInput(),
+        channelwiseConv.getFilter(), biasQuantizedC,
+        channelwiseConv.getScales(), channelwiseConv.getOffsets(),
+        channelwiseConv.getResult().getType(), channelwiseConv.getKernels(),
+        channelwiseConv.getStrides(), channelwiseConv.getPads(),
+        channelwiseConv.getGroup());
+  }
 
   channelwiseConv.getResult().replaceAllUsesOfWith(newChannelwiseConv);
   return true;

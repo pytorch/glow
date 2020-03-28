@@ -333,7 +333,10 @@ bool isPackedQParamNode(const torch::jit::Node *node) {
   static std::unordered_set<torch::jit::Symbol> packedQuantNodeKinds = {
       torch::jit::Symbol::fromQualString("quantized::linear"),
       torch::jit::Symbol::fromQualString("quantized::conv2d"),
-      torch::jit::Symbol::fromQualString("quantized::conv2d_relu")};
+      torch::jit::Symbol::fromQualString("quantized::conv2d_relu"),
+      torch::jit::Symbol::fromQualString("quantized::conv3d"),
+      torch::jit::Symbol::fromQualString("quantized::conv3d_relu"),
+  };
 
   const auto uses = node->output()->uses();
   if (uses.empty()) {
@@ -494,10 +497,39 @@ struct QuantizedUnpackedConv2dInputs {
   };
 };
 
+/// Indexes of glow::unpacked_quantized_conv3d inputs.
+struct QuantizedUnpackedConv3dInputs {
+  enum {
+    input = 0, // NCTHW
+    weights = 1,
+    bias = 2,
+    stride = 3,
+    padding = 4,
+    dilation = 5,
+    group = 6,
+    scale = 7,
+    zero_point = 8,
+  };
+};
+
 /// Indexes of quantized::conv2d and quantized::conv2d_relu inputs.
 struct QuantizedConv2dInputs {
   enum {
     input = 0, // NCHW
+    packed_weights = 1,
+    stride = 2,
+    padding = 3,
+    dilation = 4,
+    group = 5,
+    scale = 6,
+    zero_point = 7,
+  };
+};
+
+/// Indexes of quantized::conv3d and quantized::conv3d_relu inputs.
+struct QuantizedConv3dInputs {
+  enum {
+    input = 0, // NCTHW
     packed_weights = 1,
     stride = 2,
     padding = 3,
@@ -714,11 +746,15 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"glow::fused_linear"}, &PyTorchModelLoader::loadGlowFusedLinear},
       {{"glow::unpacked_quantized_conv2d"},
        &PyTorchModelLoader::loadQuantizedConvUnpacked},
+      {{"glow::unpacked_quantized_conv3d"},
+       &PyTorchModelLoader::loadQuantizedConvUnpacked},
       {{"glow::unpacked_quantized_linear"},
        &PyTorchModelLoader::loadQuantizedLinearUnpacked},
       {{"quantized::linear"}, &PyTorchModelLoader::loadQuantizedLinear},
       {{"quantized::conv2d"}, &PyTorchModelLoader::loadQuantizedConv},
+      {{"quantized::conv3d"}, &PyTorchModelLoader::loadQuantizedConv},
       {{"quantized::conv2d_relu"}, &PyTorchModelLoader::loadQuantizedConvRelu},
+      {{"quantized::conv3d_relu"}, &PyTorchModelLoader::loadQuantizedConvRelu},
       {{"aten::quantize_per_tensor"}, &PyTorchModelLoader::loadQuantize},
       {{"aten::dequantize"}, &PyTorchModelLoader::loadDequantize},
       {{"aten::size"}, &PyTorchModelLoader::loadSize},
@@ -981,27 +1017,55 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
 
   // input
   glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      input, getGlowNodeValueForValue(inputs[QuantizedConv2dInputs::input]));
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
-  input = F_.createTranspose("qconv_input_transposed", input, NCHW2NHWC);
-  glow::ShapeNHWC inputShape(input.dims());
+  bool isConv3d = input.dims().size() == 5;
+  if (isConv3d) {
+    input = F_.createTranspose("qconv_input_transposed", input, NCTHW2NTHWC);
+  } else {
+    input = F_.createTranspose("qconv_input_transposed", input, NCHW2NHWC);
+  }
+  std::unordered_map<std::string, int8_t> input_mapping = {};
+  if (isConv3d) {
+    input_mapping["input"] = QuantizedConv3dInputs::input;
+    input_mapping["packed_weights"] = QuantizedConv3dInputs::packed_weights;
+    input_mapping["stride"] = QuantizedConv3dInputs::stride;
+    input_mapping["padding"] = QuantizedConv3dInputs::padding;
+    input_mapping["group"] = QuantizedConv3dInputs::group;
+    input_mapping["scale"] = QuantizedConv3dInputs::scale;
+    input_mapping["zero_point"] = QuantizedConv3dInputs::zero_point;
+
+  } else {
+    input_mapping["input"] = QuantizedConv2dInputs::input;
+    input_mapping["packed_weights"] = QuantizedConv2dInputs::packed_weights;
+    input_mapping["stride"] = QuantizedConv2dInputs::stride;
+    input_mapping["padding"] = QuantizedConv2dInputs::padding;
+    input_mapping["dilation"] = QuantizedConv2dInputs::dilation;
+    input_mapping["group"] = QuantizedConv2dInputs::group;
+    input_mapping["scale"] = QuantizedConv2dInputs::scale;
+    input_mapping["zero_point"] = QuantizedConv2dInputs::zero_point;
+  }
+
+  // weight and bias
+  at::Tensor *ptTensor;
+  ASSIGN_VALUE_OR_RETURN_ERR(ptTensor,
+                             iValToPTTensor(getGlowIValueForValue(
+                                 inputs[input_mapping["packed_weights"]])));
 
   // groups
   glow::unsigned_t groups;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      groups,
-      static_cast_expected<glow::unsigned_t>(iValToInt(
-          getGlowIValueForValue(inputs[QuantizedConv2dInputs::group]))));
+      groups, static_cast_expected<glow::unsigned_t>(iValToInt(
+                  getGlowIValueForValue(inputs[input_mapping["group"]]))));
 
-  // weight and bias
-  at::Tensor *ptTensor;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      ptTensor, iValToPTTensor(getGlowIValueForValue(
-                    inputs[QuantizedConv2dInputs::packed_weights])));
+  std::string unpack_op_name;
+  if (isConv3d) {
+    unpack_op_name = "quantized::conv3d_unpack";
+  } else {
+    unpack_op_name = "quantized::conv2d_unpack";
+  }
+  auto op = c10::Dispatcher::singleton().findSchema({unpack_op_name, ""});
 
-  auto op =
-      c10::Dispatcher::singleton().findSchema({"quantized::conv2d_unpack", ""});
   CHECK(op.has_value());
   auto unpackedParams = callOp(*op, *ptTensor);
   const at::Tensor ptWeightTensor = unpackedParams[0].toTensor().contiguous();
@@ -1016,75 +1080,119 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
   // unpacked weights
   auto weightTensor = ptTensorToGlowTensor(ptWeightTensor);
   glow::Tensor weightTensorTransposed;
-  weightTensor.transpose(&weightTensorTransposed, NCHW2NHWC);
+  std::string weightConstantName;
+  if (isConv3d) {
+    weightTensor.transpose(&weightTensorTransposed, NCTHW2NTHWC);
+    weightConstantName = "quantized_conv3d_weights";
+  } else {
+    weightTensor.transpose(&weightTensorTransposed, NCHW2NHWC);
+    weightConstantName = "quantized_conv2d_weights";
+  }
   glow::Constant *weightConstant = F_.getParent()->createConstant(
-      "quantized_conv2d_weights", std::move(weightTensorTransposed));
+      weightConstantName, std::move(weightTensorTransposed));
   weightConstant->ensureIsOwned();
   auto weight = weightConstant->getOutput();
   weight = rescaleUIntToInt(weight);
 
   // unpacked bias
   glow::Tensor biasTensor;
-  glow::ShapeNHWC weightShape(weight.dims());
   if (ptBiasTensorTmp.has_value()) {
     auto ptBiasTensor = ptBiasTensorTmp.value().contiguous();
     biasTensor = ptTensorToGlowTensor(ptBiasTensor);
   } else {
-    biasTensor = glow::Tensor(glow::ElemKind::FloatTy, {weightShape.n});
+    biasTensor = glow::Tensor(glow::ElemKind::FloatTy, {weight.dims()[0]});
     biasTensor.zero();
   }
-  glow::Constant *biasConstant = F_.getParent()->createConstant(
-      "quantized_conv2d_bias", std::move(biasTensor));
+
+  std::string biasConstantName;
+  if (isConv3d) {
+    biasConstantName = "quantized_conv3d_bias";
+  } else {
+    biasConstantName = "quantized_conv2d_bias";
+  }
+  glow::Constant *biasConstant =
+      F_.getParent()->createConstant(biasConstantName, std::move(biasTensor));
+
   biasConstant->ensureIsOwned();
   glow::NodeValue bias = biasConstant->getOutput();
 
   // strides
   std::vector<glow::unsigned_t> strides;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      strides,
-      castVector<glow::unsigned_t>(expandIntIValIfNeeded(
-          getGlowIValueForValue(inputs[QuantizedConv2dInputs::stride]), 2)));
+      strides, castVector<glow::unsigned_t>(expandIntIValIfNeeded(
+                   getGlowIValueForValue(inputs[input_mapping["stride"]]),
+                   input.dims().size() - 2)));
 
-  // pad
-  glow::unsigned_t pad;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      pad, static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
-               getGlowIValueForValue(inputs[QuantizedConv2dInputs::padding]))));
-  std::vector<glow::unsigned_t> pads = {pad, pad, pad, pad};
+  // pads
+  std::vector<glow::unsigned_t> pads;
+  if (isConv3d) {
+    std::vector<glow::unsigned_t> pad;
 
-  // dilation
-  glow::unsigned_t dilation;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      dilation,
-      static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
-          getGlowIValueForValue(inputs[QuantizedConv2dInputs::dilation]))));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        pad, castVector<glow::unsigned_t>(expandIntIValIfNeeded(
+                 getGlowIValueForValue(inputs[input_mapping["padding"]]), 3)));
+    pads = {pad[0], pad[0], pad[1], pad[1], pad[2], pad[2]};
+  } else {
+    glow::unsigned_t pad;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        pad, static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
+                 getGlowIValueForValue(inputs[input_mapping["padding"]]))));
+    pads = {pad, pad, pad, pad};
+  }
 
   // quantized params
   float outScale;
-  ASSIGN_VALUE_OR_RETURN_ERR(outScale,
-                             iValToDouble(getGlowIValueForValue(
-                                 inputs[QuantizedConv2dInputs::scale])));
+  ASSIGN_VALUE_OR_RETURN_ERR(outScale, iValToDouble(getGlowIValueForValue(
+                                           inputs[input_mapping["scale"]])));
 
   int32_t outOffset;
-  ASSIGN_VALUE_OR_RETURN_ERR(outOffset,
-                             iValToInt(getGlowIValueForValue(
-                                 inputs[QuantizedConv2dInputs::zero_point])));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      outOffset,
+      iValToInt(getGlowIValueForValue(inputs[input_mapping["zero_point"]])));
 
   // calc output type
-  std::vector<glow::unsigned_t> kernels = {
-      static_cast<glow::unsigned_t>(weightShape.h),
-      static_cast<glow::unsigned_t>(weightShape.w)};
-  auto outSz = glow::calculateConvPoolOutputDims(
-      inputShape.h, inputShape.w, kernels, strides, pads, dilation);
-  std::array<glow::dim_t, 4> outDims = {
-      {input.dims()[0], outSz.first, outSz.second, weightShape.n}};
-  glow::TypeRef outTy = F_.getParent()->uniqueType(
-      glow::ElemKind::Int8QTy, outDims, outScale, outOffset - OFFSETSHIFT);
+  glow::unsigned_t dilation = 0;
+  glow::TypeRef outTy;
+  std::vector<glow::unsigned_t> kernels;
+  if (isConv3d) {
+    glow::ShapeNTHWC input3DShape(input.dims());
+    glow::ShapeNTHWC weight3DShape(weight.dims());
+    kernels = {static_cast<glow::unsigned_t>(weight3DShape.t),
+               static_cast<glow::unsigned_t>(weight3DShape.h),
+               static_cast<glow::unsigned_t>(weight3DShape.w)};
+    auto outSz = glow::calculate3DConvPoolOutputDims(
+        input3DShape.t, input3DShape.h, input3DShape.w, kernels, strides, pads);
+    std::array<glow::dim_t, 5> outDims = {{input.dims()[0],
+                                           outSz.temporal_frames, outSz.height,
+                                           outSz.width, weight.dims()[0]}};
+    outTy = F_.getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims,
+                                       outScale, outOffset - OFFSETSHIFT);
 
+  } else {
+    glow::ShapeNHWC inputShape(input.dims());
+    glow::ShapeNHWC weightShape(weight.dims());
+    kernels = {static_cast<glow::unsigned_t>(weightShape.h),
+               static_cast<glow::unsigned_t>(weightShape.w)};
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        dilation,
+        static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
+            getGlowIValueForValue(inputs[QuantizedConv2dInputs::dilation]))));
+    auto outSz = glow::calculateConvPoolOutputDims(
+        inputShape.h, inputShape.w, kernels, strides, pads, dilation);
+    std::array<glow::dim_t, 4> outDims = {
+        {input.dims()[0], outSz.first, outSz.second, weightShape.n}};
+    outTy = F_.getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims,
+                                       outScale, outOffset - OFFSETSHIFT);
+  }
+
+  // create qconv
   glow::NodeValue output_not_transposed;
   if (isPerChannelQuantized) {
-    RETURN_ERR_IF_NOT(dilation <= 1,
-                      "Dilation not supported for group quantized convolution");
+    if (!isConv3d) {
+      RETURN_ERR_IF_NOT(
+          dilation <= 1,
+          "Dilation not supported for group quantized convolution");
+    }
 
     // extract qparams from ptWeightTensor.
     // Notice since the memory of qparams may not be continous
@@ -1119,22 +1227,39 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
         "channel_wised_offsets_of_qconv", std::move(wOffsetsTensor));
     wOffsets->ensureIsOwned();
 
-    auto qconv = F_.createChannelwiseQuantizedConv(
-        "qconv_channel_wised", input, weightConstant, biasConstant, wScales,
-        wOffsets, outTy, kernels, strides, pads, groups);
-    output_not_transposed = qconv->getResult();
+    if (isConv3d) {
+      auto qconv = F_.createChannelwiseQuantizedConv3D(
+          "qconv_channel_wised", input, weightConstant, biasConstant, wScales,
+          wOffsets, outTy, kernels, strides, pads, groups);
+      output_not_transposed = qconv->getResult();
+    } else {
+      auto qconv = F_.createChannelwiseQuantizedConv(
+          "qconv_channel_wised", input, weightConstant, biasConstant, wScales,
+          wOffsets, outTy, kernels, strides, pads, groups);
+      output_not_transposed = qconv->getResult();
+    }
   } else {
-    auto qconv = F_.createConv("qconv", input, weight, bias, outTy, kernels,
-                               strides, pads, groups, dilation);
-    output_not_transposed = qconv->getResult();
+    if (isConv3d) {
+      auto qconv = F_.createConv3D("qconv", input, weight, bias, outTy, kernels,
+                                   strides, pads, groups);
+      output_not_transposed = qconv->getResult();
+    } else {
+      auto qconv = F_.createConv("qconv", input, weight, bias, outTy, kernels,
+                                 strides, pads, groups, dilation);
+      output_not_transposed = qconv->getResult();
+    }
   }
   if (isRelu) {
     glow::ReluNode *qrelu = F_.createRELU("qconv_relu", output_not_transposed);
     output_not_transposed = qrelu->getResult();
   }
-
-  output = F_.createTranspose("channel_wised_qconv_relu_output_transposed",
-                              output_not_transposed, NHWC2NCHW);
+  if (isConv3d) {
+    output = F_.createTranspose("channel_wised_qconv_relu_output_transposed",
+                                output_not_transposed, NTHWC2NCTHW);
+  } else {
+    output = F_.createTranspose("channel_wised_qconv_relu_output_transposed",
+                                output_not_transposed, NHWC2NCHW);
+  }
   return Expected<NodeValue>(output->getResult());
 }
 
@@ -2245,8 +2370,7 @@ Error PyTorchModelLoader::loadQuantizedConvRelu(
                              loadQuantizedConvImpl(ptNode, true /* isRelu */));
 
   c10::ScalarType dtype;
-  RETURN_IF_ERR(
-      getCorrectTypeMapping(dtype, inputs[QuantizedConv2dInputs::input]));
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
   return addValueMapping(outputs[0], output, dtype);
 }
 
@@ -2258,8 +2382,7 @@ Error PyTorchModelLoader::loadQuantizedConv(const torch::jit::Node *ptNode) {
                              loadQuantizedConvImpl(ptNode, false /* isRelu */));
 
   c10::ScalarType dtype;
-  RETURN_IF_ERR(
-      getCorrectTypeMapping(dtype, inputs[QuantizedConv2dInputs::input]));
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
   return addValueMapping(outputs[0], output, dtype);
 }
 
@@ -2270,24 +2393,52 @@ Error PyTorchModelLoader::loadQuantizedConvUnpacked(
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 9, outputs, 1));
 
   glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      input,
-      getGlowNodeValueForValue(inputs[QuantizedUnpackedConv2dInputs::input]));
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
-  input = F_.createTranspose("qconv_input_transposed", input, NCHW2NHWC);
-  glow::ShapeNHWC inputShape(input.dims());
+  bool isConv3d = input.dims().size() == 5;
+  if (isConv3d) {
+    input = F_.createTranspose("qconv_input_transposed", input, NCTHW2NTHWC);
+  } else {
+    input = F_.createTranspose("qconv_input_transposed", input, NCHW2NHWC);
+  }
+  std::unordered_map<std::string, int8_t> input_mapping = {};
+  if (isConv3d) {
+    input_mapping["input"] = QuantizedUnpackedConv3dInputs::input;
+    input_mapping["weights"] = QuantizedUnpackedConv3dInputs::weights;
+    input_mapping["bias"] = QuantizedUnpackedConv3dInputs::bias;
+    input_mapping["stride"] = QuantizedUnpackedConv3dInputs::stride;
+    input_mapping["padding"] = QuantizedUnpackedConv3dInputs::padding;
+    input_mapping["group"] = QuantizedUnpackedConv3dInputs::group;
+    input_mapping["scale"] = QuantizedUnpackedConv3dInputs::scale;
+    input_mapping["zero_point"] = QuantizedUnpackedConv3dInputs::zero_point;
+
+  } else {
+    input_mapping["input"] = QuantizedUnpackedConv2dInputs::input;
+    input_mapping["weights"] = QuantizedUnpackedConv2dInputs::weights;
+    input_mapping["bias"] = QuantizedUnpackedConv2dInputs::bias;
+    input_mapping["stride"] = QuantizedUnpackedConv2dInputs::stride;
+    input_mapping["padding"] = QuantizedUnpackedConv2dInputs::padding;
+    input_mapping["dilation"] = QuantizedUnpackedConv2dInputs::dilation;
+    input_mapping["group"] = QuantizedUnpackedConv2dInputs::group;
+    input_mapping["scale"] = QuantizedUnpackedConv2dInputs::scale;
+    input_mapping["zero_point"] = QuantizedUnpackedConv2dInputs::zero_point;
+  }
 
   glow::NodeValue weights;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      weights,
-      getGlowNodeValueForValue(inputs[QuantizedUnpackedConv2dInputs::weights]));
+      weights, getGlowNodeValueForValue(inputs[input_mapping["weights"]]));
   weights = rescaleUIntToInt(weights);
-  weights = F_.createTranspose("qconv_weights_transposed", weights, NCHW2NHWC);
-  glow::ShapeNHWC weightsShape(weights.dims());
+  if (isConv3d) {
+    weights =
+        F_.createTranspose("qconv_weights_transposed", weights, NCTHW2NTHWC);
+  } else {
+    weights =
+        F_.createTranspose("qconv_weights_transposed", weights, NCHW2NHWC);
+  }
 
   glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
-      inputs[QuantizedUnpackedConv2dInputs::bias], "qconv_bias",
-      glow::Type(ElemKind::FloatTy, {weightsShape.n}), 0.0);
+      inputs[input_mapping["bias"]], "qconv_bias",
+      glow::Type(ElemKind::FloatTy, {weights.dims()[0]}), 0.0);
 
   auto biasType = F_.getParent()->uniqueType(
       glow::ElemKind::Int32QTy, bias.dims(),
@@ -2296,59 +2447,92 @@ Error PyTorchModelLoader::loadQuantizedConvUnpacked(
 
   std::vector<glow::unsigned_t> strides;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      strides,
-      castVector<glow::unsigned_t>(expandIntIValIfNeeded(
-          getGlowIValueForValue(inputs[QuantizedUnpackedConv2dInputs::stride]),
-          2)));
+      strides, castVector<glow::unsigned_t>(expandIntIValIfNeeded(
+                   getGlowIValueForValue(inputs[input_mapping["stride"]]),
+                   input.dims().size() - 2)));
 
-  glow::unsigned_t pad;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      pad, static_cast_expected<glow::unsigned_t>(
-               contractIntIValIfNeeded(getGlowIValueForValue(
-                   inputs[QuantizedUnpackedConv2dInputs::padding]))));
-  std::vector<glow::unsigned_t> pads = {pad, pad, pad, pad};
+  // pads
+  std::vector<glow::unsigned_t> pads;
+  if (isConv3d) {
+    std::vector<glow::unsigned_t> pad;
 
-  glow::unsigned_t dilation;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      dilation, static_cast_expected<glow::unsigned_t>(
-                    contractIntIValIfNeeded(getGlowIValueForValue(
-                        inputs[QuantizedUnpackedConv2dInputs::dilation]))));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        pad, castVector<glow::unsigned_t>(expandIntIValIfNeeded(
+                 getGlowIValueForValue(inputs[input_mapping["padding"]]), 3)));
+    pads = {pad[0], pad[0], pad[1], pad[1], pad[2], pad[2]};
+  } else {
+    glow::unsigned_t pad;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        pad, static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
+                 getGlowIValueForValue(inputs[input_mapping["padding"]]))));
+    pads = {pad, pad, pad, pad};
+  }
 
   glow::unsigned_t groups;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      groups,
-      static_cast_expected<glow::unsigned_t>(iValToInt(getGlowIValueForValue(
-          inputs[QuantizedUnpackedConv2dInputs::group]))));
+      groups, static_cast_expected<glow::unsigned_t>(iValToInt(
+                  getGlowIValueForValue(inputs[input_mapping["group"]]))));
 
   float outScale;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      outScale, iValToDouble(getGlowIValueForValue(
-                    inputs[QuantizedUnpackedConv2dInputs::scale])));
+  ASSIGN_VALUE_OR_RETURN_ERR(outScale, iValToDouble(getGlowIValueForValue(
+                                           inputs[input_mapping["scale"]])));
 
   int32_t outOffset;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      outOffset, iValToInt(getGlowIValueForValue(
-                     inputs[QuantizedUnpackedConv2dInputs::zero_point])));
+      outOffset,
+      iValToInt(getGlowIValueForValue(inputs[input_mapping["zero_point"]])));
 
-  std::vector<glow::unsigned_t> kernels = {
-      static_cast<glow::unsigned_t>(weightsShape.h),
-      static_cast<glow::unsigned_t>(weightsShape.w)};
-  auto outSz = glow::calculateConvPoolOutputDims(
-      inputShape.h, inputShape.w, kernels, strides, pads, dilation);
-  std::array<glow::dim_t, 4> outDims = {
-      {input.dims()[0], outSz.first, outSz.second, weightsShape.n}};
-  glow::TypeRef outTy = F_.getParent()->uniqueType(
-      glow::ElemKind::Int8QTy, outDims, outScale, outOffset - OFFSETSHIFT);
+  // calc output type
+  glow::unsigned_t dilation = 0;
+  glow::TypeRef outTy;
+  std::vector<glow::unsigned_t> kernels;
+  if (isConv3d) {
+    glow::ShapeNTHWC input3DShape(input.dims());
+    glow::ShapeNTHWC weight3DShape(weights.dims());
+    kernels = {static_cast<glow::unsigned_t>(weight3DShape.t),
+               static_cast<glow::unsigned_t>(weight3DShape.h),
+               static_cast<glow::unsigned_t>(weight3DShape.w)};
 
-  glow::ConvolutionNode *qconv =
-      F_.createConv("qconv", input, weights, bias, outTy, kernels, strides,
-                    pads, groups, dilation);
-  glow::TransposeNode *output = F_.createTranspose(
-      "qconv_output_transposed", qconv->getResult(), NHWC2NCHW);
+    auto outSz = glow::calculate3DConvPoolOutputDims(
+        input3DShape.t, input3DShape.h, input3DShape.w, kernels, strides, pads);
+    std::array<glow::dim_t, 5> outDims = {{input.dims()[0],
+                                           outSz.temporal_frames, outSz.height,
+                                           outSz.width, weights.dims()[0]}};
+    outTy = F_.getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims,
+                                       outScale, outOffset - OFFSETSHIFT);
+  } else {
+    glow::ShapeNHWC inputShape(input.dims());
+    glow::ShapeNHWC weightShape(weights.dims());
+    kernels = {static_cast<glow::unsigned_t>(weightShape.h),
+               static_cast<glow::unsigned_t>(weightShape.w)};
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        dilation, static_cast_expected<glow::unsigned_t>(
+                      contractIntIValIfNeeded(getGlowIValueForValue(
+                          inputs[QuantizedUnpackedConv2dInputs::dilation]))));
+    auto outSz = glow::calculateConvPoolOutputDims(
+        inputShape.h, inputShape.w, kernels, strides, pads, dilation);
+    std::array<glow::dim_t, 4> outDims = {
+        {input.dims()[0], outSz.first, outSz.second, weightShape.n}};
+    outTy = F_.getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims,
+                                       outScale, outOffset - OFFSETSHIFT);
+  }
+
+  glow::TransposeNode *output;
+  if (isConv3d) {
+    glow::Convolution3DNode *qconv = F_.createConv3D(
+        "qconv", input, weights, bias, outTy, kernels, strides, pads, groups);
+    output = F_.createTranspose("qconv_output_transposed", qconv->getResult(),
+                                NTHWC2NCTHW);
+  } else {
+    glow::ConvolutionNode *qconv =
+        F_.createConv("qconv", input, weights, bias, outTy, kernels, strides,
+                      pads, groups, dilation);
+    output = F_.createTranspose("qconv_output_transposed", qconv->getResult(),
+                                NHWC2NCHW);
+  }
 
   c10::ScalarType dtype;
-  RETURN_IF_ERR(getCorrectTypeMapping(
-      dtype, inputs[QuantizedUnpackedConv2dInputs::input]));
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
   return addValueMapping(outputs[0], output->getResult(), dtype);
 }
 
