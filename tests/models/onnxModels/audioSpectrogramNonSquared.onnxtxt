@@ -12,13 +12,13 @@ graph {
       type: INT
     }
     attribute {
-      name: "window_size"
-      i: 640
+      name: "stride"
+      i: 320
       type: INT
     }
     attribute {
-      name: "window_stride"
-      i: 320
+      name: "window_size"
+      i: 640
       type: INT
     }
   }

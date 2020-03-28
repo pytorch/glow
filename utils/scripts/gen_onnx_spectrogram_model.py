@@ -26,10 +26,10 @@ def make_init(name, dtype, tensor):
 
 
 # Function to generate AudioSpectrogram ONNX test model.
-def gen_spectrogram_onnx_test_model(model_path, window_count, window_size, window_stride, magnitude_squared=True):
+def gen_spectrogram_onnx_test_model(model_path, window_count, window_size, stride, magnitude_squared=True):
 
     # Tensor sizes.
-    input_length = window_size + (window_count - 1) * window_stride
+    input_length = window_size + (window_count - 1) * stride
     fft_length = int(2 ** np.ceil(np.log2(window_size)))
     input_shape = [1, input_length]
     spectrogram_length = int(fft_length / 2 + 1)
@@ -45,7 +45,7 @@ def gen_spectrogram_onnx_test_model(model_path, window_count, window_size, windo
         [input_length, 1]), name='input', dtype=tf.float32)
     tf_spectrogram = audio_ops.audio_spectrogram(tf_input,
                                                  window_size=window_size,
-                                                 stride=window_stride,
+                                                 stride=stride,
                                                  magnitude_squared=magnitude_squared)
 
     # Run TensorFlow model and get reference output.
@@ -61,7 +61,7 @@ def gen_spectrogram_onnx_test_model(model_path, window_count, window_size, windo
         inputs=['input'],
         outputs=['spectrogram'],
         window_size=int(window_size),
-        window_stride=int(window_stride),
+        stride=int(stride),
         magnitude_squared=int(magnitude_squared)
     )
 
@@ -117,19 +117,19 @@ def gen_spectrogram_onnx_test_model(model_path, window_count, window_size, windo
 gen_spectrogram_onnx_test_model(model_path='audioSpectrogramOneWindow.onnxtxt',
                                 window_count=1,
                                 window_size=512,
-                                window_stride=256,
+                                stride=256,
                                 magnitude_squared=True)
 
 # Two window spectrogram.
 gen_spectrogram_onnx_test_model(model_path='audioSpectrogramTwoWindow.onnxtxt',
                                 window_count=2,
                                 window_size=640,
-                                window_stride=320,
+                                stride=320,
                                 magnitude_squared=True)
 
 # Magnitude non-squared.
 gen_spectrogram_onnx_test_model(model_path='audioSpectrogramNonSquared.onnxtxt',
                                 window_count=1,
                                 window_size=640,
-                                window_stride=320,
+                                stride=320,
                                 magnitude_squared=False)

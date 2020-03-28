@@ -3097,10 +3097,9 @@ Error ONNXModelLoader::loadAudioSpectrogram(const ONNX_NAMESPACE::NodeProto &op,
 
   // Get window stride (Required).
   int64_t windowStride;
-  RETURN_ERR_IF_NOT(
-      dict.count("window_stride"),
-      "ONNX AudioSpectrogram 'window_stride' attribute is required!");
-  ASSIGN_VALUE_OR_RETURN_ERR(windowStride, loadInt(dict.at("window_stride")));
+  RETURN_ERR_IF_NOT(dict.count("stride"),
+                    "ONNX AudioSpectrogram 'stride' attribute is required!");
+  ASSIGN_VALUE_OR_RETURN_ERR(windowStride, loadInt(dict.at("stride")));
 
   // Get magnitude squared flag (Optional)(Default: 1).
   int magnitudeSquared = 1;
@@ -3129,31 +3128,32 @@ Error ONNXModelLoader::loadMFCC(const ONNX_NAMESPACE::NodeProto &op,
 
   // Get lower frequency [Hz] (Required).
   float lowerFrequency;
-  RETURN_ERR_IF_NOT(dict.count("lower_frequency"),
-                    "ONNX MFCC 'lower_frequency' attribute is required!");
+  RETURN_ERR_IF_NOT(dict.count("lower_frequency_limit"),
+                    "ONNX MFCC 'lower_frequency_limit' attribute is required!");
   ASSIGN_VALUE_OR_RETURN_ERR(lowerFrequency,
-                             loadFloat(dict.at("lower_frequency")));
+                             loadFloat(dict.at("lower_frequency_limit")));
 
   // Get upper frequency [Hz] (Required).
   float upperFrequency;
-  RETURN_ERR_IF_NOT(dict.count("upper_frequency"),
-                    "ONNX MFCC 'upper_frequency' attribute is required!");
+  RETURN_ERR_IF_NOT(dict.count("upper_frequency_limit"),
+                    "ONNX MFCC 'upper_frequency_limit' attribute is required!");
   ASSIGN_VALUE_OR_RETURN_ERR(upperFrequency,
-                             loadFloat(dict.at("upper_frequency")));
+                             loadFloat(dict.at("upper_frequency_limit")));
 
   // Get filter bank count (Required).
   int64_t filterBankCount;
-  RETURN_ERR_IF_NOT(dict.count("filter_bank_count"),
-                    "ONNX MFCC 'filter_bank_count' attribute is required!");
+  RETURN_ERR_IF_NOT(
+      dict.count("filterbank_channel_count"),
+      "ONNX MFCC 'filterbank_channel_count' attribute is required!");
   ASSIGN_VALUE_OR_RETURN_ERR(filterBankCount,
-                             loadInt(dict.at("filter_bank_count")));
+                             loadInt(dict.at("filterbank_channel_count")));
 
   // Get number of coefficients (Required).
   int64_t numCoefficients;
-  RETURN_ERR_IF_NOT(dict.count("num_coefficients"),
-                    "ONNX MFCC 'num_coefficients' attribute is required!");
+  RETURN_ERR_IF_NOT(dict.count("dct_coefficient_count"),
+                    "ONNX MFCC 'dct_coefficient_count' attribute is required!");
   ASSIGN_VALUE_OR_RETURN_ERR(numCoefficients,
-                             loadInt(dict.at("num_coefficients")));
+                             loadInt(dict.at("dct_coefficient_count")));
 
   Node *N = G_->createMFCC(loadOperatorName(op), spectrogram, sampleRate,
                            lowerFrequency, upperFrequency, filterBankCount,

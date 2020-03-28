@@ -26,16 +26,16 @@ def make_init(name, dtype, tensor):
 
 
 # Function to generate MFCC ONNX test model.
-def gen_mfcc_onnx_test_model(model_path, window_count, window_size, window_stride, sample_rate, lower_frequency,
-                             upper_frequency, filter_bank_count, num_coefficients):
+def gen_mfcc_onnx_test_model(model_path, window_count, window_size, stride, sample_rate, lower_frequency_limit,
+                             upper_frequency_limit, filterbank_channel_count, dct_coefficient_count):
 
     # Tensor sizes.
-    input_length = window_size + (window_count - 1) * window_stride
+    input_length = window_size + (window_count - 1) * stride
     fft_length = int(2 ** np.ceil(np.log2(window_size)))
     input_shape = [1, input_length]
     spectrogram_length = int(fft_length / 2 + 1)
     spectrogram_shape = [window_count, spectrogram_length]
-    coefficients_shape = [window_count, num_coefficients]
+    coefficients_shape = [window_count, dct_coefficient_count]
 
     # Generate random input data.
     np.random.seed(1)
@@ -47,14 +47,14 @@ def gen_mfcc_onnx_test_model(model_path, window_count, window_size, window_strid
         [input_length, 1]), name='input', dtype=tf.float32)
     tf_spectrogram = audio_ops.audio_spectrogram(tf_input,
                                                  window_size=window_size,
-                                                 stride=window_stride,
+                                                 stride=stride,
                                                  magnitude_squared=True)
     tf_mfcc = audio_ops.mfcc(spectrogram=tf_spectrogram,
                              sample_rate=sample_rate,
-                             upper_frequency_limit=upper_frequency,
-                             lower_frequency_limit=lower_frequency,
-                             filterbank_channel_count=filter_bank_count,
-                             dct_coefficient_count=num_coefficients)
+                             upper_frequency_limit=upper_frequency_limit,
+                             lower_frequency_limit=lower_frequency_limit,
+                             filterbank_channel_count=filterbank_channel_count,
+                             dct_coefficient_count=dct_coefficient_count)
 
     # Run TensorFlow model and get spectrogram input.
     with tf.Session() as sess:
@@ -74,10 +74,10 @@ def gen_mfcc_onnx_test_model(model_path, window_count, window_size, window_strid
         inputs=['spectrogram'],
         outputs=['coefficients'],
         sample_rate=float(sample_rate),
-        lower_frequency=float(lower_frequency),
-        upper_frequency=float(upper_frequency),
-        filter_bank_count=int(filter_bank_count),
-        num_coefficients=int(num_coefficients)
+        lower_frequency_limit=float(lower_frequency_limit),
+        upper_frequency_limit=float(upper_frequency_limit),
+        filterbank_channel_count=int(filterbank_channel_count),
+        dct_coefficient_count=int(dct_coefficient_count)
     )
 
     # Error node definition.
@@ -131,20 +131,20 @@ def gen_mfcc_onnx_test_model(model_path, window_count, window_size, window_strid
 gen_mfcc_onnx_test_model(model_path='mfccOneWindow.onnxtxt',
                          window_count=1,
                          window_size=640,
-                         window_stride=320,
+                         stride=320,
                          sample_rate=16000,
-                         lower_frequency=20,
-                         upper_frequency=4000,
-                         filter_bank_count=40,
-                         num_coefficients=10)
+                         lower_frequency_limit=20,
+                         upper_frequency_limit=4000,
+                         filterbank_channel_count=40,
+                         dct_coefficient_count=10)
 
 # Two window MFCC.
 gen_mfcc_onnx_test_model(model_path='mfccTwoWindow.onnxtxt',
                          window_count=2,
                          window_size=512,
-                         window_stride=256,
+                         stride=256,
                          sample_rate=16000,
-                         lower_frequency=20,
-                         upper_frequency=4000,
-                         filter_bank_count=40,
-                         num_coefficients=10)
+                         lower_frequency_limit=20,
+                         upper_frequency_limit=4000,
+                         filterbank_channel_count=40,
+                         dct_coefficient_count=10)

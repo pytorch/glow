@@ -7,19 +7,19 @@ graph {
     name: "mfcc"
     op_type: "MFCC"
     attribute {
-      name: "filter_bank_count"
+      name: "dct_coefficient_count"
+      i: 10
+      type: INT
+    }
+    attribute {
+      name: "filterbank_channel_count"
       i: 40
       type: INT
     }
     attribute {
-      name: "lower_frequency"
+      name: "lower_frequency_limit"
       f: 20.0
       type: FLOAT
-    }
-    attribute {
-      name: "num_coefficients"
-      i: 10
-      type: INT
     }
     attribute {
       name: "sample_rate"
@@ -27,7 +27,7 @@ graph {
       type: FLOAT
     }
     attribute {
-      name: "upper_frequency"
+      name: "upper_frequency_limit"
       f: 4000.0
       type: FLOAT
     }

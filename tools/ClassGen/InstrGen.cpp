@@ -843,7 +843,11 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Int64, "WindowSize")
       .addMember(MemberType::Int64, "WindowStride")
       .addMember(MemberType::Boolean, "MagnitudeSquared")
-      .autoVerify(VerifyKind::NoVerify)
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Spectrogram", "Input", "Window", "TwiddleFactors",
+                   "ComplexToRealWeights", "ElemKind::FloatTy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"BitReverseIndices", "ElemKind::Int32ITy"})
       .autoIRGen();
 
   BB.newInstr("MFCC")
@@ -857,7 +861,11 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "UpperFrequency")
       .addMember(MemberType::Int64, "FilterBankCount")
       .addMember(MemberType::Int64, "NumCoefficients")
-      .autoVerify(VerifyKind::NoVerify)
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Coefficients", "Spectrogram", "MelWeights", "DctMat",
+                   "ElemKind::FloatTy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"MelRanges", "ElemKind::Int32ITy"})
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//
