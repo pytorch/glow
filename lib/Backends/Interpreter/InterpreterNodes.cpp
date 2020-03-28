@@ -4066,7 +4066,7 @@ static void fwdArgMax(Tensor *argmaxW, Tensor *inW, size_t axis) {
 
   dim_t *dim[4];
 
-  assert((axis >= 0) && (axis <= 3) "Axis values should be between 0 and 3");
+  assert((axis >= 0) && (axis <= 3) && "Axis values should be between 0 and 3");
 
   dim[(axis + 1) % 4] = &a;
   dim[(axis + 2) % 4] = &b;
