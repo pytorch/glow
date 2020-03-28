@@ -76,6 +76,9 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // Optimize Concat nodes.
       {FunctionPassID::OptimizeConcatNodes},
 
+      // Eliminate Concat-Slice patterns which are unnecessary.
+      {FunctionPassID::EliminateConcatSlice},
+
       // Optimize arithmetic nodes based on algebraic identities.
       {FunctionPassID::OptimizeArithmeticNodes},
 

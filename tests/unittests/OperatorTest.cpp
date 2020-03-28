@@ -85,9 +85,10 @@ protected:
       // Note: We disable constant folding here because we only need it to
       // calculate shapes that are the result of constant compute in the proto,
       // but this won't be the case when using useGlowCustomOps exporting.
-      ONNXModelLoader onnxLD(
-          pathToModel, {}, {}, *loadedF, &err, /* zipMode */ false,
-          /* disableConstFoldInLoader */ true, &loadedEE.getBackend());
+      ONNXModelLoader onnxLD(pathToModel, {}, {}, *loadedF, &err,
+                             /* zipMode */ false, /* perNodeOpts */ nullptr,
+                             /* disableConstFoldInLoader */ true,
+                             &loadedEE.getBackend());
       if (ERR_TO_BOOL(std::move(err))) {
         llvm::sys::fs::remove(pathToModel);
         FAIL() << "Error loading exported model";
@@ -4931,17 +4932,15 @@ static void testBroadcastMaxMin(glow::PlaceholderBindings &bindings,
                                 glow::Module &mod, glow::Function *F,
                                 glow::ExecutionEngine &EE, ElemKind DTy) {
 
-  PseudoRNG PRNG;
-
   auto *inputA = mod.createPlaceholder(DTy, {1, 3, 3, 1}, "A", false);
-  bindings.allocate(inputA)->getHandle<DataType>().randomize(-3.0, 3.0, PRNG);
+  bindings.allocate(inputA)->getHandle<DataType>().randomize(-3.0, 3.0,
+                                                             mod.getPRNG());
   auto *inputB = mod.createPlaceholder(DTy, {1, 3, 3, 1}, "B", false);
-  bindings.allocate(inputB)->getHandle<DataType>().randomize(-3.0, 3.0, PRNG);
+  bindings.allocate(inputB)->getHandle<DataType>().randomize(-3.0, 3.0,
+                                                             mod.getPRNG());
 
-  Node *maxorMinOp = nullptr;
-
-  maxorMinOp = F->createNodeWithBroadcast<NodeType>("maxormin", -1 /*axis */,
-                                                    inputA, inputB);
+  Node *maxorMinOp = F->createNodeWithBroadcast<NodeType>(
+      "maxormin", -1 /*axis */, inputA, inputB);
 
   auto *S = F->createSave("save", maxorMinOp);
   bindings.allocate(S->getPlaceholder());
