@@ -5,7 +5,7 @@
 set -ex
 
 apt-get update && apt-get -y install sudo apt-transport-https curl
-curl -sSf sh.rustup.rs | bash -s -- -y
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | bash -s -- -y
 cargo install sccache
 
 export MAX_JOBS=8
