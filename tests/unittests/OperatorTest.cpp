@@ -12752,7 +12752,7 @@ TEST_P(OperatorStatelessTest, LayerNorm_Float) {
 TEST_P(OperatorStatelessTest, LayerNorm_Float16) {
   CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitLayerNormTest,
-                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.005f,
+                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f,
                             parCloneCountOpt);
 }
 
