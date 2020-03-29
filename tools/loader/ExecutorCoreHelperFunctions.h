@@ -24,6 +24,7 @@
 #include "llvm/Support/Timer.h"
 
 extern llvm::cl::opt<std::string> inputImageListFile;
+extern llvm::cl::opt<std::string> inputTensorListFile;
 extern llvm::cl::list<std::string> inputImageFilenames;
 extern llvm::cl::opt<unsigned> excludedFirstWarmupRuns;
 extern llvm::cl::opt<unsigned> warmup;
@@ -37,7 +38,7 @@ extern llvm::cl::opt<unsigned> repeatSingleBatchCount;
 extern std::unique_ptr<glow::TraceContext> traceContext;
 
 /// Read all images from \p inputImageListFile in to \p inputImageFilenames.
-void parseInputImageList(const std::string &inputImageListFile);
+void parseInputList(const std::string &inputImageListFile);
 
 /// Write a prompt to stdout asking for filenames for classification. Read in
 /// those filenames and add them to \p filenames. \p filenames is cleared before

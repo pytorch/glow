@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "glow/Base/DeviceTensorTransferManager.h"
-#include "glow/Base/TensorSerialization.h"
 #include "glow/Base/Type.h"
 #include "glow/Support/Compiler.h"
 #include "glow/Support/Memory.h"

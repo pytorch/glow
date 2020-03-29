@@ -20,6 +20,7 @@
 #include "Loader.h"
 
 #include "glow/Base/Image.h"
+#include "glow/Base/TensorSerialization.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Importer/ONNXModelLoader.h"
@@ -160,9 +161,11 @@ int Executor::executeNetwork(int argc, char **argv) {
   // the ExecutionEngine and Function.
   parseCommandLine(argc, argv);
 
-  if (inputImageListFile.empty() && inputImageFilenames.size() == 0) {
+  if (inputImageListFile.empty() && inputTensorListFile.empty() &&
+      inputImageFilenames.size() == 0) {
     llvm::errs() << "Args: Either positional inputImageFilenames or "
-                    "-inputImageListFile "
+                    "-inputImageListFile or "
+                    "-inputTensorListFile "
                     "must be used to specify input images.\n";
     return 1;
   }
@@ -172,7 +175,15 @@ int Executor::executeNetwork(int argc, char **argv) {
         << "When using -input-image-list-file all Input images must be "
            "specified "
            "using -input-image-list-file option.";
-    parseInputImageList(inputImageListFile);
+    parseInputList(inputImageListFile);
+  }
+
+  if (!inputTensorListFile.empty()) {
+    CHECK_EQ(inputImageFilenames.size(), 0)
+        << "When using -input-tensor-list-file all Input images must be "
+           "specified "
+           "using -input-tensor-list-file option.";
+    parseInputList(inputTensorListFile);
   }
 
   if (excludedFirstWarmupRuns && excludedFirstWarmupRuns >= warmup) {
@@ -234,12 +245,18 @@ int Executor::executeNetwork(int argc, char **argv) {
     addLoaderExtensions(loader);
     ppImageExecutor.registerInputDataPreProcessingExtension(
         ppInputDataExtensions_);
-    loadImagesAndPreprocess(inputImageFilenames, &preloadedInputImageData,
-                            imageNormMode, imageChannelOrder, imageLayout);
 
-    ppImageExecutor.preProcessInputData(preloadedInputImageData, 0,
-                                        inputImageFilenames.size(),
-                                        preloadedInputImageData.dims()[0]);
+    if (!inputTensorListFile.empty()) {
+      loadInputImageFromFileWithType(inputImageFilenames,
+                                     &preloadedInputImageData, imageLayout);
+    } else {
+      loadImagesAndPreprocess(inputImageFilenames, &preloadedInputImageData,
+                              imageNormMode, imageChannelOrder, imageLayout);
+
+      ppImageExecutor.preProcessInputData(preloadedInputImageData, 0,
+                                          inputImageFilenames.size(),
+                                          preloadedInputImageData.dims()[0]);
+    }
   }
 
   // Process a set of minibatches with indices [startIndex, endIndex).
@@ -331,11 +348,17 @@ int Executor::executeNetwork(int argc, char **argv) {
     while (loopCond()) {
       if (!preloadAllImages && (!singleBatchRepeatedMode || isFirstRun)) {
         // Load and process the image data into the inputImageData Tensor.
-        loadImagesAndPreprocess(inputImageBatchFilenames, &inputImageData,
-                                imageNormMode, imageChannelOrder, imageLayout);
+        if (!inputTensorListFile.empty()) {
+          loadInputImageFromFileWithType(inputImageBatchFilenames,
+                                         &inputImageData, imageLayout);
+        } else {
+          loadImagesAndPreprocess(inputImageBatchFilenames, &inputImageData,
+                                  imageNormMode, imageChannelOrder,
+                                  imageLayout);
 
-        ppImageExecutor.preProcessInputData(inputImageData, startIndex,
-                                            endIndex, inputImageData.dims()[0]);
+          ppImageExecutor.preProcessInputData(
+              inputImageData, startIndex, endIndex, inputImageData.dims()[0]);
+        }
       }
 
       // Note: At this point miniBatchIndex is the end index, so subtract
