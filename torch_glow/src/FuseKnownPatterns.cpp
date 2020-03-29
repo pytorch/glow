@@ -77,6 +77,23 @@ graph(%input, %w, %b, %4, %5, %6, %7, %8, %9, %10, %11, %12):
   torch::jit::SubgraphRewriter convToUnpackedConv;
   convToUnpackedConv.RegisterRewritePattern(convPrepackPattern, convFused);
   convToUnpackedConv.runOnGraph(graph);
+
+  std::string conv3DPrepackPattern = R"IR(
+graph(%input, %w, %b, %4, %5, %6, %7, %8, %9, %10, %11, %12):
+  %prepacked_weight = quantized::conv3d_prepack(%w, %b, %4, %5, %6, %7)
+  %res = quantized::conv3d(%input, %prepacked_weight, %8, %9, %10, %7, %11, %12)
+  return (%res))IR";
+
+  std::string conv3DFused = R"IR(
+graph(%input, %w, %b, %4, %5, %6, %7, %8, %9, %10, %11, %12):
+  %res = glow::unpacked_quantized_conv3d(%input, %w, %b, %8, %9, %10, %7, %11, %12)
+  return (%res))IR";
+
+  // Replace conv_prepack + conv3d to unpacked_quantized_conv3d
+  torch::jit::SubgraphRewriter conv3DToUnpackedConv3D;
+  conv3DToUnpackedConv3D.RegisterRewritePattern(conv3DPrepackPattern,
+                                                conv3DFused);
+  conv3DToUnpackedConv3D.runOnGraph(graph);
 }
 
 void fuseLinearPrepack(std::shared_ptr<torch::jit::Graph> &graph) {
@@ -323,6 +340,7 @@ void fuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph) {
   std::call_once(onceFlag, []() {
     registerDummyOperator("glow::unpacked_quantized_linear");
     registerDummyOperator("glow::unpacked_quantized_conv2d");
+    registerDummyOperator("glow::unpacked_quantized_conv3d");
     registerDummyOperator("glow::fused_stack");
     registerDummyOperator("glow::fused_linear");
   });

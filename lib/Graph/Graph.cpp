@@ -2621,6 +2621,41 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
       group));
 }
 
+ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv3D(
+    llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
+    NodeValue scales, NodeValue offsets, TypeRef outTy,
+    llvm::ArrayRef<unsigned_t> kernels, llvm::ArrayRef<unsigned_t> strides,
+    llvm::ArrayRef<unsigned_t> pads, unsigned_t group) {
+  assertConv3DDims(input, filter, bias, kernels, strides, pads, group);
+  auto OT = getParent()->uniqueType(*outTy);
+  auto biasElemKind = bias.getElementType();
+
+  if (biasElemKind != ElemKind::Int32QTy && biasElemKind != ElemKind::FloatTy) {
+    LOG(DFATAL)
+        << "Unsupported element type for ChannelwiseQuantizedConvolution bias: "
+        << Type::getElementName(biasElemKind).str();
+  }
+
+  DCHECK(dyn_cast<Constant>(bias.getNode()))
+      << "bias input to ChannelwiseQuantizedConvolutionNode must be a Constant";
+
+  DCHECK(dyn_cast<Constant>(filter.getNode()))
+      << "filter input to ChannelwiseQuantizedConvolutionNode must be a "
+         "Constant";
+
+  DCHECK(dyn_cast<Constant>(scales.getNode()))
+      << "scales input to ChannelwiseQuantizedConvolutionNode must a Constant "
+         "in order to quantize the bias";
+
+  DCHECK(dyn_cast<Constant>(offsets.getNode()))
+      << "offsets input to ChannelwiseQuantizedConvolutionNode must be a"
+         "Constant";
+
+  return addNode(new ChannelwiseQuantizedConvolutionNode(
+      name, OT, input, filter, bias, scales, offsets, kernels, strides, pads,
+      group));
+}
+
 ConvTransposeNode *Function::createConvTranspose(
     PlaceholderBindings &bindings, llvm::StringRef name, NodeValue input,
     dim_t outChannels, llvm::ArrayRef<unsigned_t> kernels,
