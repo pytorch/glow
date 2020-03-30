@@ -20,6 +20,8 @@
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 #include "glow/Optimizer/Lower/Lower.h"
+
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/CommandLine.h"
 
 #include <fstream>
@@ -936,7 +938,7 @@ validateFinalNodeOpts(const Function *F,
   auto &currFunInfo = funNodeInfoIt->second;
 
   // Gather all Node names to more easily/efficiently validate extraEdges.
-  llvm::StringSet allNodeNames;
+  llvm::StringSet<> allNodeNames;
   for (const Node &N : F->getNodes()) {
     allNodeNames.insert(N.getName().str());
   }
