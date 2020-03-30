@@ -261,11 +261,11 @@ if(GLOW_WITH_NNPI)
           NNPIOptPipelineTest.cpp)
   target_link_libraries(NNPIOptPipelineTest
           PRIVATE
-          BackendTestUtils
           Backends
+          BackendTestUtils
           ExecutionEngine
+          Graph
           GraphOptimizer
-          NNPI
           Support
           gtest
           TestMain)

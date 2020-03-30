@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "glow/tests/unittests/BackendTestUtils.h"
+#include "BackendTestUtils.h"
 
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
