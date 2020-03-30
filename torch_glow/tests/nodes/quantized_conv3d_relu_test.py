@@ -17,7 +17,8 @@ class TestQuantizedConv3dRelu(unittest.TestCase):
             x = torch.cat((x, x, x))
             x = torch.reshape(x, [1, 3, 3, 5, 5])
             q = torch.nn.quantized.Quantize(1, 2, torch.quint8)
-            conv = torch.nn.Conv3d(3, 3, kernel_size=3, stride=(2, 2, 2), groups=groups)
+            conv = torch.nn.Conv3d(3, 3, kernel_size=3,
+                                   stride=(2, 2, 2), groups=groups)
             relu = torch.nn.ReLU()
             dq = torch.nn.quantized.DeQuantize()
 
@@ -45,7 +46,8 @@ class TestQuantizedConv3dRelu(unittest.TestCase):
             model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
 
             # Fuse conv and relu to conv_relu
-            model = torch.quantization.fuse_modules(model, [["conv1", "relu1"]])
+            model = torch.quantization.fuse_modules(
+                model, [["conv1", "relu1"]])
 
             torch.quantization.prepare(model, inplace=True)
             torch.quantization.convert(model, inplace=True)
@@ -77,14 +79,16 @@ class TestQuantizedConv3dRelu(unittest.TestCase):
             x = torch.cat((x, x, x))
             x = torch.reshape(x, [1, 3, 3, 5, 5])
             q = torch.nn.quantized.Quantize(1, 2, torch.quint8)
-            conv = torch.nn.Conv3d(3, 3, kernel_size=3, stride=(2, 2, 2), groups=1)
+            conv = torch.nn.Conv3d(3, 3, kernel_size=3,
+                                   stride=(2, 2, 2), groups=1)
             relu = torch.nn.ReLU()
             dq = torch.nn.quantized.DeQuantize()
 
             # Due to the off-by-one error, we cannot let the weights, bias & input
             # to be totally random.
             conv.weight.set_(
-                torch.arange(72, dtype=torch.float).reshape([3, 3, 2, 2, 2]) / 3
+                torch.arange(72, dtype=torch.float).reshape(
+                    [3, 3, 2, 2, 2]) / 3
             )
             conv.bias.data.fill_(2)
 
@@ -102,7 +106,8 @@ class TestQuantizedConv3dRelu(unittest.TestCase):
             model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
 
             # Fuse conv and relu to conv_relu
-            model = torch.quantization.fuse_modules(model, [["conv1", "relu1"]])
+            model = torch.quantization.fuse_modules(
+                model, [["conv1", "relu1"]])
 
             torch.quantization.prepare(model, inplace=True)
             torch.quantization.convert(model, inplace=True)
