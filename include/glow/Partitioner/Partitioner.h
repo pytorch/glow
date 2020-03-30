@@ -131,6 +131,7 @@ class Partitioner final : public PartitionerBase {
     size_t numElementsPerRowUpperBound;
     size_t numIndices;
     unsigned int deviceId;
+    NodeValue slsClipResult;
   };
 
   struct SLSDeviceInfo {
