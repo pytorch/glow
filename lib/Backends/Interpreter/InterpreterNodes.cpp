@@ -4079,7 +4079,7 @@ static void fwdArgMax(Tensor *argmaxW, Tensor *inW, size_t axis) {
   for (a = 0; a < idim[(axis + 1) % 4]; a++) {
     for (b = 0; b < idim[(axis + 2) % 4]; b++) {
       for (c = 0; c < idim[(axis + 3) % 4]; c++) {
-        T max;
+        T max = std::numeric_limits<T>::min();
         if (axis == 0) {
           max = inH.at({0, *dim[1], *dim[2], *dim[3]});
         } else if (axis == 1) {

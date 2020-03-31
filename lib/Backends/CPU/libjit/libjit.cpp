@@ -726,7 +726,7 @@ static void libjit_arg_max_generic(const T *inW, T2 *outW, const dim_t *inWdims,
     for (b = 0; b < inWdims[(axis + 2) % 4]; b++) {
       for (c = 0; c < inWdims[(axis + 3) % 4]; c++) {
 
-        T max;
+        T max = std::numeric_limits<T>::min();
         if (axis == 0) {
           max = inW[libjit_getXYZW(inWdims, 0, *dim[1], *dim[2], *dim[3])];
         } else if (axis == 1) {

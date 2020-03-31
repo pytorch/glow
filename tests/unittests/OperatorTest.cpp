@@ -3008,8 +3008,8 @@ TEST_P(OperatorTest, QuantizedArgMaxNoKeepDim) {
 TEST_P(OperatorTest, FloatArgMaxNoKeepDimWithAxis1) {
   CHECK_IF_ENABLED();
 
-  auto *input = createPlaceholderConditionallyQuantized(
-      mod_, ElemKind::FloatTy, {1, 2, 3, 4}, "input", false, "NHWC");
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 4}, "input",
+                                       false, "NHWC");
   auto *argmax =
       mod_.createPlaceholder(ElemKind::Int64ITy, {1, 3, 4}, "argmax", false);
 
@@ -3022,7 +3022,8 @@ TEST_P(OperatorTest, FloatArgMaxNoKeepDimWithAxis1) {
 
   bindings_.allocate(argmax);
 
-  auto *AM = F_->createArgMax("argmax", input, 1, false);
+  auto *AM =
+      F_->createArgMax("argmax", input, /* axis */ 1, /* keepDims */ false);
   F_->createSave("save.argmax", AM, argmax);
 
   EE_.compile(CompilationMode::Infer);
@@ -3046,8 +3047,8 @@ TEST_P(OperatorTest, FloatArgMaxNoKeepDimWithAxis1) {
 TEST_P(OperatorTest, FloatArgMaxNoKeepDimWithAxis2) {
   CHECK_IF_ENABLED();
 
-  auto *input = createPlaceholderConditionallyQuantized(
-      mod_, ElemKind::FloatTy, {1, 2, 3, 4}, "input", false, "NHWC");
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 4}, "input",
+                                       false, "NHWC");
   auto *argmax =
       mod_.createPlaceholder(ElemKind::Int64ITy, {1, 2, 4}, "argmax", false);
 
@@ -3060,7 +3061,8 @@ TEST_P(OperatorTest, FloatArgMaxNoKeepDimWithAxis2) {
 
   bindings_.allocate(argmax);
 
-  auto *AM = F_->createArgMax("argmax", input, 2, false);
+  auto *AM =
+      F_->createArgMax("argmax", input, /* axis */ 2, /* keepDims */ false);
   F_->createSave("save.argmax", AM, argmax);
 
   EE_.compile(CompilationMode::Infer);
