@@ -3681,6 +3681,87 @@ bool FoldTileAddIntoBatchedAdd::run(Function *F,
   return changed;
 }
 
+/// Raise ClipNodes above shaping ops, e.g. Reshape, Transpose, Slice. Other
+/// passes will sink Clips to try to eliminate redundant ones. This pass should
+/// happen after sinking of Clips in order to try to get Clips to directly
+/// consume compute Nodes outputs.
+bool RaiseClipsAboveShapeNodes::run(Function *F,
+                                    const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+
+  // Keep track of what nodes will have oneLessUser due to DCE eventually. As an
+  // example, we know that after we replace all users of OrigSlice with NewClip,
+  // then OrigSlice and OrigClip are dead, and so Input1 will have one less user
+  // after DCE.
+  //  Input                  Input
+  //    |                    /    \
+  //  OrigSlice        NewClip   OrigSlice  <--|
+  //    |        -->      |         |          |-- (These two are now dead.)
+  //  OrigClip         NewSlice   OrigClip  <--|
+  //    |                 |
+  //  Save              Save
+  std::unordered_set<Node *> oneLessUser;
+
+  for (auto &N : F->getNodes()) {
+    ClipNode *CN = dyn_cast<ClipNode>(&N);
+    if (!CN) {
+      continue;
+    }
+
+    // If the Clip's input has multiple users then do not raise the Clip, as
+    // otherwise this will impact other Nodes. We subtract off an extra user
+    // here if we know one user will be eliminated due to DCE eventually (see
+    // above pic).
+    unsigned numUsers = CN->getInput().getNode()->getNumUsers();
+    if (oneLessUser.count(CN->getInput().getNode())) {
+      numUsers -= 1;
+    }
+    if (numUsers != 1) {
+      continue;
+    }
+
+    // Sink Reshape below Clip.
+    if (ReshapeNode *RN = dyn_cast<ReshapeNode>(CN->getInput())) {
+      ClipNode *newCN = F->createClip(CN->getName(), RN->getInput(),
+                                      CN->getMin(), CN->getMax());
+      ReshapeNode *newRN = F->createReshape(RN->getName(), newCN->getResult(),
+                                            RN->getDims(), RN->getLayout());
+      CN->getResult().replaceAllUsesOfWith(newRN->getResult());
+      oneLessUser.insert(RN->getInput().getNode());
+      changed = true;
+      continue;
+    }
+
+    // Sink Transpose below Clip.
+    if (TransposeNode *TN = dyn_cast<TransposeNode>(CN->getInput())) {
+      ClipNode *newCN = F->createClip(CN->getName(), TN->getInput(),
+                                      CN->getMin(), CN->getMax());
+      TransposeNode *newTN = F->createTranspose(
+          TN->getName(), newCN->getResult(), TN->getShuffle(), TN->getLayout());
+      CN->getResult().replaceAllUsesOfWith(newTN->getResult());
+      oneLessUser.insert(TN->getInput().getNode());
+      changed = true;
+      continue;
+    }
+
+    // Sink Slice below Clip.
+    if (SliceNode *SN = dyn_cast<SliceNode>(CN->getInput())) {
+      ClipNode *newCN = F->createClip(CN->getName(), SN->getInput(),
+                                      CN->getMin(), CN->getMax());
+      SliceNode *newSN =
+          F->createSlice(SN->getName(), newCN->getResult(), SN->getStart(),
+                         SN->getResult().getType());
+      CN->getResult().replaceAllUsesOfWith(newSN->getResult());
+      oneLessUser.insert(SN->getInput().getNode());
+      changed = true;
+      continue;
+    }
+  } // For all nodes in the graph.
+
+  return changed;
+}
+
 /// Fold ElemKind conversion nodes (ConvertTo, Quantize) into
 /// single-user Placeholders. Note that this changes the semantics
 /// of the IO of the Function and so must be done carefully, i.e. should always

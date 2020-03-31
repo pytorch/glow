@@ -51,6 +51,7 @@ FUN_PASS(FoldElemKindConversionIntoInputs)
 FUN_PASS(FoldMatMulAddIntoFullyConnected)
 FUN_PASS(FoldSlicesIntoConstants)
 FUN_PASS(EliminateConcatSlice)
+FUN_PASS(RaiseClipsAboveShapeNodes)
 
 // NOTE: This pass must be last; it's used to count the total number of passes.
 FUN_PASS(EmptyPass)
