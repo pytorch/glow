@@ -4354,11 +4354,13 @@ void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
     return;                                                                    \
   }
   CONVERT(float, float16_t, ElemKind::FloatTy, ElemKind::Float16Ty)
+  CONVERT(float, bool, ElemKind::FloatTy, ElemKind::BoolTy)
   CONVERT(float, int32_t, ElemKind::FloatTy, ElemKind::Int32ITy)
   CONVERT(float, int64_t, ElemKind::FloatTy, ElemKind::Int64ITy)
   CONVERT(float16_t, float, ElemKind::Float16Ty, ElemKind::FloatTy)
   CONVERT(float16_t, int32_t, ElemKind::Float16Ty, ElemKind::Int32ITy)
   CONVERT(float16_t, int64_t, ElemKind::Float16Ty, ElemKind::Int64ITy)
+  CONVERT(bool, float, ElemKind::BoolTy, ElemKind::FloatTy)
   CONVERT(int32_t, float, ElemKind::Int32ITy, ElemKind::FloatTy)
   CONVERT(int32_t, float16_t, ElemKind::Int32ITy, ElemKind::Float16Ty)
   CONVERT(int32_t, int64_t, ElemKind::Int32ITy, ElemKind::Int64ITy)

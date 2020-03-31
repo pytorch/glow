@@ -718,6 +718,7 @@ const PyTorchModelLoader::MappingOfMemberFunctions
 PyTorchModelLoader::buildSymbolsMapping() {
   // First build mapping with standard PyTorch operators.
   auto symbolLoaderMapping = MappingOfMemberFunctions({
+      {{"aten::type_as"}, &PyTorchModelLoader::loadTypeAs},
       {{"prim::Constant"}, &PyTorchModelLoader::loadConstant},
       {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul},
       {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv},
@@ -1632,6 +1633,26 @@ Expected<NodeValue> PyTorchModelLoader::loadNodeValueOrBroadcastedIValue(
     }
   }
 }
+
+Error PyTorchModelLoader::loadTypeAs(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue dataValue;
+  glow::NodeValue typeNode;
+  ASSIGN_VALUE_OR_RETURN_ERR(typeNode, getGlowNodeValueForValue(inputs[1]));
+  ASSIGN_VALUE_OR_RETURN_ERR(dataValue, getGlowNodeValueForValue(inputs[0]));
+  auto outType = typeNode.getType();
+
+  glow::Node *bcast = F_.createBroadcast("loadas_broadcast",
+                                         dataValue, typeNode.dims(), 0);
+  glow::ConvertToNode *glowNode = F_.createConvertTo("loadas_convert", bcast,
+                                                     outType);
+
+  return addValueMapping(outputs[0], glowNode->getResult());
+}
+
 
 template <typename GlowNode>
 Expected<NodeValue>

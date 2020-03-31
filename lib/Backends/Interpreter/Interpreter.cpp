@@ -485,6 +485,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
       case ElemKind::FloatTy:
       case ElemKind::Int32ITy:
       case ElemKind::Int64ITy:
+      case ElemKind::BoolTy:
         return true;
       default:
         return false;
