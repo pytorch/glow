@@ -2935,6 +2935,49 @@ bool OptimizeClips::run(Function *F, const CompilationContext &cctx) {
   return clipsEliminated;
 }
 
+/// For Clip(Dequantize), we can merge the Clip range and the Quantized range
+/// into the DequantizeNode's input, and remove the Clip.
+bool OptimizeDequantizeClip::run(Function *F, const CompilationContext &cctx) {
+  bool changed = false;
+  for (Node &node : F->getNodes()) {
+    ClipNode *clip = dyn_cast<ClipNode>(&node);
+    if (!clip) {
+      continue;
+    }
+
+    DequantizeNode *DQN = dyn_cast<DequantizeNode>(clip->getInput());
+    if (!DQN) {
+      continue;
+    }
+
+    // Cannot perform this optimization if there are multiple users of DQN or
+    // DQN's input, as otherwise they'd get incorrect numerics.
+    NodeValue qResult = DQN->getInput();
+    if (DQN->getNumUsers() != 1 || qResult.getNode()->getNumUsers() != 1) {
+      continue;
+    }
+
+    const auto qMinMax = qResult.getType()->getQuantizedValueRange();
+    const float newMin = std::max(clip->getMin(), qMinMax.first);
+    const float newMax = std::min(clip->getMax(), qMinMax.second);
+
+    // Replace the old quantized type with the new type with different min/max.
+    const TypeRef oldTy = qResult.getType();
+    const auto qParams =
+        quantization::chooseQuantizationParams({newMin, newMax});
+    const TypeRef newTy = F->getParent()->uniqueType(
+        oldTy->getElementType(), oldTy->dims(), qParams.scale, qParams.offset);
+    qResult.getNode()->setType(qResult.getResNo(), newTy);
+
+    // Now we can eliminate the skip since the node prior to DQN has included
+    // the Clip's range in its quantization parameters.
+    clip->getResult().replaceAllUsesOfWith(DQN->getResult());
+    changed = true;
+  }
+
+  return changed;
+}
+
 /// Optimize away ConvertToNode.
 /// This basically turns "conversion(conversion A to B) to C"
 /// into noop if all of the conditions below are met:
