@@ -25,6 +25,10 @@ struct BlacklistInitializer {
     const std::vector<std::pair<std::string, uint32_t>> testBlacklistedSetups =
         {{"testStaticAssignmentConcurrent/0",
           TestBlacklist::AnyDeviceAnyEngine},
+         {"testStaticAssignmentP2PandDRT/0", TestBlacklist::AnyDeviceAnyEngine},
+         {"testStaticAssignmentP2POnly/0", TestBlacklist::AnyDeviceAnyEngine},
+         {"testStaticAssignmentDeviceResidentTensorOnly/0",
+          TestBlacklist::AnyDeviceAnyEngine},
          {"testStaticAssignment/0", TestBlacklist::AnyDeviceAnyEngine},
          {"runNetworkConcurrent/0", TestBlacklist::AnyDeviceAnyEngine},
          {"ConcurrentAddRemoveUnique/0", TestBlacklist::AnyDeviceAnyEngine},

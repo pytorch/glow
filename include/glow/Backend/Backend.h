@@ -204,7 +204,8 @@ public:
   /// state information should be stored in the ExecutionContext or
   /// DeviceManager.
   virtual Error bindContexts(llvm::ArrayRef<runtime::ContextBinding> bindings,
-                             const runtime::DAGNode *root) {
+                             const runtime::DAGNode *root, bool enableP2P,
+                             bool enableDRT) {
     return Error::success();
   }
 

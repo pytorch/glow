@@ -222,7 +222,7 @@ public:
         expectSuccess_(expectSuccess), testRun_(false) {
     root_->module = module_.get();
     // Create context pool.
-    executor_->createPool(root_.get(), 1000);
+    executor_->createPool(root_.get(), 1000, false, false);
   }
 
   /// Run the test.
