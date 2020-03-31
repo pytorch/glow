@@ -103,6 +103,9 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // Run a round of constant folding.
       {FunctionPassID::ConstantFold},
 
+      // Optimize Clip(Dequantize) pattern to remove Clip.
+      {FunctionPassID::OptimizeDequantizeClip},
+
       // Fold Arithmetic chain w/ constants into Batch Norm, when Conv preceeds.
       {FunctionPassID::FoldArithmeticChainUnderConvIntoBN,
        ConvergenceMode::OnePass,
