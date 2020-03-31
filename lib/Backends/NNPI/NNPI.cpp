@@ -20,6 +20,8 @@
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 #include "glow/Optimizer/Lower/Lower.h"
+
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/CommandLine.h"
 
 #include <fstream>
@@ -936,7 +938,7 @@ validateFinalNodeOpts(const Function *F,
   auto &currFunInfo = funNodeInfoIt->second;
 
   // Gather all Node names to more easily/efficiently validate extraEdges.
-  llvm::StringSet allNodeNames;
+  llvm::StringSet<> allNodeNames;
   for (const Node &N : F->getNodes()) {
     allNodeNames.insert(N.getName().str());
   }
@@ -1041,6 +1043,12 @@ FunctionPassPipeline NNPIBackend::getOptimizationPipeline() const {
   // Disable SinkCode, as NNPI does data parallel transformations and so we do
   // not want to undo that by sinking Nodes back together.
   pipeline.removeAllInstancesOfPass(FunctionPassID::SinkCode);
+
+  // Raise Clips above Shape Nodes (e.g. Reshape) to try to ensure fusion
+  // occurs. Note that we do this last as it may counteract some earlier
+  // optimizations that push Clips down to try to eliminate them.
+  pipeline.pushBack(FunctionPassID::RaiseClipsAboveShapeNodes);
+  pipeline.pushBack(getDCEPassConfig());
 
   return pipeline;
 }
