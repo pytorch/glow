@@ -546,7 +546,14 @@ CompilationContext Loader::getCompilationContext(QuantizationMode mode) {
     LOG(FATAL) << "Quantization mode not supported";
   }
 
-  // Optimization options.
+  // When converting the model placeholders, if the placeholders are already
+  // allocated, we should also convert the backing tensors. Since this procedure
+  // is not yet in place, we only convert when emitting a bundle.
+  if (convertPlaceholdersOpt && !emittingBundle()) {
+    llvm::errs() << "The flag 'convert-placeholders' can only be used when "
+                    "emitting a bundle!\n";
+    std::exit(1);
+  }
   cctx.optimizationOpts.foldElemKindConversionIntoIO = convertPlaceholdersOpt;
 
   return cctx;
