@@ -452,6 +452,8 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ConvertToNodeKind:
     return ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::Int32ITy) &&
             (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::FloatTy)) ||
+           ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::BoolTy) &&
+            (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::FloatTy)) ||
            ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::Int64ITy) &&
             (NI.getOutElemTy(ConvertToNode::ResultIdx) ==
              ElemKind::Int32ITy)) ||
