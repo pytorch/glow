@@ -4112,3 +4112,49 @@ TEST_F(GraphOptz, FoldSlicesIntoConstantsTest) {
     }
   }
 }
+
+/// Test that RaiseClipsAboveShapeNodes pass works as expected.
+TEST_F(GraphOptz, RaiseClipsAboveShapeNodesTest) {
+  Placeholder *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {256, 64}, "input", false);
+
+  ReshapeNode *RN1 = F_->createReshape("reshape1", input, {4, 128, 32});
+  ReshapeNode *RN2 = F_->createReshape("reshape2", RN1, {64, 256});
+  TransposeNode *TN = F_->createTranspose("transpose", RN2, {1, 0});
+  SliceNode *SN = F_->createSlice("slice", TN, {64, 0}, {256, 64});
+  ClipNode *CN = F_->createClip("clip", SN, -0.1, 0.1);
+  SaveNode *save1 = F_->createSave("save1", RN1);
+  SaveNode *save2 = F_->createSave("save2", CN);
+
+  Function *origF = F_->clone("orig");
+
+  FunctionPassManager FPM("TestFPM",
+                          {FunctionPassID::RaiseClipsAboveShapeNodes});
+  FPM.run(F_, CompilationContext());
+
+  optimizedF_ = F_;
+  F_ = origF;
+
+  // save1 should only have a single untouched Reshape RN1 input which has input
+  // input into it, because RN1 has multiple users.
+  EXPECT_EQ(RN1, save1->getInput().getNode());
+  EXPECT_EQ(input, RN1->getInput().getNode());
+
+  // save2 should have CN it originally saved pushed up above SN, TN, and RN2.
+  SliceNode *newSN = llvm::dyn_cast<SliceNode>(save2->getInput());
+  ASSERT_TRUE(newSN);
+  EXPECT_EQ(newSN->getStart(), SN->getStart());
+  TransposeNode *newTN = llvm::dyn_cast<TransposeNode>(newSN->getInput());
+  ASSERT_TRUE(newTN);
+  EXPECT_EQ(newTN->getShuffle(), TN->getShuffle());
+  ReshapeNode *newRN2 = llvm::dyn_cast<ReshapeNode>(newTN->getInput());
+  ASSERT_TRUE(newRN2);
+  ClipNode *newCN = llvm::dyn_cast<ClipNode>(newRN2->getInput());
+  ASSERT_TRUE(newCN);
+  EXPECT_EQ(newCN->getMin(), CN->getMin());
+  EXPECT_EQ(newCN->getMax(), CN->getMax());
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
