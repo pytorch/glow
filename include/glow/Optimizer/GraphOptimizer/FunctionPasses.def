@@ -52,7 +52,7 @@ FUN_PASS(FoldMatMulAddIntoFullyConnected)
 FUN_PASS(FoldSlicesIntoConstants)
 FUN_PASS(EliminateConcatSlice)
 FUN_PASS(RaiseClipsAboveShapeNodes)
-FUN_PASS(OptimizeDequantizeClip)
+FUN_PASS(OptimizeQuantizeClip)
 
 // NOTE: This pass must be last; it's used to count the total number of passes.
 FUN_PASS(EmptyPass)
