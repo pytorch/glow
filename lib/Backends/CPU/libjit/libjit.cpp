@@ -2663,10 +2663,10 @@ void libjit_write_timestamp(uint64_t *tensor, dim_t offset) {
 }
 
 /// Copies a kernel with type conversion
-void libjit_convertTo_f_b(float *dstPtr, const bool *srcPtr,
-                            const dim_t *dims, dim_t numDims) {
+void libjit_convertTo_f_b(float *dstPtr, const bool *srcPtr, const dim_t *dims,
+                          dim_t numDims) {
   libjit_copy_kernel_with_conversion<float, bool>(dstPtr, srcPtr, dims,
-                                                     numDims);
+                                                  numDims);
 }
 
 void libjit_convertTo_f_i32(float *dstPtr, const int32_t *srcPtr,
