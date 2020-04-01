@@ -159,8 +159,12 @@ public:
           Tensor(param.dtype, {param.numTableEntries, param.numElementsPerRow});
     } else {
       // If RWQ then we need to account for per-row scale/offset in the shape.
-      const dim_t numTotalColumns =
-          param.numElementsPerRow + 2 * sizeof(float16_t);
+      int64_t numBytePerRow = param.numElementsPerRow;
+      if (param.fusedDtype == ElemKind::UInt4FusedFP16QTy) {
+        // For 4bit tables the number of bytes should be halved (rounded up).
+        numBytePerRow = (numBytePerRow + 1) / 2;
+      }
+      const dim_t numTotalColumns = numBytePerRow + 2 * sizeof(float16_t);
       dataConstantTensor = Tensor(
           param.fusedDtype, {param.numTableEntries, numTotalColumns}, 1.0, 0);
     }
