@@ -4238,3 +4238,38 @@ TEST_F(GraphOptz, OptimizeClipQuantizeTest) {
   bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
   checkNumericalEquivalence(0.0005);
 }
+
+/// Test Quantize(ConvertTo(Node)) -> Quantize(Node), where Quantize is int8.
+TEST_F(GraphOptz, OptimizeOutIntermediateConversionsTest) {
+  Placeholder *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {20, 20}, "input", false);
+
+  const auto qParams = quantization::chooseQuantizationParams({-0.1, 0.1});
+
+  ConvertToNode *CN = F_->createConvertTo("conv", input, ElemKind::Float16Ty);
+  QuantizeNode *QN =
+      F_->createQuantize("quantize", CN,
+                         mod_.uniqueType(ElemKind::Int8QTy, {20, 20},
+                                         qParams.scale, qParams.offset));
+  DequantizeNode *DN = F_->createDequantize("dequantize", QN);
+  F_->createSave("save", DN);
+
+  Function *origF = F_->clone("orig");
+
+  FunctionPassManager FPM(
+      "TestFPM", {
+                     FunctionPassID::OptimizeOutIntermediateConversions,
+                     getDCEPassConfig(),
+                 });
+  FPM.run(F_, CompilationContext());
+
+  optimizedF_ = F_;
+  F_ = origF;
+
+  // Now check that the ConvertToNode has been eliminated.
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConvertToNodeKind), 0);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
