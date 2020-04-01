@@ -1653,7 +1653,6 @@ Error PyTorchModelLoader::loadTypeAs(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], glowNode->getResult());
 }
 
-
 template <typename GlowNode>
 Expected<NodeValue>
 PyTorchModelLoader::loadArithmeticNode(llvm::StringRef name,
