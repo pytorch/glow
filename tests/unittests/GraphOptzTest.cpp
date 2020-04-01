@@ -4159,7 +4159,7 @@ TEST_F(GraphOptz, RaiseClipsAboveShapeNodesTest) {
   checkNumericalEquivalence();
 }
 
-/// Test that OptimizeDequantizeClip pass works as expected.
+/// Test that OptimizeQuantizeClip pass works as expected for Clip(Dequantize).
 TEST_F(GraphOptz, OptimizeDequantizeClipTest) {
   Placeholder *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {20, 20}, "input", false);
@@ -4174,11 +4174,18 @@ TEST_F(GraphOptz, OptimizeDequantizeClipTest) {
   ClipNode *CN = F_->createClip("clip", DN, 0, 100);
   SaveNode *SN = F_->createSave("save", CN);
 
+  Function *origF = F_->clone("orig");
+
   FunctionPassManager FPM("TestFPM", {
-                                         FunctionPassID::OptimizeDequantizeClip,
+                                         FunctionPassID::OptimizeQuantizeClip,
                                          getDCEPassConfig(),
                                      });
   FPM.run(F_, CompilationContext());
+
+  optimizedF_ = F_;
+  F_ = origF;
+
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 0);
 
   // Now check that the quantization params have been correctly updated for QN,
   // and that CN has been eliminated.
@@ -4186,4 +4193,48 @@ TEST_F(GraphOptz, OptimizeDequantizeClipTest) {
   const auto qMinMax = DN->getInput().getType()->getQuantizedValueRange();
   EXPECT_NEAR(qMinMax.first, 0, 1E-3);    // Min from Clip
   EXPECT_NEAR(qMinMax.second, 0.1, 1E-3); // Max from Quant range
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence(0.0005);
+}
+
+/// Test that OptimizeQuantizeClip pass works as expected for Clip(Quantize).
+TEST_F(GraphOptz, OptimizeClipQuantizeTest) {
+  Placeholder *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {20, 20}, "input", false);
+
+  const auto qParams = quantization::chooseQuantizationParams({-0.1, 0.1});
+
+  ClipNode *CN = F_->createClip("clip", input, 0, 100);
+  QuantizeNode *QN =
+      F_->createQuantize("quantize", CN,
+                         mod_.uniqueType(ElemKind::Int8QTy, {20, 20},
+                                         qParams.scale, qParams.offset));
+  DequantizeNode *DN = F_->createDequantize("dequantize", QN);
+  SaveNode *SN = F_->createSave("save", DN);
+
+  Function *origF = F_->clone("orig");
+
+  FunctionPassManager FPM("TestFPM", {
+                                         FunctionPassID::OptimizeQuantizeClip,
+                                         getDCEPassConfig(),
+                                     });
+  FPM.run(F_, CompilationContext());
+
+  optimizedF_ = F_;
+  F_ = origF;
+
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 0);
+
+  // Now check that the quantization params have been correctly updated for QN,
+  // and that CN has been eliminated.
+  ASSERT_EQ(SN->getInput().getNode(), DN);
+  const auto qMinMax = DN->getInput().getType()->getQuantizedValueRange();
+  EXPECT_NEAR(qMinMax.first, 0, 1E-3);    // Min from Clip
+  EXPECT_NEAR(qMinMax.second, 0.1, 1E-3); // Max from Quant range
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence(0.0005);
 }
