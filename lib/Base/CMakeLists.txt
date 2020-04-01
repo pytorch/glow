@@ -17,7 +17,8 @@ if(PNG_FOUND)
                                ${PNG_INCLUDE_DIR})
   target_link_libraries(Base
                         PRIVATE
-                          ${PNG_LIBRARY})
+                          ${PNG_LIBRARY}
+                          z)
 endif()
 
 add_dependencies(Base AutoGen)
