@@ -170,6 +170,12 @@ llvm::cl::opt<bool> useSparseNNPartitioningScheme(
     llvm::cl::desc("Enable SparseNN partitioning scheme"), llvm::cl::Optional,
     llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<bool> sparseNNPartitioningAddSLSConcats(
+    "glow_sparsenn_partitioning_add_sls_concats",
+    llvm::cl::desc("Add extra concats inside of SLS partitions for more "
+                   "efficient inter-partitition transfers"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
 llvm::cl::opt<int32_t> sparseNNPartitioningSchemeNumCards(
     "glow_snn_partitioning_num_cards",
     llvm::cl::desc("Num cards used in SparseNN partitioning scheme"),
@@ -472,6 +478,8 @@ int run() {
   if (useSparseNNPartitioningScheme) {
     cctx.optimizationOpts.useSparseNNPartitioningScheme =
         useSparseNNPartitioningScheme;
+    cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
+        sparseNNPartitioningAddSLSConcats;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
         sparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =

@@ -102,6 +102,10 @@ struct OptimizationOptions {
   /// scheme
   bool useSparseNNPartitioningScheme{false};
 
+  /// If true, SparseNN partiitoning scheme will add extra concats to the
+  /// SLS partition for more efficient inter-partition transfers
+  bool sparseNNPartitioningAddSLSConcats{false};
+
   /// The number of cards over which to split SLS tables when using SparseNN
   /// partitioning scheme
   unsigned int sparseNNPartitioningSchemeNumCards{1};

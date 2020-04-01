@@ -227,6 +227,7 @@ protected:
   uint64_t deviceMemCapacity;
   size_t numDevices;
   bool useSparseNNPartitioning{false};
+  bool sparseNNPartitioningAddSLSConcats{false};
   int32_t sparseNNPartitioningNumCards{1};
   int64_t sparseNNPartitioningSLSKbytes{1000};
   int32_t sparseNNPartitioningNumCoresSLS{1};
@@ -836,6 +837,8 @@ protected:
     cctx.precisionConfig = precConfig_;
     cctx.optimizationOpts.useSparseNNPartitioningScheme =
         useSparseNNPartitioning;
+    cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
+        sparseNNPartitioningAddSLSConcats;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
         sparseNNPartitioningNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
@@ -1213,6 +1216,7 @@ TEST_P(RecommendationSystemTest,
 
   // Options for SparseNN Partitioning
   useSparseNNPartitioning = true;
+  sparseNNPartitioningAddSLSConcats = true;
   sparseNNPartitioningNumCards = 1;
   sparseNNPartitioningSLSKbytes = 1000000;
   sparseNNPartitioningNumCoresSLS = 6;
