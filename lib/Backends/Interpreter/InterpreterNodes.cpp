@@ -4150,6 +4150,9 @@ static void fwdArgMax(Tensor *argmaxW, Tensor *inW, size_t axis) {
   dim_t a, b, c, d = 0;
 
   dim_t *dim[4];
+
+  assert((axis >= 0) && (axis <= 3) && "Axis values should be between 0 and 3");
+
   dim[(axis + 1) % 4] = &a;
   dim[(axis + 2) % 4] = &b;
   dim[(axis + 3) % 4] = &c;
@@ -4161,8 +4164,17 @@ static void fwdArgMax(Tensor *argmaxW, Tensor *inW, size_t axis) {
   for (a = 0; a < idim[(axis + 1) % 4]; a++) {
     for (b = 0; b < idim[(axis + 2) % 4]; b++) {
       for (c = 0; c < idim[(axis + 3) % 4]; c++) {
+        T max = std::numeric_limits<T>::min();
+        if (axis == 0) {
+          max = inH.at({0, *dim[1], *dim[2], *dim[3]});
+        } else if (axis == 1) {
+          max = inH.at({*dim[0], 0, *dim[2], *dim[3]});
+        } else if (axis == 2) {
+          max = inH.at({*dim[0], *dim[1], 0, *dim[3]});
+        } else {
+          max = inH.at({*dim[0], *dim[1], *dim[2], 0});
+        }
 
-        T max = inH.at({*dim[0], *dim[1], *dim[2], 0});
         dim_t maxi = 0;
 
         for (d = 0; d < idim[axis]; d++) {

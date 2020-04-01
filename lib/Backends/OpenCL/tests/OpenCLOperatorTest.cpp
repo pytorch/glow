@@ -29,6 +29,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "where_2d_wise_i8/0",
     "where_2d_wise_float/0",
     "where_row_wise_float/0",
+    "FloatArgMaxNoKeepDimWithAxis1/0",
+    "FloatArgMaxNoKeepDimWithAxis2/0",
     "spaceToDepth_block3_int8/0",
     "spaceToDepth_block3_Float/0",
     "spaceToDepth_block2_int8/0",

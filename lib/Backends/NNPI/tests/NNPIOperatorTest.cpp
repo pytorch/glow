@@ -211,6 +211,10 @@ struct BlacklistInitializer {
             {"Exp/0", TestBlacklist::AnyDeviceHWEngine},
             {"FloatArgMaxKeepDim/0", TestBlacklist::AnyDeviceHWEngine},
             {"FloatArgMaxNoKeepDim/0", TestBlacklist::AnyDeviceHWEngine},
+            {"FloatArgMaxNoKeepDimWithAxis1/0",
+             TestBlacklist::AnyDeviceHWEngine},
+            {"FloatArgMaxNoKeepDimWithAxis2/0",
+             TestBlacklist::AnyDeviceHWEngine},
             {"FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_"
              "back_",
              TestBlacklist::AnyDeviceHWEngine},
