@@ -49,10 +49,18 @@ static bool functionContainsNode(const Function *F, const Node *N) {
                       IsSameNodeAddress(N)) != F->getNodes().end();
 }
 
-/// Optimize the function \p F. \returns the optimized function.
-static Function *optimizeFunction(Function *F) {
+/// Optimize the function \p F. \returns the optimized function. If \p pass is
+/// empty then the whole default optimization pipeline is run. Otherwise only
+/// \p pipeline is used.
+static Function *optimizeFunction(Function *F,
+                                  const FunctionPassPipeline &pipeline = {}) {
   auto *G = F->clone(F->getName().str() + "_optimized");
-  ::glow::optimize(G, CompilationMode::Infer);
+  if (pipeline.size() == 0) {
+    ::glow::optimize(G, CompilationMode::Infer);
+    return G;
+  }
+  FunctionPassManager FPM("TestFPM", pipeline);
+  FPM.run(G, CompilationContext());
   return G;
 }
 
@@ -4092,17 +4100,20 @@ TEST_F(GraphOptz, FoldSlicesIntoConstantsTest) {
   SaveNode *SN1 = F_->createSave("save1", S1);
   SaveNode *SN2 = F_->createSave("save2", S2);
 
-  FunctionPassManager FPM("TestFPM",
-                          {
-                              FunctionPassID::FoldSlicesIntoConstants,
-                              getDCEPassConfig(),
-                          });
-  FPM.run(F_, CompilationContext());
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::FoldSlicesIntoConstants, getDCEPassConfig()});
 
-  Constant *C1 = llvm::dyn_cast<Constant>(SN1->getInput());
+  SaveNode *optSN1 =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN1->getName()));
+  SaveNode *optSN2 =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN2->getName()));
+  ASSERT_TRUE(optSN1);
+  ASSERT_TRUE(optSN2);
+
+  Constant *C1 = llvm::dyn_cast<Constant>(optSN1->getInput());
   ASSERT_TRUE(C1);
   auto H1 = C1->getPayloadMutable().getHandle();
-  Constant *C2 = llvm::dyn_cast<Constant>(SN2->getInput());
+  Constant *C2 = llvm::dyn_cast<Constant>(optSN2->getInput());
   ASSERT_TRUE(C2);
   auto H2 = C2->getPayloadMutable().getHandle();
   for (dim_t i = 0, e = 3; i < e; i++) {
@@ -4126,22 +4137,25 @@ TEST_F(GraphOptz, RaiseClipsAboveShapeNodesTest) {
   SaveNode *save1 = F_->createSave("save1", RN1);
   SaveNode *save2 = F_->createSave("save2", CN);
 
-  Function *origF = F_->clone("orig");
+  optimizedF_ =
+      optimizeFunction(F_, {FunctionPassID::RaiseClipsAboveShapeNodes});
 
-  FunctionPassManager FPM("TestFPM",
-                          {FunctionPassID::RaiseClipsAboveShapeNodes});
-  FPM.run(F_, CompilationContext());
-
-  optimizedF_ = F_;
-  F_ = origF;
+  SaveNode *optSave1 =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(save1->getName()));
+  ASSERT_TRUE(optSave1);
+  SaveNode *optSave2 =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(save2->getName()));
+  ASSERT_TRUE(optSave2);
 
   // save1 should only have a single untouched Reshape RN1 input which has input
   // input into it, because RN1 has multiple users.
-  EXPECT_EQ(RN1, save1->getInput().getNode());
-  EXPECT_EQ(input, RN1->getInput().getNode());
+  ReshapeNode *optRN1 =
+      llvm::dyn_cast<ReshapeNode>(optSave1->getInput().getNode());
+  ASSERT_TRUE(optRN1);
+  EXPECT_EQ(input, optRN1->getInput().getNode());
 
   // save2 should have CN it originally saved pushed up above SN, TN, and RN2.
-  SliceNode *newSN = llvm::dyn_cast<SliceNode>(save2->getInput());
+  SliceNode *newSN = llvm::dyn_cast<SliceNode>(optSave2->getInput());
   ASSERT_TRUE(newSN);
   EXPECT_EQ(newSN->getStart(), SN->getStart());
   TransposeNode *newTN = llvm::dyn_cast<TransposeNode>(newSN->getInput());
@@ -4174,23 +4188,21 @@ TEST_F(GraphOptz, OptimizeDequantizeClipTest) {
   ClipNode *CN = F_->createClip("clip", DN, 0, 100);
   SaveNode *SN = F_->createSave("save", CN);
 
-  Function *origF = F_->clone("orig");
-
-  FunctionPassManager FPM("TestFPM", {
-                                         FunctionPassID::OptimizeQuantizeClip,
-                                         getDCEPassConfig(),
-                                     });
-  FPM.run(F_, CompilationContext());
-
-  optimizedF_ = F_;
-  F_ = origF;
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::OptimizeQuantizeClip, getDCEPassConfig()});
 
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 0);
 
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+
   // Now check that the quantization params have been correctly updated for QN,
   // and that CN has been eliminated.
-  ASSERT_EQ(SN->getInput().getNode(), DN);
-  const auto qMinMax = DN->getInput().getType()->getQuantizedValueRange();
+  DequantizeNode *optDN =
+      llvm::dyn_cast<DequantizeNode>(optSN->getInput().getNode());
+  ASSERT_TRUE(optDN);
+  const auto qMinMax = optDN->getInput().getType()->getQuantizedValueRange();
   EXPECT_NEAR(qMinMax.first, 0, 1E-3);    // Min from Clip
   EXPECT_NEAR(qMinMax.second, 0.1, 1E-3); // Max from Quant range
 
@@ -4214,23 +4226,21 @@ TEST_F(GraphOptz, OptimizeClipQuantizeTest) {
   DequantizeNode *DN = F_->createDequantize("dequantize", QN);
   SaveNode *SN = F_->createSave("save", DN);
 
-  Function *origF = F_->clone("orig");
-
-  FunctionPassManager FPM("TestFPM", {
-                                         FunctionPassID::OptimizeQuantizeClip,
-                                         getDCEPassConfig(),
-                                     });
-  FPM.run(F_, CompilationContext());
-
-  optimizedF_ = F_;
-  F_ = origF;
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::OptimizeQuantizeClip, getDCEPassConfig()});
 
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 0);
 
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+
   // Now check that the quantization params have been correctly updated for QN,
   // and that CN has been eliminated.
-  ASSERT_EQ(SN->getInput().getNode(), DN);
-  const auto qMinMax = DN->getInput().getType()->getQuantizedValueRange();
+  DequantizeNode *optDN =
+      llvm::dyn_cast<DequantizeNode>(optSN->getInput().getNode());
+  ASSERT_TRUE(optDN);
+  const auto qMinMax = optDN->getInput().getType()->getQuantizedValueRange();
   EXPECT_NEAR(qMinMax.first, 0, 1E-3);    // Min from Clip
   EXPECT_NEAR(qMinMax.second, 0.1, 1E-3); // Max from Quant range
 
@@ -4254,17 +4264,9 @@ TEST_F(GraphOptz, OptimizeOutIntermediateConversionsTest) {
   DequantizeNode *DN = F_->createDequantize("dequantize", QN);
   F_->createSave("save", DN);
 
-  Function *origF = F_->clone("orig");
-
-  FunctionPassManager FPM(
-      "TestFPM", {
-                     FunctionPassID::OptimizeOutIntermediateConversions,
-                     getDCEPassConfig(),
-                 });
-  FPM.run(F_, CompilationContext());
-
-  optimizedF_ = F_;
-  F_ = origF;
+  optimizedF_ =
+      optimizeFunction(F_, {FunctionPassID::OptimizeOutIntermediateConversions,
+                            getDCEPassConfig()});
 
   // Now check that the ConvertToNode has been eliminated.
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConvertToNodeKind), 0);
