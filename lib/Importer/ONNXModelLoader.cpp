@@ -3368,6 +3368,86 @@ Error ONNXModelLoader::loadFlip(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadAudioSpectrogram(const ONNX_NAMESPACE::NodeProto &op,
+                                            ArgumentDictionaryTy &dict) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+
+  // Get window size (Required).
+  int64_t windowSize;
+  RETURN_ERR_IF_NOT(
+      dict.count("window_size"),
+      "ONNX AudioSpectrogram 'window_size' attribute is required!");
+  ASSIGN_VALUE_OR_RETURN_ERR(windowSize, loadInt(dict.at("window_size")));
+
+  // Get window stride (Required).
+  int64_t windowStride;
+  RETURN_ERR_IF_NOT(dict.count("stride"),
+                    "ONNX AudioSpectrogram 'stride' attribute is required!");
+  ASSIGN_VALUE_OR_RETURN_ERR(windowStride, loadInt(dict.at("stride")));
+
+  // Get magnitude squared flag (Optional)(Default: 1).
+  int magnitudeSquared = 1;
+  if (dict.count("magnitude_squared") &&
+      dict.at("magnitude_squared")->has_i()) {
+    magnitudeSquared = dict.at("magnitude_squared")->i();
+  }
+
+  Node *N = G_->createAudioSpectrogram(loadOperatorName(op), input, windowSize,
+                                       windowStride, (bool)magnitudeSquared);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadMFCC(const ONNX_NAMESPACE::NodeProto &op,
+                                ArgumentDictionaryTy &dict) {
+  NodeValue spectrogram;
+  ASSIGN_VALUE_OR_RETURN_ERR(spectrogram, getNodeValueByName(op.input(0)));
+
+  // Get sample rate [Hz] (Required).
+  float sampleRate;
+  RETURN_ERR_IF_NOT(dict.count("sample_rate"),
+                    "ONNX MFCC 'sample_rate' attribute is required!");
+  ASSIGN_VALUE_OR_RETURN_ERR(sampleRate, loadFloat(dict.at("sample_rate")));
+
+  // Get lower frequency [Hz] (Required).
+  float lowerFrequency;
+  RETURN_ERR_IF_NOT(dict.count("lower_frequency_limit"),
+                    "ONNX MFCC 'lower_frequency_limit' attribute is required!");
+  ASSIGN_VALUE_OR_RETURN_ERR(lowerFrequency,
+                             loadFloat(dict.at("lower_frequency_limit")));
+
+  // Get upper frequency [Hz] (Required).
+  float upperFrequency;
+  RETURN_ERR_IF_NOT(dict.count("upper_frequency_limit"),
+                    "ONNX MFCC 'upper_frequency_limit' attribute is required!");
+  ASSIGN_VALUE_OR_RETURN_ERR(upperFrequency,
+                             loadFloat(dict.at("upper_frequency_limit")));
+
+  // Get filter bank count (Required).
+  int64_t filterBankCount;
+  RETURN_ERR_IF_NOT(
+      dict.count("filterbank_channel_count"),
+      "ONNX MFCC 'filterbank_channel_count' attribute is required!");
+  ASSIGN_VALUE_OR_RETURN_ERR(filterBankCount,
+                             loadInt(dict.at("filterbank_channel_count")));
+
+  // Get number of coefficients (Required).
+  int64_t numCoefficients;
+  RETURN_ERR_IF_NOT(dict.count("dct_coefficient_count"),
+                    "ONNX MFCC 'dct_coefficient_count' attribute is required!");
+  ASSIGN_VALUE_OR_RETURN_ERR(numCoefficients,
+                             loadInt(dict.at("dct_coefficient_count")));
+
+  Node *N = G_->createMFCC(loadOperatorName(op), spectrogram, sampleRate,
+                           lowerFrequency, upperFrequency, filterBankCount,
+                           numCoefficients);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
 Expected<TypeRef>
 ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
                                         ArgumentDictionaryTy &dict) {
@@ -3649,6 +3729,12 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Flip") {
     return loadFlip(op, dict);
+  }
+  if (typeName == "AudioSpectrogram") {
+    return loadAudioSpectrogram(op, dict);
+  }
+  if (typeName == "MFCC") {
+    return loadMFCC(op, dict);
   }
   if (typeName == "Identity") {
     return loadIdentity(op, dict);

@@ -364,6 +364,14 @@ class ONNXModelLoader
   Error loadFlip(const ONNX_NAMESPACE::NodeProto &op,
                  ArgumentDictionaryTy &dict);
 
+  /// Load AudioSpectrogram Glow operator.
+  Error loadAudioSpectrogram(const ONNX_NAMESPACE::NodeProto &op,
+                             ArgumentDictionaryTy &dict);
+
+  /// Load MFCC Glow operator.
+  Error loadMFCC(const ONNX_NAMESPACE::NodeProto &op,
+                 ArgumentDictionaryTy &dict);
+
 protected:
   /// Load the network operators from the GraphProto.
   /// \returns Error if network cannot be loaded.

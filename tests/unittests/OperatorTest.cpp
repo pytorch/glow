@@ -1133,6 +1133,106 @@ TEST_P(OperatorTest, nms_two_boxes_float) {
                                refResults, refNumSelected, metaData, false);
 }
 
+/// Helper function to test AudioSpectrogram node.
+template <size_t windowCount, size_t windowSize, bool magnitudeSquared>
+static FunctionTensorPair
+createAndInitBasicAudioSpectrogramTest(glow::PlaceholderBindings &bindings,
+                                       glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  // Create random input audio signal.
+  dim_t windowStride = 320;
+  dim_t inputLength = windowSize + (windowCount - 1) * windowStride;
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {inputLength}, "input",
+                                      false /* isTrainable */);
+  bindings.allocate(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+
+  // Create AudioSpectrogram node.
+  auto *audioSpec = F->createAudioSpectrogram(
+      "audio_spectrogram", input, windowSize, windowStride, magnitudeSquared);
+  auto *res = F->createSave("save", audioSpec);
+  auto *resultTensor = bindings.allocate(res->getPlaceholder());
+  return std::make_pair(F, resultTensor);
+}
+
+#define TEST_AUDIO_SPECTROGRAM(WCOUNT, WSIZE, MSQUARED, TOL)                   \
+  TEST_P(OperatorStatelessTest,                                                \
+         AudioSpectrogram_##WCOUNT##x##WSIZE##_##MSQUARED##_Float) {           \
+    ENABLED_BACKENDS("Interpreter", "CPU");                                    \
+    compareAgainstInterpreter(                                                 \
+        getBackendName(),                                                      \
+        createAndInitBasicAudioSpectrogramTest<WCOUNT, WSIZE, MSQUARED>,       \
+        ElemKind::FloatTy, ElemKind::FloatTy, TOL);                            \
+  }
+
+/// Test one window magnitude spectrograms.
+TEST_AUDIO_SPECTROGRAM(1, 2, false, 1e-6)
+TEST_AUDIO_SPECTROGRAM(1, 4, false, 1e-6)
+TEST_AUDIO_SPECTROGRAM(1, 8, false, 1e-6)
+TEST_AUDIO_SPECTROGRAM(1, 16, false, 1e-6)
+TEST_AUDIO_SPECTROGRAM(1, 32, false, 1e-6)
+TEST_AUDIO_SPECTROGRAM(1, 64, false, 5e-6)
+TEST_AUDIO_SPECTROGRAM(1, 128, false, 5e-6)
+TEST_AUDIO_SPECTROGRAM(1, 256, false, 1e-5)
+TEST_AUDIO_SPECTROGRAM(1, 512, false, 5e-5)
+TEST_AUDIO_SPECTROGRAM(1, 1024, false, 5e-5)
+
+/// Test multiple window magnitude spectrograms.
+TEST_AUDIO_SPECTROGRAM(2, 256, false, 1e-5)
+TEST_AUDIO_SPECTROGRAM(3, 320, false, 1e-5)
+TEST_AUDIO_SPECTROGRAM(4, 640, false, 5e-5)
+
+/// Test multiple window power spectrograms.
+TEST_AUDIO_SPECTROGRAM(2, 256, true, 5e-4)
+TEST_AUDIO_SPECTROGRAM(3, 320, true, 5e-4)
+TEST_AUDIO_SPECTROGRAM(4, 640, true, 1e-3)
+
+/// Helper function to test MFCC node.
+template <size_t winNum, size_t specLen>
+static FunctionTensorPair
+createAndInitBasicMFCCTest(glow::PlaceholderBindings &bindings,
+                           glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  // Create random input spectrogram.
+  auto *spectrogram =
+      mod.createPlaceholder(ElemKind::FloatTy, {winNum, specLen}, "spectrogram",
+                            false /* isTrainable */);
+  bindings.allocate(spectrogram)
+      ->getHandle()
+      .randomize(10.0, 100.0, mod.getPRNG());
+
+  // Create MFCC node.
+  float sampleRate = 16000.0;
+  float lowerFrequency = 20.0;
+  float upperFrequency = 4000.0;
+  size_t filterBankCount = 40;
+  size_t numCoefficients = 13;
+  auto *mfcc = F->createMFCC("mfcc", spectrogram, sampleRate, lowerFrequency,
+                             upperFrequency, filterBankCount, numCoefficients);
+  auto *res = F->createSave("save", mfcc);
+  auto *resultTensor = bindings.allocate(res->getPlaceholder());
+  return std::make_pair(F, resultTensor);
+}
+
+#define TEST_MFCC(WNUM, SLEN, TOL)                                             \
+  TEST_P(OperatorStatelessTest, MFCC_##WNUM##x##SLEN##_Float) {                \
+    ENABLED_BACKENDS("Interpreter", "CPU");                                    \
+    compareAgainstInterpreter(getBackendName(),                                \
+                              createAndInitBasicMFCCTest<WNUM, SLEN>,          \
+                              ElemKind::FloatTy, ElemKind::FloatTy, TOL);      \
+  }
+
+TEST_MFCC(1, 17, 5e-5)
+TEST_MFCC(1, 33, 5e-5)
+TEST_MFCC(1, 65, 1e-5)
+TEST_MFCC(1, 129, 1e-5)
+TEST_MFCC(2, 257, 1e-5)
+TEST_MFCC(3, 513, 1e-5)
+TEST_MFCC(3, 1025, 1e-5)
+
 // Helper to test SpaceToDepth using \p DTy.
 template <typename DataType>
 static void testSpaceToDepthBlock3(glow::PlaceholderBindings &bindings,

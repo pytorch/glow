@@ -1697,6 +1697,110 @@ public:
       int64_t centerPointBox, int64_t maxOutputBoxesPerClass,
       float iouThreshold, float scoreThreshold, TypeRef indicesTy);
 
+  /// Create a constant node with a 1D cosine windowing function defined as:
+  /// w[n] = 0.5 - 0.5 * cos(2 * pi * n / N) for n = 0 .. N - 1 where N
+  /// is the window \p length. The node name will be \p name.
+  Constant *createCosineWindow(llvm::StringRef name, dim_t length);
+
+  /// Create a constant node with the twiddle factors for a 1D complex FFT:
+  /// W(N, k) = exp(-j * 2 * pi * k / N) for k = 0 ... N -1, where N is the
+  /// \p fftLength. The constant node will contain 2 * \p fftLength real float
+  /// values corresponding to \p fftLength complex values with the real and
+  /// imaginary parts interleaved: real[0], imag[0], real[1], imag[1], etc.
+  /// The node name will be \p name.
+  Constant *createFFTTwiddleFactors(llvm::StringRef name, dim_t fftLength);
+
+  /// Create a constant node with the bit reverse indices for a 1D FFT, that
+  /// is the corresponding index obtained after reversing the bit order for
+  /// each of the values k = 0 ... N -1 where N is the \p fftLength. The node
+  /// will contain \p fftLength int32 values. The node name will be \p name.
+  Constant *createFFTBitReverseIndices(llvm::StringRef name, dim_t fftLength);
+
+  /// Create a constant node with the complex weights used to map the results
+  /// of N/2 point complex FFT to a N point real FFT. This allows an efficient
+  /// implementation of the N point FFT for a real data x[n] with n = 0 .. N-1
+  /// by first computing the N/2 complex FFT G[k] for the complex signal g[n]
+  /// defined as g[n] = x[2*n+0] + j * x[2*n+1] with n = 0 ... N/2-1 and then
+  /// computing the final N point FFT X[k] for the original data x[n] by using
+  /// X[k] = G[k] * A[k] + conj(G[N/2-k]) * (1 - A[k]) for k = 0 ... N/2 (for
+  /// a real signal the FFT is conjugate symmetrical and therefore only the
+  /// first N/2+1 output points of X[k] should be computed, the others being
+  /// redundant). The relation should also use the definitions G[N/2] = G[0] and
+  /// then A[k] = 1/2 * (1 - j * exp(-j * 2 * pi * k / N)) for k = 0 ... N/2.
+  /// The FFT length parameter N is given as \p fftLength. This constant node
+  /// will contain the complex values of A[k] for k = 0 ... L-1 where L is the
+  /// sequence length given as \p outLength (the required length L is smaller
+  /// than N/2+1 since A[k] has such properties that the second half of the
+  /// sequence can be easily deduced from first half). This constant node will
+  /// contain 2 * \p outLength real float values corresponding to \p outLength
+  /// complex values A[k] with the real and imaginary parts interleaved.
+  Constant *createFFTComplexToRealWeights(llvm::StringRef name, dim_t fftLength,
+                                          dim_t outLength);
+
+  /// This node computes the spectrogram of a 1D mono audio signal \p input by
+  /// extracting windows of size \p windowSize with stride \p windowStride and
+  /// computing for each window the spectrum power (magnitude squared) or simply
+  /// the magnitude depending on the flag \p magnitudeSquared. If the length of
+  /// the \p input is [inputLength] samples then the size of the spectrogram is
+  /// [windowCount, fftLength/2+1] where:
+  /// - windowCount = floor((inputLength-windowSize)/windowStride)+1 is the
+  ///   number of windows extracted from the input.
+  /// - fftLength is the FFT length used to compute the spectrogram which is the
+  ///   next power of 2 (e.g. for a window size of 640 the fftLength is 1024).
+  /// The input audio data values are commonly float values scaled in the range
+  /// [-1.0, 1.0]. If the audio data is decoded from a WAV file into int8/int16
+  /// values then those values are commonly scaled down with 2^7/2^15 before
+  /// using this node. The node name will be \p name. This node is inspired from
+  /// TensorFlow (tensorflow.python.ops.gen_audio_ops.audio_spectrogram).
+  AudioSpectrogramNode *createAudioSpectrogram(llvm::StringRef name,
+                                               NodeValue input,
+                                               int64_t windowSize,
+                                               int64_t windowStride,
+                                               bool magnitudeSquared = true);
+
+  /// Create as constants the Mel weights \p melWeights and ranges \p melRanges
+  /// required for the MFCC (Mel Frequency Cepstral Coefficient) transform for a
+  /// spectrogram of length \p spectrogramLength (which must be of the form
+  /// 2 ^ N + 1) obtained for an audio signal with the given \p sampleRate
+  /// (in Hertz) by mapping the spectrogram coefficients in \p filterBankCount
+  /// bins on a Mel scale between \p lowerFrequency and \p upperFrequency
+  /// (in Hertz) using a filterbank of triangular windows. The constant nodes
+  /// will be named using \p prefix.
+  void createMelWeights(llvm::StringRef prefix, dim_t spectrogramLength,
+                        float sampleRate, float lowerFrequency,
+                        float upperFrequency, dim_t filterBankCount,
+                        Constant *&melWeights, Constant *&melRanges);
+
+  /// Create the DCT-II transform matrix coefficients as a constant defined as:
+  /// d[k][n] = sqrt(2 / N) * cos(pi / N * (n + 1/2) * k) with n = 0 .. N - 1
+  /// and k = 0 .. K - 1 where \p N is the input data length and \p K is the
+  /// output data length. The common case is that for which the input length
+  /// \p N is equal to the output length \p K but a separate output length
+  /// argument \p K <= \p N allows creating a partial DCT matrix used to compute
+  /// only the first \p K results from the full DCT-II transform. The DCT matrix
+  /// size will be \p K x \p N.  The node name will be \p name.
+  Constant *createDCTMat(llvm::StringRef name, dim_t N, dim_t K);
+
+  /// Computes the MFCC (Mel Frequency Cepstral Coefficient) for the given
+  /// \p spectrogram and is commonly used as feature extractor for voice/speech
+  /// audio data in voice command or keyword spotting applications. The input
+  /// \p spectrogram is a power spectrogram and not a magnitude (computed using
+  /// the 'AudioSpectrogram' node with the 'magnitudeSquared' flag set to True).
+  /// The MFCC transform is computed using the given \p sampleRate (in Hertz)
+  /// by mapping the spectrogram coefficients in \p filterBankCount bins on a
+  /// Mel scale between \p lowerFrequency and \p upperFrequency (in Hertz) using
+  /// a filterbank of triangular windows, taking the natural logarithm and then
+  /// keeping the first \p numCoefficients from the DCT-II transform. If the
+  /// input \p spectrogram size is [windowCount, spectrogramLen] then the output
+  /// node size will be [windowCount, numCoefficients] since the MFCC transform
+  /// is performed separately for each window of [spectrogramLen] input samples
+  /// by yielding \p numCoefficients output samples. This node is inspired from
+  /// TensorFlow (tensorflow.python.ops.gen_audio_ops.mfcc).
+  MFCCNode *createMFCC(llvm::StringRef name, NodeValue spectrogram,
+                       float sampleRate, float lowerFrequency,
+                       float upperFrequency, int64_t filterBankCount,
+                       int64_t numCoefficients);
+
   /// Erase the node \p N from the Function.
   void eraseNode(Node *N);
 

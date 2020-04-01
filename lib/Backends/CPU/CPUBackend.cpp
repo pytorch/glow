@@ -449,6 +449,16 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
                 NonMaxSuppressionNode::NumberOfSelectedIndicesIdx) ==
                 ElemKind::Int64ITy);
 
+  case Kinded::Kind::AudioSpectrogramNodeKind:
+    return NI.getInElemTy(AudioSpectrogramNode::InputIdx) ==
+               ElemKind::FloatTy &&
+           NI.getOutElemTy(AudioSpectrogramNode::SpectrogramIdx) ==
+               ElemKind::FloatTy;
+
+  case Kinded::Kind::MFCCNodeKind:
+    return NI.getInElemTy(MFCCNode::SpectrogramIdx) == ElemKind::FloatTy &&
+           NI.getOutElemTy(MFCCNode::CoefficientsIdx) == ElemKind::FloatTy;
+
   case Kinded::Kind::ConvertToNodeKind:
     return ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::Int32ITy) &&
             (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::FloatTy)) ||

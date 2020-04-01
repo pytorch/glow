@@ -4162,6 +4162,236 @@ NonMaxSuppressionNode *Function::createNonMaxSuppressionONNX(
       maxOutputBoxesPerClass, iouThreshold, scoreThreshold, false));
 }
 
+Constant *Function::createCosineWindow(llvm::StringRef name, dim_t length) {
+  auto window = getParent()->createConstant(ElemKind::FloatTy, {length}, name);
+  auto windowH = window->getHandle<float>();
+  for (dim_t n = 0; n < length; n++) {
+    windowH.raw(n) =
+        0.5 - 0.5 * cos(2.0 * M_PI * (double)(n) / (double)(length));
+  }
+  return window;
+}
+
+Constant *Function::createFFTTwiddleFactors(llvm::StringRef name,
+                                            dim_t fftLength) {
+  auto twiddleFactors =
+      getParent()->createConstant(ElemKind::FloatTy, {2 * fftLength}, name);
+  auto twiddleFactorsH = twiddleFactors->getHandle<float>();
+  for (dim_t k = 0; k < fftLength; k++) {
+    twiddleFactorsH.raw(2 * k + 0) =
+        cos(2.0 * M_PI * (double)(k) / (double)(fftLength));
+    twiddleFactorsH.raw(2 * k + 1) =
+        -sin(2.0 * M_PI * (double)(k) / (double)(fftLength));
+  }
+  return twiddleFactors;
+}
+
+Constant *Function::createFFTBitReverseIndices(llvm::StringRef name,
+                                               dim_t fftLength) {
+  assert(fftLength >= 1 && "FFT length must be at least 1!");
+  // Local function to reverse the bits of a number.
+  auto reverseBits = [](uint64_t bits, dim_t numBits) -> uint64_t {
+    assert(((0 <= numBits) && (numBits <= 64)) &&
+           "Maximum number of bits exceeded for 'reverseBits' function!");
+    if (numBits <= 0) {
+      return 0;
+    }
+    uint64_t bitsRev = 0;
+    uint64_t bitsMask = 1;
+    uint64_t bitsRevMask = 1 << (numBits - 1);
+    for (dim_t idx = 0; idx < numBits; idx++) {
+      if (bits & bitsMask) {
+        bitsRev |= bitsRevMask;
+      }
+      bitsMask <<= 1;
+      bitsRevMask >>= 1;
+    }
+    return bitsRev;
+  };
+  auto bitReverseIndices =
+      getParent()->createConstant(ElemKind::Int32ITy, {fftLength}, name);
+  auto bitReverseIndicesH = bitReverseIndices->getHandle<int32_t>();
+  dim_t numBits = std::log2((double)fftLength);
+  for (dim_t idx = 0; idx < fftLength; idx++) {
+    bitReverseIndicesH.raw(idx) =
+        static_cast<int32_t>(reverseBits(idx, numBits));
+  }
+  return bitReverseIndices;
+}
+
+Constant *Function::createFFTComplexToRealWeights(llvm::StringRef name,
+                                                  dim_t fftLength,
+                                                  dim_t outLength) {
+  auto complexToRealWeights =
+      getParent()->createConstant(ElemKind::FloatTy, {2 * outLength}, name);
+  auto complexToRealWeightsH = complexToRealWeights->getHandle<float>();
+  for (dim_t k = 0; k < outLength; k++) {
+    complexToRealWeightsH.raw(2 * k + 0) =
+        0.5 * (1 - sin(2.0 * M_PI * (double)(k) / (double)(fftLength)));
+    complexToRealWeightsH.raw(2 * k + 1) =
+        -0.5 * cos(2.0 * M_PI * (double)(k) / (double)(fftLength));
+  }
+  return complexToRealWeights;
+}
+
+AudioSpectrogramNode *Function::createAudioSpectrogram(llvm::StringRef name,
+                                                       NodeValue input,
+                                                       int64_t windowSize,
+                                                       int64_t windowStride,
+                                                       bool magnitudeSquared) {
+  // Output shape will be windowCount x (fftLength / 2 + 1).
+  dim_t inputLength = input.getType()->size();
+  dim_t windowCount = std::floor((inputLength - windowSize) / windowStride) + 1;
+  dim_t fftLength = 1 << (dim_t)std::ceil(std::log2((double)windowSize));
+  auto spectrogramTy = getParent()->uniqueType(
+      ElemKind::FloatTy, {windowCount, fftLength / 2 + 1});
+
+  // Create a cosine FFT windowing function.
+  auto window = createCosineWindow(std::string(name) + ".Window", windowSize);
+
+  // Create the FFT weights for a fftLength/2 complex FFT.
+  auto twiddleFactors = createFFTTwiddleFactors(
+      std::string(name) + ".TwiddleFactors", fftLength / 2);
+  auto bitReverseIndices = createFFTBitReverseIndices(
+      std::string(name) + ".BitReverseIndices", fftLength / 2);
+
+  // Create the complex to real FFT mapping coefficients.
+  // For small FFT length make sure to generate at least 1 coefficient.
+  auto complexToRealWeights = createFFTComplexToRealWeights(
+      std::string(name) + ".ComplexToRealWeights", fftLength,
+      (fftLength / 4) >= 1 ? (fftLength / 4) : 1);
+
+  // Create AudioSpectrogram node.
+  return addNode(new AudioSpectrogramNode(
+      name, spectrogramTy, input, window, twiddleFactors, bitReverseIndices,
+      complexToRealWeights, windowSize, windowStride, magnitudeSquared));
+}
+
+void Function::createMelWeights(llvm::StringRef prefix, dim_t spectrogramLength,
+                                float sampleRate, float lowerFrequency,
+                                float upperFrequency, dim_t filterBankCount,
+                                Constant *&melWeights, Constant *&melRanges) {
+  auto fftLength = 2 * (spectrogramLength - 1);
+  dim_t numFreqBins = fftLength / 2;
+  dim_t numMelBins = filterBankCount;
+
+  // Mel frequency scale local lambda function.
+  auto melFreqScale = [](float freq) -> float {
+    return 1127.0f * logf(1.0f + freq / 700.0f);
+  };
+
+  // Always exclude DC (TensorFlow implementation choice from HTK).
+  float freqDelta = sampleRate / (float)(fftLength);
+  dim_t freqIdxMin = (dim_t)(1.5 + (lowerFrequency / freqDelta));
+  dim_t freqIdxMax = (dim_t)(upperFrequency / freqDelta);
+  freqIdxMax = (freqIdxMax >= numFreqBins) ? numFreqBins : freqIdxMax;
+
+  // Create Mel ranges constant.
+  melRanges = getParent()->createConstant(ElemKind::Int32ITy, {2 * numMelBins},
+                                          std::string(prefix) + ".MelRanges");
+  auto melRangesH = melRanges->getHandle<int32_t>();
+
+  // Mel weights and frequency start/stop (inclusive) buffers.
+  auto melBinFreqWeights = std::make_unique<float[]>(numMelBins * numFreqBins);
+  dim_t melBinFreqWeightsNum = 0;
+
+  // Mel frequency limits.
+  float melFreqLower = melFreqScale(lowerFrequency);
+  float melFreqUpper = melFreqScale(upperFrequency);
+  float melFreqDelta = (melFreqUpper - melFreqLower) / (numMelBins + 1);
+  for (dim_t melIdx = 0; melIdx < numMelBins; melIdx++) {
+
+    float melFreqLeft = melFreqLower + (melIdx + 0) * melFreqDelta;
+    float melFreqCenter = melFreqLower + (melIdx + 1) * melFreqDelta;
+    float melFreqRight = melFreqLower + (melIdx + 2) * melFreqDelta;
+
+    int32_t freqIdxStart = -1;
+    int32_t freqIdxStop = -2;
+
+    for (dim_t freqIdx = freqIdxMin; freqIdx <= freqIdxMax; freqIdx++) {
+      float melFreq = melFreqScale(freqIdx * freqDelta);
+      if ((melFreqLeft < melFreq) && (melFreq < melFreqRight)) {
+
+        // Compute frequency bin weight for this Mel bin.
+        float weight = 1.0f - std::abs(melFreq - melFreqCenter) / melFreqDelta;
+
+        // Store the frequency bin weight.
+        melBinFreqWeights[melBinFreqWeightsNum++] = weight;
+
+        // Update frequency bin start/stop index.
+        if (freqIdxStart == -1) {
+          freqIdxStart = freqIdx;
+        }
+        freqIdxStop = freqIdx;
+      }
+    }
+
+    // Store the frequency bin start/stop index.
+    melRangesH.raw(2 * melIdx + 0) = freqIdxStart;
+    melRangesH.raw(2 * melIdx + 1) = freqIdxStop;
+  }
+
+  // Validate Mel ranges.
+  dim_t melBinFreqWeightsNumValidate = 0;
+  for (dim_t melIdx = 0; melIdx < numMelBins; melIdx++) {
+    int32_t freqIdxRange =
+        melRangesH.raw(2 * melIdx + 1) - melRangesH.raw(2 * melIdx + 0) + 1;
+    melBinFreqWeightsNumValidate += freqIdxRange;
+  }
+  assert(melBinFreqWeightsNum == melBinFreqWeightsNumValidate &&
+         "Invalid Mel ranges");
+
+  // Create Mel weights constant.
+  melWeights =
+      getParent()->createConstant(ElemKind::FloatTy, {melBinFreqWeightsNum},
+                                  std::string(prefix) + ".MelWeights");
+  auto melWeightsH = melWeights->getHandle<float>();
+  for (dim_t idx = 0; idx < melBinFreqWeightsNum; idx++) {
+    melWeightsH.raw(idx) = melBinFreqWeights[idx];
+  }
+}
+
+Constant *Function::createDCTMat(llvm::StringRef name, dim_t N, dim_t K) {
+  Constant *dctMat =
+      getParent()->createConstant(ElemKind::FloatTy, {K, N}, name);
+  auto dctMatH = dctMat->getHandle<float>();
+  float dctFact = (float)sqrt(2.0 / (double)(N));
+  for (dim_t k = 0; k < K; k++) {
+    for (dim_t n = 0; n < N; n++) {
+      dctMatH.at({k, n}) =
+          dctFact * cos(M_PI / (double)(N) * ((double)(n) + 0.5) * (double)(k));
+    }
+  }
+  return dctMat;
+}
+
+MFCCNode *Function::createMFCC(llvm::StringRef name, NodeValue spectrogram,
+                               float sampleRate, float lowerFrequency,
+                               float upperFrequency, int64_t filterBankCount,
+                               int64_t numCoefficients) {
+  // Create the Mel weights.
+  dim_t spectrogramLength = spectrogram.dims()[1];
+  Constant *melWeights;
+  Constant *melRanges;
+  createMelWeights(name, spectrogramLength, sampleRate, lowerFrequency,
+                   upperFrequency, filterBankCount, melWeights, melRanges);
+
+  // Create the DCT transform matrix.
+  Constant *dctMat = createDCTMat(std::string(name) + ".DCTMat",
+                                  filterBankCount, numCoefficients);
+
+  // Output shape will be windowCount x numCoefficients.
+  dim_t windowCount = spectrogram.dims()[0];
+  auto coefficientsTy = getParent()->uniqueType(
+      ElemKind::FloatTy, {windowCount, static_cast<dim_t>(numCoefficients)});
+
+  // Create MFCC node.
+  return addNode(new MFCCNode(name, coefficientsTy, spectrogram, melWeights,
+                              melRanges, dctMat, sampleRate, lowerFrequency,
+                              upperFrequency, filterBankCount,
+                              numCoefficients));
+}
+
 //===----------------------------------------------------------------------===//
 //                   Graph dumping and printing
 //===----------------------------------------------------------------------===//

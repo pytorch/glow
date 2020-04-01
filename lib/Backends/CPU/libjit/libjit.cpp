@@ -2807,4 +2807,275 @@ libjit_nms_i32(int32_t *indices, int32_t *numDetected, const float *boxTensor,
                      centerPointBox, maxOutputBoxesPerClass, iouThreshold,
                      scoreThreshold, isV4);
 }
+
+/// FFT Radix2 DIT (Decimation In Time) implementation for Complex data.
+/// The \p input and \p output buffers have 2 * \p fftLength float
+/// samples corresponding to \p fftLength complex samples with real and
+/// imaginary parts interleaved: real[0], imag[0], real[1], imag[1], ...
+/// The lookup tables \p twiddleFactors and \p bitReverseIndices are
+/// generated at compile time. The boolean flag \p inPlace decides whether
+/// the FFT computation is done in-place (that is in the \p input buffer
+/// without writing in the \p output buffer) or out-of-place (written in
+/// the \p output buffer).
+void libjit_fft_complex_f(float *output, float *input,
+                          const float *twiddleFactors,
+                          const int32_t *bitReverseIndices, unsigned fftLength,
+                          bool inPlace) {
+
+  // Bit Reverse Reordering.
+  if (inPlace) {
+    for (dim_t idx = 0; idx < fftLength; idx++) {
+      int32_t bitRevIdx = bitReverseIndices[idx];
+      if (idx < bitRevIdx) {
+        // Swap complex pair.
+        float real = input[2 * idx + 0];
+        float imag = input[2 * idx + 1];
+        input[2 * idx + 0] = input[2 * bitRevIdx + 0];
+        input[2 * idx + 1] = input[2 * bitRevIdx + 1];
+        input[2 * bitRevIdx + 0] = real;
+        input[2 * bitRevIdx + 1] = imag;
+      }
+    }
+  } else {
+    for (dim_t idx = 0; idx < fftLength; idx++) {
+      int32_t bitRevIdx = bitReverseIndices[idx];
+      output[2 * idx + 0] = input[2 * bitRevIdx + 0];
+      output[2 * idx + 1] = input[2 * bitRevIdx + 1];
+    }
+  }
+
+  // FFT output pointer.
+  float *bitRevOut = inPlace ? input : output;
+
+  // Number of FFT stages.
+  dim_t stageNum = std::log2((double)fftLength);
+
+  // Number of radix2 butterfly groups for 1st stage.
+  dim_t groupNum = fftLength / 2;
+
+  // Number of radix2 butterflies per group for 1st stage.
+  dim_t groupButterNum = 1;
+
+  // Stage loop.
+  for (dim_t stageIdx = 0; stageIdx < stageNum; stageIdx++) {
+
+    // Butterfly input/output pointers.
+    float *inp1Ptr = bitRevOut + 0 * groupButterNum;
+    float *inp2Ptr = bitRevOut + 2 * groupButterNum;
+
+    // Butterfly group loop.
+    for (dim_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {
+
+      // Twiddle factors pointer.
+      const float *twPtr = twiddleFactors;
+
+      // Butterfly loop within group.
+      for (dim_t groupButterIdx = 0; groupButterIdx < groupButterNum;
+           groupButterIdx++) {
+
+        // Radix 2 butterfly.
+        float inp0_re = *inp1Ptr++;
+        float inp0_im = *inp1Ptr--;
+        float inp1_re = *inp2Ptr++;
+        float inp1_im = *inp2Ptr--;
+
+        float tw_re = *twPtr++;
+        float tw_im = *twPtr--;
+        twPtr += (2 * groupNum);
+
+        float inp1_tw_mult_re = inp1_re * tw_re - inp1_im * tw_im;
+        float inp1_tw_mult_im = inp1_re * tw_im + inp1_im * tw_re;
+
+        *inp1Ptr++ = inp0_re + inp1_tw_mult_re;
+        *inp1Ptr++ = inp0_im + inp1_tw_mult_im;
+        *inp2Ptr++ = inp0_re - inp1_tw_mult_re;
+        *inp2Ptr++ = inp0_im - inp1_tw_mult_im;
+      }
+
+      inp1Ptr += 2 * groupButterNum;
+      inp2Ptr += 2 * groupButterNum;
+    }
+
+    // Update parameters for next stage.
+    groupNum >>= 1;
+    groupButterNum <<= 1;
+  }
+}
+
+/// FFT Radix2 DIT (Decimation In Time) implementation for Real data.
+/// The implementation uses a fftLength/2 FFT for Complex data followed
+/// by a step to map the complex FFT to the real FFT by using a set of
+/// of complex weights \p complexToRealWeights A[k] defined as:
+///   A[k] = 1/2 * (1 - j*exp(-j*2*pi*k/N)) for k = 0 .. N/4-1
+/// The \p input buffer has \p fftLength float values corresponding
+/// to \p fftLength real samples. Since the FFT of a real signal
+/// has conjugate symmetry, the \p output buffer only contains
+/// 2 * (fftLength/2+1) = fftLength + 2 float values corresponding
+/// to fftLength/2+1 complex samples with real and imaginary parts
+/// interleaved: real[0], imag[0], real[1], imag[1], ...
+/// The lookup tables \p twiddleFactors and \p bitReverseIndices are
+/// generated at compile time as if they were generated for a N/2
+/// complex FFT. The boolean flag \p inPlace decides whether the FFT
+/// computation is done in-place (that is in the \p input buffer
+/// without writing in the \p output buffer) or out-of-place (written in
+/// the \p output buffer).
+void libjit_fft_real_f(float *output, float *input, const float *twiddleFactors,
+                       const int32_t *bitReverseIndices,
+                       const float *complexToRealWeights, unsigned fftLength,
+                       bool inPlace) {
+
+  // Perform N/2 complex FFT (in-place or out-of-place).
+  // G[k] with k = 0 .. N/2-1.
+  libjit_fft_complex_f(output, input, twiddleFactors, bitReverseIndices,
+                       fftLength / 2, inPlace);
+
+  // Complex to Real FFT mapping (in-place).
+  //   X[k] = G[k] * A[k] + conj(G[N/2-k]) * (1 - A[k])
+  // for k = 0 .. N/2 with the convention G[N/2] = G[0].
+  // Particular cases:
+  //   real(X[0]) = real(G[0]) + imag(G[0])
+  //   imag(X[0]) = 0
+  //   real(X[N/2]) = real(G[0]) - imag(G[0])
+  //   imag(X[N/2]) = 0
+  //   X[N/4] = conj(G[N/4])
+
+  const float *Ak = complexToRealWeights + 2;
+  float *ptr = inPlace ? input : output;
+  float *ptr0 = &ptr[0];
+  float *ptr1 = &ptr[2 * fftLength / 2 + 1];
+  float inp0_re = *ptr0++;
+  float inp0_im = *ptr0--;
+  *ptr0++ = inp0_re + inp0_im;
+  *ptr0++ = 0;
+  *ptr1-- = 0;
+  *ptr1-- = inp0_re - inp0_im;
+
+  for (dim_t k = 1; k < fftLength / 4; k++) {
+
+    float inp0_re = *ptr0++;
+    float inp0_im = *ptr0--;
+    float inp1_im = *ptr1--;
+    float inp1_re = *ptr1++;
+
+    float Ak_re = *Ak++;
+    float Ak_im = *Ak++;
+
+    float dif_re = inp0_re - inp1_re;
+    float sum_im = inp0_im + inp1_im;
+    float prod0 = dif_re * Ak_re - sum_im * Ak_im;
+    float prod1 = dif_re * Ak_im + sum_im * Ak_re;
+
+    *ptr0++ = +prod0 + inp1_re;
+    *ptr0++ = +prod1 - inp1_im;
+    *ptr1-- = +prod1 - inp0_im;
+    *ptr1-- = -prod0 + inp0_re;
+  }
+
+  if (fftLength >= 4) {
+    *ptr1 = -*ptr1;
+  }
+}
+
+/// Compute the spectrogram for the given 1D mono audio signal \p input.
+/// The input windows are weighted using the \p window function and the
+/// FFT LUTs \p twiddleFactors and \p bitReverseIndices are computed at
+/// compile-time. More details in Graph.h about the AudioSpectrogram node.
+void libjit_audio_spectrogram_f(
+    float *spectrogram, const float *input, const float *window,
+    const float *twiddleFactors, const int32_t *bitReverseIndices,
+    const float *complexToRealWeights, const dim_t *spectrogramDims,
+    const dim_t inputLength, const dim_t windowSize, const dim_t windowStride,
+    const bool magnitudeSquared) {
+
+  dim_t winNum = spectrogramDims[0];
+  dim_t specLen = spectrogramDims[1];
+  dim_t fftLen = (specLen - 1) * 2;
+
+  // Temporary buffers.
+  float winOut[fftLen];
+  float fftOut[fftLen + 2];
+  memset(winOut, 0, fftLen * sizeof(float));
+
+  // Compute the spectrogram.
+  for (dim_t winIdx = 0; winIdx < winNum; winIdx++) {
+
+    // Windowing.
+    for (dim_t n = 0; n < windowSize; n++) {
+      winOut[n] = input[winIdx * windowStride + n] * window[n];
+    }
+
+    // Compute spectrum (perform FFT for real data).
+    libjit_fft_real_f(fftOut, winOut, twiddleFactors, bitReverseIndices,
+                      complexToRealWeights, fftLen, false /* inPlace */);
+
+    // Compute spectrum magnitude/power.
+    for (dim_t k = 0; k < specLen; k++) {
+      float real = fftOut[2 * k + 0];
+      float imag = fftOut[2 * k + 1];
+      float power = real * real + imag * imag;
+      if (magnitudeSquared) {
+        *spectrogram++ = power;
+      } else {
+        *spectrogram++ = std::sqrt(power);
+      }
+    }
+  }
+}
+
+/// Compute the MFCC (Mel Frequency Cepstral Coefficient) for the given
+/// \p spectrogram power. The lookup tables \p melWeights, \p melRanges
+/// and \p dctMat are computed at compile-time. More details in Graph.h
+/// about the MFCC node.
+void libjit_mfcc_f(float *coefficients, const float *spectrogram,
+                   const float *melWeights, const int32_t *melRanges,
+                   const float *dctMat, const dim_t *coefficientsDims,
+                   const dim_t *spectrogramDims, const dim_t filterBankCount) {
+
+  // Allocate intermediate buffer on the stack.
+  // The size is expected to be relatively small.
+  float melBuff[filterBankCount];
+
+  // Perform MFCC for all the windows.
+  dim_t winNum = spectrogramDims[0];
+  dim_t winSize = spectrogramDims[1];
+  dim_t numCoefficients = coefficientsDims[1];
+  for (dim_t winIdx = 0; winIdx < winNum; winIdx++) {
+
+    // Pointers backup for this window.
+    const float *melWeightsPtr = melWeights;
+    const int32_t *melRangesPtr = melRanges;
+    const float *dctMatPtr = dctMat;
+
+    // Apply Mel filter bank mapping. We use sqrt for the spectrogram since we
+    // assume the spectrogram is a power value and not a magnitude.
+    for (dim_t melIdx = 0; melIdx < filterBankCount; melIdx++) {
+
+      int32_t freqIdxStart = *melRangesPtr++;
+      int32_t freqIdxStop = *melRangesPtr++;
+
+      // Compute Mel Power.
+      float melPwr = 0.0f;
+      for (int32_t freqIdx = freqIdxStart; freqIdx <= freqIdxStop; freqIdx++) {
+        melPwr += std::sqrt(spectrogram[freqIdx]) * (*melWeightsPtr++);
+      }
+
+      // Take logarithm in-place (avoid log(0)).
+      melBuff[melIdx] = (melPwr == 0.0)
+                            ? logf(std::numeric_limits<float>::min())
+                            : logf(melPwr);
+    }
+
+    // Compute DCT transform.
+    for (dim_t k = 0; k < numCoefficients; k++) {
+      float dctOut = 0.0f;
+      for (dim_t n = 0; n < filterBankCount; n++) {
+        dctOut += (*dctMatPtr++) * melBuff[n];
+      }
+      *coefficients++ = dctOut;
+    }
+
+    // Go to next spectrogram window.
+    spectrogram += winSize;
+  }
+}
 } // extern "C"

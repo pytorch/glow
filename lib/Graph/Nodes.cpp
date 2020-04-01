@@ -1837,6 +1837,76 @@ bool NonMaxSuppressionNode::verify() const {
   return isValid;
 }
 
+bool AudioSpectrogramNode::verify() const {
+  NodeValue input = getInput();
+  NodeValue spectrogram = getSpectrogram();
+  auto inputLength = input.getType()->size();
+  auto windowSize = getWindowSize();
+  auto windowStride = getWindowStride();
+  auto windowCount = std::floor((inputLength - windowSize) / windowStride) + 1;
+  auto fftLen = 1 << (int)std::ceil(std::log2((double)windowSize));
+
+  bool isValid = true;
+  isValid &= expectCompareTrue("Input audio is too short for given window size",
+                               dim_t(windowCount), dim_t(0), this,
+                               CompareOperatorGreaterThan<dim_t>());
+  isValid &= expectCompareTrue("Output spectrogram must be a 2D tensor",
+                               spectrogram.dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue("Output spectrogram size is invalid",
+                               spectrogram.dims()[0], dim_t(windowCount), this,
+                               CompareOperatorEqual<dim_t>());
+  isValid &= expectCompareTrue("Output spectrogram size is invalid",
+                               spectrogram.dims()[1], dim_t(fftLen / 2 + 1),
+                               this, CompareOperatorEqual<dim_t>());
+  return isValid;
+}
+
+bool MFCCNode::verify() const {
+  NodeValue spectrogram = getSpectrogram();
+  NodeValue coefficients = getCoefficients();
+  float sampleRate = getSampleRate();
+  float lowerFrequency = getLowerFrequency();
+  float upperFrequency = getUpperFrequency();
+  auto filterBankCount = getFilterBankCount();
+  auto numCoefficients = getNumCoefficients();
+  auto fftLen = (spectrogram.dims()[1] - 1) * 2;
+  int exp;
+
+  bool isValid = true;
+  isValid &= expectCompareTrue("Input spectrogram must be a 2D tensor",
+                               spectrogram.dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue(
+      "Input spectrogram size is invalid. Should be of the form 2^N/2+1.",
+      std::abs(std::frexp((float)(fftLen), &exp)), float(0.5), this,
+      CompareOperatorEqual<float>());
+  isValid &= expectCompareTrue("Output coefficients must be a 2D tensor",
+                               coefficients.dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue("Output coefficients size is invalid",
+                               coefficients.dims()[1], dim_t(numCoefficients),
+                               this, CompareOperatorEqual<dim_t>());
+  isValid &= expectCompareTrue(
+      "Number of windows should be same for both input and output",
+      spectrogram.dims()[0], coefficients.dims()[0], this,
+      CompareOperatorEqual<dim_t>());
+  isValid &= expectCompareTrue("Lower frequency should be greater than 0",
+                               lowerFrequency, float(0.0), this,
+                               CompareOperatorGreaterThan<float>());
+  isValid &= expectCompareTrue("Upper frequency should be greater than 0",
+                               upperFrequency, float(0.0), this,
+                               CompareOperatorGreaterThan<float>());
+  isValid &= expectCompareTrue(
+      "Upper frequency must be greater than lower frequency", upperFrequency,
+      lowerFrequency, this, CompareOperatorGreaterThan<float>());
+  isValid &= expectCompareTrue(
+      "Upper frequency must be lower than half the sample rate", sampleRate,
+      float(2.0 * upperFrequency), this, CompareOperatorGreaterThan<float>());
+  isValid &= expectCompareTrue(
+      "Number of coefficients should be smaller than the filter bank count",
+      dim_t(filterBankCount), dim_t(numCoefficients), this,
+      CompareOperatorGreaterThan<dim_t>());
+  return isValid;
+}
+
 bool SaveNode::verify() const {
   return checkSameType(getInput(), getOutput(), this);
 }
