@@ -175,8 +175,11 @@ struct CompilationContext {
   /// Whether to skip stripping the module.
   bool skipModuleStrip{false};
 
-  /// Whether to enable P2P and DRT at runtime.
-  bool enableStaticAssignment{false};
+  /// Enables Peer to Peer Tensor optimization.
+  bool enableP2P{false};
+
+  /// Enables Device Resident Tensor optimization.
+  bool enableDRT{false};
 
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)
