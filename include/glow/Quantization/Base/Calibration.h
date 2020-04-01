@@ -42,7 +42,7 @@ namespace quantization {
 /// N is the length of the input histogram \p hist.
 FloatRange optimizeKL(const std::vector<float> &hist, const float histMin,
                       const float histMax, const size_t numQuantizedBins = 255,
-                      const bool symmetric = true);
+                      const bool symmetric = false);
 
 } // namespace quantization
 } // namespace glow

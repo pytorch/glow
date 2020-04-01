@@ -280,6 +280,10 @@ FloatRange optimizeKL(const std::vector<float> &hist, const float histMin,
   // the same ratio as the input min/max of the histogram in order to map the
   // zero-point to quantized 0.
   if (symmetric) {
+    assert(histMin < 0 && "Invalid histogram minimum!");
+    assert(histMax > 0 && "Invalid histogram maximum!");
+    assert(thresholdMinOpt < 0 && "Invalid threshold minimum!");
+    assert(thresholdMaxOpt > 0 && "Invalid threshold maximum!");
     double ratioMin = (double)thresholdMinOpt / (double)histMin;
     double ratioMax = (double)thresholdMaxOpt / (double)histMax;
     if (ratioMin > ratioMax) {
