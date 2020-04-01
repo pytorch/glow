@@ -142,12 +142,13 @@ std::vector<float> rescaleHistogram(const std::vector<float> &srcHist,
 
     // Get destination bin indices (inclusive) which overlap with the current
     // source bin.
-    size_t dstBinIdxStart = static_cast<size_t>(
-        std::floor((srcBinStart - destHistMin) / destBinWidth));
-    size_t dstBinIdxStop = static_cast<size_t>(
-        std::ceil((srcBinStop - destHistMin) / destBinWidth));
+    float dstBinIdxStartF =
+        std::floor((srcBinStart - destHistMin) / destBinWidth);
+    float dstBinIdxStopF = std::ceil((srcBinStop - destHistMin) / destBinWidth);
+    size_t dstBinIdxStart = static_cast<size_t>(std::max(dstBinIdxStartF, 0.f));
+    size_t dstBinIdxStop = static_cast<size_t>(std::max(dstBinIdxStopF, 0.f));
 
-    // Saturate destination bin indices.
+    // Upper saturate the destination bin indices.
     if (dstBinIdxStart >= numBins) {
       dstBinIdxStart = numBins - 1;
     }
