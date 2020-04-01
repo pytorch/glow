@@ -1048,6 +1048,10 @@ FunctionPassPipeline NNPIBackend::getOptimizationPipeline() const {
   // occurs. Note that we do this last as it may counteract some earlier
   // optimizations that push Clips down to try to eliminate them.
   pipeline.pushBack(FunctionPassID::RaiseClipsAboveShapeNodes);
+
+  // Optimize away intermediate conversions, e.g. Quantize(ConvertTo(Node)) ->
+  // Quantize(Node).
+  pipeline.pushBack(FunctionPassID::OptimizeOutIntermediateConversions);
   pipeline.pushBack(getDCEPassConfig());
 
   return pipeline;
