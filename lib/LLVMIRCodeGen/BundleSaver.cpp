@@ -284,31 +284,21 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
   auto placeholders = findPlaceholders();
   for (auto &v : placeholders) {
     auto *w = cast<WeightVar>(getWeightForNode(v));
-    // Get placeholder shape as string.
-    std::string shapeStr = "[";
-    auto dims = w->getType()->dims();
-    for (size_t idx = 0; idx < dims.size(); idx++) {
-      if (idx < dims.size() - 1) {
-        shapeStr += strFormat("%" PRIuDIM ", ", dims[idx]);
-      } else {
-        shapeStr += strFormat("%" PRIuDIM "]", dims[idx]);
-      }
-    }
     // Get placeholder properties.
     auto name = w->getName();
-    auto typeName = w->getType()->getElementName();
-    auto sizeElem = w->getType()->size();
-    auto sizeByte = w->getType()->getSizeInBytes();
+    auto type = w->getType();
+    auto typeName = type->toString();
+    auto sizeElem = type->size();
+    auto sizeByte = type->getSizeInBytes();
     auto offset = allocationsInfo_.allocatedAddress_[w];
     modelInfo += strFormat("//\n"
                            "//   Name: \"%s\"\n"
                            "//   Type: %s\n"
-                           "//   Shape: %s\n"
                            "//   Size: %" PRIuDIM " (elements)\n"
                            "//   Size: %zu (bytes)\n"
                            "//   Offset: %lu (bytes)\n",
-                           name.data(), typeName.data(), shapeStr.c_str(),
-                           sizeElem, sizeByte, (unsigned long)offset);
+                           name.data(), typeName.c_str(), sizeElem, sizeByte,
+                           (unsigned long)offset);
   }
   // Print constants (optional).
   if (bundleAPIVerbose) {
@@ -317,31 +307,21 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
     auto constantWeights = findConstantWeights();
     for (auto &weightInfo : constantWeights) {
       auto *w = weightInfo.first;
-      // Get constant shape as string.
-      std::string shapeStr = "[";
-      auto dims = w->getType()->dims();
-      for (size_t idx = 0; idx < dims.size(); idx++) {
-        if (idx < dims.size() - 1) {
-          shapeStr += strFormat("%" PRIuDIM ", ", dims[idx]);
-        } else {
-          shapeStr += strFormat("%" PRIuDIM "]", dims[idx]);
-        }
-      }
       // Get constant properties.
       auto name = w->getName();
-      auto typeName = w->getType()->getElementName();
-      auto sizeElem = w->getType()->size();
-      auto sizeByte = w->getType()->getSizeInBytes();
+      auto type = w->getType();
+      auto typeName = type->toString();
+      auto sizeElem = type->size();
+      auto sizeByte = type->getSizeInBytes();
       auto offset = allocationsInfo_.allocatedAddress_[w];
       modelInfo += strFormat("//\n"
                              "//   Name: \"%s\"\n"
                              "//   Type: %s\n"
-                             "//   Shape: %s\n"
                              "//   Size: %" PRIuDIM " (elements)\n"
                              "//   Size: %zu (bytes)\n"
                              "//   Offset: %lu (bytes)\n",
-                             name.data(), typeName.data(), shapeStr.c_str(),
-                             sizeElem, sizeByte, (unsigned long)offset);
+                             name.data(), typeName.c_str(), sizeElem, sizeByte,
+                             (unsigned long)offset);
     }
   }
   modelInfo += "//";
