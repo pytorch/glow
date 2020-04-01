@@ -23,7 +23,9 @@
 
 using namespace glow;
 
-void glow::profileQuantization(PlaceholderBindings &bindings, Function *F) {
+void glow::profileQuantization(
+    PlaceholderBindings &bindings, Function *F,
+    const quantization::ProfilingConfiguration &profConfig) {
   // Iterate over all nodes in the graph and insert QuantizationProfile nodes
   // to observe tensor values from every node's output.
   std::unordered_set<NodeValue> nodesToInstrument;
@@ -64,6 +66,7 @@ void glow::profileQuantization(PlaceholderBindings &bindings, Function *F) {
 
   for (const auto &NV : nodesToInstrument) {
     F->createQuantizationProfile(bindings,
-                                 "QP_" + NV.getNode()->getName().str(), NV);
+                                 "QP_" + NV.getNode()->getName().str(), NV,
+                                 profConfig.numHistogramBins);
   }
 }
