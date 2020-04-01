@@ -4158,3 +4158,32 @@ TEST_F(GraphOptz, RaiseClipsAboveShapeNodesTest) {
   bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
   checkNumericalEquivalence();
 }
+
+/// Test that OptimizeDequantizeClip pass works as expected.
+TEST_F(GraphOptz, OptimizeDequantizeClipTest) {
+  Placeholder *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {20, 20}, "input", false);
+
+  const auto qParams = quantization::chooseQuantizationParams({-0.1, 0.1});
+
+  QuantizeNode *QN =
+      F_->createQuantize("quantize", input,
+                         mod_.uniqueType(ElemKind::Int8QTy, {20, 20},
+                                         qParams.scale, qParams.offset));
+  DequantizeNode *DN = F_->createDequantize("dequantize", QN);
+  ClipNode *CN = F_->createClip("clip", DN, 0, 100);
+  SaveNode *SN = F_->createSave("save", CN);
+
+  FunctionPassManager FPM("TestFPM", {
+                                         FunctionPassID::OptimizeDequantizeClip,
+                                         getDCEPassConfig(),
+                                     });
+  FPM.run(F_, CompilationContext());
+
+  // Now check that the quantization params have been correctly updated for QN,
+  // and that CN has been eliminated.
+  ASSERT_EQ(SN->getInput().getNode(), DN);
+  const auto qMinMax = DN->getInput().getType()->getQuantizedValueRange();
+  EXPECT_NEAR(qMinMax.first, 0, 1E-3);    // Min from Clip
+  EXPECT_NEAR(qMinMax.second, 0.1, 1E-3); // Max from Quant range
+}
