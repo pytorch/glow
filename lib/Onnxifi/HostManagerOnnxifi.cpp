@@ -252,7 +252,7 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   std::unique_ptr<ONNXIFIModelLoader> loader;
   auto loaderOrErr = ONNXIFIModelLoader::parse(
       onnxModel, onnxModelSize, weightCount, weightDescriptors, *module,
-      netName_, &PPC, true /*loadInputsAsPlaceholders*/,
+      netName_, &PPC, true /*loadInputsAsPlaceholdersForOnnx*/,
       backendPtr_->getUseOnnx());
   if (loaderOrErr) {
     loader = std::move(*loaderOrErr);

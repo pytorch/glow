@@ -671,14 +671,14 @@ Error ONNXModelLoader::setTensorType(const ONNX_NAMESPACE::ValueInfoProto &in,
 }
 
 Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
-                                  bool loadInputsAsPlaceholders) {
+                                  bool loadInputsAsPlaceholdersForOnnx) {
   for (const auto &in : net.input()) {
     // Skip static weights.
     if (getConstantByNameOrNull(in.name())) {
       continue;
     }
 
-    if (loadInputsAsPlaceholders) {
+    if (loadInputsAsPlaceholdersForOnnx) {
       Tensor T;
       RETURN_IF_ERR(setTensorType(in, &T));
 
@@ -3942,7 +3942,8 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
 
     if (tensorNames.empty() && types.empty()) {
       // Detect inputs without initializers and create placeholders.
-      RETURN_IF_ERR(loadInputs(graphDef, /* loadInputsAsPlaceholders */ true));
+      RETURN_IF_ERR(
+          loadInputs(graphDef, /* loadInputsAsPlaceholdersForOnnx */ true));
     }
 
     RETURN_IF_ERR(loadNetwork(graphDef));
@@ -3966,7 +3967,7 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
 ONNXModelLoader::ONNXModelLoader(
     const void *model, uint32_t modelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
-    bool loadInputsAsPlaceholders, Error *errPtr, bool constFoldInLoader)
+    bool loadInputsAsPlaceholdersForOnnx, Error *errPtr, bool constFoldInLoader)
     : CommonOperatorLoader({}, {}, &F, errPtr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
@@ -3990,7 +3991,7 @@ ONNXModelLoader::ONNXModelLoader(
 
     ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
 
-    RETURN_IF_ERR(loadInputs(graphDef, loadInputsAsPlaceholders));
+    RETURN_IF_ERR(loadInputs(graphDef, loadInputsAsPlaceholdersForOnnx));
 
     RETURN_IF_ERR(loadInitializers(graphDef));
 

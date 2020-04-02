@@ -56,7 +56,7 @@ public:
 
   /// \returns a unique_ptr<ONNXIFIModelLoader> if \p onnxModel can be
   /// parsed and static weights can be loaded from the \p weightDescriptors.
-  /// \returns Error otherwise. \p loadInputsAsPlaceholders is passed to
+  /// \returns Error otherwise. \p loadInputsAsPlaceholdersForOnnx is passed to
   /// loadInputs to determine whether graph inputs are loaded as Placeholders or
   /// Tensors. Loading inputs as Tensors is useful for when weights are not
   /// provided such as when the graph being loaded is actually a small patch of
@@ -72,7 +72,7 @@ public:
   parse(const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
         const onnxTensorDescriptorV1 *weightDescriptors, Module &mod,
         llvm::StringRef netName, runtime::PrePartitionedConfig *PPC,
-        bool loadInputsAsPlaceholders = true, bool use_onnx = true,
+        bool loadInputsAsPlaceholdersForOnnx = true, bool use_onnx = true,
         bool constFoldInLoader = true);
 };
 

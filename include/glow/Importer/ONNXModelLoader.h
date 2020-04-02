@@ -393,11 +393,11 @@ protected:
   /// Load the network initializers from the GraphProto.
   Error loadInitializers(ONNX_NAMESPACE::GraphProto &net);
 
-  /// Load the inputs from the GraphProto. If \p loadInputsAsPlaceholders is
-  /// true then this will load each graph input as a placeholder otherwise it
+  /// Load the inputs from the GraphProto. If \p loadInputsAsPlaceholdersForOnnx
+  /// is true then this will load each graph input as a placeholder otherwise it
   /// will create an empty tensor for each input.
   Error loadInputs(ONNX_NAMESPACE::GraphProto &net,
-                   bool loadInputsAsPlaceholders);
+                   bool loadInputsAsPlaceholdersForOnnx);
 
   /// \returns Expected<ModelProto> if a ModelProto can be constructed from the
   /// contents of the file \p filename and Error otherwise.
@@ -427,12 +427,12 @@ protected:
   /// Loads the ONNIXFI \p model from memory of \p modelSize size,
   /// and \p weightsCount, and \p onnxTensorDescriptorV1 correspondent
   /// descriptors. Converts inputs into placeholder if requested \p
-  /// loadInputsAsPlaceholders. Reports success/failure through optional
+  /// loadInputsAsPlaceholdersForOnnx. Reports success/failure through optional
   /// parameter \p errPtr. This constructor always overrides the default
   /// constant folding in loader flag with \p constFoldInLoader.
   ONNXModelLoader(const void *model, uint32_t modelSize, uint32_t weightsCount,
                   const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
-                  bool loadInputsAsPlaceholders, Error *errPtr = nullptr,
+                  bool loadInputsAsPlaceholdersForOnnx, Error *errPtr = nullptr,
                   bool constFoldInLoader = true);
 
   friend class ONNXIFIModelLoader;

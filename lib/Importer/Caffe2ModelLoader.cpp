@@ -172,9 +172,9 @@ createAndSetTensorType(const caffe2::QTensorProto &in) {
 } // namespace
 
 /// Translates the protocol buffer node \p op into a random access map.
-static ArgumentDictionaryTy loadArgumentMap(const caffe2::OperatorDef &op) {
+template <typename T> static ArgumentDictionaryTy loadArgumentMap(const T &t) {
   ArgumentDictionaryTy dict;
-  for (auto &arg : op.arg()) {
+  for (auto &arg : t.arg()) {
     dict[arg.name()] = &arg;
   }
   return dict;
@@ -1561,7 +1561,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
 template <class TensorProtoType>
 Error Caffe2ModelLoader::loadInputsWithTensorProtoType(
-    const caffe2::NetDef &net, bool loadInputsAsPlaceholders,
+    const caffe2::NetDef &net,
+    const std::unordered_set<std::string> &initializers,
     const TensorProtoType &in) {
   // Skip static weights
   if (getConstantByNameOrNull(in.name())) {
@@ -1585,7 +1586,8 @@ Error Caffe2ModelLoader::loadInputsWithTensorProtoType(
       "For tensors with separate qparams, both scales and offsets must be "
       "loaded");
 
-  if (loadInputsAsPlaceholders) {
+  bool isInput = !initializers.count(in.name());
+  if (isInput) {
     Placeholder *placeholder;
     ASSIGN_VALUE_OR_RETURN_ERR(
         placeholder,
@@ -1624,8 +1626,9 @@ Error Caffe2ModelLoader::loadInputsWithTensorProtoType(
   return Error::success();
 }
 
-Error Caffe2ModelLoader::loadInputs(const caffe2::NetDef &net,
-                                    bool loadInputsAsPlaceholders) {
+Error Caffe2ModelLoader::loadInputs(
+    const caffe2::NetDef &net,
+    const std::unordered_set<std::string> &initializers) {
   const caffe2::Argument *arg = nullptr, *qarg = nullptr;
   for (auto i = 0, e = net.arg_size(); i < e && (!arg || !qarg); ++i) {
     if (net.arg(i).name() == "input_shape_info") {
@@ -1639,7 +1642,7 @@ Error Caffe2ModelLoader::loadInputs(const caffe2::NetDef &net,
   if (arg) {
     for (const auto &in : arg->tensors()) {
       RETURN_IF_ERR(loadInputsWithTensorProtoType<caffe2::TensorProto>(
-          net, loadInputsAsPlaceholders, in));
+          net, initializers, in));
     }
   }
 
@@ -1647,7 +1650,7 @@ Error Caffe2ModelLoader::loadInputs(const caffe2::NetDef &net,
   if (qarg) {
     for (const auto &in : qarg->qtensors()) {
       RETURN_IF_ERR(loadInputsWithTensorProtoType<caffe2::QTensorProto>(
-          net, loadInputsAsPlaceholders, in));
+          net, initializers, in));
     }
   }
 
@@ -2189,7 +2192,7 @@ Caffe2ModelLoader::Caffe2ModelLoader(
     const void *model, uint32_t modelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Module &mod,
     llvm::StringRef funNamePrefix, runtime::PrePartitionedConfig *PPC,
-    bool loadInputsAsPlaceholders, Error *errPtr, bool constFoldInLoader)
+    Error *errPtr, bool constFoldInLoader)
     : CommonOperatorLoader({}, {}, mod, errPtr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
@@ -2205,9 +2208,19 @@ Caffe2ModelLoader::Caffe2ModelLoader(
     caffe2::NetDef networkDef;
     ASSIGN_VALUE_OR_RETURN_ERR(networkDef, loadProto(model, modelSize));
 
+    ArgumentDictionaryTy dict = loadArgumentMap(networkDef);
+
+    std::unordered_set<std::string> initializers;
+    if (dict.count("initializers")) {
+      const auto &strings = dict.at("initializers")->strings();
+      for (const auto &s : strings) {
+        initializers.insert(s);
+      }
+    }
+
     RETURN_IF_ERR(loadWeights(weightsCount, weightDescriptors));
 
-    RETURN_IF_ERR(loadInputs(networkDef, loadInputsAsPlaceholders));
+    RETURN_IF_ERR(loadInputs(networkDef, initializers));
 
     // Identify primary input sequence
     std::unordered_set<std::string> weights;
