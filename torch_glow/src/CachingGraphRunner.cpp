@@ -200,16 +200,26 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       glow::TypeRef ty = ph->getType();
 
       auto ptTensor = input.toTensor();
+      glow::Tensor t;
+
+      bool needClone = false;
 
       if (ptTensor.is_quantized()) {
         ptTensor = convertQuantizedToDtype(ptTensor, at::kQInt8);
+        // We need to clone a new tensor here since
+        // convertQuantizedToDtype might create a temporary tensor
+        needClone = true;
       }
-
-      glow::Tensor t;
       if (!ptTensor.is_contiguous()) {
         ptTensor = ptTensor.contiguous();
+        needClone = true;
       }
-      t = glow::Tensor(ptTensor.data_ptr(), ty).clone();
+
+      if (needClone) {
+        t = glow::Tensor(ptTensor.data_ptr(), ty).clone();
+      } else {
+        t = glow::Tensor(ptTensor.data_ptr(), ty);
+      }
 
       // Write input tesnor to ONNX
       if (settings_.writeToOnnx) {
