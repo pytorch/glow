@@ -49,18 +49,19 @@ static bool functionContainsNode(const Function *F, const Node *N) {
                       IsSameNodeAddress(N)) != F->getNodes().end();
 }
 
-/// Optimize the function \p F. \returns the optimized function. If \p pass is
-/// empty then the whole default optimization pipeline is run. Otherwise only
-/// \p pipeline is used.
-static Function *optimizeFunction(Function *F,
-                                  const FunctionPassPipeline &pipeline = {}) {
+/// Optimize the function \p F with \p cctx. \returns the optimized function. If
+/// \p pass is empty then the whole default optimization pipeline is run.
+/// Otherwise only \p pipeline is used.
+static Function *
+optimizeFunction(Function *F, const FunctionPassPipeline &pipeline = {},
+                 const CompilationContext cctx = CompilationContext()) {
   auto *G = F->clone(F->getName().str() + "_optimized");
   if (pipeline.size() == 0) {
     ::glow::optimize(G, CompilationMode::Infer);
     return G;
   }
   FunctionPassManager FPM("TestFPM", pipeline);
-  FPM.run(G, CompilationContext());
+  FPM.run(G, cctx);
   return G;
 }
 
@@ -4173,28 +4174,33 @@ TEST_F(GraphOptz, RaiseClipsAboveShapeNodesTest) {
   checkNumericalEquivalence();
 }
 
-/// Test that OptimizeQuantizeClip pass works as expected for Clip(Dequantize).
-TEST_F(GraphOptz, OptimizeDequantizeClipTest) {
+static void testOptimizeDequantizeClip(PlaceholderBindings &bindings,
+                                       Module &mod, Function *F,
+                                       Function *&optF,
+                                       bool enableQuantParamChanges) {
   Placeholder *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {20, 20}, "input", false);
+      mod.createPlaceholder(ElemKind::FloatTy, {20, 20}, "input", false);
 
   const auto qParams = quantization::chooseQuantizationParams({-0.1, 0.1});
 
   QuantizeNode *QN =
-      F_->createQuantize("quantize", input,
-                         mod_.uniqueType(ElemKind::Int8QTy, {20, 20},
-                                         qParams.scale, qParams.offset));
-  DequantizeNode *DN = F_->createDequantize("dequantize", QN);
-  ClipNode *CN = F_->createClip("clip", DN, 0, 100);
-  SaveNode *SN = F_->createSave("save", CN);
+      F->createQuantize("quantize", input,
+                        mod.uniqueType(ElemKind::Int8QTy, {20, 20},
+                                       qParams.scale, qParams.offset));
+  DequantizeNode *DN = F->createDequantize("dequantize", QN);
+  ClipNode *CN =
+      F->createClip("clip", DN, enableQuantParamChanges ? 0 : -100, 100);
+  SaveNode *SN = F->createSave("save", CN);
 
-  optimizedF_ = optimizeFunction(
-      F_, {FunctionPassID::OptimizeQuantizeClip, getDCEPassConfig()});
+  CompilationContext cctx;
+  cctx.optimizationOpts.enableQuantParamChanges = true;
+  optF = optimizeFunction(
+      F, {FunctionPassID::OptimizeQuantizeClip, getDCEPassConfig()}, cctx);
 
-  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 0);
+  EXPECT_EQ(countNodeKind(optF, Kinded::Kind::ClipNodeKind), 0);
 
   SaveNode *optSN =
-      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+      llvm::dyn_cast<SaveNode>(optF->getNodeByName(SN->getName()));
   ASSERT_TRUE(optSN);
 
   // Now check that the quantization params have been correctly updated for QN,
@@ -4203,36 +4209,56 @@ TEST_F(GraphOptz, OptimizeDequantizeClipTest) {
       llvm::dyn_cast<DequantizeNode>(optSN->getInput().getNode());
   ASSERT_TRUE(optDN);
   const auto qMinMax = optDN->getInput().getType()->getQuantizedValueRange();
-  EXPECT_NEAR(qMinMax.first, 0, 1E-3);    // Min from Clip
+  // Min is either from Clip or Quant range depending on enableQuantParamChanges
+  EXPECT_NEAR(qMinMax.first, enableQuantParamChanges ? 0 : -0.1, 1E-3);
   EXPECT_NEAR(qMinMax.second, 0.1, 1E-3); // Max from Quant range
 
-  bindings_.allocate(mod_.getPlaceholders());
-  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  bindings.allocate(mod.getPlaceholders());
+  bindings.get(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+}
+
+/// Test that OptimizeQuantizeClip pass works as expected for Clip(Dequantize)
+/// when the quantization parameters are allowed to change.
+TEST_F(GraphOptz, OptimizeDequantizeClipTest_QuantParamChanges) {
+  testOptimizeDequantizeClip(bindings_, mod_, F_, optimizedF_,
+                             /* enableQuantParamChanges */ true);
   checkNumericalEquivalence(0.0005);
 }
 
-/// Test that OptimizeQuantizeClip pass works as expected for Clip(Quantize).
-TEST_F(GraphOptz, OptimizeClipQuantizeTest) {
+/// Test that OptimizeQuantizeClip pass works as expected for Clip(Dequantize)
+/// when the quantization parameters are not allowed to change.
+TEST_F(GraphOptz, OptimizeDequantizeClipTest_NoQuantParamChanges) {
+  testOptimizeDequantizeClip(bindings_, mod_, F_, optimizedF_,
+                             /* enableQuantParamChanges */ false);
+  checkNumericalEquivalence();
+}
+
+static void testOptimizeClipQuantize(PlaceholderBindings &bindings, Module &mod,
+                                     Function *F, Function *&optF,
+                                     bool enableQuantParamChanges) {
   Placeholder *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {20, 20}, "input", false);
+      mod.createPlaceholder(ElemKind::FloatTy, {20, 20}, "input", false);
 
   const auto qParams = quantization::chooseQuantizationParams({-0.1, 0.1});
 
-  ClipNode *CN = F_->createClip("clip", input, 0, 100);
+  ClipNode *CN =
+      F->createClip("clip", input, enableQuantParamChanges ? 0 : -100, 100);
   QuantizeNode *QN =
-      F_->createQuantize("quantize", CN,
-                         mod_.uniqueType(ElemKind::Int8QTy, {20, 20},
-                                         qParams.scale, qParams.offset));
-  DequantizeNode *DN = F_->createDequantize("dequantize", QN);
-  SaveNode *SN = F_->createSave("save", DN);
+      F->createQuantize("quantize", CN,
+                        mod.uniqueType(ElemKind::Int8QTy, {20, 20},
+                                       qParams.scale, qParams.offset));
+  DequantizeNode *DN = F->createDequantize("dequantize", QN);
+  SaveNode *SN = F->createSave("save", DN);
 
-  optimizedF_ = optimizeFunction(
-      F_, {FunctionPassID::OptimizeQuantizeClip, getDCEPassConfig()});
+  CompilationContext cctx;
+  cctx.optimizationOpts.enableQuantParamChanges = enableQuantParamChanges;
+  optF = optimizeFunction(
+      F, {FunctionPassID::OptimizeQuantizeClip, getDCEPassConfig()}, cctx);
 
-  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 0);
+  EXPECT_EQ(countNodeKind(optF, Kinded::Kind::ClipNodeKind), 0);
 
   SaveNode *optSN =
-      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+      llvm::dyn_cast<SaveNode>(optF->getNodeByName(SN->getName()));
   ASSERT_TRUE(optSN);
 
   // Now check that the quantization params have been correctly updated for QN,
@@ -4241,12 +4267,28 @@ TEST_F(GraphOptz, OptimizeClipQuantizeTest) {
       llvm::dyn_cast<DequantizeNode>(optSN->getInput().getNode());
   ASSERT_TRUE(optDN);
   const auto qMinMax = optDN->getInput().getType()->getQuantizedValueRange();
-  EXPECT_NEAR(qMinMax.first, 0, 1E-3);    // Min from Clip
-  EXPECT_NEAR(qMinMax.second, 0.1, 1E-3); // Max from Quant range
+  // Min is either from Clip or Quant range depending on enableQuantParamChanges
+  EXPECT_NEAR(qMinMax.first, enableQuantParamChanges ? 0 : -0.1, 1E-3);
+  EXPECT_NEAR(qMinMax.second, 0.1, 1E-3); // Max always from Quant range
 
-  bindings_.allocate(mod_.getPlaceholders());
-  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  bindings.allocate(mod.getPlaceholders());
+  bindings.get(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+}
+
+/// Test that OptimizeQuantizeClip pass works as expected for Clip(Quantize)
+/// when the quantization parameters are allowed to change.
+TEST_F(GraphOptz, OptimizeClipQuantizeTest_QuantParamChanges) {
+  testOptimizeClipQuantize(bindings_, mod_, F_, optimizedF_,
+                           /* enableQuantParamChanges */ true);
   checkNumericalEquivalence(0.0005);
+}
+
+/// Test that OptimizeQuantizeClip pass works as expected for Clip(Quantize)
+/// when the quantization parameters are not allowed to change.
+TEST_F(GraphOptz, OptimizeClipQuantizeTest_NoQuantParamChanges) {
+  testOptimizeClipQuantize(bindings_, mod_, F_, optimizedF_,
+                           /* enableQuantParamChanges */ false);
+  checkNumericalEquivalence();
 }
 
 /// Test Quantize(ConvertTo(Node)) -> Quantize(Node), where Quantize is int8.

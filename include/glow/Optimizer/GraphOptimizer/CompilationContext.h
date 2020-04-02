@@ -125,6 +125,9 @@ struct OptimizationOptions {
   /// If true does int64 to int32 type demotion if backend supports for specific
   /// nodes.
   bool enableTypeDemotion{true};
+
+  /// If true, optimizations are allowed to change quantization scale/offset.
+  bool enableQuantParamChanges{false};
 };
 
 /// Context for compilation.

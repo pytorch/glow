@@ -2952,10 +2952,23 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
 
   // Change a quantized result type qResult to account for the range from clip.
   auto updateQuantizeNodeType = [](Function *F, NodeValue qResult,
-                                   ClipNode *clip) {
+                                   ClipNode *clip, bool skipIfQuantParamChange,
+                                   bool allowQParamChange) {
     const auto qMinMax = qResult.getType()->getQuantizedValueRange();
     const float newMin = std::max(clip->getMin(), qMinMax.first);
     const float newMax = std::min(clip->getMax(), qMinMax.second);
+
+    // If the quantization parameters do not change then we can always elide the
+    // Clip and do not need to change the type of qResult.
+    if (newMin == qMinMax.first && newMax == qMinMax.second) {
+      return true;
+    }
+
+    // At this point the quantization parameters must be changing, so if we do
+    // not allow for that then return false.
+    if (!allowQParamChange || skipIfQuantParamChange) {
+      return false;
+    }
 
     // Replace the old quantized type with the new type with different
     // min/max.
@@ -2965,6 +2978,7 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
     const TypeRef newTy = F->getParent()->uniqueType(
         oldTy->getElementType(), oldTy->dims(), qParams.scale, qParams.offset);
     qResult.getNode()->setType(qResult.getResNo(), newTy);
+    return true;
   };
 
   for (Node &node : F->getNodes()) {
@@ -2976,16 +2990,20 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
       }
 
       // Cannot perform this optimization if there are multiple users of DQN or
-      // DQN's input, as otherwise they'd get incorrect numerics.
+      // DQN's input, as otherwise they'd have incorrect quantization params.
       NodeValue qResult = DQN->getInput();
-      if (DQN->getNumUsers() != 1 || qResult.getNode()->getNumUsers() != 1) {
+      const bool skipIfQuantParamChange =
+          DQN->getNumUsers() != 1 || qResult.getNode()->getNumUsers() != 1;
+
+      // Try to update the quantize's type, otherwise skip this one.
+      if (!updateQuantizeNodeType(
+              F, qResult, clip, skipIfQuantParamChange,
+              cctx.optimizationOpts.enableQuantParamChanges)) {
         continue;
       }
 
-      updateQuantizeNodeType(F, qResult, clip);
-
-      // Now we can eliminate the skip since the node prior to DQN has included
-      // the Clip's range in its quantization parameters.
+      // Now we skip the Clip since the node prior to DQN has included the
+      // Clip's range in its quantization parameters.
       clip->getResult().replaceAllUsesOfWith(DQN->getResult());
       changed = true;
       continue;
@@ -2998,20 +3016,20 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
         continue;
       }
 
-      // Cannot perform this optimization if there are multiple users of clip.
-      if (clip->getNumUsers() != 1) {
-        continue;
-      }
-
       // Cannot set the type of quantized nodes if they're used by a Node with
       // side effects, as they may be expecting a specific type.
-      if (isUsedByNodeWithSideEffects(QN)) {
+      const bool skipIfQuantParamChange = isUsedByNodeWithSideEffects(QN);
+
+      // Try to update the quantize's type, otherwise skip this one.
+      if (!updateQuantizeNodeType(
+              F, QN->getResult(), clip, skipIfQuantParamChange,
+              cctx.optimizationOpts.enableQuantParamChanges)) {
         continue;
       }
 
-      updateQuantizeNodeType(F, QN->getResult(), clip);
-
-      clip->getResult().replaceAllUsesOfWith(clip->getInput());
+      // Now we can skip the Clip since the QN has accounted for the Clip's
+      // range in its quantization parameters.
+      QN->setNthInput(QuantizeNode::InputIdx, clip->getInput());
       changed = true;
       continue;
     }
