@@ -997,8 +997,9 @@ void Partitioner::appendSLSTable(
     size_t numIndices = SLSIndexDims[0];
     uint64_t numBytesInTable =
         (uint64_t)SLSDataDims[0] * (uint64_t)SLSDataDims[1];
-    slsTables.push_back(
-        {SLS0, numBytesInTable, numElementsPerRowUpperBound, numIndices, 0});
+    auto slsResult = SLS0->getResult();
+    slsTables.push_back({SLS0, numBytesInTable, numElementsPerRowUpperBound,
+                         numIndices, 0, slsResult});
   }
 }
 
@@ -1015,6 +1016,79 @@ static void cloneSplatWeightsIfNecessary(T *SLWS, Function *F) {
       F->addNode(llvm::cast<SplatNode>(splatWeights->clone()));
   SLWS->setNthInput(T::WeightsIdx, splatWeightsClone->getResult());
 }
+
+// Insert Split->Concat at barrier between SLS and Non-SLS partitions
+void Partitioner::sparseNNInsertSplitConcat(
+    Function *F, std::vector<SLSDeviceInfo> slsDevices,
+    std::vector<SLSTableInfo> slsTables, PartitionConfig &partitionConfig) {
+  std::map<ConcatNode *, std::vector<NodeValue>> newConcatInputs;
+  std::map<ConcatNode *, std::vector<NodeValue>> oldConcatInputs;
+  for (size_t p = 0; p < slsDevices.size(); p++) {
+
+    // Pool SLS outputs which go directly to concats for this device
+    std::map<ConcatNode *, std::vector<NodeValue>> extraConcatInputs;
+    for (auto &table : slsTables) {
+      if (table.deviceId == p) {
+        if (table.slsClipResult.getNumUsers() != 1) {
+          continue;
+        }
+        auto slsClipUser =
+            (*(table.slsClipResult.getUsers().begin())).getUser();
+        if (ConcatNode *concatNode = llvm::dyn_cast<ConcatNode>(slsClipUser)) {
+          extraConcatInputs[concatNode].push_back(table.slsClipResult);
+        }
+      }
+    }
+
+    // For each set of pooled SLS outputs, insert Concat->Split
+    for (auto &inpList : extraConcatInputs) {
+
+      // Create a new concat and assign it to SLS partition
+      ConcatNode *concatNode = inpList.first;
+      std::vector<NodeValue> concatInputs = inpList.second;
+      auto *deviceConcat = F->createConcat(concatNode->getName().str() +
+                                               "_dev" + std::to_string(p),
+                                           concatInputs, concatNode->getDim());
+      partitionConfig.nodeToPartition[deviceConcat->getName()] = p;
+
+      // Create a split
+      std::vector<dim_t> splits;
+      for (auto &inp : concatInputs) {
+        auto inpDims = inp.dims();
+        splits.push_back(inpDims[concatNode->getDim()]);
+        oldConcatInputs[concatNode].push_back(inp);
+      }
+      std::vector<SliceNode *> splitOutputs;
+      F->createSplit(concatNode->getName().str() + "_split_dev" +
+                         std::to_string(p),
+                     deviceConcat, splits.size(), concatNode->getDim(), splits,
+                     splitOutputs);
+      for (auto &splitOutput : splitOutputs) {
+        partitionConfig.nodeToPartition[splitOutput->getName()] =
+            partitionConfig.numOfPartitions - 1;
+        newConcatInputs[concatNode].push_back(splitOutput);
+      }
+    }
+  }
+
+  // Create a new concat node and replace specified inputs with the
+  // new slice outputs
+  for (auto &concatNodeReplace : newConcatInputs) {
+    ConcatNode *concatNode = concatNodeReplace.first;
+    std::vector<NodeValue> newInputs = newConcatInputs[concatNode];
+    std::vector<NodeValue> oldInputs = oldConcatInputs[concatNode];
+    std::vector<NodeValue> combinedInputs;
+    for (auto concatInputIdx = 0; concatInputIdx < concatNode->getNumInputs();
+         concatInputIdx++) {
+      auto concatInput = concatNode->getNthInput(concatInputIdx);
+      auto it = find(oldInputs.begin(), oldInputs.end(), concatInput);
+      if (it != oldInputs.end()) {
+        auto idx = distance(oldInputs.begin(), it);
+        concatNode->setNthInput(concatInputIdx, newInputs[idx]);
+      }
+    }
+  }
+};
 
 Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
 
@@ -1244,8 +1318,9 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
         auto users = table.node->getUsers();
         for (auto j = users.begin(), f = users.end(); j != f; ++j) {
           const Node *user = (*j).getUser();
-          if (user->getKind() == Kinded::Kind::ClipNodeKind) {
+          if (const ClipNode *CN = llvm::dyn_cast<ClipNode>(user)) {
             partitionConfig.nodeToPartition[user->getName()] = p;
+            table.slsClipResult = CN->getResult();
           }
         }
       }
@@ -1258,6 +1333,11 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
         partitionConfig.nodeToPartition.end()) {
       partitionConfig.nodeToPartition[node.getName()] = slsDevices.size();
     }
+  }
+
+  // Insert Split->Concat at barrier between SLS and Non-SLS partitions
+  if (cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats) {
+    sparseNNInsertSplitConcat(F, slsDevices, slsTables, partitionConfig);
   }
 
   VLOG(1) << " Finished SparseNN partitioning" << std::endl;

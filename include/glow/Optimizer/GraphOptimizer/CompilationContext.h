@@ -102,6 +102,10 @@ struct OptimizationOptions {
   /// scheme
   bool useSparseNNPartitioningScheme{false};
 
+  /// If true, SparseNN partiitoning scheme will add extra concats to the
+  /// SLS partition for more efficient inter-partition transfers
+  bool sparseNNPartitioningAddSLSConcats{false};
+
   /// The number of cards over which to split SLS tables when using SparseNN
   /// partitioning scheme
   unsigned int sparseNNPartitioningSchemeNumCards{1};
@@ -171,8 +175,11 @@ struct CompilationContext {
   /// Whether to skip stripping the module.
   bool skipModuleStrip{false};
 
-  /// Whether to enable P2P and DRT at runtime.
-  bool enableStaticAssignment{false};
+  /// Enables Peer to Peer Tensor optimization.
+  bool enableP2P{false};
+
+  /// Enables Device Resident Tensor optimization.
+  bool enableDRT{false};
 
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)

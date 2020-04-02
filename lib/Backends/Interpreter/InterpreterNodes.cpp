@@ -25,6 +25,8 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <chrono>
+#include <cmath>
+#include <math.h>
 
 using namespace glow;
 
@@ -761,19 +763,6 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
   llvm::ArrayRef<unsigned_t> pads = I->getPads();
   llvm::ArrayRef<unsigned_t> strides = I->getStrides();
   dim_t group = I->getGroup();
-
-  ShapeNHWC odim(outW.dims());
-  ShapeNHWC idim(inW.dims());
-  ShapeHW kdim(kernelSizes);
-  ShapeHW sdim(strides);
-
-  assert(idim.c % group == 0 && "Input channels must be divisible by group.");
-  assert(odim.c % group == 0 && "Output channels must be divisible by group.");
-  dim_t inCperG = idim.c / group;
-  dim_t outCperG = odim.c / group;
-
-  PaddingTLBR pdim(pads);
-
   auto &inTy = inW.getType();
   auto &outTy = outW.getType();
 
@@ -783,62 +772,158 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
   int32_t inOffset = inTy.getOffset();
   int32_t outOffset = outTy.getOffset();
 
-  // For each input in the batch:
-  for (dim_t n = 0; n < idim.n; n++) {
-    // For each group of input channels:
-    for (dim_t g = 0; g < group; g++) {
+  bool isConv3d = (inW.dims().size() == 5);
+  if (isConv3d) {
+    ShapeNTHWC odim(outW.dims());
+    ShapeNTHWC idim(inW.dims());
+    ShapeTHW kdim(kernelSizes);
+    ShapeTHW sdim(strides);
 
-      // For each output channel in the group:
-      for (dim_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
+    assert(idim.c % group == 0 && "Input channels must be divisible by group.");
+    assert(odim.c % group == 0 &&
+           "Output channels must be divisible by group.");
+    dim_t inCperG = idim.c / group;
+    dim_t outCperG = odim.c / group;
 
-        // get channelwise qparams params
-        int32_t filterOffset = offsetsW.at(d);
-        float filterScale = scalesW.at(d);
-        float matMulScale = inScale * filterScale;
-        // For each convolution 'jump' in the input tensor:
-        sdim_t x = -sdim_t(pdim.top);
-        for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
-          sdim_t y = -sdim_t(pdim.left);
-          for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+    PaddingNFTBLR pdim(pads);
 
-            // For each element in the convolution-filter:
-            AccumulatorTy sum = 0;
-            for (dim_t fx = 0; fx < kdim.height; fx++) {
-              for (dim_t fy = 0; fy < kdim.width; fy++) {
-                sdim_t ox = x + fx;
-                sdim_t oy = y + fy;
+    // For each input in the batch:
+    for (dim_t n = 0; n < idim.n; n++) {
+      // For each group of input channels:
+      for (dim_t g = 0; g < group; g++) {
 
-                // Ignore index access below zero (this is due to padding).
-                if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
-                    oy >= sdim_t(idim.w)) {
-                  continue;
+        // For each output channel in the group:
+        for (dim_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
+
+          // get channelwise qparams params
+          int32_t filterOffset = offsetsW.at(d);
+          float filterScale = scalesW.at(d);
+          float matMulScale = inScale * filterScale;
+          // For each convolution 'jump' in the input tensor:
+          sdim_t t = -sdim_t(pdim.near);
+          for (dim_t at = 0; at < odim.t; t += sdim.temporal_frames, at++) {
+            sdim_t x = -sdim_t(pdim.top);
+            for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+              sdim_t y = -sdim_t(pdim.left);
+              for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+
+                // For each element in the convolution-filter:
+                AccumulatorTy sum = 0;
+                for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
+                  for (dim_t fx = 0; fx < kdim.height; fx++) {
+                    for (dim_t fy = 0; fy < kdim.width; fy++) {
+                      sdim_t ot = t + ft;
+                      sdim_t ox = x + fx;
+                      sdim_t oy = y + fy;
+
+                      // Ignore index access below zero (this is due to
+                      // padding).
+                      if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
+                          ox >= ssize_t(idim.h) || oy >= sdim_t(idim.w)) {
+                        continue;
+                      }
+                      for (dim_t fd = 0; fd < inCperG; fd++) {
+
+                        AccumulatorTy F = filterW.at({d, ft, fx, fy, fd});
+                        AccumulatorTy I = inW.at({n, (dim_t)ot, (dim_t)ox,
+                                                  (dim_t)oy, g * inCperG + fd});
+                        // We represent the element multiplication with offset
+                        // as (value - offset).
+                        sum += (F - filterOffset) * (I - inOffset);
+                      }
+                    }
+                  }
                 }
-                for (dim_t fd = 0; fd < inCperG; fd++) {
 
-                  AccumulatorTy F = filterW.at({d, fx, fy, fd});
-                  AccumulatorTy I =
-                      inW.at({n, (dim_t)ox, (dim_t)oy, g * inCperG + fd});
-                  // We represent the element multiplication with offset as
-                  // (value - offset).
-                  sum += (F - filterOffset) * (I - inOffset);
+                // Add the channelwise quantized bias.
+                // NOTE: The bias of ChannelwiseQuantizedConvolution should be
+                // quantized such that each element is scaled to match the
+                // matMulScale (biasScale_i = scales_i * inScale).
+                sum += biasW.at({d});
+
+                // Scale the result back to the expected destination scale.
+                outW.at({n, at, ax, ay, d}) =
+                    quantization::clip<AccumulatorTy, int8_t>(std::round(
+                        float(sum) * (matMulScale / outScale) + outOffset));
+              } // W
+            }   // H
+          }     // T
+        }       // C
+      }         // G
+    }           // N
+  } else {
+
+    ShapeNHWC odim(outW.dims());
+    ShapeNHWC idim(inW.dims());
+    ShapeHW kdim(kernelSizes);
+    ShapeHW sdim(strides);
+
+    assert(idim.c % group == 0 && "Input channels must be divisible by group.");
+    assert(odim.c % group == 0 &&
+           "Output channels must be divisible by group.");
+    dim_t inCperG = idim.c / group;
+    dim_t outCperG = odim.c / group;
+
+    PaddingTLBR pdim(pads);
+
+    // For each input in the batch:
+    for (dim_t n = 0; n < idim.n; n++) {
+      // For each group of input channels:
+      for (dim_t g = 0; g < group; g++) {
+
+        // For each output channel in the group:
+        for (dim_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
+
+          // get channelwise qparams params
+          int32_t filterOffset = offsetsW.at(d);
+          float filterScale = scalesW.at(d);
+          float matMulScale = inScale * filterScale;
+          // For each convolution 'jump' in the input tensor:
+          sdim_t x = -sdim_t(pdim.top);
+          for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+            sdim_t y = -sdim_t(pdim.left);
+            for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+
+              // For each element in the convolution-filter:
+              AccumulatorTy sum = 0;
+              for (dim_t fx = 0; fx < kdim.height; fx++) {
+                for (dim_t fy = 0; fy < kdim.width; fy++) {
+                  sdim_t ox = x + fx;
+                  sdim_t oy = y + fy;
+
+                  // Ignore index access below zero (this is due to padding).
+                  if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                      oy >= sdim_t(idim.w)) {
+                    continue;
+                  }
+                  for (dim_t fd = 0; fd < inCperG; fd++) {
+
+                    AccumulatorTy F = filterW.at({d, fx, fy, fd});
+                    AccumulatorTy I =
+                        inW.at({n, (dim_t)ox, (dim_t)oy, g * inCperG + fd});
+                    // We represent the element multiplication with offset as
+                    // (value - offset).
+                    sum += (F - filterOffset) * (I - inOffset);
+                  }
                 }
               }
-            }
 
-            // Add the channelwise quantized bias.
-            // NOTE: The bias of ChannelwiseQuantizedConvolution should be
-            // quantized such that each element is scaled to match the
-            // matMulScale (biasScale_i = scales_i * inScale).
-            sum += biasW.at({d});
+              // Add the channelwise quantized bias.
+              // NOTE: The bias of ChannelwiseQuantizedConvolution should be
+              // quantized such that each element is scaled to match the
+              // matMulScale (biasScale_i = scales_i * inScale).
+              sum += biasW.at({d});
 
-            // Scale the result back to the expected destination scale.
-            outW.at({n, ax, ay, d}) = quantization::clip<AccumulatorTy, int8_t>(
-                std::round(float(sum) * (matMulScale / outScale) + outOffset));
-          } // W
-        }   // H
-      }     // C
-    }       // G
-  }         // N
+              // Scale the result back to the expected destination scale.
+              outW.at({n, ax, ay, d}) =
+                  quantization::clip<AccumulatorTy, int8_t>(std::round(
+                      float(sum) * (matMulScale / outScale) + outOffset));
+            } // W
+          }   // H
+        }     // C
+      }       // G
+    }         // N
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -4065,6 +4150,9 @@ static void fwdArgMax(Tensor *argmaxW, Tensor *inW, size_t axis) {
   dim_t a, b, c, d = 0;
 
   dim_t *dim[4];
+
+  assert((axis >= 0) && (axis <= 3) && "Axis values should be between 0 and 3");
+
   dim[(axis + 1) % 4] = &a;
   dim[(axis + 2) % 4] = &b;
   dim[(axis + 3) % 4] = &c;
@@ -4076,8 +4164,17 @@ static void fwdArgMax(Tensor *argmaxW, Tensor *inW, size_t axis) {
   for (a = 0; a < idim[(axis + 1) % 4]; a++) {
     for (b = 0; b < idim[(axis + 2) % 4]; b++) {
       for (c = 0; c < idim[(axis + 3) % 4]; c++) {
+        T max = std::numeric_limits<T>::min();
+        if (axis == 0) {
+          max = inH.at({0, *dim[1], *dim[2], *dim[3]});
+        } else if (axis == 1) {
+          max = inH.at({*dim[0], 0, *dim[2], *dim[3]});
+        } else if (axis == 2) {
+          max = inH.at({*dim[0], *dim[1], 0, *dim[3]});
+        } else {
+          max = inH.at({*dim[0], *dim[1], *dim[2], 0});
+        }
 
-        T max = inH.at({*dim[0], *dim[1], *dim[2], 0});
         dim_t maxi = 0;
 
         for (d = 0; d < idim[axis]; d++) {
@@ -4271,11 +4368,13 @@ void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
     return;                                                                    \
   }
   CONVERT(float, float16_t, ElemKind::FloatTy, ElemKind::Float16Ty)
+  CONVERT(float, bool, ElemKind::FloatTy, ElemKind::BoolTy)
   CONVERT(float, int32_t, ElemKind::FloatTy, ElemKind::Int32ITy)
   CONVERT(float, int64_t, ElemKind::FloatTy, ElemKind::Int64ITy)
   CONVERT(float16_t, float, ElemKind::Float16Ty, ElemKind::FloatTy)
   CONVERT(float16_t, int32_t, ElemKind::Float16Ty, ElemKind::Int32ITy)
   CONVERT(float16_t, int64_t, ElemKind::Float16Ty, ElemKind::Int64ITy)
+  CONVERT(bool, float, ElemKind::BoolTy, ElemKind::FloatTy)
   CONVERT(int32_t, float, ElemKind::Int32ITy, ElemKind::FloatTy)
   CONVERT(int32_t, float16_t, ElemKind::Int32ITy, ElemKind::Float16Ty)
   CONVERT(int32_t, int64_t, ElemKind::Int32ITy, ElemKind::Int64ITy)
@@ -4698,5 +4797,143 @@ void BoundInterpreterFunction::fwdNonMaxSuppressionInst(
   default:
     llvm_unreachable("Type is not supported.");
     break;
+  }
+}
+
+void BoundInterpreterFunction::fwdAudioSpectrogramInstFloatImpl(
+    glow::AudioSpectrogramInst const *I) {
+
+  auto spectrogram = I->getSpectrogram();
+  auto input = I->getInput();
+  auto window = I->getWindow();
+  int64_t windowSize = I->getWindowSize();
+  int64_t windowStride = I->getWindowStride();
+
+  auto spectrogramH = getTensor(spectrogram)->getHandle<float>();
+  auto inputH = getTensor(input)->getHandle<float>();
+  auto windowH = getTensor(window)->getHandle<float>();
+
+  // Compute window count.
+  int64_t inputLength = input->size();
+  int64_t windowCount =
+      std::floor((inputLength - windowSize) / windowStride) + 1;
+
+  // Compute FFT length (next power of 2) and spectrogram length.
+  dim_t fftLen = 1 << (dim_t)std::ceil(std::log2((double)windowSize));
+  dim_t specLen = fftLen / 2 + 1;
+
+  // Allocate temporary buffers.
+  auto winOut = std::make_unique<float[]>(windowSize);
+  auto fftRealOut = std::make_unique<float[]>(specLen);
+  auto fftImagOut = std::make_unique<float[]>(specLen);
+
+  // Compute the spectrogram.
+  for (dim_t winIdx = 0; winIdx < windowCount; winIdx++) {
+
+    // Windowing.
+    for (dim_t n = 0; n < windowSize; n++) {
+      winOut[n] = inputH.raw(winIdx * windowStride + n) * windowH.raw(n);
+    }
+
+    // Compute spectrum (perform FFT).
+    for (int k = 0; k < specLen; k++) {
+      fftRealOut[k] = 0;
+      fftImagOut[k] = 0;
+      for (int n = 0; n < windowSize; n++) {
+        fftRealOut[k] +=
+            winOut[n] * cos(2.0 * M_PI * (double)(n * k) / (double)(fftLen));
+        fftImagOut[k] -=
+            winOut[n] * sin(2.0 * M_PI * (double)(n * k) / (double)(fftLen));
+      }
+    }
+
+    // Compute spectrum magnitude/power.
+    if (I->getMagnitudeSquared()) {
+      for (dim_t k = 0; k < specLen; k++) {
+        spectrogramH.at({winIdx, k}) =
+            fftRealOut[k] * fftRealOut[k] + fftImagOut[k] * fftImagOut[k];
+      }
+    } else {
+      for (dim_t k = 0; k < specLen; k++) {
+        spectrogramH.at({winIdx, k}) =
+            sqrt(fftRealOut[k] * fftRealOut[k] + fftImagOut[k] * fftImagOut[k]);
+      }
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdAudioSpectrogramInst(
+    glow::AudioSpectrogramInst const *I) {
+  auto inputTy = I->getInput()->getElementType();
+  auto spectrogramTy = I->getSpectrogram()->getElementType();
+  if ((inputTy == ElemKind::FloatTy) && (spectrogramTy == ElemKind::FloatTy)) {
+    fwdAudioSpectrogramInstFloatImpl(I);
+  } else {
+    llvm_unreachable("Type is not supported.");
+  }
+}
+
+void BoundInterpreterFunction::fwdMFCCInstFloatImpl(glow::MFCCInst const *I) {
+
+  auto coefficients = I->getCoefficients();
+  auto spectrogram = I->getSpectrogram();
+  auto melWeights = I->getMelWeights();
+  auto melRanges = I->getMelRanges();
+  auto dctMat = I->getDctMat();
+  int64_t filterBankCount = I->getFilterBankCount();
+  int64_t numCoefficients = I->getNumCoefficients();
+
+  auto coefficientsH = getTensor(coefficients)->getHandle<float>();
+  auto spectrogramH = getTensor(spectrogram)->getHandle<float>();
+  auto melWeightsH = getTensor(melWeights)->getHandle<float>();
+  auto melRangesH = getTensor(melRanges)->getHandle<int32_t>();
+  auto dctMatH = getTensor(dctMat)->getHandle<float>();
+
+  // Perform MFCC for all the windows.
+  auto winNum = spectrogram->dims()[0];
+  auto melBuff = std::make_unique<float[]>(filterBankCount);
+  for (dim_t winIdx = 0; winIdx < winNum; winIdx++) {
+
+    // Apply Mel filter bank mapping. We use sqrt for the spectrogram since we
+    // assume the spectrogram is a power value and not a magnitude.
+    dim_t melBinCoeffIdx = 0;
+    for (dim_t melIdx = 0; melIdx < filterBankCount; melIdx++) {
+      int32_t freqIdxStart = melRangesH.raw(2 * melIdx + 0);
+      int32_t freqIdxStop = melRangesH.raw(2 * melIdx + 1);
+      float melPwr = 0.0f;
+      for (dim_t freqIdx = freqIdxStart; freqIdx <= freqIdxStop; freqIdx++) {
+        melPwr += std::sqrt(spectrogramH.at({winIdx, freqIdx})) *
+                  melWeightsH.raw(melBinCoeffIdx++);
+      }
+      melBuff[melIdx] = melPwr;
+    }
+
+    // Take logarithm in-place (avoid log(0)).
+    for (dim_t melIdx = 0; melIdx < filterBankCount; melIdx++) {
+      float melPwr = melBuff[melIdx];
+      melBuff[melIdx] = (melPwr == 0.0)
+                            ? logf(std::numeric_limits<float>::min())
+                            : logf(melPwr);
+    }
+
+    // Compute DCT transform.
+    for (dim_t k = 0; k < numCoefficients; k++) {
+      float dctOut = 0.0f;
+      for (dim_t n = 0; n < filterBankCount; n++) {
+        dctOut += dctMatH.at({k, n}) * melBuff[n];
+      }
+      coefficientsH.at({winIdx, k}) = dctOut;
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdMFCCInst(glow::MFCCInst const *I) {
+  auto spectrogramTy = I->getSpectrogram()->getElementType();
+  auto coefficientsTy = I->getCoefficients()->getElementType();
+  if ((spectrogramTy == ElemKind::FloatTy) &&
+      (coefficientsTy == ElemKind::FloatTy)) {
+    fwdMFCCInstFloatImpl(I);
+  } else {
+    llvm_unreachable("Type is not supported.");
   }
 }

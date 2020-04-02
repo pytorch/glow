@@ -324,11 +324,12 @@ image-classifier 0_1009.png ... -image-mode=0to1 -model=lenet_mnist -model-input
 model-compiler -backend=CPU -model=lenet_mnist -emit-bundle=build -model-input=data,float,[1,1,28,28] -load-profile=profile.yml
 ```
 
-It is important to note that currently the quantization of a model is performed
+It is important to note that by default the quantization of a model is performed
 only for the intermediate nodes of the graph, without affecting the data types of
 the model inputs and outputs. In the examples above, the data type for the model input
 (image tensor) and the model output remains **float** even though the intermediate
-operators and tensors use **int8** data type.
+operators and tensors use **int8** data type. If you want to convert also the model
+input and output placeholders you can use the option `convert-placeholders`.
 
 When compiling a quantized bundle you can choose to disable the quantization of some
 of the graph operators which might be more susceptible to quantization by using

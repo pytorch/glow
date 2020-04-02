@@ -3528,6 +3528,86 @@ TEST_F(OnnxImporterTest, importFRWQSLWS) {
   EXPECT_EQ(lengths->getType()->getElementType(), ElemKind::Int32ITy);
 }
 
+/// Test loading AudioSpectrogram from an ONNX model. The ONNX model already
+/// computes the error compared to a TensorFlow reference implementation.
+static void importAudioSpectrogram(std::string fileName) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  {
+    ONNXModelLoader onnxLD(fileName, {}, {}, *F);
+    bindings.allocate(mod.getPlaceholders());
+  }
+
+  // Compile and run.
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  // Verify error.
+  Placeholder *errPH = mod.getPlaceholderByName("spectrogram_err");
+  EXPECT_TRUE(errPH);
+  auto errH = bindings.get(errPH)->getHandle();
+  auto fftLen = (errPH->getType()->dims()[1] - 1) * 2;
+  for (size_t idx = 0; idx < errPH->getType()->size(); idx++) {
+    float errVal = std::abs(errH.raw(idx)) / (float)(fftLen);
+    EXPECT_TRUE(errVal < 1e-5);
+  }
+}
+
+TEST_F(OnnxImporterTest, importAudioSpectrogramOneWindow) {
+  importAudioSpectrogram(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/audioSpectrogramOneWindow.onnxtxt");
+}
+
+TEST_F(OnnxImporterTest, importAudioSpectrogramTwoWindow) {
+  importAudioSpectrogram(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/audioSpectrogramTwoWindow.onnxtxt");
+}
+
+TEST_F(OnnxImporterTest, importAudioSpectrogramNonSquared) {
+  importAudioSpectrogram(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/audioSpectrogramNonSquared.onnxtxt");
+}
+
+/// Test loading MFCC from an ONNX model. The ONNX model already computes
+/// the error compared to a TensorFlow reference implementation.
+static void importMFCC(std::string fileName) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  {
+    ONNXModelLoader onnxLD(fileName, {}, {}, *F);
+    bindings.allocate(mod.getPlaceholders());
+  }
+
+  // Compile and run.
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  // Verify error.
+  Placeholder *errPH = mod.getPlaceholderByName("coefficients_err");
+  EXPECT_TRUE(errPH);
+  auto errH = bindings.get(errPH)->getHandle();
+  for (size_t idx = 0; idx < errPH->getType()->size(); idx++) {
+    EXPECT_TRUE(std::abs(errH.raw(idx)) < 1e-5);
+  }
+}
+
+TEST_F(OnnxImporterTest, importMFCCOneWindow) {
+  importMFCC(GLOW_DATA_PATH "tests/models/onnxModels/mfccOneWindow.onnxtxt");
+}
+
+TEST_F(OnnxImporterTest, importMFCCTwoWindow) {
+  importMFCC(GLOW_DATA_PATH "tests/models/onnxModels/mfccTwoWindow.onnxtxt");
+}
+
 /// Test loading a custom ONNX Glow quantized TopK.
 TEST_F(OnnxImporterTest, CustomGlowTopKQuantized) {
   ExecutionEngine EE;

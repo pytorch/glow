@@ -65,8 +65,8 @@ public:
                               const std::string &name = "");
 
   /// Setup context pool for new network.
-  void createPool(const DAGNode *root, unsigned poolSize,
-                  bool assignStatic = false) override;
+  void createPool(const DAGNode *root, unsigned poolSize, bool enableP2P,
+                  bool enableDRT) override;
 
   /// Free the context pool for specified network.
   void freePool(const DAGNode *root) override;

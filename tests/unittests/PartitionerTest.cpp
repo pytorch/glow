@@ -646,6 +646,7 @@ static void testSimpleSparseNNPartitioning(Module &mod,
   cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
   cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards = 3;
   cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard = 200;
+  cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats = true;
   auto dagList = partitioner.partition(cctx);
   ASSERT_TRUE((bool)dagList);
   EXPECT_EQ(mod.getFunctions().size(), 4);

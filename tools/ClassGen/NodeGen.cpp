@@ -1037,6 +1037,45 @@ int main(int argc, char **argv) {
           "and Rescale nodes.");
 
   //===--------------------------------------------------------------------===//
+  //                Pre Processing
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("AudioSpectrogram")
+      .addInput("Input")
+      .addInput("Window")
+      .addInput("TwiddleFactors")
+      .addInput("BitReverseIndices")
+      .addInput("ComplexToRealWeights")
+      .addMember(MemberType::Unsigned, "WindowSize")
+      .addMember(MemberType::Unsigned, "WindowStride")
+      .addMember(MemberType::Boolean, "MagnitudeSquared")
+      .addResultFromCtorArg("Spectrogram")
+      .setDocstring("Computes the spectrogram of a mono audio signal using "
+                    "given window size and stride. The FFT length used to "
+                    "compute the spectrogram is the next power of 2 (for a "
+                    "window size of 640 the FFT length is 1024). The length "
+                    "of each spectrogram window is FFT_length / 2 + 1. "
+                    "This node is inspired from TensorFlow.");
+
+  BB.newNode("MFCC")
+      .addInput("Spectrogram")
+      .addInput("MelWeights")
+      .addInput("MelRanges")
+      .addInput("DctMat")
+      .addMember(MemberType::Float, "SampleRate")
+      .addMember(MemberType::Float, "LowerFrequency")
+      .addMember(MemberType::Float, "UpperFrequency")
+      .addMember(MemberType::Unsigned, "FilterBankCount")
+      .addMember(MemberType::Unsigned, "NumCoefficients")
+      .addResultFromCtorArg("Coefficients")
+      .setDocstring("Computes the MFCC (Mel Frequency Cepstral Coefficient) "
+                    "for the given spectrogram. This node is mostly used as "
+                    "feature extractor for voice/speech audio data in "
+                    "voice command or keyword spotting applications. The input "
+                    "is assumed to be a power spectrogram and not a magnitude."
+                    "This node is inspired from TensorFlow.");
+
+  //===--------------------------------------------------------------------===//
   //                Post Processing
   //===--------------------------------------------------------------------===//
 

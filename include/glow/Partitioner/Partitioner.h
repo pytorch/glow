@@ -131,6 +131,7 @@ class Partitioner final : public PartitionerBase {
     size_t numElementsPerRowUpperBound;
     size_t numIndices;
     unsigned int deviceId;
+    NodeValue slsClipResult;
   };
 
   struct SLSDeviceInfo {
@@ -143,6 +144,13 @@ class Partitioner final : public PartitionerBase {
   /// kind of SLS table and appends their metadata to the vector.
   template <typename SLSType>
   void appendSLSTable(Node &node, std::vector<SLSTableInfo> &slsTables);
+
+  /// Helper function for SparseNN partitioning. Inserts concats into SLS
+  /// partition and corresponding slices into non-SLS partitions
+  void sparseNNInsertSplitConcat(Function *F,
+                                 std::vector<SLSDeviceInfo> slsDevices,
+                                 std::vector<SLSTableInfo> slsTables,
+                                 PartitionConfig &partitionConfig);
 
   /// Returns info for the default device of the backend. If multiple devices,
   /// returns the first one.

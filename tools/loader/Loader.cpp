@@ -203,6 +203,12 @@ llvm::cl::opt<bool>
                   llvm::cl::desc("Run all floating-point computation in fp16."),
                   llvm::cl::init(false), llvm::cl::cat(loaderCat));
 
+llvm::cl::opt<bool> convertPlaceholdersOpt(
+    "convert-placeholders",
+    llvm::cl::desc("Convert model placeholders by merging ConvertTo, Quantize "
+                   "and Dequantize nodes into the model inputs and outputs."),
+    llvm::cl::init(false), llvm::cl::cat(loaderCat));
+
 /// Emit a bundle into the specified output directory.
 llvm::cl::opt<std::string>
     emitBundle("emit-bundle",
@@ -539,6 +545,16 @@ CompilationContext Loader::getCompilationContext(QuantizationMode mode) {
   } else {
     LOG(FATAL) << "Quantization mode not supported";
   }
+
+  // When converting the model placeholders, if the placeholders are already
+  // allocated, we should also convert the backing tensors. Since this procedure
+  // is not yet in place, we only convert when emitting a bundle.
+  if (convertPlaceholdersOpt && !emittingBundle()) {
+    llvm::errs() << "The flag 'convert-placeholders' can only be used when "
+                    "emitting a bundle!\n";
+    std::exit(1);
+  }
+  cctx.optimizationOpts.foldElemKindConversionIntoIO = convertPlaceholdersOpt;
 
   return cctx;
 }

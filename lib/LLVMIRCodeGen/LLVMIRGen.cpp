@@ -2873,6 +2873,66 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::AudioSpectrogramInstKind: {
+    auto *ASI = llvm::cast<AudioSpectrogramInst>(I);
+    auto spectrogram = ASI->getSpectrogram();
+    auto input = ASI->getInput();
+    auto window = ASI->getWindow();
+    auto twiddleFactors = ASI->getTwiddleFactors();
+    auto bitReverseIndices = ASI->getBitReverseIndices();
+    auto complexToRealWeights = ASI->getComplexToRealWeights();
+    int64_t windowSize = ASI->getWindowSize();
+    int64_t windowStride = ASI->getWindowStride();
+    bool magnitudeSquared = ASI->getMagnitudeSquared();
+
+    auto *spectrogramPtr = emitValueAddress(builder, spectrogram);
+    auto *inputPtr = emitValueAddress(builder, input);
+    auto *windowPtr = emitValueAddress(builder, window);
+    auto *twiddleFactorsPtr = emitValueAddress(builder, twiddleFactors);
+    auto *bitReverseIndicesPtr = emitValueAddress(builder, bitReverseIndices);
+    auto *complexToRealWeightsPtr =
+        emitValueAddress(builder, complexToRealWeights);
+    auto *spectrogramDimVal = emitValueDims(builder, spectrogram);
+    auto *inputLengthVal = emitConstDimT(builder, input->size());
+    auto *windowSizeVal = emitConstDimT(builder, windowSize);
+    auto *windowStrideVal = emitConstDimT(builder, windowStride);
+    auto *magnitudeSquaredVal = emitConstI1(builder, magnitudeSquared);
+
+    auto *F = getFunction("audio_spectrogram", spectrogram->getElementType());
+    createCall(builder, F,
+               {spectrogramPtr, inputPtr, windowPtr, twiddleFactorsPtr,
+                bitReverseIndicesPtr, complexToRealWeightsPtr,
+                spectrogramDimVal, inputLengthVal, windowSizeVal,
+                windowStrideVal, magnitudeSquaredVal});
+    break;
+  }
+
+  case Kinded::Kind::MFCCInstKind: {
+    auto *MFCCI = llvm::cast<MFCCInst>(I);
+    auto coefficients = MFCCI->getCoefficients();
+    auto spectrogram = MFCCI->getSpectrogram();
+    auto melWeights = MFCCI->getMelWeights();
+    auto melRanges = MFCCI->getMelRanges();
+    auto dctMat = MFCCI->getDctMat();
+    int64_t filterBankCount = MFCCI->getFilterBankCount();
+
+    auto *coefficientsPtr = emitValueAddress(builder, coefficients);
+    auto *spectrogramPtr = emitValueAddress(builder, spectrogram);
+    auto *melWeightsPtr = emitValueAddress(builder, melWeights);
+    auto *melRangesPtr = emitValueAddress(builder, melRanges);
+    auto *dctMatPtr = emitValueAddress(builder, dctMat);
+    auto *coefficientsDimVal = emitValueDims(builder, coefficients);
+    auto *spectrogramDimVal = emitValueDims(builder, spectrogram);
+    auto *filterBankCountVal = emitConstDimT(builder, filterBankCount);
+
+    auto *F = getFunction("mfcc", coefficients->getElementType());
+    createCall(builder, F,
+               {coefficientsPtr, spectrogramPtr, melWeightsPtr, melRangesPtr,
+                dctMatPtr, coefficientsDimVal, spectrogramDimVal,
+                filterBankCountVal});
+    break;
+  }
+
   case Kinded::Kind::ConvertToInstKind: {
     auto *CTI = llvm::cast<ConvertToInst>(I);
     auto *input = CTI->getInput();

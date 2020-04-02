@@ -43,6 +43,7 @@ bool GlowForceSLSAccumFP16 = false;
 bool GlowClipFP16 = false;
 bool GlowClipFP16SkipInputs = true;
 bool GlowUseSparseNNPartitioningScheme = false;
+bool GlowSparseNNPartitioningAddSLSConcats = false;
 size_t GlowMaxActiveRequests = 48;
 size_t GlowMaxQueueSize = 100;
 size_t GlowExecutorThreads = 10;
@@ -92,6 +93,12 @@ static llvm::cl::opt<bool, true> GlowUseSparseNNPartitioningSchemeOpt(
     "glow_use_sparsenn_partitioning_scheme",
     llvm::cl::desc("Whether to use SparseNNPartitioningScheme"),
     llvm::cl::location(GlowUseSparseNNPartitioningScheme));
+
+static llvm::cl::opt<bool, true> GlowSparseNNPartitioningAddSLSConcatsOpt(
+    "glow_sparsenn_partitioning_add_sls_concats",
+    llvm::cl::desc("Add extra concats inside of SLS partitions for more "
+                   "efficient inter-partitition transfers"),
+    llvm::cl::location(GlowSparseNNPartitioningAddSLSConcats));
 
 std::unique_ptr<runtime::HostManager>
 HostManagerBackend::createHostManager(llvm::StringRef backendName) {
@@ -195,6 +202,8 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
   }
   if (GlowUseSparseNNPartitioningScheme) {
     cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
+    cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
+        GlowSparseNNPartitioningAddSLSConcats;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
         GlowSparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =

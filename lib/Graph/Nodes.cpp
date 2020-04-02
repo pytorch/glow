@@ -149,8 +149,9 @@ static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
     // Quantization type check.
     if (src.getElementType() == ElemKind::Int8QTy) {
       isValid &=
-          expectCompareTrue("Bias type should be Int8 or Int32 for Conv",
-                            bias.getElementType() == ElemKind::Int8QTy ||
+          expectCompareTrue("Bias type should be float, Int8 or Int32 for Conv",
+                            bias.getElementType() == ElemKind::FloatTy ||
+                                bias.getElementType() == ElemKind::Int8QTy ||
                                 bias.getElementType() == ElemKind::Int32QTy,
                             true, parent);
     }
@@ -206,8 +207,9 @@ static bool verifyConvolution3D(NodeValue src, NodeValue dest, NodeValue filter,
   // Quantization type check.
   if (src.getElementType() == ElemKind::Int8QTy) {
     isValid &=
-        expectCompareTrue("Bias type should be Int8 or Int32 for Conv3D",
-                          bias.getElementType() == ElemKind::Int8QTy ||
+        expectCompareTrue("Bias type should be Float, Int8 or Int32 for Conv3D",
+                          bias.getElementType() == ElemKind::FloatTy ||
+                              bias.getElementType() == ElemKind::Int8QTy ||
                               bias.getElementType() == ElemKind::Int32QTy,
                           true, parent);
   }
@@ -554,10 +556,18 @@ bool ConvolutionNode::verify() const {
 }
 
 bool ChannelwiseQuantizedConvolutionNode::verify() const {
-  bool isValid =
-      verifyConvolution<ShapeNHWC>(getInput(), getResult(), getFilter(),
-                                   getBias(), Kernels_, Strides_, Pads_, Group_,
-                                   /* dilation */ 1, /* checkBiasType */ false);
+  auto input_dims = getInput().getType()->dims();
+  bool isValid = false;
+  bool isConv3D = (input_dims.size() == 5);
+  if (isConv3D) {
+    isValid = verifyConvolution3D(getInput(), getResult(), getFilter(),
+                                  getBias(), Kernels_, Strides_, Pads_, Group_);
+  } else {
+    isValid = verifyConvolution<ShapeNHWC>(
+        getInput(), getResult(), getFilter(), getBias(), Kernels_, Strides_,
+        Pads_, Group_,
+        /* dilation */ 1, /* checkBiasType */ false);
+  }
 
   isValid &=
       checkType(getBias(), {ElemKind::Int32QTy, ElemKind::FloatTy}, this);
@@ -576,10 +586,12 @@ bool ChannelwiseQuantizedConvolutionNode::verify() const {
   // check qparam sizes
   isValid &= expectCompareTrue(
       "There must be one filter offset qparam per output channel",
-      getOffsets().dims()[0], dim_t(getResult().dims()[3]), this);
+      getOffsets().dims()[0], dim_t(getResult().dims()[input_dims.size() - 1]),
+      this);
   isValid &= expectCompareTrue(
       "There must be one filter scale qparam per output channel",
-      getScales().dims()[0], dim_t(getResult().dims()[3]), this);
+      getScales().dims()[0], dim_t(getResult().dims()[input_dims.size() - 1]),
+      this);
   return isValid;
 }
 
@@ -1822,6 +1834,76 @@ bool NonMaxSuppressionNode::verify() const {
 
   isValid &= checkType(boxes, scores.getElementType(), this);
 
+  return isValid;
+}
+
+bool AudioSpectrogramNode::verify() const {
+  NodeValue input = getInput();
+  NodeValue spectrogram = getSpectrogram();
+  auto inputLength = input.getType()->size();
+  auto windowSize = getWindowSize();
+  auto windowStride = getWindowStride();
+  auto windowCount = std::floor((inputLength - windowSize) / windowStride) + 1;
+  auto fftLen = 1 << (int)std::ceil(std::log2((double)windowSize));
+
+  bool isValid = true;
+  isValid &= expectCompareTrue("Input audio is too short for given window size",
+                               dim_t(windowCount), dim_t(0), this,
+                               CompareOperatorGreaterThan<dim_t>());
+  isValid &= expectCompareTrue("Output spectrogram must be a 2D tensor",
+                               spectrogram.dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue("Output spectrogram size is invalid",
+                               spectrogram.dims()[0], dim_t(windowCount), this,
+                               CompareOperatorEqual<dim_t>());
+  isValid &= expectCompareTrue("Output spectrogram size is invalid",
+                               spectrogram.dims()[1], dim_t(fftLen / 2 + 1),
+                               this, CompareOperatorEqual<dim_t>());
+  return isValid;
+}
+
+bool MFCCNode::verify() const {
+  NodeValue spectrogram = getSpectrogram();
+  NodeValue coefficients = getCoefficients();
+  float sampleRate = getSampleRate();
+  float lowerFrequency = getLowerFrequency();
+  float upperFrequency = getUpperFrequency();
+  auto filterBankCount = getFilterBankCount();
+  auto numCoefficients = getNumCoefficients();
+  auto fftLen = (spectrogram.dims()[1] - 1) * 2;
+  int exp;
+
+  bool isValid = true;
+  isValid &= expectCompareTrue("Input spectrogram must be a 2D tensor",
+                               spectrogram.dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue(
+      "Input spectrogram size is invalid. Should be of the form 2^N/2+1.",
+      std::abs(std::frexp((float)(fftLen), &exp)), float(0.5), this,
+      CompareOperatorEqual<float>());
+  isValid &= expectCompareTrue("Output coefficients must be a 2D tensor",
+                               coefficients.dims().size(), size_t(2), this);
+  isValid &= expectCompareTrue("Output coefficients size is invalid",
+                               coefficients.dims()[1], dim_t(numCoefficients),
+                               this, CompareOperatorEqual<dim_t>());
+  isValid &= expectCompareTrue(
+      "Number of windows should be same for both input and output",
+      spectrogram.dims()[0], coefficients.dims()[0], this,
+      CompareOperatorEqual<dim_t>());
+  isValid &= expectCompareTrue("Lower frequency should be greater than 0",
+                               lowerFrequency, float(0.0), this,
+                               CompareOperatorGreaterThan<float>());
+  isValid &= expectCompareTrue("Upper frequency should be greater than 0",
+                               upperFrequency, float(0.0), this,
+                               CompareOperatorGreaterThan<float>());
+  isValid &= expectCompareTrue(
+      "Upper frequency must be greater than lower frequency", upperFrequency,
+      lowerFrequency, this, CompareOperatorGreaterThan<float>());
+  isValid &= expectCompareTrue(
+      "Upper frequency must be lower than half the sample rate", sampleRate,
+      float(2.0 * upperFrequency), this, CompareOperatorGreaterThan<float>());
+  isValid &= expectCompareTrue(
+      "Number of coefficients should be smaller than the filter bank count",
+      dim_t(filterBankCount), dim_t(numCoefficients), this,
+      CompareOperatorGreaterThan<dim_t>());
   return isValid;
 }
 
