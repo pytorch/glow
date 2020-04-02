@@ -3495,12 +3495,11 @@ ONNXModelLoader::tryLoadGlowCustomOp(llvm::StringRef typeName,
   return nullptr;
 }
 
-/// Load Node options for \p loadedNode from \p dict and set in \p nodeOpts.
+/// Load Node options for \p loadedNode from \p dict and set in \p nodeInfo.
 /// These are specified in the format "NodeOpt_BACKENDNAME_OPTIONNAME".
-static Error
-loadPerNodeOptions(const Node *loadedNode,
-                   llvm::StringMap<std::vector<std::string>> &nodeOpts,
-                   ArgumentDictionaryTy &dict) {
+static Error loadPerNodeOptions(const Node *loadedNode,
+                                BackendSpecificNodeInfo &nodeInfo,
+                                ArgumentDictionaryTy &dict) {
   // Look through all attributes in the dict for ones that have NodeOpt_ prefix.
   for (const auto &attrPair : dict) {
     // Split across the first '_' and check if it has the "NodeOpt" prefix.
@@ -3514,13 +3513,14 @@ loadPerNodeOptions(const Node *loadedNode,
       continue;
     }
 
-    // Must have a NodeOpt, so check it has strings and load them into nodeOpts.
+    // Must have a NodeOpt, so check it has strings and load them into nodeInfo.
     const ONNX_NAMESPACE::AttributeProto *attr = attrPair.second;
     RETURN_ERR_IF_NOT(attr->strings_size() > 0,
                       strFormat("%s in %s has no strings",
                                 attrPair.first.c_str(),
                                 loadedNode->getName().data()));
-    std::vector<std::string> &attrVals = nodeOpts[splitPair.second];
+    std::vector<std::string> &attrVals =
+        nodeInfo[loadedNode->getParent()][loadedNode][splitPair.second];
     for (const std::string &s : attr->strings()) {
       attrVals.push_back(s);
     }
@@ -3540,9 +3540,7 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
       if (!perNodeOpts_) {
         return Error::success();
       }
-      return loadPerNodeOptions(
-          loadedNode, (*perNodeOpts_)[loadedNode->getParent()][loadedNode],
-          dict);
+      return loadPerNodeOptions(loadedNode, *perNodeOpts_, dict);
     }
 
     // Identity is the only official ONNX op used with useGlowCustomOps. Let it
