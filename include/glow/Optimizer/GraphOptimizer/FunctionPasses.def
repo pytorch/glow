@@ -53,6 +53,7 @@ FUN_PASS(FoldSlicesIntoConstants)
 FUN_PASS(EliminateConcatSlice)
 FUN_PASS(RaiseClipsAboveShapeNodes)
 FUN_PASS(OptimizeQuantizeClip)
+FUN_PASS(OptimizeOutIntermediateConversions)
 
 // NOTE: This pass must be last; it's used to count the total number of passes.
 FUN_PASS(EmptyPass)

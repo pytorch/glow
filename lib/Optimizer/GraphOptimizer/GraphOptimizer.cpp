@@ -3071,6 +3071,33 @@ bool OptimizeConversions::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Optimize Quantize(ConvertTo(Node)) -> Quantize(Node), where Quantize is
+/// int8. This may have numerical differences but since Int8 has a small range
+/// it's likely fine. This is opt in by a backend.
+bool OptimizeOutIntermediateConversions::run(Function *F,
+                                             const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    QuantizeNode *QN = llvm::dyn_cast<QuantizeNode>(&node);
+    if (!QN ||
+        QN->getResult().getType()->getElementType() != ElemKind::Int8QTy) {
+      continue;
+    }
+
+    ConvertToNode *CN = llvm::dyn_cast<ConvertToNode>(QN->getInput());
+    if (!CN) {
+      continue;
+    }
+
+    QN->setNthInput(QuantizeNode::InputIdx, CN->getInput());
+    changed = true;
+  }
+
+  return changed;
+}
+
 /// \returns a cloned version of node \p N, but with each of the cloned node's
 /// output types set to the corresponding type in \p types. The new node is
 /// added to Function \p F.

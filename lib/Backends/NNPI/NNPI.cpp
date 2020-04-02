@@ -1049,6 +1049,10 @@ FunctionPassPipeline NNPIBackend::getOptimizationPipeline() const {
   // optimizations that push Clips down to try to eliminate them.
   pipeline.pushBack(FunctionPassID::RaiseClipsAboveShapeNodes);
 
+  // Optimize away intermediate conversions, e.g. Quantize(ConvertTo(Node)) ->
+  // Quantize(Node).
+  pipeline.pushBack(FunctionPassID::OptimizeOutIntermediateConversions);
+
   // Now that we've raised clips up try to optimize quantize-clip combos again.
   pipeline.pushBack(FunctionPassID::OptimizeQuantizeClip);
 
