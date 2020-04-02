@@ -2935,44 +2935,86 @@ bool OptimizeClips::run(Function *F, const CompilationContext &cctx) {
   return clipsEliminated;
 }
 
-/// For Clip(Dequantize), we can merge the Clip range and the Quantized range
-/// into the DequantizeNode's input, and remove the Clip.
-bool OptimizeDequantizeClip::run(Function *F, const CompilationContext &cctx) {
+/// \returns whether \p N used used by any Nodes with side effects.
+static bool isUsedByNodeWithSideEffects(Node *N) {
+  for (const auto &user : N->getUsers()) {
+    if (user.getUser()->hasSideEffects()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// When quantized operators and Clips are used together, we can often merge the
+/// Clip range and the Quantized range and remove the Clip.
+bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
   bool changed = false;
-  for (Node &node : F->getNodes()) {
-    ClipNode *clip = dyn_cast<ClipNode>(&node);
-    if (!clip) {
-      continue;
-    }
 
-    DequantizeNode *DQN = dyn_cast<DequantizeNode>(clip->getInput());
-    if (!DQN) {
-      continue;
-    }
-
-    // Cannot perform this optimization if there are multiple users of DQN or
-    // DQN's input, as otherwise they'd get incorrect numerics.
-    NodeValue qResult = DQN->getInput();
-    if (DQN->getNumUsers() != 1 || qResult.getNode()->getNumUsers() != 1) {
-      continue;
-    }
-
+  // Change a quantized result type qResult to account for the range from clip.
+  auto updateQuantizeNodeType = [](Function *F, NodeValue qResult,
+                                   ClipNode *clip) {
     const auto qMinMax = qResult.getType()->getQuantizedValueRange();
     const float newMin = std::max(clip->getMin(), qMinMax.first);
     const float newMax = std::min(clip->getMax(), qMinMax.second);
 
-    // Replace the old quantized type with the new type with different min/max.
+    // Replace the old quantized type with the new type with different
+    // min/max.
     const TypeRef oldTy = qResult.getType();
     const auto qParams =
         quantization::chooseQuantizationParams({newMin, newMax});
     const TypeRef newTy = F->getParent()->uniqueType(
         oldTy->getElementType(), oldTy->dims(), qParams.scale, qParams.offset);
     qResult.getNode()->setType(qResult.getResNo(), newTy);
+  };
 
-    // Now we can eliminate the skip since the node prior to DQN has included
-    // the Clip's range in its quantization parameters.
-    clip->getResult().replaceAllUsesOfWith(DQN->getResult());
-    changed = true;
+  for (Node &node : F->getNodes()) {
+    // Clip(Dequantize(Node)) -> Dequantize(Node)
+    if (ClipNode *clip = dyn_cast<ClipNode>(&node)) {
+      DequantizeNode *DQN = dyn_cast<DequantizeNode>(clip->getInput());
+      if (!DQN) {
+        continue;
+      }
+
+      // Cannot perform this optimization if there are multiple users of DQN or
+      // DQN's input, as otherwise they'd get incorrect numerics.
+      NodeValue qResult = DQN->getInput();
+      if (DQN->getNumUsers() != 1 || qResult.getNode()->getNumUsers() != 1) {
+        continue;
+      }
+
+      updateQuantizeNodeType(F, qResult, clip);
+
+      // Now we can eliminate the skip since the node prior to DQN has included
+      // the Clip's range in its quantization parameters.
+      clip->getResult().replaceAllUsesOfWith(DQN->getResult());
+      changed = true;
+      continue;
+    }
+
+    // Quantize(Clip(Node)) -> Quantize(Node)
+    if (QuantizeNode *QN = dyn_cast<QuantizeNode>(&node)) {
+      ClipNode *clip = dyn_cast<ClipNode>(QN->getInput());
+      if (!clip) {
+        continue;
+      }
+
+      // Cannot perform this optimization if there are multiple users of clip.
+      if (clip->getNumUsers() != 1) {
+        continue;
+      }
+
+      // Cannot set the type of quantized nodes if they're used by a Node with
+      // side effects, as they may be expecting a specific type.
+      if (isUsedByNodeWithSideEffects(QN)) {
+        continue;
+      }
+
+      updateQuantizeNodeType(F, QN->getResult(), clip);
+
+      clip->getResult().replaceAllUsesOfWith(clip->getInput());
+      changed = true;
+      continue;
+    }
   }
 
   return changed;
