@@ -130,6 +130,13 @@ bool NNPIBackend::acceptForExecution(const NodeInfo &NI) const {
 
 bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
+  case Kinded::Kind::SigmoidNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+                ElemKind::Int32ITy, ElemKind::Int64ITy}) ||
+           (NI.getInElemTy(SigmoidNode::InputIdx) == ElemKind::Int8QTy &&
+            NI.getOutElemTy(SigmoidNode::ResultIdx) == ElemKind::Float16Ty);
+
   // General math fp32/fp16/i8.
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::SubNodeKind:
@@ -148,7 +155,6 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::BatchedAddNodeKind:
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::LogNodeKind:
-  case Kinded::Kind::SigmoidNodeKind:
   case Kinded::Kind::SplatNodeKind:
   case Kinded::Kind::ExpNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(

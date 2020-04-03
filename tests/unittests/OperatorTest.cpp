@@ -12988,5 +12988,29 @@ TEST_P(OperatorStatelessTest, LayerNorm_Int8) {
                             parCloneCountOpt);
 }
 
+TEST_P(OperatorTest, SigmoidInInt8OutFP16) {
+  CHECK_IF_ENABLED();
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {256}, "input", false);
+  auto IH = bindings_.allocate(input)->getHandle<float16_t>();
+  IH.randomize(-30, 30, mod_.getPRNG());
+
+  TypeRef fp16Ty = mod_.uniqueType(ElemKind::Float16Ty, {256});
+  TypeRef int8Ty = mod_.uniqueType(ElemKind::Int8QTy, {256}, 0.2, 8);
+
+  QuantizeNode *QN = F_->createQuantize("quant", input, int8Ty);
+  SigmoidNode *fpSigmoid = F_->createSigmoid("fpSigmoid", fp16Ty, QN);
+  SaveNode *S = F_->createSave("fpSave", fpSigmoid);
+  auto RH = bindings_.allocate(S->getPlaceholder())->getHandle<float16_t>();
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  for (size_t i = 0; i < 256; i++) {
+    EXPECT_NEAR(refSigmoidFp16(IH.at({i})), RH.at({i}), 0.005);
+  }
+}
+
 INSTANTIATE_BACKEND_TEST(OperatorStatelessTest);
 INSTANTIATE_BACKEND_TEST(OperatorTest);
