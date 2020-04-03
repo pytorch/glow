@@ -1059,6 +1059,9 @@ FunctionPassPipeline NNPIBackend::getOptimizationPipeline() const {
   // Now try to eliminate any redundant Clips.
   pipeline.pushBack(FunctionPassID::OptimizeClips);
 
+  // Look for float Relus that we can fuse up into quantized FCs.
+  pipeline.pushBack(FunctionPassID::OptimizeQuantFCFloatRelu);
+
   // Cleanup everything now.
   pipeline.pushBack(getDCEPassConfig());
 
