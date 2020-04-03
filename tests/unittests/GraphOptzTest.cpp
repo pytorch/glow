@@ -4317,3 +4317,40 @@ TEST_F(GraphOptz, OptimizeOutIntermediateConversionsTest) {
   bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
   checkNumericalEquivalence();
 }
+
+/// Test Clip(Relu(Clip)) -> Clip(Relu). This is a combination of SinkCode and
+/// OptimizeClips.
+TEST_F(GraphOptz, ClipReluClipElimTest) {
+  Placeholder *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {64, 64}, "input", false);
+  ClipNode *CN1 = F_->createClip("CN1", input, -10, 30);
+  ReluNode *RN = F_->createRELU("RN", CN1);
+  ClipNode *CN2 = F_->createClip("CN2", RN, -5, 20);
+  SaveNode *SN = F_->createSave("save", CN2);
+
+  // Start with 2 clips, a relu, and a save.
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 1);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Remove one of the clips.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 1);
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+
+  // We sank CN1 below RN which changed CN1's min to 0, and then combined the
+  // ranges of CN1 and CN2.
+  ClipNode *optCN = llvm::dyn_cast<ClipNode>(optSN->getInput());
+  ASSERT_TRUE(optCN);
+  EXPECT_EQ(optCN->getMin(), 0);
+  EXPECT_EQ(optCN->getMax(), 20);
+
+  bindings_.allocate(input)->getHandle().randomize(-50.0, 5.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}

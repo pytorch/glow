@@ -1056,6 +1056,9 @@ FunctionPassPipeline NNPIBackend::getOptimizationPipeline() const {
   // Now that we've raised clips up try to optimize quantize-clip combos again.
   pipeline.pushBack(FunctionPassID::OptimizeQuantizeClip);
 
+  // Now try to eliminate any redundant Clips.
+  pipeline.pushBack(FunctionPassID::OptimizeClips);
+
   // Cleanup everything now.
   pipeline.pushBack(getDCEPassConfig());
 

@@ -96,13 +96,12 @@ TEST_F(NNPIOptPipelineTest, RemoveClipBlockingFCReluFusion) {
   bias->getPayloadMutable().getHandle<float16_t>().randomize(-1.0, 1.0,
                                                              mod_.getPRNG());
 
-  constexpr float float16Max = 65504.0f;
-  constexpr float float16Min = -65504.0f;
   auto *FC = F_->createFullyConnected("fc", input, weights, bias);
-  auto *clipFC = F_->createClip("clipFC", FC, float16Min, float16Max);
+  auto *clipFC = F_->createClipMinMaxFP16("clipFC", FC);
   auto *RN = F_->createRELU("relu", clipFC);
-  auto *clipRelu = F_->createClip("clipRelu", RN, float16Min, float16Max);
+  auto *clipRelu = F_->createClipMinMaxFP16("clipRelu", RN);
   F_->createSave("ret", clipRelu);
+  const float float16Max = clipFC->getMax();
 
   EXPECT_EQ(F_->getNodes().size(), 5);
 
@@ -122,7 +121,8 @@ TEST_F(NNPIOptPipelineTest, RemoveClipBlockingFCReluFusion) {
   {
     ClipNode *clipRelu = llvm::dyn_cast<ClipNode>(optSave->getInput());
     ASSERT_TRUE(clipRelu);
-    EXPECT_EQ(clipRelu->getMin(), float16Min);
+    // Note: Min here is 0, because relu changed the Clip's min range.
+    EXPECT_EQ(clipRelu->getMin(), 0);
     EXPECT_EQ(clipRelu->getMax(), float16Max);
     ReluNode *RN = llvm::dyn_cast<ReluNode>(clipRelu->getInput());
     ASSERT_TRUE(RN);
