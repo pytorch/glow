@@ -4448,3 +4448,54 @@ TEST_F(GraphOptz, OptimizeConcatQuantFCFloatReluTest) {
 
   checkNumericalEquivalence();
 }
+
+/// Test that we can find a concat with all dequantize inputs and a quantize at
+/// its output, and then replace quant/dequants with rescales.
+TEST_F(GraphOptz, OptimizeDequantConcatQuant) {
+  std::array<NodeValue, 5> DQs;
+  std::array<Placeholder *, 5> inputs;
+  for (size_t i = 0; i < 5; i++) {
+    inputs[i] = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32},
+                                       0.3 / (i + 1), 5, "input", false);
+    DQs[i] = F_->createDequantize("dq", inputs[i])->getResult();
+
+    bindings_.allocate(inputs[i])->getHandle<int8_t>().randomize(
+        -128, 127, mod_.getPRNG());
+  }
+
+  auto *CN = F_->createConcat("concat", DQs, 0);
+  constexpr float scale = 0.3;
+  constexpr int32_t offset = 5;
+  auto *RN = F_->createQuantize("quantize", CN,
+                                mod_.uniqueType(ElemKind::Int8QTy,
+                                                CN->getResult().dims(), scale,
+                                                offset));
+  auto *SN = F_->createSave("save", RN);
+
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::OptimizeConcatQuantization, getDCEPassConfig()});
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  ConcatNode *optCN = llvm::dyn_cast<ConcatNode>(optSN->getInput());
+  ASSERT_TRUE(optCN);
+  EXPECT_EQ(optCN->getInputs().size(), 5);
+
+  for (size_t i = 0, e = optCN->getInputs().size(); i < e; i++) {
+    const NodeValue NV = optCN->getInputs()[i];
+    if (i == 0) {
+      EXPECT_EQ(inputs[i], NV.getNode());
+      EXPECT_EQ(inputs[i]->getOutput().getType()->getScale(), scale);
+      EXPECT_EQ(inputs[i]->getOutput().getType()->getOffset(), offset);
+    } else {
+      RescaleQuantizedNode *optRN = llvm::dyn_cast<RescaleQuantizedNode>(NV);
+      ASSERT_TRUE(optRN);
+      EXPECT_EQ(optRN->getResult().getType()->getScale(), scale);
+      EXPECT_EQ(optRN->getResult().getType()->getOffset(), offset);
+      EXPECT_EQ(inputs[i], optRN->getInput().getNode());
+    }
+  }
+
+  checkNumericalEquivalence();
+}
