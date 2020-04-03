@@ -334,26 +334,35 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
 
-    // Sink Transpose below batch RELU nodes.
     if (auto *RL = dyn_cast<ReluNode>(node)) {
-      auto *TR = dyn_cast<TransposeNode>(RL->getInput());
-
-      if (!TR) {
+      // Sink Transpose below batch RELU nodes.
+      if (auto *TR = dyn_cast<TransposeNode>(RL->getInput())) {
+        // Keep the same quantization parameters for ReLU output, but
+        // change the shape to appropriate value.
+        auto reluOutTy = F->getParent()->uniqueTypeWithNewShape(
+            RL->getResult().getType(), TR->getInput().getType());
+        auto *NRL = F->createRELU(RL->getName(), TR->getInput(), reluOutTy);
+        NRL->setPredicate(node->getPredicate());
+        auto *newTR = F->createTranspose(TR->getName(), NRL, TR->getShuffle(),
+                                         TR->getLayout());
+        newTR->setPredicate(node->getPredicate());
+        RL->getResult().replaceAllUsesOfWith(newTR);
+        changed = true;
         continue;
       }
 
-      // Keep the same quantization parameters for ReLU output, but
-      // change the shape to appropriate value.
-      auto reluOutTy = F->getParent()->uniqueTypeWithNewShape(
-          RL->getResult().getType(), TR->getInput().getType());
-      auto *NRL = F->createRELU(RL->getName(), TR->getInput(), reluOutTy);
-      NRL->setPredicate(node->getPredicate());
-      auto *newTR = F->createTranspose(TR->getName(), NRL, TR->getShuffle(),
-                                       TR->getLayout());
-      newTR->setPredicate(node->getPredicate());
-      RL->getResult().replaceAllUsesOfWith(newTR);
-      changed = true;
-      continue;
+      // Sink Clip below RELU nodes.
+      if (ClipNode *CN = dyn_cast<ClipNode>(RL->getInput())) {
+        assert(!RL->getResult().getType()->isQuantizedType() &&
+               "Relu(Clip) means Relu should not be quantized.");
+        ReluNode *newRL = F->createRELU(RL->getName(), CN->getInput());
+        ClipNode *newCN =
+            F->createClip(CN->getName(), newRL->getResult(),
+                          std::max(CN->getMin(), 0.0f), CN->getMax());
+        RL->getResult().replaceAllUsesOfWith(newCN);
+        changed = true;
+        continue;
+      }
     }
 
     // Sink Transpose below Clip nodes.
