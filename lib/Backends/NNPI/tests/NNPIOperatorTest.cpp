@@ -34,6 +34,8 @@ struct BlacklistInitializer {
              TestBlacklist::AnyDeviceAnyEngine},
             {"batchedReduceMinMultiAxis_Int64/0",
              TestBlacklist::AnyDeviceAnyEngine},
+            {"BroadCastMax/0", TestBlacklist::AnyDeviceHWEngine},
+            {"BroadCastMin/0", TestBlacklist::AnyDeviceHWEngine},
             {"Conv3DQuantizedTest_Int16_BiasInt16/0",
              TestBlacklist::AnyDeviceAnyEngine},
             {"Conv3DQuantizedTest_Int16_BiasInt32/0",

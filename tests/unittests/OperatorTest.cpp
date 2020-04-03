@@ -5100,6 +5100,56 @@ TEST_P(OperatorTest, FP16Max) {
   }
 }
 
+/// Helper to test Broadcast Max/Min using \p DTy and \p NTy
+template <typename DataType, typename NodeType>
+static void testBroadcastMaxMin(glow::PlaceholderBindings &bindings,
+                                glow::Module &mod, glow::Function *F,
+                                glow::ExecutionEngine &EE, ElemKind DTy) {
+
+  auto *inputA = mod.createPlaceholder(DTy, {1, 3, 3, 1}, "A", false);
+  bindings.allocate(inputA)->getHandle<DataType>().randomize(-3.0, 3.0,
+                                                             mod.getPRNG());
+  auto *inputB = mod.createPlaceholder(DTy, {1, 3, 3, 1}, "B", false);
+  bindings.allocate(inputB)->getHandle<DataType>().randomize(-3.0, 3.0,
+                                                             mod.getPRNG());
+
+  Node *maxorMinOp = F->createNodeWithBroadcast<NodeType>(
+      "maxormin", -1 /*axis */, inputA, inputB);
+
+  auto *S = F->createSave("save", maxorMinOp);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  ASSERT_TRUE(F->verify(&EE.getBackend()))
+      << "Function must pass verification.";
+
+  auto result = bindings.get(S->getPlaceholder())->getHandle<DataType>();
+  auto handleA = bindings.get(inputA)->getHandle<DataType>();
+  auto handleB = bindings.get(inputB)->getHandle<DataType>();
+  ASSERT_EQ(result.size(), handleA.size());
+  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
+    if (std::is_same<NodeType, MaxNode>::value) {
+      EXPECT_EQ(result.raw(idx), std::max(handleA.raw(idx), handleB.raw(idx)));
+    } else {
+      EXPECT_EQ(result.raw(idx), std::min(handleA.raw(idx), handleB.raw(idx)));
+    }
+  }
+}
+
+TEST_P(OperatorTest, BroadCastMax) {
+  CHECK_IF_ENABLED();
+  testBroadcastMaxMin<int64_t, MaxNode>(bindings_, mod_, F_, EE_,
+                                        ElemKind::Int64ITy);
+}
+
+TEST_P(OperatorTest, BroadCastMin) {
+  CHECK_IF_ENABLED();
+  testBroadcastMaxMin<int64_t, MinNode>(bindings_, mod_, F_, EE_,
+                                        ElemKind::Int64ITy);
+}
+
 TEST_P(OperatorTest, RescaleNode) {
   CHECK_IF_ENABLED();
 

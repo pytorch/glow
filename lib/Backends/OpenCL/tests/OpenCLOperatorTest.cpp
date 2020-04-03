@@ -25,6 +25,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "less_float/0",
     "less_broadcast_float/0",
     "less_int32Cases/0",
+    "BroadCastMax/0",
+    "BroadCastMin/0",
     "where_2d_broadcast_x_y_i8/0",
     "where_2d_wise_i8/0",
     "where_2d_wise_float/0",

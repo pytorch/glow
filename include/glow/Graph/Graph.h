@@ -901,6 +901,8 @@ public:
   DECLARE_CMP_BROADCAST_NODE(CmpLT)
   DECLARE_CMP_BROADCAST_NODE(CmpEQ)
   DECLARE_CMP_BROADCAST_NODE(CmpLTE)
+  DECLARE_CMP_BROADCAST_NODE(Min)
+  DECLARE_CMP_BROADCAST_NODE(Max)
 
   /// Template function that creates a node and normalizes its input shapes
   /// with the use of BroadCast nodes. If axis is -1, it calculates it
