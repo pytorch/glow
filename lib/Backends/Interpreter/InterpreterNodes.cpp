@@ -28,6 +28,10 @@
 #include <cmath>
 #include <math.h>
 
+#ifdef WIN32
+#include <corecrt_math_defines.h>
+#endif
+
 using namespace glow;
 
 #define dispatchImpl(functionName, elemTy, ...)                                \
