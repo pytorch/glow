@@ -30,6 +30,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <fstream>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -40,6 +41,15 @@ static llvm::cl::opt<bool>
     instrumentDebug("instrument-debug",
                     llvm::cl::desc("Instrument the IR for debugging"),
                     llvm::cl::init(false), llvm::cl::Hidden);
+
+static llvm::cl::opt<std::string> instrumentDebugFormat(
+    "instrument-debug-format",
+    llvm::cl::desc("The format of the IR debugging instrumentation:      \n"
+                   "- 'txt': All the tensors are dumped in text format in\n"
+                   "         the console.                                \n"
+                   "- 'bin': The tensors are dumped in binary format in  \n"
+                   "         separate files.\n"),
+    llvm::cl::init("txt"), llvm::cl::Hidden);
 
 static llvm::cl::list<std::string> instrumentDebugOnly(
     "instrument-debug-only",
@@ -1490,6 +1500,19 @@ static void performDebugInstrumentation(IRFunction &M) {
     return;
   }
 
+  // Debug instrumentation format.
+  std::string format = instrumentDebugFormat;
+  CHECK(format == "txt" || format == "bin")
+      << "Invalid debug IR instrumentation format! Only 'txt' and 'bin' is "
+         "supported!";
+
+  // Open debug info file.
+  unsigned fileDumpIdx = 0;
+  std::ofstream debugInfoFile;
+  if (format == "bin") {
+    debugInfoFile.open("debug.info", std::ios::out | std::ios::trunc);
+  }
+
   auto &instrs = M.getInstrs();
   for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
     auto *I = &*it;
@@ -1515,29 +1538,54 @@ static void performDebugInstrumentation(IRFunction &M) {
       it = next;
       continue;
     }
-    auto instrName = I->getName();
+
+    std::string instrName = I->getName().str();
+    if (format == "bin") {
+      debugInfoFile << "\n";
+      debugInfoFile << "Type: " << I->getKindName() << "\n";
+      debugInfoFile << "Name: " << instrName << "\n";
+    }
+
     for (const auto &Op : I->getOperands()) {
+      std::string opValueName = Op.first->getName();
+
+      // DebugPrint instruction name for this operand.
+      std::string name = opValueName;
+      name += ".";
+      name += instrName;
+      name += ".";
+      name += I->getKindName();
+
+      // DebugPrint filename. When dumping files we do not use the name of the
+      // debug instruction since it is not safe: most of the filesystems allow
+      // a maximum length for a given file name in the order of 255 characters
+      // and the debug instruction name (with the above format) is very likely
+      // to be very long. We use a simple name format for dumping files and we
+      // generate a separate meta file with additional information about every
+      // dump.
+      std::string filename = strFormat("data%04d.bin", fileDumpIdx++);
+
       // Dump inputs of the current instruction before the instruction.
       if (Op.second != OperandKind::Out) {
-        std::string name = "debug_print.before.";
-        name += Op.first->getName();
-        name += ".";
-        name += instrName;
-        name += ".";
-        name += I->getKindName();
-        auto *dumpInstr = new DebugPrintInst(name, Op.first);
+        if (format == "bin") {
+          debugInfoFile << "Input : " << filename << " : " << opValueName
+                        << "\n";
+        }
+
+        name = "debug_print.before." + name;
+        auto *dumpInstr = new DebugPrintInst(name, Op.first, format, filename);
         M.insertInstruction(I, dumpInstr);
       }
 
       // Dump outputs of the current instruction after the instruction.
       if (Op.second != OperandKind::In) {
-        std::string name = "debug_print.after.";
-        name += Op.first->getName();
-        name += ".";
-        name += instrName;
-        name += ".";
-        name += I->getKindName();
-        auto *dumpInstr = new DebugPrintInst(name, Op.first);
+        if (format == "bin") {
+          debugInfoFile << "Output: " << filename << " : " << opValueName
+                        << "\n";
+        }
+
+        name = "debug_print.after." + name;
+        auto *dumpInstr = new DebugPrintInst(name, Op.first, format, filename);
         if (next == e) {
           M.insertInstruction(dumpInstr);
         } else {
@@ -1546,6 +1594,11 @@ static void performDebugInstrumentation(IRFunction &M) {
       }
     }
     it = next;
+  }
+
+  // Close debug info file.
+  if (format == "bin") {
+    debugInfoFile.close();
   }
 }
 

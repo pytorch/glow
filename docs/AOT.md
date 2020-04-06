@@ -468,6 +468,19 @@ option like in this:
   dot -Tpdf graph.dot -o graph.pdf
   ```
 
+- For debugging purposes you can choose to compile the model in instrumentation
+mode with the option `-instrument-debug` such that the model will display during
+run-time the content of all the tensors associated to all the operands of all the
+IR instructions. Additionally, you can choose the format of the dumped information
+with the option `-instrument-debug-format=<format>`:
+  - `txt` (Default) All the operands (tensors) are displayed in text format in the
+  console. Large tensors are only partially displayed.
+  - `bin` The operands (tensors) are dumped in binary format in separate files (one
+  tensor per file). The name of the binary files have a simple format `data[idx].bin`
+  but a separate meta file `debug.info` is dumped at compile-time which makes the
+  association between each binary file and the operand of the IR instruction to which
+  it belongs. The directory in which the files are dumped is the current directory of
+  the application which executes the bundle.
 
 ## Bundle memory layout
 

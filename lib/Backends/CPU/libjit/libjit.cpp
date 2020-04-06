@@ -31,8 +31,8 @@
 namespace {
 
 template <class ElemTy>
-static void libjit_dump_tensor_impl(ElemTy *tensor, dim_t *dims,
-                                    dim_t numDims) {
+static void libjit_dump_tensor_txt_impl(ElemTy *tensor, dim_t *dims,
+                                        dim_t numDims) {
   // Check for 0-dimensional tensor.
   if (!numDims) {
     printf("[ Scalar containing: %.3f ]\n", (float)tensor[0]);
@@ -2624,9 +2624,11 @@ void libjit_space_to_depth_i8(const int8_t *inTensor, int8_t *outTensor,
   libjit_space_to_depth_generic(inTensor, outTensor, blockSize, inDims,
                                 outDims);
 }
+
+/// Function to dump a tensor in text format in the console.
 __attribute__((noinline)) void
-libjit_dump_tensor(uint8_t *tensor, dim_t *tensorDim, dim_t numDimsTensor,
-                   dim_t elemKind, const char *name) {
+libjit_dump_tensor_txt(uint8_t *tensor, dim_t *tensorDim, dim_t numDimsTensor,
+                       dim_t elemKind, const char *name) {
   printf("%s\n", name);
   /// This definition should match the defintion in Glow.
   enum class ElemKind : unsigned char {
@@ -2644,16 +2646,16 @@ libjit_dump_tensor(uint8_t *tensor, dim_t *tensorDim, dim_t numDimsTensor,
   // Dump the content of a tensor.
   switch ((ElemKind)elemKind) {
   case ElemKind::FloatTy:
-    libjit_dump_tensor_impl((float *)tensor, tensorDim, numDimsTensor);
+    libjit_dump_tensor_txt_impl((float *)tensor, tensorDim, numDimsTensor);
     break;
   case ElemKind::Int64ITy:
-    libjit_dump_tensor_impl((dim_t *)tensor, tensorDim, numDimsTensor);
+    libjit_dump_tensor_txt_impl((dim_t *)tensor, tensorDim, numDimsTensor);
     break;
   case ElemKind::Int8QTy:
-    libjit_dump_tensor_impl((int8_t *)tensor, tensorDim, numDimsTensor);
+    libjit_dump_tensor_txt_impl((int8_t *)tensor, tensorDim, numDimsTensor);
     break;
   case ElemKind::Int32QTy:
-    libjit_dump_tensor_impl((int32_t *)tensor, tensorDim, numDimsTensor);
+    libjit_dump_tensor_txt_impl((int32_t *)tensor, tensorDim, numDimsTensor);
     break;
   default:
     printf("Dumping this type of payload is not supported: %zu\n",
@@ -2661,6 +2663,23 @@ libjit_dump_tensor(uint8_t *tensor, dim_t *tensorDim, dim_t numDimsTensor,
     break;
   }
   puts("");
+}
+
+/// Function to dump a tensor in binary format in a file.
+__attribute__((noinline)) void libjit_dump_tensor_bin(uint8_t *tensor,
+                                                      size_t tensorSize,
+                                                      const char *filename) {
+  FILE *fh = fopen(filename, "wb");
+  if (!fh) {
+    printf("ERROR opening file: '%s'!\n"
+           "File name might be too long!\n",
+           filename);
+    return;
+  }
+  size_t size = fwrite(tensor, 1, tensorSize, fh);
+  assert((size == tensorSize) && "Error dumping tensor to file!");
+  (void)size;
+  fclose(fh);
 }
 
 void libjit_write_timestamp(uint64_t *tensor, dim_t offset) {

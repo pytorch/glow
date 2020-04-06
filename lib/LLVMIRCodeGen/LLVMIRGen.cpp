@@ -2794,12 +2794,23 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     srcPtr = builder.CreateBitCast(srcPtr, builder.getInt8PtrTy());
     auto *srcDims = emitValueDims(builder, src);
     auto *srcDimsSize = emitConstDimT(builder, src->getType()->dims().size());
+    auto *srcSizeBytes =
+        emitConstSizeT(builder, src->getType()->getSizeInBytes());
     auto *srcElemKind =
         emitConstDimT(builder, static_cast<size_t>(src->getElementType()));
     auto *name = emitStringConst(builder, I->getName());
+    auto *filename = emitStringConst(builder, DPI->getFileName());
 
-    auto *F = getFunction("dump_tensor");
-    createCall(builder, F, {srcPtr, srcDims, srcDimsSize, srcElemKind, name});
+    std::string format = DPI->getFormat();
+    if (format == "txt") {
+      auto *F = getFunction("dump_tensor_txt");
+      createCall(builder, F, {srcPtr, srcDims, srcDimsSize, srcElemKind, name});
+    } else if (format == "bin") {
+      auto *F = getFunction("dump_tensor_bin");
+      createCall(builder, F, {srcPtr, srcSizeBytes, filename});
+    } else {
+      LOG(FATAL) << "Invalid 'Format' attribute for DebugPrint instruction!";
+    }
     break;
   }
 
