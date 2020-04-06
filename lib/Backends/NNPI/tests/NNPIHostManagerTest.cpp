@@ -32,7 +32,11 @@ struct BlacklistInitializer {
          {"testStaticAssignment/0", TestBlacklist::AnyDeviceAnyEngine},
          {"runNetworkConcurrent/0", TestBlacklist::AnyDeviceAnyEngine},
          {"ConcurrentAddRemoveUnique/0", TestBlacklist::AnyDeviceAnyEngine},
-         {"ConcurrentAddRemoveUnique/0", TestBlacklist::AnyDeviceAnyEngine}};
+         {"ConcurrentAddRemoveUnique/0", TestBlacklist::AnyDeviceAnyEngine},
+         {"testPartitionConfigReplication/0",
+          TestBlacklist::AnyDeviceAnyEngine},
+         {"testSinglePartitionReplication/0",
+          TestBlacklist::AnyDeviceAnyEngine}};
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);
   }

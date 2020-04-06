@@ -100,6 +100,12 @@ struct DAGNode {
   /// IDs of the deviceManagers that this network is assigned to.
   std::map<DeviceIDTy, DeviceRuntimeInfo> deviceRuntimeInfos;
 
+  /// Map of deviceID to alternating state.
+  std::map<DeviceIDTy, unsigned> alternateFunction;
+  /// Count of duplications for network.
+  unsigned replicationCount{1};
+  std::mutex nameLock;
+
   /// Backend name for this network.
   std::string backendName;
   /// The logicalDevice is an output of the Partitioner to indicate that two
@@ -162,6 +168,26 @@ struct DAGNode {
     DCHECK(iter != deviceRuntimeInfos.end());
     const std::lock_guard<std::mutex> g(lock);
     iter->second.outstandingInferences--;
+  }
+
+  void initAlternateState() {
+    std::lock_guard<std::mutex> g(nameLock);
+    for (auto dev : deviceRuntimeInfos) {
+      alternateFunction[dev.first] = 0;
+    }
+  }
+
+  std::string getNextName(DeviceIDTy device) {
+    nameLock.lock();
+    auto currentNet = alternateFunction[device];
+    alternateFunction[device] = (currentNet + 1) % replicationCount;
+    nameLock.unlock();
+
+    std::string newName = name;
+    if (currentNet) {
+      newName = name + "_replicated" + std::to_string(currentNet);
+    }
+    return newName;
   }
 };
 
@@ -255,6 +281,10 @@ struct PartitionConfig {
   /// name in Glow function and may be different from the original name from
   /// models. Since Glow will mangle names to make them unique.
   llvm::StringMap<size_t> nodeToPartition;
+  /// A map containing desired number of replications for each partition. If a
+  /// count is not specified for a partition the default will be one copy of the
+  /// partition loaded [PartitionID, replicationCount].
+  std::map<unsigned, unsigned> replicationCount;
 
   PartitionConfig() : numOfPartitions(0) {}
   bool enabled() { return numOfPartitions > 0; }
