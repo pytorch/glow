@@ -724,6 +724,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv},
       {{"aten::add", "aten::add_"}, &PyTorchModelLoader::loadAdd},
       {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub},
+      {{"aten::rsub"}, &PyTorchModelLoader::loadRsub},
       {{"aten::sigmoid", "aten::sigmoid_"}, &PyTorchModelLoader::loadSigmoid},
       {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu},
       {{"aten::gelu"}, &PyTorchModelLoader::loadGelu},
@@ -1740,6 +1741,25 @@ Error PyTorchModelLoader::loadSub(const torch::jit::Node *ptNode) {
   glow::NodeValue res;
   ASSIGN_VALUE_OR_RETURN_ERR(
       res, loadArithmeticNode<glow::SubNode>("sub", inputs[0], inputs[1]));
+
+  return addValueMapping(outputs[0], res);
+}
+
+Error PyTorchModelLoader::loadRsub(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  // TODO: extend this to allow non-constant scalars.
+  int64_t scalar;
+  ASSIGN_VALUE_OR_RETURN_ERR(scalar,
+                             iValToInt(getGlowIValueForValue(inputs[2])));
+  RETURN_ERR_IF_NOT(scalar == 1,
+                    glow::strFormat("Scalar must have value equal 1."));
+
+  glow::NodeValue res;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      res, loadArithmeticNode<glow::SubNode>("sub", inputs[1], inputs[0]));
 
   return addValueMapping(outputs[0], res);
 }
