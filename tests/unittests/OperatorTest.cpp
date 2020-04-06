@@ -12385,7 +12385,8 @@ template <typename DataType>
 static void testBatchBoxCox(glow::PlaceholderBindings &bindings,
                             glow::Module &mod, glow::Function *F,
                             glow::ExecutionEngine &EE, ElemKind DTy,
-                            float allowedError = 0.0001f) {
+                            float allowedError = 0.0001f, float maxRange = 5.0f,
+                            float maxLambda2 = 2.0f) {
   // Input tensors.
   const dim_t kRows = 10;
   const dim_t kCols = 5;
@@ -12400,12 +12401,11 @@ static void testBatchBoxCox(glow::PlaceholderBindings &bindings,
   auto lambda2H = bindings.allocate(lambda2)->getHandle<DataType>();
 
   // Fill inputs with random values.
-  dataH.randomize(0.0, 5.0, mod.getPRNG());
+  dataH.randomize(0.0, maxRange, mod.getPRNG());
   lambda1H.randomize(1.0, 2.0, mod.getPRNG());
-  lambda2H.randomize(1.0, 2.0, mod.getPRNG());
+  lambda2H.randomize(1.0, maxLambda2, mod.getPRNG());
 
-  // Zero out every other element to lambda1 to test that case of the
-  // transform.
+  // Zero out every other element to lambda1 to test that case of the transform.
   for (dim_t i = 0; i < kCols; i += 2) {
     lambda1H.at({i}) = 0;
   }
@@ -12458,10 +12458,20 @@ TEST_P(OperatorTest, BatchBoxCox_Float) {
 }
 
 /// Test that the BatchBoxCox operator works as expected in Float16Ty.
-TEST_P(OperatorTest, BatchBoxCox_Float16) {
+TEST_P(OperatorTest, BatchBoxCox_Large_Float16) {
   CHECK_IF_ENABLED();
   testBatchBoxCox<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
-                             0.01f);
+                             0.032f, 5.0f);
+}
+TEST_P(OperatorTest, BatchBoxCox_Medium_Float16) {
+  CHECK_IF_ENABLED();
+  testBatchBoxCox<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                             0.016f, 3.0f);
+}
+TEST_P(OperatorTest, BatchBoxCox_Small_Float16) {
+  CHECK_IF_ENABLED();
+  testBatchBoxCox<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                             0.003f, 1.0f, 1.001f);
 }
 
 /// Test that Arithmetic ops work.
