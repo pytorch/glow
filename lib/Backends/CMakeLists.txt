@@ -10,7 +10,7 @@ foreach(object ${subdirs})
     # While there is GLOW_WITH_CPU variable to control whether
     # CPU backend is enabled or not.
     if(NOT DEFINED ${backendEnabled} OR ${backendEnabled})
-      message("Adding ${object} backend.")
+      message(STATUS "Adding ${object} backend.")
       add_subdirectory(${object})
     endif()
   endif()
