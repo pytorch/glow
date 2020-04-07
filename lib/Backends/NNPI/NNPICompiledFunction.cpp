@@ -139,7 +139,12 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   }
 
   if (compilationOptions_.useIceT || compilationOptions_.inferOnDevice) {
-    compilationFileName_ = compilationOptions_.compiledFile.get();
+    if (compilationOptions_.compileOutputPostfix) {
+      compilationFileName_ = compilationOptions_.compiledFile.get() + "_" +
+                             std::string(F->getName());
+    } else {
+      compilationFileName_ = compilationOptions_.compiledFile.get();
+    }
     LOG_IF_NOT_RETURN_LLVMERROR(
         compilationFileName_.length() < NNPI_MAX_STRING_LEN, "Bad filename");
 

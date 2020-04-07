@@ -16,6 +16,7 @@
 #ifndef GLOW_NNPI_ENV_VARIABLES_H
 #define GLOW_NNPI_ENV_VARIABLES_H
 
+#include "NNPIUtils.h"
 #include "nnpi_transformer_types.h"
 
 #include "glow/Backends/BackendOptions.h"
@@ -30,6 +31,24 @@
 #include <vector>
 
 namespace glow {
+
+// Return true in case cpuinfo contains flag.
+static bool isStringFoundInCpuInfo(const char *flag) {
+  FILE *cpuinfo = fopen("/proc/cpuinfo", "rb");
+  char *arg = nullptr;
+  size_t size = 0;
+  bool found = false;
+  while ((found == false) && (getdelim(&arg, &size, 32, cpuinfo) != -1)) {
+    if (strncmp(arg, flag, strlen(flag)) == 0) {
+      found = true;
+    }
+  }
+  if (arg) {
+    free(arg);
+  }
+  fclose(cpuinfo);
+  return found;
+}
 
 /// Parent calls for all NNPI option knobs.
 class NNPIOptions {
@@ -183,6 +202,13 @@ public:
                       "Sets a file name to save the compilation output to the "
                       "filename specified.",
                       "ICE_T_FILE", "");
+  /// Use function name for compilation compilation output filename (works only
+  /// when CompiledFile is not empty).
+  DECLARE_NNPI_OPTION(
+      compileOutputPostfix, bool, "compileOutputPostfix",
+      "Use function name as postfix for compilation output filename (or as the "
+      "name of the function when CompiledFile option is empty).",
+      "ICE_T_FILE_POSTFIX", "0");
   /// Setting this variable will force compilation to use no more than
   /// the set amount of ice cores (1-12), -1 for unlimited.
   DECLARE_NNPI_OPTION(
@@ -218,13 +244,14 @@ public:
   /// Disable constant folding during compilation.
   DECLARE_NNPI_OPTION(disableConstFolding, bool, "DisableConstFolding",
                       "Disable constant folding during compilation.",
-                      "NNPI_DISABLE_CONSTFOLD", "1");
+                      "NNPI_DISABLE_CONSTFOLD", "0");
 
   NNPICompilationOptions(const BackendSpecificOptions &parameters) {
     INIT_NNPI_OPTIONS(useIceT, parameters);
     INIT_NNPI_OPTIONS(inferOnDevice, parameters);
     INIT_NNPI_OPTIONS(showVars, parameters);
     INIT_NNPI_OPTIONS(compiledFile, parameters);
+    INIT_NNPI_OPTIONS(compileOutputPostfix, parameters);
     INIT_NNPI_OPTIONS(iceCores, parameters);
     INIT_NNPI_OPTIONS(useSymlowp, parameters);
     INIT_NNPI_OPTIONS(deviceVersion, parameters);
@@ -272,7 +299,7 @@ public:
   );
   /// Setting this variable will override the target device ID used to run
   /// (0,1,...).
-  DECLARE_NNPI_OPTION(deviceID, int, "DeviceID",
+  DECLARE_NNPI_OPTION(deviceId, int, "DeviceID",
                       "Override the target device ID used to run (0,1,...).",
                       "NNPI_DEVICE_ID", "-1");
   /// Setting this variable will override the amount of worker threads allocated
@@ -287,7 +314,7 @@ public:
       enabledDeviceTracing, bool, "DeviceTracing",
       "Enabled device tracing (host2device, device2host copy infer etc.).",
       "NNPI_DEVICE_TRACING", "0");
-  /// Overied the max NNPI device memory.
+  /// Override the max NNPI device memory.
   DECLARE_NNPI_OPTION(
       deviceMemory, unsigned, "DeviceMemory",
       "Override the amount of DRAM to allocate per NNPI device, in kilobytes.",
@@ -304,17 +331,32 @@ public:
   /// Dump IO to files.
   DECLARE_NNPI_OPTION(dumpIOtoFiles, bool, "DumpIOtoFiles",
                       "Dump Inputs/Outputs to files.", "NNPI_DUMP_IO", "0");
+  /// Force using a specific AVX type.
+  DECLARE_NNPI_OPTION(avxType, int, "avxType",
+                      "Force using a specific AVX type."
+                      "\n  0 = No AVX. "
+                      "\n  1 = Use AVX512. ",
+                      "NNPI_AVX_TYPE", "-1");
 
   NNPIDeviceOptions(const llvm::StringMap<std::string> &parameters) {
     INIT_NNPI_OPTIONS(useIceT, parameters);
     INIT_NNPI_OPTIONS(inferOnDevice, parameters);
     INIT_NNPI_OPTIONS(showVars, parameters);
-    INIT_NNPI_OPTIONS(deviceID, parameters);
+    INIT_NNPI_OPTIONS(deviceId, parameters);
     INIT_NNPI_OPTIONS(numWorkers, parameters);
     INIT_NNPI_OPTIONS(enabledDeviceTracing, parameters);
     INIT_NNPI_OPTIONS(deviceMemory, parameters);
     INIT_NNPI_OPTIONS(enabledCommandLists, parameters);
     INIT_NNPI_OPTIONS(dumpIOtoFiles, parameters);
+    INIT_NNPI_OPTIONS(avxType, parameters);
+
+    if (avxType == -1) {
+      if (isStringFoundInCpuInfo("avx512f")) {
+        avxType.setVal(NNPI_AVX_AVX512);
+      } else {
+        avxType.setVal(NNPI_AVX_NONE);
+      }
+    }
   }
   virtual llvm::StringRef getOptionsName() const override {
     return "Device Options";

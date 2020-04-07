@@ -24,7 +24,6 @@ struct BlacklistInitializer {
     const std::vector<std::pair<std::string, uint32_t>> testBlacklistedSetups =
         {
             {"MultiFunction/0", TestBlacklist::AnyDeviceAnyEngine},
-            {"MultiRun/0", TestBlacklist::AnyDeviceAnyEngine},
             {"DeviceResidentTensors/0", TestBlacklist::AnyDeviceAnyEngine},
             {"AvailableMemory/0", TestBlacklist::AnyDeviceAnyEngine},
             {"TransferStaticPlaceholderTest/0",

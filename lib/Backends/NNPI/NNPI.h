@@ -16,6 +16,7 @@
 #ifndef GLOW_NNPI_BACKEND_H
 #define GLOW_NNPI_BACKEND_H
 
+#include "NNPIAdapterContainer.h"
 #include "NNPIOptions.h"
 #include "glow/Backend/Backend.h"
 
@@ -75,6 +76,7 @@ private:
 #endif /* FACEBOOK_INTERNAL */
 
   static NNPIBackendOptions backendOptions_;
+  static NNPIAdapterContainer adapter_;
 };
 
 } // namespace glow

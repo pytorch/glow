@@ -18,6 +18,7 @@
 #include "InferencePool.h"
 #include "NNPI.h"
 #include "NNPICompiledFunction.h"
+#include "NNPITracing.h"
 #include "glow/Support/Error.h"
 #include "nnpi_inference.h"
 #include "nnpi_transformer.h"
@@ -39,8 +40,16 @@ static llvm::cl::opt<unsigned, /* ExternalStorage */ true>
                                      "per NNPI device, in kilobytes"),
                       llvm::cl::location(GlowNNPIMemory));
 
-DeviceManager *createNNPIDeviceManager(const DeviceConfig &config) {
-  return new NNPIDeviceManager(config);
+DeviceManager *createNNPIDeviceManager(const DeviceConfig &config,
+                                       NNPIAdapterContainer *adapter) {
+  std::shared_ptr<NNPIDeviceOptions> deviceOptions =
+      std::make_shared<NNPIDeviceOptions>(config.parameters);
+  NNPIAdapter nnpiAdapter = adapter->get(deviceOptions->inferOnDevice);
+  if (deviceOptions->inferOnDevice && nnpiAdapter == NNPI_INVALID_NNPIHANDLE) {
+    LOG(ERROR) << "Adapter allocation failed";
+    return nullptr;
+  }
+  return new NNPIDeviceManager(config, deviceOptions, nnpiAdapter);
 }
 
 // 1K bytes.
@@ -49,29 +58,32 @@ static constexpr uint64_t KB = 1 << 10;
 //////////////////////////////////////////////////////////////////////////
 std::atomic<RunIdentifierTy> NNPIDeviceManager::runIdentifier_;
 
-NNPIDeviceManager::NNPIDeviceManager(const DeviceConfig &config,
-                                     unsigned numInferenceWorkers)
+NNPIDeviceManager::NNPIDeviceManager(
+    const DeviceConfig &config,
+    std::shared_ptr<NNPIDeviceOptions> deviceOptions, NNPIAdapter adapter,
+    unsigned numInferenceWorkers)
     : DeviceManager(config), numWorkersPerFunction_(numInferenceWorkers),
-      deviceId_(config_.deviceID), adapter_(NNPI_INVALID_NNPIHANDLE),
-      device_(NNPI_INVALID_NNPIHANDLE), deviceOptions_(config_.parameters) {
-  if (deviceOptions_.showVars) {
-    LOG(INFO) << deviceOptions_.dumpStatus();
+      deviceId_(config_.deviceID), adapter_(adapter),
+      device_(NNPI_INVALID_NNPIHANDLE), deviceOptions_(deviceOptions) {
+
+  if (deviceOptions_->showVars) {
+    LOG(INFO) << deviceOptions_->dumpStatus();
   }
-  if (deviceOptions_.deviceID >= 0) {
-    deviceId_ = static_cast<unsigned>(deviceOptions_.deviceID);
+  if (deviceOptions_->deviceId >= 0) {
+    deviceId_ = static_cast<unsigned>(deviceOptions_->deviceId);
   }
 
   if (!numWorkersPerFunction_) {
     numWorkersPerFunction_ = 2;
   }
 
-  if (deviceOptions_.numWorkers > 0) {
-    numWorkersPerFunction_ = deviceOptions_.numWorkers;
+  if (deviceOptions_->numWorkers > 0) {
+    numWorkersPerFunction_ = deviceOptions_->numWorkers;
   }
 
   // Ice-ref not re-entrant for the same nnpiNetwork.
   numWorkersPerFunction_ =
-      deviceOptions_.inferOnDevice ? numWorkersPerFunction_ : 1;
+      deviceOptions_->inferOnDevice ? numWorkersPerFunction_ : 1;
 }
 
 NNPIDeviceManager::~NNPIDeviceManager() {
@@ -93,22 +105,20 @@ NNPIDeviceManager::~NNPIDeviceManager() {
         << "Static placeholder has pending refs";
   }
 
+  // Verify all static placeholders have no external refs.
+  for (auto &res : staticPlaceholders_) {
+    LOG_ERROR_IF_NOT(res.second.use_count() == 0)
+        << "Static placeholder has pending refs";
+  }
+
   if (device_ != NNPI_INVALID_NNPIHANDLE) {
     LOG_NNPI_INF_IF_ERROR(nnpiDeviceContextDestroy(device_),
                           "Failed to destroy NNPI device context");
     device_ = NNPI_INVALID_NNPIHANDLE;
   }
-
-  if (adapter_ != NNPI_INVALID_NNPIHANDLE) {
-    LOG_NNPI_INF_IF_ERROR(nnpiAdapterDestroy(adapter_),
-                          "Failed to destroy NNPI adapter");
-    adapter_ = NNPI_INVALID_NNPIHANDLE;
-  }
 }
 
 Error NNPIDeviceManager::init() {
-  LOG_IF_NOT_RETURN_LLVMERROR(adapter_ == NNPI_INVALID_NNPIHANDLE,
-                              "Invalid NNPI adapter");
   LOG_IF_NOT_RETURN_LLVMERROR(device_ == NNPI_INVALID_NNPIHANDLE,
                               "Invalid NNPI device");
 
@@ -118,16 +128,12 @@ Error NNPIDeviceManager::init() {
             << info.minorVersion << "." << info.patchVersion << "."
             << info.minorPatchVersion;
 
-  if (deviceOptions_.inferOnDevice) {
-    // Create NNPI adapter.
-    LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
-        nnpiAdapterCreate(nullptr, &adapter_), "Failed to create NNPI Adapter");
-
+  if (deviceOptions_->inferOnDevice) {
     // Create NNPI device.
     LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
         nnpiDeviceContextCreate(adapter_, deviceId_, &device_),
         "Failed to create NNPI Device");
-    if (deviceOptions_.enabledDeviceTracing) {
+    if (deviceOptions_->enabledDeviceTracing) {
       deviceTracing_ = NNPIDeviceTracing::getForDevice(deviceId_);
     }
     NNPIDeviceInfo deviceInfo;
@@ -147,8 +153,8 @@ Error NNPIDeviceManager::init() {
   }
   if (GlowNNPIMemory > 0) {
     maxMemoryBytes_ = static_cast<uint64_t>(GlowNNPIMemory) * KB;
-  } else if (deviceOptions_.deviceMemory > 0) {
-    maxMemoryBytes_ = static_cast<uint64_t>(deviceOptions_.deviceMemory) * KB;
+  } else if (deviceOptions_->deviceMemory > 0) {
+    maxMemoryBytes_ = static_cast<uint64_t>(deviceOptions_->deviceMemory) * KB;
   }
 
   runIdentifier_ = 0;
@@ -196,7 +202,7 @@ void NNPIDeviceManager::addNetwork(const Module *module,
     usedMemoryBytes_ += functionCost_; // TODO:: static moduleSize.
     auto err = inferenceEnvs_[func.first].init(
         numWorkersPerFunction_, adapter_, device_, deviceTracing_, func.second,
-        &staticPlaceholders_, &deviceOptions_, func.first, deviceId_);
+        &staticPlaceholders_, deviceOptions_, func.first, deviceId_);
     if (err) {
       functions_.erase(func.first);
       lock.unlock();
@@ -278,8 +284,8 @@ Error NNPIDeviceManager::stop(bool block) {
 }
 uint64_t NNPIDeviceManager::getMaximumMemory() const { return maxMemoryBytes_; }
 uint64_t NNPIDeviceManager::getAvailableMemory() const {
-  if (GlowNNPIMemory == 0 && deviceOptions_.deviceMemory == 0 &&
-      deviceOptions_.inferOnDevice) {
+  if (GlowNNPIMemory == 0 && deviceOptions_->deviceMemory == 0 &&
+      deviceOptions_->inferOnDevice) {
     NNPIDeviceStatus devStatus;
     NNPIInferenceErrorCode res = nnpiDeviceGetStatus(deviceId_, &devStatus);
     if (res != NNPI_INF_NO_ERROR) {
@@ -315,6 +321,22 @@ void NNPIDeviceManager::transferStaticPlaceholderToDevice(
 
   nnpiResource->UpdateDeviceResourceFromTensor(T, resultCB);
 };
+
+Error NNPIDeviceManager::startDeviceTrace(TraceContext *traceContext) {
+  if (!NNPIDeviceTracing::getForDevice(deviceId_)->start(traceContext,
+                                                         device_)) {
+    return MAKE_ERR("Failed to start NNPI device trace.");
+  }
+  return Error::success();
+}
+
+Error NNPIDeviceManager::stopDeviceTrace(TraceContext *traceContext) {
+  if (!NNPIDeviceTracing::getForDevice(deviceId_)->stopAndUpdate(traceContext,
+                                                                 device_)) {
+    return MAKE_ERR("Failed to stop NNPI device trace.");
+  }
+  return Error::success();
+}
 
 } // namespace runtime
 } // namespace glow

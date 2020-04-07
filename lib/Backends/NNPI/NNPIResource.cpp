@@ -14,41 +14,11 @@
  */
 
 #include "NNPIResource.h"
+#include "NNPIUtils.h"
 #include "nnpi_inference.h"
 #include <fstream>
 #include <iomanip>
 #include <sstream>
-
-#ifdef USE_AVX
-#include <immintrin.h>
-static inline void ConvertI64toI32(int64_t const *i64Data, int32_t *i32Data,
-                                   uint32_t elements) {
-  const __mmask8 masks[9] = {
-      0b0, 0b1, 0b11, 0b111, 0b1111, 0b11111, 0b111111, 0b1111111, 0b11111111,
-  };
-  constexpr uint32_t vecSize = (sizeof(__m512i) / sizeof(int64_t));
-  const uint32_t fullIterations = (elements / vecSize);
-  const uint32_t tailElements = (elements % vecSize);
-
-  for (uint32_t i = 0; i < fullIterations; i++) {
-    __m512i i64vec = _mm512_maskz_loadu_epi64(masks[vecSize], i64Data);
-    _mm512_mask_cvtepi64_storeu_epi32(i32Data, masks[vecSize], i64vec);
-    i64Data += vecSize;
-    i32Data += vecSize;
-  }
-  if (tailElements > 0) {
-    __m512i i64vec = _mm512_maskz_loadu_epi64(masks[tailElements], i64Data);
-    _mm512_mask_cvtepi64_storeu_epi32(i32Data, masks[tailElements], i64vec);
-  }
-}
-#else  // USE_AVX
-static inline void ConvertI64toI32(int64_t const *i64Data, int32_t *i32Data,
-                                   uint32_t elements) {
-  for (size_t i = 0; i < elements; i++) {
-    i32Data[i] = static_cast<int32_t>(i64Data[i]);
-  }
-}
-#endif // USE_AVX
 
 static size_t CalcDescSize(const NNPIResourceDesc *desc) {
   if (desc->numDims == 0) {
@@ -147,8 +117,8 @@ NNPIResource::~NNPIResource() {
   // them but only keeps reference for it's usage.
 }
 
-bool NNPIResource::Init(const NNPIObjectName name,
-                        const NNPIDeviceOptions *deviceOptions,
+bool NNPIResource::init(const NNPIObjectName name,
+                        std::shared_ptr<NNPIDeviceOptions> deviceOptions,
                         NNPIAdapter adapter, NNPIDeviceContext device,
                         const NNPIResourceDesc *desc,
                         NNPIResource::ResourceUsage usage) {
@@ -243,7 +213,7 @@ NNPIInferenceErrorCode NNPIResource::PreInference(Tensor *t,
   }
 
   // Update the host resource from the tensor content.
-  UpdateHostResourceFromTensor(t, partialTensor);
+  updateHostResourceFromTensor(t, partialTensor);
 
   if (deviceOptions_->dumpIOtoFiles) {
     size_t unpaddedSize = t->getUnpaddedSizeInBytes();
@@ -360,94 +330,36 @@ void NNPIResource::UpdateDeviceResourceFromTensor(
   LOG_AND_FAIL_CALLBACK_IF_NOT(
       t != nullptr, "Invalid tensor used to update static input", resultCB);
 
-  if (deviceOptions_->inferOnDevice) {
-    // Create host resource (and update hostPtr_).
-    LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
-        nnpiHostResourceCreate(adapter_, &desc_, &hostResource_),
-        "Failed to create NNPI host resource", resultCB);
+  LOG_AND_FAIL_CALLBACK_IF_NOT(updateHostResourceFromTensor(t, false),
+                               "Invalid Static placeholder", resultCB);
 
-    // Lock/Unlock host resource and keep host address.
-    LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
-        nnpiHostResourceLock(hostResource_, NNPI_LOCK_FOR_WRITE, UINT32_MAX,
-                             &hostPtr_),
-        "Failed to lock host resource", resultCB);
-    LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(nnpiHostResourceUnlock(hostResource_),
-                                       "Failed to unlock host resource",
-                                       resultCB);
+  LOG_NNPI_INF_IF_ERROR(nnpiDeviceResourceSubLoad(deviceResource_, 0,
+                                                  t->getUnsafePtr(),
+                                                  t->getSizeInBytes()),
+                        "Failed to execute device resource sub load");
 
-    // Create copy command.
-    LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
-        nnpiCopyCommandCreateHostToDevice(device_, deviceResource_,
-                                          hostResource_, &copyCommand_),
-        "Failed to create NNPI copy command (input)", resultCB);
-  } else {
-    refStorage_.resize(t->getSizeInBytes());
-    hostPtr_ = &(refStorage_.at(0));
-  }
-
-  LOG_AND_FAIL_CALLBACK_IF_NOT(
-      t->getSizeInBytes() == t->getUnpaddedSizeInBytes(),
-      "Static partial tensors are not supported", resultCB);
-  // Copy data from tensor to host resource (convert if needed).
-  UpdateHostResourceFromTensor(t, false);
-
-  if (deviceOptions_->inferOnDevice) {
-    // TODO: move to stream once exposed in the inference.
-    if (deviceOptions_->enabledCommandLists > 0) {
-      NNPICommandHandle ch;
-      ch.type = NNPI_COMMAND_TYPE_COPY;
-      ch.copyCommand = copyCommand_;
-      NNPICommandList cl;
-      LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
-          nnpiCommandListCreate(&ch, 1, nullptr, 0, &cl),
-          "Failed to create NNPI command list", resultCB);
-      LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(nnpiCommandListQueue(cl, nullptr, 0),
-                                         "Failed to queue command list",
-                                         resultCB);
-      uint32_t numErrors = 0;
-      LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
-          nnpiCommandListWait(cl, UINT32_MAX, nullptr, 0, &numErrors),
-          "Failed to wait on command list completion", resultCB);
-      LOG_AND_FAIL_CALLBACK_IF_NOT(numErrors == 0,
-                                   "Command list returned errors", resultCB);
-      LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(nnpiCommandListDestroy(cl),
-                                         "Failed to destroy command list",
-                                         resultCB);
-      // TODO: dump errors generated in this command list
-    } else {
-      // No command lists.
-      LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
-          nnpiCopyCommandQueue(copyCommand_, nullptr),
-          "Failed to queue input copy command.", resultCB);
-      // Lock to make sure copy has ended
-      LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
-          nnpiHostResourceLock(hostResource_, NNPI_LOCK_FOR_WRITE, UINT32_MAX,
-                               &hostPtr_),
-          "Failed to lock host resource", resultCB);
-      LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(nnpiHostResourceUnlock(hostResource_),
-                                         "Failed to unlock host resource",
-                                         resultCB);
-    }
-    // Destroy host resource, copy command, command list.
-    LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(nnpiCopyCommandDestroy(copyCommand_),
-                                       "Failed to destroy NNPI copy command",
-                                       resultCB);
-    copyCommand_ = NNPI_INVALID_NNPIHANDLE;
-    LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(nnpiHostResourceDestroy(hostResource_),
-                                       "Failed to destroy NNPI host resource",
-                                       resultCB);
-    hostResource_ = NNPI_INVALID_NNPIHANDLE;
-    hostPtr_ = nullptr;
-  }
   resultCB(Error::success());
 }
 
-void NNPIResource::UpdateHostResourceFromTensor(Tensor *t, bool partialTensor) {
+bool NNPIResource::updateHostResourceFromTensor(Tensor *t, bool partialTensor) {
   // Prepare data on the host resource (for ice-ref use int32sTorage).
   char *tensorData = t->getUnsafePtr();
   const bool downcastInt64 = t->getElementType() == glow::ElemKind::Int64ITy;
   size_t paddedSize = t->getSizeInBytes();
   size_t unpaddedSize = t->getUnpaddedSizeInBytes();
+  const bool partialData = (unpaddedSize != paddedSize);
+
+  if (usage_ == ResourceUsage::StaticInputResource) {
+    LOG_AND_RETURN_IF(ERROR, downcastInt64,
+                      "Static placeholder not allowed to be of type Int64",
+                      false);
+    LOG_AND_RETURN_IF(ERROR, partialData,
+                      "Static placeholders are not allowed to do partial copy",
+                      false);
+
+    // nothing else to do for static placeholders.
+    return true;
+  }
 
   if (downcastInt64) {
     paddedSize /= 2;
@@ -456,15 +368,25 @@ void NNPIResource::UpdateHostResourceFromTensor(Tensor *t, bool partialTensor) {
 
   // Copy or convert.
   if (downcastInt64) { // Convert
-    ConvertI64toI32(reinterpret_cast<const int64_t *>(tensorData),
-                    reinterpret_cast<int32_t *>(hostPtr_),
-                    unpaddedSize / sizeof(int32_t));
+    switch (deviceOptions_->avxType) {
+    case NNPI_AVX_NONE:
+      convertI64toI32(reinterpret_cast<const int64_t *>(tensorData),
+                      reinterpret_cast<int32_t *>(hostPtr_),
+                      unpaddedSize / sizeof(int32_t));
+      break;
+    case NNPI_AVX_AVX512:
+      convertI64toI32_AVX512(reinterpret_cast<const int64_t *>(tensorData),
+                             reinterpret_cast<int32_t *>(hostPtr_),
+                             unpaddedSize / sizeof(int32_t));
+      break;
+    default:
+      LOG(ERROR) << "Invalid avxType=" << deviceOptions_->avxType;
+    }
   } else { // Copy
     memcpy(hostPtr_, tensorData, unpaddedSize);
   }
 
   // Pad with zeros if needed.
-  const bool partialData = (unpaddedSize != paddedSize);
   if (partialData && !partialTensor) {
     memset(reinterpret_cast<uint8_t *>(hostPtr_) + unpaddedSize, 0,
            paddedSize - unpaddedSize);
@@ -472,6 +394,8 @@ void NNPIResource::UpdateHostResourceFromTensor(Tensor *t, bool partialTensor) {
 
   // Update partial size.
   partialSize_ = (partialData && partialTensor) ? unpaddedSize : 0;
+
+  return true;
 }
 
 std::string NNPIResource::Dump() const {

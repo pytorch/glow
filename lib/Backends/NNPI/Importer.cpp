@@ -39,6 +39,22 @@ static std::string nodeValueName(const glow::NodeValue &nv) {
          std::to_string(nv.getResNo());
 }
 
+static inline NNPIErrorCode
+convertLengthsModeToLengthType(glow::LengthsMode mode,
+                               NNPI_LENGTH_TYPE &lengthType) {
+  switch (mode) {
+  case LengthsMode::Variable:
+    lengthType = NNPI_LENGTH_VARIABLE;
+    break;
+  case LengthsMode::AllOne:
+    lengthType = NNPI_LENGTH_ALL_ONE;
+    break;
+  default:
+    return NNPI_INVALID_PARAM;
+  }
+  return NNPI_NO_ERROR;
+}
+
 glow::NNPIImporter::NNPIImporter(const NNPICompilationOptions &compileOptions)
     : internalNameCounter_(0), network_(NNPI_INVALID_NNPIHANDLE),
       compileOptions_(compileOptions) {
@@ -318,7 +334,6 @@ void glow::NNPIImporter::updateDescQuantFromGlow(
                      offsetTensor.c_str(),
                      sizeof(desc.quantParams.params.gemmlowpPCQ.offsetsTensor));
       }
-
     } else {
       desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP;
       desc.quantParams.params.gemlowp.scale = t.getScale();
@@ -634,6 +649,35 @@ public:
         nodeValueName(glowPool->getInput()).c_str(),
         nodeValueName(glowPool->getResult()).c_str(), NULL, kernel,
         paddingStart, paddingEnd, stride, SPATIAL_DIMS2, poolType, 0, 0);
+  }
+};
+
+template <class AdaptivePoolNodeType, NNPI_POOLING_TYPE poolType>
+class AdaptivePoolNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowPool = llvm::dyn_cast<AdaptivePoolNodeType>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowPool, "Bad node type", NNPI_INVALID_PARAM);
+
+    // Overwrite input/output values for layout.
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(nodeValueName(glowPool->getInput()),
+                          glowPool->getInput().getType(),
+                          /* alternativeLayout */ true),
+        "Failed to add tensor to NNPI");
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(nodeValueName(glowPool->getResult()),
+                          glowPool->getResult().getType(),
+                          /* alternativeLayout */ true),
+        "Failed to add tensor to NNPI");
+
+    importer.setUsedTensors({nodeValueName(glowPool->getInput())},
+                            {nodeValueName(glowPool->getResult())});
+
+    return nnpiNetworkAddAdaptivePoolingOp(
+        importer.getNetwork(), glowPool->getName().begin(),
+        nodeValueName(glowPool->getInput()).c_str(),
+        nodeValueName(glowPool->getResult()).c_str(), poolType);
   }
 };
 
@@ -1101,67 +1145,82 @@ public:
 
     importer.setUsedTensors({}, {nodeValueName(glowSplat->getResult())});
     auto *destType = glowSplat->getResult().getType();
-    // Create a constant tensor instead of a Splat (Tile) node.
-    NNPITensorDesc desc;
-    desc.attributes.value = 0;
-    desc.attributes.constant = 1;
+    int32_t numDims = static_cast<int32_t>(destType->dims().size());
+    float glowSplatValue = glowSplat->getValue();
 
-    importer.updateDescQuantFromGlow(*destType, desc);
-    importer.updateDescDimsFromGlow(destType->dims(), desc);
+    std::vector<dim_t> finalShapeFilledWithOnes(numDims, 1);
 
-    uint8_t *pData = new uint8_t[destType->getSizeInBytes()];
-    uint8_t elem[8]; // Assuming no element larger than 8 bytes.
-    LOG_AND_RETURN_IF_NOT(ERROR, destType->getElementSize() <= 8,
-                          "Bad dimansion", NNPI_INVALID_DIMS);
+    auto tileInputTensorName = NNPIImporter::internalName_ +
+                               glowSplat->getName().str() + "_Tile_input";
 
-    switch (destType->getElementType()) {
-    case glow::ElemKind::FloatTy: {
-      float val = glowSplat->getValue();
-      std::memcpy(elem, &val, sizeof(float));
-    } break;
-    case glow::ElemKind::Float16Ty: {
-      float16_t val = glowSplat->getValue();
-      std::memcpy(elem, &val, sizeof(float16_t));
-    } break;
-    case glow::ElemKind::Int8QTy: {
-      float qfVal = round((glowSplat->getValue() / destType->getScale()) +
-                          destType->getOffset());
-      int8_t qVal = qfVal < static_cast<float>(INT8_MIN)
-                        ? INT8_MIN
-                        : qfVal > static_cast<float>(INT8_MAX)
-                              ? INT8_MAX
-                              : static_cast<int8_t>(qfVal);
-      std::memcpy(elem, &qVal, sizeof(int8_t));
-    } break;
-    case glow::ElemKind::BoolTy:
-      elem[0] = (glowSplat->getValue() != 0);
-      break;
-    case glow::ElemKind::Int32ITy: {
-      int32_t val = static_cast<int32_t>(glowSplat->getValue());
-      std::memcpy(elem, &val, sizeof(int32_t));
-    } break;
-    case glow::ElemKind::Int64ITy: {
-      int64_t val = static_cast<int64_t>(glowSplat->getValue());
-      std::memcpy(elem, &val, sizeof(int64_t));
-    } break;
-    default:
-      LOG_AND_RETURN_IF_NOT(ERROR, 0, "Unhandled ElemKind for Splat output.",
-                            NNPI_INVALID_PARAM);
-      return NNPI_NOT_IMPLEMENTED;
+    if (destType->getElementType() != ElemKind::FloatTy) {
+      NNPITensorDesc convertInputDesc;
+      convertInputDesc.attributes.value = 0;
+      convertInputDesc.attributes.constant = 1;
+      convertInputDesc.quantParams.precision = NNPI_PRECISION_FLOAT32;
+      convertInputDesc.quantParams.type = NNPI_QUANTIZATION_NONE;
+      importer.updateDescDimsFromGlow(finalShapeFilledWithOnes,
+                                      convertInputDesc);
+
+      auto convertInputTensorName = NNPIImporter::internalName_ +
+                                    glowSplat->getName().str() +
+                                    "_Tile_Convert_input";
+      LOG_NNPI_IF_ERROR_RETURN_VALUE(importer.addTensor(convertInputTensorName,
+                                                        convertInputDesc,
+                                                        &glowSplatValue),
+                                     "Failed to add tensor");
+
+      auto convertName = NNPIImporter::internalName_ +
+                         glowSplat->getName().str() + "_Tile_Convert";
+      Type convertOutputType =
+          Type::newShape(*destType, finalShapeFilledWithOnes);
+      LOG_NNPI_IF_ERROR_RETURN_VALUE(
+          importer.addValue(tileInputTensorName, &convertOutputType),
+          "Failed to add value");
+
+      LOG_NNPI_IF_ERROR_RETURN_VALUE(
+          nnpiNetworkAddConvertOp(importer.getNetwork(), convertName.c_str(),
+                                  convertInputTensorName.c_str(),
+                                  tileInputTensorName.c_str()),
+          "Failed to add layer");
+    } else {
+      NNPITensorDesc tileInputDesc;
+      tileInputDesc.attributes.value = 0;
+      tileInputDesc.attributes.constant = 1;
+      tileInputDesc.quantParams.precision = NNPI_PRECISION_FLOAT32;
+      tileInputDesc.quantParams.type = NNPI_QUANTIZATION_NONE;
+      importer.updateDescDimsFromGlow(finalShapeFilledWithOnes, tileInputDesc);
+
+      LOG_NNPI_IF_ERROR_RETURN_VALUE(importer.addTensor(tileInputTensorName,
+                                                        tileInputDesc,
+                                                        &glowSplatValue),
+                                     "Failed to add tensor");
     }
 
-    auto destSize(destType->size());
-    auto elemSize(destType->getElementSize());
-    for (size_t i = 0; i < destSize; i++) {
-      for (size_t j = 0; j < elemSize; j++) {
-        pData[i * elemSize + j] = elem[j];
-      }
+    NNPITensorDesc repeatsDesc;
+    repeatsDesc.attributes.value = 0;
+    repeatsDesc.attributes.constant = 1;
+    repeatsDesc.quantParams.precision = NNPI_PRECISION_INT32;
+    repeatsDesc.quantParams.type = NNPI_QUANTIZATION_NONE;
+    importer.updateDescDimsFromGlow({destType->dims().size()}, repeatsDesc);
+    auto repeatsTensorName = NNPIImporter::internalName_ +
+                             glowSplat->getName().str() + "_Tile_repeats";
+    std::vector<int32_t> dims;
+    for (int i = 0; i < numDims; i++) {
+      dims.push_back(destType->dims()[i]);
     }
 
-    auto res =
-        importer.addTensor(nodeValueName(glowSplat->getResult()), desc, pData);
-    delete[] pData;
-    return res;
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addTensor(repeatsTensorName, repeatsDesc, dims.data()),
+        "Failed to add tensor");
+
+    auto tileNodeName =
+        NNPIImporter::internalName_ + glowSplat->getName().str() + "_Tile";
+
+    return nnpiNetworkAddTileOp(importer.getNetwork(), tileNodeName.c_str(),
+                                tileInputTensorName.c_str(),
+                                repeatsTensorName.c_str(),
+                                nodeValueName(glowSplat->getResult()).c_str());
   }
 };
 
@@ -1179,12 +1238,20 @@ public:
         },
         {nodeValueName(glowSLS->getResult())});
 
+    NNPI_LENGTH_TYPE lengthType;
+    LOG_AND_RETURN_IF_NOT(
+        ERROR,
+        convertLengthsModeToLengthType(glowSLS->getLengthsMode(), lengthType) ==
+            NNPI_NO_ERROR,
+        "Unhandled SLS length type", NNPI_INVALID_PARAM);
+
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
         importer.getNetwork(), glowSLS->getName().begin(),
         nodeValueName(glowSLS->getData()).c_str(),
         nodeValueName(glowSLS->getResult()).c_str(), NULL,
         nodeValueName(glowSLS->getIndices()).c_str(),
-        nodeValueName(glowSLS->getLengths()).c_str(), false);
+        nodeValueName(glowSLS->getLengths()).c_str(), false, false,
+        glowSLS->getAvgLength(), lengthType);
   }
 };
 
@@ -1203,13 +1270,103 @@ public:
         },
         {nodeValueName(glowSLWS->getResult())});
 
+    NNPI_LENGTH_TYPE lengthType;
+    LOG_AND_RETURN_IF_NOT(
+        ERROR,
+        convertLengthsModeToLengthType(glowSLWS->getLengthsMode(),
+                                       lengthType) == NNPI_NO_ERROR,
+        "Unhandled SLS length type", NNPI_INVALID_PARAM);
+
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
         importer.getNetwork(), glowSLWS->getName().begin(),
         nodeValueName(glowSLWS->getData()).c_str(),
         nodeValueName(glowSLWS->getResult()).c_str(),
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
-        nodeValueName(glowSLWS->getLengths()).c_str(), false);
+        nodeValueName(glowSLWS->getLengths()).c_str(), false, false,
+        glowSLWS->getAvgLength(), lengthType);
+  }
+};
+
+class EmbeddingBagNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowEmbeddingBag = llvm::dyn_cast<EmbeddingBagNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowEmbeddingBag, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    bool hasEndOffset = glowEmbeddingBag->getHasEndOffset();
+    LOG_AND_RETURN_IF_NOT(ERROR, hasEndOffset,
+                          "[EmbeddingBag] hasEndOffset must be true",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors(
+        {
+            nodeValueName(glowEmbeddingBag->getData()),
+            nodeValueName(glowEmbeddingBag->getWeights()),
+            nodeValueName(glowEmbeddingBag->getIndices()),
+            nodeValueName(glowEmbeddingBag->getOffsets()),
+        },
+        {nodeValueName(glowEmbeddingBag->getResult())});
+
+    NNPI_LENGTH_TYPE lengthType;
+    LOG_AND_RETURN_IF_NOT(
+        ERROR,
+        convertLengthsModeToLengthType(glowEmbeddingBag->getLengthsMode(),
+                                       lengthType) == NNPI_NO_ERROR,
+        "Unhandled SLS length type", NNPI_INVALID_PARAM);
+
+    return nnpiNetworkAddSparseLengthsWeightedSumOp(
+        importer.getNetwork(), glowEmbeddingBag->getName().begin(),
+        nodeValueName(glowEmbeddingBag->getData()).c_str(),
+        nodeValueName(glowEmbeddingBag->getResult()).c_str(),
+        nodeValueName(glowEmbeddingBag->getWeights()).c_str(),
+        nodeValueName(glowEmbeddingBag->getIndices()).c_str(),
+        nodeValueName(glowEmbeddingBag->getOffsets()).c_str(), false, true,
+        glowEmbeddingBag->getAvgLength(), lengthType);
+  }
+};
+
+class EmbeddingBagByteRowwiseOffsetsNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowEBBRO = llvm::dyn_cast<EmbeddingBagByteRowwiseOffsetsNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowEBBRO, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    bool hasEndOffset = glowEBBRO->getHasEndOffset();
+    LOG_AND_RETURN_IF_NOT(ERROR, hasEndOffset,
+                          "[EmbeddingBag] hasEndOffset must be true",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors(
+        {
+            nodeValueName(glowEBBRO->getData()),
+            nodeValueName(glowEBBRO->getWeights()),
+            nodeValueName(glowEBBRO->getIndices()),
+            nodeValueName(glowEBBRO->getOffsets()),
+        },
+        {nodeValueName(glowEBBRO->getResult())});
+
+    bool usFp32Accum = !(glowEBBRO->getUseFP16Accumulation() &&
+                         (glowEBBRO->getResult().getType()->getElementType() ==
+                          glow::ElemKind::Float16Ty));
+
+    NNPI_LENGTH_TYPE lengthType;
+    LOG_AND_RETURN_IF_NOT(
+        ERROR,
+        convertLengthsModeToLengthType(glowEBBRO->getLengthsMode(),
+                                       lengthType) == NNPI_NO_ERROR,
+        "Unhandled SLS length type", NNPI_INVALID_PARAM);
+
+    return nnpiNetworkAddSparseLengthsWeightedSumOp(
+        importer.getNetwork(), glowEBBRO->getName().begin(),
+        nodeValueName(glowEBBRO->getData()).c_str(),
+        nodeValueName(glowEBBRO->getResult()).c_str(),
+        nodeValueName(glowEBBRO->getWeights()).c_str(),
+        nodeValueName(glowEBBRO->getIndices()).c_str(),
+        nodeValueName(glowEBBRO->getOffsets()).c_str(), usFp32Accum, true,
+        glowEBBRO->getAvgLength(), lengthType);
   }
 };
 
@@ -1645,13 +1802,21 @@ public:
                          (glowSLWS->getResult().getType()->getElementType() ==
                           glow::ElemKind::Float16Ty));
 
+    NNPI_LENGTH_TYPE lengthType;
+    LOG_AND_RETURN_IF_NOT(
+        ERROR,
+        convertLengthsModeToLengthType(glowSLWS->getLengthsMode(),
+                                       lengthType) == NNPI_NO_ERROR,
+        "Unhandled SLS length type", NNPI_INVALID_PARAM);
+
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
         importer.getNetwork(), glowSLWS->getName().begin(),
         nodeValueName(glowSLWS->getData()).c_str(),
         nodeValueName(glowSLWS->getResult()).c_str(),
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
-        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum);
+        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, false,
+        glowSLWS->getAvgLength(), lengthType);
   }
 };
 
@@ -1674,12 +1839,20 @@ public:
                          (glowSLWS->getResult().getType()->getElementType() ==
                           glow::ElemKind::Float16Ty));
 
+    NNPI_LENGTH_TYPE lengthType;
+    LOG_AND_RETURN_IF_NOT(
+        ERROR,
+        convertLengthsModeToLengthType(glowSLWS->getLengthsMode(),
+                                       lengthType) == NNPI_NO_ERROR,
+        "Unhandled SLS length type", NNPI_INVALID_PARAM);
+
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
         importer.getNetwork(), glowSLWS->getName().begin(),
         nodeValueName(glowSLWS->getData()).c_str(),
         nodeValueName(glowSLWS->getResult()).c_str(), NULL,
         nodeValueName(glowSLWS->getIndices()).c_str(),
-        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum);
+        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, false,
+        glowSLWS->getAvgLength(), lengthType);
   }
 };
 
@@ -1703,13 +1876,21 @@ public:
                          (glowSLWS->getResult().getType()->getElementType() ==
                           glow::ElemKind::Float16Ty));
 
+    NNPI_LENGTH_TYPE lengthType;
+    LOG_AND_RETURN_IF_NOT(
+        ERROR,
+        convertLengthsModeToLengthType(glowSLWS->getLengthsMode(),
+                                       lengthType) == NNPI_NO_ERROR,
+        "Unhandled SLS length type", NNPI_INVALID_PARAM);
+
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
         importer.getNetwork(), glowSLWS->getName().begin(),
         nodeValueName(glowSLWS->getData()).c_str(),
         nodeValueName(glowSLWS->getResult()).c_str(),
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
-        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum);
+        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, false,
+        glowSLWS->getAvgLength(), lengthType);
   }
 };
 
@@ -1902,6 +2083,9 @@ std::unordered_map<
      glow::make_unique<PoolNodeImporter<glow::MaxPoolNode, NNPI_POOL_MAX>>()},
     {"AvgPool",
      glow::make_unique<PoolNodeImporter<glow::AvgPoolNode, NNPI_POOL_AVG>>()},
+    {"AdaptiveAvgPool",
+     glow::make_unique<
+         AdaptivePoolNodeImporter<glow::AdaptiveAvgPoolNode, NNPI_POOL_AVG>>()},
     {"FullyConnected", glow::make_unique<FullyConnectedNodeImporter>()},
     {"SoftMax", glow::make_unique<SoftMaxNodeImporter>()},
     {"Save", glow::make_unique<SaveNodeImporter>()},
@@ -1980,6 +2164,9 @@ std::unordered_map<
     {"LayerNormalization", glow::make_unique<LayerNormalizationNodeImporter>()},
     {"ChannelwiseQuantizedConvolution",
      glow::make_unique<ChannelwiseQuantizedConvolutionNodeImporter>()},
+    {"EmbeddingBag", glow::make_unique<EmbeddingBagNodeImporter>()},
+    {"EmbeddingBagByteRowwiseOffsets",
+     glow::make_unique<EmbeddingBagByteRowwiseOffsetsNodeImporter>()},
 };
 }
 

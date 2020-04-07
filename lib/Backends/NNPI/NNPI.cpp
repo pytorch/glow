@@ -14,6 +14,7 @@
  */
 
 #include "NNPI.h"
+#include "DebugMacros.h"
 #include "NNPICompiledFunction.h"
 #include "NNPIDeviceManager.h"
 #include "glow/Graph/Nodes.h"
@@ -80,23 +81,25 @@ int32_t GlowNNPINumParallelChunks = 0;
 } // namespace glow
 
 NNPIBackendOptions NNPIBackend::backendOptions_;
+NNPIAdapterContainer NNPIBackend::adapter_;
 
 unsigned NNPIBackend::numDevices() {
-  // TODO: unify with numHabanaDevices. copy-paste with a different device
-  // name.
-  std::ifstream devices("/proc/bus/pci/devices");
-  std::string device;
-  unsigned count = 0;
-  while (std::getline(devices, device)) {
-    if (device.find("sph_pcie") != std::string::npos) {
-      count++;
-    }
+  if (!backendOptions_.inferOnDevice) {
+    // Will return 1 device (for ICE-Ref)
+    return 1;
   }
-  if (count > 0) {
-    return count;
-  }
-  // TODO: Fall back to emulator since GLOW_NNPI is set. This feels hacky.
-  return 1;
+  NNPIAdapter adapter = NNPI_INVALID_NNPIHANDLE;
+  NNPIAdapterInfo adapterInfo;
+  memset(&adapterInfo, 0, sizeof(adapterInfo));
+  LOG_AND_RETURN_IF_NOT(
+      ERROR, nnpiAdapterCreate(nullptr, &adapter) == NNPI_INF_NO_ERROR,
+      "Failed to create NNPI Adapter.", 0);
+  LOG_AND_RETURN_IF_NOT(
+      ERROR, nnpiAdapterGetInfo(adapter, &adapterInfo) == NNPI_INF_NO_ERROR,
+      "Failed get device info.", 0);
+  LOG_NNPI_INF_IF_ERROR(nnpiAdapterDestroy(adapter),
+                        "Failed to destroy NNPI Adapter");
+  return adapterInfo.numDevices;
 }
 
 /// \returns whether \p type is 2 dimensional and unary. Usually the data input
@@ -144,7 +147,6 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::BatchedReduceMeanNodeKind:
   case Kinded::Kind::BatchedReduceMinNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
-  case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::BatchedAddNodeKind:
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::LogNodeKind:
@@ -160,8 +162,10 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
 
   case Kinded::Kind::BatchNormalizationNodeKind:
+  case Kinded::Kind::AvgPoolNodeKind:
+  case Kinded::Kind::AdaptiveAvgPoolNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty});
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
 
   case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::PReluNodeKind:
@@ -343,6 +347,28 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
 
+  case Kinded::Kind::EmbeddingBagNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+               {EmbeddingBagNode::IndicesIdx, EmbeddingBagNode::OffsetsIdx}) &&
+           (NI.getInElemTy(EmbeddingBagNode::IndicesIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == ElemKind::Int64ITy);
+
+  case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind: {
+    auto dataK = NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::DataIdx);
+    auto offsetsK =
+        NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::OffsetsIdx);
+    auto indicesK =
+        NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx);
+    auto resultK =
+        NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx);
+    return (dataK == ElemKind::UInt8FusedQTy ||
+            dataK == ElemKind::UInt8FusedFP16QTy) &&
+           (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
+           (indicesK == ElemKind::Int64ITy) && (offsetsK == ElemKind::Int64ITy);
+  }
+
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
     auto dataK =
         NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::DataIdx);
@@ -465,13 +491,14 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::BatchNormalizationNodeKind:
   case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
+  case Kinded::Kind::AdaptiveAvgPoolNodeKind:
+  case Kinded::Kind::EmbeddingBagNodeKind:
+  case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind:
     return false;
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
     const FusedRowwiseQuantizedSparseLengthsSumNode *SLSN =
         llvm::cast<FusedRowwiseQuantizedSparseLengthsSumNode>(N);
-    if ((backendOptions_.useIceT || backendOptions_.inferOnDevice) &&
-        (SLSN->getData().getElementType() != ElemKind::UInt4FusedFP16QTy) &&
-        (SLSN->getResult().getElementType() == ElemKind::Float16Ty)) {
+    if (SLSN->getResult().getElementType() == ElemKind::Float16Ty) {
       return false; // Don't lower == keep without weights
     } else {
       return true;
@@ -498,7 +525,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
 
 runtime::DeviceManager *
 NNPIBackend::createDeviceManager(const runtime::DeviceConfig &deviceConfig) {
-  return createNNPIDeviceManager(deviceConfig);
+  return createNNPIDeviceManager(deviceConfig, &adapter_);
 }
 
 /// Setup basic parallelization in \p numChunks and \p parOpts for \p F, where
