@@ -4354,3 +4354,97 @@ TEST_F(GraphOptz, ClipReluClipElimTest) {
   bindings_.allocate(input)->getHandle().randomize(-50.0, 5.0, mod_.getPRNG());
   checkNumericalEquivalence();
 }
+
+/// Test that we can find a non-quantized relu and fuse it up into a quant FC.
+TEST_F(GraphOptz, OptimizeQuantFCFloatReluTest) {
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32}, 1.0, 0,
+                                       "input", false);
+  auto *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {32, 32}, 1.0, 0, "weights");
+  auto *bias = mod_.createConstant(ElemKind::Int32QTy, {32}, 1.0, 0, "bias");
+
+  auto *FC = F_->createFullyConnected("fc", input, weights, bias);
+  auto *DN = F_->createDequantize("dq", FC);
+  auto *RN = F_->createRELU("relu", DN);
+  auto *SN = F_->createSave("save", RN);
+
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::OptimizeQuantFCFloatRelu, getDCEPassConfig()});
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+
+  DequantizeNode *optDN = llvm::dyn_cast<DequantizeNode>(optSN->getInput());
+  ASSERT_TRUE(optDN);
+  ReluNode *optRN = llvm::dyn_cast<ReluNode>(optDN->getInput());
+  ASSERT_TRUE(optRN);
+  auto rangeRN = optRN->getResult().getType()->getQuantizedValueRange();
+  EXPECT_EQ(rangeRN.first, 0.0f);
+  FullyConnectedNode *optFC =
+      llvm::dyn_cast<FullyConnectedNode>(optRN->getInput());
+  ASSERT_TRUE(optFC);
+  auto rangeFC = optFC->getResult().getType()->getQuantizedValueRange();
+  EXPECT_EQ(rangeRN.second, rangeFC.second);
+
+  bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127,
+                                                           mod_.getPRNG());
+  weights->getPayloadMutable().getHandle<int8_t>().randomize(-128, 127,
+                                                             mod_.getPRNG());
+  bias->getPayloadMutable().getHandle<int32_t>().randomize(-128, 127,
+                                                           mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+/// Test that we can find a non-quantized relu and fuse it up into a series of
+/// concatenated quant FCs.
+TEST_F(GraphOptz, OptimizeConcatQuantFCFloatReluTest) {
+  std::array<NodeValue, 5> DQs;
+  for (size_t i = 0; i < 5; i++) {
+    auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32},
+                                         1.0 / (i + 1), 0, "input", false);
+    auto *weights =
+        mod_.createConstant(ElemKind::Int8QTy, {32, 32}, 1.0, 0, "weights");
+    auto *bias = mod_.createConstant(ElemKind::Int32QTy, {32}, 1.0, 0, "bias");
+
+    auto *FC = F_->createFullyConnected("fc", input, weights, bias);
+    DQs[i] = F_->createDequantize("dq", FC)->getResult();
+
+    bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127,
+                                                             mod_.getPRNG());
+    weights->getPayloadMutable().getHandle<int8_t>().randomize(-128, 127,
+                                                               mod_.getPRNG());
+    bias->getPayloadMutable().getHandle<int32_t>().randomize(-128, 127,
+                                                             mod_.getPRNG());
+  }
+
+  auto *CN = F_->createConcat("concat", DQs, 0);
+  auto *RN = F_->createRELU("relu", CN);
+  auto *SN = F_->createSave("save", RN);
+
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::OptimizeQuantFCFloatRelu, getDCEPassConfig()});
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  ConcatNode *optCN = llvm::dyn_cast<ConcatNode>(optSN->getInput());
+  ASSERT_TRUE(optCN);
+  EXPECT_EQ(optCN->getInputs().size(), 5);
+
+  for (const NodeValue NV : optCN->getInputs()) {
+    DequantizeNode *optDN = llvm::dyn_cast<DequantizeNode>(NV);
+    ASSERT_TRUE(optDN);
+    ReluNode *optRN = llvm::dyn_cast<ReluNode>(optDN->getInput());
+    ASSERT_TRUE(optRN);
+    auto rangeRN = optRN->getResult().getType()->getQuantizedValueRange();
+    EXPECT_EQ(rangeRN.first, 0.0f);
+    FullyConnectedNode *optFC =
+        llvm::dyn_cast<FullyConnectedNode>(optRN->getInput());
+    ASSERT_TRUE(optFC);
+    auto rangeFC = optFC->getResult().getType()->getQuantizedValueRange();
+    EXPECT_EQ(rangeRN.second, rangeFC.second);
+  }
+
+  checkNumericalEquivalence();
+}

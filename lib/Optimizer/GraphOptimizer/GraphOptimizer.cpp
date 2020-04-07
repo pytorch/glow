@@ -3125,6 +3125,87 @@ bool OptimizeOutIntermediateConversions::run(Function *F,
   return changed;
 }
 
+// Look for float Relus that we can fuse up into quantized FCs. This is either
+// with a Dequantize between them, or a Concat with multiple FCs being
+// dequantized and concatenated together.
+bool OptimizeQuantFCFloatRelu::run(Function *F,
+                                   const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *relu = llvm::dyn_cast<ReluNode>(&node);
+    // Look for Float relus to start.
+    if (!relu ||
+        !isFloatElemKind(relu->getResult().getType()->getElementType())) {
+      continue;
+    }
+
+    // Now look for dequantize nodes. We may need to move this above a Concat.
+    // Check if necessary.
+    std::vector<FullyConnectedNode *> nodesToFuse;
+    if (auto *CN = llvm::dyn_cast<ConcatNode>(relu->getInput())) {
+      if (CN->getNumUsers() != 1) {
+        continue;
+      }
+
+      // Check if all the concat inputs are dequantized FCs.
+      for (const NodeValue &NV : CN->getInputs()) {
+        auto *DQ = llvm::dyn_cast<DequantizeNode>(NV);
+        if (!DQ || DQ->getNumUsers() != 1) {
+          break;
+        }
+        auto *FC = llvm::dyn_cast<FullyConnectedNode>(DQ->getInput());
+        if (!FC || FC->getNumUsers() != 1) {
+          break;
+        }
+        nodesToFuse.push_back(FC);
+      }
+      if (nodesToFuse.size() != CN->getInputs().size()) {
+        continue;
+      }
+    } else if (auto *DQ = llvm::dyn_cast<DequantizeNode>(relu->getInput())) {
+      if (DQ->getNumUsers() != 1) {
+        continue;
+      }
+
+      auto *FC = llvm::dyn_cast<FullyConnectedNode>(DQ->getInput());
+      if (!FC || FC->getNumUsers() != 1) {
+        break;
+      }
+      nodesToFuse.push_back(FC);
+    } else {
+      continue;
+    }
+
+    // Did not find any quantized FCs to fuse, so continue.
+    if (!nodesToFuse.size()) {
+      continue;
+    }
+
+    // Now add quantized relus onto all of the FCs.
+    for (FullyConnectedNode *FC : nodesToFuse) {
+      const TypeRef FCTy = FC->getResult().getType();
+      // Use the same type as the FC for the Relu but with 0 as min.
+      const auto qParams = quantization::chooseQuantizationParams(
+          {0, FCTy->getQuantizedValueRange().second});
+      const TypeRef qReluTy = F->getParent()->uniqueType(
+          FCTy->getElementType(), FCTy->dims(), qParams.scale, qParams.offset);
+      ReluNode *qRelu = F->createRELU(relu->getName().str() + "_quant",
+                                      FC->getResult(), qReluTy);
+      FC->getResult().typeUnsafeReplaceAllUsesOfWith(qRelu->getResult(), F,
+                                                     qRelu);
+    }
+
+    // Now we can get rid of the relu.
+    relu->getResult().replaceAllUsesOfWith(relu->getInput());
+    changed = true;
+    continue;
+  }
+
+  return changed;
+}
+
 /// \returns a cloned version of node \p N, but with each of the cloned node's
 /// output types set to the corresponding type in \p types. The new node is
 /// added to Function \p F.
