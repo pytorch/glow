@@ -179,53 +179,6 @@ TEST_F(NNPIOptPipelineTest, SplitParallelizationTestFCReluNNPI) {
   checkNumericalEquivalence(/* allowedError */ 0.f);
 }
 
-/// Test quantize/dequantize splitting
-TEST_F(NNPIOptPipelineTest, SplitQuantizeDequantizeNNPI) {
-  auto *input =
-      mod_.createPlaceholder(ElemKind::Float16Ty, {32, 512}, "input", false);
-  Tensor T_weights = Tensor(ElemKind::Int8QTy, {512, 512}, 1.0, 0);
-  T_weights.getHandle<int8_t>().clear(1);
-  auto *weights = F_->getParent()->createConstant("weights", T_weights);
-  Tensor T_bias = Tensor(ElemKind::Int32QTy, {512}, 1.0, 0);
-  T_bias.getHandle<int32_t>().clear(1);
-  auto *bias = F_->getParent()->createConstant("bias", T_bias);
-
-  auto *q_input =
-      F_->createQuantize("int8_quantize", input,
-                         mod_.uniqueType(ElemKind::Int8QTy, {32, 512}, 1.0, 0));
-  auto *FC = F_->createFullyConnected("fc", q_input, weights, bias);
-  auto *output = F_->createDequantize(
-      "int8_dequantize", FC, mod_.uniqueType(ElemKind::FloatTy, {32, 512}));
-  F_->createSave("ret", output);
-
-  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
-      std::to_string(8);
-  cloneAndCompile();
-
-  EXPECT_TRUE((F_->getNodes().size() < optimizedF_->getNodes().size()));
-  EXPECT_TRUE(countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind) == 1);
-  EXPECT_TRUE(
-      countNodeKind(optimizedF_, Kinded::Kind::FullyConnectedNodeKind) == 8);
-  EXPECT_TRUE(countNodeKind(F_, Kinded::Kind::QuantizeNodeKind) == 1);
-  EXPECT_TRUE(countNodeKind(optimizedF_, Kinded::Kind::QuantizeNodeKind) == 8);
-  EXPECT_TRUE(countNodeKind(F_, Kinded::Kind::DequantizeNodeKind) == 1);
-  EXPECT_TRUE(countNodeKind(optimizedF_, Kinded::Kind::DequantizeNodeKind) ==
-              8);
-
-  SaveNode *optSave = nullptr;
-  for (auto &N : optimizedF_->getNodes()) {
-    if ((optSave = llvm::dyn_cast<SaveNode>(&N))) {
-      break;
-    }
-  }
-  ASSERT_TRUE(optSave);
-
-  bindings_.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
-                                                              mod_.getPRNG());
-
-  checkNumericalEquivalence(/* allowedError */ 0.f);
-}
-
 /// Test data parallel and model parallel splitting inside
 /// of NNPIPrivateTransforms.cpp for FC/RELU/Clip
 TEST_F(NNPIOptPipelineTest, SplitParallelizationTestFCReluClipNNPI) {

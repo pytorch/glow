@@ -4496,6 +4496,88 @@ TEST_F(GraphOptz, OptimizeDequantConcatQuant) {
       EXPECT_EQ(inputs[i], optRN->getInput().getNode());
     }
   }
+  checkNumericalEquivalence();
+}
 
+/// Test that if we have a Concat with all Dequantize inputs with the same
+/// scale/offset/kind that we can sink the Dequantizes below the Concat.
+TEST_F(GraphOptz, SinkDequantizeBelowConcatTest) {
+  const float scale = 0.06;
+  const int32_t offset = -15;
+  std::array<NodeValue, 5> inputs;
+  for (dim_t i = 0; i < 5; i++) {
+    Placeholder *input = mod_.createPlaceholder(ElemKind::Int8QTy, {i + 1, 100},
+                                                scale, offset, "input", false);
+    bindings_.allocate(input)->getHandle<int8_t>().randomize(-100, 100,
+                                                             mod_.getPRNG());
+    DequantizeNode *dequantize = F_->createDequantize("dequantize", input);
+    inputs[i] = dequantize->getResult();
+  }
+  ConcatNode *concat = F_->createConcat("concat", inputs, 0);
+  SaveNode *SN = F_->createSave("ret", concat);
+
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::SinkConversions, getDCEPassConfig()});
+
+  // Concat, dequantize, save.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::DequantizeNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind), 1);
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  DequantizeNode *optDequantize =
+      llvm::dyn_cast<DequantizeNode>(optSN->getInput());
+  ASSERT_TRUE(optDequantize);
+  NodeValue input = optDequantize->getInput();
+  EXPECT_EQ(scale, input.getType()->getScale());
+  EXPECT_EQ(offset, input.getType()->getOffset());
+  EXPECT_EQ(ElemKind::Int8QTy, input.getType()->getElementType());
+
+  // Find dequantize node in the optimized graph.
+  checkNumericalEquivalence();
+}
+
+/// Test that if we have a Concat with all Quantize inputs with the same
+/// scale/offset/kind that we can sink the Dequantizes below the Concat.
+TEST_F(GraphOptz, SinkQuantizeBelowConcatTest) {
+  const float scale = 0.06;
+  const int32_t offset = -15;
+  std::array<NodeValue, 5> inputs;
+  for (dim_t i = 0; i < 5; i++) {
+    Placeholder *input = mod_.createPlaceholder(ElemKind::Float16Ty,
+                                                {i + 1, 100}, "input", false);
+    bindings_.allocate(input)->getHandle<float16_t>().randomize(-100, 100,
+                                                                mod_.getPRNG());
+    const TypeRef QTy = mod_.uniqueType(
+        ElemKind::Int8QTy, input->getOutput().dims(), scale, offset);
+    QuantizeNode *quantize = F_->createQuantize("quantize", input, QTy);
+    inputs[i] = quantize->getResult();
+  }
+  ConcatNode *concat = F_->createConcat("concat", inputs, 0);
+  SaveNode *SN = F_->createSave("ret", concat);
+
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::SinkConversions, getDCEPassConfig()});
+
+  // Concat, quantize, save.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::QuantizeNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind), 1);
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  QuantizeNode *optQuantize = llvm::dyn_cast<QuantizeNode>(optSN->getInput());
+  ASSERT_TRUE(optQuantize);
+  EXPECT_EQ(scale, optQuantize->getResult().getType()->getScale());
+  EXPECT_EQ(offset, optQuantize->getResult().getType()->getOffset());
+  EXPECT_EQ(ElemKind::Int8QTy,
+            optQuantize->getResult().getType()->getElementType());
+
+  // Find quantize node in the optimized graph.
   checkNumericalEquivalence();
 }

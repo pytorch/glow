@@ -299,6 +299,108 @@ static bool sinkTranposeBelowChannelShuffle(Function *F,
   return true;
 }
 
+/// Given \p CN from \p F, determines if all inputs are either Quantize or
+/// Dequantize (depending on \p QuantNodeClass) that use the same
+/// scale/offset/kind, and if so creates and \returns a new concat with all
+/// inputs as the inputs from the Quantize or Dequantize inputs. Otherwise
+/// \returns nullptr.
+template <class QuantNodeClass>
+static ConcatNode *setupQuantDequantSinkBelowConcat(Function *F,
+                                                    ConcatNode *CN) {
+  constexpr bool isQuant = std::is_same<QuantizeNode, QuantNodeClass>::value;
+  constexpr bool isDeq = std::is_same<DequantizeNode, QuantNodeClass>::value;
+  static_assert(isQuant || isDeq, "setupQuantDequantSinkBelowConcat() only "
+                                  "supports Quantize/Dequantize nodes.");
+  // Check if all inputs are Quantize with the same input
+  // scale/offset/ElemKind.
+  std::vector<QuantNodeClass *> qNodes;
+  qNodes.reserve(CN->getInputs().size());
+  for (auto &concatInput : CN->getInputs()) {
+    QuantNodeClass *Q = dyn_cast<QuantNodeClass>(concatInput);
+    if (!Q) {
+      return nullptr;
+    }
+    qNodes.push_back(Q);
+  }
+
+  // Gather all inputs of the nodes in qNodes here.
+  std::vector<NodeValue> newInputs;
+  newInputs.reserve(qNodes.size());
+  newInputs.push_back(qNodes[0]->getInput());
+
+  // Check the CN's first input's type to check against all other inputs. Use
+  // the output of Quantize or input of Dequantize.
+  const TypeRef firstTy = isQuant ? qNodes[0]->getResult().getType()
+                                  : qNodes[0]->getInput().getType();
+
+  // Check that all inputs have the same scale/offset/type.
+  for (size_t i = 1, e = qNodes.size(); i < e; i++) {
+    const TypeRef currTy = isQuant ? qNodes[i]->getResult().getType()
+                                   : qNodes[i]->getInput().getType();
+    if (currTy->getScale() != firstTy->getScale() ||
+        currTy->getOffset() != firstTy->getOffset() ||
+        currTy->getElementType() != firstTy->getElementType()) {
+      return nullptr;
+    }
+    newInputs.push_back(qNodes[i]->getInput());
+  }
+
+  // Create and return a new ConcatNode with newInputs.
+  return F->createConcat(CN->getName(), newInputs, CN->getDim());
+}
+
+bool SinkConversions::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+  // For each node:
+  for (auto &N : nodes) {
+    ConcatNode *CN = dyn_cast<ConcatNode>(&N);
+    if (!CN) {
+      continue;
+    }
+    const Node *firstNode = CN->getInputs().front().getNode();
+
+    // Sink Dequantize below Concat nodes.
+    if (firstNode->getKind() == Kinded::Kind::DequantizeNodeKind) {
+      ConcatNode *newCN =
+          setupQuantDequantSinkBelowConcat<DequantizeNode>(F, CN);
+      if (!newCN) {
+        continue;
+      }
+
+      DequantizeNode *newDequantize =
+          F->createDequantize(CN->getName().str() + "_dequantize", newCN);
+
+      CN->getResult().replaceAllUsesOfWith(newDequantize->getResult());
+      changed = true;
+      continue;
+    }
+
+    // Sink Quantize below Concat nodes.
+    if (firstNode->getKind() == Kinded::Kind::QuantizeNodeKind) {
+      ConcatNode *newCN = setupQuantDequantSinkBelowConcat<QuantizeNode>(F, CN);
+      if (!newCN) {
+        continue;
+      }
+
+      const TypeRef QTy =
+          llvm::cast<QuantizeNode>(firstNode)->getResult().getType();
+      const TypeRef concatQTy = F->getParent()->uniqueType(
+          QTy->getElementType(), newCN->getResult().dims(), QTy->getScale(),
+          QTy->getOffset());
+      QuantizeNode *newQuantize = F->createQuantize(
+          CN->getName().str() + "_quantize", newCN, concatQTy);
+
+      CN->getResult().replaceAllUsesOfWith(newQuantize->getResult());
+      changed = true;
+      continue;
+    }
+  }
+
+  return changed;
+}
+
 /// Code Sinking.
 bool SinkCode::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
@@ -651,66 +753,72 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       changed = true;
     }
 
-    // Sink RELU below batch concat nodes.
     if (auto *CN = dyn_cast<ConcatNode>(node)) {
-      llvm::SmallVector<NodeValue, 6> CNInputs;
-      for (auto &input : CN->getInputs()) {
-        auto *inputRL = dyn_cast<ReluNode>(input);
-        if (!inputRL) {
-          break;
+      const Node *firstNode = CN->getInputs().front().getNode();
+      // Sink RELU below batch concat nodes.
+      if (firstNode->getKind() == Kinded::Kind::ReluNodeKind) {
+        llvm::SmallVector<NodeValue, 6> CNInputs;
+        for (auto &input : CN->getInputs()) {
+          auto *inputRL = dyn_cast<ReluNode>(input);
+          if (!inputRL) {
+            break;
+          }
+          CNInputs.push_back(inputRL->getInput());
         }
-        CNInputs.push_back(inputRL->getInput());
+
+        if (CNInputs.size() == CN->getNumInputs()) {
+          auto *newCN = F->createConcat(CN->getName(), CNInputs, CN->getDim());
+          newCN->setPredicate(node->getPredicate());
+          auto name = CN->getNthInput(0).getNode()->getName();
+          auto *newRL = F->createRELU(name, newCN, CN->getResult().getType());
+          newRL->setPredicate(node->getPredicate());
+          CN->getResult().replaceAllUsesOfWith(newRL);
+          changed = true;
+        }
+        continue;
       }
 
-      if (CNInputs.size() == CN->getNumInputs()) {
-        auto *newCN = F->createConcat(CN->getName(), CNInputs, CN->getDim());
+      // Sink Transpose below concat nodes.
+      if (firstNode->getKind() == Kinded::Kind::TransposeNodeKind) {
+        llvm::SmallVector<NodeValue, 6> transVector;
+        auto inputIter = CN->getInputs().begin();
+        auto *firstInput = dyn_cast<TransposeNode>(*inputIter);
+        if (!firstInput) {
+          continue;
+        }
+
+        transVector.push_back(firstInput->getInput());
+        auto shuffle = firstInput->getShuffle();
+        // If the shuffle masks don't agree or not all inputs are Transpose then
+        // bail out.
+        for (++inputIter; inputIter != CN->getInputs().end(); ++inputIter) {
+          auto *tTR = dyn_cast<TransposeNode>(*inputIter);
+          if (!tTR || tTR->getShuffle() != shuffle) {
+            break;
+          }
+          transVector.push_back(tTR->getInput());
+        }
+
+        if (transVector.size() != CN->getNumInputs()) {
+          continue;
+        }
+
+        // Figure out where we transposed the channel index for batch
+        // normalization.
+        unsigned_t idx = CN->getDim();
+        unsigned_t newChannelIdx = shuffle[idx];
+
+        auto *newCN =
+            F->createConcat(CN->getName(), transVector, newChannelIdx);
         newCN->setPredicate(node->getPredicate());
-        auto name = CN->getNthInput(0).getNode()->getName();
-        auto *newRL = F->createRELU(name, newCN, CN->getResult().getType());
-        newRL->setPredicate(node->getPredicate());
-        CN->getResult().replaceAllUsesOfWith(newRL);
+        auto *newTR = F->createTranspose(firstInput->getName(), newCN,
+                                         firstInput->getShuffle(),
+                                         firstInput->getLayout());
+        newTR->setPredicate(node->getPredicate());
+        CN->getResult().replaceAllUsesOfWith(newTR);
         changed = true;
-      }
-    }
-
-    // Sink Transpose below concat nodes.
-    if (auto *CN = dyn_cast<ConcatNode>(node)) {
-      llvm::SmallVector<NodeValue, 6> transVector;
-      auto inputIter = CN->getInputs().begin();
-      auto *firstInput = dyn_cast<TransposeNode>(*inputIter);
-      if (!firstInput) {
         continue;
       }
-
-      transVector.push_back(firstInput->getInput());
-      auto shuffle = firstInput->getShuffle();
-      // If the shuffle masks don't agree or not all inputs are Transpose then
-      // bail out.
-      for (++inputIter; inputIter != CN->getInputs().end(); ++inputIter) {
-        auto *tTR = dyn_cast<TransposeNode>(*inputIter);
-        if (!tTR || tTR->getShuffle() != shuffle) {
-          break;
-        }
-        transVector.push_back(tTR->getInput());
-      }
-
-      if (transVector.size() != CN->getNumInputs()) {
-        continue;
-      }
-
-      // Figure out where we transposed the channel index for batch
-      // normalization.
-      unsigned_t idx = CN->getDim();
-      unsigned_t newChannelIdx = shuffle[idx];
-
-      auto *newCN = F->createConcat(CN->getName(), transVector, newChannelIdx);
-      newCN->setPredicate(node->getPredicate());
-      auto *newTR =
-          F->createTranspose(firstInput->getName(), newCN,
-                             firstInput->getShuffle(), firstInput->getLayout());
-      newTR->setPredicate(node->getPredicate());
-      CN->getResult().replaceAllUsesOfWith(newTR);
-      changed = true;
     }
 
     // Sink Clip below Reshape nodes.

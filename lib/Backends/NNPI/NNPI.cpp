@@ -1095,6 +1095,12 @@ FunctionPassPipeline NNPIBackend::getOptimizationPipeline() const {
   // Optimize quantization now that we've optimized some other quant nodes.
   pipeline.pushBack(FunctionPassID::OptimizeQuantization);
 
+  // Now try to sink conversions below concats.
+  pipeline.pushBack(FunctionPassID::SinkConversions);
+
+  // Now that things have been sunk try to get rid of unnecessary concats.
+  pipeline.pushBack(FunctionPassID::OptimizeConcatNodes);
+
   // Cleanup everything now.
   pipeline.pushBack(getDCEPassConfig());
 
