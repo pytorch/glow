@@ -192,6 +192,9 @@ public:
   /// \returns the operands of the instruction.
   llvm::ArrayRef<Operand> getOperands() const { return ops_; }
 
+  /// \returns the name of the operand.
+  llvm::StringRef getOperandName(unsigned idx) const;
+
   /// Check the correctness of the use-list.
   void verifyUseList(const InstructionNumbering &InstrNumbering) const;
 
