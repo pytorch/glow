@@ -766,6 +766,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::adaptive_avg_pool2d"},
        &PyTorchModelLoader::loadAdaptiveAvgPool2d},
       {{"aten::reshape"}, &PyTorchModelLoader::loadReshape},
+      {{"aten::view"}, &PyTorchModelLoader::loadView},
       {{"aten::_convolution"}, &PyTorchModelLoader::loadConvolution},
       {{"aten::batch_norm"}, &PyTorchModelLoader::loadBatchNorm},
       {{"aten::layer_norm"}, &PyTorchModelLoader::loadLayerNorm},
@@ -2001,6 +2002,12 @@ Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
   return addValueMapping(
       outputs[0], F_.createReshape("reshape", input, castVector<dim_t>(shape)),
       dtype);
+}
+
+Error PyTorchModelLoader::loadView(const torch::jit::Node *ptNode) {
+  // loadView is just like Reshape, except reshape should call contiguous
+  // for non-contiguous data and view should fail
+  return PyTorchModelLoader::loadReshape(ptNode);
 }
 
 Error PyTorchModelLoader::loadRelu(const torch::jit::Node *ptNode) {

@@ -561,6 +561,10 @@ private:
   /// \returns error on failure.
   Error loadReshape(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::view node.
+  /// \returns error on failure.
+  Error loadView(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch aten::mm node.
   /// \returns error on failure.
   Error loadMM(const torch::jit::Node *ptNode);

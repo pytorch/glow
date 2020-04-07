@@ -33,13 +33,24 @@ size_t CachingGraphRunner::computeGraphHash(
   size_t hash = reinterpret_cast<size_t>(this);
 
   for (auto &input : inputs) {
-    if (!input.isTensor()) {
-      continue;
-    }
-
-    const auto ptTensorType = c10::TensorType::create(input.toTensor());
-    size_t tensorHash = std::hash<c10::TensorType>()(*ptTensorType);
-    hash = torch::hash_combine(hash, tensorHash);
+    if (input.isTensor()) {
+      // hash on input Tensor type
+      const auto ptTensorType = c10::TensorType::create(input.toTensor());
+      size_t tensorHash = std::hash<c10::TensorType>()(*ptTensorType);
+      hash = torch::hash_combine(hash, tensorHash);
+    } else if (input.isInt()) {
+      // just doing Int and IntList for now.
+      size_t inputHash = std::hash<int64_t>()(input.toInt());
+      hash = torch::hash_combine(hash, inputHash);
+    } else if (input.isIntList()) {
+      std::vector<int64_t> inputList = input.toIntVector();
+      size_t inputHash = 0; // std::hash<std::vector<int64_t>>()(inputList);
+      for (auto el : inputList) {
+        size_t elHash = std::hash<int64_t>()(el);
+        inputHash = torch::hash_combine(inputHash, elHash);
+      }
+      hash = torch::hash_combine(hash, inputHash);
+    } // else continue;;
   }
   return hash;
 }
@@ -223,7 +234,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
         t = glow::Tensor(ptTensor.data_ptr(), ty);
       }
 
-      // Write input tesnor to ONNX
+      // Write input tensor to ONNX
       if (settings_.writeToOnnx) {
         auto *onnxT = inputG.add_initializer();
         onnxT->set_name(ph->getName());
@@ -234,8 +245,9 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     } else if (input.isObject()) {
       // Objects are only used for loading attributes at compile time.
       continue;
-    } else {
-      return MAKE_ERR("Only Tensor and Object IValue inputs are accepted");
+    } else if (!(input.isInt() || input.isIntList())) {
+      return MAKE_ERR(
+          "Only Int/IntList, Tensor and Object IValue inputs are accepted");
     }
   }
 
