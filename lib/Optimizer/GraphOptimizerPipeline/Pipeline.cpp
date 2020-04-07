@@ -97,6 +97,9 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // Optimize quantization related operators.
       {FunctionPassID::OptimizeQuantization, ConvergenceMode::UntilFixedPoint},
 
+      // Optimize patterns of concats with quantization/dequantization.
+      {FunctionPassID::OptimizeConcatQuantization},
+
       // Optimize reshapes introduced during above optimizations.
       {FunctionPassID::OptimizeReshape},
 
