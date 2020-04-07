@@ -129,6 +129,7 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
     cctx.precisionConfig.precisionModeKindSet.insert(
         Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind);
   }
+  cctx.replicationCount = settings_.replicationCount;
 
   if (settings_.dumpFinalGlowGraph) {
     cctx.dumpFinalGraph = true;
@@ -147,6 +148,7 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
     cctx.backendOpts.backendSpecificOpts.insert(loadBackendSpecificOpts);
   }
 
+  cctx.replicationCount = settings_.replicationCount;
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(module), cctx,
                                          settings_.saturateHost));
 
