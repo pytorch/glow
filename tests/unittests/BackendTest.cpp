@@ -477,7 +477,8 @@ TEST_P(BackendExecTest, debugPrint) {
   std::unique_ptr<Backend> backend(createBackend(GetParam()));
   auto IR = glow::make_unique<IRFunction>(F);
   IR->generateIR(*backend.get());
-  IRBuilder(IR.get()).createDebugPrintInst("print", *IR->getWeights().begin());
+  IRBuilder(IR.get()).createDebugPrintInst("print", *IR->getWeights().begin(),
+                                           "txt", "");
 
   auto function = reinterpret_cast<BackendUsingGlowIR *>(backend.get())
                       ->compileIR(std::move(IR));
