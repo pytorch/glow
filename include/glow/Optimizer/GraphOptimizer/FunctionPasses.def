@@ -20,6 +20,7 @@
 
 FUN_PASS(DCE)
 FUN_PASS(SinkCode)
+FUN_PASS(SinkConversions)
 FUN_PASS(MergeMatMul)
 FUN_PASS(MergePadIntoConvolution)
 FUN_PASS(MergeTransposeIntoMatMulOrFC)
