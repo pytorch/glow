@@ -18,6 +18,7 @@
 #include "NNPICompiledFunction.h"
 #include "NNPIDeviceManager.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/Utils.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 #include "glow/Optimizer/Lower/Lower.h"
@@ -534,149 +535,120 @@ static void setupBasicParallelizationConfigs(
     Function *F, llvm::DenseMap<Node *, size_t> &numChunks,
     llvm::DenseMap<Node *, ParallelTransformKind> &parOpts,
     int32_t numParallelChunks) {
-  // Find all FC layers to split
-  for (auto &node : F->getNodes()) {
-    auto *FC = llvm::dyn_cast<FullyConnectedNode>(&node);
-    if (!FC) {
-      continue;
-    }
-    size_t K = FC->getWeights().dims()[1];
-    if (K >= 512) {
-      parOpts[FC] = ParallelTransformKind::Model;
-      numChunks[FC] = numParallelChunks;
-      continue;
-    }
-    size_t M = FC->getInput().dims()[0];
-    if (M >= 256) {
-      parOpts[FC] = ParallelTransformKind::Data;
-      numChunks[FC] = numParallelChunks;
-      continue;
-    }
-  }
-
-  // Relu parallelization.
-  // If a Relu follows FC, mirror FC split so that they fuse.
-  // Otherwise, use data parallelism.
-  for (auto &node : F->getNodes()) {
-    auto *R = llvm::dyn_cast<ReluNode>(&node);
-    if (!R) {
-      continue;
+  // Process nodes PostOrder so we always process inputs before outputs of any
+  // Node, so parallelization can be based on if a parent is parallelized.
+  GraphPostOrderVisitor visitor(*F);
+  for (auto *node : visitor.getPostOrder()) {
+    // Find all FC layers to split
+    if (auto *FC = llvm::dyn_cast<FullyConnectedNode>(node)) {
+      size_t K = FC->getWeights().dims()[1];
+      if (K >= 512) {
+        parOpts[FC] = ParallelTransformKind::Model;
+        numChunks[FC] = numParallelChunks;
+        continue;
+      }
+      size_t M = FC->getInput().dims()[0];
+      if (M >= 256) {
+        parOpts[FC] = ParallelTransformKind::Data;
+        numChunks[FC] = numParallelChunks;
+        continue;
+      }
     }
 
-    // For Relus that arent preceded by FC, do data parallelism
-    Node *inputNode = R->getInput().getNode();
-    auto FC = llvm::dyn_cast<FullyConnectedNode>(inputNode);
-    if (!FC) {
-      parOpts[R] = ParallelTransformKind::Data;
-      numChunks[R] = numParallelChunks;
-      continue;
+    // Relu parallelization.
+    // If a Relu follows FC, mirror FC split so that they fuse.
+    // Otherwise, use data parallelism.
+    if (auto *R = llvm::dyn_cast<ReluNode>(node)) {
+      // For Relus that arent preceded by FC, do data parallelism if the input
+      // was parallelized.
+      Node *inputNode = R->getInput().getNode();
+      auto FC = llvm::dyn_cast<FullyConnectedNode>(inputNode);
+      if (!FC) {
+        if (numChunks.find(inputNode) != numChunks.end() &&
+            parOpts.find(inputNode) != parOpts.end()) {
+          parOpts[R] = ParallelTransformKind::Data;
+          numChunks[R] = numParallelChunks;
+        }
+        continue;
+      }
+
+      // Otherwise, mirror FC split.
+      if (R->getInput().dims().size() < 2) {
+        continue;
+      }
+      size_t K = R->getInput().dims()[1];
+      if (K >= 512) {
+        parOpts[R] = ParallelTransformKind::Model;
+        numChunks[R] = numParallelChunks;
+        continue;
+      }
+      size_t M = R->getInput().dims()[0];
+      if (M >= 256) {
+        parOpts[R] = ParallelTransformKind::Data;
+        numChunks[R] = numParallelChunks;
+        continue;
+      }
     }
 
-    // Otherwise, mirror FC split.
-    if (R->getInput().dims().size() < 2) {
-      continue;
-    }
-    size_t K = R->getInput().dims()[1];
-    if (K >= 512) {
-      parOpts[R] = ParallelTransformKind::Model;
-      numChunks[R] = numParallelChunks;
-      continue;
-    }
-    size_t M = R->getInput().dims()[0];
-    if (M >= 256) {
-      parOpts[R] = ParallelTransformKind::Data;
-      numChunks[R] = numParallelChunks;
-      continue;
-    }
-  }
-
-  // Split transpose layers in data parallel fashion
-  for (auto &node : F->getNodes()) {
-    auto *TP = llvm::dyn_cast<TransposeNode>(&node);
-    if (!TP) {
-      continue;
-    }
-    parOpts[TP] = ParallelTransformKind::Data;
-    numChunks[TP] = numParallelChunks;
-  }
-
-  // Split Quantize layers in data parallel fashion
-  for (auto &node : F->getNodes()) {
-    auto *QN = llvm::dyn_cast<QuantizeNode>(&node);
-    if (!QN) {
-      continue;
-    }
-    parOpts[QN] = ParallelTransformKind::Data;
-    numChunks[QN] = numParallelChunks;
-  }
-
-  // Split Dequantize layers in data parallel fashion
-  for (auto &node : F->getNodes()) {
-    auto *DQN = llvm::dyn_cast<DequantizeNode>(&node);
-    if (!DQN) {
-      continue;
-    }
-    parOpts[DQN] = ParallelTransformKind::Data;
-    numChunks[DQN] = numParallelChunks;
-  }
-
-  // Split BMM layers in data parallel fashion
-  for (auto &node : F->getNodes()) {
-    auto *BMM = llvm::dyn_cast<BatchMatMulNode>(&node);
-    if (!BMM) {
-      continue;
-    }
-    parOpts[BMM] = ParallelTransformKind::Data;
-    numChunks[BMM] = numParallelChunks;
-  }
-
-  // Split Tanh layers in data parallel fashion
-  for (auto &node : F->getNodes()) {
-    auto *TH = llvm::dyn_cast<TanhNode>(&node);
-    if (!TH) {
-      continue;
-    }
-    if (TH->getInput().dims().size() < 2) {
-      continue;
-    }
-    size_t N = TH->getInput().dims()[1];
-    if (N < 4096) {
-      continue;
-    }
-    parOpts[TH] = ParallelTransformKind::Data;
-    numChunks[TH] = numParallelChunks;
-  }
-
-  // Split Mul layers in data parallel fashion
-  for (auto &node : F->getNodes()) {
-    auto *M = llvm::dyn_cast<MulNode>(&node);
-    if (!M) {
-      continue;
-    }
-    if (M->getLHS().dims().size() < 2) {
-      continue;
-    }
-    size_t N = M->getLHS().dims()[1];
-    if (N < 4096) {
-      continue;
-    }
-    parOpts[M] = ParallelTransformKind::Data;
-    numChunks[M] = numParallelChunks;
-  }
-
-  // Clip parallelization.
-  // If a Clip follows a parallel op, mirror that.
-  for (auto &node : F->getNodes()) {
-    auto *C = llvm::dyn_cast<ClipNode>(&node);
-    if (!C) {
-      continue;
+    // Split transpose layers in data parallel fashion
+    if (auto *TP = llvm::dyn_cast<TransposeNode>(node)) {
+      parOpts[TP] = ParallelTransformKind::Data;
+      numChunks[TP] = numParallelChunks;
     }
 
-    Node *inputNode = C->getInput().getNode();
-    if (numChunks.find(inputNode) != numChunks.end() &&
-        parOpts.find(inputNode) != parOpts.end()) {
-      parOpts[C] = parOpts[inputNode];
-      numChunks[C] = numChunks[inputNode];
+    // Split Quantize layers in data parallel fashion
+    if (auto *QN = llvm::dyn_cast<QuantizeNode>(node)) {
+      parOpts[QN] = ParallelTransformKind::Data;
+      numChunks[QN] = numParallelChunks;
+    }
+
+    // Split Dequantize layers in data parallel fashion
+    if (auto *DQN = llvm::dyn_cast<DequantizeNode>(node)) {
+      parOpts[DQN] = ParallelTransformKind::Data;
+      numChunks[DQN] = numParallelChunks;
+    }
+
+    // Split BMM layers in data parallel fashion
+    if (auto *BMM = llvm::dyn_cast<BatchMatMulNode>(node)) {
+      parOpts[BMM] = ParallelTransformKind::Data;
+      numChunks[BMM] = numParallelChunks;
+    }
+
+    // Split Tanh layers in data parallel fashion
+    if (auto *TH = llvm::dyn_cast<TanhNode>(node)) {
+      if (TH->getInput().dims().size() < 2) {
+        continue;
+      }
+      size_t N = TH->getInput().dims()[1];
+      if (N < 4096) {
+        continue;
+      }
+      parOpts[TH] = ParallelTransformKind::Data;
+      numChunks[TH] = numParallelChunks;
+    }
+
+    // Split Mul layers in data parallel fashion
+    if (auto *M = llvm::dyn_cast<MulNode>(node)) {
+      if (M->getLHS().dims().size() < 2) {
+        continue;
+      }
+      size_t N = M->getLHS().dims()[1];
+      if (N < 4096) {
+        continue;
+      }
+      parOpts[M] = ParallelTransformKind::Data;
+      numChunks[M] = numParallelChunks;
+    }
+
+    // Clip parallelization.
+    // If a Clip follows a parallel op, mirror that.
+    if (auto *C = llvm::dyn_cast<ClipNode>(node)) {
+      Node *inputNode = C->getInput().getNode();
+      if (numChunks.find(inputNode) != numChunks.end() &&
+          parOpts.find(inputNode) != parOpts.end()) {
+        parOpts[C] = parOpts[inputNode];
+        numChunks[C] = numChunks[inputNode];
+      }
     }
   }
 }
@@ -1100,6 +1072,12 @@ FunctionPassPipeline NNPIBackend::getOptimizationPipeline() const {
 
   // Now that things have been sunk try to get rid of unnecessary concats.
   pipeline.pushBack(FunctionPassID::OptimizeConcatNodes);
+
+  // Look for float Relus that we can fuse up into quantized FCs.
+  pipeline.pushBack(FunctionPassID::OptimizeQuantFCFloatRelu);
+
+  // Optimize concats and quantized/dequantize patterns.
+  pipeline.pushBack(FunctionPassID::OptimizeConcatQuantization);
 
   // Cleanup everything now.
   pipeline.pushBack(getDCEPassConfig());
