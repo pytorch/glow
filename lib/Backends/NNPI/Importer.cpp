@@ -1474,23 +1474,29 @@ public:
     std::string convertInputName = NNPIImporter::internalName_ +
                                    glowRowwiseFC->getName().begin() +
                                    "_convert_input";
-    LOG_NNPI_IF_ERROR_RETURN_VALUE(
-        nnpiNetworkAddConvertOp(
-            importer.getNetwork(), convertInputName.c_str(),
-            nodeValueName(glowRowwiseFC->getInput()).c_str(),
-            symlowpInputName.c_str()),
-        "Failed to add layer");
+    std::string convertInputInputName =
+        nodeValueName(glowRowwiseFC->getInput());
+    if (!importer.hasChannelWiseConverter(convertInputInputName)) {
+      LOG_NNPI_IF_ERROR_RETURN_VALUE(
+          nnpiNetworkAddConvertOp(
+              importer.getNetwork(), convertInputName.c_str(),
+              convertInputInputName.c_str(), symlowpInputName.c_str()),
+          "Failed to add layer");
+      importer.addChannelWiseConverter(convertInputInputName);
+    }
 
     // Add convert op from Symlowp output to Gemmlowp.
     std::string convertOutputName = NNPIImporter::internalName_ +
                                     glowRowwiseFC->getName().begin() +
                                     "_convert_output";
+    std::string convertOutputOutputName =
+        nodeValueName(glowRowwiseFC->getResult());
     LOG_NNPI_IF_ERROR_RETURN_VALUE(
         nnpiNetworkAddConvertOp(
             importer.getNetwork(), convertOutputName.c_str(),
-            symlowpOutputName.c_str(),
-            nodeValueName(glowRowwiseFC->getResult()).c_str()),
+            symlowpOutputName.c_str(), convertOutputOutputName.c_str()),
         "Failed to add layer");
+    importer.addChannelWiseConverter(convertOutputOutputName);
 
     // Create the weights with no offset tensor.
     // Assert weights & biases have no offset or all zeroes.
@@ -1635,23 +1641,29 @@ public:
     std::string convertInputName =
         NNPIImporter::internalName_ +
         glowChannelwiseQuantizedConv->getName().begin() + "_convert_input";
-    LOG_NNPI_IF_ERROR_RETURN_VALUE(
-        nnpiNetworkAddConvertOp(
-            importer.getNetwork(), convertInputName.c_str(),
-            nodeValueName(glowChannelwiseQuantizedConv->getInput()).c_str(),
-            symlowpInputName.c_str()),
-        "Failed to add layer");
+    std::string convertInputInputName =
+        nodeValueName(glowChannelwiseQuantizedConv->getInput());
+    if (!importer.hasChannelWiseConverter(convertInputInputName)) {
+      LOG_NNPI_IF_ERROR_RETURN_VALUE(
+          nnpiNetworkAddConvertOp(
+              importer.getNetwork(), convertInputName.c_str(),
+              convertInputInputName.c_str(), symlowpInputName.c_str()),
+          "Failed to add layer");
+      importer.addChannelWiseConverter(convertInputInputName);
+    }
 
     // Add convert op from Symlowp output to Gemmlowp.
     std::string convertOutputName =
         NNPIImporter::internalName_ +
         glowChannelwiseQuantizedConv->getName().begin() + "_convert_output";
+    std::string convertOutputOutputName =
+        nodeValueName(glowChannelwiseQuantizedConv->getResult());
     LOG_NNPI_IF_ERROR_RETURN_VALUE(
         nnpiNetworkAddConvertOp(
             importer.getNetwork(), convertOutputName.c_str(),
-            symlowpOutputName.c_str(),
-            nodeValueName(glowChannelwiseQuantizedConv->getResult()).c_str()),
+            symlowpOutputName.c_str(), convertOutputOutputName.c_str()),
         "Failed to add layer");
+    importer.addChannelWiseConverter(convertOutputOutputName);
 
     // Create the weights with no offset tensor.
     // Assert weights & biases have no offset or all zeroes.
