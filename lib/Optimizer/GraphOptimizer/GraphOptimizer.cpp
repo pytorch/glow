@@ -3206,6 +3206,73 @@ bool OptimizeQuantFCFloatRelu::run(Function *F,
   return changed;
 }
 
+/// Look for Concats with all Dequantization as input and Quantization as
+/// output, and change the Quantization/Dequantization into a rescale.
+bool OptimizeConcatQuantization::run(Function *F,
+                                     const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *CN = dyn_cast<ConcatNode>(&node);
+    if (!CN) {
+      continue;
+    }
+
+    // Look for a single Quantize user.
+    if (CN->getUsers().size() != 1) {
+      continue;
+    }
+    auto *QN = dyn_cast<QuantizeNode>((*CN->getUsers().begin()).getUser());
+    if (!QN) {
+      continue;
+    }
+
+    // Gather/check all of the inputs are DequantizeNodes.
+    std::vector<DequantizeNode *> DNs;
+    DNs.reserve(CN->getInputs().size());
+    for (const NodeValue &NV : CN->getInputs()) {
+      auto *DN = dyn_cast<DequantizeNode>(NV);
+      if (!DN || DN->getNumUsers() != 1) {
+        break;
+      }
+      DNs.push_back(DN);
+    }
+
+    // If not all CN inputs are Dequantizes then skip.
+    if (DNs.size() != CN->getInputs().size()) {
+      continue;
+    }
+
+    // Now create Rescales instead of Dequantizes for all CN inputs.
+    std::vector<NodeValue> newConcatInputs;
+    newConcatInputs.reserve(DNs.size());
+    TypeRef QNTy = QN->getResult().getType();
+    for (DequantizeNode *DN : DNs) {
+      if (DN->getInput().getType()->getScale() == QNTy->getScale() &&
+          DN->getInput().getType()->getOffset() == QNTy->getOffset()) {
+        // Don't need to rescale as it already has the right scale/offset.
+        newConcatInputs.push_back(DN->getInput());
+      } else {
+        TypeRef newTy = F->getParent()->uniqueTypeWithNewShape(
+            QNTy, DN->getResult().dims());
+        auto *RS = F->createRescaleQuantized(DN->getName().str() + "_rescale",
+                                             DN->getInput(), newTy);
+        newConcatInputs.push_back(RS->getResult());
+      }
+    }
+
+    auto *newCN = F->createConcat(CN->getName(), newConcatInputs, CN->getDim());
+
+    // Now we can get rid of the Quantize after the CN.
+    QN->getResult().replaceAllUsesOfWith(newCN->getResult());
+    changed = true;
+    continue;
+  }
+
+  return changed;
+}
+
 /// \returns a cloned version of node \p N, but with each of the cloned node's
 /// output types set to the corresponding type in \p types. The new node is
 /// added to Function \p F.

@@ -1089,6 +1089,12 @@ FunctionPassPipeline NNPIBackend::getOptimizationPipeline() const {
   // Look for float Relus that we can fuse up into quantized FCs.
   pipeline.pushBack(FunctionPassID::OptimizeQuantFCFloatRelu);
 
+  // Optimize concats and quantized/dequantize patterns.
+  pipeline.pushBack(FunctionPassID::OptimizeConcatQuantization);
+
+  // Optimize quantization now that we've optimized some other quant nodes.
+  pipeline.pushBack(FunctionPassID::OptimizeQuantization);
+
   // Cleanup everything now.
   pipeline.pushBack(getDCEPassConfig());
 
