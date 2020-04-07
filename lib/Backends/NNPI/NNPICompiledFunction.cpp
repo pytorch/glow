@@ -210,9 +210,27 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   }
 
   compilationOptions_ = NNPICompilationOptions(newOpts.backendSpecificOpts);
+
+  if (compilationOptions_.compileOutputPostfix) {
+    compilationFileName_ = compilationOptions_.compiledFile.get() + "_" +
+                           std::string(F->getName());
+  } else {
+    compilationFileName_ = compilationOptions_.compiledFile.get();
+  }
+  LOG_IF_NOT_RETURN_LLVMERROR(
+      compilationFileName_.length() < NNPI_MAX_STRING_LEN, "Bad filename");
+
   NNPIImporter importer(compilationOptions_);
   network_ = importer.importFunction(F, newOpts);
+
   LOG_IF_INVALID_HANDLE_RETURN_LLVMERROR(network_, "Failed to import function");
+  // Setting the network name.
+  std::string networkName = compilationFileName_;
+  if (compilationFileName_.empty()) {
+    networkName = F->getName();
+  }
+  ASSERT_LOG_NNPI_ERROR(nnpiNetworkSetName(network_, networkName.c_str()),
+                        "Failed to set NNPI network name");
 
   // Apply optimizations.
   NNPIOptimizationConfig optConf;
@@ -237,16 +255,32 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
 
   RETURN_IF_ERR(setupCompilationHints(F, newOpts.backendSpecificNodeInfo));
 
-  if (compilationOptions_.useIceT || compilationOptions_.inferOnDevice) {
-    if (compilationOptions_.compileOutputPostfix) {
-      compilationFileName_ = compilationOptions_.compiledFile.get() + "_" +
-                             std::string(F->getName());
-    } else {
-      compilationFileName_ = compilationOptions_.compiledFile.get();
+  // Collect input/output names.
+  {
+    size_t numInputs, numOutputs;
+    NNPIObjectName name;
+    NNPITensorDesc desc;
+    LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(
+        nnpiNetworkGetInputNum(network_, &numInputs),
+        "Failed to query NNPI network inputs");
+    for (size_t i = 0; i < numInputs; i++) {
+      LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(
+          nnpiNetworkGetInputDesc(network_, i, name, &desc),
+          "Failed to query NNPI network inputs");
+      inputNames_.push_back(name);
     }
-    LOG_IF_NOT_RETURN_LLVMERROR(
-        compilationFileName_.length() < NNPI_MAX_STRING_LEN, "Bad filename");
+    LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(
+        nnpiNetworkGetOutputNum(network_, &numOutputs),
+        "Failed to query NNPI network outputs");
+    for (size_t i = 0; i < numOutputs; i++) {
+      LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(
+          nnpiNetworkGetOutputDesc(network_, i, name, &desc),
+          "Failed to query NNPI network outputs");
+      outputNames_.push_back(name);
+    }
+  }
 
+  if (compilationOptions_.useIceT || compilationOptions_.inferOnDevice) {
     if (compilationFileName_.empty()) // Compile to memory.
     {
       NNPIStream outFileStream;
