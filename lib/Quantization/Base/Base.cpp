@@ -392,27 +392,26 @@ chooseQuantizationParams(TensorProfilingParams profParams, Schema schema,
   max = std::min(max, std::numeric_limits<float>::max());
 
   // Calibrate the min/max range (for non-zero ranges only).
-  if ((profParams.min != profParams.max) && (min != max)) {
-    if (calibration == Calibration::KLMinimization) {
+  if ((profParams.min != profParams.max) && (min != max) &&
+      (calibration == Calibration::KLMinimization)) {
 
-      // Rescale the profiled histogram with the new constrained min/max range.
-      auto histRescaled = rescaleHistogram(profParams.histogram, profParams.min,
-                                           profParams.max, min, max);
+    // Rescale the profiled histogram with the new constrained min/max range.
+    auto histRescaled = rescaleHistogram(profParams.histogram, profParams.min,
+                                         profParams.max, min, max);
 
-      // Number of quantized bins. Default value from TVM / MXNet.
-      const size_t numQuantizedBins = 255;
+    // Number of quantized bins. Default value from TVM / MXNet.
+    const size_t numQuantizedBins = 255;
 
-      // Check symmetric schema.
-      const bool symmetric = (schema != Asymmetric);
+    // Check symmetric schema.
+    const bool symmetric = (schema != Asymmetric);
 
-      // Optimize the range.
-      FloatRange rangeOpt =
-          optimizeKL(histRescaled, min, max, numQuantizedBins, symmetric);
+    // Optimize the range.
+    FloatRange rangeOpt =
+        optimizeKL(histRescaled, min, max, numQuantizedBins, symmetric);
 
-      // Update the min/max range with the optimized range.
-      min = rangeOpt.first;
-      max = rangeOpt.second;
-    }
+    // Update the min/max range with the optimized range.
+    min = rangeOpt.first;
+    max = rangeOpt.second;
   }
 
   // Compute scale.

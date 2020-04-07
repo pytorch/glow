@@ -59,14 +59,14 @@ bool operator==(const std::vector<float> &lhs, const std::vector<float> &rhs) {
 }
 
 bool operator==(const NodeProfilingInfo &lhs, const NodeProfilingInfo &rhs) {
-  return lhs.Min() == rhs.Min() && lhs.Max() == rhs.Max() &&
+  return lhs.min() == rhs.min() && lhs.max() == rhs.max() &&
          lhs.nodeOutputName_ == rhs.nodeOutputName_ &&
-         lhs.Histogram() == rhs.Histogram();
+         lhs.histogram() == rhs.histogram();
 }
 
 bool operator==(const NodeQuantizationInfo &lhs,
                 const NodeQuantizationInfo &rhs) {
-  return lhs.Scale() == rhs.Scale() && lhs.Offset() == rhs.Offset() &&
+  return lhs.scale() == rhs.scale() && lhs.offset() == rhs.offset() &&
          lhs.nodeOutputName_ == rhs.nodeOutputName_;
 }
 

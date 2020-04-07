@@ -92,9 +92,9 @@ struct NodeProfilingInfo {
       : nodeOutputName_(nodeOutputName),
         tensorProfilingParams_(tensorProfilingParams) {}
 
-  float Min() const { return tensorProfilingParams_.min; }
-  float Max() const { return tensorProfilingParams_.max; }
-  const std::vector<float> &Histogram() const {
+  float min() const { return tensorProfilingParams_.min; }
+  float max() const { return tensorProfilingParams_.max; }
+  const std::vector<float> &histogram() const {
     return tensorProfilingParams_.histogram;
   }
 };
@@ -110,8 +110,8 @@ struct NodeQuantizationInfo {
       : nodeOutputName_(nodeOutputName),
         tensorQuantizationParams_(tensorQuantizationParams) {}
 
-  float Scale() const { return tensorQuantizationParams_.scale; }
-  int32_t Offset() const { return tensorQuantizationParams_.offset; }
+  float scale() const { return tensorQuantizationParams_.scale; }
+  int32_t offset() const { return tensorQuantizationParams_.offset; }
 };
 
 namespace quantization {

@@ -701,13 +701,12 @@ private:
   const ElemKind quantizationPrecisionBias_;
 
 public:
-  /// Creates a function quantizer for \p F using the profiling
-  /// parameters defined by \p profilingInfos and target quantization
-  /// precision defined by \p quantizationPrecision.
-  /// \p B and \p doNotQuantizeKinds are used to check which nodes shouldn't be
-  /// converted. \p assertAllNodesQuantized is used as a debugging tool; if
-  /// true then if the backend does not support a node as quantized for the
-  /// given \p quantizationPrecision then the program will exit with an error.
+  /// Creates a function quantizer for function \p F using the quantization
+  /// configuration \p quantConfig. This method quantizes as many nodes as
+  /// permitted by the backend \p B. The map \p loweredMap contains info about
+  /// what nodes were lowered from what, to be used during quantization.
+  /// \p doNotQuantizeKinds lists kinds to not quantize, even if a profile was
+  /// gathered for them and the backend supports the quantized operation.
   FunctionQuantizer(Function &F, const Backend &B,
                     const QuantizationConfiguration &quantConfig,
                     const KindSet &doNotQuantizeKinds,
@@ -1021,7 +1020,7 @@ generateNodeQuantizationInfos(Function *F,
 
     // Disable the quantization calibration for constant weights.
     if (!quantConfig.calibrateConstants &&
-        llvm::dyn_cast<Constant>(nodeOutput.getNode())) {
+        llvm::isa<Constant>(nodeOutput.getNode())) {
       calibration = Calibration::None;
     }
 
