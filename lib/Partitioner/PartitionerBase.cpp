@@ -33,15 +33,15 @@ createDAGNodeFromFun(Function *F, NodeToFunctionMap &mapping) {
   DN->size = mapping.getGraphMemInfo(F).getTotalMemSize();
   DN->backendHints = mapping.getBackendHints(F);
   DN->backendSpecificOpts = mapping.getBackendSpecificOpts(F);
+  DN->replicationCount = mapping.getReplicationCount(F);
   return DN;
 }
 
 // Current only partition the representative function.
-DAGListTy PartitionerBase::doPartitioning(llvm::StringRef funcName,
-                                          std::vector<Function *> funcs,
-                                          Module *module,
-                                          NodeToFunctionMap &mapping,
-                                          bool saveDAG, bool skipCloning) {
+DAGListTy PartitionerBase::doPartitioning(
+    llvm::StringRef funcName, std::vector<Function *> funcs, Module *module,
+    NodeToFunctionMap &mapping, bool saveDAG, BackendSpecificNodeInfo &nodeInfo,
+    bool skipCloning) {
   DAGListTy partitions;
   // Add a dummy node to make sure that a DAG has a single entrance.
   DAGNodePtr DAGRoot = glow::make_unique<DAGNode>();
@@ -54,12 +54,26 @@ DAGListTy PartitionerBase::doPartitioning(llvm::StringRef funcName,
   llvm::DenseMap<Node *, Node *> currToNew;
 
   if (!skipCloning) {
-    // Clone nodes into target partition.
+    // Clone nodes into target partition. Update nodeInfo as necessary.
     for (size_t i = 0, e = funcs.size(); i < e; i++) {
       for (auto &N : funcs[i]->getNodes()) {
         auto *clone = N.clone();
         currToNew[&N] = clone;
         mapping[&N]->addNode(clone);
+
+        // If needed, update NodeInfo to point old Node's info to clone.
+        auto itF = nodeInfo.find(funcs[i]);
+        if (itF == nodeInfo.end()) {
+          continue;
+        }
+        auto &currNodeInfo = itF->second;
+        auto itN = currNodeInfo.find(&N);
+        if (itN != currNodeInfo.end()) {
+          currNodeInfo[clone] = std::move(itN->second);
+          // Erase old NodeInfo; current Nodes will be eliminated later when
+          // input funcs will be erased.
+          currNodeInfo.erase(itN);
+        }
       }
     }
   }

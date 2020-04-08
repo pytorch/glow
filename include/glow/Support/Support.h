@@ -16,6 +16,8 @@
 #ifndef GLOW_SUPPORT_SUPPORT_H
 #define GLOW_SUPPORT_SUPPORT_H
 
+#include "glow/Support/Error.h"
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -199,6 +201,9 @@ template <class T> inline constexpr unsigned convertEnumToUnsigned(T e) {
 constexpr char startChar = '$';
 /// Char used for separating attribute name from attribute value.
 constexpr char sepChar = ':';
+
+/// Convert a string to int. \returns the int or Error if problem parsing.
+Expected<int> getIntFromStr(llvm::StringRef input);
 
 } // namespace glow
 

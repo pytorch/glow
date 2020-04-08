@@ -65,7 +65,8 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   auto loaderOrErr = ONNXIFIModelLoader::parse(
       onnxModel, onnxModelSize, 0 /*weightCount*/,
       nullptr /*weightDescriptors*/, module, compatibilityFunctionName,
-      /* PPC */ nullptr, false /*loadInputsAsPlaceholders*/, getUseOnnx(),
+      /* PPC */ nullptr, false /*loadInputsAsPlaceholdersForOnnx*/,
+      getUseOnnx(),
       /*constFoldInLoader*/ false);
   if (loaderOrErr) {
     loader = std::move(*loaderOrErr);

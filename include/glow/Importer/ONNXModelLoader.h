@@ -102,10 +102,11 @@ class ONNXModelLoader
   /// If this is a custom Glow op that was exported via NodeGen automatic export
   /// logic, try to load the op. \returns Expected<true> if the op is
   /// successfully loaded. \returns Expected<false> if op type is not supported.
-  /// \returns an Error if an error occurred while trying to load.
-  Expected<bool> tryLoadGlowCustomOp(llvm::StringRef typeName,
-                                     const ONNX_NAMESPACE::NodeProto &op,
-                                     ArgumentDictionaryTy &dict);
+  /// \returns an Error if an error occurred while trying to load, or otherwise
+  /// the single Node that was created.
+  Expected<Node *> tryLoadGlowCustomOp(llvm::StringRef typeName,
+                                       const ONNX_NAMESPACE::NodeProto &op,
+                                       ArgumentDictionaryTy &dict);
 
   /// \returns True if the operator\ op is successfully folded.
   Expected<bool> foldOperator(const ONNX_NAMESPACE::NodeProto &op);
@@ -363,6 +364,14 @@ class ONNXModelLoader
   Error loadFlip(const ONNX_NAMESPACE::NodeProto &op,
                  ArgumentDictionaryTy &dict);
 
+  /// Load AudioSpectrogram Glow operator.
+  Error loadAudioSpectrogram(const ONNX_NAMESPACE::NodeProto &op,
+                             ArgumentDictionaryTy &dict);
+
+  /// Load MFCC Glow operator.
+  Error loadMFCC(const ONNX_NAMESPACE::NodeProto &op,
+                 ArgumentDictionaryTy &dict);
+
 protected:
   /// Load the network operators from the GraphProto.
   /// \returns Error if network cannot be loaded.
@@ -384,11 +393,11 @@ protected:
   /// Load the network initializers from the GraphProto.
   Error loadInitializers(ONNX_NAMESPACE::GraphProto &net);
 
-  /// Load the inputs from the GraphProto. If \p loadInputsAsPlaceholders is
-  /// true then this will load each graph input as a placeholder otherwise it
+  /// Load the inputs from the GraphProto. If \p loadInputsAsPlaceholdersForOnnx
+  /// is true then this will load each graph input as a placeholder otherwise it
   /// will create an empty tensor for each input.
   Error loadInputs(ONNX_NAMESPACE::GraphProto &net,
-                   bool loadInputsAsPlaceholders);
+                   bool loadInputsAsPlaceholdersForOnnx);
 
   /// \returns Expected<ModelProto> if a ModelProto can be constructed from the
   /// contents of the file \p filename and Error otherwise.
@@ -418,12 +427,12 @@ protected:
   /// Loads the ONNIXFI \p model from memory of \p modelSize size,
   /// and \p weightsCount, and \p onnxTensorDescriptorV1 correspondent
   /// descriptors. Converts inputs into placeholder if requested \p
-  /// loadInputsAsPlaceholders. Reports success/failure through optional
+  /// loadInputsAsPlaceholdersForOnnx. Reports success/failure through optional
   /// parameter \p errPtr. This constructor always overrides the default
   /// constant folding in loader flag with \p constFoldInLoader.
   ONNXModelLoader(const void *model, uint32_t modelSize, uint32_t weightsCount,
                   const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
-                  bool loadInputsAsPlaceholders, Error *errPtr = nullptr,
+                  bool loadInputsAsPlaceholdersForOnnx, Error *errPtr = nullptr,
                   bool constFoldInLoader = true);
 
   friend class ONNXIFIModelLoader;
@@ -469,8 +478,13 @@ public:
                   llvm::ArrayRef<const char *> tensorNames,
                   llvm::ArrayRef<TypeRef> types, Function &F,
                   Error *errPtr = nullptr, bool zipMode = false,
+                  BackendSpecificNodeInfo *perNodeOpts = nullptr,
                   bool disableConstFoldInLoader = false,
                   const Backend *B = nullptr);
+
+private:
+  /// Per-node options that may be specified in a proto.
+  BackendSpecificNodeInfo *perNodeOpts_{nullptr};
 };
 
 } // namespace glow

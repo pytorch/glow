@@ -45,9 +45,12 @@ protected:
   /// Functions representing each partition. However if \p skipCloning we skip
   /// this cloning, as it is assumed that the Functions are already partitioned
   /// correctly and so we do not need to clone their Nodes into new Functions.
+  /// \p nodeInfo represents any info mapped to Nodes, so when cloning Nodes we
+  /// need to update this map.
   DAGListTy doPartitioning(llvm::StringRef funcName,
                            std::vector<Function *> funcs, Module *module,
                            NodeToFunctionMap &mapping, bool saveDAG,
+                           BackendSpecificNodeInfo &nodeInfo,
                            bool skipCloning = false);
 };
 } // namespace glow

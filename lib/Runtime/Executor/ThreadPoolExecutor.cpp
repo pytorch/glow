@@ -179,7 +179,7 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
   TRACE_EVENT_SCOPE_END();
   // Run the node using the DeviceManager.
   deviceManager->runFunction(
-      node->name, std::move(nodeCtx),
+      node->getNextName(currentDevice), std::move(nodeCtx),
       [this, executionState, currentDevice,
        node](RunIdentifierTy id, Error err,
              std::unique_ptr<ExecutionContext> resultCtx) {
@@ -278,13 +278,13 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
 }
 
 void ThreadPoolExecutor::createPool(const DAGNode *root, unsigned poolSize,
-                                    bool assignStatic) {
+                                    bool enableP2P, bool enableDRT) {
   std::unordered_map<DAGNode *, DeviceIDTy> assignment;
 
   // For static assignment we need to track devices each node is assigned to.
   std::unordered_map<DAGNode *, std::vector<DeviceIDTy>> assignments;
   std::unordered_map<DAGNode *, unsigned> currentAssignment;
-  if (assignStatic) {
+  if (enableP2P || enableDRT) {
     // Walk the nodes and get assignments.
     std::queue<DAGNode *> remaining;
     for (auto node : root->children) {
@@ -315,7 +315,7 @@ void ThreadPoolExecutor::createPool(const DAGNode *root, unsigned poolSize,
     auto newState = glow::make_unique<NetworkExecutionState>(root);
     // If assignStatic, calculate the device assignments for this
     // executionState. For now we are assigning a round robin pattern per node.
-    if (assignStatic) {
+    if (enableDRT || enableP2P) {
       for (auto it : currentAssignment) {
         auto &nodeAssignments = assignments.at(it.first);
         auto newAssignmentIdx = (it.second + 1) % nodeAssignments.size();

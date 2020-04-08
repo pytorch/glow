@@ -85,9 +85,10 @@ protected:
       // Note: We disable constant folding here because we only need it to
       // calculate shapes that are the result of constant compute in the proto,
       // but this won't be the case when using useGlowCustomOps exporting.
-      ONNXModelLoader onnxLD(
-          pathToModel, {}, {}, *loadedF, &err, /* zipMode */ false,
-          /* disableConstFoldInLoader */ true, &loadedEE.getBackend());
+      ONNXModelLoader onnxLD(pathToModel, {}, {}, *loadedF, &err,
+                             /* zipMode */ false, /* perNodeOpts */ nullptr,
+                             /* disableConstFoldInLoader */ true,
+                             &loadedEE.getBackend());
       if (ERR_TO_BOOL(std::move(err))) {
         llvm::sys::fs::remove(pathToModel);
         FAIL() << "Error loading exported model";
@@ -1131,6 +1132,106 @@ TEST_P(OperatorTest, nms_two_boxes_float) {
                                boxesDims, scoresDims, boxes, classes,
                                refResults, refNumSelected, metaData, false);
 }
+
+/// Helper function to test AudioSpectrogram node.
+template <size_t windowCount, size_t windowSize, bool magnitudeSquared>
+static FunctionTensorPair
+createAndInitBasicAudioSpectrogramTest(glow::PlaceholderBindings &bindings,
+                                       glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  // Create random input audio signal.
+  dim_t windowStride = 320;
+  dim_t inputLength = windowSize + (windowCount - 1) * windowStride;
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {inputLength}, "input",
+                                      false /* isTrainable */);
+  bindings.allocate(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+
+  // Create AudioSpectrogram node.
+  auto *audioSpec = F->createAudioSpectrogram(
+      "audio_spectrogram", input, windowSize, windowStride, magnitudeSquared);
+  auto *res = F->createSave("save", audioSpec);
+  auto *resultTensor = bindings.allocate(res->getPlaceholder());
+  return std::make_pair(F, resultTensor);
+}
+
+#define TEST_AUDIO_SPECTROGRAM(WCOUNT, WSIZE, MSQUARED, TOL)                   \
+  TEST_P(OperatorStatelessTest,                                                \
+         AudioSpectrogram_##WCOUNT##x##WSIZE##_##MSQUARED##_Float) {           \
+    ENABLED_BACKENDS("Interpreter", "CPU");                                    \
+    compareAgainstInterpreter(                                                 \
+        getBackendName(),                                                      \
+        createAndInitBasicAudioSpectrogramTest<WCOUNT, WSIZE, MSQUARED>,       \
+        ElemKind::FloatTy, ElemKind::FloatTy, TOL);                            \
+  }
+
+/// Test one window magnitude spectrograms.
+TEST_AUDIO_SPECTROGRAM(1, 2, false, 1e-6)
+TEST_AUDIO_SPECTROGRAM(1, 4, false, 1e-6)
+TEST_AUDIO_SPECTROGRAM(1, 8, false, 1e-6)
+TEST_AUDIO_SPECTROGRAM(1, 16, false, 1e-6)
+TEST_AUDIO_SPECTROGRAM(1, 32, false, 1e-6)
+TEST_AUDIO_SPECTROGRAM(1, 64, false, 5e-6)
+TEST_AUDIO_SPECTROGRAM(1, 128, false, 5e-6)
+TEST_AUDIO_SPECTROGRAM(1, 256, false, 1e-5)
+TEST_AUDIO_SPECTROGRAM(1, 512, false, 5e-5)
+TEST_AUDIO_SPECTROGRAM(1, 1024, false, 5e-5)
+
+/// Test multiple window magnitude spectrograms.
+TEST_AUDIO_SPECTROGRAM(2, 256, false, 1e-5)
+TEST_AUDIO_SPECTROGRAM(3, 320, false, 1e-5)
+TEST_AUDIO_SPECTROGRAM(4, 640, false, 5e-5)
+
+/// Test multiple window power spectrograms.
+TEST_AUDIO_SPECTROGRAM(2, 256, true, 5e-4)
+TEST_AUDIO_SPECTROGRAM(3, 320, true, 5e-4)
+TEST_AUDIO_SPECTROGRAM(4, 640, true, 1e-3)
+
+/// Helper function to test MFCC node.
+template <size_t winNum, size_t specLen>
+static FunctionTensorPair
+createAndInitBasicMFCCTest(glow::PlaceholderBindings &bindings,
+                           glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  // Create random input spectrogram.
+  auto *spectrogram =
+      mod.createPlaceholder(ElemKind::FloatTy, {winNum, specLen}, "spectrogram",
+                            false /* isTrainable */);
+  bindings.allocate(spectrogram)
+      ->getHandle()
+      .randomize(10.0, 100.0, mod.getPRNG());
+
+  // Create MFCC node.
+  float sampleRate = 16000.0;
+  float lowerFrequency = 20.0;
+  float upperFrequency = 4000.0;
+  size_t filterBankCount = 40;
+  size_t numCoefficients = 13;
+  auto *mfcc = F->createMFCC("mfcc", spectrogram, sampleRate, lowerFrequency,
+                             upperFrequency, filterBankCount, numCoefficients);
+  auto *res = F->createSave("save", mfcc);
+  auto *resultTensor = bindings.allocate(res->getPlaceholder());
+  return std::make_pair(F, resultTensor);
+}
+
+#define TEST_MFCC(WNUM, SLEN, TOL)                                             \
+  TEST_P(OperatorStatelessTest, MFCC_##WNUM##x##SLEN##_Float) {                \
+    ENABLED_BACKENDS("Interpreter", "CPU");                                    \
+    compareAgainstInterpreter(getBackendName(),                                \
+                              createAndInitBasicMFCCTest<WNUM, SLEN>,          \
+                              ElemKind::FloatTy, ElemKind::FloatTy, TOL);      \
+  }
+
+TEST_MFCC(1, 17, 5e-5)
+TEST_MFCC(1, 33, 5e-5)
+TEST_MFCC(1, 65, 1e-5)
+TEST_MFCC(1, 129, 1e-5)
+TEST_MFCC(2, 257, 1e-5)
+TEST_MFCC(3, 513, 1e-5)
+TEST_MFCC(3, 1025, 1e-5)
 
 // Helper to test SpaceToDepth using \p DTy.
 template <typename DataType>
@@ -3002,6 +3103,80 @@ TEST_P(OperatorTest, FloatArgMaxNoKeepDim) {
 TEST_P(OperatorTest, QuantizedArgMaxNoKeepDim) {
   CHECK_IF_ENABLED();
   testArgMaxNoKeepDim<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+TEST_P(OperatorTest, FloatArgMaxNoKeepDimWithAxis1) {
+  CHECK_IF_ENABLED();
+
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 4}, "input",
+                                       false, "NHWC");
+  auto *argmax =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {1, 3, 4}, "argmax", false);
+
+  bindings_.allocate(input)->getHandle<float>() = {
+      -2.0031254,  1.6150867,  -0.7161922,  -0.25389647, -2.3863597,
+      1.3052065,   -1.2064048, -0.12670185, 1.4289513,   0.38050872,
+      -0.15112245, 1.360533,   -1.9638863,  -0.7602536,  0.68145376,
+      1.1685915,   0.35476854, 1.0272173,   -1.554366,   -1.6835353,
+      -1.4499142,  0.9042695,  1.0751117,   -1.0798755};
+
+  bindings_.allocate(argmax);
+
+  auto *AM =
+      F_->createArgMax("argmax", input, /* axis */ 1, /* keepDims */ false);
+  F_->createSave("save.argmax", AM, argmax);
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto I = bindings_.get(argmax)->getHandle<int64_t>();
+  EXPECT_EQ(I.raw(0), 1);
+  EXPECT_EQ(I.raw(1), 0);
+  EXPECT_EQ(I.raw(2), 1);
+  EXPECT_EQ(I.raw(3), 1);
+  EXPECT_EQ(I.raw(4), 1);
+  EXPECT_EQ(I.raw(5), 0);
+  EXPECT_EQ(I.raw(6), 0);
+  EXPECT_EQ(I.raw(7), 0);
+  EXPECT_EQ(I.raw(8), 0);
+  EXPECT_EQ(I.raw(9), 1);
+  EXPECT_EQ(I.raw(10), 1);
+  EXPECT_EQ(I.raw(11), 0);
+}
+
+TEST_P(OperatorTest, FloatArgMaxNoKeepDimWithAxis2) {
+  CHECK_IF_ENABLED();
+
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 4}, "input",
+                                       false, "NHWC");
+  auto *argmax =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {1, 2, 4}, "argmax", false);
+
+  bindings_.allocate(input)->getHandle<float>() = {
+      -0.11289205, -0.13215652, -1.184799,  0.2295995,   0.03064479,
+      -0.28138036, -0.51807016, 0.89983666, -0.46122625, -0.70558083,
+      0.43882176,  -0.6988644,  2.0838234,  -0.22806482, -0.6829437,
+      0.70269305,  -0.8199907,  0.25597557, 0.3598691,   -0.9919779,
+      2.069314,    -1.8825238,  1.2604765,  -0.78306365};
+
+  bindings_.allocate(argmax);
+
+  auto *AM =
+      F_->createArgMax("argmax", input, /* axis */ 2, /* keepDims */ false);
+  F_->createSave("save.argmax", AM, argmax);
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto I = bindings_.get(argmax)->getHandle<int64_t>();
+  EXPECT_EQ(I.raw(0), 1);
+  EXPECT_EQ(I.raw(1), 0);
+  EXPECT_EQ(I.raw(2), 2);
+  EXPECT_EQ(I.raw(3), 1);
+  EXPECT_EQ(I.raw(4), 0);
+  EXPECT_EQ(I.raw(5), 1);
+  EXPECT_EQ(I.raw(6), 2);
+  EXPECT_EQ(I.raw(7), 0);
 }
 
 // Check that concatenating Nodes with multiple outputs works correctly.
@@ -4925,6 +5100,56 @@ TEST_P(OperatorTest, FP16Max) {
   }
 }
 
+/// Helper to test Broadcast Max/Min using \p DTy and \p NTy
+template <typename DataType, typename NodeType>
+static void testBroadcastMaxMin(glow::PlaceholderBindings &bindings,
+                                glow::Module &mod, glow::Function *F,
+                                glow::ExecutionEngine &EE, ElemKind DTy) {
+
+  auto *inputA = mod.createPlaceholder(DTy, {1, 3, 3, 1}, "A", false);
+  bindings.allocate(inputA)->getHandle<DataType>().randomize(-3.0, 3.0,
+                                                             mod.getPRNG());
+  auto *inputB = mod.createPlaceholder(DTy, {1, 3, 3, 1}, "B", false);
+  bindings.allocate(inputB)->getHandle<DataType>().randomize(-3.0, 3.0,
+                                                             mod.getPRNG());
+
+  Node *maxorMinOp = F->createNodeWithBroadcast<NodeType>(
+      "maxormin", -1 /*axis */, inputA, inputB);
+
+  auto *S = F->createSave("save", maxorMinOp);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  ASSERT_TRUE(F->verify(&EE.getBackend()))
+      << "Function must pass verification.";
+
+  auto result = bindings.get(S->getPlaceholder())->getHandle<DataType>();
+  auto handleA = bindings.get(inputA)->getHandle<DataType>();
+  auto handleB = bindings.get(inputB)->getHandle<DataType>();
+  ASSERT_EQ(result.size(), handleA.size());
+  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
+    if (std::is_same<NodeType, MaxNode>::value) {
+      EXPECT_EQ(result.raw(idx), std::max(handleA.raw(idx), handleB.raw(idx)));
+    } else {
+      EXPECT_EQ(result.raw(idx), std::min(handleA.raw(idx), handleB.raw(idx)));
+    }
+  }
+}
+
+TEST_P(OperatorTest, BroadCastMax) {
+  CHECK_IF_ENABLED();
+  testBroadcastMaxMin<int64_t, MaxNode>(bindings_, mod_, F_, EE_,
+                                        ElemKind::Int64ITy);
+}
+
+TEST_P(OperatorTest, BroadCastMin) {
+  CHECK_IF_ENABLED();
+  testBroadcastMaxMin<int64_t, MinNode>(bindings_, mod_, F_, EE_,
+                                        ElemKind::Int64ITy);
+}
+
 TEST_P(OperatorTest, RescaleNode) {
   CHECK_IF_ENABLED();
 
@@ -6705,6 +6930,93 @@ TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolution) {
   EXPECT_FLOAT_EQ(result.at({0, 0, 2, 3}), 30);
 }
 
+/// Test the functionality of channelwise quantized group convolution using
+/// ChannelwiseQuantizedConvNode.
+TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolution3D) {
+  CHECK_IF_ENABLED();
+
+  constexpr size_t groups = 2;
+  constexpr dim_t output_channel = 4;
+  constexpr dim_t input_channel = 2;
+
+  auto *input = mod_.createPlaceholder(
+      ElemKind::FloatTy, {1, input_channel, 2, 3, 2}, "input", false);
+  auto IH = bindings_.allocate(input)->getHandle<float>();
+  for (size_t i = 0; i < input_channel * 2 * 3 * 2; i++) {
+    IH.raw(i) = i + 1;
+  }
+
+  auto *qInTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {1, input_channel, 2, 3, 2}, 1.0, 0);
+  auto *qInput = F_->createQuantize("qInput", input, qInTy);
+
+  auto filterT = Tensor(
+      ElemKind::Int8QTy,
+      {output_channel / groups, input_channel / groups, 1, 1, 1}, 1.0, 0);
+  for (dim_t i = 0; i < output_channel / groups; i++) {
+    for (dim_t j = 0; j < input_channel / groups; j++) {
+      for (dim_t t = 0; t < 1; t++) {
+        for (dim_t k = 0; k < 1; k++) {
+          for (dim_t l = 0; l < 1; l++) {
+            filterT.getHandle<int8_t>().at({i, j, t, k, l}) = j + 1;
+          }
+        }
+      }
+    }
+  }
+  auto *filter = mod_.createConstant("filter", std::move(filterT));
+
+  auto biasT = Tensor(ElemKind::FloatTy, {output_channel / groups});
+  biasT.zero();
+  auto *bias = mod_.createConstant("bias", std::move(biasT));
+
+  auto scalesT = Tensor(ElemKind::FloatTy, {output_channel / groups});
+  for (size_t i = 0; i < scalesT.size(); i++) {
+    scalesT.getHandle<float>().raw(i) = 1;
+  }
+  auto *scales = mod_.createConstant("scales", std::move(scalesT));
+
+  auto offsetsT = Tensor(ElemKind::Int32ITy, {output_channel / groups});
+  offsetsT.zero();
+  auto *offsets = mod_.createConstant("offsets", std::move(offsetsT));
+
+  auto *outTy = mod_.uniqueType(ElemKind::Int8QTy,
+                                {1, output_channel / groups, 2, 3, 2}, 1.0, 0);
+  ChannelwiseQuantizedConvolutionNode *CQC =
+      F_->createChannelwiseQuantizedConv3D(
+          "channelwiseQuantizedConv", qInput, filter, bias, scales, offsets,
+          outTy, {1, 1, 1}, {1, 1, 1}, {0, 0, 0, 0, 0, 0}, groups);
+
+  DequantizeNode *dq = F_->createDequantize("dequantize", CQC);
+  SaveNode *S = F_->createSave("save", dq);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+
+  std::vector<dim_t> expectedDims = {1, output_channel / groups, 2, 3, 2};
+  ASSERT_TRUE(result.dims().vec() == expectedDims);
+
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), 1);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 1}), 3);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 2}), 5);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 3}), 7);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 0}), 7);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 1}), 9);
+
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 2}), 11);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 1, 3}), 13);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 0}), 13);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 1}), 15);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 2}), 17);
+  EXPECT_FLOAT_EQ(result.at({0, 0, 2, 3}), 19);
+}
+
 TEST_P(OperatorTest, DilatedConvolution) {
   CHECK_IF_ENABLED();
 
@@ -7043,9 +7355,9 @@ TEST_P(OperatorTest, NonSquarePaddingConvolution) {
 }
 
 /// Check non-cubic padding for conv3D. The first conv3D has non-cubic
-/// padding, while the second one has zero padding. The second conv3D's input is
-/// the same as the first one's after-padding input. All other parameters of
-/// the two conv3Ds are the same.
+/// padding, while the second one has zero padding. The second conv3D's input
+/// is the same as the first one's after-padding input. All other parameters
+/// of the two conv3Ds are the same.
 TEST_P(OperatorTest, NonCubicPaddingConv3D) {
   CHECK_IF_ENABLED();
 
@@ -7609,7 +7921,8 @@ testMaxPoolWithArgmaxTransposed(glow::PlaceholderBindings &bindings,
                                 glow::Module &mod, glow::Function *F,
                                 glow::ExecutionEngine &EE, ElemKind DTy) {
   // Show that sequence Tensor(NCHW) -> Transpose(NCHWtoNHWC) ->
-  // MaxPoolWithArgmax -> Transpose(NHWCtoNCHW) produces correct linearization.
+  // MaxPoolWithArgmax -> Transpose(NHWCtoNCHW) produces correct
+  // linearization.
   auto *inputNCHW = createPlaceholderConditionallyQuantized(
       mod, DTy, {1, 3, 4, 4}, "input", false, "NCHW");
   auto inHandle = bindings.allocate(inputNCHW)->getHandle<DataType>();
@@ -9214,8 +9527,8 @@ TEST_P(OperatorTest, EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat) {
       /* useFP16Accumulation */ false, /* hasEndOffset */ false);
 }
 
-/// Test EmbeddingBagByteRowwiseOffsets in Float16. Uses Float accumulation. Has
-/// end offset.
+/// Test EmbeddingBagByteRowwiseOffsets in Float16. Uses Float accumulation.
+/// Has end offset.
 TEST_P(OperatorTest,
        EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat_End_Offset) {
   CHECK_IF_ENABLED();
@@ -9311,8 +9624,8 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsWeightedSum_Float) {
       bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int64ITy, 0.0001);
 }
 
-/// Test RWQ-SLWS with Float16 Weights, Scales, Offsets, and Output. Uses Float
-/// accumulation.
+/// Test RWQ-SLWS with Float16 Weights, Scales, Offsets, and Output. Uses
+/// Float accumulation.
 TEST_P(OperatorTest,
        RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
@@ -9339,8 +9652,8 @@ TEST_P(OperatorTest, RowwiseQuantizedSparseLengthsWeightedSum_Float_Int32) {
       bindings_, mod_, F_, EE_, ElemKind::FloatTy, ElemKind::Int32ITy, 0.0001);
 }
 
-/// Test RWQ-SLWS with Float16 Weights, Scales, Offsets, and Output. Uses Float
-/// accumulation. Int32 indices.
+/// Test RWQ-SLWS with Float16 Weights, Scales, Offsets, and Output. Uses
+/// Float accumulation. Int32 indices.
 TEST_P(OperatorTest,
        RowwiseQuantizedSparseLengthsWeightedSum_Float16_AccumFloat_Int32) {
   CHECK_IF_ENABLED();
@@ -9604,7 +9917,8 @@ testPartialGather(glow::PlaceholderBindings &bindings, glow::Module &mod,
   auto *result = F->createSave("save", R);
   Tensor *resultT = bindings.allocate(result->getPlaceholder());
 
-  // Result should be 10000, even though we only care about the first 6 results.
+  // Result should be 10000, even though we only care about the first 6
+  // results.
   EXPECT_EQ(resultT->getType().dims().size(), 1);
   EXPECT_EQ(resultT->getType().dims()[0], 10000);
 
@@ -9980,8 +10294,8 @@ TEST_P(
   EE_.run(bindings_);
 
   // This is the result for the first inference. We expect the result in the
-  // second last row or raw location 30 * 64 to 31 * 64 -1. The rest of the rows
-  // should be all 0.
+  // second last row or raw location 30 * 64 to 31 * 64 -1. The rest of the
+  // rows should be all 0.
   Tensor &result = *bindings_.get(S->getPlaceholder());
 
   // Send another inference
@@ -10091,8 +10405,8 @@ TEST_P(OperatorTest,
       /* useFP16Accumulation */ true);
 }
 
-/// Test Fused-RWQ-SLS in Float16 wth 4-bit quantization for the embedding. Uses
-/// Float16 accumulation.
+/// Test Fused-RWQ-SLS in Float16 wth 4-bit quantization for the embedding.
+/// Uses Float16 accumulation.
 TEST_P(OperatorTest,
        FusedRowwiseQuantizedSparseLengthsSum_Fused4Bit_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
@@ -10101,8 +10415,8 @@ TEST_P(OperatorTest,
       /* useFP16Accumulation */ true);
 }
 
-/// Helper to test all variants of SLWS wiith all lengths as one, with precision
-/// \p DTy, and precision for data \p dataDTy.
+/// Helper to test all variants of SLWS wiith all lengths as one, with
+/// precision \p DTy, and precision for data \p dataDTy.
 template <typename DataType>
 static void testSLWSTwoColumn(glow::PlaceholderBindings &bindings,
                               glow::Module &mod, glow::Function *F,
@@ -10163,8 +10477,8 @@ static void testSLWSTwoColumn(glow::PlaceholderBindings &bindings,
         "RQSLWS", data, weights, indices, lengths, dataDTy,
         useFP16Accumulation);
   } else {
-    Placeholder *dataP =
-        mod.createPlaceholder(&data.getType(), "data", /* isTrainable */ false);
+    Placeholder *dataP = mod.createPlaceholder(&data.getType(), "data",
+                                               /* isTrainable */ false);
     bindings.insert(dataP, std::move(data));
     SLWS = F->createSparseLengthsWeightedSum("SLWS", dataP, weights, indices,
                                              lengths);
@@ -10296,8 +10610,8 @@ static void testSLWSLengthsMode(glow::PlaceholderBindings &bindings,
         "RQSLWS", data, weights, indices, lengths, dataDTy, useFP16Accumulation,
         LengthsMode::AllOne);
   } else {
-    Placeholder *dataP =
-        mod.createPlaceholder(&data.getType(), "data", /* isTrainable */ false);
+    Placeholder *dataP = mod.createPlaceholder(&data.getType(), "data",
+                                               /* isTrainable */ false);
     bindings.insert(dataP, std::move(data));
     SLWS = F->createSparseLengthsWeightedSum("SLWS", dataP, weights, indices,
                                              lengths, LengthsMode::AllOne);
@@ -10332,9 +10646,9 @@ TEST_P(OperatorTest, SLWSAllLengthsOne_Float16_AccumFloat) {
 /// Test Fused-RWQ-SLWS in Float.
 TEST_P(OperatorTest, FusedRowwiseQuantizedSLWSAllLengthsOne_Float) {
   CHECK_IF_ENABLED();
-  testSLWSLengthsMode<float>(bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy,
-                             0.015, /* useFP16Accumulation */ false,
-                             LengthsMode::AllOne);
+  testSLWSLengthsMode<float>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, 0.015,
+      /* useFP16Accumulation */ false, LengthsMode::AllOne);
 }
 
 /// Test Fused-RWQ-SLWS in Float16. Uses Float accumulation.
@@ -10491,23 +10805,25 @@ createAndInitZeroLengthsSLSTest(glow::PlaceholderBindings &bindings,
 TEST_P(OperatorStatelessTest, FusedRWQSLSAllZeroLengths_Float) {
   CHECK_IF_ENABLED();
 
-  compareAgainstInterpreter(
-      getBackendName(),
-      std::bind(createAndInitZeroLengthsSLSTest, std::placeholders::_1,
-                std::placeholders::_2, /* convertToRowwiseQuantization */ true),
-      ElemKind::FloatTy, ElemKind::FloatTy);
+  compareAgainstInterpreter(getBackendName(),
+                            std::bind(createAndInitZeroLengthsSLSTest,
+                                      std::placeholders::_1,
+                                      std::placeholders::_2,
+                                      /* convertToRowwiseQuantization */ true),
+                            ElemKind::FloatTy, ElemKind::FloatTy);
 }
 
 /// Test Fused RWQ-SLS when all "lengths" inputs are zero in Float16Ty.
 TEST_P(OperatorStatelessTest, FusedRWQSLSAllZeroLengths_Float16) {
   CHECK_IF_ENABLED();
 
-  compareAgainstInterpreter(
-      getBackendName(),
-      std::bind(createAndInitZeroLengthsSLSTest, std::placeholders::_1,
-                std::placeholders::_2, /* convertToRowwiseQuantization */ true),
+  compareAgainstInterpreter(getBackendName(),
+                            std::bind(createAndInitZeroLengthsSLSTest,
+                                      std::placeholders::_1,
+                                      std::placeholders::_2,
+                                      /* convertToRowwiseQuantization */ true),
 
-      ElemKind::Float16Ty, ElemKind::Float16Ty);
+                            ElemKind::Float16Ty, ElemKind::Float16Ty);
 }
 
 /// Test SLS when all "lengths" inputs are zero in FloatTy.
@@ -12069,7 +12385,8 @@ template <typename DataType>
 static void testBatchBoxCox(glow::PlaceholderBindings &bindings,
                             glow::Module &mod, glow::Function *F,
                             glow::ExecutionEngine &EE, ElemKind DTy,
-                            float allowedError = 0.0001f) {
+                            float allowedError = 0.0001f, float maxRange = 5.0f,
+                            float maxLambda2 = 2.0f) {
   // Input tensors.
   const dim_t kRows = 10;
   const dim_t kCols = 5;
@@ -12084,9 +12401,9 @@ static void testBatchBoxCox(glow::PlaceholderBindings &bindings,
   auto lambda2H = bindings.allocate(lambda2)->getHandle<DataType>();
 
   // Fill inputs with random values.
-  dataH.randomize(0.0, 5.0, mod.getPRNG());
+  dataH.randomize(0.0, maxRange, mod.getPRNG());
   lambda1H.randomize(1.0, 2.0, mod.getPRNG());
-  lambda2H.randomize(1.0, 2.0, mod.getPRNG());
+  lambda2H.randomize(1.0, maxLambda2, mod.getPRNG());
 
   // Zero out every other element to lambda1 to test that case of the transform.
   for (dim_t i = 0; i < kCols; i += 2) {
@@ -12141,10 +12458,20 @@ TEST_P(OperatorTest, BatchBoxCox_Float) {
 }
 
 /// Test that the BatchBoxCox operator works as expected in Float16Ty.
-TEST_P(OperatorTest, BatchBoxCox_Float16) {
+TEST_P(OperatorTest, BatchBoxCox_Large_Float16) {
   CHECK_IF_ENABLED();
   testBatchBoxCox<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
-                             0.01f);
+                             0.032f, 5.0f);
+}
+TEST_P(OperatorTest, BatchBoxCox_Medium_Float16) {
+  CHECK_IF_ENABLED();
+  testBatchBoxCox<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                             0.016f, 3.0f);
+}
+TEST_P(OperatorTest, BatchBoxCox_Small_Float16) {
+  CHECK_IF_ENABLED();
+  testBatchBoxCox<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                             0.003f, 1.0f, 1.001f);
 }
 
 /// Test that Arithmetic ops work.
@@ -12301,14 +12628,18 @@ TEST_CAST_2WAYS(float, int64_t, FloatTy, Int64ITy, /* castIsNoOp */ false)
 TEST_CAST_2WAYS(float16_t, float, Float16Ty, FloatTy, /* castIsNoOp */ true)
 TEST_CAST_2WAYS(float16_t, float16_t, Float16Ty, Float16Ty,
                 /* castIsNoOp */ true)
-TEST_CAST_2WAYS(float16_t, int32_t, Float16Ty, Int32ITy, /* castIsNoOp */ false)
-TEST_CAST_2WAYS(float16_t, int64_t, Float16Ty, Int64ITy, /* castIsNoOp */ false)
+TEST_CAST_2WAYS(float16_t, int32_t, Float16Ty, Int32ITy,
+                /* castIsNoOp */ false)
+TEST_CAST_2WAYS(float16_t, int64_t, Float16Ty, Int64ITy,
+                /* castIsNoOp */ false)
 TEST_CAST_2WAYS(int32_t, float, Int32ITy, FloatTy, /* castIsNoOp */ false)
-TEST_CAST_2WAYS(int32_t, float16_t, Int32ITy, Float16Ty, /* castIsNoOp */ false)
+TEST_CAST_2WAYS(int32_t, float16_t, Int32ITy, Float16Ty,
+                /* castIsNoOp */ false)
 TEST_CAST_2WAYS(int32_t, int32_t, Int32ITy, Int32ITy, /* castIsNoOp */ true)
 TEST_CAST_2WAYS(int32_t, int64_t, Int32ITy, Int64ITy, /* castIsNoOp */ true)
 TEST_CAST_2WAYS(int64_t, float, Int64ITy, FloatTy, /* castIsNoOp */ false)
-TEST_CAST_2WAYS(int64_t, float16_t, Int64ITy, Float16Ty, /* castIsNoOp */ false)
+TEST_CAST_2WAYS(int64_t, float16_t, Int64ITy, Float16Ty,
+                /* castIsNoOp */ false)
 TEST_CAST_2WAYS(int64_t, int32_t, Int64ITy, Int32ITy, /* castIsNoOp */ false)
 TEST_CAST_2WAYS(int64_t, int64_t, Int64ITy, Int64ITy, /* castIsNoOp */ true)
 
@@ -12655,7 +12986,7 @@ TEST_P(OperatorStatelessTest, LayerNorm_Float) {
 TEST_P(OperatorStatelessTest, LayerNorm_Float16) {
   CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitLayerNormTest,
-                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.005f,
+                            ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f,
                             parCloneCountOpt);
 }
 

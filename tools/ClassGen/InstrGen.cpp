@@ -829,6 +829,45 @@ int main(int argc, char **argv) {
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//
+  //                Pre Processing
+  //===--------------------------------------------------------------------===//
+
+  BB.newInstr("AudioSpectrogram")
+      .addOperand("Spectrogram", OperandKind::Out)
+      .addOperand("Input", OperandKind::In)
+      .addOperand("Window", OperandKind::In)
+      .addOperand("TwiddleFactors", OperandKind::In)
+      .addOperand("BitReverseIndices", OperandKind::In)
+      .addOperand("ComplexToRealWeights", OperandKind::In)
+      .addMember(MemberType::Int64, "WindowSize")
+      .addMember(MemberType::Int64, "WindowStride")
+      .addMember(MemberType::Boolean, "MagnitudeSquared")
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Spectrogram", "Input", "Window", "TwiddleFactors",
+                   "ComplexToRealWeights", "ElemKind::FloatTy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"BitReverseIndices", "ElemKind::Int32ITy"})
+      .autoIRGen();
+
+  BB.newInstr("MFCC")
+      .addOperand("Coefficients", OperandKind::Out)
+      .addOperand("Spectrogram", OperandKind::In)
+      .addOperand("MelWeights", OperandKind::In)
+      .addOperand("MelRanges", OperandKind::In)
+      .addOperand("DctMat", OperandKind::In)
+      .addMember(MemberType::Float, "SampleRate")
+      .addMember(MemberType::Float, "LowerFrequency")
+      .addMember(MemberType::Float, "UpperFrequency")
+      .addMember(MemberType::Int64, "FilterBankCount")
+      .addMember(MemberType::Int64, "NumCoefficients")
+      .autoVerify(VerifyKind::SameElementType,
+                  {"Coefficients", "Spectrogram", "MelWeights", "DctMat",
+                   "ElemKind::FloatTy"})
+      .autoVerify(VerifyKind::SameElementType,
+                  {"MelRanges", "ElemKind::Int32ITy"})
+      .autoIRGen();
+
+  //===--------------------------------------------------------------------===//
   //                Post Processing
   //===--------------------------------------------------------------------===//
 

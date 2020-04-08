@@ -27,6 +27,7 @@
 
 namespace glow {
 namespace runtime {
+class NNPIDeviceManager;
 
 using StaticPlaceholderMap =
     std::unordered_map<const Placeholder *, std::weak_ptr<NNPIResource>>;
@@ -53,9 +54,12 @@ private:
   std::shared_ptr<NNPIDeviceTracing> deviceTracing_;
 
   /// NNPI Device configuration.
-  const NNPIDeviceOptions *deviceOptions_;
+  std::shared_ptr<NNPIDeviceOptions> deviceOptions_;
 
-  // NNPI Resources.
+  /// NNPI Device id.
+  unsigned deviceId_;
+
+  /// NNPI Resources.
   std::vector<std::shared_ptr<NNPIResource>> inputResources_;
   std::vector<std::shared_ptr<NNPIResource>> outputResources_;
 
@@ -67,8 +71,11 @@ private:
   // Name for the function that we are executing.
   std::string functionName_;
 
-  // Logical device ID this context maps to.
-  unsigned deviceId_;
+  /// Trace context names.
+  std::string traceBackendExecuteContextName_;
+  std::string tracePreProcessContextName_;
+  std::string traceInferenceContextName_;
+  std::string tracePostProcessContextName_;
 
 public:
   InferenceContext();
@@ -85,8 +92,8 @@ public:
       const std::unordered_set<const Placeholder *> &staticInputs,
       std::shared_ptr<NNPIDeviceTracing> deviceTracing,
       StaticPlaceholderMap *staticPlaceholderMap,
-      const NNPIDeviceOptions *deviceOptions, const std::string &functionName,
-      unsigned deviceId);
+      std::shared_ptr<NNPIDeviceOptions> deviceOptions,
+      const std::string &functionName, unsigned deviceId);
 };
 
 } // namespace runtime

@@ -485,6 +485,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
       case ElemKind::FloatTy:
       case ElemKind::Int32ITy:
       case ElemKind::Int64ITy:
+      case ElemKind::BoolTy:
         return true;
       default:
         return false;
@@ -588,6 +589,16 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getOutElemTy(
                 NonMaxSuppressionNode::NumberOfSelectedIndicesIdx) ==
             NI.getOutElemTy(NonMaxSuppressionNode::IndicesIdx));
+
+  case Kinded::Kind::AudioSpectrogramNodeKind:
+    return NI.getInElemTy(AudioSpectrogramNode::InputIdx) ==
+               ElemKind::FloatTy &&
+           NI.getOutElemTy(AudioSpectrogramNode::SpectrogramIdx) ==
+               ElemKind::FloatTy;
+
+  case Kinded::Kind::MFCCNodeKind:
+    return NI.getInElemTy(MFCCNode::SpectrogramIdx) == ElemKind::FloatTy &&
+           NI.getOutElemTy(MFCCNode::CoefficientsIdx) == ElemKind::FloatTy;
 
   case Kinded::Kind::SoftMaxGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -802,12 +813,26 @@ static bool channelwiseQuantizeFloatBias(
   auto biasQuantizedC = F->getParent()->createConstant(
       biasC->getName(), std::move(biasQuantizedT));
 
-  auto newChannelwiseConv = F->createChannelwiseQuantizedConv(
-      channelwiseConv.getName(), channelwiseConv.getInput(),
-      channelwiseConv.getFilter(), biasQuantizedC, channelwiseConv.getScales(),
-      channelwiseConv.getOffsets(), channelwiseConv.getResult().getType(),
-      channelwiseConv.getKernels(), channelwiseConv.getStrides(),
-      channelwiseConv.getPads(), channelwiseConv.getGroup());
+  bool isConv3d = (channelwiseConv.getInput().getType()->dims().size() == 5);
+  glow::ChannelwiseQuantizedConvolutionNode *newChannelwiseConv;
+  if (isConv3d) {
+    newChannelwiseConv = F->createChannelwiseQuantizedConv3D(
+        channelwiseConv.getName(), channelwiseConv.getInput(),
+        channelwiseConv.getFilter(), biasQuantizedC,
+        channelwiseConv.getScales(), channelwiseConv.getOffsets(),
+        channelwiseConv.getResult().getType(), channelwiseConv.getKernels(),
+        channelwiseConv.getStrides(), channelwiseConv.getPads(),
+        channelwiseConv.getGroup());
+
+  } else {
+    newChannelwiseConv = F->createChannelwiseQuantizedConv(
+        channelwiseConv.getName(), channelwiseConv.getInput(),
+        channelwiseConv.getFilter(), biasQuantizedC,
+        channelwiseConv.getScales(), channelwiseConv.getOffsets(),
+        channelwiseConv.getResult().getType(), channelwiseConv.getKernels(),
+        channelwiseConv.getStrides(), channelwiseConv.getPads(),
+        channelwiseConv.getGroup());
+  }
 
   channelwiseConv.getResult().replaceAllUsesOfWith(newChannelwiseConv);
   return true;

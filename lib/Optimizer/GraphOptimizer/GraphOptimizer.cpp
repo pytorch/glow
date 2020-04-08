@@ -299,6 +299,108 @@ static bool sinkTranposeBelowChannelShuffle(Function *F,
   return true;
 }
 
+/// Given \p CN from \p F, determines if all inputs are either Quantize or
+/// Dequantize (depending on \p QuantNodeClass) that use the same
+/// scale/offset/kind, and if so creates and \returns a new concat with all
+/// inputs as the inputs from the Quantize or Dequantize inputs. Otherwise
+/// \returns nullptr.
+template <class QuantNodeClass>
+static ConcatNode *setupQuantDequantSinkBelowConcat(Function *F,
+                                                    ConcatNode *CN) {
+  constexpr bool isQuant = std::is_same<QuantizeNode, QuantNodeClass>::value;
+  constexpr bool isDeq = std::is_same<DequantizeNode, QuantNodeClass>::value;
+  static_assert(isQuant || isDeq, "setupQuantDequantSinkBelowConcat() only "
+                                  "supports Quantize/Dequantize nodes.");
+  // Check if all inputs are Quantize with the same input
+  // scale/offset/ElemKind.
+  std::vector<QuantNodeClass *> qNodes;
+  qNodes.reserve(CN->getInputs().size());
+  for (auto &concatInput : CN->getInputs()) {
+    QuantNodeClass *Q = dyn_cast<QuantNodeClass>(concatInput);
+    if (!Q) {
+      return nullptr;
+    }
+    qNodes.push_back(Q);
+  }
+
+  // Gather all inputs of the nodes in qNodes here.
+  std::vector<NodeValue> newInputs;
+  newInputs.reserve(qNodes.size());
+  newInputs.push_back(qNodes[0]->getInput());
+
+  // Check the CN's first input's type to check against all other inputs. Use
+  // the output of Quantize or input of Dequantize.
+  const TypeRef firstTy = isQuant ? qNodes[0]->getResult().getType()
+                                  : qNodes[0]->getInput().getType();
+
+  // Check that all inputs have the same scale/offset/type.
+  for (size_t i = 1, e = qNodes.size(); i < e; i++) {
+    const TypeRef currTy = isQuant ? qNodes[i]->getResult().getType()
+                                   : qNodes[i]->getInput().getType();
+    if (currTy->getScale() != firstTy->getScale() ||
+        currTy->getOffset() != firstTy->getOffset() ||
+        currTy->getElementType() != firstTy->getElementType()) {
+      return nullptr;
+    }
+    newInputs.push_back(qNodes[i]->getInput());
+  }
+
+  // Create and return a new ConcatNode with newInputs.
+  return F->createConcat(CN->getName(), newInputs, CN->getDim());
+}
+
+bool SinkConversions::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+  // For each node:
+  for (auto &N : nodes) {
+    ConcatNode *CN = dyn_cast<ConcatNode>(&N);
+    if (!CN) {
+      continue;
+    }
+    const Node *firstNode = CN->getInputs().front().getNode();
+
+    // Sink Dequantize below Concat nodes.
+    if (firstNode->getKind() == Kinded::Kind::DequantizeNodeKind) {
+      ConcatNode *newCN =
+          setupQuantDequantSinkBelowConcat<DequantizeNode>(F, CN);
+      if (!newCN) {
+        continue;
+      }
+
+      DequantizeNode *newDequantize =
+          F->createDequantize(CN->getName().str() + "_dequantize", newCN);
+
+      CN->getResult().replaceAllUsesOfWith(newDequantize->getResult());
+      changed = true;
+      continue;
+    }
+
+    // Sink Quantize below Concat nodes.
+    if (firstNode->getKind() == Kinded::Kind::QuantizeNodeKind) {
+      ConcatNode *newCN = setupQuantDequantSinkBelowConcat<QuantizeNode>(F, CN);
+      if (!newCN) {
+        continue;
+      }
+
+      const TypeRef QTy =
+          llvm::cast<QuantizeNode>(firstNode)->getResult().getType();
+      const TypeRef concatQTy = F->getParent()->uniqueType(
+          QTy->getElementType(), newCN->getResult().dims(), QTy->getScale(),
+          QTy->getOffset());
+      QuantizeNode *newQuantize = F->createQuantize(
+          CN->getName().str() + "_quantize", newCN, concatQTy);
+
+      CN->getResult().replaceAllUsesOfWith(newQuantize->getResult());
+      changed = true;
+      continue;
+    }
+  }
+
+  return changed;
+}
+
 /// Code Sinking.
 bool SinkCode::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
@@ -334,26 +436,35 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
 
-    // Sink Transpose below batch RELU nodes.
     if (auto *RL = dyn_cast<ReluNode>(node)) {
-      auto *TR = dyn_cast<TransposeNode>(RL->getInput());
-
-      if (!TR) {
+      // Sink Transpose below batch RELU nodes.
+      if (auto *TR = dyn_cast<TransposeNode>(RL->getInput())) {
+        // Keep the same quantization parameters for ReLU output, but
+        // change the shape to appropriate value.
+        auto reluOutTy = F->getParent()->uniqueTypeWithNewShape(
+            RL->getResult().getType(), TR->getInput().getType());
+        auto *NRL = F->createRELU(RL->getName(), TR->getInput(), reluOutTy);
+        NRL->setPredicate(node->getPredicate());
+        auto *newTR = F->createTranspose(TR->getName(), NRL, TR->getShuffle(),
+                                         TR->getLayout());
+        newTR->setPredicate(node->getPredicate());
+        RL->getResult().replaceAllUsesOfWith(newTR);
+        changed = true;
         continue;
       }
 
-      // Keep the same quantization parameters for ReLU output, but
-      // change the shape to appropriate value.
-      auto reluOutTy = F->getParent()->uniqueTypeWithNewShape(
-          RL->getResult().getType(), TR->getInput().getType());
-      auto *NRL = F->createRELU(RL->getName(), TR->getInput(), reluOutTy);
-      NRL->setPredicate(node->getPredicate());
-      auto *newTR = F->createTranspose(TR->getName(), NRL, TR->getShuffle(),
-                                       TR->getLayout());
-      newTR->setPredicate(node->getPredicate());
-      RL->getResult().replaceAllUsesOfWith(newTR);
-      changed = true;
-      continue;
+      // Sink Clip below RELU nodes.
+      if (ClipNode *CN = dyn_cast<ClipNode>(RL->getInput())) {
+        assert(!RL->getResult().getType()->isQuantizedType() &&
+               "Relu(Clip) means Relu should not be quantized.");
+        ReluNode *newRL = F->createRELU(RL->getName(), CN->getInput());
+        ClipNode *newCN =
+            F->createClip(CN->getName(), newRL->getResult(),
+                          std::max(CN->getMin(), 0.0f), CN->getMax());
+        RL->getResult().replaceAllUsesOfWith(newCN);
+        changed = true;
+        continue;
+      }
     }
 
     // Sink Transpose below Clip nodes.
@@ -642,66 +753,72 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       changed = true;
     }
 
-    // Sink RELU below batch concat nodes.
     if (auto *CN = dyn_cast<ConcatNode>(node)) {
-      llvm::SmallVector<NodeValue, 6> CNInputs;
-      for (auto &input : CN->getInputs()) {
-        auto *inputRL = dyn_cast<ReluNode>(input);
-        if (!inputRL) {
-          break;
+      const Node *firstNode = CN->getInputs().front().getNode();
+      // Sink RELU below batch concat nodes.
+      if (firstNode->getKind() == Kinded::Kind::ReluNodeKind) {
+        llvm::SmallVector<NodeValue, 6> CNInputs;
+        for (auto &input : CN->getInputs()) {
+          auto *inputRL = dyn_cast<ReluNode>(input);
+          if (!inputRL) {
+            break;
+          }
+          CNInputs.push_back(inputRL->getInput());
         }
-        CNInputs.push_back(inputRL->getInput());
+
+        if (CNInputs.size() == CN->getNumInputs()) {
+          auto *newCN = F->createConcat(CN->getName(), CNInputs, CN->getDim());
+          newCN->setPredicate(node->getPredicate());
+          auto name = CN->getNthInput(0).getNode()->getName();
+          auto *newRL = F->createRELU(name, newCN, CN->getResult().getType());
+          newRL->setPredicate(node->getPredicate());
+          CN->getResult().replaceAllUsesOfWith(newRL);
+          changed = true;
+        }
+        continue;
       }
 
-      if (CNInputs.size() == CN->getNumInputs()) {
-        auto *newCN = F->createConcat(CN->getName(), CNInputs, CN->getDim());
+      // Sink Transpose below concat nodes.
+      if (firstNode->getKind() == Kinded::Kind::TransposeNodeKind) {
+        llvm::SmallVector<NodeValue, 6> transVector;
+        auto inputIter = CN->getInputs().begin();
+        auto *firstInput = dyn_cast<TransposeNode>(*inputIter);
+        if (!firstInput) {
+          continue;
+        }
+
+        transVector.push_back(firstInput->getInput());
+        auto shuffle = firstInput->getShuffle();
+        // If the shuffle masks don't agree or not all inputs are Transpose then
+        // bail out.
+        for (++inputIter; inputIter != CN->getInputs().end(); ++inputIter) {
+          auto *tTR = dyn_cast<TransposeNode>(*inputIter);
+          if (!tTR || tTR->getShuffle() != shuffle) {
+            break;
+          }
+          transVector.push_back(tTR->getInput());
+        }
+
+        if (transVector.size() != CN->getNumInputs()) {
+          continue;
+        }
+
+        // Figure out where we transposed the channel index for batch
+        // normalization.
+        unsigned_t idx = CN->getDim();
+        unsigned_t newChannelIdx = shuffle[idx];
+
+        auto *newCN =
+            F->createConcat(CN->getName(), transVector, newChannelIdx);
         newCN->setPredicate(node->getPredicate());
-        auto name = CN->getNthInput(0).getNode()->getName();
-        auto *newRL = F->createRELU(name, newCN, CN->getResult().getType());
-        newRL->setPredicate(node->getPredicate());
-        CN->getResult().replaceAllUsesOfWith(newRL);
+        auto *newTR = F->createTranspose(firstInput->getName(), newCN,
+                                         firstInput->getShuffle(),
+                                         firstInput->getLayout());
+        newTR->setPredicate(node->getPredicate());
+        CN->getResult().replaceAllUsesOfWith(newTR);
         changed = true;
-      }
-    }
-
-    // Sink Transpose below concat nodes.
-    if (auto *CN = dyn_cast<ConcatNode>(node)) {
-      llvm::SmallVector<NodeValue, 6> transVector;
-      auto inputIter = CN->getInputs().begin();
-      auto *firstInput = dyn_cast<TransposeNode>(*inputIter);
-      if (!firstInput) {
         continue;
       }
-
-      transVector.push_back(firstInput->getInput());
-      auto shuffle = firstInput->getShuffle();
-      // If the shuffle masks don't agree or not all inputs are Transpose then
-      // bail out.
-      for (++inputIter; inputIter != CN->getInputs().end(); ++inputIter) {
-        auto *tTR = dyn_cast<TransposeNode>(*inputIter);
-        if (!tTR || tTR->getShuffle() != shuffle) {
-          break;
-        }
-        transVector.push_back(tTR->getInput());
-      }
-
-      if (transVector.size() != CN->getNumInputs()) {
-        continue;
-      }
-
-      // Figure out where we transposed the channel index for batch
-      // normalization.
-      unsigned_t idx = CN->getDim();
-      unsigned_t newChannelIdx = shuffle[idx];
-
-      auto *newCN = F->createConcat(CN->getName(), transVector, newChannelIdx);
-      newCN->setPredicate(node->getPredicate());
-      auto *newTR =
-          F->createTranspose(firstInput->getName(), newCN,
-                             firstInput->getShuffle(), firstInput->getLayout());
-      newTR->setPredicate(node->getPredicate());
-      CN->getResult().replaceAllUsesOfWith(newTR);
-      changed = true;
     }
 
     // Sink Clip below Reshape nodes.
@@ -2158,6 +2275,33 @@ static bool combineConcatSlices(ConcatNode *CN) {
   return true;
 }
 
+/// Eliminate Concat-Slice patterns which are unnecessary. E.g.:
+/// NodeA   NodeB             NodeA   NodeB
+///     \   /                   |       |
+///    ConcatC                  |       |
+///     /   \         ----->    |       |
+/// SliceD  SliceE              |       |
+///   |       |                 |       |
+/// NodeF   NodeG             NodeF   NodeG
+bool EliminateConcatSlice::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+
+  // For each node:
+  for (auto &node : nodes) {
+    auto *CN = dyn_cast<ConcatNode>(&node);
+    if (!CN) {
+      continue;
+    }
+    if (combineConcatSlices(CN)) {
+      changed = true;
+      continue;
+    }
+  }
+  return changed;
+}
+
 /// Optimize Concat nodes.
 bool OptimizeConcatNodes::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
@@ -2176,12 +2320,55 @@ bool OptimizeConcatNodes::run(Function *F, const CompilationContext &cctx) {
       changed = true;
       continue;
     }
+  }
+  return changed;
+}
 
-    if (combineConcatSlices(CN)) {
-      changed = true;
+/// Fold Slices into Constants. This will create new Constants if necessary.
+bool FoldSlicesIntoConstants::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+
+  // For each node:
+  for (auto &node : nodes) {
+    auto *SN = dyn_cast<SliceNode>(&node);
+    if (!SN) {
       continue;
     }
+    auto *C = dyn_cast<Constant>(SN->getInput());
+    if (!C) {
+      continue;
+    }
+
+    // Create new slice of the Constant.
+    Tensor outT = Tensor(SN->getResult().getType());
+
+    ElemKind k = outT.getElementType();
+#define TYPED_INSERT(TY, TYPEKIND)                                             \
+  if (k == TYPEKIND) {                                                         \
+    auto OH = outT.getHandle<TY>();                                            \
+    auto IH = C->getPayloadMutable().getHandle<TY>();                          \
+    IH.extractTensors(OH, SN->getStart());                                     \
   }
+
+    TYPED_INSERT(float, ElemKind::FloatTy);
+    TYPED_INSERT(float16_t, ElemKind::Float16Ty);
+    TYPED_INSERT(int8_t, ElemKind::Int8QTy);
+    TYPED_INSERT(int16_t, ElemKind::Int16QTy);
+    TYPED_INSERT(int32_t, ElemKind::Int32QTy);
+    TYPED_INSERT(int32_t, ElemKind::Int32ITy);
+    TYPED_INSERT(int64_t, ElemKind::Int64ITy);
+    TYPED_INSERT(bool, ElemKind::BoolTy);
+#undef TYPED_INSERT
+
+    // Create a new Constant NC to hold the sliced result.
+    auto *NC = F->getParent()->createConstant(C->getName(), std::move(outT));
+    // Connect all Slice users with the new Slice.
+    SN->getResult().replaceAllUsesOfWith(NC);
+    changed = true;
+  }
+
   return changed;
 }
 
@@ -2865,6 +3052,109 @@ bool OptimizeClips::run(Function *F, const CompilationContext &cctx) {
   return clipsEliminated;
 }
 
+/// \returns whether \p N used used by any Nodes with side effects.
+static bool isUsedByNodeWithSideEffects(Node *N) {
+  for (const auto &user : N->getUsers()) {
+    if (user.getUser()->hasSideEffects()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// When quantized operators and Clips are used together, we can often merge the
+/// Clip range and the Quantized range and remove the Clip.
+bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
+  bool changed = false;
+
+  // Change a quantized result type qResult to account for the range from clip.
+  auto updateQuantizeNodeType = [](Function *F, NodeValue qResult,
+                                   ClipNode *clip, bool skipIfQuantParamChange,
+                                   bool allowQParamChange) {
+    const auto qMinMax = qResult.getType()->getQuantizedValueRange();
+    const float newMin = std::max(clip->getMin(), qMinMax.first);
+    const float newMax = std::min(clip->getMax(), qMinMax.second);
+
+    // If the quantization parameters do not change then we can always elide the
+    // Clip and do not need to change the type of qResult.
+    if (newMin == qMinMax.first && newMax == qMinMax.second) {
+      return true;
+    }
+
+    // At this point the quantization parameters must be changing, so if we do
+    // not allow for that then return false.
+    if (!allowQParamChange || skipIfQuantParamChange) {
+      return false;
+    }
+
+    // Replace the old quantized type with the new type with different
+    // min/max.
+    const TypeRef oldTy = qResult.getType();
+    const auto qParams =
+        quantization::chooseQuantizationParams({newMin, newMax});
+    const TypeRef newTy = F->getParent()->uniqueType(
+        oldTy->getElementType(), oldTy->dims(), qParams.scale, qParams.offset);
+    qResult.getNode()->setType(qResult.getResNo(), newTy);
+    return true;
+  };
+
+  for (Node &node : F->getNodes()) {
+    // Clip(Dequantize(Node)) -> Dequantize(Node)
+    if (ClipNode *clip = dyn_cast<ClipNode>(&node)) {
+      DequantizeNode *DQN = dyn_cast<DequantizeNode>(clip->getInput());
+      if (!DQN) {
+        continue;
+      }
+
+      // Cannot perform this optimization if there are multiple users of DQN or
+      // DQN's input, as otherwise they'd have incorrect quantization params.
+      NodeValue qResult = DQN->getInput();
+      const bool skipIfQuantParamChange =
+          DQN->getNumUsers() != 1 || qResult.getNode()->getNumUsers() != 1;
+
+      // Try to update the quantize's type, otherwise skip this one.
+      if (!updateQuantizeNodeType(
+              F, qResult, clip, skipIfQuantParamChange,
+              cctx.optimizationOpts.enableQuantParamChanges)) {
+        continue;
+      }
+
+      // Now we skip the Clip since the node prior to DQN has included the
+      // Clip's range in its quantization parameters.
+      clip->getResult().replaceAllUsesOfWith(DQN->getResult());
+      changed = true;
+      continue;
+    }
+
+    // Quantize(Clip(Node)) -> Quantize(Node)
+    if (QuantizeNode *QN = dyn_cast<QuantizeNode>(&node)) {
+      ClipNode *clip = dyn_cast<ClipNode>(QN->getInput());
+      if (!clip) {
+        continue;
+      }
+
+      // Cannot set the type of quantized nodes if they're used by a Node with
+      // side effects, as they may be expecting a specific type.
+      const bool skipIfQuantParamChange = isUsedByNodeWithSideEffects(QN);
+
+      // Try to update the quantize's type, otherwise skip this one.
+      if (!updateQuantizeNodeType(
+              F, QN->getResult(), clip, skipIfQuantParamChange,
+              cctx.optimizationOpts.enableQuantParamChanges)) {
+        continue;
+      }
+
+      // Now we can skip the Clip since the QN has accounted for the Clip's
+      // range in its quantization parameters.
+      QN->setNthInput(QuantizeNode::InputIdx, clip->getInput());
+      changed = true;
+      continue;
+    }
+  }
+
+  return changed;
+}
+
 /// Optimize away ConvertToNode.
 /// This basically turns "conversion(conversion A to B) to C"
 /// into noop if all of the conditions below are met:
@@ -2913,6 +3203,181 @@ bool OptimizeConversions::run(Function *F, const CompilationContext &cctx) {
       }
     }
   }
+  return changed;
+}
+
+/// Optimize Quantize(ConvertTo(Node)) -> Quantize(Node), where Quantize is
+/// int8. This may have numerical differences but since Int8 has a small range
+/// it's likely fine. This is opt in by a backend.
+bool OptimizeOutIntermediateConversions::run(Function *F,
+                                             const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    QuantizeNode *QN = llvm::dyn_cast<QuantizeNode>(&node);
+    if (!QN ||
+        QN->getResult().getType()->getElementType() != ElemKind::Int8QTy) {
+      continue;
+    }
+
+    ConvertToNode *CN = llvm::dyn_cast<ConvertToNode>(QN->getInput());
+    if (!CN) {
+      continue;
+    }
+
+    QN->setNthInput(QuantizeNode::InputIdx, CN->getInput());
+    changed = true;
+  }
+
+  return changed;
+}
+
+// Look for float Relus that we can fuse up into quantized FCs. This is either
+// with a Dequantize between them, or a Concat with multiple FCs being
+// dequantized and concatenated together.
+bool OptimizeQuantFCFloatRelu::run(Function *F,
+                                   const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *relu = llvm::dyn_cast<ReluNode>(&node);
+    // Look for Float relus to start.
+    if (!relu ||
+        !isFloatElemKind(relu->getResult().getType()->getElementType())) {
+      continue;
+    }
+
+    // Now look for dequantize nodes. We may need to move this above a Concat.
+    // Check if necessary.
+    std::vector<FullyConnectedNode *> nodesToFuse;
+    if (auto *CN = llvm::dyn_cast<ConcatNode>(relu->getInput())) {
+      if (CN->getNumUsers() != 1) {
+        continue;
+      }
+
+      // Check if all the concat inputs are dequantized FCs.
+      for (const NodeValue &NV : CN->getInputs()) {
+        auto *DQ = llvm::dyn_cast<DequantizeNode>(NV);
+        if (!DQ || DQ->getNumUsers() != 1) {
+          break;
+        }
+        auto *FC = llvm::dyn_cast<FullyConnectedNode>(DQ->getInput());
+        if (!FC || FC->getNumUsers() != 1) {
+          break;
+        }
+        nodesToFuse.push_back(FC);
+      }
+      if (nodesToFuse.size() != CN->getInputs().size()) {
+        continue;
+      }
+    } else if (auto *DQ = llvm::dyn_cast<DequantizeNode>(relu->getInput())) {
+      if (DQ->getNumUsers() != 1) {
+        continue;
+      }
+
+      auto *FC = llvm::dyn_cast<FullyConnectedNode>(DQ->getInput());
+      if (!FC || FC->getNumUsers() != 1) {
+        break;
+      }
+      nodesToFuse.push_back(FC);
+    } else {
+      continue;
+    }
+
+    // Did not find any quantized FCs to fuse, so continue.
+    if (!nodesToFuse.size()) {
+      continue;
+    }
+
+    // Now add quantized relus onto all of the FCs.
+    for (FullyConnectedNode *FC : nodesToFuse) {
+      const TypeRef FCTy = FC->getResult().getType();
+      // Use the same type as the FC for the Relu but with 0 as min.
+      const auto qParams = quantization::chooseQuantizationParams(
+          {0, FCTy->getQuantizedValueRange().second});
+      const TypeRef qReluTy = F->getParent()->uniqueType(
+          FCTy->getElementType(), FCTy->dims(), qParams.scale, qParams.offset);
+      ReluNode *qRelu = F->createRELU(relu->getName().str() + "_quant",
+                                      FC->getResult(), qReluTy);
+      FC->getResult().typeUnsafeReplaceAllUsesOfWith(qRelu->getResult(), F,
+                                                     qRelu);
+    }
+
+    // Now we can get rid of the relu.
+    relu->getResult().replaceAllUsesOfWith(relu->getInput());
+    changed = true;
+    continue;
+  }
+
+  return changed;
+}
+
+/// Look for Concats with all Dequantization as input and Quantization as
+/// output, and change the Quantization/Dequantization into a rescale.
+bool OptimizeConcatQuantization::run(Function *F,
+                                     const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *CN = dyn_cast<ConcatNode>(&node);
+    if (!CN) {
+      continue;
+    }
+
+    // Look for a single Quantize user.
+    if (CN->getUsers().size() != 1) {
+      continue;
+    }
+    auto *QN = dyn_cast<QuantizeNode>((*CN->getUsers().begin()).getUser());
+    if (!QN) {
+      continue;
+    }
+
+    // Gather/check all of the inputs are DequantizeNodes.
+    std::vector<DequantizeNode *> DNs;
+    DNs.reserve(CN->getInputs().size());
+    for (const NodeValue &NV : CN->getInputs()) {
+      auto *DN = dyn_cast<DequantizeNode>(NV);
+      if (!DN || DN->getNumUsers() != 1) {
+        break;
+      }
+      DNs.push_back(DN);
+    }
+
+    // If not all CN inputs are Dequantizes then skip.
+    if (DNs.size() != CN->getInputs().size()) {
+      continue;
+    }
+
+    // Now create Rescales instead of Dequantizes for all CN inputs.
+    std::vector<NodeValue> newConcatInputs;
+    newConcatInputs.reserve(DNs.size());
+    TypeRef QNTy = QN->getResult().getType();
+    for (DequantizeNode *DN : DNs) {
+      if (DN->getInput().getType()->getScale() == QNTy->getScale() &&
+          DN->getInput().getType()->getOffset() == QNTy->getOffset()) {
+        // Don't need to rescale as it already has the right scale/offset.
+        newConcatInputs.push_back(DN->getInput());
+      } else {
+        TypeRef newTy = F->getParent()->uniqueTypeWithNewShape(
+            QNTy, DN->getResult().dims());
+        auto *RS = F->createRescaleQuantized(DN->getName().str() + "_rescale",
+                                             DN->getInput(), newTy);
+        newConcatInputs.push_back(RS->getResult());
+      }
+    }
+
+    auto *newCN = F->createConcat(CN->getName(), newConcatInputs, CN->getDim());
+
+    // Now we can get rid of the Quantize after the CN.
+    QN->getResult().replaceAllUsesOfWith(newCN->getResult());
+    changed = true;
+    continue;
+  }
+
   return changed;
 }
 
@@ -3611,6 +4076,87 @@ bool FoldTileAddIntoBatchedAdd::run(Function *F,
   return changed;
 }
 
+/// Raise ClipNodes above shaping ops, e.g. Reshape, Transpose, Slice. Other
+/// passes will sink Clips to try to eliminate redundant ones. This pass should
+/// happen after sinking of Clips in order to try to get Clips to directly
+/// consume compute Nodes outputs.
+bool RaiseClipsAboveShapeNodes::run(Function *F,
+                                    const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+
+  // Keep track of what nodes will have oneLessUser due to DCE eventually. As an
+  // example, we know that after we replace all users of OrigSlice with NewClip,
+  // then OrigSlice and OrigClip are dead, and so Input1 will have one less user
+  // after DCE.
+  //  Input                  Input
+  //    |                    /    \
+  //  OrigSlice        NewClip   OrigSlice  <--|
+  //    |        -->      |         |          |-- (These two are now dead.)
+  //  OrigClip         NewSlice   OrigClip  <--|
+  //    |                 |
+  //  Save              Save
+  std::unordered_set<Node *> oneLessUser;
+
+  for (auto &N : F->getNodes()) {
+    ClipNode *CN = dyn_cast<ClipNode>(&N);
+    if (!CN) {
+      continue;
+    }
+
+    // If the Clip's input has multiple users then do not raise the Clip, as
+    // otherwise this will impact other Nodes. We subtract off an extra user
+    // here if we know one user will be eliminated due to DCE eventually (see
+    // above pic).
+    unsigned numUsers = CN->getInput().getNode()->getNumUsers();
+    if (oneLessUser.count(CN->getInput().getNode())) {
+      numUsers -= 1;
+    }
+    if (numUsers != 1) {
+      continue;
+    }
+
+    // Sink Reshape below Clip.
+    if (ReshapeNode *RN = dyn_cast<ReshapeNode>(CN->getInput())) {
+      ClipNode *newCN = F->createClip(CN->getName(), RN->getInput(),
+                                      CN->getMin(), CN->getMax());
+      ReshapeNode *newRN = F->createReshape(RN->getName(), newCN->getResult(),
+                                            RN->getDims(), RN->getLayout());
+      CN->getResult().replaceAllUsesOfWith(newRN->getResult());
+      oneLessUser.insert(RN->getInput().getNode());
+      changed = true;
+      continue;
+    }
+
+    // Sink Transpose below Clip.
+    if (TransposeNode *TN = dyn_cast<TransposeNode>(CN->getInput())) {
+      ClipNode *newCN = F->createClip(CN->getName(), TN->getInput(),
+                                      CN->getMin(), CN->getMax());
+      TransposeNode *newTN = F->createTranspose(
+          TN->getName(), newCN->getResult(), TN->getShuffle(), TN->getLayout());
+      CN->getResult().replaceAllUsesOfWith(newTN->getResult());
+      oneLessUser.insert(TN->getInput().getNode());
+      changed = true;
+      continue;
+    }
+
+    // Sink Slice below Clip.
+    if (SliceNode *SN = dyn_cast<SliceNode>(CN->getInput())) {
+      ClipNode *newCN = F->createClip(CN->getName(), SN->getInput(),
+                                      CN->getMin(), CN->getMax());
+      SliceNode *newSN =
+          F->createSlice(SN->getName(), newCN->getResult(), SN->getStart(),
+                         SN->getResult().getType());
+      CN->getResult().replaceAllUsesOfWith(newSN->getResult());
+      oneLessUser.insert(SN->getInput().getNode());
+      changed = true;
+      continue;
+    }
+  } // For all nodes in the graph.
+
+  return changed;
+}
+
 /// Fold ElemKind conversion nodes (ConvertTo, Quantize) into
 /// single-user Placeholders. Note that this changes the semantics
 /// of the IO of the Function and so must be done carefully, i.e. should always
@@ -4124,17 +4670,23 @@ bool glow::executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
 /// \p splitDim represents what dimension to split for each of the inputs to
 /// \p curNode. \p resultDim is the dimension on which we are splitting and then
 /// concatenating the results. \p resultIdx represents the result index from
-/// \p curNode that is being split and later concatenated.
-static void parallelizeAndReplaceNode(Function *F, Node *curNode,
-                                      dim_t numOfChunksNode,
-                                      dim_t inputBatchIdx, dim_t resultIdx,
-                                      llvm::ArrayRef<int> splitDims,
-                                      size_t resultDim) {
+/// \p curNode that is being split and later concatenated. \returns an Expected
+/// of the ConcatNode that is created and replaces \p curNode, or otherwise an
+/// Error if parallelization had some issue.
+static Expected<ConcatNode *>
+parallelizeAndReplaceNode(Function *F, Node *curNode, dim_t numOfChunksNode,
+                          dim_t inputBatchIdx, dim_t resultIdx,
+                          llvm::ArrayRef<int> splitDims, size_t resultDim) {
   const int inputIdx = splitDims[inputBatchIdx];
   CHECK_GE(inputIdx, 0) << "Input batch idx must be split";
   const dim_t batchSize = curNode->getNthInput(inputBatchIdx).dims()[inputIdx];
   const dim_t elemPerChunk = batchSize / numOfChunksNode;
   const dim_t remain = batchSize % numOfChunksNode;
+
+  RETURN_ERR_IF_NOT(
+      batchSize >= numOfChunksNode,
+      "Invalid parallelization; batchSize " + std::to_string(batchSize) +
+          "must be >= numOfChunksNode " + std::to_string(numOfChunksNode));
 
   std::vector<NodeValue> newNodes(numOfChunksNode);
   for (dim_t i = 0; i < numOfChunksNode; ++i) {
@@ -4197,20 +4749,23 @@ static void parallelizeAndReplaceNode(Function *F, Node *curNode,
   auto *concat = F->createConcat("concat." + curNode->getName().str(), newNodes,
                                  resultDim);
   curNode->getNthResult(resultIdx).replaceAllUsesOfWith(concat);
+  return concat;
 }
 
-bool glow::parallelizeOps(
+Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
     Function *F, const llvm::DenseMap<Node *, size_t> &numOfChunksMap,
     const llvm::DenseMap<Node *, ParallelTransformKind> &parOpts,
     size_t numOfChunks) {
   // Since we will be transforming the original list of nodes, reverse iterate.
   auto &nodes = F->getNodes();
   size_t numProcessedNodes = 0;
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
   for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
     Node *curNode = &*it;
+    size_t curNumOfChunks = numOfChunks;
     auto numOfChunksIt = numOfChunksMap.find(curNode);
     if (numOfChunksIt != numOfChunksMap.end()) {
-      numOfChunks = numOfChunksIt->second;
+      curNumOfChunks = numOfChunksIt->second;
     }
 
     ParallelTransformKind parTransformMode = ParallelTransformKind::None;
@@ -4223,6 +4778,8 @@ bool glow::parallelizeOps(
     VLOG(1) << "Attempting to Parallelizing Node: " << curNode->getName().str()
             << "\n";
 
+    ConcatNode *CN = nullptr;
+
     // Use this vector to communicate what dims to split to
     // parallelizeAndReplaceNode(). -1 represents not splitting at all.
     llvm::SmallVector<int, 3> splitDims(curNode->getNumInputs(), -1);
@@ -4231,85 +4788,102 @@ bool glow::parallelizeOps(
       switch (curNode->getKind()) {
       case Kinded::Kind::FullyConnectedNodeKind: {
         splitDims[FullyConnectedNode::InputIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks,
-                                  FullyConnectedNode::InputIdx,
-                                  FullyConnectedNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, FullyConnectedNode::InputIdx,
+                    FullyConnectedNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::AddNodeKind: {
         splitDims[AddNode::LHSIdx] = 0;
         splitDims[AddNode::RHSIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks, AddNode::LHSIdx,
-                                  AddNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          AddNode::LHSIdx, AddNode::ResultIdx,
+                                          splitDims, 0));
         break;
       }
       case Kinded::Kind::BatchMatMulNodeKind: {
         splitDims[BatchMatMulNode::LHSIdx] = 0;
         splitDims[BatchMatMulNode::RHSIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks,
-                                  BatchMatMulNode::LHSIdx,
-                                  BatchMatMulNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, BatchMatMulNode::LHSIdx,
+                    BatchMatMulNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::MulNodeKind: {
         splitDims[AddNode::LHSIdx] = 0;
         splitDims[AddNode::RHSIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks, MulNode::LHSIdx,
-                                  MulNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          MulNode::LHSIdx, MulNode::ResultIdx,
+                                          splitDims, 0));
         break;
       }
       case Kinded::Kind::SigmoidNodeKind: {
         splitDims[SigmoidNode::InputIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks,
-                                  SigmoidNode::InputIdx, SigmoidNode::ResultIdx,
-                                  splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, SigmoidNode::InputIdx,
+                    SigmoidNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::TanhNodeKind: {
         splitDims[TanhNode::InputIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks, TanhNode::InputIdx,
-                                  TanhNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          TanhNode::InputIdx,
+                                          TanhNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::TransposeNodeKind: {
         splitDims[TransposeNode::InputIdx] = 0;
         unsigned_t resultDim = cast<TransposeNode>(curNode)->getShuffle()[0];
-        parallelizeAndReplaceNode(
-            F, curNode, numOfChunks, TransposeNode::InputIdx,
-            TransposeNode::ResultIdx, splitDims, resultDim);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, TransposeNode::InputIdx,
+                    TransposeNode::ResultIdx, splitDims, resultDim));
         break;
       }
       case Kinded::Kind::ReluNodeKind: {
         splitDims[ReluNode::InputIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks, ReluNode::InputIdx,
-                                  ReluNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          ReluNode::InputIdx,
+                                          ReluNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::ClipNodeKind: {
         splitDims[ClipNode::InputIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks, ClipNode::InputIdx,
-                                  ClipNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          ClipNode::InputIdx,
+                                          ClipNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::QuantizeNodeKind: {
         splitDims[QuantizeNode::InputIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks,
-                                  QuantizeNode::InputIdx,
-                                  QuantizeNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, QuantizeNode::InputIdx,
+                    QuantizeNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::DequantizeNodeKind: {
         splitDims[DequantizeNode::InputIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks,
-                                  DequantizeNode::InputIdx,
-                                  DequantizeNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, DequantizeNode::InputIdx,
+                    DequantizeNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::ConvertToNodeKind: {
         splitDims[ConvertToNode::InputIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks,
-                                  ConvertToNode::InputIdx,
-                                  ConvertToNode::ResultIdx, splitDims, 0);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, ConvertToNode::InputIdx,
+                    ConvertToNode::ResultIdx, splitDims, 0));
         break;
       }
       default:
@@ -4326,9 +4900,10 @@ bool glow::parallelizeOps(
       case Kinded::Kind::FullyConnectedNodeKind: {
         splitDims[FullyConnectedNode::WeightsIdx] = 1;
         splitDims[FullyConnectedNode::BiasIdx] = 0;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks,
-                                  FullyConnectedNode::WeightsIdx,
-                                  FullyConnectedNode::ResultIdx, splitDims, 1);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, FullyConnectedNode::WeightsIdx,
+                    FullyConnectedNode::ResultIdx, splitDims, 1));
         break;
       }
       case Kinded::Kind::ReluNodeKind: {
@@ -4336,8 +4911,10 @@ bool glow::parallelizeOps(
           break;
         }
         splitDims[ReluNode::InputIdx] = 1;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks, ReluNode::InputIdx,
-                                  ReluNode::ResultIdx, splitDims, 1);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          ReluNode::InputIdx,
+                                          ReluNode::ResultIdx, splitDims, 1));
         break;
       }
       case Kinded::Kind::ClipNodeKind: {
@@ -4345,8 +4922,10 @@ bool glow::parallelizeOps(
           break;
         }
         splitDims[ClipNode::InputIdx] = 1;
-        parallelizeAndReplaceNode(F, curNode, numOfChunks, ClipNode::InputIdx,
-                                  ClipNode::ResultIdx, splitDims, 1);
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          ClipNode::InputIdx,
+                                          ClipNode::ResultIdx, splitDims, 1));
         break;
       }
       default:
@@ -4361,15 +4940,18 @@ bool glow::parallelizeOps(
     case ParallelTransformKind::None:
       break;
     }
+
+    if (CN) {
+      replacedMap[curNode] = CN;
+    }
   }
 
   // Because we transformed Node types unsafely, make sure all types of the
   // Function still are valid.
-  bool ret = F->verify();
-  DCHECK(ret) << "Verification issue post parallelization";
+  RETURN_ERR_IF_NOT(F->verify(), "Verification issue post parallelization");
 
-  const bool allProcessed = numProcessedNodes == parOpts.size();
-  DCHECK(allProcessed) << "Not all Nodes specified in parOpts were processed.";
+  RETURN_ERR_IF_NOT(numProcessedNodes == parOpts.size(),
+                    "Not all Nodes specified in parOpts were processed.");
 
-  return ret && allProcessed;
+  return replacedMap;
 }

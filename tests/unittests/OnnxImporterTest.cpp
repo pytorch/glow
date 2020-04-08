@@ -3528,6 +3528,86 @@ TEST_F(OnnxImporterTest, importFRWQSLWS) {
   EXPECT_EQ(lengths->getType()->getElementType(), ElemKind::Int32ITy);
 }
 
+/// Test loading AudioSpectrogram from an ONNX model. The ONNX model already
+/// computes the error compared to a TensorFlow reference implementation.
+static void importAudioSpectrogram(std::string fileName) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  {
+    ONNXModelLoader onnxLD(fileName, {}, {}, *F);
+    bindings.allocate(mod.getPlaceholders());
+  }
+
+  // Compile and run.
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  // Verify error.
+  Placeholder *errPH = mod.getPlaceholderByName("spectrogram_err");
+  EXPECT_TRUE(errPH);
+  auto errH = bindings.get(errPH)->getHandle();
+  auto fftLen = (errPH->getType()->dims()[1] - 1) * 2;
+  for (size_t idx = 0; idx < errPH->getType()->size(); idx++) {
+    float errVal = std::abs(errH.raw(idx)) / (float)(fftLen);
+    EXPECT_TRUE(errVal < 1e-5);
+  }
+}
+
+TEST_F(OnnxImporterTest, importAudioSpectrogramOneWindow) {
+  importAudioSpectrogram(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/audioSpectrogramOneWindow.onnxtxt");
+}
+
+TEST_F(OnnxImporterTest, importAudioSpectrogramTwoWindow) {
+  importAudioSpectrogram(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/audioSpectrogramTwoWindow.onnxtxt");
+}
+
+TEST_F(OnnxImporterTest, importAudioSpectrogramNonSquared) {
+  importAudioSpectrogram(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/audioSpectrogramNonSquared.onnxtxt");
+}
+
+/// Test loading MFCC from an ONNX model. The ONNX model already computes
+/// the error compared to a TensorFlow reference implementation.
+static void importMFCC(std::string fileName) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  {
+    ONNXModelLoader onnxLD(fileName, {}, {}, *F);
+    bindings.allocate(mod.getPlaceholders());
+  }
+
+  // Compile and run.
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  // Verify error.
+  Placeholder *errPH = mod.getPlaceholderByName("coefficients_err");
+  EXPECT_TRUE(errPH);
+  auto errH = bindings.get(errPH)->getHandle();
+  for (size_t idx = 0; idx < errPH->getType()->size(); idx++) {
+    EXPECT_TRUE(std::abs(errH.raw(idx)) < 1e-5);
+  }
+}
+
+TEST_F(OnnxImporterTest, importMFCCOneWindow) {
+  importMFCC(GLOW_DATA_PATH "tests/models/onnxModels/mfccOneWindow.onnxtxt");
+}
+
+TEST_F(OnnxImporterTest, importMFCCTwoWindow) {
+  importMFCC(GLOW_DATA_PATH "tests/models/onnxModels/mfccTwoWindow.onnxtxt");
+}
+
 /// Test loading a custom ONNX Glow quantized TopK.
 TEST_F(OnnxImporterTest, CustomGlowTopKQuantized) {
   ExecutionEngine EE;
@@ -3690,4 +3770,70 @@ TEST(onnx, importUpsampleOpset9) {
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/upsampleOpset9.onnxtxt");
   importUpsampleTest(netFilename);
+}
+
+/// Test loading a custom ONNX Glow net with NodeOpts.
+TEST_F(OnnxImporterTest, CustomGlowWithNodeOpts) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("main");
+  std::string netFilename(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/glow_custom_op_node_opts.onnxtxt");
+  Placeholder *outputPH;
+  BackendSpecificNodeInfo funNodeInfo;
+  {
+    ONNXModelLoader onnxLD(netFilename, {}, {}, *F, /* errPtr */ nullptr,
+                           /* zipMode */ false, &funNodeInfo);
+    outputPH = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  }
+
+  auto itF = funNodeInfo.find(F);
+  ASSERT_NE(itF, funNodeInfo.end());
+  auto &nodeInfo = itF->second;
+
+  SaveNode *save = getSaveNodeFromDest(outputPH);
+  ASSERT_TRUE(save);
+  // Verify that there are no options specified for the Save.
+  EXPECT_EQ(nodeInfo.find(save), nodeInfo.end());
+
+  // Verify that the options for the MatMul are loaded correctly.
+  MatMulNode *MN = llvm::dyn_cast<MatMulNode>(save->getInput());
+  auto itMN = nodeInfo.find(MN);
+  ASSERT_NE(itMN, nodeInfo.end());
+  llvm::StringMap<std::vector<std::string>> &opts = itMN->second;
+
+  // attribute {
+  //   name: "NodeOpt_BackendA_Option1"
+  //   strings: "1"
+  //   strings: "2"
+  //   type: STRINGS
+  // }
+  auto itOpt1 = opts.find("BackendA_Option1");
+  ASSERT_NE(itOpt1, opts.end());
+  EXPECT_EQ(itOpt1->second.size(), 2);
+  EXPECT_EQ(itOpt1->second[0], "1");
+  EXPECT_EQ(itOpt1->second[1], "2");
+
+  // attribute {
+  //   name: "NodeOpt_BackendA_Option2"
+  //   strings: "3"
+  //   type: STRINGS
+  // }
+  auto itOpt2 = opts.find("BackendA_Option2");
+  ASSERT_NE(itOpt2, opts.end());
+  EXPECT_EQ(itOpt2->second.size(), 1);
+  EXPECT_EQ(itOpt2->second[0], "3");
+
+  // attribute {
+  //   name: "NodeOpt_BackendB_Option3"
+  //   strings: "4"
+  //   strings: "5"
+  //   type: STRINGS
+  // }
+  auto itOpt3 = opts.find("BackendB_Option3");
+  ASSERT_NE(itOpt3, opts.end());
+  EXPECT_EQ(itOpt3->second.size(), 2);
+  EXPECT_EQ(itOpt3->second[0], "4");
+  EXPECT_EQ(itOpt3->second[1], "5");
 }

@@ -170,6 +170,12 @@ llvm::cl::opt<bool> useSparseNNPartitioningScheme(
     llvm::cl::desc("Enable SparseNN partitioning scheme"), llvm::cl::Optional,
     llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<bool> sparseNNPartitioningAddSLSConcats(
+    "glow_sparsenn_partitioning_add_sls_concats",
+    llvm::cl::desc("Add extra concats inside of SLS partitions for more "
+                   "efficient inter-partitition transfers"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
 llvm::cl::opt<int32_t> sparseNNPartitioningSchemeNumCards(
     "glow_snn_partitioning_num_cards",
     llvm::cl::desc("Num cards used in SparseNN partitioning scheme"),
@@ -417,8 +423,10 @@ int run() {
   Function *F = mod->createFunction("test");
   Error err = Error::empty();
   bool usingGlowCustomOps = false;
+  CompilationContext cctx;
   {
-    ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *F, &err, onnxLoaderZipMode);
+    ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *F, &err, onnxLoaderZipMode,
+                           &cctx.backendOpts.backendSpecificNodeInfo);
     usingGlowCustomOps = onnxLD.usingGlowCustomOps();
   }
   CHECK(!ERR_TO_BOOL(std::move(err)))
@@ -430,7 +438,6 @@ int run() {
   }
 
   // Build host manager and compile the module.
-  CompilationContext cctx;
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
   if (globalFp16Opt) {
     precConfig.convertToFP16 = globalFp16Opt;
@@ -471,6 +478,8 @@ int run() {
   if (useSparseNNPartitioningScheme) {
     cctx.optimizationOpts.useSparseNNPartitioningScheme =
         useSparseNNPartitioningScheme;
+    cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
+        sparseNNPartitioningAddSLSConcats;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
         sparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =

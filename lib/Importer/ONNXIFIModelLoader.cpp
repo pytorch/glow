@@ -26,16 +26,18 @@ Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
     const void *model, uint32_t modelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Module &mod,
     llvm::StringRef netName, runtime::PrePartitionedConfig *PPC,
-    bool loadInputsAsPlaceholders, bool use_onnx, bool constFoldInLoader) {
+    bool loadInputsAsPlaceholdersForOnnx, bool use_onnx,
+    bool constFoldInLoader) {
 
   std::unique_ptr<ONNXIFIModelLoader> loader(new ONNXIFIModelLoader());
   Error loaderConstructionErr = Error::empty();
 
   if (use_onnx) {
     Function *F = mod.createFunction(netName);
-    std::unique_ptr<ONNXModelLoader> onnxLoader(new ONNXModelLoader(
-        model, modelSize, weightsCount, weightDescriptors, *F,
-        loadInputsAsPlaceholders, &loaderConstructionErr, constFoldInLoader));
+    std::unique_ptr<ONNXModelLoader> onnxLoader(
+        new ONNXModelLoader(model, modelSize, weightsCount, weightDescriptors,
+                            *F, loadInputsAsPlaceholdersForOnnx,
+                            &loaderConstructionErr, constFoldInLoader));
     if (loaderConstructionErr) {
       return std::move(loaderConstructionErr);
     }
@@ -45,7 +47,7 @@ Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
     // Use Caffe2 Model loader
     std::unique_ptr<Caffe2ModelLoader> c2Loader(new Caffe2ModelLoader(
         model, modelSize, weightsCount, weightDescriptors, mod, netName, PPC,
-        loadInputsAsPlaceholders, &loaderConstructionErr, constFoldInLoader));
+        &loaderConstructionErr, constFoldInLoader));
     if (loaderConstructionErr) {
       return std::move(loaderConstructionErr);
     }

@@ -204,6 +204,16 @@ void InstrBuilder::emitCloner(std::ostream &os) const {
   os << ");\n}\n";
 }
 
+void InstrBuilder::emitGetOperandName(std::ostream &os) const {
+  os << "\nllvm::StringRef " << name_
+     << "Inst::getOperandName(unsigned idx) const {\n";
+  for (size_t i = 0; i < operands_.size(); i++) {
+    os << "  if (idx == " << i << ") { return \"" << operands_[i].first
+       << "\"; }\n";
+  }
+  os << "  llvm_unreachable(\"Invalid index\");\n}\n";
+}
+
 std::string getOpElementType(const std::string &name) {
   const std::string elemKindPrefix = "ElemKind::";
   if (name.substr(0, elemKindPrefix.size()) == elemKindPrefix) {
@@ -230,6 +240,7 @@ void InstrBuilder::emitClass(std::ostream &os) const {
 
   os << "\n  Instruction* clone() const;\n";
   os << "\n  void dump(llvm::raw_ostream &os) const;\n";
+  os << "\n  llvm::StringRef getOperandName(unsigned idx) const;\n";
 
   // If there is no auto-verification then we assume verification is manually
   // provided.
@@ -297,6 +308,7 @@ void InstrBuilder::emitClass(std::ostream &os) const {
 void InstrBuilder::emitCppMethods(std::ostream &os) const {
   emitPrettyPrinter(os);
   emitCloner(os);
+  emitGetOperandName(os);
   // Emit the "extra" method bodies.
   for (const auto &m : extraMethods_) {
     os << "  " << m.second << "\n";

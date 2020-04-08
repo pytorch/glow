@@ -387,11 +387,73 @@ TEST_P(HostManagerTest, QueueTest) {
   EXPECT_GT(res2, res3);
 }
 
-// This test creates a network that is split into two partitions. P0,P1. P0 is
-// loaded on one device, P1 is loaded on two devices. This test then enables
-// static assignment which allows for P2P testing. We then run the network twice
-// to test the alternating static assignments.
-TEST_P(HostManagerTest, testStaticAssignment) {
+/// Test that the enabling partition replication through user defined
+/// partitioning works.
+TEST_P(HostManagerTest, testPartitionConfigReplication) {
+  CHECK_IF_ENABLED();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
+  std::unique_ptr<ExecutionContext> context =
+      glow::make_unique<ExecutionContext>();
+
+  Function *F = module->createFunction("main");
+  auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
+  auto *XTensor = context->getPlaceholderBindings()->allocate(X);
+  XTensor->getHandle() = {1., 2., 3.};
+  auto *pow = F->createPow("Pow", X, 2.0);
+  auto *save = F->createSave("save", pow);
+  auto savePH = save->getPlaceholder();
+
+  std::vector<std::unique_ptr<DeviceConfig>> configs;
+  auto deviceConfig = glow::make_unique<DeviceConfig>(backendName_);
+  auto deviceConfig2 = glow::make_unique<DeviceConfig>(backendName_);
+  configs.push_back(std::move(deviceConfig));
+  configs.push_back(std::move(deviceConfig2));
+  std::unique_ptr<HostManager> hostManager =
+      glow::make_unique<HostManager>(std::move(configs), HostConfig());
+  CompilationContext cctx;
+
+  // Setup forced partitioning.
+  PartitionConfig partitionConfig;
+  partitionConfig.funcName = "main";
+  partitionConfig.numOfPartitions = 2;
+  partitionConfig.backendNames = {backendName_, backendName_};
+  partitionConfig.partitionNames = {"p0", "p1"};
+  partitionConfig.nodeToPartition = {{"Pow", 0}, {"save", 3}};
+  partitionConfig.logicalIDs = {{0}, {1}};
+  partitionConfig.replicationCount[0] = 2;
+  cctx.partitionConfig = &partitionConfig;
+
+  ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
+
+  std::vector<std::future<void>> ready;
+  for (int i = 0; i < 50; i++) {
+    auto runNetwork = std::make_shared<std::promise<void>>();
+    ready.push_back(runNetwork->get_future());
+    std::unique_ptr<ExecutionContext> context =
+        glow::make_unique<ExecutionContext>();
+    auto *XTensor = context->getPlaceholderBindings()->allocate(X);
+    XTensor->getHandle() = {1., 2., 3.};
+    auto *saveTensor = context->getPlaceholderBindings()->allocate(savePH);
+    hostManager->runNetwork(
+        "main", std::move(context),
+        [runNetwork, saveTensor](RunIdentifierTy runID, Error err,
+                                 std::unique_ptr<ExecutionContext> context_) {
+          auto HX = saveTensor->getHandle();
+          EXPECT_NEAR(HX.at({0}), 1, 1E-5);
+          EXPECT_NEAR(HX.at({1}), 4, 1E-5);
+          EXPECT_NEAR(HX.at({2}), 9, 1E-5);
+          EXPECT_FALSE(std::move(err));
+          runNetwork->set_value();
+        });
+  }
+
+  for (auto &r : ready) {
+    r.wait();
+  }
+}
+
+/// Test replication for a single partition network.
+TEST_P(HostManagerTest, testSinglePartitionReplication) {
   CHECK_IF_ENABLED();
   std::unique_ptr<Module> module = glow::make_unique<Module>();
   std::unique_ptr<ExecutionContext> context =
@@ -403,6 +465,59 @@ TEST_P(HostManagerTest, testStaticAssignment) {
   XTensor->getHandle() = {1., 2., 3.};
   auto *pow = F->createPow("Pow1", X, 2.0);
   auto *save = F->createSave("save", pow);
+  auto *savePH = save->getPlaceholder();
+
+  auto hostManager = createHostManager(backendName_);
+  CompilationContext cctx;
+  cctx.replicationCount = 2;
+  ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
+
+  std::vector<std::future<void>> ready;
+  for (int i = 0; i < 50; i++) {
+    auto runNetwork = std::make_shared<std::promise<void>>();
+    ready.push_back(runNetwork->get_future());
+    std::unique_ptr<ExecutionContext> context =
+        glow::make_unique<ExecutionContext>();
+    auto *XTensor = context->getPlaceholderBindings()->allocate(X);
+    XTensor->getHandle() = {1., 2., 3.};
+    auto *saveTensor = context->getPlaceholderBindings()->allocate(savePH);
+    hostManager->runNetwork(
+        "main", std::move(context),
+        [runNetwork, saveTensor](RunIdentifierTy runID, Error err,
+                                 std::unique_ptr<ExecutionContext> context_) {
+          auto HX = saveTensor->getHandle();
+          EXPECT_NEAR(HX.at({0}), 1, 1E-5);
+          EXPECT_NEAR(HX.at({1}), 4, 1E-5);
+          EXPECT_NEAR(HX.at({2}), 9, 1E-5);
+          EXPECT_FALSE(std::move(err));
+          runNetwork->set_value();
+        });
+  }
+
+  for (auto &r : ready) {
+    r.wait();
+  }
+}
+
+// This test creates a network that is split into four partitions. P0,P1,P2,P3
+// and three devices D0,D1,D2. P0 is loaded on D0, P1 and P2 are loaded on D2
+// and P3 is loaded on D2. This test then enables both DRT and P2P
+// optimizations. We then run the network twice to test the alternating static
+// assignments.
+TEST_P(HostManagerTest, testStaticAssignmentP2PandDRT) {
+  CHECK_IF_ENABLED();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
+  std::unique_ptr<ExecutionContext> context =
+      glow::make_unique<ExecutionContext>();
+
+  Function *F = module->createFunction("main");
+  auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
+  auto *XTensor = context->getPlaceholderBindings()->allocate(X);
+  XTensor->getHandle() = {1., 2., 3.};
+  auto *pow = F->createPow("Pow1", X, 2.0);
+  auto pow2 = F->createPow("Pow2", pow, 2.0);
+  auto pow3 = F->createPow("Pow3", pow2, 1.0);
+  auto *save = F->createSave("save", pow3);
   auto *saveTensor =
       context->getPlaceholderBindings()->allocate(save->getPlaceholder());
 
@@ -416,16 +531,20 @@ TEST_P(HostManagerTest, testStaticAssignment) {
   std::unique_ptr<HostManager> hostManager =
       glow::make_unique<HostManager>(std::move(configs), HostConfig());
   CompilationContext cctx;
-  cctx.enableStaticAssignment = true;
+  cctx.enableP2P = true;
+  cctx.enableDRT = true;
 
   // Setup forced partitioning.
   PartitionConfig partitionConfig;
   partitionConfig.funcName = "main";
-  partitionConfig.numOfPartitions = 2;
-  partitionConfig.backendNames = {backendName_, backendName_};
-  partitionConfig.partitionNames = {"p0", "p1"};
-  partitionConfig.nodeToPartition = {{"Pow1", 0}, {"save", 1}};
-  partitionConfig.logicalIDs = {{0}, {1, 2}};
+  partitionConfig.numOfPartitions = 4;
+  partitionConfig.backendNames = {backendName_, backendName_, backendName_,
+                                  backendName_};
+  partitionConfig.partitionNames = {"p0", "p1", "p2", "p3"};
+  partitionConfig.nodeToPartition = {
+      {"Pow1", 0},    {"Pow2", 1},    {"Pow3", 2}, {"Pow1__1", 0},
+      {"Pow2__1", 1}, {"Pow3__1", 2}, {"save", 3}, {"save_save", 3}};
+  partitionConfig.logicalIDs = {{0}, {1}, {1}, {2}};
   cctx.partitionConfig = &partitionConfig;
 
   ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
@@ -440,8 +559,8 @@ TEST_P(HostManagerTest, testStaticAssignment) {
                               std::unique_ptr<ExecutionContext> context_) {
                             auto HX = saveTensor->getHandle();
                             EXPECT_NEAR(HX.at({0}), 1, 1E-5);
-                            EXPECT_NEAR(HX.at({1}), 4, 1E-5);
-                            EXPECT_NEAR(HX.at({2}), 9, 1E-5);
+                            EXPECT_NEAR(HX.at({1}), 16, 1E-5);
+                            EXPECT_NEAR(HX.at({2}), 81, 1E-5);
                             context = std::move(context_);
                             runErr = glow::make_unique<Error>(std::move(err));
                             runNetwork.set_value();
@@ -461,8 +580,188 @@ TEST_P(HostManagerTest, testStaticAssignment) {
                               std::unique_ptr<ExecutionContext> context_) {
                             auto HX = saveTensor->getHandle();
                             EXPECT_NEAR(HX.at({0}), 1, 1E-5);
-                            EXPECT_NEAR(HX.at({1}), 4, 1E-5);
-                            EXPECT_NEAR(HX.at({2}), 9, 1E-5);
+                            EXPECT_NEAR(HX.at({1}), 16, 1E-5);
+                            EXPECT_NEAR(HX.at({2}), 81, 1E-5);
+                            runErr = glow::make_unique<Error>(std::move(err));
+                            newRun.set_value();
+                          });
+
+  ready.wait();
+  EXPECT_FALSE(ERR_TO_BOOL(std::move(*DCHECK_NOTNULL(runErr.get()))));
+}
+
+// This test creates a network that is split into four partitions. P0,P1,P2,P3
+// and three devices D0,D1,D2. P0 is loaded on D0, P1 and P2 are loaded on D2
+// and P3 is loaded on D2. This test then enables the DRT optimization without
+// P2P. We then run the network twice to test the alternating static
+// assignments.
+TEST_P(HostManagerTest, testStaticAssignmentDeviceResidentTensorOnly) {
+  CHECK_IF_ENABLED();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
+  std::unique_ptr<ExecutionContext> context =
+      glow::make_unique<ExecutionContext>();
+
+  Function *F = module->createFunction("main");
+  auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
+  auto *XTensor = context->getPlaceholderBindings()->allocate(X);
+  XTensor->getHandle() = {1., 2., 3.};
+  auto *pow = F->createPow("Pow1", X, 2.0);
+  auto pow2 = F->createPow("Pow2", pow, 2.0);
+  auto pow3 = F->createPow("Pow3", pow2, 1.0);
+  auto *save = F->createSave("save", pow3);
+  auto *saveTensor =
+      context->getPlaceholderBindings()->allocate(save->getPlaceholder());
+
+  std::vector<std::unique_ptr<DeviceConfig>> configs;
+  auto deviceConfig = glow::make_unique<DeviceConfig>(backendName_);
+  auto deviceConfig2 = glow::make_unique<DeviceConfig>(backendName_);
+  auto deviceConfig3 = glow::make_unique<DeviceConfig>(backendName_);
+  configs.push_back(std::move(deviceConfig));
+  configs.push_back(std::move(deviceConfig2));
+  configs.push_back(std::move(deviceConfig3));
+  std::unique_ptr<HostManager> hostManager =
+      glow::make_unique<HostManager>(std::move(configs), HostConfig());
+  CompilationContext cctx;
+  cctx.enableDRT = true;
+
+  // Setup forced partitioning.
+  PartitionConfig partitionConfig;
+  partitionConfig.funcName = "main";
+  partitionConfig.numOfPartitions = 4;
+  partitionConfig.backendNames = {backendName_, backendName_, backendName_,
+                                  backendName_};
+  partitionConfig.partitionNames = {"p0", "p1", "p2", "p3"};
+  partitionConfig.nodeToPartition = {
+      {"Pow1", 0},    {"Pow2", 1},    {"Pow3", 2}, {"Pow1__1", 0},
+      {"Pow2__1", 1}, {"Pow3__1", 2}, {"save", 3}, {"save_save", 3}};
+  partitionConfig.logicalIDs = {{0}, {1}, {1}, {2}};
+  cctx.partitionConfig = &partitionConfig;
+
+  ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
+
+  std::promise<void> runNetwork;
+  auto ready = runNetwork.get_future();
+
+  std::unique_ptr<Error> runErr;
+  hostManager->runNetwork("main", std::move(context),
+                          [&runNetwork, &saveTensor, &context, &runErr](
+                              RunIdentifierTy runID, Error err,
+                              std::unique_ptr<ExecutionContext> context_) {
+                            auto HX = saveTensor->getHandle();
+                            EXPECT_NEAR(HX.at({0}), 1, 1E-5);
+                            EXPECT_NEAR(HX.at({1}), 16, 1E-5);
+                            EXPECT_NEAR(HX.at({2}), 81, 1E-5);
+                            context = std::move(context_);
+                            runErr = glow::make_unique<Error>(std::move(err));
+                            runNetwork.set_value();
+                          });
+
+  ready.wait();
+  EXPECT_FALSE(ERR_TO_BOOL(std::move(*DCHECK_NOTNULL(runErr.get()))));
+
+  // reset runErr
+  runErr = nullptr;
+
+  std::promise<void> newRun;
+  ready = newRun.get_future();
+  hostManager->runNetwork("main", std::move(context),
+                          [&newRun, &saveTensor, &runErr](
+                              RunIdentifierTy runID, Error err,
+                              std::unique_ptr<ExecutionContext> context_) {
+                            auto HX = saveTensor->getHandle();
+                            EXPECT_NEAR(HX.at({0}), 1, 1E-5);
+                            EXPECT_NEAR(HX.at({1}), 16, 1E-5);
+                            EXPECT_NEAR(HX.at({2}), 81, 1E-5);
+                            runErr = glow::make_unique<Error>(std::move(err));
+                            newRun.set_value();
+                          });
+
+  ready.wait();
+  EXPECT_FALSE(ERR_TO_BOOL(std::move(*DCHECK_NOTNULL(runErr.get()))));
+}
+
+// This test creates a network that is split into four partitions. P0,P1,P2,P3
+// and three devices D0,D1,D2. P0 is loaded on D0, P1 and P2 are loaded on D2
+// and P3 is loaded on D2. This test then enables the P2P optimization without
+// DRT. We then run the network twice to test the alternating static
+// assignments.
+TEST_P(HostManagerTest, testStaticAssignmentP2POnly) {
+  CHECK_IF_ENABLED();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
+  std::unique_ptr<ExecutionContext> context =
+      glow::make_unique<ExecutionContext>();
+
+  Function *F = module->createFunction("main");
+  auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
+  auto *XTensor = context->getPlaceholderBindings()->allocate(X);
+  XTensor->getHandle() = {1., 2., 3.};
+  auto *pow = F->createPow("Pow1", X, 2.0);
+  auto pow2 = F->createPow("Pow2", pow, 2.0);
+  auto pow3 = F->createPow("Pow3", pow2, 1.0);
+  auto *save = F->createSave("save", pow3);
+  auto *saveTensor =
+      context->getPlaceholderBindings()->allocate(save->getPlaceholder());
+
+  std::vector<std::unique_ptr<DeviceConfig>> configs;
+  auto deviceConfig = glow::make_unique<DeviceConfig>(backendName_);
+  auto deviceConfig2 = glow::make_unique<DeviceConfig>(backendName_);
+  auto deviceConfig3 = glow::make_unique<DeviceConfig>(backendName_);
+  configs.push_back(std::move(deviceConfig));
+  configs.push_back(std::move(deviceConfig2));
+  configs.push_back(std::move(deviceConfig3));
+  std::unique_ptr<HostManager> hostManager =
+      glow::make_unique<HostManager>(std::move(configs), HostConfig());
+  CompilationContext cctx;
+  cctx.enableP2P = true;
+
+  // Setup forced partitioning.
+  PartitionConfig partitionConfig;
+  partitionConfig.funcName = "main";
+  partitionConfig.numOfPartitions = 4;
+  partitionConfig.backendNames = {backendName_, backendName_, backendName_,
+                                  backendName_};
+  partitionConfig.partitionNames = {"p0", "p1", "p2", "p3"};
+  partitionConfig.nodeToPartition = {
+      {"Pow1", 0},    {"Pow2", 1},    {"Pow3", 2}, {"Pow1__1", 0},
+      {"Pow2__1", 1}, {"Pow3__1", 2}, {"save", 3}, {"save_save", 3}};
+  partitionConfig.logicalIDs = {{0}, {1}, {1}, {2}};
+  cctx.partitionConfig = &partitionConfig;
+
+  ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
+
+  std::promise<void> runNetwork;
+  auto ready = runNetwork.get_future();
+
+  std::unique_ptr<Error> runErr;
+  hostManager->runNetwork("main", std::move(context),
+                          [&runNetwork, &saveTensor, &context, &runErr](
+                              RunIdentifierTy runID, Error err,
+                              std::unique_ptr<ExecutionContext> context_) {
+                            auto HX = saveTensor->getHandle();
+                            EXPECT_NEAR(HX.at({0}), 1, 1E-5);
+                            EXPECT_NEAR(HX.at({1}), 16, 1E-5);
+                            EXPECT_NEAR(HX.at({2}), 81, 1E-5);
+                            context = std::move(context_);
+                            runErr = glow::make_unique<Error>(std::move(err));
+                            runNetwork.set_value();
+                          });
+
+  ready.wait();
+  EXPECT_FALSE(ERR_TO_BOOL(std::move(*DCHECK_NOTNULL(runErr.get()))));
+
+  // reset runErr
+  runErr = nullptr;
+
+  std::promise<void> newRun;
+  ready = newRun.get_future();
+  hostManager->runNetwork("main", std::move(context),
+                          [&newRun, &saveTensor, &runErr](
+                              RunIdentifierTy runID, Error err,
+                              std::unique_ptr<ExecutionContext> context_) {
+                            auto HX = saveTensor->getHandle();
+                            EXPECT_NEAR(HX.at({0}), 1, 1E-5);
+                            EXPECT_NEAR(HX.at({1}), 16, 1E-5);
+                            EXPECT_NEAR(HX.at({2}), 81, 1E-5);
                             runErr = glow::make_unique<Error>(std::move(err));
                             newRun.set_value();
                           });
@@ -475,7 +774,7 @@ TEST_P(HostManagerTest, testStaticAssignment) {
 // loaded on one device, P1 is loaded on two devices. This test then enables
 // static assignment which allows for P2P testing. We then run the network
 // multiple requests concurrently.
-TEST_P(HostManagerTest, testStaticAssignmentConcurrent) {
+TEST_P(HostManagerTest, testStaticAssignmentP2PandDRTConcurrent) {
   CHECK_IF_ENABLED();
   std::unique_ptr<Module> module = glow::make_unique<Module>();
 
@@ -495,7 +794,8 @@ TEST_P(HostManagerTest, testStaticAssignmentConcurrent) {
   std::unique_ptr<HostManager> hostManager =
       glow::make_unique<HostManager>(std::move(configs), HostConfig());
   CompilationContext cctx;
-  cctx.enableStaticAssignment = true;
+  cctx.enableDRT = true;
+  cctx.enableP2P = true;
 
   // Setup forced partitioning.
   PartitionConfig partitionConfig;

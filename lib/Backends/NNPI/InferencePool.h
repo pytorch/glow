@@ -40,7 +40,8 @@ class InferencePoolEnv {
   NNPIHostNetwork hostNetwork_;
   NNPIDeviceNetwork deviceNetwork_;
   std::shared_ptr<NNPIDeviceTracing> deviceTracing_;
-  const NNPIDeviceOptions *deviceOptions_; // why not shared ptr?
+  std::shared_ptr<NNPIDeviceOptions> deviceOptions_;
+  unsigned deviceId_;
 
 public:
   InferencePoolEnv();
@@ -49,7 +50,7 @@ public:
              std::shared_ptr<NNPIDeviceTracing> deviceTracing,
              CompiledFunction *compiledFunction,
              StaticPlaceholderMap *staticPlaceholderMap,
-             const NNPIDeviceOptions *deviceOptions,
+             std::shared_ptr<NNPIDeviceOptions> deviceOptions,
              const std::string &functionName, unsigned deviceId);
   void stop(bool block);
   void execute(RunIdentifierTy runId, std::unique_ptr<ExecutionContext> ctx,
