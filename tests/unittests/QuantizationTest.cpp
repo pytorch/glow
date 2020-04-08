@@ -107,6 +107,8 @@ public:
 
 /// Simple tests to verify the histogram rescale.
 TEST(Quantization, rescaleHistogramTest) {
+  EXPECT_EQ(quantization::rescaleHistogram({}, 0.0f, 1.0f, 0.0f, 2.0).size(),
+            0);
   EXPECT_EQ(
       quantization::rescaleHistogram({1, 2, 3, 4}, 0.0f, 1.0f, -1.0f, 1.0),
       std::vector<float>({0, 0, 3, 7}));
@@ -145,8 +147,9 @@ void testProfilingInfosSerialization(
 }
 
 TEST(Quantization, ProfilingSerialize) {
+  std::vector<float> histEmpty;
   std::vector<float> hist = {0, 1, 2, 3, 4};
-  std::vector<NodeProfilingInfo> expected{{"first", {1.0, 10.0, hist}},
+  std::vector<NodeProfilingInfo> expected{{"first", {1.0, 10.0, histEmpty}},
                                           {"second", {-1.0, 3.0, hist}},
                                           {"third", {-10.0, 30.0, hist}},
                                           {"fourth", {0.1, 10.0, hist}},

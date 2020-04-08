@@ -111,12 +111,15 @@ std::vector<float> rescaleHistogram(const std::vector<float> &srcHist,
                                     const float destHistMin,
                                     const float destHistMax) {
 
-  assert(srcHist.size() > 0 && "Empty histogram!");
+  // If histogram is empty then return.
+  if (srcHist.size() == 0) {
+    return srcHist;
+  }
+
+  // Check if we need to rescale the histogram.
   assert(srcHistMin < srcHistMax && "Invalid source histogram min/max range!");
   assert(destHistMin < destHistMax &&
          "Invalid destination histogram min/max range!");
-
-  // Check if we need to rescale the histogram.
   if ((srcHistMin == destHistMin) && (srcHistMax == destHistMax)) {
     return srcHist;
   }

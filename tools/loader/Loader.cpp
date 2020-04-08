@@ -239,8 +239,11 @@ llvm::cl::opt<bool> assertAllNodesQuantizedOpt(
 
 llvm::cl::opt<unsigned> numHistogramBinsOpt(
     "num-histogram-bins",
-    llvm::cl::desc("Number of bins used for histogram during profiling."),
-    llvm::cl::init(1000), llvm::cl::value_desc("N"), llvm::cl::cat(loaderCat));
+    llvm::cl::desc("Number of bins used for histogram during profiling. If "
+                   "histogram based calibration is used then the number of "
+                   "histogram bins must be greater than 255 in order for any "
+                   "calibration to take place (in the order of 1000's)."),
+    llvm::cl::init(10), llvm::cl::value_desc("N"), llvm::cl::cat(loaderCat));
 
 /// Name of the network being bundled.
 llvm::cl::opt<std::string> networkName(
