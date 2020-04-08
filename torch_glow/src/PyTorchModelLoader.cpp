@@ -719,6 +719,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
   // First build mapping with standard PyTorch operators.
   auto symbolLoaderMapping = MappingOfMemberFunctions({
       {{"aten::type_as"}, &PyTorchModelLoader::loadTypeAs},
+      {{"aten::contiguous"}, &PyTorchModelLoader::loadContiguous},
       {{"prim::Constant"}, &PyTorchModelLoader::loadConstant},
       {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul},
       {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv},
@@ -1653,6 +1654,24 @@ Error PyTorchModelLoader::loadTypeAs(const torch::jit::Node *ptNode) {
       F_.createConvertTo("typeas_convert", bcast, outType);
 
   return addValueMapping(outputs[0], glowNode->getResult());
+}
+
+
+Error PyTorchModelLoader::loadContiguous(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue dataValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(dataValue, getGlowNodeValueForValue(inputs[0]));
+
+  int64_t scalar;
+  ASSIGN_VALUE_OR_RETURN_ERR(scalar,
+                             iValToInt(getGlowIValueForValue(inputs[1])));
+  RETURN_ERR_IF_NOT(scalar == (int64_t) at::MemoryFormat::Contiguous,
+                    glow::strFormat("Scalar must have value equal 0."));
+
+  return addValueMapping(outputs[0], dataValue);
 }
 
 template <typename GlowNode>
