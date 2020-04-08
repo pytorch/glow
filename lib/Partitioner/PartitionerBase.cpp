@@ -33,6 +33,7 @@ createDAGNodeFromFun(Function *F, NodeToFunctionMap &mapping) {
   DN->size = mapping.getGraphMemInfo(F).getTotalMemSize();
   DN->backendHints = mapping.getBackendHints(F);
   DN->backendSpecificOpts = mapping.getBackendSpecificOpts(F);
+  DN->replicationCount = mapping.getReplicationCount(F);
   return DN;
 }
 

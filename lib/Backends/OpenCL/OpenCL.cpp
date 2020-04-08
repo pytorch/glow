@@ -1159,7 +1159,7 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       setKernelArg(kernel, ++numArgs, LRN->getAlpha() / windowSize);
 
       enqueueKernel(I.getName(), commands, kernel, deviceId,
-                    {dim.n, dim.h, dim.w}, kernelLaunches);
+                    {dim.h, dim.w, dim.c}, kernelLaunches);
       continue;
     }
 

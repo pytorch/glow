@@ -4354,3 +4354,230 @@ TEST_F(GraphOptz, ClipReluClipElimTest) {
   bindings_.allocate(input)->getHandle().randomize(-50.0, 5.0, mod_.getPRNG());
   checkNumericalEquivalence();
 }
+
+/// Test that we can find a non-quantized relu and fuse it up into a quant FC.
+TEST_F(GraphOptz, OptimizeQuantFCFloatReluTest) {
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32}, 1.0, 0,
+                                       "input", false);
+  auto *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {32, 32}, 1.0, 0, "weights");
+  auto *bias = mod_.createConstant(ElemKind::Int32QTy, {32}, 1.0, 0, "bias");
+
+  auto *FC = F_->createFullyConnected("fc", input, weights, bias);
+  auto *DN = F_->createDequantize("dq", FC);
+  auto *RN = F_->createRELU("relu", DN);
+  auto *SN = F_->createSave("save", RN);
+
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::OptimizeQuantFCFloatRelu, getDCEPassConfig()});
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+
+  DequantizeNode *optDN = llvm::dyn_cast<DequantizeNode>(optSN->getInput());
+  ASSERT_TRUE(optDN);
+  ReluNode *optRN = llvm::dyn_cast<ReluNode>(optDN->getInput());
+  ASSERT_TRUE(optRN);
+  auto rangeRN = optRN->getResult().getType()->getQuantizedValueRange();
+  EXPECT_EQ(rangeRN.first, 0.0f);
+  FullyConnectedNode *optFC =
+      llvm::dyn_cast<FullyConnectedNode>(optRN->getInput());
+  ASSERT_TRUE(optFC);
+  auto rangeFC = optFC->getResult().getType()->getQuantizedValueRange();
+  EXPECT_EQ(rangeRN.second, rangeFC.second);
+
+  bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127,
+                                                           mod_.getPRNG());
+  weights->getPayloadMutable().getHandle<int8_t>().randomize(-128, 127,
+                                                             mod_.getPRNG());
+  bias->getPayloadMutable().getHandle<int32_t>().randomize(-128, 127,
+                                                           mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+/// Test that we can find a non-quantized relu and fuse it up into a series of
+/// concatenated quant FCs.
+TEST_F(GraphOptz, OptimizeConcatQuantFCFloatReluTest) {
+  std::array<NodeValue, 5> DQs;
+  for (size_t i = 0; i < 5; i++) {
+    auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32},
+                                         1.0 / (i + 1), 0, "input", false);
+    auto *weights =
+        mod_.createConstant(ElemKind::Int8QTy, {32, 32}, 1.0, 0, "weights");
+    auto *bias = mod_.createConstant(ElemKind::Int32QTy, {32}, 1.0, 0, "bias");
+
+    auto *FC = F_->createFullyConnected("fc", input, weights, bias);
+    DQs[i] = F_->createDequantize("dq", FC)->getResult();
+
+    bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127,
+                                                             mod_.getPRNG());
+    weights->getPayloadMutable().getHandle<int8_t>().randomize(-128, 127,
+                                                               mod_.getPRNG());
+    bias->getPayloadMutable().getHandle<int32_t>().randomize(-128, 127,
+                                                             mod_.getPRNG());
+  }
+
+  auto *CN = F_->createConcat("concat", DQs, 0);
+  auto *RN = F_->createRELU("relu", CN);
+  auto *SN = F_->createSave("save", RN);
+
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::OptimizeQuantFCFloatRelu, getDCEPassConfig()});
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  ConcatNode *optCN = llvm::dyn_cast<ConcatNode>(optSN->getInput());
+  ASSERT_TRUE(optCN);
+  EXPECT_EQ(optCN->getInputs().size(), 5);
+
+  for (const NodeValue NV : optCN->getInputs()) {
+    DequantizeNode *optDN = llvm::dyn_cast<DequantizeNode>(NV);
+    ASSERT_TRUE(optDN);
+    ReluNode *optRN = llvm::dyn_cast<ReluNode>(optDN->getInput());
+    ASSERT_TRUE(optRN);
+    auto rangeRN = optRN->getResult().getType()->getQuantizedValueRange();
+    EXPECT_EQ(rangeRN.first, 0.0f);
+    FullyConnectedNode *optFC =
+        llvm::dyn_cast<FullyConnectedNode>(optRN->getInput());
+    ASSERT_TRUE(optFC);
+    auto rangeFC = optFC->getResult().getType()->getQuantizedValueRange();
+    EXPECT_EQ(rangeRN.second, rangeFC.second);
+  }
+
+  checkNumericalEquivalence();
+}
+
+/// Test that we can find a concat with all dequantize inputs and a quantize at
+/// its output, and then replace quant/dequants with rescales.
+TEST_F(GraphOptz, OptimizeDequantConcatQuant) {
+  std::array<NodeValue, 5> DQs;
+  std::array<Placeholder *, 5> inputs;
+  for (size_t i = 0; i < 5; i++) {
+    inputs[i] = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32},
+                                       0.3 / (i + 1), 5, "input", false);
+    DQs[i] = F_->createDequantize("dq", inputs[i])->getResult();
+
+    bindings_.allocate(inputs[i])->getHandle<int8_t>().randomize(
+        -128, 127, mod_.getPRNG());
+  }
+
+  auto *CN = F_->createConcat("concat", DQs, 0);
+  constexpr float scale = 0.3;
+  constexpr int32_t offset = 5;
+  auto *RN = F_->createQuantize("quantize", CN,
+                                mod_.uniqueType(ElemKind::Int8QTy,
+                                                CN->getResult().dims(), scale,
+                                                offset));
+  auto *SN = F_->createSave("save", RN);
+
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::OptimizeConcatQuantization, getDCEPassConfig()});
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  ConcatNode *optCN = llvm::dyn_cast<ConcatNode>(optSN->getInput());
+  ASSERT_TRUE(optCN);
+  EXPECT_EQ(optCN->getInputs().size(), 5);
+
+  for (size_t i = 0, e = optCN->getInputs().size(); i < e; i++) {
+    const NodeValue NV = optCN->getInputs()[i];
+    if (i == 0) {
+      EXPECT_EQ(inputs[i], NV.getNode());
+      EXPECT_EQ(inputs[i]->getOutput().getType()->getScale(), scale);
+      EXPECT_EQ(inputs[i]->getOutput().getType()->getOffset(), offset);
+    } else {
+      RescaleQuantizedNode *optRN = llvm::dyn_cast<RescaleQuantizedNode>(NV);
+      ASSERT_TRUE(optRN);
+      EXPECT_EQ(optRN->getResult().getType()->getScale(), scale);
+      EXPECT_EQ(optRN->getResult().getType()->getOffset(), offset);
+      EXPECT_EQ(inputs[i], optRN->getInput().getNode());
+    }
+  }
+  checkNumericalEquivalence();
+}
+
+/// Test that if we have a Concat with all Dequantize inputs with the same
+/// scale/offset/kind that we can sink the Dequantizes below the Concat.
+TEST_F(GraphOptz, SinkDequantizeBelowConcatTest) {
+  const float scale = 0.06;
+  const int32_t offset = -15;
+  std::array<NodeValue, 5> inputs;
+  for (dim_t i = 0; i < 5; i++) {
+    Placeholder *input = mod_.createPlaceholder(ElemKind::Int8QTy, {i + 1, 100},
+                                                scale, offset, "input", false);
+    bindings_.allocate(input)->getHandle<int8_t>().randomize(-100, 100,
+                                                             mod_.getPRNG());
+    DequantizeNode *dequantize = F_->createDequantize("dequantize", input);
+    inputs[i] = dequantize->getResult();
+  }
+  ConcatNode *concat = F_->createConcat("concat", inputs, 0);
+  SaveNode *SN = F_->createSave("ret", concat);
+
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::SinkConversions, getDCEPassConfig()});
+
+  // Concat, dequantize, save.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::DequantizeNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind), 1);
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  DequantizeNode *optDequantize =
+      llvm::dyn_cast<DequantizeNode>(optSN->getInput());
+  ASSERT_TRUE(optDequantize);
+  NodeValue input = optDequantize->getInput();
+  EXPECT_EQ(scale, input.getType()->getScale());
+  EXPECT_EQ(offset, input.getType()->getOffset());
+  EXPECT_EQ(ElemKind::Int8QTy, input.getType()->getElementType());
+
+  // Find dequantize node in the optimized graph.
+  checkNumericalEquivalence();
+}
+
+/// Test that if we have a Concat with all Quantize inputs with the same
+/// scale/offset/kind that we can sink the Dequantizes below the Concat.
+TEST_F(GraphOptz, SinkQuantizeBelowConcatTest) {
+  const float scale = 0.06;
+  const int32_t offset = -15;
+  std::array<NodeValue, 5> inputs;
+  for (dim_t i = 0; i < 5; i++) {
+    Placeholder *input = mod_.createPlaceholder(ElemKind::Float16Ty,
+                                                {i + 1, 100}, "input", false);
+    bindings_.allocate(input)->getHandle<float16_t>().randomize(-100, 100,
+                                                                mod_.getPRNG());
+    const TypeRef QTy = mod_.uniqueType(
+        ElemKind::Int8QTy, input->getOutput().dims(), scale, offset);
+    QuantizeNode *quantize = F_->createQuantize("quantize", input, QTy);
+    inputs[i] = quantize->getResult();
+  }
+  ConcatNode *concat = F_->createConcat("concat", inputs, 0);
+  SaveNode *SN = F_->createSave("ret", concat);
+
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::SinkConversions, getDCEPassConfig()});
+
+  // Concat, quantize, save.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::QuantizeNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind), 1);
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  QuantizeNode *optQuantize = llvm::dyn_cast<QuantizeNode>(optSN->getInput());
+  ASSERT_TRUE(optQuantize);
+  EXPECT_EQ(scale, optQuantize->getResult().getType()->getScale());
+  EXPECT_EQ(offset, optQuantize->getResult().getType()->getOffset());
+  EXPECT_EQ(ElemKind::Int8QTy,
+            optQuantize->getResult().getType()->getElementType());
+
+  // Find quantize node in the optimized graph.
+  checkNumericalEquivalence();
+}

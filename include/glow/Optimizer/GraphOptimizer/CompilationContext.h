@@ -184,6 +184,11 @@ struct CompilationContext {
   /// Enables Device Resident Tensor optimization.
   bool enableDRT{false};
 
+  /// Number of times a function should be replicated on a device. This is
+  /// enabled for single partition networks. For advanced replication setups use
+  /// user-defined partitioning.
+  unsigned replicationCount{1};
+
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)
       : bindings(bindings_), loweredInfoMap(loweredInfoMap_) {}

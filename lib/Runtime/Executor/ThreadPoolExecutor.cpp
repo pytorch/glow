@@ -179,7 +179,7 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
   TRACE_EVENT_SCOPE_END();
   // Run the node using the DeviceManager.
   deviceManager->runFunction(
-      node->name, std::move(nodeCtx),
+      node->getNextName(currentDevice), std::move(nodeCtx),
       [this, executionState, currentDevice,
        node](RunIdentifierTy id, Error err,
              std::unique_ptr<ExecutionContext> resultCtx) {

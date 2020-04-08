@@ -387,6 +387,118 @@ TEST_P(HostManagerTest, QueueTest) {
   EXPECT_GT(res2, res3);
 }
 
+/// Test that the enabling partition replication through user defined
+/// partitioning works.
+TEST_P(HostManagerTest, testPartitionConfigReplication) {
+  CHECK_IF_ENABLED();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
+  std::unique_ptr<ExecutionContext> context =
+      glow::make_unique<ExecutionContext>();
+
+  Function *F = module->createFunction("main");
+  auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
+  auto *XTensor = context->getPlaceholderBindings()->allocate(X);
+  XTensor->getHandle() = {1., 2., 3.};
+  auto *pow = F->createPow("Pow", X, 2.0);
+  auto *save = F->createSave("save", pow);
+  auto savePH = save->getPlaceholder();
+
+  std::vector<std::unique_ptr<DeviceConfig>> configs;
+  auto deviceConfig = glow::make_unique<DeviceConfig>(backendName_);
+  auto deviceConfig2 = glow::make_unique<DeviceConfig>(backendName_);
+  configs.push_back(std::move(deviceConfig));
+  configs.push_back(std::move(deviceConfig2));
+  std::unique_ptr<HostManager> hostManager =
+      glow::make_unique<HostManager>(std::move(configs), HostConfig());
+  CompilationContext cctx;
+
+  // Setup forced partitioning.
+  PartitionConfig partitionConfig;
+  partitionConfig.funcName = "main";
+  partitionConfig.numOfPartitions = 2;
+  partitionConfig.backendNames = {backendName_, backendName_};
+  partitionConfig.partitionNames = {"p0", "p1"};
+  partitionConfig.nodeToPartition = {{"Pow", 0}, {"save", 3}};
+  partitionConfig.logicalIDs = {{0}, {1}};
+  partitionConfig.replicationCount[0] = 2;
+  cctx.partitionConfig = &partitionConfig;
+
+  ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
+
+  std::vector<std::future<void>> ready;
+  for (int i = 0; i < 50; i++) {
+    auto runNetwork = std::make_shared<std::promise<void>>();
+    ready.push_back(runNetwork->get_future());
+    std::unique_ptr<ExecutionContext> context =
+        glow::make_unique<ExecutionContext>();
+    auto *XTensor = context->getPlaceholderBindings()->allocate(X);
+    XTensor->getHandle() = {1., 2., 3.};
+    auto *saveTensor = context->getPlaceholderBindings()->allocate(savePH);
+    hostManager->runNetwork(
+        "main", std::move(context),
+        [runNetwork, saveTensor](RunIdentifierTy runID, Error err,
+                                 std::unique_ptr<ExecutionContext> context_) {
+          auto HX = saveTensor->getHandle();
+          EXPECT_NEAR(HX.at({0}), 1, 1E-5);
+          EXPECT_NEAR(HX.at({1}), 4, 1E-5);
+          EXPECT_NEAR(HX.at({2}), 9, 1E-5);
+          EXPECT_FALSE(std::move(err));
+          runNetwork->set_value();
+        });
+  }
+
+  for (auto &r : ready) {
+    r.wait();
+  }
+}
+
+/// Test replication for a single partition network.
+TEST_P(HostManagerTest, testSinglePartitionReplication) {
+  CHECK_IF_ENABLED();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
+  std::unique_ptr<ExecutionContext> context =
+      glow::make_unique<ExecutionContext>();
+
+  Function *F = module->createFunction("main");
+  auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
+  auto *XTensor = context->getPlaceholderBindings()->allocate(X);
+  XTensor->getHandle() = {1., 2., 3.};
+  auto *pow = F->createPow("Pow1", X, 2.0);
+  auto *save = F->createSave("save", pow);
+  auto *savePH = save->getPlaceholder();
+
+  auto hostManager = createHostManager(backendName_);
+  CompilationContext cctx;
+  cctx.replicationCount = 2;
+  ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
+
+  std::vector<std::future<void>> ready;
+  for (int i = 0; i < 50; i++) {
+    auto runNetwork = std::make_shared<std::promise<void>>();
+    ready.push_back(runNetwork->get_future());
+    std::unique_ptr<ExecutionContext> context =
+        glow::make_unique<ExecutionContext>();
+    auto *XTensor = context->getPlaceholderBindings()->allocate(X);
+    XTensor->getHandle() = {1., 2., 3.};
+    auto *saveTensor = context->getPlaceholderBindings()->allocate(savePH);
+    hostManager->runNetwork(
+        "main", std::move(context),
+        [runNetwork, saveTensor](RunIdentifierTy runID, Error err,
+                                 std::unique_ptr<ExecutionContext> context_) {
+          auto HX = saveTensor->getHandle();
+          EXPECT_NEAR(HX.at({0}), 1, 1E-5);
+          EXPECT_NEAR(HX.at({1}), 4, 1E-5);
+          EXPECT_NEAR(HX.at({2}), 9, 1E-5);
+          EXPECT_FALSE(std::move(err));
+          runNetwork->set_value();
+        });
+  }
+
+  for (auto &r : ready) {
+    r.wait();
+  }
+}
+
 // This test creates a network that is split into four partitions. P0,P1,P2,P3
 // and three devices D0,D1,D2. P0 is loaded on D0, P1 and P2 are loaded on D2
 // and P3 is loaded on D2. This test then enables both DRT and P2P

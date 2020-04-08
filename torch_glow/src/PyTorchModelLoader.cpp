@@ -719,11 +719,13 @@ PyTorchModelLoader::buildSymbolsMapping() {
   // First build mapping with standard PyTorch operators.
   auto symbolLoaderMapping = MappingOfMemberFunctions({
       {{"aten::type_as"}, &PyTorchModelLoader::loadTypeAs},
+      {{"aten::contiguous"}, &PyTorchModelLoader::loadContiguous},
       {{"prim::Constant"}, &PyTorchModelLoader::loadConstant},
       {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul},
       {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv},
       {{"aten::add", "aten::add_"}, &PyTorchModelLoader::loadAdd},
       {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub},
+      {{"aten::rsub"}, &PyTorchModelLoader::loadRsub},
       {{"aten::sigmoid", "aten::sigmoid_"}, &PyTorchModelLoader::loadSigmoid},
       {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu},
       {{"aten::gelu"}, &PyTorchModelLoader::loadGelu},
@@ -765,6 +767,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::adaptive_avg_pool2d"},
        &PyTorchModelLoader::loadAdaptiveAvgPool2d},
       {{"aten::reshape"}, &PyTorchModelLoader::loadReshape},
+      {{"aten::view"}, &PyTorchModelLoader::loadView},
       {{"aten::_convolution"}, &PyTorchModelLoader::loadConvolution},
       {{"aten::batch_norm"}, &PyTorchModelLoader::loadBatchNorm},
       {{"aten::layer_norm"}, &PyTorchModelLoader::loadLayerNorm},
@@ -1653,6 +1656,24 @@ Error PyTorchModelLoader::loadTypeAs(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], glowNode->getResult());
 }
 
+
+Error PyTorchModelLoader::loadContiguous(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue dataValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(dataValue, getGlowNodeValueForValue(inputs[0]));
+
+  int64_t scalar;
+  ASSIGN_VALUE_OR_RETURN_ERR(scalar,
+                             iValToInt(getGlowIValueForValue(inputs[1])));
+  RETURN_ERR_IF_NOT(scalar == (int64_t) at::MemoryFormat::Contiguous,
+                    glow::strFormat("Scalar must have value equal 0."));
+
+  return addValueMapping(outputs[0], dataValue);
+}
+
 template <typename GlowNode>
 Expected<NodeValue>
 PyTorchModelLoader::loadArithmeticNode(llvm::StringRef name,
@@ -1740,6 +1761,25 @@ Error PyTorchModelLoader::loadSub(const torch::jit::Node *ptNode) {
   glow::NodeValue res;
   ASSIGN_VALUE_OR_RETURN_ERR(
       res, loadArithmeticNode<glow::SubNode>("sub", inputs[0], inputs[1]));
+
+  return addValueMapping(outputs[0], res);
+}
+
+Error PyTorchModelLoader::loadRsub(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  // TODO: extend this to allow non-constant scalars.
+  int64_t scalar;
+  ASSIGN_VALUE_OR_RETURN_ERR(scalar,
+                             iValToInt(getGlowIValueForValue(inputs[2])));
+  RETURN_ERR_IF_NOT(scalar == 1,
+                    glow::strFormat("Scalar must have value equal 1."));
+
+  glow::NodeValue res;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      res, loadArithmeticNode<glow::SubNode>("sub", inputs[1], inputs[0]));
 
   return addValueMapping(outputs[0], res);
 }
@@ -1981,6 +2021,12 @@ Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
   return addValueMapping(
       outputs[0], F_.createReshape("reshape", input, castVector<dim_t>(shape)),
       dtype);
+}
+
+Error PyTorchModelLoader::loadView(const torch::jit::Node *ptNode) {
+  // loadView is just like Reshape, except reshape should call contiguous
+  // for non-contiguous data and view should fail
+  return PyTorchModelLoader::loadReshape(ptNode);
 }
 
 Error PyTorchModelLoader::loadRelu(const torch::jit::Node *ptNode) {

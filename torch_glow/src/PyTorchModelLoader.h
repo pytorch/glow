@@ -373,6 +373,10 @@ private:
   /// \returns error on failure.
   Error loadTypeAs(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch contiguous node.
+  /// \returns error on failure.
+  Error loadContiguous(const torch::jit::Node *ptNode);
+
   /// Helper function for loading arithmetic nodes. \p name is of the name of
   /// the node in the Glow graph, \p lhs and \p rhs are the inputs to the
   /// arithetic node and template parameter \p GlowNode is the type of the node
@@ -398,6 +402,10 @@ private:
   /// Load a PyTorch sub node.
   /// \returns error on failure.
   Error loadSub(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch rsub node.
+  /// \returns error on failure.
+  Error loadRsub(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch max node.
   /// \returns error on failure.
@@ -556,6 +564,10 @@ private:
   /// Load a PyTorch aten::reshape node.
   /// \returns error on failure.
   Error loadReshape(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::view node.
+  /// \returns error on failure.
+  Error loadView(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch aten::mm node.
   /// \returns error on failure.

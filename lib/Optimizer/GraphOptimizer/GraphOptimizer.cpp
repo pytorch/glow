@@ -299,6 +299,108 @@ static bool sinkTranposeBelowChannelShuffle(Function *F,
   return true;
 }
 
+/// Given \p CN from \p F, determines if all inputs are either Quantize or
+/// Dequantize (depending on \p QuantNodeClass) that use the same
+/// scale/offset/kind, and if so creates and \returns a new concat with all
+/// inputs as the inputs from the Quantize or Dequantize inputs. Otherwise
+/// \returns nullptr.
+template <class QuantNodeClass>
+static ConcatNode *setupQuantDequantSinkBelowConcat(Function *F,
+                                                    ConcatNode *CN) {
+  constexpr bool isQuant = std::is_same<QuantizeNode, QuantNodeClass>::value;
+  constexpr bool isDeq = std::is_same<DequantizeNode, QuantNodeClass>::value;
+  static_assert(isQuant || isDeq, "setupQuantDequantSinkBelowConcat() only "
+                                  "supports Quantize/Dequantize nodes.");
+  // Check if all inputs are Quantize with the same input
+  // scale/offset/ElemKind.
+  std::vector<QuantNodeClass *> qNodes;
+  qNodes.reserve(CN->getInputs().size());
+  for (auto &concatInput : CN->getInputs()) {
+    QuantNodeClass *Q = dyn_cast<QuantNodeClass>(concatInput);
+    if (!Q) {
+      return nullptr;
+    }
+    qNodes.push_back(Q);
+  }
+
+  // Gather all inputs of the nodes in qNodes here.
+  std::vector<NodeValue> newInputs;
+  newInputs.reserve(qNodes.size());
+  newInputs.push_back(qNodes[0]->getInput());
+
+  // Check the CN's first input's type to check against all other inputs. Use
+  // the output of Quantize or input of Dequantize.
+  const TypeRef firstTy = isQuant ? qNodes[0]->getResult().getType()
+                                  : qNodes[0]->getInput().getType();
+
+  // Check that all inputs have the same scale/offset/type.
+  for (size_t i = 1, e = qNodes.size(); i < e; i++) {
+    const TypeRef currTy = isQuant ? qNodes[i]->getResult().getType()
+                                   : qNodes[i]->getInput().getType();
+    if (currTy->getScale() != firstTy->getScale() ||
+        currTy->getOffset() != firstTy->getOffset() ||
+        currTy->getElementType() != firstTy->getElementType()) {
+      return nullptr;
+    }
+    newInputs.push_back(qNodes[i]->getInput());
+  }
+
+  // Create and return a new ConcatNode with newInputs.
+  return F->createConcat(CN->getName(), newInputs, CN->getDim());
+}
+
+bool SinkConversions::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+  // For each node:
+  for (auto &N : nodes) {
+    ConcatNode *CN = dyn_cast<ConcatNode>(&N);
+    if (!CN) {
+      continue;
+    }
+    const Node *firstNode = CN->getInputs().front().getNode();
+
+    // Sink Dequantize below Concat nodes.
+    if (firstNode->getKind() == Kinded::Kind::DequantizeNodeKind) {
+      ConcatNode *newCN =
+          setupQuantDequantSinkBelowConcat<DequantizeNode>(F, CN);
+      if (!newCN) {
+        continue;
+      }
+
+      DequantizeNode *newDequantize =
+          F->createDequantize(CN->getName().str() + "_dequantize", newCN);
+
+      CN->getResult().replaceAllUsesOfWith(newDequantize->getResult());
+      changed = true;
+      continue;
+    }
+
+    // Sink Quantize below Concat nodes.
+    if (firstNode->getKind() == Kinded::Kind::QuantizeNodeKind) {
+      ConcatNode *newCN = setupQuantDequantSinkBelowConcat<QuantizeNode>(F, CN);
+      if (!newCN) {
+        continue;
+      }
+
+      const TypeRef QTy =
+          llvm::cast<QuantizeNode>(firstNode)->getResult().getType();
+      const TypeRef concatQTy = F->getParent()->uniqueType(
+          QTy->getElementType(), newCN->getResult().dims(), QTy->getScale(),
+          QTy->getOffset());
+      QuantizeNode *newQuantize = F->createQuantize(
+          CN->getName().str() + "_quantize", newCN, concatQTy);
+
+      CN->getResult().replaceAllUsesOfWith(newQuantize->getResult());
+      changed = true;
+      continue;
+    }
+  }
+
+  return changed;
+}
+
 /// Code Sinking.
 bool SinkCode::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
@@ -651,66 +753,72 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       changed = true;
     }
 
-    // Sink RELU below batch concat nodes.
     if (auto *CN = dyn_cast<ConcatNode>(node)) {
-      llvm::SmallVector<NodeValue, 6> CNInputs;
-      for (auto &input : CN->getInputs()) {
-        auto *inputRL = dyn_cast<ReluNode>(input);
-        if (!inputRL) {
-          break;
+      const Node *firstNode = CN->getInputs().front().getNode();
+      // Sink RELU below batch concat nodes.
+      if (firstNode->getKind() == Kinded::Kind::ReluNodeKind) {
+        llvm::SmallVector<NodeValue, 6> CNInputs;
+        for (auto &input : CN->getInputs()) {
+          auto *inputRL = dyn_cast<ReluNode>(input);
+          if (!inputRL) {
+            break;
+          }
+          CNInputs.push_back(inputRL->getInput());
         }
-        CNInputs.push_back(inputRL->getInput());
+
+        if (CNInputs.size() == CN->getNumInputs()) {
+          auto *newCN = F->createConcat(CN->getName(), CNInputs, CN->getDim());
+          newCN->setPredicate(node->getPredicate());
+          auto name = CN->getNthInput(0).getNode()->getName();
+          auto *newRL = F->createRELU(name, newCN, CN->getResult().getType());
+          newRL->setPredicate(node->getPredicate());
+          CN->getResult().replaceAllUsesOfWith(newRL);
+          changed = true;
+        }
+        continue;
       }
 
-      if (CNInputs.size() == CN->getNumInputs()) {
-        auto *newCN = F->createConcat(CN->getName(), CNInputs, CN->getDim());
+      // Sink Transpose below concat nodes.
+      if (firstNode->getKind() == Kinded::Kind::TransposeNodeKind) {
+        llvm::SmallVector<NodeValue, 6> transVector;
+        auto inputIter = CN->getInputs().begin();
+        auto *firstInput = dyn_cast<TransposeNode>(*inputIter);
+        if (!firstInput) {
+          continue;
+        }
+
+        transVector.push_back(firstInput->getInput());
+        auto shuffle = firstInput->getShuffle();
+        // If the shuffle masks don't agree or not all inputs are Transpose then
+        // bail out.
+        for (++inputIter; inputIter != CN->getInputs().end(); ++inputIter) {
+          auto *tTR = dyn_cast<TransposeNode>(*inputIter);
+          if (!tTR || tTR->getShuffle() != shuffle) {
+            break;
+          }
+          transVector.push_back(tTR->getInput());
+        }
+
+        if (transVector.size() != CN->getNumInputs()) {
+          continue;
+        }
+
+        // Figure out where we transposed the channel index for batch
+        // normalization.
+        unsigned_t idx = CN->getDim();
+        unsigned_t newChannelIdx = shuffle[idx];
+
+        auto *newCN =
+            F->createConcat(CN->getName(), transVector, newChannelIdx);
         newCN->setPredicate(node->getPredicate());
-        auto name = CN->getNthInput(0).getNode()->getName();
-        auto *newRL = F->createRELU(name, newCN, CN->getResult().getType());
-        newRL->setPredicate(node->getPredicate());
-        CN->getResult().replaceAllUsesOfWith(newRL);
+        auto *newTR = F->createTranspose(firstInput->getName(), newCN,
+                                         firstInput->getShuffle(),
+                                         firstInput->getLayout());
+        newTR->setPredicate(node->getPredicate());
+        CN->getResult().replaceAllUsesOfWith(newTR);
         changed = true;
-      }
-    }
-
-    // Sink Transpose below concat nodes.
-    if (auto *CN = dyn_cast<ConcatNode>(node)) {
-      llvm::SmallVector<NodeValue, 6> transVector;
-      auto inputIter = CN->getInputs().begin();
-      auto *firstInput = dyn_cast<TransposeNode>(*inputIter);
-      if (!firstInput) {
         continue;
       }
-
-      transVector.push_back(firstInput->getInput());
-      auto shuffle = firstInput->getShuffle();
-      // If the shuffle masks don't agree or not all inputs are Transpose then
-      // bail out.
-      for (++inputIter; inputIter != CN->getInputs().end(); ++inputIter) {
-        auto *tTR = dyn_cast<TransposeNode>(*inputIter);
-        if (!tTR || tTR->getShuffle() != shuffle) {
-          break;
-        }
-        transVector.push_back(tTR->getInput());
-      }
-
-      if (transVector.size() != CN->getNumInputs()) {
-        continue;
-      }
-
-      // Figure out where we transposed the channel index for batch
-      // normalization.
-      unsigned_t idx = CN->getDim();
-      unsigned_t newChannelIdx = shuffle[idx];
-
-      auto *newCN = F->createConcat(CN->getName(), transVector, newChannelIdx);
-      newCN->setPredicate(node->getPredicate());
-      auto *newTR =
-          F->createTranspose(firstInput->getName(), newCN,
-                             firstInput->getShuffle(), firstInput->getLayout());
-      newTR->setPredicate(node->getPredicate());
-      CN->getResult().replaceAllUsesOfWith(newTR);
-      changed = true;
     }
 
     // Sink Clip below Reshape nodes.
@@ -3120,6 +3228,154 @@ bool OptimizeOutIntermediateConversions::run(Function *F,
 
     QN->setNthInput(QuantizeNode::InputIdx, CN->getInput());
     changed = true;
+  }
+
+  return changed;
+}
+
+// Look for float Relus that we can fuse up into quantized FCs. This is either
+// with a Dequantize between them, or a Concat with multiple FCs being
+// dequantized and concatenated together.
+bool OptimizeQuantFCFloatRelu::run(Function *F,
+                                   const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *relu = llvm::dyn_cast<ReluNode>(&node);
+    // Look for Float relus to start.
+    if (!relu ||
+        !isFloatElemKind(relu->getResult().getType()->getElementType())) {
+      continue;
+    }
+
+    // Now look for dequantize nodes. We may need to move this above a Concat.
+    // Check if necessary.
+    std::vector<FullyConnectedNode *> nodesToFuse;
+    if (auto *CN = llvm::dyn_cast<ConcatNode>(relu->getInput())) {
+      if (CN->getNumUsers() != 1) {
+        continue;
+      }
+
+      // Check if all the concat inputs are dequantized FCs.
+      for (const NodeValue &NV : CN->getInputs()) {
+        auto *DQ = llvm::dyn_cast<DequantizeNode>(NV);
+        if (!DQ || DQ->getNumUsers() != 1) {
+          break;
+        }
+        auto *FC = llvm::dyn_cast<FullyConnectedNode>(DQ->getInput());
+        if (!FC || FC->getNumUsers() != 1) {
+          break;
+        }
+        nodesToFuse.push_back(FC);
+      }
+      if (nodesToFuse.size() != CN->getInputs().size()) {
+        continue;
+      }
+    } else if (auto *DQ = llvm::dyn_cast<DequantizeNode>(relu->getInput())) {
+      if (DQ->getNumUsers() != 1) {
+        continue;
+      }
+
+      auto *FC = llvm::dyn_cast<FullyConnectedNode>(DQ->getInput());
+      if (!FC || FC->getNumUsers() != 1) {
+        break;
+      }
+      nodesToFuse.push_back(FC);
+    } else {
+      continue;
+    }
+
+    // Did not find any quantized FCs to fuse, so continue.
+    if (!nodesToFuse.size()) {
+      continue;
+    }
+
+    // Now add quantized relus onto all of the FCs.
+    for (FullyConnectedNode *FC : nodesToFuse) {
+      const TypeRef FCTy = FC->getResult().getType();
+      // Use the same type as the FC for the Relu but with 0 as min.
+      const auto qParams = quantization::chooseQuantizationParams(
+          {0, FCTy->getQuantizedValueRange().second});
+      const TypeRef qReluTy = F->getParent()->uniqueType(
+          FCTy->getElementType(), FCTy->dims(), qParams.scale, qParams.offset);
+      ReluNode *qRelu = F->createRELU(relu->getName().str() + "_quant",
+                                      FC->getResult(), qReluTy);
+      FC->getResult().typeUnsafeReplaceAllUsesOfWith(qRelu->getResult(), F,
+                                                     qRelu);
+    }
+
+    // Now we can get rid of the relu.
+    relu->getResult().replaceAllUsesOfWith(relu->getInput());
+    changed = true;
+    continue;
+  }
+
+  return changed;
+}
+
+/// Look for Concats with all Dequantization as input and Quantization as
+/// output, and change the Quantization/Dequantization into a rescale.
+bool OptimizeConcatQuantization::run(Function *F,
+                                     const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &node : F->getNodes()) {
+    auto *CN = dyn_cast<ConcatNode>(&node);
+    if (!CN) {
+      continue;
+    }
+
+    // Look for a single Quantize user.
+    if (CN->getUsers().size() != 1) {
+      continue;
+    }
+    auto *QN = dyn_cast<QuantizeNode>((*CN->getUsers().begin()).getUser());
+    if (!QN) {
+      continue;
+    }
+
+    // Gather/check all of the inputs are DequantizeNodes.
+    std::vector<DequantizeNode *> DNs;
+    DNs.reserve(CN->getInputs().size());
+    for (const NodeValue &NV : CN->getInputs()) {
+      auto *DN = dyn_cast<DequantizeNode>(NV);
+      if (!DN || DN->getNumUsers() != 1) {
+        break;
+      }
+      DNs.push_back(DN);
+    }
+
+    // If not all CN inputs are Dequantizes then skip.
+    if (DNs.size() != CN->getInputs().size()) {
+      continue;
+    }
+
+    // Now create Rescales instead of Dequantizes for all CN inputs.
+    std::vector<NodeValue> newConcatInputs;
+    newConcatInputs.reserve(DNs.size());
+    TypeRef QNTy = QN->getResult().getType();
+    for (DequantizeNode *DN : DNs) {
+      if (DN->getInput().getType()->getScale() == QNTy->getScale() &&
+          DN->getInput().getType()->getOffset() == QNTy->getOffset()) {
+        // Don't need to rescale as it already has the right scale/offset.
+        newConcatInputs.push_back(DN->getInput());
+      } else {
+        TypeRef newTy = F->getParent()->uniqueTypeWithNewShape(
+            QNTy, DN->getResult().dims());
+        auto *RS = F->createRescaleQuantized(DN->getName().str() + "_rescale",
+                                             DN->getInput(), newTy);
+        newConcatInputs.push_back(RS->getResult());
+      }
+    }
+
+    auto *newCN = F->createConcat(CN->getName(), newConcatInputs, CN->getDim());
+
+    // Now we can get rid of the Quantize after the CN.
+    QN->getResult().replaceAllUsesOfWith(newCN->getResult());
+    changed = true;
+    continue;
   }
 
   return changed;

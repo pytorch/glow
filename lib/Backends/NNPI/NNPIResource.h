@@ -50,7 +50,8 @@ public:
                                       std::function<void(Error)> resultCB);
 
   /// Initialize a resource.
-  bool Init(const NNPIObjectName name, const NNPIDeviceOptions *deviceOptions,
+  bool init(const NNPIObjectName name,
+            std::shared_ptr<NNPIDeviceOptions> deviceOptions,
             NNPIAdapter adapter, NNPIDeviceContext device,
             const NNPIResourceDesc *desc, ResourceUsage usage);
 
@@ -92,12 +93,13 @@ private:
   NNPICopyCommand copyCommand_;
   uint64_t partialSize_;
   ResourceUsage usage_;
-  const NNPIDeviceOptions *deviceOptions_;
+  std::shared_ptr<NNPIDeviceOptions> deviceOptions_;
   std::vector<uint8_t> refStorage_;
   uint32_t cmdListIdx_;
 
   /// Update the owned host resource with data taken from the given tensor.
-  void UpdateHostResourceFromTensor(Tensor *t, bool partialTensor);
+  // return true when successfull, false otherwise.
+  bool updateHostResourceFromTensor(Tensor *t, bool partialTensor);
 };
 
 } // namespace runtime

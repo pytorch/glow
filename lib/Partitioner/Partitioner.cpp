@@ -429,6 +429,7 @@ Expected<DAGListTy> Partitioner::createDAGWithoutPartition(
     DAG1->backendName = backendName;
     DAG1->parents.push_back(DAG0.get());
     DAG0->children.push_back(DAG1.get());
+    DAG1->replicationCount = cctx.replicationCount;
     DAGNodePtrVec nodes;
     nodes.push_back(std::move(DAG1));
     partitions.push_back({std::move(DAG0), std::move(nodes)});
@@ -885,6 +886,12 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig,
     // Logical device ID validation.
     logicalDeviceID_ = assignLogicalDeviceID(partitionMap, backendMap_);
   }
+  // Add replication count to config if provided.
+  for (auto &replicationAssignment : partitionConfig.replicationCount) {
+    auto func = funcList.at(replicationAssignment.first);
+    partitionMap.addReplicationCount(func, replicationAssignment.second);
+  }
+
   RETURN_IF_ERR(logicalDevicesValidation(partitionMap, backendMap_));
 
   // Do partition.

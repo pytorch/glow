@@ -17,6 +17,7 @@
 #define NNPI_NNPITRACING_ML_WRAPPER_H
 
 #include <map>
+#include <nnpi_inference.h>
 #include <nnpiml.h>
 #include <vector>
 
@@ -27,6 +28,16 @@ enum NNPITraceType {
   NNPI_TRACE_COPY = 0x0004,
   NNPI_TRACE_MARK = 0x0008,
   NNPI_TRACE_CLOCK_SYNC = 0x0010,
+  NNPI_TRACE_CMDLIST = 0x0020,
+  NNPI_TRACE_NETEXEC = 0x0040,
+  NNPI_TRACE_SUBGRAPH = 0x0080,
+  NNPI_TARCE_TIME_SYNC = 0x0100,
+  NNPI_TRACE_RUNTIME_INFER = 0x0200,
+  NNPI_TRACE_ICED_SCHED_JOB = 0x0400,
+  NNPI_TARCE_ICED_CREAT_NET = 0x0800,
+  NNPI_TARCE_ICED_NET_RES = 0x1000,
+  NNPI_TARCE_ICED_NET_GEN = 0x1001,
+  NNPI_TARCE_USER_DATA = 0x4000,
   NNPI_TRACE_OTHER = 0x8000
 };
 
@@ -43,12 +54,12 @@ struct NNPITraceEntry {
 /// Device trace api wrapper.
 class NNPITraceContext {
 public:
-  NNPITraceContext(uint32_t eventsMask);
+  NNPITraceContext(unsigned devID);
   virtual ~NNPITraceContext();
   /// Start capturing traces from the HW device.
-  bool startCapture() const;
+  bool startCapture(NNPIDeviceContext deviceContext);
   /// Start capturing.
-  bool stopCapture() const;
+  bool stopCapture(NNPIDeviceContext deviceContext) const;
   /// Load traces (valid only after stopCapture()).
   bool load();
   /// Returns the number of traces captured and loaded (valid only after
@@ -56,8 +67,6 @@ public:
   size_t getTraceCount() const { return entries_.size(); }
   /// Read a loaded entry by index.
   NNPITraceEntry &getEntry(int index) { return entries_[index]; }
-  /// Allowed only once!!!.
-  bool setDeviceID(uint32_t devID);
   /// Get the context device ID.
   uint32_t getDeviceID() const { return devID_; }
   /// Returns true if device ID was set, false otherwise.
@@ -65,22 +74,17 @@ public:
   /// Get a vector of the loaded entries (valid only after load()).
   std::vector<NNPITraceEntry> getEntries() const { return entries_; }
 
-  /// Use to sync device and host clocks by flagging the first input copy on the
-  /// host.
-  void markInputCopyStart(uint64_t uptime);
-
 private:
-  bool createContext();
+  bool destroyInternalContext();
+  bool createInternalContext();
+  bool readTraceOutput(std::stringstream &inputStream);
 
   nnpimlTraceContext traceCtx_{0};
   uint64_t devMask_{0};
-  uint32_t devID_{0};
+  unsigned devID_{0};
   bool devIDSet_{false};
   std::string events_;
   std::vector<NNPITraceEntry> entries_;
-  uint64_t upRefTime_{0};
-  int64_t timeDiff_{0};
-  size_t timeUpdatedIndex_{0};
 };
 
 #endif // NNPI_NNPITRACING_ML_WRAPPER_H

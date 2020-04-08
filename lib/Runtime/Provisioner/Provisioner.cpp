@@ -31,6 +31,12 @@
 using namespace glow;
 using namespace runtime;
 
+namespace {
+std::string getReplicatedName(std::string name, unsigned count) {
+  return name + "_replicated" + std::to_string(count);
+}
+} // namespace
+
 namespace glow {
 extern bool GlowDumpCompilationLog;
 }
@@ -285,7 +291,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   // Container for duplicated functions and map tracking remaining installs for
   // a duplicated function.
   std::map<std::string, std::unique_ptr<CompiledFunction>> duplicatedFunctions;
-  std::map<std::string, unsigned> remainingDuplications;
+  std::map<DAGNode *, unsigned> remainingDuplications;
 
   // Map from Placeholder* to DeviceManager, this is used for deferred weight
   // loading.
@@ -336,7 +342,14 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
       // Check if this is a duplicated function that has already been compiled.
       if (duplicatedFunctions.find(node->name) != duplicatedFunctions.end()) {
         functionMap.emplace(node->name, duplicatedFunctions[node->name].get());
-        remainingDuplications[node->name] -= 1;
+        // Add replications.
+        for (unsigned i = 1; i < node->replicationCount; i++) {
+          auto replicatedName = getReplicatedName(node->name, i);
+          functionMap.emplace(replicatedName,
+                              duplicatedFunctions[replicatedName].get());
+        }
+
+        remainingDuplications[node] -= 1;
       } else {
         // Compile and add to function map.
         auto options = cctx.backendOpts;
@@ -355,9 +368,6 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
                               deviceBackendName);
         }
 
-        auto compiledOrErr =
-            backends_[deviceBackendName]->compile(function, options);
-
         if (cctx.dumpFinalGraph) {
           auto fname =
               strFormat("final_graph_%s_%s.dot", deviceBackendName.c_str(),
@@ -365,6 +375,28 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
           LOG(INFO) << "Dumping final graph to " << fname;
           function->dumpDAG(fname);
         }
+
+        std::unordered_map<std::string, std::unique_ptr<glow::CompiledFunction>>
+            compiledReplications;
+        // Before we compile clone the function so we can replicate it on the
+        // device.
+        for (unsigned i = 1; i < node->replicationCount; i++) {
+          std::string replicatedName =
+              getReplicatedName(function->getName(), i);
+          auto clonedFunction = function->clone(replicatedName);
+          auto compiledOrErr2 =
+              backends_[deviceBackendName]->compile(clonedFunction, options);
+          if (!compiledOrErr2) {
+            cleanupProvision(localActiveNames, {});
+            return compiledOrErr2.takeError();
+          }
+          auto compiled2 = std::move(*compiledOrErr2);
+          functionMap.emplace(replicatedName, compiled2.get());
+          compiledReplications.emplace(replicatedName, std::move(compiled2));
+        }
+
+        auto compiledOrErr =
+            backends_[deviceBackendName]->compile(function, options);
 
         if (GlowDumpCompilationLog) {
           llvm::SmallString<64> path;
@@ -391,6 +423,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
           return compiledOrErr.takeError();
         }
         auto compiled = std::move(*compiledOrErr);
+
         node->runtimeBundle =
             glow::make_unique<RuntimeBundle>(compiled->getRuntimeBundle());
 
@@ -399,9 +432,22 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         // reuse.
         if (node->logicalDevices.size() > 1) {
           duplicatedFunctions.emplace(node->name, std::move(compiled));
-          remainingDuplications[node->name] = node->logicalDevices.size() - 1;
+          for (unsigned i = 1; i < node->replicationCount; i++) {
+            std::string replicatedName =
+                getReplicatedName(function->getName(), i);
+            auto compiled2 = std::move(compiledReplications[replicatedName]);
+            duplicatedFunctions.emplace(replicatedName, std::move(compiled2));
+          }
+
+          remainingDuplications[node] = node->logicalDevices.size() - 1;
         } else {
           compiledFunctions.emplace(node->name, std::move(compiled));
+          for (unsigned i = 1; i < node->replicationCount; i++) {
+            std::string replicatedName =
+                getReplicatedName(function->getName(), i);
+            auto compiled2 = std::move(compiledReplications[replicatedName]);
+            compiledFunctions.emplace(replicatedName, std::move(compiled2));
+          }
         }
       }
     }
@@ -443,10 +489,19 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
            iter != remainingDuplications.end();) {
         const auto &func = *iter;
         if (func.second == 0) {
-          duplicatedFunctions[func.first]->freeCompilationResources();
-          functions_.emplace(func.first,
-                             std::move(duplicatedFunctions[func.first]));
-          duplicatedFunctions.erase(func.first);
+
+          for (unsigned i = 1; i < func.first->replicationCount; i++) {
+            std::string replicatedName = getReplicatedName(func.first->name, i);
+            duplicatedFunctions[replicatedName]->freeCompilationResources();
+            functions_.emplace(replicatedName,
+                               std::move(duplicatedFunctions[replicatedName]));
+            duplicatedFunctions.erase(replicatedName);
+          }
+
+          duplicatedFunctions[func.first->name]->freeCompilationResources();
+          functions_.emplace(func.first->name,
+                             std::move(duplicatedFunctions[func.first->name]));
+          duplicatedFunctions.erase(func.first->name);
           iter = remainingDuplications.erase(iter);
         } else {
           ++iter;
@@ -515,7 +570,12 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
                       "Error not all static placeholders were initialized.");
     }
   }
-
+  // Init alternate name states.
+  for (auto &network : networks) {
+    for (auto &node : network.nodes) {
+      node->initAlternateState();
+    }
+  }
   cleanupProvision(localActiveNames, {}, false);
   return Error::success();
 };

@@ -93,6 +93,12 @@ private:
 
   Error updateCompilationConfigFromOptions(
       NNPICompilationOptions &compilationOptions);
+
+  /// Setup compilation hints for \p F given \p backendSpecificNodeInfo.
+  /// \returns an error if some validation issue is found given expected format.
+  Error
+  setupCompilationHints(const Function *F,
+                        const BackendSpecificNodeInfo &backendSpecificNodeInfo);
   ///@}
 };
 } // end namespace glow
