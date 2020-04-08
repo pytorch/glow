@@ -289,6 +289,56 @@ TEST_P(HostManagerTest, runNetworkConcurrent) {
   }
 }
 
+TEST_P(HostManagerTest, testSaturateHost) {
+  CHECK_IF_ENABLED();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
+
+  Function *F = module->createFunction("main");
+  auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
+  auto *pow = F->createPow("Pow1", X, 2.0);
+  F->createSave("save", pow);
+  auto *savePH = module->getPlaceholderByName("save");
+
+  std::vector<std::unique_ptr<DeviceConfig>> configs;
+  auto deviceConfig = glow::make_unique<DeviceConfig>(backendName_);
+  auto deviceConfig2 = glow::make_unique<DeviceConfig>(backendName_);
+  configs.push_back(std::move(deviceConfig));
+  configs.push_back(std::move(deviceConfig2));
+  std::unique_ptr<HostManager> hostManager =
+      glow::make_unique<HostManager>(std::move(configs), HostConfig());
+
+  CompilationContext cctx;
+
+  ASSERT_FALSE(ERR_TO_BOOL(
+      hostManager->addNetwork(std::move(module), cctx, /*saturateHost*/ true)));
+
+  std::vector<std::future<void>> ready;
+  for (int i = 0; i < 50; i++) {
+    auto runNetwork = std::make_shared<std::promise<void>>();
+    ready.push_back(runNetwork->get_future());
+    std::unique_ptr<ExecutionContext> context =
+        glow::make_unique<ExecutionContext>();
+    auto *XTensor = context->getPlaceholderBindings()->allocate(X);
+    XTensor->getHandle() = {1., 2., 3.};
+    auto *saveTensor = context->getPlaceholderBindings()->allocate(savePH);
+    hostManager->runNetwork(
+        "main", std::move(context),
+        [runNetwork, saveTensor](RunIdentifierTy, Error err,
+                                 std::unique_ptr<ExecutionContext>) {
+          auto HX = saveTensor->getHandle();
+          EXPECT_NEAR(HX.at({0}), 1, 1E-5);
+          EXPECT_NEAR(HX.at({1}), 4, 1E-5);
+          EXPECT_NEAR(HX.at({2}), 9, 1E-5);
+          EXPECT_FALSE(std::move(err));
+          runNetwork->set_value();
+        });
+  }
+
+  for (auto &r : ready) {
+    r.wait();
+  }
+}
+
 /// Test that the HostManager respects it's configuration parameters.
 TEST_P(HostManagerTest, ConfigureHostManager) {
   CHECK_IF_ENABLED();
