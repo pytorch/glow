@@ -384,8 +384,10 @@ TEST_F(NNPIOptPipelineTest, SplitParallelizationTestTanhReluNNPI) {
 static void setupSplitParallelizationTestFCReluNNPI(
     Module &mod_, Function *F_, CompilationContext &cctx_,
     PlaceholderBindings &bindings_, const std::string &parKind) {
-  auto *input =
-      mod_.createPlaceholder(ElemKind::Float16Ty, {512, 32}, "input", false);
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {512, 32}, "input1", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {512, 32}, "input2", false);
   auto *weights = F_->getParent()->createConstant(ElemKind::Float16Ty,
                                                   {512, 512}, "weights");
   auto *bias =
@@ -395,14 +397,19 @@ static void setupSplitParallelizationTestFCReluNNPI(
   bias->getPayloadMutable().getHandle<float16_t>().randomize(-1.0, 1.0,
                                                              mod_.getPRNG());
 
-  auto *TN = F_->createTranspose("transpose", input, {1, 0});
+  auto *TN = F_->createTranspose("transpose", input1, {1, 0});
   auto *FC = F_->createFullyConnected("fc", TN, weights, bias);
   auto *RN = F_->createRELU("relu", FC);
   auto *SN = F_->createSigmoid("sigmoid", RN);
   F_->createSave("ret", SN);
 
-  bindings_.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
-                                                              mod_.getPRNG());
+  auto *AN = F_->createAdd("add", input1, input2);
+  F_->createSave("add_save", AN);
+
+  bindings_.allocate(input1)->getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                               mod_.getPRNG());
+  bindings_.allocate(input2)->getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                               mod_.getPRNG());
 
   auto &nodeInfo = cctx_.backendOpts.backendSpecificNodeInfo[F_];
   // Setup some parallelization.
@@ -415,6 +422,7 @@ static void setupSplitParallelizationTestFCReluNNPI(
   nodeInfo[TN]["NNPI_extraEdges"].push_back(FC->getName().str() + "@7");
   nodeInfo[RN]["NNPI_extraEdges"].push_back(SN->getName().str());
   nodeInfo[TN]["NNPI_extraEdges"].push_back(SN->getName().str());
+  nodeInfo[AN]["NNPI_extraEdges"].push_back(TN->getName().str());
   // Assign some ops to cores.
   nodeInfo[TN]["NNPI_coreAssignments"].push_back("3");
   nodeInfo[FC]["NNPI_coreAssignments"].push_back("2");
@@ -424,7 +432,7 @@ static void setupSplitParallelizationTestFCReluNNPI(
   nodeInfo[FC]["NNPI_coreAssignments"].push_back("1");
   nodeInfo[FC]["NNPI_coreAssignments"].push_back("7");
   nodeInfo[FC]["NNPI_coreAssignments"].push_back("3");
-  nodeInfo[FC]["NNPI_coreAssignments"].push_back("4");
+  nodeInfo[FC]["NNPI_coreAssignments"].push_back("0");
 }
 
 /// Test model parallel splitting inside of NNPIPrivateTransforms.cpp for

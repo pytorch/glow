@@ -22,6 +22,8 @@
 
 #include "glow/Backend/BackendUtils.h"
 
+#include "llvm/ADT/StringSet.h"
+
 using namespace glow;
 
 namespace glow {
@@ -86,6 +88,101 @@ static void insertOptLogOverride(const Function &F,
   opts[optKey] = optVal;
 }
 
+Error NNPICompiledFunction::setupCompilationHints(
+    const Function *F, const BackendSpecificNodeInfo &backendSpecificNodeInfo) {
+  // If there's no info to validate for this Function then return early.
+  auto funNodeInfoIt = backendSpecificNodeInfo.find(F);
+  if (funNodeInfoIt == backendSpecificNodeInfo.end()) {
+    return Error::success();
+  }
+  auto &currFunInfo = funNodeInfoIt->second;
+
+  // Gather all Node names to more easily/efficiently validate extraEdges.
+  llvm::StringSet<> allNodeNames;
+  for (const Node &N : F->getNodes()) {
+    allNodeNames.insert(N.getName().str());
+  }
+
+  // Create hints here before copying into config_, as we don't know how many
+  // there are a priori.
+  std::vector<NNPICompilationHint> hints;
+
+  for (const auto &nodeInfoPair : currFunInfo) {
+    const Node *N = nodeInfoPair.first;
+    RETURN_ERR_IF_NOT(N->getParent() == F,
+                      "Node mapped to this Function in backendSpecificNodeInfo "
+                      "has incorrect parent.");
+    for (const auto &keyOptsPair : nodeInfoPair.second) {
+      const llvm::StringRef &key = keyOptsPair.getKey();
+      const std::vector<std::string> &opts = keyOptsPair.getValue();
+
+      RETURN_ERR_IF_NOT(key != numParallelChunksKey,
+                        "Should have processed and removed all " +
+                            std::string(numParallelChunksKey));
+
+      RETURN_ERR_IF_NOT(key != parallelTransformKindKey,
+                        "Should have processed and removed all " +
+                            std::string(parallelTransformKindKey));
+
+      RETURN_ERR_IF_NOT(N->getName().size() < sizeof(NNPIObjectName),
+                        "Name lengths must fit inside NNPIObjectName.");
+
+      if (key == coreAssignmentsKey) {
+        if (const ConcatNode *CN = llvm::dyn_cast<ConcatNode>(N)) {
+          RETURN_ERR_IF_NOT(opts.size() == CN->getInputs().size(),
+                            "Should have same number of " +
+                                std::string(coreAssignmentsKey) + " (" +
+                                std::to_string(opts.size()) +
+                                ") as inputs to " + N->getName().str() + " (" +
+                                std::to_string(CN->getInputs().size()) + ")");
+        } else {
+          RETURN_ERR_IF_NOT(
+              opts.size() == 1,
+              strFormat("Should have only a single coreAssignment for %s",
+                        N->getName().data()));
+        }
+        for (size_t i = 0, e = opts.size(); i < e; i++) {
+          int core;
+          ASSIGN_VALUE_OR_RETURN_ERR(core, getIntFromStr(opts[i]));
+          RETURN_ERR_IF_NOT(core >= 0 && core <= 11,
+                            "Core assignment must be [0-11]");
+          NNPICompilationHint hint;
+          hint.type = NNPI_HINT_ICE_CORE_PLACEMENT;
+          const std::string opName =
+              N->getName().str() +
+              (opts.size() == 1 ? "" : ("@" + std::to_string(i)));
+          strncpy(hint.iceCorePlacement.opName, opName.c_str(),
+                  sizeof(NNPIObjectName));
+          hint.iceCorePlacement.iceCore = core;
+          hints.emplace_back(hint);
+        }
+      }
+
+      if (key == extraEdgesKey) {
+        for (const std::string &edgeName : opts) {
+          RETURN_ERR_IF_NOT(allNodeNames.count(edgeName),
+                            "Extra edge " + edgeName +
+                                " is not mapped to a current Node name.");
+          NNPICompilationHint hint;
+          hint.type = NNPI_HINT_OP_DEPENDENCY;
+          strncpy(hint.opDependency.opName, N->getName().data(),
+                  sizeof(NNPIObjectName));
+          strncpy(hint.opDependency.dependsOnOpName, edgeName.c_str(),
+                  sizeof(NNPIObjectName));
+          hints.emplace_back(hint);
+        }
+      }
+    }
+  }
+
+  config_.numCompilationHints = hints.size();
+  const size_t hintsBytes = hints.size() * sizeof(NNPICompilationHint);
+  config_.compilationHints = (NNPICompilationHint *)malloc(hintsBytes);
+  memcpy(config_.compilationHints, hints.data(), hintsBytes);
+
+  return Error::success();
+}
+
 Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   BackendOptions newOpts = opts;
   if (opts.backendHints.executionUnits) {
@@ -137,6 +234,8 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   if (error) {
     return error;
   }
+
+  RETURN_IF_ERR(setupCompilationHints(F, newOpts.backendSpecificNodeInfo));
 
   if (compilationOptions_.useIceT || compilationOptions_.inferOnDevice) {
     if (compilationOptions_.compileOutputPostfix) {
@@ -215,6 +314,9 @@ NNPICompiledFunction::~NNPICompiledFunction() {
   if (network_ != NNPI_INVALID_NNPIHANDLE) {
     LOG_NNPI_IF_ERROR(nnpiNetworkDestroy(network_),
                       "Failed NNPI Network Destroy");
+  }
+  if (config_.compilationHints) {
+    free(config_.compilationHints);
   }
 }
 

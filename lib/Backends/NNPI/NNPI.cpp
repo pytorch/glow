@@ -23,7 +23,6 @@
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 #include "glow/Optimizer/Lower/Lower.h"
 
-#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/CommandLine.h"
 
 #include <fstream>
@@ -653,13 +652,6 @@ static void setupBasicParallelizationConfigs(
   }
 }
 
-/// These are used for parsing backend-specific node options.
-static const std::string numParallelChunksKey = "NNPI_numParallelChunks";
-static const std::string parallelTransformKindKey =
-    "NNPI_parallelTransformKind";
-static const std::string extraEdgesKey = "NNPI_extraEdges";
-static const std::string coreAssignmentsKey = "NNPI_coreAssignments";
-
 /// If we've done some paralleization specified in \p replacedMap then propagate
 /// any NodeInfo from original nodes to the newly created Nodes in
 /// \p backendSpecificNodeInfo. Additionally, validate that the parallelization
@@ -696,7 +688,8 @@ static Error propagateBackendSpecificNodeInfo(
     const ConcatNode *CN = replacedPair.second;
     auto numParChunksIt = nodeInfo.find(numParallelChunksKey);
     RETURN_ERR_IF_NOT(numParChunksIt != nodeInfo.end(),
-                      "Must have corresponding " + numParallelChunksKey +
+                      "Must have corresponding " +
+                          std::string(numParallelChunksKey) +
                           " for any Node that was parallelized.");
     RETURN_ERR_IF_NOT(numParChunksIt->second.size() == 1,
                       "Expected a single value for numParallelChunks");
@@ -716,7 +709,8 @@ static Error propagateBackendSpecificNodeInfo(
         Node *inputCN = CN->getInputs()[i].getNode();
         auto &newCoreAssignments = currFunInfo[inputCN][coreAssignmentsKey];
         RETURN_ERR_IF_NOT(newCoreAssignments.size() == 0,
-                          coreAssignmentsKey + " should have been empty.");
+                          std::string(coreAssignmentsKey) +
+                              " should have been empty.");
         newCoreAssignments.push_back(coreAssignmentsIt->second[i]);
       }
     }
@@ -727,7 +721,8 @@ static Error propagateBackendSpecificNodeInfo(
       for (const NodeValue &inputCNNV : CN->getInputs()) {
         auto &newExtraEdges = currFunInfo[inputCNNV.getNode()][extraEdgesKey];
         RETURN_ERR_IF_NOT(newExtraEdges.size() == 0,
-                          extraEdgesKey + " should have been empty.");
+                          std::string(extraEdgesKey) +
+                              " should have been empty.");
         for (const std::string &edge : extraEdgesIt->second) {
           newExtraEdges.push_back(edge);
         }
@@ -810,7 +805,8 @@ static Error setupPerNodeParallelizationConfigs(
       continue;
     }
     RETURN_ERR_IF_NOT(parTransformKindIt->second.size() == 1,
-                      "Expected single value for " + parallelTransformKindKey);
+                      "Expected single value for " +
+                          std::string(parallelTransformKindKey));
     const std::string &pKindStr = parTransformKindIt->second.front();
     ParallelTransformKind pKind;
     if (pKindStr == "Data") {
@@ -820,7 +816,7 @@ static Error setupPerNodeParallelizationConfigs(
     } else if (pKindStr == "None") {
       pKind = ParallelTransformKind::None;
     } else {
-      return MAKE_ERR(parallelTransformKindKey + " " + pKindStr +
+      return MAKE_ERR(std::string(parallelTransformKindKey) + " " + pKindStr +
                       " not supported.");
     }
     if (pKind == ParallelTransformKind::None) {
@@ -831,11 +827,12 @@ static Error setupPerNodeParallelizationConfigs(
     // valid parallelTransformKind found above.
     auto numParChunksIt = nodeInfo.find(numParallelChunksKey);
     RETURN_ERR_IF_NOT(numParChunksIt != nodeInfo.end(),
-                      numParallelChunksKey + " and " +
-                          parallelTransformKindKey +
+                      std::string(numParallelChunksKey) + " and " +
+                          std::string(parallelTransformKindKey) +
                           " must be specified together.");
     RETURN_ERR_IF_NOT(numParChunksIt->second.size() == 1,
-                      "Expected single value for " + numParallelChunksKey);
+                      "Expected single value for " +
+                          std::string(numParallelChunksKey));
 
     int numChunks;
     ASSIGN_VALUE_OR_RETURN_ERR(numChunks,
@@ -921,77 +918,6 @@ static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts,
   return true;
 }
 
-/// Peform validation on the final \p backendSpecificNodeInfo for \p F. If
-/// \p expectValidation then return failure if no info is found for \p F.
-static Error
-validateFinalNodeOpts(const Function *F,
-                      const BackendSpecificNodeInfo &backendSpecificNodeInfo,
-                      bool expectValidation) {
-  // If there's no info to validate for this Function then return early.
-  auto funNodeInfoIt = backendSpecificNodeInfo.find(F);
-  if (funNodeInfoIt == backendSpecificNodeInfo.end()) {
-    RETURN_ERR_IF_NOT(!expectValidation,
-                      "Expected to need validation for this Function.");
-    return Error::success();
-  }
-  auto &currFunInfo = funNodeInfoIt->second;
-
-  // Gather all Node names to more easily/efficiently validate extraEdges.
-  llvm::StringSet<> allNodeNames;
-  for (const Node &N : F->getNodes()) {
-    allNodeNames.insert(N.getName().str());
-  }
-
-  for (const auto &nodeInfoPair : currFunInfo) {
-    const Node *N = nodeInfoPair.first;
-    RETURN_ERR_IF_NOT(N->getParent() == F,
-                      "Node mapped to this Function in backendSpecificNodeInfo "
-                      "has incorrect parent.");
-    for (const auto &keyOptsPair : nodeInfoPair.second) {
-      const llvm::StringRef &key = keyOptsPair.getKey();
-      const std::vector<std::string> &opts = keyOptsPair.getValue();
-
-      RETURN_ERR_IF_NOT(key != numParallelChunksKey,
-                        "Should have processed and removed all " +
-                            numParallelChunksKey);
-
-      RETURN_ERR_IF_NOT(key != parallelTransformKindKey,
-                        "Should have processed and removed all " +
-                            parallelTransformKindKey);
-
-      if (key == coreAssignmentsKey) {
-        if (const ConcatNode *CN = llvm::dyn_cast<ConcatNode>(N)) {
-          RETURN_ERR_IF_NOT(opts.size() == CN->getInputs().size(),
-                            "Should have same number of " + coreAssignmentsKey +
-                                " (" + std::to_string(opts.size()) +
-                                ") as inputs to " + N->getName().str() + " (" +
-                                std::to_string(CN->getInputs().size()) + ")");
-        } else {
-          RETURN_ERR_IF_NOT(
-              opts.size() == 1,
-              strFormat("Should have only a single coreAssignment for %s",
-                        N->getName().data()));
-        }
-        for (auto &opt : opts) {
-          int core;
-          ASSIGN_VALUE_OR_RETURN_ERR(core, getIntFromStr(opt));
-          RETURN_ERR_IF_NOT(core >= 0 && core <= 11,
-                            "Core assignment must be [0-11]");
-        }
-      }
-
-      if (key == extraEdgesKey) {
-        for (const std::string &edgeName : opts) {
-          RETURN_ERR_IF_NOT(allNodeNames.count(edgeName),
-                            "Extra edge " + edgeName +
-                                " is not mapped to a current Node name.");
-        }
-      }
-    }
-  }
-  return Error::success();
-}
-
 Expected<std::unique_ptr<CompiledFunction>>
 NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
   BackendOptions newOpts = opts;
@@ -1017,11 +943,6 @@ NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
                             });
     FPM.run(F, CompilationContext());
   }
-
-  // Validate backend-specific NodeOpts now that we've finished parallelization
-  // and cleanup.
-  RETURN_IF_ERR(
-      validateFinalNodeOpts(F, newOpts.backendSpecificNodeInfo, parallelized));
 
   std::unique_ptr<NNPICompiledFunction> compiledFunc =
       glow::make_unique<NNPICompiledFunction>(F);
