@@ -79,5 +79,11 @@ private:
   static NNPIAdapterContainer adapter_;
 };
 
+/// These are used for parsing backend-specific node options.
+constexpr char numParallelChunksKey[] = "NNPI_numParallelChunks";
+constexpr char parallelTransformKindKey[] = "NNPI_parallelTransformKind";
+constexpr char extraEdgesKey[] = "NNPI_extraEdges";
+constexpr char coreAssignmentsKey[] = "NNPI_coreAssignments";
+
 } // namespace glow
 #endif // GLOW_NNPI_BACKEND_H
