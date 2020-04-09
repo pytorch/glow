@@ -158,8 +158,8 @@ int main(int argc, char **argv) {
   phList = module->getPlaceholders();
   CompilationContext cctx;
   cctx.backendOpts.autoInstrument = autoInstrument;
-  EXIT_ON_ERR(hostManager->addNetwork(std::move(module), cctx,
-                                      /*saturateHost*/ true));
+  cctx.saturateHost = true;
+  EXIT_ON_ERR(hostManager->addNetwork(std::move(module), cctx));
 
   LOG(INFO) << "Loading files from " << inputDirectory;
   std::error_code code;

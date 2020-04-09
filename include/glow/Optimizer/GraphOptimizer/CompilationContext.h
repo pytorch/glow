@@ -141,6 +141,9 @@ struct CompilationContext {
   /// Allows a loader to store a pre-partitioned config.
   runtime::PrePartitionedConfig *prepartitionedConfig{nullptr};
 
+  /// If true the HostManager will try to use all available devices on the host.
+  bool saturateHost{false};
+
   /// Used during Quantization and Profiling.
   LoweredInfoMap *loweredInfoMap{nullptr};
 

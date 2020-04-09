@@ -152,7 +152,7 @@ void HostManager::cleanupAddNetwork(llvm::ArrayRef<std::string> names) {
 }
 
 Error HostManager::addNetwork(std::unique_ptr<Module> module,
-                              CompilationContext &cctx, bool saturateHost) {
+                              CompilationContext &cctx) {
   std::vector<std::string> names;
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
@@ -227,8 +227,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       }
     }
   }
-  Partitioner partitioner(module.get(), deviceInfo, saturateHost,
-                          skipOptimizations);
+  Partitioner partitioner(module.get(), deviceInfo, skipOptimizations);
   DAGListTy nodeList;
   auto result = partitioner.partition(cctx);
   if (result) {
