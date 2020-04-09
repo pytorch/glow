@@ -36,6 +36,12 @@ static size_t getBin(size_t nBins, float binWidth, float minValue,
 void generateTensorHistogram(const Handle<float> inputTensor,
                              Handle<float> existingHistogram, float &min,
                              float &max) {
+  // Sanity check for NaN and Infinity.
+  for (auto elem : inputTensor) {
+    assert(!std::isnan(elem) && "NaN value found!");
+    assert(!std::isinf(elem) && "Infinity value found!");
+  }
+
   auto minMaxPos = inputTensor.minMaxArg();
   float minInput = inputTensor.raw(minMaxPos.first);
   float maxInput = inputTensor.raw(minMaxPos.second);

@@ -809,6 +809,12 @@ static void find_min_max_f(float *tensor, dim_t size, float &min, float &max) {
     if (tensorVal > max)
       max = tensorVal;
   }
+
+  // Sanity check for NaN and Infinity.
+  for (dim_t i = 0; i < size; ++i) {
+    assert(!std::isnan(tensor[i]) && "NaN value found!");
+    assert(!std::isinf(tensor[i]) && "Infinity value found!");
+  }
 }
 
 static int check_all_zeros(float *arrayToCheck, dim_t size) {
@@ -2456,13 +2462,6 @@ void libjit_softmax_grad_f_i32(float *inG, float *outW,
                                const int32_t *selectedW, const dim_t *idim,
                                const dim_t *selectdim) {
   libjit_softmax_grad_generic(inG, outW, selectedW, idim, selectdim);
-}
-
-void libjit_sigmoid_f(const float *inW, float *outW, dim_t numElem) {
-  for (dim_t i = 0; i < numElem; i++) {
-    float e = expf(-inW[i]);
-    outW[i] = 1 / (e + 1);
-  }
 }
 
 void libjit_topk_f_u(float *values, size_t *indices, const float *input,
