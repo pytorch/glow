@@ -3104,6 +3104,67 @@ TEST(onnx, importEqual) {
   EXPECT_EQ(CMPEQ->getResult().dims()[2], 1);
 }
 
+/// Test loading NonZero from a ONNX model.
+static void testNonZero(llvm::StringRef name,
+                        const std::vector<dim_t> &expectedDims,
+                        const std::vector<int64_t> &expVals) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *out = nullptr;
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/NonZero.onnxtxt");
+  {
+    ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
+    out = EXIT_ON_ERR(onnxLD.getOutputByName(name));
+    EXPECT_NE(out, nullptr);
+  }
+
+  // Constant -> NonZero -> PH (x2 for 3 models inside the file)
+  ASSERT_EQ(mod.getPlaceholders().size(), 3);
+  ASSERT_EQ(F->getNodes().size(), 3);
+
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+
+  auto result = bindings.get(out)->getHandle<int64_t>();
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expVals.size(); i++) {
+    EXPECT_EQ(result.raw(i), expVals[i]);
+  }
+}
+
+/// Test loading NonZero using constant int32_t tensor initializer.
+TEST(onnx, importNonZeroI32) {
+  std::vector<int64_t> expVals = {
+      0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3,
+      3, 3, 3, 3, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1,
+      0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 0, 1, 2, 0, 0, 1,
+      2, 0, 1, 1, 0, 1, 1, 2, 0, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0,
+      0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0};
+  testNonZero("out_i32", {5, 29}, expVals);
+}
+
+/// Test loading NonZero using constant float tensor initializer.
+TEST(onnx, importNonZeroF) {
+  std::vector<int64_t> expVals = {0,  1,  3,  4,  6,  8,  10,
+                                  12, 14, 16, 18, 19, 21, 22};
+  testNonZero("out_f", {1, 14}, expVals);
+}
+
+/// Test loading NonZero using constant float tensor initializer.
+TEST(onnx, importNonZeroI64) {
+  std::vector<int64_t> expVals = {0,  1,  3,  4,  6,  8,  10,
+                                  12, 14, 16, 18, 19, 21, 22};
+  testNonZero("out_i64", {1, 14}, expVals);
+}
+
 /// Test loading NMS using initializer nodes op from an ONNX model.
 TEST_F(OnnxImporterTest, importNMSInitializer) {
   ExecutionEngine EE{};
