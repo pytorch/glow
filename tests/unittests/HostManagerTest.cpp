@@ -308,9 +308,8 @@ TEST_P(HostManagerTest, testSaturateHost) {
       glow::make_unique<HostManager>(std::move(configs), HostConfig());
 
   CompilationContext cctx;
-
-  ASSERT_FALSE(ERR_TO_BOOL(
-      hostManager->addNetwork(std::move(module), cctx, /*saturateHost*/ true)));
+  cctx.saturateHost = true;
+  ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
 
   std::vector<std::future<void>> ready;
   for (int i = 0; i < 50; i++) {

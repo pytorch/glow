@@ -532,7 +532,8 @@ int run() {
 
   auto hostManager =
       glow::make_unique<runtime::HostManager>(std::move(configs), hostConfig);
-  EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx, glowSaturateHost));
+  cctx.saturateHost = glowSaturateHost;
+  EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
   // Parse all input and output files ahead of inference.
   std::vector<::ONNX_NAMESPACE::GraphProto> parsedInputs;

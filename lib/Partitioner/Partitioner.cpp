@@ -107,18 +107,16 @@ Error Partitioner::finalize(const DAGListTy &partitions,
 }
 
 Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
-                         const std::vector<Backend *> &backends,
-                         bool saturateHost, bool optimized)
+                         const std::vector<Backend *> &backends, bool optimized)
     : module_(parent), deviceInfo_(devices), backends_(backends),
-      saturateHost_(saturateHost), optimized_(optimized) {
+      optimized_(optimized) {
   init();
 }
 
 Partitioner::Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
-                         bool saturateHost, bool optimized,
-                         PartitionConfig partitionConfig)
-    : module_(parent), deviceInfo_(devices), saturateHost_(saturateHost),
-      optimized_(optimized), partitionConfig_(partitionConfig) {
+                         bool optimized, PartitionConfig partitionConfig)
+    : module_(parent), deviceInfo_(devices), optimized_(optimized),
+      partitionConfig_(partitionConfig) {
   init();
 }
 
@@ -434,7 +432,7 @@ Expected<DAGListTy> Partitioner::createDAGWithoutPartition(
     nodes.push_back(std::move(DAG1));
     partitions.push_back({std::move(DAG0), std::move(nodes)});
   }
-  if (saturateHost_) {
+  if (cctx.saturateHost) {
     // Saturate the Host.
     saturateHost(1, partitions);
   }
@@ -624,7 +622,7 @@ Expected<DAGListTy> Partitioner::loadBalancedPartition(CompilationContext &cctx,
                      cctx.backendOpts.backendSpecificNodeInfo);
   module_->eraseFunction(F_);
 
-  if (saturateHost_ &&
+  if (cctx.saturateHost &&
       partitionMap.getPartitions().size() < deviceInfo_.size()) {
     saturateHost(logicalDeviceID_, partitions);
   }
@@ -772,7 +770,7 @@ Partitioner::heterogeneousPartition(CompilationContext &cctx) {
 
   // Step 5 : Post-partition optimization - Adjust the logicalDevice for each
   // DAGNode.
-  if (saturateHost_ && backends.size() == 1 &&
+  if (cctx.saturateHost && backends.size() == 1 &&
       mapping.getPartitions().size() < deviceInfo_.size()) {
     // Attempt to saturate the host when there is only one type of backend.
     // Passing in the count of logical devices. Since logicalId starts at 0 we
@@ -1366,7 +1364,7 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   }
 
   auto partitions = partitionFromConfig(partitionConfig, cctx);
-  if (saturateHost_) {
+  if (cctx.saturateHost) {
     saturateHost(cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards,
                  std::move(partitions.get()));
   }

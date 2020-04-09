@@ -216,9 +216,9 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
   if (GlowDumpGraph) {
     cctx.dumpFinalGraph = true;
   }
+  cctx.saturateHost = GlowSaturateHost;
 
-  auto err =
-      hostManager_->addNetwork(std::move(module), cctx, GlowSaturateHost);
+  auto err = hostManager_->addNetwork(std::move(module), cctx);
 
   if (ERR_TO_BOOL(std::move(err))) {
     return ONNXIFI_STATUS_INTERNAL_ERROR;

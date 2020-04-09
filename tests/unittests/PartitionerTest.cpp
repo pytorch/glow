@@ -160,7 +160,7 @@ TEST_F(PartitionerTest, Basic1) {
 
   std::vector<DeviceInfo> devices = {
       {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "Interpreter"}};
-  Partitioner myPartitioner(&EEP.getModule(), devices, false, true);
+  Partitioner myPartitioner(&EEP.getModule(), devices, true);
   CompilationContext cctx;
   auto dagList = myPartitioner.partition(cctx);
   ASSERT_TRUE((bool)dagList);
@@ -247,8 +247,9 @@ TEST_F(PartitionerTest, Basic2) {
                                      {2048, "Interpreter"},
                                      {2048, "Interpreter"},
                                      {2048, "Interpreter"}};
-  Partitioner myPartitioner(&EEP.getModule(), devices, /* saturateHost */ true);
+  Partitioner myPartitioner(&EEP.getModule(), devices);
   CompilationContext cctx;
+  cctx.saturateHost = true;
   runtime::DAGListTy dagList;
   ASSIGN_VALUE_OR_FAIL_TEST(dagList, myPartitioner.partition(cctx));
   EXPECT_EQ(EEP.getModule().getFunctions().size(), 2);
@@ -641,7 +642,7 @@ static void testSimpleSparseNNPartitioning(Module &mod,
   backends.emplace_back(&backend3);
   std::vector<DeviceInfo> devices = {
       {400000, "CPU"}, {400000, "CPU"}, {400000, "CPU"}};
-  Partitioner partitioner(&mod, devices, backends, /* saturateHost */ false);
+  Partitioner partitioner(&mod, devices, backends);
   CompilationContext cctx;
   cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
   cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards = 3;
@@ -718,8 +719,9 @@ TEST_F(PartitionerTest, SimpleHeterogeneousPartitioning) {
   backends.emplace_back(&backendWithoutSub1);
   std::vector<DeviceInfo> devices = {
       {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "CPU"}};
-  Partitioner partitioner(&mod_, devices, backends, /* saturateHost */ true);
+  Partitioner partitioner(&mod_, devices, backends);
   CompilationContext cctx;
+  cctx.saturateHost = true;
   auto dagList = partitioner.partition(cctx);
   ASSERT_TRUE((bool)dagList);
   EXPECT_EQ(mod_.getFunctions().size(), 3);
@@ -802,8 +804,9 @@ TEST_F(PartitionerTest, logicalIDTest0) {
                                      {1500, "Interpreter"}};
   // Create two backends which support different ops, then do the partition by
   // assigning the ops to the corresponding abackends.
-  Partitioner partitioner(&mod_, devices, /* saturateHost */ true);
+  Partitioner partitioner(&mod_, devices);
   CompilationContext cctx;
+  cctx.saturateHost = true;
   auto dagList = partitioner.partition(cctx);
   ASSERT_TRUE((bool)dagList);
   // Check there are 3 partitions.
@@ -836,8 +839,9 @@ TEST_F(PartitionerTest, logicalIDTest1) {
   backends.emplace_back(&backendWithoutMul1);
   backends.emplace_back(&backendWithoutSub1);
   std::vector<DeviceInfo> devices = {{3072, "Interpreter"}, {3072, "CPU"}};
-  Partitioner partitioner(&mod_, devices, backends, /* saturateHost */ true);
+  Partitioner partitioner(&mod_, devices, backends);
   CompilationContext cctx;
+  cctx.saturateHost = true;
   auto dagList = partitioner.partition(cctx);
   ASSERT_TRUE((bool)dagList);
   EXPECT_EQ(mod_.getFunctions().size(), 3);
@@ -1136,7 +1140,7 @@ TEST_F(PartitionerTest, dagValidationWithBackendHints) {
   partitionConfig.backendNames = {"Interpreter", "Interpreter"};
   partitionConfig.partitionNames = {"p1", "p2"};
   partitionConfig.nodeToPartition = {{"add2", 0}};
-  auto partitioner = Partitioner(&mod_, devices, false, false, partitionConfig);
+  auto partitioner = Partitioner(&mod_, devices, false, partitionConfig);
   CompilationContext cctx;
   auto dagList = partitioner.partition(cctx);
   EXPECT_TRUE(ERR_TO_BOOL(dagList.takeError()));
@@ -1165,7 +1169,7 @@ TEST_F(PartitionerTest, dagValidation1) {
   partitionConfig.backendNames = {"Interpreter", "Interpreter"};
   partitionConfig.partitionNames = {"p1", "p2"};
   partitionConfig.nodeToPartition = {{"add2", 0}};
-  auto partitioner = Partitioner(&mod_, devices, false, false, partitionConfig);
+  auto partitioner = Partitioner(&mod_, devices, false, partitionConfig);
   CompilationContext cctx;
   auto dagList = partitioner.partition(cctx);
   EXPECT_TRUE(ERR_TO_BOOL(dagList.takeError()));
@@ -1197,7 +1201,7 @@ TEST_F(PartitionerTest, dagValidation2) {
   partitionConfig.backendNames = {"Interpreter", "Interpreter", "Interpreter"};
   partitionConfig.partitionNames = {"p0", "p1", "p2"};
   partitionConfig.nodeToPartition = {{"add0", 0}, {"add2", 2}};
-  auto partitioner = Partitioner(&mod_, devices, false, false, partitionConfig);
+  auto partitioner = Partitioner(&mod_, devices, false, partitionConfig);
   CompilationContext cctx;
   auto dagList = partitioner.partition(cctx);
   EXPECT_TRUE(ERR_TO_BOOL(dagList.takeError()));
@@ -1220,7 +1224,7 @@ TEST_F(PartitionerTest, partitionFromConfig) {
   partitionConfig.backendNames = {"Interpreter", "CPU", "Interpreter"};
   partitionConfig.partitionNames = {"p1", "p2", "p3"};
   partitionConfig.nodeToPartition = {{"sub", 0}, {"mul", 1}};
-  Partitioner partitioner(&mod_, devices, false, false, partitionConfig);
+  Partitioner partitioner(&mod_, devices, false, partitionConfig);
   CompilationContext cctx;
   auto dagList = partitioner.partition(cctx);
   ASSERT_TRUE((bool)dagList);
@@ -1255,7 +1259,7 @@ TEST_F(PartitionerTest, partitionFromConfigWithLogicalDevices) {
   partitionConfig.partitionNames = {"p0", "p1", "p2"};
   partitionConfig.nodeToPartition = {{"add1", 0}, {"add2", 2}};
   partitionConfig.logicalIDs = {{0}, {1}, {0, 1}};
-  auto partitioner = Partitioner(&mod_, devices, /*SaturateHost*/ false);
+  auto partitioner = Partitioner(&mod_, devices);
   CompilationContext cctx;
   cctx.partitionConfig = &partitionConfig;
   auto result = partitioner.partition(cctx);
@@ -1292,7 +1296,7 @@ TEST_F(PartitionerTest, partitionFromConfigWithLogicalDevicesFp16) {
   partitionConfig.partitionNames = {"p0", "p1", "p2"};
   partitionConfig.nodeToPartition = {{"add1", 0}, {"add2", 2}};
   partitionConfig.logicalIDs = {{0}, {1}, {0, 1}};
-  auto partitioner = Partitioner(&mod_, devices, /*SaturateHost*/ false);
+  auto partitioner = Partitioner(&mod_, devices);
   CompilationContext cctx;
   cctx.partitionConfig = &partitionConfig;
   PrecisionConfiguration pc;
@@ -1424,7 +1428,7 @@ TEST_F(PartitionerTest, loadBalancedPartition) {
 
   std::vector<DeviceInfo> devices = {
       {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "Interpreter"}};
-  Partitioner myPartitioner(&EEP.getModule(), devices, false, true);
+  Partitioner myPartitioner(&EEP.getModule(), devices, true);
   CompilationContext cctx;
   auto dagList = myPartitioner.loadBalancedPartition(cctx);
   ASSERT_TRUE((bool)dagList);
