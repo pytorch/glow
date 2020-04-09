@@ -34,6 +34,32 @@ extern bool GlowDumpDebugTraces;
 
 namespace {
 const char *compatibilityFunctionName = "check";
+
+/// Get the width of the \p dtype. If dtype is not recognized or undefined, we
+/// return 0 width.
+unsigned getOnnxTensorDescriptorElementSize(unsigned dtype) {
+  constexpr unsigned size = 17;
+  const static std::array<unsigned, size> mapping{
+      0u /* ONNXIFI_DATATYPE_UNDEFINED */,
+      4u /* ONNXIFI_DATATYPE_FLOAT32 */,
+      1u /* ONNXIFI_DATATYPE_UINT8 */,
+      1u /* ONNXIFI_DATATYPE_INT8 */,
+      2u /* ONNXIFI_DATATYPE_UINT16 */,
+      2u /* ONNXIFI_DATATYPE_INT16 */,
+      4u /* ONNXIFI_DATATYPE_INT32 */,
+      8u /* ONNXIFI_DATATYPE_INT64 */,
+      0u /* undefined */,
+      0u /* undefined */,
+      2u /* ONNXIFI_DATATYPE_FLOAT16 */,
+      8u /* ONNXIFI_DATATYPE_FLOAT64 */,
+      4u /* ONNXIFI_DATATYPE_UINT32 */,
+      8u /* ONNXIFI_DATATYPE_UINT64 */,
+      16u /* ONNXIFI_DATATYPE_COMPLEX64 */,
+      32u /*ONNXIFI_DATATYPE_COMPLEX128 */,
+      2u /* ONNXIFI_DATATYPE_BFLOAT16 */};
+  return (dtype < size) ? mapping[dtype] : 0;
+}
+
 } // namespace
 
 void saveOnnxifiModel(Function *F) {
@@ -230,7 +256,18 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
     }
 
     // Only allocate a tensor if insufficient backing storage is provided.
-    unsigned elementSize = inPhPtr->getType()->getElementSize();
+    const unsigned elementSize =
+        getOnnxTensorDescriptorElementSize(inOnnxTensor.dataType);
+    const unsigned glowElementSize = inPhPtr->getType()->getElementSize();
+    if (elementSize != glowElementSize) {
+      LOG(ERROR) << "Input data width (" << elementSize
+                 << ") is different from glow placeholder data width ("
+                 << glowElementSize << "), tensor: " << inOnnxTensor.name
+                 << ", onnxifi data type: " << inOnnxTensor.dataType
+                 << ", glow data type: "
+                 << inPhPtr->getType()->getElementName().data();
+      return ONNXIFI_STATUS_INVALID_DATATYPE;
+    }
     size_t onnxBytes = inOnnxTensorSize * elementSize;
     if (inPhPtr->dims().equals(inOnnxTensorDims)) {
       ctx->getPlaceholderBindings()->insert(
