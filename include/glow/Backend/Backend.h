@@ -21,6 +21,7 @@
 #include "glow/Base/Traits.h"
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/FunctionPassPipeline.h"
+#include "glow/Optimizer/IROptimizerPipeline/IRFunctionPassPipeline.h"
 #include "glow/Support/Register.h"
 
 #include "llvm/ADT/StringRef.h"
@@ -170,6 +171,8 @@ public:
 
   /// Modify the \p optimizationOpts however desired.
   virtual FunctionPassPipeline getOptimizationPipeline() const;
+  /// Modify the \p optimizationOpts however desired.
+  virtual IRFunctionPassPipeline getIROptimizationPipeline() const;
 
   /// \returns true if the Backend supports partial, unpadded tensors for
   /// inputs that can have variable size (e.g., embedding indices).

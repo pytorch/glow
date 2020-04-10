@@ -24,8 +24,13 @@ class IRFunction;
 class Function;
 class Backend;
 
-/// Perform optimizations on the IR representation.
+/// Perform target-independent optimizations on the IR representation of \p M.
+/// Apply the buffer sharing optimizations if \p shouldShareBuffers is true.
 void optimize(IRFunction &M, bool shouldShareBuffers);
+
+/// Perform backend-specific optimizations on the IR representation of \p M.
+/// Apply the buffer sharing optimizations if \p shouldShareBuffers is true.
+void optimize(IRFunction &M, const Backend &B, bool shouldShareBuffers);
 
 /// Helper to generate and optimize IR from given Function \p F. \p
 /// shouldShareBuffers signifies whether to use the share buffers optimization.

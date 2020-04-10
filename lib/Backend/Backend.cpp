@@ -194,4 +194,9 @@ FunctionPassPipeline Backend::getOptimizationPipeline() const {
   // want this opt then they should override getOptimizationPipeline().
   p.pushFront({FunctionPassID::FoldTileAddIntoBatchedAdd});
   return p;
-};
+}
+
+IRFunctionPassPipeline Backend::getIROptimizationPipeline() const {
+  auto pipeline = createDefaultIRFunctionOptimizationPipeline();
+  return pipeline;
+}

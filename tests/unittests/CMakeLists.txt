@@ -301,6 +301,7 @@ target_link_libraries(IROptTest
                         Graph
                         IR
                         IROptimizer
+                        IROptimizerPipeline
                         GraphOptimizerPipeline
                         gtest
                         TestMain)

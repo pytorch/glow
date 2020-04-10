@@ -1,0 +1,38 @@
+/**
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+#ifndef IR_FUN_PASS
+#error "IR_FUN_PASS must be defined by includer."
+#endif
+
+IR_FUN_PASS(DSE)
+IR_FUN_PASS(HoistDealloc)
+IR_FUN_PASS(SinkAllocas)
+IR_FUN_PASS(DeleteDeadAllocs)
+IR_FUN_PASS(MakeWeightsConst)
+IR_FUN_PASS(ShareBuffers)
+IR_FUN_PASS(OptimizeInserts)
+IR_FUN_PASS(OptimizeExtracts)
+IR_FUN_PASS(DebugInstrument)
+IR_FUN_PASS(PeepholeOptimizations)
+IR_FUN_PASS(IRVerify)
+IR_FUN_PASS(IRDumper)
+
+
+// NOTE: This pass must be last; it's used to count the total number of passes.
+IR_FUN_PASS(EmptyPass)
+
+#undef IR_FUN_PASS
