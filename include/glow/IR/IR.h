@@ -89,10 +89,10 @@ public:
   Value(llvm::StringRef name, TypeRef T, Kinded::Kind k)
       : Named(name), Typed(T), Kinded(k) {}
 
-  void verifyUseList(const InstructionNumbering &InstrNumbering) const;
+  bool verifyUseList(const InstructionNumbering &InstrNumbering) const;
 
   /// Verify the correctness of the instruction parameters.
-  void verify(const IRFunction &M) const;
+  bool verify(const IRFunction &M) const;
 
   /// Dump a textual representation of the Value into provided output stream.
   void dump(llvm::raw_ostream &out) const;
@@ -196,10 +196,10 @@ public:
   llvm::StringRef getOperandName(unsigned idx) const;
 
   /// Check the correctness of the use-list.
-  void verifyUseList(const InstructionNumbering &InstrNumbering) const;
+  bool verifyUseList(const InstructionNumbering &InstrNumbering) const;
 
   /// Verify the correctness of the instruction parameters.
-  void verify() const;
+  bool verify() const;
 
   /// The static dispatch version of isInplaceOp.
   static bool isInplaceOp(const Instruction *I, unsigned dstIdx,
@@ -383,7 +383,7 @@ public:
   }
 
   /// Verify the correctness of the function.
-  void verify() const;
+  bool verify() const;
 
   /// Dump a textual representation of the IRFunction into default output
   /// stream.
