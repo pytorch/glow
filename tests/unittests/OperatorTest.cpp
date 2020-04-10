@@ -1503,35 +1503,42 @@ TEST_P(OperatorTest, spaceToDepth_block2_Float) {
 template <typename DataType>
 static void testResizeNearest(glow::PlaceholderBindings &bindings,
                               glow::Module &mod, glow::Function *F,
-                              glow::ExecutionEngine &EE, ElemKind DTy) {
+                              glow::ExecutionEngine &EE, ElemKind DTy,
+                              bool v11 = false) {
   auto *input = createPlaceholderConditionallyQuantized(mod, DTy, {1, 2, 2, 1},
                                                         "input", false, "NHWC");
   bindings.allocate(input)->getHandle<DataType>() = {2, 4, 8, 16};
 
-  auto heightScaleUp = 2.0f;
-  auto widthScaleUp = 1.5f;
-  std::vector<float> scaleUp;
-  scaleUp.push_back(1.0f);
-  scaleUp.push_back(heightScaleUp);
-  scaleUp.push_back(widthScaleUp);
-  scaleUp.push_back(1.0f);
+  ResizeNearestNode *resizeUp = nullptr;
+  ResizeNearestNode *resizeDown = nullptr;
 
-  auto *resizeNearestUp =
-      F->createResizeNearest("resizeNearestUp", input, scaleUp);
-  auto *saveUp = F->createSave("saveUp", resizeNearestUp);
+  std::vector<float> scaleUp = {1, 2.0f, 1.5f, 1};
+
+  if (v11) {
+    dim_t newH = std::floor(2 * 2.0f);
+    dim_t newW = std::floor(2 * 1.5f);
+    auto outTy =
+        mod.uniqueTypeWithNewShape(input->getType(), {1, newH, newW, 1});
+    resizeUp = F->createResizeNearest("resizeUp", input, outTy);
+  } else {
+    resizeUp = F->createResizeNearest("resizeUp", input, scaleUp);
+  }
+  auto *saveUp = F->createSave("saveUp", resizeUp);
   auto *resultUp = bindings.allocate(saveUp->getPlaceholder());
 
-  auto heightScaleDown = 0.9f;
-  auto widthScaleDown = 0.6;
-  std::vector<float> scaleDown;
-  scaleDown.push_back(1.0f);
-  scaleDown.push_back(heightScaleDown);
-  scaleDown.push_back(widthScaleDown);
-  scaleDown.push_back(1.0f);
+  std::vector<float> scaleDown = {1, 0.9f, 0.6f, 1};
 
-  auto *resizeNearestDown =
-      F->createResizeNearest("resizeNearestDown", input, scaleDown);
-  auto *saveDown = F->createSave("saveDown", resizeNearestDown);
+  if (v11) {
+    dim_t newH = std::floor(2 * 0.9f);
+    dim_t newW = std::floor(2 * 0.6f);
+    auto outTy =
+        mod.uniqueTypeWithNewShape(input->getType(), {1, newH, newW, 1});
+    resizeDown = F->createResizeNearest("resizeDown", input, outTy);
+  } else {
+    resizeDown = F->createResizeNearest("resizeDown", input, scaleDown);
+  }
+
+  auto *saveDown = F->createSave("saveDown", resizeDown);
   auto *resultDown = bindings.allocate(saveDown->getPlaceholder());
 
   ::glow::convertPlaceholdersToConstants(
@@ -1595,6 +1602,171 @@ TEST_P(OperatorTest, ResizeNearest_Int16) {
 TEST_P(OperatorTest, ResizeNearest_Int32) {
   CHECK_IF_ENABLED();
   testResizeNearest<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy);
+}
+
+TEST_P(OperatorTest, ResizeNearest_Float_outTy) {
+  CHECK_IF_ENABLED();
+  testResizeNearest<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, true);
+}
+
+TEST_P(OperatorTest, ResizeNearest_Float16_outTy) {
+  CHECK_IF_ENABLED();
+  testResizeNearest<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                               true);
+}
+TEST_P(OperatorTest, ResizeNearest_Int8_outTy) {
+  CHECK_IF_ENABLED();
+  testResizeNearest<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy, true);
+}
+TEST_P(OperatorTest, ResizeNearest_Int16_outTy) {
+  CHECK_IF_ENABLED();
+  testResizeNearest<int16_t>(bindings_, mod_, F_, EE_, ElemKind::Int16QTy,
+                             true);
+}
+TEST_P(OperatorTest, ResizeNearest_Int32_outTy) {
+  CHECK_IF_ENABLED();
+  testResizeNearest<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy,
+                             true);
+}
+
+/// Helper to test ResizeNearest using \p DTy.
+template <typename DataType>
+static void testResizeBilinear(glow::PlaceholderBindings &bindings,
+                               glow::Module &mod, glow::Function *F,
+                               glow::ExecutionEngine &EE, ElemKind DTy,
+                               bool v11 = false) {
+  auto *input = createPlaceholderConditionallyQuantized(mod, DTy, {1, 2, 2, 1},
+                                                        "input", false, "NHWC");
+  bindings.allocate(input)->getHandle<DataType>() = {2, 4, 8, 16};
+
+  std::vector<float> scaleUp = {1, 2.0f, 1.5f, 1};
+
+  ResizeBilinearNode *resizeUp = nullptr;
+  ResizeBilinearNode *resizeDown = nullptr;
+
+  if (v11) {
+    dim_t newH = std::floor(2 * 2.0f);
+    dim_t newW = std::floor(2 * 1.5f);
+    auto outTy =
+        mod.uniqueTypeWithNewShape(input->getType(), {1, newH, newW, 1});
+    resizeUp = F->createResizeBilinear("resizeUp", input, outTy);
+  } else {
+    resizeUp = F->createResizeBilinear("resizeUp", input, scaleUp);
+  }
+
+  auto *saveUp = F->createSave("saveUp", resizeUp);
+  auto *resultUp = bindings.allocate(saveUp->getPlaceholder());
+
+  std::vector<float> scaleDown = {1, 0.9f, 0.6f, 1};
+
+  if (v11) {
+    dim_t newH = std::floor(2 * 0.9f);
+    dim_t newW = std::floor(2 * 0.6f);
+    auto outTy =
+        mod.uniqueTypeWithNewShape(input->getType(), {1, newH, newW, 1});
+    resizeDown = F->createResizeBilinear("resizeDown", input, outTy);
+  } else {
+    resizeDown = F->createResizeBilinear("resizeDown", input, scaleDown);
+  }
+
+  auto *saveDown = F->createSave("saveDown", resizeDown);
+  auto *resultDown = bindings.allocate(saveDown->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(
+      F, bindings,
+      {input, saveUp->getPlaceholder(), saveDown->getPlaceholder()});
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto resultUpH = resultUp->getHandle<DataType>();
+  std::vector<dim_t> expectedDimsUp = {1, 4, 3, 1};
+  ASSERT_TRUE(resultUpH.dims().vec() == expectedDimsUp);
+
+// use EXPECT_NEAR for float otherwise EXPECT_EQ. Optional third arg is
+// allowed error for EXPECT_NEAR. If not specified uses default.
+#define EXPECT_EQF(a, b, ...)                                                  \
+  if ((std::is_same<DataType, float>::value) ||                                \
+      (std::is_same<DataType, float16_t>::value)) {                            \
+    EXPECT_FLOAT_EQ(a, b);                                                     \
+  } else {                                                                     \
+    EXPECT_EQ(a, b);                                                           \
+  }
+
+  EXPECT_EQF(resultUpH.at({0, 0, 0, 0}), static_cast<DataType>(2));
+  EXPECT_EQF(resultUpH.at({0, 0, 1, 0}), static_cast<DataType>(3.333333));
+  EXPECT_EQF(resultUpH.at({0, 0, 2, 0}), static_cast<DataType>(4));
+
+  EXPECT_EQF(resultUpH.at({0, 1, 0, 0}), static_cast<DataType>(5));
+  EXPECT_EQF(resultUpH.at({0, 1, 1, 0}), static_cast<DataType>(8.333333));
+  EXPECT_EQF(resultUpH.at({0, 1, 2, 0}), static_cast<DataType>(10));
+
+  EXPECT_EQF(resultUpH.at({0, 2, 0, 0}), static_cast<DataType>(8));
+  EXPECT_EQF(resultUpH.at({0, 2, 1, 0}), static_cast<DataType>(13.33333));
+  EXPECT_EQF(resultUpH.at({0, 2, 2, 0}), static_cast<DataType>(16));
+
+  EXPECT_EQF(resultUpH.at({0, 3, 0, 0}), static_cast<DataType>(8));
+  EXPECT_EQF(resultUpH.at({0, 3, 1, 0}), static_cast<DataType>(13.33333));
+  EXPECT_EQF(resultUpH.at({0, 3, 2, 0}), static_cast<DataType>(16));
+
+  auto resultDownH = resultDown->getHandle<DataType>();
+  std::vector<dim_t> expectedDimsDown = {1, 1, 1, 1};
+  ASSERT_TRUE(resultDownH.dims().vec() == expectedDimsDown);
+  EXPECT_EQF(resultDownH.at({0, 0, 0, 0}), static_cast<DataType>(2));
+}
+
+/// Verify that the ResizeNearest operator works correctly for Float.
+TEST_P(OperatorTest, ResizeBilinear_Float) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Verify that the ResizeNearest operator works correctly for Float16.
+TEST_P(OperatorTest, ResizeBilinear_Float16) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Verify that the ResizeNearest operator works correctly for Int8Q.
+TEST_P(OperatorTest, ResizeBilinear_Int8) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+/// Verify that the ResizeNearest operator works correctly for Int16Q.
+TEST_P(OperatorTest, ResizeBilinear_Int16) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<int16_t>(bindings_, mod_, F_, EE_, ElemKind::Int16QTy);
+}
+
+/// Verify that the ResizeNearest operator works correctly for Int32Q.
+TEST_P(OperatorTest, ResizeBilinear_Int32) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy);
+}
+
+TEST_P(OperatorTest, ResizeBilinear_Float_outTy) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, true);
+}
+TEST_P(OperatorTest, ResizeBilinear_Float16_outTy) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
+                                true);
+}
+TEST_P(OperatorTest, ResizeBilinear_Int8_outTy) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy, true);
+}
+TEST_P(OperatorTest, ResizeBilinear_Int16_outTy) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<int16_t>(bindings_, mod_, F_, EE_, ElemKind::Int16QTy,
+                              true);
+}
+TEST_P(OperatorTest, ResizeBilinear_Int32_outTy) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32QTy,
+                              true);
 }
 
 TEST_P(OperatorTest, pow) {

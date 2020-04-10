@@ -1,0 +1,73 @@
+ir_version: 3
+producer_name: "backend-test"
+graph {
+  node {
+    input: "in"
+    input: "const"
+    output: "out"
+    name: "resizeNearest"
+    op_type: "Resize"
+    attribute {
+      name: "mode"
+      s: "nearest"
+      type: STRING
+    }
+  }
+  name: "test-model"
+  initializer {
+    dims: 4
+    data_type: 1
+    float_data: 1.0
+    float_data: 1.0
+    float_data: 2.0
+    float_data: 2.0
+   name: "const"
+  }
+  input {
+    name: "in"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+         dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "out"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+         dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 4
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 10
+}

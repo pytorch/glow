@@ -755,10 +755,9 @@ static void libjit_arg_max_generic(const T *inW, T2 *outW, const dim_t *inWdims,
   }
 }
 
-template <typename SrcTy, typename DstTy>
-void libjit_resizenearest_generic(DstTy *dst, const SrcTy *src,
-                                  const float *scale, const dim_t *inWdims,
-                                  const dim_t *outWdims) {
+template <typename T>
+void libjit_resizenearest_generic(T *dst, const T *src, const float *scale,
+                                  const dim_t *inWdims, const dim_t *outWdims) {
 
   for (dim_t ob = 0; ob < outWdims[0]; ++ob) {
     auto ib = std::min(dim_t(ob / (scale[0])), inWdims[0] - 1);
@@ -771,6 +770,39 @@ void libjit_resizenearest_generic(DstTy *dst, const SrcTy *src,
           const dim_t inIndex = libjit_getXYZW(inWdims, ib, ih, iw, ic);
           const dim_t outIndex = libjit_getXYZW(outWdims, ob, oh, ow, oc);
           dst[outIndex] = src[inIndex];
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
+static void
+libjit_resizebilinear_generic(T *dst, const T *src, const float *scale,
+                              const dim_t *inWdims, const dim_t *outWdims) {
+  for (dim_t ob = 0; ob < outWdims[0]; ++ob) {
+    for (dim_t oh = 0; oh < outWdims[1]; ++oh) {
+      for (dim_t ow = 0; ow < outWdims[2]; ++ow) {
+        float ihf = oh / scale[1];
+        float iwf = ow / scale[2];
+        dim_t ih = dim_t(ihf);
+        dim_t iw = dim_t(iwf);
+
+        auto ih0 = std::min(ih, inWdims[1] - 1);
+        auto ih1 = std::min(ih + 1, inWdims[1] - 1);
+        auto iw0 = std::min(iw, inWdims[2] - 1);
+        auto iw1 = std::min(iw + 1, inWdims[2] - 1);
+
+        for (dim_t oc = 0; oc < outWdims[3]; ++oc) {
+          float v00 = src[libjit_getXYZW(inWdims, ob, ih0, iw0, oc)];
+          float v01 = src[libjit_getXYZW(inWdims, ob, ih0, iw1, oc)];
+          float v10 = src[libjit_getXYZW(inWdims, ob, ih1, iw0, oc)];
+          float v11 = src[libjit_getXYZW(inWdims, ob, ih1, iw1, oc)];
+
+          float hd = v00 + (v10 - v00) * (ihf - ih);
+          float hw = v01 + (v11 - v01) * (ihf - ih);
+          float result = hd + (hw - hd) * (iwf - iw);
+          dst[libjit_getXYZW(outWdims, ob, oh, ow, oc)] = result;
         }
       }
     }
@@ -2222,6 +2254,29 @@ void libjit_resizenearest_u(int64_t *dst, const int64_t *src,
                             const float *scale, const dim_t *inWdims,
                             const dim_t *outWdims) {
   libjit_resizenearest_generic(dst, src, scale, inWdims, outWdims);
+}
+
+void libjit_resizebilinear_f(float *dst, const float *src, const float *scale,
+                             const dim_t *inWdims, const dim_t *outWdims) {
+  libjit_resizebilinear_generic(dst, src, scale, inWdims, outWdims);
+}
+
+void libjit_resizebilinear_i8(int8_t *dst, const int8_t *src,
+                              const float *scale, const dim_t *inWdims,
+                              const dim_t *outWdims) {
+  libjit_resizebilinear_generic(dst, src, scale, inWdims, outWdims);
+}
+
+void libjit_resizebilinear_i32(int32_t *dst, const int32_t *src,
+                               const float *scale, const dim_t *inWdims,
+                               const dim_t *outWdims) {
+  libjit_resizebilinear_generic(dst, src, scale, inWdims, outWdims);
+}
+
+void libjit_resizebilinear_u(int64_t *dst, const int64_t *src,
+                             const float *scale, const dim_t *inWdims,
+                             const dim_t *outWdims) {
+  libjit_resizebilinear_generic(dst, src, scale, inWdims, outWdims);
 }
 
 void libjit_avg_pool_i8(const int8_t *inW, int8_t *outW, const dim_t *inWdims,
