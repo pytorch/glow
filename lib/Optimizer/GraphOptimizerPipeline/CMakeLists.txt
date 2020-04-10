@@ -1,5 +1,5 @@
 add_library(GraphOptimizerPipeline
-              Pipeline.cpp)
+              FunctionPassPipeline.cpp)
 
 target_link_libraries(GraphOptimizerPipeline
                       PRIVATE

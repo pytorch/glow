@@ -20,6 +20,7 @@
 #include "glow/Backends/BackendOptions.h"
 #include "glow/Base/Traits.h"
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
+#include "glow/Optimizer/GraphOptimizerPipeline/FunctionPassPipeline.h"
 #include "glow/Support/Register.h"
 
 #include "llvm/ADT/StringRef.h"
@@ -30,7 +31,6 @@ class IRFunction;
 class Node;
 class PlaceholderBindings;
 class IRGenVisitor;
-class FunctionPassPipeline;
 class TensorLayoutCommon;
 
 /// Information about an entry point of a saved bundle.

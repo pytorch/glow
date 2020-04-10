@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
+#include "glow/PassManager/Pipeline.h"
 
+#include "glow/Optimizer/GraphOptimizer/FunctionPassManager.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
-#include "glow/Optimizer/GraphOptimizer/PassManager.h"
 
 using namespace glow;
 
@@ -180,7 +180,7 @@ llvm::StringRef glow::getNameOfPass(FunctionPassID passID) {
 static constexpr char const *tab = "  ";
 
 void FunctionPassConfig::dump(llvm::raw_ostream &os) const {
-  os << tab << "PassName: " << getNameOfPass(getFunctionPassID()) << ",\n";
+  os << tab << "PassName: " << getNameOfPass(getPassID()) << ",\n";
 
   os << tab << "ConvergenceMode: ";
   switch (getConvergenceMode()) {
@@ -214,7 +214,7 @@ void FunctionPassConfig::dump(llvm::raw_ostream &os) const {
   os << "\n";
 }
 
-void FunctionPassPipeline::dump(llvm::raw_ostream &os) const {
+template <> void FunctionPassPipeline::dump(llvm::raw_ostream &os) const {
   os << "Pipeline contains:\n";
   for (size_t i = 0, e = this->size(); i < e; i++) {
     const FunctionPassConfig &passConfig = (*this)[i];
@@ -224,9 +224,10 @@ void FunctionPassPipeline::dump(llvm::raw_ostream &os) const {
   }
 }
 
+template <>
 bool FunctionPassPipeline::removeFirstInstanceOfPass(FunctionPassID FPID) {
   for (auto it = begin(); it != end(); it++) {
-    if (it->getFunctionPassID() == FPID) {
+    if (it->getPassID() == FPID) {
       erase(it);
       return true;
     }
@@ -234,6 +235,7 @@ bool FunctionPassPipeline::removeFirstInstanceOfPass(FunctionPassID FPID) {
   return false;
 }
 
+template <>
 void FunctionPassPipeline::removeAllInstancesOfPass(FunctionPassID FPID) {
   while (removeFirstInstanceOfPass(FPID)) {
   }

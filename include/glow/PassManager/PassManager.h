@@ -13,15 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_PASSMANAGER_H
-#define GLOW_OPTIMIZER_GRAPHOPTIMIZER_PASSMANAGER_H
+#ifndef GLOW_OPTIMIZER_IROPTIMIZER_PASSMANAGER_H
+#define GLOW_OPTIMIZER_IROPTIMIZER_PASSMANAGER_H
 
 #include "glow/Backend/Backend.h"
 
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
-#include "glow/Optimizer/GraphOptimizer/FunctionPass.h"
-#include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
-#include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 
 #include "llvm/ADT/SmallVector.h"
 
@@ -31,10 +28,16 @@ namespace glow {
 /// CompilationContext, and provided Pipeline, it will run all passes on the
 /// Function. Enables easier debugging given runPrePass() and runPostPass()
 /// calls, which can be modified to run some code before or before every pass.
-class FunctionPassManager : public Named {
+template <typename PassPipeline, typename Pass>
+class PassManager : public Named {
+public:
+  using Unit = typename Pass::Unit;
+  using PassID = typename Pass::PassID;
+  using PassConfig = typename PassPipeline::PassConfig;
+
 private:
   /// The pipeline of passes to run.
-  FunctionPassPipeline pipeline_;
+  PassPipeline pipeline_;
 
   /// The Backend we have for backend-specific verification.
   const Backend *backend_;
@@ -43,42 +46,37 @@ private:
   size_t passIdx_ = 0;
 
   /// Creates and \returns a FunctionPass given a provided \p passID.
-  std::unique_ptr<FunctionPass> createFunctionPass(FunctionPassID passID);
+  std::unique_ptr<Pass> createFunctionPass(PassID passID);
 
   /// Logic to execute before pass \p P is run on \p F, given \p cctx. \returns
   /// if \p F was modified.
-  bool runPrePass(Function *F, const CompilationContext &cctx,
-                  const FunctionPass &P);
+  bool runPrePass(Unit *F, const CompilationContext &cctx, const Pass &P);
 
   /// Logic to execute after pass \p P is run on \p F, given \p cctx. \returns
   /// if \p F was modified.
-  bool runPostPass(Function *F, const CompilationContext &cctx,
-                   const FunctionPass &P);
+  bool runPostPass(Unit *F, const CompilationContext &cctx, const Pass &P);
 
   /// Runs a FunctionPass described by \p passConfig over \p F given \p cctx.
-  bool runPass(const FunctionPassConfig &passConfig, Function *F,
+  bool runPass(const PassConfig &passConfig, Unit *F,
                const CompilationContext &cctx);
 
 public:
-  FunctionPassManager(llvm::StringRef name, FunctionPassPipeline pipeline,
-                      const Backend *backend = nullptr)
+  PassManager(llvm::StringRef name, PassPipeline pipeline,
+              const Backend *backend = nullptr)
       : Named(name), pipeline_(pipeline), backend_(backend), passIdx_(0) {}
-  ~FunctionPassManager() = default;
+  ~PassManager() = default;
 
   /// Run the FunctionPassPipeline given the \ref pipeline_ and
   /// \p cctx. \returns whether \p F was modified.
-  bool run(Function *F, const CompilationContext &cctx);
+  bool run(Unit *F, const CompilationContext &cctx);
 
   /// Getter for a reference to the Pipeline used by this PassManager.
-  const FunctionPassPipeline &getPipeline() const { return pipeline_; };
+  const PassPipeline &getPipeline() const { return pipeline_; };
 
   /// Dump a textual representation of the FunctionPassManager to \p os.
   void dump(llvm::raw_ostream &os = llvm::outs()) const;
 };
 
-/// Helper to run a DCE pass on \p F given \p cctx. \returns if \p was modified.
-bool runDCEPass(Function *F, CompilationContext &cctx);
-
 } // namespace glow
 
-#endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_PASSMANAGER_H
+#endif // GLOW_OPTIMIZER_IROPTIMIZER_PASSMANAGER_H

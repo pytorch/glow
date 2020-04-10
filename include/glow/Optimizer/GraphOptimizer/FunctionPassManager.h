@@ -13,23 +13,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASS_H
-#define GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASS_H
+#ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_PASSMANAGER_H
+#define GLOW_OPTIMIZER_GRAPHOPTIMIZER_PASSMANAGER_H
 
-#include "glow/PassManager/Pass.h"
+#include "glow/Optimizer/GraphOptimizer/FunctionPass.h"
+#include "glow/PassManager/PassManager.h"
 
 namespace glow {
 
-class Function;
-struct CompilationContext;
-enum class FunctionPassID;
+using FunctionPassManager = PassManager<FunctionPassPipeline, FunctionPass>;
 
-/// Class used for all passes over Functions. All passes over Functions should
-/// derive from this class, implementing the pass logic and additionally can add
-/// logic for running before and after the pass runs.
-
-using FunctionPass = Pass<Function, FunctionPassID>;
+/// Helper to run a DCE pass on \p F given \p cctx. \returns if \p was modified.
+bool runDCEPass(Function *F, CompilationContext &cctx);
 
 } // namespace glow
 
-#endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASS_H
+#endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_PASSMANAGER_H

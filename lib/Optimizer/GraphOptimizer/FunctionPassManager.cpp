@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "glow/Optimizer/GraphOptimizer/PassManager.h"
+#include "glow/Optimizer/GraphOptimizer/FunctionPassManager.h"
 
 #include "glow/Graph/Graph.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
@@ -110,17 +110,14 @@ static std::atomic<unsigned> globalPassCounter{0};
 
 } // namespace
 
-bool glow::runDCEPass(Function *F, CompilationContext &cctx) {
-  return FunctionPassManager("DCE_FPM", {getDCEPassConfig()}).run(F, cctx);
-}
-
-void FunctionPassManager::dump(llvm::raw_ostream &os) const {
+template <> void FunctionPassManager::dump(llvm::raw_ostream &os) const {
   os << "FunctionPassManager " << this->getName()
      << ": Current PassIdx: " << passIdx_
      << "; Current globalPassCounter: " << globalPassCounter << "\n";
   getPipeline().dump();
 }
 
+template <>
 bool FunctionPassManager::runPrePass(Function *F,
                                      const CompilationContext &cctx,
                                      const FunctionPass &P) {
@@ -146,6 +143,7 @@ bool FunctionPassManager::runPrePass(Function *F,
   return false;
 }
 
+template <>
 bool FunctionPassManager::runPostPass(Function *F,
                                       const CompilationContext &cctx,
                                       const FunctionPass &P) {
@@ -171,6 +169,7 @@ bool FunctionPassManager::runPostPass(Function *F,
   return false;
 }
 
+template <>
 std::unique_ptr<FunctionPass>
 FunctionPassManager::createFunctionPass(FunctionPassID passID) {
   switch (passID) {
@@ -182,9 +181,10 @@ FunctionPassManager::createFunctionPass(FunctionPassID passID) {
   llvm_unreachable("Unexpected pass.");
 }
 
+template <>
 bool FunctionPassManager::runPass(const FunctionPassConfig &passConfig,
                                   Function *F, const CompilationContext &cctx) {
-  const FunctionPassID &passID = passConfig.getFunctionPassID();
+  const FunctionPassID &passID = passConfig.getPassID();
   assert(!(passID == FunctionPassID::DCE &&
            passConfig.getDCERequiredMode() == DCERequiredMode::BeforePass) &&
          "Cannot specify DCE requires DCE before it.");
@@ -202,6 +202,7 @@ bool FunctionPassManager::runPass(const FunctionPassConfig &passConfig,
   return changed;
 }
 
+template <>
 bool FunctionPassManager::run(Function *F, const CompilationContext &cctx) {
   bool changed = false;
   for (passIdx_ = 0; passIdx_ < getPipeline().size(); passIdx_++) {
@@ -226,8 +227,7 @@ bool FunctionPassManager::run(Function *F, const CompilationContext &cctx) {
       while (runPass(passConfig, F, cctx)) {
         changed = true;
         VLOG_IF_EVERY_N(0, google::COUNTER > 1, 100)
-            << "Warning: "
-            << getNameOfPass(passConfig.getFunctionPassID()).str()
+            << "Warning: " << getNameOfPass(passConfig.getPassID()).str()
             << " Pass applied another 100 iterations without reaching fixed "
                "point";
       }
@@ -235,4 +235,8 @@ bool FunctionPassManager::run(Function *F, const CompilationContext &cctx) {
     }
   }
   return changed;
+}
+
+bool glow::runDCEPass(Function *F, CompilationContext &cctx) {
+  return FunctionPassManager("DCE_FPM", {getDCEPassConfig()}).run(F, cctx);
 }

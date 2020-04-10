@@ -21,6 +21,7 @@
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/IR.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
+#include "glow/Optimizer/GraphOptimizerPipeline/FunctionPassPipeline.h"
 
 #include "gtest/gtest.h"
 

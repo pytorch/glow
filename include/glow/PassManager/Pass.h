@@ -13,23 +13,39 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASS_H
-#define GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASS_H
+#ifndef GLOW_PASSMANAGER_PASS_H
+#define GLOW_PASSMANAGER_PASS_H
 
-#include "glow/PassManager/Pass.h"
+#include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
+#include "llvm/ADT/StringRef.h"
 
 namespace glow {
 
-class Function;
-struct CompilationContext;
-enum class FunctionPassID;
-
-/// Class used for all passes over Functions. All passes over Functions should
+/// Class used for all passes over functions. All passes over functions should
 /// derive from this class, implementing the pass logic and additionally can add
 /// logic for running before and after the pass runs.
+template <typename UNIT, typename PASSID> class Pass {
+  // friend PASSMANAGER;
 
-using FunctionPass = Pass<Function, FunctionPassID>;
+public:
+  using Unit = UNIT;
+  using PassID = PASSID;
+
+public:
+  /// Run the pass on \p F. \returns whether the pass modifies \p F.
+  virtual bool run(Unit *F, const CompilationContext &cctx) = 0;
+
+  /// \returns the name of the pass.
+  virtual llvm::StringRef getName() const = 0;
+
+  /// \returns the id of the pass.
+  virtual PassID getID() const = 0;
+
+public:
+  Pass() = default;
+  virtual ~Pass() = default;
+};
 
 } // namespace glow
 
-#endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASS_H
+#endif // GLOW_PASSMANAGER_PASS_H
