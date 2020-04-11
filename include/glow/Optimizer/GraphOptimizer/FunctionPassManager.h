@@ -13,14 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_PASSMANAGER_H
-#define GLOW_OPTIMIZER_GRAPHOPTIMIZER_PASSMANAGER_H
+#ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASSMANAGER_H
+#define GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASSMANAGER_H
 
 #include "glow/Optimizer/GraphOptimizer/FunctionPass.h"
 #include "glow/PassManager/PassManager.h"
 
 namespace glow {
 
+/// Pass manager for the graph-level IR passes.
 using FunctionPassManager = PassManager<FunctionPassPipeline, FunctionPass>;
 
 /// Helper to run a DCE pass on \p F given \p cctx. \returns if \p was modified.
@@ -28,4 +29,4 @@ bool runDCEPass(Function *F, CompilationContext &cctx);
 
 } // namespace glow
 
-#endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_PASSMANAGER_H
+#endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASSMANAGER_H

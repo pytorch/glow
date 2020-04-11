@@ -20,8 +20,8 @@
 #include "glow/Backends/BackendOptions.h"
 #include "glow/Base/Traits.h"
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
-#include "glow/Optimizer/GraphOptimizerPipeline/FunctionPassPipeline.h"
 #include "glow/Optimizer/IROptimizerPipeline/IRFunctionPassPipeline.h"
+#include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
 #include "glow/Support/Register.h"
 
 #include "llvm/ADT/StringRef.h"

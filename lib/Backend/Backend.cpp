@@ -22,7 +22,7 @@
 #include "glow/Graph/TensorLayout.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
-#include "glow/Optimizer/GraphOptimizerPipeline/FunctionPassPipeline.h"
+#include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
 
 using namespace glow;
 

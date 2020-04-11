@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_GRAPHOPTIMIZER_PIPELINES_PIPELINES_H
-#define GLOW_OPTIMIZER_GRAPHOPTIMIZER_GRAPHOPTIMIZER_PIPELINES_PIPELINES_H
+#ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASSPIPELINE_H
+#define GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASSPIPELINE_H
 
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
 #include "glow/PassManager/Pipeline.h"
@@ -78,4 +78,4 @@ llvm::StringRef getNameOfPass(FunctionPassID passID);
 
 } // namespace glow
 
-#endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_GRAPHOPTIMIZER_PIPELINES_PIPELINES_H
+#endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASSPIPELINE_H

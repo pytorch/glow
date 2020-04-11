@@ -27,7 +27,6 @@ enum class FunctionPassID;
 /// Class used for all passes over Functions. All passes over Functions should
 /// derive from this class, implementing the pass logic and additionally can add
 /// logic for running before and after the pass runs.
-
 using FunctionPass = Pass<Function, FunctionPassID>;
 
 } // namespace glow
