@@ -142,16 +142,6 @@ Error onnxTensorDataTypeToElemKind(int32_t onnxType, ElemKind *elemTy) {
   }
 }
 
-/// Convert a string to int. \returns the int or Error if problem parsing.
-Expected<int> getIntFromStr(llvm::StringRef input) {
-  const char *start = input.data();
-  char *end;
-  int val = std::strtol(start, &end, 10);
-  RETURN_ERR_IF_NOT(!(end == start || *end != '\0'),
-                    "Integer was not properly specified.");
-  return val;
-}
-
 /// Finds an attribute from the doc_string and \returns it. If it does not exist
 /// then \returns Error. The expected structure here is that each attribute
 /// starts with startChar and is separated from its value by a sepChar.
@@ -681,14 +671,14 @@ Error ONNXModelLoader::setTensorType(const ONNX_NAMESPACE::ValueInfoProto &in,
 }
 
 Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
-                                  bool loadInputsAsPlaceholders) {
+                                  bool loadInputsAsPlaceholdersForOnnx) {
   for (const auto &in : net.input()) {
     // Skip static weights.
     if (getConstantByNameOrNull(in.name())) {
       continue;
     }
 
-    if (loadInputsAsPlaceholders) {
+    if (loadInputsAsPlaceholdersForOnnx) {
       Tensor T;
       RETURN_IF_ERR(setTensorType(in, &T));
 
@@ -996,8 +986,8 @@ Error ONNXModelLoader::loadConstant(const ONNX_NAMESPACE::NodeProto &op,
 }
 
 /// Retrieves data from a constant Tensor and stores it in a vector.
-template <typename T>
-static void helperSetter(Constant *constT, std::vector<ssize_t> &vec) {
+template <typename T, typename datatype = ssize_t>
+static void helperSetter(Constant *constT, std::vector<datatype> &vec) {
   auto constH = constT->getPayload().getHandle<T>();
   for (dim_t i = 0; i < constH.size(); ++i) {
     vec.push_back(constH.at({i}));
@@ -1741,6 +1731,75 @@ Error ONNXModelLoader::loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
+                                    ArgumentDictionaryTy &dict) {
+
+  RETURN_ERR_IF_NOT(
+      (opsetVersion_ < 10) && (opsetVersion_ > 6),
+      "Upsample operator is supported for opset version between 7 and 9");
+
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  // Default mode of upsample operator is "nearest"
+  std::string mode("nearest");
+  if (dict.count("mode")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(mode, loadStr(dict.at("mode")));
+  }
+
+  /// Only Nearest Mode is supported
+  RETURN_ERR_IF_NOT(mode.compare("nearest") == 0,
+                    "Upsample Operator has nearest mode support only");
+
+  /// Scale is always float as per onnx documentation
+  std::vector<float> scales;
+
+  if (opsetVersion_ == 7) {
+    if (dict.count("scales")) {
+      /// As per onnx documentation this is a required field
+      /// and if not present then onnx.checker.check_model file check to fail
+      ASSIGN_VALUE_OR_RETURN_ERR(scales, getFloats(dict["scales"]));
+    } else {
+      RETURN_ERR("Scales field is not present.");
+    }
+  }
+
+  if (opsetVersion_ > 7) {
+    Constant *scale;
+    ASSIGN_VALUE_OR_RETURN_ERR(scale, getConstantByName(op.input(1)));
+    if (scale->getElementType() != ElemKind::FloatTy) {
+      RETURN_ERR("Scales Tensor should have float type.");
+    }
+    auto constH = scale->getPayload().getHandle<float>();
+    for (dim_t i = 0; i < constH.size(); ++i) {
+      scales.push_back(constH.at({i}));
+    }
+  }
+
+  /// NCHW2NHWC. scales tensor format is NHWC.
+  RETURN_ERR_IF_NOT(scales.size() == 4, "Scales dimension should be 4");
+
+  for (auto &val : scales) {
+    RETURN_ERR_IF_NOT(val >= 1,
+                      "Scales value can only be greater than or equal to 1");
+  }
+
+  auto channel = scales[1];
+  auto height = scales[2];
+  auto weight = scales[3];
+
+  scales[1] = height;
+  scales[2] = weight;
+  scales[3] = channel;
+
+  auto *intr = G_->createTranspose(opName, in, NCHW2NHWC);
+  auto *node = G_->createResizeNearest(opName, intr, scales);
+  auto *N = G_->createTranspose(opName, node, NHWC2NCHW);
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadGlobalAveragePool(
     const ONNX_NAMESPACE::NodeProto &op, ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -2092,6 +2151,54 @@ Error ONNXModelLoader::loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadReduceL2(const ONNX_NAMESPACE::NodeProto &op,
+                                    const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  in = G_->createMul(opName, in, in);
+
+  // ReduceAdd.
+  std::vector<unsigned_t> shapeAxes = {};
+  if (dict.count("axes")) {
+    for (int32_t axisValue : dict.at("axes")->ints()) {
+      if (axisValue < 0) {
+        axisValue += in.dims().size();
+      }
+      shapeAxes.push_back((unsigned_t)axisValue);
+    }
+    std::sort(shapeAxes.begin(), shapeAxes.end());
+    if (shapeAxes.size() > 1) {
+      auto it = std::unique(shapeAxes.begin(), shapeAxes.end());
+      if (it != shapeAxes.end())
+        RETURN_ERR("Axes values are not unique",
+                   ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
+    }
+  } else {
+    shapeAxes.resize(in.dims().size());
+    std::iota(shapeAxes.begin(), shapeAxes.end(), 0);
+  }
+
+  bool keepDims = true;
+  if (dict.count("keepdims")) {
+    int keepdims;
+    ASSIGN_VALUE_OR_RETURN_ERR(keepdims, loadInt(dict.at("keepdims")));
+    keepDims = (bool)keepdims;
+  }
+
+  // Reduceadd works only for single axis as of now.
+  for (auto it = shapeAxes.rbegin(), e = shapeAxes.rend(); it != e; ++it) {
+    in = G_->createBatchedReduceAdd(opName, in, llvm::makeArrayRef(*it));
+    if (keepDims) {
+      in = G_->createExpandDims(opName, in, *it);
+    }
+  }
+
+  in = G_->createPow(opName, in, 0.5f);
+  RETURN_IF_ERR(addNodeAsOutput(op, in));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
                                            ArgumentDictionaryTy &dict,
                                            bool isSplat) {
@@ -2181,6 +2288,41 @@ Error ONNXModelLoader::loadTile(const ONNX_NAMESPACE::NodeProto &op,
     if (tiles != 1) {
       std::string name = opName + "." + std::to_string(i);
       N = G_->createTile(name, N, tiles, /*axis*/ i);
+    }
+  }
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadExpand(const ONNX_NAMESPACE::NodeProto &op,
+                                  const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  Constant *repeats;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  ASSIGN_VALUE_OR_RETURN_ERR(repeats, getConstantByName(op.input(1)));
+
+  std::vector<int64_t> tiles;
+  helperSetter<int64_t, int64_t>(repeats, tiles);
+  auto inputDimSize = (size_t)in.dims().size();
+  auto repeatSize = (size_t)tiles.size();
+  if (repeatSize > inputDimSize) {
+    for (size_t i = 0, e = repeatSize - inputDimSize; i < e; i++) {
+      in = G_->createExpandDims(opName + "_" + std::to_string(i), in, i);
+    }
+  }
+
+  Node *N = in;
+  for (size_t i = 0, e = tiles.size(); i < e; i++) {
+    // Two corresponding dimension must have the same value,
+    // or one of them is equal to 1.
+    if (in.dims()[i] != 1 && tiles[i] != in.dims()[i] && tiles[i] != 1) {
+      RETURN_ERR("Invalid repeat value");
+    }
+    if (tiles[i] != in.dims()[i] && tiles[i] != 1) {
+      std::string name = opName + "_" + std::to_string(i);
+      N = G_->createTile(name, N, tiles[i], /*axis*/ i);
     }
   }
 
@@ -3234,6 +3376,86 @@ Error ONNXModelLoader::loadFlip(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadAudioSpectrogram(const ONNX_NAMESPACE::NodeProto &op,
+                                            ArgumentDictionaryTy &dict) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+
+  // Get window size (Required).
+  int64_t windowSize;
+  RETURN_ERR_IF_NOT(
+      dict.count("window_size"),
+      "ONNX AudioSpectrogram 'window_size' attribute is required!");
+  ASSIGN_VALUE_OR_RETURN_ERR(windowSize, loadInt(dict.at("window_size")));
+
+  // Get window stride (Required).
+  int64_t windowStride;
+  RETURN_ERR_IF_NOT(dict.count("stride"),
+                    "ONNX AudioSpectrogram 'stride' attribute is required!");
+  ASSIGN_VALUE_OR_RETURN_ERR(windowStride, loadInt(dict.at("stride")));
+
+  // Get magnitude squared flag (Optional)(Default: 1).
+  int magnitudeSquared = 1;
+  if (dict.count("magnitude_squared") &&
+      dict.at("magnitude_squared")->has_i()) {
+    magnitudeSquared = dict.at("magnitude_squared")->i();
+  }
+
+  Node *N = G_->createAudioSpectrogram(loadOperatorName(op), input, windowSize,
+                                       windowStride, (bool)magnitudeSquared);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadMFCC(const ONNX_NAMESPACE::NodeProto &op,
+                                ArgumentDictionaryTy &dict) {
+  NodeValue spectrogram;
+  ASSIGN_VALUE_OR_RETURN_ERR(spectrogram, getNodeValueByName(op.input(0)));
+
+  // Get sample rate [Hz] (Required).
+  float sampleRate;
+  RETURN_ERR_IF_NOT(dict.count("sample_rate"),
+                    "ONNX MFCC 'sample_rate' attribute is required!");
+  ASSIGN_VALUE_OR_RETURN_ERR(sampleRate, loadFloat(dict.at("sample_rate")));
+
+  // Get lower frequency [Hz] (Required).
+  float lowerFrequency;
+  RETURN_ERR_IF_NOT(dict.count("lower_frequency_limit"),
+                    "ONNX MFCC 'lower_frequency_limit' attribute is required!");
+  ASSIGN_VALUE_OR_RETURN_ERR(lowerFrequency,
+                             loadFloat(dict.at("lower_frequency_limit")));
+
+  // Get upper frequency [Hz] (Required).
+  float upperFrequency;
+  RETURN_ERR_IF_NOT(dict.count("upper_frequency_limit"),
+                    "ONNX MFCC 'upper_frequency_limit' attribute is required!");
+  ASSIGN_VALUE_OR_RETURN_ERR(upperFrequency,
+                             loadFloat(dict.at("upper_frequency_limit")));
+
+  // Get filter bank count (Required).
+  int64_t filterBankCount;
+  RETURN_ERR_IF_NOT(
+      dict.count("filterbank_channel_count"),
+      "ONNX MFCC 'filterbank_channel_count' attribute is required!");
+  ASSIGN_VALUE_OR_RETURN_ERR(filterBankCount,
+                             loadInt(dict.at("filterbank_channel_count")));
+
+  // Get number of coefficients (Required).
+  int64_t numCoefficients;
+  RETURN_ERR_IF_NOT(dict.count("dct_coefficient_count"),
+                    "ONNX MFCC 'dct_coefficient_count' attribute is required!");
+  ASSIGN_VALUE_OR_RETURN_ERR(numCoefficients,
+                             loadInt(dict.at("dct_coefficient_count")));
+
+  Node *N = G_->createMFCC(loadOperatorName(op), spectrogram, sampleRate,
+                           lowerFrequency, upperFrequency, filterBankCount,
+                           numCoefficients);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
 Expected<TypeRef>
 ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
                                         ArgumentDictionaryTy &dict) {
@@ -3268,7 +3490,7 @@ ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
   return mod.uniqueType(k, shape, scale, offset);
 }
 
-Expected<bool>
+Expected<Node *>
 ONNXModelLoader::tryLoadGlowCustomOp(llvm::StringRef typeName,
                                      const ONNX_NAMESPACE::NodeProto &op,
                                      ArgumentDictionaryTy &dict) {
@@ -3277,8 +3499,41 @@ ONNXModelLoader::tryLoadGlowCustomOp(llvm::StringRef typeName,
 // Try all automatically generated import cases.
 #include "glow/AutoGenNodesImport.h"
 
-  // If we get here then no case handled the op, so return false.
-  return false;
+  // If we get here then no case handled the op, so return nullptr.
+  return nullptr;
+}
+
+/// Load Node options for \p loadedNode from \p dict and set in \p nodeInfo.
+/// These are specified in the format "NodeOpt_BACKENDNAME_OPTIONNAME".
+static Error loadPerNodeOptions(const Node *loadedNode,
+                                BackendSpecificNodeInfo &nodeInfo,
+                                ArgumentDictionaryTy &dict) {
+  // Look through all attributes in the dict for ones that have NodeOpt_ prefix.
+  for (const auto &attrPair : dict) {
+    // Split across the first '_' and check if it has the "NodeOpt" prefix.
+    auto splitPair = llvm::StringRef(attrPair.first).split('_');
+    if (splitPair.first == attrPair.first && splitPair.first == "") {
+      // No '_' found, so continue.
+      continue;
+    }
+    if (splitPair.first != "NodeOpt") {
+      // Prefix is not "NodeOpt_", so continue.
+      continue;
+    }
+
+    // Must have a NodeOpt, so check it has strings and load them into nodeInfo.
+    const ONNX_NAMESPACE::AttributeProto *attr = attrPair.second;
+    RETURN_ERR_IF_NOT(attr->strings_size() > 0,
+                      strFormat("%s in %s has no strings",
+                                attrPair.first.c_str(),
+                                loadedNode->getName().data()));
+    std::vector<std::string> &attrVals =
+        nodeInfo[loadedNode->getParent()][loadedNode][splitPair.second];
+    for (const std::string &s : attr->strings()) {
+      attrVals.push_back(s);
+    }
+  }
+  return Error::success();
 }
 
 Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
@@ -3286,16 +3541,21 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   const std::string &typeName = op.op_type();
 
   if (useGlowCustomOps_) {
-    bool tryLoadGlowCustomOpResult;
-    ASSIGN_VALUE_OR_RETURN_ERR(tryLoadGlowCustomOpResult,
+    Node *loadedNode;
+    ASSIGN_VALUE_OR_RETURN_ERR(loadedNode,
                                tryLoadGlowCustomOp(typeName, op, dict));
-    if (tryLoadGlowCustomOpResult) {
-      return Error::success();
+    if (loadedNode) {
+      if (!perNodeOpts_) {
+        return Error::success();
+      }
+      return loadPerNodeOptions(loadedNode, *perNodeOpts_, dict);
     }
 
-    // Identity is the only official ONNX op used with useGlowCustomOps.
+    // Identity is the only official ONNX op used with useGlowCustomOps. Let it
+    // fall through to logic to handle below, otherwise return error.
     if (typeName != "Identity") {
-      return MAKE_ERR(strFormat("Unable to load op %s", typeName.data()));
+      RETURN_ERR("Failed to load operator " + typeName + " .",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
     }
   }
 
@@ -3373,11 +3633,17 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "SpaceToDepth") {
     return loadSpaceToDepth(op, dict);
   }
+  if (typeName == "ReduceL2") {
+    return loadReduceL2(op, dict);
+  }
   if (typeName == "ConstantOfShape") {
     return loadConstantOfShape(op, dict, false /* isSplat */);
   }
   if (typeName == "Tile") {
     return loadTile(op, dict);
+  }
+  if (typeName == "Expand") {
+    return loadExpand(op, dict);
   }
   if (typeName == "Where") {
     return loadWhere(op, dict);
@@ -3470,8 +3736,17 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "Flip") {
     return loadFlip(op, dict);
   }
+  if (typeName == "AudioSpectrogram") {
+    return loadAudioSpectrogram(op, dict);
+  }
+  if (typeName == "MFCC") {
+    return loadMFCC(op, dict);
+  }
   if (typeName == "Identity") {
     return loadIdentity(op, dict);
+  }
+  if (typeName == "Upsample") {
+    return loadUpsample(op, dict);
   }
 
   RETURN_ERR("Failed to load operator " + typeName + " .",
@@ -3625,9 +3900,11 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  llvm::ArrayRef<const char *> tensorNames,
                                  llvm::ArrayRef<TypeRef> types, Function &F,
                                  Error *errPtr, bool zipMode,
+                                 BackendSpecificNodeInfo *perNodeOpts,
                                  bool disableConstFoldInLoader,
                                  const Backend *B)
-    : CommonOperatorLoader(tensorNames, types, &F, errPtr) {
+    : CommonOperatorLoader(tensorNames, types, &F, errPtr),
+      perNodeOpts_(perNodeOpts) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
@@ -3673,7 +3950,8 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
 
     if (tensorNames.empty() && types.empty()) {
       // Detect inputs without initializers and create placeholders.
-      RETURN_IF_ERR(loadInputs(graphDef, /* loadInputsAsPlaceholders */ true));
+      RETURN_IF_ERR(
+          loadInputs(graphDef, /* loadInputsAsPlaceholdersForOnnx */ true));
     }
 
     RETURN_IF_ERR(loadNetwork(graphDef));
@@ -3697,7 +3975,7 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
 ONNXModelLoader::ONNXModelLoader(
     const void *model, uint32_t modelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
-    bool loadInputsAsPlaceholders, Error *errPtr, bool constFoldInLoader)
+    bool loadInputsAsPlaceholdersForOnnx, Error *errPtr, bool constFoldInLoader)
     : CommonOperatorLoader({}, {}, &F, errPtr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
@@ -3721,7 +3999,7 @@ ONNXModelLoader::ONNXModelLoader(
 
     ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
 
-    RETURN_IF_ERR(loadInputs(graphDef, loadInputsAsPlaceholders));
+    RETURN_IF_ERR(loadInputs(graphDef, loadInputsAsPlaceholdersForOnnx));
 
     RETURN_IF_ERR(loadInitializers(graphDef));
 

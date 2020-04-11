@@ -135,6 +135,9 @@ class NodeToFunctionMap {
   /// logcialDeviceID will be assigned into the same physical device.
   std::map<Function *, std::vector<DeviceIDTy>> logicalDeviceIDMap_;
 
+  /// Map of partitions and replication count.
+  std::map<Function *, unsigned> replicationCountMap_;
+
 public:
   /// Create a new partition \p F, and map it with \p backendName.
   void createPartition(Function *F, llvm::StringRef backendName) {
@@ -172,6 +175,20 @@ public:
       logicalDeviceIDMap_[F].push_back(id);
     }
   }
+
+  void addReplicationCount(Function *F, unsigned count) {
+    replicationCountMap_[F] = count;
+  }
+
+  unsigned getReplicationCount(Function *F) {
+    auto it = replicationCountMap_.find(F);
+    if (it == replicationCountMap_.end()) {
+      return 1;
+    } else {
+      return it->second;
+    }
+  }
+
   /// attach \p map to current mapping.
   void insert(NodeToFunctionMap &map) {
     FunctionList flist = map.getPartitions();

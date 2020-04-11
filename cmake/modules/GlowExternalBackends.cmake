@@ -133,11 +133,11 @@ FOREACH(backend ${SUBDIRS})
     # Check for ONNXModelWriters in the current backend subdirectory.
     file(GLOB backend_specific_onnx_model_writers
             RELATIVE "${backend_ONNX_DIR}"
-            "${backend_ONNX_DIR}/*ONNXModelWriter.cpp")
+            "${backend_ONNX_DIR}/ONNX/*ONNXModelWriter.cpp")
     # Include these files into ONNXModelWriterIncludes.h.
     foreach(onnx_model_writer ${backend_specific_onnx_model_writers})
            file(APPEND "${Exporter_Include_DIR}/ONNXModelWriterIncludes.h"
-                       "#include \"${EXTERNAL_BACKENDS_DIR}/${backend}/ONNX/${onnx_model_writer}\"\n")
+                       "#include \"${EXTERNAL_BACKENDS_DIR}/${backend}/${onnx_model_writer}\"\n")
     endforeach()
   endif()
 ENDFOREACH()

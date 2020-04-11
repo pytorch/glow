@@ -108,7 +108,6 @@ Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
   DeviceIDTy deviceCount = 0;
 
   for (auto &config : configs) {
-    config->deviceID = deviceCount;
     if (!config->hasName()) {
       config->name = "config" + std::to_string(deviceCount);
     }
@@ -152,7 +151,7 @@ void HostManager::cleanupAddNetwork(llvm::ArrayRef<std::string> names) {
 }
 
 Error HostManager::addNetwork(std::unique_ptr<Module> module,
-                              CompilationContext &cctx, bool saturateHost) {
+                              CompilationContext &cctx) {
   std::vector<std::string> names;
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
@@ -206,19 +205,28 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       deviceInfo.push_back(info);
     }
   }
+
+  // Optimize Functions only if we don't have any backendSpecificNodeInfo,
+  // because if we do then the Functions were already optimized and Nodes had
+  // extra info mapped to them, so we don't want to mutate the Function.
+  const bool skipOptimizations =
+      cctx.backendOpts.backendSpecificNodeInfo.size() > 0;
+
   // Perform a round of target-independent graph optimizations. This helps the
   // partitioner to do its job more efficiently.
-  for (Function *F : module->getFunctions()) {
-    auto err = optimizeFunctionBeforeLowering(F, cctx);
-    if (err) {
-      {
-        std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
-        cleanupAddNetwork(names);
+  if (!skipOptimizations) {
+    for (Function *F : module->getFunctions()) {
+      auto err = optimizeFunctionBeforeLowering(F, cctx);
+      if (err) {
+        {
+          std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+          cleanupAddNetwork(names);
+        }
+        return err;
       }
-      return err;
     }
   }
-  Partitioner partitioner(module.get(), deviceInfo, saturateHost);
+  Partitioner partitioner(module.get(), deviceInfo, skipOptimizations);
   DAGListTy nodeList;
   auto result = partitioner.partition(cctx);
   if (result) {
@@ -267,7 +275,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       // Note: currently getNextNetworkExecutionState assumes that pool size is
       // >= currentInFlight requests, so we set pool size to maxActiveRequests.
       executor_->createPool(node.root.get(), config_.maxActiveRequests,
-                            cctx.enableStaticAssignment);
+                            cctx.enableP2P, cctx.enableDRT);
     }
   }
   // Clear constants contents from the module then put it in a

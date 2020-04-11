@@ -102,6 +102,10 @@ struct OptimizationOptions {
   /// scheme
   bool useSparseNNPartitioningScheme{false};
 
+  /// If true, SparseNN partiitoning scheme will add extra concats to the
+  /// SLS partition for more efficient inter-partition transfers
+  bool sparseNNPartitioningAddSLSConcats{false};
+
   /// The number of cards over which to split SLS tables when using SparseNN
   /// partitioning scheme
   unsigned int sparseNNPartitioningSchemeNumCards{1};
@@ -121,6 +125,9 @@ struct OptimizationOptions {
   /// If true does int64 to int32 type demotion if backend supports for specific
   /// nodes.
   bool enableTypeDemotion{true};
+
+  /// If true, optimizations are allowed to change quantization scale/offset.
+  bool enableQuantParamChanges{false};
 };
 
 /// Context for compilation.
@@ -133,6 +140,9 @@ struct CompilationContext {
 
   /// Allows a loader to store a pre-partitioned config.
   runtime::PrePartitionedConfig *prepartitionedConfig{nullptr};
+
+  /// If true the HostManager will try to use all available devices on the host.
+  bool saturateHost{false};
 
   /// Used during Quantization and Profiling.
   LoweredInfoMap *loweredInfoMap{nullptr};
@@ -171,8 +181,16 @@ struct CompilationContext {
   /// Whether to skip stripping the module.
   bool skipModuleStrip{false};
 
-  /// Whether to enable P2P and DRT at runtime.
-  bool enableStaticAssignment{false};
+  /// Enables Peer to Peer Tensor optimization.
+  bool enableP2P{false};
+
+  /// Enables Device Resident Tensor optimization.
+  bool enableDRT{false};
+
+  /// Number of times a function should be replicated on a device. This is
+  /// enabled for single partition networks. For advanced replication setups use
+  /// user-defined partitioning.
+  unsigned replicationCount{1};
 
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)

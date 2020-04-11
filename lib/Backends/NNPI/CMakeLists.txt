@@ -97,14 +97,6 @@ message(STATUS "[NNPI] NNPI_MG_LIB_DIR             = ${NNPI_MG_LIB}")
 message(STATUS "[NNPI] GLOW_BINARY_DIR             = ${GLOW_BINARY_DIR}")
 message(STATUS "[NNPI] NNPI_COLLECT_MEM_USAGE      = ${NNPI_MEM_PROFILING}")
 
-if (UNIX)
-  EXEC_PROGRAM(cat ARGS "/proc/cpuinfo" OUTPUT_VARIABLE CPUINFO)
-  STRING(REGEX REPLACE "^.*(avx512f).*$" "\\1" AVX512F_FLAG ${CPUINFO})
-  if("avx512f" STREQUAL "${AVX512F_FLAG}")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mavx512f -mavx512vl -mavx512bw")
-    add_definitions(-DUSE_AVX)
-  endif()
-endif()
 
 add_subdirectory(ClassGen)
 
@@ -114,6 +106,8 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${NNPI_MG_API}
 )
+
+SET_SOURCE_FILES_PROPERTIES(NNPIUtils_AVX512.cpp PROPERTIES COMPILE_FLAGS "-mavx512f -mavx512vl -mavx512bw")
 
 add_library(NNPI
     NNPI.cpp
@@ -128,6 +122,8 @@ add_library(NNPI
     NNPIMLTraceWrapper.cpp
     InferenceContext.cpp
     NNPIResource.cpp
+    NNPIUtils_AVX512.cpp
+    NNPIAdapterContainer.cpp
 )
 
 target_link_libraries(NNPI

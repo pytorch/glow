@@ -100,7 +100,8 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::ResizeNearestNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
-         ElemKind::Int16QTy, ElemKind::Int32QTy});
+         ElemKind::Int16QTy, ElemKind::Int32QTy, ElemKind::Int32ITy,
+         ElemKind::Int64ITy});
 
   case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:
@@ -155,7 +156,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::SliceNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
-         ElemKind::Int32QTy, ElemKind::Int64ITy});
+         ElemKind::Int32QTy, ElemKind::Int64ITy, ElemKind::Int32ITy});
   case Kinded::Kind::DivNodeKind:
   case Kinded::Kind::SpaceToDepthNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -494,6 +495,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
       case ElemKind::FloatTy:
       case ElemKind::Int32ITy:
       case ElemKind::Int64ITy:
+      case ElemKind::BoolTy:
         return true;
       default:
         return false;
@@ -597,6 +599,16 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getOutElemTy(
                 NonMaxSuppressionNode::NumberOfSelectedIndicesIdx) ==
             NI.getOutElemTy(NonMaxSuppressionNode::IndicesIdx));
+
+  case Kinded::Kind::AudioSpectrogramNodeKind:
+    return NI.getInElemTy(AudioSpectrogramNode::InputIdx) ==
+               ElemKind::FloatTy &&
+           NI.getOutElemTy(AudioSpectrogramNode::SpectrogramIdx) ==
+               ElemKind::FloatTy;
+
+  case Kinded::Kind::MFCCNodeKind:
+    return NI.getInElemTy(MFCCNode::SpectrogramIdx) == ElemKind::FloatTy &&
+           NI.getOutElemTy(MFCCNode::CoefficientsIdx) == ElemKind::FloatTy;
 
   case Kinded::Kind::SoftMaxGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(

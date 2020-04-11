@@ -59,10 +59,6 @@ class Partitioner final : public PartitionerBase {
   /// Total memory (bytes) requested by one module.
   uint64_t memSize_;
 
-  /// Flag to set if the Partitioner should attempt to saturate the host, and
-  /// use all available devices.
-  bool saturateHost_;
-
   /// Flag to set if the funcitons in the module are areadly optimized. By
   /// default, the optimization should be done in Partitioner due to
   /// heterogeneous partition.
@@ -131,6 +127,7 @@ class Partitioner final : public PartitionerBase {
     size_t numElementsPerRowUpperBound;
     size_t numIndices;
     unsigned int deviceId;
+    NodeValue slsClipResult;
   };
 
   struct SLSDeviceInfo {
@@ -144,6 +141,13 @@ class Partitioner final : public PartitionerBase {
   template <typename SLSType>
   void appendSLSTable(Node &node, std::vector<SLSTableInfo> &slsTables);
 
+  /// Helper function for SparseNN partitioning. Inserts concats into SLS
+  /// partition and corresponding slices into non-SLS partitions
+  void sparseNNInsertSplitConcat(Function *F,
+                                 std::vector<SLSDeviceInfo> slsDevices,
+                                 std::vector<SLSTableInfo> slsTables,
+                                 PartitionConfig &partitionConfig);
+
   /// Returns info for the default device of the backend. If multiple devices,
   /// returns the first one.
   const DeviceInfo &getDeviceInfoForBackend(llvm::StringRef backendName);
@@ -156,19 +160,17 @@ public:
   /// identical. The required memory and computation cost for each op can be
   /// found in Module.
   /// The \p devices provides the cost model related to devices.
-  /// Saturating the host will be enabled if \p saturateHost is true.
   /// \p optimized is false by default, which means the functions in this module
   /// are not optimized. \p partitionConfig contains the user defined partition
   /// info.
   Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
-              bool saturateHost = false, bool optimized = false,
+              bool optimized = false,
               PartitionConfig partitionConfig = PartitionConfig());
 
   /// Users can create Mock Backends and pass their points to test Graph
   /// Partitioning without actually register them in GLOW.
   Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
-              const std::vector<Backend *> &backends, bool saturateHost = false,
-              bool optimized = false);
+              const std::vector<Backend *> &backends, bool optimized = false);
 
   /// Based on \p partitionConfig passed into Partitioner, do user-defined
   /// partition.

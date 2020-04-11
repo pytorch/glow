@@ -49,7 +49,7 @@ public:
 
   /// Setup context pool for new network.
   virtual void createPool(const DAGNode *root, unsigned poolSize,
-                          bool assignStatic = false) = 0;
+                          bool enableP2P, bool enableDRT) = 0;
 
   /// Free the context pool for given network.
   virtual void freePool(const DAGNode *root) = 0;

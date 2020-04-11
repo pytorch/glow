@@ -418,7 +418,7 @@ protected:
     executor_ = std::unique_ptr<ThreadPoolExecutor>(
         new ThreadPoolExecutor(deviceManagers_));
     setUpDAG(state);
-    executor_->createPool(dag_->root.get(), 1);
+    executor_->createPool(dag_->root.get(), 1, false, false);
   }
 
   virtual void tearDownExecutor(benchmark::State &state) {

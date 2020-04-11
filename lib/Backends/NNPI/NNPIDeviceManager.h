@@ -17,6 +17,7 @@
 #define GLOW_BACKENDS_NNPI_NNPIDEVICEMANAGER_H
 
 #include "InferencePool.h"
+#include "NNPIAdapterContainer.h"
 #include "NNPITracing.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Runtime/RuntimeTypes.h"
@@ -30,7 +31,6 @@
 
 namespace glow {
 class NNPICompiledFunction;
-
 namespace runtime {
 
 class NNPIResource;
@@ -74,10 +74,12 @@ class NNPIDeviceManager : public DeviceManager {
   /// manager).
   StaticPlaceholderMap staticPlaceholders_;
   /// NNPI Device options (environment variables + DeviceConfig options).
-  NNPIDeviceOptions deviceOptions_;
+  std::shared_ptr<NNPIDeviceOptions> deviceOptions_;
 
 public:
   explicit NNPIDeviceManager(const DeviceConfig &config,
+                             std::shared_ptr<NNPIDeviceOptions> deviceOptions,
+                             NNPIAdapter adapter,
                              unsigned numInferenceWorkers = 0);
   virtual ~NNPIDeviceManager();
 
@@ -96,9 +98,13 @@ public:
 
   void transferStaticPlaceholderToDevice(Placeholder *PH, Tensor *T,
                                          std::function<void(Error)> resultCB);
+
+  virtual Error startDeviceTrace(TraceContext *traceContext) override;
+  virtual Error stopDeviceTrace(TraceContext *traceContext) override;
 };
 
-DeviceManager *createNNPIDeviceManager(const DeviceConfig &config);
+DeviceManager *createNNPIDeviceManager(const DeviceConfig &config,
+                                       NNPIAdapterContainer *adapter);
 } // namespace runtime
 } // namespace glow
 

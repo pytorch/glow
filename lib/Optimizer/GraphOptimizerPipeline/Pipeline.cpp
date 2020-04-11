@@ -76,6 +76,9 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // Optimize Concat nodes.
       {FunctionPassID::OptimizeConcatNodes},
 
+      // Eliminate Concat-Slice patterns which are unnecessary.
+      {FunctionPassID::EliminateConcatSlice},
+
       // Optimize arithmetic nodes based on algebraic identities.
       {FunctionPassID::OptimizeArithmeticNodes},
 
@@ -94,11 +97,17 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // Optimize quantization related operators.
       {FunctionPassID::OptimizeQuantization, ConvergenceMode::UntilFixedPoint},
 
+      // Optimize patterns of concats with quantization/dequantization.
+      {FunctionPassID::OptimizeConcatQuantization},
+
       // Optimize reshapes introduced during above optimizations.
       {FunctionPassID::OptimizeReshape},
 
       // Run a round of constant folding.
       {FunctionPassID::ConstantFold},
+
+      // Optimize combinations of Quantized Nodes and Clips.
+      {FunctionPassID::OptimizeQuantizeClip},
 
       // Fold Arithmetic chain w/ constants into Batch Norm, when Conv preceeds.
       {FunctionPassID::FoldArithmeticChainUnderConvIntoBN,

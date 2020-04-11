@@ -81,6 +81,11 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getOutElemTy(ArgMaxNode::ArgmaxIdx) == ElemKind::Int64ITy ||
             NI.getOutElemTy(ArgMaxNode::ArgmaxIdx) == ElemKind::Int32ITy);
 
+  case Kinded::Kind::ResizeNearestNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int32QTy,
+         ElemKind::Int32ITy, ElemKind::Int64ITy});
+
   case Kinded::Kind::SaveNodeKind:
   case Kinded::Kind::ReshapeNodeKind:
     // These are implemented via a Copy Instruction.
@@ -468,8 +473,20 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
                 NonMaxSuppressionNode::NumberOfSelectedIndicesIdx) ==
                 ElemKind::Int64ITy);
 
+  case Kinded::Kind::AudioSpectrogramNodeKind:
+    return NI.getInElemTy(AudioSpectrogramNode::InputIdx) ==
+               ElemKind::FloatTy &&
+           NI.getOutElemTy(AudioSpectrogramNode::SpectrogramIdx) ==
+               ElemKind::FloatTy;
+
+  case Kinded::Kind::MFCCNodeKind:
+    return NI.getInElemTy(MFCCNode::SpectrogramIdx) == ElemKind::FloatTy &&
+           NI.getOutElemTy(MFCCNode::CoefficientsIdx) == ElemKind::FloatTy;
+
   case Kinded::Kind::ConvertToNodeKind:
     return ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::Int32ITy) &&
+            (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::FloatTy)) ||
+           ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::BoolTy) &&
             (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::FloatTy)) ||
            ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::Int64ITy) &&
             (NI.getOutElemTy(ConvertToNode::ResultIdx) ==

@@ -204,7 +204,12 @@ private:
 
   template <typename ElemTy, typename AccumulatorTy,
             typename BiasElemTy = int32_t>
-  void fwdChannelwiseQuantizedConvolutionInstImpl(
+  void fwdChannelwiseQuantizedConv2DInstImpl(
+      const ChannelwiseQuantizedConvolutionInst *I);
+
+  template <typename ElemTy, typename AccumulatorTy,
+            typename BiasElemTy = int32_t>
+  void fwdChannelwiseQuantizedConv3DInstImpl(
       const ChannelwiseQuantizedConvolutionInst *I);
 
   void fwdElementAddInstI8Impl(const ElementAddInst *I);
@@ -343,6 +348,10 @@ private:
 
   template <typename T>
   void fwdNonMaxSuppressionInstImpl(glow::NonMaxSuppressionInst const *I);
+
+  void fwdAudioSpectrogramInstFloatImpl(glow::AudioSpectrogramInst const *I);
+
+  void fwdMFCCInstFloatImpl(glow::MFCCInst const *I);
 
   template <typename T, typename AccumT>
   void fwdEmbeddingBagByteRowwiseOffsetsImpl(

@@ -1,0 +1,73 @@
+ir_version: 6
+producer_name: "upsample-onnx-example"
+graph {
+  node {
+    input: "input"
+    input: "const"
+    output: "Y"
+    op_type: "Upsample"
+    attribute {
+      name: "mode"
+      s: "nearest"
+      type: STRING
+    }
+  }
+  name: "upsample-node"
+  initializer {
+    dims: 4
+    data_type: 1
+    float_data: 1.0
+    float_data: 1.0
+    float_data: 2.0
+    float_data: 3.0
+   name: "const"
+  }
+  input {
+    name: "input"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "Y"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 4
+          }
+          dim {
+            dim_value: 6
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  domain: ""
+  version: 9
+}

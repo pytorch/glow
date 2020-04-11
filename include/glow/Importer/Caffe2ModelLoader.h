@@ -86,14 +86,17 @@ class Caffe2ModelLoader
   /// Currently we are supporting two tensorprototypes:
   /// caffe2::TensorProto, caffe2::QTensorProto
   template <class TensorProtoType>
-  Error loadInputsWithTensorProtoType(const caffe2::NetDef &net,
-                                      bool loadInputsAsPlaceholders,
-                                      const TensorProtoType &in);
+  Error loadInputsWithTensorProtoType(
+      const caffe2::NetDef &net,
+      const std::unordered_set<std::string> &initializers,
+      const TensorProtoType &in);
 
-  /// Load the inputs from the NetDef. If \p loadInputsAsPlaceholders is
-  /// true then this will load each graph input as a placeholder otherwise it
-  /// will create an empty tensor for each input.
-  Error loadInputs(const caffe2::NetDef &net, bool loadInputsAsPlaceholders);
+  /// Load the inputs from the NetDef. \p initializers is the set of tensors
+  /// that should be loaded as empty Constants in the graph for the purposes of
+  /// onnxifi compatibility checks, any other inputs will be loaded as
+  /// placeholders.
+  Error loadInputs(const caffe2::NetDef &net,
+                   const std::unordered_set<std::string> &initializers);
 
   /// \returns Expected<NetDef> if a NetDef can be constructed from the
   /// in-memory serialized protobuf.
@@ -105,20 +108,18 @@ class Caffe2ModelLoader
   /// Creates a Caffe2 model loader to build one or more Functions in \p mod.
   /// Loads the ONNIXFI \p model from memory of \p modelSize size,
   /// and \p weightsCount, and \p onnxTensorDescriptorV1 correspondent
-  /// descriptors. Converts inputs into placeholder if requested \p
-  /// loadInputsAsPlaceholders. Reports success/failure through optional
-  /// parameter \p errPtr. This constructor always overrides the default
-  /// constant folding in loader flag with \p constFoldInLoader. If the model is
-  /// pre-partitioned, then \p PPC will be filled with relevant configuration
-  /// for partitioning, and all Functions created will be named with prefix
-  /// /p funNamePrefix. Otherwise \p PPC is ignored, and \p funNamePrefix is
-  /// used as the name of the single Function that is created inside \p mod.
+  /// descriptors. Reports success/failure through optional parameter \p errPtr.
+  /// This constructor always overrides the default constant folding in loader
+  /// flag with \p constFoldInLoader. If the model is pre-partitioned, then \p
+  /// PPC will be filled with relevant configuration for partitioning, and all
+  /// Functions created will be named with prefix /p funNamePrefix. Otherwise \p
+  /// PPC is ignored, and \p funNamePrefix is used as the name of the single
+  /// Function that is created inside \p mod.
   Caffe2ModelLoader(const void *model, uint32_t modelSize,
                     uint32_t weightsCount,
                     const onnxTensorDescriptorV1 *weightDescriptors,
                     Module &mod, llvm::StringRef funNamePrefix,
-                    runtime::PrePartitionedConfig *PPC,
-                    bool loadInputsAsPlaceholders, Error *errPtr = nullptr,
+                    runtime::PrePartitionedConfig *PPC, Error *errPtr = nullptr,
                     bool constFoldInLoader = true);
 
   friend class ONNXIFIModelLoader;

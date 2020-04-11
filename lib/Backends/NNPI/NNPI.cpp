@@ -14,12 +14,15 @@
  */
 
 #include "NNPI.h"
+#include "DebugMacros.h"
 #include "NNPICompiledFunction.h"
 #include "NNPIDeviceManager.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Graph/Utils.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 #include "glow/Optimizer/Lower/Lower.h"
+
 #include "llvm/Support/CommandLine.h"
 
 #include <fstream>
@@ -72,29 +75,31 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true>
 
 bool GlowDisableNNPITransforms = false;
 bool GlowDisableNNPIPrivateTransforms = false;
-int32_t GlowNNPINumParallelChunks = 1;
+int32_t GlowNNPINumParallelChunks = 0;
 
 } // namespace onnxifi
 } // namespace glow
 
 NNPIBackendOptions NNPIBackend::backendOptions_;
+NNPIAdapterContainer NNPIBackend::adapter_;
 
 unsigned NNPIBackend::numDevices() {
-  // TODO: unify with numHabanaDevices. copy-paste with a different device
-  // name.
-  std::ifstream devices("/proc/bus/pci/devices");
-  std::string device;
-  unsigned count = 0;
-  while (std::getline(devices, device)) {
-    if (device.find("sph_pcie") != std::string::npos) {
-      count++;
-    }
+  if (!backendOptions_.inferOnDevice) {
+    // Will return 1 device (for ICE-Ref)
+    return 1;
   }
-  if (count > 0) {
-    return count;
-  }
-  // TODO: Fall back to emulator since GLOW_NNPI is set. This feels hacky.
-  return 1;
+  NNPIAdapter adapter = NNPI_INVALID_NNPIHANDLE;
+  NNPIAdapterInfo adapterInfo;
+  memset(&adapterInfo, 0, sizeof(adapterInfo));
+  LOG_AND_RETURN_IF_NOT(
+      ERROR, nnpiAdapterCreate(nullptr, &adapter) == NNPI_INF_NO_ERROR,
+      "Failed to create NNPI Adapter.", 0);
+  LOG_AND_RETURN_IF_NOT(
+      ERROR, nnpiAdapterGetInfo(adapter, &adapterInfo) == NNPI_INF_NO_ERROR,
+      "Failed get device info.", 0);
+  LOG_NNPI_INF_IF_ERROR(nnpiAdapterDestroy(adapter),
+                        "Failed to destroy NNPI Adapter");
+  return adapterInfo.numDevices;
 }
 
 /// \returns whether \p type is 2 dimensional and unary. Usually the data input
@@ -142,7 +147,6 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::BatchedReduceMeanNodeKind:
   case Kinded::Kind::BatchedReduceMinNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
-  case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::BatchedAddNodeKind:
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::LogNodeKind:
@@ -158,8 +162,10 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
 
   case Kinded::Kind::BatchNormalizationNodeKind:
+  case Kinded::Kind::AvgPoolNodeKind:
+  case Kinded::Kind::AdaptiveAvgPoolNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty});
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
 
   case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::PReluNodeKind:
@@ -341,6 +347,28 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
 
+  case Kinded::Kind::EmbeddingBagNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+               {EmbeddingBagNode::IndicesIdx, EmbeddingBagNode::OffsetsIdx}) &&
+           (NI.getInElemTy(EmbeddingBagNode::IndicesIdx) ==
+            ElemKind::Int64ITy) &&
+           (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == ElemKind::Int64ITy);
+
+  case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind: {
+    auto dataK = NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::DataIdx);
+    auto offsetsK =
+        NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::OffsetsIdx);
+    auto indicesK =
+        NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx);
+    auto resultK =
+        NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx);
+    return (dataK == ElemKind::UInt8FusedQTy ||
+            dataK == ElemKind::UInt8FusedFP16QTy) &&
+           (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
+           (indicesK == ElemKind::Int64ITy) && (offsetsK == ElemKind::Int64ITy);
+  }
+
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
     auto dataK =
         NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::DataIdx);
@@ -463,13 +491,14 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::BatchNormalizationNodeKind:
   case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
+  case Kinded::Kind::AdaptiveAvgPoolNodeKind:
+  case Kinded::Kind::EmbeddingBagNodeKind:
+  case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind:
     return false;
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
     const FusedRowwiseQuantizedSparseLengthsSumNode *SLSN =
         llvm::cast<FusedRowwiseQuantizedSparseLengthsSumNode>(N);
-    if ((backendOptions_.useIceT || backendOptions_.inferOnDevice) &&
-        (SLSN->getData().getElementType() != ElemKind::UInt4FusedFP16QTy) &&
-        (SLSN->getResult().getElementType() == ElemKind::Float16Ty)) {
+    if (SLSN->getResult().getElementType() == ElemKind::Float16Ty) {
       return false; // Don't lower == keep without weights
     } else {
       return true;
@@ -496,14 +525,428 @@ bool NNPIBackend::shouldLower(const Node *N) const {
 
 runtime::DeviceManager *
 NNPIBackend::createDeviceManager(const runtime::DeviceConfig &deviceConfig) {
-  return createNNPIDeviceManager(deviceConfig);
+  return createNNPIDeviceManager(deviceConfig, &adapter_);
+}
+
+/// Setup basic parallelization in \p numChunks and \p parOpts for \p F, where
+/// every node may be split \p numParallelChunks times.
+static void setupBasicParallelizationConfigs(
+    Function *F, llvm::DenseMap<Node *, size_t> &numChunks,
+    llvm::DenseMap<Node *, ParallelTransformKind> &parOpts,
+    int32_t numParallelChunks) {
+  // Process nodes PostOrder so we always process inputs before outputs of any
+  // Node, so parallelization can be based on if a parent is parallelized.
+  GraphPostOrderVisitor visitor(*F);
+  for (auto *node : visitor.getPostOrder()) {
+    // Find all FC layers to split
+    if (auto *FC = llvm::dyn_cast<FullyConnectedNode>(node)) {
+      size_t K = FC->getWeights().dims()[1];
+      if (K >= 512) {
+        parOpts[FC] = ParallelTransformKind::Model;
+        numChunks[FC] = numParallelChunks;
+        continue;
+      }
+      size_t M = FC->getInput().dims()[0];
+      if (M >= 256) {
+        parOpts[FC] = ParallelTransformKind::Data;
+        numChunks[FC] = numParallelChunks;
+        continue;
+      }
+    }
+
+    // Relu parallelization.
+    // If a Relu follows FC, mirror FC split so that they fuse.
+    // Otherwise, use data parallelism.
+    if (auto *R = llvm::dyn_cast<ReluNode>(node)) {
+      // For Relus that arent preceded by FC, do data parallelism if the input
+      // was parallelized.
+      Node *inputNode = R->getInput().getNode();
+      auto FC = llvm::dyn_cast<FullyConnectedNode>(inputNode);
+      if (!FC) {
+        if (numChunks.find(inputNode) != numChunks.end() &&
+            parOpts.find(inputNode) != parOpts.end()) {
+          parOpts[R] = ParallelTransformKind::Data;
+          numChunks[R] = numParallelChunks;
+        }
+        continue;
+      }
+
+      // Otherwise, mirror FC split.
+      if (R->getInput().dims().size() < 2) {
+        continue;
+      }
+      size_t K = R->getInput().dims()[1];
+      if (K >= 512) {
+        parOpts[R] = ParallelTransformKind::Model;
+        numChunks[R] = numParallelChunks;
+        continue;
+      }
+      size_t M = R->getInput().dims()[0];
+      if (M >= 256) {
+        parOpts[R] = ParallelTransformKind::Data;
+        numChunks[R] = numParallelChunks;
+        continue;
+      }
+    }
+
+    // Split transpose layers in data parallel fashion
+    if (auto *TP = llvm::dyn_cast<TransposeNode>(node)) {
+      parOpts[TP] = ParallelTransformKind::Data;
+      numChunks[TP] = numParallelChunks;
+    }
+
+    // Split Quantize layers in data parallel fashion
+    if (auto *QN = llvm::dyn_cast<QuantizeNode>(node)) {
+      parOpts[QN] = ParallelTransformKind::Data;
+      numChunks[QN] = numParallelChunks;
+    }
+
+    // Split Dequantize layers in data parallel fashion
+    if (auto *DQN = llvm::dyn_cast<DequantizeNode>(node)) {
+      parOpts[DQN] = ParallelTransformKind::Data;
+      numChunks[DQN] = numParallelChunks;
+    }
+
+    // Split BMM layers in data parallel fashion
+    if (auto *BMM = llvm::dyn_cast<BatchMatMulNode>(node)) {
+      parOpts[BMM] = ParallelTransformKind::Data;
+      numChunks[BMM] = numParallelChunks;
+    }
+
+    // Split Tanh layers in data parallel fashion
+    if (auto *TH = llvm::dyn_cast<TanhNode>(node)) {
+      if (TH->getInput().dims().size() < 2) {
+        continue;
+      }
+      size_t N = TH->getInput().dims()[1];
+      if (N < 4096) {
+        continue;
+      }
+      parOpts[TH] = ParallelTransformKind::Data;
+      numChunks[TH] = numParallelChunks;
+    }
+
+    // Split Mul layers in data parallel fashion
+    if (auto *M = llvm::dyn_cast<MulNode>(node)) {
+      if (M->getLHS().dims().size() < 2) {
+        continue;
+      }
+      size_t N = M->getLHS().dims()[1];
+      if (N < 4096) {
+        continue;
+      }
+      parOpts[M] = ParallelTransformKind::Data;
+      numChunks[M] = numParallelChunks;
+    }
+
+    // Clip parallelization.
+    // If a Clip follows a parallel op, mirror that.
+    if (auto *C = llvm::dyn_cast<ClipNode>(node)) {
+      Node *inputNode = C->getInput().getNode();
+      if (numChunks.find(inputNode) != numChunks.end() &&
+          parOpts.find(inputNode) != parOpts.end()) {
+        parOpts[C] = parOpts[inputNode];
+        numChunks[C] = numChunks[inputNode];
+      }
+    }
+  }
+}
+
+/// If we've done some paralleization specified in \p replacedMap then propagate
+/// any NodeInfo from original nodes to the newly created Nodes in
+/// \p backendSpecificNodeInfo. Additionally, validate that the parallelization
+/// matches with the specified previous NodeInfo. \returns whether any
+/// validation error is found.
+static Error propagateBackendSpecificNodeInfo(
+    Function *F, const std::unordered_map<Node *, ConcatNode *> &replacedMap,
+    BackendSpecificNodeInfo &backendSpecificNodeInfo) {
+  // Build a map from replaced names of a Node to the ConcatNode that replaced
+  // it. Used later for cleaning up extraEdges of split Nodes.
+  llvm::StringMap<const ConcatNode *> nameToReplacementMap;
+
+  auto funNodeInfoIt = backendSpecificNodeInfo.find(F);
+  RETURN_ERR_IF_NOT(funNodeInfoIt != backendSpecificNodeInfo.end(),
+                    "Must have backend-specific info for this Function.");
+  auto &currFunInfo = funNodeInfoIt->second;
+
+  for (const auto &replacedPair : replacedMap) {
+    const Node *replacedNode = replacedPair.first;
+    nameToReplacementMap[replacedNode->getName().str()] = replacedPair.second;
+
+    RETURN_ERR_IF_NOT(
+        replacedNode->getNumUsers() == 0,
+        "Replaced Node should no longer be used in the Function.");
+
+    auto curNodeInfoIt = currFunInfo.find(replacedNode);
+    RETURN_ERR_IF_NOT(
+        curNodeInfoIt != currFunInfo.end(),
+        "Only should have parallelized if backendSpecificNodeInfo said so.");
+    auto &nodeInfo = curNodeInfoIt->second;
+
+    // Validate that the number of nodes concatenated together is equal to the
+    // parallelization factor specified in numParallelChunks.
+    const ConcatNode *CN = replacedPair.second;
+    auto numParChunksIt = nodeInfo.find(numParallelChunksKey);
+    RETURN_ERR_IF_NOT(numParChunksIt != nodeInfo.end(),
+                      "Must have corresponding " +
+                          std::string(numParallelChunksKey) +
+                          " for any Node that was parallelized.");
+    RETURN_ERR_IF_NOT(numParChunksIt->second.size() == 1,
+                      "Expected a single value for numParallelChunks");
+    int numParChunksVal;
+    ASSIGN_VALUE_OR_RETURN_ERR(numParChunksVal,
+                               getIntFromStr(numParChunksIt->second.front()));
+    RETURN_ERR_IF_NOT(numParChunksVal == CN->getInputs().size(),
+                      "Node not split the expected number of times.");
+
+    // Look for coreAssignments and propagate them into each Node.
+    auto coreAssignmentsIt = nodeInfo.find(coreAssignmentsKey);
+    if (coreAssignmentsIt != nodeInfo.end()) {
+      RETURN_ERR_IF_NOT(coreAssignmentsIt->second.size() ==
+                            CN->getInputs().size(),
+                        "Require same number of assignments as split factor");
+      for (size_t i = 0, e = CN->getInputs().size(); i < e; i++) {
+        Node *inputCN = CN->getInputs()[i].getNode();
+        auto &newCoreAssignments = currFunInfo[inputCN][coreAssignmentsKey];
+        RETURN_ERR_IF_NOT(newCoreAssignments.size() == 0,
+                          std::string(coreAssignmentsKey) +
+                              " should have been empty.");
+        newCoreAssignments.push_back(coreAssignmentsIt->second[i]);
+      }
+    }
+
+    // Look for NNPI_extraEdges and propagate them into each Node.
+    auto extraEdgesIt = nodeInfo.find(extraEdgesKey);
+    if (extraEdgesIt != nodeInfo.end()) {
+      for (const NodeValue &inputCNNV : CN->getInputs()) {
+        auto &newExtraEdges = currFunInfo[inputCNNV.getNode()][extraEdgesKey];
+        RETURN_ERR_IF_NOT(newExtraEdges.size() == 0,
+                          std::string(extraEdgesKey) +
+                              " should have been empty.");
+        for (const std::string &edge : extraEdgesIt->second) {
+          newExtraEdges.push_back(edge);
+        }
+      }
+    }
+
+    // Now we can erase this Node's info from currFunInfo because it has been
+    // replaced and will be DCE'd soon.
+    currFunInfo.erase(curNodeInfoIt);
+  }
+
+  // Now we need to look through all extraEdges and clean them up so they point
+  // to parallelized names of opts. They should be formatted like "nodeName@#",
+  // where '#' is an int representing which parallel chunk edge should be used.
+  for (auto &nodeInfoPair : currFunInfo) {
+    for (auto &keyOptsPair : nodeInfoPair.second) {
+      const llvm::StringRef &key = keyOptsPair.getKey();
+      std::vector<std::string> &opts = keyOptsPair.getValue();
+
+      // Look for any extraEdges options.
+      if (key != extraEdgesKey) {
+        continue;
+      }
+
+      for (std::string &edge : opts) {
+        // Only process edges that were expected to be split.
+        llvm::StringRef edgeRef(edge);
+        if (!edgeRef.contains('@')) {
+          continue;
+        }
+
+        auto splitPair = edgeRef.split('@');
+        RETURN_ERR_IF_NOT(splitPair.second != "",
+                          "Edge must have an integer value after @");
+
+        int splitNum;
+        ASSIGN_VALUE_OR_RETURN_ERR(splitNum, getIntFromStr(splitPair.second));
+
+        auto it = nameToReplacementMap.find(splitPair.first);
+        RETURN_ERR_IF_NOT(
+            it != nameToReplacementMap.end(),
+            "Must have a replacement Concat for a parallelized edge.");
+
+        const ConcatNode *replaceCN = it->second;
+        RETURN_ERR_IF_NOT(splitNum < replaceCN->getInputs().size(),
+                          "splitNum for edge exceeded size of the split.");
+
+        // Finally, replace the name of the old edge (containing '@') with the
+        // name of the new edge created during the parallelization pass.
+        edge = replaceCN->getInputs()[splitNum].getNode()->getName().str();
+      }
+    }
+  }
+  return Error::success();
+}
+
+/// Sets up \p partOpts and \p numChunks based on the spec found in \p
+/// setupPerOpParallelizationConfigs for all Nodes in \p F. \returns if there
+/// was an error while parsing \p backendSpecificNodeInfo.
+static Error setupPerNodeParallelizationConfigs(
+    Function *F, llvm::DenseMap<Node *, size_t> &numOfChunks,
+    llvm::DenseMap<Node *, ParallelTransformKind> &parOpts,
+    const BackendSpecificNodeInfo &backendSpecificNodeInfo) {
+  auto funNodeInfoIt = backendSpecificNodeInfo.find(F);
+  RETURN_ERR_IF_NOT(funNodeInfoIt != backendSpecificNodeInfo.end(),
+                    "Must have backend-specific info for this Function.");
+  auto &currFunInfo = funNodeInfoIt->second;
+
+  for (auto &node : F->getNodes()) {
+    auto curNodeInfoIt = currFunInfo.find(&node);
+    if (curNodeInfoIt == currFunInfo.end()) {
+      continue;
+    }
+    auto &nodeInfo = curNodeInfoIt->second;
+
+    // Setup parallelTransformKind. It can be specified without
+    // numParallelChunks only if it is set to "None".
+    auto parTransformKindIt = nodeInfo.find(parallelTransformKindKey);
+    if (parTransformKindIt == nodeInfo.end()) {
+      continue;
+    }
+    RETURN_ERR_IF_NOT(parTransformKindIt->second.size() == 1,
+                      "Expected single value for " +
+                          std::string(parallelTransformKindKey));
+    const std::string &pKindStr = parTransformKindIt->second.front();
+    ParallelTransformKind pKind;
+    if (pKindStr == "Data") {
+      pKind = ParallelTransformKind::Data;
+    } else if (pKindStr == "Model") {
+      pKind = ParallelTransformKind::Model;
+    } else if (pKindStr == "None") {
+      pKind = ParallelTransformKind::None;
+    } else {
+      return MAKE_ERR(std::string(parallelTransformKindKey) + " " + pKindStr +
+                      " not supported.");
+    }
+    if (pKind == ParallelTransformKind::None) {
+      continue;
+    }
+
+    // Setup numParallelChunks. It must be specified at this point, as we have a
+    // valid parallelTransformKind found above.
+    auto numParChunksIt = nodeInfo.find(numParallelChunksKey);
+    RETURN_ERR_IF_NOT(numParChunksIt != nodeInfo.end(),
+                      std::string(numParallelChunksKey) + " and " +
+                          std::string(parallelTransformKindKey) +
+                          " must be specified together.");
+    RETURN_ERR_IF_NOT(numParChunksIt->second.size() == 1,
+                      "Expected single value for " +
+                          std::string(numParallelChunksKey));
+
+    int numChunks;
+    ASSIGN_VALUE_OR_RETURN_ERR(numChunks,
+                               getIntFromStr(numParChunksIt->second.front()));
+    RETURN_ERR_IF_NOT(numChunks > 1, "numChunks must be > 1.");
+    numOfChunks[&node] = numChunks;
+    parOpts[&node] = pKind;
+  }
+
+  return Error::success();
+}
+
+/// Parallelize \p F. If \p usePerNodeParallelizationSpec then this
+/// parallelization is done based on the spec found in backendSpecificNodeInfo
+/// in \p opts. Else perform basic parallelization according to either
+/// GlowNNPINumParallelChunks, or if not specified then NNPINumParallelChunks
+/// found in backendOpts.backendSpecificOpts from \p opts. \returns whether \p F
+/// was modified.
+static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts,
+                                          bool usePerNodeParallelizationSpec) {
+  // Split FC layers in model/data parallel fashion
+  llvm::DenseMap<Node *, size_t> numChunks;
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+
+  int32_t defaultNumParallelChunks = 1;
+  if (usePerNodeParallelizationSpec) {
+    // If we don't have any info for this function then return early.
+    if (opts.backendSpecificNodeInfo.find(F) ==
+        opts.backendSpecificNodeInfo.end()) {
+      return false;
+    }
+
+    // Only parallelize based on what is explicitly specified.
+    RETURN_IF_ERR(setupPerNodeParallelizationConfigs(
+        F, numChunks, parOpts, opts.backendSpecificNodeInfo));
+  } else {
+    // Check for basic parallelization based on specified degree of parallelism.
+    defaultNumParallelChunks = glow::onnxifi::GlowNNPINumParallelChunks;
+
+    // GlowNNPINumParallelChunks set via flags takes precedence over backend
+    // options in cctx.
+    if (!defaultNumParallelChunks) {
+      auto it =
+          opts.backendSpecificOpts.find(std::string("NNPINumParallelChunks"));
+      if (it != opts.backendSpecificOpts.end()) {
+        ASSIGN_VALUE_OR_RETURN_ERR(defaultNumParallelChunks,
+                                   getIntFromStr(it->second));
+      }
+    }
+
+    // If there's no parallelization to perform then exit early.
+    if (defaultNumParallelChunks <= 1) {
+      return false;
+    }
+    setupBasicParallelizationConfigs(F, numChunks, parOpts,
+                                     defaultNumParallelChunks);
+  }
+
+  RETURN_ERR_IF_NOT(numChunks.size() == parOpts.size(),
+                    "Require that numChunks and parOpts have same size.");
+
+  // No parallelization to do, so return early.
+  if (numChunks.size() == 0) {
+    return false;
+  }
+
+  // Now actually do the parallelization.
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      replacedMap,
+      parallelizeOps(F, numChunks, parOpts, defaultNumParallelChunks));
+
+  RETURN_ERR_IF_NOT(numChunks.size() == replacedMap.size(),
+                    "Expected that numChunks and replacedMap have same size.");
+
+  if (usePerNodeParallelizationSpec) {
+    // If parallelization was based on backend-specific node info then propagate
+    // it to new nodes that were added.
+    RETURN_IF_ERR(propagateBackendSpecificNodeInfo(
+        F, replacedMap, opts.backendSpecificNodeInfo));
+  }
+
+  return true;
 }
 
 Expected<std::unique_ptr<CompiledFunction>>
 NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
+  BackendOptions newOpts = opts;
+
+  // Perform parallelization based on any node options found in opts.
+  bool parallelized;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      parallelized, parallelizeFunction(
+                        F, newOpts, /* usePerNodeParallelizationSpec */ true));
+  if (parallelized) {
+    // If we parallelized then we want to run very specific optimizations to
+    // clean up the now-parallelized graph while preserving the Nodes in the
+    // Function so we don't mess up the placement info map. Specifically, we
+    // eliminate Concat-Slice patterns which are created during parallelization.
+    // This does not create any new nodes (it only removes Concat-Slice
+    // patterns, replacing uses of Concat with the input of Slice). Then we DCE
+    // away the now-dead Concats/Slices.
+    FunctionPassManager FPM("FinalizeFPM",
+                            {
+                                FunctionPassID::EliminateConcatSlice,
+                                FunctionPassID::FoldSlicesIntoConstants,
+                                getDCEPassConfig(),
+                            });
+    FPM.run(F, CompilationContext());
+  }
+
   std::unique_ptr<NNPICompiledFunction> compiledFunc =
       glow::make_unique<NNPICompiledFunction>(F);
-  auto compileHasError = compiledFunc->compile(F, opts);
+  auto compileHasError = compiledFunc->compile(F, newOpts);
   if (compileHasError) {
     return std::move(compileHasError);
   }
@@ -520,6 +963,45 @@ FunctionPassPipeline NNPIBackend::getOptimizationPipeline() const {
   // Disable SinkCode, as NNPI does data parallel transformations and so we do
   // not want to undo that by sinking Nodes back together.
   pipeline.removeAllInstancesOfPass(FunctionPassID::SinkCode);
+
+  // Raise Clips above Shape Nodes (e.g. Reshape) to try to ensure fusion
+  // occurs. Note that we do this last as it may counteract some earlier
+  // optimizations that push Clips down to try to eliminate them.
+  pipeline.pushBack(FunctionPassID::RaiseClipsAboveShapeNodes);
+
+  // Optimize away intermediate conversions, e.g. Quantize(ConvertTo(Node)) ->
+  // Quantize(Node).
+  pipeline.pushBack(FunctionPassID::OptimizeOutIntermediateConversions);
+
+  // Now that we've raised clips up try to optimize quantize-clip combos again.
+  pipeline.pushBack(FunctionPassID::OptimizeQuantizeClip);
+
+  // Now try to eliminate any redundant Clips.
+  pipeline.pushBack(FunctionPassID::OptimizeClips);
+
+  // Look for float Relus that we can fuse up into quantized FCs.
+  pipeline.pushBack(FunctionPassID::OptimizeQuantFCFloatRelu);
+
+  // Optimize concats and quantized/dequantize patterns.
+  pipeline.pushBack(FunctionPassID::OptimizeConcatQuantization);
+
+  // Optimize quantization now that we've optimized some other quant nodes.
+  pipeline.pushBack(FunctionPassID::OptimizeQuantization);
+
+  // Now try to sink conversions below concats.
+  pipeline.pushBack(FunctionPassID::SinkConversions);
+
+  // Now that things have been sunk try to get rid of unnecessary concats.
+  pipeline.pushBack(FunctionPassID::OptimizeConcatNodes);
+
+  // Look for float Relus that we can fuse up into quantized FCs.
+  pipeline.pushBack(FunctionPassID::OptimizeQuantFCFloatRelu);
+
+  // Optimize concats and quantized/dequantize patterns.
+  pipeline.pushBack(FunctionPassID::OptimizeConcatQuantization);
+
+  // Cleanup everything now.
+  pipeline.pushBack(getDCEPassConfig());
 
   return pipeline;
 }
@@ -596,200 +1078,6 @@ static bool removeClipsBlockingFusion(Function *F) {
   return changed;
 }
 
-/// Parallelize \p F according to NNPINumParallelChunks found in
-/// backendOpts.backendSpecificOpts from \p cctx. \returns whether \p F was
-/// modified.
-static bool parallelizeFunction(Function *F, CompilationContext &cctx) {
-  // Split FC layers in model/data parallel fashion
-  llvm::DenseMap<Node *, size_t> numChunks;
-  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
-  int32_t numParallelChunks = 1;
-
-  // If GlowNNPINumParallelChunks is set via flags then override what's passed
-  // in via backend options in cctx.
-  if (glow::onnxifi::GlowNNPINumParallelChunks > 1) {
-    cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
-        std::to_string(glow::onnxifi::GlowNNPINumParallelChunks);
-  }
-
-  if (cctx.backendOpts.backendSpecificOpts.find(
-          std::string("NNPINumParallelChunks")) !=
-      cctx.backendOpts.backendSpecificOpts.end()) {
-    numParallelChunks = std::stoi(std::string(
-        cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"]));
-  }
-
-  if (numParallelChunks <= 1) {
-    return false;
-  }
-
-  bool changed = false;
-
-  // Find all FC layers to split
-  for (auto &node : F->getNodes()) {
-    auto *FC = llvm::dyn_cast<FullyConnectedNode>(&node);
-    if (!FC) {
-      continue;
-    }
-    size_t K = FC->getWeights().dims()[1];
-    if (K >= 512) {
-      changed = true;
-      parOpts[FC] = ParallelTransformKind::Model;
-      numChunks[FC] = numParallelChunks;
-      continue;
-    }
-    size_t M = FC->getInput().dims()[0];
-    if (M >= 256) {
-      changed = true;
-      parOpts[FC] = ParallelTransformKind::Data;
-      numChunks[FC] = numParallelChunks;
-      continue;
-    }
-  }
-
-  // Relu parallelization.
-  // If a Relu follows FC, mirror FC split so that they fuse.
-  // Otherwise, use data parallelism.
-  for (auto &node : F->getNodes()) {
-    auto *R = llvm::dyn_cast<ReluNode>(&node);
-    if (!R) {
-      continue;
-    }
-
-    // For Relus that arent preceded by FC, do data parallelism
-    Node *inputNode = R->getInput().getNode();
-    auto FC = llvm::dyn_cast<FullyConnectedNode>(inputNode);
-    if (!FC) {
-      changed = true;
-      parOpts[R] = ParallelTransformKind::Data;
-      numChunks[R] = numParallelChunks;
-      continue;
-    }
-
-    // Otherwise, mirror FC split.
-    if (R->getInput().dims().size() < 2) {
-      continue;
-    }
-    size_t K = R->getInput().dims()[1];
-    if (K >= 512) {
-      changed = true;
-      parOpts[R] = ParallelTransformKind::Model;
-      numChunks[R] = numParallelChunks;
-      continue;
-    }
-    size_t M = R->getInput().dims()[0];
-    if (M >= 256) {
-      changed = true;
-      parOpts[R] = ParallelTransformKind::Data;
-      numChunks[R] = numParallelChunks;
-      continue;
-    }
-  }
-
-  // Split transpose layers in data parallel fashion
-  for (auto &node : F->getNodes()) {
-    auto *TP = llvm::dyn_cast<TransposeNode>(&node);
-    if (!TP) {
-      continue;
-    }
-    changed = true;
-    parOpts[TP] = ParallelTransformKind::Data;
-    numChunks[TP] = numParallelChunks;
-  }
-
-  // Split Quantize layers in data parallel fashion
-  for (auto &node : F->getNodes()) {
-    auto *QN = llvm::dyn_cast<QuantizeNode>(&node);
-    if (!QN) {
-      continue;
-    }
-    changed = true;
-    parOpts[QN] = ParallelTransformKind::Data;
-    numChunks[QN] = numParallelChunks;
-  }
-
-  // Split Dequantize layers in data parallel fashion
-  for (auto &node : F->getNodes()) {
-    auto *DQN = llvm::dyn_cast<DequantizeNode>(&node);
-    if (!DQN) {
-      continue;
-    }
-    changed = true;
-    parOpts[DQN] = ParallelTransformKind::Data;
-    numChunks[DQN] = numParallelChunks;
-  }
-
-  // Split BMM layers in data parallel fashion
-  for (auto &node : F->getNodes()) {
-    auto *BMM = llvm::dyn_cast<BatchMatMulNode>(&node);
-    if (!BMM) {
-      continue;
-    }
-    changed = true;
-    parOpts[BMM] = ParallelTransformKind::Data;
-    numChunks[BMM] = numParallelChunks;
-  }
-
-  // Split Tanh layers in data parallel fashion
-  for (auto &node : F->getNodes()) {
-    auto *TH = llvm::dyn_cast<TanhNode>(&node);
-    if (!TH) {
-      continue;
-    }
-    if (TH->getInput().dims().size() < 2) {
-      continue;
-    }
-    size_t N = TH->getInput().dims()[1];
-    if (N < 4096) {
-      continue;
-    }
-    changed = true;
-    parOpts[TH] = ParallelTransformKind::Data;
-    numChunks[TH] = numParallelChunks;
-  }
-
-  // Split Mul layers in data parallel fashion
-  for (auto &node : F->getNodes()) {
-    auto *M = llvm::dyn_cast<MulNode>(&node);
-    if (!M) {
-      continue;
-    }
-    if (M->getLHS().dims().size() < 2) {
-      continue;
-    }
-    size_t N = M->getLHS().dims()[1];
-    if (N < 4096) {
-      continue;
-    }
-    changed = true;
-    parOpts[M] = ParallelTransformKind::Data;
-    numChunks[M] = numParallelChunks;
-  }
-
-  // Clip parallelization.
-  // If a Clip follows a parallel op, mirror that.
-  for (auto &node : F->getNodes()) {
-    auto *C = llvm::dyn_cast<ClipNode>(&node);
-    if (!C) {
-      continue;
-    }
-
-    Node *inputNode = C->getInput().getNode();
-    if (numChunks.find(inputNode) != numChunks.end() &&
-        parOpts.find(inputNode) != parOpts.end()) {
-      changed = true;
-      parOpts[C] = parOpts[inputNode];
-      numChunks[C] = numChunks[inputNode];
-    }
-  }
-
-  // Now actually do the parallelization.
-  bool verify = parallelizeOps(F, numChunks, parOpts, numParallelChunks);
-  DCHECK(verify) << "Error during parallelization occurred.";
-
-  return changed;
-}
-
 Expected<bool> NNPIBackend::transformPostLowering(
     Function *F, CompilationContext &cctx,
     const glow::runtime::DeviceInfo *devInfo) const {
@@ -801,7 +1089,12 @@ Expected<bool> NNPIBackend::transformPostLowering(
 
   bool changed = removeClipsBlockingFusion(F);
   changed |= lowerRequiredNodes(F, cctx);
-  changed |= parallelizeFunction(F, cctx);
+  bool parallelized;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      parallelized,
+      parallelizeFunction(F, cctx.backendOpts,
+                          /* usePerNodeParallelizationSpec */ false));
+  changed |= parallelized;
 
 #if FACEBOOK_INTERNAL
   if (glow::onnxifi::GlowDisableNNPIPrivateTransforms) {

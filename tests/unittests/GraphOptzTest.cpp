@@ -49,10 +49,19 @@ static bool functionContainsNode(const Function *F, const Node *N) {
                       IsSameNodeAddress(N)) != F->getNodes().end();
 }
 
-/// Optimize the function \p F. \returns the optimized function.
-static Function *optimizeFunction(Function *F) {
+/// Optimize the function \p F with \p cctx. \returns the optimized function. If
+/// \p pass is empty then the whole default optimization pipeline is run.
+/// Otherwise only \p pipeline is used.
+static Function *
+optimizeFunction(Function *F, const FunctionPassPipeline &pipeline = {},
+                 const CompilationContext cctx = CompilationContext()) {
   auto *G = F->clone(F->getName().str() + "_optimized");
-  ::glow::optimize(G, CompilationMode::Infer);
+  if (pipeline.size() == 0) {
+    ::glow::optimize(G, CompilationMode::Infer);
+    return G;
+  }
+  FunctionPassManager FPM("TestFPM", pipeline);
+  FPM.run(G, cctx);
   return G;
 }
 
@@ -3848,7 +3857,10 @@ TEST_F(GraphOptz, ParallelizeGraph_FC_ModelParallel) {
   parOpts[relu1] = ParallelTransformKind::Model;
   parOpts[fc2] = ParallelTransformKind::Model;
   parOpts[relu2] = ParallelTransformKind::Model;
-  EXPECT_TRUE(::glow::parallelizeOps(F_, numChunks, parOpts, 12));
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(replacedMap,
+                            ::glow::parallelizeOps(F_, numChunks, parOpts));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
 
   runDCEPass(F_, cctx_);
 
@@ -3884,8 +3896,11 @@ TEST_F(GraphOptz, ParallelizeGraph_Add) {
   llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
   parOpts[add1] = ParallelTransformKind::Data;
 
-  EXPECT_TRUE(::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
-                                     parOpts, 12));
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap, ::glow::parallelizeOps(F_, llvm::DenseMap<Node *, size_t>(),
+                                          parOpts, 12));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
   runDCEPass(F_, cctx_);
 
   // We now have 12 Adds from add1, as well as the original add2 which is
@@ -3923,7 +3938,10 @@ TEST_F(GraphOptz, ParallelizeGraph_Transpose) {
   llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
   numChunks[trans1] = 2;
   parOpts[trans1] = ParallelTransformKind::Data;
-  EXPECT_TRUE(::glow::parallelizeOps(F_, numChunks, parOpts, 12));
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(replacedMap,
+                            ::glow::parallelizeOps(F_, numChunks, parOpts));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
 
   runDCEPass(F_, cctx_);
 
@@ -4070,4 +4088,496 @@ TEST_F(GraphOptz, FoldMatMulAddIntoFullyConnected) {
   EXPECT_EQ(0, countNodeKind(F_, Kinded::Kind::MatMulNodeKind));
   EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind));
   EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ReshapeNodeKind));
+}
+
+/// Test that FoldSlicesIntoConstants pass works as expected.
+TEST_F(GraphOptz, FoldSlicesIntoConstantsTest) {
+  Constant *C = mod_.createConstant(ElemKind::FloatTy, {3, 4}, "C");
+  auto CH = C->getPayloadMutable().getHandle<float>();
+  CH = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+
+  SliceNode *S1 = F_->createSlice("s1", C, {0, 0}, {3, 2});
+  SliceNode *S2 = F_->createSlice("s2", C, {0, 2}, {3, 4});
+  SaveNode *SN1 = F_->createSave("save1", S1);
+  SaveNode *SN2 = F_->createSave("save2", S2);
+
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::FoldSlicesIntoConstants, getDCEPassConfig()});
+
+  SaveNode *optSN1 =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN1->getName()));
+  SaveNode *optSN2 =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN2->getName()));
+  ASSERT_TRUE(optSN1);
+  ASSERT_TRUE(optSN2);
+
+  Constant *C1 = llvm::dyn_cast<Constant>(optSN1->getInput());
+  ASSERT_TRUE(C1);
+  auto H1 = C1->getPayloadMutable().getHandle();
+  Constant *C2 = llvm::dyn_cast<Constant>(optSN2->getInput());
+  ASSERT_TRUE(C2);
+  auto H2 = C2->getPayloadMutable().getHandle();
+  for (dim_t i = 0, e = 3; i < e; i++) {
+    for (dim_t j = 0, e = 2; j < e; j++) {
+      EXPECT_EQ(H1.at({i, j}), CH.at({i, j}));
+      EXPECT_EQ(H2.at({i, j}), CH.at({i, j + 2}));
+    }
+  }
+}
+
+/// Test that RaiseClipsAboveShapeNodes pass works as expected.
+TEST_F(GraphOptz, RaiseClipsAboveShapeNodesTest) {
+  Placeholder *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {256, 64}, "input", false);
+
+  ReshapeNode *RN1 = F_->createReshape("reshape1", input, {4, 128, 32});
+  ReshapeNode *RN2 = F_->createReshape("reshape2", RN1, {64, 256});
+  TransposeNode *TN = F_->createTranspose("transpose", RN2, {1, 0});
+  SliceNode *SN = F_->createSlice("slice", TN, {64, 0}, {256, 64});
+  ClipNode *CN = F_->createClip("clip", SN, -0.1, 0.1);
+  SaveNode *save1 = F_->createSave("save1", RN1);
+  SaveNode *save2 = F_->createSave("save2", CN);
+
+  optimizedF_ =
+      optimizeFunction(F_, {FunctionPassID::RaiseClipsAboveShapeNodes});
+
+  SaveNode *optSave1 =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(save1->getName()));
+  ASSERT_TRUE(optSave1);
+  SaveNode *optSave2 =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(save2->getName()));
+  ASSERT_TRUE(optSave2);
+
+  // save1 should only have a single untouched Reshape RN1 input which has input
+  // input into it, because RN1 has multiple users.
+  ReshapeNode *optRN1 =
+      llvm::dyn_cast<ReshapeNode>(optSave1->getInput().getNode());
+  ASSERT_TRUE(optRN1);
+  EXPECT_EQ(input, optRN1->getInput().getNode());
+
+  // save2 should have CN it originally saved pushed up above SN, TN, and RN2.
+  SliceNode *newSN = llvm::dyn_cast<SliceNode>(optSave2->getInput());
+  ASSERT_TRUE(newSN);
+  EXPECT_EQ(newSN->getStart(), SN->getStart());
+  TransposeNode *newTN = llvm::dyn_cast<TransposeNode>(newSN->getInput());
+  ASSERT_TRUE(newTN);
+  EXPECT_EQ(newTN->getShuffle(), TN->getShuffle());
+  ReshapeNode *newRN2 = llvm::dyn_cast<ReshapeNode>(newTN->getInput());
+  ASSERT_TRUE(newRN2);
+  ClipNode *newCN = llvm::dyn_cast<ClipNode>(newRN2->getInput());
+  ASSERT_TRUE(newCN);
+  EXPECT_EQ(newCN->getMin(), CN->getMin());
+  EXPECT_EQ(newCN->getMax(), CN->getMax());
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+static void testOptimizeDequantizeClip(PlaceholderBindings &bindings,
+                                       Module &mod, Function *F,
+                                       Function *&optF,
+                                       bool enableQuantParamChanges) {
+  Placeholder *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {20, 20}, "input", false);
+
+  const auto qParams = quantization::chooseQuantizationParams({-0.1, 0.1});
+
+  QuantizeNode *QN =
+      F->createQuantize("quantize", input,
+                        mod.uniqueType(ElemKind::Int8QTy, {20, 20},
+                                       qParams.scale, qParams.offset));
+  DequantizeNode *DN = F->createDequantize("dequantize", QN);
+  ClipNode *CN =
+      F->createClip("clip", DN, enableQuantParamChanges ? 0 : -100, 100);
+  SaveNode *SN = F->createSave("save", CN);
+
+  CompilationContext cctx;
+  cctx.optimizationOpts.enableQuantParamChanges = true;
+  optF = optimizeFunction(
+      F, {FunctionPassID::OptimizeQuantizeClip, getDCEPassConfig()}, cctx);
+
+  EXPECT_EQ(countNodeKind(optF, Kinded::Kind::ClipNodeKind), 0);
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optF->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+
+  // Now check that the quantization params have been correctly updated for QN,
+  // and that CN has been eliminated.
+  DequantizeNode *optDN =
+      llvm::dyn_cast<DequantizeNode>(optSN->getInput().getNode());
+  ASSERT_TRUE(optDN);
+  const auto qMinMax = optDN->getInput().getType()->getQuantizedValueRange();
+  // Min is either from Clip or Quant range depending on enableQuantParamChanges
+  EXPECT_NEAR(qMinMax.first, enableQuantParamChanges ? 0 : -0.1, 1E-3);
+  EXPECT_NEAR(qMinMax.second, 0.1, 1E-3); // Max from Quant range
+
+  bindings.allocate(mod.getPlaceholders());
+  bindings.get(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+}
+
+/// Test that OptimizeQuantizeClip pass works as expected for Clip(Dequantize)
+/// when the quantization parameters are allowed to change.
+TEST_F(GraphOptz, OptimizeDequantizeClipTest_QuantParamChanges) {
+  testOptimizeDequantizeClip(bindings_, mod_, F_, optimizedF_,
+                             /* enableQuantParamChanges */ true);
+  checkNumericalEquivalence(0.0005);
+}
+
+/// Test that OptimizeQuantizeClip pass works as expected for Clip(Dequantize)
+/// when the quantization parameters are not allowed to change.
+TEST_F(GraphOptz, OptimizeDequantizeClipTest_NoQuantParamChanges) {
+  testOptimizeDequantizeClip(bindings_, mod_, F_, optimizedF_,
+                             /* enableQuantParamChanges */ false);
+  checkNumericalEquivalence();
+}
+
+static void testOptimizeClipQuantize(PlaceholderBindings &bindings, Module &mod,
+                                     Function *F, Function *&optF,
+                                     bool enableQuantParamChanges) {
+  Placeholder *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {20, 20}, "input", false);
+
+  const auto qParams = quantization::chooseQuantizationParams({-0.1, 0.1});
+
+  ClipNode *CN =
+      F->createClip("clip", input, enableQuantParamChanges ? 0 : -100, 100);
+  QuantizeNode *QN =
+      F->createQuantize("quantize", CN,
+                        mod.uniqueType(ElemKind::Int8QTy, {20, 20},
+                                       qParams.scale, qParams.offset));
+  DequantizeNode *DN = F->createDequantize("dequantize", QN);
+  SaveNode *SN = F->createSave("save", DN);
+
+  CompilationContext cctx;
+  cctx.optimizationOpts.enableQuantParamChanges = enableQuantParamChanges;
+  optF = optimizeFunction(
+      F, {FunctionPassID::OptimizeQuantizeClip, getDCEPassConfig()}, cctx);
+
+  EXPECT_EQ(countNodeKind(optF, Kinded::Kind::ClipNodeKind), 0);
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optF->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+
+  // Now check that the quantization params have been correctly updated for QN,
+  // and that CN has been eliminated.
+  DequantizeNode *optDN =
+      llvm::dyn_cast<DequantizeNode>(optSN->getInput().getNode());
+  ASSERT_TRUE(optDN);
+  const auto qMinMax = optDN->getInput().getType()->getQuantizedValueRange();
+  // Min is either from Clip or Quant range depending on enableQuantParamChanges
+  EXPECT_NEAR(qMinMax.first, enableQuantParamChanges ? 0 : -0.1, 1E-3);
+  EXPECT_NEAR(qMinMax.second, 0.1, 1E-3); // Max always from Quant range
+
+  bindings.allocate(mod.getPlaceholders());
+  bindings.get(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+}
+
+/// Test that OptimizeQuantizeClip pass works as expected for Clip(Quantize)
+/// when the quantization parameters are allowed to change.
+TEST_F(GraphOptz, OptimizeClipQuantizeTest_QuantParamChanges) {
+  testOptimizeClipQuantize(bindings_, mod_, F_, optimizedF_,
+                           /* enableQuantParamChanges */ true);
+  checkNumericalEquivalence(0.0005);
+}
+
+/// Test that OptimizeQuantizeClip pass works as expected for Clip(Quantize)
+/// when the quantization parameters are not allowed to change.
+TEST_F(GraphOptz, OptimizeClipQuantizeTest_NoQuantParamChanges) {
+  testOptimizeClipQuantize(bindings_, mod_, F_, optimizedF_,
+                           /* enableQuantParamChanges */ false);
+  checkNumericalEquivalence();
+}
+
+/// Test Quantize(ConvertTo(Node)) -> Quantize(Node), where Quantize is int8.
+TEST_F(GraphOptz, OptimizeOutIntermediateConversionsTest) {
+  Placeholder *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {20, 20}, "input", false);
+
+  const auto qParams = quantization::chooseQuantizationParams({-0.1, 0.1});
+
+  ConvertToNode *CN = F_->createConvertTo("conv", input, ElemKind::Float16Ty);
+  QuantizeNode *QN =
+      F_->createQuantize("quantize", CN,
+                         mod_.uniqueType(ElemKind::Int8QTy, {20, 20},
+                                         qParams.scale, qParams.offset));
+  DequantizeNode *DN = F_->createDequantize("dequantize", QN);
+  F_->createSave("save", DN);
+
+  optimizedF_ =
+      optimizeFunction(F_, {FunctionPassID::OptimizeOutIntermediateConversions,
+                            getDCEPassConfig()});
+
+  // Now check that the ConvertToNode has been eliminated.
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConvertToNodeKind), 0);
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+/// Test Clip(Relu(Clip)) -> Clip(Relu). This is a combination of SinkCode and
+/// OptimizeClips.
+TEST_F(GraphOptz, ClipReluClipElimTest) {
+  Placeholder *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {64, 64}, "input", false);
+  ClipNode *CN1 = F_->createClip("CN1", input, -10, 30);
+  ReluNode *RN = F_->createRELU("RN", CN1);
+  ClipNode *CN2 = F_->createClip("CN2", RN, -5, 20);
+  SaveNode *SN = F_->createSave("save", CN2);
+
+  // Start with 2 clips, a relu, and a save.
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 1);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Remove one of the clips.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 1);
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+
+  // We sank CN1 below RN which changed CN1's min to 0, and then combined the
+  // ranges of CN1 and CN2.
+  ClipNode *optCN = llvm::dyn_cast<ClipNode>(optSN->getInput());
+  ASSERT_TRUE(optCN);
+  EXPECT_EQ(optCN->getMin(), 0);
+  EXPECT_EQ(optCN->getMax(), 20);
+
+  bindings_.allocate(input)->getHandle().randomize(-50.0, 5.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+/// Test that we can find a non-quantized relu and fuse it up into a quant FC.
+TEST_F(GraphOptz, OptimizeQuantFCFloatReluTest) {
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32}, 1.0, 0,
+                                       "input", false);
+  auto *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {32, 32}, 1.0, 0, "weights");
+  auto *bias = mod_.createConstant(ElemKind::Int32QTy, {32}, 1.0, 0, "bias");
+
+  auto *FC = F_->createFullyConnected("fc", input, weights, bias);
+  auto *DN = F_->createDequantize("dq", FC);
+  auto *RN = F_->createRELU("relu", DN);
+  auto *SN = F_->createSave("save", RN);
+
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::OptimizeQuantFCFloatRelu, getDCEPassConfig()});
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+
+  DequantizeNode *optDN = llvm::dyn_cast<DequantizeNode>(optSN->getInput());
+  ASSERT_TRUE(optDN);
+  ReluNode *optRN = llvm::dyn_cast<ReluNode>(optDN->getInput());
+  ASSERT_TRUE(optRN);
+  auto rangeRN = optRN->getResult().getType()->getQuantizedValueRange();
+  EXPECT_EQ(rangeRN.first, 0.0f);
+  FullyConnectedNode *optFC =
+      llvm::dyn_cast<FullyConnectedNode>(optRN->getInput());
+  ASSERT_TRUE(optFC);
+  auto rangeFC = optFC->getResult().getType()->getQuantizedValueRange();
+  EXPECT_EQ(rangeRN.second, rangeFC.second);
+
+  bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127,
+                                                           mod_.getPRNG());
+  weights->getPayloadMutable().getHandle<int8_t>().randomize(-128, 127,
+                                                             mod_.getPRNG());
+  bias->getPayloadMutable().getHandle<int32_t>().randomize(-128, 127,
+                                                           mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+/// Test that we can find a non-quantized relu and fuse it up into a series of
+/// concatenated quant FCs.
+TEST_F(GraphOptz, OptimizeConcatQuantFCFloatReluTest) {
+  std::array<NodeValue, 5> DQs;
+  for (size_t i = 0; i < 5; i++) {
+    auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32},
+                                         1.0 / (i + 1), 0, "input", false);
+    auto *weights =
+        mod_.createConstant(ElemKind::Int8QTy, {32, 32}, 1.0, 0, "weights");
+    auto *bias = mod_.createConstant(ElemKind::Int32QTy, {32}, 1.0, 0, "bias");
+
+    auto *FC = F_->createFullyConnected("fc", input, weights, bias);
+    DQs[i] = F_->createDequantize("dq", FC)->getResult();
+
+    bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127,
+                                                             mod_.getPRNG());
+    weights->getPayloadMutable().getHandle<int8_t>().randomize(-128, 127,
+                                                               mod_.getPRNG());
+    bias->getPayloadMutable().getHandle<int32_t>().randomize(-128, 127,
+                                                             mod_.getPRNG());
+  }
+
+  auto *CN = F_->createConcat("concat", DQs, 0);
+  auto *RN = F_->createRELU("relu", CN);
+  auto *SN = F_->createSave("save", RN);
+
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::OptimizeQuantFCFloatRelu, getDCEPassConfig()});
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  ConcatNode *optCN = llvm::dyn_cast<ConcatNode>(optSN->getInput());
+  ASSERT_TRUE(optCN);
+  EXPECT_EQ(optCN->getInputs().size(), 5);
+
+  for (const NodeValue NV : optCN->getInputs()) {
+    DequantizeNode *optDN = llvm::dyn_cast<DequantizeNode>(NV);
+    ASSERT_TRUE(optDN);
+    ReluNode *optRN = llvm::dyn_cast<ReluNode>(optDN->getInput());
+    ASSERT_TRUE(optRN);
+    auto rangeRN = optRN->getResult().getType()->getQuantizedValueRange();
+    EXPECT_EQ(rangeRN.first, 0.0f);
+    FullyConnectedNode *optFC =
+        llvm::dyn_cast<FullyConnectedNode>(optRN->getInput());
+    ASSERT_TRUE(optFC);
+    auto rangeFC = optFC->getResult().getType()->getQuantizedValueRange();
+    EXPECT_EQ(rangeRN.second, rangeFC.second);
+  }
+
+  checkNumericalEquivalence();
+}
+
+/// Test that we can find a concat with all dequantize inputs and a quantize at
+/// its output, and then replace quant/dequants with rescales.
+TEST_F(GraphOptz, OptimizeDequantConcatQuant) {
+  std::array<NodeValue, 5> DQs;
+  std::array<Placeholder *, 5> inputs;
+  for (size_t i = 0; i < 5; i++) {
+    inputs[i] = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32},
+                                       0.3 / (i + 1), 5, "input", false);
+    DQs[i] = F_->createDequantize("dq", inputs[i])->getResult();
+
+    bindings_.allocate(inputs[i])->getHandle<int8_t>().randomize(
+        -128, 127, mod_.getPRNG());
+  }
+
+  auto *CN = F_->createConcat("concat", DQs, 0);
+  constexpr float scale = 0.3;
+  constexpr int32_t offset = 5;
+  auto *RN = F_->createQuantize("quantize", CN,
+                                mod_.uniqueType(ElemKind::Int8QTy,
+                                                CN->getResult().dims(), scale,
+                                                offset));
+  auto *SN = F_->createSave("save", RN);
+
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::OptimizeConcatQuantization, getDCEPassConfig()});
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  ConcatNode *optCN = llvm::dyn_cast<ConcatNode>(optSN->getInput());
+  ASSERT_TRUE(optCN);
+  EXPECT_EQ(optCN->getInputs().size(), 5);
+
+  for (size_t i = 0, e = optCN->getInputs().size(); i < e; i++) {
+    const NodeValue NV = optCN->getInputs()[i];
+    if (i == 0) {
+      EXPECT_EQ(inputs[i], NV.getNode());
+      EXPECT_EQ(inputs[i]->getOutput().getType()->getScale(), scale);
+      EXPECT_EQ(inputs[i]->getOutput().getType()->getOffset(), offset);
+    } else {
+      RescaleQuantizedNode *optRN = llvm::dyn_cast<RescaleQuantizedNode>(NV);
+      ASSERT_TRUE(optRN);
+      EXPECT_EQ(optRN->getResult().getType()->getScale(), scale);
+      EXPECT_EQ(optRN->getResult().getType()->getOffset(), offset);
+      EXPECT_EQ(inputs[i], optRN->getInput().getNode());
+    }
+  }
+  checkNumericalEquivalence();
+}
+
+/// Test that if we have a Concat with all Dequantize inputs with the same
+/// scale/offset/kind that we can sink the Dequantizes below the Concat.
+TEST_F(GraphOptz, SinkDequantizeBelowConcatTest) {
+  const float scale = 0.06;
+  const int32_t offset = -15;
+  std::array<NodeValue, 5> inputs;
+  for (dim_t i = 0; i < 5; i++) {
+    Placeholder *input = mod_.createPlaceholder(ElemKind::Int8QTy, {i + 1, 100},
+                                                scale, offset, "input", false);
+    bindings_.allocate(input)->getHandle<int8_t>().randomize(-100, 100,
+                                                             mod_.getPRNG());
+    DequantizeNode *dequantize = F_->createDequantize("dequantize", input);
+    inputs[i] = dequantize->getResult();
+  }
+  ConcatNode *concat = F_->createConcat("concat", inputs, 0);
+  SaveNode *SN = F_->createSave("ret", concat);
+
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::SinkConversions, getDCEPassConfig()});
+
+  // Concat, dequantize, save.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::DequantizeNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind), 1);
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  DequantizeNode *optDequantize =
+      llvm::dyn_cast<DequantizeNode>(optSN->getInput());
+  ASSERT_TRUE(optDequantize);
+  NodeValue input = optDequantize->getInput();
+  EXPECT_EQ(scale, input.getType()->getScale());
+  EXPECT_EQ(offset, input.getType()->getOffset());
+  EXPECT_EQ(ElemKind::Int8QTy, input.getType()->getElementType());
+
+  // Find dequantize node in the optimized graph.
+  checkNumericalEquivalence();
+}
+
+/// Test that if we have a Concat with all Quantize inputs with the same
+/// scale/offset/kind that we can sink the Dequantizes below the Concat.
+TEST_F(GraphOptz, SinkQuantizeBelowConcatTest) {
+  const float scale = 0.06;
+  const int32_t offset = -15;
+  std::array<NodeValue, 5> inputs;
+  for (dim_t i = 0; i < 5; i++) {
+    Placeholder *input = mod_.createPlaceholder(ElemKind::Float16Ty,
+                                                {i + 1, 100}, "input", false);
+    bindings_.allocate(input)->getHandle<float16_t>().randomize(-100, 100,
+                                                                mod_.getPRNG());
+    const TypeRef QTy = mod_.uniqueType(
+        ElemKind::Int8QTy, input->getOutput().dims(), scale, offset);
+    QuantizeNode *quantize = F_->createQuantize("quantize", input, QTy);
+    inputs[i] = quantize->getResult();
+  }
+  ConcatNode *concat = F_->createConcat("concat", inputs, 0);
+  SaveNode *SN = F_->createSave("ret", concat);
+
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::SinkConversions, getDCEPassConfig()});
+
+  // Concat, quantize, save.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::QuantizeNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind), 1);
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+  QuantizeNode *optQuantize = llvm::dyn_cast<QuantizeNode>(optSN->getInput());
+  ASSERT_TRUE(optQuantize);
+  EXPECT_EQ(scale, optQuantize->getResult().getType()->getScale());
+  EXPECT_EQ(offset, optQuantize->getResult().getType()->getOffset());
+  EXPECT_EQ(ElemKind::Int8QTy,
+            optQuantize->getResult().getType()->getElementType());
+
+  // Find quantize node in the optimized graph.
+  checkNumericalEquivalence();
 }

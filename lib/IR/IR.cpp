@@ -102,6 +102,19 @@ Instruction::Operand Instruction::getOperand(unsigned idx) const {
   return ops_[idx];
 }
 
+llvm::StringRef Instruction::getOperandName(unsigned idx) const {
+  switch (getKind()) {
+#define DEF_INSTR(CLASS, NAME)                                                 \
+  case glow::Kinded::Kind::CLASS##Kind:                                        \
+    return static_cast<const CLASS *>(this)->getOperandName(idx);
+#define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME) DEF_INSTR(CLASS, NAME)
+#define DEF_VALUE(CLASS, NAME)
+#include "glow/AutoGenInstr.def"
+  default:
+    llvm_unreachable("Unhandled instruction");
+  }
+}
+
 void Instruction::eraseFromParent() { getParent()->eraseInstruction(this); }
 
 void Instruction::verifyUseList(
