@@ -25,6 +25,7 @@ namespace glow {
 class IRFunction;
 enum class IRFunctionPassID;
 
+/// Pass over low-level IR-level functions.
 using IRFunctionPass = Pass<IRFunction, IRFunctionPassID>;
 
 } // namespace glow

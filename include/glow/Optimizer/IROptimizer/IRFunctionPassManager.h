@@ -17,12 +17,13 @@
 #define GLOW_OPTIMIZER_IROPTIMIZER_IRFUNCTIONPASSMANAGER_H
 
 #include "glow/Optimizer/IROptimizer/IRFunctionPass.h"
-#include "glow/Optimizer/IROptimizerPipeline/IRFunctionPassPipeline.h"
+#include "glow/Optimizer/IROptimizer/IRFunctionPassPipeline.h"
 
 #include "glow/PassManager/PassManager.h"
 
 namespace glow {
 
+/// Pass manager for the low-level IR passes.
 using IRFunctionPassManager =
     PassManager<IRFunctionPassPipeline, IRFunctionPass>;
 

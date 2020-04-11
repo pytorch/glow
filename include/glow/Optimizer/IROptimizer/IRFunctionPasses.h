@@ -17,11 +17,11 @@
 #define GLOW_OPTIMIZER_IROPTIMIZER_IRFUNCTIONPASSES_H
 
 #include "glow/Optimizer/IROptimizer/IRFunctionPass.h"
-#include "glow/Optimizer/IROptimizerPipeline/IRFunctionPassPipeline.h"
+#include "glow/Optimizer/IROptimizer/IRFunctionPassPipeline.h"
 
 namespace glow {
 
-/// Declare all IR Pass classes.
+/// Declare all IRFunction pass classes.
 #define IR_FUN_PASS(PASS_NAME)                                                 \
   namespace ir {                                                               \
   class PASS_NAME : public IRFunctionPass {                                    \
