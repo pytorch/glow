@@ -160,7 +160,7 @@ enum Calibration {
 /// Configuration for Profiling, passed into \ref profileQuantization().
 struct ProfilingConfiguration {
   /// Number of bins used to compute the histogram during profiling.
-  unsigned numHistogramBins{1000U};
+  unsigned numHistogramBins{10};
 };
 
 /// Configuration for Quantization, passed into \ref quantizeFunction().

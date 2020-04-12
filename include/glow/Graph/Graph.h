@@ -1212,7 +1212,7 @@ public:
   /// phase. Compute the histogram during profiling with \p numHistogramBins.
   QuantizationProfileNode *
   createQuantizationProfile(PlaceholderBindings &bindings, llvm::StringRef name,
-                            NodeValue input, dim_t numHistogramBins = 1000);
+                            NodeValue input, dim_t numHistogramBins = 10);
 
   /// Create lookup table for mapping between quantized numbers.
   /// \p input and \p outTy must have quantized type.
