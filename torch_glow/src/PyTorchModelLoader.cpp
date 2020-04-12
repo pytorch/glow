@@ -1192,10 +1192,11 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
   // create qconv
   glow::NodeValue output_not_transposed;
   if (isPerChannelQuantized) {
-    if (!isConv3d) {
+    if (isConv3d) {
       RETURN_ERR_IF_NOT(
           dilation <= 1,
-          "Dilation not supported for group quantized convolution");
+          "Dilation not supported for channelwise quantized conv3d");
+      dilation = 1;
     }
 
     // extract qparams from ptWeightTensor.
