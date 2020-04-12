@@ -961,7 +961,7 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConv3DInstImpl(
 
 void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
     const ChannelwiseQuantizedConvolutionInst *I) {
-  bool isConv3D = (I->getSrc().dims().size() == 5);
+  bool isConv3D = (I->getSrc()->dims().size() == 5);
   if (isConv3D) {
     dispatchQuantizedWithAccumulationAndBiasImpl(
         fwdChannelwiseQuantizedConv3DInstImpl, I->getSrc()->getElementType(),

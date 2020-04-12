@@ -872,14 +872,14 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
   EE.run(bindings);
 }
 
-/// Test enabling ChannelwiseQuantizedConvolution in the quantization procedure.
+/// Test enabling ChannelwiseQuantizedConv2D in the quantization procedure.
 /// A standard Convolution node can be quantized and converted to a
 /// ChannelwiseQuantizedConvolution if:
 /// 1. The filter and bias are constants.
 /// 2. Use -enable-channelwise option or set enableChannelwise param in
 /// quantization::quantizeFunction to true.
-static void enableChannelwiseQuantizedConv(ElemKind qPrec, ElemKind qPrecBias,
-                                           quantization::Schema schema) {
+static void enableChannelwiseQuantizedConv2D(ElemKind qPrec, ElemKind qPrecBias,
+                                             quantization::Schema schema) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -1000,26 +1000,26 @@ static void enableChannelwiseQuantizedConv(ElemKind qPrec, ElemKind qPrecBias,
   EE.run(bindings);
 }
 
-TEST(Quantization, enableChannelwiseQuantizedConv_Int8_BiasInt8) {
-  enableChannelwiseQuantizedConv(ElemKind::Int8QTy, ElemKind::Int8QTy,
-                                 quantization::Schema::Asymmetric);
-  enableChannelwiseQuantizedConv(ElemKind::Int8QTy, ElemKind::Int8QTy,
-                                 quantization::Schema::Symmetric);
-  enableChannelwiseQuantizedConv(ElemKind::Int8QTy, ElemKind::Int8QTy,
-                                 quantization::Schema::SymmetricWithUnsigned);
-  enableChannelwiseQuantizedConv(
+TEST(Quantization, enableChannelwiseQuantizedConv2D_Int8_BiasInt8) {
+  enableChannelwiseQuantizedConv2D(ElemKind::Int8QTy, ElemKind::Int8QTy,
+                                   quantization::Schema::Asymmetric);
+  enableChannelwiseQuantizedConv2D(ElemKind::Int8QTy, ElemKind::Int8QTy,
+                                   quantization::Schema::Symmetric);
+  enableChannelwiseQuantizedConv2D(ElemKind::Int8QTy, ElemKind::Int8QTy,
+                                   quantization::Schema::SymmetricWithUnsigned);
+  enableChannelwiseQuantizedConv2D(
       ElemKind::Int8QTy, ElemKind::Int8QTy,
       quantization::Schema::SymmetricWithPower2Scale);
 }
 
-TEST(Quantization, enableChannelwiseQuantizedConv_Int8_BiasInt32) {
-  enableChannelwiseQuantizedConv(ElemKind::Int8QTy, ElemKind::Int32QTy,
-                                 quantization::Schema::Asymmetric);
-  enableChannelwiseQuantizedConv(ElemKind::Int8QTy, ElemKind::Int32QTy,
-                                 quantization::Schema::Symmetric);
-  enableChannelwiseQuantizedConv(ElemKind::Int8QTy, ElemKind::Int32QTy,
-                                 quantization::Schema::SymmetricWithUnsigned);
-  enableChannelwiseQuantizedConv(
+TEST(Quantization, enableChannelwiseQuantizedConv2D_Int8_BiasInt32) {
+  enableChannelwiseQuantizedConv2D(ElemKind::Int8QTy, ElemKind::Int32QTy,
+                                   quantization::Schema::Asymmetric);
+  enableChannelwiseQuantizedConv2D(ElemKind::Int8QTy, ElemKind::Int32QTy,
+                                   quantization::Schema::Symmetric);
+  enableChannelwiseQuantizedConv2D(ElemKind::Int8QTy, ElemKind::Int32QTy,
+                                   quantization::Schema::SymmetricWithUnsigned);
+  enableChannelwiseQuantizedConv2D(
       ElemKind::Int8QTy, ElemKind::Int32QTy,
       quantization::Schema::SymmetricWithPower2Scale);
 }

@@ -562,6 +562,8 @@ bool ChannelwiseQuantizedConvolutionNode::verify() const {
   if (isConv3D) {
     isValid = verifyConvolution3D(getInput(), getResult(), getFilter(),
                                   getBias(), Kernels_, Strides_, Pads_, Group_);
+    isValid &= expectCompareTrue("For Conv3D dilation must be 1", Dilation_,
+                                 unsigned_t(1), this);
   } else {
     isValid = verifyConvolution<ShapeNHWC>(
         getInput(), getResult(), getFilter(), getBias(), Kernels_, Strides_,
@@ -595,16 +597,16 @@ bool ChannelwiseQuantizedConvolutionNode::verify() const {
   // Check qparam sizes.
   isValid &= expectCompareTrue(
       "There must be one filter offset qparam per output channel",
-      getFilterOffsets().dims()[0], dim_t(getResult().dims()[input_dims.size() - 1]), this);
+      getFilterOffsets().dims()[0], dim_t(getResult().dims().back()), this);
   isValid &= expectCompareTrue(
       "There must be one filter scale qparam per output channel",
-      getFilterScales().dims()[0], dim_t(getResult().dims()[input_dims.size() - 1]), this);
+      getFilterScales().dims()[0], dim_t(getResult().dims().back()), this);
   isValid &= expectCompareTrue(
       "There must be one bias offset qparam per output channel",
-      getBiasOffsets().dims()[0], dim_t(getResult().dims()[input_dims.size() - 1]), this);
+      getBiasOffsets().dims()[0], dim_t(getResult().dims().back()), this);
   isValid &= expectCompareTrue(
       "There must be one bias scale qparam per output channel",
-      getBiasScales().dims()[0], dim_t(getResult().dims()[input_dims.size() - 1]), this);
+      getBiasScales().dims()[0], dim_t(getResult().dims().back()), this);
 
   return isValid;
 }

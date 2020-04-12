@@ -22,7 +22,7 @@ using namespace glow;
 
 extern "C" {
 // Forward declare functions from libjit.
-extern void libjit_convolution_f(float *outW, const float *inW, const float *filterW,
+extern void libjit_conv2d_f(float *outW, const float *inW, const float *filterW,
                      const float *biasW, const size_t *outWdims,
                      const size_t *inWdims, const size_t *filterWdims, 
                      const size_t *biasWdims, const size_t *kernelSizes, 
@@ -95,8 +95,8 @@ public:
   }
 
   virtual void run() override {
-    // biasWDims isn't used in libjit_convolution_f, so we're passing NULL.
-    libjit_convolution_f(outW.data(), inW.data(), filterW.data(), biasW.data(), 
+    // biasWDims isn't used in libjit_conv2d_f, so we're passing NULL.
+    libjit_conv2d_f(outW.data(), inW.data(), filterW.data(), biasW.data(), 
                          outWdims, inWdims, filterWdims, NULL, 
                          kernelSizes, strides, pads, group, depthUnroll);
   }

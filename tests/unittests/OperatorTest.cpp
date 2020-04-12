@@ -6852,9 +6852,9 @@ TEST_P(OperatorTest, GroupConvolution) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 100000);
 }
 
-/// Utility function to test numerically the ChannelwiseQuantizedConvolution
+/// Utility function to test numerically the ChannelwiseQuantizedConvolution2D
 /// against a floating point Convolution for different parameters.
-static void testChannelwiseQuantizedConv(
+static void testChannelwiseQuantizedConv2D(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
     glow::ExecutionEngine &EE, quantization::Schema schema, ElemKind elemQKind,
     ElemKind biasElemQKind, bool filterFloat, bool biasFloat,
@@ -7019,9 +7019,9 @@ static void testChannelwiseQuantizedConv(
 #define TEST_CWQCONV(testName, ...)                                            \
   TEST_P(OperatorTest, testName) {                                             \
     ENABLED_BACKENDS("Interpreter", "CPU");                                    \
-    testChannelwiseQuantizedConv(bindings_, mod_, F_, EE_,                     \
-                                 quantization::Schema::Asymmetric,             \
-                                 __VA_ARGS__);                                 \
+    testChannelwiseQuantizedConv2D(bindings_, mod_, F_, EE_,                   \
+                                   quantization::Schema::Asymmetric,           \
+                                   __VA_ARGS__);                               \
   }
 
 /// These unit tests prove that the bias quantization for low precision (Int8)
@@ -7029,44 +7029,44 @@ static void testChannelwiseQuantizedConv(
 /// implicit quantization parameters biasScales[i] = inputScale*filterScales[i]
 /// and biasOffsets[i]=0 does not work numerically due to BIAS DATA saturation.
 /// Therefore in the unit tests below we do not use the *_*FF tests.
-TEST_CWQCONV(ChannelwiseQuantizedConv_Int8_BiasInt8_FFT, ElemKind::Int8QTy,
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt8_FFT, ElemKind::Int8QTy,
              ElemKind::Int8QTy, false, false, true)
-TEST_CWQCONV(ChannelwiseQuantizedConv_Int8_BiasInt8_FTF, ElemKind::Int8QTy,
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt8_FTF, ElemKind::Int8QTy,
              ElemKind::Int8QTy, false, true, false)
-TEST_CWQCONV(ChannelwiseQuantizedConv_Int8_BiasInt8_FTT, ElemKind::Int8QTy,
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt8_FTT, ElemKind::Int8QTy,
              ElemKind::Int8QTy, false, true, true)
-TEST_CWQCONV(ChannelwiseQuantizedConv_Int8_BiasInt8_TFT, ElemKind::Int8QTy,
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt8_TFT, ElemKind::Int8QTy,
              ElemKind::Int8QTy, true, false, true)
-TEST_CWQCONV(ChannelwiseQuantizedConv_Int8_BiasInt8_TTF, ElemKind::Int8QTy,
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt8_TTF, ElemKind::Int8QTy,
              ElemKind::Int8QTy, true, true, false)
-TEST_CWQCONV(ChannelwiseQuantizedConv_Int8_BiasInt8_TTT, ElemKind::Int8QTy,
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt8_TTT, ElemKind::Int8QTy,
              ElemKind::Int8QTy, true, true, true)
 
 /// These unit tests prove that the bias quantization for high precision (Int32)
 /// can work without a special handling (implicit quantization parameters).
-TEST_CWQCONV(ChannelwiseQuantizedConv_Int8_BiasInt32_FFF, ElemKind::Int8QTy,
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_FFF, ElemKind::Int8QTy,
              ElemKind::Int32QTy, false, false, false)
-TEST_CWQCONV(ChannelwiseQuantizedConv_Int8_BiasInt32_FFT, ElemKind::Int8QTy,
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_FFT, ElemKind::Int8QTy,
              ElemKind::Int32QTy, false, false, true)
-TEST_CWQCONV(ChannelwiseQuantizedConv_Int8_BiasInt32_FTF, ElemKind::Int8QTy,
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_FTF, ElemKind::Int8QTy,
              ElemKind::Int32QTy, false, true, false)
-TEST_CWQCONV(ChannelwiseQuantizedConv_Int8_BiasInt32_FTT, ElemKind::Int8QTy,
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_FTT, ElemKind::Int8QTy,
              ElemKind::Int32QTy, false, true, true)
-TEST_CWQCONV(ChannelwiseQuantizedConv_Int8_BiasInt32_TFF, ElemKind::Int8QTy,
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_TFF, ElemKind::Int8QTy,
              ElemKind::Int32QTy, true, false, false)
-TEST_CWQCONV(ChannelwiseQuantizedConv_Int8_BiasInt32_TFT, ElemKind::Int8QTy,
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_TFT, ElemKind::Int8QTy,
              ElemKind::Int32QTy, true, false, true)
-TEST_CWQCONV(ChannelwiseQuantizedConv_Int8_BiasInt32_TTF, ElemKind::Int8QTy,
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_TTF, ElemKind::Int8QTy,
              ElemKind::Int32QTy, true, true, false)
-TEST_CWQCONV(ChannelwiseQuantizedConv_Int8_BiasInt32_TTT, ElemKind::Int8QTy,
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_TTT, ElemKind::Int8QTy,
              ElemKind::Int32QTy, true, true, true)
 #undef TEST_CWQCONV
 
-/// Utility function to test numerically the ChannelwiseQuantizedConvolution
+/// Utility function to test numerically the ChannelwiseQuantizedConvolution2D
 /// against Interpreter implementation.
 static FunctionTensorPair
-createAndInitBasicChannelwiseConvTest(glow::PlaceholderBindings &bindings,
-                                      glow::ExecutionEngine &EE) {
+createAndInitBasicChannelwiseConv2DTest(glow::PlaceholderBindings &bindings,
+                                        glow::ExecutionEngine &EE) {
 
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -7107,11 +7107,11 @@ createAndInitBasicChannelwiseConvTest(glow::PlaceholderBindings &bindings,
   return std::make_pair(F, outputTensor);
 }
 
-/// Test Int8 ChannelwiseQuantizedConvolution with Int8 bias.
-TEST_P(OperatorStatelessTest, ChannelwiseQuantizedConv_Int8_BiasInt8) {
+/// Test Int8 ChannelwiseQuantizedConvolution2D with Int8 bias.
+TEST_P(OperatorStatelessTest, ChannelwiseQuantizedConv2D_Int8_BiasInt8) {
   ENABLED_BACKENDS("Interpreter", "CPU");
   compareAgainstInterpreter(
-      getBackendName(), createAndInitBasicChannelwiseConvTest,
+      getBackendName(), createAndInitBasicChannelwiseConv2DTest,
       ElemKind::FloatTy, ElemKind::Int8QTy, 0.05f, parCloneCountOpt,
       /* convertToRowwiseQuantization */ false,
       quantization::Schema::Asymmetric, ElemKind::Int8QTy,
@@ -7119,11 +7119,11 @@ TEST_P(OperatorStatelessTest, ChannelwiseQuantizedConv_Int8_BiasInt8) {
       /* convertToChannelwiseQuantization */ true);
 }
 
-/// Test Int8 ChannelwiseQuantizedConvolution with Int32 bias.
-TEST_P(OperatorStatelessTest, ChannelwiseQuantizedConv_Int8_BiasInt32) {
+/// Test Int8 ChannelwiseQuantizedConvolution2D with Int32 bias.
+TEST_P(OperatorStatelessTest, ChannelwiseQuantizedConv2D_Int8_BiasInt32) {
   ENABLED_BACKENDS("Interpreter", "CPU");
   compareAgainstInterpreter(
-      getBackendName(), createAndInitBasicChannelwiseConvTest,
+      getBackendName(), createAndInitBasicChannelwiseConv2DTest,
       ElemKind::FloatTy, ElemKind::Int8QTy, 0.05f, parCloneCountOpt,
       /* convertToRowwiseQuantization */ false,
       quantization::Schema::Asymmetric, ElemKind::Int32QTy,
@@ -7133,7 +7133,7 @@ TEST_P(OperatorStatelessTest, ChannelwiseQuantizedConv_Int8_BiasInt32) {
 
 /// Test the functionality of channelwise quantized group convolution using
 /// ChannelwiseQuantizedConvNode.
-TEST_P(OperatorTest, ChannelwiseQuantizedConv) {
+TEST_P(OperatorTest, ChannelwiseQuantizedConv2D) {
   ENABLED_BACKENDS("Interpreter", "CPU");
 
   constexpr size_t groups = 2;
@@ -7214,8 +7214,8 @@ TEST_P(OperatorTest, ChannelwiseQuantizedConv) {
 
 /// Test the functionality of channelwise quantized group convolution using
 /// ChannelwiseQuantizedConvNode.
-TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolution3D) {
-  CHECK_IF_ENABLED();
+TEST_P(OperatorTest, ChannelwiseQuantizedConv3D) {
+  ENABLED_BACKENDS("Interpreter", "CPU");
 
   constexpr size_t groups = 2;
   constexpr dim_t output_channel = 4;
@@ -7264,10 +7264,10 @@ TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolution3D) {
 
   auto *outTy = mod_.uniqueType(ElemKind::Int8QTy,
                                 {1, output_channel / groups, 2, 3, 2}, 1.0, 0);
-  ChannelwiseQuantizedConvolutionNode *CQC =
-      F_->createChannelwiseQuantizedConv3D(
-          "channelwiseQuantizedConv", qInput, filter, bias, scales, offsets,
-          outTy, {1, 1, 1}, {1, 1, 1}, {0, 0, 0, 0, 0, 0}, groups);
+  ChannelwiseQuantizedConvolutionNode *CQC = F_->createChannelwiseQuantizedConv(
+      "channelwiseQuantizedConv", qInput, filter, bias, scales, offsets,
+      nullptr, nullptr, outTy, {1, 1, 1}, {1, 1, 1}, {0, 0, 0, 0, 0, 0},
+      groups);
 
   DequantizeNode *dq = F_->createDequantize("dequantize", CQC);
   SaveNode *S = F_->createSave("save", dq);
@@ -7426,51 +7426,6 @@ TEST_P(OperatorTest, ChannelwiseQuantizedConv_NonZero) {
   EXPECT_FLOAT_EQ(result.at({0, 0, 2, 1}), 28);
   EXPECT_FLOAT_EQ(result.at({0, 0, 2, 2}), 32);
   EXPECT_FLOAT_EQ(result.at({0, 0, 2, 3}), 36);
-}
-
-TEST_P(OperatorTest, DilatedConvolution) {
-  CHECK_IF_ENABLED();
-
-  auto *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 4, 1, 1}, "input", false);
-  auto IH = bindings_.allocate(input)->getHandle();
-  for (size_t i = 0; i < 4; i++) {
-    IH.raw(i) = i + 1;
-  }
-
-  auto filter =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "filter", false);
-  auto FH = bindings_.allocate(filter)->getHandle();
-  for (dim_t i = 0; i < 3; i++)
-    for (dim_t j = 0; j < 3; j++) {
-      FH.at({0, i, j, 0}) = 1;
-    }
-  FH.at({0, 1, 1, 0}) = 0;
-
-  auto *zeroBias =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
-  bindings_.allocate(zeroBias)->zero();
-
-  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 4, 1, 1});
-
-  ConvolutionNode *CN =
-      F_->createConv("Conv", input, filter, zeroBias, outTy, 3, 1, 2, 1, 2);
-  SaveNode *S = F_->createSave("save", CN);
-  bindings_.allocate(S->getPlaceholder());
-
-  ::glow::convertPlaceholdersToConstants(F_, bindings_,
-                                         {input, S->getPlaceholder()});
-  EE_.compile(CompilationMode::Infer);
-  EE_.run(bindings_);
-
-  auto result = bindings_.get(S->getPlaceholder())->getHandle();
-
-  std::vector<dim_t> expectedDims = {1, 4, 1, 1};
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
-  EXPECT_FLOAT_EQ(result.at({0, 0, 0, 0}), 3);
-  EXPECT_FLOAT_EQ(result.at({0, 1, 0, 0}), 4);
-  EXPECT_FLOAT_EQ(result.at({0, 2, 0, 0}), 1);
-  EXPECT_FLOAT_EQ(result.at({0, 3, 0, 0}), 2);
 }
 
 TEST_P(OperatorTest, GroupDilatedConvolution) {

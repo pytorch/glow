@@ -1902,7 +1902,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *outPost = emitConstI32(builder, outScaleParam.post);
       auto *outScale = emitConstI32(builder, outScaleParam.scale);
 
-      auto *F = getFunction("convolution",
+      auto *F = getFunction("conv2d",
                             {dest->getElementType(), bias->getElementType()});
 
       createCall(builder, F,
@@ -1913,7 +1913,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                   outPost,    outScale,   unrollD,    dilation});
     } else {
 
-      auto *F = getFunction("convolution", dest->getElementType());
+      auto *F = getFunction("conv2d", dest->getElementType());
 
       createCall(builder, F,
                  {destPtr, srcPtr, filterPtr, biasPtr, destDims, srcDims,
@@ -2040,7 +2040,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto biasScalesH = biasScalesT.getHandle<float>();
 
     // Compute quantization parameters for each channel.
-    auto channelNum = dest->dims()[3];
+    auto channelNum = dest->dims().back();
     std::vector<llvm::Constant *> biasPreV(channelNum);
     std::vector<llvm::Constant *> biasPostV(channelNum);
     std::vector<llvm::Constant *> biasScaleV(channelNum);
@@ -2105,7 +2105,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *outputScalePtr =
         emitConstArray(builder, outputScaleV, builder.getInt32Ty());
 
-    auto *F = getFunction("channelwise_quantized_convolution",
+    bool isConv3D = (srcTy->dims().size() == 5);
+    auto *F = getFunction(isConv3D ? "channelwise_quantized_conv3d"
+                                   : "channelwise_quantized_conv2d",
                           {dest->getElementType(), bias->getElementType()});
 
     createCall(builder, F,
