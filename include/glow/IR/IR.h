@@ -299,7 +299,7 @@ class Value;
 class Node;
 
 /// A function that represents the compilation unit.
-class IRFunction final : public Named {
+class IRFunction final : public IRContainer {
 public:
   using VariableMap = llvm::MapVector<const Storage *, Value *>;
   using InstListTy = TaggedList<Instruction, InstructionTraits>;

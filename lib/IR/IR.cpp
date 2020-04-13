@@ -557,7 +557,7 @@ void Instruction::dumpOperands(llvm::raw_ostream &os) const {
 }
 
 IRFunction::IRFunction(Function *G)
-    : Named(G ? G->getName() : llvm::StringRef{}), G_(G) {}
+    : IRContainer(G ? G->getName() : llvm::StringRef{}), G_(G) {}
 
 static bool hasResultValue(const Instruction *I) {
   return I->getKind() == Instruction::Kind::AllocActivationInstKind ||
