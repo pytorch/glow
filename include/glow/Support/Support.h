@@ -157,6 +157,14 @@ const std::string strFormat(const char *format, ...)
 #endif
 ;
 
+/// Printf-like formatting for std::string. The returned string lives until the
+/// end of the program execution.
+const std::string &staticStrFormat(const char *format, ...)
+#ifndef _MSC_VER
+    __attribute__((__format__(__printf__, 1, 2)));
+#endif
+;
+
 /// Helper that converts and \returns an enum class to an unsigned. Useful when
 /// using an enum class in a bitset.
 template <class T> inline constexpr unsigned convertEnumToUnsigned(T e) {
