@@ -1155,7 +1155,7 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
       iValToInt(getGlowIValueForValue(inputs[input_mapping["zero_point"]])));
 
   // calc output type
-  glow::unsigned_t dilation = 0;
+  glow::unsigned_t dilation = 1;
   glow::TypeRef outTy;
   std::vector<glow::unsigned_t> kernels;
   if (isConv3d) {
@@ -1194,9 +1194,8 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
   if (isPerChannelQuantized) {
     if (isConv3d) {
       RETURN_ERR_IF_NOT(
-          dilation <= 1,
+          dilation == 1,
           "Dilation not supported for channelwise quantized conv3d");
-      dilation = 1;
     }
 
     // extract qparams from ptWeightTensor.
