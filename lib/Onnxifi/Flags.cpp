@@ -329,34 +329,34 @@ DEFINE_validator(glow_nnpi_num_parallel_chunks,
                  });
 #endif /* GLOW_WITH_NNPI */
 
-DEFINE_uint32(glow_interpreter_memory, 0,
-              "Amount of DRAM to allocate per Interpreter in KiB");
-DEFINE_validator(glow_interpreter_memory, [](const char *, unsigned value) {
+DEFINE_int32(glow_interpreter_memory, 0,
+             "Amount of DRAM to allocate per Interpreter in KiB");
+DEFINE_validator(glow_interpreter_memory, [](const char *, int32_t value) {
   glow::runtime::GlowInterpreterMemory = value;
   return true;
 });
 
 #ifdef GLOW_WITH_CPU
-DEFINE_uint32(glow_cpu_memory, 0, "Amount of DRAM to allocate per CPU in KiB");
-DEFINE_validator(glow_cpu_memory, [](const char *, unsigned value) {
+DEFINE_int32(glow_cpu_memory, 0, "Amount of DRAM to allocate per CPU in KiB");
+DEFINE_validator(glow_cpu_memory, [](const char *, int32_t value) {
   glow::runtime::GlowCPUMemory = value;
   return true;
 });
 #endif
 
 #ifdef GLOW_WITH_HABANA
-DEFINE_uint32(glow_habana_memory, 7 << 20,
-              "Amount of DRAM to allocate per Habana device in KiB");
-DEFINE_validator(glow_habana_memory, [](const char *flagname, unsigned value) {
+DEFINE_int32(glow_habana_memory, 7 << 20,
+             "Amount of DRAM to allocate per Habana device in KiB");
+DEFINE_validator(glow_habana_memory, [](const char *flagname, int32_t value) {
   glow::runtime::GlowHabanaMemory = value;
   return true;
 });
 #endif
 
 #ifdef GLOW_WITH_NNPI
-DEFINE_uint32(glow_nnpi_memory, 16 << 20,
-              "Amount of DRAM to allocate per NNPI device in KiB");
-DEFINE_validator(glow_nnpi_memory, [](const char *flagname, unsigned value) {
+DEFINE_int32(glow_nnpi_memory, 16 << 20,
+             "Amount of DRAM to allocate per NNPI device in KiB");
+DEFINE_validator(glow_nnpi_memory, [](const char *flagname, int32_t value) {
   glow::runtime::GlowNNPIMemory = value;
   return true;
 });
