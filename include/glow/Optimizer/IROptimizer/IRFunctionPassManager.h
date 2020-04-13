@@ -18,7 +18,6 @@
 
 #include "glow/Optimizer/IROptimizer/IRFunctionPass.h"
 #include "glow/Optimizer/IROptimizer/IRFunctionPassPipeline.h"
-
 #include "glow/PassManager/PassManager.h"
 
 namespace glow {

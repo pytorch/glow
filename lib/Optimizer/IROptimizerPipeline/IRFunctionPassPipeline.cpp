@@ -58,7 +58,7 @@ IRFunctionPassPipeline glow::createDefaultIRFunctionOptimizationPipeline() {
       {IRFunctionPassID::MakeWeightsConst},
   };
   if (instrumentDebug) {
-    // Run debug instrumentation only if neccesary.
+    // Run debug instrumentation only if necessary.
     pipeline.pushBack({IRFunctionPassID::DebugInstrument});
   }
   // Always run a verifier at the end.
@@ -80,57 +80,6 @@ llvm::StringRef glow::getNameOfPass(IRFunctionPassID passID) {
   llvm_unreachable("Unexpected pass.");
 }
 
-static constexpr char const *tab = "  ";
-
 template <> void IRFunctionPassConfig::dump(llvm::raw_ostream &os) const {
-  os << tab << "PassName: " << getNameOfPass(getPassID()) << ",\n";
-
-  os << tab << "ConvergenceMode: ";
-  switch (getConvergenceMode()) {
-  case ConvergenceMode::OnePass:
-    os << "OnePass,";
-    break;
-  case ConvergenceMode::UntilFixedPoint:
-    os << "UntilFixedPoint,";
-    break;
-  }
-  os << "\n";
-
-  os << tab << "CompilationModes: {";
-  if (isEnabledForCompilationMode(CompilationMode::Infer)) {
-    os << "[Infer]";
-  }
-  if (isEnabledForCompilationMode(CompilationMode::Train)) {
-    os << "[Train]";
-  }
-  os << "},\n";
-
-  os << "\n";
-}
-
-template <> void IRFunctionPassPipeline::dump(llvm::raw_ostream &os) const {
-  os << "Pipeline contains:\n";
-  for (size_t i = 0, e = this->size(); i < e; i++) {
-    const IRFunctionPassConfig &passConfig = (*this)[i];
-    os << "FunctionPassIdx " << i << ": {\n";
-    passConfig.dump(os);
-    os << "}\n";
-  }
-}
-
-template <>
-bool IRFunctionPassPipeline::removeFirstInstanceOfPass(IRFunctionPassID FPID) {
-  for (auto it = begin(); it != end(); it++) {
-    if (it->getPassID() == FPID) {
-      erase(it);
-      return true;
-    }
-  }
-  return false;
-}
-
-template <>
-void IRFunctionPassPipeline::removeAllInstancesOfPass(IRFunctionPassID FPID) {
-  while (removeFirstInstanceOfPass(FPID)) {
-  }
+  PassConfigBase::dump(os, getNameOfPass(getPassID()));
 }

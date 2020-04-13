@@ -17,6 +17,7 @@
 #define GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASSMANAGER_H
 
 #include "glow/Optimizer/GraphOptimizer/FunctionPass.h"
+#include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
 #include "glow/PassManager/PassManager.h"
 
 namespace glow {

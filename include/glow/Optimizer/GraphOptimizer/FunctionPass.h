@@ -17,6 +17,7 @@
 #define GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASS_H
 
 #include "glow/PassManager/Pass.h"
+#include "glow/PassManager/PassConfig.h"
 
 namespace glow {
 
@@ -24,10 +25,34 @@ class Function;
 struct CompilationContext;
 enum class FunctionPassID;
 
+/// Specifies whether the pass requires DCE.
+enum class DCERequiredMode {
+  /// Require that DCE is run before the pass.
+  BeforePass,
+  /// Signify the pass has no requirement/dependence on DCE.
+  None,
+};
+
+class FunctionPassConfig : public PassConfig<FunctionPassID> {
+  /// Represents whether DCE is required for this pass.
+  DCERequiredMode dceMode_{DCERequiredMode::BeforePass};
+
+public:
+  FunctionPassConfig(FunctionPassID ID,
+                     ConvergenceMode convergenceMode = ConvergenceMode::OnePass,
+                     const std::set<CompilationMode> &enabledCompModes =
+                         {CompilationMode::Infer, CompilationMode::Train},
+                     DCERequiredMode dceMode = DCERequiredMode::BeforePass)
+      : PassConfig(ID, convergenceMode), dceMode_(dceMode) {}
+  /// \returns the DCERequiredMode of this config.
+  DCERequiredMode getDCERequiredMode() const { return dceMode_; }
+  void dump(llvm::raw_ostream &os) const;
+};
+
 /// Class used for all passes over Functions. All passes over Functions should
 /// derive from this class, implementing the pass logic and additionally can add
 /// logic for running before and after the pass runs.
-using FunctionPass = Pass<Function, FunctionPassID>;
+using FunctionPass = Pass<Function, FunctionPassConfig>;
 
 } // namespace glow
 

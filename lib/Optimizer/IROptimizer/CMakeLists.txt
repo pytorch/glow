@@ -6,4 +6,5 @@ target_link_libraries(IROptimizer
                       PRIVATE
                         Graph
                         IR
-                        QuantizationBase)
+                        QuantizationBase
+                        PassManager)

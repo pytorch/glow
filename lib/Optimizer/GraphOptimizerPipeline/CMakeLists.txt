@@ -4,4 +4,5 @@ add_library(GraphOptimizerPipeline
 target_link_libraries(GraphOptimizerPipeline
                       PRIVATE
                         Graph
-                        LLVMCore)
+                        LLVMCore
+                        PassManager)

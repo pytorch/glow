@@ -135,11 +135,10 @@ const std::string strFormat(const char *format, ...) {
   return std::string(str.data(), len);
 }
 
-/// The storage for strings that should live until the end of the execution.
-static std::vector<std::string> staticStrings;
-
 /// Create a formatted string that should live until the end of the execution.
 const std::string &staticStrFormat(const char *format, ...) {
+  // The storage for strings that should live until the end of the execution.
+  static std::vector<std::string> staticStrings;
   // Initialize use of varargs.
   va_list vaArgs;
   va_start(vaArgs, format);

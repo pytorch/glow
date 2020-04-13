@@ -1704,7 +1704,6 @@ std::unique_ptr<IRFunction> generateAndOptimizeIR(Function *F, const Backend &B,
 
 void optimize(IRFunction &M, bool shouldShareBuffers) {
   M.verify();
-  createDefaultIRFunctionOptimizationPipeline();
   IRFunctionPassManager IRFPM("TargetIndependentIROptzFPM",
                               createDefaultIRFunctionOptimizationPipeline());
   CompilationContext cctx;
@@ -1714,7 +1713,6 @@ void optimize(IRFunction &M, bool shouldShareBuffers) {
 
 void optimize(IRFunction &M, const Backend &B, bool shouldShareBuffers) {
   M.verify();
-  createDefaultIRFunctionOptimizationPipeline();
   IRFunctionPassManager IRFPM("TargetIndependentIROptzFPM",
                               B.getIROptimizationPipeline());
   CompilationContext cctx;

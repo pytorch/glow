@@ -17,10 +17,9 @@
 #define GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASSPIPELINE_H
 
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
+#include "glow/Optimizer/GraphOptimizer/FunctionPass.h"
 #include "glow/PassManager/Pipeline.h"
 #include "glow/Support/Support.h"
-
-#include <bitset>
 
 namespace glow {
 
@@ -31,32 +30,8 @@ enum class FunctionPassID {
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.def"
 };
 
-/// Specifies whether the pass requires DCE.
-enum class DCERequiredMode {
-  /// Require that DCE is run before the pass.
-  BeforePass,
-  /// Signify the pass has no requirement/dependence on DCE.
-  None,
-};
-
-class FunctionPassConfig : public PassConfig<FunctionPassID> {
-  /// Represents whether DCE is required for this pass.
-  DCERequiredMode dceMode_{DCERequiredMode::BeforePass};
-
-public:
-  FunctionPassConfig(FunctionPassID ID,
-                     ConvergenceMode convergenceMode = ConvergenceMode::OnePass,
-                     const std::set<CompilationMode> &enabledCompModes =
-                         {CompilationMode::Infer, CompilationMode::Train},
-                     DCERequiredMode dceMode = DCERequiredMode::BeforePass)
-      : PassConfig(ID, convergenceMode), dceMode_(dceMode) {}
-  /// \returns the DCERequiredMode of this config.
-  DCERequiredMode getDCERequiredMode() const { return dceMode_; }
-  void dump(llvm::raw_ostream &os) const;
-};
-
 /// IR passes pipeline.
-using FunctionPassPipeline = PassPipeline<FunctionPassConfig>;
+using FunctionPassPipeline = PassPipeline<FunctionPass>;
 
 /// \returns the name of a Pass given its \p passID.
 llvm::StringRef getNameOfPass(FunctionPassID passID);

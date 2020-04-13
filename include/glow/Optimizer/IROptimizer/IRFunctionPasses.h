@@ -17,7 +17,6 @@
 #define GLOW_OPTIMIZER_IROPTIMIZER_IRFUNCTIONPASSES_H
 
 #include "glow/Optimizer/IROptimizer/IRFunctionPass.h"
-#include "glow/Optimizer/IROptimizer/IRFunctionPassPipeline.h"
 
 namespace glow {
 
@@ -25,15 +24,17 @@ namespace glow {
 #define IR_FUN_PASS(PASS_NAME)                                                 \
   namespace ir {                                                               \
   class PASS_NAME : public IRFunctionPass {                                    \
+  public:                                                                      \
+    PASS_NAME() : IRFunctionPass(#PASS_NAME) {}                                \
+                                                                               \
   private:                                                                     \
     bool run(IRFunction *F, const CompilationContext &cctx) override;          \
-    llvm::StringRef getName() const override { return #PASS_NAME; }            \
     IRFunctionPassID getID() const override {                                  \
       return IRFunctionPassID::PASS_NAME;                                      \
     }                                                                          \
   };                                                                           \
   }
-#include "IRPasses.def"
+#include "glow/Optimizer/IROptimizer/IRPasses.def"
 
 /// Helper that creates and \returns a FunctionPass given a provided \p passID.
 std::unique_ptr<IRFunctionPass> createFunctionPass(IRFunctionPassID passID);

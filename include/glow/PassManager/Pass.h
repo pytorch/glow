@@ -21,29 +21,36 @@
 
 namespace glow {
 
-/// Class used for all passes over functions. All passes over functions should
-/// derive from this class, implementing the pass logic and additionally can add
-/// logic for running before and after the pass runs.
-template <typename UNIT, typename PASSID> class Pass {
-  // friend PASSMANAGER;
+class PassBase : public Named {
+public:
+  PassBase(llvm::StringRef name) : Named(name) {}
+
+  virtual ~PassBase() = default;
+};
+
+/// Class used for all passes over IR containers represented by the type \p
+/// IRCONTAINER, which can be e.g. Function or IRFunction. All passes over units
+/// should derive from this class, implementing the pass logic and additionally
+/// can add logic for running before and after the pass runs. The pass configs
+/// are represented by the type \p IRPASSCONFIG.
+template <typename IRCONTAINER, typename IRPASSCONFIG>
+class Pass : public PassBase {
+public:
+  using IRContainerTy = IRCONTAINER;
+  using IRPassConfigTy = IRPASSCONFIG;
+  using PassIDTy = typename IRPassConfigTy::PassIDTy;
 
 public:
-  using Unit = UNIT;
-  using PassID = PASSID;
+  /// Constructor.
+  Pass(llvm::StringRef name) : PassBase(name) {}
 
-public:
-  /// Run the pass on \p F. \returns whether the pass modifies \p F.
-  virtual bool run(Unit *F, const CompilationContext &cctx) = 0;
+  virtual ~Pass() = default;
 
-  /// \returns the name of the pass.
-  virtual llvm::StringRef getName() const = 0;
+  /// Run the pass on \p C. \returns whether the pass modifies \p C.
+  virtual bool run(IRContainerTy *C, const CompilationContext &cctx) = 0;
 
   /// \returns the id of the pass.
-  virtual PassID getID() const = 0;
-
-public:
-  Pass() = default;
-  virtual ~Pass() = default;
+  virtual PassIDTy getID() const = 0;
 };
 
 } // namespace glow

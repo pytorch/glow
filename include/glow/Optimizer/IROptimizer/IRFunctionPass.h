@@ -17,16 +17,18 @@
 #define GLOW_OPTIMIZER_IROPTIMIZER_IRFUNCTIONPASS_H
 
 #include "glow/PassManager/Pass.h"
-
-using namespace glow;
+#include "glow/PassManager/PassConfig.h"
 
 namespace glow {
 
 class IRFunction;
 enum class IRFunctionPassID;
 
+// template <typename X, typename Y> class IRFunctionPass;
+using IRFunctionPassConfig = PassConfig<IRFunctionPassID>;
+
 /// Pass over low-level IR-level functions.
-using IRFunctionPass = Pass<IRFunction, IRFunctionPassID>;
+using IRFunctionPass = Pass<IRFunction, IRFunctionPassConfig>;
 
 } // namespace glow
 

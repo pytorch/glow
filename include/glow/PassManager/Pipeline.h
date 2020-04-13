@@ -13,9 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_OPTIMIZER_IROPTIMIZERPIPELINE_PIPELINE_H
-#define GLOW_OPTIMIZER_IROPTIMIZERPIPELINE_PIPELINE_H
+#ifndef GLOW_PASSMANAGER_PIPELINE_H
+#define GLOW_PASSMANAGER_PIPELINE_H
 
+#include "PassConfig.h"
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
 #include "glow/Support/Support.h"
 
@@ -24,79 +25,38 @@
 
 namespace glow {
 
-/// Specifies convergence mode for a FunctionPass.
-enum class ConvergenceMode {
-  /// Run a single pass over the Function.
-  OnePass,
-  /// Run the pass over the Function until a fixed point is reached.
-  UntilFixedPoint,
-};
-
-/// Specifies a configuration for running an Pass when used in a
-/// PassPipeline.
-template <typename PASS_ID> class PassConfig {
+/// Implementation of a pipeline for executing a series of passes. Each pass
+/// should be of type \p PASS or a type derived from it.
+template <typename PASS>
+class PassPipeline
+    : private llvm::SmallVector<typename PASS::IRPassConfigTy, 64> {
 public:
-  using PassID = PASS_ID;
+  using IRPassConfigTy = typename PASS::IRPassConfigTy;
+  using PassIDTy = typename IRPassConfigTy::PassIDTy;
 
 private:
-  /// ID of the FunctionPass to run.
-  PassID passID_{PassID::EmptyPass};
+  using ParentImpl = llvm::SmallVectorImpl<IRPassConfigTy>;
 
-  /// Convergence mode to inform the PassManager how to run the FunctionPass.
-  ConvergenceMode convergenceMode_{ConvergenceMode::OnePass};
-
-  /// Which CompilationModes the Pass should be run in.
-  std::bitset<convertEnumToUnsigned(CompilationMode::NumCompilationModes)>
-      enabledCompModes_;
-
-public:
-  PassConfig(PassID ID,
-             ConvergenceMode convergenceMode = ConvergenceMode::OnePass,
-             const std::set<CompilationMode> &enabledCompModes =
-                 {CompilationMode::Infer, CompilationMode::Train})
-      : passID_(ID), convergenceMode_(convergenceMode) {
-    for (const auto &mode : enabledCompModes) {
-      enabledCompModes_.set(convertEnumToUnsigned(mode));
+  /// Removes the first instance of a pass with ID \p passID. \returns whether
+  /// an instance of the pass was successfully found and removed.
+  bool removeFirstInstanceOfPass(PassIDTy passID) {
+    for (auto it = begin(); it != end(); it++) {
+      if (it->getPassID() == passID) {
+        this->erase(it);
+        return true;
+      }
     }
+    return false;
   }
 
-  /// \returns the passID of this config.
-  PassID getPassID() const { return passID_; }
-
-  /// \returns the ConvergenceMode of this config.
-  ConvergenceMode getConvergenceMode() const { return convergenceMode_; }
-
-  /// \returns whether \p mode is an enabled mode for this config.
-  bool isEnabledForCompilationMode(CompilationMode mode) const {
-    return enabledCompModes_.test(convertEnumToUnsigned(mode));
-  }
-
-  /// Dump a textual representation of this config to \p os.
-  void dump(llvm::raw_ostream &os = llvm::outs()) const;
-};
-
-/// Implementation of a pipeline for executing a series of FunctionPasses.
-template <typename PASS_CONFIG>
-class PassPipeline : private llvm::SmallVector<PASS_CONFIG, 64> {
 public:
-  using PassConfig = PASS_CONFIG;
-  using PassID = typename PassConfig::PassID;
-
-private:
-  using ParentImpl = llvm::SmallVectorImpl<PassConfig>;
-
-  /// Removes the first instance of a pass with ID \p PID. \returns whether an
-  /// instance of the pass was successfully found and removed.
-  bool removeFirstInstanceOfPass(PassID PID);
-
-public:
-  using Base = llvm::SmallVector<PASS_CONFIG, 64>;
+  using Base = llvm::SmallVector<IRPassConfigTy, 64>;
   using iterator = typename Base::iterator;
   using const_iterator = typename Base::const_iterator;
   PassPipeline() = default;
 
   /// Constructs a FunctionPassPipeline from an initializer_list \p IL.
-  PassPipeline(std::initializer_list<PassConfig> IL) { this->assign(IL); }
+  PassPipeline(std::initializer_list<IRPassConfigTy> IL) { this->assign(IL); }
 
   /// Forward iterator creation methods.
   ///@{
@@ -109,22 +69,33 @@ public:
   /// Forward to parent size() method. \returns size of pipeline.
   size_t size() const { return ParentImpl::size(); }
 
-  /// Helper to get the FunctionPassConfig at index \p i in the pipeline.
-  const PassConfig at(size_t i) const { return begin()[i]; }
+  /// Helper to get the IRPassConfig at index \p i in the pipeline.
+  const IRPassConfigTy &at(size_t i) const { return begin()[i]; }
 
-  /// Push a new \p FPC to the end of the pipeline.
-  void pushBack(PassConfig FPC) { ParentImpl::push_back(FPC); }
+  /// Push a new \p IRPC to the end of the pipeline.
+  void pushBack(IRPassConfigTy IRPC) { ParentImpl::push_back(IRPC); }
 
-  /// Push a new \p FPC to the start of the pipeline.
-  void pushFront(PassConfig FPC) { ParentImpl::insert(begin(), FPC); }
+  /// Push a new \p IRPC to the start of the pipeline.
+  void pushFront(IRPassConfigTy IRPC) { ParentImpl::insert(begin(), IRPC); }
 
-  /// Removes all instances of a pass with ID \p PID.
-  void removeAllInstancesOfPass(PassID PID);
+  /// Removes all instances of a pass with ID \p passID.
+  void removeAllInstancesOfPass(PassIDTy passID) {
+    while (removeFirstInstanceOfPass(passID)) {
+    }
+  }
 
   /// Dump a textual representation of the pipeline to \p os.
-  void dump(llvm::raw_ostream &os = llvm::outs()) const;
+  void dump(llvm::raw_ostream &os = llvm::outs()) const {
+    os << "Pipeline contains:\n";
+    for (size_t i = 0, e = this->size(); i < e; i++) {
+      const auto &passConfig = (*this)[i];
+      os << "FunctionPassIdx " << i << ": {\n";
+      passConfig.dump(os);
+      os << "}\n";
+    }
+  }
 };
 
 } // namespace glow
 
-#endif // GLOW_OPTIMIZER_IROPTIMIZERPIPELINE_PIPELINE_H
+#endif // GLOW_PASSMANAGER_PIPELINE_H

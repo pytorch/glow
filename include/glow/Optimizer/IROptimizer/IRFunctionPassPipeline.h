@@ -16,6 +16,7 @@
 #ifndef GLOW_OPTIMIZER_IROPTIMIZER_IRFUNCTIONPASSPIPELINE_H
 #define GLOW_OPTIMIZER_IROPTIMIZER_IRFUNCTIONPASSPIPELINE_H
 
+#include "glow/Optimizer/IROptimizer/IRFunctionPass.h"
 #include "glow/PassManager/Pipeline.h"
 
 namespace glow {
@@ -27,10 +28,8 @@ enum class IRFunctionPassID {
 #include "glow/Optimizer/IROptimizer/IRPasses.def"
 };
 
-using IRFunctionPassConfig = PassConfig<IRFunctionPassID>;
-
 /// IR passes pipeline.
-using IRFunctionPassPipeline = PassPipeline<IRFunctionPassConfig>;
+using IRFunctionPassPipeline = PassPipeline<IRFunctionPass>;
 
 /// \returns the default, target-independent IR optimization pipeline.
 IRFunctionPassPipeline createDefaultIRFunctionOptimizationPipeline();

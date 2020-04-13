@@ -114,7 +114,7 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
        ConvergenceMode::OnePass,
        {CompilationMode::Infer}},
 
-      // Fold Arithmetic chain w/ constants into the preceeding Batch Norm.
+      // Fold Arithmetic chain w/ constants into the preceding Batch Norm.
       {FunctionPassID::FoldBatchNormalizationWithArithmeticChain,
        ConvergenceMode::OnePass,
        {CompilationMode::Infer}},
@@ -180,27 +180,7 @@ llvm::StringRef glow::getNameOfPass(FunctionPassID passID) {
 static constexpr char const *tab = "  ";
 
 void FunctionPassConfig::dump(llvm::raw_ostream &os) const {
-  os << tab << "PassName: " << getNameOfPass(getPassID()) << ",\n";
-
-  os << tab << "ConvergenceMode: ";
-  switch (getConvergenceMode()) {
-  case ConvergenceMode::OnePass:
-    os << "OnePass,";
-    break;
-  case ConvergenceMode::UntilFixedPoint:
-    os << "UntilFixedPoint,";
-    break;
-  }
-  os << "\n";
-
-  os << tab << "CompilationModes: {";
-  if (isEnabledForCompilationMode(CompilationMode::Infer)) {
-    os << "[Infer]";
-  }
-  if (isEnabledForCompilationMode(CompilationMode::Train)) {
-    os << "[Train]";
-  }
-  os << "},\n";
+  PassConfigBase::dump(os, getNameOfPass(getPassID()));
 
   os << tab << "DCERequiredMode: ";
   switch (getDCERequiredMode()) {
@@ -212,31 +192,4 @@ void FunctionPassConfig::dump(llvm::raw_ostream &os) const {
     break;
   }
   os << "\n";
-}
-
-template <> void FunctionPassPipeline::dump(llvm::raw_ostream &os) const {
-  os << "Pipeline contains:\n";
-  for (size_t i = 0, e = this->size(); i < e; i++) {
-    const FunctionPassConfig &passConfig = (*this)[i];
-    os << "FunctionPassIdx " << i << ": {\n";
-    passConfig.dump(os);
-    os << "}\n";
-  }
-}
-
-template <>
-bool FunctionPassPipeline::removeFirstInstanceOfPass(FunctionPassID FPID) {
-  for (auto it = begin(); it != end(); it++) {
-    if (it->getPassID() == FPID) {
-      erase(it);
-      return true;
-    }
-  }
-  return false;
-}
-
-template <>
-void FunctionPassPipeline::removeAllInstancesOfPass(FunctionPassID FPID) {
-  while (removeFirstInstanceOfPass(FPID)) {
-  }
 }

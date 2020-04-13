@@ -213,6 +213,14 @@ constexpr char sepChar = ':';
 /// Convert a string to int. \returns the int or Error if problem parsing.
 Expected<int> getIntFromStr(llvm::StringRef input);
 
+/// A helper type for creating compile-time strings.
+template <char... letters> struct string_t {
+  static char const *str() {
+    static constexpr char string[] = {letters..., '\0'};
+    return string;
+  }
+};
+
 } // namespace glow
 
 #endif // GLOW_SUPPORT_SUPPORT_H
