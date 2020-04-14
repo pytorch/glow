@@ -13,6 +13,7 @@ target_link_libraries(Interpreter
                         IR
                         LLVMCore
                         IROptimizer
+                        IROptimizerPipeline
                         GraphOptimizerPipeline
                         QuantizationBase
                         Runtime)

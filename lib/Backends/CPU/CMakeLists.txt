@@ -107,6 +107,7 @@ target_link_libraries(CPUBackend
                         Graph
                         IR
                         IROptimizer
+                        IROptimizerPipeline
                         GraphOptimizerPipeline
                         QuantizationBase
                         Runtime

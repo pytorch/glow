@@ -117,7 +117,7 @@ llvm::StringRef Instruction::getOperandName(unsigned idx) const {
 
 void Instruction::eraseFromParent() { getParent()->eraseInstruction(this); }
 
-void Instruction::verifyUseList(
+bool Instruction::verifyUseList(
     const InstructionNumbering &InstrNumbering) const {
   for (const auto &op : ops_) {
     auto *v = op.first;
@@ -126,9 +126,10 @@ void Instruction::verifyUseList(
     assert(v->hasUser(this) && "Invalid use-list");
     v->verifyUseList(InstrNumbering);
   }
+  return true;
 }
 
-void Instruction::verify() const {
+bool Instruction::verify() const {
   // All operands of instructions must be either memory (AllocActivation or
   // WeightVar), or a TensorView of such.
   for (const auto &opPair : getOperands()) {
@@ -146,11 +147,12 @@ void Instruction::verify() const {
 #define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME) DEF_INSTR(CLASS, NAME)
 #define DEF_VALUE(CLASS, NAME)
 #include "glow/AutoGenInstr.def"
+  return true;
 }
 
-void Value::verify(const IRFunction &M) const {}
+bool Value::verify(const IRFunction &M) const { return true; }
 
-void Value::verifyUseList(const InstructionNumbering &InstrNumbering) const {
+bool Value::verifyUseList(const InstructionNumbering &InstrNumbering) const {
   auto users = getUsers();
   for (const auto &use : users) {
     auto *I = use.get();
@@ -162,6 +164,7 @@ void Value::verifyUseList(const InstructionNumbering &InstrNumbering) const {
            InstrNumbering.getInstrNumber(I) >
                InstrNumbering.getInstrNumber(cast<Instruction>(this)));
   }
+  return true;
 }
 
 void Instruction::destroyInstruction(Instruction *I) {
@@ -318,7 +321,7 @@ static void verifyLiveness(const IRFunction &M) {
   }
 }
 
-void IRFunction::verify() const {
+bool IRFunction::verify() const {
   InstructionNumbering InstrNumbering(*this);
   assert(!instrs_.empty() && "Instruction list is empty!");
   llvm::StringSet<> nameSet;
@@ -343,6 +346,7 @@ void IRFunction::verify() const {
     (void)it;
     assert(it.second && "All Instruction and WeightVar names must be unique.");
   }
+  return true;
 }
 
 Value *IRFunction::getWeightForNode(const Storage *V) const {
@@ -553,7 +557,7 @@ void Instruction::dumpOperands(llvm::raw_ostream &os) const {
 }
 
 IRFunction::IRFunction(Function *G)
-    : Named(G ? G->getName() : llvm::StringRef{}), G_(G) {}
+    : IRContainer(G ? G->getName() : llvm::StringRef{}), G_(G) {}
 
 static bool hasResultValue(const Instruction *I) {
   return I->getKind() == Instruction::Kind::AllocActivationInstKind ||

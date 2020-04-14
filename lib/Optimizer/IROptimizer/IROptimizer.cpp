@@ -15,6 +15,8 @@
  */
 
 #include "glow/Optimizer/IROptimizer/IROptimizer.h"
+#include "glow/Optimizer/IROptimizer/IRFunctionPassManager.h"
+#include "glow/Optimizer/IROptimizer/IRFunctionPasses.h"
 
 #include "glow/Backend/Backend.h"
 #include "glow/Graph/Graph.h"
@@ -36,23 +38,11 @@
 #define DEBUG_TYPE "ir-optimizer"
 
 namespace {
-static llvm::cl::opt<bool>
-    instrumentDebug("instrument-debug",
-                    llvm::cl::desc("Instrument the IR for debugging"),
-                    llvm::cl::init(false), llvm::cl::Hidden);
-
 static llvm::cl::list<std::string> instrumentDebugOnly(
     "instrument-debug-only",
     llvm::cl::desc(
         "Instrument the IR for debugging, but only the listed instructions"),
     llvm::cl::CommaSeparated, llvm::cl::Hidden);
-
-static llvm::cl::opt<bool> optimizeIR("optimize-ir",
-                                      llvm::cl::desc("Enable IR optimizations"),
-                                      llvm::cl::init(true), llvm::cl::Hidden);
-
-static llvm::cl::opt<bool> dumpIR("dump-ir",
-                                  llvm::cl::desc("Prints IR to stdout"));
 } // namespace
 
 using namespace glow;
@@ -195,7 +185,8 @@ using LiveIntervalsMap = std::unordered_map<const Value *, Intervals>;
 using InstructionPtrSet = std::unordered_set<Instruction *>;
 
 /// Hoists Dealloc instructions right after their last use.
-static void hoistDealloc(IRFunction &M) {
+static bool hoistDealloc(IRFunction &M) {
+  bool changed = false;
   // Maps activation instructions to their last non-dealloc user.
   std::unordered_map<Value *, Instruction *> lastUser;
   // Dealloc instructions in the current function.
@@ -207,6 +198,7 @@ static void hoistDealloc(IRFunction &M) {
     if (isa<DeallocActivationInst>(&I)) {
       // Collect dealloc instructions.
       deallocs.insert(&I);
+      changed = true;
       continue;
     }
 
@@ -249,11 +241,14 @@ static void hoistDealloc(IRFunction &M) {
     // Get the instruction after where.
     where = &*std::next(where->getIterator());
     M.moveInstruction(where, curr);
+    changed = true;
   }
+  return changed;
 }
 
 /// Sink Alloc instructions right before their first use.
-static void sinkAllocas(IRFunction &M) {
+static bool sinkAllocas(IRFunction &M) {
+  bool changed = false;
   /// A list of allocas to reschedule.
   InstructionPtrSet allocs;
   auto &instrs = M.getInstrs();
@@ -269,6 +264,7 @@ static void sinkAllocas(IRFunction &M) {
 
     allocs.insert(aa);
     M.removeInstruction(I);
+    changed = true;
   }
 
   // Place all of the allocas in the right place:
@@ -285,17 +281,20 @@ static void sinkAllocas(IRFunction &M) {
       }
       allocs.erase(A);
       M.insertInstruction(&I, aa);
+      changed = true;
       if (allocs.empty()) {
-        return;
+        return changed;
       }
     }
   }
 
   assert(allocs.empty() && "Forgot to insert some allocas!");
+  return changed;
 }
 
 /// Sink tensorview instructions right before their first use.
-static void sinkTensorViews(IRFunction &M) {
+static bool sinkTensorViews(IRFunction &M) {
+  bool changed = false;
   // A set of tensorviews to reschedule.
   std::unordered_set<TensorViewInst *> tensorviews;
   auto &instrs = M.getInstrs();
@@ -316,6 +315,7 @@ static void sinkTensorViews(IRFunction &M) {
 
     tensorviews.insert(tv);
     M.removeInstruction(I);
+    changed = true;
   }
 
   // Place all of the tensorviews in the right place:
@@ -334,9 +334,10 @@ static void sinkTensorViews(IRFunction &M) {
         continue;
       }
       auto inserted = M.insertInstruction(I, tv);
+      changed = true;
       tensorviews.erase(TV);
       if (tensorviews.empty()) {
-        return;
+        return changed;
       }
       if (nextIt == instrs.end()) {
         // Remember and re-scan the first inserted instruction as it may use
@@ -352,10 +353,12 @@ static void sinkTensorViews(IRFunction &M) {
   }
 
   assert(tensorviews.empty() && "Forgot to insert some tensorviews!");
+  return changed;
 }
 
 /// Delete alloc instructions that have no readers or writers.
-static void deleteDeadAllocs(IRFunction &M) {
+static bool deleteDeadAllocs(IRFunction &M) {
+  bool changed = false;
   auto &instrs = M.getInstrs();
 
   // Remove all unused tensor views tracking back their dependencies, which are
@@ -368,6 +371,7 @@ static void deleteDeadAllocs(IRFunction &M) {
       // Remove a tensor view. It may make other tensor views preceding it
       // eligible for a removal as well.
       M.eraseInstruction(I);
+      changed = true;
     }
   }
 
@@ -381,12 +385,15 @@ static void deleteDeadAllocs(IRFunction &M) {
     const auto *DA = dyn_cast<const DeallocActivationInst>(I);
     if (DA && DA->getAlloc()->getNumUsers() < 2) {
       M.eraseInstruction(I);
+      changed = true;
       continue;
     }
     if (isa<AllocActivationInst>(I) && !I->hasUsers()) {
       M.eraseInstruction(I);
+      changed = true;
     }
   }
+  return changed;
 }
 
 // Replace all users of some value with another value, but don't touch the
@@ -480,7 +487,8 @@ static Instruction *getSingleWriter(const Value *V) {
 }
 
 /// Marks non-mutable weights as constants.
-void makeWeightsConst(IRFunction &M) {
+bool makeWeightsConst(IRFunction &M) {
+  bool changed = false;
   // For each weight:
   for (auto *W : M.getWeights()) {
     if (!W->isConstant()) {
@@ -500,11 +508,13 @@ void makeWeightsConst(IRFunction &M) {
     // Mark the constant as read only.
     if (readOnly) {
       W->setMutability(WeightVar::MutabilityKind::Constant);
+      changed = true;
     } else {
       assert(W->getMutability() != WeightVar::MutabilityKind::Constant &&
              "Const cannot be written into.");
     }
   }
+  return changed;
 }
 
 #ifndef NDEBUG
@@ -846,13 +856,16 @@ static void replaceAllUsesInsideIntervalWith(
 /// Erase all instructions from the \p ErasedInstructions set.
 /// If \p forceErase is true, no additional checks are performed.
 /// Otherwise, copies into weight variables cannot be erased.
-static void eraseInstructions(IRFunction &M,
+static bool eraseInstructions(IRFunction &M,
                               InstructionPtrSet &erasedInstructions) {
+  bool changed = false;
   for (auto it : erasedInstructions) {
     DEBUG_GLOW(llvm::dbgs() << "Deleting instruction :"; it->dump(llvm::dbgs());
                llvm::dbgs() << "\n");
     M.eraseInstruction(it);
+    changed = true;
   }
+  return changed;
 }
 
 /// \returns true if writes into this memory location are observable from
@@ -1109,7 +1122,7 @@ public:
 /// The only exception is the copy instruction, where the live interval
 /// of the X may be enclosed into a live interval of Y because they have
 /// the same value after the copy instruction.
-static void tryToShareBuffersForInstr(
+static bool tryToShareBuffersForInstr(
     LiveIntervalsMap &intervalsMap,
     const LiveIntervalsInstructionNumbering &instrNumbering, Instruction *I,
     unsigned instIdx) {
@@ -1136,7 +1149,7 @@ static void tryToShareBuffersForInstr(
       if (dest == src) {
         // Bail if operands are the same and are combined already.
         if (Instruction::isInplaceOp(I, first, second)) {
-          return;
+          return false;
         }
         continue;
       }
@@ -1155,10 +1168,11 @@ static void tryToShareBuffersForInstr(
       BufferSharingOptimizer opt(M, intervalsMap, instrNumbering, I, instIdx,
                                  dest, src);
       if (opt.tryToShareBuffers()) {
-        return;
+        return true;
       }
     }
   }
+  return false;
 }
 
 /// Sharing of buffers
@@ -1171,7 +1185,8 @@ static void tryToShareBuffersForInstr(
 /// do not need to be observable. Typically, two live intervals are considred as
 /// candidates for sharing if they occur in the same instruction, but it is not
 /// strictly necessary.
-static void shareBuffers(IRFunction &M) {
+static bool shareBuffers(IRFunction &M) {
+  bool changed = false;
   InstructionPtrSet erasedInstructions;
   // Build a list of live intervals for each memory location
   // which is either a WeightVar or a an Allocation.
@@ -1192,16 +1207,18 @@ static void shareBuffers(IRFunction &M) {
       continue;
     }
     // Try to reuse the operand memory buffers.
-    tryToShareBuffersForInstr(intervalsMap, instrNumbering, I, instIdx);
+    changed |=
+        tryToShareBuffersForInstr(intervalsMap, instrNumbering, I, instIdx);
   }
 
   // Fix eventual issues with allocs and deallocs that shareBuffers may
   // introduce by extending live interval lifetimes.
-  hoistDealloc(M);
-  sinkAllocas(M);
+  changed |= hoistDealloc(M);
+  changed |= sinkAllocas(M);
   // Fix eventual issues with tensorviews that shareBuffers may
   // introduce by extending live interval lifetimes.
-  sinkTensorViews(M);
+  changed |= sinkTensorViews(M);
+  return changed;
 }
 
 /// Dead Store Elimination.
@@ -1213,7 +1230,8 @@ static void shareBuffers(IRFunction &M) {
 ///   - Remember this last seen write, reset the last seen read.
 /// A single pass is enough because currently there is just a single basic
 /// basic block.
-static void eliminateDeadStores(IRFunction &M) {
+static bool eliminateDeadStores(IRFunction &M) {
+  bool changed = true;
   auto &instrs = M.getInstrs();
   // Instructions to be erased.
   InstructionPtrSet erasedInstructions;
@@ -1277,6 +1295,7 @@ static void eliminateDeadStores(IRFunction &M) {
     if (numMutatedOperands > 0 &&
         numMutatedOperands == numNonReadMutatedOperands) {
       erasedInstructions.insert(I);
+      changed = true;
       // Do not process any reads of operands, because
       // this instruction will be eliminated.
       continue;
@@ -1294,6 +1313,7 @@ static void eliminateDeadStores(IRFunction &M) {
   }
 
   eraseInstructions(M, erasedInstructions);
+  return changed;
 }
 
 /// \returns true if the first dimension in \p offsets has a non-zero value.
@@ -1328,7 +1348,8 @@ static bool allButFirstDimsEqual(llvm::ArrayRef<dim_t> sourceDims,
 /// writing directly into the destination using TensorViews with the same
 /// offsets. This is possible because this means the underlying memory is
 /// contiguous in this case.
-void optimizeInserts(IRFunction &M) {
+bool optimizeInserts(IRFunction &M) {
+  bool changed = false;
   auto &instrs = M.getInstrs();
   InstructionPtrSet erasedInstructions;
   IRBuilder B(&M);
@@ -1413,15 +1434,18 @@ void optimizeInserts(IRFunction &M) {
     // Queue up removal of the now-unnecessary InsertTensor. Unused
     // allocs/deallocs will be deleted by later passes.
     erasedInstructions.insert(ITI);
+    changed = true;
   }
   eraseInstructions(M, erasedInstructions);
+  return changed;
 }
 
 /// Replace ExtractTensors that are only offset in the first dimension with
 /// reading directly from the destination using TensorViews with the same
 /// offsets. This is possible because this means the underlying memory is
 /// contiguous in this case.
-void optimizeExtracts(IRFunction &M) {
+bool optimizeExtracts(IRFunction &M) {
+  bool changed = false;
   auto &instrs = M.getInstrs();
   InstructionPtrSet erasedInstructions;
   IRBuilder B(&M);
@@ -1477,19 +1501,21 @@ void optimizeExtracts(IRFunction &M) {
     // Queue up removal of the now-unnecessary ExtractTensor. Unused
     // allocs/deallocs will be deleted by later passes.
     erasedInstructions.insert(ETI);
+    changed = true;
   }
   eraseInstructions(M, erasedInstructions);
+  return changed;
 }
 
 /// Instrument the code to make it easier to debug issues.
 /// Add dumping of inputs before each instruction and
 /// dumping of outputs after each instruction.
 /// For each input/output tensor its name and its value are dumped.
-static void performDebugInstrumentation(IRFunction &M) {
-  if (!instrumentDebug && instrumentDebugOnly.empty()) {
-    return;
+static bool performDebugInstrumentation(IRFunction &M) {
+  if (instrumentDebugOnly.empty()) {
+    return false;
   }
-
+  bool changed = false;
   auto &instrs = M.getInstrs();
   for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
     auto *I = &*it;
@@ -1527,6 +1553,7 @@ static void performDebugInstrumentation(IRFunction &M) {
         name += I->getKindName();
         auto *dumpInstr = new DebugPrintInst(name, Op.first);
         M.insertInstruction(I, dumpInstr);
+        changed = true;
       }
 
       // Dump outputs of the current instruction after the instruction.
@@ -1543,14 +1570,17 @@ static void performDebugInstrumentation(IRFunction &M) {
         } else {
           M.insertInstruction(&*next, dumpInstr);
         }
+        changed = true;
       }
     }
     it = next;
   }
+  return changed;
 }
 
 /// Perform peephole optimizations.
-void performPeepholeOptimizations(IRFunction &M) {
+bool performPeepholeOptimizations(IRFunction &M) {
+  bool changed = false;
   auto &instrs = M.getInstrs();
   IRBuilder B(&M);
   for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
@@ -1572,6 +1602,7 @@ void performPeepholeOptimizations(IRFunction &M) {
           PMI->getStrides(), PMI->getPads(), PMI->getLayout());
       it = M.moveInstruction(I, newI);
       M.eraseInstruction(I);
+      changed = true;
       continue;
     }
 
@@ -1593,6 +1624,7 @@ void performPeepholeOptimizations(IRFunction &M) {
           auto *newI = B.createCopyInst(TI->getName(), TI->getDest(), src);
           it = M.moveInstruction(I, newI);
           M.eraseInstruction(I);
+          changed = true;
           continue;
         }
       }
@@ -1619,6 +1651,7 @@ void performPeepholeOptimizations(IRFunction &M) {
           B.createElementMaxInst(EM->getName(), EM->getDest(), rhs, lhs);
       it = M.moveInstruction(I, newI);
       M.eraseInstruction(I);
+      changed = true;
       continue;
     }
 
@@ -1627,6 +1660,7 @@ void performPeepholeOptimizations(IRFunction &M) {
     if (auto *TV = dyn_cast<TensorViewInst>(I)) {
       if (TV->getType() == TV->getSrc()->getType()) {
         replaceAllNonDeallocUsersWith(TV, TV->getSrc());
+        changed = true;
       }
       continue;
     }
@@ -1645,18 +1679,20 @@ void performPeepholeOptimizations(IRFunction &M) {
         }
 
         M.eraseInstruction(I);
+        changed = true;
       }
       continue;
     }
   }
+  return changed;
 }
 
-std::unique_ptr<IRFunction>
-glow::generateAndOptimizeIR(Function *F, const Backend &B,
-                            bool shouldShareBuffers) {
+namespace glow {
+std::unique_ptr<IRFunction> generateAndOptimizeIR(Function *F, const Backend &B,
+                                                  bool shouldShareBuffers) {
   auto IR = glow::make_unique<IRFunction>(F);
   IR->generateIR(B);
-  ::glow::optimize(*IR, shouldShareBuffers);
+  ::glow::optimize(*IR, B, shouldShareBuffers);
   if (!B.verify(*IR)) {
     EXIT_ON_ERR(MAKE_ERR(
         ErrorValue::ErrorCode::COMPILE_UNSUPPORTED_IR_AFTER_OPTIMIZE,
@@ -1666,47 +1702,76 @@ glow::generateAndOptimizeIR(Function *F, const Backend &B,
   return IR;
 }
 
-/// Perform optimizations on the IR representation.
-void glow::optimize(IRFunction &M, bool shouldShareBuffers) {
+void optimize(IRFunction &M, bool shouldShareBuffers) {
   M.verify();
-  if (!optimizeIR) {
-    return;
-  }
-
-  performPeepholeOptimizations(M);
-
-  eliminateDeadStores(M);
-
-  // Replace applicable InsertTensors and ExtractTensors with TensorViews.
-  optimizeInserts(M);
-  optimizeExtracts(M);
-
-  // Reuse buffers from previous operations.
-  if (shouldShareBuffers) {
-    shareBuffers(M);
-  }
-
-  performPeepholeOptimizations(M);
-
-  // Shorten the lifetime of buffers.
-  hoistDealloc(M);
-  sinkAllocas(M);
-
-  // Perform Dead Store Elimination.
-  eliminateDeadStores(M);
-
-  deleteDeadAllocs(M);
-
-  // Turn read-only weights into constant weights.
-  makeWeightsConst(M);
-
-  // Perform a debug instrumentation if required.
-  performDebugInstrumentation(M);
-
-  M.verify();
-
-  // If requested, dump IR to stdout for debugging.
-  if (dumpIR) {
-    M.dump();
-  }
+  IRFunctionPassManager IRFPM("TargetIndependentIROptzFPM",
+                              createDefaultIRFunctionOptimizationPipeline());
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  IRFPM.run(&M, cctx);
 }
+
+void optimize(IRFunction &M, const Backend &B, bool shouldShareBuffers) {
+  M.verify();
+  IRFunctionPassManager IRFPM("TargetIndependentIROptzFPM",
+                              B.getIROptimizationPipeline());
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  IRFPM.run(&M, cctx);
+}
+
+namespace ir {
+bool PeepholeOptimizations::run(IRFunction *M, const CompilationContext &cctx) {
+  return performPeepholeOptimizations(*M);
+}
+
+bool EmptyPass::run(IRFunction *F, const CompilationContext &cctx) {
+  return false;
+}
+
+bool HoistDealloc::run(IRFunction *M, const CompilationContext &cctx) {
+  return hoistDealloc(*M);
+}
+
+bool SinkAllocas::run(IRFunction *M, const CompilationContext &cctx) {
+  return sinkAllocas(*M);
+}
+
+bool DeleteDeadAllocs::run(IRFunction *M, const CompilationContext &cctx) {
+  return deleteDeadAllocs(*M);
+}
+
+bool MakeWeightsConst::run(IRFunction *M, const CompilationContext &cctx) {
+  return makeWeightsConst(*M);
+}
+
+bool ShareBuffers::run(IRFunction *M, const CompilationContext &cctx) {
+  return shareBuffers(*M);
+}
+
+bool DSE::run(IRFunction *M, const CompilationContext &cctx) {
+  return eliminateDeadStores(*M);
+}
+
+bool OptimizeInserts::run(IRFunction *M, const CompilationContext &cctx) {
+  return optimizeInserts(*M);
+}
+
+bool OptimizeExtracts::run(IRFunction *M, const CompilationContext &cctx) {
+  return optimizeExtracts(*M);
+}
+
+bool DebugInstrument::run(IRFunction *M, const CompilationContext &cctx) {
+  return performDebugInstrumentation(*M);
+}
+
+bool IRVerify::run(IRFunction *M, const CompilationContext &cctx) {
+  return M->verify();
+}
+
+bool IRDumper::run(IRFunction *M, const CompilationContext &cctx) {
+  M->dump();
+  return false;
+}
+} // namespace ir
+} // namespace glow

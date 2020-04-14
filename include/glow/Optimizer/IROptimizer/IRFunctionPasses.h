@@ -13,30 +13,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASSES_H
-#define GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASSES_H
+#ifndef GLOW_OPTIMIZER_IROPTIMIZER_IRFUNCTIONPASSES_H
+#define GLOW_OPTIMIZER_IROPTIMIZER_IRFUNCTIONPASSES_H
 
-#include "glow/Optimizer/GraphOptimizer/FunctionPass.h"
+#include "glow/Optimizer/IROptimizer/IRFunctionPass.h"
 
 namespace glow {
 
-/// Declare all FunctionPass classes.
-#define FUN_PASS(PASS_NAME)                                                    \
-  class PASS_NAME : public FunctionPass {                                      \
+/// Declare all IRFunction pass classes.
+#define IR_FUN_PASS(PASS_NAME)                                                 \
+  namespace ir {                                                               \
+  class PASS_NAME : public IRFunctionPass {                                    \
   public:                                                                      \
-    PASS_NAME() : FunctionPass(#PASS_NAME) {}                                  \
+    PASS_NAME() : IRFunctionPass(#PASS_NAME) {}                                \
                                                                                \
   private:                                                                     \
-    bool run(Function *F, const CompilationContext &cctx) override;            \
-    FunctionPassID getID() const override {                                    \
-      return FunctionPassID::PASS_NAME;                                        \
+    bool run(IRFunction *F, const CompilationContext &cctx) override;          \
+    IRFunctionPassID getID() const override {                                  \
+      return IRFunctionPassID::PASS_NAME;                                      \
     }                                                                          \
-  };
-#include "FunctionPasses.def"
+  };                                                                           \
+  }
+#include "glow/Optimizer/IROptimizer/IRPasses.def"
 
 /// Helper that creates and \returns a FunctionPass given a provided \p passID.
-std::unique_ptr<FunctionPass> createFunctionPass(FunctionPassID passID);
+std::unique_ptr<IRFunctionPass> createFunctionPass(IRFunctionPassID passID);
 
 } // namespace glow
 
-#endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASSES_H
+#endif // GLOW_OPTIMIZER_IROPTIMIZER_IRFUNCTIONPASSES_H
