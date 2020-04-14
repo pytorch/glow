@@ -224,13 +224,19 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
   for (unsigned i = 0; i < inputsCount; ++i) {
     const auto &inOnnxTensor = inputDescriptors[i];
     auto *inOnnxBuffer = reinterpret_cast<void *>(inOnnxTensor.buffer);
+    Placeholder *inPhPtr;
 
-    auto inPhIt = onnxInputToPlaceholder_.find(inOnnxTensor.name);
-    if (inPhIt == onnxInputToPlaceholder_.end()) {
-      return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
+    if (onnxInputNames_.size() == inputsCount &&
+        onnxInputNames_[i] == inOnnxTensor.name) {
+      inPhPtr = onnxInputPlaceholders_[i];
+    } else {
+      auto inPhIt = onnxInputToPlaceholder_.find(inOnnxTensor.name);
+      if (inPhIt == onnxInputToPlaceholder_.end()) {
+        llvm::outs() << "235inputNameUnkown!!!\n";
+        return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
+      }
+      inPhPtr = inPhIt->getValue();
     }
-
-    auto &inPhPtr = inPhIt->getValue();
 
     std::vector<dim_t> inOnnxTensorDims(inOnnxTensor.dimensions);
     size_t inOnnxTensorSize = 1;
@@ -379,14 +385,19 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   for (unsigned i = 0; i < outputsCount; ++i) {
     const auto &outOnnxTensor = outputDescriptors[i];
     auto *outOnnxBuffer = reinterpret_cast<void *>(outOnnxTensor.buffer);
+    Placeholder *outPhPtr;
 
-    auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);
-    if (outPhIt == onnxOutputToPlaceholder_.end()) {
-      return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
+    if (outputsCount == onnxOutputNames_.size() &&
+        outOnnxTensor.name == onnxOutputNames_[i]) {
+      outPhPtr = onnxOutputPlaceholders_[i];
+    } else {
+      auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);
+      if (outPhIt == onnxOutputToPlaceholder_.end()) {
+        llvm::outs() << "395outputNameunknown!\n";
+        return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
+      }
+      outPhPtr = outPhIt->getValue();
     }
-
-    auto &outPhPtr = outPhIt->getValue();
-
     // Compute the total size of the onnxifi tensor.
     std::vector<dim_t> outOnnxTensorDims(outOnnxTensor.dimensions);
     dim_t outOnnxTensorSize = 1;
@@ -433,9 +444,16 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
       for (unsigned i = 0; i < outputsCount; ++i) {
         const auto &outOnnxTensor = outputDescriptors[i];
         auto *outOnnxBuffer = reinterpret_cast<void *>(outOnnxTensor.buffer);
-        auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);
-        CHECK(outPhIt != onnxOutputToPlaceholder_.end());
-        auto &outPhPtr = outPhIt->getValue();
+        Placeholder *outPhPtr;
+        if (outputsCount == onnxOutputNames_.size() &&
+            onnxOutputNames_[i] == outOnnxTensor.name) {
+          CHECK(onnxOutputNames_[i] != outOnnxTensor.name);
+          outPhPtr = onnxOutputPlaceholders_[i];
+        } else {
+          auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);
+          CHECK(outPhIt != onnxOutputToPlaceholder_.end());
+          outPhPtr = outPhIt->getValue();
+        }
         Tensor outputTensor(outOnnxBuffer, outPhPtr->getType());
         auto *t = inputG.add_initializer();
         ONNXModelWriter::writeTensor(outputTensor, t,
