@@ -37,7 +37,7 @@ static void conditionHistogram(float *hist, const size_t length,
   }
 
   // Get information about the zero values within the histogram.
-  int isZero[length];
+  std::vector<int> isZero(length);
   size_t numZeros = 0;
   for (size_t idx = 0, e = length; idx < e; idx++) {
     isZero[idx] = static_cast<int>(hist[idx] == 0.f);
