@@ -136,6 +136,20 @@ llvm::cl::opt<unsigned> excludedFirstWarmupRuns(
                    "from the total time"),
     llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(executorCat));
 
+llvm::cl::opt<bool>
+    preloadAllImages("preload-all-images",
+                     llvm::cl::desc("Pre-load all images before inference"),
+                     llvm::cl::init(false), llvm::cl::cat(executorCat));
+
+llvm::cl::opt<unsigned> repeatSingleBatchCount(
+    "repeat-single-batch-count",
+    llvm::cl::desc(
+        "Repeat a single batch input n times. Used for testing purposes. If "
+        "used without minibatch then the whole input set is used as the batch "
+        "size and repeated n times. Otherwise the first minibatch is repeated "
+        "and all other inputs are ignored."),
+    llvm::cl::init(0), llvm::cl::cat(executorCat));
+
 /// Read all images from \p inputImageListFile in to \p inputImageFilenames.
 void parseInputImageList(const std::string &inputImageListFile) {
   std::ifstream inFile;
@@ -236,11 +250,11 @@ static void populateOutMap(std::unique_ptr<ProtobufLoader> &LD,
 /// \returns a pair of pointers to the input Placeholder and output Nodes Map.
 std::pair<Placeholder *, llvm::StringMap<Placeholder *>>
 buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
-                                  TypeRef inputImageType) {
-  auto LD = createProtobufLoader(loader, inputImageType);
+                                  const glow::Type &inputImageType) {
+  auto LD = createProtobufLoader(loader, &inputImageType);
   llvm::StringMap<Placeholder *> outMap;
   populateOutMap(LD, outMap);
-  loader.postModelLoad(bindings, *LD.get(), outMap, inputImageType->dims()[0]);
+  loader.postModelLoad(bindings, *LD.get(), outMap, inputImageType.dims()[0]);
 
   // Allocate tensors to back all inputs and outputs.
   bindings.allocate(loader.getModule()->getPlaceholders());
