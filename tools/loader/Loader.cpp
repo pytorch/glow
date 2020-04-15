@@ -266,14 +266,19 @@ llvm::cl::opt<std::string>
                                  "of the entry point to the network."),
                   llvm::cl::cat(loaderCat));
 
+} // namespace
+
+// These are outside the namespace so they can be used by the image-classifier.
 llvm::cl::opt<unsigned> numDevices("num-devices",
                                    llvm::cl::desc("Number of Devices to use"),
                                    llvm::cl::init(1), llvm::cl::value_desc("N"),
                                    llvm::cl::cat(loaderCat));
-} // namespace
 
-// timeOpt and iterationsOpt are outside the namespace so they can be used by
-// the image-classifier.
+llvm::cl::opt<bool> runAllInputsOnAllDevices(
+    "run-all-inputs-on-all-devices",
+    llvm::cl::desc("Run all inputs on all devices. Used for testing purposes."),
+    llvm::cl::init(false), llvm::cl::cat(loaderCat));
+
 llvm::cl::opt<bool>
     timeOpt("time",
             llvm::cl::desc("Print timer output to stderr detailing how long it "
@@ -628,7 +633,7 @@ void Loader::compile(CompilationContext &cctx) {
                    mainEntryName.empty() ? networkName : mainEntryName);
   } else {
     // Emit IR for the graph and compile it.
-    cctx.saturateHost = true;
+    cctx.saturateHost = !runAllInputsOnAllDevices;
     auto error = hostManager_->addNetwork(std::move(M_), cctx);
     EXIT_ON_ERR(std::move(error));
     // After partitioning, the original function may be removed. Need to update
@@ -753,7 +758,7 @@ void Loader::inferEndMiniBatch(PlaceholderBindings &bindings,
   }
 }
 
-Loader::Loader() {
+Loader::Loader(llvm::ArrayRef<size_t> configDeviceIDs) {
   if (modelPathOpt.size() == 1) {
     if (llvm::sys::fs::is_directory(*modelPathOpt.begin())) {
       caffe2NetDescFilename_ = modelPathOpt[0] + "/predict_net.pb";
@@ -767,8 +772,18 @@ Loader::Loader() {
   }
   M_.reset(new Module);
 
-  std::vector<std::unique_ptr<runtime::DeviceConfig>> configs =
-      runtime::generateDeviceConfigs(numDevices, ExecutionBackend);
+  std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
+
+  if (configDeviceIDs.empty()) {
+    configs = runtime::generateDeviceConfigs(numDevices, ExecutionBackend);
+  } else {
+    for (size_t ID : configDeviceIDs) {
+      CHECK(ID < numDevices) << "IDs must be less than the number of devices";
+      auto config = glow::make_unique<runtime::DeviceConfig>(ExecutionBackend);
+      config->deviceID = ID;
+      configs.push_back(std::move(config));
+    }
+  }
 
   hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
   backend_ = std::unique_ptr<Backend>(createBackend(ExecutionBackend));

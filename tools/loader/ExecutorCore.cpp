@@ -14,6 +14,11 @@
  * limitations under the License.
  */
 
+#include "ExecutorCore.h"
+
+#include "ExecutorCoreHelperFunctions.h"
+#include "Loader.h"
+
 #include "glow/Base/Image.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
@@ -35,9 +40,6 @@
 #include <queue>
 #include <sstream>
 #include <thread>
-
-#include "ExecutorCore.h"
-#include "ExecutorCoreHelperFunctions.h"
 
 extern llvm::cl::opt<unsigned> traceLevel;
 
@@ -201,14 +203,47 @@ int Executor::executeNetwork(int argc, char **argv) {
   CHECK(((!iterationsOpt) || (!miniBatchMode) ||
          (iterationsOpt % miniBatch == 0)))
       << "Benchmark count must be a multiple of the mini-batch.";
+  CHECK(!preloadAllImages || miniBatchMode)
+      << "preload-all-images can only be used with minibatch";
+
+  const bool singleBatchRepeatedMode = repeatSingleBatchCount > 0;
+  CHECK(!(streamInputFilenamesMode && singleBatchRepeatedMode))
+      << "singleBatchRepeatedMode is not compatible with "
+         "streamInputFilenamesMode";
 
   // Print out the inferred image classification.
   llvm::outs() << "Model: " << Loader::getModelOptPath() << "\n";
   std::mutex ioMu;
   int numErrors = 0;
 
+  if (runAllInputsOnAllDevices) {
+    if (numDevices != miniBatchThreads) {
+      llvm::outs() << "Setting " << miniBatchThreads.ArgStr << " to match "
+                   << numDevices.ArgStr << " (" << numDevices
+                   << ") as required by " << runAllInputsOnAllDevices.ArgStr
+                   << "\n";
+      miniBatchThreads.getValue() = numDevices;
+    }
+  }
+
+  // If preloading then load+process all images here in preloadedInputImageData.
+  Tensor preloadedInputImageData;
+  if (preloadAllImages) {
+    Loader loader;
+    PreProcessImageExecutor ppImageExecutor;
+    addLoaderExtensions(loader);
+    ppImageExecutor.registerInputDataPreProcessingExtension(
+        ppInputDataExtensions_);
+    loadImagesAndPreprocess(inputImageFilenames, &preloadedInputImageData,
+                            imageNormMode, imageChannelOrder, imageLayout);
+
+    ppImageExecutor.preProcessInputData(preloadedInputImageData, 0,
+                                        inputImageFilenames.size(),
+                                        preloadedInputImageData.dims()[0]);
+  }
+
   // Process a set of minibatches with indices [startIndex, endIndex).
-  auto processImageRange = [&](size_t startIndex, size_t endIndex) {
+  auto processImageRange = [&](size_t startIndex, size_t endIndex, size_t TID) {
     std::unique_ptr<ExecutionContext> exContext =
         glow::make_unique<ExecutionContext>();
     PlaceholderBindings &bindings = *exContext->getPlaceholderBindings();
@@ -216,7 +251,9 @@ int Executor::executeNetwork(int argc, char **argv) {
       exContext->setTraceContext(
           glow::make_unique<TraceContext>(TraceLevel::STANDARD));
     }
-    Loader loader;
+    // If runAllInputsOnAllDevices, then assign this thread with TID to device
+    // TID. E.g. if this is TID 2 then this will be assigned to device 2.
+    Loader loader = runAllInputsOnAllDevices ? Loader(TID) : Loader();
     PostProcessingExecutor ppResultExecutor;
     PreProcessImageExecutor ppImageExecutor;
 
@@ -238,9 +275,18 @@ int Executor::executeNetwork(int argc, char **argv) {
 
     size_t miniBatchIndex = startIndex;
     Tensor inputImageData;
+    if (preloadAllImages) {
+      inputImageData = preloadedInputImageData.getUnowned();
+    }
     std::vector<std::string> inputImageBatchFilenames;
-    if ((!miniBatchMode) && (!streamInputFilenamesMode)) {
+    if (!miniBatchMode && !streamInputFilenamesMode) {
       inputImageBatchFilenames = inputImageFilenames;
+    } else if (singleBatchRepeatedMode) {
+      inputImageBatchFilenames =
+          miniBatchMode ? std::vector<std::string>(inputImageFilenames.begin(),
+                                                   inputImageFilenames.begin() +
+                                                       miniBatch)
+                        : inputImageFilenames;
     }
     if (!tracePath.empty()) {
       loader.getHostManager()->setTraceContext(
@@ -254,30 +300,62 @@ int Executor::executeNetwork(int argc, char **argv) {
         llvm::outs() << "Device trace started.";
       }
     }
-    while ((streamInputFilenamesMode &&
-            getNextImageFilenames(&inputImageBatchFilenames)) ||
-           (miniBatchMode &&
-            getNextMiniBatch(inputImageBatchFilenames, inputImageFilenames,
-                             miniBatchIndex, miniBatch, endIndex)) ||
-           isFirstRun) {
-      // Load and process the image data into the inputImageData Tensor.
-      loadImagesAndPreprocess(inputImageBatchFilenames, &inputImageData,
-                              imageNormMode, imageChannelOrder, imageLayout);
 
-      ppImageExecutor.preProcessInputData(inputImageData, startIndex, endIndex,
-                                          inputImageData.dims()[0]);
-      // It we are benchmarking reset the image data to the batch size we need.
-      if (iterationsOpt) {
-        ShapeVector imageSize(inputImageData.getType().dims().begin(),
-                              inputImageData.getType().dims().end());
-        if (miniBatch) {
-          imageSize[0] = miniBatch;
-        } else {
-          imageSize[0] = iterationsOpt;
-        }
-        // Resize the Tensor to the appropriate size.
-        inputImageData.reset(ElemKind::FloatTy, imageSize);
+    unsigned repeatedLoopCountRemaining = repeatSingleBatchCount;
+
+    auto loopCond = [&]() {
+      // If in stream mode then get the next image filenames if they exist,
+      // otherwise exit.
+      if (streamInputFilenamesMode) {
+        return getNextImageFilenames(&inputImageBatchFilenames);
       }
+
+      // If a single batch is going to be loaded once and repeated then keep
+      // running repeatedLoopCountRemaining mores times.
+      if (singleBatchRepeatedMode) {
+        return repeatedLoopCountRemaining-- != 0;
+      }
+
+      // If in miniBatchMode then continue if we have already preloaded all
+      // images (will break inside loop once done), or otherwise get the next
+      // miniBatch image filenames if they exist, otherwise exit.
+      if (miniBatchMode) {
+        return getNextMiniBatch(inputImageBatchFilenames, inputImageFilenames,
+                                miniBatchIndex, miniBatch, endIndex);
+      }
+
+      // At least enter once, e.g. to just dump a bundle.
+      return isFirstRun;
+    };
+
+    while (loopCond()) {
+      if (!preloadAllImages && (!singleBatchRepeatedMode || isFirstRun)) {
+        // Load and process the image data into the inputImageData Tensor.
+        loadImagesAndPreprocess(inputImageBatchFilenames, &inputImageData,
+                                imageNormMode, imageChannelOrder, imageLayout);
+
+        ppImageExecutor.preProcessInputData(inputImageData, startIndex,
+                                            endIndex, inputImageData.dims()[0]);
+      }
+
+      // Note: At this point miniBatchIndex is the end index, so subtract
+      // miniBatch to get the start index.
+      const dim_t startMiniBatchIndex = miniBatchIndex - miniBatch;
+
+      ShapeVector imageShape(inputImageData.getType().dims().begin(),
+                             inputImageData.getType().dims().end());
+      if (miniBatch) {
+        imageShape[0] = miniBatch;
+      } else if (iterationsOpt) {
+        imageShape[0] = iterationsOpt;
+      }
+
+      // If we are benchmarking reset the image data to the batch size we need.
+      if (iterationsOpt) {
+        // Resize the Tensor to the appropriate size.
+        inputImageData.reset(ElemKind::FloatTy, imageShape);
+      }
+
       // If this is the first run, then we need to build and compile the model.
       if (isFirstRun) {
         isFirstRun = false;
@@ -286,7 +364,10 @@ int Executor::executeNetwork(int argc, char **argv) {
         // and output Placeholder.
         std::pair<Placeholder *, llvm::StringMap<Placeholder *>>
             inputOutputPair = buildAndCompileAndGetInAndOutPair(
-                loader, bindings, &inputImageData.getType());
+                loader, bindings,
+                preloadAllImages
+                    ? Type::newShape(inputImageData.getType(), imageShape)
+                    : inputImageData.getType());
 
         // If in bundle mode, the bundle has been saved by the above call, so we
         // can safely return.
@@ -303,16 +384,19 @@ int Executor::executeNetwork(int argc, char **argv) {
         }
       }
 
+      Tensor inputImageDataBatch = inputImageData.getUnowned(
+          imageShape, {preloadAllImages ? startMiniBatchIndex : 0, 0, 0, 0});
+
       CHECK(inputImagePH) << "Input must be valid.";
       CHECK(!PHM.empty()) << "Output must be valid.";
-      CHECK(inputImagePH->dims() == inputImageData.dims())
+      CHECK(inputImagePH->dims() == inputImageDataBatch.dims())
           << "New input shape does not match the compiled function: "
-          << inputImagePH->dims() << " vs " << inputImageData.dims();
+          << inputImagePH->dims() << " vs " << inputImageDataBatch.dims();
 
       // Convert the raw input to fp16. This must be done every time we get new
       // image data.
       if (convertInAndOutToFp16) {
-        inputImageData.convertToType(ElemKind::Float16Ty);
+        inputImageDataBatch.convertToType(ElemKind::Float16Ty);
       }
 
       // If we are benchmarking we are done with the while loop.
@@ -321,15 +405,14 @@ int Executor::executeNetwork(int argc, char **argv) {
       }
 
       // Minibatch inference initialization of loader extensions
-      loader.inferInitMiniBatch(bindings, miniBatchIndex - miniBatch,
-                                miniBatch);
+      loader.inferInitMiniBatch(bindings, startMiniBatchIndex, miniBatch);
 
       // About to run inference, so update the input image Placeholder's backing
-      // Tensor with inputImageData.
-      updateInputPlaceholders(bindings, {inputImagePH}, {&inputImageData});
+      // Tensor with inputImageDataBatch.
+      updateInputPlaceholders(bindings, {inputImagePH}, {&inputImageDataBatch});
 
       // Perform the inference execution, updating output tensors.
-      auto batchSize = inputImageData.dims()[0];
+      auto batchSize = inputImageDataBatch.dims()[0];
       loader.runInference(exContext.get(), batchSize);
       if (traceContext) {
         traceContext->merge(exContext->getTraceContext());
@@ -344,7 +427,7 @@ int Executor::executeNetwork(int argc, char **argv) {
       }
 
       // Minibatch inference initialization of loader extensions
-      loader.inferEndMiniBatch(bindings, miniBatchIndex - miniBatch, miniBatch);
+      loader.inferEndMiniBatch(bindings, startMiniBatchIndex, miniBatch);
     }
 
     if (iterationsOpt) {
@@ -402,17 +485,21 @@ int Executor::executeNetwork(int argc, char **argv) {
   };
 
   // We will force single-threaded execution if:
-  // - Minibatch mode is disabled;
+  // - Minibatch mode and runAllInputsOnAllDevices are disabled;
   // - We are going to emit bundle and do not do inference;
   // - We are collecting inference profile.
   // Otherwise, there can be several minibatches of equal size.
   const bool multiThreadingAllowed =
-      miniBatchMode && !emittingBundle() && !profilingGraph();
+      (runAllInputsOnAllDevices || miniBatchMode) && !emittingBundle() &&
+      !profilingGraph();
   const size_t numBatches =
       miniBatchMode ? inputImageFilenames.size() / miniBatch : 1u;
-  const size_t numThreads = multiThreadingAllowed
-                                ? std::min(size_t(miniBatchThreads), numBatches)
-                                : 1u;
+  const size_t numThreads =
+      runAllInputsOnAllDevices
+          ? miniBatchThreads
+          : (multiThreadingAllowed
+                 ? std::min(size_t(miniBatchThreads), numBatches)
+                 : 1u);
   if (miniBatchThreads > 1 && !multiThreadingAllowed) {
     llvm::outs() << "WARNING: multi-threaded execution is not possible. Make "
                     "sure that minibatch size is specified and you are not "
@@ -425,7 +512,7 @@ int Executor::executeNetwork(int argc, char **argv) {
       (numBatches + numThreads - 1) / numThreads;
   for (size_t i = 0; i < numThreads; i++) {
     size_t startIndex, endIndex;
-    if (numThreads > 1) {
+    if (!runAllInputsOnAllDevices && numThreads > 1) {
       startIndex = i * miniBatchesPerThread * miniBatch;
       endIndex = std::min((i + 1) * miniBatchesPerThread * miniBatch,
                           inputImageFilenames.size());
@@ -433,8 +520,8 @@ int Executor::executeNetwork(int argc, char **argv) {
       startIndex = 0;
       endIndex = inputImageFilenames.size();
     }
-    auto worker = [&processImageRange, startIndex, endIndex]() {
-      processImageRange(startIndex, endIndex);
+    auto worker = [&processImageRange, startIndex, endIndex, i]() {
+      processImageRange(startIndex, endIndex, i);
     };
     threads.push_back(std::thread(worker));
   }
