@@ -29,10 +29,25 @@
 namespace glow {
 
 /// Profiling parameters of a tensor consisting in the global minimum and global
-/// maximum values obtained for each tensor by profiling the network.
+/// maximum values and also the histogram obtained during profiling. To be noted
+/// that the histogram is not normalized.
 struct TensorProfilingParams {
   float min;
   float max;
+  std::vector<float> histogram;
+
+  TensorProfilingParams() = default;
+  TensorProfilingParams(float min, float max) : min(min), max(max) {}
+  TensorProfilingParams(float min, float max, const std::vector<float> &hist)
+      : min(min), max(max), histogram(hist) {}
+  TensorProfilingParams(float min, float max, const Tensor &hist)
+      : min(min), max(max) {
+    auto histH = hist.getHandle<float>();
+    histogram = std::vector<float>(histH.size());
+    for (dim_t idx = 0, e = histH.size(); idx < e; idx++) {
+      histogram[idx] = histH.raw(idx);
+    }
+  }
 };
 
 /// Main attributes of a quantized tensor.
@@ -77,8 +92,11 @@ struct NodeProfilingInfo {
       : nodeOutputName_(nodeOutputName),
         tensorProfilingParams_(tensorProfilingParams) {}
 
-  float Min() const { return tensorProfilingParams_.min; }
-  float Max() const { return tensorProfilingParams_.max; }
+  float min() const { return tensorProfilingParams_.min; }
+  float max() const { return tensorProfilingParams_.max; }
+  const std::vector<float> &histogram() const {
+    return tensorProfilingParams_.histogram;
+  }
 };
 
 /// Tensor quantization parameters for a given node.
@@ -92,12 +110,20 @@ struct NodeQuantizationInfo {
       : nodeOutputName_(nodeOutputName),
         tensorQuantizationParams_(tensorQuantizationParams) {}
 
-  float Scale() const { return tensorQuantizationParams_.scale; }
-  int32_t Offset() const { return tensorQuantizationParams_.offset; }
+  float scale() const { return tensorQuantizationParams_.scale; }
+  int32_t offset() const { return tensorQuantizationParams_.offset; }
 };
 
 namespace quantization {
 
+/// Type definition for a float min/max range.
+using FloatRange = std::pair<float, float>;
+
+/// Type definition for a quantized min/max range.
+using QuantizedRange = std::pair<int64_t, int64_t>;
+
+/// Quantization schema which influences the way the quantization parameters
+/// scale and offset are computed based on the target min/max dynamic range.
 enum Schema {
   /// Asymmetric quantization produces ranges not necessarily centered on 0.
   Asymmetric,
@@ -119,6 +145,24 @@ enum Schema {
   SymmetricWithPower2Scale,
 };
 
+/// Calibration mode which influences the way the dynamic range min/max obtained
+/// during profiling is narrowed in order to have a more precise representation
+/// for the majority of the values with the price of saturating the outliers.
+enum Calibration {
+  /// No calibration. The quantization parameters will be computed using the
+  /// unaltered dynamic range min/max obtained during profiling such that all
+  /// the profiled dynamic range will be representable without saturation.
+  None,
+  /// Calibration mode based on minimizing the Kullback-Leibler divergence.
+  KLMinimization
+};
+
+/// Configuration for Profiling, passed into \ref profileQuantization().
+struct ProfilingConfiguration {
+  /// Number of bins used to compute the histogram during profiling.
+  unsigned numHistogramBins{10};
+};
+
 /// Configuration for Quantization, passed into \ref quantizeFunction().
 struct QuantizationConfiguration {
   /// Profiling infos to use when computing the scale and offset for all the
@@ -130,7 +174,13 @@ struct QuantizationConfiguration {
   ElemKind precision{ElemKind::Int8QTy};
 
   /// Schema to use when quantizing a Function.
-  quantization::Schema schema{quantization::Schema::Asymmetric};
+  Schema schema{Schema::Asymmetric};
+
+  /// Calibration mode used when computing the quantization parameters.
+  Calibration calibration{Calibration::None};
+
+  /// Whether to enable the calibration for constant weights.
+  bool calibrateConstants{false};
 
   /// Whether to use rowwise quantization when quantizing a Function.
   bool enableRowwise{false};
@@ -247,7 +297,7 @@ QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
 
 /// Function to get the quantized range for a given precision type \p qTy.
 /// \returns the range as a (min, max) pair.
-std::pair<int64_t, int64_t> getQuantizationRange(ElemKind qTy);
+QuantizedRange getQuantizedRange(ElemKind qTy);
 
 /// Function to validate that the given quantization parameters \p qParams
 /// comply with the given quantization \p schema and precision \p qTy.
@@ -256,11 +306,13 @@ void validateQuantizationParams(TensorQuantizationParams qParams, Schema schema,
 
 /// Calculate the TensorQuantizationParams from the TensorProfilingParams
 /// \p profParams using the quantization type \p qTy and the quantization
-/// method described by \p schema.
+/// method described by \p schema. The calibration of the quantization
+/// parameters will be done using the method given by \p calibration.
 TensorQuantizationParams
 chooseQuantizationParams(TensorProfilingParams profParams,
                          Schema schema = Asymmetric,
-                         ElemKind qTy = ElemKind::Int8QTy);
+                         ElemKind qTy = ElemKind::Int8QTy,
+                         Calibration calibration = Calibration::None);
 
 /// \returns an int8 vector mapping from the \p inTy to the \p outTy given the
 /// function \p f.

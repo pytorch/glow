@@ -77,6 +77,7 @@ template <> struct MappingTraits<glow::NodeProfilingInfo> {
     io.mapRequired("nodeOutputName", info.nodeOutputName_);
     io.mapRequired("min", min->val_);
     io.mapRequired("max", max->val_);
+    io.mapRequired("histogram", info.tensorProfilingParams_.histogram);
   }
 };
 

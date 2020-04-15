@@ -44,19 +44,13 @@ generateNodeProfilingInfos(PlaceholderBindings &bindings, const Function *F,
                            const LoweredInfoMap &loweredMap = {});
 
 /// Generate NodeQuantizationInfo for all the required nodes from function \p F
-/// using the profiling information stored in \p profilingInfos obtained with
-/// the function \ref generateNodeProfilingInfos. The quantization schema is
-/// specified by \p schema and the target precision for quantization is given
-/// by \p quantizationPrecision for all the operands except the bias operands
-/// (used in nodes like Convolution and FullyConnected) for which the target
-/// precision is given by \p quantizationPrecisionBias. The map \p loweredMap
-/// is the lowering map obtained during the quantization phase and is used
-/// to find lowering patterns for the bias operands.
-std::vector<NodeQuantizationInfo> generateNodeQuantizationInfos(
-    llvm::ArrayRef<NodeProfilingInfo> profilingInfos, Function *F,
-    const LoweredInfoMap &loweredMap = {}, Schema schema = Schema::Asymmetric,
-    ElemKind quantizationPrecision = ElemKind::Int8QTy,
-    ElemKind quantizationPrecisionBias = ElemKind::Int32QTy);
+/// using the profiling information and the parameters from \p quantConfig. The
+/// map \p loweredMap is the lowering map obtained during the quantization phase
+/// and is used to find lowering patterns for the bias operands.
+std::vector<NodeQuantizationInfo>
+generateNodeQuantizationInfos(Function *F,
+                              const QuantizationConfiguration &quantConfig,
+                              const LoweredInfoMap &loweredMap = {});
 
 /// Quantizes the function \p F into an unoptimized partially quantized function
 /// based on configuration from \p quantConfig. This method converts to integer

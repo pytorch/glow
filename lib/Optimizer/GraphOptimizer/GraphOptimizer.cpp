@@ -4427,7 +4427,7 @@ void glow::transformForPrecisionMode(const Backend &B, Function *F,
 
     LOG_SCOPE(F->getLogContext(), "glow::profileQuantization")
 
-    glow::profileQuantization(*cctx.bindings, F);
+    glow::profileQuantization(*cctx.bindings, F, precConfig.profConfig);
     break;
   }
 

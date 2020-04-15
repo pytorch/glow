@@ -1209,10 +1209,10 @@ public:
   /// Create quantization profile node named \p name for the output tensor from
   /// \p input in PlaceholderBindings \p bindings. Capture observed node name in
   /// quantization profile node as original node can be replaced during lowering
-  /// phase.
+  /// phase. Compute the histogram during profiling with \p numHistogramBins.
   QuantizationProfileNode *
   createQuantizationProfile(PlaceholderBindings &bindings, llvm::StringRef name,
-                            NodeValue input);
+                            NodeValue input, dim_t numHistogramBins = 10);
 
   /// Create lookup table for mapping between quantized numbers.
   /// \p input and \p outTy must have quantized type.

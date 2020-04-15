@@ -124,6 +124,23 @@ llvm::cl::opt<quantization::Schema> quantizationSchema(
                    "Use symmetric ranges with power of 2 scaling factor")),
     llvm::cl::init(quantization::Schema::Asymmetric), llvm::cl::cat(loaderCat));
 
+llvm::cl::opt<quantization::Calibration> quantizationCalibrationOpt(
+    "quantization-calibration",
+    llvm::cl::desc("Specify which quantization calibration method to use"),
+    llvm::cl::Optional,
+    llvm::cl::values(
+        clEnumValN(quantization::Calibration::None, "none", "No calibration"),
+        clEnumValN(quantization::Calibration::KLMinimization, "KL",
+                   "Quantization calibration method based on minimizing the "
+                   "Kullback-Leibler divergence metric (relative entropy)")),
+    llvm::cl::init(quantization::Calibration::None), llvm::cl::cat(loaderCat));
+
+llvm::cl::opt<bool> calibrateConstantsOpt(
+    "calibrate-constants",
+    llvm::cl::desc("Option to enable the quantization calibration for constant "
+                   "weights which is disabled by default."),
+    llvm::cl::init(false), llvm::cl::Optional, llvm::cl::cat(loaderCat));
+
 llvm::cl::opt<ElemKind> quantizationPrecision(
     "quantization-precision",
     llvm::cl::desc("Specify which quantization precision to use, e.g., Int8"),
@@ -225,6 +242,14 @@ llvm::cl::opt<bool> assertAllNodesQuantizedOpt(
         "in conjunction with -keep-original-precision-for-nodes to explicitly "
         "whitelist node kinds that are allowed to be left unquantized."),
     llvm::cl::init(false), llvm::cl::cat(loaderCat));
+
+llvm::cl::opt<unsigned> numHistogramBinsOpt(
+    "num-histogram-bins",
+    llvm::cl::desc("Number of bins used for histogram during profiling. If "
+                   "histogram based calibration is used then the number of "
+                   "histogram bins must be greater than 255 in order for any "
+                   "calibration to take place (in the order of 1000's)."),
+    llvm::cl::init(10), llvm::cl::value_desc("N"), llvm::cl::cat(loaderCat));
 
 /// Name of the network being bundled.
 llvm::cl::opt<std::string> networkName(
@@ -490,6 +515,8 @@ quantization::QuantizationConfiguration Loader::getQuantizationConfiguration() {
   quantConfig.precision = quantizationPrecision;
   quantConfig.precisionBias = quantizationPrecisionBias;
   quantConfig.schema = quantizationSchema;
+  quantConfig.calibration = quantizationCalibrationOpt;
+  quantConfig.calibrateConstants = calibrateConstantsOpt;
   quantConfig.enableRowwise = enableRowwiseOpt;
   quantConfig.assertAllNodesQuantized = assertAllNodesQuantizedOpt;
   if (!loadProfileFileOpt.empty()) {
@@ -532,6 +559,9 @@ CompilationContext Loader::getCompilationContext(QuantizationMode mode) {
     precConfig.quantConfig = getQuantizationConfiguration();
 
   } else if (mode == QuantizationMode::Profile) {
+
+    // Profiling parameters.
+    precConfig.profConfig.numHistogramBins = numHistogramBinsOpt;
 
     // By default everything will be lowered for profiling. However this may
     // cause performance issues for some models, e.g. if a model has group

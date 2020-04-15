@@ -2725,6 +2725,11 @@ libjit_quantization_profile(float *inputTensor, dim_t tensorSize,
   compInfo[0] = newMin;
   compInfo[1] = newMax;
 
+  // If input histogram is empty then return.
+  if (nBins == 0) {
+    return;
+  }
+
   // Initial profile.
   if (check_all_zeros(existingHistogram, nBins) == 1) {
     min = minInput;
