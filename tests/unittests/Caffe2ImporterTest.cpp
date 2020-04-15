@@ -2478,15 +2478,20 @@ TEST_F(Caffe2ImporterTest, SparseLengthsSum8BitsRowwise) {
 ///    INDICES = [1, 0, 2, 0, 1, 2, 2, 0]
 ///    LENGTHS = [3, 0, 3, 2]
 ///    OUTPUT =  [[0.5, 0, 0, 25]]
-TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSumFused8BitRowwise) {
+static void testFRWQSLWS(float avgLength) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
-      GLOW_DATA_PATH
-      "tests/models/caffe2Models/"
-      "fused_rowwise_quantized_sparse_lengths_weighted_sum_predict_net.pbtxt");
+      std::isnan(avgLength) ? GLOW_DATA_PATH
+          "tests/models/caffe2Models/"
+          "fused_rowwise_quantized_sparse_lengths_weighted_sum_predict_net."
+          "pbtxt"
+                            : GLOW_DATA_PATH
+          "tests/models/caffe2Models/"
+          "fused_rowwise_quantized_sparse_lengths_weighted_sum_avg_length_"
+          "predict_net.pbtxt");
   std::string NetWeightFilename(
       GLOW_DATA_PATH
       "tests/models/caffe2Models/"
@@ -2533,6 +2538,11 @@ TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSumFused8BitRowwise) {
       llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
           saveNode->getInput().getNode());
   ASSERT_TRUE(FRWQSLWS);
+  if (std::isnan(avgLength)) {
+    EXPECT_TRUE(std::isnan(FRWQSLWS->getAvgLength()));
+  } else {
+    EXPECT_EQ(FRWQSLWS->getAvgLength(), avgLength);
+  }
   // Check that the weights input is a Constant node.
   Constant *weights =
       llvm::dyn_cast<Constant>(FRWQSLWS->getWeights().getNode());
@@ -2563,6 +2573,14 @@ TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSumFused8BitRowwise) {
   };
 
   EXPECT_TRUE(expected.isEqual(result, 0.02f));
+}
+
+TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSumFused8BitRowwise) {
+  testFRWQSLWS(NAN);
+}
+
+TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSumFused8BitRowwiseAvgLength) {
+  testFRWQSLWS(5.0f);
 }
 
 /// Test loading SparseLengthsSumFused8BitRowwise. This is created as a
