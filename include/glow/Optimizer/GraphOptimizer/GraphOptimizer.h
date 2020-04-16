@@ -17,7 +17,7 @@
 #define GLOW_OPTIMIZER_GRAPHOPTIMIZER_GRAPHOPTIMIZER_H
 
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
-#include "glow/Optimizer/GraphOptimizer/PassManager.h"
+#include "glow/Optimizer/GraphOptimizer/FunctionPassManager.h"
 #include "glow/Support/Error.h"
 
 #include "llvm/ADT/ArrayRef.h"

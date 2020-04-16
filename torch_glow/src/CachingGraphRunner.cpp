@@ -160,8 +160,8 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
   }
 
   cctx.replicationCount = settings_.replicationCount;
-  RETURN_IF_ERR(hostManager_->addNetwork(std::move(module), cctx,
-                                         settings_.saturateHost));
+  cctx.saturateHost = settings_.saturateHost;
+  RETURN_IF_ERR(hostManager_->addNetwork(std::move(module), cctx));
 
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "addNetwork");
 

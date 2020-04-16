@@ -289,7 +289,7 @@ class Backend;
 struct CompilationContext;
 
 /// Represents the compute graph.
-class Function final : public Named {
+class Function final : public IRContainer {
   /// A list of nodes that the Function owns.
   NodesList nodes_;
 
@@ -311,7 +311,7 @@ class Function final : public Named {
 
 public:
   Function(Module *parent, llvm::StringRef Name = {})
-      : Named(Name), parent_(parent), state_(FunctionState::FuncCreated) {
+      : IRContainer(Name), parent_(parent), state_(FunctionState::FuncCreated) {
     logCtx_ = std::make_shared<LogContext>(parent);
     logCtx_->pushEvent(parent->getModuleLogContext()->getClonedScope());
   }

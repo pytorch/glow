@@ -108,7 +108,6 @@ Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
   DeviceIDTy deviceCount = 0;
 
   for (auto &config : configs) {
-    config->deviceID = deviceCount;
     if (!config->hasName()) {
       config->name = "config" + std::to_string(deviceCount);
     }
@@ -152,7 +151,7 @@ void HostManager::cleanupAddNetwork(llvm::ArrayRef<std::string> names) {
 }
 
 Error HostManager::addNetwork(std::unique_ptr<Module> module,
-                              CompilationContext &cctx, bool saturateHost) {
+                              CompilationContext &cctx) {
   std::vector<std::string> names;
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
@@ -227,8 +226,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       }
     }
   }
-  Partitioner partitioner(module.get(), deviceInfo, saturateHost,
-                          skipOptimizations);
+  Partitioner partitioner(module.get(), deviceInfo, skipOptimizations);
   DAGListTy nodeList;
   auto result = partitioner.partition(cctx);
   if (result) {

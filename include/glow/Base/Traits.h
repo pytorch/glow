@@ -114,6 +114,13 @@ public:
 
 using KindSet = llvm::SmallSet<Kinded::Kind, 4>;
 
+/// Subclasses of this class represent an IR container, e.g. a function or a
+/// module.
+class IRContainer : public Named {
+public:
+  IRContainer(llvm::StringRef name) : Named(name) {}
+};
+
 } // namespace glow
 
 #endif // GLOW_BASE_TRAITS_H
