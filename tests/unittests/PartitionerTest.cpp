@@ -800,8 +800,8 @@ TEST_F(PartitionerTest, logicalIDTest0) {
   auto *mul3 = F_->createMatMul("mul3", mul2, input5);
   auto *save = F_->createSave("ret", mul3);
   (void)save;
-  std::vector<DeviceInfo> devices = {{1500, "Interpreter"},
-                                     {1500, "Interpreter"}};
+  std::vector<DeviceInfo> devices = {{2200, "Interpreter"},
+                                     {2200, "Interpreter"}};
   // Create two backends which support different ops, then do the partition by
   // assigning the ops to the corresponding abackends.
   Partitioner partitioner(&mod_, devices);
@@ -809,8 +809,8 @@ TEST_F(PartitionerTest, logicalIDTest0) {
   cctx.saturateHost = true;
   auto dagList = partitioner.partition(cctx);
   ASSERT_TRUE((bool)dagList);
-  // Check there are 3 partitions.
-  EXPECT_EQ(mod_.getFunctions().size(), 3);
+  // Check there are 2 partitions.
+  EXPECT_EQ(mod_.getFunctions().size(), 2);
   EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(mod_));
 

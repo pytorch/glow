@@ -959,7 +959,8 @@ TEST(Graph, schedulingOfSavesOrderProvided) {
   auto *addAB = F->createAdd("addAB", A, B);
 
   auto *saveNode = F->createSave("ret", addAB);
-  bindings.allocate(saveNode->getPlaceholder());
+  auto *savePH = saveNode->getPlaceholder();
+  bindings.allocate(savePH);
   F->createSave("resetA", zero, A);
 
   // Copy the value of A.
@@ -968,7 +969,7 @@ TEST(Graph, schedulingOfSavesOrderProvided) {
   EE.compile(CompilationMode::Infer);
 
   EE.run(bindings);
-  auto *ret = bindings.get(saveNode->getPlaceholder());
+  auto *ret = bindings.get(savePH);
   auto handleAOrig = AOrig.getHandle<>();
   auto handleB = bindings.get(B)->getHandle<>();
   auto handleRet = ret->getHandle<>();
@@ -1010,11 +1011,11 @@ TEST(Graph, schedulingOfSaves) {
 
   // Copy the value of A.
   Tensor AOrig = bindings.get(A)->clone();
-
+  auto *ret = saveNode->getPlaceholder();
   EE.compile(CompilationMode::Infer);
 
   EE.run(bindings);
-  auto *ret = saveNode->getPlaceholder();
+
   auto handleAOrig = AOrig.getHandle<>();
   auto handleB = bindings.get(B)->getHandle<>();
   auto handleRet = bindings.get(ret)->getHandle<>();
@@ -1745,6 +1746,7 @@ TEST(Graph, clonePlaceholderBindingsRuns) {
   auto *FCL1 = F->createFullyConnected(bindings, "fc", input, 10);
   auto *RL3 = F->createRELU("relu4", FCL1);
   auto *save = F->createSave("ret", RL3);
+  auto *savePH = save->getPlaceholder();
 
   bindings.allocate(save->getPlaceholder());
 
@@ -1761,8 +1763,8 @@ TEST(Graph, clonePlaceholderBindingsRuns) {
 
   // PlaceholderBindingss are identical.
   Tensor *saveBacking1, *saveBacking2;
-  saveBacking1 = bindings.get(save->getPlaceholder());
-  saveBacking2 = bindings2.get(save->getPlaceholder());
+  saveBacking1 = bindings.get(savePH);
+  saveBacking2 = bindings2.get(savePH);
   EXPECT_NE(saveBacking1, saveBacking2);
   EXPECT_EQ(saveBacking1->size(), saveBacking2->size());
   EXPECT_TRUE(saveBacking1->isEqual(*saveBacking2));
