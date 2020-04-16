@@ -24,6 +24,8 @@
 
 #include <torch/csrc/jit/ir/ir.h>
 
+DECLARE_bool(dumpFinalGlowGraph);
+
 namespace glow {
 
 /// For Glow: -128 <= orig_fp32/scale_1 + offset_1 <= 127
