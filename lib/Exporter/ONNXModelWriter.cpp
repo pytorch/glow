@@ -16,12 +16,14 @@
 
 #include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Graph/Utils.h"
+#include "glow/Runtime/RuntimeTypes.h"
 #include "glow/Support/ZipUtils.h"
 
 #include <float.h>
 
 #include "miniz.h"
 
+using namespace glow::runtime;
 using google::protobuf::RepeatedPtrField;
 
 namespace glow {
@@ -555,6 +557,38 @@ static void addAttrToDocString(T *proto, const std::string &attrName,
 
 } // namespace
 
+bool ONNXModelWriter::isIntermediatePHForDAG(const Placeholder *PH) {
+  if (!dagMode_) {
+    return false;
+  }
+
+  bool isInputPH = false, isOutputPH = false;
+  for (const auto &use : PH->getUsers()) {
+    const auto *userN = use.getUser();
+    // Only consider users from Functions in the DAG.
+    const Function *userF = userN->getParent();
+    if (!functionsFromDAG_.count(userF)) {
+      continue;
+    }
+    const bool currIsInputPH = isInput(PH, *userF);
+    const bool currIsOutputPH = isOutput(PH, *userF);
+    // Check this is not quantization profiling or training cases.
+    assert(
+        !(currIsInputPH && currIsOutputPH) &&
+        "Do not support PHs that are input and output to a single Function.");
+    if (currIsInputPH) {
+      isInputPH = true;
+    }
+    if (currIsOutputPH) {
+      isOutputPH = true;
+    }
+  }
+
+  // If the PH is both an input and an output for the Functions in the DAG then
+  // it must be an intermediate.
+  return isInputPH && isOutputPH;
+}
+
 Error ONNXModelWriter::writeFunction() {
   // Use pre order graph traversal.
   // If node is constant with uses, turned into "input" and create a tensor
@@ -575,6 +609,11 @@ Error ONNXModelWriter::writeFunction() {
       const auto *PH = llvm::cast<Placeholder>(N);
       if (!isInput(PH, *F_)) {
         // Storage as an input to SaveNode - ignore it.
+        continue;
+      }
+      // Skip Placeholders that are only intermediates -- these are
+      // understood/recreated during reimporting based on an op's partition.
+      if (isIntermediatePHForDAG(PH)) {
         continue;
       }
       // Write global input, output only tensor shape.
@@ -600,12 +639,6 @@ Error ONNXModelWriter::writeFunction() {
       // output only shape.
       const SaveNode *SN = llvm::cast<SaveNode>(N);
       const auto *PH = SN->getPlaceholder();
-      auto *out = graphProto_->add_output();
-      tensorShapeFromPlaceholder(PH, out);
-
-      // Use the doc string to specify the name that should be used for the
-      // SaveNode to ensure it's kept the same between export and import.
-      addAttrToDocString(out, saveNameSignifier, SN->getName());
 
       // If useGlowCustomOps then we need to add an Identity to map the name
       // from generateNodeOutputName() to the name of the Placeholder.
@@ -616,7 +649,24 @@ Error ONNXModelWriter::writeFunction() {
         proto->add_input(SN->getInput().generateNodeOutputName(
             /* stripResNoFor0thInput */ true));
         proto->add_output(PH->getName().data());
+        // If dumping a DAG then add partition names to each op that's written.
+        if (dagMode_) {
+          addValueAttribute(proto, "partitionName", F_->getName().str());
+          // Skip writing Placeholders that are only intermediates -- these are
+          // understood/recreated during reimporting based on an op's partition.
+          if (isIntermediatePHForDAG(PH)) {
+            addValueAttribute(proto, "isIntermediateOutputForDAG", true);
+            continue;
+          }
+        }
       }
+
+      auto *out = graphProto_->add_output();
+      tensorShapeFromPlaceholder(PH, out);
+
+      // Use the doc string to specify the name that should be used for the
+      // SaveNode to ensure it's kept the same between export and import.
+      addAttrToDocString(out, saveNameSignifier, SN->getName());
     } else if (useGlowCustomOps_) {
       RETURN_IF_ERR(writeGlowCustomOperator(N, *graphProto_));
     } else {
@@ -706,7 +756,7 @@ ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
                                  bool useGlowCustomOps)
     : CommonOperatorWriter(modelFilename, &F, errPtr), irVersion_(irVersion),
       opsetVersion_(opsetVersion), zipMode_(zipMode), textMode_(textMode),
-      useGlowCustomOps_(useGlowCustomOps) {
+      useGlowCustomOps_(useGlowCustomOps), dagMode_(false) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -719,6 +769,136 @@ ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
     RETURN_IF_ERR(writeFunction());
 
     return finalizeAndWriteProto(F_->getName());
+  };
+
+  if (errPtr) {
+    *errPtr = setup();
+  } else {
+    EXIT_ON_ERR(setup());
+  }
+}
+
+/// Collect nodes from the DAG from \p root in post order in \p postOrder.
+/// Gather visited nodes in \p visited.
+static void collectNodesPostOrder(const DAGNode *root,
+                                  std::unordered_set<const DAGNode *> &visited,
+                                  std::vector<const DAGNode *> &postOrder) {
+  if (root == nullptr) {
+    return;
+  }
+  visited.insert(root);
+  for (auto &c : root->children) {
+    if (visited.count(c) == 0) {
+      collectNodesPostOrder(c, visited, postOrder);
+    }
+  }
+  postOrder.push_back(root);
+}
+
+void ONNXModelWriter::addMetadataProp(const std::string &key,
+                                      const std::string &val) {
+  auto *prop = modelProto_.add_metadata_props();
+  prop->set_key(key);
+  prop->set_value(val);
+}
+
+Error ONNXModelWriter::writePartitionAndMetadataProps(
+    Module &mod, llvm::ArrayRef<const DAGNode *> postOrder) {
+  // Add number of partitions to proto.
+  addMetadataProp("numPartitions", std::to_string(postOrder.size()));
+
+  for (size_t i = 0, e = postOrder.size(); i < e; i++) {
+    const auto *dagNode = postOrder[i];
+    F_ = mod.getFunction(dagNode->name);
+    RETURN_ERR_IF_NOT(F_, "Function was not valid from DAGList");
+
+    // Write the nodes of the Function.
+    RETURN_IF_ERR(writeFunction());
+
+    // Add to the proto the partition name and related meta info:
+    const std::string partIdPrefix = getPartitionIdPrefix(i);
+
+    // name of partition:
+    addMetadataProp(partIdPrefix + nameSignifier, dagNode->name);
+
+    // logicalDevices of partition:
+    addMetadataProp(partIdPrefix + numLogicalDevicesSignifier,
+                    std::to_string(dagNode->logicalDevices.size()));
+    for (size_t j = 0, f = dagNode->logicalDevices.size(); j < f; j++) {
+      addMetadataProp(partIdPrefix + getLogicalDeviceSignfier(j),
+                      std::to_string(dagNode->logicalDevices[j]));
+    }
+
+    // backendName of partition:
+    addMetadataProp(partIdPrefix + backendNameSignifier, dagNode->backendName);
+
+    // size of partition:
+    addMetadataProp(partIdPrefix + sizeSignifier,
+                    std::to_string(dagNode->size));
+
+    // backendHints.executionUnits of partition:
+    addMetadataProp(partIdPrefix + executionUnitsSignifier,
+                    std::to_string(dagNode->backendHints.executionUnits));
+
+    // backendHints.SRAMPrioritization of partition not supported:
+    assert(dagNode->backendHints.SRAMPrioritization.size() == 0 &&
+           "Do not support SRAMPrioritization saving from DAGNode");
+
+    // backendSpecificOpts of partition:
+    addMetadataProp(partIdPrefix + numBackendSpecificOptsSignifier,
+                    std::to_string(dagNode->backendSpecificOpts.size()));
+    size_t j = 0;
+    for (const auto &keyVal : dagNode->backendSpecificOpts) {
+      addMetadataProp(partIdPrefix + getBackendSpecificOptKeySignifier(j),
+                      keyVal.first);
+      addMetadataProp(partIdPrefix + getBackendSpecificOptValSignifier(j),
+                      keyVal.second);
+      j += 1;
+    }
+
+    // replicationCount of partition:
+    addMetadataProp(partIdPrefix + replicationCountSignifier,
+                    std::to_string(dagNode->replicationCount));
+  }
+
+  return Error::success();
+}
+
+ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename,
+                                 DAGListTy &dagList, size_t irVersion,
+                                 size_t opsetVersion, Error *errPtr,
+                                 bool textMode, bool zipMode)
+    : CommonOperatorWriter(modelFilename, nullptr, errPtr),
+      irVersion_(irVersion), opsetVersion_(opsetVersion), zipMode_(zipMode),
+      textMode_(textMode), useGlowCustomOps_(true), dagMode_(true) {
+  // If errPtr already contains an error then don't continue with constructor.
+  if (errPtr && *errPtr) {
+    return;
+  }
+
+  // Lambda to setup the ONNXModelWriter and return any Errors that were raised.
+  auto setup = [&]() -> Error {
+    setupNewProto();
+
+    RETURN_ERR_IF_NOT(dagList.size() == 1, "Expect only one DAG.");
+    const auto &dag = *dagList.begin();
+
+    Module &mod = *dag.root->module;
+
+    // Iterate over the DAG in post-order; Nodes per Function are written in
+    // reverse order and reversed at the end, so this follows suit.
+    std::unordered_set<const DAGNode *> visited;
+    std::vector<const DAGNode *> postOrder;
+    collectNodesPostOrder(dag.root.get(), visited, postOrder);
+    // Remove the root node from the list as we don't care about it.
+    postOrder.pop_back();
+    for (const DAGNode *dagNode : postOrder) {
+      functionsFromDAG_.insert(mod.getFunction(dagNode->name));
+    }
+
+    RETURN_IF_ERR(writePartitionAndMetadataProps(mod, postOrder));
+
+    return finalizeAndWriteProto(dag.root->name);
   };
 
   if (errPtr) {
@@ -1889,12 +2069,21 @@ DEF_UNSUPPORTED_NODE(BatchedPairwiseDotProductGrad)
 
 Error ONNXModelWriter::writeGlowCustomOperator(const Node *node,
                                                GraphType &graph) {
+  ONNX_NAMESPACE::NodeProto *opProto = nullptr;
+
   switch (node->getKind()) {
 #include "glow/AutoGenNodesExport.h"
   default:
     return MAKE_ERR(
         strFormat("Unhandled Node for export: %s", node->getName().data()));
   }
+  RETURN_ERR_IF_NOT(opProto, "Did not have valid opProto.");
+
+  // If dumping a DAG then add partition names to each op that's written.
+  if (dagMode_) {
+    addValueAttribute(opProto, "partitionName", F_->getName().str());
+  }
+
   return Error::success();
 }
 
