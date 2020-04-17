@@ -791,7 +791,26 @@ ONNXModelLoader::loadProto(const void *onnxModel, size_t onnxModelSize) {
 }
 
 Expected<ONNX_NAMESPACE::ModelProto>
-ONNXModelLoader::loadProto(const std::string &filename) {
+ONNXModelLoader::loadProto(const std::string &filename, bool zipMode) {
+  if (zipMode) {
+    ONNX_NAMESPACE::ModelProto MP;
+    ZipReader zip(filename);
+    std::string buffer;
+    buffer = zip.getRecord("model");
+    MP.ParseFromString(buffer);
+    size_t numWeights = 0;
+    auto numWeightsStr = zip.getRecord("weights");
+    numWeights = atoi(numWeightsStr.c_str());
+    for (size_t i = 0; i < numWeights; ++i) {
+      std::stringstream ss;
+      ss << "weight_" << i;
+      buffer = zip.getRecord(ss.str());
+      auto *t = MP.mutable_graph()->add_initializer();
+      t->ParseFromString(buffer);
+    }
+    return MP;
+  }
+
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
   RETURN_ERR_IF_NOT(ff,
                     strFormat("Can't find the model or network files for %s.",
@@ -3828,22 +3847,29 @@ ONNXModelLoader::ONNXModelLoader(Function &F, Error *errPtr)
   deleteUnusedConstants();
 }
 
+static Error checkStaticPH(const ONNX_NAMESPACE::ValueInfoProto &valueInfo,
+                           std::unordered_set<std::string> &staticInputs,
+                           bool useGlowCustomOps) {
+  const std::string &inputName = valueInfo.name();
+  if (useGlowCustomOps) {
+    std::string isStatic;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        isStatic,
+        getAttrFromDocString(staticSignifier, valueInfo.doc_string()));
+    if (isStatic == "1") {
+      staticInputs.emplace(inputName);
+    }
+  } else if (valueInfo.has_doc_string() &&
+             valueInfo.doc_string() == staticSignifier) {
+    staticInputs.emplace(inputName);
+  }
+  return Error::success();
+}
+
 Error ONNXModelLoader::collectStaticInputs(ONNX_NAMESPACE::GraphProto &net) {
   for (int i = 0; i < net.input_size(); i++) {
-    const ONNX_NAMESPACE::ValueInfoProto &valueInfo = net.input(i);
-    const std::string &inputName = valueInfo.name();
-    if (useGlowCustomOps_) {
-      std::string isStatic;
-      ASSIGN_VALUE_OR_RETURN_ERR(
-          isStatic,
-          getAttrFromDocString(staticSignifier, valueInfo.doc_string()));
-      if (isStatic == "1") {
-        staticInputs_.emplace(inputName);
-      }
-    } else if (valueInfo.has_doc_string() &&
-               valueInfo.doc_string() == staticSignifier) {
-      staticInputs_.emplace(inputName);
-    }
+    RETURN_IF_ERR(
+        checkStaticPH(net.input(i), staticInputs_, useGlowCustomOps_));
   }
   return Error::success();
 }
@@ -3879,12 +3905,40 @@ Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
                           "Mismatch between input image and ONNX input shape");
       }
 
-      if (valueInfo.has_doc_string() &&
-          valueInfo.doc_string() == staticSignifier) {
-        staticInputs_.emplace(inputName);
-      }
+      RETURN_IF_ERR(checkStaticPH(valueInfo, staticInputs_, useGlowCustomOps_));
     }
   }
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadModel(ONNX_NAMESPACE::ModelProto &modelDef,
+                                 llvm::ArrayRef<const char *> tensorNames,
+                                 llvm::ArrayRef<TypeRef> types,
+                                 const Backend *B,
+                                 bool loadInputsAsPlaceholdersForOnnx) {
+  useGlowCustomOps_ = modelDef.producer_name() == "GlowONNXModelWriter";
+
+  RETURN_IF_ERR(setVersion(modelDef));
+
+  ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
+  RETURN_IF_ERR(checkInputs(graphDef, tensorNames, types));
+  RETURN_IF_ERR(collectStaticInputs(graphDef));
+
+  RETURN_IF_ERR(loadInitializers(graphDef));
+
+  if (tensorNames.empty() && types.empty()) {
+    // Detect inputs without initializers and create placeholders.
+    RETURN_IF_ERR(loadInputs(graphDef, loadInputsAsPlaceholdersForOnnx));
+  }
+
+  RETURN_IF_ERR(loadNetwork(graphDef));
+
+  RETURN_IF_ERR(setOutputNodes(graphDef));
+
+  RETURN_ERR_IF_NOT(G_->verify(B), "Function verification failed.");
+
+  deleteUnusedConstants();
+
   return Error::success();
 }
 
@@ -3906,53 +3960,12 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
     constFoldInLoader_ = false;
   }
 
-  // Lambda to setup the ONNXModelLoader and return any Errors that were
-  // raised.
   auto setup = [&]() -> Error {
-    // The ONNX model that we are deserializing.
     ONNX_NAMESPACE::ModelProto modelDef;
-    if (zipMode) {
-      ZipReader zip(modelDescFilename);
-      std::string buffer;
-      buffer = zip.getRecord("model");
-      modelDef.ParseFromString(buffer);
-      size_t numWeights = 0;
-      auto numWeightsStr = zip.getRecord("weights");
-      numWeights = atoi(numWeightsStr.c_str());
-      for (size_t i = 0; i < numWeights; ++i) {
-        std::stringstream ss;
-        ss << "weight_" << i;
-        buffer = zip.getRecord(ss.str());
-        auto *t = modelDef.mutable_graph()->add_initializer();
-        t->ParseFromString(buffer);
-      }
-    } else {
-      ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(modelDescFilename));
-    }
+    ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(modelDescFilename, zipMode));
 
-    useGlowCustomOps_ = modelDef.producer_name() == "GlowONNXModelWriter";
-
-    RETURN_IF_ERR(setVersion(modelDef));
-
-    ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
-    RETURN_IF_ERR(checkInputs(graphDef, tensorNames, types));
-    RETURN_IF_ERR(collectStaticInputs(graphDef));
-
-    RETURN_IF_ERR(loadInitializers(graphDef));
-
-    if (tensorNames.empty() && types.empty()) {
-      // Detect inputs without initializers and create placeholders.
-      RETURN_IF_ERR(
-          loadInputs(graphDef, /* loadInputsAsPlaceholdersForOnnx */ true));
-    }
-
-    RETURN_IF_ERR(loadNetwork(graphDef));
-
-    RETURN_IF_ERR(setOutputNodes(graphDef));
-
-    RETURN_ERR_IF_NOT(F.verify(B), "Function verification failed.");
-
-    deleteUnusedConstants();
+    RETURN_IF_ERR(loadModel(modelDef, tensorNames, types, B,
+                            /* loadInputsAsPlaceholdersForOnnx */ true));
 
     return Error::success();
   };
@@ -3983,23 +3996,10 @@ ONNXModelLoader::ONNXModelLoader(
     ONNX_NAMESPACE::ModelProto modelDef;
     ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(model, modelSize));
 
-    useGlowCustomOps_ = modelDef.producer_name() == "GlowONNXModelWriter";
-
-    RETURN_IF_ERR(setVersion(modelDef));
-
     RETURN_IF_ERR(loadWeights(weightsCount, weightDescriptors));
 
-    ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
-
-    RETURN_IF_ERR(loadInputs(graphDef, loadInputsAsPlaceholdersForOnnx));
-
-    RETURN_IF_ERR(loadInitializers(graphDef));
-
-    RETURN_IF_ERR(loadNetwork(graphDef));
-
-    RETURN_IF_ERR(setOutputNodes(graphDef));
-
-    deleteUnusedConstants();
+    RETURN_IF_ERR(loadModel(modelDef, {}, {}, /* B */ nullptr,
+                            loadInputsAsPlaceholdersForOnnx));
 
     return Error::success();
   };

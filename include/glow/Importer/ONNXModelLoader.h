@@ -402,8 +402,9 @@ protected:
   /// \returns Expected<ModelProto> if a ModelProto can be constructed from the
   /// contents of the file \p filename and Error otherwise.
   /// Loads ModelProto from the file containing serialized protobuf.
+  /// If \p zipMode then zip format will be expected/loaded.
   static Expected<ONNX_NAMESPACE::ModelProto>
-  loadProto(const std::string &filename);
+  loadProto(const std::string &filename, bool zipMode);
 
   /// \returns Expected<ModelProto> if a ModelProto can be constructed from the
   /// in-memory serialized protobuf.
@@ -448,6 +449,13 @@ protected:
   /// associated with the Tensor. This method makes sure that the tensor is
   /// created with the proper shape and element type.
   Error setTensorType(const ONNX_NAMESPACE::ValueInfoProto &in, Tensor *T);
+
+  /// Load a model \p modelDef given \p tensorNames, \p types, \p B, and
+  /// \p loadInputsAsPlaceholdersForOnnx.
+  Error loadModel(ONNX_NAMESPACE::ModelProto &modelDef,
+                  llvm::ArrayRef<const char *> tensorNames,
+                  llvm::ArrayRef<TypeRef> types, const Backend *B,
+                  bool loadInputsAsPlaceholdersForOnnx);
 
 public:
   /// \returns ONNX model ir_version;
