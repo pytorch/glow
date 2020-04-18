@@ -47,14 +47,22 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   using AttrType = ONNX_NAMESPACE::AttributeProto;
   using ValueInfoType = ONNX_NAMESPACE::ValueInfoProto;
 
+  // ModelProto that we are writing to.
+  ONNX_NAMESPACE::ModelProto modelProto_;
+  // GraphProto that we are writing to.
+  ONNX_TRAITS::GraphProto *graphProto_;
+  /// Current IR version of ONNX.
+  const size_t irVersion_;
   /// Current version of ONNX standard.
-  size_t opsetVersion_;
+  const size_t opsetVersion_;
   /// Keeps the track of already visited or processed nodes.
   ReportedNodes reportedNodes_;
   /// Whether we use zip mode or not
-  bool zipMode_;
+  const bool zipMode_;
+  /// Whether we use text mode or not
+  const bool textMode_;
   /// Whether to use custom ONNX ops.
-  bool useGlowCustomOps_;
+  const bool useGlowCustomOps_;
   /// A dedicated list of initializers in case the tensors get too big and don't
   /// fit into the model.
   std::list<TensorType> initializers_;
@@ -82,6 +90,17 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   /// Write \p node to \p graph using custom Glow Nodes, exported via
   /// auto-generated export logic in NodeGen.
   Error writeGlowCustomOperator(const Node *node, GraphType &graph);
+
+  /// Setup a new proto \ref modelProto_ and \ref graphProto_.
+  void setupNewProto();
+
+  /// Write the current Function \ref F_ to \ref graphProto_. \returns if there
+  /// was an issue during iteration or writing.
+  Error writeFunction();
+
+  /// Finalize the written function and write it out to \p filename. \returns if
+  /// there is an error encountered.
+  Error finalizeAndWriteProto(llvm::StringRef filename);
 
 public:
   /// Converts \p glowType to \p protoType.
