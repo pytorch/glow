@@ -1460,9 +1460,10 @@ TEST_F(PartitionerTest, PrePartitionedTest) {
   PPC.funcs.push_back(F1);
   PPC.funcs.push_back(F2);
   PPC.logicalIDs.resize(3);
-  PPC.logicalIDs[0].insert(0);
-  PPC.logicalIDs[1].insert(1);
-  PPC.logicalIDs[2].insert({1, 2});
+  PPC.logicalIDs[0].push_back(0);
+  PPC.logicalIDs[1].push_back(1);
+  PPC.logicalIDs[2].push_back(1);
+  PPC.logicalIDs[2].push_back(2);
   PPC.backendSpecificOpts.emplace_back(
       BackendSpecificOptions{{"opt0", "val0"}, {"opt1", "val1"}});
   PPC.backendSpecificOpts.emplace_back(
