@@ -168,8 +168,10 @@ void Node::setNthInput(unsigned idx, NodeValue val) {
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
-    getParent()->getLogContext()->logNodeInputChange(                          \
-        *this, this->getNthInput(idx), val);                                   \
+    if (getParent()) {                                                         \
+      getParent()->getLogContext()->logNodeInputChange(                        \
+          *this, this->getNthInput(idx), val);                                 \
+    }                                                                          \
     return static_cast<CLASS *>(this)->setNthInput(idx, val);
 #include "glow/AutoGenNodes.def"
   default:
@@ -288,6 +290,17 @@ void Node::dump(llvm::raw_ostream &out) const { out << this->getDebugDesc(); }
 void Node::dump() const { dump(llvm::outs()); }
 
 std::string Node::toString() const { return this->getDebugDesc(); }
+
+size_t Node::getTotMemSize() const {
+  size_t totMemSize = 0;
+  for (unsigned idx = 0; idx < getNumInputs(); idx++) {
+    totMemSize += getNthInput(idx).getType()->getSizeInBytes();
+  }
+  for (unsigned idx = 0; idx < getNumResults(); idx++) {
+    totMemSize += getNthResult(idx).getType()->getSizeInBytes();
+  }
+  return totMemSize;
+}
 
 Node *Node::clone() const {
   switch (getKind()) {

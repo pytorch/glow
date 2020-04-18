@@ -61,7 +61,7 @@ protected:
   static void destroyNode(Node *N);
 
   /// Link to the function holding this node.
-  Function *parent_;
+  Function *parent_{nullptr};
 
 public:
   Node(Kinded::Kind k, llvm::StringRef name)
@@ -115,6 +115,10 @@ public:
 
   /// Dump a textual representation of the Node to std::string.
   std::string toString() const;
+
+  /// Get the total memory size (in bytes) of the node as the sum of sizes
+  /// for all the inputs and outputs.
+  size_t getTotMemSize() const;
 
   /// \returns copy of the current node. Notice that the new node is not
   /// inserted into any DAG. The caller of this method should add it to some

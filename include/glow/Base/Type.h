@@ -60,6 +60,12 @@ static_assert(sizeof(float16_t) == 2, "Half precision should be 16-bit");
 using ShapeVector = llvm::SmallVector<dim_t, max_tensor_dimensions>;
 
 struct ShapeNHWC {
+
+  static const size_t dimN = 0;
+  static const size_t dimH = 1;
+  static const size_t dimW = 2;
+  static const size_t dimC = 3;
+
   dim_t n; // Number of samples
   dim_t h; // Height
   dim_t w; // Width
@@ -134,6 +140,12 @@ struct ShapeNHWTC {
 };
 
 struct ShapeNCHW {
+
+  static const size_t dimN = 0;
+  static const size_t dimC = 1;
+  static const size_t dimH = 2;
+  static const size_t dimW = 3;
+
   dim_t n; // Number of samples
   dim_t c; // Number of Channels
   dim_t h; // Height

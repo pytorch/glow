@@ -671,7 +671,8 @@ int main(int argc, char **argv) {
   BB.newInstr("Touch")
       .addOperand("Dest", OperandKind::Out)
       .dataParallel()
-      .autoVerify(VerifyKind::NoVerify);
+      .autoVerify(VerifyKind::NoVerify)
+      .autoIRGen();
 
   BB.newInstr("InsertTensor")
       .addOperand("Dest", OperandKind::InOut)

@@ -28,6 +28,7 @@
 #include "glow/Graph/Utils.h"
 #include "glow/Graph/VerifierHelper.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
+#include "glow/Optimizer/GraphOptimizer/NodeSplitting.h"
 #include "glow/Optimizer/GraphOptimizer/PassManager.h"
 #include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 #include "glow/Optimizer/Lower/Lower.h"
@@ -49,6 +50,15 @@ llvm::cl::opt<unsigned> constDedupSizeOpt(
     llvm::cl::desc(
         "Max number of elements allowed for deduplicating Constants"),
     llvm::cl::Optional, llvm::cl::init(256), llvm::cl::cat(graphOptCat));
+
+llvm::cl::opt<unsigned> splitNodesByMemSizeOpt(
+    "split-nodes-by-mem-size",
+    llvm::cl::desc(
+        "Option to split the nodes in sufficiently many nodes such that "
+        "each node has a maximum memory size (in bytes) meaning that the "
+        "total size for all the inputs and outputs does not exceed a given "
+        "size. If 0 is given then no node splitting is performed."),
+    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(graphOptCat));
 
 using namespace glow;
 using llvm::cast;
@@ -4544,6 +4554,13 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
 
   // Optimize the graph again now that we have a lowered representation.
   ::glow::optimize(F, cctx);
+
+  // Perform node splitting.
+
+  //RETURN_IF_ERR(::glow::splitNodesWithConstraints(
+  //    F, {getMaxMemSplitNodeConstraint(splitNodesByMemSizeOpt)}));
+  RETURN_IF_ERR(::glow::splitNodesWithConstraints(
+      F, {getNumChunksSplitNodeConstraint(3)}));
 
   // If requested fold ElemKind conversion Nodes into static Placeholders,
   // inputs, and outputs (Placeholders and SaveNodes).

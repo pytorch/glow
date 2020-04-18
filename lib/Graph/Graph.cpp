@@ -1638,6 +1638,10 @@ SplatNode *Function::createSplat(llvm::StringRef name, TypeRef ty,
   return addNode(new SplatNode(name, getParent()->uniqueType(*ty), value));
 }
 
+TouchNode *Function::createTouch(llvm::StringRef name, TypeRef ty) {
+  return addNode(new TouchNode(name, getParent()->uniqueType(*ty)));
+}
+
 MatMulNode *Function::createMatMul(llvm::StringRef name, TypeRef outTy,
                                    NodeValue lhs, NodeValue rhs) {
   return addNode(

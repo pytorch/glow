@@ -755,6 +755,8 @@ public:
                                        unsigned_t count = 1,
                                        unsigned_t axis = 0);
 
+  /// Create a slice node \p name with the given starting points for each
+  /// dimension \p begin and end points \p end (exclusive).
   SliceNode *createSlice(llvm::StringRef name, NodeValue input,
                          UnsignedArrayRef begin, UnsignedArrayRef end);
 
@@ -939,6 +941,8 @@ public:
                            NodeValue LHS, NodeValue RHS);
 
   SplatNode *createSplat(llvm::StringRef name, TypeRef ty, float value);
+
+  TouchNode *createTouch(llvm::StringRef name, TypeRef ty);
 
   MatMulNode *createMatMul(llvm::StringRef name, NodeValue lhs, NodeValue rhs);
 

@@ -997,6 +997,8 @@ bool ChannelShuffleNode::verify() const {
 
 bool SplatNode::verify() const { return true; }
 
+bool TouchNode::verify() const { return true; }
+
 bool TraceEventNode::verify() const { return true; }
 
 bool ClipNode::verify() const {
