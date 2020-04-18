@@ -482,8 +482,10 @@ target_link_libraries(PartitionerTest
                         Backend
                         Backends
                         ExecutionEngine
+                        Exporter
                         Graph
                         GraphOptimizer
+                        Importer
                         IR
                         Partitioner
                         gtest

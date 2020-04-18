@@ -420,12 +420,14 @@ int run() {
 
   // Build the execution engine and deserialize the Function.
   auto mod = glow::make_unique<Module>();
-  Function *F = mod->createFunction("test");
   Error err = Error::empty();
   bool usingGlowCustomOps = false;
   CompilationContext cctx;
+  runtime::PrePartitionedConfig PPC;
+  cctx.prepartitionedConfig = &PPC;
   {
-    ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *F, &err, onnxLoaderZipMode,
+    ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *mod, "test", &PPC, &err,
+                           onnxLoaderZipMode,
                            &cctx.backendOpts.backendSpecificNodeInfo);
     usingGlowCustomOps = onnxLD.usingGlowCustomOps();
   }
@@ -433,8 +435,8 @@ int run() {
       << "ONNXModelLoader failed to load model: " << modelPathOpt;
   llvm::outs() << "End onnx model load\n";
 
-  if (glowDumpGraphAfterLoadOpt) {
-    F->dumpDAG("dag.dot");
+  for (Function *F : mod->getFunctions()) {
+    F->dumpDAG(F->getName().str() + ".dot");
   }
 
   // Build host manager and compile the module.

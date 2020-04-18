@@ -15,9 +15,13 @@
  */
 #include "glow/Partitioner/Partitioner.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
+#include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Importer/ONNXModelLoader.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Partitioner/PartitionerUtils.h"
+
+#include "llvm/Support/FileSystem.h"
 
 #include "gtest/gtest.h"
 
@@ -89,11 +93,151 @@ static bool checkSaveNode(Module &mod) {
   return true;
 }
 
+/// Serializes \p dagList and re-loads it. Compares the structure of the DAGs
+/// before/after and verify results are still the same given \p devices
+static void verifyDAGSerialization(DAGListTy &dagList, Module &origMod,
+                                   PlaceholderBindings &bindings,
+                                   llvm::ArrayRef<llvm::StringRef> inputNames,
+                                   llvm::StringRef resultName,
+                                   const std::vector<DeviceInfo> &devices,
+                                   llvm::ArrayRef<Tensor *> inputs,
+                                   const Tensor &ref) {
+  llvm::SmallString<64> path;
+  auto tempFileRes =
+      llvm::sys::fs::createTemporaryFile("exporter", "output.onnx", path);
+  (void)tempFileRes;
+  assert(tempFileRes.value() == 0);
+
+  std::string outputFilename(path.c_str());
+  std::cout << "Writing to file: " << outputFilename << std::endl;
+  {
+    Error err = Error::empty();
+    ONNXModelWriter onnxWR(outputFilename, dagList, 7, 9, &err,
+                           /* textMode */ false, /* zipMode */ true);
+
+    if (ERR_TO_BOOL(std::move(err))) {
+      llvm::errs() << "ONNXModelWriter failed to write model: "
+                   << outputFilename << ".\n";
+      llvm::sys::fs::remove(outputFilename);
+      FAIL() << "Error exporting DAG.";
+    }
+  }
+
+  ExecutionEngine loadedEE("Interpreter", /* deviceMemory (16GB) */ 0x400000000,
+                           /* ignoreUserDeviceConfig */ false,
+                           /* numDevices */ 3);
+  Module &loadedMod = loadedEE.getModule();
+  CompilationContext loadedCctx;
+  runtime::PrePartitionedConfig PPC;
+  loadedCctx.prepartitionedConfig = &PPC;
+  {
+    Error err = Error::empty();
+    ONNXModelLoader onnxLD(outputFilename, {}, {}, loadedMod, "main", &PPC,
+                           &err, /* zipMode */ true,
+                           &loadedCctx.backendOpts.backendSpecificNodeInfo);
+    if (ERR_TO_BOOL(std::move(err))) {
+      llvm::errs() << "ONNXModelLoader failed to load model: "
+                   << outputFilename;
+      llvm::sys::fs::remove(outputFilename);
+      FAIL() << "Error importing DAG.";
+    }
+  }
+  llvm::sys::fs::remove(outputFilename);
+
+  // Now verify the DAG is the same, including all static properties of the DAG.
+  Partitioner loadedPartitioner(&loadedMod, devices, /* optimized */ true);
+  DAGListTy loadedDagList;
+  ASSIGN_VALUE_OR_FAIL_TEST(loadedDagList,
+                            loadedPartitioner.partition(loadedCctx));
+
+  // Verify that two DAGs are the same.
+  ASSERT_EQ(dagList.size(), loadedDagList.size());
+  ASSERT_EQ(dagList.size(), 1);
+  DAG &origDAG = dagList.front();
+  DAG &loadedDAG = loadedDagList.front();
+  EXPECT_EQ(origDAG.root->name, loadedDAG.root->name);
+
+  // Map from orig DAGNodes to loaded DAGNodes.
+  std::unordered_map<const DAGNode *, const DAGNode *> origToLoaded;
+  for (DAGNodePtr &origN : origDAG.nodes) {
+    for (DAGNodePtr &loadedN : loadedDAG.nodes) {
+      if (origN->name != loadedN->name) {
+        continue;
+      }
+      origToLoaded[origN.get()] = loadedN.get();
+      break;
+    }
+  }
+  ASSERT_EQ(origDAG.nodes.size(), origToLoaded.size());
+  origToLoaded[origDAG.root.get()] = loadedDAG.root.get();
+
+  for (const auto &nPair : origToLoaded) {
+    const DAGNode *origN = nPair.first;
+    const DAGNode *loadedN = nPair.second;
+#define CHECK_DAG_EQ(MEM_NAME) EXPECT_EQ(origN->MEM_NAME, loadedN->MEM_NAME);
+    CHECK_DAG_EQ(name);
+    CHECK_DAG_EQ(size);
+    CHECK_DAG_EQ(backendName);
+    CHECK_DAG_EQ(backendHints.executionUnits);
+    CHECK_DAG_EQ(logicalDevices.size());
+    for (size_t i = 0, e = origN->logicalDevices.size(); i < e; i++) {
+      EXPECT_EQ(origN->logicalDevices[i], loadedN->logicalDevices[i]);
+    }
+    CHECK_DAG_EQ(replicationCount);
+    EXPECT_TRUE(std::equal(origN->backendSpecificOpts.begin(),
+                           origN->backendSpecificOpts.end(),
+                           loadedN->backendSpecificOpts.begin()));
+#undef CHECK_DAG_EQ
+
+    for (const DAGNode *origChild : origN->children) {
+      auto it = std::find_if(loadedN->children.begin(), loadedN->children.end(),
+                             [=](auto *loadedChild) {
+                               return loadedChild->name == origChild->name;
+                             });
+      EXPECT_NE(it, std::end(loadedN->children));
+    }
+    for (const DAGNode *origParent : origN->parents) {
+      auto it = std::find_if(loadedN->parents.begin(), loadedN->parents.end(),
+                             [=](auto *loadedParent) {
+                               return loadedParent->name == origParent->name;
+                             });
+      EXPECT_NE(it, std::end(loadedN->parents));
+    }
+
+    // Skip checking root as there's no Function for them.
+    if (origN == origDAG.root.get()) {
+      continue;
+    }
+    Function *origF = origMod.getFunction(origN->name);
+    Function *loadedF = loadedMod.getFunction(loadedN->name);
+    ASSERT_TRUE(origF);
+    ASSERT_TRUE(loadedF);
+    EXPECT_EQ(origF->toString(), loadedF->toString());
+  }
+  EXPECT_EQ(origMod.toString(), loadedMod.toString());
+
+  bindings.clear();
+  bindings.allocate(loadedMod.getPlaceholders());
+  // Reset prepartitioned config since we've already partitioned.
+  loadedCctx.prepartitionedConfig = nullptr;
+  loadedEE.compile(loadedCctx);
+  std::vector<Placeholder *> inPHs;
+  for (const llvm::StringRef &inName : inputNames) {
+    inPHs.push_back(bindings.getPlaceholderByName(inName));
+  }
+  executeDAG(loadedDAG.root.get(), loadedMod, bindings, inPHs, inputs,
+             &loadedEE);
+  Tensor test =
+      bindings.get(bindings.getPlaceholderByName(resultName))->clone();
+  EXPECT_TRUE(ref.isEqual(test, 0.0f));
+}
+
 /// This one tests the model with this feature: after BFS, the memory
 /// consumption of all the nodes in each level won't exceed the device memory
 /// constraints.
 TEST_F(PartitionerTest, Basic1) {
   ExecutionEngine EER, EEP;
+  EEP.setSkipModuleStrip(true);
   constexpr float range = 2.0;
   std::vector<ExecutionEngine *> engines{&EER, &EEP};
   // Since compiling modifies the module and partitioning modifies the function,
@@ -176,7 +320,9 @@ TEST_F(PartitionerTest, Basic1) {
     executeDAG((*it).root.get(), EEP.getModule(), bindings_,
                {bindings_.getPlaceholderByName("input")}, {&in}, &EEP);
     Tensor test = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
-    EXPECT_TRUE(ref.isEqual(test));
+    EXPECT_TRUE(ref.isEqual(test, 0.0f));
+    verifyDAGSerialization(*dagList, EEP.getModule(), bindings_, {"input"},
+                           "ret", devices, {&in}, ref);
   }
 }
 
@@ -186,6 +332,7 @@ TEST_F(PartitionerTest, Basic1) {
 TEST_F(PartitionerTest, Basic2) {
 
   ExecutionEngine EER, EEP;
+  EEP.setSkipModuleStrip(true);
   constexpr float range = 2.0;
   std::vector<ExecutionEngine *> engines{&EER, &EEP};
   for (auto EE : engines) {
@@ -276,7 +423,10 @@ TEST_F(PartitionerTest, Basic2) {
     executeDAG((*it).root.get(), EEP.getModule(), bindings_,
                {bindings_.getPlaceholderByName("input")}, {&in}, &EEP);
     Tensor test = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
-    ASSERT_TRUE(ref.isEqual(test));
+    ASSERT_TRUE(ref.isEqual(test, 0.0f));
+    verifyDAGSerialization(dagList, EEP.getModule(), bindings_,
+                           {"input", "input1"}, "ret", devices, {&in, &in},
+                           ref);
   }
 }
 
@@ -1362,6 +1512,7 @@ TEST_F(PartitionerTest, partitionFromConfigDirectCall) {
 /// This one test load-balanced partition flow.
 TEST_F(PartitionerTest, loadBalancedPartition) {
   ExecutionEngine EER, EEP;
+  EEP.setSkipModuleStrip(true);
   constexpr float range = 2.0;
   std::vector<ExecutionEngine *> engines{&EER, &EEP};
   // Since compiling modifies the module and partitioning modifies the
@@ -1444,7 +1595,9 @@ TEST_F(PartitionerTest, loadBalancedPartition) {
     executeDAG((*it).root.get(), EEP.getModule(), bindings_,
                {bindings_.getPlaceholderByName("input")}, {&in}, &EEP);
     Tensor test = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
-    EXPECT_TRUE(ref.isEqual(test));
+    EXPECT_TRUE(ref.isEqual(test, 0.0f));
+    verifyDAGSerialization(*dagList, EEP.getModule(), bindings_, {"input"},
+                           "ret", devices, {&in}, ref);
   }
 }
 

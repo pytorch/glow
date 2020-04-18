@@ -1,0 +1,437 @@
+ir_version: 7
+producer_name: "GlowONNXModelWriter"
+graph {
+  node {
+    input: "mm0_in"
+    input: "mm1_in"
+    output: "mm_out"
+    name: "mm_out"
+    op_type: "Glow_MatMul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "partitionName"
+      s: "main_p1"
+      type: STRING
+    }
+  }
+  node {
+    input: "mm_out"
+    output: "tmp_mm_out"
+    name: "tmp_mm_out_save"
+    op_type: "Identity"
+    attribute {
+      name: "isIntermediateOutputForDAG"
+      i: 1
+      type: INT
+    }
+    attribute {
+      name: "partitionName"
+      s: "main_p1"
+      type: STRING
+    }
+  }
+  node {
+    input: "tmp_mm_out"
+    input: "add_in"
+    output: "add_out"
+    name: "add_out"
+    op_type: "Glow_Add"
+    attribute {
+      name: "NodeOpt_NNPI_numParallelChunks"
+      strings: "2"
+      type: STRINGS
+    }
+    attribute {
+      name: "NodeOpt_NNPI_parallelTransformKind"
+      strings: "Data"
+      type: STRINGS
+    }
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "partitionName"
+      s: "main_p2"
+      type: STRING
+    }
+  }
+  node {
+    input: "add_out"
+    output: "tmp_add_out"
+    name: "tmp_add_out_save"
+    op_type: "Identity"
+    attribute {
+      name: "isIntermediateOutputForDAG"
+      i: 1
+      type: INT
+    }
+    attribute {
+      name: "partitionName"
+      s: "main_p2"
+      type: STRING
+    }
+  }
+  node {
+    input: "mm0_in"
+    input: "tmp_mm_out"
+    output: "mul_out"
+    name: "mul_out"
+    op_type: "Glow_Mul"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "partitionName"
+      s: "main_p0"
+      type: STRING
+    }
+  }
+  node {
+    input: "mul_out"
+    input: "tmp_add_out"
+    output: "res__1"
+    name: "res__1"
+    op_type: "Glow_Sub"
+    attribute {
+      name: "i0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i0_shape"
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "i1_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "i1_shape"
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "o0_elemKind"
+      s: "float"
+      type: STRING
+    }
+    attribute {
+      name: "o0_shape"
+      ints: 10
+      ints: 10
+      type: INTS
+    }
+    attribute {
+      name: "partitionName"
+      s: "main_p0"
+      type: STRING
+    }
+  }
+  node {
+    input: "res__1"
+    output: "res"
+    name: "res_save"
+    op_type: "Identity"
+    attribute {
+      name: "partitionName"
+      s: "main_p0"
+      type: STRING
+    }
+  }
+  name: "glow"
+  input {
+    name: "mm0_in"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 10
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  input {
+    name: "add_in"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 10
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  input {
+    name: "mm1_in"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 10
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float"
+  }
+  output {
+    name: "res"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 10
+          }
+          dim {
+            dim_value: 10
+          }
+        }
+      }
+    }
+    doc_string: "$offline:0$trainable:0$layout:*$elemKind:float$saveName:res_save"
+  }
+}
+opset_import {
+  version: 9
+}
+metadata_props {
+  key: "numPartitions"
+  value: "3"
+}
+metadata_props {
+  key: "partition_0_name"
+  value: "main_p0"
+}
+metadata_props {
+  key: "partition_0_numLogicalDevices"
+  value: "1"
+}
+metadata_props {
+  key: "partition_0_logicalDevice_0"
+  value: "2"
+}
+metadata_props {
+  key: "partition_0_backendName"
+  value: "Interpreter"
+}
+metadata_props {
+  key: "partition_0_size"
+  value: "1600"
+}
+metadata_props {
+  key: "partition_0_BackendHint_executionUnits"
+  value: "0"
+}
+metadata_props {
+  key: "partition_0_numBackendSpecificOpts"
+  value: "0"
+}
+metadata_props {
+  key: "partition_0_replicationCount"
+  value: "1"
+}
+metadata_props {
+  key: "partition_1_name"
+  value: "main_p2"
+}
+metadata_props {
+  key: "partition_1_numLogicalDevices"
+  value: "1"
+}
+metadata_props {
+  key: "partition_1_logicalDevice_0"
+  value: "2"
+}
+metadata_props {
+  key: "partition_1_backendName"
+  value: "Interpreter"
+}
+metadata_props {
+  key: "partition_1_size"
+  value: "1200"
+}
+metadata_props {
+  key: "partition_1_BackendHint_executionUnits"
+  value: "0"
+}
+metadata_props {
+  key: "partition_1_numBackendSpecificOpts"
+  value: "3"
+}
+metadata_props {
+  key: "partition_1_backendSpecificOpts_key_0"
+  value: "BackendA_opt1"
+}
+metadata_props {
+  key: "partition_1_backendSpecificOpts_val_0"
+  value: "val1"
+}
+metadata_props {
+  key: "partition_1_backendSpecificOpts_key_1"
+  value: "BackendA_opt2"
+}
+metadata_props {
+  key: "partition_1_backendSpecificOpts_val_1"
+  value: "val2"
+}
+metadata_props {
+  key: "partition_1_backendSpecificOpts_key_2"
+  value: "BackendB_opt3"
+}
+metadata_props {
+  key: "partition_1_backendSpecificOpts_val_2"
+  value: "val3"
+}
+metadata_props {
+  key: "partition_1_replicationCount"
+  value: "1"
+}
+metadata_props {
+  key: "partition_2_name"
+  value: "main_p1"
+}
+metadata_props {
+  key: "partition_2_numLogicalDevices"
+  value: "2"
+}
+metadata_props {
+  key: "partition_2_logicalDevice_0"
+  value: "1"
+}
+metadata_props {
+  key: "partition_2_logicalDevice_1"
+  value: "0"
+}
+metadata_props {
+  key: "partition_2_backendName"
+  value: "Interpreter"
+}
+metadata_props {
+  key: "partition_2_size"
+  value: "1200"
+}
+metadata_props {
+  key: "partition_2_BackendHint_executionUnits"
+  value: "0"
+}
+metadata_props {
+  key: "partition_2_numBackendSpecificOpts"
+  value: "0"
+}
+metadata_props {
+  key: "partition_2_replicationCount"
+  value: "1"
+}

@@ -457,6 +457,13 @@ protected:
                   llvm::ArrayRef<TypeRef> types, const Backend *B,
                   bool loadInputsAsPlaceholdersForOnnx);
 
+  /// Setup partitions by creating Functions and loading metadata into \p PPC
+  /// from the metadata props found in \p modelDef given \p rootName and
+  /// \p numPartitions.
+  Error setupPartitions(ONNX_NAMESPACE::ModelProto &modelDef,
+                        runtime::PrePartitionedConfig &PPC,
+                        llvm::StringRef rootName, int numPartitions);
+
 public:
   /// \returns ONNX model ir_version;
   size_t getIrVersion() const { return irVersion_; };
@@ -485,6 +492,30 @@ public:
   ONNXModelLoader(const std::string &modelDescFilename,
                   llvm::ArrayRef<const char *> tensorNames,
                   llvm::ArrayRef<TypeRef> types, Function &F,
+                  Error *errPtr = nullptr, bool zipMode = false,
+                  BackendSpecificNodeInfo *perNodeOpts = nullptr,
+                  bool disableConstFoldInLoader = false,
+                  const Backend *B = nullptr);
+
+  /// Loads the ONNX model that's represented by a model description file,
+  /// serialized in \p modelDescFilename and populates the network into \p mod.
+  /// Supports loading a DAG which was serialized, loading in DAGNode meta info
+  /// into \p PPC which can be later used to recreated the DAG. \p funName is
+  /// used to setup the DAG root node's name, or if the input model is not
+  /// partitioned then is used as the name of the single Function loaded.
+  /// The types in \p types match the list of names \p tensorNames and used as
+  /// inputs to the network.
+  /// If \p names and \p types are empty loader fills inputs automatically.
+  /// If \p errPtr is not null then if an error occurs it will get assigned
+  /// there otherwise if an error occurs it will abort.
+  /// If \p disableConstFoldInLoader then constant folding will be disabled
+  /// during loading. \p B will be used during function verification after
+  /// loading.
+  ONNXModelLoader(const std::string &modelDescFilename,
+                  llvm::ArrayRef<const char *> tensorNames,
+                  llvm::ArrayRef<TypeRef> types, Module &mod,
+                  llvm::StringRef funName,
+                  runtime::PrePartitionedConfig *PPC = nullptr,
                   Error *errPtr = nullptr, bool zipMode = false,
                   BackendSpecificNodeInfo *perNodeOpts = nullptr,
                   bool disableConstFoldInLoader = false,
