@@ -9718,7 +9718,7 @@ TEST_P(OperatorStatelessTest, RWQSLWSAllSame_Float16_AccumFP16) {
   CHECK_IF_ENABLED();
   compareAgainstInterpreter(
       getBackendName(), createAndInitRWQSLWSAllSame, ElemKind::Float16Ty,
-      ElemKind::Float16Ty, 1e-6, parCloneCountOpt,
+      ElemKind::Float16Ty, 0.0005, parCloneCountOpt,
       /* convertToRowwiseQuantization */ false,
       /*schema */ quantization::Schema::Asymmetric,
       /* biasElemKind */ ElemKind::Int32QTy, /* forceFP16AccumSLS */ true);
