@@ -28,7 +28,7 @@ namespace glow {
 class ProtobufWriter {
 protected:
   /// The graph that we are constructing.
-  Function &G_;
+  Function *F_;
   /// Output file stream.
   std::ofstream ff_;
 
@@ -40,7 +40,7 @@ public:
   /// \p modelFilename using graph and constants from \p F.
   /// If \p errPtr is not null then if an error occurs it will get assigned
   /// there otherwise if an error occurs it will abort.
-  ProtobufWriter(const std::string &modelFilename, Function &F,
+  ProtobufWriter(const std::string &modelFilename, Function *F,
                  Error *errPtr = nullptr);
 };
 
