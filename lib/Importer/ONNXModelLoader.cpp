@@ -34,6 +34,7 @@
 #include <vector>
 
 using namespace glow;
+using namespace glow::runtime;
 using llvm::cast;
 
 namespace {
@@ -3824,6 +3825,26 @@ Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
   /// Load the network operators:
   for (int i = 0; i < net.node_size(); i++) {
     auto &op = net.node(i);
+
+    // Set up current partition to load into if relevant.
+    if (partNameToFun_.size()) {
+      const ONNX_NAMESPACE::AttributeProto *pNameAttr = nullptr;
+      for (auto &arg : op.attribute()) {
+        if (arg.name() == "partitionName") {
+          pNameAttr = &arg;
+          break;
+        }
+      }
+      RETURN_ERR_IF_NOT(pNameAttr, "partitionName not found for " + op.name());
+      std::string pName;
+      ASSIGN_VALUE_OR_RETURN_ERR(pName, loadStr(pNameAttr));
+      auto it = partNameToFun_.find(pName);
+      RETURN_ERR_IF_NOT(it != partNameToFun_.end(),
+                        "Did not find partition with name " + pName);
+      G_ = it->second;
+    }
+    RETURN_ERR_IF_NOT(G_, "Internal Glow error; Graph was not valid.");
+
     if (constFoldInLoader_) {
       auto tryFold = foldOperator(op);
       if (!tryFold) {
@@ -3963,6 +3984,146 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
   auto setup = [&]() -> Error {
     ONNX_NAMESPACE::ModelProto modelDef;
     ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(modelDescFilename, zipMode));
+
+    RETURN_IF_ERR(loadModel(modelDef, tensorNames, types, B,
+                            /* loadInputsAsPlaceholdersForOnnx */ true));
+
+    return Error::success();
+  };
+
+  if (errPtr) {
+    *errPtr = setup();
+  } else {
+    EXIT_ON_ERR(setup());
+  }
+}
+
+/// \returns a metadata prop found at \p key in \p modelDef.
+static const char *getMetadataProp(const ONNX_NAMESPACE::ModelProto &modelDef,
+                                   llvm::StringRef key) {
+  for (const auto &keyVal : modelDef.metadata_props()) {
+    if (keyVal.key() == key) {
+      return keyVal.value().data();
+    }
+  }
+  return nullptr;
+}
+
+static Expected<int32_t>
+getIntMetadataProp(const ONNX_NAMESPACE::ModelProto &modelDef,
+                   llvm::StringRef key) {
+  const char *intStr = getMetadataProp(modelDef, key);
+  RETURN_ERR_IF_NOT(intStr, "Did not find value for " + std::string(key));
+  int32_t intVal;
+  ASSIGN_VALUE_OR_RETURN_ERR(intVal, getIntFromStr(intStr));
+  return intVal;
+}
+
+Error ONNXModelLoader::setupPartitions(ONNX_NAMESPACE::ModelProto &modelDef,
+                                       PrePartitionedConfig &PPC,
+                                       llvm::StringRef rootName,
+                                       int numPartitions) {
+  PPC.funcName = rootName;
+  PPC.resizeAndReserve(numPartitions);
+
+  for (int i = 0; i < numPartitions; i++) {
+    const std::string partIdPrefix = getPartitionIdPrefix(i);
+    const char *pName = getMetadataProp(modelDef, partIdPrefix + nameSignifier);
+    RETURN_ERR_IF_NOT(pName, "Didn't find expected partition name");
+
+    // Load the partition name and create a Function with the same name.
+    const std::string funName = pName;
+    PPC.partitionNames.emplace_back(funName);
+    Function *PF = mod_.createFunction(funName);
+    partNameToFun_[pName] = PF;
+    PPC.funcs.push_back(PF);
+
+    // Load all logical devices for the partition.
+    int32_t numLogicalDevices;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        numLogicalDevices,
+        getIntMetadataProp(modelDef,
+                           partIdPrefix + numLogicalDevicesSignifier));
+    for (int j = 0; j < numLogicalDevices; j++) {
+      DeviceIDTy ID;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          ID, getIntMetadataProp(modelDef,
+                                 partIdPrefix + getLogicalDeviceSignfier(j)));
+      PPC.logicalIDs[i].push_back(ID);
+    }
+
+    // Get backend name.
+    const char *backendName =
+        getMetadataProp(modelDef, partIdPrefix + backendNameSignifier);
+    RETURN_ERR_IF_NOT(backendName, "Didn't find Backend name");
+    PPC.backendNames.emplace_back(backendName);
+
+    // Get backendHints.executionUnits. Note that we don't support serializing
+    // SRAMPrioritization, so it's left empty.
+    unsigned execUnits;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        execUnits,
+        getIntMetadataProp(modelDef, partIdPrefix + executionUnitsSignifier));
+    PPC.backendHints.push_back({execUnits, /* SRAMPrioritization */ {}});
+
+    // Load all backend-specific options.
+    int32_t numBackendSpecificOpts;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        numBackendSpecificOpts,
+        getIntMetadataProp(modelDef,
+                           partIdPrefix + numBackendSpecificOptsSignifier));
+    for (int j = 0; j < numBackendSpecificOpts; j++) {
+      const char *optKey = getMetadataProp(
+          modelDef, partIdPrefix + getBackendSpecificOptKeySignifier(j));
+      RETURN_ERR_IF_NOT(optKey,
+                        "Didn't find expected backend-specific option key");
+      const char *optVal = getMetadataProp(
+          modelDef, partIdPrefix + getBackendSpecificOptValSignifier(j));
+      RETURN_ERR_IF_NOT(optVal,
+                        "Didn't find expected backend-specific option val");
+      PPC.backendSpecificOpts[i][optKey] = optVal;
+    }
+
+    // Get replicationCount.
+    int32_t replicationCount;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        replicationCount,
+        getIntMetadataProp(modelDef, partIdPrefix + replicationCountSignifier));
+    PPC.replicationCounts.push_back(replicationCount);
+  }
+
+  return Error::success();
+}
+
+ONNXModelLoader::ONNXModelLoader(
+    const std::string &modelDescFilename,
+    llvm::ArrayRef<const char *> tensorNames, llvm::ArrayRef<TypeRef> types,
+    Module &mod, llvm::StringRef funName, PrePartitionedConfig *PPC,
+    Error *errPtr, bool zipMode, BackendSpecificNodeInfo *perNodeOpts,
+    bool disableConstFoldInLoader, const Backend *B)
+    : CommonOperatorLoader(tensorNames, types, mod, errPtr),
+      perNodeOpts_(perNodeOpts) {
+  // if errPtr already contains an error then don't continue with constructor
+  if (errPtr && *errPtr) {
+    return;
+  }
+
+  if (disableConstFoldInLoader) {
+    constFoldInLoader_ = false;
+  }
+
+  auto setup = [&]() -> Error {
+    ONNX_NAMESPACE::ModelProto modelDef;
+    ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(modelDescFilename, zipMode));
+
+    auto numPartitionsOrErr = getIntMetadataProp(modelDef, "numPartitions");
+    if (!numPartitionsOrErr) {
+      G_ = mod_.createFunction(funName);
+    } else {
+      RETURN_ERR_IF_NOT(PPC, "No PrePartitionConfig to load partitions into");
+      RETURN_IF_ERR(
+          setupPartitions(modelDef, *PPC, funName, *numPartitionsOrErr));
+    }
 
     RETURN_IF_ERR(loadModel(modelDef, tensorNames, types, B,
                             /* loadInputsAsPlaceholdersForOnnx */ true));

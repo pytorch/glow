@@ -87,6 +87,9 @@ struct DeviceRuntimeInfo {
 
 /// Individual Node in the DAG for a given network. This contains all the
 /// information needed to run the sub-network at inference time.
+/// NOTE: When adding members to this struct, if it's a compile-time member that
+/// needs to be remembered when serializing the model, metadata-prop
+/// serialization logic must be updated in ONNXModelImporter/ONNXModelWriter.
 struct DAGNode {
   /// The children of this node, these are nodes that depend on the current
   /// node.
@@ -308,6 +311,18 @@ struct PrePartitionedConfig {
   std::vector<BackendSpecificOptions> backendSpecificOpts;
   /// Number of times to replicate each partition.
   std::vector<unsigned> replicationCounts;
+
+  /// Resizes/reserves for all vectors in the struct to \p size. Resize is used
+  /// for those vectors which need to have their parameter constructed.
+  void resizeAndReserve(size_t size) {
+    funcs.reserve(size);
+    partitionNames.reserve(size);
+    logicalIDs.resize(size);
+    backendNames.reserve(size);
+    backendHints.reserve(size);
+    backendSpecificOpts.resize(size);
+    replicationCounts.reserve(size);
+  }
 };
 
 /// A struct containing a mapping of ExecutionContext to a loaded network on a
