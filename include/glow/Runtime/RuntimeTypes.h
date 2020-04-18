@@ -313,6 +313,32 @@ struct ContextBinding {
   std::string networkName;
 };
 
+/// Signifiers for exporting and importing properties of Nodes.
+inline std::string getPartitionIdPrefix(int idx) {
+  return std::string("partition_") + std::to_string(idx) + "_";
+}
+
+constexpr char numLogicalDevicesSignifier[] = "numLogicalDevices";
+inline std::string getLogicalDeviceSignfier(int idx) {
+  return std::string("logicalDevice_") + std::to_string(idx);
+}
+
+constexpr char nameSignifier[] = "name";
+constexpr char backendNameSignifier[] = "backendName";
+constexpr char executionUnitsSignifier[] = "BackendHint_executionUnits";
+constexpr char sizeSignifier[] = "size";
+
+constexpr char numBackendSpecificOptsSignifier[] = "numBackendSpecificOpts";
+inline std::string getBackendSpecificOptKeySignifier(int idx) {
+  return std::string("backendSpecificOpts_key_") + std::to_string(idx);
+}
+inline std::string getBackendSpecificOptValSignifier(int idx) {
+  return std::string("backendSpecificOpts_val_") + std::to_string(idx);
+}
+
+constexpr char replicationCountSignifier[] = "replicationCount";
+constexpr char Signifier[] = "";
+
 } // namespace runtime
 } // namespace glow
 #endif // GLOW_RUNTIME_RUNTIMETYPES_H
