@@ -114,23 +114,21 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   }
   Function *function = *module.getFunctions().begin();
 
-  CompilationContext cctx;
-  cctx.compMode = CompilationMode::Infer;
-  glow::lower(function, cctx, glowBackend_.get());
-
-  // Call the backend's transformPostLowering to match the normal compilation
-  // pipeline then DCE any nodes that are no longer needed.
-  auto changedOrErr = glowBackend_->transformPostLowering(function, cctx);
-  if (ERR_TO_BOOL(changedOrErr.takeError())) {
-    return ONNXIFI_STATUS_INTERNAL_ERROR;
-  }
-  if (*changedOrErr) {
-    runDCEPass(function, cctx);
-  }
-
-  if (!function->verify()) {
+  // Check if the function is verified as valid for Glow/the backend -- if not
+  // then conservatively early return on unsupported operator.
+  if (!function->verify(glowBackend_.get())) {
     LOG(ERROR) << "ONNXIFI: Function verification failed.";
     return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
+  }
+
+  // Perform the normal optimization pipeline, returning an internal error if we
+  // encounter an issue during optimization.
+  CompilationContext cctx;
+  auto optErr = glow::optimizeFunction(function, *glowBackend_, cctx);
+  if (optErr) {
+    LOG(ERROR) << "Error during glow::optimizeFunction():\n" +
+                      ERR_TO_STRING(std::move(optErr));
+    return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
 
   const auto &nodes = function->getNodes();
