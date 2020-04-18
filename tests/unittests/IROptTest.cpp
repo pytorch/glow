@@ -20,6 +20,7 @@
 #include "glow/IR/IRBuilder.h"
 #include "glow/IR/IRUtils.h"
 #include "glow/IR/Instrs.h"
+#include "glow/Optimizer/IROptimizer/IRFunctionPassManager.h"
 #include "glow/Optimizer/IROptimizer/IROptimizer.h"
 
 #include "llvm/Support/Casting.h"
@@ -927,4 +928,26 @@ code {
   llvm::raw_string_ostream osIRF2(storageIRF2);
   osIRF2 << M;
   EXPECT_EQ(mesI, osIRF2.str());
+}
+
+TEST(Optimizer, IRFunctionPassPipeline) {
+  Module mod;
+  Function *F = mod.createFunction("inoutCopy");
+  IRFunction M(F);
+  IRBuilder bb(&M);
+
+  // Create a WeightVar for TensorViews to use as their source operand.
+  auto *A = bb.createWeightVar(glow::ElemKind::FloatTy, {4, 2}, "A",
+                               WeightVar::MutabilityKind::Mutable);
+
+  // Create a view into A.
+  bb.createTensorViewInst(
+      "view1", A, mod.uniqueType(Type(glow::ElemKind::FloatTy, {1, 2, 1})),
+      {0, 0});
+
+  IRFunctionPassPipeline irFunctionPassPipeline;
+  irFunctionPassPipeline.pushFront({IRFunctionPassID::DSE});
+  IRFunctionPassManager IRFPM("opt", irFunctionPassPipeline);
+  IRFPM.run(&M, CompilationContext());
+  ASSERT_TRUE(M.verify());
 }

@@ -37,6 +37,9 @@ struct PrecisionConfiguration {
     Profile,  /// Add profiling nodes for quantization statistics gathering.
   } quantMode{QuantizationMode::None};
 
+  /// Configuration for Profiling.
+  quantization::ProfilingConfiguration profConfig;
+
   /// Configuration for Quantization.
   quantization::QuantizationConfiguration quantConfig;
 

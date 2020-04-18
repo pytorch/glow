@@ -27,11 +27,11 @@
 #include "glow/Graph/TensorLayout.h"
 #include "glow/Graph/Utils.h"
 #include "glow/Graph/VerifierHelper.h"
+#include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/NodeSplitting.h"
-#include "glow/Optimizer/GraphOptimizer/PassManager.h"
-#include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 #include "glow/Optimizer/Lower/Lower.h"
+#include "glow/PassManager/PassManager.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"
 #include "glow/Runtime/RuntimeTypes.h"
@@ -4437,7 +4437,7 @@ void glow::transformForPrecisionMode(const Backend &B, Function *F,
 
     LOG_SCOPE(F->getLogContext(), "glow::profileQuantization")
 
-    glow::profileQuantization(*cctx.bindings, F);
+    glow::profileQuantization(*cctx.bindings, F, precConfig.profConfig);
     break;
   }
 

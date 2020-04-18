@@ -22,6 +22,8 @@
 
 #include "glow/Backend/BackendUtils.h"
 
+#include <fstream>
+
 #include "llvm/ADT/StringSet.h"
 
 using namespace glow;
@@ -33,6 +35,43 @@ extern bool GlowUsePerPartitionIcetConfig;
 
 } // namespace onnxifi
 } // namespace glow
+
+/// Looks for device stepping and sets it if possible in \p compilationOptions.
+static void trySetDeviceVersion(NNPICompilationOptions &compilationOptions) {
+  std::ifstream inFile;
+  constexpr char infoLoc[] = "/sys/class/nnpi/nnpi0/info";
+  inFile.open(infoLoc);
+  if (!inFile.good()) {
+    LOG(INFO) << strFormat("Could not find device info at %s\n", infoLoc);
+    return;
+  }
+
+  // Look for a line formatted like "stepping: 1"
+  std::string stepping;
+  while (!inFile.eof()) {
+    std::string str;
+    getline(inFile, str);
+    if (str.empty()) {
+      continue;
+    }
+    auto split = llvm::StringRef(str).split(": ");
+    if (split.first == "stepping") {
+      stepping = split.second;
+      break;
+    }
+  }
+  inFile.close();
+
+  // If we found a stepping then set it.
+  if (!stepping.empty()) {
+    auto devVerOrErr = getIntFromStr(stepping);
+    if (ERR_TO_BOOL(devVerOrErr.takeError(), /* log */ false)) {
+      return;
+    }
+    // Stepping is off by one vs. deviceVersion.
+    compilationOptions.deviceVersion.setVal(*devVerOrErr + 1);
+  }
+}
 
 Error NNPICompiledFunction::updateCompilationConfigFromOptions(
     NNPICompilationOptions &compilationOptions) {
@@ -46,6 +85,11 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   }
 
   // Handle device version.
+  if (compilationOptions.inferOnDevice &&
+      compilationOptions.deviceVersion == -1) {
+    trySetDeviceVersion(compilationOptions);
+  }
+
   if (compilationOptions.deviceVersion > 0) {
     switch (compilationOptions.deviceVersion) {
     case 1:

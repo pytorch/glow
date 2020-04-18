@@ -1,8 +1,8 @@
 add_library(GraphOptimizer
               ConstantFolding.cpp
+              FunctionPassManager.cpp
               GraphOptimizer.cpp
               Lower.cpp
-              PassManager.cpp
               Quantization.cpp
               TrainingPreparation.cpp
               NodeSplitting.cpp)
@@ -15,5 +15,6 @@ target_link_libraries(GraphOptimizer
                         GraphOptimizerPipeline
                         Lower
                         Interpreter
+                        PassManager
                         Quantization
                         QuantizationBase)

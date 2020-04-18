@@ -124,6 +124,23 @@ llvm::cl::opt<quantization::Schema> quantizationSchema(
                    "Use symmetric ranges with power of 2 scaling factor")),
     llvm::cl::init(quantization::Schema::Asymmetric), llvm::cl::cat(loaderCat));
 
+llvm::cl::opt<quantization::Calibration> quantizationCalibrationOpt(
+    "quantization-calibration",
+    llvm::cl::desc("Specify which quantization calibration method to use"),
+    llvm::cl::Optional,
+    llvm::cl::values(
+        clEnumValN(quantization::Calibration::None, "none", "No calibration"),
+        clEnumValN(quantization::Calibration::KLMinimization, "KL",
+                   "Quantization calibration method based on minimizing the "
+                   "Kullback-Leibler divergence metric (relative entropy)")),
+    llvm::cl::init(quantization::Calibration::None), llvm::cl::cat(loaderCat));
+
+llvm::cl::opt<bool> calibrateConstantsOpt(
+    "calibrate-constants",
+    llvm::cl::desc("Option to enable the quantization calibration for constant "
+                   "weights which is disabled by default."),
+    llvm::cl::init(false), llvm::cl::Optional, llvm::cl::cat(loaderCat));
+
 llvm::cl::opt<ElemKind> quantizationPrecision(
     "quantization-precision",
     llvm::cl::desc("Specify which quantization precision to use, e.g., Int8"),
@@ -226,6 +243,14 @@ llvm::cl::opt<bool> assertAllNodesQuantizedOpt(
         "whitelist node kinds that are allowed to be left unquantized."),
     llvm::cl::init(false), llvm::cl::cat(loaderCat));
 
+llvm::cl::opt<unsigned> numHistogramBinsOpt(
+    "num-histogram-bins",
+    llvm::cl::desc("Number of bins used for histogram during profiling. If "
+                   "histogram based calibration is used then the number of "
+                   "histogram bins must be greater than 255 in order for any "
+                   "calibration to take place (in the order of 1000's)."),
+    llvm::cl::init(10), llvm::cl::value_desc("N"), llvm::cl::cat(loaderCat));
+
 /// Name of the network being bundled.
 llvm::cl::opt<std::string> networkName(
     "network-name",
@@ -241,14 +266,19 @@ llvm::cl::opt<std::string>
                                  "of the entry point to the network."),
                   llvm::cl::cat(loaderCat));
 
+} // namespace
+
+// These are outside the namespace so they can be used by the image-classifier.
 llvm::cl::opt<unsigned> numDevices("num-devices",
                                    llvm::cl::desc("Number of Devices to use"),
                                    llvm::cl::init(1), llvm::cl::value_desc("N"),
                                    llvm::cl::cat(loaderCat));
-} // namespace
 
-// timeOpt and iterationsOpt are outside the namespace so they can be used by
-// the image-classifier.
+llvm::cl::opt<bool> runAllInputsOnAllDevices(
+    "run-all-inputs-on-all-devices",
+    llvm::cl::desc("Run all inputs on all devices. Used for testing purposes."),
+    llvm::cl::init(false), llvm::cl::cat(loaderCat));
+
 llvm::cl::opt<bool>
     timeOpt("time",
             llvm::cl::desc("Print timer output to stderr detailing how long it "
@@ -490,6 +520,8 @@ quantization::QuantizationConfiguration Loader::getQuantizationConfiguration() {
   quantConfig.precision = quantizationPrecision;
   quantConfig.precisionBias = quantizationPrecisionBias;
   quantConfig.schema = quantizationSchema;
+  quantConfig.calibration = quantizationCalibrationOpt;
+  quantConfig.calibrateConstants = calibrateConstantsOpt;
   quantConfig.enableRowwise = enableRowwiseOpt;
   quantConfig.assertAllNodesQuantized = assertAllNodesQuantizedOpt;
   if (!loadProfileFileOpt.empty()) {
@@ -532,6 +564,9 @@ CompilationContext Loader::getCompilationContext(QuantizationMode mode) {
     precConfig.quantConfig = getQuantizationConfiguration();
 
   } else if (mode == QuantizationMode::Profile) {
+
+    // Profiling parameters.
+    precConfig.profConfig.numHistogramBins = numHistogramBinsOpt;
 
     // By default everything will be lowered for profiling. However this may
     // cause performance issues for some models, e.g. if a model has group
@@ -598,7 +633,7 @@ void Loader::compile(CompilationContext &cctx) {
                    mainEntryName.empty() ? networkName : mainEntryName);
   } else {
     // Emit IR for the graph and compile it.
-    cctx.saturateHost = true;
+    cctx.saturateHost = !runAllInputsOnAllDevices;
     auto error = hostManager_->addNetwork(std::move(M_), cctx);
     EXIT_ON_ERR(std::move(error));
     // After partitioning, the original function may be removed. Need to update
@@ -723,7 +758,7 @@ void Loader::inferEndMiniBatch(PlaceholderBindings &bindings,
   }
 }
 
-Loader::Loader() {
+Loader::Loader(llvm::ArrayRef<size_t> configDeviceIDs) {
   if (modelPathOpt.size() == 1) {
     if (llvm::sys::fs::is_directory(*modelPathOpt.begin())) {
       caffe2NetDescFilename_ = modelPathOpt[0] + "/predict_net.pb";
@@ -737,8 +772,18 @@ Loader::Loader() {
   }
   M_.reset(new Module);
 
-  std::vector<std::unique_ptr<runtime::DeviceConfig>> configs =
-      runtime::generateDeviceConfigs(numDevices, ExecutionBackend);
+  std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
+
+  if (configDeviceIDs.empty()) {
+    configs = runtime::generateDeviceConfigs(numDevices, ExecutionBackend);
+  } else {
+    for (size_t ID : configDeviceIDs) {
+      CHECK(ID < numDevices) << "IDs must be less than the number of devices";
+      auto config = glow::make_unique<runtime::DeviceConfig>(ExecutionBackend);
+      config->deviceID = ID;
+      configs.push_back(std::move(config));
+    }
+  }
 
   hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
   backend_ = std::unique_ptr<Backend>(createBackend(ExecutionBackend));

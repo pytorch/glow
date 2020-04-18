@@ -21,6 +21,8 @@
 #include "glow/IR/IR.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Quantization/Base/Base.h"
+#include "glow/Quantization/Base/Calibration.h"
+#include "glow/Quantization/Base/Profile.h"
 #include "glow/Quantization/Quantization.h"
 #include "glow/Quantization/Serialization.h"
 
@@ -52,14 +54,19 @@ protected:
 
 class InterpAndCPU : public Operator {};
 
+bool operator==(const std::vector<float> &lhs, const std::vector<float> &rhs) {
+  return std::equal(lhs.begin(), lhs.end(), rhs.begin());
+}
+
 bool operator==(const NodeProfilingInfo &lhs, const NodeProfilingInfo &rhs) {
-  return lhs.Min() == rhs.Min() && lhs.Max() == rhs.Max() &&
-         lhs.nodeOutputName_ == rhs.nodeOutputName_;
+  return lhs.min() == rhs.min() && lhs.max() == rhs.max() &&
+         lhs.nodeOutputName_ == rhs.nodeOutputName_ &&
+         lhs.histogram() == rhs.histogram();
 }
 
 bool operator==(const NodeQuantizationInfo &lhs,
                 const NodeQuantizationInfo &rhs) {
-  return lhs.Scale() == rhs.Scale() && lhs.Offset() == rhs.Offset() &&
+  return lhs.scale() == rhs.scale() && lhs.offset() == rhs.offset() &&
          lhs.nodeOutputName_ == rhs.nodeOutputName_;
 }
 
@@ -98,6 +105,35 @@ public:
   }
 };
 
+/// Simple tests to verify the histogram rescale.
+TEST(Quantization, rescaleHistogramTest) {
+  EXPECT_EQ(quantization::rescaleHistogram({}, 0.0f, 1.0f, 0.0f, 2.0).size(),
+            0);
+  EXPECT_EQ(
+      quantization::rescaleHistogram({1, 2, 3, 4}, 0.0f, 1.0f, -1.0f, 1.0),
+      std::vector<float>({0, 0, 3, 7}));
+  EXPECT_EQ(
+      quantization::rescaleHistogram({2, 4, 6, 8}, -1.0f, 1.0f, 0.0f, 1.0),
+      std::vector<float>({3, 3, 4, 4}));
+}
+
+/// Simple tests to verify the KL optimization.
+TEST(Quantization, optimizeKLTest) {
+  // Test that an all-zero histogram does not raise exceptions.
+  std::vector<float> histAllZero(1000, 0);
+  quantization::FloatRange rangeAllZero =
+      quantization::optimizeKL(histAllZero, 0.f, 1.0f, 255);
+  EXPECT_EQ(rangeAllZero.first, 0.f);
+  EXPECT_EQ(rangeAllZero.second, 1.0f);
+
+  // Test that an empty histogram does not raise exceptions.
+  std::vector<float> histEmpty;
+  quantization::FloatRange rangeEmpty =
+      quantization::optimizeKL(histEmpty, 0.f, 1.0f, 255);
+  EXPECT_EQ(rangeEmpty.first, 0.f);
+  EXPECT_EQ(rangeEmpty.second, 1.0f);
+}
+
 void testProfilingInfosSerialization(
     const std::vector<NodeProfilingInfo> &expected) {
   llvm::SmallVector<char, 10> resultPath;
@@ -111,11 +147,13 @@ void testProfilingInfosSerialization(
 }
 
 TEST(Quantization, ProfilingSerialize) {
-  std::vector<NodeProfilingInfo> expected{{"first", {1.0, 10.0}},
-                                          {"second", {-1.0, 3.0}},
-                                          {"third", {-10.0, 30.0}},
-                                          {"fourth", {0.1, 10.0}},
-                                          {"fifth", {0.123, 30.0}}};
+  std::vector<float> histEmpty;
+  std::vector<float> hist = {0, 1, 2, 3, 4};
+  std::vector<NodeProfilingInfo> expected{{"first", {1.0, 10.0, histEmpty}},
+                                          {"second", {-1.0, 3.0, hist}},
+                                          {"third", {-10.0, 30.0, hist}},
+                                          {"fourth", {0.1, 10.0, hist}},
+                                          {"fifth", {0.123, 30.0, hist}}};
   testProfilingInfosSerialization(expected);
 }
 
@@ -825,11 +863,12 @@ TEST(Quantization, enableRowwiseQuantizedSLWS) {
   quantConfig.assertAllNodesQuantized = true;
   std::unique_ptr<Backend> backend(createBackend(EE.getBackendName()));
   quantization::quantizeFunction(F, quantConfig, *backend);
-
+  std::string saveName = std::string(res->getName());
   EE.compile(CompilationMode::Infer);
 
   // Check the graph structure after quantization.
-  auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName(res->getName()));
+  F = EE.getModule().getFunctions().front();
+  auto *saveNode = llvm::dyn_cast<SaveNode>(F->getNodeByName(saveName));
   ASSERT_TRUE(saveNode);
   auto *FRWQSLWS =
       llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
@@ -850,6 +889,7 @@ TEST(Quantization, quantizeReLU) {
   auto *relu = F->createRELU("ReLU", input);
   PlaceholderBindings bindings;
   auto *ret = F->createSave("ret", relu);
+  std::string retName = std::string(ret->getName());
   // Make sure that offset quantization parameter of ReLU is set
   // such that it produces non-negative floating point range.
   quantization::QuantizationConfiguration quantConfig{
@@ -863,7 +903,8 @@ TEST(Quantization, quantizeReLU) {
   auto reluTQP = chooseQuantizationParams({0.0f, 3.0f}, quantConfig.schema,
                                           quantConfig.precision);
 
-  auto *save = llvm::cast<SaveNode>(F->getNodeByName(ret->getName()));
+  F = EE.getModule().getFunctions().front();
+  auto *save = llvm::cast<SaveNode>(F->getNodeByName(retName));
   ASSERT_TRUE(llvm::isa<DequantizeNode>(save->getInput().getNode()));
   auto *dequantize = llvm::cast<DequantizeNode>(save->getInput().getNode());
   ASSERT_TRUE(llvm::isa<MaxNode>(dequantize->getInput().getNode()));
@@ -1341,6 +1382,7 @@ TEST(Quantization, rescaleSameType) {
   EE.compile(CompilationMode::Infer);
 
   EE.run(bindings);
+  F = EE.getModule().getFunctions().front();
   EXPECT_EQ(F->getNodes().size(), 2);
 
   auto RH = result->getHandle();
@@ -1368,7 +1410,8 @@ TEST(Quantization, optimizeRescaleQuantize) {
   EE.compile(CompilationMode::Infer);
 
   EE.run(bindings);
-  EXPECT_EQ(F->getNodes().size(), 1);
+
+  EXPECT_EQ(EE.getModule().getFunctions().front()->getNodes().size(), 1);
 
   auto RH = result->getHandle();
   EXPECT_NEAR(RH.at({0, 0}), 21.0, 0.001);
@@ -2326,7 +2369,8 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
   auto outputNameMM = loweredMM->getResult().generateNodeOutputName();
   auto outputNameBA = loweredBA->getResult().generateNodeOutputName();
 
-  glow::profileQuantization(profilebindings, profileF);
+  glow::profileQuantization(profilebindings, profileF,
+                            cctx.precisionConfig.profConfig);
 
   // Compile/run to capture profile.
   profileEE.compile(CompilationMode::Infer);
@@ -2334,6 +2378,7 @@ static void testProfileQuantizationOfFC(bool expectLoweredFC,
 
   // Get profiling infos and build new quantized graph, passing in the
   // loweredMapForProf to include the unlowered components in QI.
+  profileF = profileEE.getModule().getFunctions().front();
   quantization::QuantizationConfiguration quantConfig{
       quantization::generateNodeProfilingInfos(profilebindings, profileF,
                                                loweredMapForProf)};

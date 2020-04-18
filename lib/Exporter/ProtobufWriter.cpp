@@ -20,9 +20,9 @@
 
 namespace glow {
 
-ProtobufWriter::ProtobufWriter(const std::string &modelFilename, Function &F,
+ProtobufWriter::ProtobufWriter(const std::string &modelFilename, Function *F,
                                Error *errPtr)
-    : G_(F) {
+    : F_(F) {
   // Verify that the version of the library that we linked against is
   // compatible with the version of the headers we compiled against.
   GOOGLE_PROTOBUF_VERIFY_VERSION;

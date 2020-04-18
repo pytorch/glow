@@ -34,6 +34,7 @@
 #include <vector>
 
 using namespace glow;
+using namespace glow::runtime;
 using llvm::cast;
 
 namespace {
@@ -791,7 +792,26 @@ ONNXModelLoader::loadProto(const void *onnxModel, size_t onnxModelSize) {
 }
 
 Expected<ONNX_NAMESPACE::ModelProto>
-ONNXModelLoader::loadProto(const std::string &filename) {
+ONNXModelLoader::loadProto(const std::string &filename, bool zipMode) {
+  if (zipMode) {
+    ONNX_NAMESPACE::ModelProto MP;
+    ZipReader zip(filename);
+    std::string buffer;
+    buffer = zip.getRecord("model");
+    MP.ParseFromString(buffer);
+    size_t numWeights = 0;
+    auto numWeightsStr = zip.getRecord("weights");
+    numWeights = atoi(numWeightsStr.c_str());
+    for (size_t i = 0; i < numWeights; ++i) {
+      std::stringstream ss;
+      ss << "weight_" << i;
+      buffer = zip.getRecord(ss.str());
+      auto *t = MP.mutable_graph()->add_initializer();
+      t->ParseFromString(buffer);
+    }
+    return MP;
+  }
+
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
   RETURN_ERR_IF_NOT(ff,
                     strFormat("Can't find the model or network files for %s.",
@@ -3805,6 +3825,26 @@ Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
   /// Load the network operators:
   for (int i = 0; i < net.node_size(); i++) {
     auto &op = net.node(i);
+
+    // Set up current partition to load into if relevant.
+    if (partNameToFun_.size()) {
+      const ONNX_NAMESPACE::AttributeProto *pNameAttr = nullptr;
+      for (auto &arg : op.attribute()) {
+        if (arg.name() == "partitionName") {
+          pNameAttr = &arg;
+          break;
+        }
+      }
+      RETURN_ERR_IF_NOT(pNameAttr, "partitionName not found for " + op.name());
+      std::string pName;
+      ASSIGN_VALUE_OR_RETURN_ERR(pName, loadStr(pNameAttr));
+      auto it = partNameToFun_.find(pName);
+      RETURN_ERR_IF_NOT(it != partNameToFun_.end(),
+                        "Did not find partition with name " + pName);
+      G_ = it->second;
+    }
+    RETURN_ERR_IF_NOT(G_, "Internal Glow error; Graph was not valid.");
+
     if (constFoldInLoader_) {
       auto tryFold = foldOperator(op);
       if (!tryFold) {
@@ -3828,22 +3868,29 @@ ONNXModelLoader::ONNXModelLoader(Function &F, Error *errPtr)
   deleteUnusedConstants();
 }
 
+static Error checkStaticPH(const ONNX_NAMESPACE::ValueInfoProto &valueInfo,
+                           std::unordered_set<std::string> &staticInputs,
+                           bool useGlowCustomOps) {
+  const std::string &inputName = valueInfo.name();
+  if (useGlowCustomOps) {
+    std::string isStatic;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        isStatic,
+        getAttrFromDocString(staticSignifier, valueInfo.doc_string()));
+    if (isStatic == "1") {
+      staticInputs.emplace(inputName);
+    }
+  } else if (valueInfo.has_doc_string() &&
+             valueInfo.doc_string() == staticSignifier) {
+    staticInputs.emplace(inputName);
+  }
+  return Error::success();
+}
+
 Error ONNXModelLoader::collectStaticInputs(ONNX_NAMESPACE::GraphProto &net) {
   for (int i = 0; i < net.input_size(); i++) {
-    const ONNX_NAMESPACE::ValueInfoProto &valueInfo = net.input(i);
-    const std::string &inputName = valueInfo.name();
-    if (useGlowCustomOps_) {
-      std::string isStatic;
-      ASSIGN_VALUE_OR_RETURN_ERR(
-          isStatic,
-          getAttrFromDocString(staticSignifier, valueInfo.doc_string()));
-      if (isStatic == "1") {
-        staticInputs_.emplace(inputName);
-      }
-    } else if (valueInfo.has_doc_string() &&
-               valueInfo.doc_string() == staticSignifier) {
-      staticInputs_.emplace(inputName);
-    }
+    RETURN_IF_ERR(
+        checkStaticPH(net.input(i), staticInputs_, useGlowCustomOps_));
   }
   return Error::success();
 }
@@ -3879,12 +3926,40 @@ Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
                           "Mismatch between input image and ONNX input shape");
       }
 
-      if (valueInfo.has_doc_string() &&
-          valueInfo.doc_string() == staticSignifier) {
-        staticInputs_.emplace(inputName);
-      }
+      RETURN_IF_ERR(checkStaticPH(valueInfo, staticInputs_, useGlowCustomOps_));
     }
   }
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadModel(ONNX_NAMESPACE::ModelProto &modelDef,
+                                 llvm::ArrayRef<const char *> tensorNames,
+                                 llvm::ArrayRef<TypeRef> types,
+                                 const Backend *B,
+                                 bool loadInputsAsPlaceholdersForOnnx) {
+  useGlowCustomOps_ = modelDef.producer_name() == "GlowONNXModelWriter";
+
+  RETURN_IF_ERR(setVersion(modelDef));
+
+  ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
+  RETURN_IF_ERR(checkInputs(graphDef, tensorNames, types));
+  RETURN_IF_ERR(collectStaticInputs(graphDef));
+
+  RETURN_IF_ERR(loadInitializers(graphDef));
+
+  if (tensorNames.empty() && types.empty()) {
+    // Detect inputs without initializers and create placeholders.
+    RETURN_IF_ERR(loadInputs(graphDef, loadInputsAsPlaceholdersForOnnx));
+  }
+
+  RETURN_IF_ERR(loadNetwork(graphDef));
+
+  RETURN_IF_ERR(setOutputNodes(graphDef));
+
+  RETURN_ERR_IF_NOT(G_->verify(B), "Function verification failed.");
+
+  deleteUnusedConstants();
+
   return Error::success();
 }
 
@@ -3906,53 +3981,152 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
     constFoldInLoader_ = false;
   }
 
-  // Lambda to setup the ONNXModelLoader and return any Errors that were
-  // raised.
   auto setup = [&]() -> Error {
-    // The ONNX model that we are deserializing.
     ONNX_NAMESPACE::ModelProto modelDef;
-    if (zipMode) {
-      ZipReader zip(modelDescFilename);
-      std::string buffer;
-      buffer = zip.getRecord("model");
-      modelDef.ParseFromString(buffer);
-      size_t numWeights = 0;
-      auto numWeightsStr = zip.getRecord("weights");
-      numWeights = atoi(numWeightsStr.c_str());
-      for (size_t i = 0; i < numWeights; ++i) {
-        std::stringstream ss;
-        ss << "weight_" << i;
-        buffer = zip.getRecord(ss.str());
-        auto *t = modelDef.mutable_graph()->add_initializer();
-        t->ParseFromString(buffer);
-      }
+    ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(modelDescFilename, zipMode));
+
+    RETURN_IF_ERR(loadModel(modelDef, tensorNames, types, B,
+                            /* loadInputsAsPlaceholdersForOnnx */ true));
+
+    return Error::success();
+  };
+
+  if (errPtr) {
+    *errPtr = setup();
+  } else {
+    EXIT_ON_ERR(setup());
+  }
+}
+
+/// \returns a metadata prop found at \p key in \p modelDef.
+static const char *getMetadataProp(const ONNX_NAMESPACE::ModelProto &modelDef,
+                                   llvm::StringRef key) {
+  for (const auto &keyVal : modelDef.metadata_props()) {
+    if (keyVal.key() == key) {
+      return keyVal.value().data();
+    }
+  }
+  return nullptr;
+}
+
+static Expected<int32_t>
+getIntMetadataProp(const ONNX_NAMESPACE::ModelProto &modelDef,
+                   llvm::StringRef key) {
+  const char *intStr = getMetadataProp(modelDef, key);
+  RETURN_ERR_IF_NOT(intStr, "Did not find value for " + std::string(key));
+  int32_t intVal;
+  ASSIGN_VALUE_OR_RETURN_ERR(intVal, getIntFromStr(intStr));
+  return intVal;
+}
+
+Error ONNXModelLoader::setupPartitions(ONNX_NAMESPACE::ModelProto &modelDef,
+                                       PrePartitionedConfig &PPC,
+                                       llvm::StringRef rootName,
+                                       int numPartitions) {
+  PPC.funcName = rootName;
+  PPC.resizeAndReserve(numPartitions);
+
+  for (int i = 0; i < numPartitions; i++) {
+    const std::string partIdPrefix = getPartitionIdPrefix(i);
+    const char *pName = getMetadataProp(modelDef, partIdPrefix + nameSignifier);
+    RETURN_ERR_IF_NOT(pName, "Didn't find expected partition name");
+
+    // Load the partition name and create a Function with the same name.
+    const std::string funName = pName;
+    PPC.partitionNames.emplace_back(funName);
+    Function *PF = mod_.createFunction(funName);
+    partNameToFun_[pName] = PF;
+    PPC.funcs.push_back(PF);
+
+    // Load all logical devices for the partition.
+    int32_t numLogicalDevices;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        numLogicalDevices,
+        getIntMetadataProp(modelDef,
+                           partIdPrefix + numLogicalDevicesSignifier));
+    for (int j = 0; j < numLogicalDevices; j++) {
+      DeviceIDTy ID;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          ID, getIntMetadataProp(modelDef,
+                                 partIdPrefix + getLogicalDeviceSignfier(j)));
+      PPC.logicalIDs[i].push_back(ID);
+    }
+
+    // Get backend name.
+    const char *backendName =
+        getMetadataProp(modelDef, partIdPrefix + backendNameSignifier);
+    RETURN_ERR_IF_NOT(backendName, "Didn't find Backend name");
+    PPC.backendNames.emplace_back(backendName);
+
+    // Get backendHints.executionUnits. Note that we don't support serializing
+    // SRAMPrioritization, so it's left empty.
+    unsigned execUnits;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        execUnits,
+        getIntMetadataProp(modelDef, partIdPrefix + executionUnitsSignifier));
+    PPC.backendHints.push_back({execUnits, /* SRAMPrioritization */ {}});
+
+    // Load all backend-specific options.
+    int32_t numBackendSpecificOpts;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        numBackendSpecificOpts,
+        getIntMetadataProp(modelDef,
+                           partIdPrefix + numBackendSpecificOptsSignifier));
+    for (int j = 0; j < numBackendSpecificOpts; j++) {
+      const char *optKey = getMetadataProp(
+          modelDef, partIdPrefix + getBackendSpecificOptKeySignifier(j));
+      RETURN_ERR_IF_NOT(optKey,
+                        "Didn't find expected backend-specific option key");
+      const char *optVal = getMetadataProp(
+          modelDef, partIdPrefix + getBackendSpecificOptValSignifier(j));
+      RETURN_ERR_IF_NOT(optVal,
+                        "Didn't find expected backend-specific option val");
+      PPC.backendSpecificOpts[i][optKey] = optVal;
+    }
+
+    // Get replicationCount.
+    int32_t replicationCount;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        replicationCount,
+        getIntMetadataProp(modelDef, partIdPrefix + replicationCountSignifier));
+    PPC.replicationCounts.push_back(replicationCount);
+  }
+
+  return Error::success();
+}
+
+ONNXModelLoader::ONNXModelLoader(
+    const std::string &modelDescFilename,
+    llvm::ArrayRef<const char *> tensorNames, llvm::ArrayRef<TypeRef> types,
+    Module &mod, llvm::StringRef funName, PrePartitionedConfig *PPC,
+    Error *errPtr, bool zipMode, BackendSpecificNodeInfo *perNodeOpts,
+    bool disableConstFoldInLoader, const Backend *B)
+    : CommonOperatorLoader(tensorNames, types, mod, errPtr),
+      perNodeOpts_(perNodeOpts) {
+  // if errPtr already contains an error then don't continue with constructor
+  if (errPtr && *errPtr) {
+    return;
+  }
+
+  if (disableConstFoldInLoader) {
+    constFoldInLoader_ = false;
+  }
+
+  auto setup = [&]() -> Error {
+    ONNX_NAMESPACE::ModelProto modelDef;
+    ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(modelDescFilename, zipMode));
+
+    auto numPartitionsOrErr = getIntMetadataProp(modelDef, "numPartitions");
+    if (!numPartitionsOrErr) {
+      G_ = mod_.createFunction(funName);
     } else {
-      ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(modelDescFilename));
-    }
-
-    useGlowCustomOps_ = modelDef.producer_name() == "GlowONNXModelWriter";
-
-    RETURN_IF_ERR(setVersion(modelDef));
-
-    ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
-    RETURN_IF_ERR(checkInputs(graphDef, tensorNames, types));
-    RETURN_IF_ERR(collectStaticInputs(graphDef));
-
-    RETURN_IF_ERR(loadInitializers(graphDef));
-
-    if (tensorNames.empty() && types.empty()) {
-      // Detect inputs without initializers and create placeholders.
+      RETURN_ERR_IF_NOT(PPC, "No PrePartitionConfig to load partitions into");
       RETURN_IF_ERR(
-          loadInputs(graphDef, /* loadInputsAsPlaceholdersForOnnx */ true));
+          setupPartitions(modelDef, *PPC, funName, *numPartitionsOrErr));
     }
 
-    RETURN_IF_ERR(loadNetwork(graphDef));
-
-    RETURN_IF_ERR(setOutputNodes(graphDef));
-
-    RETURN_ERR_IF_NOT(F.verify(B), "Function verification failed.");
-
-    deleteUnusedConstants();
+    RETURN_IF_ERR(loadModel(modelDef, tensorNames, types, B,
+                            /* loadInputsAsPlaceholdersForOnnx */ true));
 
     return Error::success();
   };
@@ -3983,23 +4157,10 @@ ONNXModelLoader::ONNXModelLoader(
     ONNX_NAMESPACE::ModelProto modelDef;
     ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(model, modelSize));
 
-    useGlowCustomOps_ = modelDef.producer_name() == "GlowONNXModelWriter";
-
-    RETURN_IF_ERR(setVersion(modelDef));
-
     RETURN_IF_ERR(loadWeights(weightsCount, weightDescriptors));
 
-    ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
-
-    RETURN_IF_ERR(loadInputs(graphDef, loadInputsAsPlaceholdersForOnnx));
-
-    RETURN_IF_ERR(loadInitializers(graphDef));
-
-    RETURN_IF_ERR(loadNetwork(graphDef));
-
-    RETURN_IF_ERR(setOutputNodes(graphDef));
-
-    deleteUnusedConstants();
+    RETURN_IF_ERR(loadModel(modelDef, {}, {}, /* B */ nullptr,
+                            loadInputsAsPlaceholdersForOnnx));
 
     return Error::success();
   };

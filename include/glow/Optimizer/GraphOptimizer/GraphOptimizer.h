@@ -17,7 +17,7 @@
 #define GLOW_OPTIMIZER_GRAPHOPTIMIZER_GRAPHOPTIMIZER_H
 
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
-#include "glow/Optimizer/GraphOptimizer/PassManager.h"
+#include "glow/Optimizer/GraphOptimizer/FunctionPassManager.h"
 #include "glow/Support/Error.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -63,8 +63,11 @@ void convertPlaceholdersToConstants(Function *F,
 
 /// Instrument function \p F by inserting quantization profile nodes for
 /// capturing stats for quantization. The nodes will refer to tensors allocate
-/// in context \p bindings.
-void profileQuantization(PlaceholderBindings &bindings, Function *F);
+/// in context \p bindings. The instrumentation for profiling will be performed
+/// according to the profiling configuration \p profConfig.
+void profileQuantization(
+    PlaceholderBindings &bindings, Function *F,
+    const quantization::ProfilingConfiguration &profConfig);
 
 /// Optimize the Function \p F given compilation options \p cctx for Backend \B.
 /// \returns success if all nodes in the final resulting optimized Function are
