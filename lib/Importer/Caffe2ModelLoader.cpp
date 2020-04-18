@@ -2095,7 +2095,7 @@ Error Caffe2ModelLoader::initWithModule(caffe2::NetDef &networkDef,
   // partition_info then we create a single Function to load into. Otherwise
   // we create multiple Functions and switch between them as we load each
   // operator.
-  std::unordered_map<Function *, std::unordered_set<unsigned>> funToIDs;
+  std::unordered_map<Function *, std::vector<runtime::DeviceIDTy>> funToIDs;
   std::unordered_map<Function *, BackendSpecificOptions> funToOpts;
   if (networkDef.partition_info_size() == 0) {
     G_ = mod_.createFunction(funNamePrefix);
@@ -2106,7 +2106,7 @@ Error Caffe2ModelLoader::initWithModule(caffe2::NetDef &networkDef,
       Function *PF = mod_.createFunction(funName);
       partNameToFun_[pName] = PF;
       for (auto id : networkDef.partition_info(i).device_id()) {
-        funToIDs[PF].insert(id);
+        funToIDs[PF].push_back(id);
       }
 
       // Now set up device options for this partition.

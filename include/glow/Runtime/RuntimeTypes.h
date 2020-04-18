@@ -296,10 +296,18 @@ struct PrePartitionedConfig {
   std::string funcName;
   /// Functions from the module which are partitioned.
   std::vector<Function *> funcs;
+  /// Names assigned to each partition.
+  std::vector<std::string> partitionNames;
   /// The logical IDs to assign to the partitions.
-  std::vector<std::unordered_set<unsigned>> logicalIDs;
-  /// Backend-specific options for each Partition.
+  std::vector<std::vector<DeviceIDTy>> logicalIDs;
+  /// Backends that are used for each partition.
+  std::vector<std::string> backendNames;
+  /// BackendHints for each partition.
+  std::vector<BackendHints> backendHints;
+  /// Backend-specific options for each partition.
   std::vector<BackendSpecificOptions> backendSpecificOpts;
+  /// Number of times to replicate each partition.
+  std::vector<unsigned> replicationCounts;
 };
 
 /// A struct containing a mapping of ExecutionContext to a loaded network on a
