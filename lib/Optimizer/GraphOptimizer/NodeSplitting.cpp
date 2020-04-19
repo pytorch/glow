@@ -48,32 +48,10 @@ public:
   SliceRange() = default;
 
   /// Ctor.
-  SliceRange(std::vector<dim_t> start, std::vector<dim_t> stop) {
-    assert(start.size() <= max_tensor_dimensions &&
-           "Maximum number of dimensions exceeded for SliceRange!");
-    assert(start.size() == stop.size() &&
-           "Invalid start/stop arrays for SliceRange!");
-    for (size_t idx = 0, e = start.size(); idx < e; ++idx) {
-      assert(start[idx] <= stop[idx] &&
-             "Invalid start/stop arrays for SliceRange!");
-      ranges_.emplace_back(start[idx], stop[idx]);
-    }
-  }
-
-  /// Ctor.
-  SliceRange(std::vector<DimRange> ranges) {
-    assert(ranges.size() <= max_tensor_dimensions &&
-           "Maximum number of dimensions exceeded for SliceRange!");
-    for (auto range : ranges) {
-      assert(range.first <= range.second && "Invalid ranges for SliceRange!");
-    }
-    ranges_ = ranges;
-  }
+  SliceRange(std::vector<DimRange> ranges) { ranges_ = ranges; }
 
   /// Ctor.
   SliceRange(TypeRef type) {
-    assert(type->dims().size() <= max_tensor_dimensions &&
-           "Maximum number of dimensions exceeded for SliceRange!");
     for (auto size : type->dims()) {
       ranges_.emplace_back(0, size - 1);
     }
@@ -82,15 +60,6 @@ public:
   /// Getter for ranges.
   std::vector<DimRange> getRanges() const { return ranges_; }
 
-  /// Getter for dimensions sizes.
-  std::vector<dim_t> getSizes() const {
-    std::vector<dim_t> sizes;
-    for (const auto &range : ranges_) {
-      sizes.push_back(range.second - range.first + 1);
-    }
-    return sizes;
-  }
-
   /// Getter for ranges start values.
   std::vector<dim_t> getStarts() const {
     std::vector<dim_t> starts;
@@ -98,6 +67,15 @@ public:
       starts.push_back(range.first);
     }
     return starts;
+  }
+
+  /// Getter for dimensions sizes.
+  std::vector<dim_t> getSizes() const {
+    std::vector<dim_t> sizes;
+    for (const auto &range : ranges_) {
+      sizes.push_back(range.second - range.first + 1);
+    }
+    return sizes;
   }
 
   /// Subscript operator for accessing a range for a given dimension.
@@ -117,9 +95,8 @@ public:
     if (ranges_.size() != rangesOther.size()) {
       return false;
     }
-    for (size_t dim = 0; dim < ranges_.size(); dim++) {
-      if ((ranges_[dim].first != rangesOther[dim].first) ||
-          (ranges_[dim].second != rangesOther[dim].second)) {
+    for (size_t dim = 0, end = ranges_.size(); dim < end; ++dim) {
+      if (ranges_[dim] != rangesOther[dim]) {
         return false;
       }
     }
@@ -132,17 +109,8 @@ public:
     return ranges_[dim].second - ranges_[dim].first + 1;
   }
 
-  /// Get slice range total size.
-  dim_t getSize() const {
-    dim_t size = 1;
-    for (size_t dim = 0, e = ranges_.size(); dim < e; dim++) {
-      size *= getSize(dim);
-    }
-    return size;
-  }
-
   /// Verify that both ends of a dimensions range are aligned to a given size.
-  bool isDimRangeAligned(size_t dim, dim_t align) const {
+  bool isDimAligned(size_t dim, dim_t align) const {
     assert(dim < ranges_.size() && "Invalid dimension!");
     return (ranges_[dim].first % align == 0) &&
            ((ranges_[dim].second + 1) % align == 0);
@@ -336,7 +304,7 @@ getConvInputChannelDimRange(const DimRange &outputSliceRange,
     inputDimRange.first = outputSliceRange.first * filterChannels;
     inputDimRange.second = (outputSliceRange.second + 1) * filterChannels - 1;
   } else {
-    allowed = SliceRange({outputSliceRange}).isDimRangeAligned(0, group);
+    allowed = SliceRange({outputSliceRange}).isDimAligned(0, group);
     inputDimRange = inputRange;
   }
   return {inputDimRange, allowed};
@@ -462,7 +430,7 @@ void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
 ///===---------------------------------------------------------------------===//
 ///                            splitAndReplaceNode
 ///===---------------------------------------------------------------------===//
-void splitAndReplaceNode(
+static Error splitAndReplaceNode(
     Function *F, Node *node, dim_t splitOutputIdx,
     const llvm::ArrayRef<size_t> splitDims,
     const llvm::ArrayRef<OpIdxAndMap> inputIdxAndMaps,
@@ -472,70 +440,71 @@ void splitAndReplaceNode(
 
   // If splitDims is empty then no splitting is performed.
   if (splitDims.size() == 0) {
-    return;
+    return Error::success();
   }
 
   // Verify split dims.
-  assert(splitOutputIdx < node->getNumResults() &&
-         "Invalid output index for splitting node!");
+  RETURN_ERR_IF_NOT(splitOutputIdx < node->getNumResults(),
+                    "Invalid output index for splitting node!");
   for (size_t dimIdx = 0; dimIdx < splitDims.size() - 1; dimIdx++) {
-    assert(splitDims[dimIdx] < splitDims[dimIdx + 1] &&
-           "Invalid split dimensions for splitting node! The dimensions "
-           "should be given in ascending order e.g. {0,2,3}!");
+    RETURN_ERR_IF_NOT(splitDims[dimIdx] < splitDims[dimIdx + 1],
+                      "Invalid split dimensions for splitting node! Dimensions "
+                      "should be given in ascending order e.g. {0,2,3}!");
   }
   for (const auto dim : splitDims) {
-    assert(dim < node->getNthResult(splitOutputIdx).getType()->dims().size() &&
-           "Invalid split dimension for splitting node! The dimension exceeds "
-           "the split output tensor shape!");
+    RETURN_ERR_IF_NOT(dim < node->getType(splitOutputIdx)->dims().size(),
+                      "Invalid split dimension for splitting node! Dimension "
+                      "exceeds the split output tensor shape!");
   }
 
   // Verify all the input indices and maps were given.
-  assert(inputIdxAndMaps.size() == node->getNumInputs() &&
-         "Invalid number of input maps for splitting node!");
+  RETURN_ERR_IF_NOT(inputIdxAndMaps.size() == node->getNumInputs(),
+                    "Invalid number of input maps for splitting node!");
   std::vector<bool> inputIdxMask(node->getNumInputs(), false);
   for (const auto &inputIdxMap : inputIdxAndMaps) {
-    assert(inputIdxMap.first < node->getNumInputs() &&
-           "Invalid input index for input range map!");
+    RETURN_ERR_IF_NOT(inputIdxMap.first < node->getNumInputs(),
+                      "Invalid input index for input range map!");
     inputIdxMask[inputIdxMap.first] = true;
   }
-  assert(std::find(inputIdxMask.begin(), inputIdxMask.end(), false) ==
-             inputIdxMask.end() &&
-         "Not all input indices and maps were provided for splitting node!");
+  RETURN_ERR_IF_NOT(
+      std::find(inputIdxMask.begin(), inputIdxMask.end(), false) ==
+          inputIdxMask.end(),
+      "Not all input indices and maps were provided for splitting node!");
 
   // Verify all the output indices and maps were given.
-  assert(outputIdxAndMaps.size() == node->getNumResults() - 1 &&
-         "Invalid number of output maps for splitting node!");
+  RETURN_ERR_IF_NOT(outputIdxAndMaps.size() == node->getNumResults() - 1,
+                    "Invalid number of output maps for splitting node!");
   std::vector<bool> outputIdxMask(node->getNumResults(), false);
   outputIdxMask[splitOutputIdx] = true;
   for (const auto &outputIdxMap : outputIdxAndMaps) {
-    assert(outputIdxMap.first < node->getNumResults() &&
-           "Invalid input index for input range map!");
+    RETURN_ERR_IF_NOT(outputIdxMap.first < node->getNumResults(),
+                      "Invalid input index for input range map!");
     outputIdxMask[outputIdxMap.first] = true;
   }
-  assert(std::find(outputIdxMask.begin(), outputIdxMask.end(), false) ==
-             outputIdxMask.end() &&
-         "Not all output indices and maps were provided for splitting node!");
+  RETURN_ERR_IF_NOT(
+      std::find(outputIdxMask.begin(), outputIdxMask.end(), false) ==
+          outputIdxMask.end(),
+      "Not all output indices and maps were provided for splitting node!");
 
   // Get split output range.
-  SliceRange splitOutputRange =
-      SliceRange(node->getNthResult(splitOutputIdx).getType());
+  SliceRange splitOutputRange = SliceRange(node->getType(splitOutputIdx));
 
   // Verify the input slice range maps.
   for (const auto &inputIdxMap : inputIdxAndMaps) {
     SliceRange inputRange =
         SliceRange(node->getNthInput(inputIdxMap.first).getType());
-    assert(verifyCheckedSliceRangeMap(inputIdxMap.second, {splitOutputRange},
-                                      {inputRange}) &&
-           "Invalid input range map for splitting node!");
+    RETURN_ERR_IF_NOT(verifyCheckedSliceRangeMap(
+                          inputIdxMap.second, {splitOutputRange}, {inputRange}),
+                      "Invalid input range map for splitting node!");
   }
 
   // Verify the output slice range maps.
   for (const auto &outputIdxMap : outputIdxAndMaps) {
-    SliceRange outputRange =
-        SliceRange(node->getNthResult(outputIdxMap.first).getType());
-    assert(verifyCheckedSliceRangeMap(outputIdxMap.second, {splitOutputRange},
-                                      {outputRange}) &&
-           "Invalid output range map for splitting node!");
+    SliceRange outputRange = SliceRange(node->getType(outputIdxMap.first));
+    RETURN_ERR_IF_NOT(verifyCheckedSliceRangeMap(outputIdxMap.second,
+                                                 {splitOutputRange},
+                                                 {outputRange}),
+                      "Invalid output range map for splitting node!");
   }
 
   // ------------------------ Search split configuration -----------------------
@@ -632,8 +601,8 @@ void splitAndReplaceNode(
         splitNodeModifier(node, clone, inputRanges, outputRanges);
 
         // Verify clone.
-        assert(clone->verify() &&
-               "Invalid node obtained during node splitting!");
+        RETURN_ERR_IF_NOT(clone->verify(),
+                          "Invalid node obtained during node splitting!");
 
         // Check clone against all constraints.
         SplitNodeContext splitCtx;
@@ -670,7 +639,7 @@ void splitAndReplaceNode(
   // If no split configuration is found to meet all the constraints then we
   // do not perform any splitting.
   if (!splitFound) {
-    return;
+    return Error::success();
   }
 
   // ----------------------------- Perform splitting ---------------------------
@@ -729,7 +698,8 @@ void splitAndReplaceNode(
     splitNodeModifier(node, clone, inputRanges, outputRanges);
 
     // Verify clone.
-    assert(clone->verify() && "Invalid node obtained during node splitting!");
+    RETURN_ERR_IF_NOT(clone->verify(),
+                      "Invalid node obtained during node splitting!");
 
     // Add clone to the function.
     F->addNode(clone);
@@ -748,6 +718,8 @@ void splitAndReplaceNode(
   for (size_t outIdx = 0; outIdx < node->getNumResults(); outIdx++) {
     node->getNthResult(outIdx).replaceAllUsesOfWith(mergedOutputs[outIdx]);
   }
+
+  return Error::success();
 }
 
 ///===---------------------------------------------------------------------===//
@@ -763,10 +735,11 @@ Error glow::splitNodesWithConstraints(
 
     switch (currNode->getKind()) {
     case Kinded::Kind::ConvolutionNodeKind: {
-      splitAndReplaceNode(F, currNode, ConvolutionNode::ResultIdx, {0, 1, 2, 3},
-                          getConv2DInputIdxAndMaps<ShapeNHWC>(
-                              dyn_cast<ConvolutionNode>(currNode)),
-                          {}, constraints, Conv2DSplitNodeModifier<ShapeNHWC>);
+      RETURN_IF_ERR(splitAndReplaceNode(
+          F, currNode, ConvolutionNode::ResultIdx, {0, 1, 2, 3},
+          getConv2DInputIdxAndMaps<ShapeNHWC>(
+              dyn_cast<ConvolutionNode>(currNode)),
+          {}, constraints, Conv2DSplitNodeModifier<ShapeNHWC>));
       break;
     }
     default:
