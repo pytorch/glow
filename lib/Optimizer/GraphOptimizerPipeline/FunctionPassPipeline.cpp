@@ -18,9 +18,9 @@
 #include "glow/Optimizer/GraphOptimizer/FunctionPassManager.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
-using namespace glow;
+namespace glow {
 
-FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
+FunctionPassPipeline createDefaultGraphOptimizationPassPipeline() {
   return {
       // Sink transpose operations in an attempt to cancel them out.
       // Perform code sinking until a fixed-point is reached.
@@ -131,7 +131,7 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
   };
 }
 
-FunctionPassPipeline glow::createFP16GraphOptimizationPassPipeline() {
+FunctionPassPipeline createFP16GraphOptimizationPassPipeline() {
   return {
       // Optimize away intermediate type conversions.
       {FunctionPassID::OptimizeConversions},
@@ -141,7 +141,7 @@ FunctionPassPipeline glow::createFP16GraphOptimizationPassPipeline() {
   };
 }
 
-FunctionPassPipeline glow::createDefaultFoldPassPipeline() {
+FunctionPassPipeline createDefaultFoldPassPipeline() {
   return {
       // Get Reshape nodes merged into constants to simplify folding.
       {FunctionPassID::OptimizeReshape},
@@ -160,14 +160,14 @@ FunctionPassPipeline glow::createDefaultFoldPassPipeline() {
   };
 }
 
-FunctionPassConfig glow::getDCEPassConfig() {
+FunctionPassConfig getDCEPassConfig() {
   return {FunctionPassID::DCE,
           ConvergenceMode::OnePass,
           {CompilationMode::Infer, CompilationMode::Train},
           DCERequiredMode::None};
 }
 
-llvm::StringRef glow::getNameOfPass(FunctionPassID passID) {
+llvm::StringRef getNameOfPass(FunctionPassID passID) {
   switch (passID) {
 #define FUN_PASS(PASS_NAME)                                                    \
   case FunctionPassID::PASS_NAME:                                              \
@@ -193,3 +193,5 @@ void FunctionPassConfig::dump(llvm::raw_ostream &os) const {
   }
   os << "\n";
 }
+
+} // namespace glow
