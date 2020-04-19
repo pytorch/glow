@@ -1656,7 +1656,6 @@ Error PyTorchModelLoader::loadTypeAs(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], glowNode->getResult());
 }
 
-
 Error PyTorchModelLoader::loadContiguous(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -1668,7 +1667,7 @@ Error PyTorchModelLoader::loadContiguous(const torch::jit::Node *ptNode) {
   int64_t scalar;
   ASSIGN_VALUE_OR_RETURN_ERR(scalar,
                              iValToInt(getGlowIValueForValue(inputs[1])));
-  RETURN_ERR_IF_NOT(scalar == (int64_t) at::MemoryFormat::Contiguous,
+  RETURN_ERR_IF_NOT(scalar == (int64_t)at::MemoryFormat::Contiguous,
                     glow::strFormat("Scalar must have value equal 0."));
 
   return addValueMapping(outputs[0], dataValue);

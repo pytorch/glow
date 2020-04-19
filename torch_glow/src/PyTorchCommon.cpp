@@ -24,6 +24,20 @@
 #include <torch/csrc/jit/runtime/graph_executor.h>
 #include <torch/csrc/jit/runtime/operator_options.h>
 
+DEFINE_string(torch_glow_backend, "Interpreter",
+              "Glow backend used for torchifi");
+DEFINE_int32(torch_glow_num_devices, 1, "Number of devices for Glow backend");
+DEFINE_int32(torch_glow_min_fusion_group_size, 1,
+             "Number of devices for Glow backend");
+DEFINE_bool(dumpGlowDag, false, "See PyTorchLoaderSettings");
+DEFINE_bool(dumpFinalGlowGraph, false, "See PyTorchLoaderSettings");
+DEFINE_bool(enableGlowTracing, false, "See PyTorchLoaderSettings");
+DEFINE_int32(numTracesPerDump, 1, "See PyTorchLoaderSettings");
+DEFINE_bool(saturateHost, false, "See PyTorchLoaderSettings");
+DEFINE_bool(convertToFP16, false, "See PyTorchLoaderSettings");
+DEFINE_string(opBlacklist, "", "See PyTorchLoaderSettings");
+DEFINE_int32(replicationCount, 1, "Number of replications on each device");
+
 namespace glow {
 
 namespace {
@@ -58,7 +72,7 @@ std::shared_ptr<runtime::HostManager> getHostManager() {
   auto hostManager = getGlowBackendState()->hostManager;
   // If no HostManager has been set, use Glow's Interpreter.
   if (!hostManager) {
-    setHostManager("Interpreter");
+    setHostManager(FLAGS_torch_glow_backend, FLAGS_torch_glow_num_devices);
     hostManager = getGlowBackendState()->hostManager;
   }
   return hostManager;
@@ -83,8 +97,9 @@ void setHostManager(const std::string &backendName, size_t numDevices) {
 
   std::vector<std::unique_ptr<runtime::DeviceConfig>> deviceConfigs;
   for (int i = 0; i < numDevices; i++) {
-    deviceConfigs.push_back(
-        llvm::make_unique<runtime::DeviceConfig>(backendName));
+    auto config = llvm::make_unique<runtime::DeviceConfig>(backendName);
+    config->deviceID = i;
+    deviceConfigs.push_back(std::move(config));
   }
 
   state->hostManager =
@@ -159,8 +174,56 @@ ElemKind typeKindToElemKind(c10::TypeKind ty) {
   }
 }
 
+/// Split string \p s on character \p k and eliminate spaces.
+static std::vector<std::string> splitString(const std::string &s,
+                                            const char k = ',') {
+  std::vector<std::string> substrings;
+  size_t start = 0;
+  bool lastWasSplit = true;
+  for (size_t i = 0; i < s.size(); i++) {
+    if (lastWasSplit && s[i] == ' ') {
+      start = i + 1;
+      continue;
+    }
+    lastWasSplit = false;
+    if (s[i] == k) {
+      substrings.push_back(s.substr(start, i - start));
+      start = i + 1;
+      lastWasSplit = true;
+    }
+  }
+
+  if (start < s.size() - 1) {
+    substrings.push_back(s.substr(start, s.size() - start));
+  }
+
+  return substrings;
+}
+
+static PyTorchLoaderSettings getInitialSettings() {
+  PyTorchLoaderSettings settings;
+  settings.minFusionGroupSize = FLAGS_torch_glow_min_fusion_group_size;
+  settings.dumpGlowDag = FLAGS_dumpGlowDag;
+  settings.dumpFinalGlowGraph = FLAGS_dumpFinalGlowGraph;
+  settings.enableGlowTracing = FLAGS_enableGlowTracing;
+  settings.numTracesPerDump = FLAGS_numTracesPerDump;
+  settings.saturateHost = FLAGS_saturateHost;
+  settings.convertToFP16 = FLAGS_convertToFP16;
+  settings.replicationCount = FLAGS_replicationCount;
+
+  if (!FLAGS_opBlacklist.empty()) {
+    auto kindStrings = splitString(FLAGS_opBlacklist);
+    for (const auto &kindString : kindStrings) {
+      settings.opBlacklist.insert(
+          torch::jit::Symbol::fromQualString(kindString));
+    }
+  }
+
+  return settings;
+}
+
 PyTorchLoaderSettings &getPyTorchLoaderSettings() {
-  static PyTorchLoaderSettings settings;
+  static PyTorchLoaderSettings settings = getInitialSettings();
   return settings;
 }
 

@@ -669,7 +669,7 @@ void NodeBuilder::emitExportMethods(std::ostream &os) const {
   os << "  auto *N__ = llvm::cast<" << name_ << "Node>(node);\n";
 
   // Add the node. Note that Glow custom ops are prefixed with "Glow_"
-  os << "  auto *opProto = graph.add_node();\n";
+  os << "  opProto = graph.add_node();\n";
   os << "  opProto->set_op_type(\"Glow_" << name_ << "\");\n";
   os << "  opProto->set_name(N__->getName());\n";
 

@@ -20,6 +20,8 @@
 #include "glow/Backends/BackendOptions.h"
 #include "glow/Base/Traits.h"
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
+#include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
+#include "glow/Optimizer/IROptimizer/IRFunctionPassPipeline.h"
 #include "glow/Support/Register.h"
 
 #include "llvm/ADT/StringRef.h"
@@ -30,7 +32,6 @@ class IRFunction;
 class Node;
 class PlaceholderBindings;
 class IRGenVisitor;
-class FunctionPassPipeline;
 class TensorLayoutCommon;
 
 /// Information about an entry point of a saved bundle.
@@ -170,6 +171,8 @@ public:
 
   /// Modify the \p optimizationOpts however desired.
   virtual FunctionPassPipeline getOptimizationPipeline() const;
+  /// Modify the \p optimizationOpts however desired.
+  virtual IRFunctionPassPipeline getIROptimizationPipeline() const;
 
   /// \returns true if the Backend supports partial, unpadded tensors for
   /// inputs that can have variable size (e.g., embedding indices).

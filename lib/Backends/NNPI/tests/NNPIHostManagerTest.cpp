@@ -26,6 +26,7 @@ struct BlacklistInitializer {
         {{"testStaticAssignmentP2PandDRTConcurrent/0",
           TestBlacklist::AnyDeviceAnyEngine},
          {"testStaticAssignmentP2PandDRT/0", TestBlacklist::AnyDeviceAnyEngine},
+         {"testSaturateHost/0", TestBlacklist::AnyDeviceAnyEngine},
          {"testStaticAssignmentP2POnly/0", TestBlacklist::AnyDeviceAnyEngine},
          {"testStaticAssignmentDeviceResidentTensorOnly/0",
           TestBlacklist::AnyDeviceAnyEngine},

@@ -301,6 +301,7 @@ target_link_libraries(IROptTest
                         Graph
                         IR
                         IROptimizer
+                        IROptimizerPipeline
                         GraphOptimizerPipeline
                         gtest
                         TestMain)
@@ -481,8 +482,10 @@ target_link_libraries(PartitionerTest
                         Backend
                         Backends
                         ExecutionEngine
+                        Exporter
                         Graph
                         GraphOptimizer
+                        Importer
                         IR
                         Partitioner
                         gtest

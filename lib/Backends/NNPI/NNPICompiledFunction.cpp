@@ -22,6 +22,8 @@
 
 #include "glow/Backend/BackendUtils.h"
 
+#include <fstream>
+
 #include "llvm/ADT/StringSet.h"
 
 using namespace glow;
@@ -33,6 +35,43 @@ extern bool GlowUsePerPartitionIcetConfig;
 
 } // namespace onnxifi
 } // namespace glow
+
+/// Looks for device stepping and sets it if possible in \p compilationOptions.
+static void trySetDeviceVersion(NNPICompilationOptions &compilationOptions) {
+  std::ifstream inFile;
+  constexpr char infoLoc[] = "/sys/class/nnpi/nnpi0/info";
+  inFile.open(infoLoc);
+  if (!inFile.good()) {
+    LOG(INFO) << strFormat("Could not find device info at %s\n", infoLoc);
+    return;
+  }
+
+  // Look for a line formatted like "stepping: 1"
+  std::string stepping;
+  while (!inFile.eof()) {
+    std::string str;
+    getline(inFile, str);
+    if (str.empty()) {
+      continue;
+    }
+    auto split = llvm::StringRef(str).split(": ");
+    if (split.first == "stepping") {
+      stepping = split.second;
+      break;
+    }
+  }
+  inFile.close();
+
+  // If we found a stepping then set it.
+  if (!stepping.empty()) {
+    auto devVerOrErr = getIntFromStr(stepping);
+    if (ERR_TO_BOOL(devVerOrErr.takeError(), /* log */ false)) {
+      return;
+    }
+    // Stepping is off by one vs. deviceVersion.
+    compilationOptions.deviceVersion.setVal(*devVerOrErr + 1);
+  }
+}
 
 Error NNPICompiledFunction::updateCompilationConfigFromOptions(
     NNPICompilationOptions &compilationOptions) {
@@ -46,6 +85,11 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   }
 
   // Handle device version.
+  if (compilationOptions.inferOnDevice &&
+      compilationOptions.deviceVersion == -1) {
+    trySetDeviceVersion(compilationOptions);
+  }
+
   if (compilationOptions.deviceVersion > 0) {
     switch (compilationOptions.deviceVersion) {
     case 1:
@@ -247,40 +291,46 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
     LOG_IF_NOT_RETURN_LLVMERROR(
         compilationFileName_.length() < NNPI_MAX_STRING_LEN, "Bad filename");
 
-    if (compilationFileName_.empty()) // Compile to memory.
     {
-      NNPIStream outFileStream;
-      outFileStream.userData = &compiledStream_;
-      outFileStream.readCallback = NULL;
-      outFileStream.seekCallback = NULL;
-      outFileStream.writeCallback = [](const void *ptr, uint64_t size,
-                                       uint64_t count,
-                                       void *userData) -> uint64_t {
-        DBG_MEM_USAGE("NNPICompiledFunction before appending: "
-                      << ((size * count) / 1024));
-        BlockStream *ss = reinterpret_cast<BlockStream *>(userData);
-        size_t wSize = ss->write(static_cast<const char *>(ptr), size * count);
-        if (wSize < size * count) {
-          return 0;
-        } else {
-          DBG_MEM_USAGE("NNPICompiledFunction stream appended: "
-                        << ((size * count) / 1024) << " KB current size: "
-                        << ss->getSize() / 1024 << " KB ");
-          return size * count;
-        }
-      };
-      DBG_MEM_USAGE("NNPICompiledFunction call get compile <<");
-      LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(
-          nnpiNetworkCompileToStream(network_, &config_, &outFileStream, NULL),
-          "Failed NNPI Compile");
+      static std::mutex compileMutex;
+      std::lock_guard<std::mutex> guard(compileMutex);
+      if (compilationFileName_.empty()) // Compile to memory.
+      {
+        NNPIStream outFileStream;
+        outFileStream.userData = &compiledStream_;
+        outFileStream.readCallback = NULL;
+        outFileStream.seekCallback = NULL;
+        outFileStream.writeCallback = [](const void *ptr, uint64_t size,
+                                         uint64_t count,
+                                         void *userData) -> uint64_t {
+          DBG_MEM_USAGE("NNPICompiledFunction before appending: "
+                        << ((size * count) / 1024));
+          BlockStream *ss = reinterpret_cast<BlockStream *>(userData);
+          size_t wSize =
+              ss->write(static_cast<const char *>(ptr), size * count);
+          if (wSize < size * count) {
+            return 0;
+          } else {
+            DBG_MEM_USAGE("NNPICompiledFunction stream appended: "
+                          << ((size * count) / 1024) << " KB current size: "
+                          << ss->getSize() / 1024 << " KB ");
+            return size * count;
+          }
+        };
+        DBG_MEM_USAGE("NNPICompiledFunction call get compile <<");
+        LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(
+            nnpiNetworkCompileToStream(network_, &config_, &outFileStream,
+                                       NULL),
+            "Failed NNPI Compile");
 
-      DBG_MEM_USAGE("NNPICompiledFunction done compile <<");
-    } else // Compile to file.
-    {
-      LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(
-          nnpiNetworkCompileToFile(network_, &config_,
-                                   compilationFileName_.c_str(), NULL),
-          "Failed NNPI Compile");
+        DBG_MEM_USAGE("NNPICompiledFunction done compile <<");
+      } else // Compile to file.
+      {
+        LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(
+            nnpiNetworkCompileToFile(network_, &config_,
+                                     compilationFileName_.c_str(), NULL),
+            "Failed NNPI Compile");
+      }
     }
     if (compilationOptions_.inferOnDevice) {
       DBG_MEM_USAGE("NNPICompiledFunction destroy network");

@@ -368,14 +368,6 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
                               deviceBackendName);
         }
 
-        if (cctx.dumpFinalGraph) {
-          auto fname =
-              strFormat("final_graph_%s_%s.dot", deviceBackendName.c_str(),
-                        function->getName().str().c_str());
-          LOG(INFO) << "Dumping final graph to " << fname;
-          function->dumpDAG(fname);
-        }
-
         std::unordered_map<std::string, std::unique_ptr<glow::CompiledFunction>>
             compiledReplications;
         // Before we compile clone the function so we can replicate it on the
@@ -397,6 +389,16 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
 
         auto compiledOrErr =
             backends_[deviceBackendName]->compile(function, options);
+
+        // Note: This needs to come after compile above because compile may
+        // modify the Function as well.
+        if (cctx.dumpFinalGraph) {
+          auto fname =
+              strFormat("final_graph_%s_%s.dot", deviceBackendName.c_str(),
+                        function->getName().str().c_str());
+          LOG(INFO) << "Dumping final graph to " << fname;
+          function->dumpDAG(fname);
+        }
 
         if (GlowDumpCompilationLog) {
           llvm::SmallString<64> path;

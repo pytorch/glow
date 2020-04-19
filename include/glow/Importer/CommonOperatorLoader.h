@@ -723,6 +723,26 @@ protected:
   Error loadIdentity(const OpType &op, ArgumentDictionaryTy &dict) {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+    // If loading partitioned DAG then check if this identity is used for an
+    // intermediate, and if so create the Save+PH with the correct name.
+    if (partNameToFun_.size()) {
+      int intermediate = 0;
+      if (dict.count("isIntermediateOutputForDAG")) {
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            intermediate, loadInt(dict.at("isIntermediateOutputForDAG")));
+      }
+
+      if (intermediate) {
+        const std::string &opName = loadOperatorName(op);
+        Placeholder *PH = mod_.createPlaceholder(in.getType(), op.output(0),
+                                                 /* isTrainable */ false);
+        G_->createSave(opName, in, PH, /* skipSuffix */ true);
+        intermediatePHsByName_[op.output(0)] = PH;
+        in = PH->getOutput();
+      }
+    }
+
     nodeValueByName_[op.output(0)] = in;
     return Error::success();
   }

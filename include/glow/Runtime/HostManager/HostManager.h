@@ -179,10 +179,8 @@ public:
   /// networks_. \returns an Error containing the results of the
   /// operation. This function consumes the \p module so any pointers to data
   /// contained within the module should be considered invalid. The function is
-  /// optimized based on \p cctx. If \p saturateHost is set to true the
-  /// HostManager will try to use all available devices on the host.
-  Error addNetwork(std::unique_ptr<Module> module, CompilationContext &cctx,
-                   bool saturateHost = false);
+  /// optimized based on \p cctx.
+  Error addNetwork(std::unique_ptr<Module> module, CompilationContext &cctx);
 
   /// Given \p networkName removes that network from the host. This also
   /// removes the network from any backends setup to execute it.

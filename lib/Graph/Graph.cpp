@@ -2118,11 +2118,10 @@ SaveNode *Function::createSave(llvm::StringRef name, NodeValue input,
 
 QuantizationProfileNode *
 Function::createQuantizationProfile(PlaceholderBindings &bindings,
-                                    llvm::StringRef name, NodeValue input) {
-  // TODO: this size is going to be refined. Just a placeholder now.
-  const dim_t numberOfBuckets = 2000U;
+                                    llvm::StringRef name, NodeValue input,
+                                    dim_t numHistogramBins) {
   auto *histogram = getParent()->createPlaceholder(
-      ElemKind::FloatTy, {numberOfBuckets}, "histogram_" + name.str(), false);
+      ElemKind::FloatTy, {numHistogramBins}, "histogram_" + name.str(), false);
   bindings.allocate(histogram)->zero();
   // Intermediate data used for histogram calculations.
   // Min tensor value seen so far is kept on the first position.

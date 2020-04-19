@@ -22,7 +22,7 @@
 #include "glow/Graph/TensorLayout.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
-#include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
+#include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
 
 using namespace glow;
 
@@ -194,4 +194,9 @@ FunctionPassPipeline Backend::getOptimizationPipeline() const {
   // want this opt then they should override getOptimizationPipeline().
   p.pushFront({FunctionPassID::FoldTileAddIntoBatchedAdd});
   return p;
-};
+}
+
+IRFunctionPassPipeline Backend::getIROptimizationPipeline() const {
+  auto pipeline = createDefaultIRFunctionOptimizationPipeline();
+  return pipeline;
+}

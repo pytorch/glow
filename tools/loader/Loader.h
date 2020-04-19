@@ -28,6 +28,12 @@
 /// Options.
 extern llvm::cl::OptionCategory loaderCat;
 
+/// Number of devices to use.
+extern llvm::cl::opt<unsigned> numDevices;
+
+/// Whether to run all inputs on all numDevices. Used for testing.
+extern llvm::cl::opt<bool> runAllInputsOnAllDevices;
+
 /// Timer option used to indicate if inferences should be timed -time.
 extern llvm::cl::opt<bool> timeOpt;
 /// Iterations used to indicate the number of iterations to run an inferece
@@ -187,8 +193,10 @@ public:
   /// include quantization profile guided information.
   void generateAndSerializeProfilingInfos(PlaceholderBindings &bindings);
 
-  /// Create the Loader driver object.
-  Loader();
+  /// Create the Loader driver object. If \p configDeviceIDs is empty then \ref
+  /// numDevices DeviceConfigs are created for each device, otherwise
+  /// configDeviceIDs is used to create DeviceConfigs with specified IDs.
+  Loader(llvm::ArrayRef<size_t> configDeviceIDs = {});
 };
 
 } // namespace glow

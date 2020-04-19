@@ -19,7 +19,9 @@
 
 #include "Loader.h"
 #include "glow/Graph/Nodes.h"
+
 #include "llvm/ADT/StringMap.h"
+#include "llvm/Support/Timer.h"
 
 extern llvm::cl::opt<std::string> inputImageListFile;
 extern llvm::cl::list<std::string> inputImageFilenames;
@@ -29,6 +31,8 @@ extern llvm::cl::opt<std::string> tracePath;
 extern llvm::cl::opt<bool> convertInAndOutToFp16;
 extern llvm::cl::opt<unsigned> miniBatch;
 extern llvm::cl::opt<unsigned> miniBatchThreads;
+extern llvm::cl::opt<bool> preloadAllImages;
+extern llvm::cl::opt<unsigned> repeatSingleBatchCount;
 
 extern std::unique_ptr<glow::TraceContext> traceContext;
 
@@ -57,7 +61,7 @@ bool getNextMiniBatch(std::vector<std::string> &imageList,
 std::pair<glow::Placeholder *, llvm::StringMap<glow::Placeholder *>>
 buildAndCompileAndGetInAndOutPair(glow::Loader &loader,
                                   glow::PlaceholderBindings &bindings,
-                                  glow::TypeRef inputImageType);
+                                  const glow::Type &inputImageType);
 
 /// Setup the pool of contexts needed for a benchmark run.
 std::vector<std::unique_ptr<glow::ExecutionContext>>

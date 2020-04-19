@@ -16,11 +16,15 @@
 
 #include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Graph/Utils.h"
+#include "glow/Runtime/RuntimeTypes.h"
 #include "glow/Support/ZipUtils.h"
 
 #include <float.h>
 
 #include "miniz.h"
+
+using namespace glow::runtime;
+using google::protobuf::RepeatedPtrField;
 
 namespace glow {
 namespace {
@@ -553,158 +557,348 @@ static void addAttrToDocString(T *proto, const std::string &attrName,
 
 } // namespace
 
+bool ONNXModelWriter::isIntermediatePHForDAG(const Placeholder *PH) {
+  if (!dagMode_) {
+    return false;
+  }
+
+  bool isInputPH = false, isOutputPH = false;
+  for (const auto &use : PH->getUsers()) {
+    const auto *userN = use.getUser();
+    // Only consider users from Functions in the DAG.
+    const Function *userF = userN->getParent();
+    if (!functionsFromDAG_.count(userF)) {
+      continue;
+    }
+    const bool currIsInputPH = isInput(PH, *userF);
+    const bool currIsOutputPH = isOutput(PH, *userF);
+    // Check this is not quantization profiling or training cases.
+    assert(
+        !(currIsInputPH && currIsOutputPH) &&
+        "Do not support PHs that are input and output to a single Function.");
+    if (currIsInputPH) {
+      isInputPH = true;
+    }
+    if (currIsOutputPH) {
+      isOutputPH = true;
+    }
+  }
+
+  // If the PH is both an input and an output for the Functions in the DAG then
+  // it must be an intermediate.
+  return isInputPH && isOutputPH;
+}
+
+Error ONNXModelWriter::writeFunction() {
+  // Use pre order graph traversal.
+  // If node is constant with uses, turned into "input" and create a tensor
+  // If node is placeholder with uses, turned into "input" with tensor shape,
+  // except the case when placeholder has use as SaveNode.
+  // Otherwise call common operators method or special operators and write
+  // protobuf inputs from node inputs and protobuf outputs from uses.
+
+  ReverseGraphWalker visitor(*F_);
+  for (const auto *N : visitor.getNodes()) {
+    if (reportedNodes_.count(N)) {
+      continue;
+    }
+
+    const auto kind = N->getKind();
+    // Handle placeholders cases.
+    if (kind == Kinded::Kind::PlaceholderKind) {
+      const auto *PH = llvm::cast<Placeholder>(N);
+      if (!isInput(PH, *F_)) {
+        // Storage as an input to SaveNode - ignore it.
+        continue;
+      }
+      // Skip Placeholders that are only intermediates -- these are
+      // understood/recreated during reimporting based on an op's partition.
+      if (isIntermediatePHForDAG(PH)) {
+        continue;
+      }
+      // Write global input, output only tensor shape.
+      auto *inputProto = graphProto_->add_input();
+      tensorShapeFromPlaceholder(PH, inputProto);
+    } else if (kind == Kinded::Kind::ConstantKind) {
+      // Write global initializer, output tensor bytes.
+      const auto *C = llvm::cast<Constant>(N);
+      auto *tensorProto = addInitializer(*graphProto_);
+      // When using useGlowCustomOps we always use generateNodeOutputName for
+      // all inputs and outputs.
+      tensorProto->set_name(useGlowCustomOps_
+                                ? C->getOutput().generateNodeOutputName(
+                                      /* stripResNoFor0thInput */ true)
+                                : C->getName().str());
+      writeTensor(C->getPayload(), tensorProto, useGlowCustomOps_);
+      if (useGlowCustomOps_) {
+        // Also include the layout in the initializer to be loaded later.
+        addAttrToDocString(tensorProto, layoutSignifier, C->getLayout());
+      }
+    } else if (kind == Kinded::Kind::SaveNodeKind) {
+      // Save node case, find input and use its name as a global output,
+      // output only shape.
+      const SaveNode *SN = llvm::cast<SaveNode>(N);
+      const auto *PH = SN->getPlaceholder();
+
+      // If useGlowCustomOps then we need to add an Identity to map the name
+      // from generateNodeOutputName() to the name of the Placeholder.
+      if (useGlowCustomOps_) {
+        auto *proto = graphProto_->add_node();
+        proto->set_op_type("Identity");
+        proto->set_name(SN->getName().data());
+        proto->add_input(SN->getInput().generateNodeOutputName(
+            /* stripResNoFor0thInput */ true));
+        proto->add_output(PH->getName().data());
+        // If dumping a DAG then add partition names to each op that's written.
+        if (dagMode_) {
+          addValueAttribute(proto, "partitionName", F_->getName().str());
+          // Skip writing Placeholders that are only intermediates -- these are
+          // understood/recreated during reimporting based on an op's partition.
+          if (isIntermediatePHForDAG(PH)) {
+            addValueAttribute(proto, "isIntermediateOutputForDAG", true);
+            continue;
+          }
+        }
+      }
+
+      auto *out = graphProto_->add_output();
+      tensorShapeFromPlaceholder(PH, out);
+
+      // Use the doc string to specify the name that should be used for the
+      // SaveNode to ensure it's kept the same between export and import.
+      addAttrToDocString(out, saveNameSignifier, SN->getName());
+    } else if (useGlowCustomOps_) {
+      RETURN_IF_ERR(writeGlowCustomOperator(N, *graphProto_));
+    } else {
+      RETURN_IF_ERR(writeOperator(N, *graphProto_));
+    }
+    reportedNodes_.insert(N);
+  }
+
+  return Error::success();
+}
+
+void ONNXModelWriter::setupNewProto() {
+  modelProto_.set_ir_version(irVersion_);
+  modelProto_.set_producer_name(useGlowCustomOps_ ? "GlowONNXModelWriter"
+                                                  : "ONNXModelWriter");
+  auto *opsetImportProto = modelProto_.add_opset_import();
+  opsetImportProto->set_version(opsetVersion_);
+  graphProto_ = modelProto_.mutable_graph();
+  graphProto_->set_name("glow");
+}
+
+Error ONNXModelWriter::finalizeAndWriteProto(llvm::StringRef name) {
+  // Nodes have been added in a reverse order from SaveNode up to the inputs,
+  // we need to rearrange all nodes in the reverse order before serialization.
+  auto *nodes = graphProto_->mutable_node();
+  for (size_t i = 0, n = nodes->size(); i < n / 2; ++i) {
+    nodes->SwapElements(i, n - i - 1);
+  }
+
+  // useGlowCustomOps uses Identities differently than the normal writer, so
+  // we do not want to do this if so.
+  if (!useGlowCustomOps_) {
+    // We need to swap back Identity node with the next non-Identity node
+    // since we append Identity node to tap out the intermediate results
+    for (int i = 0, n = nodes->size(); i < n - 1; ++i) {
+      if (nodes->Get(i).op_type() == "Identity") {
+        int k = 1;
+        while (i + k < n) {
+          if (nodes->Get(i + k).op_type() != "Identity") {
+            break;
+          }
+          ++k;
+        }
+        nodes->SwapElements(i, i + k);
+        i += k;
+      }
+    }
+  }
+
+  if (zipMode_) {
+    const bool compressed = false;
+    ZipWriter zip(&ff_, name);
+    std::stringstream ss;
+    ss << initializers_.size() << "\n";
+    zip.writeRecord("weights", ss.str().c_str(), ss.str().size(), compressed);
+    std::string largeBuffer;
+    int i = 0;
+    // This part is probably quite inefficient as we are deserializing the
+    // protobuf to a char buffer and then put it to zip stream. I didn't dig
+    // enough to see if we can deserialize it into zip stream directly.
+    for (const auto &t : initializers_) {
+      std::stringstream nm;
+      nm << "weight_" << i++;
+      t.SerializeToString(&largeBuffer);
+      zip.writeRecord(nm.str(), largeBuffer.c_str(), largeBuffer.size(),
+                      compressed);
+    }
+    if (textMode_) {
+      google::protobuf::TextFormat::PrintToString(modelProto_, &largeBuffer);
+    } else {
+      modelProto_.SerializeToString(&largeBuffer);
+    }
+    zip.writeRecord("model", largeBuffer.c_str(), largeBuffer.size(),
+                    compressed);
+    zip.writeEndOfFile();
+    ff_.flush();
+    ff_.close();
+    return Error::success();
+  } else {
+    return writeModel(modelProto_, textMode_);
+  }
+}
+
 ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
                                  size_t irVersion, size_t opsetVersion,
                                  Error *errPtr, bool textMode, bool zipMode,
                                  bool useGlowCustomOps)
-    : CommonOperatorWriter(modelFilename, F, errPtr),
-      opsetVersion_(opsetVersion), zipMode_(zipMode),
-      useGlowCustomOps_(useGlowCustomOps) {
+    : CommonOperatorWriter(modelFilename, &F, errPtr), irVersion_(irVersion),
+      opsetVersion_(opsetVersion), zipMode_(zipMode), textMode_(textMode),
+      useGlowCustomOps_(useGlowCustomOps), dagMode_(false) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
   }
 
-  // Lambda to setup the ONNXModelWriter and return any Errors that were
-  // raised.
+  // Lambda to setup the ONNXModelWriter and return any Errors that were raised.
   auto setup = [&]() -> Error {
-    // Loop through all nodes, output Graph to Model protobuf.
-    ONNX_NAMESPACE::ModelProto modelProto;
-    modelProto.set_ir_version(irVersion);
-    modelProto.set_producer_name(useGlowCustomOps_ ? "GlowONNXModelWriter"
-                                                   : "ONNXModelWriter");
-    auto *opsetImportProto = modelProto.add_opset_import();
-    opsetImportProto->set_version(opsetVersion);
-    auto *graphProto = modelProto.mutable_graph();
-    graphProto->set_name("glow");
-    // Use pre order graph traversal.
-    // If node is constant with uses, turned into "input" and create a tensor
-    // If node is placeholder with uses, turned into "input" with tensor shape,
-    // except the case when placeholder has use as SaveNode.
-    // Otherwise call common operators method or special operators and write
-    // protobuf inputs from node inputs and protobuf outputs from uses.
+    setupNewProto();
 
-    ReverseGraphWalker visitor(G_);
-    for (const auto *N : visitor.getNodes()) {
-      if (reportedNodes_.count(N)) {
-        continue;
-      }
+    RETURN_IF_ERR(writeFunction());
 
-      const auto kind = N->getKind();
-      // Handle placeholders cases.
-      if (kind == Kinded::Kind::PlaceholderKind) {
-        const auto *PH = llvm::cast<Placeholder>(N);
-        if (!isInput(PH, F)) {
-          // Storage as an input to SaveNode - ignore it.
-          continue;
-        }
-        // Write global input, output only tensor shape.
-        auto *inputProto = graphProto->add_input();
-        tensorShapeFromPlaceholder(PH, inputProto);
-      } else if (kind == Kinded::Kind::ConstantKind) {
-        // Write global initializer, output tensor bytes.
-        const auto *C = llvm::cast<Constant>(N);
-        auto *tensorProto = addInitializer(*graphProto);
-        // When using useGlowCustomOps we always use generateNodeOutputName for
-        // all inputs and outputs.
-        tensorProto->set_name(useGlowCustomOps_
-                                  ? C->getOutput().generateNodeOutputName(
-                                        /* stripResNoFor0thInput */ true)
-                                  : C->getName().str());
-        writeTensor(C->getPayload(), tensorProto, useGlowCustomOps_);
-        if (useGlowCustomOps_) {
-          // Also include the layout in the initializer to be loaded later.
-          addAttrToDocString(tensorProto, layoutSignifier, C->getLayout());
-        }
-      } else if (kind == Kinded::Kind::SaveNodeKind) {
-        // Save node case, find input and use its name as a global output,
-        // output only shape.
-        const SaveNode *SN = llvm::cast<SaveNode>(N);
-        const auto *PH = SN->getPlaceholder();
-        auto *out = graphProto->add_output();
-        tensorShapeFromPlaceholder(PH, out);
+    return finalizeAndWriteProto(F_->getName());
+  };
 
-        // Use the doc string to specify the name that should be used for the
-        // SaveNode to ensure it's kept the same between export and import.
-        addAttrToDocString(out, saveNameSignifier, SN->getName());
+  if (errPtr) {
+    *errPtr = setup();
+  } else {
+    EXIT_ON_ERR(setup());
+  }
+}
 
-        // If useGlowCustomOps then we need to add an Identity to map the name
-        // from generateNodeOutputName() to the name of the Placeholder.
-        if (useGlowCustomOps_) {
-          auto *proto = graphProto->add_node();
-          proto->set_op_type("Identity");
-          proto->set_name(SN->getName().data());
-          proto->add_input(SN->getInput().generateNodeOutputName(
-              /* stripResNoFor0thInput */ true));
-          proto->add_output(PH->getName().data());
-        }
-      } else if (useGlowCustomOps_) {
-        RETURN_IF_ERR(writeGlowCustomOperator(N, *graphProto));
-      } else {
-        RETURN_IF_ERR(writeOperator(N, *graphProto));
-      }
-      reportedNodes_.insert(N);
+/// Collect nodes from the DAG from \p root in post order in \p postOrder.
+/// Gather visited nodes in \p visited.
+static void collectNodesPostOrder(const DAGNode *root,
+                                  std::unordered_set<const DAGNode *> &visited,
+                                  std::vector<const DAGNode *> &postOrder) {
+  if (root == nullptr) {
+    return;
+  }
+  visited.insert(root);
+  for (auto &c : root->children) {
+    if (visited.count(c) == 0) {
+      collectNodesPostOrder(c, visited, postOrder);
+    }
+  }
+  postOrder.push_back(root);
+}
+
+void ONNXModelWriter::addMetadataProp(const std::string &key,
+                                      const std::string &val) {
+  auto *prop = modelProto_.add_metadata_props();
+  prop->set_key(key);
+  prop->set_value(val);
+}
+
+Error ONNXModelWriter::writePartitionAndMetadataProps(
+    Module &mod, llvm::ArrayRef<const DAGNode *> postOrder) {
+  // Add number of partitions to proto.
+  addMetadataProp("numPartitions", std::to_string(postOrder.size()));
+
+  for (size_t i = 0, e = postOrder.size(); i < e; i++) {
+    const auto *dagNode = postOrder[i];
+    F_ = mod.getFunction(dagNode->name);
+    RETURN_ERR_IF_NOT(F_, "Function was not valid from DAGList");
+
+    // Write the nodes of the Function.
+    RETURN_IF_ERR(writeFunction());
+
+    // Add to the proto the partition name and related meta info:
+    const std::string partIdPrefix = getPartitionIdPrefix(i);
+
+    // name of partition:
+    addMetadataProp(partIdPrefix + nameSignifier, dagNode->name);
+
+    // logicalDevices of partition:
+    addMetadataProp(partIdPrefix + numLogicalDevicesSignifier,
+                    std::to_string(dagNode->logicalDevices.size()));
+    for (size_t j = 0, f = dagNode->logicalDevices.size(); j < f; j++) {
+      addMetadataProp(partIdPrefix + getLogicalDeviceSignfier(j),
+                      std::to_string(dagNode->logicalDevices[j]));
     }
 
-    // Nodes has been added in a reverse order from SaveNode up to the inputs,
-    // we need to rearrange all nodes in the reverse order before serialization.
-    auto *nodes = graphProto->mutable_node();
-    for (size_t i = 0, n = nodes->size(); i < n / 2; ++i) {
-      nodes->SwapElements(i, n - i - 1);
+    // backendName of partition:
+    addMetadataProp(partIdPrefix + backendNameSignifier, dagNode->backendName);
+
+    // size of partition:
+    addMetadataProp(partIdPrefix + sizeSignifier,
+                    std::to_string(dagNode->size));
+
+    // backendHints.executionUnits of partition:
+    addMetadataProp(partIdPrefix + executionUnitsSignifier,
+                    std::to_string(dagNode->backendHints.executionUnits));
+
+    // backendHints.SRAMPrioritization of partition not supported:
+    assert(dagNode->backendHints.SRAMPrioritization.size() == 0 &&
+           "Do not support SRAMPrioritization saving from DAGNode");
+
+    // backendSpecificOpts of partition:
+    addMetadataProp(partIdPrefix + numBackendSpecificOptsSignifier,
+                    std::to_string(dagNode->backendSpecificOpts.size()));
+    size_t j = 0;
+    for (const auto &keyVal : dagNode->backendSpecificOpts) {
+      addMetadataProp(partIdPrefix + getBackendSpecificOptKeySignifier(j),
+                      keyVal.first);
+      addMetadataProp(partIdPrefix + getBackendSpecificOptValSignifier(j),
+                      keyVal.second);
+      j += 1;
     }
 
-    // useGlowCustomOps uses Identities differently than the normal writer, so
-    // we do not want to do this if so.
-    if (!useGlowCustomOps_) {
-      // We need to swap back Identity node with the next non-Identity node
-      // since we append Identity node to tap out the intermediate results
-      for (int i = 0, n = nodes->size(); i < n - 1; ++i) {
-        if (nodes->Get(i).op_type() == "Identity") {
-          int k = 1;
-          while (i + k < n) {
-            if (nodes->Get(i + k).op_type() != "Identity") {
-              break;
-            }
-            ++k;
-          }
-          nodes->SwapElements(i, i + k);
-          i += k;
-        }
-      }
+    // replicationCount of partition:
+    addMetadataProp(partIdPrefix + replicationCountSignifier,
+                    std::to_string(dagNode->replicationCount));
+  }
+
+  return Error::success();
+}
+
+ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename,
+                                 DAGListTy &dagList, size_t irVersion,
+                                 size_t opsetVersion, Error *errPtr,
+                                 bool textMode, bool zipMode)
+    : CommonOperatorWriter(modelFilename, nullptr, errPtr),
+      irVersion_(irVersion), opsetVersion_(opsetVersion), zipMode_(zipMode),
+      textMode_(textMode), useGlowCustomOps_(true), dagMode_(true) {
+  // If errPtr already contains an error then don't continue with constructor.
+  if (errPtr && *errPtr) {
+    return;
+  }
+
+  // Lambda to setup the ONNXModelWriter and return any Errors that were raised.
+  auto setup = [&]() -> Error {
+    setupNewProto();
+
+    RETURN_ERR_IF_NOT(dagList.size() == 1, "Expect only one DAG.");
+    const auto &dag = *dagList.begin();
+
+    Module &mod = *dag.root->module;
+
+    // Iterate over the DAG in post-order; Nodes per Function are written in
+    // reverse order and reversed at the end, so this follows suit.
+    std::unordered_set<const DAGNode *> visited;
+    std::vector<const DAGNode *> postOrder;
+    collectNodesPostOrder(dag.root.get(), visited, postOrder);
+    // Remove the root node from the list as we don't care about it.
+    postOrder.pop_back();
+    for (const DAGNode *dagNode : postOrder) {
+      functionsFromDAG_.insert(mod.getFunction(dagNode->name));
     }
 
-    if (zipMode_) {
-      const bool compressed = false;
-      ZipWriter zip(&ff_, F.getName());
-      std::stringstream ss;
-      ss << initializers_.size() << "\n";
-      zip.writeRecord("weights", ss.str().c_str(), ss.str().size(), compressed);
-      std::string largeBuffer;
-      int i = 0;
-      // This part is probably quite inefficient as we are deserializing the
-      // protobuf to a char buffer and then put it to zip stream. I didn't dig
-      // enough to see if we can deserialize it into zip stream directly.
-      for (const auto &t : initializers_) {
-        std::stringstream nm;
-        nm << "weight_" << i++;
-        t.SerializeToString(&largeBuffer);
-        zip.writeRecord(nm.str(), largeBuffer.c_str(), largeBuffer.size(),
-                        compressed);
-      }
-      if (textMode) {
-        google::protobuf::TextFormat::PrintToString(modelProto, &largeBuffer);
-      } else {
-        modelProto.SerializeToString(&largeBuffer);
-      }
-      zip.writeRecord("model", largeBuffer.c_str(), largeBuffer.size(),
-                      compressed);
-      zip.writeEndOfFile();
-      ff_.flush();
-      ff_.close();
-      return Error::success();
-    } else {
-      return writeModel(modelProto, textMode);
-    }
+    RETURN_IF_ERR(writePartitionAndMetadataProps(mod, postOrder));
+
+    return finalizeAndWriteProto(dag.root->name);
   };
 
   if (errPtr) {
@@ -1773,7 +1967,7 @@ Error ONNXModelWriter::writeSparseToDense(const SparseToDenseNode *node,
   outDims[0] = out.dims()[0];
 
   auto outTy =
-      G_.getParent()->uniqueTypeWithNewShape(values.getType(), outDims);
+      F_->getParent()->uniqueTypeWithNewShape(values.getType(), outDims);
   auto *inputProto = graph.add_input();
   tensorShapeFromInput("dataToInferDim", outTy, inputProto);
   proto->add_input("dataToInferDim");
@@ -1875,12 +2069,21 @@ DEF_UNSUPPORTED_NODE(BatchedPairwiseDotProductGrad)
 
 Error ONNXModelWriter::writeGlowCustomOperator(const Node *node,
                                                GraphType &graph) {
+  ONNX_NAMESPACE::NodeProto *opProto = nullptr;
+
   switch (node->getKind()) {
 #include "glow/AutoGenNodesExport.h"
   default:
     return MAKE_ERR(
         strFormat("Unhandled Node for export: %s", node->getName().data()));
   }
+  RETURN_ERR_IF_NOT(opProto, "Did not have valid opProto.");
+
+  // If dumping a DAG then add partition names to each op that's written.
+  if (dagMode_) {
+    addValueAttribute(opProto, "partitionName", F_->getName().str());
+  }
+
   return Error::success();
 }
 

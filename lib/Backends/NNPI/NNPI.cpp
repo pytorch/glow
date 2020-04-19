@@ -19,8 +19,8 @@
 #include "NNPIDeviceManager.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/Utils.h"
+#include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
-#include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 #include "glow/Optimizer/Lower/Lower.h"
 
 #include "llvm/Support/CommandLine.h"
