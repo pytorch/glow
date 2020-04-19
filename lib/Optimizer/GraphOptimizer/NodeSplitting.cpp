@@ -156,6 +156,7 @@ public:
 static std::vector<SliceRange>
 splitAlongDimByNumChunks(const SliceRange &range, size_t dim, dim_t numChunks,
                          bool bigChunksFirst = true) {
+
   // Dimension range size used for splitting.
   dim_t rangeSize = range.getSize(dim);
   assert((1 <= numChunks) && (numChunks <= rangeSize) &&
@@ -260,7 +261,7 @@ using SplitNodeModifier =
                        const std::vector<SliceRange> &splitInputRanges,
                        const std::vector<SliceRange> &splitOutputRanges)>;
 
-/// Definition of a "nop" split node modifier when performs no modifications.
+/// Definition of a "nop" split node modifier which performs no modifications.
 void SplitNodeModifierNop(const Node *origNode, Node *splitNode,
                           const std::vector<SliceRange> &splitInputRanges,
                           const std::vector<SliceRange> &splitOutputRanges) {}

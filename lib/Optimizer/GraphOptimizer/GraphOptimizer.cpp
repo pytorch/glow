@@ -4557,10 +4557,11 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
 
   // Perform node splitting.
 
-  //RETURN_IF_ERR(::glow::splitNodesWithConstraints(
+  // RETURN_IF_ERR(::glow::splitNodesWithConstraints(
   //    F, {getMaxMemSplitNodeConstraint(splitNodesByMemSizeOpt)}));
-  RETURN_IF_ERR(::glow::splitNodesWithConstraints(
-      F, {getNumChunksSplitNodeConstraint(3)}));
+
+  // RETURN_IF_ERR(::glow::splitNodesWithConstraints(
+  //     F, {getNumChunksSplitNodeConstraint(3)}));
 
   // If requested fold ElemKind conversion Nodes into static Placeholders,
   // inputs, and outputs (Placeholders and SaveNodes).

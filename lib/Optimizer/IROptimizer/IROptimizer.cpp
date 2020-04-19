@@ -1326,8 +1326,10 @@ static bool isSliceMemoryContiguous(llvm::ArrayRef<dim_t> sliceShape,
                                     llvm::ArrayRef<dim_t> tensorShape) {
   assert(sliceShape.size() == tensorShape.size() &&
          "Array length mismatch for slice/tensor sizes!");
-  // Search first non-singleton slice dimension.
-  size_t firstNonSingleDim = 0;
+  // Search first non-singleton slice dimension. If all the dimensions are
+  // singleton then by convention the first non-singleton dimension is the
+  // slice size.
+  size_t firstNonSingleDim = sliceShape.size();
   for (size_t dim = 0; dim < sliceShape.size(); ++dim) {
     if (sliceShape[dim] != 1) {
       firstNonSingleDim = dim;

@@ -44,7 +44,7 @@ struct SplitNodeContext {
   /// but you are allowed to check node type, attributes or input/output types.
   Node *splitNode;
 
-  /// Number of chunks the original node \ref origNode was split into, \ref 
+  /// Number of chunks the original node \ref origNode was split into, \ref
   /// splitNode being one of them.
   dim_t numChunks;
 };
