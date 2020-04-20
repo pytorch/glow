@@ -354,9 +354,6 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
     auto res = rSrc.minMaxArg();
     float min = rSrc.raw(res.first);
     float max = rSrc.raw(res.second);
-    // Expand the range to include 0.0f so that 0 is exactly representable.
-    min = std::min(min, 0.0f);
-    max = std::max(max, 0.0f);
 
     // Handle rowwise quantization for FCs.
     if (offsetIsInt32) {
@@ -369,7 +366,10 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
       offsetsH.raw(i) = qParams.offset;
     } else if (offsetIsFP) {
       // Handle rowwise quantization for Rowwise quantized SLS.
-      float scale = ((double)max - (double)min) / 255.0;
+      constexpr float kEqualityThreshold = 1e-10f;
+      const float scale = ((max - min) < kEqualityThreshold)
+                              ? 1.0
+                              : ((double)max - (double)min) / 255.0;
       float offset = min;
 
       for (dim_t j = 0; j < idim.width; j++) {
@@ -440,9 +440,6 @@ void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output) {
     auto res = rSrc.minMaxArg();
     float min = rSrc.raw(res.first);
     float max = rSrc.raw(res.second);
-
-    min = std::min(min, 0.0f);
-    max = std::max(max, 0.0f);
 
     float range;
     switch (outputType) {

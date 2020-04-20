@@ -375,26 +375,37 @@ TEST(Quantization, quantizeTensorSymmetricPwr2Int32) {
 
 /// Test 4-bit fused rowwise quantization.
 TEST(Quantization, fused4BitsRowwiseQuantizeTensor) {
-  // Create an FP32 tensor with 12 elements and initialize it with numbers from
-  // -3 to 3.
-  Tensor inputFP32(ElemKind::FloatTy, {2, 6});
-  Tensor dequantized(ElemKind::FloatTy, {2, 6});
-  Tensor quantized(ElemKind::UInt4FusedFP16QTy, {2, 7}, /* dummy scale */ 1.0,
-                   /* dummy offset */ 0);
-  Handle<float> inputH = inputFP32.getHandle<float>();
-  for (dim_t i = 0; i < 2; i++) {
-    for (dim_t j = 0; j < 6; j++) {
-      inputH.at({i, j}) = (i + j) * 1.0f - 3;
+  // Create an FP32 tensor with 12 elements and initialize it
+  // with numbers from the following test inputs here.
+  // 1. Input that contains at least one +ve, one -ve and zero.
+  // 2. Input that contains at least one +ve and zero.
+  // 3. Input that contains at least one -ve and zero.
+  // 4. Input that contains at least only (+ve) numbers.
+  // 5. Input that contains at least only (-ve) numbers.
+  // 'deltas' is used to create the above 5 test cases hermetically.
+  auto deltas = {-3, 0, 3, -7, 7};
+  for (const auto &delta : deltas) {
+    Tensor inputFP32(ElemKind::FloatTy, {2, 6});
+    Tensor dequantized(ElemKind::FloatTy, {2, 6});
+    Tensor quantized(ElemKind::UInt4FusedFP16QTy, {2, 7}, /* dummy scale */ 1.0,
+                     /* dummy offset */ 0);
+    Handle<float> inputH = inputFP32.getHandle<float>();
+    for (dim_t i = 0; i < 2; i++) {
+      for (dim_t j = 0; j < 6; j++) {
+        inputH.at({i, j}) = (i + j) * 1.0f + delta;
+      }
     }
-  }
 
-  quantization::tensorFusedRowwiseQuantization<float16_t>(inputFP32, quantized);
-  dequantized = quantization::tensor4BitsFusedRowwiseDequantization(quantized);
+    quantization::tensorFusedRowwiseQuantization<float16_t>(inputFP32,
+                                                            quantized);
+    dequantized =
+        quantization::tensor4BitsFusedRowwiseDequantization(quantized);
 
-  Handle<float> dequantizedH = dequantized.getHandle<float>();
-  for (dim_t i = 0; i < 2; i++) {
-    for (dim_t j = 0; j < 6; j++) {
-      EXPECT_NEAR(inputH.at({i, j}), dequantizedH.at({i, j}), 0.02f);
+    Handle<float> dequantizedH = dequantized.getHandle<float>();
+    for (dim_t i = 0; i < 2; i++) {
+      for (dim_t j = 0; j < 6; j++) {
+        EXPECT_NEAR(inputH.at({i, j}), dequantizedH.at({i, j}), 0.02f);
+      }
     }
   }
 }
