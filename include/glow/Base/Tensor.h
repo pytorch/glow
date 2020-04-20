@@ -311,17 +311,19 @@ public:
 
   /// Construct an unowned tensor provided an existing payload buffer.
   /// This constructor can be used when there is a need to work with
-  /// "externally" managed payload buffers using Tensor APIs. Additionally \p
-  /// unpaddedSize can be set to indicate actual size of the inputs.
-  Tensor(void *data, TypeRef ty, size_t unpaddedSize = 0)
-      : data_(reinterpret_cast<char *>(data)),
-        type_(*ty), unpaddedSize_{unpaddedSize} {
+  /// "externally" managed payload buffers using Tensor APIs. Additionally
+  /// \p unpaddedSize can be set to indicate actual size of the inputs. If
+  /// negative then it defaults back to the size of the input type.
+  Tensor(void *data, TypeRef ty, ssize_t unpaddedSize = -1)
+      : data_(reinterpret_cast<char *>(data)), type_(*ty) {
     // Mark as unowned.
     isUnowned_ = true;
     // We do want DeviceResidency however, since there is no owning Glow Tensor.
     resetDeviceInfo();
-    if (unpaddedSize_ == 0) {
+    if (unpaddedSize < 0) {
       unpaddedSize_ = type_.getSizeInBytes();
+    } else {
+      unpaddedSize_ = static_cast<size_t>(unpaddedSize);
     }
   }
 
@@ -417,9 +419,9 @@ public:
 
   /// Reset the shape and type of this tensor to match the shape and type of
   /// \p other. The size of the buffer is set to \p unpaddedSize unless it is
-  /// zero, which will instead default back to the number of bytes needed for
-  /// the type of \p other.
-  void reset(const Tensor *other, size_t unpaddedSize = 0) {
+  /// negative, which will instead default back to the number of bytes needed
+  /// for the type of \p other.
+  void reset(const Tensor *other, ssize_t unpaddedSize = -1) {
     reset(other->getType(), unpaddedSize);
   }
 
@@ -435,13 +437,13 @@ public:
   }
 
   /// Assigns a new shape to the tensor and allocates a new buffer. The size of
-  /// the buffer is set to \p unpaddedSize unless it is zero, which will
+  /// the buffer is set to \p unpaddedSize unless it is negative, which will
   /// instead default back to the number of bytes needed for \p T.
-  void reset(const Type &T, size_t unpaddedSize = 0) {
+  void reset(const Type &T, ssize_t unpaddedSize = -1) {
     assert(!isDeviceResident() && "Tensor must reside on host to access data.");
 
-    // If 0 then fall back to the passed in Type's padded size.
-    if (unpaddedSize == 0) {
+    // If negative then fall back to the passed in Type's padded size.
+    if (unpaddedSize < 0) {
       unpaddedSize = T.getSizeInBytes();
     }
 
@@ -471,10 +473,12 @@ public:
     // We are allocating memory on the host so it is not device resident.
     resetDeviceInfo();
 
-    // Note: zero-dimensional tensors have size 1.
-    assert(size() > 0 && "Tensors must always have positive size.");
-    data_ =
-        reinterpret_cast<char *>(alignedAlloc(unpaddedSize, TensorAlignment));
+    // Note: zero-dimensional tensors (i.e. {}) have size 1. However, Tensors
+    // may have 0 for some dimension, meaning they have size of 0, and so we do
+    // not allocate anything for them.
+    data_ = unpaddedSize == 0 ? nullptr
+                              : reinterpret_cast<char *>(alignedAlloc(
+                                    unpaddedSize, TensorAlignment));
 
     // Set unpaddedSize_ to the actual number of bytes.
     unpaddedSize_ = unpaddedSize;
@@ -1150,6 +1154,11 @@ public:
   /// account. Since size() does not take striding into account, size() is
   /// always <= actualSize().
   dim_t actualSize() const { return tensor_->actualSize(); }
+
+  /// \returns the unpadded size of the underlying \ref tensor_.
+  size_t getUnpaddedSizeInBytes() const {
+    return tensor_->getUnpaddedSizeInBytes();
+  }
 
   bool isInBounds(llvm::ArrayRef<dim_t> indices) const {
     return tensor_->isInBounds(indices);
