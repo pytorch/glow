@@ -66,7 +66,10 @@ void ExecutionEngine::setBackendName(llvm::StringRef backend,
       configs.push_back(std::move(config));
     }
   }
-  hostManager_ = glow::make_unique<runtime::HostManager>(std::move(configs));
+  runtime::HostConfig hostConfig;
+  hostConfig.maxActiveRequests = maxActiveRequests_;
+  hostManager_ =
+      glow::make_unique<runtime::HostManager>(std::move(configs), hostConfig);
 }
 
 llvm::StringRef ExecutionEngine::getBackendName() const { return backendName_; }

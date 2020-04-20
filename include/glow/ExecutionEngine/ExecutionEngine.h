@@ -50,6 +50,9 @@ class ExecutionEngine final {
   /// Size of device memory in bytes, if 0 device default is used.
   uint64_t deviceMemory_{0};
 
+  /// Number of requests that can be active at once.
+  unsigned maxActiveRequests_{12};
+
   /// Whether to ignore the user-specified DeviceConfig.
   bool ignoreUserDeviceConfig_{false};
 
@@ -98,6 +101,11 @@ public:
     setBackendName(backendName_);
   }
 
+  /// Set the number of maxActiveRequests, setBackendName needs to be called
+  /// after this to take effect.
+  void setMaxActiveRequests(unsigned maxRequests) {
+    maxActiveRequests_ = maxRequests;
+  }
   // Set whether or not to ensure outputs are in host memory.
   void ensureOutputsOnHost(bool should) { ensureOutputsOnHost_ = should; }
 
