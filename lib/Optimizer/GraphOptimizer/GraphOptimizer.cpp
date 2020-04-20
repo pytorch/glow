@@ -3030,7 +3030,7 @@ static bool isValueChangingCast(TypeRef srcTy, TypeRef destTy) {
 /// Optimize away redundant ClipNodes.
 /// We basically turn "Clip(Clip(Clip(A)))" to "Clip(A)".
 bool OptimizeClips::run(Function *F, const CompilationContext &cctx) {
-  int clipsEliminated = 0;
+  bool changed = false;
   for (Node &node : F->getNodes()) {
     ClipNode *clip = dyn_cast<ClipNode>(&node);
     if (!clip) {
@@ -3045,11 +3045,22 @@ bool OptimizeClips::run(Function *F, const CompilationContext &cctx) {
           F->createClip(clipPrev->getName(), clipPrev->getInput().getNode(),
                         std::max(minPrev, min), std::min(maxPrev, max));
       clip->getResult().replaceAllUsesOfWith(newClip);
-      ++clipsEliminated;
+      changed = true;
+      continue;
+    }
+
+    // We can fold Clip(Relu) -> Clip'
+    if (ReluNode *relu = dyn_cast<ReluNode>(clip->getInput())) {
+      const float newMin = std::max(0.0f, min);
+      ClipNode *newClip = F->createClip(clip->getName().str() + "_relu",
+                                        relu->getInput(), newMin, max);
+      clip->getResult().replaceAllUsesOfWith(newClip->getResult());
+      changed = true;
+      continue;
     }
   }
 
-  return clipsEliminated;
+  return changed;
 }
 
 /// \returns whether \p N used used by any Nodes with side effects.

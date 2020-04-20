@@ -4319,8 +4319,7 @@ TEST_F(GraphOptz, OptimizeOutIntermediateConversionsTest) {
   checkNumericalEquivalence();
 }
 
-/// Test Clip(Relu(Clip)) -> Clip(Relu). This is a combination of SinkCode and
-/// OptimizeClips.
+/// Test Clip(Relu(Clip)) -> Clip'.
 TEST_F(GraphOptz, ClipReluClipElimTest) {
   Placeholder *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {64, 64}, "input", false);
@@ -4336,17 +4335,16 @@ TEST_F(GraphOptz, ClipReluClipElimTest) {
 
   optimizedF_ = optimizeFunction(F_);
 
-  // Remove one of the clips.
-  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+  // Remove one of the clips and the relu.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 1);
-  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 0);
 
   SaveNode *optSN =
       llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
   ASSERT_TRUE(optSN);
 
-  // We sank CN1 below RN which changed CN1's min to 0, and then combined the
-  // ranges of CN1 and CN2.
+  // We combined all of the ranges into the single Clip.
   ClipNode *optCN = llvm::dyn_cast<ClipNode>(optSN->getInput());
   ASSERT_TRUE(optCN);
   EXPECT_EQ(optCN->getMin(), 0);
@@ -4580,5 +4578,40 @@ TEST_F(GraphOptz, SinkQuantizeBelowConcatTest) {
             optQuantize->getResult().getType()->getElementType());
 
   // Find quantize node in the optimized graph.
+  checkNumericalEquivalence();
+}
+
+/// Test Clip(Relu) -> Clip'.
+TEST_F(GraphOptz, ClipReluTest) {
+  Placeholder *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {64, 64}, "input", false);
+  ReluNode *RN = F_->createRELU("RN", input);
+  ClipNode *CN = F_->createClip("CN", RN, -5, 20);
+  SaveNode *SN = F_->createSave("save", CN);
+
+  // Start with a clip, a relu, and a save.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 1);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Removed the relu
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 0);
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+
+  // We have the same max for clip as before, but 0 for min due to the Relu.
+  ClipNode *optCN = llvm::dyn_cast<ClipNode>(optSN->getInput());
+  ASSERT_TRUE(optCN);
+  EXPECT_EQ(optCN->getMin(), 0);
+  EXPECT_EQ(optCN->getMax(), 20);
+
+  bindings_.allocate(input)->getHandle<float16_t>().randomize(-50.0, 5.0,
+                                                              mod_.getPRNG());
   checkNumericalEquivalence();
 }

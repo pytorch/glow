@@ -1000,7 +1000,10 @@ bool SplatNode::verify() const { return true; }
 bool TraceEventNode::verify() const { return true; }
 
 bool ClipNode::verify() const {
-  return checkSameType(getInput(), getResult(), this);
+  bool isValid = checkSameType(getInput(), getResult(), this);
+  isValid &= expectCompareTrue("Clip max must be greater than min", getMin(),
+                               getMax(), this, CompareOperatorLess<float>());
+  return isValid;
 }
 
 bool InsertTensorNode::verify() const {
