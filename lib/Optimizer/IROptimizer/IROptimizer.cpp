@@ -30,8 +30,11 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <algorithm>
 #include <fstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -39,14 +42,23 @@
 #define DEBUG_TYPE "ir-optimizer"
 
 namespace {
+static llvm::cl::opt<std::string> instrumentDebugDir(
+    "instrument-debug-dir",
+    llvm::cl::desc("The directory where the file dumps will be written!\n"),
+    llvm::cl::init("debug"), llvm::cl::Hidden);
+
 static llvm::cl::opt<std::string> instrumentDebugFormat(
     "instrument-debug-format",
-    llvm::cl::desc("The format of the IR debugging instrumentation:      \n"
-                   "- 'txt': All the tensors are dumped in text format in\n"
-                   "         the console.                                \n"
-                   "- 'bin': The tensors are dumped in binary format in  \n"
-                   "         separate files.\n"),
-    llvm::cl::init("txt"), llvm::cl::Hidden);
+    llvm::cl::desc(
+        "The format of the IR debugging instrumentation:                    \n"
+        "- 'console': The tensors are dumped in text format in the console. \n"
+        "- 'rawbin': The tensors are dumped in raw binary format in separate\n"
+        "            files. The raw format implies that NO tensor meta data \n"
+        "            is dumped (e.g. tensor shape, type, layout).           \n"
+        "- 'rawtxt': The tensors are dumped in raw text format in separate  \n"
+        "            files. The raw format implies that NO tensor meta data \n"
+        "            is dumped (e.g. tensor shape, type, layout).\n"),
+    llvm::cl::init("console"), llvm::cl::Hidden);
 
 static llvm::cl::list<std::string> instrumentDebugOnly(
     "instrument-debug-only",
@@ -1522,23 +1534,42 @@ bool optimizeExtracts(IRFunction &M) {
 /// dumping of outputs after each instruction.
 /// For each input/output tensor its name and its value are dumped.
 static bool performDebugInstrumentation(IRFunction &M) {
-  if (instrumentDebugOnly.empty()) {
-    return false;
+
+  // Make debug directory path absolute.
+  std::string debugDir = instrumentDebugDir;
+  if (!llvm::sys::path::is_absolute(debugDir)) {
+    llvm::SmallVector<char, 128> path(debugDir.begin(), debugDir.end());
+    CHECK(!llvm::sys::fs::make_absolute(path))
+        << "Cannot create debug absolute path for '" << debugDir << "'!";
+    debugDir = llvm::Twine(path).str();
   }
 
-  // Debug instrumentation format.
-  std::string format = instrumentDebugFormat;
-  CHECK(format == "txt" || format == "bin")
-      << "Invalid debug IR instrumentation format! Only 'txt' and 'bin' is "
-         "supported!";
+  // Make debug directory if not exists.
+  if (!llvm::sys::fs::is_directory(debugDir)) {
+    CHECK(!llvm::sys::fs::create_directory(debugDir))
+        << "Cannot create debug directory '" << debugDir << "'!";
+  }
+
+  // Debug format.
+  std::string debugFormat = instrumentDebugFormat;
+  CHECK(debugFormat == "console" || debugFormat == "rawbin" ||
+        debugFormat == "rawtxt")
+      << "Invalid debug IR instrumentation format! Only 'console', 'rawbin' "
+         "and 'rawtxt' formats are supported!";
+  std::string debugExt = (debugFormat == "rawbin") ? "bin" : "txt";
+  bool debugInfoWrite = (debugFormat != "console");
 
   // Open debug info file.
+  std::string debugInfoPath =
+      debugDir + llvm::sys::path::get_separator().str() + "debug.info";
   unsigned fileDumpIdx = 0;
   std::ofstream debugInfoFile;
-  if (format == "bin") {
-    debugInfoFile.open("debug.info", std::ios::out | std::ios::trunc);
+  if (debugInfoWrite) {
+    debugInfoFile.open(debugInfoPath, std::ios::out | std::ios::trunc);
+    debugInfoFile << "Format: " << debugFormat << "\n";
   }
 
+  // Instrument debug instructions.
   bool changed = false;
   auto &instrs = M.getInstrs();
   for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
@@ -1566,20 +1597,31 @@ static bool performDebugInstrumentation(IRFunction &M) {
       continue;
     }
 
+    // Print instruction info.
     std::string instrName = I->getName().str();
-    if (format == "bin") {
+    if (debugInfoWrite) {
       debugInfoFile << "\n";
       debugInfoFile << "Type: " << I->getKindName() << "\n";
       debugInfoFile << "Name: " << instrName << "\n";
     }
 
-    for (const auto &Op : I->getOperands()) {
-      std::string opValueName = Op.first->getName();
+    // Get maximum operand name length for pretty print.
+    size_t opNameLenMax = 0;
+    for (unsigned opIdx = 0; opIdx < I->getNumOperands(); ++opIdx) {
+      auto opNameLen = I->getOperandName(opIdx).size();
+      opNameLenMax = std::max(opNameLen, opNameLenMax);
+    }
+
+    // Instrument debug operands for current instruction.
+    for (unsigned opIdx = 0; opIdx < I->getNumOperands(); ++opIdx) {
+      const auto &op = I->getOperand(opIdx);
+      const std::string opName = I->getOperandName(opIdx).str();
+      const std::string opValueName = op.first->getName();
 
       // DebugPrint instruction name for this operand.
-      std::string name = opValueName;
+      std::string name = instrName;
       name += ".";
-      name += instrName;
+      name += opName;
       name += ".";
       name += I->getKindName();
 
@@ -1590,30 +1632,30 @@ static bool performDebugInstrumentation(IRFunction &M) {
       // to be very long. We use a simple name format for dumping files and we
       // generate a separate meta file with additional information about every
       // dump.
-      std::string filename = strFormat("data%04d.bin", fileDumpIdx++);
+      std::string filename = strFormat("data%04d.", fileDumpIdx++) + debugExt;
+      std::string filepath =
+          debugDir + llvm::sys::path::get_separator().str() + filename;
+      if (debugInfoWrite) {
+        unsigned spacing = std::max(opNameLenMax + 2, size_t(10));
+        std::string format = "[%d] %-" + std::to_string(spacing) + "s %s\n";
+        debugInfoFile << strFormat(format.c_str(), opIdx,
+                                   (opName + ":").c_str(), filename.c_str());
+      }
 
       // Dump inputs of the current instruction before the instruction.
-      if (Op.second != OperandKind::Out) {
-        if (format == "bin") {
-          debugInfoFile << "Input : " << filename << " : " << opValueName
-                        << "\n";
-        }
-
+      if (op.second != OperandKind::Out) {
         name = "debug_print.before." + name;
-        auto *dumpInstr = new DebugPrintInst(name, Op.first, format, filename);
+        auto *dumpInstr =
+            new DebugPrintInst(name, op.first, debugFormat, filepath);
         M.insertInstruction(I, dumpInstr);
         changed = true;
       }
 
       // Dump outputs of the current instruction after the instruction.
-      if (Op.second != OperandKind::In) {
-        if (format == "bin") {
-          debugInfoFile << "Output: " << filename << " : " << opValueName
-                        << "\n";
-        }
-
+      if (op.second != OperandKind::In) {
         name = "debug_print.after." + name;
-        auto *dumpInstr = new DebugPrintInst(name, Op.first, format, filename);
+        auto *dumpInstr =
+            new DebugPrintInst(name, op.first, debugFormat, filepath);
         if (next == e) {
           M.insertInstruction(dumpInstr);
         } else {
@@ -1626,7 +1668,7 @@ static bool performDebugInstrumentation(IRFunction &M) {
   }
 
   // Close debug info file.
-  if (format == "bin") {
+  if (debugInfoWrite) {
     debugInfoFile.close();
   }
 

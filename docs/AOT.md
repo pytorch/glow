@@ -164,7 +164,7 @@ The option has the following comma separated fields:
   - `<name>` the name of the model input placeholder (tensor) where the dataset files will
 be loaded during run-time.
   - `<format>` the format of all the files from the given dataset:
-    - `bin`: raw binary format. Each binary file corresponds to
+    - `rawbin`: raw binary format. Each binary file corresponds to
       a tensor and contains the data serialized as a binary
       blob without extra meta information (tensor data type or
       shape) because the tensor is statically configured before
@@ -173,8 +173,8 @@ be loaded during run-time.
       it will be loaded. For example, for a float32 tensor with
       shape [2,3], the binary file is expected to have the size
       2 x 3 x 4 (float32) = 24 bytes.
-    - `txt`: raw text format. Each text file corresponds to a
-      tensor and contains the data serialized as a linear list
+    - `rawtxt`: raw text format. Each text file corresponds to a
+      tensor and contains data serialized as a linear list
       of comma separated values in text format without extra
       meta information (tensor data type or shape) because the
       tensor is statically configured before loading the data.
@@ -215,7 +215,7 @@ be loaded during run-time.
   - `<opts>` extra options dependent on the `<source>` field.
   - This option will be used for each of the model inputs.
   - Example 1:
-    `-input-dataset=input1,bin,file,dataset.csv`
+    `-input-dataset=input1,rawbin,file,dataset.csv`
     The dataset paths for the 'input1' model input are read from the
     'dataset.csv' file which could have the following content:
     ```
@@ -223,9 +223,9 @@ be loaded during run-time.
     /data_folder/data1.dat,
     .......................
     ```
-    All the files listed are assumed to be in binary format (`bin`).
+    All the files listed are assumed to be in raw binary format.
   - Example 2:
-    `-input-dataset=input2,bin,file,dataset.csv,/data_folder`
+    `-input-dataset=input2,rawbin,file,dataset.csv,/data_folder`
     The dataset files for the 'input2' model input are read from the
     'dataset.csv' file which could have the following content:
     ```
@@ -235,12 +235,12 @@ be loaded during run-time.
     ```
     All the file paths listed will be concatenated (prepended) with
     the '/data_folder' base directory path when loading. All the
-    files listed are assumed to be in binary format (`bin`).
+    files listed are assumed to be in raw binary format.
   - Example 3:
-    `-input-dataset=input3,txt,dir,/data_folder`
+    `-input-dataset=input3,rawtxt,dir,/data_folder`
     The dataset files for the 'input3' model input are all the files
     from the '/data_folder' directory listed alphabetically. The
-    files are assumed to be in text format (`txt`).
+    files are assumed to be in raw text format.
 
 In order for the profiling phase to be correct, make sure the data used to feed the network
 is pre-processed in the same way as it would be in the case of inference. For example, for
@@ -473,14 +473,21 @@ mode with the option `-instrument-debug` such that the model will display during
 run-time the content of all the tensors associated to all the operands of all the
 IR instructions. Additionally, you can choose the format of the dumped information
 with the option `-instrument-debug-format=<format>`:
-  - `txt` (Default) All the operands (tensors) are displayed in text format in the
+  - `console` (Default) All the operands (tensors) are displayed in text format in the
   console. Large tensors are only partially displayed.
-  - `bin` The operands (tensors) are dumped in binary format in separate files (one
-  tensor per file). The name of the binary files have a simple format `data[idx].bin`
+  - `rawbin` The operands (tensors) are dumped in raw binary format in separate files
+  (one tensor per file). The name of the binary files have a simple format `data[idx].bin`
   but a separate meta file `debug.info` is dumped at compile-time which makes the
   association between each binary file and the operand of the IR instruction to which
-  it belongs. The directory in which the files are dumped is the current directory of
-  the application which executes the bundle.
+  it belongs.
+  - `rawtxt` The operands (tensors) are dumped in raw text format in separate files
+  (one tensor per file). The name of the binary files have a simple format `data[idx].bin`
+  but a separate meta file `debug.info` is dumped at compile-time which makes the
+  association between each binary file and the operand of the IR instruction to which
+  it belongs.
+  All the dump files and the separate metafile `debug.info` are dumped in a folder `debug`
+  relative to the current directory at compile-time (if it does not exist it is created
+  automatically). You can choose a different directory with the option `-instrument-debug-dir=<dir>`.
 
 ## Bundle memory layout
 

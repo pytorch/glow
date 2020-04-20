@@ -2794,6 +2794,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     srcPtr = builder.CreateBitCast(srcPtr, builder.getInt8PtrTy());
     auto *srcDims = emitValueDims(builder, src);
     auto *srcDimsSize = emitConstDimT(builder, src->getType()->dims().size());
+    auto *srcSize = emitConstSizeT(builder, src->getType()->size());
     auto *srcSizeBytes =
         emitConstSizeT(builder, src->getType()->getSizeInBytes());
     auto *srcElemKind =
@@ -2802,12 +2803,21 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *filename = emitStringConst(builder, DPI->getFileName());
 
     std::string format = DPI->getFormat();
-    if (format == "txt") {
-      auto *F = getFunction("dump_tensor_txt");
+    if (format == "console") {
+      // Dump tensor in console.
+      auto *F = getFunction("dump_tensor_console");
       createCall(builder, F, {srcPtr, srcDims, srcDimsSize, srcElemKind, name});
-    } else if (format == "bin") {
-      auto *F = getFunction("dump_tensor_bin");
+
+    } else if (format == "rawbin") {
+      // Dump tensor in file in raw binary format.
+      auto *F = getFunction("dump_tensor_rawbin");
       createCall(builder, F, {srcPtr, srcSizeBytes, filename});
+
+    } else if (format == "rawtxt") {
+      // Dump tensor in file in raw text format.
+      auto *F = getFunction("dump_tensor_rawtxt", src->getElementType());
+      createCall(builder, F, {srcPtr, srcSize, filename});
+
     } else {
       LOG(FATAL) << "Invalid 'Format' attribute for DebugPrint instruction!";
     }

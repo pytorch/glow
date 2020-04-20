@@ -30,7 +30,7 @@ static void dumpToRawTextFileImpl(Handle<ElemTy> handle,
   fs.open(filename.data());
   CHECK(fs.is_open()) << "Error opening file '" << filename.data() << "'!";
   for (dim_t idx = 0, e = handle.actualSize(); idx < e; idx++) {
-    fs << handle.raw(idx) << ", ";
+    fs << (double)handle.raw(idx) << ", ";
   }
   fs.close();
 }

@@ -4252,7 +4252,6 @@ void BoundInterpreterFunction::fwdDeallocActivationInst(
 //===----------------------------------------------------------------------===//
 //                       Debug instructions
 //===----------------------------------------------------------------------===//
-
 /// Prints a value of the instruction's operand.
 /// In most cases it will be the name of the variable and the value of the
 /// tensor.
@@ -4262,27 +4261,21 @@ void BoundInterpreterFunction::fwdDebugPrintInst(const DebugPrintInst *I) {
   std::string format = I->getFormat();
   std::string filename = I->getFileName();
 
-  if (format == "txt") {
+  if (format == "console") {
+    // Dump tensor in console.
     llvm::outs() << I->getName() << ": ";
-    // Dump the content of a value.
     V->dump();
     llvm::outs() << "\n";
     dumpImpl(T);
     llvm::outs() << "\n";
+  } else if (format == "rawbin") {
+    // Dump tensor in file in raw binary format.
+    glow::dumpToRawBinaryFile(*T, filename);
+  } else if (format == "rawtxt") {
+    // Dump tensor in file in raw text format.
+    glow::dumpToRawTextFile(*T, filename);
   } else {
-    FILE *fh = fopen(filename.c_str(), "wb");
-    if (!fh) {
-      printf("ERROR opening file: '%s'!\n"
-             "File name might be too long!\n",
-             filename.c_str());
-      return;
-    }
-    size_t tensorSize = T->getSizeInBytes();
-    auto tensorPtr = T->getUnsafePtr();
-    size_t size = fwrite(tensorPtr, 1, tensorSize, fh);
-    assert((size == tensorSize) && "Error dumping tensor to file!");
-    (void)size;
-    fclose(fh);
+    llvm_unreachable("DebugPrint format not supported!");
   }
 }
 
