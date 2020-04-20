@@ -20,8 +20,6 @@
 
 #include "llvm/Support/CommandLine.h"
 
-using namespace glow;
-
 namespace {
 static llvm::cl::opt<bool>
     instrumentDebug("instrument-debug",
@@ -36,7 +34,9 @@ static llvm::cl::opt<bool> dumpIR("dump-ir",
                                   llvm::cl::desc("Prints IR to stdout"));
 } // namespace
 
-IRFunctionPassPipeline glow::createDefaultIRFunctionOptimizationPipeline() {
+namespace glow {
+
+IRFunctionPassPipeline createDefaultIRFunctionOptimizationPipeline() {
   if (!optimizeIR) {
     return {};
   }
@@ -70,7 +70,7 @@ IRFunctionPassPipeline glow::createDefaultIRFunctionOptimizationPipeline() {
   return pipeline;
 }
 
-llvm::StringRef glow::getNameOfPass(IRFunctionPassID passID) {
+llvm::StringRef getNameOfPass(IRFunctionPassID passID) {
   switch (passID) {
 #define IR_FUN_PASS(PASS_NAME)                                                 \
   case IRFunctionPassID::PASS_NAME:                                            \
@@ -83,3 +83,5 @@ llvm::StringRef glow::getNameOfPass(IRFunctionPassID passID) {
 template <> void IRFunctionPassConfig::dump(llvm::raw_ostream &os) const {
   PassConfigBase::dump(os, getNameOfPass(getPassID()));
 }
+
+} // namespace glow
