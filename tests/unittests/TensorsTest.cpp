@@ -55,6 +55,42 @@ TEST(Tensor, init) {
   H.dump();
 }
 
+/// Test that Tensors with zero-dimensions work as expected.
+TEST(Tensor, zeroDimTensors) {
+  Tensor T0(ElemKind::FloatTy, {0});
+  Tensor T1(ElemKind::FloatTy, {0, 100});
+  Tensor T2(ElemKind::FloatTy, {100, 0});
+
+  EXPECT_EQ(T0.getUnpaddedSizeInBytes(), 0);
+  EXPECT_EQ(T1.getUnpaddedSizeInBytes(), 0);
+  EXPECT_EQ(T2.getUnpaddedSizeInBytes(), 0);
+  EXPECT_EQ(T0.getSizeInBytes(), 0);
+  EXPECT_EQ(T1.getSizeInBytes(), 0);
+  EXPECT_EQ(T2.getSizeInBytes(), 0);
+  EXPECT_EQ(T0.size(), 0);
+  EXPECT_EQ(T1.size(), 0);
+  EXPECT_EQ(T2.size(), 0);
+
+  // Nothing is allocated for these tensors.
+  EXPECT_EQ(T0.getUnsafePtr(), nullptr);
+  EXPECT_EQ(T1.getUnsafePtr(), nullptr);
+  EXPECT_EQ(T2.getUnsafePtr(), nullptr);
+
+  T0.getHandle<>().dump();
+  T1.getHandle<>().dump();
+  T2.getHandle<>().dump();
+
+  // Now test getting unowned views of partial tensors that are zero sized.
+  Tensor T4(ElemKind::FloatTy, {10, 0, 10});
+  Type ty(ElemKind::FloatTy, {10, 5, 10});
+  Tensor T5(T4.getUnsafePtr(), &ty, T4.getSizeInBytes());
+  EXPECT_EQ(T4.getUnsafePtr(), T5.getUnsafePtr());
+  EXPECT_EQ(T5.getUnpaddedSizeInBytes(), 0);
+  EXPECT_EQ(T5.getSizeInBytes(), ty.getSizeInBytes());
+  EXPECT_EQ(T5.size(), ty.size());
+  T5.getHandle<>().dump();
+}
+
 TEST(Tensor, getSliceSize) {
   // Test the Type::getSliceSize() function.
 
