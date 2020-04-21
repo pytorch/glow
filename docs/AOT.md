@@ -475,19 +475,21 @@ IR instructions. Additionally, you can choose the format of the dumped informati
 with the option `-instrument-debug-format=<format>`:
   - `console` (Default) All the operands (tensors) are displayed in text format in the
   console. Large tensors are only partially displayed.
-  - `rawbin` The operands (tensors) are dumped in raw binary format in separate files
-  (one tensor per file). The name of the binary files have a simple format `data[idx].bin`
+  - `bin` The operands (tensors) are dumped in binary format in separate files
+  (one tensor per file). Each file will contain the tensor type and tensor data.
+  - `txt` The operands (tensors) are dumped in text format in separate files
+  (one tensor per file). Each file will contain the tensor type and tensor data.
+  - `rawbin` The operands (tensors) are dumped in binary format in separate files
+  (one tensor per file). Each file will contain ONLY the tensor data.
+  - `rawtxt` The operands (tensors) are dumped in text format in separate files
+  (one tensor per file). Each file will contain ONLY the tensor data.
+  The names of the dump files have a simple format `data[idx].bin` or `data[idx].txt`
   but a separate meta file `debug.info` is dumped at compile-time which makes the
   association between each binary file and the operand of the IR instruction to which
-  it belongs.
-  - `rawtxt` The operands (tensors) are dumped in raw text format in separate files
-  (one tensor per file). The name of the binary files have a simple format `data[idx].bin`
-  but a separate meta file `debug.info` is dumped at compile-time which makes the
-  association between each binary file and the operand of the IR instruction to which
-  it belongs.
-  All the dump files and the separate metafile `debug.info` are dumped in a folder `debug`
-  relative to the current directory at compile-time (if it does not exist it is created
-  automatically). You can choose a different directory with the option `-instrument-debug-dir=<dir>`.
+  it belongs. All the dump files and the separate meta file `debug.info` are dumped in
+  a folder `debug` relative to the current directory at compile-time (if it does not
+  exist it is created automatically). You can choose a different directory with the
+  option `-instrument-debug-dir=<dir>`.
 
 ## Bundle memory layout
 

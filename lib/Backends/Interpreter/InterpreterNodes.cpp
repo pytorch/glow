@@ -4268,12 +4268,14 @@ void BoundInterpreterFunction::fwdDebugPrintInst(const DebugPrintInst *I) {
     llvm::outs() << "\n";
     dumpImpl(T);
     llvm::outs() << "\n";
+  } else if (format == "bin") {
+    glow::dumpTensorToBinaryFile(*T, filename, /*dumpType*/ true);
+  } else if (format == "txt") {
+    glow::dumpTensorToTextFile(*T, filename, /*dumpType*/ true);
   } else if (format == "rawbin") {
-    // Dump tensor in file in raw binary format.
-    glow::dumpToRawBinaryFile(*T, filename);
+    glow::dumpTensorToBinaryFile(*T, filename, /*dumpType*/ false);
   } else if (format == "rawtxt") {
-    // Dump tensor in file in raw text format.
-    glow::dumpToRawTextFile(*T, filename);
+    glow::dumpTensorToTextFile(*T, filename, /*dumpType*/ false);
   } else {
     llvm_unreachable("DebugPrint format not supported!");
   }

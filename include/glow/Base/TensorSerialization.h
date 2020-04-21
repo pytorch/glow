@@ -22,35 +22,39 @@
 
 namespace glow {
 
-/// Dump the data content of \p tensor to a raw-binary file without any
-/// other meta information (data type and shape). The binary representation
-/// of data is guaranteed to preserve data precision (bit exactness) upon
-/// round-trips (dump/load).
-void dumpToRawBinaryFile(Tensor &tensor, llvm::StringRef filename);
+/// Dump the content of \p tensor to a binary file \p filename. You can choose
+/// to dump also the tensor type in the file with the flag \p dumpType. The
+/// binary representation of data is guaranteed to preserve data precision
+/// (bit exactness) upon round-trips (dump/load).
+void dumpTensorToBinaryFile(Tensor &tensor, llvm::StringRef filename,
+                            bool dumpType = true);
 
-/// Load the data content of \p tensor from a raw-binary file. The tensor
-/// configuration (data type and shape) must be set before loading the data
-/// since the raw binary file is assumed to contain only the data. The binary
-/// representation of data is guaranteed to preserve data precision (bit
-/// exactness) upon round-trips (dump/load).
-void loadFromRawBinaryFile(Tensor &tensor, llvm::StringRef filename);
+/// Load the content of \p tensor from a binary file \p filename. You must
+/// specify whether the file data contains also the tensor type with the flag
+/// \p loadType such that the tensor type is set properly before the data is
+/// loaded. The binary representation of data is guaranteed to preserve data
+/// precision (bit exactness) upon round-trips (dump/load).
+void loadTensorFromBinaryFile(Tensor &tensor, llvm::StringRef filename,
+                              bool loadType = true);
 
-/// Dump the data content of \p tensor to a raw-text file without any other
-/// meta information (data type and shape). The data will be listed as a 1D
-/// array of values separated by comma (",") without other formatting. The
-/// text representation of data is NOT guaranteed to preserve data precision
-/// (bit exactness) upon round-trips (dump/load) but is used for human
-/// readability.
-void dumpToRawTextFile(Tensor &tensor, llvm::StringRef filename);
+/// Dump the content of \p tensor to a text file \p filename. You can choose to
+/// dump also the tensor type in the file with the flag \p dumpType. The data
+/// will be listed as a 1D array of values separated by comma (",") without
+/// other formatting. The text representation of data is NOT guaranteed to
+/// preserve data precision (bit exactness) upon round-trips (dump/load) and is
+/// used mainly for human readability.
+void dumpTensorToTextFile(Tensor &tensor, llvm::StringRef filename,
+                          bool dumpType = true);
 
-/// Load the data content of \p tensor from a raw-text file. The tensor
-/// configuration (data type and shape) must be set before loading the data
-/// since the raw text file is assumed to contain only the data. The values
-/// in the text file are expected to be listed as a 1D array of values,
-/// separated by comma (",") without other formatting. The text representation
-/// of data is NOT guaranteed to preserve data precision (bit exactness) upon
-/// round-trips (dump/load) but is used for human readability.
-void loadFromRawTextFile(Tensor &tensor, llvm::StringRef filename);
+/// Load the content of \p tensor from a text file \p filename. You must
+/// specify whether the file data contains also the tensor type with the flag
+/// \p loadType such that the tensor type is set properly before the data is
+/// loaded. The values in the text file are expected to be listed as a 1D array
+/// of values, separated by comma (",") without other formatting. The text
+/// representation of data is NOT guaranteed to preserve data precision (bit
+/// exactness) upon round-trips (dump/load) but is used for human readability.
+void loadTensorFromTextFile(Tensor &tensor, llvm::StringRef filename,
+                            bool loadType = true);
 
 } // namespace glow
 

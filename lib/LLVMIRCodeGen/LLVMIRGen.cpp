@@ -2801,6 +2801,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
         emitConstDimT(builder, static_cast<size_t>(src->getElementType()));
     auto *name = emitStringConst(builder, I->getName());
     auto *filename = emitStringConst(builder, DPI->getFileName());
+    auto srcTypeStr = src->getType()->toString();
 
     std::string format = DPI->getFormat();
     if (format == "console") {
@@ -2808,15 +2809,29 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *F = getFunction("dump_tensor_console");
       createCall(builder, F, {srcPtr, srcDims, srcDimsSize, srcElemKind, name});
 
+    } else if (format == "bin") {
+      // Dump tensor in file in binary format.
+      auto *F = getFunction("dump_tensor_bin");
+      auto *header = emitStringConst(builder, srcTypeStr);
+      createCall(builder, F, {srcPtr, srcSizeBytes, filename, header});
+
+    } else if (format == "txt") {
+      // Dump tensor in file in text format.
+      auto *F = getFunction("dump_tensor_txt", src->getElementType());
+      auto *header = emitStringConst(builder, srcTypeStr);
+      createCall(builder, F, {srcPtr, srcSize, filename, header});
+
     } else if (format == "rawbin") {
       // Dump tensor in file in raw binary format.
-      auto *F = getFunction("dump_tensor_rawbin");
-      createCall(builder, F, {srcPtr, srcSizeBytes, filename});
+      auto *F = getFunction("dump_tensor_bin");
+      auto *header = emitStringConst(builder, "");
+      createCall(builder, F, {srcPtr, srcSizeBytes, filename, header});
 
     } else if (format == "rawtxt") {
       // Dump tensor in file in raw text format.
-      auto *F = getFunction("dump_tensor_rawtxt", src->getElementType());
-      createCall(builder, F, {srcPtr, srcSize, filename});
+      auto *F = getFunction("dump_tensor_txt", src->getElementType());
+      auto *header = emitStringConst(builder, "");
+      createCall(builder, F, {srcPtr, srcSize, filename, header});
 
     } else {
       LOG(FATAL) << "Invalid 'Format' attribute for DebugPrint instruction!";

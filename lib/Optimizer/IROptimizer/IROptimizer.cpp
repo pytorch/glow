@@ -50,14 +50,16 @@ static llvm::cl::opt<std::string> instrumentDebugDir(
 static llvm::cl::opt<std::string> instrumentDebugFormat(
     "instrument-debug-format",
     llvm::cl::desc(
-        "The format of the IR debugging instrumentation:                    \n"
-        "- 'console': The tensors are dumped in text format in the console. \n"
-        "- 'rawbin': The tensors are dumped in raw binary format in separate\n"
-        "            files. The raw format implies that NO tensor meta data \n"
-        "            is dumped (e.g. tensor shape, type, layout).           \n"
-        "- 'rawtxt': The tensors are dumped in raw text format in separate  \n"
-        "            files. The raw format implies that NO tensor meta data \n"
-        "            is dumped (e.g. tensor shape, type, layout).\n"),
+        "The format of the IR debugging instrumentation:                     \n"
+        "- 'console': The tensors are dumped in text format in the console.  \n"
+        "- 'bin': The tensors are dumped in binary format in separate files. \n"
+        "         Each file will contain the tensor type and tensor data.    \n"
+        "- 'txt': The tensors are dumped in text format in separate files.   \n"
+        "         Each file will contain the tensor type and tensor data.    \n"
+        "- 'rawbin': The tensors are dumped in raw binary format in separate \n"
+        "            files. Each file will contain ONLY the tensor data.     \n"
+        "- 'rawtxt': The tensors are dumped in raw text format in separate   \n"
+        "            files. Each file will contain ONLY the tensor data.\n"),
     llvm::cl::init("console"), llvm::cl::Hidden);
 
 static llvm::cl::list<std::string> instrumentDebugOnly(
@@ -1552,11 +1554,13 @@ static bool performDebugInstrumentation(IRFunction &M) {
 
   // Debug format.
   std::string debugFormat = instrumentDebugFormat;
-  CHECK(debugFormat == "console" || debugFormat == "rawbin" ||
+  CHECK(debugFormat == "console" || debugFormat == "bin" ||
+        debugFormat == "txt" || debugFormat == "rawbin" ||
         debugFormat == "rawtxt")
-      << "Invalid debug IR instrumentation format! Only 'console', 'rawbin' "
-         "and 'rawtxt' formats are supported!";
-  std::string debugExt = (debugFormat == "rawbin") ? "bin" : "txt";
+      << "Invalid debug IR instrumentation format! Only the following formats "
+         "are supported: 'console', 'bin', 'txt', 'rawbin' and 'rawtxt'!";
+  std::string debugExt =
+      ((debugFormat == "bin") || (debugFormat == "rawbin")) ? "bin" : "txt";
   bool debugInfoWrite = (debugFormat != "console");
 
   // Open debug info file.
@@ -1617,6 +1621,7 @@ static bool performDebugInstrumentation(IRFunction &M) {
       const auto &op = I->getOperand(opIdx);
       const std::string opName = I->getOperandName(opIdx).str();
       const std::string opValueName = op.first->getName();
+      const std::string opTypeName = op.first->getType()->toString();
 
       // DebugPrint instruction name for this operand.
       std::string name = instrName;
@@ -1637,9 +1642,13 @@ static bool performDebugInstrumentation(IRFunction &M) {
           debugDir + llvm::sys::path::get_separator().str() + filename;
       if (debugInfoWrite) {
         unsigned spacing = std::max(opNameLenMax + 2, size_t(10));
-        std::string format = "[%d] %-" + std::to_string(spacing) + "s %s\n";
+        std::string format = "[%d] ";
+        format += "%-" + std::to_string(spacing) + "s ";
+        format += "%s    ";
+        format += "%s\n";
         debugInfoFile << strFormat(format.c_str(), opIdx,
-                                   (opName + ":").c_str(), filename.c_str());
+                                   (opName + ":").c_str(), filename.c_str(),
+                                   opTypeName.c_str());
       }
 
       // Dump inputs of the current instruction before the instruction.

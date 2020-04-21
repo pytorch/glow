@@ -119,15 +119,18 @@ static void libjit_dump_tensor_console_impl(ElemTy *tensor, dim_t *dims,
 }
 
 template <class ElemTy>
-static void libjit_dump_tensor_rawtxt_impl(ElemTy *tensor,
-                                           size_t tensorElemSize,
-                                           const char *filename) {
+static void libjit_dump_tensor_txt_impl(ElemTy *tensor, size_t tensorElemSize,
+                                        const char *filename,
+                                        const char *header) {
   FILE *fh = fopen(filename, "w");
   if (!fh) {
     printf("ERROR opening file: '%s'!\n"
            "File name might be too long!\n",
            filename);
     return;
+  }
+  if (strlen(header)) {
+    fprintf(fh, "%s\n", header);
   }
   for (size_t idx = 0, end = tensorElemSize; idx < end; idx++) {
     fprintf(fh, "%f, ", (double)tensor[idx]);
@@ -2686,12 +2689,13 @@ __attribute__((noinline)) void libjit_dump_tensor_console(uint8_t *tensor,
   puts("");
 }
 
-/// Function to dump a tensor in raw binary format in a file using the raw
-/// tensor data pointer \p tensor, the tensor data size \p tensorSize (in bytes)
-/// and the file name \p filename.
-__attribute__((noinline)) void libjit_dump_tensor_rawbin(uint8_t *tensor,
-                                                         size_t tensorSize,
-                                                         const char *filename) {
+/// Function to dump a tensor in binary format in a file using the raw tensor
+/// data pointer \p tensor, the tensor data size \p tensorSize (in bytes) and
+/// the file name \p filename. A text header \p header will also be dumped.
+__attribute__((noinline)) void libjit_dump_tensor_bin(uint8_t *tensor,
+                                                      size_t tensorSize,
+                                                      const char *filename,
+                                                      const char *header) {
   FILE *fh = fopen(filename, "wb");
   if (!fh) {
     printf("ERROR opening file: '%s'!\n"
@@ -2699,27 +2703,33 @@ __attribute__((noinline)) void libjit_dump_tensor_rawbin(uint8_t *tensor,
            filename);
     return;
   }
+  // Dump header.
+  fprintf(fh, "%s", header);
+  // Dump tensor data.
   size_t size = fwrite(tensor, 1, tensorSize, fh);
   assert((size == tensorSize) && "Error dumping tensor to file!");
   (void)size;
   fclose(fh);
 }
 
-/// Functions to dump a tensor in raw text format in a file using the raw
-/// tensor data pointer \p tensor, the tensor data size \p tensorElemSize
-/// (number of elements) and the file name \p filename.
-#define DEFINE_DUMP_TENSOR_RAWTXT_KERNEL(type, suffix)                         \
-  __attribute__((noinline)) void libjit_dump_tensor_rawtxt_##suffix(           \
-      uint8_t *tensor, size_t tensorElemSize, const char *filename) {          \
-    libjit_dump_tensor_rawtxt_impl((type *)tensor, tensorElemSize, filename);  \
+/// Functions to dump a tensor in text format in a file using the raw tensor
+/// data pointer \p tensor, the tensor data size \p tensorElemSize (number of
+/// elements) and the file name \p filename. A text header \p header will also
+/// be dumped.
+#define DEFINE_DUMP_TENSOR_TXT_KERNEL(type, suffix)                            \
+  __attribute__((noinline)) void libjit_dump_tensor_txt_##suffix(              \
+      uint8_t *tensor, size_t tensorElemSize, const char *filename,            \
+      const char *header) {                                                    \
+    libjit_dump_tensor_txt_impl((type *)tensor, tensorElemSize, filename,      \
+                                header);                                       \
   }
-DEFINE_DUMP_TENSOR_RAWTXT_KERNEL(float, f)
-DEFINE_DUMP_TENSOR_RAWTXT_KERNEL(int8_t, i8)
-DEFINE_DUMP_TENSOR_RAWTXT_KERNEL(int16_t, i16)
-DEFINE_DUMP_TENSOR_RAWTXT_KERNEL(int32_t, i32)
-DEFINE_DUMP_TENSOR_RAWTXT_KERNEL(int64_t, u)
-DEFINE_DUMP_TENSOR_RAWTXT_KERNEL(bool, b)
-#undef DEFINE_DUMP_TENSOR_RAWTXT_KERNEL
+DEFINE_DUMP_TENSOR_TXT_KERNEL(float, f)
+DEFINE_DUMP_TENSOR_TXT_KERNEL(int8_t, i8)
+DEFINE_DUMP_TENSOR_TXT_KERNEL(int16_t, i16)
+DEFINE_DUMP_TENSOR_TXT_KERNEL(int32_t, i32)
+DEFINE_DUMP_TENSOR_TXT_KERNEL(int64_t, u)
+DEFINE_DUMP_TENSOR_TXT_KERNEL(bool, b)
+#undef DEFINE_DUMP_TENSOR_TXT_KERNEL
 
 void libjit_write_timestamp(uint64_t *tensor, dim_t offset) {
   // We are using C++ timer here to a avoid issues with gettimeofday
