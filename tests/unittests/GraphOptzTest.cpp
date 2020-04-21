@@ -4509,7 +4509,10 @@ TEST_F(GraphOptz, SinkDequantizeBelowConcatTest) {
                                                 scale, offset, "input", false);
     bindings_.allocate(input)->getHandle<int8_t>().randomize(-100, 100,
                                                              mod_.getPRNG());
-    DequantizeNode *dequantize = F_->createDequantize("dequantize", input);
+    const TypeRef DQTy =
+        mod_.uniqueType(ElemKind::Float16Ty, input->getOutput().dims());
+    DequantizeNode *dequantize =
+        F_->createDequantize("dequantize", input, DQTy);
     inputs[i] = dequantize->getResult();
   }
   ConcatNode *concat = F_->createConcat("concat", inputs, 0);
