@@ -985,7 +985,7 @@ PyTorchModelLoader::getGlowIValueForValue(const torch::jit::Value *value) {
 glow::NodeValue PyTorchModelLoader::rescaleUIntToInt(glow::NodeValue input) {
   auto *inputTy = input.getType();
   if (inputTy->getElementType() == ElemKind::UInt8QTy) {
-    auto dqInput = F_.createDequantize("dequantize", input);
+    auto dqInput = F_.createDequantize("dequantize", input, ElemKind::FloatTy);
     auto *outputTy = F_.getParent()->uniqueType(
         ElemKind::Int8QTy, inputTy->dims(), inputTy->getScale(),
         inputTy->getOffset() - OFFSETSHIFT);
@@ -999,7 +999,7 @@ glow::NodeValue PyTorchModelLoader::rescaleUIntToInt(glow::NodeValue input) {
 glow::NodeValue PyTorchModelLoader::rescaleIntToUint(glow::NodeValue input) {
   auto *inputTy = input.getType();
   if (inputTy->getElementType() == ElemKind::Int8QTy) {
-    auto dqInput = F_.createDequantize("dequantize", input);
+    auto dqInput = F_.createDequantize("dequantize", input, ElemKind::FloatTy);
     auto *outputTy = F_.getParent()->uniqueType(
         ElemKind::UInt8QTy, inputTy->dims(), inputTy->getScale(),
         inputTy->getOffset() + OFFSETSHIFT);
@@ -2419,7 +2419,8 @@ Error PyTorchModelLoader::loadDequantize(const torch::jit::Node *ptNode) {
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
-  glow::DequantizeNode *dn = F_.createDequantize("dequantize", input);
+  glow::DequantizeNode *dn =
+      F_.createDequantize("dequantize", input, ElemKind::FloatTy);
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));

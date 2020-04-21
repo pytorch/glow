@@ -4276,7 +4276,7 @@ TEST_P(OperatorTest, ScatterDataQuantized) {
   auto *dataQ = F_->createQuantize("quantizeQ", data, dataTy);
   auto *slicesQ = F_->createQuantize("quantizeS", slices, slicesTy);
   auto *SA = F_->createScatterData("scatterdata", dataQ, indices, slicesQ);
-  auto *DQ = F_->createDequantize("dequantize", SA);
+  auto *DQ = F_->createDequantize("dequantize", SA, ElemKind::FloatTy);
 
   auto *result = F_->createSave("save", DQ);
   bindings_.allocate(result->getPlaceholder());
@@ -4430,7 +4430,7 @@ TEST_P(OperatorTest, ScatterAddQuantized) {
   auto *slicesQ = F_->createQuantize("quantizeS", slices, slicesTy);
   auto *SA = F_->createScatterData("scatteradd", dataQ, indices, slicesQ,
                                    /*Cumulative*/ true);
-  auto *DQ = F_->createDequantize("dequantize", SA);
+  auto *DQ = F_->createDequantize("dequantize", SA, ElemKind::FloatTy);
 
   auto *result = F_->createSave("save", DQ);
   bindings_.allocate(result->getPlaceholder());
@@ -4664,7 +4664,7 @@ TEST_P(OperatorTest, IntMatMul) {
 
   auto *matmulq = F_->createMatMul("matmul.q", resTy, lhsq, rhsq);
 
-  auto *rq = F_->createDequantize("dequant", matmulq);
+  auto *rq = F_->createDequantize("dequant", matmulq, ElemKind::FloatTy);
 
   auto *result = F_->createSave("save", rq);
   bindings_.allocate(result->getPlaceholder());
@@ -4717,7 +4717,7 @@ TEST_P(OperatorTest, IntBatchedArith) {
 
   auto *matmulq = F_->createBatchedAdd("add", resTy, lhsq, rhsq);
 
-  auto *rq = F_->createDequantize("dequant", matmulq);
+  auto *rq = F_->createDequantize("dequant", matmulq, ElemKind::FloatTy);
 
   auto *result = F_->createSave("save", rq);
   bindings_.allocate(result->getPlaceholder());
@@ -5242,12 +5242,12 @@ TEST_P(OperatorTest, QuantizedArithmeticRescaled) {
   div = F_->createRescaleQuantized("rescaleDiv", div, TO6);
 
   // Dequantize results back to floating-point.
-  max = F_->createDequantize("maxDQ", max);
-  min = F_->createDequantize("minDQ", min);
-  add = F_->createDequantize("addDQ", add);
-  sub = F_->createDequantize("subDQ", sub);
-  mul = F_->createDequantize("mulDQ", mul);
-  div = F_->createDequantize("divDQ", div);
+  max = F_->createDequantize("maxDQ", max, ElemKind::FloatTy);
+  min = F_->createDequantize("minDQ", min, ElemKind::FloatTy);
+  add = F_->createDequantize("addDQ", add, ElemKind::FloatTy);
+  sub = F_->createDequantize("subDQ", sub, ElemKind::FloatTy);
+  mul = F_->createDequantize("mulDQ", mul, ElemKind::FloatTy);
+  div = F_->createDequantize("divDQ", div, ElemKind::FloatTy);
 
   // Save results of the operations.
   auto *O1 = F_->createSave("saveMax", max);
@@ -5498,7 +5498,7 @@ TEST_P(OperatorTest, TestQuantizedRescaleSequence) {
   R = F_->createRescaleQuantized("R", R, T4);
   R = F_->createRescaleQuantized("R", R, T5);
   R = F_->createRescaleQuantized("R", R, T1);
-  auto *DQ = F_->createDequantize("DQ", R);
+  auto *DQ = F_->createDequantize("DQ", R, ElemKind::FloatTy);
 
   // Test a sequence of rescale operations t
   auto *result = F_->createSave("save", DQ);
@@ -5934,12 +5934,12 @@ TEST_P(OperatorTest, QuantizedTile) {
   auto *Q = F_->createQuantize("quantize", V, quantizeTy);
 
   Node *T0 = F_->createTile("tile0", Q, /* tiles */ 3, /* axis */ 0);
-  auto *DQ0 = F_->createDequantize("dequantize0", T0);
+  auto *DQ0 = F_->createDequantize("dequantize0", T0, ElemKind::FloatTy);
   auto *result0 = F_->createSave("res0", DQ0);
   bindings_.allocate(result0->getPlaceholder());
 
   Node *T1 = F_->createTile("tile1", Q, /* tiles */ 3, /* axis */ 1);
-  auto *DQ1 = F_->createDequantize("dequantize1", T1);
+  auto *DQ1 = F_->createDequantize("dequantize1", T1, ElemKind::FloatTy);
   auto *result1 = F_->createSave("res1", DQ1);
   bindings_.allocate(result1->getPlaceholder());
 
@@ -6327,7 +6327,8 @@ TEST_P(OperatorTest, IntRelu) {
   auto *reluOutTy =
       mod_.uniqueType(ElemKind::Int8QTy, {size}, rescaleScale, reluOffset);
   auto *relu = F_->createRELU("relu", rescale, reluOutTy);
-  auto *dequantize = F_->createDequantize("dequantize", relu);
+  auto *dequantize =
+      F_->createDequantize("dequantize", relu, ElemKind::FloatTy);
 
   auto *save = F_->createSave("save", dequantize);
   bindings_.allocate(mod_.getPlaceholders());
@@ -6357,7 +6358,7 @@ TEST_P(OperatorTest, IntSplat) {
   auto splatTy = mod_.uniqueType(ElemKind::Int8QTy, {size}, scale, offset);
   auto *splat = F_->createSplat("splat", splatTy, splatValue);
   auto *add = F_->createAdd("add", in, splat);
-  auto *dequantize = F_->createDequantize("dequantize", add);
+  auto *dequantize = F_->createDequantize("dequantize", add, ElemKind::FloatTy);
   auto *save = F_->createSave("save", dequantize);
 
   bindings_.allocate(in)->zero();
@@ -6901,7 +6902,8 @@ TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolution) {
       "channelwiseQuantizedConv", qInput, filter, bias, scales, offsets, outTy,
       {2, 1}, {1, 1}, {0, 0, 0, 0}, groups);
 
-  DequantizeNode *dq = F_->createDequantize("dequantize", CQC);
+  DequantizeNode *dq =
+      F_->createDequantize("dequantize", CQC, ElemKind::FloatTy);
   SaveNode *S = F_->createSave("save", dq);
   bindings_.allocate(S->getPlaceholder());
 
@@ -6987,7 +6989,8 @@ TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolution3D) {
           "channelwiseQuantizedConv", qInput, filter, bias, scales, offsets,
           outTy, {1, 1, 1}, {1, 1, 1}, {0, 0, 0, 0, 0, 0}, groups);
 
-  DequantizeNode *dq = F_->createDequantize("dequantize", CQC);
+  DequantizeNode *dq =
+      F_->createDequantize("dequantize", CQC, ElemKind::FloatTy);
   SaveNode *S = F_->createSave("save", dq);
   bindings_.allocate(S->getPlaceholder());
 
@@ -7114,7 +7117,8 @@ TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolutionNonZero) {
       "channelwiseQuantizedConv", qInput, filter, bias, scales, offsets, outTy,
       {2, 1}, {1, 1}, {0, 0, 0, 0}, groups);
 
-  DequantizeNode *dq = F_->createDequantize("dequantize", CQC);
+  DequantizeNode *dq =
+      F_->createDequantize("dequantize", CQC, ElemKind::FloatTy);
   SaveNode *S = F_->createSave("save", dq);
   bindings_.allocate(S->getPlaceholder());
 
@@ -8199,7 +8203,8 @@ TEST_P(OperatorTest, NonCubicKernelConv3DQuantized) {
 
   SaveNode *S = F_->createSave("save", CN);
 
-  DequantizeNode *deQ = F_->createDequantize("deQ_result", qCN);
+  DequantizeNode *deQ =
+      F_->createDequantize("deQ_result", qCN, ElemKind::FloatTy);
   SaveNode *qS = F_->createSave("save", deQ);
 
   bindings_.allocate(S->getPlaceholder());
@@ -8260,7 +8265,7 @@ static void Conv3DQuantizedTest(glow::PlaceholderBindings &bindings,
   Convolution3DNode *conv3dQ =
       F->createConv3D("Conv3DQ", inputQ, filterQ, biasQ, outQTy, {1, 2, 3},
                       {1, 1, 1}, {0, 0, 0, 0, 0, 0}, 1);
-  DequantizeNode *deQ = F->createDequantize("deQ", conv3dQ);
+  DequantizeNode *deQ = F->createDequantize("deQ", conv3dQ, ElemKind::FloatTy);
   SaveNode *saveQ = F->createSave("saveQ", deQ);
 
   // Allocate placeholders.
@@ -8758,7 +8763,7 @@ static void quantizedBatchAdd(ExecutionEngine &EE, Function *F,
   }
 
   Node *cc = F->createConcat("concat", adds, 0, qInType);
-  cc = F->createDequantize("dq", cc);
+  cc = F->createDequantize("dq", cc, ElemKind::FloatTy);
   auto *result = F->createSave("save", cc);
   bindings.allocate(result->getPlaceholder());
 
@@ -11864,7 +11869,7 @@ static void quantizeSimpleTest(glow::PlaceholderBindings &bindings_,
       F_->createQuantize("quant", input, mod_.uniqueType(QTy, {1, 1}, 0.25, 4));
   auto *RS = F_->createRescaleQuantized("rescale", Q,
                                         mod_.uniqueType(QTy, {1, 1}, 0.5, 11));
-  auto *D = F_->createDequantize("dequantize", RS);
+  auto *D = F_->createDequantize("dequantize", RS, ElemKind::FloatTy);
   auto *save = F_->createSave("ret", D);
   auto *result = bindings_.allocate(save->getPlaceholder());
 

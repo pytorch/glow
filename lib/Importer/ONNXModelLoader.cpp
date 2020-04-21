@@ -2971,7 +2971,7 @@ Error ONNXModelLoader::loadDequantize(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
-  Node *N = G_->createDequantize(loadOperatorName(op), in);
+  Node *N = G_->createDequantize(loadOperatorName(op), in, ElemKind::FloatTy);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();

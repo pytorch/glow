@@ -2332,11 +2332,11 @@ QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
 }
 
 DequantizeNode *Function::createDequantize(llvm::StringRef name,
-                                           NodeValue input) {
+                                           NodeValue input, ElemKind k) {
   assert(input.getType()->isQuantizedType() &&
          "Input must be a quantized type");
-  TypeRef outTy =
-      getParent()->uniqueType(Type(ElemKind::FloatTy, input.dims()));
+  assert(isFloatElemKind(k) && "Result must be float type.");
+  TypeRef outTy = getParent()->uniqueType(Type(k, input.dims()));
   return createDequantize(name, input, outTy);
 }
 

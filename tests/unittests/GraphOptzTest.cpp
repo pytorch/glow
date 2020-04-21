@@ -927,7 +927,7 @@ TEST_F(GraphOptz, SinkTransposeBelowDequantize) {
       "quantize", in, mod_.uniqueType(ElemKind::Int8QTy, in->dims(), 0.01, 2));
   auto *tile = F_->createTile("tile", quantize, 3, 0);
   auto *transpose = F_->createTranspose("transpose", tile, NHWC2NCHW);
-  auto *deq = F_->createDequantize("dequantize", transpose);
+  auto *deq = F_->createDequantize("dequantize", transpose, ElemKind::FloatTy);
   SaveNode *O = F_->createSave("out", deq);
 
   optimizedF_ = optimizeFunction(F_);
@@ -2147,7 +2147,7 @@ TEST_F(GraphOptz, foldDequantizeIntoSplat) {
   const float splatVal = 6.0;
   SplatNode *SN = F_->createSplat("splat", qType, splatVal);
 
-  DequantizeNode *Q = F_->createDequantize("dequantize", SN);
+  DequantizeNode *Q = F_->createDequantize("dequantize", SN, ElemKind::FloatTy);
   SaveNode *S = F_->createSave("save", Q);
 
   // Splat, dequantize, save.
@@ -2224,7 +2224,7 @@ TEST_F(GraphOptz, mergeRescaleIntoDequantize) {
                                        "input", true);
   auto *qType = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.03f, 5);
   auto *R = F_->createRescaleQuantized("rescale", input, qType);
-  auto *D = F_->createDequantize("dequantize", R);
+  auto *D = F_->createDequantize("dequantize", R, ElemKind::FloatTy);
   F_->createSave("ret", D);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -2248,7 +2248,7 @@ TEST_F(GraphOptz, quantizeToRescale) {
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
                                        "input", true);
 
-  auto *D = F_->createDequantize("dequantize", input);
+  auto *D = F_->createDequantize("dequantize", input, ElemKind::FloatTy);
 
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.03, 5);
   auto *Q = F_->createQuantize("quantize", D, qType);
@@ -4188,7 +4188,7 @@ static void testOptimizeDequantizeClip(PlaceholderBindings &bindings,
       F->createQuantize("quantize", input,
                         mod.uniqueType(ElemKind::Int8QTy, {20, 20},
                                        qParams.scale, qParams.offset));
-  DequantizeNode *DN = F->createDequantize("dequantize", QN);
+  DequantizeNode *DN = F->createDequantize("dequantize", QN, ElemKind::FloatTy);
   ClipNode *CN =
       F->createClip("clip", DN, enableQuantParamChanges ? 0 : -100, 100);
   SaveNode *SN = F->createSave("save", CN);
@@ -4248,7 +4248,7 @@ static void testOptimizeClipQuantize(PlaceholderBindings &bindings, Module &mod,
       F->createQuantize("quantize", CN,
                         mod.uniqueType(ElemKind::Int8QTy, {20, 20},
                                        qParams.scale, qParams.offset));
-  DequantizeNode *DN = F->createDequantize("dequantize", QN);
+  DequantizeNode *DN = F->createDequantize("dequantize", QN, ElemKind::FloatTy);
   SaveNode *SN = F->createSave("save", DN);
 
   CompilationContext cctx;
@@ -4304,7 +4304,8 @@ TEST_F(GraphOptz, OptimizeOutIntermediateConversionsTest) {
       F_->createQuantize("quantize", CN,
                          mod_.uniqueType(ElemKind::Int8QTy, {20, 20},
                                          qParams.scale, qParams.offset));
-  DequantizeNode *DN = F_->createDequantize("dequantize", QN);
+  DequantizeNode *DN =
+      F_->createDequantize("dequantize", QN, ElemKind::FloatTy);
   F_->createSave("save", DN);
 
   optimizedF_ =
@@ -4363,7 +4364,7 @@ TEST_F(GraphOptz, OptimizeQuantFCFloatReluTest) {
   auto *bias = mod_.createConstant(ElemKind::Int32QTy, {32}, 1.0, 0, "bias");
 
   auto *FC = F_->createFullyConnected("fc", input, weights, bias);
-  auto *DN = F_->createDequantize("dq", FC);
+  auto *DN = F_->createDequantize("dq", FC, ElemKind::FloatTy);
   auto *RN = F_->createRELU("relu", DN);
   auto *SN = F_->createSave("save", RN);
 
@@ -4407,7 +4408,7 @@ TEST_F(GraphOptz, OptimizeConcatQuantFCFloatReluTest) {
     auto *bias = mod_.createConstant(ElemKind::Int32QTy, {32}, 1.0, 0, "bias");
 
     auto *FC = F_->createFullyConnected("fc", input, weights, bias);
-    DQs[i] = F_->createDequantize("dq", FC)->getResult();
+    DQs[i] = F_->createDequantize("dq", FC, ElemKind::FloatTy)->getResult();
 
     bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127,
                                                              mod_.getPRNG());
@@ -4456,7 +4457,8 @@ TEST_F(GraphOptz, OptimizeDequantConcatQuant) {
   for (size_t i = 0; i < 5; i++) {
     inputs[i] = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32},
                                        0.3 / (i + 1), 5, "input", false);
-    DQs[i] = F_->createDequantize("dq", inputs[i])->getResult();
+    DQs[i] =
+        F_->createDequantize("dq", inputs[i], ElemKind::FloatTy)->getResult();
 
     bindings_.allocate(inputs[i])->getHandle<int8_t>().randomize(
         -128, 127, mod_.getPRNG());
@@ -4509,10 +4511,8 @@ TEST_F(GraphOptz, SinkDequantizeBelowConcatTest) {
                                                 scale, offset, "input", false);
     bindings_.allocate(input)->getHandle<int8_t>().randomize(-100, 100,
                                                              mod_.getPRNG());
-    const TypeRef DQTy =
-        mod_.uniqueType(ElemKind::Float16Ty, input->getOutput().dims());
     DequantizeNode *dequantize =
-        F_->createDequantize("dequantize", input, DQTy);
+        F_->createDequantize("dequantize", input, ElemKind::Float16Ty);
     inputs[i] = dequantize->getResult();
   }
   ConcatNode *concat = F_->createConcat("concat", inputs, 0);
