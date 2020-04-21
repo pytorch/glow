@@ -794,7 +794,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "Int8Dequantize") {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto *node = G_->createDequantize(opName, in);
+    auto *node = G_->createDequantize(opName, in, ElemKind::FloatTy);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }

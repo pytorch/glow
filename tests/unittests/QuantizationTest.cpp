@@ -426,7 +426,8 @@ void quantizeScalarTest(float val, ElemKind qTy, quantization::Schema schema) {
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1}, "val", false);
   auto inputQTy = mod.uniqueType(qTy, {1}, TQP.scale, TQP.offset);
   QuantizeNode *quant = F->createQuantize("quant", input, inputQTy);
-  DequantizeNode *dequant = F->createDequantize("dequant", quant);
+  DequantizeNode *dequant =
+      F->createDequantize("dequant", quant, ElemKind::FloatTy);
   SaveNode *save = F->createSave("save", dequant);
 
   // Allocate placeholders, set input, run, get output
@@ -1385,7 +1386,7 @@ TEST(Quantization, rescaleSameType) {
 
   auto *Q = F->createRescaleQuantized(
       "rescale", input, mod.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.5, 11));
-  auto *D = F->createDequantize("dequantize", Q);
+  auto *D = F->createDequantize("dequantize", Q, ElemKind::FloatTy);
   auto *save = F->createSave("ret", D);
   auto *result = bindings.allocate(save->getPlaceholder());
 
@@ -1413,7 +1414,7 @@ TEST(Quantization, optimizeRescaleQuantize) {
       "quant", input, mod.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.25, 4));
   auto *RS = F->createRescaleQuantized(
       "rescale", Q, mod.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.5, 11));
-  auto *D = F->createDequantize("dequantize", RS);
+  auto *D = F->createDequantize("dequantize", RS, ElemKind::FloatTy);
   auto *save = F->createSave("ret", D);
   auto *result = bindings.allocate(save->getPlaceholder());
 
@@ -1576,7 +1577,7 @@ TEST(Quantization, reluCanUseSymmetricSchema) {
                         mod.uniqueType(ElemKind::Int8QTy, {10},
                                        inputParams.scale, inputParams.offset));
   ReluNode *RN = F->createRELU("relu", QN, reluTy);
-  DequantizeNode *DN = F->createDequantize("dequantize", RN);
+  DequantizeNode *DN = F->createDequantize("dequantize", RN, ElemKind::FloatTy);
   SaveNode *SN = F->createSave("save", DN);
   auto *res = bindings.allocate(SN->getPlaceholder());
 

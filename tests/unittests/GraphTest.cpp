@@ -595,7 +595,7 @@ TEST(Graph, quantizeDequantizeNodes) {
       F->getParent()->uniqueType(ElemKind::Int8QTy, {1, 3}, 1.4, 3);
   auto *A = F->createRescaleQuantized("rescale", Q, transform);
 
-  auto *D = F->createDequantize("dequantize", A);
+  auto *D = F->createDequantize("dequantize", A, ElemKind::FloatTy);
   PlaceholderBindings bindings;
   F->createSave("ret", D);
   EE.compile(CompilationMode::Infer);

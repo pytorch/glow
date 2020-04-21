@@ -780,7 +780,7 @@ TEST_F(HabanaBackendTest, QuantizedFC) {
   auto *fc = F_->createFullyConnected(
       "fc", qInput, qWeights, qBias,
       mod_.uniqueType(ElemKind::Int8QTy, {2, 32}, 1.0, 0));
-  auto *dq = F_->createDequantize("dq", fc);
+  auto *dq = F_->createDequantize("dq", fc, ElemKind::FloatTy);
   F_->createSave("save", dq, output);
 
   ctx_.allocate(input)->getHandle<float>().clear(1);
@@ -815,7 +815,7 @@ TEST_F(HabanaBackendTest, QuantizedNonZeroOffset) {
 
   auto *matmulq = F_->createSub("sub.q", resTy, lhsq, rhsq);
 
-  auto *rq = F_->createDequantize("dequant", matmulq);
+  auto *rq = F_->createDequantize("dequant", matmulq, ElemKind::FloatTy);
 
   auto *result = F_->createSave("save", rq);
   ctx_.allocate(result->getPlaceholder());

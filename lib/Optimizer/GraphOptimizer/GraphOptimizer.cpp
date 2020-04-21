@@ -3728,7 +3728,8 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
       // Dequantize(rescale) -> Dequantize()
       if (auto *RS = dyn_cast<RescaleQuantizedNode>(DQ->getInput())) {
         changed = true;
-        auto *newRS = F->createDequantize(DQ->getName(), RS->getInput());
+        auto *newRS = F->createDequantize(DQ->getName(), RS->getInput(),
+                                          DQ->getResult().getType());
         DQ->getResult().replaceAllUsesOfWith(newRS);
 
         // We may be able to optimize this rescale node. Remember to visit
