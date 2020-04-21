@@ -362,7 +362,7 @@ DEFINE_validator(glow_nnpi_memory, [](const char *flagname, int32_t value) {
 });
 #endif
 
-DEFINE_bool(glow_log_partition, false, "Enable logging partition info");
+DEFINE_bool(glow_log_partition, true, "Enable logging partition info");
 DEFINE_validator(glow_log_partition, [](const char * /*unused*/, bool value) {
   glow::GlowLogPartition = value;
   return true;

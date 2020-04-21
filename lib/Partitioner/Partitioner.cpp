@@ -79,11 +79,10 @@ Error Partitioner::finalize(const DAGListTy &partitions,
   // needs the backend specific verifier. Tensor layouts, for example, might
   // have gone from canonical form to backend specific form.
 
-  LOG(INFO) << "The number of partitions is : "
-            << module_->getFunctions().size() << "\n";
-
   if (logPartition) {
-    LOG(INFO) << "Dumping partitioning DAG to DAG.dot file.\n";
+    LOG(INFO) << "The number of partitions is : "
+              << module_->getFunctions().size();
+    LOG(INFO) << "Dumping partitioning DAG to DAG.dot file.";
     dumpDAG("DAG.dot", partitions);
     logPartitionInfo(mapping);
   }
