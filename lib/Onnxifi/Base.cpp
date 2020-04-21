@@ -445,7 +445,6 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
         Placeholder *outPhPtr;
         if (outputsCount == onnxOutputNames_.size() &&
             onnxOutputNames_[i] == outOnnxTensor.name) {
-          CHECK(onnxOutputNames_[i] != outOnnxTensor.name);
           outPhPtr = onnxOutputPlaceholders_[i];
         } else {
           auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);
