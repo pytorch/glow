@@ -370,7 +370,8 @@ bool SinkConversions::run(Function *F, const CompilationContext &cctx) {
       }
 
       DequantizeNode *newDequantize =
-          F->createDequantize(CN->getName().str() + "_dequantize", newCN);
+          F->createDequantize(CN->getName().str() + "_dequantize", newCN,
+                              CN->getResult().getType());
 
       CN->getResult().replaceAllUsesOfWith(newDequantize->getResult());
       changed = true;
