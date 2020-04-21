@@ -14,6 +14,7 @@
  */
 
 #include "NNPIResource.h"
+#include "InferenceContext.h"
 #include "NNPIUtils.h"
 #include "nnpi_inference.h"
 #include <fstream>
@@ -85,6 +86,21 @@ static void DumpToFile(const std::string &filename, void *data, size_t size) {
 namespace glow {
 namespace runtime {
 
+static std::shared_ptr<NNPIResource>
+findResourceForDevice(const ResourceUsers &users, NNPIDeviceContext device) {
+  for (auto reader : users.readers) {
+    if (reader && reader->getDevice() == device) {
+      return reader;
+    }
+  }
+  for (auto writer : users.writers) {
+    if (writer && writer->getDevice() == device) {
+      return writer;
+    }
+  }
+  return nullptr;
+}
+
 NNPIResource::NNPIResource() {
   adapter_ = NNPI_INVALID_NNPIHANDLE;
   device_ = NNPI_INVALID_NNPIHANDLE;
@@ -98,6 +114,9 @@ NNPIResource::NNPIResource() {
   usage_ = ResourceUsage::None;
   deviceOptions_ = nullptr;
   cmdListIdx_ = UINT32_MAX;
+  ownsDeviceResource_ = true;
+  p2pDevice_ = NNPI_INVALID_NNPIHANDLE;
+  p2pDeviceResource_ = NNPI_INVALID_NNPIHANDLE;
 }
 
 NNPIResource::~NNPIResource() {
@@ -105,7 +124,7 @@ NNPIResource::~NNPIResource() {
     LOG_NNPI_INF_IF_ERROR(nnpiCopyCommandDestroy(copyCommand_),
                           "Failed to destroy NNPI copy command");
   }
-  if (deviceResource_ != NNPI_INVALID_NNPIHANDLE) {
+  if (ownsDeviceResource_ && (deviceResource_ != NNPI_INVALID_NNPIHANDLE)) {
     LOG_NNPI_INF_IF_ERROR(nnpiDeviceResourceDestroy(deviceResource_),
                           "Failed to destroy NNPI device resource");
   }
@@ -121,7 +140,8 @@ bool NNPIResource::init(const NNPIObjectName name,
                         std::shared_ptr<NNPIDeviceOptions> deviceOptions,
                         NNPIAdapter adapter, NNPIDeviceContext device,
                         const NNPIResourceDesc *desc,
-                        NNPIResource::ResourceUsage usage) {
+                        NNPIResource::ResourceUsage usage,
+                        PlaceholderUsageMap *phUsage) {
   if (name == nullptr || desc == nullptr || deviceOptions == nullptr) {
     return false;
   }
@@ -150,6 +170,29 @@ bool NNPIResource::init(const NNPIObjectName name,
     return true;
   }
 
+  if (deviceOptions_->disableDRT) {
+    switch (usage_) {
+    case ResourceUsage::DRTInput:
+      usage_ = ResourceUsage::InputResource;
+      break;
+    case ResourceUsage::DRTOutput:
+      usage_ = ResourceUsage::OutputResource;
+      break;
+    default:; // Do nothing.
+    }
+  }
+  if (deviceOptions_->disableP2P) {
+    switch (usage_) {
+    case ResourceUsage::P2PInput:
+      usage_ = ResourceUsage::InputResource;
+      break;
+    case ResourceUsage::P2POutput:
+      usage_ = ResourceUsage::OutputResource;
+      break;
+    default:; // Do nothing.
+    }
+  }
+
   // Create host resource (pinned and aligned allocation).
   NNPIResourceDesc hostResDesc =
       desc_; // Make a copy of the desc to overwrite attributes.
@@ -157,8 +200,9 @@ bool NNPIResource::init(const NNPIObjectName name,
     hostResDesc.hostAttrib.locklessExecution =
         1; // Set host resource to lockless.
   }
-  if (usage != ResourceUsage::StaticInputResource) {
-    // No host resource needed for static inputs.
+  switch (usage_) {
+  case ResourceUsage::InputResource:
+  case ResourceUsage::OutputResource:
     LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
         nnpiHostResourceCreate(adapter_, &hostResDesc, &hostResource_),
         "Failed to create NNPI host resource");
@@ -171,12 +215,83 @@ bool NNPIResource::init(const NNPIObjectName name,
     memset(hostPtr_, 0,
            CalcDescSize(&desc_)); // Clear host resource to zero for compile
                                   // only path (USE_ICE_T).
+    break;
+  case ResourceUsage::StaticInputResource:
+  case ResourceUsage::P2PInput:
+  case ResourceUsage::P2POutput:
+  case ResourceUsage::DRTInput:
+  case ResourceUsage::DRTOutput:
+    // No host resource is needed
+    break;
+  default:
+    LOG_AND_RETURN_IF_NOT(ERROR, 0, "Invalid usage", false);
   }
 
   // Create device resource.
-  LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
-      nnpiDeviceResourceCreate(device_, &desc_, &deviceResource_),
-      "Failed to create NNPI device resource");
+  bool allocateDeviceResource = false;
+
+  ResourceUsers *users = nullptr;
+  shared_ptr<NNPIResource> sharedResource = nullptr;
+  if (phUsage) {
+    users = &(phUsage->at(name_));
+    LOG_AND_RETURN_IF_NOT(ERROR, users, "Invalid resource users", false);
+    sharedResource = findResourceForDevice(*users, device_);
+  }
+
+  switch (usage_) {
+  case ResourceUsage::InputResource:
+  case ResourceUsage::OutputResource:
+    // Normal create.
+    allocateDeviceResource = true;
+    break;
+
+  case ResourceUsage::StaticInputResource:
+  case ResourceUsage::DRTInput:
+    // Potential shared (allocate if doesnt exist).
+    if (sharedResource) {
+      // If exists on device - share it.
+      deviceResource_ = sharedResource->getDeviceResource();
+      ownsDeviceResource_ = false;
+      allocateDeviceResource = false;
+    } else {
+      allocateDeviceResource = true;
+    }
+    break;
+
+  case ResourceUsage::P2PInput:
+    // Create p2p input.
+    desc_.deviceAttrib.p2pUsage = NNPI_P2P_USAGE_DST;
+    desc_.deviceAttrib.p2pDepth = 1;
+    allocateDeviceResource = true;
+    break;
+
+  case ResourceUsage::P2POutput:
+    // Create p2p output.
+    desc_.deviceAttrib.p2pUsage = NNPI_P2P_USAGE_SRC;
+    desc_.deviceAttrib.p2pDepth = 1;
+    allocateDeviceResource = true;
+    break;
+
+  case ResourceUsage::DRTOutput:
+    // Must be shared (creation order maintains readers allocated before
+    // writers).
+    LOG_AND_RETURN_IF_NOT(
+        ERROR, sharedResource,
+        "Missing DRT resource (should have been created already)", false);
+    deviceResource_ = sharedResource->getDeviceResource();
+    ownsDeviceResource_ = false;
+    allocateDeviceResource = false;
+    break;
+
+  default:
+    LOG_AND_RETURN_IF_NOT(ERROR, 0, "Invalid usage", false);
+  }
+
+  if (allocateDeviceResource) {
+    LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
+        nnpiDeviceResourceCreate(device_, &desc_, &deviceResource_),
+        "Failed to create NNPI device resource");
+  }
 
   // Create copy command.
   switch (usage_) {
@@ -192,8 +307,40 @@ bool NNPIResource::init(const NNPIObjectName name,
                                           deviceResource_, &copyCommand_),
         "Failed to create NNPI copy command (output)");
     break;
+  case ResourceUsage::P2POutput:
+    LOG_AND_RETURN_IF_NOT(ERROR, users, "Missing resource users", false);
+    for (auto reader : users->readers) {
+      if (reader && reader->getDevice() != device) {
+        p2pDevice_ = reader->getDevice();
+        p2pDeviceResource_ = reader->getDeviceResource();
+      }
+    }
+    LOG_AND_RETURN_IF_NOT(ERROR,
+                          (p2pDevice_ != NNPI_INVALID_NNPIHANDLE) &&
+                              (p2pDeviceResource_ != NNPI_INVALID_NNPIHANDLE),
+                          "Can't find p2p counterpart", false);
+    LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
+        nnpiCopyCommandCreateDeviceToDevice(p2pDevice_, p2pDeviceResource_,
+                                            device_, deviceResource_,
+                                            &copyCommand_),
+        "Failed to create NNPI copy command (p2p output)");
+    break;
+  case ResourceUsage::P2PInput:
+    // The device resource is copied by the writer in the
+    // preceding context.
+    break;
   case ResourceUsage::StaticInputResource:
-    // Fallthrough.
+    // The device resource doesn't need to be updated before
+    // inference.
+    break;
+  case ResourceUsage::DRTInput:
+    // The device resource doesn't need to be updated before
+    // inference.
+    break;
+  case ResourceUsage::DRTOutput:
+    // The device resource doesn't need to be updated before
+    // inference.
+    break;
   case ResourceUsage::None:
     // Do nothing - no copy command needed.
     break;
@@ -202,10 +349,11 @@ bool NNPIResource::init(const NNPIObjectName name,
     return false;
   }
 
+  DBG(__FUNCTION__ << dump());
   return true;
 }
 
-NNPIInferenceErrorCode NNPIResource::PreInference(Tensor *t,
+NNPIInferenceErrorCode NNPIResource::preInference(Tensor *t,
                                                   bool partialTensor) {
   if (usage_ != ResourceUsage::InputResource) {
     // Nothing to do here yet.
@@ -244,7 +392,7 @@ NNPIInferenceErrorCode NNPIResource::PreInference(Tensor *t,
   return NNPI_INF_NO_ERROR;
 }
 
-NNPIInferenceErrorCode NNPIResource::PostInference(Tensor *t) {
+NNPIInferenceErrorCode NNPIResource::postInference(Tensor *t) {
   if (usage_ != ResourceUsage::OutputResource) {
     // Nothing to do here yet.
     return NNPI_INF_NO_ERROR;
@@ -285,7 +433,7 @@ NNPIInferenceErrorCode NNPIResource::PostInference(Tensor *t) {
   return NNPI_INF_NO_ERROR;
 }
 
-bool NNPIResource::UpdateResourceDescFromTensorDesc(
+bool NNPIResource::updateResourceDescFromTensorDesc(
     NNPIResourceDesc *rDesc, const NNPITensorDesc *tDesc) {
   if (tDesc == nullptr || rDesc == nullptr) {
     return false;
@@ -325,7 +473,7 @@ bool NNPIResource::UpdateResourceDescFromTensorDesc(
   return true;
 }
 
-void NNPIResource::UpdateDeviceResourceFromTensor(
+void NNPIResource::updateDeviceResourceFromTensor(
     Tensor *t, std::function<void(Error)> resultCB) {
   LOG_AND_FAIL_CALLBACK_IF_NOT(
       t != nullptr, "Invalid tensor used to update static input", resultCB);
@@ -333,10 +481,12 @@ void NNPIResource::UpdateDeviceResourceFromTensor(
   LOG_AND_FAIL_CALLBACK_IF_NOT(updateHostResourceFromTensor(t, false),
                                "Invalid Static placeholder", resultCB);
 
-  LOG_NNPI_INF_IF_ERROR(nnpiDeviceResourceSubLoad(deviceResource_, 0,
-                                                  t->getUnsafePtr(),
-                                                  t->getSizeInBytes()),
-                        "Failed to execute device resource sub load");
+  if (deviceOptions_->inferOnDevice) {
+    LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
+        nnpiDeviceResourceSubLoad(deviceResource_, 0, t->getUnsafePtr(),
+                                  t->getSizeInBytes()),
+        "Failed to execute device resource sub load", resultCB);
+  }
 
   resultCB(Error::success());
 }
@@ -356,9 +506,10 @@ bool NNPIResource::updateHostResourceFromTensor(Tensor *t, bool partialTensor) {
     LOG_AND_RETURN_IF(ERROR, partialData,
                       "Static placeholders are not allowed to do partial copy",
                       false);
-
-    // nothing else to do for static placeholders.
-    return true;
+    if (deviceOptions_->inferOnDevice) {
+      // nothing else to do for static placeholders when running on device
+      return true;
+    }
   }
 
   if (downcastInt64) {
@@ -398,9 +549,9 @@ bool NNPIResource::updateHostResourceFromTensor(Tensor *t, bool partialTensor) {
   return true;
 }
 
-std::string NNPIResource::Dump() const {
+std::string NNPIResource::dump() const {
   std::stringstream stream;
-  stream << "NNPIResource: " << name_;
+  stream << "NNPIResource: \"" << name_ << '"';
   stream << ", DescSize: " << CalcDescSize(&desc_);
   stream << ", Usage: " << static_cast<int>(usage_);
   stream << ", Adapter: " << adapter_;
@@ -411,6 +562,9 @@ std::string NNPIResource::Dump() const {
   stream << ", CopyCommand: " << copyCommand_;
   stream << ", CommandListIndex: " << cmdListIdx_;
   stream << ", PartialSize: " << partialSize_;
+  stream << ", ownsDeviceResource: " << ownsDeviceResource_;
+  stream << ", p2pDevice: " << p2pDevice_;
+  stream << ", p2pDeviceResource: " << p2pDeviceResource_;
   return stream.str();
 }
 

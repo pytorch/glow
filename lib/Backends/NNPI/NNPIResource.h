@@ -27,6 +27,15 @@ class Tensor;
 
 namespace runtime {
 
+class NNPIResource;
+struct ResourceUsers {
+  unsigned numReaders = 0, numWriters = 0;
+  std::vector<std::shared_ptr<NNPIResource>> writers;
+  std::vector<std::shared_ptr<NNPIResource>> readers;
+  std::unordered_set<NNPIDeviceContext> devices;
+};
+using PlaceholderUsageMap = std::unordered_map<std::string, ResourceUsers>;
+
 /// This class Holds metadata for an inference resource.
 class NNPIResource {
 public:
@@ -36,6 +45,10 @@ public:
     InputResource,
     OutputResource,
     StaticInputResource,
+    P2PInput,
+    P2POutput,
+    DRTInput,
+    DRTOutput,
   };
 
   /// Constructor.
@@ -46,41 +59,45 @@ public:
   /// handle.
   NNPIResource(const NNPIResource &) = delete;
   /// Update a device resource contents from a provided tensor.
-  void UpdateDeviceResourceFromTensor(Tensor *t,
+  void updateDeviceResourceFromTensor(Tensor *t,
                                       std::function<void(Error)> resultCB);
 
   /// Initialize a resource.
   bool init(const NNPIObjectName name,
             std::shared_ptr<NNPIDeviceOptions> deviceOptions,
             NNPIAdapter adapter, NNPIDeviceContext device,
-            const NNPIResourceDesc *desc, ResourceUsage usage);
+            const NNPIResourceDesc *desc, ResourceUsage usage,
+            PlaceholderUsageMap *phUsage = nullptr);
 
   /// Pre-inference processing on the resource.
-  NNPIInferenceErrorCode PreInference(Tensor *t, bool partialTensor);
+  NNPIInferenceErrorCode preInference(Tensor *t, bool partialTensor);
   /// Post-inference processing on the resource.
-  NNPIInferenceErrorCode PostInference(Tensor *t);
+  NNPIInferenceErrorCode postInference(Tensor *t);
 
   /// Getters.
-  inline const NNPIObjectName &GetName() const { return name_; }
-  inline NNPIDeviceContext GetDevice() const { return device_; }
-  inline const NNPIResourceDesc &GetDesc() const { return desc_; }
-  inline NNPIDeviceResource GetDeviceResource() const {
+  inline const NNPIObjectName &getName() const { return name_; }
+  inline NNPIDeviceContext getDevice() const { return device_; }
+  inline const NNPIResourceDesc &getDesc() const { return desc_; }
+  inline NNPIDeviceResource getDeviceResource() const {
     return deviceResource_;
   }
-  inline NNPIHostResource GetHostResource() const { return hostResource_; }
-  inline void *GetHostPtr() const { return hostPtr_; }
-  inline NNPICopyCommand GetCopyCommand() const { return copyCommand_; }
-  inline uint32_t GetCmdListIdx() const { return cmdListIdx_; }
-  inline void SetCmdListIdx(uint32_t idx) { cmdListIdx_ = idx; }
-  inline uint64_t GetPartialSize() const { return partialSize_; }
-  inline ResourceUsage GetUsage() const { return usage_; }
+  inline NNPIHostResource getHostResource() const { return hostResource_; }
+  inline void *getHostPtr() const { return hostPtr_; }
+  inline NNPICopyCommand getCopyCommand() const { return copyCommand_; }
+  inline uint32_t getCmdListIdx() const { return cmdListIdx_; }
+  inline void setCmdListIdx(uint32_t idx) { cmdListIdx_ = idx; }
+  inline uint64_t getPartialSize() const { return partialSize_; }
+  inline ResourceUsage getUsage() const { return usage_; }
+  inline NNPIDeviceResource getP2PDeviceResource() const {
+    return p2pDeviceResource_;
+  }
 
   /// Update a given NNPIResourceDesc struct from the data in an NNPITensorDesc
   /// struct.
-  static bool UpdateResourceDescFromTensorDesc(NNPIResourceDesc *rDesc,
+  static bool updateResourceDescFromTensorDesc(NNPIResourceDesc *rDesc,
                                                const NNPITensorDesc *tDesc);
-  /// Dump the state of a resource object
-  std::string Dump() const;
+  /// Dump the state of a resource object.
+  std::string dump() const;
 
 private:
   NNPIAdapter adapter_;      // This handle isn't owned by the object.
@@ -96,6 +113,11 @@ private:
   std::shared_ptr<NNPIDeviceOptions> deviceOptions_;
   std::vector<uint8_t> refStorage_;
   uint32_t cmdListIdx_;
+  bool ownsDeviceResource_; // Used for DRT (only one NNPIResource will own the
+                            // device resource)
+  NNPIDeviceContext p2pDevice_; // the other device used in p2p
+  NNPIDeviceResource
+      p2pDeviceResource_; // the resource on the other device used in p2p.
 
   /// Update the owned host resource with data taken from the given tensor.
   // return true when successfull, false otherwise.

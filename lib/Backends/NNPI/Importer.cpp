@@ -60,10 +60,6 @@ glow::NNPIImporter::NNPIImporter(const NNPICompilationOptions &compileOptions)
       compileOptions_(compileOptions) {
   ASSERT_LOG_NNPI_ERROR(nnpiNetworkCreate(&network_),
                         "Failed to create NNPI network");
-  // Setting the network name for testing framework purposes.
-  ASSERT_LOG_NNPI_ERROR(
-      nnpiNetworkSetName(network_, compileOptions_.compiledFile.get().c_str()),
-      "Failed to set NNPI network name");
 }
 
 /// Destructor.
@@ -1251,7 +1247,8 @@ public:
         nodeValueName(glowSLS->getResult()).c_str(), NULL,
         nodeValueName(glowSLS->getIndices()).c_str(),
         nodeValueName(glowSLS->getLengths()).c_str(), false, false,
-        glowSLS->getAvgLength(), lengthType);
+        glowSLS->getAvgLength(), lengthType,
+        /* force to IA */ false);
   }
 };
 
@@ -1284,7 +1281,8 @@ public:
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
         nodeValueName(glowSLWS->getLengths()).c_str(), false, false,
-        glowSLWS->getAvgLength(), lengthType);
+        glowSLWS->getAvgLength(), lengthType,
+        /* force to IA */ false);
   }
 };
 
@@ -1323,7 +1321,8 @@ public:
         nodeValueName(glowEmbeddingBag->getWeights()).c_str(),
         nodeValueName(glowEmbeddingBag->getIndices()).c_str(),
         nodeValueName(glowEmbeddingBag->getOffsets()).c_str(), false, true,
-        glowEmbeddingBag->getAvgLength(), lengthType);
+        glowEmbeddingBag->getAvgLength(), lengthType,
+        /* force to IA */ false);
   }
 };
 
@@ -1366,7 +1365,8 @@ public:
         nodeValueName(glowEBBRO->getWeights()).c_str(),
         nodeValueName(glowEBBRO->getIndices()).c_str(),
         nodeValueName(glowEBBRO->getOffsets()).c_str(), usFp32Accum, true,
-        glowEBBRO->getAvgLength(), lengthType);
+        glowEBBRO->getAvgLength(), lengthType,
+        /* force to IA */ false);
   }
 };
 
@@ -1561,20 +1561,6 @@ public:
     LOG_AND_RETURN_IF_NOT(ERROR, glowChannelwiseQuantizedConv, "Bad node type",
                           NNPI_INVALID_PARAM);
 
-    LOG_AND_RETURN_IF_NOT(
-        ERROR,
-        glowChannelwiseQuantizedConv->getInput().getType()->getOffset() == 0.f,
-        (std::string("Bad input offset value") +
-         std::to_string(
-             glowChannelwiseQuantizedConv->getInput().getType()->getOffset())),
-        NNPI_INVALID_PARAM);
-    LOG_AND_RETURN_IF_NOT(
-        ERROR,
-        glowChannelwiseQuantizedConv->getResult().getType()->getOffset() == 0.f,
-        (std::string("Bad result offset value") +
-         std::to_string(
-             glowChannelwiseQuantizedConv->getResult().getType()->getOffset())),
-        NNPI_INVALID_PARAM);
     LOG_AND_RETURN_IF_NOT(
         ERROR,
         !(glowChannelwiseQuantizedConv->getOffsets()) ||
@@ -1798,7 +1784,8 @@ public:
         importer.addTensor(nodeValueName(glowSLWS->getData()),
                            /* alternativeLayout */ false,
                            nodeValueName(glowSLWS->getScales()),
-                           nodeValueName(glowSLWS->getOffsets())),
+                           nodeValueName(glowSLWS->getOffsets()),
+                           /* force to IA */ false),
         "Failed to add tensor to NNPI");
 
     importer.setUsedTensors(
@@ -1828,7 +1815,8 @@ public:
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
         nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, false,
-        glowSLWS->getAvgLength(), lengthType);
+        glowSLWS->getAvgLength(), lengthType,
+        /* force to IA */ false);
   }
 };
 
@@ -1864,7 +1852,8 @@ public:
         nodeValueName(glowSLWS->getResult()).c_str(), NULL,
         nodeValueName(glowSLWS->getIndices()).c_str(),
         nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, false,
-        glowSLWS->getAvgLength(), lengthType);
+        glowSLWS->getAvgLength(), lengthType,
+        /* force to IA */ false);
   }
 };
 
@@ -1902,7 +1891,8 @@ public:
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
         nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, false,
-        glowSLWS->getAvgLength(), lengthType);
+        glowSLWS->getAvgLength(), lengthType,
+        /* force to IA */ false);
   }
 };
 

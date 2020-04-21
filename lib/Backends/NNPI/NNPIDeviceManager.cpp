@@ -19,6 +19,7 @@
 #include "NNPI.h"
 #include "NNPICompiledFunction.h"
 #include "NNPITracing.h"
+#include "NNPIUtils.h"
 #include "glow/Support/Error.h"
 #include "nnpi_inference.h"
 #include "nnpi_transformer.h"
@@ -319,7 +320,7 @@ void NNPIDeviceManager::transferStaticPlaceholderToDevice(
       nnpiResource != nullptr,
       "Static placeholder no longer exists on the device", resultCB);
 
-  nnpiResource->UpdateDeviceResourceFromTensor(T, resultCB);
+  nnpiResource->updateDeviceResourceFromTensor(T, resultCB);
 };
 
 Error NNPIDeviceManager::startDeviceTrace(TraceContext *traceContext) {
@@ -336,6 +337,43 @@ Error NNPIDeviceManager::stopDeviceTrace(TraceContext *traceContext) {
     return MAKE_ERR("Failed to stop NNPI device trace.");
   }
   return Error::success();
+}
+
+Error NNPIDeviceManager::bindContext(std::string functionName,
+                                     ExecutionContext *ctx,
+                                     PlaceholderUsageMap &phUsage) {
+  if (deviceOptions_->dumpRuntime) {
+    DotWriter::addSubGraph(std::to_string(device_),
+                           std::string("Device ") + std::to_string(deviceId_) +
+                               " (" + DotWriter::getHexStr(device_) + ")");
+  }
+
+  // Create inference context.
+  ASSERT_WITH_MSG(inferenceEnvs_.count(functionName), "Invalid function name.");
+  std::shared_ptr<InferenceContext> infCtx(
+      inferenceEnvs_.at(functionName).createDetachedInferenceContext(phUsage));
+  ASSERT_WITH_MSG(infCtx, "Failed to create detached context");
+
+  // Set the inference context into NNPIDeviceBinding and store in the ExCtx.
+  ctx->setDeviceBindings(std::make_unique<NNPIDeviceBindings>(infCtx));
+  return Error::success();
+}
+
+void NNPIDeviceManager::addPlaceholderUsageCount(std::string functionName,
+                                                 PlaceholderUsageMap &phUsage) {
+  if (functions_.count(functionName)) {
+    NNPICompiledFunction *func =
+        dynamic_cast<NNPICompiledFunction *>(functions_.at(functionName));
+    ASSERT_WITH_MSG(func, "Invalid function.");
+    for (auto inputName : func->getInputNames()) {
+      phUsage[inputName].numReaders++;
+      phUsage[inputName].devices.insert(device_);
+    }
+    for (auto outputName : func->getOutputNames()) {
+      phUsage[outputName].numWriters++;
+      phUsage[outputName].devices.insert(device_);
+    }
+  }
 }
 
 } // namespace runtime

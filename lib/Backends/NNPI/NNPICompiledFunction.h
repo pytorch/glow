@@ -81,6 +81,12 @@ public:
     return compilationFileName_;
   }
 
+  const std::vector<std::string> &getInputNames() const { return inputNames_; }
+
+  const std::vector<std::string> &getOutputNames() const {
+    return outputNames_;
+  }
+
 private:
   NNPINetwork network_;
   NNPICompilationConfig config_;
@@ -90,6 +96,8 @@ private:
   std::unordered_set<const Placeholder *> staticInputs_;
   NNPICompilationOptions compilationOptions_;
   std::string compilationFileName_;
+  std::vector<std::string> inputNames_;
+  std::vector<std::string> outputNames_;
 
   Error updateCompilationConfigFromOptions(
       NNPICompilationOptions &compilationOptions);

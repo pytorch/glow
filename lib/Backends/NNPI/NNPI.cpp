@@ -15,8 +15,10 @@
 
 #include "NNPI.h"
 #include "DebugMacros.h"
+#include "InferenceContext.h"
 #include "NNPICompiledFunction.h"
 #include "NNPIDeviceManager.h"
+#include "NNPIUtils.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/Utils.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
@@ -26,6 +28,8 @@
 #include "llvm/Support/CommandLine.h"
 
 #include <fstream>
+#include <unordered_map>
+#include <unordered_set>
 
 using namespace glow;
 
@@ -315,8 +319,10 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
             ElemKind::Int8QTy) &&
            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::FilterIdx) ==
             ElemKind::Int8QTy) &&
-           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
-            ElemKind::Int32QTy) &&
+           ((NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
+             ElemKind::Int32QTy) ||
+            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
+             ElemKind::FloatTy)) &&
            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::ScalesIdx) ==
             ElemKind::FloatTy) &&
            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::OffsetsIdx) ==
@@ -433,7 +439,7 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::SoftMaxNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Float16Ty},
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
                {SoftMaxNode::SelectedIdx}) &&
            (NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int64ITy);
 
@@ -1104,4 +1110,83 @@ Expected<bool> NNPIBackend::transformPostLowering(
 #endif /* FACEBOOK_INTERNAL */
 
   return changed;
+}
+
+// Traverse the DAG and collect nodes in post order.
+static void
+traversePostOrder(const runtime::DAGNode *root,
+                  std::unordered_set<const runtime::DAGNode *> &visited,
+                  std::vector<const runtime::DAGNode *> &postOrder) {
+  if (root == nullptr) {
+    return;
+  }
+  visited.insert(root);
+  for (auto &c : root->children) {
+    if (visited.count(c) == 0) {
+      traversePostOrder(c, visited, postOrder);
+    }
+  }
+  postOrder.push_back(root);
+}
+
+Error NNPIBackend::bindContexts(
+    llvm::ArrayRef<runtime::ContextBinding> bindings,
+    const runtime::DAGNode *root, bool enableP2P, bool enableDRT) {
+  LOG(INFO) << "enableP2P/DRT not yet implemented. enableDRT = " << enableDRT
+            << ", enableP2P = " << enableP2P << ".\n";
+  if (backendOptions_.dumpRuntime) {
+    DotWriter::clear();
+    DotWriter::addSubGraph("Host", "Host");
+  }
+
+  // Need post order to ensure p2p dest resources are created before their
+  // source (since source will handle the copy command).
+  std::unordered_set<const runtime::DAGNode *> visited;
+  std::vector<const runtime::DAGNode *> postOrder;
+  traversePostOrder(root, visited, postOrder);
+  runtime::PlaceholderUsageMap phUsage;
+  // Collect placeholders usage count.
+  for (const auto &cb : bindings) {
+    runtime::NNPIDeviceManager *nnpiDM =
+        dynamic_cast<runtime::NNPIDeviceManager *>(cb.device);
+    LOG_IF_NOT_RETURN_LLVMERROR(nnpiDM, "Invalid device manager");
+    nnpiDM->addPlaceholderUsageCount(cb.networkName, phUsage);
+  }
+
+  for (const auto &usage : phUsage) {
+    LOG_IF_NOT_RETURN_LLVMERROR(
+        usage.second.numWriters < 2,
+        "Multiple writes to the same placeholder not suported");
+  }
+
+  for (auto *dagNode : postOrder) {
+    if (dagNode->backendName != "NNPI") {
+      continue;
+    }
+
+    // Find the contextbinding for this node (assuming there's only one).
+    ExecutionContext *ctx = nullptr;
+    runtime::DeviceManager *devMgr = nullptr;
+    for (auto &cb : bindings) {
+      if (cb.networkName == dagNode->name) {
+        ctx = cb.context;
+        devMgr = cb.device;
+        break;
+      }
+    }
+    if (ctx && devMgr) {
+      runtime::NNPIDeviceManager *nnpiDM =
+          dynamic_cast<runtime::NNPIDeviceManager *>(devMgr);
+      LOG_IF_NOT_RETURN_LLVMERROR(nnpiDM, "Invalid device manager bound");
+      LOG_IF_NOT_RETURN_LLVMERROR(
+          !nnpiDM->bindContext(dagNode->name, ctx, phUsage),
+          "Failed to bind context");
+    }
+  }
+
+  if (backendOptions_.dumpRuntime) {
+    DotWriter::writeToFile(root->name);
+  }
+
+  return Error::success();
 }

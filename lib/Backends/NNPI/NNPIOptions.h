@@ -148,10 +148,16 @@ public:
                       "1"
 #endif
   );
+  /// Dump runtime graph.
+  DECLARE_NNPI_OPTION(dumpRuntime, bool, "DumpRuntime",
+                      "Dump runtime graph (bindContexts).", "NNPI_DUMP_RUNTIME",
+                      "0");
+
   NNPIBackendOptions() {
     INIT_NNPI_OPTIONS(useIceT, llvm::StringMap<std::string>());
     INIT_NNPI_OPTIONS(inferOnDevice, llvm::StringMap<std::string>());
     INIT_NNPI_OPTIONS(showVars, llvm::StringMap<std::string>());
+    INIT_NNPI_OPTIONS(dumpRuntime, llvm::StringMap<std::string>());
   }
 
   virtual llvm::StringRef getOptionsName() const override {
@@ -332,11 +338,23 @@ public:
   DECLARE_NNPI_OPTION(dumpIOtoFiles, bool, "DumpIOtoFiles",
                       "Dump Inputs/Outputs to files.", "NNPI_DUMP_IO", "0");
   /// Force using a specific AVX type.
-  DECLARE_NNPI_OPTION(avxType, int, "avxType",
+  DECLARE_NNPI_OPTION(avxType, int, "AvxType",
                       "Force using a specific AVX type."
                       "\n  0 = No AVX. "
                       "\n  1 = Use AVX512. ",
                       "NNPI_AVX_TYPE", "-1");
+  /// Disable DRT support.
+  DECLARE_NNPI_OPTION(disableDRT, bool, "DisableDRT",
+                      "Disable DRT support (copy to/from host instead).",
+                      "NNPI_DISABLE_DRT", "0");
+  /// Disable P2P support.
+  DECLARE_NNPI_OPTION(disableP2P, bool, "DisableP2P",
+                      "Disable P2P support (copy to/from host instead).",
+                      "NNPI_DISABLE_P2P", "0");
+  /// Dump runtime graph.
+  DECLARE_NNPI_OPTION(dumpRuntime, bool, "DumpRuntime",
+                      "Dump runtime graph (bindContexts).", "NNPI_DUMP_RUNTIME",
+                      "0");
 
   NNPIDeviceOptions(const llvm::StringMap<std::string> &parameters) {
     INIT_NNPI_OPTIONS(useIceT, parameters);
@@ -349,6 +367,9 @@ public:
     INIT_NNPI_OPTIONS(enabledCommandLists, parameters);
     INIT_NNPI_OPTIONS(dumpIOtoFiles, parameters);
     INIT_NNPI_OPTIONS(avxType, parameters);
+    INIT_NNPI_OPTIONS(disableDRT, parameters);
+    INIT_NNPI_OPTIONS(disableP2P, parameters);
+    INIT_NNPI_OPTIONS(dumpRuntime, parameters);
 
     if (avxType == -1) {
       if (isStringFoundInCpuInfo("avx512f")) {

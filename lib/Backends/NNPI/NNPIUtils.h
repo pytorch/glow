@@ -17,6 +17,10 @@
 #define GLOW_BACKENDS_NNPI_NNPIUTILS_H
 
 #include <cstdint>
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
 
 using namespace std;
 
@@ -30,5 +34,25 @@ inline void convertI64toI32(int64_t const *i64Data, int32_t *i32Data,
 }
 void convertI64toI32_AVX512(int64_t const *i64Data, int32_t *i32Data,
                             uint32_t elements);
+
+// Static Dot writer (not thread safe).
+class DotWriter {
+public:
+  static void clear();
+  static void addNode(std::string name, std::string label, unsigned color = 0,
+                      std::string subGraph = {});
+  static void addEdge(std::string src, std::string dst);
+  static void writeToFile(std::string filename = {});
+  static void addSubGraph(std::string name, std::string label);
+  static std::string getHexStr(uint64_t h);
+
+private:
+  DotWriter() {} // Should only be used in a static fashion.
+
+  static unsigned graphId_;
+  static std::map<std::string, std::set<std::string>> subGraphNodes_;
+  static std::map<std::string, std::string> subGraphLabels_;
+  static std::set<std::string> edges_;
+};
 
 #endif // GLOW_BACKENDS_NNPI_NNPIUTILS_H

@@ -66,6 +66,10 @@ public:
     NNPIDeviceOptions options({});
     return options.getSupportedOptions();
   };
+
+  virtual Error bindContexts(llvm::ArrayRef<runtime::ContextBinding> bindings,
+                             const runtime::DAGNode *root, bool enableP2P,
+                             bool enableDRT) override;
   /// @}
 
 private:
