@@ -277,8 +277,7 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
       ctx->getPlaceholderBindings()->insert(
           inPhPtr, Tensor(inOnnxBuffer, inPhPtr->getType()));
     } else if (GlowEnablePartialTensors &&
-               backendPtr_->getBackend().supportsPartialTensors() &&
-               inOnnxBuffer && inOnnxTensorSize > 0) {
+               backendPtr_->getBackend().supportsPartialTensors()) {
       // We have a partial input buffer.  Create a padded unowned tensor that
       // remembers the actual size of the input.
       ctx->getPlaceholderBindings()->insert(

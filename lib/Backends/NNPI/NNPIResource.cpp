@@ -533,7 +533,8 @@ bool NNPIResource::updateHostResourceFromTensor(Tensor *t, bool partialTensor) {
     default:
       LOG(ERROR) << "Invalid avxType=" << deviceOptions_->avxType;
     }
-  } else { // Copy
+  } else if (unpaddedSize) { // Only copy if there is data. Required because
+                             // tensorData cannot be null for memcpy.
     memcpy(hostPtr_, tensorData, unpaddedSize);
   }
 
