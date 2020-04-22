@@ -1533,8 +1533,7 @@ int8_t libjit_element_cmp_lt_kernel_i8(dim_t idx, const int8_t *LHS,
 #ifdef FFAST_MATH
 DEFINE_DATA_PARALLEL_KERNEL_FUNC(libjit_tanh_kernel_f) {
   float x = LHS[idx];
-  return x < 0 ? (+1 - 2 / (expf(+2 * x) + 1)) :
-                 (-1 + 2 / (expf(-2 * x) + 1));
+  return x < 0 ? (+1 - 2 / (expf(+2 * x) + 1)) : (-1 + 2 / (expf(-2 * x) + 1));
 }
 #else
 DEFINE_DATA_PARALLEL_KERNEL_FUNC(libjit_tanh_kernel_f) {
