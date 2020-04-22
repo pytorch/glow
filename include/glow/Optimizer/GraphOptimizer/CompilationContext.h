@@ -195,6 +195,9 @@ struct CompilationContext {
   /// user-defined partitioning.
   unsigned replicationCount{1};
 
+  /// Whether to serialize the DAG that has been optimized and partitioned.
+  bool serializeCompiledDAG{false};
+
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)
       : bindings(bindings_), loweredInfoMap(loweredInfoMap_) {}
