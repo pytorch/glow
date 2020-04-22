@@ -7,7 +7,7 @@ import unittest
 
 class TestView(unittest.TestCase):
     def test_view(self):
-        """Test of the PyTorch reshape Node on Glow."""
+        """Test of the PyTorch view Node on Glow."""
 
         def test_f(a):
             b = a + a

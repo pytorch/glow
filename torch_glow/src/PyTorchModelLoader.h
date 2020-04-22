@@ -608,6 +608,10 @@ private:
   /// Load a PyTorch aten::to node.
   /// \returns error on failure.
   Error loadTo(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::NumToTensor node.
+  /// \returns error on failure.
+  Error loadNumToTensor(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow

@@ -5,7 +5,7 @@ from tests.utils import jitVsGlow
 import unittest
 
 
-class TestFaltten(unittest.TestCase):
+class TestFlatten(unittest.TestCase):
     def test_flatten_basic(self):
         """Test of the PyTorch flatten Node on Glow."""
 
