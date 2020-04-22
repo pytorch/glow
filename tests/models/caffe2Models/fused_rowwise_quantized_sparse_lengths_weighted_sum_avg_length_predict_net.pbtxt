@@ -1,0 +1,19 @@
+name: "fused_rowwise_quantized_sparse_lengths_weighted_sum_predict_net_test"
+op {
+  input: "data"
+  input: "weights"
+  input: "indices"
+  input: "lengths"
+  output: "result"
+  name: ""
+  type: "SparseLengthsWeightedSumFused8BitRowwise"
+  arg {
+    name: "average_lookup_length"
+    f: 5.0
+  }
+}
+external_input: "data"
+external_input: "weights"
+external_input: "indices"
+external_input: "lengths"
+external_output: "result"
