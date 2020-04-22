@@ -205,6 +205,9 @@ struct BlacklistInitializer {
             {"FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_"
              "NoFusedConvert_FP32Accum/0",
              TestBlacklist::AnyDeviceHWEngine},
+            {"FusedRowwiseQuantizedSparseLengthsSum_Fused4Bit_Float16_"
+             "AccumFloat16/0",
+             TestBlacklist::AnyDeviceHWEngine},
             {"to_back2/0", TestBlacklist::AnyDeviceHWEngine},
             {"GroupDilatedConvolution/0", TestBlacklist::AnyDeviceHWEngine},
             {"less_int32Cases/0", TestBlacklist::AnyDeviceHWEngine},
