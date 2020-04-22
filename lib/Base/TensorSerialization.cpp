@@ -40,20 +40,20 @@ static void loadTensorFromTextFileImpl(Tensor &tensor, llvm::StringRef filename,
   char ch;
   double val;
   for (dim_t idx = 0, e = handle.actualSize(); idx < e; idx++) {
+    // Load tensor value.
     CHECK(fs >> val) << "Error loading text file '" << filename.data()
                      << "'! Only " << idx
                      << " values were given for loading a tensor "
                      << "with " << e << " elements!";
     handle.raw(idx) = val;
+    // Check delimiter.
+    CHECK(fs >> ch) << "Error loading text file '" << filename.data()
+                    << "'! Delimiter character ',' not found!";
     if (idx < e - 1) {
-      CHECK(fs >> ch) << "Error loading text file '" << filename.data()
-                      << "'! Delimiter character ',' not found!";
       CHECK(ch == ',')
           << "Error loading text file '" << filename.data()
           << "'! Delimiter character is expected to be ',' but character '"
           << ch << "' was found!";
-    } else {
-      fs >> ch;
     }
   }
   CHECK(!(fs >> val)) << "Error loading text file '" << filename.data()
@@ -90,8 +90,9 @@ void glow::loadTensorFromBinaryFile(Tensor &tensor, llvm::StringRef filename,
     std::string typeStr;
     char ch;
     do {
-      CHECK(fs.read(&ch, 1)) << "Error reading file '" << filename.data()
-                             << "'! Type delimiter character '>' not found!";
+      CHECK(fs.read(&ch, 1))
+          << "Error loading binary file '" << filename.data()
+          << "'! Tensor type delimiter character '>' not found!";
       typeStr += ch;
     } while (ch != '>');
     tensor.reset(Type::fromString(typeStr));
@@ -167,7 +168,9 @@ void glow::loadTensorFromTextFile(Tensor &tensor, llvm::StringRef filename,
   // Load tensor type.
   if (loadType) {
     std::string typeStr;
-    std::getline(fs, typeStr);
+    CHECK(std::getline(fs, typeStr))
+        << "Error loading text file '" << filename.data()
+        << "'! Tensor type not found!";
     tensor.reset(Type::fromString(typeStr));
   } else {
     CHECK(tensor.getUnsafePtr())

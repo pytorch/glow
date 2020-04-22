@@ -111,7 +111,8 @@ Type Type::fromString(llvm::StringRef str) {
 
   // Add the delimiter in the end to have the loop self contained.
   // Note: Type alignment field not supported.
-  shapeStr = llvm::StringRef(shapeStr.str() + " x");
+  std::string shapeStrExt = shapeStr.str() + " x";
+  shapeStr = llvm::StringRef(shapeStrExt);
   ShapeVector dims;
   while (shapeStr.contains('x')) {
     auto splitRes = shapeStr.split('x');
