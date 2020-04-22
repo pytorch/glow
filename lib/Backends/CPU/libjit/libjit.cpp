@@ -808,10 +808,8 @@ static void find_min_max_f(float *tensor, dim_t size, float &min, float &max) {
 
     if (tensorVal > max)
       max = tensorVal;
-  }
 
-  // Sanity check for NaN and Infinity.
-  for (dim_t i = 0; i < size; ++i) {
+    // Sanity check for NaN and Infinity.
     assert(!std::isnan(tensor[i]) && "NaN value found!");
     assert(!std::isinf(tensor[i]) && "Infinity value found!");
   }
