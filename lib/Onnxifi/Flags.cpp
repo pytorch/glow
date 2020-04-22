@@ -49,10 +49,13 @@ extern unsigned GlowInterpreterMemory;
 extern unsigned GlowCPUMemory;
 extern unsigned GlowHabanaMemory;
 extern unsigned GlowNNPIMemory;
+extern bool GlowEnableDRT;
+extern bool GlowEnableP2P;
 } // namespace runtime
 
 extern bool GlowDumpCompilationLog;
 extern bool GlowLogPartition;
+extern bool GlowDumpPartition;
 } // namespace glow
 
 DEFINE_int32(glow_num_devices, 1, "Number of devices for Glow backend");
@@ -365,6 +368,25 @@ DEFINE_validator(glow_nnpi_memory, [](const char *flagname, int32_t value) {
 DEFINE_bool(glow_log_partition, true, "Enable logging partition info");
 DEFINE_validator(glow_log_partition, [](const char * /*unused*/, bool value) {
   glow::GlowLogPartition = value;
+  return true;
+});
+
+DEFINE_bool(glow_enable_p2p, false, "Enable peer to peer support");
+DEFINE_validator(glow_enable_p2p, [](const char * /*unused*/, bool value) {
+  glow::runtime::GlowEnableP2P = value;
+  return true;
+});
+
+DEFINE_bool(glow_enable_drt, false, "Enable device resident tensor support");
+DEFINE_validator(glow_enable_drt, [](const char * /*unused*/, bool value) {
+  glow::runtime::GlowEnableDRT = value;
+  return true;
+});
+
+DEFINE_bool(glow_dump_partition, false,
+            "Enable dumping the graph of each partition");
+DEFINE_validator(glow_dump_partition, [](const char * /*unused*/, bool value) {
+  glow::GlowDumpPartition = value;
   return true;
 });
 
