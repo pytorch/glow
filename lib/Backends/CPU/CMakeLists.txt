@@ -25,7 +25,6 @@ endif()
 
 set(CPURunttimeCompilationOptions
       -std=c++14
-      -fno-finite-math-only
       -g
       -I${CMAKE_SOURCE_DIR}/include
       -emit-llvm
