@@ -244,7 +244,7 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     }
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::Int8QTy}, {FullyConnectedNode::BiasIdx}) &&
-           (NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::Int32QTy);
+           (NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::Int32QTy || NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::FloatTy);
 
   case Kinded::Kind::MaxPoolNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
