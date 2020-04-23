@@ -8519,7 +8519,7 @@ TEST_P(OperatorTest, SigmoidOverflow) {
 /// This unit test exposes a problem with the CPU Sigmoid when stacking a higher
 /// number of operations for extreme input values which result in NaNs.
 TEST_P(OperatorTest, SigmoidOverflowCPUStacking) {
-  ENABLED_BACKENDS("CPU");
+  CHECK_IF_ENABLED();
   dim_t size = 20;
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
@@ -8548,7 +8548,7 @@ TEST_P(OperatorTest, SigmoidOverflowCPUStacking) {
 /// This unit test exposes a problem with the CPU Tanh when stacking a higher
 /// number of operations for extreme input values which result in NaNs.
 TEST_P(OperatorTest, TanhOverflowCPUStacking) {
-  ENABLED_BACKENDS("CPU");
+  CHECK_IF_ENABLED();
   dim_t size = 20;
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);

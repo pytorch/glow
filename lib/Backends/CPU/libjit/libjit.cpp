@@ -1530,8 +1530,9 @@ int8_t libjit_element_cmp_lt_kernel_i8(dim_t idx, const int8_t *LHS,
 // we avoid computing large values for the "expf" function.
 #ifdef FFAST_MATH
 DEFINE_DATA_PARALLEL_KERNEL_FUNC(libjit_tanh_kernel_f) {
-  float x = LHS[idx];
-  return x < 0 ? (+1 - 2 / (expf(+2 * x) + 1)) : (-1 + 2 / (expf(-2 * x) + 1));
+  float inpVal = LHS[idx];
+  float tanhVal = -1 + 2 / (expf(-2 * std::abs(inpVal)) + 1);
+  return std::copysignf(tanhVal, inpVal);
 }
 #else
 DEFINE_DATA_PARALLEL_KERNEL_FUNC(libjit_tanh_kernel_f) {
@@ -1570,8 +1571,9 @@ int8_t libjit_elementselect_kernel_i8(dim_t idx, const int8_t *cond,
 // we avoid computing large values for the "expf" function.
 #ifdef FFAST_MATH
 DEFINE_DATA_PARALLEL_KERNEL_FUNC(libjit_sigmoid_kernel_f) {
-  float x = LHS[idx];
-  return (x > 0) ? (1 / (1 + expf(-x))) : (1 - 1 / (1 + expf(x)));
+  float inpVal = LHS[idx];
+  float sigmoidVal = 1 / (1 + expf(-std::abs(inpVal)));
+  return (float)(std::signbit(inpVal)) + std::copysignf(sigmoidVal, inpVal);
 }
 #else
 DEFINE_DATA_PARALLEL_KERNEL_FUNC(libjit_sigmoid_kernel_f) {
