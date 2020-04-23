@@ -142,7 +142,10 @@ void ThreadPoolExecutor::run(const DAGNode *root,
 void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
                                         DAGNode *node) {
   TRACE_EVENT_SCOPE(executionState->getRawResultContextPtr()->getTraceContext(),
-                    TraceLevel::RUNTIME, "ThreadPoolExecutor::executeDAGNode");
+                    TraceLevel::RUNTIME,
+                    llvm::formatv("ThreadPoolExecutor::executeDAGNode {0:x}",
+                                  executionState->getRawResultContextPtr())
+                        .str());
   if (executionState->getErrorContainer().containsErr()) {
     // Mark the node as no longer executing.
     executionState->decrementInflightNodes();
@@ -154,6 +157,12 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
   std::unique_ptr<ExecutionContext> nodeCtx =
       executionState->getUniqueNodeContextPtr(node);
 
+  // Trace child node creation (to be able to identify function execution
+  // origin).
+  std::string traceNodeChildCreateStr = llvm::formatv(
+      "ThreadPoolExecutor::executeDAGNode child node {0:x}", nodeCtx.get());
+  TRACE_EVENT_BEGIN(executionState->getRawResultContextPtr()->getTraceContext(),
+                    TraceLevel::RUNTIME, traceNodeChildCreateStr);
   // Get the DeviceManager that can run the node.
   auto currentDevice = node->getNextDevice();
   auto deviceManagerIt = deviceManagers_.find(currentDevice);
@@ -176,6 +185,8 @@ void ThreadPoolExecutor::executeDAGNode(NetworkExecutionState *executionState,
   // End the trace block before calling deviceManager->runFunction which can
   // trigger the result cb in a different thread. Once the result cb is called,
   // it's no longer safe to access the trace context.
+  TRACE_EVENT_END(executionState->getRawResultContextPtr()->getTraceContext(),
+                  TraceLevel::RUNTIME, traceNodeChildCreateStr);
   TRACE_EVENT_SCOPE_END();
   // Run the node using the DeviceManager.
   deviceManager->runFunction(
