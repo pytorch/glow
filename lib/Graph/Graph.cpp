@@ -817,6 +817,25 @@ Convolution3DNode *Function::createConv3D(llvm::StringRef name, NodeValue input,
                                           unsigned_t group) {
   assertConv3DDims(input, filter, bias, kernels, strides, pads, group);
   auto OT = getParent()->uniqueType(*outTy);
+
+  // If the input is quantized but the bias is not then auto-quantize the
+  // bias.
+  if (input.getType()->isQuantizedType()) {
+    auto biasType = bias.getElementType();
+    if (biasType == ElemKind::Int32QTy || biasType == ElemKind::Int8QTy) {
+      // Nothing to do
+    } else if (biasType == ElemKind::FloatTy) {
+      auto biasTy = getParent()->uniqueType(
+          glow::ElemKind::Int32QTy, bias.dims(),
+          input.getType()->getScale() * filter.getType()->getScale(),
+          /* offset */ 0);
+      bias = createQuantize("quantized_bias", bias, biasTy);
+    } else {
+      LOG(DFATAL)
+          << "Unsupported element type for bias of quantized convolution: "
+          << Type::getElementName(biasType).str();
+    }
+  }
   return addNode(new Convolution3DNode(name, OT, input, filter, bias, kernels,
                                        strides, pads, group));
 }

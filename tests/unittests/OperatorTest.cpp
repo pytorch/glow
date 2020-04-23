@@ -8303,6 +8303,13 @@ TEST_P(OperatorTest, Conv3DQuantizedTest_Int8_BiasInt32) {
                       ElemKind::Int32QTy);
 }
 
+/// Test Int8 Conv3D with Float32 bias.
+TEST_P(OperatorTest, Conv3DQuantizedTest_Int8_BiasFloat) {
+  ENABLED_BACKENDS("Interpreter");
+  Conv3DQuantizedTest(bindings_, mod_, F_, EE_, ElemKind::Int8QTy,
+                      ElemKind::FloatTy);
+}
+
 /// Test Int16 Conv3D with Int16 bias.
 TEST_P(OperatorTest, Conv3DQuantizedTest_Int16_BiasInt16) {
   ENABLED_BACKENDS("Interpreter");
