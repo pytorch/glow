@@ -2819,16 +2819,29 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *input = RNI->getSrc();
     auto *resultPtr = emitValueAddress(builder, result);
     auto *inputPtr = emitValueAddress(builder, input);
-    std::vector<float> scaleFloatT;
-    for (auto D : RNI->getScale()) {
-      scaleFloatT.push_back(D);
-    }
 
-    auto *scalePtr =
-        emitConstFloatArray(builder, llvm::makeArrayRef(scaleFloatT));
+    auto *scalePtr = emitConstFloatArray(builder, RNI->getScale());
     auto *destDims = emitValueDims(builder, result);
     auto *srcDims = emitValueDims(builder, input);
     auto *F = getFunction("resizenearest", input->getElementType());
+    createCall(builder, F, {resultPtr, inputPtr, scalePtr, srcDims, destDims});
+    break;
+  }
+
+  case Kinded::Kind::ResizeBilinearInstKind: {
+    auto *RBI = llvm::cast<ResizeBilinearInst>(I);
+    auto *result = RBI->getDest();
+    auto *input = RBI->getSrc();
+    auto *resultPtr = emitValueAddress(builder, result);
+    auto *inputPtr = emitValueAddress(builder, input);
+
+    CHECK_EQ(RBI->getScale()[0], 1.0) << "Scaling batch not supported.";
+    CHECK_EQ(RBI->getScale()[3], 1.0) << "Scaling channel not supported.";
+
+    auto *scalePtr = emitConstFloatArray(builder, RBI->getScale());
+    auto *destDims = emitValueDims(builder, result);
+    auto *srcDims = emitValueDims(builder, input);
+    auto *F = getFunction("resizebilinear", input->getElementType());
     createCall(builder, F, {resultPtr, inputPtr, scalePtr, srcDims, destDims});
     break;
   }

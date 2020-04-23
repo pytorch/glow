@@ -221,6 +221,21 @@ template <char... letters> struct string_t {
   }
 };
 
+/// Reorder vector \p v according to the indices in \p order. Value at index
+/// idx in \p v will end up at the position indicated by the value in \p order
+/// at index idx.
+template <class T>
+void vectorReorder(std::vector<T> &v, std::vector<size_t> const &order) {
+  for (int s = 1, d; s < order.size(); ++s) {
+    for (d = order[s]; d < s; d = order[d])
+      ;
+    if (d == s)
+      while (d = order[d], d != s) {
+        std::swap(v[s], v[d]);
+      }
+  }
+}
+
 } // namespace glow
 
 #endif // GLOW_SUPPORT_SUPPORT_H

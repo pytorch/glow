@@ -3772,6 +3772,149 @@ TEST(onnx, importUpsampleOpset9) {
   importUpsampleTest(netFilename);
 }
 
+/// ResizeNearest Test Helper
+static void importResizeNearest(std::string filename) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(filename);
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  Tensor in(ElemKind::FloatTy, {2, 2, 2, 2});
+  in.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+  {
+    ONNXModelLoader onnxLD(netFilename, {"in"}, {&in.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"in"}, {&in});
+  }
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  ASSERT_EQ(4, F->getNodes().size());
+
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *TR = llvm::dyn_cast<TransposeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(TR);
+  auto *RN = llvm::dyn_cast<ResizeNearestNode>(TR->getInput());
+  ASSERT_TRUE(RN);
+
+  auto result = res->getHandle();
+  std::vector<dim_t> expectedDims = {2, 2, 4, 4};
+  EXPECT_EQ(result.dims().vec(), expectedDims);
+
+  std::vector<float> expectedValues = {
+      1.0,  1.0,  2.0,  2.0,  1.0,  1.0,  2.0,  2.0,  3.0,  3.0,  4.0,
+      4.0,  3.0,  3.0,  4.0,  4.0,  5.0,  5.0,  6.0,  6.0,  5.0,  5.0,
+      6.0,  6.0,  7.0,  7.0,  8.0,  8.0,  7.0,  7.0,  8.0,  8.0,  9.0,
+      9.0,  10.0, 10.0, 9.0,  9.0,  10.0, 10.0, 11.0, 11.0, 12.0, 12.0,
+      11.0, 11.0, 12.0, 12.0, 13.0, 13.0, 14.0, 14.0, 13.0, 13.0, 14.0,
+      14.0, 15.0, 15.0, 16.0, 16.0, 15.0, 15.0, 16.0, 16.0};
+
+  for (dim_t i = 0; i < 64; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+
+  // Constant Folding Test.
+  FAIL_TEST_IF_ERR(checkConstFoldedOutput(netFilename, {"in"}, {&in},
+                                          {bindings.get(output)}));
+}
+
+/// Test ONNX Resize mode=nearest.
+TEST(onnx, importResizeNearest) {
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/resizeNearest.onnxtxt");
+  importResizeNearest(netFilename);
+}
+
+/// Test ONNX Resize V11 mode=nearest that is compatible with V10 spec
+TEST(onnx, importResizeNearestV11compat) {
+  std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/resizeNearestV11compat.onnxtxt");
+  importResizeNearest(netFilename);
+}
+
+/// Test ONNX Resize V11 mode=nearest that is compatible with V10 spec
+/// except that scales are inferred from sizes input.
+TEST(onnx, importResizeNearestV11compat_sizes) {
+  std::string netFilename(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/resizeNearestV11compat_sizes.onnxtxt");
+  importResizeNearest(netFilename);
+}
+
+static void importResizeBilinear(std::string filename) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string netFilename(filename);
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  Tensor in(ElemKind::FloatTy, {1, 1, 2, 2});
+  in.getHandle() = {1, 2, 3, 4};
+  {
+    ONNXModelLoader onnxLD(netFilename, {"in"}, {&in.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"in"}, {&in});
+  }
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  ASSERT_EQ(4, F->getNodes().size());
+
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *TR = llvm::dyn_cast<ReshapeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(TR);
+  auto *RN = llvm::dyn_cast<ResizeBilinearNode>(TR->getInput());
+  ASSERT_TRUE(RN);
+
+  auto result = res->getHandle();
+  std::vector<dim_t> expectedDims = {1, 1, 4, 4};
+  EXPECT_EQ(result.dims().vec(), expectedDims);
+
+  std::vector<float> expectedValues = {1.0, 1.5, 2.0, 2.0, 2.0, 2.5, 3.0, 3.0,
+                                       3.0, 3.5, 4.0, 4.0, 3.0, 3.5, 4.0, 4.0};
+
+  for (dim_t i = 0; i < 16; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+
+  // Constant Folding Test.
+  FAIL_TEST_IF_ERR(checkConstFoldedOutput(netFilename, {"in"}, {&in},
+                                          {bindings.get(output)}));
+}
+
+/// ResizeNearest Test Helper.
+TEST(onnx, importResizeBilinear) {
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/resizeBilinear.onnxtxt");
+  importResizeBilinear(netFilename);
+}
+
+/// Test ONNX Resize V11 mode=nearest that is compatible with V10 spec
+TEST(onnx, importResizeBilinearV11compat) {
+  std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/resizeBilinearV11compat.onnxtxt");
+  importResizeBilinear(netFilename);
+}
+
+/// Test ONNX Resize V11 mode=bilinear that is compatible with V10 spec
+/// except that scales are inferred from sizes input.
+TEST(onnx, importResizeBilinearV11compat_sizes) {
+  std::string netFilename(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/resizeBilinearV11compat_sizes.onnxtxt");
+  importResizeBilinear(netFilename);
+}
+
 /// Test loading a custom ONNX Glow net with NodeOpts.
 TEST_F(OnnxImporterTest, CustomGlowWithNodeOpts) {
   ExecutionEngine EE;

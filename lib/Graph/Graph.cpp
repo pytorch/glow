@@ -2339,6 +2339,67 @@ ResizeNearestNode *Function::createResizeNearest(llvm::StringRef name,
   return addNode(new ResizeNearestNode(name, outTy, input, scale));
 }
 
+ResizeNearestNode *Function::createResizeNearest(llvm::StringRef name,
+                                                 NodeValue input,
+                                                 TypeRef outTy) {
+  auto inputDim = input.dims();
+  auto outputDim = outTy->dims();
+  DCHECK_EQ(inputDim.size(), outputDim.size())
+      << "Input dimension size: " << inputDim.size()
+      << " output dimension size: " << outputDim.size() << " should be same.";
+
+  std::vector<float> scales;
+  for (size_t i = 0; i < inputDim.size(); i++) {
+    float scale = (outputDim[i] / (float)inputDim[i]);
+    DCHECK_GT(scale, 0.0) << "Scale: " << scale
+                          << ", Scale larger than 0 is expected.";
+    scales.push_back(scale);
+  }
+
+  return addNode(new ResizeNearestNode(name, outTy, input, scales));
+}
+
+ResizeBilinearNode *
+Function::createResizeBilinear(llvm::StringRef name, NodeValue input,
+                               llvm::ArrayRef<float> scale) {
+  auto inputDim = input.dims();
+  DCHECK_EQ(inputDim.size(), scale.size())
+      << "Input Dimension size: " << inputDim.size()
+      << " Scale size: " << scale.size() << " should be same.";
+
+  std::vector<dim_t> newDim;
+
+  for (size_t i = 0; i < scale.size(); i++) {
+    auto newD = dim_t(std::floor(inputDim[i] * scale[i]));
+    DCHECK_GT(newD, 0) << "Scaled dim is " << newD
+                       << ", Scaled value needs to be larger than 0.";
+    newDim.push_back(newD);
+  }
+
+  auto outTy = getParent()->uniqueTypeWithNewShape(input.getType(), newDim);
+  return addNode(new ResizeBilinearNode(name, outTy, input, scale));
+}
+
+ResizeBilinearNode *Function::createResizeBilinear(llvm::StringRef name,
+                                                   NodeValue input,
+                                                   TypeRef outTy) {
+  auto inputDim = input.dims();
+  auto outputDim = outTy->dims();
+  DCHECK_EQ(inputDim.size(), outputDim.size())
+      << "Input dimension size: " << inputDim.size()
+      << " output dimension size: " << outputDim.size() << " should be same.";
+
+  std::vector<float> scales;
+  for (size_t i = 0; i < inputDim.size(); i++) {
+    float scale = (outputDim[i] / (float)inputDim[i]);
+    DCHECK_GT(scale, 0.0) << "Scale: " << scale
+                          << ", Scale larger than 0 is expected.";
+    scales.push_back(scale);
+  }
+
+  return addNode(new ResizeBilinearNode(name, outTy, input, scales));
+}
+
 QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
                                        TypeRef outTy) {
   assert(input.getType()->isFPType() && "Input must be a floating type");
