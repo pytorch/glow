@@ -69,9 +69,9 @@ public:
     auto fn = mod->createFunction("singleNode");
 
     auto *input =
-        mod->createPlaceholder(ElemKind::FloatTy, {m_, k_}, "input", false);
+        mod->createPlaceholder(ElemKind::Float16Ty, {m_, k_}, "input", false);
     auto *output =
-        mod->createPlaceholder(ElemKind::FloatTy, {m_, n_}, "output", false);
+        mod->createPlaceholder(ElemKind::Float16Ty, {m_, n_}, "output", false);
     auto *q_input = fn->createQuantize(
         "int8_quantize", input,
         mod->uniqueType(ElemKind::Int8QTy, {m_, k_}, 1.0, 0));
@@ -99,7 +99,7 @@ public:
     }
 
     auto *dequantized_fc = fn->createDequantize(
-        "int8_dequantize", cur, mod->uniqueType(ElemKind::FloatTy, {m_, n_}));
+        "int8_dequantize", cur, mod->uniqueType(ElemKind::Float16Ty, {m_, n_}));
     cur = dequantized_fc;
     fn->createSave("save1", cur, output);
     ::glow::convertPlaceholdersToConstants(fn, bindings_, {input, output});
