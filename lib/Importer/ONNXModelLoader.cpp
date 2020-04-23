@@ -3058,6 +3058,80 @@ Error ONNXModelLoader::loadSelect(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadNonZero(const ONNX_NAMESPACE::NodeProto &op,
+                                   const ArgumentDictionaryTy &dict) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+
+  Constant *C = getConstantByNameOrNull(op.input(0));
+  RETURN_ERR_IF_NOT(C, "Only constant shape is supported!");
+
+  // output tensor.
+  Tensor outT;
+
+  // Fold NonZero operator.
+  auto foldNonZero = [&C, &outT](auto dummy) -> Error {
+    auto inH = C->getPayload().getHandle<decltype(dummy)>();
+    auto dims = C->dims();
+
+    // First pass over the input is used to find the number of non-zero elements
+    // so we can create output tensor that will be filled in the 2nd pass.
+    dim_t nonZeroCnt = 0;
+    for (dim_t idx = 0, e = inH.size(); idx < e; idx++) {
+      nonZeroCnt += (inH.raw(idx) != 0) ? 1 : 0;
+    }
+
+    // No need to support zero Tensor (empty output); we support constant input
+    // only and such input likely means it's an invalid model or the part of
+    // graph can be removed.
+    RETURN_ERR_IF_NOT(nonZeroCnt > 0,
+                      "Non-Zero input with all zeroes is not supported.");
+
+    // Create output tensor. First dimension is the rank of input tensor, second
+    // dimension is the number of non-zero elements.
+    outT.reset(ElemKind::Int64ITy, {(dim_t)dims.size(), nonZeroCnt});
+
+    // Strides for each dimensions, needed to calculate NonZero output.
+    std::vector<dim_t> strides;
+    strides.reserve(dims.size());
+    strides[dims.size() - 1] = 1;
+    if (dims.size() > 1) {
+      for (int i = dims.size() - 2; i >= 0; i--) {
+        strides[i] = dims[i + 1] * strides[i + 1];
+      }
+    }
+
+    // Second pass over the input is used to fill the output tensor. For each
+    // non-zero element we fill all the dimensions, at position determined
+    // by the non-zero element's index when zero elements are ignored.
+    auto outH = outT.getHandle<int64_t>();
+    for (dim_t idx = 0, pos = 0, e = inH.size(); idx < e; idx++) {
+      if (inH.raw(idx) != 0) {
+        for (dim_t dim = 0; dim < dims.size(); dim++) {
+          outH.at({dim, pos}) = (idx / strides[dim]) % dims[dim];
+        }
+        pos++;
+      }
+    }
+    return Error::success();
+  };
+
+  std::string err;
+  if (C->getElementType() == ElemKind::FloatTy) {
+    RETURN_IF_ERR(foldNonZero((float)0));
+  } else if (C->getElementType() == ElemKind::Int64ITy) {
+    RETURN_IF_ERR(foldNonZero((int64_t)0));
+  } else if (C->getElementType() == ElemKind::Int32ITy) {
+    RETURN_IF_ERR(foldNonZero((int32_t)0));
+  } else {
+    RETURN_ERR("Unsupported input type for NonZero operator.");
+  }
+
+  Constant *outC = G_->getParent()->createConstant("nonZero", std::move(outT));
+  RETURN_IF_ERR(addNodeAsOutput(op, outC));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadQuantize(const ONNX_NAMESPACE::NodeProto &op,
                                     ArgumentDictionaryTy &dict) {
   NodeValue in;
@@ -3899,6 +3973,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Resize") {
     return loadResize(op, dict);
+  }
+  if (typeName == "NonZero") {
+    return loadNonZero(op, dict);
   }
 
   RETURN_ERR("Failed to load operator " + typeName + " .",

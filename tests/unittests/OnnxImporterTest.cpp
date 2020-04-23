@@ -234,7 +234,7 @@ static void importReduceL2Test(const std::string &netFilename,
 
 /// Test loading reduceL2 op from an ONNX model
 /// with axes = [].
-TEST(onnx, reduceL2NoAxis) {
+TEST_F(OnnxImporterTest, reduceL2NoAxis) {
   std::vector<float> inputValues = {1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2};
   std::vector<dim_t> inputShape = {2, 3, 2};
   std::vector<dim_t> outputShape = {1, 1, 1};
@@ -247,7 +247,7 @@ TEST(onnx, reduceL2NoAxis) {
 
 /// Test loading reduceL2 op from an ONNX model
 /// with negative axis values.
-TEST(onnx, reduceL2NegAxis) {
+TEST_F(OnnxImporterTest, reduceL2NegAxis) {
   std::vector<float> inputValues = {1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2};
   std::vector<dim_t> inputShape = {2, 3, 2};
   std::vector<dim_t> outputShape = {2, 1, 1};
@@ -260,7 +260,7 @@ TEST(onnx, reduceL2NegAxis) {
 
 /// Test loading reduceL2 op from an ONNX model
 /// with keepdims = True.
-TEST(onnx, reduceL2KeepDims) {
+TEST_F(OnnxImporterTest, reduceL2KeepDims) {
   std::vector<float> inputValues = {1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2};
   std::vector<dim_t> inputShape = {2, 3, 2};
   std::vector<dim_t> outputShape = {2, 1, 1};
@@ -273,7 +273,7 @@ TEST(onnx, reduceL2KeepDims) {
 
 /// Test loading reduceL2 op from an ONNX model
 /// with keepdims = False.
-TEST(onnx, reduceL2NoKeepDims) {
+TEST_F(OnnxImporterTest, reduceL2NoKeepDims) {
   std::vector<float> inputValues = {1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2};
   std::vector<dim_t> inputShape = {2, 3, 2};
   std::vector<dim_t> outputShape = {2};
@@ -285,7 +285,7 @@ TEST(onnx, reduceL2NoKeepDims) {
 }
 
 /// Test loading constant+relu ops with numeric input names from an ONNX model.
-TEST(onnx, reluConstFoldLegalName) {
+TEST_F(OnnxImporterTest, reluConstFoldLegalName) {
   std::string NetFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/constRelu.onnxtxt");
   FAIL_TEST_IF_ERR(
@@ -444,7 +444,7 @@ static void importMaxPool1DTest(std::string &netFilename,
 
 /// Test loading expand op from an ONNX model
 /// with different output shape.
-TEST(onnx, expandDiffShape) {
+TEST_F(OnnxImporterTest, expandDiffShape) {
   std::vector<float> inputValues = {1, 2, 3};
   std::vector<dim_t> inputShape = {3, 1};
   std::vector<dim_t> outputShape = {2, 3, 6};
@@ -460,7 +460,7 @@ TEST(onnx, expandDiffShape) {
 
 /// Test loading expand op from an ONNX model
 /// with same output shape.
-TEST(onnx, expandSameShape) {
+TEST_F(OnnxImporterTest, expandSameShape) {
   std::vector<float> inputValues = {1, 2, 3};
   std::vector<dim_t> inputShape = {3, 1};
   std::vector<dim_t> outputShape = {3, 4};
@@ -475,7 +475,7 @@ TEST(onnx, expandSameShape) {
 
 /// Test loading maxPool1D op from an ONNX model
 /// with different output shape.
-TEST(onnx, maxPool1D) {
+TEST_F(OnnxImporterTest, maxPool1D) {
   std::vector<float> inputValues = {
       1.4206449,  0.54408556, 1.3318906,  0.771925,   0.9450552,
       0.08600737, 0.30009857, 1.4206449,  0.54408556, 1.3318906,
@@ -898,7 +898,7 @@ static void importConv1DTest(std::string &netFilename,
 }
 
 /// Test Conv1D
-TEST(onnx, conv1D) {
+TEST_F(OnnxImporterTest, conv1D) {
   std::vector<float> inputXValues = {
       1.4206449,  -0.54408556, -1.3318906,  0.771925,   0.9450552,  0.08600737,
       0.30009857, -0.36060193, -0.33999684, -0.9809143, -1.0172559, -0.4921318,
@@ -1016,7 +1016,7 @@ static void convTransposeTestHelper(std::string &filename,
 /// Test loading ConvTranspose op from a ONNX model.
 /// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
 /// strides is {1, 1}, pads is {0, 0, 0, 0}, group is 1.
-TEST(onnx, importConvTranspose) {
+TEST_F(OnnxImporterTest, importConvTranspose) {
   std::string filename("simpleConvTranspose.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {5,  13, 18,  13, 19, 50, 64, 42,
@@ -1027,7 +1027,7 @@ TEST(onnx, importConvTranspose) {
 /// Test loading ConvTranspose op from a ONNX model.
 /// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
 /// strides is {1, 1}, pads is {1, 1, 1, 1}, group is 1.
-TEST(onnx, importConvTransposePads) {
+TEST_F(OnnxImporterTest, importConvTransposePads) {
   std::string filename("simpleConvTransposePads.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 2, 2};
   std::vector<float> expectedValues = {51, 65, 93, 107};
@@ -1037,7 +1037,7 @@ TEST(onnx, importConvTransposePads) {
 /// Test loading ConvTranspose op from a ONNX model.
 /// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
 /// strides is {1, 1}, auto_pad VALID (i.e. no padding), group is 1.
-TEST(onnx, importConvTransposeAutoPadValid) {
+TEST_F(OnnxImporterTest, importConvTransposeAutoPadValid) {
   std::string filename("simpleConvTransposeAutoPadValid.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {4,  12, 17,  12, 18, 49, 63, 41,
@@ -1048,7 +1048,7 @@ TEST(onnx, importConvTransposeAutoPadValid) {
 /// Test loading conv op from a ONNX model.
 /// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
 /// strides is {1, 1}, auto_pad SAME_UPPER, group is 1.
-TEST(onnx, importConvTransposeAutoPadSameUpper) {
+TEST_F(OnnxImporterTest, importConvTransposeAutoPadSameUpper) {
   std::string filename("simpleConvTransposeAutoPadSameUpper.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 2, 2};
   std::vector<float> expectedValues = {49, 63, 91, 105};
@@ -1058,7 +1058,7 @@ TEST(onnx, importConvTransposeAutoPadSameUpper) {
 /// Test loading conv op from a ONNX model.
 /// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
 /// strides is {1, 1}, auto_pad SAME_LOWER, group is 1.
-TEST(onnx, importConvTransposeAutoPadSameLower) {
+TEST_F(OnnxImporterTest, importConvTransposeAutoPadSameLower) {
   std::string filename("simpleConvTransposeAutoPadSameLower.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 2, 2};
   std::vector<float> expectedValues = {49, 63, 91, 105};
@@ -1068,7 +1068,7 @@ TEST(onnx, importConvTransposeAutoPadSameLower) {
 /// Test loading conv op from a ONNX model.
 /// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
 /// strides is {1, 1}, auto_pad SAME_LOWER, group is 1.
-TEST(onnx, importConvTransposeOutputShapeSameUpper) {
+TEST_F(OnnxImporterTest, importConvTransposeOutputShapeSameUpper) {
   std::string filename("simpleConvTransposeOutShapeSameUpper.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {4,  12, 17,  12, 18, 49, 63, 41,
@@ -1079,7 +1079,7 @@ TEST(onnx, importConvTransposeOutputShapeSameUpper) {
 /// Test loading conv op from a ONNX model.
 /// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
 /// strides is {1, 1}, auto_pad is not set, group is 1.
-TEST(onnx, importConvTransposeOutputShape) {
+TEST_F(OnnxImporterTest, importConvTransposeOutputShape) {
   std::string filename("simpleConvTransposeOutShape.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {4,  12, 17,  12, 18, 49, 63, 41,
@@ -1091,7 +1091,7 @@ TEST(onnx, importConvTransposeOutputShape) {
 /// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
 /// strides is {1, 1}, dilations is {2, 2},
 /// auto_pad is not set, group is 1.
-TEST(onnx, importConvTransposeOutputShapeDilation) {
+TEST_F(OnnxImporterTest, importConvTransposeOutputShapeDilation) {
   std::string filename("simpleConvTransposeOutShapeDilation.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 6, 6};
   std::vector<float> expectedValues = {
@@ -3042,7 +3042,7 @@ TEST_F(OnnxImporterTest, importLess) {
   EXPECT_EQ(CMPLT->getResult().dims()[2], 1);
 }
 
-TEST(onnx, importLessEqual) {
+TEST_F(OnnxImporterTest, importLessEqual) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -3073,7 +3073,7 @@ TEST(onnx, importLessEqual) {
   EXPECT_EQ(CMPLTE->getResult().dims()[2], 1);
 }
 
-TEST(onnx, importEqual) {
+TEST_F(OnnxImporterTest, importEqual) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -3102,6 +3102,67 @@ TEST(onnx, importEqual) {
   EXPECT_EQ(CMPEQ->getResult().dims()[0], 4);
   EXPECT_EQ(CMPEQ->getResult().dims()[1], 4);
   EXPECT_EQ(CMPEQ->getResult().dims()[2], 1);
+}
+
+/// Test loading NonZero from a ONNX model.
+static void testNonZero(llvm::StringRef name,
+                        const std::vector<dim_t> &expectedDims,
+                        const std::vector<int64_t> &expVals) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *out = nullptr;
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/NonZero.onnxtxt");
+  {
+    ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
+    out = EXIT_ON_ERR(onnxLD.getOutputByName(name));
+    EXPECT_NE(out, nullptr);
+  }
+
+  // Constant -> NonZero -> PH (x2 for 3 models inside the file)
+  ASSERT_EQ(mod.getPlaceholders().size(), 3);
+  ASSERT_EQ(F->getNodes().size(), 3);
+
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+
+  auto result = bindings.get(out)->getHandle<int64_t>();
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expVals.size(); i++) {
+    EXPECT_EQ(result.raw(i), expVals[i]);
+  }
+}
+
+/// Test loading NonZero using constant int32_t tensor initializer.
+TEST_F(OnnxImporterTest, importNonZeroI32) {
+  std::vector<int64_t> expVals = {
+      0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3,
+      3, 3, 3, 3, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1,
+      0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 0, 1, 2, 0, 0, 1,
+      2, 0, 1, 1, 0, 1, 1, 2, 0, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0,
+      0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0};
+  testNonZero("out_i32", {5, 29}, expVals);
+}
+
+/// Test loading NonZero using constant float tensor initializer.
+TEST_F(OnnxImporterTest, importNonZeroF) {
+  std::vector<int64_t> expVals = {0,  1,  3,  4,  6,  8,  10,
+                                  12, 14, 16, 18, 19, 21, 22};
+  testNonZero("out_f", {1, 14}, expVals);
+}
+
+/// Test loading NonZero using constant float tensor initializer.
+TEST_F(OnnxImporterTest, importNonZeroI64) {
+  std::vector<int64_t> expVals = {0,  1,  3,  4,  6,  8,  10,
+                                  12, 14, 16, 18, 19, 21, 22};
+  testNonZero("out_i64", {1, 14}, expVals);
 }
 
 /// Test loading NMS using initializer nodes op from an ONNX model.
@@ -3760,13 +3821,13 @@ static void importUpsampleTest(std::string &netFilename) {
   }
 }
 
-TEST(onnx, importUpsampleOpset7) {
+TEST_F(OnnxImporterTest, importUpsampleOpset7) {
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/upsampleOpset7.onnxtxt");
   importUpsampleTest(netFilename);
 }
 
-TEST(onnx, importUpsampleOpset9) {
+TEST_F(OnnxImporterTest, importUpsampleOpset9) {
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/upsampleOpset9.onnxtxt");
   importUpsampleTest(netFilename);

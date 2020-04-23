@@ -222,12 +222,16 @@ bool Module::verify() const {
 
 void Module::dump() const {
   llvm::outs() << "Module structure:\n";
-  for (auto v : getConstants()) {
-    llvm::outs() << v->getDebugDesc() << "\n";
+  for (auto *C : getConstants()) {
+    llvm::outs() << C->getDebugDesc() << "\n";
   }
 
-  for (auto f : functions_) {
-    llvm::outs() << "Function:" << f->getName() << "\n";
+  for (auto *P : getPlaceholders()) {
+    llvm::outs() << P->getDebugDesc() << "\n";
+  }
+
+  for (auto *F : functions_) {
+    llvm::outs() << "Function:" << F->getName() << "\n";
   }
 }
 

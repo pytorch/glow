@@ -123,6 +123,12 @@ class ONNXModelLoader
   /// A set of inputs which will be static placeholders.
   std::unordered_set<std::string> staticInputs_;
 
+  /// Load ONNX NonZero Operator.
+  /// Glow's requirement for static shapes results in required Constant
+  /// input. Thus, the operator will be folded in the Importer.
+  Error loadNonZero(const ONNX_NAMESPACE::NodeProto &op,
+                    const ArgumentDictionaryTy &dict);
+
   /// Load Constant ONNX operator.
   Error loadConstant(const ONNX_NAMESPACE::NodeProto &op,
                      ArgumentDictionaryTy &dict);
