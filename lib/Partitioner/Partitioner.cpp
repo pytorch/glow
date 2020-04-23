@@ -28,6 +28,7 @@
 namespace glow {
 bool GlowEnableLoadBalancedPartitioning = true;
 bool GlowLogPartition = false;
+bool GlowDumpPartition = false;
 static llvm::cl::opt<bool, /* ExternalStorage */ true>
     GlowEnableLoadBalancedPartitioningOpt(
         "glow_partitioner_enable_load_balance",
@@ -45,10 +46,11 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true> logPartition(
 
 /// -dump-partition - Command line option to dump the graph of each partitions
 /// by calling F->dumpDAG().
-static llvm::cl::opt<bool>
+static llvm::cl::opt<bool, /* ExternalStorage */ true>
     dumpPartition("dump-partition",
                   llvm::cl::desc("Enable dumping the graph of each partitions"),
-                  llvm::cl::init(false), llvm::cl::cat(PartitionerCat));
+                  llvm::cl::location(glow::GlowDumpPartition),
+                  llvm::cl::cat(PartitionerCat));
 
 using namespace glow;
 using llvm::isa;
