@@ -1302,6 +1302,10 @@ TEST_P(MLTest, testFindPixelRegression) {
   auto *TF = glow::differentiate(mod->getFunction(fName), TC);
   auto tfName = TF->getName();
   EET_.compile(CompilationMode::Train);
+  // Specify these to initialze to zero to prevent uninitialized memory issues.
+  for (auto *PH : EET_.getModule().getPlaceholders()) {
+    PH->setAllocZero();
+  }
   trainingBindings.allocate(mod->getPlaceholders());
 
   for (auto &PH : inferBindings.pairs()) {
