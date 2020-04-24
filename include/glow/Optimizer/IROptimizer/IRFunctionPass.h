@@ -24,8 +24,12 @@ namespace glow {
 class IRFunction;
 enum class IRFunctionPassID;
 
-// template <typename X, typename Y> class IRFunctionPass;
-using IRFunctionPassConfig = PassConfig<IRFunctionPassID>;
+class IRFunctionPassConfig : public PassConfig<IRFunctionPassID> {
+public:
+  using PassConfig::PassConfig;
+  llvm::StringRef getNameOfPass() const override;
+  void dump(llvm::raw_ostream &os) const override;
+};
 
 /// Pass over low-level IR-level functions.
 using IRFunctionPass = Pass<IRFunction, IRFunctionPassConfig>;

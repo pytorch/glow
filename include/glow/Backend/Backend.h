@@ -170,9 +170,10 @@ public:
   virtual bool shouldShareBuffers() const { return true; }
 
   /// Modify the \p optimizationOpts however desired.
-  virtual FunctionPassPipeline getOptimizationPipeline() const;
+  virtual std::unique_ptr<FunctionPassPipeline> getOptimizationPipeline() const;
   /// Modify the \p optimizationOpts however desired.
-  virtual IRFunctionPassPipeline getIROptimizationPipeline() const;
+  virtual std::unique_ptr<IRFunctionPassPipeline>
+  getIROptimizationPipeline() const;
 
   /// \returns true if the Backend supports partial, unpadded tensors for
   /// inputs that can have variable size (e.g., embedding indices).

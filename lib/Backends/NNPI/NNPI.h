@@ -46,7 +46,8 @@ public:
   bool shouldShareBuffers() const override { return false; }
   bool supportsPartialTensors() const override { return true; }
   bool supportsStaticPlaceholders() const override { return true; }
-  FunctionPassPipeline getOptimizationPipeline() const override;
+  std::unique_ptr<FunctionPassPipeline>
+  getOptimizationPipeline() const override;
 
   runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig) override;

@@ -37,27 +37,58 @@ protected:
   /// Convergence mode to inform the PassManager how to run the FunctionPass.
   ConvergenceMode convergenceMode_{ConvergenceMode::OnePass};
   /// Which CompilationModes the Pass should be run in.
-  std::bitset<convertEnumToUnsigned(CompilationMode::NumCompilationModes)>
-      enabledCompModes_;
+  unsigned enabledCompModes_;
+  /// ID of the pass.
+  unsigned passID_;
 
 public:
-  PassConfigBase(ConvergenceMode convergenceMode = ConvergenceMode::OnePass,
+  /// Destructor.
+  virtual ~PassConfigBase() = default;
+  /// Constructor.
+  PassConfigBase(unsigned passID,
+                 ConvergenceMode convergenceMode = ConvergenceMode::OnePass,
                  const std::set<CompilationMode> &enabledCompModes =
                      {CompilationMode::Infer, CompilationMode::Train})
-      : convergenceMode_(convergenceMode) {
+      : convergenceMode_(convergenceMode), enabledCompModes_(0),
+        passID_(passID) {
     for (const auto &mode : enabledCompModes) {
-      enabledCompModes_.set(convertEnumToUnsigned(mode));
+      enabledCompModes_ |= 1 << (convertEnumToUnsigned(mode));
     }
   }
+
+  /// Constructor.
+  PassConfigBase(unsigned passID, ConvergenceMode convergenceMode,
+                 unsigned enabledCompModes)
+      : convergenceMode_(convergenceMode), enabledCompModes_(enabledCompModes),
+        passID_(passID) {
+    CHECK(
+        (~((1 << convertEnumToUnsigned(CompilationMode::NumCompilationModes)) -
+           1) &
+         enabledCompModes) == 0)
+        << "Unknown compilation modes: " << enabledCompModes;
+  }
+
   /// \returns the ConvergenceMode of this config.
   ConvergenceMode getConvergenceMode() const { return convergenceMode_; }
 
   /// \returns whether \p mode is an enabled mode for this config.
   bool isEnabledForCompilationMode(CompilationMode mode) const {
-    return enabledCompModes_.test(convertEnumToUnsigned(mode));
+    return enabledCompModes_ & (1 << (convertEnumToUnsigned(mode)));
   }
+
+  /// \returns enabled compilation modes.
+  unsigned getEnabledCompilationModes() const { return enabledCompModes_; }
+
+  unsigned getID() const { return passID_; }
+
   /// Dump a textual representation of this config to \p os.
-  void dump(llvm::raw_ostream &os, llvm::StringRef passName) const;
+  virtual void dump(llvm::raw_ostream &os, llvm::StringRef passName) const;
+
+  /// \returns the name of the pass for this config.
+  virtual llvm::StringRef getNameOfPass() const = 0;
+
+  /// \return true if two configs are equal.
+  virtual bool equals(const PassConfigBase &other) const;
 };
 
 /// Specifies a configuration for running an Pass when used in a
@@ -66,22 +97,43 @@ template <typename PASS_ID> class PassConfig : public PassConfigBase {
 public:
   using PassIDTy = PASS_ID;
 
-private:
-  /// ID of the FunctionPass to run.
-  PassIDTy passID_{PassIDTy::EmptyPass};
-
 public:
+  // Constructor.
   PassConfig(PassIDTy ID,
              ConvergenceMode convergenceMode = ConvergenceMode::OnePass,
              const std::set<CompilationMode> &enabledCompModes =
                  {CompilationMode::Infer, CompilationMode::Train})
-      : PassConfigBase(convergenceMode, enabledCompModes), passID_(ID) {}
+      : PassConfigBase(static_cast<unsigned>(ID), convergenceMode,
+                       enabledCompModes) {}
+  // Constructor.
+  PassConfig(PassIDTy ID, ConvergenceMode convergenceMode,
+             unsigned enabledCompModes)
+      : PassConfigBase(static_cast<unsigned>(ID), convergenceMode,
+                       enabledCompModes) {}
+  // Destructor.
+  ~PassConfig() = default;
 
   /// \returns the passID of this config.
-  PassIDTy getPassID() const { return passID_; }
+  PassIDTy getPassID() const { return static_cast<PassIDTy>(passID_); }
+
+  virtual llvm::StringRef getNameOfPass() const override {
+    return "<unknown pass>";
+  }
+
+  virtual void dump(llvm::raw_ostream &os,
+                    llvm::StringRef passName) const override {
+    PassConfigBase::dump(os, passName);
+  }
 
   /// Dump a textual representation of this config to \p os.
-  void dump(llvm::raw_ostream &os = llvm::outs()) const;
+  virtual void dump(llvm::raw_ostream &os = llvm::outs()) const {
+    dump(os, getNameOfPass());
+  }
+
+  /// \return true if two configs are equal.
+  virtual bool equals(const PassConfigBase &other) const override {
+    return (*this).PassConfigBase::equals(other);
+  }
 };
 
 } // namespace glow

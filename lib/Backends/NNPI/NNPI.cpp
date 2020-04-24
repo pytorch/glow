@@ -960,54 +960,55 @@ NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
   return Expected<std::unique_ptr<CompiledFunction>>(std::move(compiledFunc));
 }
 
-FunctionPassPipeline NNPIBackend::getOptimizationPipeline() const {
+std::unique_ptr<FunctionPassPipeline>
+NNPIBackend::getOptimizationPipeline() const {
   // We temporarily need to disable FoldTileAddIntoBatchedAdd, as it is causing
   // issues for NNPI.
   auto pipeline = createDefaultGraphOptimizationPassPipeline();
-  pipeline.removeAllInstancesOfPass(FunctionPassID::FoldTileAddIntoBatchedAdd);
+  pipeline->removeAllInstancesOfPass(FunctionPassID::FoldTileAddIntoBatchedAdd);
 
   // Disable SinkCode, as NNPI does data parallel transformations and so we do
   // not want to undo that by sinking Nodes back together.
-  pipeline.removeAllInstancesOfPass(FunctionPassID::SinkCode);
+  pipeline->removeAllInstancesOfPass(FunctionPassID::SinkCode);
 
   // Raise Clips above Shape Nodes (e.g. Reshape) to try to ensure fusion
   // occurs. Note that we do this last as it may counteract some earlier
   // optimizations that push Clips down to try to eliminate them.
-  pipeline.pushBack(FunctionPassID::RaiseClipsAboveShapeNodes);
+  pipeline->pushBack(FunctionPassID::RaiseClipsAboveShapeNodes);
 
   // Optimize away intermediate conversions, e.g. Quantize(ConvertTo(Node)) ->
   // Quantize(Node).
-  pipeline.pushBack(FunctionPassID::OptimizeOutIntermediateConversions);
+  pipeline->pushBack(FunctionPassID::OptimizeOutIntermediateConversions);
 
   // Now that we've raised clips up try to optimize quantize-clip combos again.
-  pipeline.pushBack(FunctionPassID::OptimizeQuantizeClip);
+  pipeline->pushBack(FunctionPassID::OptimizeQuantizeClip);
 
   // Now try to eliminate any redundant Clips.
-  pipeline.pushBack(FunctionPassID::OptimizeClips);
+  pipeline->pushBack(FunctionPassID::OptimizeClips);
 
   // Look for float Relus that we can fuse up into quantized FCs.
-  pipeline.pushBack(FunctionPassID::OptimizeQuantFCFloatRelu);
+  pipeline->pushBack(FunctionPassID::OptimizeQuantFCFloatRelu);
 
   // Optimize concats and quantized/dequantize patterns.
-  pipeline.pushBack(FunctionPassID::OptimizeConcatQuantization);
+  pipeline->pushBack(FunctionPassID::OptimizeConcatQuantization);
 
   // Optimize quantization now that we've optimized some other quant nodes.
-  pipeline.pushBack(FunctionPassID::OptimizeQuantization);
+  pipeline->pushBack(FunctionPassID::OptimizeQuantization);
 
   // Now try to sink conversions below concats.
-  pipeline.pushBack(FunctionPassID::SinkConversions);
+  pipeline->pushBack(FunctionPassID::SinkConversions);
 
   // Now that things have been sunk try to get rid of unnecessary concats.
-  pipeline.pushBack(FunctionPassID::OptimizeConcatNodes);
+  pipeline->pushBack(FunctionPassID::OptimizeConcatNodes);
 
   // Look for float Relus that we can fuse up into quantized FCs.
-  pipeline.pushBack(FunctionPassID::OptimizeQuantFCFloatRelu);
+  pipeline->pushBack(FunctionPassID::OptimizeQuantFCFloatRelu);
 
   // Optimize concats and quantized/dequantize patterns.
-  pipeline.pushBack(FunctionPassID::OptimizeConcatQuantization);
+  pipeline->pushBack(FunctionPassID::OptimizeConcatQuantization);
 
   // Cleanup everything now.
-  pipeline.pushBack(getDCEPassConfig());
+  pipeline->pushBack(getDCEPassConfig());
 
   return pipeline;
 }

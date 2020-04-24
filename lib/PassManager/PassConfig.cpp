@@ -42,6 +42,10 @@ void PassConfigBase::dump(llvm::raw_ostream &os,
     os << "[Train]";
   }
   os << "},\n";
+}
 
-  os << "\n";
+bool PassConfigBase::equals(const PassConfigBase &other) const {
+  return convergenceMode_ == other.convergenceMode_ &&
+         enabledCompModes_ == other.enabledCompModes_ &&
+         passID_ == other.passID_;
 }
