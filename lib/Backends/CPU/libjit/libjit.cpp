@@ -840,6 +840,10 @@ static void find_min_max_f(float *tensor, dim_t size, float &min, float &max) {
 
     if (tensorVal > max)
       max = tensorVal;
+
+    // Sanity check for NaN and Infinity.
+    assert(!std::isnan(tensor[i]) && "NaN value found!");
+    assert(!std::isinf(tensor[i]) && "Infinity value found!");
   }
 }
 
@@ -1546,13 +1550,27 @@ int8_t libjit_element_cmp_lt_kernel_i8(dim_t idx, const int8_t *LHS,
   return libjit_scale_i32i8(lhs, pre, post, scale, 0) < rhs ? 1 : 0;
 }
 
-// tanh cannot be vectorized by LLVM yet. Therefore we use the following
+// Tanh cannot be vectorized by LLVM yet. Therefore we use the following
 // formula instead: 1 - 2 / (exp(x * 2) + 1), which is also used by Caffe2 and
 // provides a good accuracy.
 // Once LLVM supports the vectorization of tanh, we can replace this
 // approximation by a direct tanh call.
-DEFINE_DATA_PARALLEL_KERNEL(libjit_tanh_kernel_f, float,
-                            1 - 2 / (expf(LHS[idx] * 2) + 1))
+// When the LIBJIT compile option "-ffast-math" is enabled the intermediate
+// computation expf(x) for Tanh operator is not handled properly for very
+// large positive values which results in NaN values for the Tanh output.
+// Therefore when the "-ffast-math" is enabled we compute the Tanh such that
+// we avoid computing large values for the "expf" function.
+#ifdef FFAST_MATH
+DEFINE_DATA_PARALLEL_KERNEL_FUNC(libjit_tanh_kernel_f) {
+  float inpVal = LHS[idx];
+  float tanhVal = -1 + 2 / (expf(-2 * std::abs(inpVal)) + 1);
+  return std::copysignf(tanhVal, inpVal);
+}
+#else
+DEFINE_DATA_PARALLEL_KERNEL_FUNC(libjit_tanh_kernel_f) {
+  return 1 - 2 / (expf(LHS[idx] * 2) + 1);
+}
+#endif // FFAST_MATH
 
 int8_t libjit_intlookuptable_kernel_i8(dim_t idx, const int8_t *src,
                                        const int8_t *mapping) {
@@ -1578,10 +1596,24 @@ int8_t libjit_elementselect_kernel_i8(dim_t idx, const int8_t *cond,
                                               rhsPost, rhsScale, destOffset));
 }
 
+// When the LIBJIT compile option "-ffast-math" is enabled the intermediate
+// computation expf(x) for Sigmoid operator is not handled properly for very
+// large positive values which results in NaN values for the Sigmoid output.
+// Therefore when the "-ffast-math" is enabled we compute the Sigmoid such that
+// we avoid computing large values for the "expf" function.
+#ifdef FFAST_MATH
+DEFINE_DATA_PARALLEL_KERNEL_FUNC(libjit_sigmoid_kernel_f) {
+  float inpVal = LHS[idx];
+  float sigmoidVal = 1 / (1 + expf(-std::abs(inpVal)));
+  return (float)(std::signbit(inpVal)) + std::copysignf(sigmoidVal, inpVal);
+}
+#else
 DEFINE_DATA_PARALLEL_KERNEL_FUNC(libjit_sigmoid_kernel_f) {
   float e = expf(-LHS[idx]);
   return 1 / (e + 1);
 }
+#endif // FFAST_MATH
+
 DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_element_maxsplat_kernel_f,
                                              float, MAX(LHS[idx], val))
 DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_element_maxsplat_kernel_i8,
@@ -2511,13 +2543,6 @@ void libjit_softmax_grad_f_i32(float *inG, float *outW,
                                const int32_t *selectedW, const dim_t *idim,
                                const dim_t *selectdim) {
   libjit_softmax_grad_generic(inG, outW, selectedW, idim, selectdim);
-}
-
-void libjit_sigmoid_f(const float *inW, float *outW, dim_t numElem) {
-  for (dim_t i = 0; i < numElem; i++) {
-    float e = expf(-inW[i]);
-    outW[i] = 1 / (e + 1);
-  }
 }
 
 void libjit_topk_f_u(float *values, size_t *indices, const float *input,

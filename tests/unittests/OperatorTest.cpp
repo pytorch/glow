@@ -8705,6 +8705,64 @@ TEST_P(OperatorTest, SigmoidOverflow) {
   }
 }
 
+/// This unit test exposes a problem with the CPU Sigmoid when stacking a higher
+/// number of operations for extreme input values which result in NaNs.
+TEST_P(OperatorTest, SigmoidOverflowCPUStacking) {
+  CHECK_IF_ENABLED();
+  dim_t size = 20;
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
+  auto IH = bindings_.allocate(input)->getHandle();
+  IH = {
+      -1588.409912109375,  -460.55999755859375, -1176.9149169921875,
+      -1655.9249267578125, -1580.1217041015625, -1680.279541015625,
+      -1750.2677001953125, -1762.1697998046875, -1616.599365234375,
+      -1725.301025390625,  +1588.409912109375,  +460.55999755859375,
+      +1176.9149169921875, +1655.9249267578125, +1580.1217041015625,
+      +1680.279541015625,  +1750.2677001953125, +1762.1697998046875,
+      +1616.599365234375,  +1725.301025390625,
+  };
+  auto *fpSigmoid = F_->createSigmoid("fpSigmoid", input);
+  auto *S = F_->createSave("fpSave", fpSigmoid);
+  bindings_.allocate(S->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  Tensor &result = *bindings_.get(S->getPlaceholder());
+  for (size_t i = 0; i < size; i++) {
+    float ref = IH.raw(i) > 0 ? 1 : 0;
+    EXPECT_NEAR(result.getHandle().raw(i), ref, 1E-6);
+  }
+}
+
+/// This unit test exposes a problem with the CPU Tanh when stacking a higher
+/// number of operations for extreme input values which result in NaNs.
+TEST_P(OperatorTest, TanhOverflowCPUStacking) {
+  CHECK_IF_ENABLED();
+  dim_t size = 20;
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {size}, "input", false);
+  auto IH = bindings_.allocate(input)->getHandle();
+  IH = {
+      -1588.409912109375,  -460.55999755859375, -1176.9149169921875,
+      -1655.9249267578125, -1580.1217041015625, -1680.279541015625,
+      -1750.2677001953125, -1762.1697998046875, -1616.599365234375,
+      -1725.301025390625,  +1588.409912109375,  +460.55999755859375,
+      +1176.9149169921875, +1655.9249267578125, +1580.1217041015625,
+      +1680.279541015625,  +1750.2677001953125, +1762.1697998046875,
+      +1616.599365234375,  +1725.301025390625,
+  };
+  auto *fpTanh = F_->createTanh("fpTanh", input);
+  auto *S = F_->createSave("fpSave", fpTanh);
+  bindings_.allocate(S->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  Tensor &result = *bindings_.get(S->getPlaceholder());
+  for (size_t i = 0; i < size; i++) {
+    float ref = IH.raw(i) > 0 ? 1 : -1;
+    EXPECT_NEAR(result.getHandle().raw(i), ref, 1E-6);
+  }
+}
+
 TEST_P(OperatorStatelessTest, Int8Sigmoid) {
   CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitBasicSigmoidTest,

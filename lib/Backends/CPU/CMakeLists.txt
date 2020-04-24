@@ -26,8 +26,6 @@ endif()
 set(CPURunttimeCompilationOptions
       -I ${CMAKE_CURRENT_SOURCE_DIR}/../../../../glow/include
       -std=c++14
-      -ffast-math
-      -fno-finite-math-only
       -g
       -I${CMAKE_SOURCE_DIR}/include
       -emit-llvm
