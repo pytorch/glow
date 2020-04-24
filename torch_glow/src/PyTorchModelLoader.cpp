@@ -718,11 +718,9 @@ const PyTorchModelLoader::MappingOfMemberFunctions
 PyTorchModelLoader::buildSymbolsMapping() {
   // First build mapping with standard PyTorch operators.
   auto symbolLoaderMapping = MappingOfMemberFunctions({
-      {{"aten::to"}, &PyTorchModelLoader::loadTo},
       {{"aten::type_as"}, &PyTorchModelLoader::loadTypeAs},
       {{"aten::contiguous"}, &PyTorchModelLoader::loadContiguous},
       {{"prim::Constant"}, &PyTorchModelLoader::loadConstant},
-      {{"prim::NumToTensor"}, &PyTorchModelLoader::loadNumToTensor},
       {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul},
       {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv},
       {{"aten::add", "aten::add_"}, &PyTorchModelLoader::loadAdd},
@@ -3301,37 +3299,6 @@ Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(in, getGlowNodeValueForValue(inputs[0]));
 
   return addValueMapping(outputs[0], in);
-}
-
-Error PyTorchModelLoader::loadNumToTensor(const torch::jit::Node *ptNode) {
-  auto inputs = ptNode->inputs();
-  auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
-
-  glow::GlowIValue *in;
-  ASSIGN_VALUE_OR_RETURN_ERR(in, getGlowIValueForValue(inputs[0]));
-
-  if (in->isInt()) {
-    glow::Type ty(ElemKind::Int64ITy, {});
-    glow::Tensor t(ty);
-    int64_t intval;
-    ASSIGN_VALUE_OR_RETURN_ERR(intval, iValToInt(in));
-    t.init(glow::Tensor::InitKind::Broadcast, intval,
-           F_.getParent()->getPRNG());
-    auto glowNodeValue =
-        F_.getParent()->createConstant("num_to_tensor", std::move(t));
-    return addValueMapping(outputs[0], glowNodeValue);
-  } else if (in->isDouble()) {
-    glow::Type ty(ElemKind::FloatTy, {});
-    glow::Tensor t(ty);
-    float fval;
-    ASSIGN_VALUE_OR_RETURN_ERR(fval, iValToDouble(in));
-    t.init(glow::Tensor::InitKind::Broadcast, fval, F_.getParent()->getPRNG());
-    auto glowNodeValue =
-        F_.getParent()->createConstant("num_to_tensor", std::move(t));
-    return addValueMapping(outputs[0], glowNodeValue);
-  } else
-    RETURN_ERR("NumToTensor only supported for Int and Double");
 }
 
 Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
