@@ -16,8 +16,10 @@
 #ifndef GLOW_BASE_TENSOR_SERIALIZATION_H
 #define GLOW_BASE_TENSOR_SERIALIZATION_H
 
+#include "glow/Base/Image.h"
 #include "glow/Base/Tensor.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace glow {
@@ -51,6 +53,32 @@ void dumpToRawTextFile(Tensor &tensor, llvm::StringRef filename);
 /// of data is NOT guaranteed to preserve data precision (bit exactness) upon
 /// round-trips (dump/load) but is used for human readability.
 void loadFromRawTextFile(Tensor &tensor, llvm::StringRef filename);
+
+/// Load network input tensor (same one images are loaded into) from the tensor
+/// blobs files in \p filenames. All the loaded tensors are concatenated along
+/// the batch dimension. The default loader expected the following tensor blob
+/// format:
+///   -- first line: 4 space separated values representing NCHW dimensions (W is
+///   the fastest).
+///   -- second line: Space separated float value that are loaded into \p
+///   tensor.
+/// TODO: Default tensor loader could be extended to support various data types
+/// or tensor layout.
+void loadInputImageFromFileWithType(
+    const llvm::ArrayRef<std::string> &filenames, Tensor *tensor,
+    ImageLayout tensorLayout);
+/// Helper function to aid testing of loadFromFileWithShapeLayout.
+void dumpInputTensorToFileWithType(const llvm::ArrayRef<std::string> &filenames,
+                                   const Tensor &, ImageLayout);
+
+/// Input tensor loader function. The function needs to set \p tensor type
+/// according to the data provided in the tensor blob. Expected layout is
+/// provided in \p imageLayout.
+using InputTensorFileLoaderFn = std::function<void(
+    Tensor &tensor, llvm::StringRef filename, ImageLayout imageLayout)>;
+
+/// Register input tensor loader function.
+void registerInputTensorFileLoader(InputTensorFileLoaderFn loader);
 
 } // namespace glow
 

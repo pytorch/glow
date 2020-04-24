@@ -57,6 +57,13 @@ llvm::cl::opt<std::string> inputImageListFile(
     llvm::cl::value_desc("string_name"), llvm::cl::Optional,
     llvm::cl::cat(executorCat));
 
+llvm::cl::opt<std::string> inputTensorListFile(
+    "input-tensor-list-file",
+    llvm::cl::desc(
+        "Name of the file containing list of tensors (one tensor per line)"),
+    llvm::cl::value_desc("string_name"), llvm::cl::Optional,
+    llvm::cl::cat(executorCat));
+
 llvm::cl::opt<unsigned> miniBatch(
     "minibatch",
     llvm::cl::desc(
@@ -151,12 +158,12 @@ llvm::cl::opt<unsigned> repeatSingleBatchCount(
     llvm::cl::init(0), llvm::cl::cat(executorCat));
 
 /// Read all images from \p inputImageListFile in to \p inputImageFilenames.
-void parseInputImageList(const std::string &inputImageListFile) {
+void parseInputList(const std::string &inputListFile) {
   std::ifstream inFile;
-  inFile.open(inputImageListFile);
+  inFile.open(inputListFile);
   if (!inFile.good()) {
-    llvm::outs() << "Could not open input-image-list-file: "
-                 << inputImageListFile << ", exiting.\n";
+    llvm::outs() << "Could not open input-image-list-file: " << inputListFile
+                 << ", exiting.\n";
     std::exit(1);
   }
 
