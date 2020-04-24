@@ -76,7 +76,11 @@ bool ThePassManager::runPassHook(const PassConfigBase &passConfig, PassBase &P,
 }
 
 bool runDCEPass(ThePassManager::IRContainerTy *F, CompilationContext &cctx) {
-  return FunctionPassManager("DCE_FPM", {getDCEPassConfig()}).run(F, cctx);
+  auto pipeline = glow::make_unique<FunctionPassPipeline>();
+  pipeline->pushBack(getDCEPassConfig());
+  return FunctionPassManager("DCE_FPM", std::move(pipeline)).run(F, cctx);
 }
+
+void test() { FunctionPassManager FPM("name", "pipeline.def"); }
 
 } // namespace glow

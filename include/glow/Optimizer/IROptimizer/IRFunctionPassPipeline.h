@@ -32,7 +32,8 @@ enum class IRFunctionPassID {
 using IRFunctionPassPipeline = PassPipeline<IRFunctionPass>;
 
 /// \returns the default, target-independent IR optimization pipeline.
-IRFunctionPassPipeline createDefaultIRFunctionOptimizationPipeline();
+std::unique_ptr<IRFunctionPassPipeline>
+createDefaultIRFunctionOptimizationPipeline();
 
 /// \returns the name of a Pass given its \p passID.
 llvm::StringRef getNameOfPass(IRFunctionPassID passID);

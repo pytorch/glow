@@ -152,7 +152,7 @@ struct CompilationContext {
 
   /// Select whether in Training or Inference mode.
   enum class CompilationMode {
-    Train, /// Compile the graph in preperation for training.
+    Train, /// Compile the graph in preparation for training.
     Infer, /// Compile the graph for inference. Notice that this operation
            /// changes the graph in a way that is not reversible.
     NumCompilationModes, /// Used to count the number of CompilationModes.

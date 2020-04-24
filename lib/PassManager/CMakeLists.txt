@@ -1,6 +1,7 @@
 add_library(PassManager
               PassConfig.cpp
-              PassManager.cpp)
+              PassManager.cpp
+              PassPipeline.cpp)
 
 target_link_libraries(PassManager
                       PRIVATE

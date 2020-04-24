@@ -187,16 +187,17 @@ TensorLayoutCommon &Backend::getTensorLayoutRequirements() const {
   return CanonicalTensorLayout::getInstance();
 }
 
-FunctionPassPipeline Backend::getOptimizationPipeline() const {
-  auto p = createDefaultGraphOptimizationPassPipeline();
+std::unique_ptr<FunctionPassPipeline> Backend::getOptimizationPipeline() const {
+  auto pipeline = createDefaultGraphOptimizationPassPipeline();
   // Fold Tile followed by Add into BatchedAdd. Currently this is not part of
   // the default pipeline to avoid issues with some backends. If backends do not
   // want this opt then they should override getOptimizationPipeline().
-  p.pushFront({FunctionPassID::FoldTileAddIntoBatchedAdd});
-  return p;
+  pipeline->pushFront({FunctionPassID::FoldTileAddIntoBatchedAdd});
+  return pipeline;
 }
 
-IRFunctionPassPipeline Backend::getIROptimizationPipeline() const {
+std::unique_ptr<IRFunctionPassPipeline>
+Backend::getIROptimizationPipeline() const {
   auto pipeline = createDefaultIRFunctionOptimizationPipeline();
   return pipeline;
 }

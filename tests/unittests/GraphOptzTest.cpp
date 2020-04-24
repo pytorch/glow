@@ -54,14 +54,15 @@ static bool functionContainsNode(const Function *F, const Node *N) {
 /// \p pass is empty then the whole default optimization pipeline is run.
 /// Otherwise only \p pipeline is used.
 static Function *
-optimizeFunction(Function *F, const FunctionPassPipeline &pipeline = {},
+optimizeFunction(Function *F,
+                 std::initializer_list<FunctionPassConfig> configs = {},
                  const CompilationContext cctx = CompilationContext()) {
   auto *G = F->clone(F->getName().str() + "_optimized");
-  if (pipeline.size() == 0) {
+  if (configs.size() == 0) {
     ::glow::optimize(G, CompilationMode::Infer);
     return G;
   }
-  FunctionPassManager FPM("TestFPM", pipeline);
+  FunctionPassManager FPM("TestFPM", configs);
   FPM.run(G, cctx);
   return G;
 }
@@ -2925,8 +2926,8 @@ TEST_F(GraphOptz, FoldTileAddIntoBatchedAdd) {
   // part of the default optimization pipeline. Create a local version of the
   // pipeline with that pass included.
   auto p = createDefaultGraphOptimizationPassPipeline();
-  p.pushFront({FunctionPassID::FoldTileAddIntoBatchedAdd});
-  FunctionPassManager FPM("opt", p);
+  p->pushFront({FunctionPassID::FoldTileAddIntoBatchedAdd});
+  FunctionPassManager FPM("opt", std::move(p));
   FPM.run(F_, CompilationContext());
   ASSERT_TRUE(F_->verify());
 

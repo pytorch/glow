@@ -4562,13 +4562,15 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   // inputs, and outputs (Placeholders and SaveNodes).
   if (cctx.optimizationOpts.foldStaticPlaceholderConversions ||
       cctx.optimizationOpts.foldElemKindConversionIntoIO) {
-    FunctionPassPipeline pipeline{
-        FunctionPassID::FoldElemKindConversionIntoInputs};
+    std::unique_ptr<FunctionPassPipeline> pipeline =
+        glow::make_unique<FunctionPassPipeline>();
+    pipeline->pushBack({FunctionPassID::FoldElemKindConversionIntoInputs});
 
     if (cctx.optimizationOpts.foldElemKindConversionIntoIO) {
-      pipeline.pushBack({FunctionPassID::FoldElemKindConversionIntoOutputs});
+      pipeline->pushBack({FunctionPassID::FoldElemKindConversionIntoOutputs});
     }
-    FunctionPassManager FPM("FoldElemKindConversionIntoIO", pipeline);
+    FunctionPassManager FPM("FoldElemKindConversionIntoIO",
+                            std::move(pipeline));
     if (FPM.run(F, cctx)) {
       ::glow::optimize(F, cctx);
     }
