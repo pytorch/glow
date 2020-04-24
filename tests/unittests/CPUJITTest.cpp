@@ -120,7 +120,7 @@ REGISTER_GLOW_BACKEND_FACTORY(MockCPUFactory, MockCPUBackend);
 //==============================================================
 
 #define JIT_MAGIC_VALUE 555
-
+#ifndef WIN32
 // Test 0: test that the libjit code can use global C++ objects.
 TEST(CPUJITTest, testCppConstructors) {
   glow::ExecutionEngine EE("MockCPUBackend");
@@ -142,3 +142,4 @@ TEST(CPUJITTest, testCppConstructors) {
   EE.run(bindings);
   EXPECT_TRUE(outputT->isEqual(expectedT));
 }
+#endif // ! WIN32

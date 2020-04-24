@@ -1227,7 +1227,7 @@ createAndInitBasicMFCCTest(glow::PlaceholderBindings &bindings,
 
 TEST_MFCC(1, 17, 5e-5)
 TEST_MFCC(1, 33, 5e-5)
-TEST_MFCC(1, 65, 1e-5)
+TEST_MFCC(1, 65, 2e-5)
 TEST_MFCC(1, 129, 1e-5)
 TEST_MFCC(2, 257, 1e-5)
 TEST_MFCC(3, 513, 1e-5)
