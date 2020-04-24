@@ -180,3 +180,11 @@ TEST(Error, PeekExpected) {
 #endif
   ERR_TO_VOID(intOrErr.takeError());
 }
+
+TEST(Error, WarningString) {
+  const char *msg = "some message";
+  auto err = MAKE_ERR(msg);
+  auto str = ERR_TO_STRING(std::move(err), /*warning*/ true);
+  EXPECT_NE(str.find("Warning"), std::string::npos)
+      << "Expect warning to be present in message";
+}

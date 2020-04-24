@@ -253,7 +253,7 @@ void NNPIDeviceManager::evictNetwork(std::string functionName,
   if (evictCB) {
     evictCB(functionName, std::move(err));
   } else {
-    llvm::errs() << errorToString(std::move(err));
+    llvm::errs() << ERR_TO_STRING(std::move(err));
   }
 }
 
