@@ -51,7 +51,7 @@ struct PyTorchLoaderSettings {
   bool weightFreezingEnabled = true;
 
   /// Dump Glow dot graph to file after model loading is finished.
-  bool dumpGlowDag;
+  bool dumpGlowDag = false;
 
   /// A list of symbols for nodes that will be ignored by the Glow fuser and
   /// thus will not be fused to Glow.
