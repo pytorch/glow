@@ -8417,8 +8417,6 @@ static void Conv3DQuantizedTest(glow::PlaceholderBindings &bindings,
       {-1.0, 1.0}, quantization::Schema::Asymmetric, elemKind);
   auto filterTQP = quantization::chooseQuantizationParams(
       {-1.0, 1.0}, quantization::Schema::Asymmetric, elemKind);
-  auto biasTQP = quantization::chooseQuantizationParams(
-      {-1.0, 1.0}, quantization::Schema::Asymmetric, biaselemKind);
   auto outputTQP = quantization::chooseQuantizationParams(
       {-4.0, 4.0}, quantization::Schema::Asymmetric, elemKind);
 
@@ -8427,16 +8425,23 @@ static void Conv3DQuantizedTest(glow::PlaceholderBindings &bindings,
                                  inputTQP.offset);
   auto filterQTy = mod.uniqueType(elemKind, {1, 1, 2, 3, 1}, filterTQP.scale,
                                   filterTQP.offset);
-  auto biasQTy =
-      mod.uniqueType(biaselemKind, {1}, biasTQP.scale, biasTQP.offset);
   auto outQTy = mod.uniqueType(elemKind, {1, 4, 3, 2, 1}, outputTQP.scale,
                                outputTQP.offset);
   QuantizeNode *inputQ = F->createQuantize("inputQ", input, inputQTy);
   QuantizeNode *filterQ = F->createQuantize("filterQ", filter, filterQTy);
-  QuantizeNode *biasQ = F->createQuantize("biasQ", bias, biasQTy);
-  Convolution3DNode *conv3dQ =
-      F->createConv3D("Conv3DQ", inputQ, filterQ, biasQ, outQTy, {1, 2, 3},
-                      {1, 1, 1}, {0, 0, 0, 0, 0, 0}, 1);
+  Convolution3DNode *conv3dQ = nullptr;
+  if (biaselemKind == ElemKind::FloatTy) {
+    conv3dQ = F->createConv3D("Conv3DQ", inputQ, filterQ, bias, outQTy,
+                              {1, 2, 3}, {1, 1, 1}, {0, 0, 0, 0, 0, 0}, 1);
+  } else {
+    auto biasTQP = quantization::chooseQuantizationParams(
+        {-1.0, 1.0}, quantization::Schema::Asymmetric, biaselemKind);
+    auto biasQTy =
+        mod.uniqueType(biaselemKind, {1}, biasTQP.scale, biasTQP.offset);
+    QuantizeNode *biasQ = F->createQuantize("biasQ", bias, biasQTy);
+    conv3dQ = F->createConv3D("Conv3DQ", inputQ, filterQ, biasQ, outQTy,
+                              {1, 2, 3}, {1, 1, 1}, {0, 0, 0, 0, 0, 0}, 1);
+  }
   DequantizeNode *deQ = F->createDequantize("deQ", conv3dQ, ElemKind::FloatTy);
   SaveNode *saveQ = F->createSave("saveQ", deQ);
 
@@ -8473,6 +8478,13 @@ TEST_P(OperatorTest, Conv3DQuantizedTest_Int8_BiasInt32) {
   ENABLED_BACKENDS("Interpreter", "NNPI");
   Conv3DQuantizedTest(bindings_, mod_, F_, EE_, ElemKind::Int8QTy,
                       ElemKind::Int32QTy);
+}
+
+/// Test Int8 Conv3D with Float32 bias.
+TEST_P(OperatorTest, Conv3DQuantizedTest_Int8_BiasFloat) {
+  ENABLED_BACKENDS("Interpreter");
+  Conv3DQuantizedTest(bindings_, mod_, F_, EE_, ElemKind::Int8QTy,
+                      ElemKind::FloatTy);
 }
 
 /// Test Int16 Conv3D with Int16 bias.
