@@ -9802,6 +9802,148 @@ TEST_P(OperatorTest,
       /* useFP16Accumulation */ true, /* hasEndOffset */ true);
 }
 
+/// Helper to test EmbeddingBag4BitRowwiseOffsets.
+template <typename DataType>
+static void testEmbeddingBag4BitRowwiseOffsets(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
+    glow::ExecutionEngine &EE, bool useFP16Accumulation, bool hasEndOffset,
+    float allowedError) {
+  /*
+    DATA  =   [[0, 1, 2, 3], [0, 1, 2, 3], [0, 1, 2, 3], // First Slice.
+               [-3, -2, -1., 0], [0, -1, -2, -3],  // Second Slice.
+               [2, 2, 2, 2,], [2, 2, 2, 2]  // Third Slice.
+               ]
+    WEIGHTS = [1, 2, 3, 2, 0.5, -0.5, 2]
+    INDICES = [0, 1, 2, 4, 3, 5, 6]
+    OFFSETS = [
+        0, // This slice contains numbers >= 0.
+        3, // This slice contains numbers <= 0.
+        5, // This slice contains numbers which are all the same.
+        7, // Empty slice.
+    ]
+    OUTPUT =  [[0, 6, 12, 18], // Output row per slice.
+               [-1.5, -3, -4.5, -6],
+               [3, 3, 3, 3]
+               [0, 0, 0, 0]]
+  */
+  Tensor data(ElemKind::FloatTy, {7, 4});
+  data.getHandle() = {
+      0.,  1., 2., 3.,  0.,  1.,  2., 3., 0., 1., 2., 3., -3., -2.,
+      -1., 0., 0., -1., -2., -3., 2., 2., 2., 2., 2., 2., 2.,  2.,
+  };
+
+  // If hasEndOffset then add some additional junk to the end of indices and
+  // weights and an extra offset to offsets.
+  Constant *weights;
+  Placeholder *indices;
+  Placeholder *offsets;
+  if (hasEndOffset) {
+    weights = mod.createConstant(ElemKind::Float16Ty, {9}, "weights");
+    weights->getPayloadMutable().getHandle<DataType>() = {
+        1.,
+        2.,
+        3.,
+        2,
+        0.5,
+        -0.5,
+        2,
+        -42.0 /* A dummy weight for end offset. */,
+        42.0 /* A dummy weight for end offset. */,
+    };
+
+    indices = mod.createPlaceholder(ElemKind::Int64ITy, {9}, "indices",
+                                    /* isTrainable */ false);
+    offsets = mod.createPlaceholder(ElemKind::Int64ITy, {5}, "offsets",
+                                    /* isTrainable */ false);
+
+    bindings.allocate(indices)->getHandle<int64_t>() = {
+        0,
+        1,
+        2,
+        4,
+        3,
+        5,
+        6,
+        100 /* A dummy indice for end offset. */,
+        200 /* A dummy indice for end offset. */,
+    };
+
+    bindings.allocate(offsets)->getHandle<int64_t>() = {
+        0, // This slice contains numbers >= 0.
+        3, // This slice contains numbers <= 0.
+        5, // This slice contains numbers which are all the same.
+        7, // Empty slice.
+        7, // Dummy end offset.
+    };
+
+  } else {
+    weights = mod.createConstant(ElemKind::Float16Ty, {7}, "weights");
+    weights->getPayloadMutable().getHandle<DataType>() = {
+        1., 2., 3., 2, 0.5, -0.5, 2,
+    };
+
+    indices = mod.createPlaceholder(ElemKind::Int64ITy, {7}, "indices",
+                                    /* isTrainable */ false);
+    offsets = mod.createPlaceholder(ElemKind::Int64ITy, {4}, "offsets",
+                                    /* isTrainable */ false);
+
+    bindings.allocate(indices)->getHandle<int64_t>() = {
+        0, 1, 2, 4, 3, 5, 6,
+    };
+    bindings.allocate(offsets)->getHandle<int64_t>() = {
+        0, // This slice contains numbers >= 0.
+        3, // This slice contains numbers <= 0.
+        5, // This slice contains numbers which are all the same.
+        7, // Empty slice.
+    };
+  }
+
+  auto *R = F->createEmbeddingBagByteRowwiseOffsets(
+      "EBBRO", data, weights, indices, offsets, ElemKind::UInt4FusedFP16QTy,
+      useFP16Accumulation, hasEndOffset);
+  SaveNode *S = F->createSave("save", R);
+  bindings.allocate(S->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor &result = *bindings.get(S->getPlaceholder());
+  Tensor expected(ElemKind::Float16Ty, {4, 4});
+  expected.getHandle<DataType>() = {0., 6., 12., 18., -1.5, -3., -4.5, -6,
+                                    3., 3., 3.,  3.,  0.,   0.,  0.,   0.};
+
+  EXPECT_TRUE(expected.isEqual(result, allowedError));
+}
+
+TEST_P(OperatorTest, EmbeddingBag4BitRowwiseOffsets_Float16) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBag4BitRowwiseOffsets<float16_t>(
+      bindings_, mod_, F_, EE_,
+      /* useFP16Accumulation */ false, /* hasEndOffset */ false, 0.005);
+}
+
+TEST_P(OperatorTest, EmbeddingBag4BitRowwiseOffsets_Float16_AccumFloat) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBag4BitRowwiseOffsets<float16_t>(
+      bindings_, mod_, F_, EE_,
+      /* useFP16Accumulation */ true, /* hasEndOffset */ false, 0.005);
+}
+
+TEST_P(OperatorTest, EmbeddingBag4BitRowwiseOffsets_Float16_HasEndOffset) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBag4BitRowwiseOffsets<float16_t>(bindings_, mod_, F_, EE_,
+                                                /* useFP16Accumulation */ false,
+                                                /* hasEndOffset */ true, 0.005);
+}
+
+TEST_P(OperatorTest,
+       EmbeddingBag4BitRowwiseOffsets_Float16_HasEndOffset_AccumFloat) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBag4BitRowwiseOffsets<float16_t>(bindings_, mod_, F_, EE_,
+                                                /* useFP16Accumulation */ true,
+                                                /* hasEndOffset */ true, 0.005);
+}
+
 /// Helper to test RowwiseQuantizedSparseLengthsWeightedSum using \p DTy.
 template <typename DataType, typename IndexType>
 static void testRowwiseQuantizedSparseLengthsWeightedSum(
