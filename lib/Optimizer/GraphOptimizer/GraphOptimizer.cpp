@@ -4555,13 +4555,12 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   // Optimize the graph again now that we have a lowered representation.
   ::glow::optimize(F, cctx);
 
-  // Perform node splitting.
-
-  // RETURN_IF_ERR(::glow::splitNodesWithConstraints(
-  //    F, {getMaxMemSplitNodeConstraint(splitNodesByMemSizeOpt)}));
-
-  // RETURN_IF_ERR(::glow::splitNodesWithConstraints(
-  //     F, {getNumChunksSplitNodeConstraint(3)}));
+  // Perform node splitting by memory size.
+  SplitNodeMap splitMap;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      splitMap, ::glow::splitNodesWithConstraints(
+                    F, llvm::DenseMap<Node *, SplitNodeOption *>(),
+                    {getMaxMemSplitNodeConstraint(splitNodesByMemSizeOpt)}));
 
   // If requested fold ElemKind conversion Nodes into static Placeholders,
   // inputs, and outputs (Placeholders and SaveNodes).

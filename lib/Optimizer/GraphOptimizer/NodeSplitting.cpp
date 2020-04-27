@@ -62,18 +62,18 @@ public:
 
   /// Getter for ranges start values.
   std::vector<dim_t> getStarts() const {
-    std::vector<dim_t> starts;
-    for (const auto &range : ranges_) {
-      starts.push_back(range.first);
+    std::vector<dim_t> starts(ranges_.size());
+    for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
+      starts[dim] = ranges_[dim].first;
     }
     return starts;
   }
 
   /// Getter for dimensions sizes.
   std::vector<dim_t> getSizes() const {
-    std::vector<dim_t> sizes;
-    for (const auto &range : ranges_) {
-      sizes.push_back(range.second - range.first + 1);
+    std::vector<dim_t> sizes(ranges_.size());
+    for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
+      sizes[dim] = ranges_[dim].second - ranges_[dim].first + 1;
     }
     return sizes;
   }
@@ -95,7 +95,7 @@ public:
     if (ranges_.size() != rangesOther.size()) {
       return false;
     }
-    for (size_t dim = 0, end = ranges_.size(); dim < end; ++dim) {
+    for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
       if (ranges_[dim] != rangesOther[dim]) {
         return false;
       }
@@ -117,64 +117,178 @@ public:
   }
 };
 
-/// Function to split a slice range \p range along the dimension \p dim in the
-/// given number of chunks \p numChunks. Since the split does not always result
-/// in equal chunks, you can choose to list the bigger chunks first (with one
-/// unit bigger than the others) by using the flag \p bigChunksFirst.
-static std::vector<SliceRange>
-splitAlongDimByNumChunks(const SliceRange &range, size_t dim, dim_t numChunks,
-                         bool bigChunksFirst = true) {
-
-  // Dimension range size used for splitting.
-  dim_t rangeSize = range.getSize(dim);
-  assert((1 <= numChunks) && (numChunks <= rangeSize) &&
-         "Invalid number of chunks for splitting a SliceRange!");
-  dim_t chunkRangeDiv = rangeSize / numChunks;
-  dim_t chunkRangeRem = rangeSize % numChunks;
-
-  // Small and big chunk sizes.
-  dim_t numChunksBig = chunkRangeRem;
-  dim_t chunkSizeSmall = chunkRangeDiv;
-  dim_t chunkSizeBig = chunkRangeDiv + 1;
-
-  // Perform splitting.
-  std::vector<SliceRange> chunksRanges;
-  dim_t chunkStart = range[dim].first;
-  for (size_t idx = 0; idx < numChunks; idx++) {
-
-    // Compute chunk size.
-    dim_t chunkSizeCurr = chunkSizeSmall;
-    if (bigChunksFirst && (idx < numChunksBig)) {
-      chunkSizeCurr = chunkSizeBig;
-    }
-    if ((!bigChunksFirst && (idx >= numChunks - numChunksBig))) {
-      chunkSizeCurr = chunkSizeBig;
-    }
-
-    // Insert chunk range.
-    SliceRange chunk = range;
-    chunk[dim].first = chunkStart;
-    chunk[dim].second = chunkStart + chunkSizeCurr - 1;
-    chunksRanges.emplace_back(chunk);
-    chunkStart += chunkSizeCurr;
-  }
-  assert(chunkStart - 1 == range[dim].second &&
-         "Inconsistent splitting of SliceRange!");
-  return chunksRanges;
+///===---------------------------------------------------------------------===//
+///                              SplitNodeOption
+///===---------------------------------------------------------------------===//
+size_t SplitNodeOption::getSplitDimIdx(dim_t splitDim) const {
+  auto splitDimsIt = std::find(splitDims_.begin(), splitDims_.end(), splitDim);
+  CHECK(splitDimsIt != splitDims_.end())
+      << "Split dimension invalid! Not registered in this SplitNodeOption!";
+  return std::distance(splitDims_.begin(), splitDimsIt);
 }
 
-/// Function to split an array of slice ranges \p ranges along the dimension
-/// \p dim in the given number of chunks \p numChunks. All the resulting arrays
-/// of slice ranges are concatenated and returned. In each individual array of
-/// slice ranges the bigger chunks will be listed first or not according to the
-/// value of the boolean flag \p bigChunksFirst.
+std::vector<dim_t> SplitNodeByNumChunks::splitAlongDim(dim_t dimSize,
+                                                       size_t dim) const {
+  size_t dimIdx = getSplitDimIdx(dim);
+  dim_t numChunks = numChunks_[dimIdx];
+  CHECK((1 <= numChunks) && (numChunks <= dimSize))
+      << "SplitNodeByNumChunks: Invalid number of chunks '" << numChunks
+      << "' for splitting a dimension with size '" << dimSize << "'!";
+
+  dim_t chunkDiv = dimSize / numChunks;
+  dim_t chunkRem = dimSize % numChunks;
+
+  // Small and big chunk sizes.
+  dim_t numChunksBig = chunkRem;
+  dim_t chunkSizeSmall = chunkDiv;
+  dim_t chunkSizeBig = chunkDiv + 1;
+
+  // Split dimension.
+  std::vector<dim_t> chunkSizes(numChunks);
+  for (size_t idx = 0, end = numChunks; idx < end; ++idx) {
+    dim_t chunkSize = chunkSizeSmall;
+    if (bigChunksFirst_ && (idx < numChunksBig)) {
+      chunkSize = chunkSizeBig;
+    }
+    if ((!bigChunksFirst_ && (idx >= numChunks - numChunksBig))) {
+      chunkSize = chunkSizeBig;
+    }
+    chunkSizes[idx] = chunkSize;
+  }
+  return chunkSizes;
+}
+
+std::vector<dim_t> SplitNodeByChunkSize::splitAlongDim(dim_t dimSize,
+                                                       size_t dim) const {
+  size_t dimIdx = getSplitDimIdx(dim);
+  dim_t chunkSize = chunkSizes_[dimIdx];
+  CHECK((1 <= chunkSize) && (chunkSize <= dimSize))
+      << "SplitNodeByChunkSize: Invalid chunk size '" << chunkSize
+      << "' for splitting a dimension with size '" << dimSize << "'!";
+
+  dim_t chunkDiv = dimSize / chunkSize;
+  dim_t chunkRem = dimSize % chunkSize;
+
+  // Small and big chunk sizes.
+  dim_t numChunks = chunkRem > 0 ? chunkDiv + 1 : chunkDiv;
+  dim_t chunkSizeSmall = chunkRem > 0 ? chunkRem : chunkSize;
+  dim_t chunkSizeBig = chunkSize;
+
+  // Split dimension.
+  std::vector<dim_t> chunkSizes(numChunks);
+  for (size_t idx = 0, end = numChunks; idx < end; ++idx) {
+    dim_t chunkSize = chunkSizeBig;
+    if (bigChunksFirst_ && (idx == numChunks - 1)) {
+      chunkSize = chunkSizeSmall;
+    }
+    if (!bigChunksFirst_ && (idx == 0)) {
+      chunkSize = chunkSizeSmall;
+    }
+    chunkSizes[idx] = chunkSize;
+  }
+  return chunkSizes;
+}
+
+std::vector<dim_t> SplitNodeByChunkSizes::splitAlongDim(dim_t dimSize,
+                                                        size_t dim) const {
+  size_t dimIdx = getSplitDimIdx(dim);
+  std::vector<dim_t> chunkSizes = chunkSizes_[dimIdx];
+  size_t numChunks = chunkSizes.size();
+  CHECK((1 <= numChunks) && (numChunks <= dimSize))
+      << "SplitNodeByChunkSizes: Invalid number of sizes '" << numChunks
+      << "' for splitting a dimension with size '" << dimSize << "'!";
+  for (const auto &chunkSize : chunkSizes) {
+    CHECK(chunkSize > 0)
+        << "SplitNodeByChunkSizes: Chunk size 0 is not allowed!";
+  }
+  return chunkSizes;
+}
+
+std::vector<dim_t> SplitNodeByChunkWeights::splitAlongDim(dim_t dimSize,
+                                                          size_t dim) const {
+  size_t dimIdx = getSplitDimIdx(dim);
+  const std::vector<float> &chunkWeights = chunkWeights_[dimIdx];
+  dim_t numChunks = chunkWeights.size();
+  CHECK((1 <= numChunks) && (numChunks <= dimSize))
+      << "SplitNodeByChunkWeights: Invalid number of weights '" << numChunks
+      << "' for splitting a dimension with size '" << dimSize << "'!";
+
+  // Verify that all the weights are positive and compute the weights sum.
+  float chunkWeightsSum = 0;
+  for (const auto &weight : chunkWeights) {
+    CHECK(weight > 0) << "SplitNodeByChunkWeights: Chunk weight '" << weight
+                      << "' invalid! Should be strictly positive!";
+    chunkWeightsSum += weight;
+  }
+
+  // Compute individual chunk sizes such that each chunk gets at least one unit
+  // (empty chunks are NOT allowed). The total number of units is distributed
+  // such that the error between the given chunk weights and the actual chunk
+  // weights is minimized.
+  std::vector<dim_t> chunkSizes(numChunks, 1);
+  dim_t unitsRem = dimSize - numChunks;
+  while (unitsRem > 0) {
+    // Find chunk with maximum weight error.
+    float weightErrMax = std::numeric_limits<float>::lowest();
+    size_t weightErrMaxIdx = 0;
+    for (size_t idx = 0; idx < numChunks; ++idx) {
+      float weightVal =
+          float(chunkSizes[idx]) / float(dimSize) * chunkWeightsSum;
+      // We use a signed error here to starve those chunks for which the actual
+      // weight surpassed the given weight.
+      float weightErr = chunkWeights[idx] - weightVal;
+      if (weightErr > weightErrMax) {
+        weightErrMax = weightErr;
+        weightErrMaxIdx = idx;
+      }
+    }
+    // Distribute unit.
+    chunkSizes[weightErrMaxIdx] += 1;
+    unitsRem--;
+  }
+  return chunkSizes;
+}
+
+/// Utility function to split an array of slice ranges \p ranges along the given
+/// dimension \p dim using the split option \p splitOption.
 static std::vector<SliceRange>
-splitAlongDimByNumChunks(const std::vector<SliceRange> &ranges, size_t dim,
-                         dim_t numChunks, bool bigChunksFirst = true) {
+splitSliceRanges(const std::vector<SliceRange> &ranges, size_t dim,
+                 const SplitNodeOption *splitOption) {
   std::vector<SliceRange> outRanges;
   for (const auto &range : ranges) {
-    auto splitRanges =
-        splitAlongDimByNumChunks(range, dim, numChunks, bigChunksFirst);
+
+    // Split dimension.
+    dim_t dimSize = range.getSize(dim);
+    std::vector<dim_t> chunkSizes = splitOption->splitAlongDim(dimSize, dim);
+
+    // Check for empty chunks.
+    for (auto chunkSize : chunkSizes) {
+      CHECK(chunkSize > 0) << "Chunk size 0 is not allowed!";
+    }
+
+    // Check dimension splitting consistency.
+    dim_t chunkSizesSum =
+        std::accumulate(chunkSizes.begin(), chunkSizes.end(), 0);
+    CHECK(dimSize == chunkSizesSum)
+        << "Inconsistent splitting of dimension " << dim << " with size "
+        << dimSize << " into chunks with total size " << chunkSizesSum << "!";
+
+    // Split current slice range.
+    auto numChunks = chunkSizes.size();
+    std::vector<SliceRange> splitRanges(numChunks, range);
+    dim_t chunkStart = range[dim].first;
+    for (size_t idx = 0; idx < numChunks; ++idx) {
+      // Current chunk size.
+      dim_t chunkSize = chunkSizes[idx];
+      // Update chunk bounds.
+      splitRanges[idx][dim].first = chunkStart;
+      splitRanges[idx][dim].second = chunkStart + chunkSize - 1;
+      chunkStart += chunkSize;
+    }
+    CHECK(chunkStart - 1 == range[dim].second)
+        << "Inconsistent splitting of SliceRange!";
+
+    // Append split slice ranges.
     outRanges.insert(outRanges.end(), splitRanges.begin(), splitRanges.end());
   }
   return outRanges;
@@ -191,6 +305,11 @@ using CheckedSliceRange = std::pair<bool, SliceRange>;
 /// information about whether the mapping is allowed to be used.
 using CheckedSliceRangeMap =
     std::function<CheckedSliceRange(const SliceRange &)>;
+
+/// Identity checked slice range map to use for simple identity mappings.
+CheckedSliceRange CheckedSliceRangeMapIdentity(const SliceRange &range) {
+  return {true, range};
+}
 
 /// Definition of a pair with an operand index and a checked slice range map.
 using OpIdxAndMap = std::pair<unsigned, CheckedSliceRangeMap>;
@@ -229,13 +348,13 @@ using SplitNodeModifier =
                        const std::vector<SliceRange> &splitInputRanges,
                        const std::vector<SliceRange> &splitOutputRanges)>;
 
-/// Definition of a "nop" split node modifier which performs no modifications.
+/// Definition of a "nop" split node modifier which does no modifications.
 void SplitNodeModifierNop(const Node *origNode, Node *splitNode,
                           const std::vector<SliceRange> &splitInputRanges,
                           const std::vector<SliceRange> &splitOutputRanges) {}
 
 ///===---------------------------------------------------------------------===//
-///                                Convolution
+///                                   Conv2D
 ///===---------------------------------------------------------------------===//
 static std::pair<DimRange, DimPads>
 getConvInputDimRangeAndPads(const DimRange &outputSliceRange,
@@ -317,8 +436,9 @@ getConv2DInputIdxAndMaps(const ConvolutionNode *node) {
   ShapeHW kernels = ShapeHW(node->getKernels());
   ShapeHW strides = ShapeHW(node->getStrides());
   PaddingTLBR pads(node->getPads());
-  auto dilation = node->getDilation();
-  auto group = node->getGroup();
+  unsigned_t group = node->getGroup();
+  unsigned_t dilation = node->getDilation();
+  ShapeHW dilations = ShapeHW(llvm::ArrayRef<unsigned_t>({dilation, dilation}));
   DimPads padsTB = {pads.top, pads.bottom};
   DimPads padsLR = {pads.left, pads.right};
 
@@ -334,12 +454,12 @@ getConv2DInputIdxAndMaps(const ConvolutionNode *node) {
     inputDimRanges[Shape::dimH] =
         getConvInputDimRangeAndPads(outputSliceRange[Shape::dimH],
                                     inputRange[Shape::dimH], kernels.height,
-                                    strides.height, padsTB, dilation)
+                                    strides.height, padsTB, dilations.height)
             .first;
     inputDimRanges[Shape::dimW] =
         getConvInputDimRangeAndPads(outputSliceRange[Shape::dimW],
                                     inputRange[Shape::dimW], kernels.width,
-                                    strides.width, padsLR, dilation)
+                                    strides.width, padsLR, dilations.width)
             .first;
     auto inputDimRangeChecked = getConvInputChannelDimRange(
         outputSliceRange[Shape::dimC], outputRange[Shape::dimC],
@@ -385,7 +505,8 @@ void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
   ShapeHW kernels = ShapeHW(convOrigNode->getKernels());
   ShapeHW strides = ShapeHW(convOrigNode->getStrides());
   PaddingTLBR pads(convOrigNode->getPads());
-  auto dilation = convOrigNode->getDilation();
+  unsigned_t dilation = convOrigNode->getDilation();
+  ShapeHW dilations = ShapeHW(llvm::ArrayRef<unsigned_t>({dilation, dilation}));
   DimPads padsTB = {pads.top, pads.bottom};
   DimPads padsLR = {pads.left, pads.right};
 
@@ -395,12 +516,12 @@ void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
   DimRange convSplitPadsTB =
       getConvInputDimRangeAndPads(splitOutputRange[Shape::dimH],
                                   inputRange[Shape::dimH], kernels.height,
-                                  strides.height, padsTB, dilation)
+                                  strides.height, padsTB, dilations.height)
           .second;
   DimRange convSplitPadsLR =
       getConvInputDimRangeAndPads(splitOutputRange[Shape::dimW],
                                   inputRange[Shape::dimW], kernels.width,
-                                  strides.width, padsLR, dilation)
+                                  strides.width, padsLR, dilations.width)
           .second;
 
   // Modify paddings for split node.
@@ -423,31 +544,104 @@ void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
 }
 
 ///===---------------------------------------------------------------------===//
-///                                   Pooling
+///                                    Pool
 ///===---------------------------------------------------------------------===//
-/// Next coming ...
+static std::pair<DimRange, DimPads>
+getPoolInputDimRangeAndPads(const DimRange &outputSliceRange,
+                            const DimRange &inputRange, dim_t kernel,
+                            dim_t stride, DimPads pads) {
+  return getConvInputDimRangeAndPads(outputSliceRange, inputRange, kernel,
+                                     stride, pads, /* dilation */ 1);
+}
 
-///===---------------------------------------------------------------------===//
-///                            splitAndReplaceNode
-///===---------------------------------------------------------------------===//
-static Error splitAndReplaceNode(
-    Function *F, Node *node, dim_t splitOutputIdx,
-    const llvm::ArrayRef<size_t> splitDims,
-    const llvm::ArrayRef<OpIdxAndMap> inputIdxAndMaps,
-    const llvm::ArrayRef<OpIdxAndMap> outputIdxAndMaps,
-    const llvm::ArrayRef<SplitNodeConstraint> constraints,
-    const SplitNodeModifier &splitNodeModifier = SplitNodeModifierNop) {
+template <class PoolNode, typename Shape>
+static std::vector<OpIdxAndMap> getPoolInputIdxAndMaps(const PoolNode *node) {
 
-  // If splitDims is empty then no splitting is performed.
-  if (splitDims.size() == 0) {
-    return Error::success();
+  ShapeHW kernels = ShapeHW(node->getKernels());
+  ShapeHW strides = ShapeHW(node->getStrides());
+  PaddingTLBR pads(node->getPads());
+  DimPads padsTB = {pads.top, pads.bottom};
+  DimPads padsLR = {pads.left, pads.right};
+
+  // Output slice to input slice range map.
+  SliceRange inputRange = SliceRange(node->getInput().getType());
+  CheckedSliceRangeMap inputSliceRangeMap =
+      [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
+    std::vector<DimRange> inputDimRanges(4);
+    inputDimRanges[Shape::dimN] = outputSliceRange[Shape::dimN];
+    inputDimRanges[Shape::dimH] =
+        getPoolInputDimRangeAndPads(outputSliceRange[Shape::dimH],
+                                    inputRange[Shape::dimH], kernels.height,
+                                    strides.height, padsTB)
+            .first;
+    inputDimRanges[Shape::dimW] =
+        getPoolInputDimRangeAndPads(outputSliceRange[Shape::dimW],
+                                    inputRange[Shape::dimW], kernels.width,
+                                    strides.width, padsLR)
+            .first;
+    inputDimRanges[Shape::dimC] = outputSliceRange[Shape::dimC];
+    return {true, SliceRange(inputDimRanges)};
+  };
+
+  // Return input index and map.
+  return {{PoolNode::InputIdx, inputSliceRangeMap}};
+}
+
+template <class PoolNode, typename Shape>
+void PoolSplitNodeModifier(const Node *origNode, Node *splitNode,
+                           const std::vector<SliceRange> &splitInputRanges,
+                           const std::vector<SliceRange> &splitOutputRanges) {
+
+  auto *poolOrigNode = dyn_cast<PoolNode>(origNode);
+  auto *poolSplitNode = dyn_cast<PoolNode>(splitNode);
+  if (!(poolOrigNode && poolSplitNode)) {
+    return;
   }
 
+  ShapeHW kernels = ShapeHW(poolOrigNode->getKernels());
+  ShapeHW strides = ShapeHW(poolOrigNode->getStrides());
+  PaddingTLBR pads(poolOrigNode->getPads());
+  DimPads padsTB = {pads.top, pads.bottom};
+  DimPads padsLR = {pads.left, pads.right};
+
+  // Get paddings for split node.
+  auto splitOutputRange = splitOutputRanges[PoolNode::ResultIdx];
+  auto inputRange = SliceRange(poolOrigNode->getInput().getType());
+  DimRange poolSplitPadsTB =
+      getPoolInputDimRangeAndPads(splitOutputRange[Shape::dimH],
+                                  inputRange[Shape::dimH], kernels.height,
+                                  strides.height, padsTB)
+          .second;
+  DimRange poolSplitPadsLR =
+      getPoolInputDimRangeAndPads(splitOutputRange[Shape::dimW],
+                                  inputRange[Shape::dimW], kernels.width,
+                                  strides.width, padsLR)
+          .second;
+
+  // Modify paddings for split node.
+  poolSplitNode->setPads({static_cast<unsigned_t>(poolSplitPadsTB.first),
+                          static_cast<unsigned_t>(poolSplitPadsLR.first),
+                          static_cast<unsigned_t>(poolSplitPadsTB.second),
+                          static_cast<unsigned_t>(poolSplitPadsLR.second)});
+}
+
+///===---------------------------------------------------------------------===//
+///                            verifySplitParams
+///===---------------------------------------------------------------------===//
+/// Function to verify the split parameters.
+static Error
+verifySplitParams(const Node *node, dim_t splitOutputIdx,
+                  const llvm::ArrayRef<size_t> &splitDims,
+                  const llvm::ArrayRef<OpIdxAndMap> &inputIdxAndMaps,
+                  const llvm::ArrayRef<OpIdxAndMap> &outputIdxAndMaps) {
+
   // Verify split dims.
+  RETURN_ERR_IF_NOT(splitDims.size() > 0,
+                    "Empty split dimensions for splitting node!");
   RETURN_ERR_IF_NOT(splitOutputIdx < node->getNumResults(),
                     "Invalid output index for splitting node!");
-  for (size_t dimIdx = 0; dimIdx < splitDims.size() - 1; dimIdx++) {
-    RETURN_ERR_IF_NOT(splitDims[dimIdx] < splitDims[dimIdx + 1],
+  for (size_t dim = 0; dim < splitDims.size() - 1; ++dim) {
+    RETURN_ERR_IF_NOT(splitDims[dim] < splitDims[dim + 1],
                       "Invalid split dimensions for splitting node! Dimensions "
                       "should be given in ascending order e.g. {0,2,3}!");
   }
@@ -478,7 +672,7 @@ static Error splitAndReplaceNode(
   outputIdxMask[splitOutputIdx] = true;
   for (const auto &outputIdxMap : outputIdxAndMaps) {
     RETURN_ERR_IF_NOT(outputIdxMap.first < node->getNumResults(),
-                      "Invalid input index for input range map!");
+                      "Invalid output index for output range map!");
     outputIdxMask[outputIdxMap.first] = true;
   }
   RETURN_ERR_IF_NOT(
@@ -507,150 +701,249 @@ static Error splitAndReplaceNode(
                       "Invalid output range map for splitting node!");
   }
 
-  // ------------------------ Search split configuration -----------------------
-  // Initialize the split output slices.
+  return Error::success();
+}
+
+///===---------------------------------------------------------------------===//
+///                            verifySplitNodes
+///===---------------------------------------------------------------------===//
+/// Function to verify the split nodes.
+static Expected<bool>
+verifySplitNodes(Node *node, dim_t splitOutputIdx,
+                 const llvm::ArrayRef<SliceRange> &splitOutputSlices,
+                 const llvm::ArrayRef<OpIdxAndMap> &inputIdxAndMaps,
+                 const llvm::ArrayRef<OpIdxAndMap> &outputIdxAndMaps,
+                 const llvm::ArrayRef<SplitNodeConstraint> &splitConstraints,
+                 const SplitNodeModifier &splitNodeModifier) {
+
+  // Create temporary nodes to make verifications without adding them to
+  // the graph in order to avoid the pollution of the graph with nodes
+  // which could be invalid or could not meet all the constraints and
+  // hence be later removed from the graph.
+  bool splitNodesCheck = true;
+  std::list<std::unique_ptr<Node>> splitNodes;
+  std::list<std::unique_ptr<SliceNode>> inputSliceNodes;
+  std::list<Type> inputTypes;
+  std::list<Type> outputTypes;
+  for (const auto &splitOutputSlice : splitOutputSlices) {
+
+    // Create clone to inherit all the inputs/members of the original node.
+    splitNodes.push_back(std::unique_ptr<Node>(node->clone()));
+    Node *clone = splitNodes.back().get();
+
+    // Gather input slice ranges for the clone. The ranges are ordered
+    // according to the input operand indices.
+    std::vector<SliceRange> inputRanges(clone->getNumInputs());
+    for (const auto &inputIdxMap : inputIdxAndMaps) {
+      auto inputCheckedRange = inputIdxMap.second(splitOutputSlice);
+      splitNodesCheck = splitNodesCheck && inputCheckedRange.first;
+      inputRanges[inputIdxMap.first] = inputCheckedRange.second;
+    }
+
+    // Gather output slice ranges for the clone. The ranges are ordered
+    // according to the output operand indices.
+    std::vector<SliceRange> outputRanges(clone->getNumResults());
+    outputRanges[splitOutputIdx] = splitOutputSlice;
+    for (const auto &outputIdxMap : outputIdxAndMaps) {
+      auto outputCheckedRange = outputIdxMap.second(splitOutputSlice);
+      splitNodesCheck = splitNodesCheck && outputCheckedRange.first;
+      outputRanges[outputIdxMap.first] = outputCheckedRange.second;
+    }
+
+    // Early return.
+    if (!splitNodesCheck) {
+      return splitNodesCheck;
+    }
+
+    // Set clone input types. Since a node does not own its input types and
+    // the clone inherits the input types from the input nodes of the
+    // original node we create here dummy input SliceNodes and attach them
+    // to the clone in order to allow setting and checking the clone input
+    // types without modifying the input types of the original node.
+    for (const auto &inputIdxMap : inputIdxAndMaps) {
+      auto &inputRange = inputRanges[inputIdxMap.first];
+      auto inputType =
+          Type::newShape(*(node->getNthInput(inputIdxMap.first).getType()),
+                         inputRange.getSizes());
+      inputTypes.push_back(inputType);
+      inputSliceNodes.push_back(std::make_unique<SliceNode>(
+          "inputSlice", &(inputTypes.back()),
+          node->getNthInput(inputIdxMap.first), inputRange.getStarts()));
+      clone->setNthInput(inputIdxMap.first, inputSliceNodes.back().get());
+    }
+
+    // Set clone split output type. The original node output type is not
+    // modified because the clone owns its output types.
+    outputTypes.push_back(Type::newShape(*node->getType(splitOutputIdx),
+                                         splitOutputSlice.getSizes()));
+    clone->getNthResult(splitOutputIdx).setTypeUnsafe(&outputTypes.back());
+
+    // Set clone output types. The original node output types are not
+    // modified because the clone owns its output types.
+    for (const auto &outputIdxMap : outputIdxAndMaps) {
+      auto &outputRange = outputRanges[outputIdxMap.first];
+      auto outputType = Type::newShape(*node->getType(outputIdxMap.first),
+                                       outputRange.getSizes());
+      outputTypes.push_back(outputType);
+      clone->getNthResult(outputIdxMap.first)
+          .setTypeUnsafe(&outputTypes.back());
+    }
+
+    // Modify clone.
+    splitNodeModifier(node, clone, inputRanges, outputRanges);
+
+    // Verify clone. If the clone is invalid at this point this means there
+    // is a logic error in the splitting infrastructure (the input/output
+    // maps are not checked properly or the split node modifier is flawed)
+    // so we throw an error (not the same thing as returning false which is
+    // intended for signaling that the splitting infrastucture correctly
+    // identified an incorrect split configuration or the split configuration
+    // is not accepted by the user constraints).
+    RETURN_ERR_IF_NOT(clone->verify(),
+                      "Invalid node obtained during node splitting!");
+
+    // Early return.
+    if (!splitNodesCheck) {
+      return splitNodesCheck;
+    }
+  }
+
+  // Check split nodes against all user constraints.
+  SplitNodeContext splitCtx;
+  splitCtx.origNode = node;
+  for (const auto &splitNode : splitNodes) {
+    splitCtx.splitNodes.push_back(splitNode.get());
+  }
+  for (const auto constraint : splitConstraints) {
+    splitNodesCheck = splitNodesCheck && constraint(splitCtx);
+  }
+
+  return splitNodesCheck;
+}
+
+///===---------------------------------------------------------------------===//
+///                            splitAndReplaceNode
+///===---------------------------------------------------------------------===//
+static Expected<std::vector<Node *>> splitAndReplaceNode(
+    Node *node, const SplitNodeOption *splitOption,
+    const llvm::ArrayRef<SplitNodeConstraint> &splitConstraints,
+    dim_t splitOutputIdx, const llvm::ArrayRef<OpIdxAndMap> &inputIdxAndMaps,
+    const llvm::ArrayRef<OpIdxAndMap> &outputIdxAndMaps,
+    const SplitNodeModifier &splitNodeModifier = SplitNodeModifierNop) {
+
+  // The default split dims are all the dims of the split output operand.
+  RETURN_ERR_IF_NOT(splitOutputIdx < node->getNumResults(),
+                    "Invalid output index for splitting node!");
+  std::vector<size_t> splitDims(node->getType(splitOutputIdx)->dims().size());
+  std::iota(splitDims.begin(), splitDims.end(), 0);
+
+  // Explicit split dims for this node.
+  if (splitOption) {
+    splitDims = splitOption->getSplitDims();
+  }
+
+  // Verify split parameters.
+  RETURN_IF_ERR(verifySplitParams(node, splitOutputIdx, splitDims,
+                                  inputIdxAndMaps, outputIdxAndMaps));
+
+  // ------------------------------- Split output ------------------------------
+  // Initialize the split output slices with the initial output range.
+  SliceRange splitOutputRange = SliceRange(node->getType(splitOutputIdx));
   std::vector<SliceRange> splitOutputSlices = {splitOutputRange};
 
-  // Start searching.
-  bool splitFound = false;
-  for (size_t splitIdx = 0; splitIdx < splitDims.size(); splitIdx++) {
+  // If a specific split option is given then we do a targeted splitting.
+  // If no specific split option is given then we search a split configuration
+  // which meets all the constraints.
+  if (splitOption) {
 
-    // Current dimension used for splitting.
-    size_t splitDim = splitDims[splitIdx];
-    dim_t splitDimSize = splitOutputRange.getSize(splitDim);
+    // Split along all the given dimensions using the given option.
+    for (size_t splitDim : splitDims) {
+      splitOutputSlices =
+          splitSliceRanges(splitOutputSlices, splitDim, splitOption);
+    }
 
-    // Split in more and more chunks along the current dimension.
-    std::vector<SliceRange> splitOutputSlicesTemp;
-    for (dim_t dimNumChunks = 1; dimNumChunks <= splitDimSize; dimNumChunks++) {
+    // Verify split nodes.
+    bool splitNodesCheck = true;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        splitNodesCheck,
+        verifySplitNodes(node, splitOutputIdx, splitOutputSlices,
+                         inputIdxAndMaps, outputIdxAndMaps, splitConstraints,
+                         splitNodeModifier));
 
-      // Split along current dimension in the given number of chunks.
-      splitOutputSlicesTemp =
-          splitAlongDimByNumChunks(splitOutputSlices, splitDim, dimNumChunks);
+    // If split nodes are invalid then we do not perform any splitting.
+    if (!splitNodesCheck) {
+      return std::vector<Node *>();
+    }
 
-      // Create temporary nodes without adding them to the graph in order to
-      // avoid the pollution of the graph with nodes which might not meet all
-      // the constraints and might be later removed.
-      bool constraintsCheck = true;
-      for (const auto &splitOutputSlice : splitOutputSlicesTemp) {
+  } else {
 
-        // Create clone to inherit all the inputs/members of the original node.
-        Node *clone = node->clone();
+    // Start searching of a split configuration which meets all the constraints
+    // by splitting along the given dimensions iteratively in smaller chunks.
+    bool splitFound = false;
+    for (size_t splitDim : splitDims) {
 
-        // Gather input slice ranges for the clone. The ranges are ordered
-        // according to the input operand indices.
-        std::vector<SliceRange> inputRanges(clone->getNumInputs());
-        for (const auto &inputIdxMap : inputIdxAndMaps) {
-          auto inputCheckedRange = inputIdxMap.second(splitOutputSlice);
-          constraintsCheck = constraintsCheck && inputCheckedRange.first;
-          inputRanges[inputIdxMap.first] = inputCheckedRange.second;
-        }
+      dim_t splitDimSize = splitOutputRange.getSize(splitDim);
+      std::vector<SliceRange> splitOutputSlicesTemp;
+      for (dim_t dimNumChunks = 1; dimNumChunks <= splitDimSize;
+           dimNumChunks++) {
 
-        // Gather output slice ranges for the clone. The ranges are ordered
-        // according to the output operand indices.
-        std::vector<SliceRange> outputRanges(clone->getNumResults());
-        outputRanges[splitOutputIdx] = splitOutputSlice;
-        for (const auto &outputIdxMap : outputIdxAndMaps) {
-          auto outputCheckedRange = outputIdxMap.second(splitOutputSlice);
-          constraintsCheck = constraintsCheck && outputCheckedRange.first;
-          outputRanges[outputIdxMap.first] = outputCheckedRange.second;
-        }
+        // Split along current dimension in the given number of chunks.
+        auto splitOptionSearch =
+            SplitNodeByNumChunks({splitDim}, {dimNumChunks});
+        splitOutputSlicesTemp =
+            splitSliceRanges(splitOutputSlices, splitDim, &splitOptionSearch);
 
-        // Early break.
-        if (!constraintsCheck) {
-          break;
-        }
+        // Verify split nodes.
+        bool splitNodesCheck = true;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            splitNodesCheck,
+            verifySplitNodes(node, splitOutputIdx, splitOutputSlicesTemp,
+                             inputIdxAndMaps, outputIdxAndMaps,
+                             splitConstraints, splitNodeModifier));
 
-        // Set clone input types. Since a node does not own its input types and
-        // the clone inherits the input types from the input nodes of the
-        // original node we create here dummy input SliceNodes and attach them
-        // to the clone in order to allow setting and checking the clone input
-        // types without modifying the input types of the original node.
-        std::list<Type> inputTypes;
-        std::list<std::unique_ptr<SliceNode>> inputSliceNodes;
-        for (const auto &inputIdxMap : inputIdxAndMaps) {
-          auto &inputRange = inputRanges[inputIdxMap.first];
-          auto inputType =
-              Type::newShape(*(node->getNthInput(inputIdxMap.first).getType()),
-                             inputRange.getSizes());
-          inputTypes.push_back(inputType);
-          inputSliceNodes.push_back(std::make_unique<SliceNode>(
-              "inputSlice", &(inputTypes.back()),
-              node->getNthInput(inputIdxMap.first), inputRange.getStarts()));
-          clone->setNthInput(inputIdxMap.first, inputSliceNodes.back().get());
-        }
-
-        // Set clone split output type. The original node output type is not
-        // modified because the clone owns its output types.
-        Type splitOutputType = Type::newShape(*node->getType(splitOutputIdx),
-                                              splitOutputSlice.getSizes());
-        clone->getNthResult(splitOutputIdx).setTypeUnsafe(&splitOutputType);
-
-        // Set clone output types. The original node output types are not
-        // modified because the clone owns its output types.
-        std::list<Type> outputTypes;
-        for (const auto &outputIdxMap : outputIdxAndMaps) {
-          auto &outputRange = outputRanges[outputIdxMap.first];
-          auto outputType = Type::newShape(*node->getType(outputIdxMap.first),
-                                           outputRange.getSizes());
-          outputTypes.push_back(outputType);
-          clone->getNthResult(outputIdxMap.first)
-              .setTypeUnsafe(&outputTypes.back());
-        }
-
-        // Modify clone.
-        splitNodeModifier(node, clone, inputRanges, outputRanges);
-
-        // Verify clone.
-        RETURN_ERR_IF_NOT(clone->verify(),
-                          "Invalid node obtained during node splitting!");
-
-        // Check clone against all constraints.
-        SplitNodeContext splitCtx;
-        splitCtx.origNode = node;
-        splitCtx.splitNode = clone;
-        splitCtx.numChunks = splitOutputSlicesTemp.size();
-        for (const auto constraint : constraints) {
-          constraintsCheck = constraintsCheck && constraint(splitCtx);
-        }
-
-        // Early break.
-        if (!constraintsCheck) {
+        // If split is found we stop searching.
+        if (splitNodesCheck) {
+          splitFound = true;
           break;
         }
       }
 
-      // If all constraints are met we are done.
-      if (constraintsCheck) {
-        splitFound = true;
+      // Save the split output slices.
+      splitOutputSlices = splitOutputSlicesTemp;
+
+      // If split is found we stop searching.
+      if (splitFound) {
         break;
       }
     }
 
-    // Save the split output slices.
-    splitOutputSlices = splitOutputSlicesTemp;
-
-    // If split is found we are done. If not, we continue splitting
-    // along the following dimensions.
-    if (splitFound) {
-      break;
+    // If split is not found then we do not perform any splitting.
+    if (!splitFound) {
+      return std::vector<Node *>();
     }
   }
 
-  // If no split configuration is found to meet all the constraints then we
-  // do not perform any splitting.
-  if (!splitFound) {
-    return Error::success();
+  // If with the current split parameters only one slice is obtained then no
+  // splitting is required since the slice is the same as the original node.
+  if (splitOutputSlices.size() == 1) {
+    return std::vector<Node *>();
   }
 
-  // ----------------------------- Perform splitting ---------------------------
+  // -------------------------------- Split node -------------------------------
+  // Get parent function.
+  Function *F = node->getParent();
+  RETURN_ERR_IF_NOT(F, "Cannot split a node without a parent Function!");
+
   // Allocate output tensors used for merging the partial output slices.
   std::vector<NodeValue> mergedOutputs(node->getNumResults());
   for (size_t outIdx = 0; outIdx < node->getNumResults(); outIdx++) {
     auto nodeName =
-        "touch." + node->getName().str() + "." + std::to_string(outIdx);
+        node->getName().str() + ".TouchOutput" + std::to_string(outIdx);
     mergedOutputs[outIdx] = F->createTouch(nodeName, node->getType(outIdx));
   }
 
+  // Create split nodes.
+  std::vector<Node *> splitNodes(splitOutputSlices.size(), nullptr);
   for (size_t sliceIdx = 0; sliceIdx < splitOutputSlices.size(); sliceIdx++) {
 
     // Current split output slice.
@@ -658,7 +951,7 @@ static Error splitAndReplaceNode(
 
     // Create clone to inherit all the inputs/members of the original node.
     Node *clone = node->clone();
-    clone->setName(node->getName().str() + "." + std::to_string(sliceIdx));
+    clone->setName(node->getName().str() + ".Split" + std::to_string(sliceIdx));
 
     // Gather final input slice ranges for the clone.
     std::vector<SliceRange> inputRanges(clone->getNumInputs());
@@ -682,7 +975,7 @@ static Error splitAndReplaceNode(
       Type outTy = Type::newShape(*(node->getNthInput(inputIdx).getType()),
                                   inputRange.getSizes());
       auto nodeName =
-          node->getName().str() + ".slice." + std::to_string(inputIdx);
+          clone->getName().str() + ".SliceInput" + std::to_string(inputIdx);
       auto *inputSlice = F->createSlice(nodeName, node->getNthInput(inputIdx),
                                         inputRange.getStarts(), &outTy);
       clone->setNthInput(inputIdx, inputSlice);
@@ -701,13 +994,16 @@ static Error splitAndReplaceNode(
     RETURN_ERR_IF_NOT(clone->verify(),
                       "Invalid node obtained during node splitting!");
 
-    // Add clone to the function.
+    // Add clone to function.
     F->addNode(clone);
+
+    // Add clone to vector.
+    splitNodes[sliceIdx] = clone;
 
     // Merge the partial outputs of this clone.
     for (size_t outIdx = 0; outIdx < node->getNumResults(); outIdx++) {
-      auto nodeName = node->getName().str() + ".insert." +
-                      std::to_string(outIdx) + "." + std::to_string(sliceIdx);
+      auto nodeName =
+          clone->getName().str() + ".MergeOutput" + std::to_string(outIdx);
       mergedOutputs[outIdx] = F->createInsertTensor(
           nodeName, mergedOutputs[outIdx], clone->getNthResult(outIdx),
           outputRanges[outIdx].getStarts());
@@ -719,38 +1015,89 @@ static Error splitAndReplaceNode(
     node->getNthResult(outIdx).replaceAllUsesOfWith(mergedOutputs[outIdx]);
   }
 
-  return Error::success();
+  return splitNodes;
 }
 
 ///===---------------------------------------------------------------------===//
 ///                          splitNodesWithConstraints
 ///===---------------------------------------------------------------------===//
-Error glow::splitNodesWithConstraints(
-    Function *F, const llvm::ArrayRef<SplitNodeConstraint> constraints) {
+Expected<std::vector<Node *>> glow::splitNodeWithConstraints(
+    Node *node, const SplitNodeOption *splitOption,
+    const llvm::ArrayRef<SplitNodeConstraint> &splitConstraints) {
+
+  switch (node->getKind()) {
+  case Kinded::Kind::ConvolutionNodeKind: {
+    return splitAndReplaceNode(
+        node, splitOption, splitConstraints, ConvolutionNode::ResultIdx,
+        getConv2DInputIdxAndMaps<ShapeNHWC>(dyn_cast<ConvolutionNode>(node)),
+        {}, Conv2DSplitNodeModifier<ShapeNHWC>);
+    break;
+  }
+  case Kinded::Kind::MaxPoolNodeKind: {
+    // The current definition of the MaxPool node does not allow splitting
+    // of the second output operand 'Argmax' which contains flattened
+    // indices whose values will be altered if processed in smaller chunks.
+    // We allow splitting only if the 'Argmax' node value has no users.
+    if (node->getNthResult(MaxPoolNode::ArgmaxIdx).getNumUsers() != 0) {
+      break;
+    }
+    return splitAndReplaceNode(
+        node, splitOption, splitConstraints, MaxPoolNode::ResultIdx,
+        getPoolInputIdxAndMaps<MaxPoolNode, ShapeNHWC>(
+            dyn_cast<MaxPoolNode>(node)),
+        {{MaxPoolNode::ArgmaxIdx, CheckedSliceRangeMapIdentity}},
+        PoolSplitNodeModifier<MaxPoolNode, ShapeNHWC>);
+    break;
+  }
+  case Kinded::Kind::AvgPoolNodeKind: {
+    return splitAndReplaceNode(
+        node, splitOption, splitConstraints, AvgPoolNode::ResultIdx,
+        getPoolInputIdxAndMaps<AvgPoolNode, ShapeNHWC>(
+            dyn_cast<AvgPoolNode>(node)),
+        {}, PoolSplitNodeModifier<AvgPoolNode, ShapeNHWC>);
+    break;
+  }
+  default:
+    VLOG(1) << "Spliting node '" << node->getKindName()
+            << "' is not supported!\n";
+    break;
+  }
+
+  return std::vector<Node *>();
+}
+
+Expected<SplitNodeMap> glow::splitNodesWithConstraints(
+    Function *F, const SplitNodeOptionMap &splitOptionMap,
+    const llvm::ArrayRef<SplitNodeConstraint> &splitConstraints) {
+
+  // Create split map.
+  SplitNodeMap splitMap;
 
   // Since we will be transforming the original list of nodes, reverse iterate.
   auto &nodes = F->getNodes();
   for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
-    Node *currNode = &*it;
+    Node *node = &*it;
 
-    switch (currNode->getKind()) {
-    case Kinded::Kind::ConvolutionNodeKind: {
-      RETURN_IF_ERR(splitAndReplaceNode(
-          F, currNode, ConvolutionNode::ResultIdx, {0, 1, 2, 3},
-          getConv2DInputIdxAndMaps<ShapeNHWC>(
-              dyn_cast<ConvolutionNode>(currNode)),
-          {}, constraints, Conv2DSplitNodeModifier<ShapeNHWC>));
-      break;
+    // Find explicit split option for current node (if any).
+    const SplitNodeOption *splitOption = nullptr;
+    auto splitOptionIt = splitOptionMap.find(node);
+    if (splitOptionIt != splitOptionMap.end()) {
+      splitOption = splitOptionIt->second;
     }
-    default:
-      VLOG(1) << "Spliting node '" << currNode->getKindName()
-              << "' is not supported!\n";
-      break;
+
+    // Split current node.
+    std::vector<Node *> splitNodes;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        splitNodes,
+        splitNodeWithConstraints(node, splitOption, splitConstraints));
+
+    // Add info to split map only if the current node was actually split.
+    if (splitNodes.size()) {
+      splitMap[node] = splitNodes;
     }
   }
 
   // Verify function after splitting nodes.
   RETURN_ERR_IF_NOT(F->verify(), "Function is not valid after node splitting!");
-
-  return Error::success();
+  return splitMap;
 }
