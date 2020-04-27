@@ -82,6 +82,7 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
             NI.getOutElemTy(ArgMaxNode::ArgmaxIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::ResizeNearestNodeKind:
+  case Kinded::Kind::ResizeBilinearNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int32QTy,
          ElemKind::Int32ITy, ElemKind::Int64ITy});

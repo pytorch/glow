@@ -107,7 +107,8 @@ TEST_F(NNPIOptPipelineTest, RemoveClipBlockingFCReluFusion) {
 
   cloneAndCompile();
 
-  EXPECT_EQ(optimizedF_->getNodes().size(), 4);
+  // (Clip -> Relu -> Clip) -> Clip
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
 
   SaveNode *optSave = nullptr;
   for (auto &N : optimizedF_->getNodes()) {
@@ -124,9 +125,8 @@ TEST_F(NNPIOptPipelineTest, RemoveClipBlockingFCReluFusion) {
     // Note: Min here is 0, because relu changed the Clip's min range.
     EXPECT_EQ(clipRelu->getMin(), 0);
     EXPECT_EQ(clipRelu->getMax(), float16Max);
-    ReluNode *RN = llvm::dyn_cast<ReluNode>(clipRelu->getInput());
-    ASSERT_TRUE(RN);
-    FullyConnectedNode *FC = llvm::dyn_cast<FullyConnectedNode>(RN->getInput());
+    FullyConnectedNode *FC =
+        llvm::dyn_cast<FullyConnectedNode>(clipRelu->getInput());
     ASSERT_TRUE(FC);
   }
 
@@ -207,7 +207,8 @@ TEST_F(NNPIOptPipelineTest, SplitParallelizationTestFCReluClipNNPI) {
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::FullyConnectedNodeKind),
             8);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 1);
-  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 8);
+  // Note: FC->Relu->Clip is optimized to FC->Clip, so no Relu is left.
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 0);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 8);
 

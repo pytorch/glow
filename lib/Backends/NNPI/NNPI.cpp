@@ -15,8 +15,10 @@
 
 #include "NNPI.h"
 #include "DebugMacros.h"
+#include "InferenceContext.h"
 #include "NNPICompiledFunction.h"
 #include "NNPIDeviceManager.h"
+#include "NNPIUtils.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/Utils.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
@@ -26,6 +28,8 @@
 #include "llvm/Support/CommandLine.h"
 
 #include <fstream>
+#include <unordered_map>
+#include <unordered_set>
 
 using namespace glow;
 
@@ -315,8 +319,10 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
             ElemKind::Int8QTy) &&
            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::FilterIdx) ==
             ElemKind::Int8QTy) &&
-           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
-            ElemKind::Int32QTy) &&
+           ((NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
+             ElemKind::Int32QTy) ||
+            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
+             ElemKind::FloatTy)) &&
            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::ScalesIdx) ==
             ElemKind::FloatTy) &&
            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::OffsetsIdx) ==
@@ -433,7 +439,7 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::SoftMaxNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Float16Ty},
+               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
                {SoftMaxNode::SelectedIdx}) &&
            (NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int64ITy);
 
@@ -954,54 +960,55 @@ NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
   return Expected<std::unique_ptr<CompiledFunction>>(std::move(compiledFunc));
 }
 
-FunctionPassPipeline NNPIBackend::getOptimizationPipeline() const {
+std::unique_ptr<FunctionPassPipeline>
+NNPIBackend::getOptimizationPipeline() const {
   // We temporarily need to disable FoldTileAddIntoBatchedAdd, as it is causing
   // issues for NNPI.
   auto pipeline = createDefaultGraphOptimizationPassPipeline();
-  pipeline.removeAllInstancesOfPass(FunctionPassID::FoldTileAddIntoBatchedAdd);
+  pipeline->removeAllInstancesOfPass(FunctionPassID::FoldTileAddIntoBatchedAdd);
 
   // Disable SinkCode, as NNPI does data parallel transformations and so we do
   // not want to undo that by sinking Nodes back together.
-  pipeline.removeAllInstancesOfPass(FunctionPassID::SinkCode);
+  pipeline->removeAllInstancesOfPass(FunctionPassID::SinkCode);
 
   // Raise Clips above Shape Nodes (e.g. Reshape) to try to ensure fusion
   // occurs. Note that we do this last as it may counteract some earlier
   // optimizations that push Clips down to try to eliminate them.
-  pipeline.pushBack(FunctionPassID::RaiseClipsAboveShapeNodes);
+  pipeline->pushBack(FunctionPassID::RaiseClipsAboveShapeNodes);
 
   // Optimize away intermediate conversions, e.g. Quantize(ConvertTo(Node)) ->
   // Quantize(Node).
-  pipeline.pushBack(FunctionPassID::OptimizeOutIntermediateConversions);
+  pipeline->pushBack(FunctionPassID::OptimizeOutIntermediateConversions);
 
   // Now that we've raised clips up try to optimize quantize-clip combos again.
-  pipeline.pushBack(FunctionPassID::OptimizeQuantizeClip);
+  pipeline->pushBack(FunctionPassID::OptimizeQuantizeClip);
 
   // Now try to eliminate any redundant Clips.
-  pipeline.pushBack(FunctionPassID::OptimizeClips);
+  pipeline->pushBack(FunctionPassID::OptimizeClips);
 
   // Look for float Relus that we can fuse up into quantized FCs.
-  pipeline.pushBack(FunctionPassID::OptimizeQuantFCFloatRelu);
+  pipeline->pushBack(FunctionPassID::OptimizeQuantFCFloatRelu);
 
   // Optimize concats and quantized/dequantize patterns.
-  pipeline.pushBack(FunctionPassID::OptimizeConcatQuantization);
+  pipeline->pushBack(FunctionPassID::OptimizeConcatQuantization);
 
   // Optimize quantization now that we've optimized some other quant nodes.
-  pipeline.pushBack(FunctionPassID::OptimizeQuantization);
+  pipeline->pushBack(FunctionPassID::OptimizeQuantization);
 
   // Now try to sink conversions below concats.
-  pipeline.pushBack(FunctionPassID::SinkConversions);
+  pipeline->pushBack(FunctionPassID::SinkConversions);
 
   // Now that things have been sunk try to get rid of unnecessary concats.
-  pipeline.pushBack(FunctionPassID::OptimizeConcatNodes);
+  pipeline->pushBack(FunctionPassID::OptimizeConcatNodes);
 
   // Look for float Relus that we can fuse up into quantized FCs.
-  pipeline.pushBack(FunctionPassID::OptimizeQuantFCFloatRelu);
+  pipeline->pushBack(FunctionPassID::OptimizeQuantFCFloatRelu);
 
   // Optimize concats and quantized/dequantize patterns.
-  pipeline.pushBack(FunctionPassID::OptimizeConcatQuantization);
+  pipeline->pushBack(FunctionPassID::OptimizeConcatQuantization);
 
   // Cleanup everything now.
-  pipeline.pushBack(getDCEPassConfig());
+  pipeline->pushBack(getDCEPassConfig());
 
   return pipeline;
 }
@@ -1104,4 +1111,83 @@ Expected<bool> NNPIBackend::transformPostLowering(
 #endif /* FACEBOOK_INTERNAL */
 
   return changed;
+}
+
+// Traverse the DAG and collect nodes in post order.
+static void
+traversePostOrder(const runtime::DAGNode *root,
+                  std::unordered_set<const runtime::DAGNode *> &visited,
+                  std::vector<const runtime::DAGNode *> &postOrder) {
+  if (root == nullptr) {
+    return;
+  }
+  visited.insert(root);
+  for (auto &c : root->children) {
+    if (visited.count(c) == 0) {
+      traversePostOrder(c, visited, postOrder);
+    }
+  }
+  postOrder.push_back(root);
+}
+
+Error NNPIBackend::bindContexts(
+    llvm::ArrayRef<runtime::ContextBinding> bindings,
+    const runtime::DAGNode *root, bool enableP2P, bool enableDRT) {
+  LOG(INFO) << "enableP2P/DRT not yet implemented. enableDRT = " << enableDRT
+            << ", enableP2P = " << enableP2P << ".\n";
+  if (backendOptions_.dumpRuntime) {
+    DotWriter::clear();
+    DotWriter::addSubGraph("Host", "Host");
+  }
+
+  // Need post order to ensure p2p dest resources are created before their
+  // source (since source will handle the copy command).
+  std::unordered_set<const runtime::DAGNode *> visited;
+  std::vector<const runtime::DAGNode *> postOrder;
+  traversePostOrder(root, visited, postOrder);
+  runtime::PlaceholderUsageMap phUsage;
+  // Collect placeholders usage count.
+  for (const auto &cb : bindings) {
+    runtime::NNPIDeviceManager *nnpiDM =
+        dynamic_cast<runtime::NNPIDeviceManager *>(cb.device);
+    LOG_IF_NOT_RETURN_LLVMERROR(nnpiDM, "Invalid device manager");
+    nnpiDM->addPlaceholderUsageCount(cb.networkName, phUsage);
+  }
+
+  for (const auto &usage : phUsage) {
+    LOG_IF_NOT_RETURN_LLVMERROR(
+        usage.second.numWriters < 2,
+        "Multiple writes to the same placeholder not suported");
+  }
+
+  for (auto *dagNode : postOrder) {
+    if (dagNode->backendName != "NNPI") {
+      continue;
+    }
+
+    // Find the contextbinding for this node (assuming there's only one).
+    ExecutionContext *ctx = nullptr;
+    runtime::DeviceManager *devMgr = nullptr;
+    for (auto &cb : bindings) {
+      if (cb.networkName == dagNode->name) {
+        ctx = cb.context;
+        devMgr = cb.device;
+        break;
+      }
+    }
+    if (ctx && devMgr) {
+      runtime::NNPIDeviceManager *nnpiDM =
+          dynamic_cast<runtime::NNPIDeviceManager *>(devMgr);
+      LOG_IF_NOT_RETURN_LLVMERROR(nnpiDM, "Invalid device manager bound");
+      LOG_IF_NOT_RETURN_LLVMERROR(
+          !nnpiDM->bindContext(dagNode->name, ctx, phUsage),
+          "Failed to bind context");
+    }
+  }
+
+  if (backendOptions_.dumpRuntime) {
+    DotWriter::writeToFile(root->name);
+  }
+
+  return Error::success();
 }

@@ -46,12 +46,33 @@ llvm::cl::opt<std::string> loadBackendSpecificOptionsOpt(
     llvm::cl::cat(hostManagerCat));
 } // namespace
 
+namespace glow {
+namespace runtime {
+bool GlowEnableP2P = false;
+bool GlowEnableDRT = false;
+} // namespace runtime
+} // namespace glow
+
 /// The device configs file used for Runtime.
 llvm::cl::opt<std::string> loadDeviceConfigsFileOpt(
     "load-device-configs",
     llvm::cl::desc("Load device configs used in Runtime"),
     llvm::cl::value_desc("configs.yaml"), llvm::cl::Optional,
     llvm::cl::cat(hostManagerCat));
+
+/// Allows enabling DRT support.
+llvm::cl::opt<bool, /* ExternalStorage */ true>
+    enableDRT("enable-DRT", llvm::cl::desc("Enabled DRT support"),
+              llvm::cl::Optional,
+              llvm::cl::location(glow::runtime::GlowEnableDRT),
+              llvm::cl::cat(hostManagerCat));
+
+/// Allows enabling P2P support.
+llvm::cl::opt<bool, /* ExternalStorage */ true>
+    enableP2P("enable-P2P", llvm::cl::desc("Enabled P2P support"),
+              llvm::cl::Optional,
+              llvm::cl::location(glow::runtime::GlowEnableP2P),
+              llvm::cl::cat(hostManagerCat));
 
 HostManager::HostManager()
     : config_(), statsExporterRegistry_(StatsExporterRegistry::Stats()) {}
@@ -275,7 +296,8 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       // Note: currently getNextNetworkExecutionState assumes that pool size is
       // >= currentInFlight requests, so we set pool size to maxActiveRequests.
       executor_->createPool(node.root.get(), config_.maxActiveRequests,
-                            cctx.enableP2P, cctx.enableDRT);
+                            cctx.enableP2P || GlowEnableP2P,
+                            cctx.enableDRT || GlowEnableDRT);
     }
   }
   // Clear constants contents from the module then put it in a

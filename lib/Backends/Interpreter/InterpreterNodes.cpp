@@ -2037,6 +2037,60 @@ void BoundInterpreterFunction::fwdResizeNearestInst(
   dispatchImpl(fwdResizeNearestInstImpl, I->getSrc()->getElementType(), I);
 }
 
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdResizeBilinearInstImpl(
+    const ResizeBilinearInst *I) {
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto scale = I->getScale();
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inW.dims());
+
+  CHECK_EQ(scale[0], 1.0) << "Scaling batch not supported.";
+  CHECK_EQ(scale[3], 1.0) << "Scaling channel not supported.";
+
+  for (dim_t ob = 0; ob < odim.n; ++ob) {
+    for (dim_t oh = 0; oh < odim.h; ++oh) {
+      for (dim_t ow = 0; ow < odim.w; ++ow) {
+
+        float ihf = oh / scale[1];
+        float iwf = ow / scale[2];
+        dim_t ih = dim_t(ihf);
+        dim_t iw = dim_t(iwf);
+
+        auto ih0 = std::min(ih, idim.h - 1);
+        auto ih1 = std::min(ih + 1, idim.h - 1);
+        auto iw0 = std::min(iw, idim.w - 1);
+        auto iw1 = std::min(iw + 1, idim.w - 1);
+
+        for (dim_t oc = 0; oc < odim.c; ++oc) {
+          auto v00 = inW.at({ob, ih0, iw0, oc});
+          auto v01 = inW.at({ob, ih0, iw1, oc});
+          auto v10 = inW.at({ob, ih1, iw0, oc});
+          auto v11 = inW.at({ob, ih1, iw1, oc});
+
+          auto hd = (float)v00 + (float)(v10 - v00) * (ihf - ih);
+          auto hw = (float)v01 + (float)(v11 - v01) * (ihf - ih);
+          float result = hd + (hw - hd) * (iwf - iw);
+          outW.at({ob, oh, ow, oc}) = result;
+        }
+      }
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdResizeBilinearInst(
+    const ResizeBilinearInst *I) {
+  if (getTensor(I->getSrc())->getType().isQuantizedType()) {
+    dispatchQuantizedImpl(fwdResizeBilinearInstImpl,
+                          I->getSrc()->getElementType(), I);
+    return;
+  }
+
+  dispatchImpl(fwdResizeBilinearInstImpl, I->getSrc()->getElementType(), I);
+}
+
 //===----------------------------------------------------------------------===//
 //                      Local Response Normalization
 //===----------------------------------------------------------------------===//

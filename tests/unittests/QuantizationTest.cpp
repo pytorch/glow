@@ -375,26 +375,37 @@ TEST(Quantization, quantizeTensorSymmetricPwr2Int32) {
 
 /// Test 4-bit fused rowwise quantization.
 TEST(Quantization, fused4BitsRowwiseQuantizeTensor) {
-  // Create an FP32 tensor with 12 elements and initialize it with numbers from
-  // -3 to 3.
-  Tensor inputFP32(ElemKind::FloatTy, {2, 6});
-  Tensor dequantized(ElemKind::FloatTy, {2, 6});
-  Tensor quantized(ElemKind::UInt4FusedFP16QTy, {2, 7}, /* dummy scale */ 1.0,
-                   /* dummy offset */ 0);
-  Handle<float> inputH = inputFP32.getHandle<float>();
-  for (dim_t i = 0; i < 2; i++) {
-    for (dim_t j = 0; j < 6; j++) {
-      inputH.at({i, j}) = (i + j) * 1.0f - 3;
+  // Create an FP32 tensor with 12 elements and initialize it
+  // with numbers from the following test inputs here.
+  // 1. Input that contains at least one +ve, one -ve and zero.
+  // 2. Input that contains at least one +ve and zero.
+  // 3. Input that contains at least one -ve and zero.
+  // 4. Input that contains at least only (+ve) numbers.
+  // 5. Input that contains at least only (-ve) numbers.
+  // 'deltas' is used to create the above 5 test cases hermetically.
+  auto deltas = {-3, 0, 3, -7, 7};
+  for (const auto &delta : deltas) {
+    Tensor inputFP32(ElemKind::FloatTy, {2, 6});
+    Tensor dequantized(ElemKind::FloatTy, {2, 6});
+    Tensor quantized(ElemKind::UInt4FusedFP16QTy, {2, 7}, /* dummy scale */ 1.0,
+                     /* dummy offset */ 0);
+    Handle<float> inputH = inputFP32.getHandle<float>();
+    for (dim_t i = 0; i < 2; i++) {
+      for (dim_t j = 0; j < 6; j++) {
+        inputH.at({i, j}) = (i + j) * 1.0f + delta;
+      }
     }
-  }
 
-  quantization::tensorFusedRowwiseQuantization<float16_t>(inputFP32, quantized);
-  dequantized = quantization::tensor4BitsFusedRowwiseDequantization(quantized);
+    quantization::tensorFusedRowwiseQuantization<float16_t>(inputFP32,
+                                                            quantized);
+    dequantized =
+        quantization::tensor4BitsFusedRowwiseDequantization(quantized);
 
-  Handle<float> dequantizedH = dequantized.getHandle<float>();
-  for (dim_t i = 0; i < 2; i++) {
-    for (dim_t j = 0; j < 6; j++) {
-      EXPECT_NEAR(inputH.at({i, j}), dequantizedH.at({i, j}), 0.02f);
+    Handle<float> dequantizedH = dequantized.getHandle<float>();
+    for (dim_t i = 0; i < 2; i++) {
+      for (dim_t j = 0; j < 6; j++) {
+        EXPECT_NEAR(inputH.at({i, j}), dequantizedH.at({i, j}), 0.02f);
+      }
     }
   }
 }
@@ -415,7 +426,8 @@ void quantizeScalarTest(float val, ElemKind qTy, quantization::Schema schema) {
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {1}, "val", false);
   auto inputQTy = mod.uniqueType(qTy, {1}, TQP.scale, TQP.offset);
   QuantizeNode *quant = F->createQuantize("quant", input, inputQTy);
-  DequantizeNode *dequant = F->createDequantize("dequant", quant);
+  DequantizeNode *dequant =
+      F->createDequantize("dequant", quant, ElemKind::FloatTy);
   SaveNode *save = F->createSave("save", dequant);
 
   // Allocate placeholders, set input, run, get output
@@ -1374,7 +1386,7 @@ TEST(Quantization, rescaleSameType) {
 
   auto *Q = F->createRescaleQuantized(
       "rescale", input, mod.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.5, 11));
-  auto *D = F->createDequantize("dequantize", Q);
+  auto *D = F->createDequantize("dequantize", Q, ElemKind::FloatTy);
   auto *save = F->createSave("ret", D);
   auto *result = bindings.allocate(save->getPlaceholder());
 
@@ -1402,7 +1414,7 @@ TEST(Quantization, optimizeRescaleQuantize) {
       "quant", input, mod.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.25, 4));
   auto *RS = F->createRescaleQuantized(
       "rescale", Q, mod.uniqueType(ElemKind::Int8QTy, {1, 1}, 0.5, 11));
-  auto *D = F->createDequantize("dequantize", RS);
+  auto *D = F->createDequantize("dequantize", RS, ElemKind::FloatTy);
   auto *save = F->createSave("ret", D);
   auto *result = bindings.allocate(save->getPlaceholder());
 
@@ -1565,7 +1577,7 @@ TEST(Quantization, reluCanUseSymmetricSchema) {
                         mod.uniqueType(ElemKind::Int8QTy, {10},
                                        inputParams.scale, inputParams.offset));
   ReluNode *RN = F->createRELU("relu", QN, reluTy);
-  DequantizeNode *DN = F->createDequantize("dequantize", RN);
+  DequantizeNode *DN = F->createDequantize("dequantize", RN, ElemKind::FloatTy);
   SaveNode *SN = F->createSave("save", DN);
   auto *res = bindings.allocate(SN->getPlaceholder());
 

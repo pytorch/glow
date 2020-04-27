@@ -504,7 +504,7 @@ protected:
         /* transposeWeight */ true);
 
     auto *RN = F_->createRELU("relu", end_layer);
-    auto *DQN = F_->createDequantize("mlp_dequant", RN);
+    auto *DQN = F_->createDequantize("mlp_dequant", RN, ElemKind::FloatTy);
 
     return DQN->getResult();
   }

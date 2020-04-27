@@ -21,6 +21,7 @@
 #endif
 
 #include "glow/Base/Tensor.h"
+#include "glow/Base/Type.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"

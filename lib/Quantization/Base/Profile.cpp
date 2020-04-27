@@ -102,6 +102,9 @@ void generateTensorHistogram(const Handle<float> inputTensor,
   for (auto elem : inputTensor) {
     size_t newBin = getBin(nBins, binWidth, min, elem);
     existingHistogram.raw(newBin)++;
+    // Sanity check for NaN and Infinity.
+    assert(!std::isnan(elem) && "NaN value found!");
+    assert(!std::isinf(elem) && "Infinity value found!");
   }
 }
 

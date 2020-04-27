@@ -169,7 +169,7 @@ public:
 
 private:
   /// The pipeline of passes to run.
-  IRPassPipelineTy pipeline_;
+  std::unique_ptr<IRPassPipelineTy> pipeline_;
   /// Options and command-line options for this pass manager.
   static PassManagerOptions &options_;
 
@@ -216,13 +216,34 @@ private:
 
 public:
   /// Constructor.
-  /// Create a pass with a given \p name, provided the \p pipeline and an
-  /// optional \p backend.
-  PassManager(llvm::StringRef name, IRPassPipelineTy pipeline,
+  /// Create a pass manager with a given \p name, provided the \p pipeline and
+  /// an optional \p backend.
+  PassManager(llvm::StringRef name, std::unique_ptr<IRPassPipelineTy> pipeline,
               const Backend *backend = nullptr)
-      : PassManagerBase(name), pipeline_(pipeline) {
+      : PassManagerBase(name), pipeline_(std::move(pipeline)) {
     backend_ = backend;
     passIdx_ = 0;
+  }
+
+  PassManager(llvm::StringRef name,
+              const std::initializer_list<IRPassConfigTy> &configs,
+              const Backend *backend = nullptr)
+      : PassManagerBase(name) {
+    backend_ = backend;
+    passIdx_ = 0;
+    pipeline_ = glow::make_unique<IRPassPipelineTy>(configs);
+  }
+
+  /// Constructor.
+  /// Create a pass with a given \p name, provided the pipeline definition in
+  /// file \p pipelineDefFilename and an optional \p backend.
+  PassManager(llvm::StringRef name, llvm::StringRef pipelineDefFilename,
+              const Backend *backend = nullptr)
+      : PassManagerBase(name),
+        pipeline_(glow::make_unique<IRPassPipelineTy>()) {
+    backend_ = backend;
+    passIdx_ = 0;
+    pipeline_->initFromFile(pipelineDefFilename);
   }
 
   virtual ~PassManager() = default;
@@ -234,7 +255,7 @@ public:
   }
 
   /// Getter for a reference to the Pipeline used by this PassManager.
-  const IRPassPipelineTy &getPipeline() const { return pipeline_; };
+  const IRPassPipelineTy &getPipeline() const { return *pipeline_; };
 
   /// Dump a textual representation of the PassManager to \p os.
   void dump(llvm::raw_ostream &os = llvm::outs()) const {

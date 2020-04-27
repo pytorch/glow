@@ -34,7 +34,7 @@ bool OneErrOnly::set(Error err) {
     // No update happening so don't need the lock any more.
     lock.unlock();
     LOG(ERROR) << "OneErrOnly already has an Error, discarding new Error: "
-               << errorToString(std::move(err));
+               << ERR_TO_STRING(std::move(err));
     return false;
   }
 }
@@ -51,9 +51,9 @@ bool OneErrOnly::containsErr() {
 }
 
 namespace detail {
-std::string GlowErrorValue::logToString() const {
+std::string GlowErrorValue::logToString(bool warning) const {
   std::stringstream ss;
-  log(ss);
+  log(ss, warning);
   return ss.str();
 }
 
@@ -122,13 +122,14 @@ void exitOnError(const char *fileName, size_t lineNumber, GlowError error) {
 }
 
 bool errorToBool(const char *fileName, size_t lineNumber, GlowError error,
-                 bool log) {
+                 bool log, bool warning) {
   std::unique_ptr<GlowErrorValue> errorValue =
       detail::takeErrorValue(std::move(error));
   if (errorValue) {
     if (log) {
       errorValue->addToStack(fileName, lineNumber);
-      LOG(ERROR) << "Converting Error to bool: " << (*errorValue);
+      LOG(ERROR) << "Converting Error to bool: "
+                 << errorValue->logToString(warning);
     }
     return true;
   } else {
@@ -136,19 +137,21 @@ bool errorToBool(const char *fileName, size_t lineNumber, GlowError error,
   }
 }
 
-std::string errorToString(GlowError error) {
+std::string errorToString(const char *fileName, size_t lineNumber,
+                          GlowError error, bool warning) {
   std::unique_ptr<GlowErrorValue> errorValue =
       detail::takeErrorValue(std::move(error));
   if (errorValue) {
-    return errorValue->logToString();
+    errorValue->addToStack(fileName, lineNumber);
+    return errorValue->logToString(warning);
   } else {
     return "success";
   }
 }
 
 void errorToVoid(const char *fileName, size_t lineNumber, GlowError error,
-                 bool log) {
-  errorToBool(fileName, lineNumber, std::move(error), log);
+                 bool log, bool warning) {
+  errorToBool(fileName, lineNumber, std::move(error), log, warning);
 }
 
 GlowError::GlowError(GlowErrorEmpty &&other) {

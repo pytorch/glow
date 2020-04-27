@@ -1,0 +1,94 @@
+ir_version: 3
+producer_name: "backend-test"
+graph {
+  name: "test-model"
+  ###
+  ### INT32 INPUT MODEL:
+  ###
+  node {
+    input: "const_i32"
+    output: "out_i32"
+    name: "NonZero"
+    op_type: "NonZero"
+  }
+  initializer {
+    dims: 4
+    dims: 2
+    dims: 3
+    dims: 1
+    dims: 2
+    data_type: 6
+    name: "const_i32"
+    int32_data : [1,2,0,4,5,0,1,0,3,0,5,0,-2,0,3,0,5,0,-1,2,0,4,5,0]
+    int32_data : [4,2,0,2,5,0,1,0,7,-4,0,0,-2,0,3,-4,5,0,-1,2,0,4,-1,0]
+  }
+  output {
+    name: "out_i32"
+    type {
+      tensor_type {
+        elem_type: 7
+        shape {
+         dim {dim_value: 5}
+         dim {dim_value: 29}
+        }
+      }
+    }
+  }
+  ###
+  ### FLOAT INPUT MODEL:
+  ###
+  node {
+    input: "const_f"
+    output: "out_f"
+    name: "NonZeroNode"
+    op_type: "NonZero"
+  }
+  initializer {
+    dims: 24
+    data_type: 1
+    name: "const_f"
+    float_data : [1,2,0,4,5,0,1,0,3,0,5,0,-2,0,3,0,5,0,-1,2,0,4,5,0]
+  }
+  output {
+    name: "out_f"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+         dim {dim_value: 1}
+         dim {dim_value: 14}
+        }
+      }
+    }
+  }
+  ###
+  ### INT64 INPUT MODEL:
+  ###
+  node {
+    input: "const_i64"
+    output: "out_i64"
+    name: "NonZeroNode"
+    op_type: "NonZero"
+  }
+  initializer {
+    dims: 24
+    data_type: 7
+    name: "const_i64"
+    int64_data : [1,2,0,4,5,0,1,0,3,0,5,0,-2,0,3,0,5,0,-1,2,0,4,5,0]
+  }
+  output {
+    name: "out_i64"
+    type {
+      tensor_type {
+        elem_type: 7
+        shape {
+         dim {dim_value: 1}
+         dim {dim_value: 14}
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 10
+}

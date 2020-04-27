@@ -18,6 +18,7 @@
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Support/Support.h"
 #include "glow/Support/ZipUtils.h"
 
 #include "llvm/Support/Casting.h"
@@ -1797,18 +1798,154 @@ Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
                       "Scales value can only be greater than or equal to 1");
   }
 
-  auto channel = scales[1];
-  auto height = scales[2];
-  auto weight = scales[3];
-
-  scales[1] = height;
-  scales[2] = weight;
-  scales[3] = channel;
+  vectorReorder(scales, {NHWC2NCHW});
 
   auto *intr = G_->createTranspose(opName, in, NCHW2NHWC);
   auto *node = G_->createResizeNearest(opName, intr, scales);
   auto *N = G_->createTranspose(opName, node, NHWC2NCHW);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
+                                  const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  std::string modeStr;
+  ASSIGN_VALUE_OR_RETURN_ERR(modeStr, loadStr(dict.at("mode")));
+
+  Constant *scalesC = nullptr;
+
+  // Either scales or outDims will be populated (V11 can do either, V10 scales
+  // only)
+  std::vector<float> scales;
+  std::vector<dim_t> outDims;
+
+  int32_t scalesIdx = (this->opsetVersion_ == 11) ? 2 : 1;
+  scalesC = getConstantByNameOrNull(op.input(scalesIdx));
+  RETURN_ERR_IF_NOT(scalesC, "Scales Tensor is not Constant.");
+  if (scalesC->getElementType() != ElemKind::FloatTy) {
+    RETURN_ERR("Scales Tensor should have float type.");
+  }
+
+  // For ONNX Resize v11, support attributes that are compatible with v10:
+  // exclude_outside = 0
+  // extrapolation_value = 0.0
+  // nearest_mode = floor
+  // coordinate_transformation_mode = asymmetric
+  // mode = nearest, (bi)linear
+  if (this->opsetVersion_ == 11) {
+    int32_t excludeOutside = 0;
+    // attribute: exclude_outside.
+    if (dict.count("exclude_outside")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(excludeOutside,
+                                 loadInt(dict.at("exclude_outside")));
+    }
+    RETURN_ERR_IF_NOT(excludeOutside == 0,
+                      "ONNX Resize exclude outside not supported.");
+    // attribute: extrapolation_value.
+    float extrapolationValue = 0.0;
+    if (dict.count("extrapolation_value")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(extrapolationValue,
+                                 loadFloat(dict.at("extrapolation_value")));
+    }
+    RETURN_ERR_IF_NOT(extrapolationValue == 0.0,
+                      "ONNX Resize extrapolation value 0 supported only.");
+    // attribute: nearest_mode.
+    std::string nearestMode = "round_prefer_floor";
+    if (dict.count("nearest_mode")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(nearestMode, loadStr(dict.at("nearest_mode")));
+    }
+    if (modeStr == "nearest" && nearestMode != "floor") {
+      RETURN_ERR("ONNX Resize 'floor' nearest mode supported only.");
+    }
+    // attribute: coordinate_transformation_mode.
+    std::string coordTransformMode = "half_pixel";
+    if (dict.count("coordinate_transformation_mode")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          coordTransformMode,
+          loadStr(dict.at("coordinate_transformation_mode")));
+    }
+    RETURN_ERR_IF_NOT(coordTransformMode == "asymmetric",
+                      "ONNX Resize 'asymmetric' coordinate transformation "
+                      "mode supported only.");
+
+    // If no scales tensor, sizes tensor should be valid.
+    if (scalesC->getPayload().getHandle().size() == 0) {
+      Constant *sizesC;
+      ASSIGN_VALUE_OR_RETURN_ERR(sizesC, getConstantByName(op.input(3)));
+      RETURN_ERR_IF_NOT(sizesC, "Sizes Tensor is not Constant.");
+
+      // Must be 1D tensor of int64_t.
+      RETURN_ERR_IF_NOT(sizesC->dims().size() == 1,
+                        "Input must be a 1D vector.");
+      RETURN_ERR_IF_NOT(sizesC->getType()->getElementType() ==
+                            ElemKind::Int64ITy,
+                        "Input element type must be Int64ITy.");
+
+      auto sizesH = sizesC->getPayload().getHandle<int64_t>();
+      RETURN_ERR_IF_NOT(in.dims().size() == sizesH.size(),
+                        "Data input and sizes input must match in size.");
+      // Now fill the output tensor
+      for (dim_t i = 0; i < sizesH.size(); ++i) {
+        outDims.push_back(sizesH.at({i}));
+      }
+    } else {
+      RETURN_ERR_IF_NOT(op.input_size() == 3,
+                        "'sizes' not valid with 'scales' input");
+    }
+  } // v11 processing.
+
+  auto *intr = G_->createTranspose(opName, in, NCHW2NHWC);
+
+  Node *RN = nullptr;
+  auto scalesH = scalesC->getPayload().getHandle();
+
+  // Check is scales is not empty - if yes, use it.
+  if (scalesH.size()) {
+    for (dim_t i = 0; i < scalesH.size(); ++i) {
+      scales.push_back(scalesH.at({i}));
+    }
+
+    /// NCHW2NHWC. scales tensor format is NHWC.
+    RETURN_ERR_IF_NOT(scales.size() == 4, "Scales dimension should be 4");
+
+    for (auto &val : scales) {
+      RETURN_ERR_IF_NOT(val > 0, "Scale value must be greater than zero.");
+    }
+
+    vectorReorder(scales, {NHWC2NCHW});
+
+    if (modeStr == "nearest") {
+      RN = G_->createResizeNearest(opName, intr, scales);
+    } else if (modeStr == "bilinear" || modeStr == "linear") {
+      RN = G_->createResizeBilinear(opName, intr, scales);
+    } else {
+      RETURN_ERR("Resize: Supporting nearest or bilinear interpolation only.",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
+    }
+  } else if (outDims.size()) {
+    auto outTy = G_->getParent()->uniqueTypeWithNewShape(
+        intr->getResult().getType(), llvm::ArrayRef<dim_t>(outDims));
+    if (modeStr == "nearest") {
+      RN = G_->createResizeNearest(opName, intr, outTy);
+    } else if (modeStr == "bilinear" || modeStr == "linear") {
+      RN = G_->createResizeBilinear(opName, intr, outTy);
+    } else {
+      RETURN_ERR("Resize: Supporting nearest or (bi)linear interpolation only.",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
+    }
+  } else {
+    RETURN_ERR("Resize: Neither scales or sizes are set.",
+               ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
+  }
+
+  auto *outtr = G_->createTranspose(opName, RN, NHWC2NCHW);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, outtr));
   return Error::success();
 }
 
@@ -2921,6 +3058,80 @@ Error ONNXModelLoader::loadSelect(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadNonZero(const ONNX_NAMESPACE::NodeProto &op,
+                                   const ArgumentDictionaryTy &dict) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+
+  Constant *C = getConstantByNameOrNull(op.input(0));
+  RETURN_ERR_IF_NOT(C, "Only constant shape is supported!");
+
+  // output tensor.
+  Tensor outT;
+
+  // Fold NonZero operator.
+  auto foldNonZero = [&C, &outT](auto dummy) -> Error {
+    auto inH = C->getPayload().getHandle<decltype(dummy)>();
+    auto dims = C->dims();
+
+    // First pass over the input is used to find the number of non-zero elements
+    // so we can create output tensor that will be filled in the 2nd pass.
+    dim_t nonZeroCnt = 0;
+    for (dim_t idx = 0, e = inH.size(); idx < e; idx++) {
+      nonZeroCnt += (inH.raw(idx) != 0) ? 1 : 0;
+    }
+
+    // No need to support zero Tensor (empty output); we support constant input
+    // only and such input likely means it's an invalid model or the part of
+    // graph can be removed.
+    RETURN_ERR_IF_NOT(nonZeroCnt > 0,
+                      "Non-Zero input with all zeroes is not supported.");
+
+    // Create output tensor. First dimension is the rank of input tensor, second
+    // dimension is the number of non-zero elements.
+    outT.reset(ElemKind::Int64ITy, {(dim_t)dims.size(), nonZeroCnt});
+
+    // Strides for each dimensions, needed to calculate NonZero output.
+    std::vector<dim_t> strides;
+    strides.reserve(dims.size());
+    strides[dims.size() - 1] = 1;
+    if (dims.size() > 1) {
+      for (int i = dims.size() - 2; i >= 0; i--) {
+        strides[i] = dims[i + 1] * strides[i + 1];
+      }
+    }
+
+    // Second pass over the input is used to fill the output tensor. For each
+    // non-zero element we fill all the dimensions, at position determined
+    // by the non-zero element's index when zero elements are ignored.
+    auto outH = outT.getHandle<int64_t>();
+    for (dim_t idx = 0, pos = 0, e = inH.size(); idx < e; idx++) {
+      if (inH.raw(idx) != 0) {
+        for (dim_t dim = 0; dim < dims.size(); dim++) {
+          outH.at({dim, pos}) = (idx / strides[dim]) % dims[dim];
+        }
+        pos++;
+      }
+    }
+    return Error::success();
+  };
+
+  std::string err;
+  if (C->getElementType() == ElemKind::FloatTy) {
+    RETURN_IF_ERR(foldNonZero((float)0));
+  } else if (C->getElementType() == ElemKind::Int64ITy) {
+    RETURN_IF_ERR(foldNonZero((int64_t)0));
+  } else if (C->getElementType() == ElemKind::Int32ITy) {
+    RETURN_IF_ERR(foldNonZero((int32_t)0));
+  } else {
+    RETURN_ERR("Unsupported input type for NonZero operator.");
+  }
+
+  Constant *outC = G_->getParent()->createConstant("nonZero", std::move(outT));
+  RETURN_IF_ERR(addNodeAsOutput(op, outC));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadQuantize(const ONNX_NAMESPACE::NodeProto &op,
                                     ArgumentDictionaryTy &dict) {
   NodeValue in;
@@ -2971,7 +3182,7 @@ Error ONNXModelLoader::loadDequantize(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
-  Node *N = G_->createDequantize(loadOperatorName(op), in);
+  Node *N = G_->createDequantize(loadOperatorName(op), in, ElemKind::FloatTy);
 
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -3759,6 +3970,12 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Upsample") {
     return loadUpsample(op, dict);
+  }
+  if (typeName == "Resize") {
+    return loadResize(op, dict);
+  }
+  if (typeName == "NonZero") {
+    return loadNonZero(op, dict);
   }
 
   RETURN_ERR("Failed to load operator " + typeName + " .",

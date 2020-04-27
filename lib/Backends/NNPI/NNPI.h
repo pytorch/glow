@@ -46,7 +46,8 @@ public:
   bool shouldShareBuffers() const override { return false; }
   bool supportsPartialTensors() const override { return true; }
   bool supportsStaticPlaceholders() const override { return true; }
-  FunctionPassPipeline getOptimizationPipeline() const override;
+  std::unique_ptr<FunctionPassPipeline>
+  getOptimizationPipeline() const override;
 
   runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig) override;
@@ -66,6 +67,10 @@ public:
     NNPIDeviceOptions options({});
     return options.getSupportedOptions();
   };
+
+  virtual Error bindContexts(llvm::ArrayRef<runtime::ContextBinding> bindings,
+                             const runtime::DAGNode *root, bool enableP2P,
+                             bool enableDRT) override;
   /// @}
 
 private:

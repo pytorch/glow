@@ -99,6 +99,8 @@ void LLVMBackend::emitJitMain(LLVMIRGen &irgen) const {
   irgen.createCall(builder, entryF, initFunctionCallArgs);
   // Terminate the function.
   builder.CreateRetVoid();
+  // Emit JIT file printer.
+  irgen.generateJITFileWriter();
   // Create the debug info for the entry point function.
   irgen.generateFunctionDebugInfo(func);
 }

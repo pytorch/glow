@@ -16,7 +16,7 @@
 
 #include "Loader.h"
 #include "LoaderUtils.h"
-
+#include "glow/Base/TensorSerialization.h"
 #include "llvm/Support/CommandLine.h"
 
 using namespace glow;
