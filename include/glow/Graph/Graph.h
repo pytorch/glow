@@ -1333,7 +1333,7 @@ public:
   /// floating point one with given Scale and Offset. Scale and Offset params
   /// are part of the \p input. Result dequantization kind is \p k.
   DequantizeNode *createDequantize(llvm::StringRef name, NodeValue input,
-                                   ElemKind k = ElemKind::FloatTy);
+                                   ElemKind k);
 
   /// Create dequantization node which transforms quantized tensor to a
   /// floating point type \p outTy one with given Scale and Offset. Scale and

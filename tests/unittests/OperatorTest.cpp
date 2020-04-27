@@ -7159,7 +7159,8 @@ static void testChannelwiseQuantizedConv2D(
       "CWQConv", inputQ, filterCWQ, biasCWQ, filterScalesCWQ, filterOffsetsCWQ,
       biasScalesCWQ, biasOffsetsCWQ, outQTy, kernels, strides, pads, group,
       dilation, schema, elemQKind, biasElemQKind);
-  DequantizeNode *out = F->createDequantize("dequantize", outQ);
+  DequantizeNode *out =
+      F->createDequantize("dequantize", outQ, ElemKind::FloatTy);
   SaveNode *saveOut = F->createSave("saveOut", out);
   bindings.allocate(saveOut->getPlaceholder());
 
