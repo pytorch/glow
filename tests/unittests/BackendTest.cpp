@@ -17,6 +17,7 @@
 
 #include "glow/Backend/BackendUtils.h"
 #include "glow/Backends/Interpreter/Interpreter.h"
+#include "glow/Base/TensorSerialization.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/PlaceholderBindings.h"

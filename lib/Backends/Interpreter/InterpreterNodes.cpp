@@ -16,6 +16,7 @@
 
 #include "glow/Backends/Interpreter/Interpreter.h"
 
+#include "glow/Base/TensorSerialization.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Base/Profile.h"
