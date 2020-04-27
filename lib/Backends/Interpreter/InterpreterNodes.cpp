@@ -3706,6 +3706,11 @@ void BoundInterpreterFunction::fwdEmbeddingBagInstFloatImpl(
     } else {
       end = OFFH.raw(i + 1);
     }
+    if (start == end) {
+      continue;
+    } else if (start > end) {
+      break;
+    }
     for (dim_t j = start; j < end; j++) {
       ElemTy weight = WH.raw(curIdx);
       dim_t offsetIn = IH.raw(curIdx++) * lineSize;
@@ -3983,6 +3988,12 @@ void BoundInterpreterFunction::fwdEmbeddingBagByteRowwiseOffsetsImpl(
     } else {
       end = OFFH.raw(i + 1);
     }
+    if (start == end) {
+      continue;
+    } else if (start > end) {
+      break;
+    }
+
     for (dim_t j = start; j < end; j++) {
       const float weight = static_cast<float>(WH.raw(j));
       const dim_t rowIdx = IH.raw(j);

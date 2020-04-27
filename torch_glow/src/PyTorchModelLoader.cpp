@@ -3494,7 +3494,9 @@ Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
 
   // If no indices are provided, replace the op with a zero Constant.
   if (indices.dims()[0] == 0) {
-    glow::Tensor t(ElemKind::FloatTy, {offsets.dims()[0], weight.dims()[1]});
+    glow::Tensor t(
+        ElemKind::FloatTy,
+        {offsets.dims()[0] > 0 ? offsets.dims()[0] - 1 : 0, weight.dims()[1]});
     t.zero();
     glow::Constant *glowConstant =
         F_.getParent()->createConstant("EmptyEmbeddingBag", std::move(t));
@@ -3524,7 +3526,7 @@ Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
                                          inputs[EmbeddingBagInputs::sparse])));
 
   auto *EB = F_.createEmbeddingBag("EmbeddingBag", weight, perSampleWeights,
-                                   indices, offsets);
+                                   indices, offsets, true);
 
   return addValueMapping(outputs[0], EB->getResult());
 }
@@ -3573,8 +3575,11 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
 
   // If no indices are provided, replace the op with a zero Constant.
   if (indices.dims()[0] == 0) {
+    // Assuming hasEndOffset = true, so the output.dims[0] should be
+    // offsets.dims[0] - 1, if offsets is not empty
     glow::Tensor t(ElemKind::FloatTy,
-                   {offsets.dims()[0], weight.dims()[1] - 2 * sizeof(float)});
+                   {offsets.dims()[0] > 0 ? offsets.dims()[0] - 1 : 0,
+                    weight.dims()[1] - 2 * sizeof(float)});
     t.zero();
     glow::Constant *glowConstant = F_.getParent()->createConstant(
         "EmptyEmbeddingBagByteRowwiseOffsets", std::move(t));
@@ -3601,7 +3606,7 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
 
   auto *EB = F_.createEmbeddingBagByteRowwiseOffsets(
       "EmbeddingBagByteRowwiseOffsets", weightConstant->getOutput(),
-      perSampleWeights, indices, offsets);
+      perSampleWeights, indices, offsets, false, true /* hasEndOffset */);
 
   return addValueMapping(outputs[0], EB->getResult());
 }

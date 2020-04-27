@@ -100,6 +100,17 @@ setGraphRunnerForKey(const std::string &key,
   return runner;
 }
 
+bool removeGraphRunnerForKey(const std::string &key) {
+  auto &preloadedRunners = getPreloadedRunnerMap();
+  std::unique_lock<std::shared_timed_mutex> wlock(runnerMapMutex);
+  const auto it = preloadedRunners.find(key);
+  if (it == preloadedRunners.end()) {
+    return false;
+  }
+  preloadedRunners.erase(key);
+  return true;
+}
+
 void registerGlowOp(const c10::Symbol &symbol) {
   torch::jit::RegisterOperators op({torch::jit::Operator(
       symbol,
@@ -125,7 +136,7 @@ void registerGlowOp(const c10::Symbol &symbol) {
           graphRunner = setGraphRunnerForKey(keyStr, [node]() {
             return std::make_shared<CachingGraphRunner>(
                 node->g(at::attr::Subgraph), getHostManager(),
-                getPyTorchLoaderSettings());
+                getBackendName().c_str(), getPyTorchLoaderSettings());
           });
         }
 

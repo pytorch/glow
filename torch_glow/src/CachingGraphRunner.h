@@ -19,6 +19,7 @@
 
 #include "PyTorchModelLoader.h"
 #include "glow/Runtime/HostManager/HostManager.h"
+#include "glow/Support/TensorPool.h"
 
 #include <torch/csrc/jit/ir/ir.h>
 #include <torch/csrc/jit/serialization/import.h>
@@ -52,6 +53,12 @@ class CachingGraphRunner {
   /// The HostManager used to store and run Glow graphs.
   std::shared_ptr<runtime::HostManager> hostManager_;
 
+  /// The Backend associated with the HostManager
+  const Backend &backend_;
+
+  /// Tensorpool to host padded tensors
+  TensorPool tensorPool_;
+
   /// Mapping from hash of PyTorch inputs to PerGlowGraphInfo for the Glow
   /// function that will run inputs matching that hash.
   std::unordered_map<size_t, std::shared_ptr<PerGlowGraphInfo>>
@@ -80,6 +87,13 @@ class CachingGraphRunner {
   /// The number of times any Glow graph managed by this CachingGraphRunner has
   /// been run.
   std::atomic<size_t> numRuns_{0};
+
+  /// The maximum size of input tensors, to allocate the zerolength tensor
+  size_t maxSeqLength_ = 1;
+
+  /// Pre-allocated tensor for zero-length tensors, to avoid repeated zero
+  /// paddings during ExecutionContext building
+  glow::Tensor zeroLengthSequence_;
 
   /// Given a PyTorch input stack \p stack, this generates a hash from the
   /// values on the stack and checks to see if a matching function was loaded
@@ -117,7 +131,7 @@ class CachingGraphRunner {
 public:
   CachingGraphRunner(std::shared_ptr<torch::jit::Graph> graph,
                      std::shared_ptr<runtime::HostManager> hostManager,
-                     PyTorchLoaderSettings settings);
+                     const char *backendName, PyTorchLoaderSettings settings);
 
   ~CachingGraphRunner();
 

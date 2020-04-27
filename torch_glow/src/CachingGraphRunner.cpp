@@ -205,7 +205,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   // We only hold placeholders for tensor inputs so indexing them is different
   // than indexing all inputs.
   size_t placeholderI = 0;
-  ONNX_NAMESPACE::GraphProto inputG;
+
   for (const auto &input : inputs) {
     if (input.isTensor()) {
 
@@ -213,8 +213,6 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       glow::TypeRef ty = ph->getType();
 
       auto ptTensor = input.toTensor();
-      glow::Tensor t;
-
       bool needClone = false;
 
       if (ptTensor.is_quantized()) {
@@ -223,25 +221,67 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
         // convertQuantizedToDtype might create a temporary tensor
         needClone = true;
       }
+
       if (!ptTensor.is_contiguous()) {
         ptTensor = ptTensor.contiguous();
         needClone = true;
       }
 
-      if (needClone) {
-        t = glow::Tensor(ptTensor.data_ptr(), ty).clone();
+      // Check Tensor size, making sure enough memory is allocated
+      if (ptTensor.numel() > ty->size()) {
+        std::stringstream ss;
+        ss << "Input tensor is too large: " << ptTensor.numel() << " vs "
+           << ty->size() << ": " << ph->getName().str();
+        return MAKE_ERR(ss.str());
+      }
+
+      if (ty->dims().size() == ptTensor.ndimension() &&
+          std::equal(ty->dims().begin(), ty->dims().end(),
+                     ptTensor.sizes().begin())) {
+        glow::Tensor t;
+        if (needClone) {
+          t = glow::Tensor(ptTensor.data_ptr(), ty).clone();
+        } else {
+          t = glow::Tensor(ptTensor.data_ptr(), ty);
+        }
+        bindings->insert(ph, std::move(t));
+      } else if (ptTensor.data_ptr() && ptTensor.numel() > 0 &&
+                 backend_.supportsPartialTensors()) {
+        // This is a partial tensor, to create padded unown tensor
+        glow::Tensor t;
+        if (needClone) {
+          t = glow::Tensor(ptTensor.data_ptr(), ty, ptTensor.nbytes()).clone();
+        } else {
+          t = glow::Tensor(ptTensor.data_ptr(), ty, ptTensor.nbytes());
+        }
+        bindings->insert(ph, std::move(t));
+      } else if (ptTensor.numel() == 0) {
+        // Handles zero-size input tensor
+        // Here zeroLengthSequence_ is pre-allocated if warmCache is called
+        assert(zeroLengthSequence_.getUnsafePtr());
+        bindings->insert(
+            ph, glow::Tensor((void *)zeroLengthSequence_.getUnsafePtr(), ty));
       } else {
-        t = glow::Tensor(ptTensor.data_ptr(), ty);
+        // For backends that does not support partial tensor, manually pad zeros
+        Tensor *inputTensor = tensorPool_.get(ty);
+        if (!inputTensor) {
+          std::stringstream ss;
+          ss << "Tensorpool tensor not found for input " << ptTensor.name();
+          return MAKE_ERR(ss.str());
+        }
+        // We want fresh DeviceResidencyInfo for this fresh Tensor.
+        inputTensor->resetDeviceInfo();
+        if (ptTensor.data_ptr()) {
+          memcpy(inputTensor->getUnsafePtr(), ptTensor.data_ptr(),
+                 ptTensor.nbytes());
+          // Pad remaining space with zeroes.
+          memset(inputTensor->getUnsafePtr() + ptTensor.nbytes(), 0,
+                 inputTensor->getSizeInBytes() - ptTensor.nbytes());
+        } else {
+          inputTensor->zero();
+        }
+        bindings->insert(ph, inputTensor);
       }
-
-      // Write input tensor to ONNX
-      if (settings_.writeToOnnx) {
-        auto *onnxT = inputG.add_initializer();
-        onnxT->set_name(ph->getName());
-        ONNXModelWriter::writeTensor(t, onnxT, /*useGlowCustomOps*/ true);
-      }
-
-      bindings->insert(ph, std::move(t));
     } else if (input.isObject()) {
       // Objects are only used for loading attributes at compile time.
       continue;
@@ -257,6 +297,28 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     if (!of) {
       LOG(ERROR) << "Cannot create input file " << filename;
     } else {
+      ONNX_NAMESPACE::GraphProto inputG;
+      for (const auto &p : bindings->pairs()) {
+        auto *onnxT = inputG.add_initializer();
+        const auto ph = p.first;
+        const auto &t = *p.second;
+        onnxT->set_name(ph->getName());
+        size_t unpaddedSize = t.getUnpaddedSizeInBytes();
+        size_t tensorSize = t.getSizeInBytes();
+        if (unpaddedSize == tensorSize) {
+          ONNXModelWriter::writeTensor(t, onnxT, /*useGlowCustomOps*/ true);
+        } else {
+          // If the input is a partial tensor, then save only the part that has
+          // data.
+          auto ty = t.getType();
+          auto dims = ty.dims().vec();
+          assert(dims.size() > 0);
+          dims[0] = dims[0] * unpaddedSize / tensorSize;
+          const auto &resized = t.getUnowned(dims);
+          ONNXModelWriter::writeTensor(resized, onnxT,
+                                       /*useGlowCustomOps*/ true);
+        }
+      }
       std::string buffer;
       inputG.SerializeToString(&buffer);
       of << buffer;
@@ -427,6 +489,21 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
       *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
       outputCorrectType_, getPyTorchLoaderSettings(), {}, inputMeta));
 
+  // Obtain maxSeqLength from inputMeta
+  // This step can also be done with a user input, but the overhead of the
+  // following code should not be significant
+  for (auto meta : inputMeta) {
+    maxSeqLength_ =
+        std::max(maxSeqLength_,
+                 (size_t)std::accumulate(meta.dims.begin(), meta.dims.end(), 1,
+                                         std::multiplies<glow::dim_t>()));
+  }
+  // Allocate zeroLengthSequence with maximum size
+  // Similar to the impl in Onnxifi/Base.cpp
+  glow::Type zt(ElemKind::Int64ITy, {maxSeqLength_});
+  zeroLengthSequence_.reset(zt);
+  zeroLengthSequence_.zero();
+
   glow::CompilationContext cctx;
 
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(glowModule), cctx));
@@ -442,10 +519,11 @@ const PyTorchLoaderSettings &CachingGraphRunner::getSettings() const {
 
 CachingGraphRunner::CachingGraphRunner(
     std::shared_ptr<torch::jit::Graph> graph,
-    std::shared_ptr<runtime::HostManager> hostManager,
+    std::shared_ptr<runtime::HostManager> hostManager, const char *backendName,
     PyTorchLoaderSettings settings)
     : graph_(graph), ptGraphExecutor_(graph, "forward"),
-      hostManager_(hostManager), settings_(settings) {}
+      hostManager_(hostManager), backend_(hostManager->getBackend(backendName)),
+      settings_(settings) {}
 
 CachingGraphRunner::~CachingGraphRunner() {
   // Remove Glow functions saved in HostManager when being destroyed.
