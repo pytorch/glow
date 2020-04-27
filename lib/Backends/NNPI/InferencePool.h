@@ -33,7 +33,6 @@ namespace glow {
 namespace runtime {
 class NNPIDeviceBindings;
 class InferencePoolEnv {
-  unsigned numWorkers_;
   std::unique_ptr<folly::CPUThreadPoolExecutor> workersPool_;
   std::vector<InferenceContext> inferenceContexts_;
   std::vector<InferenceContext *> freeContexts_;
@@ -53,7 +52,7 @@ class InferencePoolEnv {
 public:
   InferencePoolEnv();
   ~InferencePoolEnv();
-  Error init(unsigned numWorkers, NNPIAdapter adapter, NNPIDeviceContext device,
+  Error init(NNPIAdapter adapter, NNPIDeviceContext device,
              std::shared_ptr<NNPIDeviceTracing> deviceTracing,
              CompiledFunction *compiledFunction,
              StaticPlaceholderMap *staticPlaceholderMap,

@@ -1431,72 +1431,10 @@ public:
     LOG_AND_RETURN_IF_NOT(ERROR, glowRowwiseFC, "Bad node type",
                           NNPI_INVALID_PARAM);
     LOG_AND_RETURN_IF_NOT(
-        ERROR, glowRowwiseFC->getInput().getType()->getOffset() == 0.f,
-        (std::string("Bad input offset value") +
-         std::to_string(glowRowwiseFC->getInput().getType()->getOffset())),
-        NNPI_INVALID_PARAM);
-    LOG_AND_RETURN_IF_NOT(
-        ERROR, glowRowwiseFC->getResult().getType()->getOffset() == 0.f,
-        (std::string("Bad result offset value") +
-         std::to_string(glowRowwiseFC->getResult().getType()->getOffset())),
-        NNPI_INVALID_PARAM);
-    LOG_AND_RETURN_IF_NOT(
         ERROR,
         !(glowRowwiseFC->getOffsets()) ||
             importer.zeroes(nodeValueName(glowRowwiseFC->getOffsets()).c_str()),
         "Bad offset value", NNPI_INVALID_PARAM);
-
-    // Add internal tensor for Symlowp input.
-    std::string symlowpInputName =
-        NNPIImporter::internalName_ +
-        nodeValueName(glowRowwiseFC->getInput()).c_str() + "_symlowp";
-    auto *inType = glowRowwiseFC->getInput().getType();
-    LOG_NNPI_IF_ERROR_RETURN_VALUE(
-        importer.addValue(symlowpInputName, inType,
-                          /* alternativeLayout */ inType->dims().size() == 4,
-                          /* input */ false, /* output */ false, {}, {},
-                          /* forceSymlowp */ true),
-        "Failed to add value");
-
-    // Add internal tensor for Symlowp output.
-    std::string symlowpOutputName =
-        NNPIImporter::internalName_ +
-        nodeValueName(glowRowwiseFC->getResult()).c_str() + "_symlowp";
-    auto *outType = glowRowwiseFC->getResult().getType();
-    LOG_NNPI_IF_ERROR_RETURN_VALUE(
-        importer.addValue(symlowpOutputName, outType,
-                          /* alternativeLayout */ outType->dims().size() == 4,
-                          /* input */ false, /* output */ false, {}, {},
-                          /* forceSymlowp */ true),
-        "Failed to add value");
-
-    // Add convert op from Gemmlowp input to Symlowp.
-    std::string convertInputName = NNPIImporter::internalName_ +
-                                   glowRowwiseFC->getName().begin() +
-                                   "_convert_input";
-    std::string convertInputInputName =
-        nodeValueName(glowRowwiseFC->getInput());
-    if (!importer.hasChannelWiseConverter(convertInputInputName)) {
-      LOG_NNPI_IF_ERROR_RETURN_VALUE(
-          nnpiNetworkAddConvertOp(
-              importer.getNetwork(), convertInputName.c_str(),
-              convertInputInputName.c_str(), symlowpInputName.c_str()),
-          "Failed to add layer");
-      importer.addChannelWiseConverter(convertInputInputName);
-    }
-
-    // Add convert op from Symlowp output to Gemmlowp.
-    std::string convertOutputName = NNPIImporter::internalName_ +
-                                    glowRowwiseFC->getName().begin() +
-                                    "_convert_output";
-    std::string convertOutputOutputName =
-        nodeValueName(glowRowwiseFC->getResult());
-    LOG_NNPI_IF_ERROR_RETURN_VALUE(
-        nnpiNetworkAddConvertOp(
-            importer.getNetwork(), convertOutputName.c_str(),
-            symlowpOutputName.c_str(), convertOutputOutputName.c_str()),
-        "Failed to add layer");
-    importer.addChannelWiseConverter(convertOutputOutputName);
 
     // Create the weights with no offset tensor.
     // Assert weights & biases have no offset or all zeroes.
@@ -1534,17 +1472,14 @@ public:
             nodeValueName(glowRowwiseFC->getInput()),
             nodeValueName(glowRowwiseFC->getWeights()),
             nodeValueName(glowRowwiseFC->getBias()),
-            symlowpInputName,
-            symlowpOutputName,
         },
         {
             nodeValueName(glowRowwiseFC->getResult()),
-            symlowpInputName,
-            symlowpOutputName,
         });
     return nnpiNetworkAddFullyConnectedOp(
         importer.getNetwork(), glowRowwiseFC->getName().begin(),
-        symlowpInputName.c_str(), symlowpOutputName.c_str(),
+        nodeValueName(glowRowwiseFC->getInput()).c_str(),
+        nodeValueName(glowRowwiseFC->getResult()).c_str(),
         nodeValueName(glowRowwiseFC->getWeights()).c_str(),
         glowRowwiseFC->getBias()
             ? nodeValueName(glowRowwiseFC->getBias()).c_str()
@@ -1560,7 +1495,6 @@ public:
         llvm::dyn_cast<ChannelwiseQuantizedConvolutionNode>(n);
     LOG_AND_RETURN_IF_NOT(ERROR, glowChannelwiseQuantizedConv, "Bad node type",
                           NNPI_INVALID_PARAM);
-
     LOG_AND_RETURN_IF_NOT(
         ERROR,
         !(glowChannelwiseQuantizedConv->getOffsets()) ||
@@ -1596,60 +1530,6 @@ public:
         glowChannelwiseQuantizedConv->getStrides()[0],
         glowChannelwiseQuantizedConv->getStrides()[1]};
     uint32_t dilation[SPATIAL_DIMS2] = {1, 1}; // No dilation, default values
-
-    // Add internal tensor for Symlowp input.
-    std::string symlowpInputName =
-        NNPIImporter::internalName_ +
-        nodeValueName(glowChannelwiseQuantizedConv->getInput()).c_str() +
-        "_symlowp";
-    auto *inType = glowChannelwiseQuantizedConv->getInput().getType();
-    LOG_NNPI_IF_ERROR_RETURN_VALUE(
-        importer.addValue(symlowpInputName, inType,
-                          /* alternativeLayout */ inType->dims().size() == 4,
-                          /* input */ false, /* output */ false, {}, {},
-                          /* forceSymlowp */ true),
-        "Failed to add value");
-
-    // Add internal tensor for Symlowp output.
-    std::string symlowpOutputName =
-        NNPIImporter::internalName_ +
-        nodeValueName(glowChannelwiseQuantizedConv->getResult()).c_str() +
-        "_symlowp";
-    auto *outType = glowChannelwiseQuantizedConv->getResult().getType();
-    LOG_NNPI_IF_ERROR_RETURN_VALUE(
-        importer.addValue(symlowpOutputName, outType,
-                          /* alternativeLayout */ outType->dims().size() == 4,
-                          /* input */ false, /* output */ false, {}, {},
-                          /* forceSymlowp */ true),
-        "Failed to add value");
-
-    // Add convert op from Gemmlowp input to Symlowp.
-    std::string convertInputName =
-        NNPIImporter::internalName_ +
-        glowChannelwiseQuantizedConv->getName().begin() + "_convert_input";
-    std::string convertInputInputName =
-        nodeValueName(glowChannelwiseQuantizedConv->getInput());
-    if (!importer.hasChannelWiseConverter(convertInputInputName)) {
-      LOG_NNPI_IF_ERROR_RETURN_VALUE(
-          nnpiNetworkAddConvertOp(
-              importer.getNetwork(), convertInputName.c_str(),
-              convertInputInputName.c_str(), symlowpInputName.c_str()),
-          "Failed to add layer");
-      importer.addChannelWiseConverter(convertInputInputName);
-    }
-
-    // Add convert op from Symlowp output to Gemmlowp.
-    std::string convertOutputName =
-        NNPIImporter::internalName_ +
-        glowChannelwiseQuantizedConv->getName().begin() + "_convert_output";
-    std::string convertOutputOutputName =
-        nodeValueName(glowChannelwiseQuantizedConv->getResult());
-    LOG_NNPI_IF_ERROR_RETURN_VALUE(
-        nnpiNetworkAddConvertOp(
-            importer.getNetwork(), convertOutputName.c_str(),
-            symlowpOutputName.c_str(), convertOutputOutputName.c_str()),
-        "Failed to add layer");
-    importer.addChannelWiseConverter(convertOutputOutputName);
 
     // Create the weights with no offset tensor.
     // Assert weights & biases have no offset or all zeroes.
@@ -1694,18 +1574,15 @@ public:
             nodeValueName(glowChannelwiseQuantizedConv->getInput()),
             nodeValueName(glowChannelwiseQuantizedConv->getFilter()),
             nodeValueName(glowChannelwiseQuantizedConv->getBias()),
-            symlowpInputName,
-            symlowpOutputName,
         },
         {
             nodeValueName(glowChannelwiseQuantizedConv->getResult()),
-            symlowpInputName,
-            symlowpOutputName,
         });
 
     return nnpiNetworkAddConvolutionOp(
         importer.getNetwork(), glowChannelwiseQuantizedConv->getName().begin(),
-        symlowpInputName.c_str(), symlowpOutputName.c_str(),
+        nodeValueName(glowChannelwiseQuantizedConv->getInput()).c_str(),
+        nodeValueName(glowChannelwiseQuantizedConv->getResult()).c_str(),
         nodeValueName(glowChannelwiseQuantizedConv->getFilter()).c_str(),
         glowChannelwiseQuantizedConv->getBias()
             ? nodeValueName(glowChannelwiseQuantizedConv->getBias()).c_str()

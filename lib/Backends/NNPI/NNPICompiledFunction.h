@@ -31,12 +31,10 @@ namespace glow {
 /// Function "compiled" for execution by the NNPI backend.
 class NNPICompiledFunction final : public CompiledFunction {
 public:
-  NNPICompiledFunction(Function *F)
-      : CompiledFunction(runtime::RuntimeBundle::create(*F)),
-        compilationOptions_({}){};
-
   /// \name CompiledFunction interface.
   ///@{
+  NNPICompiledFunction(Function *F);
+
   ~NNPICompiledFunction() override;
 
   /// Execute the network and allocate Placeholder memory with given
