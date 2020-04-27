@@ -16,7 +16,8 @@
 #ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASS_H
 #define GLOW_OPTIMIZER_GRAPHOPTIMIZER_FUNCTIONPASS_H
 
-#include "llvm/ADT/StringRef.h"
+#include "glow/PassManager/Pass.h"
+#include "glow/PassManager/PassConfig.h"
 
 namespace glow {
 
@@ -24,26 +25,41 @@ class Function;
 struct CompilationContext;
 enum class FunctionPassID;
 
+/// Specifies whether the pass requires DCE.
+enum class DCERequiredMode {
+  /// Require that DCE is run before the pass.
+  BeforePass,
+  /// Signify the pass has no requirement/dependence on DCE.
+  None,
+};
+
+class FunctionPassConfig : public PassConfig<FunctionPassID> {
+  /// Represents whether DCE is required for this pass.
+  DCERequiredMode dceMode_{DCERequiredMode::BeforePass};
+
+public:
+  /// Constructor.
+  FunctionPassConfig(FunctionPassID ID,
+                     ConvergenceMode convergenceMode = ConvergenceMode::OnePass,
+                     const std::set<CompilationMode> &enabledCompModes =
+                         {CompilationMode::Infer, CompilationMode::Train},
+                     DCERequiredMode dceMode = DCERequiredMode::BeforePass)
+      : PassConfig(ID, convergenceMode, enabledCompModes), dceMode_(dceMode) {}
+  /// Constructor.
+  FunctionPassConfig(FunctionPassID ID, ConvergenceMode convergenceMode,
+                     unsigned enabledCompModes, DCERequiredMode dceMode)
+      : PassConfig(ID, convergenceMode, enabledCompModes), dceMode_(dceMode) {}
+  /// \returns the DCERequiredMode of this config.
+  DCERequiredMode getDCERequiredMode() const { return dceMode_; }
+  void dump(llvm::raw_ostream &os, llvm::StringRef passName) const override;
+  llvm::StringRef getNameOfPass() const override;
+  bool equals(const PassConfigBase &other) const override;
+};
+
 /// Class used for all passes over Functions. All passes over Functions should
 /// derive from this class, implementing the pass logic and additionally can add
 /// logic for running before and after the pass runs.
-class FunctionPass {
-  friend class FunctionPassManager;
-
-private:
-  /// Run the pass on \p F. \returns whether the pass modifies \p F.
-  virtual bool run(Function *F, const CompilationContext &cctx) = 0;
-
-  /// \returns the name of the pass.
-  virtual llvm::StringRef getName() const = 0;
-
-  /// \returns the name of the pass.
-  virtual FunctionPassID getID() const = 0;
-
-public:
-  FunctionPass() = default;
-  virtual ~FunctionPass() = default;
-};
+using FunctionPass = Pass<Function, FunctionPassConfig>;
 
 } // namespace glow
 

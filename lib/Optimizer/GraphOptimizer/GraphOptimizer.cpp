@@ -27,10 +27,10 @@
 #include "glow/Graph/TensorLayout.h"
 #include "glow/Graph/Utils.h"
 #include "glow/Graph/VerifierHelper.h"
+#include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
-#include "glow/Optimizer/GraphOptimizer/PassManager.h"
-#include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
 #include "glow/Optimizer/Lower/Lower.h"
+#include "glow/PassManager/PassManager.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"
 #include "glow/Runtime/RuntimeTypes.h"
@@ -370,7 +370,8 @@ bool SinkConversions::run(Function *F, const CompilationContext &cctx) {
       }
 
       DequantizeNode *newDequantize =
-          F->createDequantize(CN->getName().str() + "_dequantize", newCN);
+          F->createDequantize(CN->getName().str() + "_dequantize", newCN,
+                              CN->getResult().getType());
 
       CN->getResult().replaceAllUsesOfWith(newDequantize->getResult());
       changed = true;
@@ -3030,7 +3031,7 @@ static bool isValueChangingCast(TypeRef srcTy, TypeRef destTy) {
 /// Optimize away redundant ClipNodes.
 /// We basically turn "Clip(Clip(Clip(A)))" to "Clip(A)".
 bool OptimizeClips::run(Function *F, const CompilationContext &cctx) {
-  int clipsEliminated = 0;
+  bool changed = false;
   for (Node &node : F->getNodes()) {
     ClipNode *clip = dyn_cast<ClipNode>(&node);
     if (!clip) {
@@ -3045,11 +3046,22 @@ bool OptimizeClips::run(Function *F, const CompilationContext &cctx) {
           F->createClip(clipPrev->getName(), clipPrev->getInput().getNode(),
                         std::max(minPrev, min), std::min(maxPrev, max));
       clip->getResult().replaceAllUsesOfWith(newClip);
-      ++clipsEliminated;
+      changed = true;
+      continue;
+    }
+
+    // We can fold Clip(Relu) -> Clip'
+    if (ReluNode *relu = dyn_cast<ReluNode>(clip->getInput())) {
+      const float newMin = std::max(0.0f, min);
+      ClipNode *newClip = F->createClip(clip->getName().str() + "_relu",
+                                        relu->getInput(), newMin, max);
+      clip->getResult().replaceAllUsesOfWith(newClip->getResult());
+      changed = true;
+      continue;
     }
   }
 
-  return clipsEliminated;
+  return changed;
 }
 
 /// \returns whether \p N used used by any Nodes with side effects.
@@ -3716,7 +3728,8 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
       // Dequantize(rescale) -> Dequantize()
       if (auto *RS = dyn_cast<RescaleQuantizedNode>(DQ->getInput())) {
         changed = true;
-        auto *newRS = F->createDequantize(DQ->getName(), RS->getInput());
+        auto *newRS = F->createDequantize(DQ->getName(), RS->getInput(),
+                                          DQ->getResult().getType());
         DQ->getResult().replaceAllUsesOfWith(newRS);
 
         // We may be able to optimize this rescale node. Remember to visit
@@ -4427,7 +4440,7 @@ void glow::transformForPrecisionMode(const Backend &B, Function *F,
 
     LOG_SCOPE(F->getLogContext(), "glow::profileQuantization")
 
-    glow::profileQuantization(*cctx.bindings, F);
+    glow::profileQuantization(*cctx.bindings, F, precConfig.profConfig);
     break;
   }
 
@@ -4549,13 +4562,15 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   // inputs, and outputs (Placeholders and SaveNodes).
   if (cctx.optimizationOpts.foldStaticPlaceholderConversions ||
       cctx.optimizationOpts.foldElemKindConversionIntoIO) {
-    FunctionPassPipeline pipeline{
-        FunctionPassID::FoldElemKindConversionIntoInputs};
+    std::unique_ptr<FunctionPassPipeline> pipeline =
+        glow::make_unique<FunctionPassPipeline>();
+    pipeline->pushBack({FunctionPassID::FoldElemKindConversionIntoInputs});
 
     if (cctx.optimizationOpts.foldElemKindConversionIntoIO) {
-      pipeline.pushBack({FunctionPassID::FoldElemKindConversionIntoOutputs});
+      pipeline->pushBack({FunctionPassID::FoldElemKindConversionIntoOutputs});
     }
-    FunctionPassManager FPM("FoldElemKindConversionIntoIO", pipeline);
+    FunctionPassManager FPM("FoldElemKindConversionIntoIO",
+                            std::move(pipeline));
     if (FPM.run(F, cctx)) {
       ::glow::optimize(F, cctx);
     }

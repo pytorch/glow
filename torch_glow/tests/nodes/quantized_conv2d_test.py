@@ -151,3 +151,99 @@ class TestQuantizedConv2d(unittest.TestCase):
                     "aten::dequantize",
                 },
             )
+
+    def test_quantized_conv2d_packed_channelwise_serial_qconv(self):
+        """Test of serial structure PyTorch quantized::conv2d on Glow."""
+
+        class SerialQuantizedConvModel(torch.nn.Module):
+            def __init__(self):
+                super(SerialQuantizedConvModel, self).__init__()
+                self.qconfig = torch.quantization.get_default_qconfig("fbgemm")
+
+                self.quant = torch.quantization.QuantStub()
+
+                self.conv1 = torch.nn.Conv2d(4, 4, [2, 2], groups=1)
+                self.conv1.weight.random_(-1, 1)
+                self.conv1.bias.data.random_(-1, 1)
+
+                self.conv2 = torch.nn.Conv2d(4, 2, [2, 2], groups=1)
+                self.conv2.weight.random_(-1, 1)
+                self.conv2.bias.data.random_(-1, 1)
+
+                self.dequant = torch.quantization.DeQuantStub()
+
+            def forward(self, x):
+                x = self.quant(x)
+                x = self.conv1(x)
+                x = self.conv2(x)
+                x = self.dequant(x)
+                return x
+
+        with torch.no_grad():
+            x = torch.randn([1, 4, 4, 4])
+            model = SerialQuantizedConvModel()
+
+            torch.quantization.prepare(model, inplace=True)
+            # Calibration
+            model.forward(x)
+            torch.quantization.convert(model, inplace=True)
+
+            jitVsGlow(
+                model,
+                x,
+                expected_fused_ops={
+                    "aten::quantize_per_tensor",
+                    "quantized::conv2d",
+                    "aten::dequantize",
+                },
+            )
+
+    def test_quantized_conv2d_packed_channelwise_parallel_qconv(self):
+        """Test of parallel structure PyTorch quantized::conv2d on Glow."""
+
+        class ParallelQuantizedConvModel(torch.nn.Module):
+            def __init__(self):
+                super(ParallelQuantizedConvModel, self).__init__()
+                self.qconfig = torch.quantization.get_default_qconfig("fbgemm")
+
+                self.quant = torch.quantization.QuantStub()
+
+                self.conv1 = torch.nn.Conv2d(4, 2, [2, 2], groups=1)
+                self.conv1.weight.random_(-1, 1)
+                self.conv1.bias.data.random_(-1, 1)
+
+                self.conv2 = torch.nn.Conv2d(4, 2, [2, 2], groups=1)
+                self.conv2.weight.random_(-1, 1)
+                self.conv2.bias.data.random_(-1, 1)
+
+                self.cat = torch.ops.quantized.cat
+                self.dequant = torch.quantization.DeQuantStub()
+                self.dequant2 = torch.quantization.DeQuantStub()
+
+            def forward(self, x):
+                x = self.quant(x)
+                x1 = self.conv1(x)
+                x2 = self.conv2(x)
+                x1 = self.dequant(x1)
+                x2 = self.dequant2(x2)
+                x = torch.cat((x1, x2), dim=0)
+                return x
+
+        with torch.no_grad():
+            x = torch.randn([1, 4, 4, 4])
+            model = ParallelQuantizedConvModel()
+
+            torch.quantization.prepare(model, inplace=True)
+            # Calibration
+            model.forward(x)
+            torch.quantization.convert(model, inplace=True)
+
+            jitVsGlow(
+                model,
+                x,
+                expected_fused_ops={
+                    "aten::quantize_per_tensor",
+                    "quantized::conv2d",
+                    "aten::dequantize",
+                },
+            )

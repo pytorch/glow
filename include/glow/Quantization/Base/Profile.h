@@ -36,6 +36,20 @@ void generateTensorHistogram(const Handle<float> inputTensor,
                              Handle<float> existingHistogram, float &min,
                              float &max);
 
+/// Function to rescale the input histogram \p srcHist initially computed in the
+/// range \p srcHistMin and \p srcHistMax to a new range given by \p destHistMin
+/// and \p destHistMax. The rescaled histogram has the same number of bins as
+/// the input histogram. If the rescale range includes the initial range then
+/// the rescaled histogram will preserve the total bin sum. If the rescale range
+/// does not include the initial range then the input histogram will be cropped
+/// and the total bin sum will not be preserved.
+/// \returns the rescaled histogram.
+std::vector<float> rescaleHistogram(const std::vector<float> &srcHist,
+                                    const float srcHistMin,
+                                    const float srcHistMax,
+                                    const float destHistMin,
+                                    const float destHistMax);
+
 } // namespace quantization
 } // namespace glow
 

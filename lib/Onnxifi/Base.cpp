@@ -99,8 +99,10 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   } else {
     // TODO: Use a more specific ONNXIFI error code here to denote what about
     // this operator is not supported (shape, type, etc).
-    LOG(ERROR) << "Error when loading protobuf: "
-               << ERR_TO_STRING(loaderOrErr.takeError());
+    LOG(INFO)
+        << "ONNXIFI checkGraphCompatibility incompatibility found when loading "
+           "protobuf: "
+        << ERR_TO_STRING(loaderOrErr.takeError(), /*warning*/ true);
     return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
   }
 
@@ -114,29 +116,31 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   }
   Function *function = *module.getFunctions().begin();
 
-  CompilationContext cctx;
-  cctx.compMode = CompilationMode::Infer;
-  glow::lower(function, cctx, glowBackend_.get());
-
-  // Call the backend's transformPostLowering to match the normal compilation
-  // pipeline then DCE any nodes that are no longer needed.
-  auto changedOrErr = glowBackend_->transformPostLowering(function, cctx);
-  if (ERR_TO_BOOL(changedOrErr.takeError())) {
-    return ONNXIFI_STATUS_INTERNAL_ERROR;
-  }
-  if (*changedOrErr) {
-    runDCEPass(function, cctx);
-  }
-
-  if (!function->verify()) {
-    LOG(ERROR) << "ONNXIFI: Function verification failed.";
+  // Check if the function is verified as valid for Glow/the backend -- if not
+  // then conservatively early return on unsupported operator.
+  if (!function->verify(glowBackend_.get())) {
+    LOG(INFO)
+        << "ONNXIFI checkGraphCompatibility incompatibility: Glow function "
+           "verification failed.";
     return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
+  }
+
+  // Perform the normal optimization pipeline, returning an internal error if we
+  // encounter an issue during optimization.
+  CompilationContext cctx;
+  auto optErr = glow::optimizeFunction(function, *glowBackend_, cctx);
+  if (optErr) {
+    LOG(ERROR) << "Error during glow::optimizeFunction():\n" +
+                      ERR_TO_STRING(std::move(optErr));
+    return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
 
   const auto &nodes = function->getNodes();
   for (const auto &node : nodes) {
     if (!glowBackend_->acceptForExecution(node)) {
-      LOG(ERROR) << "ONNXIFI: Op rejected by backend: " << node.getDebugDesc();
+      LOG(INFO) << "ONNXIFI checkGraphCompatibility incompatibility, op "
+                   "rejected by backend: "
+                << node.getDebugDesc();
       // TODO: Use a more specific ONNXIFI error code here to denote what
       // about this operator is not supported (shape, type, etc).
       return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
@@ -224,13 +228,19 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
   for (unsigned i = 0; i < inputsCount; ++i) {
     const auto &inOnnxTensor = inputDescriptors[i];
     auto *inOnnxBuffer = reinterpret_cast<void *>(inOnnxTensor.buffer);
+    Placeholder *inPhPtr;
 
-    auto inPhIt = onnxInputToPlaceholder_.find(inOnnxTensor.name);
-    if (inPhIt == onnxInputToPlaceholder_.end()) {
-      return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
+    if (onnxInputNames_.size() == inputsCount &&
+        onnxInputNames_[i] == inOnnxTensor.name) {
+      inPhPtr = onnxInputPlaceholders_[i];
+    } else {
+      auto inPhIt = onnxInputToPlaceholder_.find(inOnnxTensor.name);
+      if (inPhIt == onnxInputToPlaceholder_.end()) {
+        llvm::outs() << "235inputNameUnkown!!!\n";
+        return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
+      }
+      inPhPtr = inPhIt->getValue();
     }
-
-    auto &inPhPtr = inPhIt->getValue();
 
     std::vector<dim_t> inOnnxTensorDims(inOnnxTensor.dimensions);
     size_t inOnnxTensorSize = 1;
@@ -273,8 +283,7 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
       ctx->getPlaceholderBindings()->insert(
           inPhPtr, Tensor(inOnnxBuffer, inPhPtr->getType()));
     } else if (GlowEnablePartialTensors &&
-               backendPtr_->getBackend().supportsPartialTensors() &&
-               inOnnxBuffer && inOnnxTensorSize > 0) {
+               backendPtr_->getBackend().supportsPartialTensors()) {
       // We have a partial input buffer.  Create a padded unowned tensor that
       // remembers the actual size of the input.
       ctx->getPlaceholderBindings()->insert(
@@ -379,14 +388,19 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   for (unsigned i = 0; i < outputsCount; ++i) {
     const auto &outOnnxTensor = outputDescriptors[i];
     auto *outOnnxBuffer = reinterpret_cast<void *>(outOnnxTensor.buffer);
+    Placeholder *outPhPtr;
 
-    auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);
-    if (outPhIt == onnxOutputToPlaceholder_.end()) {
-      return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
+    if (outputsCount == onnxOutputNames_.size() &&
+        outOnnxTensor.name == onnxOutputNames_[i]) {
+      outPhPtr = onnxOutputPlaceholders_[i];
+    } else {
+      auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);
+      if (outPhIt == onnxOutputToPlaceholder_.end()) {
+        llvm::outs() << "395outputNameunknown!\n";
+        return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
+      }
+      outPhPtr = outPhIt->getValue();
     }
-
-    auto &outPhPtr = outPhIt->getValue();
-
     // Compute the total size of the onnxifi tensor.
     std::vector<dim_t> outOnnxTensorDims(outOnnxTensor.dimensions);
     dim_t outOnnxTensorSize = 1;
@@ -433,9 +447,15 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
       for (unsigned i = 0; i < outputsCount; ++i) {
         const auto &outOnnxTensor = outputDescriptors[i];
         auto *outOnnxBuffer = reinterpret_cast<void *>(outOnnxTensor.buffer);
-        auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);
-        CHECK(outPhIt != onnxOutputToPlaceholder_.end());
-        auto &outPhPtr = outPhIt->getValue();
+        Placeholder *outPhPtr;
+        if (outputsCount == onnxOutputNames_.size() &&
+            onnxOutputNames_[i] == outOnnxTensor.name) {
+          outPhPtr = onnxOutputPlaceholders_[i];
+        } else {
+          auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);
+          CHECK(outPhIt != onnxOutputToPlaceholder_.end());
+          outPhPtr = outPhIt->getValue();
+        }
         Tensor outputTensor(outOnnxBuffer, outPhPtr->getType());
         auto *t = inputG.add_initializer();
         ONNXModelWriter::writeTensor(outputTensor, t,

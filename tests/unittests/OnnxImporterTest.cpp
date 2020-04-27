@@ -234,7 +234,7 @@ static void importReduceL2Test(const std::string &netFilename,
 
 /// Test loading reduceL2 op from an ONNX model
 /// with axes = [].
-TEST(onnx, reduceL2NoAxis) {
+TEST_F(OnnxImporterTest, reduceL2NoAxis) {
   std::vector<float> inputValues = {1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2};
   std::vector<dim_t> inputShape = {2, 3, 2};
   std::vector<dim_t> outputShape = {1, 1, 1};
@@ -247,7 +247,7 @@ TEST(onnx, reduceL2NoAxis) {
 
 /// Test loading reduceL2 op from an ONNX model
 /// with negative axis values.
-TEST(onnx, reduceL2NegAxis) {
+TEST_F(OnnxImporterTest, reduceL2NegAxis) {
   std::vector<float> inputValues = {1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2};
   std::vector<dim_t> inputShape = {2, 3, 2};
   std::vector<dim_t> outputShape = {2, 1, 1};
@@ -260,7 +260,7 @@ TEST(onnx, reduceL2NegAxis) {
 
 /// Test loading reduceL2 op from an ONNX model
 /// with keepdims = True.
-TEST(onnx, reduceL2KeepDims) {
+TEST_F(OnnxImporterTest, reduceL2KeepDims) {
   std::vector<float> inputValues = {1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2};
   std::vector<dim_t> inputShape = {2, 3, 2};
   std::vector<dim_t> outputShape = {2, 1, 1};
@@ -273,7 +273,7 @@ TEST(onnx, reduceL2KeepDims) {
 
 /// Test loading reduceL2 op from an ONNX model
 /// with keepdims = False.
-TEST(onnx, reduceL2NoKeepDims) {
+TEST_F(OnnxImporterTest, reduceL2NoKeepDims) {
   std::vector<float> inputValues = {1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2};
   std::vector<dim_t> inputShape = {2, 3, 2};
   std::vector<dim_t> outputShape = {2};
@@ -285,7 +285,7 @@ TEST(onnx, reduceL2NoKeepDims) {
 }
 
 /// Test loading constant+relu ops with numeric input names from an ONNX model.
-TEST(onnx, reluConstFoldLegalName) {
+TEST_F(OnnxImporterTest, reluConstFoldLegalName) {
   std::string NetFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/constRelu.onnxtxt");
   FAIL_TEST_IF_ERR(
@@ -444,7 +444,7 @@ static void importMaxPool1DTest(std::string &netFilename,
 
 /// Test loading expand op from an ONNX model
 /// with different output shape.
-TEST(onnx, expandDiffShape) {
+TEST_F(OnnxImporterTest, expandDiffShape) {
   std::vector<float> inputValues = {1, 2, 3};
   std::vector<dim_t> inputShape = {3, 1};
   std::vector<dim_t> outputShape = {2, 3, 6};
@@ -460,7 +460,7 @@ TEST(onnx, expandDiffShape) {
 
 /// Test loading expand op from an ONNX model
 /// with same output shape.
-TEST(onnx, expandSameShape) {
+TEST_F(OnnxImporterTest, expandSameShape) {
   std::vector<float> inputValues = {1, 2, 3};
   std::vector<dim_t> inputShape = {3, 1};
   std::vector<dim_t> outputShape = {3, 4};
@@ -475,7 +475,7 @@ TEST(onnx, expandSameShape) {
 
 /// Test loading maxPool1D op from an ONNX model
 /// with different output shape.
-TEST(onnx, maxPool1D) {
+TEST_F(OnnxImporterTest, maxPool1D) {
   std::vector<float> inputValues = {
       1.4206449,  0.54408556, 1.3318906,  0.771925,   0.9450552,
       0.08600737, 0.30009857, 1.4206449,  0.54408556, 1.3318906,
@@ -898,7 +898,7 @@ static void importConv1DTest(std::string &netFilename,
 }
 
 /// Test Conv1D
-TEST(onnx, conv1D) {
+TEST_F(OnnxImporterTest, conv1D) {
   std::vector<float> inputXValues = {
       1.4206449,  -0.54408556, -1.3318906,  0.771925,   0.9450552,  0.08600737,
       0.30009857, -0.36060193, -0.33999684, -0.9809143, -1.0172559, -0.4921318,
@@ -1016,7 +1016,7 @@ static void convTransposeTestHelper(std::string &filename,
 /// Test loading ConvTranspose op from a ONNX model.
 /// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
 /// strides is {1, 1}, pads is {0, 0, 0, 0}, group is 1.
-TEST(onnx, importConvTranspose) {
+TEST_F(OnnxImporterTest, importConvTranspose) {
   std::string filename("simpleConvTranspose.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {5,  13, 18,  13, 19, 50, 64, 42,
@@ -1027,7 +1027,7 @@ TEST(onnx, importConvTranspose) {
 /// Test loading ConvTranspose op from a ONNX model.
 /// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
 /// strides is {1, 1}, pads is {1, 1, 1, 1}, group is 1.
-TEST(onnx, importConvTransposePads) {
+TEST_F(OnnxImporterTest, importConvTransposePads) {
   std::string filename("simpleConvTransposePads.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 2, 2};
   std::vector<float> expectedValues = {51, 65, 93, 107};
@@ -1037,7 +1037,7 @@ TEST(onnx, importConvTransposePads) {
 /// Test loading ConvTranspose op from a ONNX model.
 /// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
 /// strides is {1, 1}, auto_pad VALID (i.e. no padding), group is 1.
-TEST(onnx, importConvTransposeAutoPadValid) {
+TEST_F(OnnxImporterTest, importConvTransposeAutoPadValid) {
   std::string filename("simpleConvTransposeAutoPadValid.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {4,  12, 17,  12, 18, 49, 63, 41,
@@ -1048,7 +1048,7 @@ TEST(onnx, importConvTransposeAutoPadValid) {
 /// Test loading conv op from a ONNX model.
 /// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
 /// strides is {1, 1}, auto_pad SAME_UPPER, group is 1.
-TEST(onnx, importConvTransposeAutoPadSameUpper) {
+TEST_F(OnnxImporterTest, importConvTransposeAutoPadSameUpper) {
   std::string filename("simpleConvTransposeAutoPadSameUpper.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 2, 2};
   std::vector<float> expectedValues = {49, 63, 91, 105};
@@ -1058,7 +1058,7 @@ TEST(onnx, importConvTransposeAutoPadSameUpper) {
 /// Test loading conv op from a ONNX model.
 /// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
 /// strides is {1, 1}, auto_pad SAME_LOWER, group is 1.
-TEST(onnx, importConvTransposeAutoPadSameLower) {
+TEST_F(OnnxImporterTest, importConvTransposeAutoPadSameLower) {
   std::string filename("simpleConvTransposeAutoPadSameLower.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 2, 2};
   std::vector<float> expectedValues = {49, 63, 91, 105};
@@ -1068,7 +1068,7 @@ TEST(onnx, importConvTransposeAutoPadSameLower) {
 /// Test loading conv op from a ONNX model.
 /// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
 /// strides is {1, 1}, auto_pad SAME_LOWER, group is 1.
-TEST(onnx, importConvTransposeOutputShapeSameUpper) {
+TEST_F(OnnxImporterTest, importConvTransposeOutputShapeSameUpper) {
   std::string filename("simpleConvTransposeOutShapeSameUpper.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {4,  12, 17,  12, 18, 49, 63, 41,
@@ -1079,7 +1079,7 @@ TEST(onnx, importConvTransposeOutputShapeSameUpper) {
 /// Test loading conv op from a ONNX model.
 /// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
 /// strides is {1, 1}, auto_pad is not set, group is 1.
-TEST(onnx, importConvTransposeOutputShape) {
+TEST_F(OnnxImporterTest, importConvTransposeOutputShape) {
   std::string filename("simpleConvTransposeOutShape.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 4, 4};
   std::vector<float> expectedValues = {4,  12, 17,  12, 18, 49, 63, 41,
@@ -1091,7 +1091,7 @@ TEST(onnx, importConvTransposeOutputShape) {
 /// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
 /// strides is {1, 1}, dilations is {2, 2},
 /// auto_pad is not set, group is 1.
-TEST(onnx, importConvTransposeOutputShapeDilation) {
+TEST_F(OnnxImporterTest, importConvTransposeOutputShapeDilation) {
   std::string filename("simpleConvTransposeOutShapeDilation.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 6, 6};
   std::vector<float> expectedValues = {
@@ -3042,7 +3042,7 @@ TEST_F(OnnxImporterTest, importLess) {
   EXPECT_EQ(CMPLT->getResult().dims()[2], 1);
 }
 
-TEST(onnx, importLessEqual) {
+TEST_F(OnnxImporterTest, importLessEqual) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -3073,7 +3073,7 @@ TEST(onnx, importLessEqual) {
   EXPECT_EQ(CMPLTE->getResult().dims()[2], 1);
 }
 
-TEST(onnx, importEqual) {
+TEST_F(OnnxImporterTest, importEqual) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -3102,6 +3102,67 @@ TEST(onnx, importEqual) {
   EXPECT_EQ(CMPEQ->getResult().dims()[0], 4);
   EXPECT_EQ(CMPEQ->getResult().dims()[1], 4);
   EXPECT_EQ(CMPEQ->getResult().dims()[2], 1);
+}
+
+/// Test loading NonZero from a ONNX model.
+static void testNonZero(llvm::StringRef name,
+                        const std::vector<dim_t> &expectedDims,
+                        const std::vector<int64_t> &expVals) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  PlaceholderBindings bindings;
+  Placeholder *out = nullptr;
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/NonZero.onnxtxt");
+  {
+    ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
+    out = EXIT_ON_ERR(onnxLD.getOutputByName(name));
+    EXPECT_NE(out, nullptr);
+  }
+
+  // Constant -> NonZero -> PH (x2 for 3 models inside the file)
+  ASSERT_EQ(mod.getPlaceholders().size(), 3);
+  ASSERT_EQ(F->getNodes().size(), 3);
+
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+
+  auto result = bindings.get(out)->getHandle<int64_t>();
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expVals.size(); i++) {
+    EXPECT_EQ(result.raw(i), expVals[i]);
+  }
+}
+
+/// Test loading NonZero using constant int32_t tensor initializer.
+TEST_F(OnnxImporterTest, importNonZeroI32) {
+  std::vector<int64_t> expVals = {
+      0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3,
+      3, 3, 3, 3, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1,
+      0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 0, 1, 2, 0, 0, 1,
+      2, 0, 1, 1, 0, 1, 1, 2, 0, 0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0,
+      0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0};
+  testNonZero("out_i32", {5, 29}, expVals);
+}
+
+/// Test loading NonZero using constant float tensor initializer.
+TEST_F(OnnxImporterTest, importNonZeroF) {
+  std::vector<int64_t> expVals = {0,  1,  3,  4,  6,  8,  10,
+                                  12, 14, 16, 18, 19, 21, 22};
+  testNonZero("out_f", {1, 14}, expVals);
+}
+
+/// Test loading NonZero using constant float tensor initializer.
+TEST_F(OnnxImporterTest, importNonZeroI64) {
+  std::vector<int64_t> expVals = {0,  1,  3,  4,  6,  8,  10,
+                                  12, 14, 16, 18, 19, 21, 22};
+  testNonZero("out_i64", {1, 14}, expVals);
 }
 
 /// Test loading NMS using initializer nodes op from an ONNX model.
@@ -3774,16 +3835,159 @@ static void importUpsampleTest(std::string &netFilename) {
   }
 }
 
-TEST(onnx, importUpsampleOpset7) {
+TEST_F(OnnxImporterTest, importUpsampleOpset7) {
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/upsampleOpset7.onnxtxt");
   importUpsampleTest(netFilename);
 }
 
-TEST(onnx, importUpsampleOpset9) {
+TEST_F(OnnxImporterTest, importUpsampleOpset9) {
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/upsampleOpset9.onnxtxt");
   importUpsampleTest(netFilename);
+}
+
+/// ResizeNearest Test Helper
+static void importResizeNearest(std::string filename) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(filename);
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  Tensor in(ElemKind::FloatTy, {2, 2, 2, 2});
+  in.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+  {
+    ONNXModelLoader onnxLD(netFilename, {"in"}, {&in.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"in"}, {&in});
+  }
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  ASSERT_EQ(4, F->getNodes().size());
+
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *TR = llvm::dyn_cast<TransposeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(TR);
+  auto *RN = llvm::dyn_cast<ResizeNearestNode>(TR->getInput());
+  ASSERT_TRUE(RN);
+
+  auto result = res->getHandle();
+  std::vector<dim_t> expectedDims = {2, 2, 4, 4};
+  EXPECT_EQ(result.dims().vec(), expectedDims);
+
+  std::vector<float> expectedValues = {
+      1.0,  1.0,  2.0,  2.0,  1.0,  1.0,  2.0,  2.0,  3.0,  3.0,  4.0,
+      4.0,  3.0,  3.0,  4.0,  4.0,  5.0,  5.0,  6.0,  6.0,  5.0,  5.0,
+      6.0,  6.0,  7.0,  7.0,  8.0,  8.0,  7.0,  7.0,  8.0,  8.0,  9.0,
+      9.0,  10.0, 10.0, 9.0,  9.0,  10.0, 10.0, 11.0, 11.0, 12.0, 12.0,
+      11.0, 11.0, 12.0, 12.0, 13.0, 13.0, 14.0, 14.0, 13.0, 13.0, 14.0,
+      14.0, 15.0, 15.0, 16.0, 16.0, 15.0, 15.0, 16.0, 16.0};
+
+  for (dim_t i = 0; i < 64; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+
+  // Constant Folding Test.
+  FAIL_TEST_IF_ERR(checkConstFoldedOutput(netFilename, {"in"}, {&in},
+                                          {bindings.get(output)}));
+}
+
+/// Test ONNX Resize mode=nearest.
+TEST(onnx, importResizeNearest) {
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/resizeNearest.onnxtxt");
+  importResizeNearest(netFilename);
+}
+
+/// Test ONNX Resize V11 mode=nearest that is compatible with V10 spec
+TEST(onnx, importResizeNearestV11compat) {
+  std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/resizeNearestV11compat.onnxtxt");
+  importResizeNearest(netFilename);
+}
+
+/// Test ONNX Resize V11 mode=nearest that is compatible with V10 spec
+/// except that scales are inferred from sizes input.
+TEST(onnx, importResizeNearestV11compat_sizes) {
+  std::string netFilename(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/resizeNearestV11compat_sizes.onnxtxt");
+  importResizeNearest(netFilename);
+}
+
+static void importResizeBilinear(std::string filename) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string netFilename(filename);
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  Tensor in(ElemKind::FloatTy, {1, 1, 2, 2});
+  in.getHandle() = {1, 2, 3, 4};
+  {
+    ONNXModelLoader onnxLD(netFilename, {"in"}, {&in.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"in"}, {&in});
+  }
+
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  ASSERT_EQ(4, F->getNodes().size());
+
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *TR = llvm::dyn_cast<ReshapeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(TR);
+  auto *RN = llvm::dyn_cast<ResizeBilinearNode>(TR->getInput());
+  ASSERT_TRUE(RN);
+
+  auto result = res->getHandle();
+  std::vector<dim_t> expectedDims = {1, 1, 4, 4};
+  EXPECT_EQ(result.dims().vec(), expectedDims);
+
+  std::vector<float> expectedValues = {1.0, 1.5, 2.0, 2.0, 2.0, 2.5, 3.0, 3.0,
+                                       3.0, 3.5, 4.0, 4.0, 3.0, 3.5, 4.0, 4.0};
+
+  for (dim_t i = 0; i < 16; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+
+  // Constant Folding Test.
+  FAIL_TEST_IF_ERR(checkConstFoldedOutput(netFilename, {"in"}, {&in},
+                                          {bindings.get(output)}));
+}
+
+/// ResizeNearest Test Helper.
+TEST(onnx, importResizeBilinear) {
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/resizeBilinear.onnxtxt");
+  importResizeBilinear(netFilename);
+}
+
+/// Test ONNX Resize V11 mode=nearest that is compatible with V10 spec
+TEST(onnx, importResizeBilinearV11compat) {
+  std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/resizeBilinearV11compat.onnxtxt");
+  importResizeBilinear(netFilename);
+}
+
+/// Test ONNX Resize V11 mode=bilinear that is compatible with V10 spec
+/// except that scales are inferred from sizes input.
+TEST(onnx, importResizeBilinearV11compat_sizes) {
+  std::string netFilename(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/resizeBilinearV11compat_sizes.onnxtxt");
+  importResizeBilinear(netFilename);
 }
 
 /// Test loading a custom ONNX Glow net with NodeOpts.
@@ -3850,4 +4054,198 @@ TEST_F(OnnxImporterTest, CustomGlowWithNodeOpts) {
   EXPECT_EQ(itOpt3->second.size(), 2);
   EXPECT_EQ(itOpt3->second[0], "4");
   EXPECT_EQ(itOpt3->second[1], "5");
+}
+
+static bool vecContainsVal(const std::vector<runtime::DeviceIDTy> &vec,
+                           runtime::DeviceIDTy val) {
+  return std::find(vec.begin(), vec.end(), val) != vec.end();
+}
+
+/// Test loading a custom ONNX Glow net that has been already partitioned,
+/// turned into a DAG, and then exported.
+TEST_F(OnnxImporterTest, CustomGlowDAGMultiOp) {
+  ExecutionEngine EE("Interpreter", /* deviceMemory (16GB) */ 0x400000000,
+                     /* ignoreUserDeviceConfig */ false, /* numDevices */ 3);
+  auto &mod = EE.getModule();
+  std::string netFilename(
+      GLOW_DATA_PATH
+      "tests/models/onnxModels/glow_custom_dag_multi_op.onnxtxt");
+
+  Placeholder *outputPH;
+  Tensor *resultPartitionedT;
+  PlaceholderBindings bindingsU;
+  PlaceholderBindings bindingsP;
+
+  runtime::PrePartitionedConfig PPC;
+  Tensor mmIn0T(ElemKind::FloatTy, {10, 10});
+  Tensor mmIn1T(ElemKind::FloatTy, {10, 10});
+  Tensor addInT(ElemKind::FloatTy, {10, 10});
+  mmIn0T.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  mmIn1T.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  addInT.getHandle().randomize(-3.0, 3.0, mod.getPRNG());
+  Placeholder *mmIn0P = nullptr, *mmIn1P = nullptr, *addInP = nullptr;
+  {
+    ONNXModelLoader onnxLD(netFilename, {}, {}, mod, "main", &PPC,
+                           /* errPtr */ nullptr, /* zipMode */ false);
+    outputPH = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    NodeValue mmIn0NV;
+    ASSIGN_VALUE_OR_FAIL_TEST(mmIn0NV, onnxLD.getNodeValueByName("mm0_in"));
+    mmIn0P = llvm::dyn_cast<Placeholder>(mmIn0NV);
+    NodeValue mmIn1NV;
+    ASSIGN_VALUE_OR_FAIL_TEST(mmIn1NV, onnxLD.getNodeValueByName("mm1_in"));
+    mmIn1P = llvm::dyn_cast<Placeholder>(mmIn1NV);
+    NodeValue addInNV;
+    ASSIGN_VALUE_OR_FAIL_TEST(addInNV, onnxLD.getNodeValueByName("add_in"));
+    addInP = llvm::dyn_cast<Placeholder>(addInNV);
+  }
+
+  {
+    ASSERT_TRUE(mmIn0P);
+    ASSERT_TRUE(mmIn1P);
+    ASSERT_TRUE(addInP);
+
+    ASSERT_EQ(mod.getFunctions().size(), 3);
+    Function *P0 = nullptr, *P1 = nullptr, *P2 = nullptr;
+    for (size_t i = 0, e = PPC.funcs.size(); i < e; i++) {
+      // Find the expected Function, and check that the logical device IDs were
+      // correctly loaded.
+      Function *F = PPC.funcs[i];
+      if (F->getName() == "main_p0") {
+        P0 = F;
+        ASSERT_EQ(PPC.logicalIDs[i].size(), 1);
+        EXPECT_TRUE(vecContainsVal(PPC.logicalIDs[i], 2));
+        EXPECT_EQ(PPC.backendSpecificOpts[i].size(), 0);
+      } else if (F->getName() == "main_p1") {
+        P1 = F;
+        ASSERT_EQ(PPC.logicalIDs[i].size(), 2);
+        EXPECT_TRUE(vecContainsVal(PPC.logicalIDs[i], 0));
+        EXPECT_TRUE(vecContainsVal(PPC.logicalIDs[i], 1));
+        EXPECT_EQ(PPC.backendSpecificOpts[i].size(), 0);
+      } else if (F->getName() == "main_p2") {
+        P2 = F;
+        ASSERT_EQ(PPC.logicalIDs[i].size(), 1);
+        EXPECT_TRUE(vecContainsVal(PPC.logicalIDs[i], 2));
+        EXPECT_EQ(PPC.backendSpecificOpts[i].size(), 3);
+        ASSERT_TRUE(PPC.backendSpecificOpts[i].count("BackendA_opt1"));
+        EXPECT_EQ(PPC.backendSpecificOpts[i].at("BackendA_opt1"), "val1");
+        ASSERT_TRUE(PPC.backendSpecificOpts[i].count("BackendA_opt2"));
+        EXPECT_EQ(PPC.backendSpecificOpts[i].at("BackendA_opt2"), "val2");
+        ASSERT_TRUE(PPC.backendSpecificOpts[i].count("BackendB_opt3"));
+        EXPECT_EQ(PPC.backendSpecificOpts[i].at("BackendB_opt3"), "val3");
+      } else {
+        FAIL() << "Unknown Function found.";
+      }
+
+      // Check that the function was also found in the module.
+      auto &modFuns = mod.getFunctions();
+      ASSERT_NE(std::find(modFuns.begin(), modFuns.end(), F), modFuns.end());
+    }
+    ASSERT_TRUE(P0);
+    ASSERT_TRUE(P1);
+    ASSERT_TRUE(P2);
+
+    // Verify P0:
+    auto *finalSave = getSaveNodeFromDest(outputPH);
+    ASSERT_TRUE(finalSave);
+    EXPECT_EQ(finalSave->getParent(), P0);
+    SubNode *sub = llvm::dyn_cast<SubNode>(finalSave->getInput());
+    ASSERT_TRUE(sub);
+    Placeholder *intermedAddOut = llvm::dyn_cast<Placeholder>(sub->getRHS());
+    ASSERT_TRUE(intermedAddOut);
+    MulNode *mul = llvm::dyn_cast<MulNode>(sub->getLHS());
+    ASSERT_TRUE(mul);
+    Placeholder *intermedMMOut = llvm::dyn_cast<Placeholder>(mul->getRHS());
+    ASSERT_TRUE(intermedMMOut);
+    Placeholder *mmIn0 = llvm::dyn_cast<Placeholder>(mul->getLHS());
+    ASSERT_TRUE(mmIn0);
+
+    // Verify P2:
+    Node *userFromP2 = nullptr;
+    for (auto &U : intermedAddOut->getUsers()) {
+      if (U.getUser()->getParent() == P2) {
+        ASSERT_FALSE(userFromP2);
+        userFromP2 = U.getUser();
+      }
+    }
+    ASSERT_TRUE(userFromP2);
+    SaveNode *saveIntermedP2Out = llvm::dyn_cast<SaveNode>(userFromP2);
+    ASSERT_TRUE(saveIntermedP2Out);
+    AddNode *add = llvm::dyn_cast<AddNode>(saveIntermedP2Out->getInput());
+    ASSERT_TRUE(add);
+    Placeholder *addIn = llvm::dyn_cast<Placeholder>(add->getRHS());
+    ASSERT_TRUE(addIn);
+    EXPECT_EQ(add->getLHS().getNode(), intermedMMOut);
+
+    // Verify P1:
+    Node *userFromP1 = nullptr;
+    for (auto &U : intermedMMOut->getUsers()) {
+      if (U.getUser()->getParent() == P1) {
+        ASSERT_FALSE(userFromP1);
+        userFromP1 = U.getUser();
+      }
+    }
+    ASSERT_TRUE(userFromP1);
+    SaveNode *saveIntermedP1Out = llvm::dyn_cast<SaveNode>(userFromP1);
+    ASSERT_TRUE(saveIntermedP1Out);
+    MatMulNode *matMul =
+        llvm::dyn_cast<MatMulNode>(saveIntermedP1Out->getInput());
+    ASSERT_TRUE(matMul);
+    EXPECT_EQ(matMul->getLHS().getNode(), mmIn0);
+    Placeholder *matMulIn = llvm::dyn_cast<Placeholder>(matMul->getRHS());
+    ASSERT_TRUE(matMulIn);
+
+    // Now that we've verifed the shape of the Module, run it and keep around
+    // the pointer to the result.
+    CompilationContext cctx;
+    cctx.prepartitionedConfig = &PPC;
+    EE.compile(cctx);
+    bindingsP.insert(mmIn0P, mmIn0T.getUnowned());
+    bindingsP.insert(mmIn1P, mmIn1T.getUnowned());
+    bindingsP.insert(addInP, addInT.getUnowned());
+    bindingsP.allocate(mod.getPlaceholders());
+    EE.run(bindingsP);
+
+    resultPartitionedT = bindingsP.get(outputPH);
+  }
+
+  // Now that we have the model result from pre-partitioned execution, execute
+  // the model ignoring the pre-partitioning and bitwise compare results.
+  EE.setBackendName(EE.getBackendName());
+
+  Module &modU = EE.getModule();
+  {
+    Function *F = modU.createFunction("main");
+    ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
+    outputPH = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    NodeValue mmIn0NV;
+    ASSIGN_VALUE_OR_FAIL_TEST(mmIn0NV, onnxLD.getNodeValueByName("mm0_in"));
+    mmIn0P = llvm::dyn_cast<Placeholder>(mmIn0NV);
+    NodeValue mmIn1NV;
+    ASSIGN_VALUE_OR_FAIL_TEST(mmIn1NV, onnxLD.getNodeValueByName("mm1_in"));
+    mmIn1P = llvm::dyn_cast<Placeholder>(mmIn1NV);
+    NodeValue addInNV;
+    ASSIGN_VALUE_OR_FAIL_TEST(addInNV, onnxLD.getNodeValueByName("add_in"));
+    addInP = llvm::dyn_cast<Placeholder>(addInNV);
+  }
+
+  Tensor *resultUnpartitonedT;
+
+  {
+    ASSERT_TRUE(mmIn0P);
+    ASSERT_TRUE(mmIn1P);
+    ASSERT_TRUE(addInP);
+    ASSERT_EQ(modU.getFunctions().size(), 1);
+
+    EE.compile(CompilationMode::Infer);
+    bindingsU.insert(mmIn0P, mmIn0T.getUnowned());
+    bindingsU.insert(mmIn1P, mmIn1T.getUnowned());
+    bindingsU.insert(addInP, addInT.getUnowned());
+    bindingsU.allocate(modU.getPlaceholders());
+    EE.run(bindingsU);
+
+    resultUnpartitonedT = bindingsU.get(outputPH);
+  }
+
+  EXPECT_TRUE(resultPartitionedT->isBitwiseEqual(*resultUnpartitonedT,
+                                                 /* verbose */ true));
 }

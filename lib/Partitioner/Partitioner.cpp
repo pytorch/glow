@@ -26,8 +26,9 @@
 
 #include <fstream>
 namespace glow {
-bool GlowEnableLoadBalancedPartitioning = false;
+bool GlowEnableLoadBalancedPartitioning = true;
 bool GlowLogPartition = false;
+bool GlowDumpPartition = false;
 static llvm::cl::opt<bool, /* ExternalStorage */ true>
     GlowEnableLoadBalancedPartitioningOpt(
         "glow_partitioner_enable_load_balance",
@@ -45,10 +46,11 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true> logPartition(
 
 /// -dump-partition - Command line option to dump the graph of each partitions
 /// by calling F->dumpDAG().
-static llvm::cl::opt<bool>
+static llvm::cl::opt<bool, /* ExternalStorage */ true>
     dumpPartition("dump-partition",
                   llvm::cl::desc("Enable dumping the graph of each partitions"),
-                  llvm::cl::init(false), llvm::cl::cat(PartitionerCat));
+                  llvm::cl::location(glow::GlowDumpPartition),
+                  llvm::cl::cat(PartitionerCat));
 
 using namespace glow;
 using llvm::isa;
@@ -79,11 +81,10 @@ Error Partitioner::finalize(const DAGListTy &partitions,
   // needs the backend specific verifier. Tensor layouts, for example, might
   // have gone from canonical form to backend specific form.
 
-  LOG(INFO) << "The number of partitions is : "
-            << module_->getFunctions().size() << "\n";
-
   if (logPartition) {
-    LOG(INFO) << "Dumping partitioning DAG to DAG.dot file.\n";
+    LOG(INFO) << "The number of partitions is : "
+              << module_->getFunctions().size();
+    LOG(INFO) << "Dumping partitioning DAG to DAG.dot file.";
     dumpDAG("DAG.dot", partitions);
     logPartitionInfo(mapping);
   }
@@ -453,13 +454,6 @@ Expected<DAGListTy> Partitioner::createDAGWithoutPartition(
 
 Expected<DAGListTy> Partitioner::loadBalancedPartition(CompilationContext &cctx,
                                                        size_t numDevices) {
-  if (module_->getFunctions().size() != 1) {
-    return MAKE_ERR(
-        ErrorValue::ErrorCode::PARTITIONER_ERROR,
-        strFormat("Invalid : %lu functions in a module. Now in load-balanced "
-                  "partition flow, the module can only contain 1 function",
-                  module_->getFunctions().size()));
-  }
 
   if (multiBackendNames_) {
     VLOG(1) << "For multi backend types, load-balanced partition can't be "
@@ -471,9 +465,22 @@ Expected<DAGListTy> Partitioner::loadBalancedPartition(CompilationContext &cctx,
   DAGListTy partitions;
   std::vector<Backend *> backends;
   genBackendMap(backendMap_, backendHolder_, backends);
+  auto backendName = backends[0]->getBackendName();
+
+  if (memSize_ < backendMap_[backendName].memSize) {
+    // No partition is needed. Create DAGNode and return. This root is always a
+    // dummy function.
+    if (logPartition) {
+      LOG(INFO) << "The model is too small for applying partition.\n"
+                << "Model size : " << memSize_ << "\n"
+                << "Backend Name : " << backendName << "\n"
+                << "Device memory: " << backendMap_[backendName].memSize
+                << "\n";
+    }
+    return createDAGWithoutPartition(backendName, backendMap_, cctx);
+  }
 
   // Step 1: Get the minial number of partitions from auto-partition.
-  auto backendName = backends[0]->getBackendName();
   uint64_t availableMemory = backendMap_[backendName].memSize;
   if (!optimized_) {
     RETURN_IF_ERR(::glow::optimizeFunction(F_, *(backends[0]), cctx));

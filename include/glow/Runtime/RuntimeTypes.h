@@ -87,6 +87,9 @@ struct DeviceRuntimeInfo {
 
 /// Individual Node in the DAG for a given network. This contains all the
 /// information needed to run the sub-network at inference time.
+/// NOTE: When adding members to this struct, if it's a compile-time member that
+/// needs to be remembered when serializing the model, metadata-prop
+/// serialization logic must be updated in ONNXModelImporter/ONNXModelWriter.
 struct DAGNode {
   /// The children of this node, these are nodes that depend on the current
   /// node.
@@ -250,7 +253,7 @@ struct DeviceConfig {
 /// and Executor.
 struct HostConfig {
   /// Number of outstanding or concurrent networks before queueing.
-  size_t maxActiveRequests{48};
+  size_t maxActiveRequests{12};
   /// Number of requests to queue up before refusing further requests.
   size_t maxQueueSize{100};
   /// Number of threads to allocate to the Executor.
@@ -296,10 +299,30 @@ struct PrePartitionedConfig {
   std::string funcName;
   /// Functions from the module which are partitioned.
   std::vector<Function *> funcs;
+  /// Names assigned to each partition.
+  std::vector<std::string> partitionNames;
   /// The logical IDs to assign to the partitions.
-  std::vector<std::unordered_set<unsigned>> logicalIDs;
-  /// Backend-specific options for each Partition.
+  std::vector<std::vector<DeviceIDTy>> logicalIDs;
+  /// Backends that are used for each partition.
+  std::vector<std::string> backendNames;
+  /// BackendHints for each partition.
+  std::vector<BackendHints> backendHints;
+  /// Backend-specific options for each partition.
   std::vector<BackendSpecificOptions> backendSpecificOpts;
+  /// Number of times to replicate each partition.
+  std::vector<unsigned> replicationCounts;
+
+  /// Resizes/reserves for all vectors in the struct to \p size. Resize is used
+  /// for those vectors which need to have their parameter constructed.
+  void resizeAndReserve(size_t size) {
+    funcs.reserve(size);
+    partitionNames.reserve(size);
+    logicalIDs.resize(size);
+    backendNames.reserve(size);
+    backendHints.reserve(size);
+    backendSpecificOpts.resize(size);
+    replicationCounts.reserve(size);
+  }
 };
 
 /// A struct containing a mapping of ExecutionContext to a loaded network on a
@@ -312,6 +335,32 @@ struct ContextBinding {
   /// The name of the network.
   std::string networkName;
 };
+
+/// Signifiers for exporting and importing properties of Nodes.
+inline std::string getPartitionIdPrefix(int idx) {
+  return std::string("partition_") + std::to_string(idx) + "_";
+}
+
+constexpr char numLogicalDevicesSignifier[] = "numLogicalDevices";
+inline std::string getLogicalDeviceSignfier(int idx) {
+  return std::string("logicalDevice_") + std::to_string(idx);
+}
+
+constexpr char nameSignifier[] = "name";
+constexpr char backendNameSignifier[] = "backendName";
+constexpr char executionUnitsSignifier[] = "BackendHint_executionUnits";
+constexpr char sizeSignifier[] = "size";
+
+constexpr char numBackendSpecificOptsSignifier[] = "numBackendSpecificOpts";
+inline std::string getBackendSpecificOptKeySignifier(int idx) {
+  return std::string("backendSpecificOpts_key_") + std::to_string(idx);
+}
+inline std::string getBackendSpecificOptValSignifier(int idx) {
+  return std::string("backendSpecificOpts_val_") + std::to_string(idx);
+}
+
+constexpr char replicationCountSignifier[] = "replicationCount";
+constexpr char Signifier[] = "";
 
 } // namespace runtime
 } // namespace glow

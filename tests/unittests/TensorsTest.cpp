@@ -16,6 +16,7 @@
 
 #include "glow/Base/Tensor.h"
 #include "glow/Base/TensorSerialization.h"
+#include "glow/Graph/Graph.h"
 #include "glow/Quantization/Base/Base.h"
 
 #include "llvm/Support/FileSystem.h"
@@ -53,6 +54,42 @@ TEST(Tensor, init) {
   EXPECT_EQ(int(H.at({0})), 1);
 
   H.dump();
+}
+
+/// Test that Tensors with zero-dimensions work as expected.
+TEST(Tensor, zeroDimTensors) {
+  Tensor T0(ElemKind::FloatTy, {0});
+  Tensor T1(ElemKind::FloatTy, {0, 100});
+  Tensor T2(ElemKind::FloatTy, {100, 0});
+
+  EXPECT_EQ(T0.getUnpaddedSizeInBytes(), 0);
+  EXPECT_EQ(T1.getUnpaddedSizeInBytes(), 0);
+  EXPECT_EQ(T2.getUnpaddedSizeInBytes(), 0);
+  EXPECT_EQ(T0.getSizeInBytes(), 0);
+  EXPECT_EQ(T1.getSizeInBytes(), 0);
+  EXPECT_EQ(T2.getSizeInBytes(), 0);
+  EXPECT_EQ(T0.size(), 0);
+  EXPECT_EQ(T1.size(), 0);
+  EXPECT_EQ(T2.size(), 0);
+
+  // Nothing is allocated for these tensors.
+  EXPECT_EQ(T0.getUnsafePtr(), nullptr);
+  EXPECT_EQ(T1.getUnsafePtr(), nullptr);
+  EXPECT_EQ(T2.getUnsafePtr(), nullptr);
+
+  T0.getHandle<>().dump();
+  T1.getHandle<>().dump();
+  T2.getHandle<>().dump();
+
+  // Now test getting unowned views of partial tensors that are zero sized.
+  Tensor T4(ElemKind::FloatTy, {10, 0, 10});
+  Type ty(ElemKind::FloatTy, {10, 5, 10});
+  Tensor T5(T4.getUnsafePtr(), &ty, T4.getSizeInBytes());
+  EXPECT_EQ(T4.getUnsafePtr(), T5.getUnsafePtr());
+  EXPECT_EQ(T5.getUnpaddedSizeInBytes(), 0);
+  EXPECT_EQ(T5.getSizeInBytes(), ty.getSizeInBytes());
+  EXPECT_EQ(T5.size(), ty.size());
+  T5.getHandle<>().dump();
 }
 
 TEST(Tensor, getSliceSize) {
@@ -1320,6 +1357,78 @@ TEST(Tensor, accessToRawTextFile) {
   for (size_t rcnt = 0; rcnt < tensorTest.actualSize(); rcnt++) {
     EXPECT_FLOAT_EQ(handleTest.raw(rcnt), handleRef.raw(rcnt));
   }
+}
+
+/// Testing loading of input tensors from a file.
+static void tensorInputWriterLoader(ImageLayout outImageLayout,
+                                    ImageLayout inImageLayout) {
+  Tensor tensorRef(Type{ElemKind::FloatTy, {1, 2, 4, 3}});
+  tensorRef.getHandle<>() = {0.75f,  0.23f,  0.76f,  0.99f,  1.00f, -0.78f,
+                             0.23f,  -0.97f, -0.37f, 0.00f,  0.25f, 0.13f,
+                             0.66f,  0.69f,  2.00f,  -0.18f, 0.43f, -0.92f,
+                             -0.33f, 0.01f,  0.21f,  0.11f,  0.13f, 0.87f};
+  llvm::SmallString<64> path;
+  auto tempFileRes = llvm::sys::fs::createTemporaryFile("tensor", ".txt", path);
+  if (tempFileRes.value() != 0) {
+    FAIL() << "Failed to create temp file to write into.";
+  }
+  dumpInputTensorToFileWithType({path.str()}, tensorRef, outImageLayout);
+  //
+  Tensor tensorTest;
+  loadInputImageFromFileWithType({path.str()}, &tensorTest, inImageLayout);
+
+  if (outImageLayout == ImageLayout::NHWC) {
+    Tensor transposed;
+    tensorRef.transpose(&transposed, NHWC2NCHW);
+    tensorRef = std::move(transposed);
+  }
+
+  if (inImageLayout == ImageLayout::NHWC) {
+    Tensor transposed;
+    tensorTest.transpose(&transposed, NHWC2NCHW);
+    tensorTest = std::move(transposed);
+  }
+
+  auto handleRef = tensorRef.getHandle<>();
+  auto handleTest = tensorTest.getHandle<>();
+  EXPECT_EQ(handleRef.size(), handleTest.size());
+  EXPECT_EQ(tensorRef.dims(), tensorTest.dims());
+  for (size_t rcnt = 0, e = tensorTest.actualSize(); rcnt < e; rcnt++) {
+    EXPECT_FLOAT_EQ(handleTest.raw(rcnt), handleRef.raw(rcnt));
+  }
+}
+
+TEST(Tensor, tensorInputWriterLoaderNCHW) {
+  tensorInputWriterLoader(ImageLayout::NCHW, ImageLayout::NCHW);
+}
+
+TEST(Tensor, tensorInputWriterLoaderNCHW_NHWC) {
+  tensorInputWriterLoader(ImageLayout::NCHW, ImageLayout::NHWC);
+}
+
+TEST(Tensor, tensorInputWriterLoaderNHWC_NCHW) {
+  tensorInputWriterLoader(ImageLayout::NHWC, ImageLayout::NCHW);
+}
+
+TEST(Tensor, tensorInputWriterLoaderNHWC) {
+  tensorInputWriterLoader(ImageLayout::NHWC, ImageLayout::NHWC);
+}
+
+// Test custom input tensor loader
+TEST(Tensor, tensorCustomInputLoader) {
+  bool entered = false;
+  auto loader = [&entered](Tensor &T, llvm::StringRef filename,
+                           ImageLayout imageLayout) {
+    EXPECT_EQ(imageLayout, ImageLayout::NHWC);
+    EXPECT_EQ(filename, "input.tensor");
+    T.reset(ElemKind::FloatTy, {1, 2, 3, 4});
+    entered = true;
+  };
+  Tensor testT(Type{ElemKind::Int32ITy, {4, 4, 4, 4}});
+  registerInputTensorFileLoader(loader);
+  loadInputImageFromFileWithType({"input.tensor"}, &testT, ImageLayout::NHWC);
+  EXPECT_EQ(entered, true);
+  EXPECT_EQ(testT.dims(), llvm::ArrayRef<dim_t>({1, 2, 3, 4}));
 }
 
 // Check that write/read of tensors data from/to raw-binary files is

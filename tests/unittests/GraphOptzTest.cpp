@@ -20,6 +20,7 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/IR/IR.h"
+#include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 
 #include "gtest/gtest.h"
@@ -53,14 +54,15 @@ static bool functionContainsNode(const Function *F, const Node *N) {
 /// \p pass is empty then the whole default optimization pipeline is run.
 /// Otherwise only \p pipeline is used.
 static Function *
-optimizeFunction(Function *F, const FunctionPassPipeline &pipeline = {},
+optimizeFunction(Function *F,
+                 std::initializer_list<FunctionPassConfig> configs = {},
                  const CompilationContext cctx = CompilationContext()) {
   auto *G = F->clone(F->getName().str() + "_optimized");
-  if (pipeline.size() == 0) {
+  if (configs.size() == 0) {
     ::glow::optimize(G, CompilationMode::Infer);
     return G;
   }
-  FunctionPassManager FPM("TestFPM", pipeline);
+  FunctionPassManager FPM("TestFPM", configs);
   FPM.run(G, cctx);
   return G;
 }
@@ -926,7 +928,7 @@ TEST_F(GraphOptz, SinkTransposeBelowDequantize) {
       "quantize", in, mod_.uniqueType(ElemKind::Int8QTy, in->dims(), 0.01, 2));
   auto *tile = F_->createTile("tile", quantize, 3, 0);
   auto *transpose = F_->createTranspose("transpose", tile, NHWC2NCHW);
-  auto *deq = F_->createDequantize("dequantize", transpose);
+  auto *deq = F_->createDequantize("dequantize", transpose, ElemKind::FloatTy);
   SaveNode *O = F_->createSave("out", deq);
 
   optimizedF_ = optimizeFunction(F_);
@@ -2146,7 +2148,7 @@ TEST_F(GraphOptz, foldDequantizeIntoSplat) {
   const float splatVal = 6.0;
   SplatNode *SN = F_->createSplat("splat", qType, splatVal);
 
-  DequantizeNode *Q = F_->createDequantize("dequantize", SN);
+  DequantizeNode *Q = F_->createDequantize("dequantize", SN, ElemKind::FloatTy);
   SaveNode *S = F_->createSave("save", Q);
 
   // Splat, dequantize, save.
@@ -2223,7 +2225,7 @@ TEST_F(GraphOptz, mergeRescaleIntoDequantize) {
                                        "input", true);
   auto *qType = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.03f, 5);
   auto *R = F_->createRescaleQuantized("rescale", input, qType);
-  auto *D = F_->createDequantize("dequantize", R);
+  auto *D = F_->createDequantize("dequantize", R, ElemKind::FloatTy);
   F_->createSave("ret", D);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -2247,7 +2249,7 @@ TEST_F(GraphOptz, quantizeToRescale) {
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
                                        "input", true);
 
-  auto *D = F_->createDequantize("dequantize", input);
+  auto *D = F_->createDequantize("dequantize", input, ElemKind::FloatTy);
 
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.03, 5);
   auto *Q = F_->createQuantize("quantize", D, qType);
@@ -2924,8 +2926,8 @@ TEST_F(GraphOptz, FoldTileAddIntoBatchedAdd) {
   // part of the default optimization pipeline. Create a local version of the
   // pipeline with that pass included.
   auto p = createDefaultGraphOptimizationPassPipeline();
-  p.pushFront({FunctionPassID::FoldTileAddIntoBatchedAdd});
-  FunctionPassManager FPM("opt", p);
+  p->pushFront({FunctionPassID::FoldTileAddIntoBatchedAdd});
+  FunctionPassManager FPM("opt", std::move(p));
   FPM.run(F_, CompilationContext());
   ASSERT_TRUE(F_->verify());
 
@@ -4187,7 +4189,7 @@ static void testOptimizeDequantizeClip(PlaceholderBindings &bindings,
       F->createQuantize("quantize", input,
                         mod.uniqueType(ElemKind::Int8QTy, {20, 20},
                                        qParams.scale, qParams.offset));
-  DequantizeNode *DN = F->createDequantize("dequantize", QN);
+  DequantizeNode *DN = F->createDequantize("dequantize", QN, ElemKind::FloatTy);
   ClipNode *CN =
       F->createClip("clip", DN, enableQuantParamChanges ? 0 : -100, 100);
   SaveNode *SN = F->createSave("save", CN);
@@ -4247,7 +4249,7 @@ static void testOptimizeClipQuantize(PlaceholderBindings &bindings, Module &mod,
       F->createQuantize("quantize", CN,
                         mod.uniqueType(ElemKind::Int8QTy, {20, 20},
                                        qParams.scale, qParams.offset));
-  DequantizeNode *DN = F->createDequantize("dequantize", QN);
+  DequantizeNode *DN = F->createDequantize("dequantize", QN, ElemKind::FloatTy);
   SaveNode *SN = F->createSave("save", DN);
 
   CompilationContext cctx;
@@ -4303,7 +4305,8 @@ TEST_F(GraphOptz, OptimizeOutIntermediateConversionsTest) {
       F_->createQuantize("quantize", CN,
                          mod_.uniqueType(ElemKind::Int8QTy, {20, 20},
                                          qParams.scale, qParams.offset));
-  DequantizeNode *DN = F_->createDequantize("dequantize", QN);
+  DequantizeNode *DN =
+      F_->createDequantize("dequantize", QN, ElemKind::FloatTy);
   F_->createSave("save", DN);
 
   optimizedF_ =
@@ -4318,8 +4321,7 @@ TEST_F(GraphOptz, OptimizeOutIntermediateConversionsTest) {
   checkNumericalEquivalence();
 }
 
-/// Test Clip(Relu(Clip)) -> Clip(Relu). This is a combination of SinkCode and
-/// OptimizeClips.
+/// Test Clip(Relu(Clip)) -> Clip'.
 TEST_F(GraphOptz, ClipReluClipElimTest) {
   Placeholder *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {64, 64}, "input", false);
@@ -4335,17 +4337,16 @@ TEST_F(GraphOptz, ClipReluClipElimTest) {
 
   optimizedF_ = optimizeFunction(F_);
 
-  // Remove one of the clips.
-  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+  // Remove one of the clips and the relu.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 1);
-  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 0);
 
   SaveNode *optSN =
       llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
   ASSERT_TRUE(optSN);
 
-  // We sank CN1 below RN which changed CN1's min to 0, and then combined the
-  // ranges of CN1 and CN2.
+  // We combined all of the ranges into the single Clip.
   ClipNode *optCN = llvm::dyn_cast<ClipNode>(optSN->getInput());
   ASSERT_TRUE(optCN);
   EXPECT_EQ(optCN->getMin(), 0);
@@ -4364,7 +4365,7 @@ TEST_F(GraphOptz, OptimizeQuantFCFloatReluTest) {
   auto *bias = mod_.createConstant(ElemKind::Int32QTy, {32}, 1.0, 0, "bias");
 
   auto *FC = F_->createFullyConnected("fc", input, weights, bias);
-  auto *DN = F_->createDequantize("dq", FC);
+  auto *DN = F_->createDequantize("dq", FC, ElemKind::FloatTy);
   auto *RN = F_->createRELU("relu", DN);
   auto *SN = F_->createSave("save", RN);
 
@@ -4408,7 +4409,7 @@ TEST_F(GraphOptz, OptimizeConcatQuantFCFloatReluTest) {
     auto *bias = mod_.createConstant(ElemKind::Int32QTy, {32}, 1.0, 0, "bias");
 
     auto *FC = F_->createFullyConnected("fc", input, weights, bias);
-    DQs[i] = F_->createDequantize("dq", FC)->getResult();
+    DQs[i] = F_->createDequantize("dq", FC, ElemKind::FloatTy)->getResult();
 
     bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127,
                                                              mod_.getPRNG());
@@ -4457,7 +4458,8 @@ TEST_F(GraphOptz, OptimizeDequantConcatQuant) {
   for (size_t i = 0; i < 5; i++) {
     inputs[i] = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32},
                                        0.3 / (i + 1), 5, "input", false);
-    DQs[i] = F_->createDequantize("dq", inputs[i])->getResult();
+    DQs[i] =
+        F_->createDequantize("dq", inputs[i], ElemKind::FloatTy)->getResult();
 
     bindings_.allocate(inputs[i])->getHandle<int8_t>().randomize(
         -128, 127, mod_.getPRNG());
@@ -4510,7 +4512,8 @@ TEST_F(GraphOptz, SinkDequantizeBelowConcatTest) {
                                                 scale, offset, "input", false);
     bindings_.allocate(input)->getHandle<int8_t>().randomize(-100, 100,
                                                              mod_.getPRNG());
-    DequantizeNode *dequantize = F_->createDequantize("dequantize", input);
+    DequantizeNode *dequantize =
+        F_->createDequantize("dequantize", input, ElemKind::Float16Ty);
     inputs[i] = dequantize->getResult();
   }
   ConcatNode *concat = F_->createConcat("concat", inputs, 0);
@@ -4579,5 +4582,40 @@ TEST_F(GraphOptz, SinkQuantizeBelowConcatTest) {
             optQuantize->getResult().getType()->getElementType());
 
   // Find quantize node in the optimized graph.
+  checkNumericalEquivalence();
+}
+
+/// Test Clip(Relu) -> Clip'.
+TEST_F(GraphOptz, ClipReluTest) {
+  Placeholder *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {64, 64}, "input", false);
+  ReluNode *RN = F_->createRELU("RN", input);
+  ClipNode *CN = F_->createClip("CN", RN, -5, 20);
+  SaveNode *SN = F_->createSave("save", CN);
+
+  // Start with a clip, a relu, and a save.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 1);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Removed the relu
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 0);
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+
+  // We have the same max for clip as before, but 0 for min due to the Relu.
+  ClipNode *optCN = llvm::dyn_cast<ClipNode>(optSN->getInput());
+  ASSERT_TRUE(optCN);
+  EXPECT_EQ(optCN->getMin(), 0);
+  EXPECT_EQ(optCN->getMax(), 20);
+
+  bindings_.allocate(input)->getHandle<float16_t>().randomize(-50.0, 5.0,
+                                                              mod_.getPRNG());
   checkNumericalEquivalence();
 }

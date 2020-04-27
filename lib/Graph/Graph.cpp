@@ -222,12 +222,16 @@ bool Module::verify() const {
 
 void Module::dump() const {
   llvm::outs() << "Module structure:\n";
-  for (auto v : getConstants()) {
-    llvm::outs() << v->getDebugDesc() << "\n";
+  for (auto *C : getConstants()) {
+    llvm::outs() << C->getDebugDesc() << "\n";
   }
 
-  for (auto f : functions_) {
-    llvm::outs() << "Function:" << f->getName() << "\n";
+  for (auto *P : getPlaceholders()) {
+    llvm::outs() << P->getDebugDesc() << "\n";
+  }
+
+  for (auto *F : functions_) {
+    llvm::outs() << "Function:" << F->getName() << "\n";
   }
 }
 
@@ -817,6 +821,26 @@ Convolution3DNode *Function::createConv3D(llvm::StringRef name, NodeValue input,
                                           unsigned_t group) {
   assertConv3DDims(input, filter, bias, kernels, strides, pads, group);
   auto OT = getParent()->uniqueType(*outTy);
+
+  // If the input is quantized but the bias is not then auto-quantize the
+  // bias.
+  if (input.getType()->isQuantizedType()) {
+    auto biasType = bias.getElementType();
+    if (biasType == ElemKind::Int32QTy || biasType == ElemKind::Int8QTy ||
+        biasType == ElemKind::Int16QTy) {
+      // Nothing to do
+    } else if (biasType == ElemKind::FloatTy) {
+      auto biasTy = getParent()->uniqueType(
+          glow::ElemKind::Int32QTy, bias.dims(),
+          input.getType()->getScale() * filter.getType()->getScale(),
+          /* offset */ 0);
+      bias = createQuantize("quantized_bias", bias, biasTy);
+    } else {
+      LOG(DFATAL)
+          << "Unsupported element type for bias of quantized convolution: "
+          << Type::getElementName(biasType).str();
+    }
+  }
   return addNode(new Convolution3DNode(name, OT, input, filter, bias, kernels,
                                        strides, pads, group));
 }
@@ -2118,11 +2142,10 @@ SaveNode *Function::createSave(llvm::StringRef name, NodeValue input,
 
 QuantizationProfileNode *
 Function::createQuantizationProfile(PlaceholderBindings &bindings,
-                                    llvm::StringRef name, NodeValue input) {
-  // TODO: this size is going to be refined. Just a placeholder now.
-  const dim_t numberOfBuckets = 2000U;
+                                    llvm::StringRef name, NodeValue input,
+                                    dim_t numHistogramBins) {
   auto *histogram = getParent()->createPlaceholder(
-      ElemKind::FloatTy, {numberOfBuckets}, "histogram_" + name.str(), false);
+      ElemKind::FloatTy, {numHistogramBins}, "histogram_" + name.str(), false);
   bindings.allocate(histogram)->zero();
   // Intermediate data used for histogram calculations.
   // Min tensor value seen so far is kept on the first position.
@@ -2321,6 +2344,67 @@ ResizeNearestNode *Function::createResizeNearest(llvm::StringRef name,
   return addNode(new ResizeNearestNode(name, outTy, input, scale));
 }
 
+ResizeNearestNode *Function::createResizeNearest(llvm::StringRef name,
+                                                 NodeValue input,
+                                                 TypeRef outTy) {
+  auto inputDim = input.dims();
+  auto outputDim = outTy->dims();
+  DCHECK_EQ(inputDim.size(), outputDim.size())
+      << "Input dimension size: " << inputDim.size()
+      << " output dimension size: " << outputDim.size() << " should be same.";
+
+  std::vector<float> scales;
+  for (size_t i = 0; i < inputDim.size(); i++) {
+    float scale = (outputDim[i] / (float)inputDim[i]);
+    DCHECK_GT(scale, 0.0) << "Scale: " << scale
+                          << ", Scale larger than 0 is expected.";
+    scales.push_back(scale);
+  }
+
+  return addNode(new ResizeNearestNode(name, outTy, input, scales));
+}
+
+ResizeBilinearNode *
+Function::createResizeBilinear(llvm::StringRef name, NodeValue input,
+                               llvm::ArrayRef<float> scale) {
+  auto inputDim = input.dims();
+  DCHECK_EQ(inputDim.size(), scale.size())
+      << "Input Dimension size: " << inputDim.size()
+      << " Scale size: " << scale.size() << " should be same.";
+
+  std::vector<dim_t> newDim;
+
+  for (size_t i = 0; i < scale.size(); i++) {
+    auto newD = dim_t(std::floor(inputDim[i] * scale[i]));
+    DCHECK_GT(newD, 0) << "Scaled dim is " << newD
+                       << ", Scaled value needs to be larger than 0.";
+    newDim.push_back(newD);
+  }
+
+  auto outTy = getParent()->uniqueTypeWithNewShape(input.getType(), newDim);
+  return addNode(new ResizeBilinearNode(name, outTy, input, scale));
+}
+
+ResizeBilinearNode *Function::createResizeBilinear(llvm::StringRef name,
+                                                   NodeValue input,
+                                                   TypeRef outTy) {
+  auto inputDim = input.dims();
+  auto outputDim = outTy->dims();
+  DCHECK_EQ(inputDim.size(), outputDim.size())
+      << "Input dimension size: " << inputDim.size()
+      << " output dimension size: " << outputDim.size() << " should be same.";
+
+  std::vector<float> scales;
+  for (size_t i = 0; i < inputDim.size(); i++) {
+    float scale = (outputDim[i] / (float)inputDim[i]);
+    DCHECK_GT(scale, 0.0) << "Scale: " << scale
+                          << ", Scale larger than 0 is expected.";
+    scales.push_back(scale);
+  }
+
+  return addNode(new ResizeBilinearNode(name, outTy, input, scales));
+}
+
 QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
                                        TypeRef outTy) {
   assert(input.getType()->isFPType() && "Input must be a floating type");
@@ -2333,11 +2417,11 @@ QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
 }
 
 DequantizeNode *Function::createDequantize(llvm::StringRef name,
-                                           NodeValue input) {
+                                           NodeValue input, ElemKind k) {
   assert(input.getType()->isQuantizedType() &&
          "Input must be a quantized type");
-  TypeRef outTy =
-      getParent()->uniqueType(Type(ElemKind::FloatTy, input.dims()));
+  assert(isFloatElemKind(k) && "Result must be float type.");
+  TypeRef outTy = getParent()->uniqueType(Type(k, input.dims()));
   return createDequantize(name, input, outTy);
 }
 

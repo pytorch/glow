@@ -289,7 +289,7 @@ class Backend;
 struct CompilationContext;
 
 /// Represents the compute graph.
-class Function final : public Named {
+class Function final : public IRContainer {
   /// A list of nodes that the Function owns.
   NodesList nodes_;
 
@@ -311,7 +311,7 @@ class Function final : public Named {
 
 public:
   Function(Module *parent, llvm::StringRef Name = {})
-      : Named(Name), parent_(parent), state_(FunctionState::FuncCreated) {
+      : IRContainer(Name), parent_(parent), state_(FunctionState::FuncCreated) {
     logCtx_ = std::make_shared<LogContext>(parent);
     logCtx_->pushEvent(parent->getModuleLogContext()->getClonedScope());
   }
@@ -1212,10 +1212,10 @@ public:
   /// Create quantization profile node named \p name for the output tensor from
   /// \p input in PlaceholderBindings \p bindings. Capture observed node name in
   /// quantization profile node as original node can be replaced during lowering
-  /// phase.
+  /// phase. Compute the histogram during profiling with \p numHistogramBins.
   QuantizationProfileNode *
   createQuantizationProfile(PlaceholderBindings &bindings, llvm::StringRef name,
-                            NodeValue input);
+                            NodeValue input, dim_t numHistogramBins = 10);
 
   /// Create lookup table for mapping between quantized numbers.
   /// \p input and \p outTy must have quantized type.
@@ -1296,6 +1296,33 @@ public:
   ResizeNearestNode *createResizeNearest(llvm::StringRef name, NodeValue input,
                                          llvm::ArrayRef<float> scale);
 
+  /// Given \p input tensor of [N,H,W,C], where N is the batch, C is the channel
+  /// or depth, H is the height and W is the width, with tensor format same as
+  /// \p input then ResizeNearest generates an Output tensor with resized
+  /// spatial dimensions using nearest neighbor interpolation. The Output tensor
+  /// shape is specified with \p outTy.
+  ResizeNearestNode *createResizeNearest(llvm::StringRef name, NodeValue input,
+                                         TypeRef outTy);
+
+  /// Given \p input tensor of [N,H,W,C], where N is the batch, C is the channel
+  /// or depth, H is the height and W is the width, and \p scale tensor with
+  /// tensor format same as \p input then ResizeBilinear generates an Output
+  /// tensor with resized spatial dimensions using bilinear neighbor
+  /// interpolation. The Output tensor is of shape [floor(N * \p scale[0]),
+  /// floor(H * \p scale[1]), floor(W * \p scale[2]),
+  /// floor(C * \p scale[3])]
+  ResizeBilinearNode *createResizeBilinear(llvm::StringRef name,
+                                           NodeValue input,
+                                           llvm::ArrayRef<float> scale);
+
+  /// Given \p input tensor of [N,H,W,C], where N is the batch, C is the channel
+  /// or depth, H is the height and W is the width, with tensor format same as
+  /// \p input then ResizeBilinear generates an Output tensor with resized
+  /// spatial dimensions using bilinear neighbor interpolation. The Output
+  /// tensor shape is specified with \p outTy.
+  ResizeBilinearNode *createResizeBilinear(llvm::StringRef name,
+                                           NodeValue input, TypeRef outTy);
+
   /// Create quantization node which transforms floating point tensor to a
   /// quantized one with given Scale and Offset. Scale and Offset params are
   /// part of the \p outTy.
@@ -1304,8 +1331,9 @@ public:
 
   /// Create dequantization node which transforms quantized tensor to a
   /// floating point one with given Scale and Offset. Scale and Offset params
-  /// are part of the \p input.
-  DequantizeNode *createDequantize(llvm::StringRef name, NodeValue input);
+  /// are part of the \p input. Result dequantization kind is \p k.
+  DequantizeNode *createDequantize(llvm::StringRef name, NodeValue input,
+                                   ElemKind k);
 
   /// Create dequantization node which transforms quantized tensor to a
   /// floating point type \p outTy one with given Scale and Offset. Scale and

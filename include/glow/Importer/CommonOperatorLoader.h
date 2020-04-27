@@ -219,6 +219,15 @@ protected:
     return LengthsMode::Variable;
   }
 
+  inline Expected<float> getAvgLength(ArgumentDictionaryTy &dict) {
+    float avgLength = NAN;
+    if (dict.count("average_lookup_length")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(avgLength,
+                                 loadFloat(dict["average_lookup_length"]));
+    }
+    return avgLength;
+  }
+
   /// Associate the name of operation outputs to a NodeValues corresponding to
   /// node \p node. If \p numOutputs is lower than 0, then all outputs are
   /// associated. Otherwise, the first \p numOutputs outputs are associated.
@@ -723,6 +732,26 @@ protected:
   Error loadIdentity(const OpType &op, ArgumentDictionaryTy &dict) {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+    // If loading partitioned DAG then check if this identity is used for an
+    // intermediate, and if so create the Save+PH with the correct name.
+    if (partNameToFun_.size()) {
+      int intermediate = 0;
+      if (dict.count("isIntermediateOutputForDAG")) {
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            intermediate, loadInt(dict.at("isIntermediateOutputForDAG")));
+      }
+
+      if (intermediate) {
+        const std::string &opName = loadOperatorName(op);
+        Placeholder *PH = mod_.createPlaceholder(in.getType(), op.output(0),
+                                                 /* isTrainable */ false);
+        G_->createSave(opName, in, PH, /* skipSuffix */ true);
+        intermediatePHsByName_[op.output(0)] = PH;
+        in = PH->getOutput();
+      }
+    }
+
     nodeValueByName_[op.output(0)] = in;
     return Error::success();
   }
@@ -845,8 +874,10 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in2, getNodeValueByName(op.input(2)));
     LengthsMode lengthsMode;
     ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
+    float avgLength;
+    ASSIGN_VALUE_OR_RETURN_ERR(avgLength, getAvgLength(dict));
     auto *node = G_->createSparseLengthsSum(loadOperatorName(op), in0, in1, in2,
-                                            lengthsMode);
+                                            lengthsMode, avgLength);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -863,8 +894,10 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in3, getNodeValueByName(op.input(3)));
     LengthsMode lengthsMode;
     ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
-    auto *node = G_->createSparseLengthsWeightedSum(loadOperatorName(op), in0,
-                                                    in1, in2, in3, lengthsMode);
+    float avgLength;
+    ASSIGN_VALUE_OR_RETURN_ERR(avgLength, getAvgLength(dict));
+    auto *node = G_->createSparseLengthsWeightedSum(
+        loadOperatorName(op), in0, in1, in2, in3, lengthsMode, avgLength);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -880,9 +913,11 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in3, getNodeValueByName(op.input(3)));
     LengthsMode lengthsMode;
     ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
-    auto *node =
-        G_->createEmbeddingBag(loadOperatorName(op), in0, in1, in2, in3,
-                               /* hasEndOffset */ false, lengthsMode);
+    float avgLength;
+    ASSIGN_VALUE_OR_RETURN_ERR(avgLength, getAvgLength(dict));
+    auto *node = G_->createEmbeddingBag(
+        loadOperatorName(op), in0, in1, in2, in3,
+        /* hasEndOffset */ false, lengthsMode, avgLength);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }

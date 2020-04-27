@@ -185,6 +185,15 @@ TEST(exporter, onnxModels) {
         name.find("ArgMaxNoKeepDim.onnxtxt") != std::string::npos ||
         name.find("upsampleOpset7.onnxtxt") != std::string::npos ||
         name.find("upsampleOpset9.onnxtxt") != std::string::npos ||
+        name.find("resizeNearest.onnxtxt") != std::string::npos ||
+        name.find("resizeNearestV11compat.onnxtxt") != std::string::npos ||
+        name.find("resizeNearestV11compat_sizes.onnxtxt") !=
+            std::string::npos ||
+        name.find("resizeBilinear.onnxtxt") != std::string::npos ||
+        name.find("resizeBilinearV11compat.onnxtxt") != std::string::npos ||
+        name.find("resizeBilinearV11compat_sizes.onnxtxt") !=
+            std::string::npos ||
+        name.find("upsampleOpset9.onnxtxt") != std::string::npos ||
         name.find("NonMaxSuppressionSSD_ONNX.onnxtxt") != std::string::npos ||
         name.find("NonMaxSuppression.onnxtxt") != std::string::npos ||
         name.find("NonMaxSuppressionSSD.onnxtxt") != std::string::npos ||
@@ -193,6 +202,7 @@ TEST(exporter, onnxModels) {
         name.find("simpleConvTransposeOutShape.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShapeDilation.onnxtxt") !=
             std::string::npos ||
+        name.find("NonZero.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposePads.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeAutoPadValid.onnxtxt") !=
             std::string::npos ||

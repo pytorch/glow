@@ -13,15 +13,51 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include "glow/Optimizer/GraphOptimizerPipeline/Pipeline.h"
+#include "glow/PassManager/Pipeline.h"
 
+#include "glow/Optimizer/GraphOptimizer/FunctionPassManager.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
-#include "glow/Optimizer/GraphOptimizer/PassManager.h"
+#include "glow/PassManager/PassConfigUtils.h"
+#include "glow/Support/Memory.h"
 
-using namespace glow;
+#include <fstream>
 
-FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
-  return {
+namespace {
+/// A helper class to represent a FunctionPassConfig in a way which can be
+/// easily handled by YAML functions.
+struct FunctionPassConfigHelper {
+  std::string passName;
+  glow::ConvergenceMode convergenceMode;
+  CompilationModes enabledCompilationModes;
+  glow::DCERequiredMode dceMode;
+  FunctionPassConfigHelper(const glow::FunctionPassConfig &config)
+      : passName(config.getNameOfPass()),
+        convergenceMode(config.getConvergenceMode()),
+        enabledCompilationModes(config.getEnabledCompilationModes()),
+        dceMode(config.getDCERequiredMode()) {}
+  FunctionPassConfigHelper() = default;
+};
+} // namespace
+
+namespace llvm {
+namespace yaml {
+/// Define the YAML mapping for PassConfigHelper.
+template <> struct MappingTraits<FunctionPassConfigHelper> {
+  static void mapping(IO &io, FunctionPassConfigHelper &config) {
+    io.mapRequired("passName", config.passName);
+    io.mapRequired("convergenceMode", config.convergenceMode);
+    io.mapRequired("enabledCompilationModes", config.enabledCompilationModes);
+    io.mapRequired("dceMode", config.dceMode);
+  }
+};
+} // namespace yaml
+} // namespace llvm
+
+namespace glow {
+
+std::unique_ptr<FunctionPassPipeline>
+createDefaultGraphOptimizationPassPipeline() {
+  std::initializer_list<FunctionPassConfig> configs{
       // Sink transpose operations in an attempt to cancel them out.
       // Perform code sinking until a fixed-point is reached.
       // On big functions, the number of iterations until the fixpoint
@@ -114,7 +150,7 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
        ConvergenceMode::OnePass,
        {CompilationMode::Infer}},
 
-      // Fold Arithmetic chain w/ constants into the preceeding Batch Norm.
+      // Fold Arithmetic chain w/ constants into the preceding Batch Norm.
       {FunctionPassID::FoldBatchNormalizationWithArithmeticChain,
        ConvergenceMode::OnePass,
        {CompilationMode::Infer}},
@@ -129,20 +165,23 @@ FunctionPassPipeline glow::createDefaultGraphOptimizationPassPipeline() {
       // Perform a round of Dead Code Elimination to cleanup the final pass.
       getDCEPassConfig(),
   };
+  return glow::make_unique<FunctionPassPipeline>(configs);
 }
 
-FunctionPassPipeline glow::createFP16GraphOptimizationPassPipeline() {
-  return {
+std::unique_ptr<FunctionPassPipeline>
+createFP16GraphOptimizationPassPipeline() {
+  std::initializer_list<FunctionPassConfig> configs{
       // Optimize away intermediate type conversions.
       {FunctionPassID::OptimizeConversions},
 
       // Optimize away intermediate consecutive Clips.
       {FunctionPassID::OptimizeClips},
   };
+  return glow::make_unique<FunctionPassPipeline>(configs);
 }
 
-FunctionPassPipeline glow::createDefaultFoldPassPipeline() {
-  return {
+std::unique_ptr<FunctionPassPipeline> createDefaultFoldPassPipeline() {
+  std::initializer_list<FunctionPassConfig> configs{
       // Get Reshape nodes merged into constants to simplify folding.
       {FunctionPassID::OptimizeReshape},
 
@@ -158,16 +197,17 @@ FunctionPassPipeline glow::createDefaultFoldPassPipeline() {
       // Perform Dead Code Elimination.
       getDCEPassConfig(),
   };
+  return glow::make_unique<FunctionPassPipeline>(configs);
 }
 
-FunctionPassConfig glow::getDCEPassConfig() {
-  return {FunctionPassID::DCE,
-          ConvergenceMode::OnePass,
-          {CompilationMode::Infer, CompilationMode::Train},
-          DCERequiredMode::None};
+FunctionPassConfig getDCEPassConfig() {
+  return FunctionPassConfig(
+      FunctionPassID::DCE, ConvergenceMode::OnePass,
+      std::set<CompilationMode>{CompilationMode::Infer, CompilationMode::Train},
+      DCERequiredMode::None);
 }
 
-llvm::StringRef glow::getNameOfPass(FunctionPassID passID) {
+llvm::StringRef getNameOfPass(FunctionPassID passID) {
   switch (passID) {
 #define FUN_PASS(PASS_NAME)                                                    \
   case FunctionPassID::PASS_NAME:                                              \
@@ -177,30 +217,49 @@ llvm::StringRef glow::getNameOfPass(FunctionPassID passID) {
   llvm_unreachable("Unexpected pass.");
 }
 
+llvm::StringRef FunctionPassConfig::getNameOfPass() const {
+  return glow::getNameOfPass(getPassID());
+}
+
+#define FUN_PASS(PASS_NAME) {#PASS_NAME, FunctionPassID::PASS_NAME},
+
+static llvm::StringMap<FunctionPassID> passNameToID{
+#include "glow/Optimizer/GraphOptimizer/FunctionPasses.def"
+};
+
+static FunctionPassID getPassID(llvm::StringRef name) {
+  CHECK_GT(passNameToID.count(name), 0) << "Unknown pass name: " << name.str();
+  return passNameToID.lookup(name);
+}
+
+template <>
+void FunctionPassPipeline::initFromFile(llvm::StringRef pipelineDefFilename) {
+  clear();
+  auto configs = deserializeFromYaml<std::vector<FunctionPassConfigHelper>>(
+      pipelineDefFilename);
+  for (auto &config : configs) {
+    FunctionPassConfig functionPassConfig(
+        getPassID(config.passName), config.convergenceMode,
+        config.enabledCompilationModes, config.dceMode);
+    pushBack(functionPassConfig);
+  }
+}
+
+template <>
+void FunctionPassPipeline::dumpToFile(llvm::StringRef pipelineDefFilename) {
+  std::vector<FunctionPassConfigHelper> configs;
+  for (unsigned idx = 0, e = size(); idx < e; ++idx) {
+    const auto &config = at(idx);
+    configs.emplace_back(FunctionPassConfigHelper(config));
+  }
+  serializeToYaml(pipelineDefFilename, configs);
+}
+
 static constexpr char const *tab = "  ";
 
-void FunctionPassConfig::dump(llvm::raw_ostream &os) const {
-  os << tab << "PassName: " << getNameOfPass(getFunctionPassID()) << ",\n";
-
-  os << tab << "ConvergenceMode: ";
-  switch (getConvergenceMode()) {
-  case ConvergenceMode::OnePass:
-    os << "OnePass,";
-    break;
-  case ConvergenceMode::UntilFixedPoint:
-    os << "UntilFixedPoint,";
-    break;
-  }
-  os << "\n";
-
-  os << tab << "CompilationModes: {";
-  if (isEnabledForCompilationMode(CompilationMode::Infer)) {
-    os << "[Infer]";
-  }
-  if (isEnabledForCompilationMode(CompilationMode::Train)) {
-    os << "[Train]";
-  }
-  os << "},\n";
+void FunctionPassConfig::dump(llvm::raw_ostream &os,
+                              llvm::StringRef passName) const {
+  PassConfigBase::dump(os, passName);
 
   os << tab << "DCERequiredMode: ";
   switch (getDCERequiredMode()) {
@@ -214,27 +273,9 @@ void FunctionPassConfig::dump(llvm::raw_ostream &os) const {
   os << "\n";
 }
 
-void FunctionPassPipeline::dump(llvm::raw_ostream &os) const {
-  os << "Pipeline contains:\n";
-  for (size_t i = 0, e = this->size(); i < e; i++) {
-    const FunctionPassConfig &passConfig = (*this)[i];
-    os << "FunctionPassIdx " << i << ": {\n";
-    passConfig.dump(os);
-    os << "}\n";
-  }
+bool FunctionPassConfig::equals(const PassConfigBase &other) const {
+  return dceMode_ == static_cast<const FunctionPassConfig &>(other).dceMode_ &&
+         PassConfigBase::equals(other);
 }
 
-bool FunctionPassPipeline::removeFirstInstanceOfPass(FunctionPassID FPID) {
-  for (auto it = begin(); it != end(); it++) {
-    if (it->getFunctionPassID() == FPID) {
-      erase(it);
-      return true;
-    }
-  }
-  return false;
-}
-
-void FunctionPassPipeline::removeAllInstancesOfPass(FunctionPassID FPID) {
-  while (removeFirstInstanceOfPass(FPID)) {
-  }
-}
+} // namespace glow

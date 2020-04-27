@@ -19,9 +19,12 @@
 
 #include "Loader.h"
 #include "glow/Graph/Nodes.h"
+
 #include "llvm/ADT/StringMap.h"
+#include "llvm/Support/Timer.h"
 
 extern llvm::cl::opt<std::string> inputImageListFile;
+extern llvm::cl::opt<std::string> inputTensorListFile;
 extern llvm::cl::list<std::string> inputImageFilenames;
 extern llvm::cl::opt<unsigned> excludedFirstWarmupRuns;
 extern llvm::cl::opt<unsigned> warmup;
@@ -29,11 +32,13 @@ extern llvm::cl::opt<std::string> tracePath;
 extern llvm::cl::opt<bool> convertInAndOutToFp16;
 extern llvm::cl::opt<unsigned> miniBatch;
 extern llvm::cl::opt<unsigned> miniBatchThreads;
+extern llvm::cl::opt<bool> preloadAllImages;
+extern llvm::cl::opt<unsigned> repeatSingleBatchCount;
 
 extern std::unique_ptr<glow::TraceContext> traceContext;
 
 /// Read all images from \p inputImageListFile in to \p inputImageFilenames.
-void parseInputImageList(const std::string &inputImageListFile);
+void parseInputList(const std::string &inputImageListFile);
 
 /// Write a prompt to stdout asking for filenames for classification. Read in
 /// those filenames and add them to \p filenames. \p filenames is cleared before
@@ -57,7 +62,7 @@ bool getNextMiniBatch(std::vector<std::string> &imageList,
 std::pair<glow::Placeholder *, llvm::StringMap<glow::Placeholder *>>
 buildAndCompileAndGetInAndOutPair(glow::Loader &loader,
                                   glow::PlaceholderBindings &bindings,
-                                  glow::TypeRef inputImageType);
+                                  const glow::Type &inputImageType);
 
 /// Setup the pool of contexts needed for a benchmark run.
 std::vector<std::unique_ptr<glow::ExecutionContext>>

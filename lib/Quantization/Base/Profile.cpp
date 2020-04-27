@@ -102,7 +102,94 @@ void generateTensorHistogram(const Handle<float> inputTensor,
   for (auto elem : inputTensor) {
     size_t newBin = getBin(nBins, binWidth, min, elem);
     existingHistogram.raw(newBin)++;
+    // Sanity check for NaN and Infinity.
+    assert(!std::isnan(elem) && "NaN value found!");
+    assert(!std::isinf(elem) && "Infinity value found!");
   }
+}
+
+std::vector<float> rescaleHistogram(const std::vector<float> &srcHist,
+                                    const float srcHistMin,
+                                    const float srcHistMax,
+                                    const float destHistMin,
+                                    const float destHistMax) {
+
+  // If histogram is empty then return.
+  if (srcHist.size() == 0) {
+    return srcHist;
+  }
+
+  // Check if we need to rescale the histogram.
+  assert(srcHistMin < srcHistMax && "Invalid source histogram min/max range!");
+  assert(destHistMin < destHistMax &&
+         "Invalid destination histogram min/max range!");
+  if ((srcHistMin == destHistMin) && (srcHistMax == destHistMax)) {
+    return srcHist;
+  }
+
+  // Number of histogram bins and bin widths.
+  const size_t numBins = srcHist.size();
+  const float srcBinWidth = (srcHistMax - srcHistMin) / numBins;
+  const float destBinWidth = (destHistMax - destHistMin) / numBins;
+
+  // Iterate the source bins and distribute into the destination bins.
+  std::vector<float> destHist(numBins, 0);
+  for (size_t srcBinIdx = 0; srcBinIdx < numBins; srcBinIdx++) {
+
+    // Get current source bin value.
+    float srcBinVal = srcHist[srcBinIdx];
+    if (srcBinVal == 0) {
+      continue;
+    }
+
+    // Get source bin start/stop values for this bin.
+    float srcBinStart = srcHistMin + srcBinIdx * srcBinWidth;
+    float srcBinStop = srcHistMin + (srcBinIdx + 1) * srcBinWidth;
+
+    // Get destination bin indices (inclusive) which overlap with the current
+    // source bin.
+    float dstBinIdxStartF =
+        std::floor((srcBinStart - destHistMin) / destBinWidth);
+    float dstBinIdxStopF = std::ceil((srcBinStop - destHistMin) / destBinWidth);
+    size_t dstBinIdxStart = static_cast<size_t>(std::max(dstBinIdxStartF, 0.f));
+    size_t dstBinIdxStop = static_cast<size_t>(std::max(dstBinIdxStopF, 0.f));
+
+    // Upper saturate the destination bin indices.
+    if (dstBinIdxStart >= numBins) {
+      dstBinIdxStart = numBins - 1;
+    }
+    if (dstBinIdxStop >= numBins) {
+      dstBinIdxStop = numBins - 1;
+    }
+
+    // Redistribute the source bin into all the destination bins.
+    // Only integer values will be distributed.
+    float srcBinRem = srcBinVal;
+    for (size_t destBinIdx = dstBinIdxStart; destBinIdx <= dstBinIdxStop;
+         destBinIdx++) {
+
+      // Get destination bin start/stop values for this bin.
+      float destBinStart = destHistMin + destBinIdx * destBinWidth;
+      float destBinStop = destHistMin + (destBinIdx + 1) * destBinWidth;
+
+      // Get source/destination overlap boundaries and ratio.
+      float overlapStart = std::max(srcBinStart, destBinStart);
+      float overlapStop = std::min(srcBinStop, destBinStop);
+      float overlapRatio = (overlapStop - overlapStart) / srcBinWidth;
+      overlapRatio = overlapRatio >= 0.0f ? overlapRatio : 0.0f;
+      overlapRatio = overlapRatio <= 1.0f ? overlapRatio : 1.0f;
+
+      // Compute distribution value.
+      float distVal = std::round(overlapRatio * srcBinVal);
+      distVal = distVal <= srcBinRem ? distVal : srcBinRem;
+
+      // Distribute value.
+      destHist[destBinIdx] += distVal;
+      srcBinRem -= distVal;
+    }
+  }
+
+  return destHist;
 }
 
 } // namespace quantization

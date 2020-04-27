@@ -16,6 +16,8 @@
 
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Base/Tensor.h"
+#include "glow/Quantization/Base/Calibration.h"
+#include "glow/Quantization/Base/Profile.h"
 
 #include <cmath>
 
@@ -265,7 +267,7 @@ QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,
                                     offset);
 }
 
-std::pair<int64_t, int64_t> getQuantizationRange(ElemKind qTy) {
+QuantizedRange getQuantizedRange(ElemKind qTy) {
   // Pick int64_t in order to cover the uint32_t range.
   int64_t qmin;
   int64_t qmax;
@@ -306,14 +308,14 @@ std::pair<int64_t, int64_t> getQuantizationRange(ElemKind qTy) {
   default:
     llvm_unreachable("Quantized type not supported");
   }
-  return std::pair<int64_t, int64_t>(qmin, qmax);
+  return QuantizedRange(qmin, qmax);
 }
 
 void validateQuantizationParams(TensorQuantizationParams qParams, Schema schema,
                                 ElemKind qTy) {
 
   // Get the quantized range.
-  auto minMaxPair = getQuantizationRange(qTy);
+  auto minMaxPair = getQuantizedRange(qTy);
   int64_t qmin = minMaxPair.first;
   int64_t qmax = minMaxPair.second;
 
@@ -339,13 +341,13 @@ void validateQuantizationParams(TensorQuantizationParams qParams, Schema schema,
 
 TensorQuantizationParams
 chooseQuantizationParams(TensorProfilingParams profParams, Schema schema,
-                         ElemKind qTy) {
+                         ElemKind qTy, Calibration calibration) {
   float min = profParams.min;
   float max = profParams.max;
   assert(min <= max && "min must not be bigger than max");
 
   // Get the quantized range.
-  auto minMaxPair = getQuantizationRange(qTy);
+  auto minMaxPair = getQuantizedRange(qTy);
   int64_t qmin = minMaxPair.first;
   int64_t qmax = minMaxPair.second;
 
@@ -389,6 +391,30 @@ chooseQuantizationParams(TensorProfilingParams profParams, Schema schema,
   min = std::max(min, std::numeric_limits<float>::lowest());
   max = std::min(max, std::numeric_limits<float>::max());
 
+  // Calibrate the min/max range (for non-zero ranges only).
+  if ((profParams.min != profParams.max) && (min != max) &&
+      (calibration == Calibration::KLMinimization)) {
+
+    // Rescale the profiled histogram with the new constrained min/max range.
+    auto histRescaled = rescaleHistogram(profParams.histogram, profParams.min,
+                                         profParams.max, min, max);
+
+    // Number of quantized bins. Default value from TVM / MXNet.
+    const size_t numQuantizedBins = 255;
+
+    // Check symmetric schema.
+    const bool symmetric = (schema != Asymmetric);
+
+    // Optimize the range.
+    FloatRange rangeOpt =
+        optimizeKL(histRescaled, min, max, numQuantizedBins, symmetric);
+
+    // Update the min/max range with the optimized range.
+    min = rangeOpt.first;
+    max = rangeOpt.second;
+  }
+
+  // Compute scale.
   double scale = ((double)max - min) / ((double)qmax - qmin);
 
   // Dequantization uses the following formula scale * (X - offset), so

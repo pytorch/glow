@@ -23,6 +23,7 @@
 #include "nnpi_inference.h"
 #include "nnpi_transformer.h"
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace glow {
@@ -32,6 +33,7 @@ class NNPIDeviceManager;
 using StaticPlaceholderMap =
     std::unordered_map<const Placeholder *, std::weak_ptr<NNPIResource>>;
 
+using ResourceDescVec = std::vector<std::pair<std::string, NNPIResourceDesc>>;
 class InferenceContext {
 private:
   NNPINetwork nnpiNetwork_;                 // For ice-ref path only.
@@ -77,23 +79,27 @@ private:
   std::string traceInferenceContextName_;
   std::string tracePostProcessContextName_;
 
+  /// Dump the runtime resource graph.
+  void dumpRuntime() const;
+
 public:
   InferenceContext();
   ~InferenceContext();
   void execute(RunIdentifierTy runId, std::unique_ptr<ExecutionContext> ctx,
                runtime::ResultCBTy resultCB);
-  bool init(
-      // For ICE-Ref path.
-      NNPINetwork network, NNPICompilationConfig config,
-      // For ICE-T path.
-      NNPIHostNetwork hostNetwork, NNPIDeviceNetwork deviceNetwork,
-      NNPIAdapter adapter, NNPIDeviceContext device,
-      const std::unordered_set<const Placeholder *> &partialInputs,
-      const std::unordered_set<const Placeholder *> &staticInputs,
-      std::shared_ptr<NNPIDeviceTracing> deviceTracing,
-      StaticPlaceholderMap *staticPlaceholderMap,
-      std::shared_ptr<NNPIDeviceOptions> deviceOptions,
-      const std::string &functionName, unsigned deviceId);
+  bool init(const ResourceDescVec &inputs, const ResourceDescVec &outputs,
+            // For ICE-Ref path.
+            NNPINetwork network, NNPICompilationConfig config,
+            // For ICE-T path.
+            NNPIDeviceNetwork deviceNetwork, NNPIAdapter adapter,
+            NNPIDeviceContext device,
+            const std::unordered_set<const Placeholder *> &partialInputs,
+            const std::unordered_set<const Placeholder *> &staticInputs,
+            std::shared_ptr<NNPIDeviceTracing> deviceTracing,
+            StaticPlaceholderMap *staticPlaceholderMap,
+            std::shared_ptr<NNPIDeviceOptions> deviceOptions,
+            const std::string &functionName, unsigned deviceId,
+            PlaceholderUsageMap *phUsage = nullptr);
 };
 
 } // namespace runtime

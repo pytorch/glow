@@ -664,6 +664,10 @@ struct Type final {
   size_t getSizeInBytes() const {
     size_t s = getElementSize();
     for (unsigned char i = 0; i < numSizes_; i++) {
+      // If any dimensions are 0 then the entire size is 0, so early return.
+      if (sizes_[i] == 0) {
+        return 0;
+      }
       s = std::max<dim_t>(s,
                           size_t(sizes_[i]) * getElementSize() * strides_[i]);
     }
@@ -793,7 +797,6 @@ private:
       }
       // All the strides (except for last one) depend on the previous dimension.
       strides_[i] = alignedSize(dims[i + 1] * strides_[i + 1], alignment);
-      assert(dims[i] > 0 && "Do not allow a dimension of zero.");
       sizes_[i] = dims[i];
     }
   }
@@ -802,7 +805,6 @@ private:
     assert(dims.size() <= max_tensor_dimensions && "Too many dimensions.");
     // Update the tensor sizes.
     for (size_t i = 0, e = dims.size(); i < e; i++) {
-      assert(dims[i] > 0 && "Do not allow a dimension of zero.");
       sizes_[i] = dims[i];
     }
     numSizes_ = dims.size();

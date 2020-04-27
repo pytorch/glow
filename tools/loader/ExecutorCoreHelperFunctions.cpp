@@ -57,6 +57,13 @@ llvm::cl::opt<std::string> inputImageListFile(
     llvm::cl::value_desc("string_name"), llvm::cl::Optional,
     llvm::cl::cat(executorCat));
 
+llvm::cl::opt<std::string> inputTensorListFile(
+    "input-tensor-list-file",
+    llvm::cl::desc(
+        "Name of the file containing list of tensors (one tensor per line)"),
+    llvm::cl::value_desc("string_name"), llvm::cl::Optional,
+    llvm::cl::cat(executorCat));
+
 llvm::cl::opt<unsigned> miniBatch(
     "minibatch",
     llvm::cl::desc(
@@ -136,13 +143,27 @@ llvm::cl::opt<unsigned> excludedFirstWarmupRuns(
                    "from the total time"),
     llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(executorCat));
 
+llvm::cl::opt<bool>
+    preloadAllImages("preload-all-images",
+                     llvm::cl::desc("Pre-load all images before inference"),
+                     llvm::cl::init(false), llvm::cl::cat(executorCat));
+
+llvm::cl::opt<unsigned> repeatSingleBatchCount(
+    "repeat-single-batch-count",
+    llvm::cl::desc(
+        "Repeat a single batch input n times. Used for testing purposes. If "
+        "used without minibatch then the whole input set is used as the batch "
+        "size and repeated n times. Otherwise the first minibatch is repeated "
+        "and all other inputs are ignored."),
+    llvm::cl::init(0), llvm::cl::cat(executorCat));
+
 /// Read all images from \p inputImageListFile in to \p inputImageFilenames.
-void parseInputImageList(const std::string &inputImageListFile) {
+void parseInputList(const std::string &inputListFile) {
   std::ifstream inFile;
-  inFile.open(inputImageListFile);
+  inFile.open(inputListFile);
   if (!inFile.good()) {
-    llvm::outs() << "Could not open input-image-list-file: "
-                 << inputImageListFile << ", exiting.\n";
+    llvm::outs() << "Could not open input-image-list-file: " << inputListFile
+                 << ", exiting.\n";
     std::exit(1);
   }
 
@@ -236,11 +257,11 @@ static void populateOutMap(std::unique_ptr<ProtobufLoader> &LD,
 /// \returns a pair of pointers to the input Placeholder and output Nodes Map.
 std::pair<Placeholder *, llvm::StringMap<Placeholder *>>
 buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
-                                  TypeRef inputImageType) {
-  auto LD = createProtobufLoader(loader, inputImageType);
+                                  const glow::Type &inputImageType) {
+  auto LD = createProtobufLoader(loader, &inputImageType);
   llvm::StringMap<Placeholder *> outMap;
   populateOutMap(LD, outMap);
-  loader.postModelLoad(bindings, *LD.get(), outMap, inputImageType->dims()[0]);
+  loader.postModelLoad(bindings, *LD.get(), outMap, inputImageType.dims()[0]);
 
   // Allocate tensors to back all inputs and outputs.
   bindings.allocate(loader.getModule()->getPlaceholders());

@@ -135,6 +135,31 @@ const std::string strFormat(const char *format, ...) {
   return std::string(str.data(), len);
 }
 
+/// Create a formatted string that should live until the end of the execution.
+const std::string &staticStrFormat(const char *format, ...) {
+  // The storage for strings that should live until the end of the execution.
+  static std::vector<std::string> staticStrings;
+  // Initialize use of varargs.
+  va_list vaArgs;
+  va_start(vaArgs, format);
+
+  // Create a copy of the varargs.
+  va_list vaArgsCopy;
+  va_copy(vaArgsCopy, vaArgs);
+  // Compute the length of the output to be produced.
+  // The vsnprintf call does not actually write anything, but properly computes
+  // the amount of characters that would be written.
+  const int len = vsnprintf(NULL, 0, format, vaArgsCopy);
+  va_end(vaArgsCopy);
+
+  // Create a formatted string without any risk of memory issues.
+  std::vector<char> str(len + 1);
+  std::vsnprintf(str.data(), str.size(), format, vaArgs);
+  va_end(vaArgs);
+  staticStrings.emplace_back(std::string(str.data(), len));
+  return staticStrings.back();
+}
+
 std::string legalizeName(llvm::StringRef name) {
   std::string legalName;
 

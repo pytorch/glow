@@ -2495,15 +2495,20 @@ TEST_F(Caffe2ImporterTest, SparseLengthsSum8BitsRowwise) {
 ///    INDICES = [1, 0, 2, 0, 1, 2, 2, 0]
 ///    LENGTHS = [3, 0, 3, 2]
 ///    OUTPUT =  [[0.5, 0, 0, 25]]
-TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSumFused8BitRowwise) {
+static void testFRWQSLWS(float avgLength) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   std::string NetDescFilename(
-      GLOW_DATA_PATH
-      "tests/models/caffe2Models/"
-      "fused_rowwise_quantized_sparse_lengths_weighted_sum_predict_net.pbtxt");
+      std::isnan(avgLength) ? GLOW_DATA_PATH
+          "tests/models/caffe2Models/"
+          "fused_rowwise_quantized_sparse_lengths_weighted_sum_predict_net."
+          "pbtxt"
+                            : GLOW_DATA_PATH
+          "tests/models/caffe2Models/"
+          "fused_rowwise_quantized_sparse_lengths_weighted_sum_avg_length_"
+          "predict_net.pbtxt");
   std::string NetWeightFilename(
       GLOW_DATA_PATH
       "tests/models/caffe2Models/"
@@ -2550,6 +2555,11 @@ TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSumFused8BitRowwise) {
       llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
           saveNode->getInput().getNode());
   ASSERT_TRUE(FRWQSLWS);
+  if (std::isnan(avgLength)) {
+    EXPECT_TRUE(std::isnan(FRWQSLWS->getAvgLength()));
+  } else {
+    EXPECT_EQ(FRWQSLWS->getAvgLength(), avgLength);
+  }
   // Check that the weights input is a Constant node.
   Constant *weights =
       llvm::dyn_cast<Constant>(FRWQSLWS->getWeights().getNode());
@@ -2580,6 +2590,14 @@ TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSumFused8BitRowwise) {
   };
 
   EXPECT_TRUE(expected.isEqual(result, 0.02f));
+}
+
+TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSumFused8BitRowwise) {
+  testFRWQSLWS(NAN);
+}
+
+TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSumFused8BitRowwiseAvgLength) {
+  testFRWQSLWS(5.0f);
 }
 
 /// Test loading SparseLengthsSumFused8BitRowwise. This is created as a
@@ -3026,6 +3044,12 @@ TEST_F(Caffe2ImporterTest, importSqr) {
   EE.compile(CompilationMode::Infer);
 }
 
+/// \returns whether \p val is found in \p vec.
+static bool vecContainsVal(const std::vector<runtime::DeviceIDTy> &vec,
+                           runtime::DeviceIDTy val) {
+  return std::find(vec.begin(), vec.end(), val) != vec.end();
+}
+
 /// Verify that different fill types are loaded with the correct types into
 /// their respective partitions specified in the C2 proto.
 TEST_F(Caffe2ImporterTest, PrePartitionedTensorFillsTest) {
@@ -3074,18 +3098,18 @@ TEST_F(Caffe2ImporterTest, PrePartitionedTensorFillsTest) {
     if (F->getName() == "main_p0") {
       P0 = F;
       ASSERT_EQ(PPC.logicalIDs[i].size(), 2);
-      EXPECT_TRUE(PPC.logicalIDs[i].count(0));
-      EXPECT_TRUE(PPC.logicalIDs[i].count(2));
+      EXPECT_TRUE(vecContainsVal(PPC.logicalIDs[i], 0));
+      EXPECT_TRUE(vecContainsVal(PPC.logicalIDs[i], 2));
     } else if (F->getName() == "main_p1") {
       P1 = F;
       ASSERT_EQ(PPC.logicalIDs[i].size(), 1);
-      EXPECT_TRUE(PPC.logicalIDs[i].count(1));
+      EXPECT_TRUE(vecContainsVal(PPC.logicalIDs[i], 1));
     } else if (F->getName() == "main_p2") {
       P2 = F;
     } else {
       FAIL() << "Unknown Function found.";
       ASSERT_EQ(PPC.logicalIDs[i].size(), 1);
-      EXPECT_TRUE(PPC.logicalIDs[i].count(2));
+      EXPECT_TRUE(vecContainsVal(PPC.logicalIDs[i], 2));
     }
 
     // Check that the function was also found in the module.
@@ -3210,18 +3234,18 @@ TEST_F(Caffe2ImporterTest, PrePartitionedMultiOpTest) {
       if (F->getName() == "main_p0") {
         P0 = F;
         ASSERT_EQ(PPC.logicalIDs[i].size(), 1);
-        EXPECT_TRUE(PPC.logicalIDs[i].count(2));
+        EXPECT_TRUE(vecContainsVal(PPC.logicalIDs[i], 2));
         EXPECT_EQ(PPC.backendSpecificOpts[i].size(), 0);
       } else if (F->getName() == "main_p1") {
         P1 = F;
         ASSERT_EQ(PPC.logicalIDs[i].size(), 2);
-        EXPECT_TRUE(PPC.logicalIDs[i].count(0));
-        EXPECT_TRUE(PPC.logicalIDs[i].count(1));
+        EXPECT_TRUE(vecContainsVal(PPC.logicalIDs[i], 0));
+        EXPECT_TRUE(vecContainsVal(PPC.logicalIDs[i], 1));
         EXPECT_EQ(PPC.backendSpecificOpts[i].size(), 0);
       } else if (F->getName() == "main_p2") {
         P2 = F;
         ASSERT_EQ(PPC.logicalIDs[i].size(), 1);
-        EXPECT_TRUE(PPC.logicalIDs[i].count(2));
+        EXPECT_TRUE(vecContainsVal(PPC.logicalIDs[i], 2));
         EXPECT_EQ(PPC.backendSpecificOpts[i].size(), 3);
         ASSERT_TRUE(PPC.backendSpecificOpts[i].count("BackendA_opt1"));
         EXPECT_EQ(PPC.backendSpecificOpts[i].at("BackendA_opt1"), "val1");

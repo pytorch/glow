@@ -10,5 +10,6 @@ target_link_libraries(Backend
                         CodeGen
                         Graph
                         IR
+                        IROptimizerPipeline
                         GraphOptimizerPipeline
                         Runtime)

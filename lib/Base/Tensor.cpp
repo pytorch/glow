@@ -93,6 +93,12 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os,
   dumpShape(shape, os);
   os << "\n";
 
+  // Check for tensor of size 0.
+  if (handle.getUnpaddedSizeInBytes() == 0) {
+    os << "[ tensor has no elements ]\n";
+    return;
+  }
+
   ElemTy mx = handle.raw(0);
   ElemTy mn = handle.raw(0);
 

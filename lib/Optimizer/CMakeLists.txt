@@ -1,4 +1,5 @@
 add_subdirectory(GraphOptimizer)
 add_subdirectory(GraphOptimizerPipeline)
 add_subdirectory(IROptimizer)
+add_subdirectory(IROptimizerPipeline)
 add_subdirectory(Lower)
