@@ -222,6 +222,13 @@ int Executor::executeNetwork(int argc, char **argv) {
       << "singleBatchRepeatedMode is not compatible with "
          "streamInputFilenamesMode";
 
+  // When the mini-batch mode is enabled do not allow debug instrumentation.
+  extern llvm::cl::opt<bool> instrumentDebug;
+  if (miniBatchMode) {
+    CHECK(!instrumentDebug)
+        << "The minibatch option is not compatible with debug instrumentation.";
+  }
+
   // Print out the inferred image classification.
   llvm::outs() << "Model: " << Loader::getModelOptPath() << "\n";
   std::mutex ioMu;
