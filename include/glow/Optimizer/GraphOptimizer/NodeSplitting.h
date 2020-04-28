@@ -188,7 +188,7 @@ struct SplitNodeContext {
   /// the original node is still part of the graph so the user can also check
   /// graph connexion properties (like whether the original node is followed or
   /// or preceded by another node, etc).
-  Node *origNode;
+  const Node *origNode;
 
   /// Split nodes obtained by splitting the original node. When this context is
   /// provided, the split nodes are not yet part of the graph (orphans) and the
