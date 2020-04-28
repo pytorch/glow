@@ -24,6 +24,7 @@
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Importer/ONNXModelLoader.h"
+#include "glow/Optimizer/IROptimizer/CommandLine.h"
 
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/CommandLine.h"
@@ -223,7 +224,6 @@ int Executor::executeNetwork(int argc, char **argv) {
          "streamInputFilenamesMode";
 
   // When the mini-batch mode is enabled do not allow debug instrumentation.
-  extern llvm::cl::opt<bool> instrumentDebug;
   if (miniBatchMode) {
     CHECK(!instrumentDebug)
         << "The minibatch option is not compatible with debug instrumentation.";

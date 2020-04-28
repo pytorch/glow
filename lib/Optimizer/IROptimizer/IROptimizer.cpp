@@ -41,34 +41,6 @@
 
 #define DEBUG_TYPE "ir-optimizer"
 
-namespace {
-static llvm::cl::opt<std::string> instrumentDebugDir(
-    "instrument-debug-dir",
-    llvm::cl::desc("The directory where the file dumps will be written!\n"),
-    llvm::cl::init("debug"), llvm::cl::Hidden);
-
-static llvm::cl::opt<std::string> instrumentDebugFormat(
-    "instrument-debug-format",
-    llvm::cl::desc(
-        "The format of the IR debugging instrumentation:                     \n"
-        "- 'console': The tensors are dumped in text format in the console.  \n"
-        "- 'bin': The tensors are dumped in binary format in separate files. \n"
-        "         Each file will contain the tensor type and tensor data.    \n"
-        "- 'txt': The tensors are dumped in text format in separate files.   \n"
-        "         Each file will contain the tensor type and tensor data.    \n"
-        "- 'rawbin': The tensors are dumped in raw binary format in separate \n"
-        "            files. Each file will contain ONLY the tensor data.     \n"
-        "- 'rawtxt': The tensors are dumped in raw text format in separate   \n"
-        "            files. Each file will contain ONLY the tensor data.\n"),
-    llvm::cl::init("console"), llvm::cl::Hidden);
-
-static llvm::cl::list<std::string> instrumentDebugOnly(
-    "instrument-debug-only",
-    llvm::cl::desc(
-        "Instrument the IR for debugging, but only the listed instructions"),
-    llvm::cl::CommaSeparated, llvm::cl::Hidden);
-} // namespace
-
 using namespace glow;
 
 using llvm::cast;
@@ -1531,159 +1503,6 @@ bool optimizeExtracts(IRFunction &M) {
   return changed;
 }
 
-/// Instrument the code to make it easier to debug issues.
-/// Add dumping of inputs before each instruction and
-/// dumping of outputs after each instruction.
-/// For each input/output tensor its name and its value are dumped.
-static bool performDebugInstrumentation(IRFunction &M) {
-
-  // Make debug directory path absolute.
-  std::string debugDir = instrumentDebugDir;
-  if (!llvm::sys::path::is_absolute(debugDir)) {
-    llvm::SmallVector<char, 128> path(debugDir.begin(), debugDir.end());
-    CHECK(!llvm::sys::fs::make_absolute(path))
-        << "Cannot create debug absolute path for '" << debugDir << "'!";
-    debugDir = llvm::Twine(path).str();
-  }
-
-  // Make debug directory if not exists.
-  if (!llvm::sys::fs::is_directory(debugDir)) {
-    CHECK(!llvm::sys::fs::create_directory(debugDir))
-        << "Cannot create debug directory '" << debugDir << "'!";
-  }
-
-  // Debug format.
-  std::string debugFormat = instrumentDebugFormat;
-  CHECK(debugFormat == "console" || debugFormat == "bin" ||
-        debugFormat == "txt" || debugFormat == "rawbin" ||
-        debugFormat == "rawtxt")
-      << "Invalid debug IR instrumentation format! Only the following formats "
-         "are supported: 'console', 'bin', 'txt', 'rawbin' and 'rawtxt'!";
-  std::string debugExt =
-      ((debugFormat == "bin") || (debugFormat == "rawbin")) ? "bin" : "txt";
-  bool debugInfoWrite = (debugFormat != "console");
-
-  // Open debug info file.
-  std::string debugInfoPath =
-      debugDir + llvm::sys::path::get_separator().str() + "debug.info";
-  unsigned fileDumpIdx = 0;
-  std::ofstream debugInfoFile;
-  if (debugInfoWrite) {
-    debugInfoFile.open(debugInfoPath, std::ios::out | std::ios::trunc);
-    debugInfoFile << "Format: " << debugFormat << "\n";
-  }
-
-  // Instrument debug instructions.
-  bool changed = false;
-  auto &instrs = M.getInstrs();
-  for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
-    auto *I = &*it;
-    auto next = std::next(it);
-    // If current instruction is not one of the provided in the list, skip it.
-    if (!instrumentDebugOnly.empty()) {
-      if (std::find_if(instrumentDebugOnly.begin(), instrumentDebugOnly.end(),
-                       [&](const std::string &name) -> bool {
-                         return I->getName().contains(name);
-                       }) == instrumentDebugOnly.end()) {
-        it = next;
-        continue;
-      }
-    }
-    if (isa<DebugPrintInst>(I) || isa<AllocActivationInst>(I) ||
-        isa<DeallocActivationInst>(I)) {
-      it = next;
-      continue;
-    }
-    // Don't instrument tensorview since it can lead to liveness verification
-    // failures if the tensorview happens before any writes to the tensor.
-    if (isa<TensorViewInst>(I)) {
-      it = next;
-      continue;
-    }
-
-    // Print instruction info.
-    std::string instrName = I->getName().str();
-    if (debugInfoWrite) {
-      debugInfoFile << "\n";
-      debugInfoFile << "Type: " << I->getKindName() << "\n";
-      debugInfoFile << "Name: " << instrName << "\n";
-    }
-
-    // Get maximum operand name length for pretty print.
-    size_t opNameLenMax = 0;
-    for (unsigned opIdx = 0; opIdx < I->getNumOperands(); ++opIdx) {
-      auto opNameLen = I->getOperandName(opIdx).size();
-      opNameLenMax = std::max(opNameLen, opNameLenMax);
-    }
-
-    // Instrument debug operands for current instruction.
-    for (unsigned opIdx = 0; opIdx < I->getNumOperands(); ++opIdx) {
-      const auto &op = I->getOperand(opIdx);
-      const std::string opName = I->getOperandName(opIdx).str();
-      const std::string opValueName = op.first->getName();
-      const std::string opTypeName = op.first->getType()->toString();
-
-      // DebugPrint instruction name for this operand.
-      std::string name = instrName;
-      name += ".";
-      name += opName;
-      name += ".";
-      name += I->getKindName();
-
-      // DebugPrint filename. When dumping files we do not use the name of the
-      // debug instruction since it is not safe: most of the filesystems allow
-      // a maximum length for a given file name in the order of 255 characters
-      // and the debug instruction name (with the above format) is very likely
-      // to be very long. We use a simple name format for dumping files and we
-      // generate a separate meta file with additional information about every
-      // dump.
-      std::string filename = strFormat("data%04d.", fileDumpIdx++) + debugExt;
-      std::string filepath =
-          debugDir + llvm::sys::path::get_separator().str() + filename;
-      if (debugInfoWrite) {
-        unsigned spacing = std::max(opNameLenMax + 2, size_t(10));
-        std::string format = "[%d] ";
-        format += "%-" + std::to_string(spacing) + "s ";
-        format += "%s    ";
-        format += "%s\n";
-        debugInfoFile << strFormat(format.c_str(), opIdx,
-                                   (opName + ":").c_str(), filename.c_str(),
-                                   opTypeName.c_str());
-      }
-
-      // Dump inputs of the current instruction before the instruction.
-      if (op.second != OperandKind::Out) {
-        name = "debug_print.before." + name;
-        auto *dumpInstr =
-            new DebugPrintInst(name, op.first, debugFormat, filepath);
-        M.insertInstruction(I, dumpInstr);
-        changed = true;
-      }
-
-      // Dump outputs of the current instruction after the instruction.
-      if (op.second != OperandKind::In) {
-        name = "debug_print.after." + name;
-        auto *dumpInstr =
-            new DebugPrintInst(name, op.first, debugFormat, filepath);
-        if (next == e) {
-          M.insertInstruction(dumpInstr);
-        } else {
-          M.insertInstruction(&*next, dumpInstr);
-        }
-        changed = true;
-      }
-    }
-    it = next;
-  }
-
-  // Close debug info file.
-  if (debugInfoWrite) {
-    debugInfoFile.close();
-  }
-
-  return changed;
-}
-
 /// Perform peephole optimizations.
 bool performPeepholeOptimizations(IRFunction &M) {
   bool changed = false;
@@ -1865,10 +1684,6 @@ bool OptimizeInserts::run(IRFunction *M, const CompilationContext &cctx) {
 
 bool OptimizeExtracts::run(IRFunction *M, const CompilationContext &cctx) {
   return optimizeExtracts(*M);
-}
-
-bool DebugInstrument::run(IRFunction *M, const CompilationContext &cctx) {
-  return performDebugInstrumentation(*M);
 }
 
 bool IRVerify::run(IRFunction *M, const CompilationContext &cctx) {

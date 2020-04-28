@@ -109,14 +109,14 @@ void glow::registerInputTensorFileLoader(InputTensorFileLoaderFn loader) {
 }
 
 void glow::dumpTensorToBinaryFile(Tensor &tensor, llvm::StringRef filename,
-                                  bool dumpType) {
+                                  const TensorSerializationOptions &opts) {
   std::ofstream fs;
   fs.open(filename.data(), std::ios::binary);
   CHECK(fs.is_open()) << "Error opening file '" << filename.data() << "'!";
   CHECK(tensor.getUnsafePtr())
       << "Tensor not initialized before dumping to binary file!";
   // Dump tensor type.
-  if (dumpType) {
+  if (opts.withType) {
     std::string typeStr = tensor.getType().toString();
     fs.write(typeStr.c_str(), typeStr.size());
   }
@@ -126,13 +126,13 @@ void glow::dumpTensorToBinaryFile(Tensor &tensor, llvm::StringRef filename,
 }
 
 void glow::loadTensorFromBinaryFile(Tensor &tensor, llvm::StringRef filename,
-                                    bool loadType) {
+                                    const TensorSerializationOptions &opts) {
   std::ifstream fs;
   fs.open(filename.data(), std::ios::binary);
   CHECK(fs.is_open()) << "Error opening file '" << filename.data() << "'!";
   // Load tensor type.
   size_t headerSize = 0;
-  if (loadType) {
+  if (opts.withType) {
     std::string typeStr;
     char ch;
     do {
@@ -164,14 +164,14 @@ void glow::loadTensorFromBinaryFile(Tensor &tensor, llvm::StringRef filename,
 }
 
 void glow::dumpTensorToTextFile(Tensor &tensor, llvm::StringRef filename,
-                                bool dumpType) {
+                                const TensorSerializationOptions &opts) {
   std::ofstream fs;
   fs.open(filename.data());
   CHECK(fs.is_open()) << "Error opening file '" << filename.data() << "'!";
   CHECK(tensor.getUnsafePtr())
       << "Tensor not initialized before dumping to text file!";
   // Dump tensor type.
-  if (dumpType) {
+  if (opts.withType) {
     fs << tensor.getType().toString() << "\n";
   }
   // Dump tensor data.
@@ -207,12 +207,12 @@ void glow::dumpTensorToTextFile(Tensor &tensor, llvm::StringRef filename,
 }
 
 void glow::loadTensorFromTextFile(Tensor &tensor, llvm::StringRef filename,
-                                  bool loadType) {
+                                  const TensorSerializationOptions &opts) {
   std::ifstream fs;
   fs.open(filename.data());
   CHECK(fs.is_open()) << "Error opening file '" << filename.data() << "'!";
   // Load tensor type.
-  if (loadType) {
+  if (opts.withType) {
     std::string typeStr;
     CHECK(std::getline(fs, typeStr))
         << "Error loading text file '" << filename.data()

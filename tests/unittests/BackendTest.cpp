@@ -541,16 +541,16 @@ static void testDebugPrint(ExecutionEngine &EE, std::string backendName,
   // Read tensor back.
   Tensor tensorTest;
   if (format == "bin") {
-    glow::loadTensorFromBinaryFile(tensorTest, path.str(), /*loadType*/ true);
+    glow::loadTensorFromBinaryFile(tensorTest, path.str(), {/*withType*/ true});
   } else if (format == "txt") {
-    glow::loadTensorFromTextFile(tensorTest, path.str(), /*loadType*/ true);
+    glow::loadTensorFromTextFile(tensorTest, path.str(), {/*withType*/ true});
   } else if (format == "rawbin") {
     tensorTest = Tensor(tensorRef.getType());
     glow::loadTensorFromBinaryFile(tensorTest, path.str(),
-                                   /*loadType*/ false);
+                                   {/*withType*/ false});
   } else if (format == "rawtxt") {
     tensorTest = Tensor(tensorRef.getType());
-    glow::loadTensorFromTextFile(tensorTest, path.str(), /*loadType*/ false);
+    glow::loadTensorFromTextFile(tensorTest, path.str(), {/*withType*/ false});
   } else {
     FAIL() << "Invalid DebugPrint format!";
   }

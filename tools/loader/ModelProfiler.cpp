@@ -254,10 +254,10 @@ int main(int argc, char **argv) {
       std::string fileFormat = inputFormats[inputIdx];
       if (fileFormat == "rawbin") {
         glow::loadTensorFromBinaryFile(*inputTensor, filePath.c_str(),
-                                       /*loadType*/ false);
+                                       {/*withType*/ false});
       } else if (fileFormat == "rawtxt") {
         glow::loadTensorFromTextFile(*inputTensor, filePath.c_str(),
-                                     /*loadType*/ false);
+                                     {/*withType*/ false});
       } else {
         exitWithErr(strFormat("Input dataset format '%s' invalid!",
                               fileFormat.c_str()));

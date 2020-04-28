@@ -478,11 +478,20 @@ with the option `-instrument-debug-format=<format>`:
   - `bin` The operands (tensors) are dumped in binary format in separate files
   (one tensor per file). Each file will contain the tensor type and tensor data.
   - `txt` The operands (tensors) are dumped in text format in separate files
-  (one tensor per file). Each file will contain the tensor type and tensor data.
+  (one tensor per file). Each file will contain the tensor type and tensor data. One
+  such file might look like this:
+    ```
+    float<1 x 2 x 3>
+    1.1, 2.2, 3.3, 4.4, 5.5, 6.6,
+    ```
   - `rawbin` The operands (tensors) are dumped in binary format in separate files
   (one tensor per file). Each file will contain ONLY the tensor data.
   - `rawtxt` The operands (tensors) are dumped in text format in separate files
-  (one tensor per file). Each file will contain ONLY the tensor data.
+  (one tensor per file). Each file will contain ONLY the tensor data. One such file
+  might look like this:
+    ```
+    1.1, 2.2, 3.3, 4.4, 5.5, 6.6,
+    ```
   The names of the dump files have a simple format `data[idx].bin` or `data[idx].txt`
   but a separate meta file `debug.info` is dumped at compile-time which makes the
   association between each binary file and the operand of the IR instruction to which

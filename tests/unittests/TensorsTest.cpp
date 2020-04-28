@@ -1363,9 +1363,9 @@ TEST(Tensor, accessToTextFile) {
   if (tempFileRes.value() != 0) {
     FAIL() << "Failed to create temp file to write into.";
   }
-  dumpTensorToTextFile(tensorRef, path, /*dumpType*/ true);
+  dumpTensorToTextFile(tensorRef, path, {/*withType*/ true});
   Tensor tensorTest;
-  loadTensorFromTextFile(tensorTest, path, /*loadType*/ true);
+  loadTensorFromTextFile(tensorTest, path, {/*withType*/ true});
   llvm::sys::fs::remove(path);
 
   auto handleRef = tensorRef.getHandle<>();
@@ -1388,9 +1388,9 @@ TEST(Tensor, accessToBinaryFile) {
   if (tempFileRes.value() != 0) {
     FAIL() << "Failed to create temp file to write into.";
   }
-  dumpTensorToBinaryFile(tensorRef, path, /*dumpType*/ true);
+  dumpTensorToBinaryFile(tensorRef, path, {/*withType*/ true});
   Tensor tensorTest;
-  loadTensorFromBinaryFile(tensorTest, path, /*loadType*/ true);
+  loadTensorFromBinaryFile(tensorTest, path, {/*withType*/ true});
   llvm::sys::fs::remove(path);
 
   auto handleRef = tensorRef.getHandle<>();
@@ -1413,9 +1413,9 @@ TEST(Tensor, accessToRawTextFile) {
   if (tempFileRes.value() != 0) {
     FAIL() << "Failed to create temp file to write into.";
   }
-  dumpTensorToTextFile(tensorRef, path, /*dumpType*/ false);
+  dumpTensorToTextFile(tensorRef, path, {/*withType*/ false});
   Tensor tensorTest(ElemKind::FloatTy, {10});
-  loadTensorFromTextFile(tensorTest, path, /*loadType*/ false);
+  loadTensorFromTextFile(tensorTest, path, {/*withType*/ false});
   llvm::sys::fs::remove(path);
 
   auto handleRef = tensorRef.getHandle<>();
@@ -1510,9 +1510,9 @@ TEST(Tensor, accessToRawBinaryFile) {
   if (tempFileRes.value() != 0) {
     FAIL() << "Failed to create temp file to write into.";
   }
-  dumpTensorToBinaryFile(tensorRef, path, /*dumpType*/ false);
+  dumpTensorToBinaryFile(tensorRef, path, {/*withType*/ false});
   Tensor tensorTest(ElemKind::FloatTy, {10});
-  loadTensorFromBinaryFile(tensorTest, path, /*loadType*/ false);
+  loadTensorFromBinaryFile(tensorTest, path, {/*withType*/ false});
   llvm::sys::fs::remove(path);
 
   auto handleRef = tensorRef.getHandle<>();
