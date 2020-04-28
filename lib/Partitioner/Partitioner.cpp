@@ -190,6 +190,7 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
   mapping.createPartition(newF, backendName);
   NodesSet currentPartition;
   GraphMemInfo graphMem;
+  graphMem.contextCount = contextCount_;
 
   for (int i = level - 1; i >= 0; i--) {
     for (size_t j = 0, e = bfs[i].size(); j < e; j++) {

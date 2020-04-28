@@ -35,14 +35,20 @@ struct GraphMemInfo {
   uint64_t outMemSize;
   // The memory usage of all constants used in this subgraph.
   uint64_t constMemSize;
+  // The number of contexts reserved on the device, this affecting input/out
+  // memory useage.
+  unsigned contextCount;
 
-  GraphMemInfo() : inMemSize(0), outMemSize(0), constMemSize(0){};
-  GraphMemInfo(uint64_t inMem, uint64_t outMem, uint64_t constMem)
-      : inMemSize(inMem), outMemSize(outMem), constMemSize(constMem){};
+  GraphMemInfo()
+      : inMemSize(0), outMemSize(0), constMemSize(0), contextCount(1){};
+  GraphMemInfo(uint64_t inMem, uint64_t outMem, uint64_t constMem,
+               unsigned count = 1)
+      : inMemSize(inMem), outMemSize(outMem), constMemSize(constMem),
+        contextCount(count){};
 
-  // Get the total memory size of each partition.
+  /// Get the total memory size of each partition.
   uint64_t getTotalMemSize() const {
-    return inMemSize + outMemSize + constMemSize;
+    return ((inMemSize + outMemSize) * contextCount) + constMemSize;
   }
 
   bool equals(const GraphMemInfo &other) const {

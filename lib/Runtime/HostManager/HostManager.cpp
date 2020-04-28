@@ -248,6 +248,11 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     }
   }
   Partitioner partitioner(module.get(), deviceInfo, skipOptimizations);
+  if (cctx.enableP2P || cctx.enableDRT) {
+    partitioner.setContextCount(config_.maxActiveRequests);
+  } else {
+    partitioner.setContextCount(2);
+  }
   DAGListTy nodeList;
   auto result = partitioner.partition(cctx);
   if (result) {

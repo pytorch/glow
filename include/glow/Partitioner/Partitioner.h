@@ -36,6 +36,9 @@ class Partitioner final : public PartitionerBase {
   /// True if there are more than 1 type of backends.
   bool multiBackendNames_;
 
+  /// Number of copies of inputs/outputs to assume when calculating mem size.
+  unsigned contextCount_{1};
+
   /// The cost model related to device.
   std::vector<DeviceInfo> deviceInfo_;
 
@@ -171,6 +174,9 @@ public:
   /// Partitioning without actually register them in GLOW.
   Partitioner(Module *parent, const std::vector<DeviceInfo> &devices,
               const std::vector<Backend *> &backends, bool optimized = false);
+
+  /// Set contextCount_ to provided /p count.
+  void setContextCount(unsigned count) { contextCount_ = count; }
 
   /// Based on \p partitionConfig passed into Partitioner, do user-defined
   /// partition.
