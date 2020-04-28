@@ -737,10 +737,10 @@ Loader &Loader::registerExtension(std::unique_ptr<LoaderExtension> extension) {
 void Loader::postModelLoad(PlaceholderBindings &bindings,
                            ProtobufLoader &protoLoader,
                            llvm::StringMap<Placeholder *> &placeholderMap,
-                           size_t compilationBatchSize) {
+                           TypeRef inputImageType) {
   for (auto &&ext : loaderExtensionList_) {
     ext->postModelLoad(*this, bindings, protoLoader, placeholderMap,
-                       compilationBatchSize);
+                       inputImageType);
   }
 }
 

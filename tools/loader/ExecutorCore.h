@@ -42,10 +42,11 @@ public:
 
 class Executor final {
 public:
-  Executor(std::string appName) : appName_(appName){};
+  Executor(std::string appName, int argc, char **argv);
   Executor() = delete;
   Executor(const Executor &) = delete;
   Executor &operator=(const Executor &) = delete;
+
   /// Registers a Loader Extension that will be invoked after model is
   /// loaded. If multiple extensions are registered they will be executed in
   /// order they were registered.
@@ -65,7 +66,7 @@ public:
       std::function<std::unique_ptr<PostProcessOutputDataExtension>()> func);
   /// This will parse command line, load, build and execute a network.
   /// Returns /p 0 if no errors occured, others none zero value.
-  int executeNetwork(int argc, char **argv);
+  int executeNetwork();
 
 private:
   /// Iterates over lambda expressions and registers them with each instance of

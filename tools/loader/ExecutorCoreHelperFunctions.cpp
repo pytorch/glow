@@ -243,15 +243,6 @@ createProtobufLoader(Loader &loader, TypeRef inputImageType) {
   return LD;
 }
 
-/// Populates a map from the ProtobufLoader.
-static void populateOutMap(std::unique_ptr<ProtobufLoader> &LD,
-                           llvm::StringMap<Placeholder *> &OutMap) {
-  auto &ldOutMap = LD->getOutputVarsMapping();
-  for (auto &entry : ldOutMap) {
-    OutMap[entry.getKey()] = entry.second;
-  }
-}
-
 /// Given \p loader, the \p bindings, and \p inputImageType, build the graph
 /// from the provided protobuf file found via \p loader. Then compiles and
 /// \returns a pair of pointers to the input Placeholder and output Nodes Map.
@@ -259,9 +250,8 @@ std::pair<Placeholder *, llvm::StringMap<Placeholder *>>
 buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
                                   const glow::Type &inputImageType) {
   auto LD = createProtobufLoader(loader, &inputImageType);
-  llvm::StringMap<Placeholder *> outMap;
-  populateOutMap(LD, outMap);
-  loader.postModelLoad(bindings, *LD.get(), outMap, inputImageType.dims()[0]);
+  llvm::StringMap<Placeholder *> outMap = LD->getOutputVarsMapping();
+  loader.postModelLoad(bindings, *LD.get(), outMap, &inputImageType);
 
   // Allocate tensors to back all inputs and outputs.
   bindings.allocate(loader.getModule()->getPlaceholders());
