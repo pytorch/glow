@@ -553,14 +553,16 @@ void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
   auto checkedRangeAndPadsW = getConvInputCheckedRangeAndPads(
       outputSliceRange[Shape::dimW], inputRange[Shape::dimW], kernels.width,
       strides.width, padsLR, dilations.width);
-  DimPads convSplitPadsTB = std::get<2>(checkedRangeAndPadsH);
-  DimPads convSplitPadsLR = std::get<2>(checkedRangeAndPadsW);
+  DimPads splitPadsTB = std::get<2>(checkedRangeAndPadsH);
+  DimPads splitPadsLR = std::get<2>(checkedRangeAndPadsW);
 
   // Modify paddings for split node.
-  convSplitNode->setPads({static_cast<unsigned_t>(convSplitPadsTB.first),
-                          static_cast<unsigned_t>(convSplitPadsLR.first),
-                          static_cast<unsigned_t>(convSplitPadsTB.second),
-                          static_cast<unsigned_t>(convSplitPadsLR.second)});
+  std::vector<unsigned_t> splitPads = {
+      static_cast<unsigned_t>(splitPadsTB.first),
+      static_cast<unsigned_t>(splitPadsLR.first),
+      static_cast<unsigned_t>(splitPadsTB.second),
+      static_cast<unsigned_t>(splitPadsLR.second)};
+  convSplitNode->setPads(splitPads);
 
   // Modify group for split node.
   dim_t outputChannels =
@@ -648,14 +650,16 @@ void PoolSplitNodeModifier(const Node *origNode, Node *splitNode,
   auto checkedRangeAndPadsW = getPoolInputCheckedRangeAndPads(
       outputSliceRange[Shape::dimW], inputRange[Shape::dimW], kernels.width,
       strides.width, padsLR);
-  DimPads poolSplitPadsTB = std::get<2>(checkedRangeAndPadsH);
-  DimPads poolSplitPadsLR = std::get<2>(checkedRangeAndPadsW);
+  DimPads splitPadsTB = std::get<2>(checkedRangeAndPadsH);
+  DimPads splitPadsLR = std::get<2>(checkedRangeAndPadsW);
 
   // Modify paddings for split node.
-  poolSplitNode->setPads({static_cast<unsigned_t>(poolSplitPadsTB.first),
-                          static_cast<unsigned_t>(poolSplitPadsLR.first),
-                          static_cast<unsigned_t>(poolSplitPadsTB.second),
-                          static_cast<unsigned_t>(poolSplitPadsLR.second)});
+  std::vector<unsigned_t> splitPads = {
+      static_cast<unsigned_t>(splitPadsTB.first),
+      static_cast<unsigned_t>(splitPadsLR.first),
+      static_cast<unsigned_t>(splitPadsTB.second),
+      static_cast<unsigned_t>(splitPadsLR.second)};
+  poolSplitNode->setPads(splitPads);
 }
 
 ///===---------------------------------------------------------------------===//
@@ -667,6 +671,12 @@ verifySplitParams(const Node *node, dim_t splitOutputIdx,
                   const llvm::ArrayRef<size_t> &splitDims,
                   const llvm::ArrayRef<OpIdxAndMap> &inputIdxAndMaps,
                   const llvm::ArrayRef<OpIdxAndMap> &outputIdxAndMaps) {
+
+  // Verify original node.
+  if (!node->verify()) {
+    llvm::errs() << node->toString() << "\n";
+    RETURN_ERR("Invalid node given to node splitting procedure!");
+  }
 
   // Verify split dims.
   RETURN_ERR_IF_NOT(splitDims.size() > 0,
