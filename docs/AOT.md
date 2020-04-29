@@ -495,10 +495,25 @@ with the option `-instrument-debug-format=<format>`:
   The names of the dump files have a simple format `data[idx].bin` or `data[idx].txt`
   but a separate meta file `debug.info` is dumped at compile-time which makes the
   association between each binary file and the operand of the IR instruction to which
-  it belongs. All the dump files and the separate meta file `debug.info` are dumped in
-  a folder `debug` relative to the current directory at compile-time (if it does not
-  exist it is created automatically). You can choose a different directory with the
-  option `-instrument-debug-dir=<dir>`.
+  it belongs. The `debug.info` meta file might look like this:
+    ```
+    Format: bin
+    
+    Type: quantize
+    Name: Conv_MobilenetV1_MobilenetV1_Conv2d_0_Conv2D__2_quantize
+    [0] Dest:      data0000.bin    i8[S:0.0156 O:0][-2.000,1.984]<1 x 224 x 224 x 3>
+    [1] Src:       data0001.bin    float<1 x 224 x 224 x 3>
+    
+    Type: convolution
+    Name: Conv_MobilenetV1_MobilenetV1_Conv2d_0_Conv2D__2
+    [0] Dest:      data0002.bin    i8[S:0.2500 O:0][-32.000,31.750]<1 x 112 x 112 x 32>
+    [1] Src:       data0003.bin    i8[S:0.0156 O:0][-2.000,1.984]<1 x 224 x 224 x 3>
+    [2] Filter:    data0004.bin    i8[S:0.0312 O:0][-4.000,3.969]<32 x 3 x 3 x 3>
+    [3] Bias:      data0005.bin    i32[S:0.0005 O:0][-1048576.000,1048576.000]<32>
+    ```
+  All the dump files and the meta file `debug.info` are dumped in a folder `debug`
+  relative to the current directory at compile-time (if it does not exist it is created).
+  You can choose a different directory with the option `-instrument-debug-dir=<dir>`.
 
 ## Bundle memory layout
 
