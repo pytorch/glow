@@ -2217,10 +2217,19 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
     // Check if the slices span the input value.
     bool found = findSlicesThatSpanInput(slices, CN->getDim(), order);
     if (found && order.size() == slices.size()) {
+      // Check that the ordered Slices that span the input are in order.
+      bool ordered = true;
+      for (size_t i = 0, e = slices.size(); i < e; i++) {
+        if (order[i] != slices[i]) {
+          ordered = false;
+          break;
+        }
+      }
+
       auto orig = order[0]->getInput();
       // The original value that we extract from must be of the same shape as
       // the concat.
-      if (CN->getResult().getType() == orig.getType()) {
+      if (ordered && CN->getResult().getType() == orig.getType()) {
         return orig;
       }
     }
