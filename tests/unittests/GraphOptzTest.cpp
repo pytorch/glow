@@ -2961,28 +2961,47 @@ TEST_F(GraphOptz, FoldTileAddIntoBatchedAdd) {
   }
 }
 
-// Check that we are able to eliminate concat nodes.
-TEST_F(GraphOptz, concatElim) {
-  Node *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input", true);
+/// Test Concat(Slice, ..., Slice) opt works correctly. If \p reverseOrder then
+/// the optimization is inapplicable and should not occur.
+static void testConcatElim(Module &mod, Function *F, Function *&optimizedF,
+                           PlaceholderBindings &bindings, bool reverseOrder) {
+  Placeholder *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input", true);
+  bindings.allocate(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
 
   // Split the input to a bunch of small slices.
-  std::vector<NodeValue> inputs;
+  std::array<NodeValue, 10> inputs;
   for (dim_t i = 0; i < 10; i++) {
-    auto *K = F_->createSlice("extract", input, {i, 0, 0}, {i + 1, 10, 10});
-    // Insert the nodes in reverse order to make sure that we can catch
-    // non-consecutive graph-order slices.
-    inputs.insert(inputs.begin(), K);
+    dim_t idx = reverseOrder ? 9 - i : i;
+    inputs[i] =
+        F->createSlice("extract", input, {idx, 0, 0}, {idx + 1, 10, 10});
   }
 
-  auto *cc = F_->createConcat("merge", inputs, 0);
-  F_->createSave("save", cc);
+  auto *cc = F->createConcat("merge", inputs, 0);
+  F->createSave("save", cc);
 
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 10);
-  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 10);
 
-  // Check that the concat node is gone.
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 0);
+  optimizedF = optimizeFunction(F);
+
+  // Check that either the concat and slices are gone if the optimization was
+  // applicable, or otherwise that they're still there.
+  EXPECT_EQ(countNodeKind(optimizedF, Kinded::Kind::ConcatNodeKind),
+            reverseOrder ? 1 : 0);
+  EXPECT_EQ(countNodeKind(optimizedF, Kinded::Kind::SliceNodeKind),
+            reverseOrder ? 10 : 0);
+}
+
+// Check that we are able to eliminate concat nodes.
+TEST_F(GraphOptz, concatElim) {
+  testConcatElim(mod_, F_, optimizedF_, bindings_, /* reverseOrder */ false);
+  checkNumericalEquivalence(0.0f);
+}
+
+// Check that when the order of the Slices is reversed no optimization kicks in.
+TEST_F(GraphOptz, concatElimReverseOrder) {
+  testConcatElim(mod_, F_, optimizedF_, bindings_, /* reverseOrder */ true);
+  checkNumericalEquivalence(0.0f);
 }
 
 /// Check that we are able to eliminate concat followed by slices on axis
@@ -3026,17 +3045,52 @@ static void testConcatSliceElim(Module &mod, Function *F, Function *&optimizedF,
 
 TEST_F(GraphOptz, concatSliceElimInnerDim) {
   testConcatSliceElim(mod_, F_, optimizedF_, bindings_, 0);
-  checkNumericalEquivalence();
+  checkNumericalEquivalence(0.0f);
 }
 
 TEST_F(GraphOptz, concatSliceElimMiddleDim) {
   testConcatSliceElim(mod_, F_, optimizedF_, bindings_, 1);
-  checkNumericalEquivalence();
+  checkNumericalEquivalence(0.0f);
 }
 
 TEST_F(GraphOptz, concatSliceElimOuterDim) {
   testConcatSliceElim(mod_, F_, optimizedF_, bindings_, 2);
-  checkNumericalEquivalence();
+  checkNumericalEquivalence(0.0f);
+}
+
+/// Check the interaction between Sices(Concat) and Concat(Slices) optimizations
+/// to make sure they work nicely together. Builds Concat(Slices(Concat)) and
+/// expected a single Concat after optimizations.
+TEST_F(GraphOptz, concatSliceElimMultiConcat) {
+  std::array<NodeValue, 4> inputs;
+  for (size_t i = 0; i < 4; i++) {
+    auto *P = mod_.createPlaceholder(ElemKind::FloatTy, {2, 4},
+                                     "in_" + std::to_string(i), false);
+    bindings_.allocate(P)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+    inputs[i] = P;
+  }
+  auto *CN0 = F_->createConcat("merge0", inputs, /* axis */ 1);
+
+  auto *SN0 = F_->createSlice("slice0", CN0, {0, 0}, {2, 4});
+  auto *SN1 = F_->createSlice("slice1", CN0, {0, 4}, {2, 8});
+  auto *SN2 = F_->createSlice("slice2", CN0, {0, 8}, {2, 12});
+  auto *SN3 = F_->createSlice("slice3", CN0, {0, 12}, {2, 16});
+
+  auto *CN1 = F_->createConcat("merge1", {SN1, SN0, SN3, SN2}, /* axis */ 1);
+  F_->createSave("save", CN1);
+
+  // We created a concat followed by 4 slices of its results followed by another
+  // concat.
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 4);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Check that one concat and slices are gone.
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SliceNodeKind), 0);
+
+  checkNumericalEquivalence(0.0f);
 }
 
 // Check the transformation Concat(Reshape(x) * N) -> Reshape(Concat(x * N)).
