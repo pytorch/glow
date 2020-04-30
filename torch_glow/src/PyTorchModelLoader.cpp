@@ -1646,12 +1646,18 @@ Error PyTorchModelLoader::loadTypeAs(const torch::jit::Node *ptNode) {
   glow::NodeValue typeNode;
   ASSIGN_VALUE_OR_RETURN_ERR(typeNode, getGlowNodeValueForValue(inputs[1]));
   ASSIGN_VALUE_OR_RETURN_ERR(dataValue, getGlowNodeValueForValue(inputs[0]));
-  auto outType = typeNode.getType();
+  auto typeAsType = typeNode.getType();
+  auto inputShape = dataValue.getType();
 
-  glow::Node *bcast =
-      F_.createBroadcast("typeas_broadcast", dataValue, typeNode.dims(), 0);
+  if (typeAsType->getElementType() == inputShape->getElementType()) {
+    // nop conversion
+    return addValueMapping(outputs[0], dataValue);
+  }
+
+  auto outTypeRef =
+      new glow::Type(typeAsType->getElementType(), inputShape->dims());
   glow::ConvertToNode *glowNode =
-      F_.createConvertTo("typeas_convert", bcast, outType);
+      F_.createConvertTo("typeas", dataValue, outTypeRef);
 
   return addValueMapping(outputs[0], glowNode->getResult());
 }
