@@ -26,15 +26,6 @@
 
 #include <fstream>
 
-namespace {
-static llvm::cl::opt<bool> optimizeIR("optimize-ir",
-                                      llvm::cl::desc("Enable IR optimizations"),
-                                      llvm::cl::init(true), llvm::cl::Hidden);
-
-static llvm::cl::opt<bool> dumpIR("dump-ir",
-                                  llvm::cl::desc("Prints IR to stdout"));
-} // namespace
-
 namespace glow {
 llvm::StringRef getNameOfPass(IRFunctionPassID passID) {
   switch (passID) {

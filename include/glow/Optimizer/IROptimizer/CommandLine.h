@@ -19,7 +19,13 @@
 
 #include "llvm/Support/CommandLine.h"
 
-/// Option to enable the IR debug instrumentation.
+/// Option to optimize the IR (default true).
+extern llvm::cl::opt<bool> optimizeIR;
+
+/// Option to dump the IR (default false).
+extern llvm::cl::opt<bool> dumpIR;
+
+/// Option to enable the IR debug instrumentation (default false).
 extern llvm::cl::opt<bool> instrumentDebug;
 
 /// Option to choose the IR debug instrumentation directory.

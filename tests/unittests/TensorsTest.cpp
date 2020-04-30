@@ -1363,9 +1363,11 @@ TEST(Tensor, accessToTextFile) {
   if (tempFileRes.value() != 0) {
     FAIL() << "Failed to create temp file to write into.";
   }
-  dumpTensorToTextFile(tensorRef, path, {/*withType*/ true});
+  TensorSerializationOptions opts;
+  opts.withType = true;
+  dumpTensorToTextFile(tensorRef, path, opts);
   Tensor tensorTest;
-  loadTensorFromTextFile(tensorTest, path, {/*withType*/ true});
+  loadTensorFromTextFile(tensorTest, path, opts);
   llvm::sys::fs::remove(path);
 
   auto handleRef = tensorRef.getHandle<>();
@@ -1388,9 +1390,11 @@ TEST(Tensor, accessToBinaryFile) {
   if (tempFileRes.value() != 0) {
     FAIL() << "Failed to create temp file to write into.";
   }
-  dumpTensorToBinaryFile(tensorRef, path, {/*withType*/ true});
+  TensorSerializationOptions opts;
+  opts.withType = true;
+  dumpTensorToBinaryFile(tensorRef, path, opts);
   Tensor tensorTest;
-  loadTensorFromBinaryFile(tensorTest, path, {/*withType*/ true});
+  loadTensorFromBinaryFile(tensorTest, path, opts);
   llvm::sys::fs::remove(path);
 
   auto handleRef = tensorRef.getHandle<>();
@@ -1413,9 +1417,11 @@ TEST(Tensor, accessToRawTextFile) {
   if (tempFileRes.value() != 0) {
     FAIL() << "Failed to create temp file to write into.";
   }
-  dumpTensorToTextFile(tensorRef, path, {/*withType*/ false});
+  TensorSerializationOptions opts;
+  opts.withType = false;
+  dumpTensorToTextFile(tensorRef, path, opts);
   Tensor tensorTest(ElemKind::FloatTy, {10});
-  loadTensorFromTextFile(tensorTest, path, {/*withType*/ false});
+  loadTensorFromTextFile(tensorTest, path, opts);
   llvm::sys::fs::remove(path);
 
   auto handleRef = tensorRef.getHandle<>();
@@ -1510,9 +1516,11 @@ TEST(Tensor, accessToRawBinaryFile) {
   if (tempFileRes.value() != 0) {
     FAIL() << "Failed to create temp file to write into.";
   }
-  dumpTensorToBinaryFile(tensorRef, path, {/*withType*/ false});
+  TensorSerializationOptions opts;
+  opts.withType = false;
+  dumpTensorToBinaryFile(tensorRef, path, opts);
   Tensor tensorTest(ElemKind::FloatTy, {10});
-  loadTensorFromBinaryFile(tensorTest, path, {/*withType*/ false});
+  loadTensorFromBinaryFile(tensorTest, path, opts);
   llvm::sys::fs::remove(path);
 
   auto handleRef = tensorRef.getHandle<>();

@@ -18,6 +18,15 @@
 
 static llvm::cl::OptionCategory IROptimizerCat("IR Optimizer Options");
 
+llvm::cl::opt<bool> optimizeIR("optimize-ir",
+                               llvm::cl::desc("Enable IR optimizations"),
+                               llvm::cl::init(true),
+                               llvm::cl::cat(IROptimizerCat));
+
+llvm::cl::opt<bool> dumpIR("dump-ir", llvm::cl::desc("Prints IR to stdout"),
+                           llvm::cl::init(false),
+                           llvm::cl::cat(IROptimizerCat));
+
 llvm::cl::opt<bool>
     instrumentDebug("instrument-debug",
                     llvm::cl::desc("Instrument the IR for debugging"),

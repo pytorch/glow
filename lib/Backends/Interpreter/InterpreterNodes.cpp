@@ -4324,13 +4324,21 @@ void BoundInterpreterFunction::fwdDebugPrintInst(const DebugPrintInst *I) {
     dumpImpl(T);
     llvm::outs() << "\n";
   } else if (format == "bin") {
-    glow::dumpTensorToBinaryFile(*T, filename, {/*withType*/ true});
+    TensorSerializationOptions opts;
+    opts.withType = true;
+    glow::dumpTensorToBinaryFile(*T, filename, opts);
   } else if (format == "txt") {
-    glow::dumpTensorToTextFile(*T, filename, {/*withType*/ true});
+    TensorSerializationOptions opts;
+    opts.withType = true;
+    glow::dumpTensorToTextFile(*T, filename, opts);
   } else if (format == "rawbin") {
-    glow::dumpTensorToBinaryFile(*T, filename, {/*withType*/ false});
+    TensorSerializationOptions opts;
+    opts.withType = false;
+    glow::dumpTensorToBinaryFile(*T, filename, opts);
   } else if (format == "rawtxt") {
-    glow::dumpTensorToTextFile(*T, filename, {/*withType*/ false});
+    TensorSerializationOptions opts;
+    opts.withType = false;
+    glow::dumpTensorToTextFile(*T, filename, opts);
   } else {
     llvm_unreachable("DebugPrint format not supported!");
   }
