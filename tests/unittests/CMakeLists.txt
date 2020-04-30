@@ -351,6 +351,22 @@ add_glow_test(MemoryAllocatorTest
               ${GLOW_BINARY_DIR}/tests/MemoryAllocatorTest
                   --gtest_output=xml:MemoryAllocatorTest.xml)
 
+add_executable(NodeSplittingTest
+               NodeSplittingTest.cpp)
+target_link_libraries(NodeSplittingTest
+                      PRIVATE
+                        Backends
+                        BackendTestUtils
+                        ExecutionEngine
+                        Graph
+                        IR
+                        GraphOptimizer
+                        gtest
+                        TestMain)
+add_glow_test(NodeSplittingTest
+              ${GLOW_BINARY_DIR}/tests/NodeSplittingTest
+                  --gtest_output=xml:NodeSplittingTest.xml)
+
 if(GLOW_WITH_OPENCL)
   add_executable(OCLTest
                  OCLTest.cpp)

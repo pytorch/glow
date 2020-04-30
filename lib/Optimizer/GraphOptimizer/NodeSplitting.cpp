@@ -29,8 +29,9 @@ using llvm::isa;
 ///===---------------------------------------------------------------------===//
 ///                                SliceRange
 ///===---------------------------------------------------------------------===//
-/// Dimension range representing a [start, stop] index interval (both ends are
-/// included) along some tensor dimension.
+/// Dimension range representing a contiguous [start, stop] index interval
+/// (both ends are included) along some tensor dimension. The indices are
+/// assumed to be 0 based (C indexing).
 using DimRange = std::pair<dim_t, dim_t>;
 
 /// Dimension paddings representing a virtual padding before/after a given
@@ -103,7 +104,7 @@ public:
     return true;
   }
 
-  /// Get slice range size along dimension \dim.
+  /// Get slice range size along dimension \p dim.
   dim_t getSize(size_t dim) const {
     assert(dim < ranges_.size() && "Invalid dimension!");
     return ranges_[dim].second - ranges_[dim].first + 1;
@@ -119,11 +120,35 @@ public:
     return true;
   }
 
-  /// Verify that both ends of a dimensions range are aligned to a given size.
-  bool isDimAligned(size_t dim, dim_t align) const {
+  /// Verify that both ends of a dimension \p dim are aligned to \p align. For
+  /// example [0, 3] which is same as [0, 4) has both ends aligned to 4.
+  bool isDimRangeAligned(size_t dim, dim_t align) const {
     assert(dim < ranges_.size() && "Invalid dimension!");
     return (ranges_[dim].first % align == 0) &&
            ((ranges_[dim].second + 1) % align == 0);
+  }
+
+  /// Multiply range for dimension \p dim with \p mult. For example if we
+  /// multiply the range [2, 3] which is same as [2, 4) with 2 we obtain the
+  /// range [4, 7] which is same as [4, 8).
+  void multiplyDimRangeWith(size_t dim, dim_t mult) {
+    assert(dim < ranges_.size() && "Invalid dimension!");
+    ranges_[dim].first = ranges_[dim].first * mult;
+    ranges_[dim].second = (ranges_[dim].second + 1) * mult - 1;
+  }
+
+  /// Verify whether this range is included by another range.
+  bool isIncludedBy(const SliceRange &other) const {
+    auto rangesOther = other.getRanges();
+    assert(ranges_.size() == rangesOther.size() &&
+           "Mismatch between ranges sizes!");
+    for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
+      if (!((rangesOther[dim].first <= ranges_[dim].first) &&
+            (ranges_[dim].second <= rangesOther[dim].second))) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /// Get a textual representation.
@@ -148,8 +173,8 @@ size_t SplitNodeOption::getSplitDimIdx(dim_t splitDim) const {
   return std::distance(splitDims_.begin(), splitDimsIt);
 }
 
-std::vector<dim_t> SplitNodeByNumChunks::splitAlongDim(dim_t dimSize,
-                                                       size_t dim) const {
+std::vector<dim_t> SplitNodeByNumChunks::splitAlongDim(size_t dim,
+                                                       dim_t dimSize) const {
   size_t dimIdx = getSplitDimIdx(dim);
   dim_t numChunks = numChunks_[dimIdx];
   CHECK((1 <= numChunks) && (numChunks <= dimSize))
@@ -179,8 +204,8 @@ std::vector<dim_t> SplitNodeByNumChunks::splitAlongDim(dim_t dimSize,
   return chunkSizes;
 }
 
-std::vector<dim_t> SplitNodeByChunkSize::splitAlongDim(dim_t dimSize,
-                                                       size_t dim) const {
+std::vector<dim_t> SplitNodeByChunkSize::splitAlongDim(size_t dim,
+                                                       dim_t dimSize) const {
   size_t dimIdx = getSplitDimIdx(dim);
   dim_t chunkSize = chunkSizes_[dimIdx];
   CHECK((1 <= chunkSize) && (chunkSize <= dimSize))
@@ -210,8 +235,8 @@ std::vector<dim_t> SplitNodeByChunkSize::splitAlongDim(dim_t dimSize,
   return chunkSizes;
 }
 
-std::vector<dim_t> SplitNodeByChunkSizes::splitAlongDim(dim_t dimSize,
-                                                        size_t dim) const {
+std::vector<dim_t> SplitNodeByChunkSizes::splitAlongDim(size_t dim,
+                                                        dim_t dimSize) const {
   size_t dimIdx = getSplitDimIdx(dim);
   std::vector<dim_t> chunkSizes = chunkSizes_[dimIdx];
   size_t numChunks = chunkSizes.size();
@@ -225,8 +250,8 @@ std::vector<dim_t> SplitNodeByChunkSizes::splitAlongDim(dim_t dimSize,
   return chunkSizes;
 }
 
-std::vector<dim_t> SplitNodeByChunkWeights::splitAlongDim(dim_t dimSize,
-                                                          size_t dim) const {
+std::vector<dim_t> SplitNodeByChunkWeights::splitAlongDim(size_t dim,
+                                                          dim_t dimSize) const {
   size_t dimIdx = getSplitDimIdx(dim);
   const std::vector<float> &chunkWeights = chunkWeights_[dimIdx];
   dim_t numChunks = chunkWeights.size();
@@ -280,7 +305,7 @@ splitSliceRanges(const std::vector<SliceRange> &ranges, size_t dim,
 
     // Split dimension.
     dim_t dimSize = range.getSize(dim);
-    std::vector<dim_t> chunkSizes = splitOption->splitAlongDim(dimSize, dim);
+    std::vector<dim_t> chunkSizes = splitOption->splitAlongDim(dim, dimSize);
 
     // Check for empty chunks.
     for (auto chunkSize : chunkSizes) {
@@ -306,7 +331,7 @@ splitSliceRanges(const std::vector<SliceRange> &ranges, size_t dim,
       splitRanges[idx][dim].second = chunkStart + chunkSize - 1;
       chunkStart += chunkSize;
     }
-    CHECK(chunkStart - 1 == range[dim].second)
+    CHECK(splitRanges.back()[dim].second == range[dim].second)
         << "Inconsistent splitting of SliceRange!";
 
     // Append split slice ranges.
@@ -323,7 +348,7 @@ splitSliceRanges(const std::vector<SliceRange> &ranges, size_t dim,
 using CheckedSliceRange = std::pair<bool, SliceRange>;
 
 /// Definition of a functional mapping between two slice ranges with extra
-/// information about whether the mapping is allowed to be used.
+/// information about whether the mapping is allowed to be used (valid).
 using CheckedSliceRangeMap =
     std::function<CheckedSliceRange(const SliceRange &)>;
 
@@ -335,20 +360,36 @@ CheckedSliceRange CheckedSliceRangeMapIdentity(const SliceRange &range) {
 /// Definition of a pair with an operand index and a checked slice range map.
 using OpIdxAndMap = std::pair<unsigned, CheckedSliceRangeMap>;
 
-/// Utility function to verify that a given slice range map \p map represents a
-/// mapping between the input slice ranges \p ranges and the output slice ranges
-/// \p mappedRanges.
-static bool
-verifyCheckedSliceRangeMap(const CheckedSliceRangeMap &map,
-                           const std::vector<SliceRange> &ranges,
-                           const std::vector<SliceRange> &mappedRanges) {
+/// Utility function to verify that a given slice range \p map represents an
+/// exact mapping from \p mapInputRanges to \p mapOutputRanges.
+static bool isMappingExact(const CheckedSliceRangeMap &map,
+                           const std::vector<SliceRange> &mapInputRanges,
+                           const std::vector<SliceRange> &mapOutputRanges) {
   bool mapOk = true;
-  assert(ranges.size() == mappedRanges.size() &&
+  assert(mapInputRanges.size() == mapOutputRanges.size() &&
          "Slice ranges length mismatch for CheckedSliceRangeMap verification!");
-  for (size_t idx = 0; idx < ranges.size(); idx++) {
-    auto checkedSliceRange = map(ranges[idx]);
+  for (size_t idx = 0, e = mapInputRanges.size(); idx < e; ++idx) {
+    auto checkedSliceRange = map(mapInputRanges[idx]);
     mapOk = mapOk && checkedSliceRange.first;
-    mapOk = mapOk && (checkedSliceRange.second == mappedRanges[idx]);
+    mapOk = mapOk && (checkedSliceRange.second == mapOutputRanges[idx]);
+  }
+  return mapOk;
+}
+
+/// Utility function to verify that a given slice range \p map when applied to
+/// \p mapInputRanges produces ranges which are included in \p mapOutputRanges.
+/// This is a weaker verification than \ref isMappingExact.
+static bool isMappingIncluded(const CheckedSliceRangeMap &map,
+                              const std::vector<SliceRange> &mapInputRanges,
+                              const std::vector<SliceRange> &mapOutputRanges) {
+  bool mapOk = true;
+  assert(mapInputRanges.size() == mapOutputRanges.size() &&
+         "Slice ranges length mismatch for CheckedSliceRangeMap verification!");
+  for (size_t idx = 0, e = mapInputRanges.size(); idx < e; ++idx) {
+    auto checkedSliceRange = map(mapInputRanges[idx]);
+    mapOk = mapOk && checkedSliceRange.first;
+    mapOk =
+        mapOk && checkedSliceRange.second.isIncludedBy(mapOutputRanges[idx]);
   }
   return mapOk;
 }
@@ -441,20 +482,34 @@ getConvInputChannelCheckedRange(const DimRange &outputSliceRange,
   CHECK(outputChannels % group == 0)
       << "Output channels must be divisible by group!";
 
-  // Allow splitting the input channels only when the number of output channels
-  // equals the convolution group (depthwise convolution). If not, the split is
-  // allowed if the output channel slice is aligned to convolution group.
-  dim_t filterChannels = inputChannels / group;
-  DimRange inputDimRange;
-  bool allowed = true;
-  if (outputChannels == group) {
-    inputDimRange.first = outputSliceRange.first * filterChannels;
-    inputDimRange.second = (outputSliceRange.second + 1) * filterChannels - 1;
+  dim_t inputChannelsPerGroup = inputChannels / group;
+  dim_t outputChannelsPerGroup = outputChannels / group;
+  dim_t outputSliceChannels = SliceRange({outputSliceRange}).getSize(0);
+
+  // Output slice range start/stop group index.
+  dim_t outputSliceRangeStartGroupIdx =
+      outputSliceRange.first / outputChannelsPerGroup;
+  dim_t outputSliceRangeStopGroupIdx =
+      outputSliceRange.second / outputChannelsPerGroup;
+
+  bool allowed = false;
+  if (outputSliceChannels <= outputChannelsPerGroup) {
+    // If the output slice range spans fully or partially one group then both
+    // ends of the range must be part of the same group.
+    allowed = (outputSliceRangeStartGroupIdx == outputSliceRangeStopGroupIdx);
   } else {
-    allowed = SliceRange({outputSliceRange}).isDimAligned(0, group);
-    inputDimRange = inputRange;
+    // If the output slice range spans multiple groups then both ends of the
+    // range must be aligned to outputChannelsPerGroup.
+    allowed = SliceRange({outputSliceRange})
+                  .isDimRangeAligned(0, outputChannelsPerGroup);
   }
-  return {allowed, inputDimRange};
+
+  // Compute input slice range as a multiple of groups.
+  DimRange inputSliceRange;
+  inputSliceRange.first = outputSliceRangeStartGroupIdx * inputChannelsPerGroup;
+  inputSliceRange.second =
+      (outputSliceRangeStopGroupIdx + 1) * inputChannelsPerGroup - 1;
+  return {allowed, inputSliceRange};
 }
 
 template <typename Shape>
@@ -572,8 +627,22 @@ void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
       SliceRange(convSplitNode->getType(ConvolutionNode::ResultIdx))
           .getSize(Shape::dimC);
   auto group = convOrigNode->getGroup();
-  if (outputChannels == group) {
-    convSplitNode->setGroup(static_cast<unsigned_t>(outputSliceChannels));
+
+  CHECK(outputChannels % group == 0)
+      << "Output channels must be divisible by group!";
+  dim_t outputChannelsPerGroup = outputChannels / group;
+
+  if (outputSliceChannels <= outputChannelsPerGroup) {
+    // If the output slice range spans fully or partially one group then we
+    // set the group to 1.
+    convSplitNode->setGroup(1);
+  } else {
+    // If the output slice range spans multiple groups then we set the group
+    CHECK(outputSliceChannels % outputChannelsPerGroup == 0)
+        << "Output slice channels must be divisible by the output channels per "
+           "group!";
+    dim_t splitGroup = outputSliceChannels / outputChannelsPerGroup;
+    convSplitNode->setGroup(static_cast<unsigned_t>(splitGroup));
   }
 }
 
@@ -665,6 +734,16 @@ void PoolSplitNodeModifier(const Node *origNode, Node *splitNode,
 ///===---------------------------------------------------------------------===//
 ///                            verifySplitParams
 ///===---------------------------------------------------------------------===//
+/// List of nodes for which there is a weak mapping between input and output
+/// and thus a weaker verification must be performed. Such an example is the
+/// Conv2D/MaxPool node when using strides larger than 1 resulting in cases
+/// where the output operand does not reference the input operand entirely.
+static std::vector<Kinded::Kind> weakOutToInMappingNodeKinds = {
+    Kinded::Kind::ConvolutionNodeKind,
+    Kinded::Kind::MaxPoolNodeKind,
+    Kinded::Kind::AvgPoolNodeKind,
+};
+
 /// Function to verify the split parameters.
 static Error
 verifySplitParams(const Node *node, dim_t splitOutputIdx,
@@ -730,18 +809,27 @@ verifySplitParams(const Node *node, dim_t splitOutputIdx,
   for (const auto &inputIdxMap : inputIdxAndMaps) {
     SliceRange inputRange =
         SliceRange(node->getNthInput(inputIdxMap.first).getType());
-    RETURN_ERR_IF_NOT(verifyCheckedSliceRangeMap(
-                          inputIdxMap.second, {splitOutputRange}, {inputRange}),
-                      "Invalid input range map for splitting node!");
+    if (std::find(weakOutToInMappingNodeKinds.begin(),
+                  weakOutToInMappingNodeKinds.end(),
+                  node->getKind()) != weakOutToInMappingNodeKinds.end()) {
+      // Verify weak mapping.
+      RETURN_ERR_IF_NOT(isMappingIncluded(inputIdxMap.second,
+                                          {splitOutputRange}, {inputRange}),
+                        "Invalid input range map for splitting node!");
+    } else {
+      // Verify exact mapping.
+      RETURN_ERR_IF_NOT(
+          isMappingExact(inputIdxMap.second, {splitOutputRange}, {inputRange}),
+          "Invalid input range map for splitting node!");
+    }
   }
 
   // Verify the output slice range maps.
   for (const auto &outputIdxMap : outputIdxAndMaps) {
     SliceRange outputRange = SliceRange(node->getType(outputIdxMap.first));
-    RETURN_ERR_IF_NOT(verifyCheckedSliceRangeMap(outputIdxMap.second,
-                                                 {splitOutputRange},
-                                                 {outputRange}),
-                      "Invalid output range map for splitting node!");
+    RETURN_ERR_IF_NOT(
+        isMappingExact(outputIdxMap.second, {splitOutputRange}, {outputRange}),
+        "Invalid output range map for splitting node!");
   }
 
   return Error::success();

@@ -55,7 +55,7 @@ public:
 
   /// Split a given dimension size \p dimSize along the dimension \p dim.
   /// \returns the chunks sizes after splitting.
-  virtual std::vector<dim_t> splitAlongDim(dim_t dimSize, size_t dim) const = 0;
+  virtual std::vector<dim_t> splitAlongDim(size_t dim, dim_t dimSize) const = 0;
 
   /// Dtor.
   virtual ~SplitNodeOption() = default;
@@ -87,7 +87,7 @@ public:
 
   /// Split a given dimension size \p dimSize along the dimension \p dim.
   /// \returns the chunks sizes after splitting.
-  std::vector<dim_t> splitAlongDim(dim_t dimSize, size_t dim) const override;
+  std::vector<dim_t> splitAlongDim(size_t dim, dim_t dimSize) const override;
 };
 
 /// Split option used for splitting a node along the dimensions \ref splitDims
@@ -119,7 +119,7 @@ public:
 
   /// Split a given dimension size \p dimSize along the dimension \p dim.
   /// \returns the chunks sizes after splitting.
-  std::vector<dim_t> splitAlongDim(dim_t dimSize, size_t dim) const override;
+  std::vector<dim_t> splitAlongDim(size_t dim, dim_t dimSize) const override;
 };
 
 /// Split option used for splitting a node along the dimensions \ref splitDims
@@ -143,7 +143,7 @@ public:
 
   /// Split a given dimension size \p dimSize along the dimension \p dim.
   /// \returns the chunks sizes after splitting.
-  std::vector<dim_t> splitAlongDim(dim_t dimSize, size_t dim) const override;
+  std::vector<dim_t> splitAlongDim(size_t dim, dim_t dimSize) const override;
 };
 
 /// Split option used for splitting a node along the dimensions \ref splitDims
@@ -171,7 +171,7 @@ public:
 
   /// Split a given dimension size \p dimSize along the dimension \p dim.
   /// \returns the chunks sizes after splitting.
-  std::vector<dim_t> splitAlongDim(dim_t dimSize, size_t dim) const override;
+  std::vector<dim_t> splitAlongDim(size_t dim, dim_t dimSize) const override;
 };
 
 /// Split node option map provided to the node splitting procedure consisting in
