@@ -20,6 +20,7 @@
 #include "glow/Support/Support.h"
 
 #include <mutex>
+#include <sstream>
 #include <torch/csrc/jit/runtime/argument_spec.h>
 #include <torch/csrc/utils/hash.h>
 
@@ -50,7 +51,12 @@ size_t CachingGraphRunner::computeGraphHash(
         inputHash = torch::hash_combine(inputHash, elHash);
       }
       hash = torch::hash_combine(hash, inputHash);
-    } // else continue;;
+    } else if (input.isObject()) {
+      std::stringstream ss;
+      ss << input;
+      size_t objHash = std::hash<std::string>()(ss.str());
+      hash = torch::hash_combine(hash, objHash);
+    }
   }
   return hash;
 }
