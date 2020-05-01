@@ -860,7 +860,7 @@ verifySplitNodes(const Node *node, dim_t splitOutputIdx,
   for (const auto &splitOutputSlice : splitOutputSlices) {
 
     // Create clone to inherit all the inputs/members of the original node.
-    Node* clone = node->clone();
+    Node *clone = node->clone();
     splitNodes.push_back(clone);
 
     // Detach clone from all the inputs of the original node.
@@ -889,9 +889,9 @@ verifySplitNodes(const Node *node, dim_t splitOutputIdx,
       outputRanges[outputIdxMap.first] = outputCheckedRange.second;
     }
 
-    // Early return.
+    // Early break.
     if (!splitNodesCheck) {
-      return splitNodesCheck;
+      break;
     }
 
     // Set clone input types. Since a node does not own its input types and
@@ -954,9 +954,9 @@ verifySplitNodes(const Node *node, dim_t splitOutputIdx,
       RETURN_ERR("Invalid node obtained during node splitting!");
     }
 
-    // Early return.
+    // Early break.
     if (!splitNodesCheck) {
-      return splitNodesCheck;
+      break;
     }
   }
 
