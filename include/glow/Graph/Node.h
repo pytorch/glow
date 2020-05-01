@@ -55,11 +55,6 @@ protected:
   /// of the current node.
   NodeHandle predicate_;
 
-  /// Destroys a node and deallocates the memory. This method is typically
-  /// implicitly invoked when a node is being removed from the intrusive list of
-  /// nodes.
-  static void destroyNode(Node *N);
-
   /// Link to the function holding this node.
   Function *parent_{nullptr};
 
@@ -156,6 +151,12 @@ public:
   }
 
   ~Node() { releaseUsers(); }
+
+  /// Destroys a node and deallocates the memory. This method is implicitly
+  /// invoked by the parent function when a node is being removed from the
+  /// intrusive list of nodes. You can also invoke this method explicitly to
+  /// destroy a node which has no parent function (orphan node).
+  static void destroyNode(Node *N);
 
   /// \returns the n'th result type of the node.
   TypeRef getType(unsigned idx) const;

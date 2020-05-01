@@ -637,7 +637,8 @@ void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
     // set the group to 1.
     convSplitNode->setGroup(1);
   } else {
-    // If the output slice range spans multiple groups then we set the group
+    // If the output slice range spans more than a group then it must span a
+    // multiple of outputChannelsPerGroup.
     CHECK(outputSliceChannels % outputChannelsPerGroup == 0)
         << "Output slice channels must be divisible by the output channels per "
            "group!";
@@ -852,15 +853,15 @@ verifySplitNodes(const Node *node, dim_t splitOutputIdx,
   // which could be invalid or could not meet all the constraints and
   // hence be later removed from the graph.
   bool splitNodesCheck = true;
-  std::list<std::unique_ptr<Node>> splitNodes;
+  std::vector<Node *> splitNodes;
   std::list<std::unique_ptr<SliceNode>> inputSliceNodes;
   std::list<Type> inputTypes;
   std::list<Type> outputTypes;
   for (const auto &splitOutputSlice : splitOutputSlices) {
 
     // Create clone to inherit all the inputs/members of the original node.
-    splitNodes.push_back(std::unique_ptr<Node>(node->clone()));
-    Node *clone = splitNodes.back().get();
+    Node* clone = node->clone();
+    splitNodes.push_back(clone);
 
     // Detach clone from all the inputs of the original node.
     for (unsigned idx = 0, e = clone->getNumInputs(); idx < e; ++idx) {
@@ -962,11 +963,14 @@ verifySplitNodes(const Node *node, dim_t splitOutputIdx,
   // Check split nodes against all user constraints.
   SplitNodeContext splitCtx;
   splitCtx.origNode = node;
-  for (const auto &splitNode : splitNodes) {
-    splitCtx.splitNodes.push_back(splitNode.get());
-  }
+  splitCtx.splitNodes = splitNodes;
   for (const auto constraint : splitConstraints) {
     splitNodesCheck = splitNodesCheck && constraint(splitCtx);
+  }
+
+  // Explicitly destroy the temporary clones.
+  for (auto splitNode : splitNodes) {
+    Node::destroyNode(splitNode);
   }
 
   return splitNodesCheck;
