@@ -699,7 +699,8 @@ struct EmbeddingBagInputs {
   };
 };
 
-/// Indexes of fb::embedding_bag_byte_rowwise_offsets inputs.
+/// Indexes used for fb::embedding_bag_byte_rowwise_offsets and
+/// fb::embedding_bag_4bit_rowwise_offsets inputs.
 struct EmbeddingBagByteRowwiseOffsetsInputs {
   enum {
     weight,
@@ -711,6 +712,7 @@ struct EmbeddingBagByteRowwiseOffsetsInputs {
     per_sample_weights,
   };
 };
+
 } // namespace
 
 // static
@@ -786,6 +788,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::embedding_bag"}, &PyTorchModelLoader::loadEmbeddingBag},
       {{"fb::embedding_bag_byte_rowwise_offsets"},
        &PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets},
+      {{"fb::embedding_bag_4bit_rowwise_offsets"},
+       &PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets},
   });
 
   // Add in custom operator loaders.
@@ -3531,8 +3535,8 @@ Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], EB->getResult());
 }
 
-Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
-    const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsetsHelper(
+    const torch::jit::Node *ptNode, bool is4Bit) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -7, outputs, 1));
@@ -3588,8 +3592,11 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
 
   glow::NodeValue perSampleWeights = loadNodeValueOrCreateBroadcastedConstant(
       inputs[EmbeddingBagByteRowwiseOffsetsInputs::per_sample_weights],
-      "EmbeddingBagByteRowwiseOffsets.ones",
-      glow::Type(ElemKind::FloatTy, {indices.dims()[0]}), 1.0);
+      (is4Bit ? "EmbeddingBag4BitRowwiseOffsets.ones"
+              : "EmbeddingBagByteRowwiseOffsets.ones"),
+      glow::Type((is4Bit ? ElemKind::Float16Ty : ElemKind::FloatTy),
+                 {indices.dims()[0]}),
+      1.0);
 
   glow::Constant *weightConstant =
       llvm::dyn_cast<glow::Constant>(weight.getNode());
@@ -3598,17 +3605,30 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
                     strFormat("Expected Weight to be a Constant but found: %s",
                               weight.getNode()->getKindName()));
 
-  TypeRef fusedTy = F_.getParent()->uniqueType(ElemKind::UInt8FusedQTy,
-                                               weight.dims(), 0.0, 0);
+  TypeRef fusedTy = F_.getParent()->uniqueType(
+      (is4Bit ? ElemKind::UInt4FusedFP16QTy : ElemKind::UInt8FusedQTy),
+      weight.dims(), 0.0, 0);
 
   weightConstant->setType(Storage::OutputIdx, fusedTy);
   weightConstant->setPayloadType(fusedTy);
 
   auto *EB = F_.createEmbeddingBagByteRowwiseOffsets(
-      "EmbeddingBagByteRowwiseOffsets", weightConstant->getOutput(),
-      perSampleWeights, indices, offsets, false, true /* hasEndOffset */);
+      (is4Bit ? "EmbeddingBag4BitRowwiseOffsets"
+              : "EmbeddingBagByteRowwiseOffsets"),
+      weightConstant->getOutput(), perSampleWeights, indices, offsets, false,
+      true /* hasEndOffset */);
 
   return addValueMapping(outputs[0], EB->getResult());
+}
+
+Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
+    const torch::jit::Node *ptNode) {
+  return loadEmbeddingBagByteRowwiseOffsetsHelper(ptNode);
+}
+
+Error PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets(
+    const torch::jit::Node *ptNode) {
+  return loadEmbeddingBagByteRowwiseOffsetsHelper(ptNode, true);
 }
 
 Error PyTorchModelLoader::loadAttributes(
