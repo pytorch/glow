@@ -253,11 +253,13 @@ int main(int argc, char **argv) {
       std::string filePath = inputDatasets[inputIdx][entryIdx];
       std::string fileFormat = inputFormats[inputIdx];
       if (fileFormat == "rawbin") {
-        glow::loadTensorFromBinaryFile(*inputTensor, filePath.c_str(),
-                                       {/*withType*/ false});
+        TensorSerializationOptions opts;
+        opts.withType = false;
+        glow::loadTensorFromBinaryFile(*inputTensor, filePath.c_str(), opts);
       } else if (fileFormat == "rawtxt") {
-        glow::loadTensorFromTextFile(*inputTensor, filePath.c_str(),
-                                     {/*withType*/ false});
+        TensorSerializationOptions opts;
+        opts.withType = false;
+        glow::loadTensorFromTextFile(*inputTensor, filePath.c_str(), opts);
       } else {
         exitWithErr(strFormat("Input dataset format '%s' invalid!",
                               fileFormat.c_str()));
