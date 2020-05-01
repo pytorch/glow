@@ -347,6 +347,17 @@ private:
   // \returns error on failure.
   Error loadEmbeddingBagByteRowwiseOffsets(const torch::jit::Node *ptNode);
 
+  // Load a PyTorch fb::embedding_bag_4bit_rowwise_offsets.
+  // \returns error on failure.
+  Error loadEmbeddingBag4BitRowwiseOffsets(const torch::jit::Node *ptNode);
+
+  // Helper function that implements the loading logic for
+  // fb::embedding_bag_4bit_rowwise_offsets and
+  // fb::embedding_bag_byte_rowwise_offsets.
+  // \returns error on failure.
+  Error loadEmbeddingBagByteRowwiseOffsetsHelper(const torch::jit::Node *ptNode,
+                                                 bool is4Bit = false);
+
   /// Load all PyTorch prim::GetAttr nodes in \p graph. This method uses the
   /// PyTorch Module hierarchy to map Values for all outputs of prim::GetAttr
   /// nodes. If the output type of a prim::GetAttr is a tensor, this will load
