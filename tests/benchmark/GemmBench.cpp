@@ -64,7 +64,17 @@ public:
                                           "output", false);
     Node *cur = input;
 
-    Placeholder *zeros;
+    Placeholder *ones;
+    if (param.k_ > param.n_) {
+      ones = mod->createPlaceholder(
+          param.dtype_, {param.m_ * (param.k_ - param.n_)}, "ones", false);
+      if (param.dtype_ == ElemKind::Float16Ty) {
+        bindings_.allocate(ones)->getHandle<float16_t>().clear(1.0);
+      } else if (param.dtype_ == ElemKind::FloatTy) {
+        bindings_.allocate(ones)->getHandle<float>().clear(1.0);
+      }
+    }
+
     Placeholder *weights;
     Placeholder *bias;
 
@@ -77,10 +87,10 @@ public:
                                     "bias" + std::to_string(layer), false);
 
       if (param.dtype_ == ElemKind::Float16Ty) {
-        bindings_.allocate(weights)->getHandle<float16_t>().clear(0);
+        bindings_.allocate(weights)->getHandle<float16_t>().clear(1.0);
         bindings_.allocate(bias)->getHandle<float16_t>().clear(32);
       } else if (param.dtype_ == ElemKind::FloatTy) {
-        bindings_.allocate(weights)->getHandle<float>().clear(0);
+        bindings_.allocate(weights)->getHandle<float>().clear(1.0);
         bindings_.allocate(bias)->getHandle<float>().clear(32);
       }
 
@@ -88,11 +98,24 @@ public:
       fc = fn->createFullyConnected("fc_" + std::to_string(layer), cur, weights,
                                     bias);
       cur = fc;
+
+      // Handle non-square cases
+      if (param.k_ > param.n_ && layer < (param.numLayers_ - 1)) {
+        Node *reshape1 = fn->createReshape("reshape1_" + std::to_string(layer),
+                                           fc, {param.m_ * param.n_});
+        Node *concat = fn->createConcat("concat_" + std::to_string(layer),
+                                        {reshape1, ones}, 0);
+        Node *reshape2 = fn->createReshape("reshape2_" + std::to_string(layer),
+                                           concat, {param.m_, param.k_});
+        cur = reshape2;
+      } else if (param.k_ < param.n_ && layer < (param.numLayers_ - 1)) {
+        Node *slice = fn->createSlice("slice_" + std::to_string(layer), fc,
+                                      {0, 0}, {param.m_, param.k_});
+        cur = slice;
+      }
     }
     fn->createSave("save1", cur, output);
-
     ::glow::convertPlaceholdersToConstants(fn, bindings_, {input, output});
-    fn->dumpDAG("FC.dot");
   }
 
   void setup() override {
@@ -117,6 +140,7 @@ public:
     }
 
     CompilationContext ctx;
+    ctx.dumpFinalGraph = true;
     EXIT_ON_ERR(hostManager_->addNetwork(std::move(mod), ctx));
   }
 
