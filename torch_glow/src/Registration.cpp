@@ -32,6 +32,7 @@
 
 #include <mutex>
 #include <shared_mutex>
+#include <signal.h>
 
 namespace glow {
 
@@ -142,11 +143,22 @@ void registerGlowOp(const c10::Symbol &symbol) {
 
         return [graphRunner](torch::jit::Stack &stack) {
           Error err = Error::empty();
+          // Store old Python signal handlers and install standard signal
+          // handlers, so that it is possible to kill/interrupt the process if
+          // needed.
+          typedef void (*sighandler_t)(int);
+          sighandler_t oldSigIntHandler = signal(SIGINT, SIG_DFL);
+          sighandler_t oldSigTermHandler = signal(SIGTERM, SIG_DFL);
+
           if (graphRunner->getSettings().preCompilePyTorchModule) {
             err = graphRunner->runOnly(stack);
           } else {
             err = graphRunner->run(stack);
           }
+
+          // Restore old Python signal handlers.
+          signal(SIGINT, oldSigIntHandler);
+          signal(SIGTERM, oldSigTermHandler);
 
           if (static_cast<bool>(err)) {
             // PyTorch framework expects an exception been thrown here.
