@@ -28,17 +28,18 @@
 /// abstraction between Error/Expected types and the specific classes that
 /// implement them.
 
-/// Consumes an Error \p err and \returns true iff the error contained an
+/// Consumes an Error and \returns true iff the error contained an
 /// ErrorValue. Calls the log method on ErrorValue if the optional argument \p
 /// log is passed.
 #define ERR_TO_BOOL(...)                                                       \
   (glow::detail::errorToBool(__FILE__, __LINE__, __VA_ARGS__))
 
-/// Consumes an Error \p err and \returns "success" if it does not contain an
+/// Consumes an Error and \returns "success" if it does not contain an
 /// ErrorValue or the result of calling the log() if it does.
-#define ERR_TO_STRING(err) (glow::detail::errorToString((err)))
+#define ERR_TO_STRING(...)                                                     \
+  (glow::detail::errorToString(__FILE__, __LINE__, __VA_ARGS__))
 
-/// Consumes an Error \p err. Calls the log method on the ErrorValue if the
+/// Consumes an Error. Calls the log method on the ErrorValue if the
 /// optional argument \p log is passed.
 #define ERR_TO_VOID(...)                                                       \
   (glow::detail::errorToVoid(__FILE__, __LINE__, __VA_ARGS__))
@@ -90,8 +91,7 @@
       lhs = std::move(rhsOrErrV.get());                                        \
     } else {                                                                   \
       auto err = rhsOrErrV.takeError();                                        \
-      err.addToStack(__FILE__, __LINE__);                                      \
-      FAIL() << errorToString(std::move(err));                                 \
+      FAIL() << ERR_TO_STRING(std::move(err));                                 \
     }                                                                          \
   } while (0)
 
@@ -124,8 +124,7 @@
     if (auto errV = std::forward<glow::detail::GlowError>(err)) {              \
       static_assert(glow::detail::IsError<decltype(errV)>::value,              \
                     "Expected value to be a Error");                           \
-      errV.addToStack(__FILE__, __LINE__);                                     \
-      FAIL() << errorToString(std::move(errV));                                \
+      FAIL() << ERR_TO_STRING(std::move(errV));                                \
     }                                                                          \
   } while (0)
 
@@ -303,15 +302,19 @@ public:
 
   /// Log to \p os relevant error information including the file name and
   /// line number the ErrorValue was created on as well as the message and/or
-  /// error code the ErrorValue was created with.
-  template <typename StreamT> void log(StreamT &os) const {
+  /// error code the ErrorValue was created with. If \p warning is true then
+  /// the log message will replace "Error" with "Warning", this is useful for
+  /// when Errors are used in non-exceptional conditions.
+  template <typename StreamT>
+  void log(StreamT &os, bool warning = false) const {
+    const char *mType = warning ? "Warning" : "Error";
     if (ec_ != ErrorCode::UNKNOWN) {
-      os << "\nError code: " << errorCodeToString(ec_);
+      os << "\n" << mType << " code: " << errorCodeToString(ec_);
     }
     if (!message_.empty()) {
-      os << "\nError message: " << message_;
+      os << "\n" << mType << " message: " << message_;
     }
-    os << "\nError return stack:\n";
+    os << "\n" << mType << " return stack:\n";
     for (const auto &p : stack_) {
       os << p.first.c_str() << ":" << p.second << "\n";
     }
@@ -322,7 +325,10 @@ public:
     stack_.push_back({fileName, lineNumber});
   }
 
-  std::string logToString() const;
+  /// If \p warning is true then the log message will replace "Error" with
+  /// "Warning", this is useful for when Errors are used in non-exceptional
+  /// conditions.
+  std::string logToString(bool warning = false) const;
 
   GlowErrorValue(std::string message, ErrorCode ec)
       : message_(message), ec_(ec) {}
@@ -781,25 +787,32 @@ GlowError makeError(const char *fileName, size_t lineNumber, Args &&... args) {
 
 /// Given an Error \p error, destroys the Error and returns true if an
 /// ErrorValue was contained. Logs if \p log is true and uses \p fileName and \p
-/// lineNumber for additional logging information.
-/// NOTE: this should not be used directly, use macros defined at the top of
-/// Error.h instead.
+/// lineNumber for additional logging information. If \p warning is true then
+/// the log message will replace "Error" with "Warning", this is useful for when
+/// Errors are used in non-exceptional conditions.
+/// NOTE: this should not be used
+/// directly, use macros defined at the top of Error.h instead.
 bool errorToBool(const char *fileName, size_t lineNumber, GlowError error,
-                 bool log = true);
+                 bool log = true, bool warning = false);
 
 /// Given an Error \p error, destroys the Error and returns a string that is the
 /// result of calling log() on the ErrorValue it contained if any and "success"
-/// otherwise.
-/// NOTE: this should not be used directly, use macros defined at the top of
-/// Error.h instead.
-std::string errorToString(GlowError error);
+/// otherwise. If \p warning is true then the log message will replace "Error"
+/// with "Warning", this is useful for when Errors are used in non-exceptional
+/// conditions.
+/// NOTE: this should not be used directly, use macros defined at
+/// the top of Error.h instead.
+std::string errorToString(const char *fileName, size_t lineNumber,
+                          GlowError error, bool warning = false);
 
 /// Given an Error \p error, destroys the Error. Logs if \p log is true and uses
-/// \p fileName and \p lineNumber for additional logging information.
+/// \p fileName and \p lineNumber for additional logging information. If \p
+/// warning is true then the log message will replace "Error" with "Warning",
+/// this is useful for when Errors are used in non-exceptional conditions.
 /// NOTE: this should not be used directly, use macros defined at the top of
 /// Error.h instead.
 void errorToVoid(const char *fileName, size_t lineNumber, GlowError error,
-                 bool log = true);
+                 bool log = true, bool warning = false);
 } // namespace detail
 
 /// This class holds an Error provided via the add method. If an Error is

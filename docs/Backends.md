@@ -120,7 +120,7 @@ Additionally, there are several virtual functions that backends can override:
   - Allow the backend to perform custom lowering from Node to Instruction IR.
     Returns true if lowering is performed, false otherwise.
 
-- `virtual FunctionPassPipeline getOptimizationPipeline() const;`
+- `virtual std::unique_ptr<FunctionPassPipeline> getOptimizationPipeline() const;`
 
   - Allows the backend to customize the graph optimizations that are performed
     when compiling a Function. Backend returns the

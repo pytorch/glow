@@ -371,6 +371,8 @@ public:
   /// Generates LLVM IR that materializes the string literal \p str.
   virtual llvm::Value *emitStringConst(llvm::IRBuilder<> &builder,
                                        llvm::StringRef str);
+  /// Emit symbols to JIT to allow it to use host side file printing.
+  void generateJITFileWriter();
   /// Register \p val as an argument that should not be specialized.
   virtual void markArgAsUnspecialized(llvm::Value *val);
   /// \returns bit-width of the target size_t.

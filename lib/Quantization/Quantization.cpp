@@ -429,9 +429,7 @@ protected:
     if (destTy->isQuantizedType()) {
       return function.createQuantize(nodeName + "_quantize", val, destTy);
     }
-    assert(destTy->getElementType() == ElemKind::FloatTy &&
-           "Can't dequantize to any type except float.");
-    return function.createDequantize(nodeName + "_dequantize", val);
+    return function.createDequantize(nodeName + "_dequantize", val, destTy);
   }
 
   /// All IRConstraint cases below assume that the input and output index that

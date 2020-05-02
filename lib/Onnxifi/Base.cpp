@@ -99,8 +99,10 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   } else {
     // TODO: Use a more specific ONNXIFI error code here to denote what about
     // this operator is not supported (shape, type, etc).
-    LOG(ERROR) << "Error when loading protobuf: "
-               << ERR_TO_STRING(loaderOrErr.takeError());
+    LOG(INFO)
+        << "ONNXIFI checkGraphCompatibility incompatibility found when loading "
+           "protobuf: "
+        << ERR_TO_STRING(loaderOrErr.takeError(), /*warning*/ true);
     return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
   }
 
@@ -114,29 +116,31 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   }
   Function *function = *module.getFunctions().begin();
 
-  CompilationContext cctx;
-  cctx.compMode = CompilationMode::Infer;
-  glow::lower(function, cctx, glowBackend_.get());
-
-  // Call the backend's transformPostLowering to match the normal compilation
-  // pipeline then DCE any nodes that are no longer needed.
-  auto changedOrErr = glowBackend_->transformPostLowering(function, cctx);
-  if (ERR_TO_BOOL(changedOrErr.takeError())) {
-    return ONNXIFI_STATUS_INTERNAL_ERROR;
-  }
-  if (*changedOrErr) {
-    runDCEPass(function, cctx);
-  }
-
-  if (!function->verify()) {
-    LOG(ERROR) << "ONNXIFI: Function verification failed.";
+  // Check if the function is verified as valid for Glow/the backend -- if not
+  // then conservatively early return on unsupported operator.
+  if (!function->verify(glowBackend_.get())) {
+    LOG(INFO)
+        << "ONNXIFI checkGraphCompatibility incompatibility: Glow function "
+           "verification failed.";
     return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
+  }
+
+  // Perform the normal optimization pipeline, returning an internal error if we
+  // encounter an issue during optimization.
+  CompilationContext cctx;
+  auto optErr = glow::optimizeFunction(function, *glowBackend_, cctx);
+  if (optErr) {
+    LOG(ERROR) << "Error during glow::optimizeFunction():\n" +
+                      ERR_TO_STRING(std::move(optErr));
+    return ONNXIFI_STATUS_INTERNAL_ERROR;
   }
 
   const auto &nodes = function->getNodes();
   for (const auto &node : nodes) {
     if (!glowBackend_->acceptForExecution(node)) {
-      LOG(ERROR) << "ONNXIFI: Op rejected by backend: " << node.getDebugDesc();
+      LOG(INFO) << "ONNXIFI checkGraphCompatibility incompatibility, op "
+                   "rejected by backend: "
+                << node.getDebugDesc();
       // TODO: Use a more specific ONNXIFI error code here to denote what
       // about this operator is not supported (shape, type, etc).
       return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
@@ -279,8 +283,7 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
       ctx->getPlaceholderBindings()->insert(
           inPhPtr, Tensor(inOnnxBuffer, inPhPtr->getType()));
     } else if (GlowEnablePartialTensors &&
-               backendPtr_->getBackend().supportsPartialTensors() &&
-               inOnnxBuffer && inOnnxTensorSize > 0) {
+               backendPtr_->getBackend().supportsPartialTensors()) {
       // We have a partial input buffer.  Create a padded unowned tensor that
       // remembers the actual size of the input.
       ctx->getPlaceholderBindings()->insert(
@@ -447,7 +450,6 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
         Placeholder *outPhPtr;
         if (outputsCount == onnxOutputNames_.size() &&
             onnxOutputNames_[i] == outOnnxTensor.name) {
-          CHECK(onnxOutputNames_[i] != outOnnxTensor.name);
           outPhPtr = onnxOutputPlaceholders_[i];
         } else {
           auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);

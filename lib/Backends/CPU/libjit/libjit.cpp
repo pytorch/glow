@@ -755,10 +755,9 @@ static void libjit_arg_max_generic(const T *inW, T2 *outW, const dim_t *inWdims,
   }
 }
 
-template <typename SrcTy, typename DstTy>
-void libjit_resizenearest_generic(DstTy *dst, const SrcTy *src,
-                                  const float *scale, const dim_t *inWdims,
-                                  const dim_t *outWdims) {
+template <typename T>
+void libjit_resizenearest_generic(T *dst, const T *src, const float *scale,
+                                  const dim_t *inWdims, const dim_t *outWdims) {
 
   for (dim_t ob = 0; ob < outWdims[0]; ++ob) {
     auto ib = std::min(dim_t(ob / (scale[0])), inWdims[0] - 1);
@@ -771,6 +770,39 @@ void libjit_resizenearest_generic(DstTy *dst, const SrcTy *src,
           const dim_t inIndex = libjit_getXYZW(inWdims, ib, ih, iw, ic);
           const dim_t outIndex = libjit_getXYZW(outWdims, ob, oh, ow, oc);
           dst[outIndex] = src[inIndex];
+        }
+      }
+    }
+  }
+}
+
+template <typename T>
+static void
+libjit_resizebilinear_generic(T *dst, const T *src, const float *scale,
+                              const dim_t *inWdims, const dim_t *outWdims) {
+  for (dim_t ob = 0; ob < outWdims[0]; ++ob) {
+    for (dim_t oh = 0; oh < outWdims[1]; ++oh) {
+      for (dim_t ow = 0; ow < outWdims[2]; ++ow) {
+        float ihf = oh / scale[1];
+        float iwf = ow / scale[2];
+        dim_t ih = dim_t(ihf);
+        dim_t iw = dim_t(iwf);
+
+        auto ih0 = std::min(ih, inWdims[1] - 1);
+        auto ih1 = std::min(ih + 1, inWdims[1] - 1);
+        auto iw0 = std::min(iw, inWdims[2] - 1);
+        auto iw1 = std::min(iw + 1, inWdims[2] - 1);
+
+        for (dim_t oc = 0; oc < outWdims[3]; ++oc) {
+          float v00 = src[libjit_getXYZW(inWdims, ob, ih0, iw0, oc)];
+          float v01 = src[libjit_getXYZW(inWdims, ob, ih0, iw1, oc)];
+          float v10 = src[libjit_getXYZW(inWdims, ob, ih1, iw0, oc)];
+          float v11 = src[libjit_getXYZW(inWdims, ob, ih1, iw1, oc)];
+
+          float hd = v00 + (v10 - v00) * (ihf - ih);
+          float hw = v01 + (v11 - v01) * (ihf - ih);
+          float result = hd + (hw - hd) * (iwf - iw);
+          dst[libjit_getXYZW(outWdims, ob, oh, ow, oc)] = result;
         }
       }
     }
@@ -808,6 +840,10 @@ static void find_min_max_f(float *tensor, dim_t size, float &min, float &max) {
 
     if (tensorVal > max)
       max = tensorVal;
+
+    // Sanity check for NaN and Infinity.
+    assert(!std::isnan(tensor[i]) && "NaN value found!");
+    assert(!std::isinf(tensor[i]) && "Infinity value found!");
   }
 }
 
@@ -1514,13 +1550,27 @@ int8_t libjit_element_cmp_lt_kernel_i8(dim_t idx, const int8_t *LHS,
   return libjit_scale_i32i8(lhs, pre, post, scale, 0) < rhs ? 1 : 0;
 }
 
-// tanh cannot be vectorized by LLVM yet. Therefore we use the following
+// Tanh cannot be vectorized by LLVM yet. Therefore we use the following
 // formula instead: 1 - 2 / (exp(x * 2) + 1), which is also used by Caffe2 and
 // provides a good accuracy.
 // Once LLVM supports the vectorization of tanh, we can replace this
 // approximation by a direct tanh call.
-DEFINE_DATA_PARALLEL_KERNEL(libjit_tanh_kernel_f, float,
-                            1 - 2 / (expf(LHS[idx] * 2) + 1))
+// When the LIBJIT compile option "-ffast-math" is enabled the intermediate
+// computation expf(x) for Tanh operator is not handled properly for very
+// large positive values which results in NaN values for the Tanh output.
+// Therefore when the "-ffast-math" is enabled we compute the Tanh such that
+// we avoid computing large values for the "expf" function.
+#ifdef FFAST_MATH
+DEFINE_DATA_PARALLEL_KERNEL_FUNC(libjit_tanh_kernel_f) {
+  float inpVal = LHS[idx];
+  float tanhVal = -1 + 2 / (expf(-2 * std::abs(inpVal)) + 1);
+  return std::copysignf(tanhVal, inpVal);
+}
+#else
+DEFINE_DATA_PARALLEL_KERNEL_FUNC(libjit_tanh_kernel_f) {
+  return 1 - 2 / (expf(LHS[idx] * 2) + 1);
+}
+#endif // FFAST_MATH
 
 int8_t libjit_intlookuptable_kernel_i8(dim_t idx, const int8_t *src,
                                        const int8_t *mapping) {
@@ -1546,10 +1596,24 @@ int8_t libjit_elementselect_kernel_i8(dim_t idx, const int8_t *cond,
                                               rhsPost, rhsScale, destOffset));
 }
 
+// When the LIBJIT compile option "-ffast-math" is enabled the intermediate
+// computation expf(x) for Sigmoid operator is not handled properly for very
+// large positive values which results in NaN values for the Sigmoid output.
+// Therefore when the "-ffast-math" is enabled we compute the Sigmoid such that
+// we avoid computing large values for the "expf" function.
+#ifdef FFAST_MATH
+DEFINE_DATA_PARALLEL_KERNEL_FUNC(libjit_sigmoid_kernel_f) {
+  float inpVal = LHS[idx];
+  float sigmoidVal = 1 / (1 + expf(-std::abs(inpVal)));
+  return (float)(std::signbit(inpVal)) + std::copysignf(sigmoidVal, inpVal);
+}
+#else
 DEFINE_DATA_PARALLEL_KERNEL_FUNC(libjit_sigmoid_kernel_f) {
   float e = expf(-LHS[idx]);
   return 1 / (e + 1);
 }
+#endif // FFAST_MATH
+
 DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_element_maxsplat_kernel_f,
                                              float, MAX(LHS[idx], val))
 DEFINE_DATA_PARALLEL_KERNEL_WITH_IMM_OPERAND(libjit_element_maxsplat_kernel_i8,
@@ -2224,6 +2288,29 @@ void libjit_resizenearest_u(int64_t *dst, const int64_t *src,
   libjit_resizenearest_generic(dst, src, scale, inWdims, outWdims);
 }
 
+void libjit_resizebilinear_f(float *dst, const float *src, const float *scale,
+                             const dim_t *inWdims, const dim_t *outWdims) {
+  libjit_resizebilinear_generic(dst, src, scale, inWdims, outWdims);
+}
+
+void libjit_resizebilinear_i8(int8_t *dst, const int8_t *src,
+                              const float *scale, const dim_t *inWdims,
+                              const dim_t *outWdims) {
+  libjit_resizebilinear_generic(dst, src, scale, inWdims, outWdims);
+}
+
+void libjit_resizebilinear_i32(int32_t *dst, const int32_t *src,
+                               const float *scale, const dim_t *inWdims,
+                               const dim_t *outWdims) {
+  libjit_resizebilinear_generic(dst, src, scale, inWdims, outWdims);
+}
+
+void libjit_resizebilinear_u(int64_t *dst, const int64_t *src,
+                             const float *scale, const dim_t *inWdims,
+                             const dim_t *outWdims) {
+  libjit_resizebilinear_generic(dst, src, scale, inWdims, outWdims);
+}
+
 void libjit_avg_pool_i8(const int8_t *inW, int8_t *outW, const dim_t *inWdims,
                         const dim_t *outWdims, dim_t *kernelSizes,
                         dim_t *strides, dim_t *pads, int32_t outOffset,
@@ -2456,13 +2543,6 @@ void libjit_softmax_grad_f_i32(float *inG, float *outW,
                                const int32_t *selectedW, const dim_t *idim,
                                const dim_t *selectdim) {
   libjit_softmax_grad_generic(inG, outW, selectedW, idim, selectdim);
-}
-
-void libjit_sigmoid_f(const float *inW, float *outW, dim_t numElem) {
-  for (dim_t i = 0; i < numElem; i++) {
-    float e = expf(-inW[i]);
-    outW[i] = 1 / (e + 1);
-  }
 }
 
 void libjit_topk_f_u(float *values, size_t *indices, const float *input,

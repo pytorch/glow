@@ -27,6 +27,8 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace glow {
@@ -34,6 +36,7 @@ class NNPICompiledFunction;
 namespace runtime {
 
 class NNPIResource;
+class InferenceContext;
 using StaticPlaceholderMap =
     std::unordered_map<const Placeholder *, std::weak_ptr<NNPIResource>>;
 
@@ -101,6 +104,29 @@ public:
 
   virtual Error startDeviceTrace(TraceContext *traceContext) override;
   virtual Error stopDeviceTrace(TraceContext *traceContext) override;
+  Error bindContext(std::string functionName, ExecutionContext *ctx,
+                    PlaceholderUsageMap &phUsage);
+  void addPlaceholderUsageCount(std::string functionName,
+                                PlaceholderUsageMap &phUsage);
+};
+
+class NNPIDeviceBindings : public DeviceBindings {
+public:
+  NNPIDeviceBindings(std::shared_ptr<InferenceContext> &infCtx)
+      : DeviceBindings("NNPI"), infCtx_(infCtx) {}
+
+  virtual ~NNPIDeviceBindings() {}
+
+  std::unique_ptr<DeviceBindings> clone() override {
+    return std::make_unique<NNPIDeviceBindings>(infCtx_);
+  }
+
+  std::shared_ptr<InferenceContext> getInferenceContext() const {
+    return infCtx_;
+  }
+
+private:
+  std::shared_ptr<InferenceContext> infCtx_;
 };
 
 DeviceManager *createNNPIDeviceManager(const DeviceConfig &config,

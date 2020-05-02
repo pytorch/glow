@@ -1297,6 +1297,33 @@ public:
   ResizeNearestNode *createResizeNearest(llvm::StringRef name, NodeValue input,
                                          llvm::ArrayRef<float> scale);
 
+  /// Given \p input tensor of [N,H,W,C], where N is the batch, C is the channel
+  /// or depth, H is the height and W is the width, with tensor format same as
+  /// \p input then ResizeNearest generates an Output tensor with resized
+  /// spatial dimensions using nearest neighbor interpolation. The Output tensor
+  /// shape is specified with \p outTy.
+  ResizeNearestNode *createResizeNearest(llvm::StringRef name, NodeValue input,
+                                         TypeRef outTy);
+
+  /// Given \p input tensor of [N,H,W,C], where N is the batch, C is the channel
+  /// or depth, H is the height and W is the width, and \p scale tensor with
+  /// tensor format same as \p input then ResizeBilinear generates an Output
+  /// tensor with resized spatial dimensions using bilinear neighbor
+  /// interpolation. The Output tensor is of shape [floor(N * \p scale[0]),
+  /// floor(H * \p scale[1]), floor(W * \p scale[2]),
+  /// floor(C * \p scale[3])]
+  ResizeBilinearNode *createResizeBilinear(llvm::StringRef name,
+                                           NodeValue input,
+                                           llvm::ArrayRef<float> scale);
+
+  /// Given \p input tensor of [N,H,W,C], where N is the batch, C is the channel
+  /// or depth, H is the height and W is the width, with tensor format same as
+  /// \p input then ResizeBilinear generates an Output tensor with resized
+  /// spatial dimensions using bilinear neighbor interpolation. The Output
+  /// tensor shape is specified with \p outTy.
+  ResizeBilinearNode *createResizeBilinear(llvm::StringRef name,
+                                           NodeValue input, TypeRef outTy);
+
   /// Create quantization node which transforms floating point tensor to a
   /// quantized one with given Scale and Offset. Scale and Offset params are
   /// part of the \p outTy.
@@ -1305,8 +1332,9 @@ public:
 
   /// Create dequantization node which transforms quantized tensor to a
   /// floating point one with given Scale and Offset. Scale and Offset params
-  /// are part of the \p input.
-  DequantizeNode *createDequantize(llvm::StringRef name, NodeValue input);
+  /// are part of the \p input. Result dequantization kind is \p k.
+  DequantizeNode *createDequantize(llvm::StringRef name, NodeValue input,
+                                   ElemKind k);
 
   /// Create dequantization node which transforms quantized tensor to a
   /// floating point type \p outTy one with given Scale and Offset. Scale and

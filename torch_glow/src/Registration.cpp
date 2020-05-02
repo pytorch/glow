@@ -32,6 +32,7 @@
 
 #include <mutex>
 #include <shared_mutex>
+#include <signal.h>
 
 namespace glow {
 
@@ -100,6 +101,17 @@ setGraphRunnerForKey(const std::string &key,
   return runner;
 }
 
+bool removeGraphRunnerForKey(const std::string &key) {
+  auto &preloadedRunners = getPreloadedRunnerMap();
+  std::unique_lock<std::shared_timed_mutex> wlock(runnerMapMutex);
+  const auto it = preloadedRunners.find(key);
+  if (it == preloadedRunners.end()) {
+    return false;
+  }
+  preloadedRunners.erase(key);
+  return true;
+}
+
 void registerGlowOp(const c10::Symbol &symbol) {
   torch::jit::RegisterOperators op({torch::jit::Operator(
       symbol,
@@ -125,17 +137,28 @@ void registerGlowOp(const c10::Symbol &symbol) {
           graphRunner = setGraphRunnerForKey(keyStr, [node]() {
             return std::make_shared<CachingGraphRunner>(
                 node->g(at::attr::Subgraph), getHostManager(),
-                getPyTorchLoaderSettings());
+                getBackendName().c_str(), getPyTorchLoaderSettings());
           });
         }
 
         return [graphRunner](torch::jit::Stack &stack) {
           Error err = Error::empty();
+          // Store old Python signal handlers and install standard signal
+          // handlers, so that it is possible to kill/interrupt the process if
+          // needed.
+          typedef void (*sighandler_t)(int);
+          sighandler_t oldSigIntHandler = signal(SIGINT, SIG_DFL);
+          sighandler_t oldSigTermHandler = signal(SIGTERM, SIG_DFL);
+
           if (graphRunner->getSettings().preCompilePyTorchModule) {
             err = graphRunner->runOnly(stack);
           } else {
             err = graphRunner->run(stack);
           }
+
+          // Restore old Python signal handlers.
+          signal(SIGINT, oldSigIntHandler);
+          signal(SIGTERM, oldSigTermHandler);
 
           if (static_cast<bool>(err)) {
             // PyTorch framework expects an exception been thrown here.

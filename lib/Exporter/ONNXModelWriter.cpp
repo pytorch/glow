@@ -1508,6 +1508,15 @@ Error ONNXModelWriter::writeResizeNearest(const ResizeNearestNode *node,
   return writeAllWithNode(node->getName(), node, graph, proto);
 }
 
+Error ONNXModelWriter::writeResizeBilinear(const ResizeBilinearNode *node,
+                                           GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  addValueAttribute(proto, "Scale", node->getScale());
+
+  return writeAllWithNode(node->getName(), node, graph, proto);
+}
+
 Error ONNXModelWriter::writeSoftMax(const SoftMaxNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   proto->set_name(node->getName());

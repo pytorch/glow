@@ -934,24 +934,18 @@ TEST_F(PartitionerTest, heterogeneousPartitioningWithSupportedNodes) {
 /// Test assigning more than one partitions in to one device for single
 /// backendName.
 TEST_F(PartitionerTest, logicalIDTest0) {
-  auto *input1 =
-      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input1", false);
+  auto *input1 = mod_.createConstant(ElemKind::FloatTy, {1, 100}, "input1");
+  input1->getHandle<>().randomize(-10, 10, mod_.getPRNG());
   auto *input2 =
-      mod_.createPlaceholder(ElemKind::FloatTy, {10, 16}, "input2", false);
-  auto *input3 =
-      mod_.createPlaceholder(ElemKind::FloatTy, {16, 20}, "input3", false);
-  auto *input4 =
-      mod_.createPlaceholder(ElemKind::FloatTy, {20, 1}, "input4", false);
-  auto *input5 =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 50}, "input5", false);
+      mod_.createPlaceholder(ElemKind::FloatTy, {100, 1}, "input2", false);
+  auto *input3 = mod_.createConstant(ElemKind::FloatTy, {1, 100}, "input5");
+  input3->getHandle<>().randomize(-10, 10, mod_.getPRNG());
   auto *mul0 = F_->createMatMul("mul0", input1, input2);
   auto *mul1 = F_->createMatMul("mul1", mul0, input3);
-  auto *mul2 = F_->createMatMul("mul2", mul1, input4);
-  auto *mul3 = F_->createMatMul("mul3", mul2, input5);
-  auto *save = F_->createSave("ret", mul3);
+  auto *save = F_->createSave("ret", mul1);
   (void)save;
-  std::vector<DeviceInfo> devices = {{2200, "Interpreter"},
-                                     {2200, "Interpreter"}};
+  std::vector<DeviceInfo> devices = {{1000, "Interpreter"},
+                                     {1000, "Interpreter"}};
   // Create two backends which support different ops, then do the partition by
   // assigning the ops to the corresponding abackends.
   Partitioner partitioner(&mod_, devices);

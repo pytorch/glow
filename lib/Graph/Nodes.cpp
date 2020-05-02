@@ -1002,7 +1002,10 @@ bool TouchNode::verify() const { return true; }
 bool TraceEventNode::verify() const { return true; }
 
 bool ClipNode::verify() const {
-  return checkSameType(getInput(), getResult(), this);
+  bool isValid = checkSameType(getInput(), getResult(), this);
+  isValid &= expectCompareTrue("Clip max must be greater than min", getMin(),
+                               getMax(), this, CompareOperatorLess<float>());
+  return isValid;
 }
 
 bool InsertTensorNode::verify() const {
@@ -1778,6 +1781,30 @@ bool SpaceToDepthNode::verify() const {
 }
 
 bool ResizeNearestNode::verify() const {
+  auto input = getInput();
+  auto scale = getScale();
+  auto result = getResult();
+  auto inputDims = input.dims();
+  auto outputDims = result.dims();
+
+  bool isValid = checkTypeIgnoreShape(input, result, this);
+  isValid &= expectCompareTrue("Input must be a 4D tensor", inputDims.size(),
+                               size_t(4), this);
+  isValid &= expectCompareTrue("Output must be a 4D tensor", outputDims.size(),
+                               size_t(4), this);
+
+  for (size_t i = 0, e = scale.size(); i < e; i++) {
+    isValid &= expectCompareTrue("Unexpected output",
+                                 dim_t(std::floor(inputDims[i] * scale[i])),
+                                 outputDims[i], this);
+    isValid &= expectCompareTrue("Invalid scale", scale[i], float(0.0), this,
+                                 CompareOperatorGreaterThan<float>());
+  }
+
+  return isValid;
+}
+
+bool ResizeBilinearNode::verify() const {
   auto input = getInput();
   auto scale = getScale();
   auto result = getResult();

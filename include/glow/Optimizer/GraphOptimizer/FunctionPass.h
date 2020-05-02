@@ -38,15 +38,22 @@ class FunctionPassConfig : public PassConfig<FunctionPassID> {
   DCERequiredMode dceMode_{DCERequiredMode::BeforePass};
 
 public:
+  /// Constructor.
   FunctionPassConfig(FunctionPassID ID,
                      ConvergenceMode convergenceMode = ConvergenceMode::OnePass,
                      const std::set<CompilationMode> &enabledCompModes =
                          {CompilationMode::Infer, CompilationMode::Train},
                      DCERequiredMode dceMode = DCERequiredMode::BeforePass)
-      : PassConfig(ID, convergenceMode), dceMode_(dceMode) {}
+      : PassConfig(ID, convergenceMode, enabledCompModes), dceMode_(dceMode) {}
+  /// Constructor.
+  FunctionPassConfig(FunctionPassID ID, ConvergenceMode convergenceMode,
+                     unsigned enabledCompModes, DCERequiredMode dceMode)
+      : PassConfig(ID, convergenceMode, enabledCompModes), dceMode_(dceMode) {}
   /// \returns the DCERequiredMode of this config.
   DCERequiredMode getDCERequiredMode() const { return dceMode_; }
-  void dump(llvm::raw_ostream &os) const;
+  void dump(llvm::raw_ostream &os, llvm::StringRef passName) const override;
+  llvm::StringRef getNameOfPass() const override;
+  bool equals(const PassConfigBase &other) const override;
 };
 
 /// Class used for all passes over Functions. All passes over Functions should

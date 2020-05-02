@@ -56,10 +56,16 @@ if (DEFINED NNPI_MG_API_DIR)
 else()
     set(NNPI_MG_SEARCH_PATH "/opt/intel_nnpi/include/")
 endif()
-
-find_library(NNPI_TRANSFORMER_LIB nnpi_transformer ${NNPI_LIB_SEARCH_PATH})
-if(NOT NNPI_TRANSFORMER_LIB)
-  message(FATAL_ERROR "nnpi_transformer library not found at ${NNPI_LIB_SEARCH_PATH}")
+if (NNPI_USE_STATIC_TRANSFORMER)
+  find_library(NNPI_TRANSFORMER_LIB nnpi_transformer_static ${NNPI_LIB_SEARCH_PATH})
+  if(NOT NNPI_TRANSFORMER_LIB)
+    message(FATAL_ERROR "nnpi_transformer_static library not found at ${NNPI_LIB_SEARCH_PATH}")
+  endif()
+else()
+  find_library(NNPI_TRANSFORMER_LIB nnpi_transformer ${NNPI_LIB_SEARCH_PATH})
+  if(NOT NNPI_TRANSFORMER_LIB)
+    message(FATAL_ERROR "nnpi_transformer library not found at ${NNPI_LIB_SEARCH_PATH}")
+  endif()
 endif()
 
 find_library(NNPI_INFERENCE_LIB nnpi_inference ${NNPI_INF_LIB_SEARCH_PATH})
@@ -96,7 +102,7 @@ message(STATUS "[NNPI] NNPI_MG_API_DIR             = ${NNPI_MG_API}")
 message(STATUS "[NNPI] NNPI_MG_LIB_DIR             = ${NNPI_MG_LIB}")
 message(STATUS "[NNPI] GLOW_BINARY_DIR             = ${GLOW_BINARY_DIR}")
 message(STATUS "[NNPI] NNPI_COLLECT_MEM_USAGE      = ${NNPI_MEM_PROFILING}")
-
+message(STATUS "[NNPI] NNPI_USE_STATIC_TRANSFORMER = ${NNPI_USE_STATIC_TRANSFORMER}")
 
 add_subdirectory(ClassGen)
 
@@ -124,6 +130,7 @@ add_library(NNPI
     NNPIResource.cpp
     NNPIUtils_AVX512.cpp
     NNPIAdapterContainer.cpp
+    NNPIUtils.cpp
 )
 
 target_link_libraries(NNPI
@@ -135,6 +142,7 @@ target_link_libraries(NNPI
                       CodeGen
                       IR
                       Support
+                      gomp
                       ${NNPI_TRANSFORMER_LIB}
                       ${NNPI_INFERENCE_LIB}
                       ${NNPI_MG_LIB}

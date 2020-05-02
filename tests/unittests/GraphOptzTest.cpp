@@ -54,14 +54,15 @@ static bool functionContainsNode(const Function *F, const Node *N) {
 /// \p pass is empty then the whole default optimization pipeline is run.
 /// Otherwise only \p pipeline is used.
 static Function *
-optimizeFunction(Function *F, const FunctionPassPipeline &pipeline = {},
+optimizeFunction(Function *F,
+                 std::initializer_list<FunctionPassConfig> configs = {},
                  const CompilationContext cctx = CompilationContext()) {
   auto *G = F->clone(F->getName().str() + "_optimized");
-  if (pipeline.size() == 0) {
+  if (configs.size() == 0) {
     ::glow::optimize(G, CompilationMode::Infer);
     return G;
   }
-  FunctionPassManager FPM("TestFPM", pipeline);
+  FunctionPassManager FPM("TestFPM", configs);
   FPM.run(G, cctx);
   return G;
 }
@@ -927,7 +928,7 @@ TEST_F(GraphOptz, SinkTransposeBelowDequantize) {
       "quantize", in, mod_.uniqueType(ElemKind::Int8QTy, in->dims(), 0.01, 2));
   auto *tile = F_->createTile("tile", quantize, 3, 0);
   auto *transpose = F_->createTranspose("transpose", tile, NHWC2NCHW);
-  auto *deq = F_->createDequantize("dequantize", transpose);
+  auto *deq = F_->createDequantize("dequantize", transpose, ElemKind::FloatTy);
   SaveNode *O = F_->createSave("out", deq);
 
   optimizedF_ = optimizeFunction(F_);
@@ -2147,7 +2148,7 @@ TEST_F(GraphOptz, foldDequantizeIntoSplat) {
   const float splatVal = 6.0;
   SplatNode *SN = F_->createSplat("splat", qType, splatVal);
 
-  DequantizeNode *Q = F_->createDequantize("dequantize", SN);
+  DequantizeNode *Q = F_->createDequantize("dequantize", SN, ElemKind::FloatTy);
   SaveNode *S = F_->createSave("save", Q);
 
   // Splat, dequantize, save.
@@ -2224,7 +2225,7 @@ TEST_F(GraphOptz, mergeRescaleIntoDequantize) {
                                        "input", true);
   auto *qType = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.03f, 5);
   auto *R = F_->createRescaleQuantized("rescale", input, qType);
-  auto *D = F_->createDequantize("dequantize", R);
+  auto *D = F_->createDequantize("dequantize", R, ElemKind::FloatTy);
   F_->createSave("ret", D);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -2248,7 +2249,7 @@ TEST_F(GraphOptz, quantizeToRescale) {
   auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {4, 10}, 0.5, 11,
                                        "input", true);
 
-  auto *D = F_->createDequantize("dequantize", input);
+  auto *D = F_->createDequantize("dequantize", input, ElemKind::FloatTy);
 
   auto qType = mod_.uniqueType(ElemKind::Int8QTy, {4, 10}, 0.03, 5);
   auto *Q = F_->createQuantize("quantize", D, qType);
@@ -2925,8 +2926,8 @@ TEST_F(GraphOptz, FoldTileAddIntoBatchedAdd) {
   // part of the default optimization pipeline. Create a local version of the
   // pipeline with that pass included.
   auto p = createDefaultGraphOptimizationPassPipeline();
-  p.pushFront({FunctionPassID::FoldTileAddIntoBatchedAdd});
-  FunctionPassManager FPM("opt", p);
+  p->pushFront({FunctionPassID::FoldTileAddIntoBatchedAdd});
+  FunctionPassManager FPM("opt", std::move(p));
   FPM.run(F_, CompilationContext());
   ASSERT_TRUE(F_->verify());
 
@@ -2960,28 +2961,47 @@ TEST_F(GraphOptz, FoldTileAddIntoBatchedAdd) {
   }
 }
 
-// Check that we are able to eliminate concat nodes.
-TEST_F(GraphOptz, concatElim) {
-  Node *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input", true);
+/// Test Concat(Slice, ..., Slice) opt works correctly. If \p reverseOrder then
+/// the optimization is inapplicable and should not occur.
+static void testConcatElim(Module &mod, Function *F, Function *&optimizedF,
+                           PlaceholderBindings &bindings, bool reverseOrder) {
+  Placeholder *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input", true);
+  bindings.allocate(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
 
   // Split the input to a bunch of small slices.
-  std::vector<NodeValue> inputs;
+  std::array<NodeValue, 10> inputs;
   for (dim_t i = 0; i < 10; i++) {
-    auto *K = F_->createSlice("extract", input, {i, 0, 0}, {i + 1, 10, 10});
-    // Insert the nodes in reverse order to make sure that we can catch
-    // non-consecutive graph-order slices.
-    inputs.insert(inputs.begin(), K);
+    dim_t idx = reverseOrder ? 9 - i : i;
+    inputs[i] =
+        F->createSlice("extract", input, {idx, 0, 0}, {idx + 1, 10, 10});
   }
 
-  auto *cc = F_->createConcat("merge", inputs, 0);
-  F_->createSave("save", cc);
+  auto *cc = F->createConcat("merge", inputs, 0);
+  F->createSave("save", cc);
 
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 10);
-  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 10);
 
-  // Check that the concat node is gone.
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 0);
+  optimizedF = optimizeFunction(F);
+
+  // Check that either the concat and slices are gone if the optimization was
+  // applicable, or otherwise that they're still there.
+  EXPECT_EQ(countNodeKind(optimizedF, Kinded::Kind::ConcatNodeKind),
+            reverseOrder ? 1 : 0);
+  EXPECT_EQ(countNodeKind(optimizedF, Kinded::Kind::SliceNodeKind),
+            reverseOrder ? 10 : 0);
+}
+
+// Check that we are able to eliminate concat nodes.
+TEST_F(GraphOptz, concatElim) {
+  testConcatElim(mod_, F_, optimizedF_, bindings_, /* reverseOrder */ false);
+  checkNumericalEquivalence(0.0f);
+}
+
+// Check that when the order of the Slices is reversed no optimization kicks in.
+TEST_F(GraphOptz, concatElimReverseOrder) {
+  testConcatElim(mod_, F_, optimizedF_, bindings_, /* reverseOrder */ true);
+  checkNumericalEquivalence(0.0f);
 }
 
 /// Check that we are able to eliminate concat followed by slices on axis
@@ -3025,17 +3045,52 @@ static void testConcatSliceElim(Module &mod, Function *F, Function *&optimizedF,
 
 TEST_F(GraphOptz, concatSliceElimInnerDim) {
   testConcatSliceElim(mod_, F_, optimizedF_, bindings_, 0);
-  checkNumericalEquivalence();
+  checkNumericalEquivalence(0.0f);
 }
 
 TEST_F(GraphOptz, concatSliceElimMiddleDim) {
   testConcatSliceElim(mod_, F_, optimizedF_, bindings_, 1);
-  checkNumericalEquivalence();
+  checkNumericalEquivalence(0.0f);
 }
 
 TEST_F(GraphOptz, concatSliceElimOuterDim) {
   testConcatSliceElim(mod_, F_, optimizedF_, bindings_, 2);
-  checkNumericalEquivalence();
+  checkNumericalEquivalence(0.0f);
+}
+
+/// Check the interaction between Sices(Concat) and Concat(Slices) optimizations
+/// to make sure they work nicely together. Builds Concat(Slices(Concat)) and
+/// expected a single Concat after optimizations.
+TEST_F(GraphOptz, concatSliceElimMultiConcat) {
+  std::array<NodeValue, 4> inputs;
+  for (size_t i = 0; i < 4; i++) {
+    auto *P = mod_.createPlaceholder(ElemKind::FloatTy, {2, 4},
+                                     "in_" + std::to_string(i), false);
+    bindings_.allocate(P)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+    inputs[i] = P;
+  }
+  auto *CN0 = F_->createConcat("merge0", inputs, /* axis */ 1);
+
+  auto *SN0 = F_->createSlice("slice0", CN0, {0, 0}, {2, 4});
+  auto *SN1 = F_->createSlice("slice1", CN0, {0, 4}, {2, 8});
+  auto *SN2 = F_->createSlice("slice2", CN0, {0, 8}, {2, 12});
+  auto *SN3 = F_->createSlice("slice3", CN0, {0, 12}, {2, 16});
+
+  auto *CN1 = F_->createConcat("merge1", {SN1, SN0, SN3, SN2}, /* axis */ 1);
+  F_->createSave("save", CN1);
+
+  // We created a concat followed by 4 slices of its results followed by another
+  // concat.
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 4);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Check that one concat and slices are gone.
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SliceNodeKind), 0);
+
+  checkNumericalEquivalence(0.0f);
 }
 
 // Check the transformation Concat(Reshape(x) * N) -> Reshape(Concat(x * N)).
@@ -4188,7 +4243,7 @@ static void testOptimizeDequantizeClip(PlaceholderBindings &bindings,
       F->createQuantize("quantize", input,
                         mod.uniqueType(ElemKind::Int8QTy, {20, 20},
                                        qParams.scale, qParams.offset));
-  DequantizeNode *DN = F->createDequantize("dequantize", QN);
+  DequantizeNode *DN = F->createDequantize("dequantize", QN, ElemKind::FloatTy);
   ClipNode *CN =
       F->createClip("clip", DN, enableQuantParamChanges ? 0 : -100, 100);
   SaveNode *SN = F->createSave("save", CN);
@@ -4248,7 +4303,7 @@ static void testOptimizeClipQuantize(PlaceholderBindings &bindings, Module &mod,
       F->createQuantize("quantize", CN,
                         mod.uniqueType(ElemKind::Int8QTy, {20, 20},
                                        qParams.scale, qParams.offset));
-  DequantizeNode *DN = F->createDequantize("dequantize", QN);
+  DequantizeNode *DN = F->createDequantize("dequantize", QN, ElemKind::FloatTy);
   SaveNode *SN = F->createSave("save", DN);
 
   CompilationContext cctx;
@@ -4304,7 +4359,8 @@ TEST_F(GraphOptz, OptimizeOutIntermediateConversionsTest) {
       F_->createQuantize("quantize", CN,
                          mod_.uniqueType(ElemKind::Int8QTy, {20, 20},
                                          qParams.scale, qParams.offset));
-  DequantizeNode *DN = F_->createDequantize("dequantize", QN);
+  DequantizeNode *DN =
+      F_->createDequantize("dequantize", QN, ElemKind::FloatTy);
   F_->createSave("save", DN);
 
   optimizedF_ =
@@ -4319,8 +4375,7 @@ TEST_F(GraphOptz, OptimizeOutIntermediateConversionsTest) {
   checkNumericalEquivalence();
 }
 
-/// Test Clip(Relu(Clip)) -> Clip(Relu). This is a combination of SinkCode and
-/// OptimizeClips.
+/// Test Clip(Relu(Clip)) -> Clip'.
 TEST_F(GraphOptz, ClipReluClipElimTest) {
   Placeholder *input =
       mod_.createPlaceholder(ElemKind::FloatTy, {64, 64}, "input", false);
@@ -4336,17 +4391,16 @@ TEST_F(GraphOptz, ClipReluClipElimTest) {
 
   optimizedF_ = optimizeFunction(F_);
 
-  // Remove one of the clips.
-  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+  // Remove one of the clips and the relu.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 1);
-  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 0);
 
   SaveNode *optSN =
       llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
   ASSERT_TRUE(optSN);
 
-  // We sank CN1 below RN which changed CN1's min to 0, and then combined the
-  // ranges of CN1 and CN2.
+  // We combined all of the ranges into the single Clip.
   ClipNode *optCN = llvm::dyn_cast<ClipNode>(optSN->getInput());
   ASSERT_TRUE(optCN);
   EXPECT_EQ(optCN->getMin(), 0);
@@ -4365,7 +4419,7 @@ TEST_F(GraphOptz, OptimizeQuantFCFloatReluTest) {
   auto *bias = mod_.createConstant(ElemKind::Int32QTy, {32}, 1.0, 0, "bias");
 
   auto *FC = F_->createFullyConnected("fc", input, weights, bias);
-  auto *DN = F_->createDequantize("dq", FC);
+  auto *DN = F_->createDequantize("dq", FC, ElemKind::FloatTy);
   auto *RN = F_->createRELU("relu", DN);
   auto *SN = F_->createSave("save", RN);
 
@@ -4409,7 +4463,7 @@ TEST_F(GraphOptz, OptimizeConcatQuantFCFloatReluTest) {
     auto *bias = mod_.createConstant(ElemKind::Int32QTy, {32}, 1.0, 0, "bias");
 
     auto *FC = F_->createFullyConnected("fc", input, weights, bias);
-    DQs[i] = F_->createDequantize("dq", FC)->getResult();
+    DQs[i] = F_->createDequantize("dq", FC, ElemKind::FloatTy)->getResult();
 
     bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127,
                                                              mod_.getPRNG());
@@ -4458,7 +4512,8 @@ TEST_F(GraphOptz, OptimizeDequantConcatQuant) {
   for (size_t i = 0; i < 5; i++) {
     inputs[i] = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32},
                                        0.3 / (i + 1), 5, "input", false);
-    DQs[i] = F_->createDequantize("dq", inputs[i])->getResult();
+    DQs[i] =
+        F_->createDequantize("dq", inputs[i], ElemKind::FloatTy)->getResult();
 
     bindings_.allocate(inputs[i])->getHandle<int8_t>().randomize(
         -128, 127, mod_.getPRNG());
@@ -4511,7 +4566,8 @@ TEST_F(GraphOptz, SinkDequantizeBelowConcatTest) {
                                                 scale, offset, "input", false);
     bindings_.allocate(input)->getHandle<int8_t>().randomize(-100, 100,
                                                              mod_.getPRNG());
-    DequantizeNode *dequantize = F_->createDequantize("dequantize", input);
+    DequantizeNode *dequantize =
+        F_->createDequantize("dequantize", input, ElemKind::Float16Ty);
     inputs[i] = dequantize->getResult();
   }
   ConcatNode *concat = F_->createConcat("concat", inputs, 0);
@@ -4580,5 +4636,40 @@ TEST_F(GraphOptz, SinkQuantizeBelowConcatTest) {
             optQuantize->getResult().getType()->getElementType());
 
   // Find quantize node in the optimized graph.
+  checkNumericalEquivalence();
+}
+
+/// Test Clip(Relu) -> Clip'.
+TEST_F(GraphOptz, ClipReluTest) {
+  Placeholder *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {64, 64}, "input", false);
+  ReluNode *RN = F_->createRELU("RN", input);
+  ClipNode *CN = F_->createClip("CN", RN, -5, 20);
+  SaveNode *SN = F_->createSave("save", CN);
+
+  // Start with a clip, a relu, and a save.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 1);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Removed the relu
+  EXPECT_EQ(optimizedF_->getNodes().size(), 2);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 0);
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+
+  // We have the same max for clip as before, but 0 for min due to the Relu.
+  ClipNode *optCN = llvm::dyn_cast<ClipNode>(optSN->getInput());
+  ASSERT_TRUE(optCN);
+  EXPECT_EQ(optCN->getMin(), 0);
+  EXPECT_EQ(optCN->getMax(), 20);
+
+  bindings_.allocate(input)->getHandle<float16_t>().randomize(-50.0, 5.0,
+                                                              mod_.getPRNG());
   checkNumericalEquivalence();
 }

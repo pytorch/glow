@@ -28,6 +28,7 @@
 namespace glow {
 bool GlowEnableLoadBalancedPartitioning = true;
 bool GlowLogPartition = false;
+bool GlowDumpPartition = false;
 static llvm::cl::opt<bool, /* ExternalStorage */ true>
     GlowEnableLoadBalancedPartitioningOpt(
         "glow_partitioner_enable_load_balance",
@@ -45,10 +46,11 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true> logPartition(
 
 /// -dump-partition - Command line option to dump the graph of each partitions
 /// by calling F->dumpDAG().
-static llvm::cl::opt<bool>
+static llvm::cl::opt<bool, /* ExternalStorage */ true>
     dumpPartition("dump-partition",
                   llvm::cl::desc("Enable dumping the graph of each partitions"),
-                  llvm::cl::init(false), llvm::cl::cat(PartitionerCat));
+                  llvm::cl::location(glow::GlowDumpPartition),
+                  llvm::cl::cat(PartitionerCat));
 
 using namespace glow;
 using llvm::isa;
@@ -79,11 +81,10 @@ Error Partitioner::finalize(const DAGListTy &partitions,
   // needs the backend specific verifier. Tensor layouts, for example, might
   // have gone from canonical form to backend specific form.
 
-  LOG(INFO) << "The number of partitions is : "
-            << module_->getFunctions().size() << "\n";
-
   if (logPartition) {
-    LOG(INFO) << "Dumping partitioning DAG to DAG.dot file.\n";
+    LOG(INFO) << "The number of partitions is : "
+              << module_->getFunctions().size();
+    LOG(INFO) << "Dumping partitioning DAG to DAG.dot file.";
     dumpDAG("DAG.dot", partitions);
     logPartitionInfo(mapping);
   }
@@ -189,6 +190,7 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
   mapping.createPartition(newF, backendName);
   NodesSet currentPartition;
   GraphMemInfo graphMem;
+  graphMem.contextCount = contextCount_;
 
   for (int i = level - 1; i >= 0; i--) {
     for (size_t j = 0, e = bfs[i].size(); j < e; j++) {

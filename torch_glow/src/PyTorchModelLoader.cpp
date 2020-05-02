@@ -699,7 +699,8 @@ struct EmbeddingBagInputs {
   };
 };
 
-/// Indexes of fb::embedding_bag_byte_rowwise_offsets inputs.
+/// Indexes used for fb::embedding_bag_byte_rowwise_offsets and
+/// fb::embedding_bag_4bit_rowwise_offsets inputs.
 struct EmbeddingBagByteRowwiseOffsetsInputs {
   enum {
     weight,
@@ -711,6 +712,7 @@ struct EmbeddingBagByteRowwiseOffsetsInputs {
     per_sample_weights,
   };
 };
+
 } // namespace
 
 // static
@@ -786,6 +788,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::embedding_bag"}, &PyTorchModelLoader::loadEmbeddingBag},
       {{"fb::embedding_bag_byte_rowwise_offsets"},
        &PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets},
+      {{"fb::embedding_bag_4bit_rowwise_offsets"},
+       &PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets},
   });
 
   // Add in custom operator loaders.
@@ -985,7 +989,7 @@ PyTorchModelLoader::getGlowIValueForValue(const torch::jit::Value *value) {
 glow::NodeValue PyTorchModelLoader::rescaleUIntToInt(glow::NodeValue input) {
   auto *inputTy = input.getType();
   if (inputTy->getElementType() == ElemKind::UInt8QTy) {
-    auto dqInput = F_.createDequantize("dequantize", input);
+    auto dqInput = F_.createDequantize("dequantize", input, ElemKind::FloatTy);
     auto *outputTy = F_.getParent()->uniqueType(
         ElemKind::Int8QTy, inputTy->dims(), inputTy->getScale(),
         inputTy->getOffset() - OFFSETSHIFT);
@@ -999,7 +1003,7 @@ glow::NodeValue PyTorchModelLoader::rescaleUIntToInt(glow::NodeValue input) {
 glow::NodeValue PyTorchModelLoader::rescaleIntToUint(glow::NodeValue input) {
   auto *inputTy = input.getType();
   if (inputTy->getElementType() == ElemKind::Int8QTy) {
-    auto dqInput = F_.createDequantize("dequantize", input);
+    auto dqInput = F_.createDequantize("dequantize", input, ElemKind::FloatTy);
     auto *outputTy = F_.getParent()->uniqueType(
         ElemKind::UInt8QTy, inputTy->dims(), inputTy->getScale(),
         inputTy->getOffset() + OFFSETSHIFT);
@@ -1644,14 +1648,21 @@ Error PyTorchModelLoader::loadTypeAs(const torch::jit::Node *ptNode) {
 
   glow::NodeValue dataValue;
   glow::NodeValue typeNode;
-  ASSIGN_VALUE_OR_RETURN_ERR(typeNode, getGlowNodeValueForValue(inputs[1]));
   ASSIGN_VALUE_OR_RETURN_ERR(dataValue, getGlowNodeValueForValue(inputs[0]));
-  auto outType = typeNode.getType();
+  ASSIGN_VALUE_OR_RETURN_ERR(typeNode, getGlowNodeValueForValue(inputs[1]));
+  auto typeAsType = typeNode.getType();
+  auto inputShape = dataValue.getType();
 
-  glow::Node *bcast =
-      F_.createBroadcast("typeas_broadcast", dataValue, typeNode.dims(), 0);
+  if (typeAsType->getElementType() == inputShape->getElementType()) {
+    // nop conversion
+    return addValueMapping(outputs[0], dataValue);
+  }
+
+  auto outType = F_.getParent()->uniqueType(typeAsType->getElementType(),
+                                            inputShape->dims());
+
   glow::ConvertToNode *glowNode =
-      F_.createConvertTo("typeas_convert", bcast, outType);
+      F_.createConvertTo("typeas", dataValue, outType);
 
   return addValueMapping(outputs[0], glowNode->getResult());
 }
@@ -2419,7 +2430,8 @@ Error PyTorchModelLoader::loadDequantize(const torch::jit::Node *ptNode) {
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
-  glow::DequantizeNode *dn = F_.createDequantize("dequantize", input);
+  glow::DequantizeNode *dn =
+      F_.createDequantize("dequantize", input, ElemKind::FloatTy);
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
@@ -3493,7 +3505,9 @@ Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
 
   // If no indices are provided, replace the op with a zero Constant.
   if (indices.dims()[0] == 0) {
-    glow::Tensor t(ElemKind::FloatTy, {offsets.dims()[0], weight.dims()[1]});
+    glow::Tensor t(
+        ElemKind::FloatTy,
+        {offsets.dims()[0] > 0 ? offsets.dims()[0] - 1 : 0, weight.dims()[1]});
     t.zero();
     glow::Constant *glowConstant =
         F_.getParent()->createConstant("EmptyEmbeddingBag", std::move(t));
@@ -3523,13 +3537,13 @@ Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
                                          inputs[EmbeddingBagInputs::sparse])));
 
   auto *EB = F_.createEmbeddingBag("EmbeddingBag", weight, perSampleWeights,
-                                   indices, offsets);
+                                   indices, offsets, true);
 
   return addValueMapping(outputs[0], EB->getResult());
 }
 
-Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
-    const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsetsHelper(
+    const torch::jit::Node *ptNode, bool is4Bit) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -7, outputs, 1));
@@ -3572,8 +3586,11 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
 
   // If no indices are provided, replace the op with a zero Constant.
   if (indices.dims()[0] == 0) {
+    // Assuming hasEndOffset = true, so the output.dims[0] should be
+    // offsets.dims[0] - 1, if offsets is not empty
     glow::Tensor t(ElemKind::FloatTy,
-                   {offsets.dims()[0], weight.dims()[1] - 2 * sizeof(float)});
+                   {offsets.dims()[0] > 0 ? offsets.dims()[0] - 1 : 0,
+                    weight.dims()[1] - 2 * sizeof(float)});
     t.zero();
     glow::Constant *glowConstant = F_.getParent()->createConstant(
         "EmptyEmbeddingBagByteRowwiseOffsets", std::move(t));
@@ -3582,8 +3599,11 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
 
   glow::NodeValue perSampleWeights = loadNodeValueOrCreateBroadcastedConstant(
       inputs[EmbeddingBagByteRowwiseOffsetsInputs::per_sample_weights],
-      "EmbeddingBagByteRowwiseOffsets.ones",
-      glow::Type(ElemKind::FloatTy, {indices.dims()[0]}), 1.0);
+      (is4Bit ? "EmbeddingBag4BitRowwiseOffsets.ones"
+              : "EmbeddingBagByteRowwiseOffsets.ones"),
+      glow::Type((is4Bit ? ElemKind::Float16Ty : ElemKind::FloatTy),
+                 {indices.dims()[0]}),
+      1.0);
 
   glow::Constant *weightConstant =
       llvm::dyn_cast<glow::Constant>(weight.getNode());
@@ -3592,17 +3612,30 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
                     strFormat("Expected Weight to be a Constant but found: %s",
                               weight.getNode()->getKindName()));
 
-  TypeRef fusedTy = F_.getParent()->uniqueType(ElemKind::UInt8FusedQTy,
-                                               weight.dims(), 0.0, 0);
+  TypeRef fusedTy = F_.getParent()->uniqueType(
+      (is4Bit ? ElemKind::UInt4FusedFP16QTy : ElemKind::UInt8FusedQTy),
+      weight.dims(), 0.0, 0);
 
   weightConstant->setType(Storage::OutputIdx, fusedTy);
   weightConstant->setPayloadType(fusedTy);
 
   auto *EB = F_.createEmbeddingBagByteRowwiseOffsets(
-      "EmbeddingBagByteRowwiseOffsets", weightConstant->getOutput(),
-      perSampleWeights, indices, offsets);
+      (is4Bit ? "EmbeddingBag4BitRowwiseOffsets"
+              : "EmbeddingBagByteRowwiseOffsets"),
+      weightConstant->getOutput(), perSampleWeights, indices, offsets, false,
+      true /* hasEndOffset */);
 
   return addValueMapping(outputs[0], EB->getResult());
+}
+
+Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
+    const torch::jit::Node *ptNode) {
+  return loadEmbeddingBagByteRowwiseOffsetsHelper(ptNode);
+}
+
+Error PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets(
+    const torch::jit::Node *ptNode) {
+  return loadEmbeddingBagByteRowwiseOffsetsHelper(ptNode, true);
 }
 
 Error PyTorchModelLoader::loadAttributes(

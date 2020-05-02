@@ -102,6 +102,11 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
          ElemKind::Int16QTy, ElemKind::Int32QTy, ElemKind::Int32ITy,
          ElemKind::Int64ITy});
+  case Kinded::Kind::ResizeBilinearNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+         ElemKind::Int16QTy, ElemKind::Int32QTy, ElemKind::Int32ITy,
+         ElemKind::Int64ITy});
 
   case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:

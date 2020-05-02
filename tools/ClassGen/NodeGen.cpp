@@ -890,6 +890,17 @@ int main(int argc, char **argv) {
           "neighbor interpolation. The Output tensor is of shape "
           "floor(input_dimension * scale)");
 
+  BB.newNode("ResizeBilinear")
+      .addInput("Input")
+      .addMember(MemberType::VectorFloat, "Scale")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Given Input tensor of [N,H,W,C], where N is the batch, C is the "
+          "channel or depth, H is the height and W is the width, Generates an "
+          "Output tensor with resized spatial dimensions using bilinear "
+          "neighbor interpolation. The Output tensor is of shape "
+          "floor(input_dimension * scale)");
+
   //===--------------------------------------------------------------------===//
   //                Reorder transformations
   //===--------------------------------------------------------------------===//

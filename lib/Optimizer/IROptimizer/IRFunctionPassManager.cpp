@@ -19,7 +19,7 @@
 
 #include <glog/logging.h>
 
-using namespace glow;
+namespace glow {
 
 /// The purpose of ThePassManager alias is to make the code of this pass manager
 /// look as similar to other pass managers as possible. Often the changes in one
@@ -41,7 +41,7 @@ void ThePassManager::dumpIR(IRContainer *C, llvm::raw_ostream &os,
 }
 
 std::unique_ptr<ThePassManager::IRPassTy>
-glow::createFunctionPass(ThePassManager::PassIDTy passID) {
+createFunctionPass(ThePassManager::PassIDTy passID) {
   switch (passID) {
 #define IR_FUN_PASS(PASS_NAME)                                                 \
   case (ThePassManager::PassIDTy::PASS_NAME):                                  \
@@ -64,3 +64,5 @@ bool ThePassManager::runPassHook(const PassConfigBase &passConfig, PassBase &P,
   return static_cast<IRPassTy *>(&P)->run(static_cast<IRContainerTy *>(C),
                                           cctx);
 }
+
+} // namespace glow

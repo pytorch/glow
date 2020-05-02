@@ -33,17 +33,15 @@ enum class FunctionPassID {
 /// IR passes pipeline.
 using FunctionPassPipeline = PassPipeline<FunctionPass>;
 
-/// \returns the name of a Pass given its \p passID.
-llvm::StringRef getNameOfPass(FunctionPassID passID);
-
 /// \returns the default, target-independent graph optimization pipeline
-FunctionPassPipeline createDefaultGraphOptimizationPassPipeline();
+std::unique_ptr<FunctionPassPipeline>
+createDefaultGraphOptimizationPassPipeline();
 
 /// \returns the fp16 specific optimization pipeline
-FunctionPassPipeline createFP16GraphOptimizationPassPipeline();
+std::unique_ptr<FunctionPassPipeline> createFP16GraphOptimizationPassPipeline();
 
 /// \returns the default fold pipeline.
-FunctionPassPipeline createDefaultFoldPassPipeline();
+std::unique_ptr<FunctionPassPipeline> createDefaultFoldPassPipeline();
 
 /// \returns a FunctionPassConfig for performing DCE.
 FunctionPassConfig getDCEPassConfig();

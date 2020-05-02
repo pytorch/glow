@@ -794,7 +794,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   if (typeName == "Int8Dequantize") {
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto *node = G_->createDequantize(opName, in);
+    auto *node = G_->createDequantize(opName, in, ElemKind::FloatTy);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
   }
@@ -1455,6 +1455,9 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     LengthsMode lengthsMode;
     ASSIGN_VALUE_OR_RETURN_ERR(lengthsMode, getLengthsMode(dict));
 
+    float avgLength;
+    ASSIGN_VALUE_OR_RETURN_ERR(avgLength, getAvgLength(dict));
+
     Node *node;
     if (isFused) {
       // There is no specific fused quantized type in Caffe2, so we will load
@@ -1481,11 +1484,11 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       if (isWeighted) {
         node = G_->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
             opName, dataS, weights, indices, lengths,
-            /* useFP16Accumulation */ false, lengthsMode);
+            /* useFP16Accumulation */ false, lengthsMode, avgLength);
       } else {
         node = G_->createFusedRowwiseQuantizedSparseLengthsSum(
             opName, dataS, indices, lengths, /* useFP16Accumulation */ false,
-            lengthsMode);
+            lengthsMode, avgLength);
       }
 
       if (is4Bit) {
@@ -1525,12 +1528,12 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
         node = G_->createRowwiseQuantizedSparseLengthsWeightedSum(
             opName, dataS, dataScales, dataOffsets, weights, indices, lengths,
             /* precision */ ElemKind::FloatTy,
-            /* useFP16Accumulation */ false, lengthsMode);
+            /* useFP16Accumulation */ false, lengthsMode, avgLength);
       } else {
         node = G_->createRowwiseQuantizedSparseLengthsSum(
             opName, dataS, dataScales, dataOffsets, indices, lengths,
             /* precision */ ElemKind::FloatTy,
-            /* useFP16Accumulation */ false, lengthsMode);
+            /* useFP16Accumulation */ false, lengthsMode, avgLength);
       }
     }
 
