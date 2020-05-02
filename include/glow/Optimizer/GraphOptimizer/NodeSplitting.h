@@ -27,12 +27,8 @@
 
 namespace glow {
 
-/// Split node map type returned by the node splitting procedure consisting in
-/// a mapping between the original node and the nodes it was split into.
-using SplitNodeMap = std::unordered_map<Node *, std::vector<Node *>>;
-
 ///===---------------------------------------------------------------------===//
-///                          splitNodesWithOptions
+///                               SplitNodeOption
 ///===---------------------------------------------------------------------===//
 /// Generic split node option as base type. All the split options refer to the
 /// split procedure performed with respect to the tensor associated with the
@@ -174,12 +170,8 @@ public:
   std::vector<dim_t> splitAlongDim(size_t dim, dim_t dimSize) const override;
 };
 
-/// Split node option map provided to the node splitting procedure consisting in
-/// a mapping between a node and the split options to be used for that node.
-using SplitNodeOptionMap = llvm::DenseMap<Node *, SplitNodeOption *>;
-
 ///===---------------------------------------------------------------------===//
-///                          splitNodesWithConstraints
+///                             SplitNodeConstraint
 ///===---------------------------------------------------------------------===//
 /// Context provided by the node splitting procedure for the user to define node
 /// splitting constraints.
@@ -202,13 +194,13 @@ struct SplitNodeContext {
 /// User defined constraint which verifies whether a given split configuration
 /// given by the context \p ctx is allowed. \returns true if the configuration
 /// is allowed (accepted by the user) and false otherwise. The node splitting
-/// is performed only if all the constraints are met.
+/// is performed only if the constraint is verified.
 using SplitNodeConstraint = std::function<bool(const SplitNodeContext &ctx)>;
 
 /// Particular split node constraint which requires that the total amount of
 /// memory for each split node (the size for all the inputs/outputs) be less
 /// than a maximum value (in bytes).
-inline SplitNodeConstraint getMaxMemSplitNodeConstraint(unsigned maxMem) {
+inline SplitNodeConstraint SplitNodeMaxMemConstraint(unsigned maxMem) {
   return [=](const SplitNodeContext &ctx) -> bool {
     for (const auto *splitNode : ctx.splitNodes) {
       if (!(splitNode->getTotMemSize() <= maxMem)) {
@@ -219,20 +211,67 @@ inline SplitNodeConstraint getMaxMemSplitNodeConstraint(unsigned maxMem) {
   };
 }
 
+///===---------------------------------------------------------------------===//
+///                                  splitNode
+///===---------------------------------------------------------------------===//
 /// Function to split the node \p node using the given option \p splitOption
-/// and the given split constraints \p splitConstraints. \returns a vector with
-/// the nodes obtained after splitting \p node.
-Expected<std::vector<Node *>> splitNodeWithConstraints(
-    Node *node, const SplitNodeOption *splitOption,
-    const llvm::ArrayRef<SplitNodeConstraint> &splitConstraints);
+/// and/or the given split constraint \p splitConstraint. At least the split
+/// option or the split constraint must be given (not necessarily both), the one
+/// which is not used must be set to null. If no option/constraint is provided
+/// then an error is thrown. \returns a vector with the nodes obtained after
+/// splitting \p node. The node is split only if there is a splitting logic
+/// implemented for the node type, otherwise an empty vector is returned.
+Expected<std::vector<Node *>>
+splitNode(Node *node, const SplitNodeOption *splitOption,
+          const SplitNodeConstraint *splitConstraint);
+
+/// Function to split the node \p node using the option \p splitOption.
+/// \returns a vector with the nodes obtained after splitting \p node. The node
+/// is split only if there is a splitting logic implemented for the node type,
+/// otherwise an empty vector is returned.
+Expected<std::vector<Node *>> splitNode(Node *node,
+                                        const SplitNodeOption &splitOption);
+
+/// Function to split the node \p node using the constraint \p splitConstraint.
+/// \returns a vector with the nodes obtained after splitting \p node. The node
+/// is split only if there is a splitting logic implemented for the node type,
+/// otherwise an empty vector is returned.
+Expected<std::vector<Node *>>
+splitNode(Node *node, const SplitNodeConstraint &splitConstraint);
+
+///===---------------------------------------------------------------------===//
+///                                  splitNodes
+///===---------------------------------------------------------------------===//
+/// Split node option map provided to the node splitting procedure which
+/// consists in a mapping between a node and the split option to be used
+/// for that node.
+using SplitNodeOptionMap = llvm::DenseMap<Node *, SplitNodeOption *>;
+
+/// Split node constraint map provided to the node splitting procedure which
+/// consists in a mapping between a node and the split constraint to be used
+/// for that node.
+using SplitNodeConstraintMap = llvm::DenseMap<Node *, SplitNodeConstraint *>;
+
+/// Split node map returned by the node splitting procedure which consists in a
+/// mapping between the original node and the vector of nodes it was split into.
+/// If the node was not actually split then the vector is empty.
+using SplitNodeMap = std::unordered_map<Node *, std::vector<Node *>>;
 
 /// Function to split all the nodes from the function \p F for which there is
 /// a split logic implemented using the given split option map \p splitOptionMap
-/// and the given split constraints \p splitConstraints. \returns a split node
-/// map for all the nodes which were actually split.
-Expected<SplitNodeMap> splitNodesWithConstraints(
-    Function *F, const SplitNodeOptionMap &splitOptionMap,
-    const llvm::ArrayRef<SplitNodeConstraint> &splitConstraints);
+/// and the given split constraint map \p splitConstraintMap. \returns a split
+/// node map for those nodes which were actually split. This function does not
+/// split those nodes for which no option or constraint was found in the maps.
+Expected<SplitNodeMap>
+splitNodes(Function *F, const SplitNodeOptionMap &splitOptionMap,
+           const SplitNodeConstraintMap &splitConstraintMap);
+
+/// Function to split all the nodes from the function \p F for which there is
+/// a split logic implemented using a common split constraint \p splitConstraint
+/// which will be used for all the nodes. \returns a split node map for those
+/// nodes which were actually split.
+Expected<SplitNodeMap> splitNodes(Function *F,
+                                  const SplitNodeConstraint &splitConstraint);
 
 } // namespace glow
 

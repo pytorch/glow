@@ -128,15 +128,6 @@ public:
            ((ranges_[dim].second + 1) % align == 0);
   }
 
-  /// Multiply range for dimension \p dim with \p mult. For example if we
-  /// multiply the range [2, 3] which is same as [2, 4) with 2 we obtain the
-  /// range [4, 7] which is same as [4, 8).
-  void multiplyDimRangeWith(size_t dim, dim_t mult) {
-    assert(dim < ranges_.size() && "Invalid dimension!");
-    ranges_[dim].first = ranges_[dim].first * mult;
-    ranges_[dim].second = (ranges_[dim].second + 1) * mult - 1;
-  }
-
   /// Verify whether this range is included by another range.
   bool isIncludedBy(const SliceRange &other) const {
     auto rangesOther = other.getRanges();
@@ -845,7 +836,7 @@ verifySplitNodes(const Node *node, dim_t splitOutputIdx,
                  const llvm::ArrayRef<SliceRange> &splitOutputSlices,
                  const llvm::ArrayRef<OpIdxAndMap> &inputIdxAndMaps,
                  const llvm::ArrayRef<OpIdxAndMap> &outputIdxAndMaps,
-                 const llvm::ArrayRef<SplitNodeConstraint> &splitConstraints,
+                 const SplitNodeConstraint *splitConstraint,
                  const SplitNodeModifier &splitNodeModifier) {
 
   // Create temporary nodes to make verifications without adding them to
@@ -960,15 +951,15 @@ verifySplitNodes(const Node *node, dim_t splitOutputIdx,
     }
   }
 
-  // Check split nodes against all user constraints.
-  SplitNodeContext splitCtx;
-  splitCtx.origNode = node;
-  splitCtx.splitNodes = splitNodes;
-  for (const auto constraint : splitConstraints) {
-    splitNodesCheck = splitNodesCheck && constraint(splitCtx);
+  // Check split nodes against user constraint (if any).
+  if (splitConstraint) {
+    SplitNodeContext splitCtx;
+    splitCtx.origNode = node;
+    splitCtx.splitNodes = splitNodes;
+    splitNodesCheck = splitNodesCheck && (*splitConstraint)(splitCtx);
   }
 
-  // Explicitly destroy the temporary clones.
+  // Explicitly destroy the temporary nodes.
   for (auto splitNode : splitNodes) {
     Node::destroyNode(splitNode);
   }
@@ -981,8 +972,8 @@ verifySplitNodes(const Node *node, dim_t splitOutputIdx,
 ///===---------------------------------------------------------------------===//
 static Expected<std::vector<Node *>> splitAndReplaceNode(
     Node *node, const SplitNodeOption *splitOption,
-    const llvm::ArrayRef<SplitNodeConstraint> &splitConstraints,
-    dim_t splitOutputIdx, const llvm::ArrayRef<OpIdxAndMap> &inputIdxAndMaps,
+    const SplitNodeConstraint *splitConstraint, dim_t splitOutputIdx,
+    const llvm::ArrayRef<OpIdxAndMap> &inputIdxAndMaps,
     const llvm::ArrayRef<OpIdxAndMap> &outputIdxAndMaps,
     const SplitNodeModifier &splitNodeModifier = SplitNodeModifierNop) {
 
@@ -1008,7 +999,7 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
 
   // If a specific split option is given then we do a targeted splitting.
   // If no specific split option is given then we search a split configuration
-  // which meets all the constraints.
+  // which meets the constraint.
   if (splitOption) {
 
     // Split along all the given dimensions using the given option.
@@ -1022,7 +1013,7 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
     ASSIGN_VALUE_OR_RETURN_ERR(
         splitNodesCheck,
         verifySplitNodes(node, splitOutputIdx, splitOutputSlices,
-                         inputIdxAndMaps, outputIdxAndMaps, splitConstraints,
+                         inputIdxAndMaps, outputIdxAndMaps, splitConstraint,
                          splitNodeModifier));
 
     // If split nodes are invalid then we do not perform any splitting.
@@ -1032,8 +1023,12 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
 
   } else {
 
-    // Start searching of a split configuration which meets all the constraints
-    // by splitting along the given dimensions iteratively in smaller chunks.
+    // When no split option is given a split constraint is mandatory.
+    RETURN_ERR_IF_NOT(splitConstraint, "When a split option is not given then "
+                                       "a split constraint must be given!");
+
+    // Start searching of a split configuration which meets the constraint by
+    // splitting along the given dimensions iteratively in smaller chunks.
     bool splitFound = false;
     for (size_t splitDim : splitDims) {
 
@@ -1053,8 +1048,8 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
         ASSIGN_VALUE_OR_RETURN_ERR(
             splitNodesCheck,
             verifySplitNodes(node, splitOutputIdx, splitOutputSlicesTemp,
-                             inputIdxAndMaps, outputIdxAndMaps,
-                             splitConstraints, splitNodeModifier));
+                             inputIdxAndMaps, outputIdxAndMaps, splitConstraint,
+                             splitNodeModifier));
 
         // If split is found we stop searching.
         if (splitNodesCheck) {
@@ -1126,7 +1121,7 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
     // Create input Slice nodes.
     for (const auto &inputIdxMap : inputIdxAndMaps) {
       auto inputIdx = inputIdxMap.first;
-      auto inputRange = inputRanges[inputIdxMap.first];
+      auto &inputRange = inputRanges[inputIdxMap.first];
       Type outTy = Type::newShape(*(node->getNthInput(inputIdx).getType()),
                                   inputRange.getSizes());
       auto nodeName =
@@ -1141,6 +1136,15 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
     TypeRef splitOutputType = F->getParent()->uniqueTypeWithNewShape(
         node->getType(splitOutputIdx), splitOutputSlice.getSizes());
     clone->getNthResult(splitOutputIdx).setTypeUnsafe(splitOutputType);
+
+    // Set clone output types. The original node output types are not
+    // modified because the clone owns its output types.
+    for (const auto &outputIdxMap : outputIdxAndMaps) {
+      auto &outputRange = outputRanges[outputIdxMap.first];
+      TypeRef outputType = F->getParent()->uniqueTypeWithNewShape(
+          node->getType(outputIdxMap.first), outputRange.getSizes());
+      clone->getNthResult(outputIdxMap.first).setTypeUnsafe(outputType);
+    }
 
     // Modify clone.
     splitNodeModifier(node, clone, inputRanges, outputRanges);
@@ -1174,16 +1178,21 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
 }
 
 ///===---------------------------------------------------------------------===//
-///                          splitNodesWithConstraints
+///                                  splitNode
 ///===---------------------------------------------------------------------===//
-Expected<std::vector<Node *>> glow::splitNodeWithConstraints(
-    Node *node, const SplitNodeOption *splitOption,
-    const llvm::ArrayRef<SplitNodeConstraint> &splitConstraints) {
+Expected<std::vector<Node *>>
+glow::splitNode(Node *node, const SplitNodeOption *splitOption,
+                const SplitNodeConstraint *splitConstraint) {
+
+  // We can do the splitting if at least the option or the constraint is given.
+  RETURN_ERR_IF_NOT(
+      splitOption || splitConstraint,
+      "At least the split option or the split constraint must be given!");
 
   switch (node->getKind()) {
   case Kinded::Kind::ConvolutionNodeKind: {
     return splitAndReplaceNode(
-        node, splitOption, splitConstraints, ConvolutionNode::ResultIdx,
+        node, splitOption, splitConstraint, ConvolutionNode::ResultIdx,
         getConv2DInputIdxAndMaps<ShapeNHWC>(dyn_cast<ConvolutionNode>(node)),
         {}, Conv2DSplitNodeModifier<ShapeNHWC>);
     break;
@@ -1197,7 +1206,7 @@ Expected<std::vector<Node *>> glow::splitNodeWithConstraints(
       break;
     }
     return splitAndReplaceNode(
-        node, splitOption, splitConstraints, MaxPoolNode::ResultIdx,
+        node, splitOption, splitConstraint, MaxPoolNode::ResultIdx,
         getPoolInputIdxAndMaps<MaxPoolNode, ShapeNHWC>(
             dyn_cast<MaxPoolNode>(node)),
         {{MaxPoolNode::ArgmaxIdx, CheckedSliceRangeMapIdentity}},
@@ -1206,14 +1215,14 @@ Expected<std::vector<Node *>> glow::splitNodeWithConstraints(
   }
   case Kinded::Kind::AvgPoolNodeKind: {
     return splitAndReplaceNode(
-        node, splitOption, splitConstraints, AvgPoolNode::ResultIdx,
+        node, splitOption, splitConstraint, AvgPoolNode::ResultIdx,
         getPoolInputIdxAndMaps<AvgPoolNode, ShapeNHWC>(
             dyn_cast<AvgPoolNode>(node)),
         {}, PoolSplitNodeModifier<AvgPoolNode, ShapeNHWC>);
     break;
   }
   default:
-    VLOG(1) << "Spliting node '" << node->getKindName()
+    VLOG(1) << "Splitting node type '" << node->getKindName()
             << "' is not supported!\n";
     break;
   }
@@ -1221,10 +1230,22 @@ Expected<std::vector<Node *>> glow::splitNodeWithConstraints(
   return std::vector<Node *>();
 }
 
-Expected<SplitNodeMap> glow::splitNodesWithConstraints(
-    Function *F, const SplitNodeOptionMap &splitOptionMap,
-    const llvm::ArrayRef<SplitNodeConstraint> &splitConstraints) {
+Expected<std::vector<Node *>>
+glow::splitNode(Node *node, const SplitNodeOption &splitOption) {
+  return splitNode(node, &splitOption, nullptr);
+}
 
+Expected<std::vector<Node *>>
+glow::splitNode(Node *node, const SplitNodeConstraint &splitConstraint) {
+  return splitNode(node, nullptr, &splitConstraint);
+}
+
+///===---------------------------------------------------------------------===//
+///                                  splitNodes
+///===---------------------------------------------------------------------===//
+Expected<SplitNodeMap>
+glow::splitNodes(Function *F, const SplitNodeOptionMap &splitOptionMap,
+                 const SplitNodeConstraintMap &splitConstraintMap) {
   // Create split map.
   SplitNodeMap splitMap;
 
@@ -1240,16 +1261,37 @@ Expected<SplitNodeMap> glow::splitNodesWithConstraints(
       splitOption = splitOptionIt->second;
     }
 
-    // Split current node.
-    std::vector<Node *> splitNodes;
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        splitNodes,
-        splitNodeWithConstraints(node, splitOption, splitConstraints));
-
-    // Add info to split map only if the current node was actually split.
-    if (splitNodes.size()) {
-      splitMap[node] = splitNodes;
+    // Find explicit split constraint for current node (if any).
+    const SplitNodeConstraint *splitConstraint = nullptr;
+    auto splitConstraintIt = splitConstraintMap.find(node);
+    if (splitConstraintIt != splitConstraintMap.end()) {
+      splitConstraint = splitConstraintIt->second;
     }
+
+    // Split current node if at least the option or the constraint is given.
+    if (splitOption || splitConstraint) {
+      ASSIGN_VALUE_OR_RETURN_ERR(splitMap[node],
+                                 splitNode(node, splitOption, splitConstraint));
+    }
+  }
+
+  // Verify function after splitting nodes.
+  RETURN_ERR_IF_NOT(F->verify(), "Function is not valid after node splitting!");
+  return splitMap;
+}
+
+Expected<SplitNodeMap>
+glow::splitNodes(Function *F, const SplitNodeConstraint &splitConstraint) {
+  // Create split map.
+  SplitNodeMap splitMap;
+
+  // Since we will be transforming the original list of nodes, reverse iterate.
+  auto &nodes = F->getNodes();
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
+    Node *node = &*it;
+    const SplitNodeOption *splitOption = nullptr;
+    ASSIGN_VALUE_OR_RETURN_ERR(splitMap[node],
+                               splitNode(node, splitOption, &splitConstraint));
   }
 
   // Verify function after splitting nodes.

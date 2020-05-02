@@ -113,17 +113,14 @@ createConv2D(Function *F, PlaceholderBindings &bindings,
       mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
   bindings.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
                                                          mod.getPRNG());
-
   // Create filter constant.
   auto *filter = mod.createConstant(ElemKind::FloatTy, filterDims, "filter");
   filter->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
                                                            mod.getPRNG());
-
   // Create bias constant.
   auto *bias = mod.createConstant(ElemKind::FloatTy, biasDims, "bias");
   bias->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
                                                          mod.getPRNG());
-
   // Create Conv2D.
   auto *outTy = mod.uniqueType(ElemKind::FloatTy, outputDims);
   ConvolutionNode *conv =
@@ -143,7 +140,7 @@ static void splitConv2DBasic(Function *F, Function *&optF,
                              std::vector<size_t> splitDims,
                              std::vector<dim_t> numChunks) {
   // Create basic Conv2D.
-  Node *conv = createConv2D(F, bindings,
+  Node *node = createConv2D(F, bindings,
                             /* inputDims */ {5, 7, 8, 2},
                             /* filterDims */ {8, 2, 2, 1},
                             /* biasDims */ {8},
@@ -161,8 +158,7 @@ static void splitConv2DBasic(Function *F, Function *&optF,
   // Split node.
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
-  ASSIGN_VALUE_OR_FAIL_TEST(
-      splitNodes, ::glow::splitNodeWithConstraints(conv, &splitOption, {}));
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
   runDCEPass(F, cctx);
 
   // Compute total number of chunks.
@@ -240,7 +236,7 @@ static void splitConv2DNonZeroPad(Function *F, Function *&optF,
                                   std::vector<size_t> splitDims,
                                   std::vector<dim_t> numChunks) {
   // Create Conv2D with non-zero padding.
-  Node *conv = createConv2D(F, bindings,
+  Node *node = createConv2D(F, bindings,
                             /* inputDims */ {1, 4, 4, 1},
                             /* filterDims */ {2, 2, 2, 1},
                             /* biasDims */ {2},
@@ -258,8 +254,7 @@ static void splitConv2DNonZeroPad(Function *F, Function *&optF,
   // Split node.
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
-  ASSIGN_VALUE_OR_FAIL_TEST(
-      splitNodes, ::glow::splitNodeWithConstraints(conv, &splitOption, {}));
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
   runDCEPass(F, cctx);
 
   // Compute total number of chunks.
@@ -302,7 +297,7 @@ TEST_F(NodeSplitting, Conv2D_NonZeroPad_DimHW_Chunks4) {
 TEST_F(NodeSplitting, Conv2D_IllDefined_DimHW) {
   std::vector<size_t> splitDims = {ShapeNHWC::dimH, ShapeNHWC::dimW};
   std::vector<dim_t> numChunks = {3, 3};
-  Node *conv = createConv2D(F_, bindings_,
+  Node *node = createConv2D(F_, bindings_,
                             /* inputDims */ {1, 16, 18, 1},
                             /* filterDims */ {1, 2, 2, 1},
                             /* biasDims */ {1},
@@ -320,8 +315,7 @@ TEST_F(NodeSplitting, Conv2D_IllDefined_DimHW) {
   // Split node.
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
-  ASSIGN_VALUE_OR_FAIL_TEST(
-      splitNodes, ::glow::splitNodeWithConstraints(conv, &splitOption, {}));
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
   runDCEPass(F_, cctx_);
 
   // Check node count.
@@ -332,6 +326,49 @@ TEST_F(NodeSplitting, Conv2D_IllDefined_DimHW) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind),
             totNumChunks);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 1);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a Conv2D based on memory constraint.
+TEST_F(NodeSplitting, Conv2D_MaxMem) {
+  Node *node = createConv2D(F_, bindings_,
+                            /* inputDims */ {5, 7, 8, 2},
+                            /* filterDims */ {8, 2, 2, 1},
+                            /* biasDims */ {8},
+                            /* outputDims */ {5, 6, 7, 8},
+                            /* kernels */ {2, 2},
+                            /* strides */ {1, 1},
+                            /* pads */ {0, 0, 0, 0},
+                            /* group */ 2,
+                            /* dilation */ 1);
+
+  // Optimize current function and save.
+  ::glow::optimize(F_, CompilationMode::Infer);
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Split node by memory size.
+  auto origMemSize = node->getTotMemSize();
+  auto splitMaxMemSize = origMemSize / 2;
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitNodes,
+      ::glow::splitNode(node, SplitNodeMaxMemConstraint(splitMaxMemSize)));
+  runDCEPass(F_, cctx_);
+
+  // Check node count.
+  auto totNumChunks = countNodeKind(F_, Kinded::Kind::ConvolutionNodeKind);
+  EXPECT_TRUE(totNumChunks > 1);
+  EXPECT_EQ(splitNodes.size(), totNumChunks);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 3 * totNumChunks);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind),
+            totNumChunks);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 1);
+
+  // Check split nodes memory sizes.
+  for (auto *splitNode : splitNodes) {
+    EXPECT_TRUE(splitNode->getTotMemSize() <= splitMaxMemSize);
+  }
+  checkNumericalEquivalence(0);
 }
 
 ///===---------------------------------------------------------------------===//
@@ -345,14 +382,12 @@ static Node *createMaxPool(Function *F, PlaceholderBindings &bindings,
                            std::vector<unsigned_t> kernels,
                            std::vector<unsigned_t> strides,
                            std::vector<unsigned_t> pads) {
-
   // Create input placeholder.
   auto &mod = *(F->getParent());
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
   bindings.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
                                                          mod.getPRNG());
-
   // Create MaxPool.
   MaxPoolNode *maxpool =
       F->createMaxPool("maxpool", input, kernels, strides, pads);
@@ -372,12 +407,12 @@ static void splitMaxPoolBasic(Function *F, Function *&optF,
                               std::vector<size_t> splitDims,
                               std::vector<dim_t> numChunks) {
   // Create basic MaxPool.
-  Node *maxpool = createMaxPool(F, bindings,
-                                /* inputDims */ {3, 7, 8, 4},
-                                /* outputDims */ {3, 6, 7, 4},
-                                /* kernels */ {2, 2},
-                                /* strides */ {1, 1},
-                                /* pads */ {0, 0, 0, 0});
+  Node *node = createMaxPool(F, bindings,
+                             /* inputDims */ {3, 7, 8, 4},
+                             /* outputDims */ {3, 6, 7, 4},
+                             /* kernels */ {2, 2},
+                             /* strides */ {1, 1},
+                             /* pads */ {0, 0, 0, 0});
 
   // Optimize current function and save.
   ::glow::optimize(F, CompilationMode::Infer);
@@ -386,8 +421,7 @@ static void splitMaxPoolBasic(Function *F, Function *&optF,
   // Split node.
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
-  ASSIGN_VALUE_OR_FAIL_TEST(
-      splitNodes, ::glow::splitNodeWithConstraints(maxpool, &splitOption, {}));
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
   runDCEPass(F, cctx);
 
   // Compute total number of chunks.
@@ -438,12 +472,12 @@ static void splitMaxPoolNonZeroPad(Function *F, Function *&optF,
                                    std::vector<size_t> splitDims,
                                    std::vector<dim_t> numChunks) {
   // Create MaxPool with non-zero padding.
-  Node *maxpool = createMaxPool(F, bindings,
-                                /* inputDims */ {1, 4, 4, 1},
-                                /* outputDims */ {1, 4, 8, 1},
-                                /* kernels */ {2, 2},
-                                /* strides */ {1, 1},
-                                /* pads */ {0, 2, 1, 3});
+  Node *node = createMaxPool(F, bindings,
+                             /* inputDims */ {1, 4, 4, 1},
+                             /* outputDims */ {1, 4, 8, 1},
+                             /* kernels */ {2, 2},
+                             /* strides */ {1, 1},
+                             /* pads */ {0, 2, 1, 3});
 
   // Optimize current function and save.
   ::glow::optimize(F, CompilationMode::Infer);
@@ -452,8 +486,7 @@ static void splitMaxPoolNonZeroPad(Function *F, Function *&optF,
   // Split node.
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
-  ASSIGN_VALUE_OR_FAIL_TEST(
-      splitNodes, ::glow::splitNodeWithConstraints(maxpool, &splitOption, {}));
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
   runDCEPass(F, cctx);
 
   // Compute total number of chunks.
@@ -497,12 +530,12 @@ TEST_F(NodeSplitting, MaxPool_NonZeroPad_DimHW_Chunks4) {
 TEST_F(NodeSplitting, MaxPool_IllDefined_DimHW) {
   std::vector<size_t> splitDims = {ShapeNHWC::dimH, ShapeNHWC::dimW};
   std::vector<dim_t> numChunks = {3, 3};
-  Node *maxpool = createMaxPool(F_, bindings_,
-                                /* inputDims */ {1, 16, 18, 1},
-                                /* outputDims */ {1, 8, 9, 1},
-                                /* kernels */ {2, 2},
-                                /* strides */ {2, 2},
-                                /* pads */ {1, 1, 0, 0});
+  Node *node = createMaxPool(F_, bindings_,
+                             /* inputDims */ {1, 16, 18, 1},
+                             /* outputDims */ {1, 8, 9, 1},
+                             /* kernels */ {2, 2},
+                             /* strides */ {2, 2},
+                             /* pads */ {1, 1, 0, 0});
 
   // Optimize current function and save.
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -511,8 +544,7 @@ TEST_F(NodeSplitting, MaxPool_IllDefined_DimHW) {
   // Split node.
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
-  ASSIGN_VALUE_OR_FAIL_TEST(
-      splitNodes, ::glow::splitNodeWithConstraints(maxpool, &splitOption, {}));
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
   runDCEPass(F_, cctx_);
 
   // Check node count.
@@ -523,6 +555,44 @@ TEST_F(NodeSplitting, MaxPool_IllDefined_DimHW) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind),
             totNumChunks);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 1);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a MaxPool based on memory constraint.
+TEST_F(NodeSplitting, MaxPool_MaxMem) {
+  Node *node = createMaxPool(F_, bindings_,
+                             /* inputDims */ {3, 7, 8, 4},
+                             /* outputDims */ {3, 6, 7, 4},
+                             /* kernels */ {2, 2},
+                             /* strides */ {1, 1},
+                             /* pads */ {0, 0, 0, 0});
+
+  // Optimize current function and save.
+  ::glow::optimize(F_, CompilationMode::Infer);
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Split node by memory size.
+  auto origMemSize = node->getTotMemSize();
+  auto splitMaxMemSize = origMemSize / 2;
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitNodes,
+      ::glow::splitNode(node, SplitNodeMaxMemConstraint(splitMaxMemSize)));
+  runDCEPass(F_, cctx_);
+
+  // Check node count.
+  auto totNumChunks = countNodeKind(F_, Kinded::Kind::MaxPoolNodeKind);
+  EXPECT_EQ(splitNodes.size(), totNumChunks);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind),
+            totNumChunks);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 1);
+
+  // Check split nodes memory sizes.
+  for (auto *splitNode : splitNodes) {
+    EXPECT_TRUE(splitNode->getTotMemSize() <= splitMaxMemSize);
+  }
+  checkNumericalEquivalence(0);
 }
 
 /// Test that a MaxPool node is not split when the second output operand
@@ -555,8 +625,8 @@ TEST_F(NodeSplitting, MaxPool_Argmax_NoSplit) {
   // Split node.
   auto splitOption = SplitNodeByNumChunks({ShapeNHWC::dimH}, {3});
   std::vector<Node *> splitNodes;
-  ASSIGN_VALUE_OR_FAIL_TEST(
-      splitNodes, ::glow::splitNodeWithConstraints(maxpool, &splitOption, {}));
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes,
+                            ::glow::splitNode(maxpool, splitOption));
   runDCEPass(F_, cctx_);
 
   // Check node count.
@@ -565,6 +635,7 @@ TEST_F(NodeSplitting, MaxPool_Argmax_NoSplit) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MaxPoolNodeKind), 1);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 0);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 0);
+  checkNumericalEquivalence(0);
 }
 
 ///===---------------------------------------------------------------------===//
@@ -578,14 +649,12 @@ static Node *createAvgPool(Function *F, PlaceholderBindings &bindings,
                            std::vector<unsigned_t> kernels,
                            std::vector<unsigned_t> strides,
                            std::vector<unsigned_t> pads) {
-
   // Create input placeholder.
   auto &mod = *(F->getParent());
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
   bindings.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
                                                          mod.getPRNG());
-
   // Create AvgPool.
   AvgPoolNode *avgpool =
       F->createAvgPool("avgpool", input, kernels, strides, pads);
@@ -605,12 +674,12 @@ static void splitAvgPoolBasic(Function *F, Function *&optF,
                               std::vector<size_t> splitDims,
                               std::vector<dim_t> numChunks) {
   // Create basic AvgPool.
-  Node *avgpool = createAvgPool(F, bindings,
-                                /* inputDims */ {3, 7, 8, 4},
-                                /* outputDims */ {3, 6, 7, 4},
-                                /* kernels */ {2, 2},
-                                /* strides */ {1, 1},
-                                /* pads */ {0, 0, 0, 0});
+  Node *node = createAvgPool(F, bindings,
+                             /* inputDims */ {3, 7, 8, 4},
+                             /* outputDims */ {3, 6, 7, 4},
+                             /* kernels */ {2, 2},
+                             /* strides */ {1, 1},
+                             /* pads */ {0, 0, 0, 0});
 
   // Optimize current function and save.
   ::glow::optimize(F, CompilationMode::Infer);
@@ -619,8 +688,7 @@ static void splitAvgPoolBasic(Function *F, Function *&optF,
   // Split node.
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
-  ASSIGN_VALUE_OR_FAIL_TEST(
-      splitNodes, ::glow::splitNodeWithConstraints(avgpool, &splitOption, {}));
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
   runDCEPass(F, cctx);
 
   // Compute total number of chunks.
@@ -671,12 +739,12 @@ static void splitAvgPoolNonZeroPad(Function *F, Function *&optF,
                                    std::vector<size_t> splitDims,
                                    std::vector<dim_t> numChunks) {
   // Create AvgPool with non-zero padding.
-  Node *avgpool = createAvgPool(F, bindings,
-                                /* inputDims */ {1, 4, 4, 1},
-                                /* outputDims */ {1, 4, 8, 1},
-                                /* kernels */ {2, 2},
-                                /* strides */ {1, 1},
-                                /* pads */ {0, 2, 1, 3});
+  Node *node = createAvgPool(F, bindings,
+                             /* inputDims */ {1, 4, 4, 1},
+                             /* outputDims */ {1, 4, 8, 1},
+                             /* kernels */ {2, 2},
+                             /* strides */ {1, 1},
+                             /* pads */ {0, 2, 1, 3});
 
   // Optimize current function and save.
   ::glow::optimize(F, CompilationMode::Infer);
@@ -685,8 +753,7 @@ static void splitAvgPoolNonZeroPad(Function *F, Function *&optF,
   // Split node.
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
-  ASSIGN_VALUE_OR_FAIL_TEST(
-      splitNodes, ::glow::splitNodeWithConstraints(avgpool, &splitOption, {}));
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
   runDCEPass(F, cctx);
 
   // Compute total number of chunks.
@@ -730,12 +797,12 @@ TEST_F(NodeSplitting, AvgPool_NonZeroPad_DimHW_Chunks4) {
 TEST_F(NodeSplitting, AvgPool_IllDefined_DimHW) {
   std::vector<size_t> splitDims = {ShapeNHWC::dimH, ShapeNHWC::dimW};
   std::vector<dim_t> numChunks = {3, 3};
-  Node *avgpool = createAvgPool(F_, bindings_,
-                                /* inputDims */ {1, 16, 18, 1},
-                                /* outputDims */ {1, 8, 9, 1},
-                                /* kernels */ {2, 2},
-                                /* strides */ {2, 2},
-                                /* pads */ {1, 1, 0, 0});
+  Node *node = createAvgPool(F_, bindings_,
+                             /* inputDims */ {1, 16, 18, 1},
+                             /* outputDims */ {1, 8, 9, 1},
+                             /* kernels */ {2, 2},
+                             /* strides */ {2, 2},
+                             /* pads */ {1, 1, 0, 0});
 
   // Optimize current function and save.
   ::glow::optimize(F_, CompilationMode::Infer);
@@ -744,8 +811,7 @@ TEST_F(NodeSplitting, AvgPool_IllDefined_DimHW) {
   // Split node.
   auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
   std::vector<Node *> splitNodes;
-  ASSIGN_VALUE_OR_FAIL_TEST(
-      splitNodes, ::glow::splitNodeWithConstraints(avgpool, &splitOption, {}));
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
   runDCEPass(F_, cctx_);
 
   // Check node count.
@@ -756,4 +822,42 @@ TEST_F(NodeSplitting, AvgPool_IllDefined_DimHW) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind),
             totNumChunks);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 1);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a AvgPool based on memory constraint.
+TEST_F(NodeSplitting, AvgPool_MaxMem) {
+  Node *node = createAvgPool(F_, bindings_,
+                             /* inputDims */ {3, 7, 8, 4},
+                             /* outputDims */ {3, 6, 7, 4},
+                             /* kernels */ {2, 2},
+                             /* strides */ {1, 1},
+                             /* pads */ {0, 0, 0, 0});
+
+  // Optimize current function and save.
+  ::glow::optimize(F_, CompilationMode::Infer);
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Split node by memory size.
+  auto origMemSize = node->getTotMemSize();
+  auto splitMaxMemSize = origMemSize / 2;
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitNodes,
+      ::glow::splitNode(node, SplitNodeMaxMemConstraint(splitMaxMemSize)));
+  runDCEPass(F_, cctx_);
+
+  // Check node count.
+  auto totNumChunks = countNodeKind(F_, Kinded::Kind::AvgPoolNodeKind);
+  EXPECT_EQ(splitNodes.size(), totNumChunks);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind),
+            totNumChunks);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 1);
+
+  // Check split nodes memory sizes.
+  for (auto *splitNode : splitNodes) {
+    EXPECT_TRUE(splitNode->getTotMemSize() <= splitMaxMemSize);
+  }
+  checkNumericalEquivalence(0);
 }

@@ -4558,9 +4558,8 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   // Perform node splitting by memory size.
   SplitNodeMap splitMap;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      splitMap, ::glow::splitNodesWithConstraints(
-                    F, llvm::DenseMap<Node *, SplitNodeOption *>(),
-                    {getMaxMemSplitNodeConstraint(splitNodesByMemSizeOpt)}));
+      splitMap,
+      ::glow::splitNodes(F, SplitNodeMaxMemConstraint(splitNodesByMemSizeOpt)));
 
   // If requested fold ElemKind conversion Nodes into static Placeholders,
   // inputs, and outputs (Placeholders and SaveNodes).
