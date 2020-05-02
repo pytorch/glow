@@ -7522,7 +7522,7 @@ TEST_P(OperatorTest, DilatedConvolution) {
 
 /// Test the functionality of channelwise quantized group convolution using
 /// ChannelwiseQuantizedConvNode with non-zero offsets and biases.
-TEST_P(OperatorTest, ChannelwiseQuantizedConv_NonZero) {
+TEST_P(OperatorTest, ChannelwiseQuantizedConv2D_NonZero) {
   CHECK_IF_ENABLED();
 
   constexpr size_t groups = 2;
