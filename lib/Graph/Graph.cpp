@@ -2688,21 +2688,18 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
 
   // Validate bias precision.
   auto biasElemKind = bias.getElementType();
-  if (biasElemKind != ElemKind::Int8QTy && biasElemKind != ElemKind::Int32QTy &&
-      biasElemKind != ElemKind::FloatTy) {
-    LOG(DFATAL)
-        << "Unsupported element type for ChannelwiseQuantizedConvolution bias: "
-        << Type::getElementName(biasElemKind).str();
-  }
+  DCHECK(biasElemKind == ElemKind::Int8QTy ||
+         biasElemKind == ElemKind::Int32QTy ||
+         biasElemKind == ElemKind::FloatTy)
+      << "Unsupported element type for ChannelwiseQuantizedConvolution bias: "
+      << Type::getElementName(biasElemKind).str();
 
   // Validate filter precision.
   auto filterElemKind = filter.getElementType();
-  if (filterElemKind != ElemKind::Int8QTy &&
-      filterElemKind != ElemKind::FloatTy) {
-    LOG(DFATAL)
-        << "Unsupported element type for ChannelwiseQuantizedConvolution "
-        << "filter: " << Type::getElementName(filterElemKind).str();
-  }
+  DCHECK(filterElemKind == ElemKind::Int8QTy ||
+         filterElemKind == ElemKind::FloatTy)
+      << "Unsupported element type for ChannelwiseQuantizedConvolution "
+      << "filter: " << Type::getElementName(filterElemKind).str();
 
   DCHECK(dyn_cast<Constant>(bias.getNode()))
       << "Bias input to ChannelwiseQuantizedConvolutionNode must be a Constant";
@@ -2737,24 +2734,21 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
   // then compute them automatically for given schema and filterElemQTy.
   // If input filter is QUANTIZED then filterScales/filterOffsets are mandatory.
   if (!filterScales.getNode() || !filterOffsets.getNode()) {
-    if (filterElemKind == ElemKind::FloatTy) {
-      Constant *filterC = dyn_cast<Constant>(filter.getNode());
-      Constant *filterScalesC = getParent()->createConstant(
-          ElemKind::FloatTy, {numChannels}, "filterScales");
-      Constant *filterOffsetsC = getParent()->createConstant(
-          ElemKind::Int32ITy, {numChannels}, "filterOffsets");
-      // Get filter channelwise TensorQuantizationParams.
-      quantization::getTensorQuantizationParams(
-          filterC->getPayload(), filterScalesC->getPayloadMutable(),
-          filterOffsetsC->getPayloadMutable(), schema, filterElemQTy, qDim,
-          qStep);
-      filterScales = NodeValue(filterScalesC);
-      filterOffsets = NodeValue(filterOffsetsC);
-    } else {
-      LOG(DFATAL)
-          << "ChannelwiseQuantizedConvolution: If the input filter is "
-          << "quantized then the filter scales/offsets must be provided!";
-    }
+    DCHECK(filterElemKind == ElemKind::FloatTy)
+        << "ChannelwiseQuantizedConvolution: If the input filter is "
+        << "quantized then the filter scales/offsets must be provided!";
+    Constant *filterC = dyn_cast<Constant>(filter.getNode());
+    Constant *filterScalesC = getParent()->createConstant(
+        ElemKind::FloatTy, {numChannels}, "filterScales");
+    Constant *filterOffsetsC = getParent()->createConstant(
+        ElemKind::Int32ITy, {numChannels}, "filterOffsets");
+    // Get filter channelwise TensorQuantizationParams.
+    quantization::getTensorQuantizationParams(
+        filterC->getPayload(), filterScalesC->getPayloadMutable(),
+        filterOffsetsC->getPayloadMutable(), schema, filterElemQTy, qDim,
+        qStep);
+    filterScales = NodeValue(filterScalesC);
+    filterOffsets = NodeValue(filterOffsetsC);
   }
 
   // If input filter is FLOAT then quantize channel wise to filterElemQTy.

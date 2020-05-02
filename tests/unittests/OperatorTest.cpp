@@ -7192,7 +7192,7 @@ static void testChannelwiseQuantizedConv2D(
 
 #define TEST_CWQCONV(testName, ...)                                            \
   TEST_P(OperatorTest, testName) {                                             \
-    ENABLED_BACKENDS("Interpreter", "CPU");                                    \
+    CHECK_IF_ENABLED();                                                        \
     testChannelwiseQuantizedConv2D(bindings_, mod_, F_, EE_,                   \
                                    quantization::Schema::Asymmetric,           \
                                    __VA_ARGS__);                               \
@@ -7283,7 +7283,7 @@ createAndInitBasicChannelwiseConv2DTest(glow::PlaceholderBindings &bindings,
 
 /// Test Int8 ChannelwiseQuantizedConvolution2D with Int8 bias.
 TEST_P(OperatorStatelessTest, ChannelwiseQuantizedConv2D_Int8_BiasInt8) {
-  ENABLED_BACKENDS("Interpreter", "CPU");
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicChannelwiseConv2DTest,
       ElemKind::FloatTy, ElemKind::Int8QTy, 0.05f, parCloneCountOpt,
@@ -7295,7 +7295,7 @@ TEST_P(OperatorStatelessTest, ChannelwiseQuantizedConv2D_Int8_BiasInt8) {
 
 /// Test Int8 ChannelwiseQuantizedConvolution2D with Int32 bias.
 TEST_P(OperatorStatelessTest, ChannelwiseQuantizedConv2D_Int8_BiasInt32) {
-  ENABLED_BACKENDS("Interpreter", "CPU");
+  CHECK_IF_ENABLED();
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicChannelwiseConv2DTest,
       ElemKind::FloatTy, ElemKind::Int8QTy, 0.05f, parCloneCountOpt,
@@ -7308,7 +7308,7 @@ TEST_P(OperatorStatelessTest, ChannelwiseQuantizedConv2D_Int8_BiasInt32) {
 /// Test the functionality of channelwise quantized group convolution using
 /// ChannelwiseQuantizedConvNode.
 TEST_P(OperatorTest, ChannelwiseQuantizedConv2D) {
-  ENABLED_BACKENDS("Interpreter", "CPU");
+  CHECK_IF_ENABLED();
 
   constexpr size_t groups = 2;
   constexpr dim_t output_channel = 4;
@@ -7390,7 +7390,7 @@ TEST_P(OperatorTest, ChannelwiseQuantizedConv2D) {
 /// Test the functionality of channelwise quantized group convolution using
 /// ChannelwiseQuantizedConvNode.
 TEST_P(OperatorTest, ChannelwiseQuantizedConv3D) {
-  ENABLED_BACKENDS("Interpreter", "CPU");
+  CHECK_IF_ENABLED();
 
   constexpr size_t groups = 2;
   constexpr dim_t output_channel = 4;
@@ -7523,7 +7523,7 @@ TEST_P(OperatorTest, DilatedConvolution) {
 /// Test the functionality of channelwise quantized group convolution using
 /// ChannelwiseQuantizedConvNode with non-zero offsets and biases.
 TEST_P(OperatorTest, ChannelwiseQuantizedConv_NonZero) {
-  ENABLED_BACKENDS("Interpreter", "CPU");
+  CHECK_IF_ENABLED();
 
   constexpr size_t groups = 2;
   constexpr dim_t output_channel = 4;
