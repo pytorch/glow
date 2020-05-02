@@ -93,6 +93,18 @@ target_link_libraries(TransposeBench
                         HostManager
                         CPURuntimeNative)
 
+add_executable(ConcatBench
+               ConcatBench.cpp)
+target_link_libraries(ConcatBench
+                      PRIVATE
+                        Backends
+                        ExecutionEngine
+                        Graph
+                        GraphOptimizer
+                        HostManager
+                        CPURuntimeNative)
+
+
 add_executable(BERTProxyLayerBench
                BERTProxyLayerBench.cpp)
 target_link_libraries(BERTProxyLayerBench
