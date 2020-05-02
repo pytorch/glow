@@ -453,9 +453,9 @@ protected:
 
     Node *node = nullptr;
     if (typeName == "Min") {
-      node = G_->createMin(opName, in0, in1);
+      node = G_->createNodeWithBroadcast<MinNode>(opName, -1, in0, in1);
     } else if (typeName == "Max") {
-      node = G_->createMax(opName, in0, in1);
+      node = G_->createNodeWithBroadcast<MaxNode>(opName, -1, in0, in1);
     } else {
       RETURN_ERR("Invalid min or max operator");
     }
