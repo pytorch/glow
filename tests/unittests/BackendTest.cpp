@@ -43,7 +43,12 @@ enum class PlaceholderType {
   NonePlaceholder = 3
 };
 
-class BackendExecTest : public BackendStatelessTest {
+class BackendExecTest : public ::testing::TestWithParam<std::string> {
+public:
+  ExecutionEngine EE_{GetParam()};
+};
+
+class BackendExecStatelessTest : public BackendStatelessTest {
 public:
   ExecutionEngine EE_{getBackendName()};
 };
@@ -575,7 +580,7 @@ static void testDebugPrint(ExecutionEngine &EE, std::string backendName,
 }
 
 /// Test dumping to console.
-TEST_P(BackendExecTest, DebugPrint_Console) {
+TEST_P(BackendExecStatelessTest, DebugPrint_Console) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::FloatTy, {4});
   tensorRef.getHandle<float>() = {1, 2, 3, 4};
@@ -583,49 +588,49 @@ TEST_P(BackendExecTest, DebugPrint_Console) {
 }
 
 /// Test dumping to file in binary format.
-TEST_P(BackendExecTest, DebugPrint_Bin_FloatTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_Bin_FloatTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::FloatTy, {4});
   tensorRef.getHandle<float>() = {1, 2, 3, 4};
   testDebugPrint<float>(EE_, getBackendName(), tensorRef, "bin");
 }
 
-TEST_P(BackendExecTest, DebugPrint_Bin_Int8QTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_Bin_Int8QTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int8QTy, {4}, 1.0, 0);
   tensorRef.getHandle<int8_t>() = {1, 2, 3, 4};
   testDebugPrint<int8_t>(EE_, getBackendName(), tensorRef, "bin");
 }
 
-TEST_P(BackendExecTest, DebugPrint_Bin_Int16QTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_Bin_Int16QTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int16QTy, {4}, 1.0, 0);
   tensorRef.getHandle<int16_t>() = {1, 2, 3, 4};
   testDebugPrint<int16_t>(EE_, getBackendName(), tensorRef, "bin");
 }
 
-TEST_P(BackendExecTest, DebugPrint_Bin_Int32QTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_Bin_Int32QTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int32QTy, {4}, 1.0, 0);
   tensorRef.getHandle<int32_t>() = {1, 2, 3, 4};
   testDebugPrint<int32_t>(EE_, getBackendName(), tensorRef, "bin");
 }
 
-TEST_P(BackendExecTest, DebugPrint_Bin_Int32ITy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_Bin_Int32ITy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int32ITy, {4});
   tensorRef.getHandle<int32_t>() = {1, 2, 3, 4};
   testDebugPrint<int32_t>(EE_, getBackendName(), tensorRef, "bin");
 }
 
-TEST_P(BackendExecTest, DebugPrint_Bin_Int64ITy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_Bin_Int64ITy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int64ITy, {4});
   tensorRef.getHandle<int64_t>() = {1, 2, 3, 4};
   testDebugPrint<int64_t>(EE_, getBackendName(), tensorRef, "bin");
 }
 
-TEST_P(BackendExecTest, DebugPrint_Bin_BoolTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_Bin_BoolTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::BoolTy, {4});
   tensorRef.getHandle<bool>() = {0, 1, 0, 1};
@@ -633,49 +638,49 @@ TEST_P(BackendExecTest, DebugPrint_Bin_BoolTy) {
 }
 
 /// Test dumping to file in text format.
-TEST_P(BackendExecTest, DebugPrint_Txt_FloatTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_Txt_FloatTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::FloatTy, {4});
   tensorRef.getHandle<float>() = {1, 2, 3, 4};
   testDebugPrint<float>(EE_, getBackendName(), tensorRef, "txt");
 }
 
-TEST_P(BackendExecTest, DebugPrint_Txt_Int8QTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_Txt_Int8QTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int8QTy, {4}, 1.0, 0);
   tensorRef.getHandle<int8_t>() = {1, 2, 3, 4};
   testDebugPrint<int8_t>(EE_, getBackendName(), tensorRef, "txt");
 }
 
-TEST_P(BackendExecTest, DebugPrint_Txt_Int16QTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_Txt_Int16QTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int16QTy, {4}, 1.0, 0);
   tensorRef.getHandle<int16_t>() = {1, 2, 3, 4};
   testDebugPrint<int16_t>(EE_, getBackendName(), tensorRef, "txt");
 }
 
-TEST_P(BackendExecTest, DebugPrint_Txt_Int32QTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_Txt_Int32QTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int32QTy, {4}, 1.0, 0);
   tensorRef.getHandle<int32_t>() = {1, 2, 3, 4};
   testDebugPrint<int32_t>(EE_, getBackendName(), tensorRef, "txt");
 }
 
-TEST_P(BackendExecTest, DebugPrint_Txt_Int32ITy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_Txt_Int32ITy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int32ITy, {4});
   tensorRef.getHandle<int32_t>() = {1, 2, 3, 4};
   testDebugPrint<int32_t>(EE_, getBackendName(), tensorRef, "txt");
 }
 
-TEST_P(BackendExecTest, DebugPrint_Txt_Int64ITy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_Txt_Int64ITy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int64ITy, {4});
   tensorRef.getHandle<int64_t>() = {1, 2, 3, 4};
   testDebugPrint<int64_t>(EE_, getBackendName(), tensorRef, "txt");
 }
 
-TEST_P(BackendExecTest, DebugPrint_Txt_BoolTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_Txt_BoolTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::BoolTy, {4});
   tensorRef.getHandle<bool>() = {0, 1, 0, 1};
@@ -683,49 +688,49 @@ TEST_P(BackendExecTest, DebugPrint_Txt_BoolTy) {
 }
 
 /// Test dumping to file in raw binary format.
-TEST_P(BackendExecTest, DebugPrint_RawBin_FloatTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_RawBin_FloatTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::FloatTy, {4});
   tensorRef.getHandle<float>() = {1, 2, 3, 4};
   testDebugPrint<float>(EE_, getBackendName(), tensorRef, "rawbin");
 }
 
-TEST_P(BackendExecTest, DebugPrint_RawBin_Int8QTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_RawBin_Int8QTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int8QTy, {4}, 1.0, 0);
   tensorRef.getHandle<int8_t>() = {1, 2, 3, 4};
   testDebugPrint<int8_t>(EE_, getBackendName(), tensorRef, "rawbin");
 }
 
-TEST_P(BackendExecTest, DebugPrint_RawBin_Int16QTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_RawBin_Int16QTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int16QTy, {4}, 1.0, 0);
   tensorRef.getHandle<int16_t>() = {1, 2, 3, 4};
   testDebugPrint<int16_t>(EE_, getBackendName(), tensorRef, "rawbin");
 }
 
-TEST_P(BackendExecTest, DebugPrint_RawBin_Int32QTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_RawBin_Int32QTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int32QTy, {4}, 1.0, 0);
   tensorRef.getHandle<int32_t>() = {1, 2, 3, 4};
   testDebugPrint<int32_t>(EE_, getBackendName(), tensorRef, "rawbin");
 }
 
-TEST_P(BackendExecTest, DebugPrint_RawBin_Int32ITy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_RawBin_Int32ITy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int32ITy, {4});
   tensorRef.getHandle<int32_t>() = {1, 2, 3, 4};
   testDebugPrint<int32_t>(EE_, getBackendName(), tensorRef, "rawbin");
 }
 
-TEST_P(BackendExecTest, DebugPrint_RawBin_Int64ITy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_RawBin_Int64ITy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int64ITy, {4});
   tensorRef.getHandle<int64_t>() = {1, 2, 3, 4};
   testDebugPrint<int64_t>(EE_, getBackendName(), tensorRef, "rawbin");
 }
 
-TEST_P(BackendExecTest, DebugPrint_RawBin_BoolTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_RawBin_BoolTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::BoolTy, {4});
   tensorRef.getHandle<bool>() = {0, 1, 0, 1};
@@ -733,49 +738,49 @@ TEST_P(BackendExecTest, DebugPrint_RawBin_BoolTy) {
 }
 
 /// Test dumping to file in raw text format.
-TEST_P(BackendExecTest, DebugPrint_RawTxt_FloatTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_RawTxt_FloatTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::FloatTy, {4});
   tensorRef.getHandle<float>() = {1, 2, 3, 4};
   testDebugPrint<float>(EE_, getBackendName(), tensorRef, "rawtxt");
 }
 
-TEST_P(BackendExecTest, DebugPrint_RawTxt_Int8QTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_RawTxt_Int8QTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int8QTy, {4}, 1.0, 0);
   tensorRef.getHandle<int8_t>() = {1, 2, 3, 4};
   testDebugPrint<int8_t>(EE_, getBackendName(), tensorRef, "rawtxt");
 }
 
-TEST_P(BackendExecTest, DebugPrint_RawTxt_Int16QTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_RawTxt_Int16QTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int16QTy, {4}, 1.0, 0);
   tensorRef.getHandle<int16_t>() = {1, 2, 3, 4};
   testDebugPrint<int16_t>(EE_, getBackendName(), tensorRef, "rawtxt");
 }
 
-TEST_P(BackendExecTest, DebugPrint_RawTxt_Int32QTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_RawTxt_Int32QTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int32QTy, {4}, 1.0, 0);
   tensorRef.getHandle<int32_t>() = {1, 2, 3, 4};
   testDebugPrint<int32_t>(EE_, getBackendName(), tensorRef, "rawtxt");
 }
 
-TEST_P(BackendExecTest, DebugPrint_RawTxt_Int32ITy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_RawTxt_Int32ITy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int32ITy, {4});
   tensorRef.getHandle<int32_t>() = {1, 2, 3, 4};
   testDebugPrint<int32_t>(EE_, getBackendName(), tensorRef, "rawtxt");
 }
 
-TEST_P(BackendExecTest, DebugPrint_RawTxt_Int64ITy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_RawTxt_Int64ITy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::Int64ITy, {4});
   tensorRef.getHandle<int64_t>() = {1, 2, 3, 4};
   testDebugPrint<int64_t>(EE_, getBackendName(), tensorRef, "rawtxt");
 }
 
-TEST_P(BackendExecTest, DebugPrint_RawTxt_BoolTy) {
+TEST_P(BackendExecStatelessTest, DebugPrint_RawTxt_BoolTy) {
   ENABLED_BACKENDS("CPU", "Interpreter");
   Tensor tensorRef(ElemKind::BoolTy, {4});
   tensorRef.getHandle<bool>() = {0, 1, 0, 1};
@@ -794,14 +799,14 @@ TEST_P(BackendExecTest, CompileWithoutConstants) {
   auto *pow = F->createPow("Pow1", X, 2.0);
   auto *save = F->createSave("save", pow);
   bindings.allocate(save->getPlaceholder());
-  std::unique_ptr<Backend> backend(createBackend(getBackendName()));
+  std::unique_ptr<Backend> backend(createBackend(GetParam()));
   BackendOptions opts;
   opts.collectConstants = false;
   auto function = EXIT_ON_ERR(backend->compile(F, opts));
 }
 
-/// Test that the runtimeBundle includes only symbols from its function and
-/// not the whole module.
+/// Test that the runtimeBundle includes only symbols from its function and not
+/// the whole module.
 TEST_P(BackendExecTest, BundleFunctionSymbolsOnly) {
   Module mod;
   PlaceholderBindings bindings;
@@ -819,7 +824,7 @@ TEST_P(BackendExecTest, BundleFunctionSymbolsOnly) {
   auto *save2 = F2->createSave("save2", pow2);
   bindings2.allocate(save2->getPlaceholder());
 
-  std::unique_ptr<Backend> backend(createBackend(getBackendName()));
+  std::unique_ptr<Backend> backend(createBackend(GetParam()));
   auto function = EXIT_ON_ERR(backend->compile(F));
   auto function2 = EXIT_ON_ERR(backend->compile(F2));
   auto table1 = function->getRuntimeBundle().getSymbolTable();
@@ -847,7 +852,7 @@ TEST_P(BackendExecTest, BundleSharedConstant) {
   auto *save2 = F2->createSave("save2", pow2);
   bindings2.allocate(save2->getPlaceholder());
 
-  std::unique_ptr<Backend> backend(createBackend(getBackendName()));
+  std::unique_ptr<Backend> backend(createBackend(GetParam()));
   auto function = EXIT_ON_ERR(backend->compile(F));
   auto function2 = EXIT_ON_ERR(backend->compile(F2));
   auto table1 = function->getRuntimeBundle().getSymbolTable();
@@ -871,15 +876,15 @@ TEST_P(BackendExecTest, compileVectorOfFunctions) {
     F->createSave("save" + std::to_string(i), pow);
     functions.push_back(F);
   }
-  std::unique_ptr<Backend> backend(createBackend(getBackendName()));
+  std::unique_ptr<Backend> backend(createBackend(GetParam()));
   BackendOptions opts;
   auto functionOrErr = backend->compileFunctions(functions, opts);
   ASSERT_TRUE((bool)functionOrErr);
 }
 
 /// This test checks that we can compile a function without depending on the
-/// graph representation. We compile some function and then delete the
-/// function. Later we execute the code and check that things work.
+/// graph representation. We compile some function and then delete the function.
+/// Later we execute the code and check that things work.
 TEST_P(BackendExecTest, decoupleCodegenFromGraph) {
   auto &mod = EE_.getModule();
   PlaceholderBindings bindings;
@@ -907,8 +912,8 @@ TEST_P(BackendExecTest, decoupleCodegenFromGraph) {
   EXPECT_NEAR(HX.at({2}), 9, 1E-5);
 }
 
-/// Check that we can pass information to the execution engine using
-/// Placeholder variables and read it back using Save nodes (in variables).
+/// Check that we can pass information to the execution engine using Placeholder
+/// variables and read it back using Save nodes (in variables).
 TEST_P(BackendExecTest, simplePlaceholderValue) {
   Tensor data{99.0, 35.0, 2.0, 3.0};
   auto &mod = EE_.getModule();
@@ -1038,7 +1043,7 @@ TEST(PlaceholderBindings, basicPlaceholderBindingsTest) {
 }
 
 /// Check if the dump function works for Type.
-TEST_P(BackendExecTest, dumpType) {
+TEST(BackendExecTest, dumpType) {
   Module mod;
   TypeRef tyA = mod.uniqueType(ElemKind::FloatTy, {1, 32, 32, 3});
   std::string storage;
@@ -1050,4 +1055,5 @@ TEST_P(BackendExecTest, dumpType) {
   EXPECT_EQ(mesA, os.str());
 }
 
-INSTANTIATE_BACKEND_TEST(BackendExecTest);
+INSTANTIATE_BACKEND_TEST(BackendTest);
+INSTANTIATE_BACKEND_TEST(BackendExecStatelessTest);
