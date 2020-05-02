@@ -2498,6 +2498,9 @@ TEST_F(OnnxImporterTest, importCastToInt32) {
 TEST_F(OnnxImporterTest, importCastToInt64) {
   importCast("castToInt64.onnxtxt", "data", {1, 2, 2, 2}, ElemKind::Int64ITy);
 }
+TEST(onnx, importCastToBool) {
+  importCast("castToBool.onnxtxt", "data", {1, 2, 2, 2}, ElemKind::BoolTy);
+}
 
 TEST_F(OnnxImporterTest, cast_32_64) {
   ExecutionEngine EE{};

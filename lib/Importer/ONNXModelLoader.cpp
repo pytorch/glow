@@ -828,6 +828,8 @@ Expected<ElemKind> ONNXModelLoader::convertTensorProtoDataType(
     return ElemKind::Int32ITy;
   case ONNX_NAMESPACE::TensorProto_DataType_INT64:
     return ElemKind::Int64ITy;
+  case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+    return ElemKind::BoolTy;
   default:;
   }
   RETURN_ERR("Non supported ONNX type");
