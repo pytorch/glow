@@ -5486,3 +5486,112 @@ TEST_F(GraphOptz, SelectConstCondOptimization) {
   EXPECT_FALSE(llvm::isa<SelectNode>(saveInput));
   EXPECT_TRUE((*saveInput).getHash() == LHS->getHash());
 }
+
+struct NMSNodeGraph {
+  GatherNode *boxes{nullptr};
+  SelectNode *scores{nullptr};
+};
+
+/// Creates NMS SubGraph.
+static NMSNodeGraph createNMSSubGraph(Module &mod_, Function *F_,
+                                      TransposeNode *boxes, SelectNode *scores,
+                                      dim_t numBoxes, dim_t numClasses,
+                                      dim_t slice) {
+  auto *sliceClass = F_->createSlice("slice_class_1", scores, {0, slice},
+                                     {numBoxes, slice + 1});
+  auto *reshapeClass =
+      F_->createReshape("reshape_class_1", sliceClass, {numBoxes});
+  auto *nms = F_->createNonMaxSuppressionV4("nms1", boxes, reshapeClass, 0, 2,
+                                            0.5, 0.5);
+  auto *convertToNMS = F_->createConvertTo(
+      "convert_nms1", nms->getNumberOfSelectedIndices(), ElemKind::FloatTy);
+  auto *constantCmpLT = mod_.createConstant(
+      ElemKind::FloatTy, nms->getNumberOfSelectedIndices().dims(),
+      "cmpLT_constant1");
+  auto *cmpLT1 = F_->createCmpLT("cmpLT1", convertToNMS, constantCmpLT);
+
+  auto *gatherScores =
+      F_->createGather("gather_scores", reshapeClass, nms->getIndices());
+
+  auto *constScores = mod_.createConstant(
+      ElemKind::FloatTy, nms->getNumberOfSelectedIndices().dims(),
+      "select_scores_const");
+  auto *selectScores =
+      F_->createSelect("select_scores", cmpLT1, gatherScores, constScores);
+
+  auto *gatherBoxes =
+      F_->createGather("gather_boxes", boxes, nms->getIndices());
+
+  return {gatherBoxes, selectScores};
+}
+
+struct NMSGraph {
+  GatherNode *labels{nullptr};
+  GatherNode *boxes{nullptr};
+  GatherNode *scores{nullptr};
+};
+
+/// Creates main NMS graph.
+NMSGraph createNMSGraph(Module &mod_, Function *F_, dim_t numBoxes,
+                        dim_t numClasses) {
+  auto *boxesP =
+      mod_.createPlaceholder(ElemKind::FloatTy, {4, numBoxes}, "Boxes", false);
+  auto *transposeBoxes =
+      F_->createTranspose("transposes_boxes", boxesP, {1, 0});
+
+  auto *scorsPLHS = mod_.createPlaceholder(
+      ElemKind::FloatTy, {numBoxes, numClasses}, "Scores_lhs", false);
+  auto *scorsPRHS = mod_.createPlaceholder(
+      ElemKind::FloatTy, {numBoxes, numClasses}, "Scores_rhs", false);
+  auto *scorsPCond = mod_.createPlaceholder(
+      ElemKind::BoolTy, {numBoxes, numClasses}, "Scores_cond", false);
+  auto *selectScr =
+      F_->createSelect("select_scores", scorsPCond, scorsPLHS, scorsPRHS);
+
+  llvm::SmallVector<NodeValue, 4> nmsoutBoxes;
+  llvm::SmallVector<NodeValue, 4> nmsoutScors;
+
+  for (dim_t i = 0; i < numClasses; ++i) {
+    NMSNodeGraph nmsOut = createNMSSubGraph(mod_, F_, transposeBoxes, selectScr,
+                                            numBoxes, numClasses, i);
+    nmsoutBoxes.push_back(nmsOut.boxes->getResult());
+    nmsoutScors.push_back(nmsOut.scores->getResult());
+  }
+
+  auto *concatBoxes = F_->createConcat("concat_boxes", nmsoutBoxes, 0);
+  auto *concatScors = F_->createConcat("concat_boxes", nmsoutScors, 0);
+
+  auto *topK = F_->createTopK("scores_topK", concatScors,
+                              concatScors->getResult().dims()[0]);
+
+  Constant *labels = mod_.createConstant(ElemKind::Int64ITy,
+                                         topK->getIndices().dims(), "labels");
+  GatherNode *gatherLabels =
+      F_->createGather("gather_labels", labels, topK->getIndices());
+  GatherNode *gatherBoxes =
+      F_->createGather("gather_boxes_topK", concatBoxes, topK->getIndices());
+  GatherNode *gatherScores =
+      F_->createGather("gather_scores_topk", concatScors, topK->getIndices());
+  return {gatherLabels, gatherBoxes, gatherScores};
+}
+
+/// Tests NMS optimization for graphs that come from TF domain.
+TEST_F(GraphOptz, PostProcessingNMSOptimization) {
+  const dim_t numBoxes = 8;
+  const dim_t numClasses = 3;
+  NMSGraph nmsGraph = createNMSGraph(mod_, F_, numBoxes, numClasses);
+
+  F_->createSave("save_labels", nmsGraph.labels);
+  F_->createSave("save_boxes", nmsGraph.boxes);
+  F_->createSave("save_scores", nmsGraph.scores);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  NonMaxSuppressionNode *nms = nullptr;
+  for (auto &n : F_->getNodes()) {
+    nms = llvm::dyn_cast<NonMaxSuppressionNode>(&n);
+    if (nms) {
+      EXPECT_FALSE(nms->getIsTFVersion4());
+    }
+  }
+}

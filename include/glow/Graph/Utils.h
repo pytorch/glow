@@ -149,6 +149,67 @@ static bool isUniformConstant(const Constant &CN, ElemTy &val) {
   return true;
 }
 
+using Edge = std::pair<Node *, NodeValue>;
+using EdgeList = llvm::SmallVector<Edge, 4>;
+
+/// Get list \p edgeList of edges<node,inputNode> which satisfy \p
+/// matchCondition condition at the inputNode, traversing up along a
+/// depth-first-path originating from \p currEdge inputNode as long as \p
+/// traverseCondition is true. \returns true if the size of edgelist is none
+/// zero. Condition can be a function pointer or a lambda function. Nodes
+/// closest to the currNodeVal node appear first in the list. CAVEAT: If a node
+/// has duplicate inputs, the list can have duplicate entries.
+static inline bool
+traverseUp(Edge currEdge, EdgeList &edgeList,
+           std::function<bool(const NodeValue &)> traverseCondition,
+           std::function<bool(const NodeValue &)> matchCondition,
+           std::function<bool(const Node *, int i)> skipInputTraversal =
+               [](const Node *, int i) { return false; }) {
+  NodeValue currNV = currEdge.second;
+  Node *currNode = currNV.getNode();
+  if (matchCondition(currNV)) {
+    edgeList.push_back(currEdge);
+  }
+  if (traverseCondition(currNV)) {
+    for (size_t i = 0; i < currNode->getNumInputs(); i++) {
+      if (skipInputTraversal(currNode, i)) {
+        continue;
+      }
+      NodeValue N = currNode->getNthInput(i);
+      traverseUp(Edge(currNode, N), edgeList, traverseCondition,
+                 matchCondition);
+    }
+  }
+  return edgeList.size();
+}
+
+/// Get list \p edgelist of edges<userNode,nodeValue> which satisfy \p
+/// matchCondition condition at the userNode, traversing down along a
+/// depth-first-path originating from \p currNodeVal as long as \p
+/// traverseCondition is true. \returns true if the size of edgelist is none
+/// zero. Condition can be a function pointer or a lambda function. Nodes
+/// closest to the currNodeVal node appear first in the list.
+/// TODO: Add additional arugment for maximum depth if needed.
+/// CAVEAT: If a node has duplicate users, the list can have duplicate entries.
+static inline bool
+traverseDown(NodeValue currNodeVal, EdgeList &edgeList,
+             std::function<bool(const Node *)> traverseCondition,
+             std::function<bool(const Node *)> matchCondition) {
+  for (auto &user : currNodeVal.getUsers()) {
+    Node *childNode = user.getUser();
+    if (matchCondition(childNode)) {
+      edgeList.push_back(Edge(childNode, currNodeVal));
+    }
+    if (traverseCondition(childNode)) {
+      for (size_t r = 0; r < childNode->getNumResults(); r++) {
+        traverseDown(childNode->getNthResult(r), edgeList, traverseCondition,
+                     matchCondition);
+      }
+    }
+  }
+  return edgeList.size();
+}
+
 } // namespace glow
 
 #endif // GLOW_GRAPH_UTILS_H

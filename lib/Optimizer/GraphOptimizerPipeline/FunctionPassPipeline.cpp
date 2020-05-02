@@ -173,6 +173,10 @@ createDefaultGraphOptimizationPassPipeline() {
 
       // Optimize select operations.
       {FunctionPassID::OptimizeSelect},
+
+      // Optimize post processing graph.
+      {FunctionPassID::PostProcessingNMS},
+
       // Perform a round of Dead Code Elimination to cleanup the final pass.
       getDCEPassConfig(),
   };

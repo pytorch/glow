@@ -61,6 +61,7 @@ FUN_PASS(OptimizeConcatQuantization)
 FUN_PASS(SinkConcatBelowQuantize)
 FUN_PASS(FoldLayerNormArithmetic)
 FUN_PASS(OptimizeSelect)
+FUN_PASS(PostProcessingNMS)
 
 
 // NOTE: This pass must be last; it's used to count the total number of passes.

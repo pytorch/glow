@@ -4788,6 +4788,443 @@ bool OptimizeSelect::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+struct EnumClassHash {
+  template <typename T> std::size_t operator()(T t) const {
+    return static_cast<std::size_t>(t);
+  }
+};
+
+/// Goes through the list of nms candidates and finds common input.
+/// Checks that nodeKinds that are between node that is to be found and NMS are
+/// what we expect. nmsCandidates - all the NMS V4 we have found.
+/// acceptableNodeKinds - node kinds that are acceptable between NMS node and
+/// common input.
+static Node *findCommonInput(
+    Function *F, llvm::ArrayRef<NonMaxSuppressionNode *> nmsCandidates,
+    std::unordered_set<Kinded::Kind, EnumClassHash> &acceptableNodeKinds,
+    unsigned int inputNumber) {
+  Node *input = nullptr;
+  std::unordered_map<Node *, int> counter;
+  std::unordered_set<Node *> commonCandidates;
+  std::unordered_set<Kinded::Kind, EnumClassHash> nodeKindFound;
+
+  auto matchCondition = [&counter](const NodeValue &nv) -> bool {
+    auto *node = nv.getNode();
+    counter[node]++;
+    if (counter.find(node)->second > 1 && !isa<Storage>(nv)) {
+      return true;
+    }
+    return false;
+  };
+
+  auto traverseCondition = [&counter,
+                            &nodeKindFound](const NodeValue &nv) -> bool {
+    auto iterF = counter.find(nv);
+    if ((iterF != counter.end() && (iterF->second > 1)) ||
+        llvm::isa<ConvolutionNode>(nv)) {
+      return false;
+    }
+    nodeKindFound.insert((*nv).getKind());
+    return true;
+  };
+  auto *nms = nmsCandidates[0];
+  input = nms->getNthInput(inputNumber);
+  EdgeList edges;
+  Edge edge(nms, input);
+  traverseUp(edge, edges, traverseCondition, matchCondition);
+  nodeKindFound.clear();
+  for (size_t i = 1; i < nmsCandidates.size(); ++i) {
+    nms = nmsCandidates[i];
+    input = nms->getNthInput(inputNumber);
+    edges.clear();
+    Edge edge(nms, input);
+
+    if (traverseUp(edge, edges, traverseCondition, matchCondition)) {
+      for (auto &n : edges) {
+        commonCandidates.insert(n.second);
+      }
+    }
+  }
+  for (auto &nk : nodeKindFound) {
+    if (acceptableNodeKinds.count(nk) == 0) {
+      commonCandidates.clear();
+      LOG_SCOPE(F->getLogContext(),
+                "Path from NMS to common input contains unexpected nodes.");
+      return nullptr;
+    }
+  }
+  // Checking that all the NMS nodes end up at same common node.
+  if (commonCandidates.size() != 1) {
+    LOG_SCOPE(F->getLogContext(), "More then one common input for NMS nodes.");
+    return nullptr;
+  }
+  auto *retNode = *commonCandidates.begin();
+  auto count = counter.find(retNode);
+  // case where all but 1 end up with same input.
+  if (count->second != nmsCandidates.size()) {
+    LOG_SCOPE(F->getLogContext(), "More then one common input for NMS nodes.");
+    return nullptr;
+  }
+
+  return retNode;
+}
+
+/// Goes through the list of nms candidates and finds common output.
+static Node *findCommonOutput(
+    Function *F, llvm::ArrayRef<NonMaxSuppressionNode *> nmsCandidates,
+    std::unordered_set<Kinded::Kind, EnumClassHash> &acceptableNodeKinds,
+    unsigned int outputIndex, Node *prevNodeFound) {
+
+  std::unordered_map<const Node *, int> counter;
+  std::unordered_set<Node *> commonCandidates;
+  std::unordered_set<Kinded::Kind, EnumClassHash> nodeKindFound;
+
+  auto matchConditionDown = [&counter,
+                             &prevNodeFound](const Node *node) -> bool {
+    counter[node]++;
+    if (counter.find(node)->second > 1 && node != prevNodeFound) {
+      return true;
+    }
+    return false;
+  };
+
+  auto traverseConditionDown = [&counter,
+                                &nodeKindFound](const Node *n) -> bool {
+    auto iterF = counter.find(n);
+    if ((iterF != counter.end() && (iterF->second > 1))) {
+      return false;
+    }
+    nodeKindFound.insert(n->getKind());
+    return true;
+  };
+
+  auto *nms = nmsCandidates[0];
+  const auto &res = nms->getNthResult(outputIndex);
+  EdgeList edges;
+  traverseDown(res, edges, traverseConditionDown, matchConditionDown);
+  nodeKindFound.clear();
+
+  for (size_t i = 1; i < nmsCandidates.size(); ++i) {
+    nms = nmsCandidates[i];
+    const auto &res = nms->getNthResult(outputIndex);
+    edges.clear();
+    if (traverseDown(res, edges, traverseConditionDown, matchConditionDown)) {
+      for (auto &n : edges) {
+        commonCandidates.insert(n.first);
+      }
+    }
+  }
+
+  for (auto &nk : nodeKindFound) {
+    if (acceptableNodeKinds.count(nk) == 0) {
+      commonCandidates.clear();
+      LOG_SCOPE(F->getLogContext(),
+                "Path from NMS to common output contains unexpected nodes.");
+      break;
+    }
+  }
+
+  return commonCandidates.size() == 1 ? *commonCandidates.begin() : nullptr;
+}
+
+struct NMSMeta {
+  GatherNode *boxesGathered{nullptr};
+  GatherNode *scoresGathered{nullptr};
+  NonMaxSuppressionNode *nms{nullptr};
+  ReshapeNode *boxIndices{nullptr};
+  ReshapeNode *classIndices{nullptr};
+};
+
+/// Collapse subgraph of NMX V4 to one ONNX NMS node.
+NMSMeta collapseNMS(Function *F, NonMaxSuppressionNode *nms, Node *boxInput,
+                    Node *scoreInput, int numCandidates) {
+  auto *M = F->getParent();
+
+  auto iouThr = nms->getIouThreshold();
+  auto maxOPC = nms->getMaxOutputBoxesPerClass();
+  auto scrThr = nms->getScoreThreshold();
+  auto cntPnt = nms->getCenterPointBox();
+
+  auto scoreInputDims = scoreInput->getNthResult(0).dims();
+  auto boxInputDims = boxInput->getNthResult(0).dims();
+  NMSMeta retTemp;
+  if (scoreInput->getNumResults() != 1 || scoreInputDims.size() != 2) {
+    LOG_SCOPE(
+        F->getLogContext(),
+        "Score Tensor in to NMS doesn't have expected dimensions or outputs.");
+    return retTemp;
+  }
+
+  if (boxInput->getNumResults() != 1 || boxInputDims.size() != 2) {
+    LOG_SCOPE(
+        F->getLogContext(),
+        "Box Tensor in to NMS doesn't have expected dimensions or outputs.");
+    return retTemp;
+  }
+
+  // Exiting for now. Can modify later if we encounter scenario where this is
+  // different, and we can skip creation of Transpose.
+  if (scoreInputDims[0] != boxInputDims[0]) {
+    LOG_SCOPE(F->getLogContext(), "Unexepcted dimensions for NMS inputs.");
+    return retTemp;
+  }
+
+  // We assume all the candidates end in same NMS. So Number of candidates
+  // should match dim1 of scores.
+  if (scoreInputDims[1] != numCandidates) {
+    LOG_SCOPE(F->getLogContext(),
+              "Score dimension doesn't match number of NMS found.");
+    return retTemp;
+  }
+
+  auto *tr1 = F->createTranspose("scores_transpose", scoreInput, {1, 0});
+  auto tr1Dims = tr1->getResult().dims();
+  auto numClass = tr1Dims[0];
+  auto numBoxes = tr1Dims[1];
+
+  auto boxShape = boxInput->getType(0)->dims();
+  auto scrShape = tr1->getType(0)->dims();
+  auto *reshapeB =
+      F->createReshape("box_reshape", boxInput, {1, boxShape[0], boxShape[1]});
+  auto *reshapeS =
+      F->createReshape("scr_reshape", tr1, {1, scrShape[0], scrShape[1]});
+
+  auto *nmsONNX = F->createNonMaxSuppressionONNX("nms_onnx", reshapeB, reshapeS,
+                                                 cntPnt, maxOPC, iouThr, scrThr,
+                                                 nms->getElementType(0));
+
+  auto nmsShape = nmsONNX->getIndices().dims();
+
+  auto *sliceBox = F->createSlice("slice_box", nmsONNX->getIndices(), {0, 2},
+                                  {nmsShape[0], 3});
+  auto *sliceScr = F->createSlice("slice_scr", nmsONNX->getIndices(), {0, 1},
+                                  {nmsShape[0], 2});
+
+  auto *reshapeS2 = F->createReshape("reshape_score_indices", sliceScr,
+                                     {sliceScr->getResult().dims()[0]});
+  auto *reshapeB2 = F->createReshape("reshape_box_indices", sliceBox,
+                                     {sliceBox->getResult().dims()[0]});
+
+  auto reshapeS2ElemT = reshapeS2->getResult().getElementType();
+  auto *cnst = M->createConstant(reshapeS2ElemT, reshapeS2->getResult().dims(),
+                                 "stride");
+  if (reshapeS2ElemT == ElemKind::Int64ITy) {
+    cnst->getHandle<int64_t>().clear(numBoxes);
+  } else if (reshapeS2ElemT == ElemKind::Int32ITy) {
+    cnst->getHandle<int32_t>().clear((int32_t)numBoxes);
+  } else {
+    LOG_ASSERT(false) << "invalid type";
+  }
+  auto *mul = F->createMul("linearize", reshapeS2, cnst);
+  auto *add = F->createAdd("score_index", reshapeB2, mul);
+
+  auto *flattenScores =
+      F->createReshape("flatten_scores", tr1, {numBoxes * numClass});
+  auto *gatherScores = F->createGather("scores_values", flattenScores, add, 0);
+  auto *gatherBoxes = F->createGather("boxes_values", boxInput, reshapeB2, 0);
+
+  return NMSMeta({gatherBoxes, gatherScores, nmsONNX, reshapeB2, reshapeS2});
+}
+
+/// Makes sure rest of the graph after has TopK.
+bool checkTopK(Node *detectedBoxes, NodeValue &scoresNH,
+               GatherNode *&scoresGatheredFinal, GatherNode *&boxGatherFinal,
+               GatherNode *&classGatherFinal) {
+  bool continueOptimzation{true};
+  TopKNode *topkN{nullptr};
+  for (auto &user : scoresNH.getUsers()) {
+    auto *n = user.getUser();
+    if (auto *topkNt = dyn_cast<TopKNode>(n)) {
+      topkN = topkNt;
+    } else if (auto *gt = dyn_cast<GatherNode>(n)) {
+      scoresGatheredFinal = gt;
+    } else {
+      continueOptimzation = false;
+      break;
+    }
+  }
+
+  for (auto &user : detectedBoxes->getUsers()) {
+    auto *bgFt = dyn_cast<GatherNode>(user.getUser());
+    if (boxGatherFinal || !bgFt) {
+      continueOptimzation = false;
+      break;
+    }
+    boxGatherFinal = bgFt;
+  }
+
+  Node *tNode = topkN;
+  if (tNode->getNumUsers() == 1) {
+    tNode = tNode->getUsers().begin()->getUser();
+    if (!llvm::isa<ConvertToNode>(tNode)) {
+      return false;
+    }
+  }
+
+  for (auto &user : tNode->getUsers()) {
+    auto *tn = dyn_cast<GatherNode>(user.getUser());
+    if (tn != scoresGatheredFinal && tn != boxGatherFinal) {
+      classGatherFinal = tn;
+    }
+  }
+
+  if (!classGatherFinal || topkN->getUsers().size() > 3) {
+    continueOptimzation = false;
+  }
+  return continueOptimzation;
+}
+
+/// Takes in output of NMS folding optimization and TopK detection and removes a
+/// TopK.
+static void doFinalReplacement(Function *F, NMSMeta &result,
+                               GatherNode *scoresGatheredFinal,
+                               GatherNode *boxGatherFinal,
+                               GatherNode *classGatherFinal) {
+  Module *M = F->getParent();
+  NonMaxSuppressionNode *nms = result.nms;
+  auto maxOPC = nms->getMaxOutputBoxesPerClass();
+  auto *gatherBoxes = result.boxesGathered;
+  auto *gatherScores = result.scoresGathered;
+  auto *classIndices = result.classIndices;
+
+  auto classIndicesElemT = classIndices->getResult().getElementType();
+  auto *cnst = M->createConstant(
+      classIndicesElemT, classIndices->getResult().dims(), "class_index_mult");
+  if (classIndicesElemT == ElemKind::Int64ITy) {
+    cnst->getHandle<int64_t>().clear(maxOPC);
+  } else if (classIndicesElemT == ElemKind::Int32ITy) {
+    cnst->getHandle<int32_t>().clear((int32_t)maxOPC);
+  } else {
+    LOG_ASSERT(false) << "invalid type";
+  }
+
+  auto *mulCIAdjustment = F->createMul("class_index", classIndices, cnst);
+  classGatherFinal->setNthInput(GatherNode::IndicesIdx,
+                                mulCIAdjustment->getResult());
+
+  boxGatherFinal->getResult().replaceAllUsesOfWith(gatherBoxes);
+  scoresGatheredFinal->getResult().replaceAllUsesOfWith(gatherScores);
+}
+
+/// Checks that all NMS nodes that were found are valid.
+static bool
+checkNMSCandidates(llvm::ArrayRef<NonMaxSuppressionNode *> candidates) {
+  if (candidates.empty()) {
+    return false;
+  }
+  bool validNMSCandidates = true;
+  auto *refNMS = candidates[0];
+  for (auto *nms : candidates) {
+    if (!nms->getIsTFVersion4()) {
+      validNMSCandidates = false;
+      break;
+    }
+    if (refNMS->getIouThreshold() != nms->getIouThreshold() ||
+        refNMS->getScoreThreshold() != nms->getScoreThreshold() ||
+        refNMS->getMaxOutputBoxesPerClass() !=
+            nms->getMaxOutputBoxesPerClass()) {
+      validNMSCandidates = false;
+      break;
+    }
+  }
+  return validNMSCandidates;
+}
+
+/// Tries to simplify post processing graph by inrementally simplifying it.
+/// 1) Collapses multiple NMS V4 in to one ONNX NMS, and removes topK if it's
+/// part of next subgraph. 2) Folds Min/Max to Clip to standardize the graph. 3)
+/// Collpases sub graph that clips coordinates and filters candidate boxes that
+/// are outside of image in to one Meta node. This final step gets the graph
+/// close to "clean" post processing graph. It then can either be optimized
+/// further by backend, or Meta Node gets undone.
+bool PostProcessingNMS::run(Function *F, const CompilationContext &cctx) {
+
+  NonMaxSuppressionNode *nms = nullptr;
+  llvm::SmallVector<NonMaxSuppressionNode *, 80> nmsCandidates;
+  for (auto &n : F->getNodes()) {
+    nms = llvm::dyn_cast<NonMaxSuppressionNode>(&n);
+    if (nms) {
+      nmsCandidates.push_back(nms);
+    }
+  }
+
+  if (!checkNMSCandidates(nmsCandidates)) {
+    return false;
+  }
+
+  const int nmsIndexesDetectedOutputIndex = 1;
+  const int nmsIndicesDetectedOutputIndex = 0;
+
+  nms = nmsCandidates[0];
+  std::unordered_set<Kinded::Kind, EnumClassHash> acceptableNodeInputKinds = {
+      Kinded::Kind::ReshapeNodeKind, Kinded::Kind::SliceNodeKind};
+  Node *scoreInput = findCommonInput(F, nmsCandidates, acceptableNodeInputKinds,
+                                     nmsIndexesDetectedOutputIndex);
+  acceptableNodeInputKinds.clear();
+  Node *boxInput = findCommonInput(F, nmsCandidates, acceptableNodeInputKinds,
+                                   nmsIndicesDetectedOutputIndex);
+
+  if (!boxInput || !scoreInput) {
+    LOG_SCOPE(F->getLogContext(),
+              "Common inputs node not found for one of the NMS V4 inputes.");
+    return false;
+  }
+
+  std::unordered_set<Kinded::Kind, EnumClassHash> acceptableNodeOutput1Kinds = {
+      Kinded::Kind::ConvertToNodeKind, Kinded::Kind::CmpLTNodeKind,
+      Kinded::Kind::SelectNodeKind};
+  Node *detectedScores = findCommonOutput(
+      F, nmsCandidates, acceptableNodeOutput1Kinds, 1, nullptr);
+
+  if (!detectedScores) {
+    LOG_SCOPE(F->getLogContext(),
+              "Common output node not found for scores output of the NMS V4.");
+    return false;
+  }
+
+  std::unordered_set<Kinded::Kind, EnumClassHash> acceptableNodeOutput0Kinds = {
+      Kinded::Kind::GatherNodeKind, Kinded::Kind::SelectNodeKind};
+  Node *detectedBoxes = findCommonOutput(
+      F, nmsCandidates, acceptableNodeOutput0Kinds, 0, detectedScores);
+
+  if (!detectedBoxes) {
+    LOG_SCOPE(F->getLogContext(),
+              "Common output node not found for detectedBoxes of the NMS V4.");
+    return false;
+  }
+
+  if (detectedScores->getNumResults() != 1 ||
+      detectedBoxes->getNumResults() != 1) {
+    LOG_SCOPE(F->getLogContext(),
+              "Common output node of nms nodes has more then one output.");
+    return false;
+  }
+
+  auto scoresNH = detectedScores->getNthResult(0);
+  GatherNode *scoresGatheredFinal = nullptr;
+  GatherNode *boxGatherFinal = nullptr;
+  GatherNode *classGatherFinal = nullptr;
+
+  // if TopK not found we exit for now. Theoretically graph above can be used
+  // in other graphs. Just need examples.
+  if (!checkTopK(detectedBoxes, scoresNH, scoresGatheredFinal, boxGatherFinal,
+                 classGatherFinal)) {
+    LOG_SCOPE(F->getLogContext(), "TopK was not found.");
+    return false;
+  }
+
+  NMSMeta result =
+      collapseNMS(F, nms, boxInput, scoreInput, nmsCandidates.size());
+  if (!result.nms) {
+    LOG_SCOPE(F->getLogContext(), "Collapse of NMS has not succeeded.");
+    return true;
+  }
+
+  doFinalReplacement(F, result, scoresGatheredFinal, boxGatherFinal,
+                     classGatherFinal);
+  return true;
+}
+
 /// This funciton uses TypeAToTypeBFunctionConverter to do a whole graph
 /// demotion of Index type from INT64 to INT32.
 static void transformIndexTypeDemotion(const Backend &B, Function *F,

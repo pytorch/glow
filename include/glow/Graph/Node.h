@@ -50,7 +50,11 @@ class Node : public Named,
 
 protected:
   /// The output types for the results of the node.
+#if defined(_DEBUG) && defined(WIN32)
+  std::vector<TypeRef> types_;
+#else
   llvm::SmallVector<TypeRef, 6> types_;
+#endif
   /// A nullable reference to some tensor value that may predicate the execution
   /// of the current node.
   NodeHandle predicate_;
