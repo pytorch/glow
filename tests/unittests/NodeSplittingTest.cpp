@@ -151,8 +151,7 @@ static void splitConv2DBasic(Function *F, Function *&optF,
                             /* group */ 2,
                             /* dilation */ 1);
 
-  // Optimize current function and save.
-  ::glow::optimize(F, CompilationMode::Infer);
+  // Save current function state as reference.
   optF = F->clone(F->getName().str() + "_optimized");
 
   // Split node.
@@ -247,8 +246,7 @@ static void splitConv2DNonZeroPad(Function *F, Function *&optF,
                             /* group */ 1,
                             /* dilation */ 1);
 
-  // Optimize current function and save.
-  ::glow::optimize(F, CompilationMode::Infer);
+  // Save current function state as reference.
   optF = F->clone(F->getName().str() + "_optimized");
 
   // Split node.
@@ -308,8 +306,7 @@ TEST_F(NodeSplitting, Conv2D_IllDefined_DimHW) {
                             /* group */ 1,
                             /* dilation */ 1);
 
-  // Optimize current function and save.
-  ::glow::optimize(F_, CompilationMode::Infer);
+  // Save current function state as reference.
   optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
 
   // Split node.
@@ -342,8 +339,7 @@ TEST_F(NodeSplitting, Conv2D_MaxMem) {
                             /* group */ 2,
                             /* dilation */ 1);
 
-  // Optimize current function and save.
-  ::glow::optimize(F_, CompilationMode::Infer);
+  // Save current function state as reference.
   optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
 
   // Split node by memory size.
@@ -414,8 +410,7 @@ static void splitMaxPoolBasic(Function *F, Function *&optF,
                              /* strides */ {1, 1},
                              /* pads */ {0, 0, 0, 0});
 
-  // Optimize current function and save.
-  ::glow::optimize(F, CompilationMode::Infer);
+  // Save current function state as reference.
   optF = F->clone(F->getName().str() + "_optimized");
 
   // Split node.
@@ -479,8 +474,7 @@ static void splitMaxPoolNonZeroPad(Function *F, Function *&optF,
                              /* strides */ {1, 1},
                              /* pads */ {0, 2, 1, 3});
 
-  // Optimize current function and save.
-  ::glow::optimize(F, CompilationMode::Infer);
+  // Save current function state as reference.
   optF = F->clone(F->getName().str() + "_optimized");
 
   // Split node.
@@ -537,8 +531,7 @@ TEST_F(NodeSplitting, MaxPool_IllDefined_DimHW) {
                              /* strides */ {2, 2},
                              /* pads */ {1, 1, 0, 0});
 
-  // Optimize current function and save.
-  ::glow::optimize(F_, CompilationMode::Infer);
+  // Save current function state as reference.
   optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
 
   // Split node.
@@ -567,8 +560,7 @@ TEST_F(NodeSplitting, MaxPool_MaxMem) {
                              /* strides */ {1, 1},
                              /* pads */ {0, 0, 0, 0});
 
-  // Optimize current function and save.
-  ::glow::optimize(F_, CompilationMode::Infer);
+  // Save current function state as reference.
   optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
 
   // Split node by memory size.
@@ -618,8 +610,7 @@ TEST_F(NodeSplitting, MaxPool_Argmax_NoSplit) {
   std::vector<dim_t> actualOutputDims = maxpool->getResult().getType()->dims();
   EXPECT_EQ(actualOutputDims, outputDims);
 
-  // Optimize current function and save.
-  ::glow::optimize(F_, CompilationMode::Infer);
+  // Save current function state as reference.
   optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
 
   // Split node.
@@ -681,8 +672,7 @@ static void splitAvgPoolBasic(Function *F, Function *&optF,
                              /* strides */ {1, 1},
                              /* pads */ {0, 0, 0, 0});
 
-  // Optimize current function and save.
-  ::glow::optimize(F, CompilationMode::Infer);
+  // Save current function state as reference.
   optF = F->clone(F->getName().str() + "_optimized");
 
   // Split node.
@@ -746,8 +736,7 @@ static void splitAvgPoolNonZeroPad(Function *F, Function *&optF,
                              /* strides */ {1, 1},
                              /* pads */ {0, 2, 1, 3});
 
-  // Optimize current function and save.
-  ::glow::optimize(F, CompilationMode::Infer);
+  // Save current function state as reference.
   optF = F->clone(F->getName().str() + "_optimized");
 
   // Split node.
@@ -804,8 +793,7 @@ TEST_F(NodeSplitting, AvgPool_IllDefined_DimHW) {
                              /* strides */ {2, 2},
                              /* pads */ {1, 1, 0, 0});
 
-  // Optimize current function and save.
-  ::glow::optimize(F_, CompilationMode::Infer);
+  // Save current function state as reference.
   optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
 
   // Split node.
@@ -834,8 +822,7 @@ TEST_F(NodeSplitting, AvgPool_MaxMem) {
                              /* strides */ {1, 1},
                              /* pads */ {0, 0, 0, 0});
 
-  // Optimize current function and save.
-  ::glow::optimize(F_, CompilationMode::Infer);
+  // Save current function state as reference.
   optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
 
   // Split node by memory size.
@@ -859,5 +846,364 @@ TEST_F(NodeSplitting, AvgPool_MaxMem) {
   for (auto *splitNode : splitNodes) {
     EXPECT_TRUE(splitNode->getTotMemSize() <= splitMaxMemSize);
   }
+  checkNumericalEquivalence(0);
+}
+
+///===---------------------------------------------------------------------===//
+///                               FullyConnected
+///===---------------------------------------------------------------------===//
+/// Utility function to test splitting a FullyConnected node.
+static void splitFullyConnected(Function *F, Function *&optF,
+                                PlaceholderBindings &bindings,
+                                CompilationContext &cctx,
+                                std::vector<size_t> splitDims,
+                                std::vector<dim_t> numChunks) {
+  // Create FullyConnected.
+  std::vector<dim_t> inputDims = {10, 13};
+  std::vector<dim_t> weightsDims = {13, 20};
+  std::vector<dim_t> biasDims = {20};
+
+  auto &mod = *(F->getParent());
+
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings.allocate(input)->getHandle<float>().randomize(-10.0, 10.0,
+                                                         mod.getPRNG());
+
+  auto *weights =
+      mod.createPlaceholder(ElemKind::FloatTy, weightsDims, "weights", false);
+  bindings.allocate(weights)->getHandle<float>().randomize(-10.0, 10.0,
+                                                           mod.getPRNG());
+
+  auto *bias =
+      mod.createPlaceholder(ElemKind::FloatTy, biasDims, "bias", false);
+  bindings.allocate(bias)->getHandle<float>().randomize(-10.0, 10.0,
+                                                        mod.getPRNG());
+
+  Node *node = F->createFullyConnected("fc", input, weights, bias);
+  SaveNode *output = F->createSave("output", node);
+  bindings.allocate(output->getPlaceholder());
+
+  // Save current function state as reference.
+  optF = F->clone(F->getName().str() + "_optimized");
+
+  // Split node.
+  auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
+  runDCEPass(F, cctx);
+
+  // Compute total number of chunks.
+  dim_t totNumChunks = 1;
+  for (auto numChunk : numChunks) {
+    totNumChunks *= numChunk;
+  }
+
+  // Check node count.
+  EXPECT_EQ(splitNodes.size(), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 3 * totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::FullyConnectedNodeKind),
+            totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
+}
+
+/// Test splitting FullyConnected along dimension H.
+TEST_F(NodeSplitting, FullyConnected_DimH_Chunks2) {
+  splitFullyConnected(F_, optimizedF_, bindings_, cctx_, {ShapeHW::dimH}, {2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting FullyConnected along dimension W.
+TEST_F(NodeSplitting, FullyConnected_DimW_Chunks2) {
+  splitFullyConnected(F_, optimizedF_, bindings_, cctx_, {ShapeHW::dimW}, {2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting FullyConnected along dimension H and W.
+TEST_F(NodeSplitting, FullyConnected_DimHW_Chunks4) {
+  splitFullyConnected(F_, optimizedF_, bindings_, cctx_,
+                      {ShapeHW::dimH, ShapeHW::dimW}, {2, 2});
+  checkNumericalEquivalence(0);
+}
+
+/// Utility function to test splitting a MatMul node.
+static void splitMatMul(Function *F, Function *&optF,
+                        PlaceholderBindings &bindings, CompilationContext &cctx,
+                        std::vector<size_t> splitDims,
+                        std::vector<dim_t> numChunks) {
+  // Create MatMul.
+  std::vector<dim_t> dimsLHS = {10, 13};
+  std::vector<dim_t> dimsRHS = {13, 20};
+  auto &mod = *(F->getParent());
+  auto *LHS = mod.createPlaceholder(ElemKind::FloatTy, dimsLHS, "LHS", false);
+  bindings.allocate(LHS)->getHandle<float>().randomize(-10.0, 10.0,
+                                                       mod.getPRNG());
+  auto *RHS = mod.createPlaceholder(ElemKind::FloatTy, dimsRHS, "RHS", false);
+  bindings.allocate(RHS)->getHandle<float>().randomize(-10.0, 10.0,
+                                                       mod.getPRNG());
+  Node *node = F->createMatMul("matmul", LHS, RHS);
+  SaveNode *output = F->createSave("output", node);
+  bindings.allocate(output->getPlaceholder());
+
+  // Save current function state as reference.
+  optF = F->clone(F->getName().str() + "_optimized");
+
+  // Split node.
+  auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
+  runDCEPass(F, cctx);
+
+  // Compute total number of chunks.
+  dim_t totNumChunks = 1;
+  for (auto numChunk : numChunks) {
+    totNumChunks *= numChunk;
+  }
+
+  // Check node count.
+  EXPECT_EQ(splitNodes.size(), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 2 * totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::MatMulNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
+}
+
+/// Test splitting MatMul along dimension H.
+TEST_F(NodeSplitting, MatMul_DimH_Chunks2) {
+  splitMatMul(F_, optimizedF_, bindings_, cctx_, {ShapeHW::dimH}, {2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting MatMul along dimension W.
+TEST_F(NodeSplitting, MatMul_DimW_Chunks2) {
+  splitMatMul(F_, optimizedF_, bindings_, cctx_, {ShapeHW::dimW}, {2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting MatMul along dimension H and W.
+TEST_F(NodeSplitting, MatMul_DimHW_Chunks4) {
+  splitMatMul(F_, optimizedF_, bindings_, cctx_, {ShapeHW::dimH, ShapeHW::dimW},
+              {2, 2});
+  checkNumericalEquivalence(0);
+}
+
+/// Utility function to test splitting a BatchMatMul node.
+static void splitBatchMatMul(Function *F, Function *&optF,
+                             PlaceholderBindings &bindings,
+                             CompilationContext &cctx,
+                             std::vector<size_t> splitDims,
+                             std::vector<dim_t> numChunks) {
+  // Create BatchMatMul.
+  std::vector<dim_t> dimsLHS = {2, 10, 13};
+  std::vector<dim_t> dimsRHS = {2, 13, 20};
+  auto &mod = *(F->getParent());
+  auto *LHS = mod.createPlaceholder(ElemKind::FloatTy, dimsLHS, "LHS", false);
+  bindings.allocate(LHS)->getHandle<float>().randomize(-10.0, 10.0,
+                                                       mod.getPRNG());
+  auto *RHS = mod.createPlaceholder(ElemKind::FloatTy, dimsRHS, "RHS", false);
+  bindings.allocate(RHS)->getHandle<float>().randomize(-10.0, 10.0,
+                                                       mod.getPRNG());
+  Node *node = F->createBatchMatMul("batchmatmul", LHS, RHS);
+  SaveNode *output = F->createSave("output", node);
+  bindings.allocate(output->getPlaceholder());
+
+  // Save current function state as reference.
+  optF = F->clone(F->getName().str() + "_optimized");
+
+  // Split node.
+  auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
+  runDCEPass(F, cctx);
+
+  // Compute total number of chunks.
+  dim_t totNumChunks = 1;
+  for (auto numChunk : numChunks) {
+    totNumChunks *= numChunk;
+  }
+
+  // Check node count.
+  EXPECT_EQ(splitNodes.size(), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 2 * totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::BatchMatMulNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
+}
+
+/// Test splitting BatchMatMul along dimension N.
+TEST_F(NodeSplitting, BatchMatMul_DimN_Chunks2) {
+  splitBatchMatMul(F_, optimizedF_, bindings_, cctx_, {ShapeNHW::dimN}, {2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting BatchMatMul along dimension H.
+TEST_F(NodeSplitting, BatchMatMul_DimH_Chunks2) {
+  splitBatchMatMul(F_, optimizedF_, bindings_, cctx_, {ShapeNHW::dimH}, {2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting BatchMatMul along dimension W.
+TEST_F(NodeSplitting, BatchMatMul_DimW_Chunks2) {
+  splitBatchMatMul(F_, optimizedF_, bindings_, cctx_, {ShapeNHW::dimW}, {2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting BatchMatMul along dimension N and H.
+TEST_F(NodeSplitting, BatchMatMul_DimNH_Chunks4) {
+  splitBatchMatMul(F_, optimizedF_, bindings_, cctx_,
+                   {ShapeNHW::dimN, ShapeNHW::dimH}, {2, 2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting BatchMatMul along dimension N, H and W.
+TEST_F(NodeSplitting, BatchMatMul_DimNHW_Chunks8) {
+  splitBatchMatMul(F_, optimizedF_, bindings_, cctx_,
+                   {ShapeNHW::dimN, ShapeNHW::dimH, ShapeNHW::dimW}, {2, 2, 2});
+  checkNumericalEquivalence(0);
+}
+
+///===---------------------------------------------------------------------===//
+///                               Misc Operators
+///===---------------------------------------------------------------------===//
+/// Test splitting binary operators.
+TEST_F(NodeSplitting, BinaryOps) {
+
+  // Create network with parallel binary operators.
+  std::vector<dim_t> dims = {10, 10};
+  auto *inputLHS =
+      mod_.createPlaceholder(ElemKind::FloatTy, dims, "inputLHS", false);
+  auto *inputRHS =
+      mod_.createPlaceholder(ElemKind::FloatTy, dims, "inputRHS", false);
+  bindings_.allocate(inputLHS)->getHandle<float>().randomize(1.0, 2.0,
+                                                             mod_.getPRNG());
+  bindings_.allocate(inputRHS)->getHandle<float>().randomize(1.0, 2.0,
+                                                             mod_.getPRNG());
+  Node *add = F_->createAdd("add", inputLHS, inputRHS);
+  Node *mul = F_->createMul("mul", inputLHS, inputRHS);
+  Node *sub = F_->createSub("sub", inputLHS, inputRHS);
+  Node *div = F_->createDiv("div", inputLHS, inputRHS);
+  Node *max = F_->createMax("max", inputLHS, inputRHS);
+  Node *min = F_->createMin("min", inputLHS, inputRHS);
+  Node *cmpLTE = F_->createCmpLTE("cmpLTE", inputLHS, inputRHS);
+  Node *cmpLT = F_->createCmpLT("cmpLT", inputLHS, inputRHS);
+  Node *cmpEQ = F_->createCmpEQ("cmpEQ", inputLHS, inputRHS);
+  Node *pow = F_->createPow("pow", inputLHS, inputRHS);
+  SaveNode *addSave = F_->createSave("addSave", add);
+  SaveNode *mulSave = F_->createSave("mulSave", mul);
+  SaveNode *subSave = F_->createSave("subSave", sub);
+  SaveNode *divSave = F_->createSave("divSave", div);
+  SaveNode *maxSave = F_->createSave("maxSave", max);
+  SaveNode *minSave = F_->createSave("minSave", min);
+  SaveNode *cmpLTESave = F_->createSave("cmpLTESave", cmpLTE);
+  SaveNode *cmpLTSave = F_->createSave("cmpLTSave", cmpLT);
+  SaveNode *cmpEQSave = F_->createSave("cmpEQSave", cmpEQ);
+  SaveNode *powSave = F_->createSave("powSave", pow);
+  bindings_.allocate(addSave->getPlaceholder());
+  bindings_.allocate(mulSave->getPlaceholder());
+  bindings_.allocate(subSave->getPlaceholder());
+  bindings_.allocate(divSave->getPlaceholder());
+  bindings_.allocate(maxSave->getPlaceholder());
+  bindings_.allocate(minSave->getPlaceholder());
+  bindings_.allocate(cmpLTESave->getPlaceholder());
+  bindings_.allocate(cmpLTSave->getPlaceholder());
+  bindings_.allocate(cmpEQSave->getPlaceholder());
+  bindings_.allocate(powSave->getPlaceholder());
+
+  // Save current function state as reference.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Split nodes.
+  auto splitOption = SplitNodeByNumChunks({0}, {2});
+  SplitNodeMap splitMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitMap, ::glow::splitNodes(F_, splitOption));
+  runDCEPass(F_, cctx_);
+
+  // Check node count.
+  EXPECT_EQ(2, splitMap[add].size());
+  EXPECT_EQ(2, splitMap[mul].size());
+  EXPECT_EQ(2, splitMap[sub].size());
+  EXPECT_EQ(2, splitMap[div].size());
+  EXPECT_EQ(2, splitMap[max].size());
+  EXPECT_EQ(2, splitMap[min].size());
+  EXPECT_EQ(2, splitMap[cmpLTE].size());
+  EXPECT_EQ(2, splitMap[cmpLT].size());
+  EXPECT_EQ(2, splitMap[cmpEQ].size());
+  EXPECT_EQ(2, splitMap[pow].size());
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::AddNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::MulNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::SubNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::DivNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::MaxNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::MinNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::CmpLTENodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::CmpLTNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::CmpEQNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::PowNodeKind));
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 10 * 2 * 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 10 * 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 10);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting unary operators.
+TEST_F(NodeSplitting, UnaryOps) {
+  std::vector<dim_t> dims = {10, 10};
+  auto quantizeTy = mod_.uniqueType(ElemKind::Int8QTy, dims, 1.0, 0);
+  auto requantizeTy = mod_.uniqueType(ElemKind::Int8QTy, dims, 0.5, 0);
+  auto convertTy = mod_.uniqueType(ElemKind::Float16Ty, dims);
+
+  // Create network with chained unary operators.
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, dims, "input", false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10.0, 10.0,
+                                                          mod_.getPRNG());
+  Node *relu = F_->createRELU("relu", input);
+  Node *clip = F_->createClip("clip", relu, 1.0, 10.0);
+  Node *tanh = F_->createTanh("tanh", clip);
+  Node *sigmoid = F_->createSigmoid("sigmoid", tanh);
+  Node *log = F_->createLog("log", sigmoid);
+  Node *exp = F_->createExp("exp", log);
+  Node *quantize = F_->createQuantize("quantize", exp, quantizeTy);
+  Node *requantize =
+      F_->createRescaleQuantized("requantize", quantize, requantizeTy);
+  Node *dequantize =
+      F_->createDequantize("dequantize", requantize, ElemKind::FloatTy);
+  Node *convert = F_->createConvertTo("convert", dequantize, convertTy);
+  SaveNode *output = F_->createSave("output", convert);
+  bindings_.allocate(output->getPlaceholder());
+
+  // Save current function state as reference.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Split nodes.
+  auto splitOption = SplitNodeByNumChunks({0}, {2});
+  SplitNodeMap splitMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitMap, ::glow::splitNodes(F_, splitOption));
+  runDCEPass(F_, cctx_);
+
+  // Check node count.
+  EXPECT_EQ(2, splitMap[relu].size());
+  EXPECT_EQ(2, splitMap[clip].size());
+  EXPECT_EQ(2, splitMap[tanh].size());
+  EXPECT_EQ(2, splitMap[sigmoid].size());
+  EXPECT_EQ(2, splitMap[log].size());
+  EXPECT_EQ(2, splitMap[exp].size());
+  EXPECT_EQ(2, splitMap[quantize].size());
+  EXPECT_EQ(2, splitMap[requantize].size());
+  EXPECT_EQ(2, splitMap[dequantize].size());
+  EXPECT_EQ(2, splitMap[convert].size());
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::ReluNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::ClipNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::TanhNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::SigmoidNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::LogNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::ExpNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::QuantizeNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::RescaleQuantizedNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::DequantizeNodeKind));
+  EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::ConvertToNodeKind));
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 10 * 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 10 * 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 10);
   checkNumericalEquivalence(0);
 }

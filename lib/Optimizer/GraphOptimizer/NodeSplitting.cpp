@@ -724,6 +724,87 @@ void PoolSplitNodeModifier(const Node *origNode, Node *splitNode,
 }
 
 ///===---------------------------------------------------------------------===//
+///                               FullyConnected
+///===---------------------------------------------------------------------===//
+static std::vector<OpIdxAndMap>
+getFullyConnectedInputIdxAndMaps(const FullyConnectedNode *node) {
+  // Output slice to input slice range map.
+  CheckedSliceRangeMap inputSliceRangeMap =
+      [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
+    SliceRange inputRange = SliceRange(node->getInput().getType());
+    inputRange[ShapeHW::dimH] = outputSliceRange[ShapeHW::dimH];
+    return {true, inputRange};
+  };
+
+  // Output slice to weights slice range map.
+  CheckedSliceRangeMap weightsSliceRangeMap =
+      [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
+    SliceRange weightsRange = SliceRange(node->getWeights().getType());
+    weightsRange[ShapeHW::dimW] = outputSliceRange[ShapeHW::dimW];
+    return {true, weightsRange};
+  };
+
+  // Output slice to bias slice range map.
+  CheckedSliceRangeMap biasSliceRangeMap =
+      [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
+    return {true, SliceRange({outputSliceRange[ShapeHW::dimW]})};
+  };
+
+  // Return input index and map.
+  return {{FullyConnectedNode::InputIdx, inputSliceRangeMap},
+          {FullyConnectedNode::WeightsIdx, weightsSliceRangeMap},
+          {FullyConnectedNode::BiasIdx, biasSliceRangeMap}};
+}
+
+static std::vector<OpIdxAndMap>
+getMatMulInputIdxAndMaps(const MatMulNode *node) {
+  // Output slice to LHS slice range map.
+  CheckedSliceRangeMap lhsSliceRangeMap =
+      [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
+    SliceRange lhsRange = SliceRange(node->getLHS().getType());
+    lhsRange[ShapeHW::dimH] = outputSliceRange[ShapeHW::dimH];
+    return {true, lhsRange};
+  };
+
+  // Output slice to RHS slice range map.
+  CheckedSliceRangeMap rhsSliceRangeMap =
+      [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
+    SliceRange rhsRange = SliceRange(node->getRHS().getType());
+    rhsRange[ShapeHW::dimW] = outputSliceRange[ShapeHW::dimW];
+    return {true, rhsRange};
+  };
+
+  // Return input index and map.
+  return {{MatMulNode::LHSIdx, lhsSliceRangeMap},
+          {MatMulNode::RHSIdx, rhsSliceRangeMap}};
+}
+
+static std::vector<OpIdxAndMap>
+getBatchMatMulInputIdxAndMaps(const BatchMatMulNode *node) {
+  // Output slice to LHS slice range map.
+  CheckedSliceRangeMap lhsSliceRangeMap =
+      [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
+    SliceRange lhsRange = SliceRange(node->getLHS().getType());
+    lhsRange[ShapeNHW::dimN] = outputSliceRange[ShapeNHW::dimN];
+    lhsRange[ShapeNHW::dimH] = outputSliceRange[ShapeNHW::dimH];
+    return {true, lhsRange};
+  };
+
+  // Output slice to RHS slice range map.
+  CheckedSliceRangeMap rhsSliceRangeMap =
+      [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
+    SliceRange rhsRange = SliceRange(node->getRHS().getType());
+    rhsRange[ShapeNHW::dimN] = outputSliceRange[ShapeNHW::dimN];
+    rhsRange[ShapeNHW::dimW] = outputSliceRange[ShapeNHW::dimW];
+    return {true, rhsRange};
+  };
+
+  // Return input index and map.
+  return {{BatchMatMulNode::LHSIdx, lhsSliceRangeMap},
+          {BatchMatMulNode::RHSIdx, rhsSliceRangeMap}};
+}
+
+///===---------------------------------------------------------------------===//
 ///                            verifySplitParams
 ///===---------------------------------------------------------------------===//
 /// List of nodes for which there is a weak mapping between input and output
@@ -974,7 +1055,7 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
     Node *node, const SplitNodeOption *splitOption,
     const SplitNodeConstraint *splitConstraint, dim_t splitOutputIdx,
     const llvm::ArrayRef<OpIdxAndMap> &inputIdxAndMaps,
-    const llvm::ArrayRef<OpIdxAndMap> &outputIdxAndMaps,
+    const llvm::ArrayRef<OpIdxAndMap> &outputIdxAndMaps = {},
     const SplitNodeModifier &splitNodeModifier = SplitNodeModifierNop) {
 
   // The default split dims are all the dims of the split output operand.
@@ -1190,6 +1271,7 @@ glow::splitNode(Node *node, const SplitNodeOption *splitOption,
       "At least the split option or the split constraint must be given!");
 
   switch (node->getKind()) {
+
   case Kinded::Kind::ConvolutionNodeKind: {
     return splitAndReplaceNode(
         node, splitOption, splitConstraint, ConvolutionNode::ResultIdx,
@@ -1197,6 +1279,7 @@ glow::splitNode(Node *node, const SplitNodeOption *splitOption,
         {}, Conv2DSplitNodeModifier<ShapeNHWC>);
     break;
   }
+
   case Kinded::Kind::MaxPoolNodeKind: {
     // The current definition of the MaxPool node does not allow splitting
     // of the second output operand 'Argmax' which contains flattened
@@ -1213,6 +1296,7 @@ glow::splitNode(Node *node, const SplitNodeOption *splitOption,
         PoolSplitNodeModifier<MaxPoolNode, ShapeNHWC>);
     break;
   }
+
   case Kinded::Kind::AvgPoolNodeKind: {
     return splitAndReplaceNode(
         node, splitOption, splitConstraint, AvgPoolNode::ResultIdx,
@@ -1221,6 +1305,74 @@ glow::splitNode(Node *node, const SplitNodeOption *splitOption,
         {}, PoolSplitNodeModifier<AvgPoolNode, ShapeNHWC>);
     break;
   }
+
+  case Kinded::Kind::FullyConnectedNodeKind: {
+    return splitAndReplaceNode(
+        node, splitOption, splitConstraint, FullyConnectedNode::ResultIdx,
+        getFullyConnectedInputIdxAndMaps(dyn_cast<FullyConnectedNode>(node)));
+    break;
+  }
+
+  case Kinded::Kind::MatMulNodeKind: {
+    return splitAndReplaceNode(
+        node, splitOption, splitConstraint, MatMulNode::ResultIdx,
+        getMatMulInputIdxAndMaps(dyn_cast<MatMulNode>(node)));
+    break;
+  }
+
+  case Kinded::Kind::BatchMatMulNodeKind: {
+    return splitAndReplaceNode(
+        node, splitOption, splitConstraint, BatchMatMulNode::ResultIdx,
+        getBatchMatMulInputIdxAndMaps(dyn_cast<BatchMatMulNode>(node)));
+    break;
+  }
+
+  case Kinded::Kind::BatchedAddNodeKind: {
+    // TODO
+    break;
+  }
+
+  case Kinded::Kind::AddNodeKind:
+  case Kinded::Kind::MulNodeKind:
+  case Kinded::Kind::SubNodeKind:
+  case Kinded::Kind::DivNodeKind:
+  case Kinded::Kind::MaxNodeKind:
+  case Kinded::Kind::MinNodeKind:
+  case Kinded::Kind::CmpLTENodeKind:
+  case Kinded::Kind::CmpLTNodeKind:
+  case Kinded::Kind::CmpEQNodeKind:
+  case Kinded::Kind::PowNodeKind: {
+    assert(node->getNumInputs() == 2 && "Binary operator invalid!");
+    assert(node->getNumResults() == 1 && "Binary operator invalid!");
+    return splitAndReplaceNode(
+        node, splitOption, splitConstraint, /*splitOutputIdx*/ 0,
+        {{0, CheckedSliceRangeMapIdentity}, {1, CheckedSliceRangeMapIdentity}});
+    break;
+  }
+
+  case Kinded::Kind::ReluNodeKind:
+  case Kinded::Kind::ClipNodeKind:
+  case Kinded::Kind::TanhNodeKind:
+  case Kinded::Kind::SigmoidNodeKind:
+  case Kinded::Kind::LogNodeKind:
+  case Kinded::Kind::ExpNodeKind:
+  case Kinded::Kind::QuantizeNodeKind:
+  case Kinded::Kind::RescaleQuantizedNodeKind:
+  case Kinded::Kind::DequantizeNodeKind:
+  case Kinded::Kind::ConvertToNodeKind: {
+    assert(node->getNumInputs() == 1 && "Unary operator invalid!");
+    assert(node->getNumResults() == 1 && "Unary operator invalid!");
+    return splitAndReplaceNode(node, splitOption, splitConstraint,
+                               /*splitOutputIdx*/ 0,
+                               {{0, CheckedSliceRangeMapIdentity}});
+    break;
+  }
+
+  case Kinded::Kind::TransposeNodeKind: {
+    // TODO
+    break;
+  }
+
   default:
     VLOG(1) << "Splitting node type '" << node->getKindName()
             << "' is not supported!\n";
@@ -1280,12 +1432,26 @@ glow::splitNodes(Function *F, const SplitNodeOptionMap &splitOptionMap,
   return splitMap;
 }
 
+Expected<SplitNodeMap> glow::splitNodes(Function *F,
+                                        const SplitNodeOption &splitOption) {
+  // Since we will be transforming the original list of nodes, reverse iterate.
+  SplitNodeMap splitMap;
+  auto &nodes = F->getNodes();
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
+    Node *node = &*it;
+    const SplitNodeConstraint *splitConstraint = nullptr;
+    ASSIGN_VALUE_OR_RETURN_ERR(splitMap[node],
+                               splitNode(node, &splitOption, splitConstraint));
+  }
+  // Verify function after splitting nodes.
+  RETURN_ERR_IF_NOT(F->verify(), "Function is not valid after node splitting!");
+  return splitMap;
+}
+
 Expected<SplitNodeMap>
 glow::splitNodes(Function *F, const SplitNodeConstraint &splitConstraint) {
-  // Create split map.
-  SplitNodeMap splitMap;
-
   // Since we will be transforming the original list of nodes, reverse iterate.
+  SplitNodeMap splitMap;
   auto &nodes = F->getNodes();
   for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
     Node *node = &*it;
@@ -1293,7 +1459,6 @@ glow::splitNodes(Function *F, const SplitNodeConstraint &splitConstraint) {
     ASSIGN_VALUE_OR_RETURN_ERR(splitMap[node],
                                splitNode(node, splitOption, &splitConstraint));
   }
-
   // Verify function after splitting nodes.
   RETURN_ERR_IF_NOT(F->verify(), "Function is not valid after node splitting!");
   return splitMap;

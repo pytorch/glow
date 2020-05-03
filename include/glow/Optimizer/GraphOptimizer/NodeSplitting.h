@@ -267,6 +267,13 @@ splitNodes(Function *F, const SplitNodeOptionMap &splitOptionMap,
            const SplitNodeConstraintMap &splitConstraintMap);
 
 /// Function to split all the nodes from the function \p F for which there is
+/// a split logic implemented using a common split option \p splitOption which
+/// will be used for all the nodes. \returns a split node map for those nodes
+/// which were actually split.
+Expected<SplitNodeMap> splitNodes(Function *F,
+                                  const SplitNodeOption &splitOption);
+
+/// Function to split all the nodes from the function \p F for which there is
 /// a split logic implemented using a common split constraint \p splitConstraint
 /// which will be used for all the nodes. \returns a split node map for those
 /// nodes which were actually split.

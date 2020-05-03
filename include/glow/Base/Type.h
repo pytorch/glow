@@ -261,6 +261,10 @@ struct PaddingNFTBLR {
 };
 
 struct ShapeHW {
+
+  static const size_t dimH = 0;
+  static const size_t dimW = 1;
+
   dim_t height;
   dim_t width;
 
@@ -271,6 +275,26 @@ struct ShapeHW {
   }
 
   bool isSquare() const { return height == width; }
+};
+
+struct ShapeNHW {
+
+  static const size_t dimN = 0;
+  static const size_t dimH = 1;
+  static const size_t dimW = 2;
+
+  dim_t n; // Number of samples
+  dim_t h; // Height
+  dim_t w; // Width
+
+  template <typename T> explicit ShapeNHW(llvm::ArrayRef<T> shape) {
+    assert(shape.size() == 3 && "Invalid shape");
+    n = shape[0];
+    h = shape[1];
+    w = shape[2];
+  }
+
+  bool isSquare() const { return h == w; }
 };
 
 struct ShapeHWT {
