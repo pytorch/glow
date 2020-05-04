@@ -896,7 +896,7 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
 }
 
 ///===---------------------------------------------------------------------===//
-///                                   Conv2D
+///                                    Conv
 ///===---------------------------------------------------------------------===//
 static std::tuple<bool, DimRange, DimPads>
 getConvInputCheckedRangeAndPads(const DimRange &outputSliceRange,
@@ -992,6 +992,9 @@ getConvInputChannelCheckedRange(const DimRange &outputSliceRange,
   return {allowed, inputSliceRange};
 }
 
+///===---------------------------------------------------------------------===//
+///                                   Conv2D
+///===---------------------------------------------------------------------===//
 template <typename Shape>
 static std::vector<OpIdxAndMap>
 getConv2DInputIdxAndMaps(const ConvolutionNode *node) {
