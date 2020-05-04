@@ -5370,3 +5370,22 @@ TEST_F(GraphOptz, lowerConv2DToFCMultiBatch) {
   // Now compile/run/compare F_ and optimizedF_.
   checkNumericalEquivalence(1e-6);
 }
+
+/// Tests select optimization with uniform constant condition.
+TEST_F(GraphOptz, SelectConstCondOptimization) {
+  llvm::SmallVector<dim_t, 4> dims = {1, 1, 4, 2};
+  auto *condConst =
+      mod_.createConstant(ElemKind::BoolTy, dims, "condition_const");
+  condConst->getHandle<bool>().clear(true);
+  auto *RHS =
+      mod_.createPlaceholder(ElemKind::FloatTy, dims, "rhs_input", false);
+  auto *LHS =
+      mod_.createPlaceholder(ElemKind::FloatTy, dims, "lhs_input", false);
+
+  auto *select = F_->createSelect("select", condConst, LHS, RHS);
+  auto *save = F_->createSave("save", select);
+  ::glow::optimize(F_, CompilationMode::Infer);
+  auto saveInput = save->getInput();
+  EXPECT_FALSE(llvm::isa<SelectNode>(saveInput));
+  EXPECT_TRUE((*saveInput).getHash() == LHS->getHash());
+}
