@@ -1069,6 +1069,11 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
     splitDims = splitOption->getSplitDims();
   }
 
+  // If split dims are empty then return.
+  if (!splitDims.size()) {
+    return std::vector<Node *>();
+  }
+
   // Verify split parameters.
   RETURN_IF_ERR(verifySplitParams(node, splitOutputIdx, splitDims,
                                   inputIdxAndMaps, outputIdxAndMaps));
