@@ -16,6 +16,7 @@
 
 #include "HostManagerOnnxifi.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
+#include "glow/Runtime/RequestData.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
@@ -301,9 +302,17 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
   auto threadId = threads::getThreadId();
   auto startTime = TraceEvent::now();
 
+  auto *data = ::glow::runtime::RequestData::get();
+  std::map<std::string, std::string> attributes;
+  if (data) {
+    attributes["app level request id"] =
+        llvm::formatv("{0}", data->appLevelRequestId);
+  }
+
   backendPtr_->runNetwork(
       this, std::move(ctx),
       [outputEvent, traceEvents, threadId, startTime,
+       attributes = std::move(attributes),
        this](runtime::RunIdentifierTy runId, Error err,
              std::unique_ptr<ExecutionContext> ctx) mutable {
         TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::RUNTIME,
@@ -325,11 +334,11 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
           // threadId. This way, chrome UI will put the async event next to the
           // caller thread.
           traceContext->logTraceEvent("glow e2e", TraceLevel::RUNTIME,
-                                      TraceEvent::AsyncBeginType, startTime, {},
-                                      threadId, runId);
-          traceContext->logTraceEvent(
-              "glow e2e", TraceLevel::RUNTIME, TraceEvent::AsyncEndType,
-              TraceEvent::now(), {}, threads::getThreadId(), runId);
+                                      TraceEvent::BeginType, startTime,
+                                      attributes, threadId, runId);
+          traceContext->logTraceEvent("glow e2e", TraceLevel::RUNTIME,
+                                      TraceEvent::EndType, TraceEvent::now(),
+                                      attributes, threadId, runId);
           setTraceEvents(traceEvents, traceContext);
         }
 
