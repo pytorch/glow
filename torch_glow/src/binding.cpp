@@ -42,6 +42,11 @@ PYBIND11_MODULE(_torch_glow, m) {
   registerGlowFusionOpAndPass(
       []() { return getPyTorchLoaderSettings().fusionPassEnabled; });
 
+  /// Enable overriding signal handlers for torch_glow to make interruping long
+  /// running processes possible. This should only be used when running
+  /// torch_glow with Python.
+  enableSignalHandlerOverrides();
+
   /// Enable compiling PyTorch subgraphs to Glow Functions.
   m.def("enableFusionPass",
         []() { getPyTorchLoaderSettings().fusionPassEnabled = true; });
