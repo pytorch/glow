@@ -417,8 +417,14 @@ GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSet &currNodes,
       if (in->getKind() == Kinded::Kind::ConstantKind) {
         ret.constMemSize += size;
       } else {
-        // PlaceHolder for Input.
-        ret.inMemSize += size;
+        Placeholder *ph = llvm::dyn_cast<Placeholder>(N);
+        // If PH is static treat like a constant.
+        if (ph->isStatic()) {
+          ret.constMemSize += size;
+        } else {
+          // PlaceHolder for Input.
+          ret.inMemSize += size;
+        }
       }
       usedNodeValue.insert(nodeVal);
       continue;
@@ -504,11 +510,15 @@ GraphMemInfo getFunctionMemory(Function *func) {
   // mem size. These utility functions check the users of the PH to determine
   // if the PH is an input or an output.
   for (auto &place : func->findPlaceholders()) {
-    if (isInput(place, *func)) {
-      graphMem.inMemSize += place->getType()->getSizeInBytes();
-    }
-    if (isOutput(place, *func)) {
-      graphMem.outMemSize += place->getType()->getSizeInBytes();
+    if (place->isStatic()) {
+      graphMem.constMemSize += place->getType()->getSizeInBytes();
+    } else {
+      if (isInput(place, *func)) {
+        graphMem.inMemSize += place->getType()->getSizeInBytes();
+      }
+      if (isOutput(place, *func)) {
+        graphMem.outMemSize += place->getType()->getSizeInBytes();
+      }
     }
   }
 
