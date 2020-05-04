@@ -1064,14 +1064,14 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
   std::vector<size_t> splitDims(node->getType(splitOutputIdx)->dims().size());
   std::iota(splitDims.begin(), splitDims.end(), 0);
 
-  // Explicit split dims for this node.
-  if (splitOption) {
-    splitDims = splitOption->getSplitDims();
-  }
-
   // If split dims are empty then return.
   if (!splitDims.size()) {
     return std::vector<Node *>();
+  }
+
+  // Explicit split dims for this node.
+  if (splitOption) {
+    splitDims = splitOption->getSplitDims();
   }
 
   // Verify split parameters.
