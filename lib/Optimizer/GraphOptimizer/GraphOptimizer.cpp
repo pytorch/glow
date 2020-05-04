@@ -2324,6 +2324,13 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
         continue;
       }
 
+      // Preventing this from kicking in.
+      // Otherwise we will end up sequence of concats with more and more inputs,
+      // without really eliminating any.
+      if (CNI->getResult().getNumUsers() > 1) {
+        continue;
+      }
+
       merged = true;
       // Replace current input by its own inputs, i.e. merge them into the
       // parent concat node.
