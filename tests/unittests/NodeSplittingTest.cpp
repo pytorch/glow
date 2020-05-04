@@ -139,7 +139,6 @@ static void splitConv2DBasic(Function *F, Function *&optF,
                              CompilationContext &cctx,
                              std::vector<size_t> splitDims,
                              std::vector<dim_t> numChunks) {
-  // Create basic Conv2D.
   Node *node = createConv2D(F, bindings,
                             /* inputDims */ {5, 7, 8, 2},
                             /* filterDims */ {8, 2, 2, 1},
@@ -234,7 +233,6 @@ static void splitConv2DNonZeroPad(Function *F, Function *&optF,
                                   CompilationContext &cctx,
                                   std::vector<size_t> splitDims,
                                   std::vector<dim_t> numChunks) {
-  // Create Conv2D with non-zero padding.
   Node *node = createConv2D(F, bindings,
                             /* inputDims */ {1, 4, 4, 1},
                             /* filterDims */ {2, 2, 2, 1},
@@ -402,7 +400,6 @@ static void splitMaxPoolBasic(Function *F, Function *&optF,
                               CompilationContext &cctx,
                               std::vector<size_t> splitDims,
                               std::vector<dim_t> numChunks) {
-  // Create basic MaxPool.
   Node *node = createMaxPool(F, bindings,
                              /* inputDims */ {3, 7, 8, 4},
                              /* outputDims */ {3, 6, 7, 4},
@@ -466,7 +463,6 @@ static void splitMaxPoolNonZeroPad(Function *F, Function *&optF,
                                    CompilationContext &cctx,
                                    std::vector<size_t> splitDims,
                                    std::vector<dim_t> numChunks) {
-  // Create MaxPool with non-zero padding.
   Node *node = createMaxPool(F, bindings,
                              /* inputDims */ {1, 4, 4, 1},
                              /* outputDims */ {1, 4, 8, 1},
@@ -595,8 +591,6 @@ TEST_F(NodeSplitting, MaxPool_Argmax_NoSplit) {
   std::vector<unsigned_t> kernels = {2, 2};
   std::vector<unsigned_t> strides = {2, 2};
   std::vector<unsigned_t> pads = {1, 1, 0, 0};
-
-  // Create MaxPool with Argmax.
   auto *input =
       mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
   bindings_.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
@@ -664,7 +658,6 @@ static void splitAvgPoolBasic(Function *F, Function *&optF,
                               CompilationContext &cctx,
                               std::vector<size_t> splitDims,
                               std::vector<dim_t> numChunks) {
-  // Create basic AvgPool.
   Node *node = createAvgPool(F, bindings,
                              /* inputDims */ {3, 7, 8, 4},
                              /* outputDims */ {3, 6, 7, 4},
@@ -728,7 +721,6 @@ static void splitAvgPoolNonZeroPad(Function *F, Function *&optF,
                                    CompilationContext &cctx,
                                    std::vector<size_t> splitDims,
                                    std::vector<dim_t> numChunks) {
-  // Create AvgPool with non-zero padding.
   Node *node = createAvgPool(F, bindings,
                              /* inputDims */ {1, 4, 4, 1},
                              /* outputDims */ {1, 4, 8, 1},
@@ -858,28 +850,22 @@ static void splitFullyConnected(Function *F, Function *&optF,
                                 CompilationContext &cctx,
                                 std::vector<size_t> splitDims,
                                 std::vector<dim_t> numChunks) {
-  // Create FullyConnected.
   std::vector<dim_t> inputDims = {10, 13};
   std::vector<dim_t> weightsDims = {13, 20};
   std::vector<dim_t> biasDims = {20};
-
   auto &mod = *(F->getParent());
-
   auto *input =
       mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
   bindings.allocate(input)->getHandle<float>().randomize(-10.0, 10.0,
                                                          mod.getPRNG());
-
   auto *weights =
       mod.createPlaceholder(ElemKind::FloatTy, weightsDims, "weights", false);
   bindings.allocate(weights)->getHandle<float>().randomize(-10.0, 10.0,
                                                            mod.getPRNG());
-
   auto *bias =
       mod.createPlaceholder(ElemKind::FloatTy, biasDims, "bias", false);
   bindings.allocate(bias)->getHandle<float>().randomize(-10.0, 10.0,
                                                         mod.getPRNG());
-
   Node *node = F->createFullyConnected("fc", input, weights, bias);
   SaveNode *output = F->createSave("output", node);
   bindings.allocate(output->getPlaceholder());
@@ -927,12 +913,14 @@ TEST_F(NodeSplitting, FullyConnected_DimHW_Chunks4) {
   checkNumericalEquivalence(0);
 }
 
+///===---------------------------------------------------------------------===//
+///                                   MatMul
+///===---------------------------------------------------------------------===//
 /// Utility function to test splitting a MatMul node.
 static void splitMatMul(Function *F, Function *&optF,
                         PlaceholderBindings &bindings, CompilationContext &cctx,
                         std::vector<size_t> splitDims,
                         std::vector<dim_t> numChunks) {
-  // Create MatMul.
   std::vector<dim_t> dimsLHS = {10, 13};
   std::vector<dim_t> dimsRHS = {13, 20};
   auto &mod = *(F->getParent());
@@ -988,13 +976,15 @@ TEST_F(NodeSplitting, MatMul_DimHW_Chunks4) {
   checkNumericalEquivalence(0);
 }
 
+///===---------------------------------------------------------------------===//
+///                                 BatchMatMul
+///===---------------------------------------------------------------------===//
 /// Utility function to test splitting a BatchMatMul node.
 static void splitBatchMatMul(Function *F, Function *&optF,
                              PlaceholderBindings &bindings,
                              CompilationContext &cctx,
                              std::vector<size_t> splitDims,
                              std::vector<dim_t> numChunks) {
-  // Create BatchMatMul.
   std::vector<dim_t> dimsLHS = {2, 10, 13};
   std::vector<dim_t> dimsRHS = {2, 13, 20};
   auto &mod = *(F->getParent());
@@ -1064,11 +1054,160 @@ TEST_F(NodeSplitting, BatchMatMul_DimNHW_Chunks8) {
 }
 
 ///===---------------------------------------------------------------------===//
-///                               Misc Operators
+///                                 BatchedAdd
+///===---------------------------------------------------------------------===//
+/// Utility function to test splitting a BatchedAdd node.
+static void splitBatchedAdd(Function *F, Function *&optF,
+                            PlaceholderBindings &bindings,
+                            CompilationContext &cctx,
+                            std::vector<size_t> splitDims,
+                            std::vector<dim_t> numChunks) {
+  std::vector<dim_t> batchDims = {2, 10, 13};
+  std::vector<dim_t> sliceDims = {10, 13};
+  auto &mod = *(F->getParent());
+  auto *batch =
+      mod.createPlaceholder(ElemKind::FloatTy, batchDims, "batch", false);
+  bindings.allocate(batch)->getHandle<float>().randomize(-10.0, 10.0,
+                                                         mod.getPRNG());
+  auto *slice =
+      mod.createPlaceholder(ElemKind::FloatTy, sliceDims, "slice", false);
+  bindings.allocate(slice)->getHandle<float>().randomize(-10.0, 10.0,
+                                                         mod.getPRNG());
+  Node *node = F->createBatchedAdd("batchedadd", batch, slice);
+  SaveNode *output = F->createSave("output", node);
+  bindings.allocate(output->getPlaceholder());
+
+  // Save current function state as reference.
+  optF = F->clone(F->getName().str() + "_optimized");
+
+  // Split node.
+  auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
+  runDCEPass(F, cctx);
+
+  // Compute total number of chunks.
+  dim_t totNumChunks = 1;
+  for (auto numChunk : numChunks) {
+    totNumChunks *= numChunk;
+  }
+
+  // Check node count.
+  EXPECT_EQ(splitNodes.size(), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 2 * totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::BatchedAddNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
+}
+
+/// Test splitting BatchedAdd along dimension 0.
+TEST_F(NodeSplitting, BatchedAdd_Dim0_Chunks2) {
+  splitBatchedAdd(F_, optimizedF_, bindings_, cctx_, {0}, {2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting BatchedAdd along dimension 1.
+TEST_F(NodeSplitting, BatchedAdd_Dim1_Chunks2) {
+  splitBatchedAdd(F_, optimizedF_, bindings_, cctx_, {1}, {2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting BatchedAdd along dimension 2.
+TEST_F(NodeSplitting, BatchedAdd_Dim2_Chunks2) {
+  splitBatchedAdd(F_, optimizedF_, bindings_, cctx_, {2}, {2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting BatchedAdd along dimension 0 and 1.
+TEST_F(NodeSplitting, BatchedAdd_Dim01_Chunks4) {
+  splitBatchedAdd(F_, optimizedF_, bindings_, cctx_, {0, 1}, {2, 2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting BatchedAdd along dimension 0, 1 and 2.
+TEST_F(NodeSplitting, BatchedAdd_Dim012_Chunks8) {
+  splitBatchedAdd(F_, optimizedF_, bindings_, cctx_, {0, 1, 2}, {2, 2, 2});
+  checkNumericalEquivalence(0);
+}
+
+///===---------------------------------------------------------------------===//
+///                                  Transpose
+///===---------------------------------------------------------------------===//
+/// Utility function to test splitting a Transpose node.
+static void splitTranspose(Function *F, Function *&optF,
+                           PlaceholderBindings &bindings,
+                           CompilationContext &cctx,
+                           std::vector<size_t> splitDims,
+                           std::vector<dim_t> numChunks) {
+  std::vector<dim_t> inputDims = {3, 5, 7};
+  std::vector<unsigned_t> shuffle = {2, 0, 1};
+  auto &mod = *(F->getParent());
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings.allocate(input)->getHandle<float>().randomize(-10.0, 10.0,
+                                                         mod.getPRNG());
+  Node *node = F->createTranspose("transpose", input, shuffle);
+  SaveNode *output = F->createSave("output", node);
+  bindings.allocate(output->getPlaceholder());
+
+  // Save current function state as reference.
+  optF = F->clone(F->getName().str() + "_optimized");
+
+  // Split node.
+  auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
+  runDCEPass(F, cctx);
+
+  // Compute total number of chunks.
+  dim_t totNumChunks = 1;
+  for (auto numChunk : numChunks) {
+    totNumChunks *= numChunk;
+  }
+
+  // Check node count.
+  EXPECT_EQ(splitNodes.size(), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::TransposeNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
+}
+
+/// Test splitting Transpose along dimension 0.
+TEST_F(NodeSplitting, Transpose_Dim0_Chunks2) {
+  splitTranspose(F_, optimizedF_, bindings_, cctx_, {0}, {2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting Transpose along dimension 1.
+TEST_F(NodeSplitting, Transpose_Dim1_Chunks2) {
+  splitTranspose(F_, optimizedF_, bindings_, cctx_, {1}, {2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting Transpose along dimension 2.
+TEST_F(NodeSplitting, Transpose_Dim2_Chunks2) {
+  splitTranspose(F_, optimizedF_, bindings_, cctx_, {2}, {2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting Transpose along dimension 0 and 1.
+TEST_F(NodeSplitting, Transpose_Dim01_Chunks4) {
+  splitTranspose(F_, optimizedF_, bindings_, cctx_, {0, 1}, {2, 2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting Transpose along dimension 0, 1 and 2.
+TEST_F(NodeSplitting, Transpose_Dim012_Chunks8) {
+  splitTranspose(F_, optimizedF_, bindings_, cctx_, {0, 1, 2}, {2, 2, 2});
+  checkNumericalEquivalence(0);
+}
+
+///===---------------------------------------------------------------------===//
+///                              Binary Operators
 ///===---------------------------------------------------------------------===//
 /// Test splitting binary operators.
 TEST_F(NodeSplitting, BinaryOps) {
-
   // Create network with parallel binary operators.
   std::vector<dim_t> dims = {10, 10};
   auto *inputLHS =
@@ -1146,6 +1285,9 @@ TEST_F(NodeSplitting, BinaryOps) {
   checkNumericalEquivalence(0);
 }
 
+///===---------------------------------------------------------------------===//
+///                               Unary Operators
+///===---------------------------------------------------------------------===//
 /// Test splitting unary operators.
 TEST_F(NodeSplitting, UnaryOps) {
   std::vector<dim_t> dims = {10, 10};

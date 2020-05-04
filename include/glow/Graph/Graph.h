@@ -989,10 +989,10 @@ public:
                           llvm::ArrayRef<unsigned_t> axes);
 
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, NodeValue batch,
-                                   NodeValue sample);
+                                   NodeValue slice);
 
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, TypeRef outTy,
-                                   NodeValue batch, NodeValue sample);
+                                   NodeValue batch, NodeValue slice);
 
   /// Create a node performing a Cumulative Sum operation, output type matches
   /// \p input type.
