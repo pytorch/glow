@@ -82,20 +82,23 @@ public:
     auto fn = mod->createFunction("singleNode");
     // Create multiple chains of Concat nodes
     std::vector<Placeholder *> A(numTensors_);
+    std::vector<NodeValue> A_broadcast(numTensors_);
     std::vector<NodeValue> A_concat(numTensors_);
     std::vector<NodeValue> slices(numTensors_);
 
     Placeholder *output;
 
     for (size_t tensor = 0; tensor < numTensors_; tensor++) {
-      A[tensor] = mod->createPlaceholder(dtype_, {m_, n_},
+      A[tensor] = mod->createPlaceholder(dtype_, {1, n_},
                                          "A" + std::to_string(tensor), false);
+      A_broadcast[tensor] = fn->createBroadcast(
+          "A_bcast" + std::to_string(tensor), A[tensor], {m_, n_}, 0);
     }
     output =
-        mod->createPlaceholder(dtype_, {m_, n_ * numTensors_}, "output", false);
+        mod->createPlaceholder(dtype_, {1, n_ * numTensors_}, "output", false);
 
     for (size_t tensor = 0; tensor < numTensors_; tensor++) {
-      A_concat[tensor / 2 * 2 + ((tensor % 2) ? 0 : 1)] = A[tensor];
+      A_concat[tensor / 2 * 2 + ((tensor % 2) ? 0 : 1)] = A_broadcast[tensor];
     }
     auto *concat = fn->createConcat("concat_0", A_concat, 1);
 
@@ -112,7 +115,9 @@ public:
       }
       concat = fn->createConcat("concat_" + std::to_string(layer), A_concat, 1);
     }
-    fn->createSave("save", concat, output);
+    Node *slice =
+        fn->createSlice("slice_final", concat, {0, 0}, {1, n_ * numTensors_});
+    fn->createSave("save", slice, output);
     CompilationContext ctx;
     ctx.dumpFinalGraph = true;
     EXIT_ON_ERR(hostManager_->addNetwork(std::move(mod), ctx));
