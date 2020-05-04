@@ -1151,6 +1151,25 @@ max: 1515.200  min: 1.200
   EXPECT_EQ(mes2, osT3.str());
 }
 
+/// Check Type serialization functions.
+TEST(Tensor, typeSerialization) {
+  auto testType = [](Type ty) {
+    EXPECT_EQ(ty, Type::fromString(ty.toString()));
+  };
+  testType(Type(ElemKind::FloatTy, {1}));
+  testType(Type(ElemKind::Float16Ty, {1, 2}));
+  testType(Type(ElemKind::Int8QTy, {1, 2, 3}, 1.1, 1));
+  testType(Type(ElemKind::UInt8QTy, {1, 2, 3}, 1.2, 2));
+  testType(Type(ElemKind::Int16QTy, {1, 2, 3}, 1.3, 3));
+  testType(Type(ElemKind::Int32QTy, {1, 2, 3}, 1.4, 4));
+  testType(Type(ElemKind::Int32ITy, {1, 2, 3}));
+  testType(Type(ElemKind::Int64ITy, {1, 2, 3}));
+  testType(Type(ElemKind::UInt8FusedQTy, {1, 2, 3}, 1.5, 5));
+  testType(Type(ElemKind::UInt8FusedFP16QTy, {1, 2, 3}, 1.6, 6));
+  testType(Type(ElemKind::UInt4FusedFP16QTy, {1, 2, 3}, 1.7, 7));
+  testType(Type(ElemKind::BoolTy, {1, 2, 3}));
+}
+
 /// Test unpadded size.
 TEST(Tensor, unpaddedSize) {
   Tensor partial(ElemKind::FloatTy, {11});
@@ -1336,6 +1355,60 @@ TEST(Tensor, differentAlignment) {
 
 // Check that write/read of tensors data from/to raw-text files is
 // working properly.
+TEST(Tensor, accessToTextFile) {
+  Tensor tensorRef = {0.75f,  0.23f, 0.76f,  0.99f,  1.00f,
+                      -0.78f, 0.23f, -0.97f, -0.37f, 0.00f};
+  llvm::SmallString<64> path;
+  auto tempFileRes = llvm::sys::fs::createTemporaryFile("tensor", ".txt", path);
+  if (tempFileRes.value() != 0) {
+    FAIL() << "Failed to create temp file to write into.";
+  }
+  TensorSerializationOptions opts;
+  opts.withType = true;
+  dumpTensorToTextFile(tensorRef, path, opts);
+  Tensor tensorTest;
+  loadTensorFromTextFile(tensorTest, path, opts);
+  llvm::sys::fs::remove(path);
+
+  auto handleRef = tensorRef.getHandle<>();
+  auto handleTest = tensorTest.getHandle<>();
+
+  EXPECT_EQ(handleRef.size(), handleTest.size());
+  EXPECT_EQ(handleRef.actualSize(), handleTest.actualSize());
+  for (size_t rcnt = 0; rcnt < tensorTest.actualSize(); rcnt++) {
+    EXPECT_FLOAT_EQ(handleTest.raw(rcnt), handleRef.raw(rcnt));
+  }
+}
+
+// Check that write/read of tensors data from/to raw-binary files is
+// working properly.
+TEST(Tensor, accessToBinaryFile) {
+  Tensor tensorRef = {0.75f,  0.23f, 0.76f,  0.99f,  1.00f,
+                      -0.78f, 0.23f, -0.97f, -0.37f, 0.00f};
+  llvm::SmallString<64> path;
+  auto tempFileRes = llvm::sys::fs::createTemporaryFile("tensor", ".bin", path);
+  if (tempFileRes.value() != 0) {
+    FAIL() << "Failed to create temp file to write into.";
+  }
+  TensorSerializationOptions opts;
+  opts.withType = true;
+  dumpTensorToBinaryFile(tensorRef, path, opts);
+  Tensor tensorTest;
+  loadTensorFromBinaryFile(tensorTest, path, opts);
+  llvm::sys::fs::remove(path);
+
+  auto handleRef = tensorRef.getHandle<>();
+  auto handleTest = tensorTest.getHandle<>();
+
+  EXPECT_EQ(handleRef.size(), handleTest.size());
+  EXPECT_EQ(handleRef.actualSize(), handleTest.actualSize());
+  for (size_t rcnt = 0; rcnt < tensorTest.actualSize(); rcnt++) {
+    EXPECT_FLOAT_EQ(handleTest.raw(rcnt), handleRef.raw(rcnt));
+  }
+}
+
+// Check that write/read of tensors data from/to raw-text files is
+// working properly.
 TEST(Tensor, accessToRawTextFile) {
   Tensor tensorRef = {0.75f,  0.23f, 0.76f,  0.99f,  1.00f,
                       -0.78f, 0.23f, -0.97f, -0.37f, 0.00f};
@@ -1344,9 +1417,11 @@ TEST(Tensor, accessToRawTextFile) {
   if (tempFileRes.value() != 0) {
     FAIL() << "Failed to create temp file to write into.";
   }
-  dumpToRawTextFile(tensorRef, path);
+  TensorSerializationOptions opts;
+  opts.withType = false;
+  dumpTensorToTextFile(tensorRef, path, opts);
   Tensor tensorTest(ElemKind::FloatTy, {10});
-  loadFromRawTextFile(tensorTest, path);
+  loadTensorFromTextFile(tensorTest, path, opts);
   llvm::sys::fs::remove(path);
 
   auto handleRef = tensorRef.getHandle<>();
@@ -1441,9 +1516,11 @@ TEST(Tensor, accessToRawBinaryFile) {
   if (tempFileRes.value() != 0) {
     FAIL() << "Failed to create temp file to write into.";
   }
-  dumpToRawBinaryFile(tensorRef, path);
+  TensorSerializationOptions opts;
+  opts.withType = false;
+  dumpTensorToBinaryFile(tensorRef, path, opts);
   Tensor tensorTest(ElemKind::FloatTy, {10});
-  loadFromRawBinaryFile(tensorTest, path);
+  loadTensorFromBinaryFile(tensorTest, path, opts);
   llvm::sys::fs::remove(path);
 
   auto handleRef = tensorRef.getHandle<>();

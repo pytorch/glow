@@ -768,6 +768,10 @@ struct Type final {
   /// Dump a textual representation of the Type to std::string.
   std::string toString() const;
 
+  /// Load a Type object from a textual representation \p str. This method is
+  /// paired and should be used together with \ref toString.
+  static Type fromString(llvm::StringRef str);
+
 private:
   /// Setup the internals of type that store the dimensions. This method is
   /// used by the constructor.

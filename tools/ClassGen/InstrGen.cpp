@@ -758,6 +758,8 @@ int main(int argc, char **argv) {
 
   BB.newInstr("DebugPrint")
       .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::String, "Format")
+      .addMember(MemberType::String, "FileName")
       .autoVerify(VerifyKind::NoVerify);
 
   BB.newInstr("TraceEvent")
