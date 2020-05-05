@@ -402,6 +402,47 @@ bool SinkConversions::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Sink Quantize(Concat(...)) -> Concat(Quantize(...)). This allows for
+/// concatenating less data, and if there are some inputs that are already
+/// quantized and are being dequantized just for the concat then we can skip
+/// this conversion.
+bool SinkConcatBelowQuantize::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+  // For each node:
+  for (auto &N : nodes) {
+    QuantizeNode *QN = dyn_cast<QuantizeNode>(&N);
+    if (!QN) {
+      continue;
+    }
+
+    ConcatNode *CN = dyn_cast<ConcatNode>(QN->getInput());
+    if (!CN || CN->getNumUsers() > 1) {
+      continue;
+    }
+
+    // For all inputs to the current CN, add quantize nodes to them all using
+    // the same scale/offset as QN and put the quantize nodes in newQuantInputs.
+    std::vector<NodeValue> newQuantInputs;
+    for (const NodeValue &inCN : CN->getInputs()) {
+      TypeRef newOutTy = F->getParent()->uniqueTypeWithNewShape(
+          QN->getResult().getType(), inCN.dims());
+      QuantizeNode *quantInCN = F->createQuantize(
+          inCN.getNode()->getName().str() + "_quant", inCN, newOutTy);
+      newQuantInputs.push_back(quantInCN);
+    }
+
+    // Create a new CN with the quantized inputs and replace QN with it.
+    ConcatNode *newCN =
+        F->createConcat(CN->getName(), newQuantInputs, CN->getDim());
+    QN->getResult().replaceAllUsesOfWith(newCN->getResult());
+    changed = true;
+  }
+
+  return changed;
+}
+
 /// Code Sinking.
 bool SinkCode::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
