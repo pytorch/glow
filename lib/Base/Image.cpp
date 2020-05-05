@@ -72,6 +72,18 @@ static llvm::cl::alias imageLayoutA("l",
                                     llvm::cl::aliasopt(imageLayoutF),
                                     llvm::cl::cat(imageCat));
 
+ImageLayout inputLayout;
+static llvm::cl::opt<ImageLayout, true>
+    inputLayoutF("input-layout",
+                 llvm::cl::desc("Layout for the input tensor, if any."),
+                 llvm::cl::Optional, llvm::cl::cat(imageCat),
+                 llvm::cl::location(inputLayout),
+                 llvm::cl::values(clEnumValN(ImageLayout::NCHW, "NCHW",
+                                             "Use NCHW image layout"),
+                                  clEnumValN(ImageLayout::NHWC, "NHWC",
+                                             "Use NHWC image layout")),
+                 llvm::cl::init(ImageLayout::NCHW));
+
 bool useImagenetNormalization;
 static llvm::cl::opt<bool, true> useImagenetNormalizationF(
     "use-imagenet-normalization",
@@ -109,6 +121,18 @@ std::pair<float, float> glow::normModeToRange(ImageNormalizationMode mode) {
   default:
     LOG(FATAL) << "Image format not defined.";
   }
+}
+
+bool glow::isPngFormat(const std::string &filename) {
+  // open file and test for it being a png.
+  FILE *fp = fopen(filename.c_str(), "rb");
+  CHECK(fp) << "Can't open image file with name: " << filename;
+
+  unsigned char header[8];
+  size_t fread_ret = fread(header, 1, 8, fp);
+  fclose(fp);
+  CHECK_EQ(fread_ret, 8) << "fread failed for file: " << filename;
+  return png_sig_cmp(header, 0, 8) == 0;
 }
 
 std::tuple<size_t, size_t, bool> glow::getPngInfo(const char *filename) {
@@ -406,11 +430,11 @@ void glow::readPngImageAndPreprocess(Tensor &imageData,
   }
 }
 
-void glow::loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
-                                   Tensor *inputImageData,
-                                   ImageNormalizationMode imageNormMode,
-                                   ImageChannelOrder imageChannelOrder,
-                                   ImageLayout imageLayout) {
+/// Entry point for the PNG images loader.
+void glow::readPngImagesAndPreprocess(
+    Tensor &inputImageData, const llvm::ArrayRef<std::string> &filenames,
+    ImageNormalizationMode imageNormMode, ImageChannelOrder imageChannelOrder,
+    ImageLayout imageLayout) {
   DCHECK(!filenames.empty())
       << "There must be at least one filename in filenames.";
   assert((dim_t)filenames.size() == filenames.size());
@@ -459,9 +483,11 @@ void glow::loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
   case ImageLayout::NHWC:
     batchDims = {numImages, imgHeight, imgWidth, numChannels};
     break;
+  default:
+    LOG(FATAL) << "Unexpected layout\n";
   }
-  inputImageData->reset(ElemKind::FloatTy, batchDims);
-  auto IIDH = inputImageData->getHandle<>();
+  inputImageData.reset(ElemKind::FloatTy, batchDims);
+  auto IIDH = inputImageData.getHandle<>();
 
   // Read images into local tensors and add to batch.
   for (size_t n = 0; n < filenames.size(); n++) {
@@ -469,8 +495,30 @@ void glow::loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
         readPngImageAndPreprocess(filenames[n], imageNormMode,
                                   imageChannelOrder, imageLayout, mean, stddev);
     DCHECK(std::equal(localCopy.dims().begin(), localCopy.dims().end(),
-                      inputImageData->dims().begin() + 1))
+                      inputImageData.dims().begin() + 1))
         << "All images must have the same dimensions";
     IIDH.insertSlice(localCopy, n);
+  }
+}
+
+/// Dispatching loading to the format handlers.
+void glow::loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
+                                   Tensor *inputImageData,
+                                   ImageNormalizationMode imageNormMode,
+                                   ImageChannelOrder imageChannelOrder,
+                                   ImageLayout imageLayout) {
+  DCHECK(!filenames.empty())
+      << "There must be at least one filename in filenames.";
+  assert((dim_t)filenames.size() == filenames.size());
+
+  if (isPngFormat(filenames[0])) {
+    readPngImagesAndPreprocess(*inputImageData, filenames, imageNormMode,
+                               imageChannelOrder, imageLayout);
+  } else if (isNumpyNpyFormat(filenames[0])) {
+    loadNumpyImagesAndPreprocess(filenames, *inputImageData, imageNormMode,
+                                 imageLayout, inputLayout, meanValues,
+                                 stddevValues);
+  } else {
+    LOG(FATAL) << "Input file format is not recognized!\n";
   }
 }

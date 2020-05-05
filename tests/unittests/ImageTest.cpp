@@ -25,6 +25,103 @@
 
 using namespace glow;
 
+static void numpyTestHelper(llvm::ArrayRef<std::string> filenames,
+                            llvm::ArrayRef<dim_t> expDims,
+                            std::vector<float> &vals, ImageLayout inLayout,
+                            ImageLayout imgLayout,
+                            llvm::ArrayRef<float> mean = {},
+                            llvm::ArrayRef<float> stddev = {}) {
+  Tensor image;
+  loadNumpyImagesAndPreprocess(filenames, image,
+                               ImageNormalizationMode::k0to255, inLayout,
+                               imgLayout, mean, stddev);
+
+  ASSERT_EQ(ElemKind::FloatTy, image.getType().getElementType());
+  ASSERT_EQ(expDims.size(), image.dims().size());
+  EXPECT_EQ(image.dims(), expDims);
+  auto H = image.getHandle();
+  for (dim_t i = 0; i < H.size(); i++) {
+    EXPECT_FLOAT_EQ(H.raw(i), vals[i]);
+  }
+}
+
+TEST(Image, readNpyNCHWtoNCHW_4D_image) {
+  std::vector<float> vals;
+  for (int i = 0; i < 48; i++) {
+    vals.push_back(i);
+  }
+  numpyTestHelper({"tests/images/npy/tensor3x4x2x2_u16.npy"}, {3, 4, 2, 2},
+                  vals, ImageLayout::NCHW, ImageLayout::NCHW);
+}
+
+TEST(Image, readNpy_stddev_mean) {
+  std::vector<float> vals;
+  std::vector<float> mean = {1.1, 1.2, 1.3, 1.4};
+  std::vector<float> stddev = {2.1, 2.2, 2.3, 2.4};
+  for (int i = 0; i < 48; i++) {
+    vals.push_back(((float)i - mean[(i / 4) % 4]) / stddev[(i / 4) % 4]);
+  }
+  numpyTestHelper({"tests/images/npy/tensor3x4x2x2_u16.npy"}, {3, 4, 2, 2},
+                  vals, ImageLayout::NCHW, ImageLayout::NCHW,
+                  {1.1, 1.2, 1.3, 1.4}, {2.1, 2.2, 2.3, 2.4});
+}
+
+TEST(Image, readNpyNHWCtoNHWC_3D_image) {
+  std::vector<float> vals;
+  for (int i = 0; i < 24; i++) {
+    vals.push_back(i);
+  }
+  numpyTestHelper({"tests/images/npy/tensor3x4x2_u32.npy"}, {1, 3, 4, 2}, vals,
+                  ImageLayout::NHWC, ImageLayout::NHWC);
+}
+
+TEST(Image, readNpyNCHWtoNHWC_4D_image) {
+  std::vector<float> vals;
+  for (int i = 0; i < 48; i++) {
+    vals.push_back(i);
+  }
+  Tensor tensor(ElemKind::FloatTy, {3, 4, 2, 2});
+  tensor.getHandle() = vals;
+  Tensor transposed;
+  tensor.transpose(&transposed, {0u, 2u, 3u, 1u});
+  vals.clear();
+  for (int i = 0; i < 48; i++) {
+    vals.push_back(transposed.getHandle().raw(i));
+  }
+  numpyTestHelper({"tests/images/npy/tensor3x4x2x2_u16.npy"}, transposed.dims(),
+                  vals, ImageLayout::NHWC, ImageLayout::NCHW);
+}
+
+TEST(Image, readNpyNHWCtoNCHW_3D_image) {
+  std::vector<float> vals;
+  for (int i = 0; i < 24; i++) {
+    vals.push_back(i);
+  }
+  Tensor tensor(ElemKind::FloatTy, {1, 3, 4, 2});
+  tensor.getHandle() = vals;
+  Tensor transposed;
+  tensor.transpose(&transposed, {0u, 3u, 1u, 2u});
+  vals.clear();
+  for (int i = 0; i < 24; i++) {
+    vals.push_back(transposed.getHandle().raw(i));
+  }
+  numpyTestHelper({"tests/images/npy/tensor3x4x2_u32.npy"}, transposed.dims(),
+                  vals, ImageLayout::NCHW, ImageLayout::NHWC);
+}
+
+TEST(Image, readNpyNHWCtoNHWC_multi_image) {
+  std::vector<float> vals;
+  for (int i = 0; i < 16; i++) {
+    vals.push_back(i);
+  }
+  for (int i = 0; i < 48; i++) {
+    vals.push_back(i);
+  }
+  numpyTestHelper({"tests/images/npy/tensor1x4x2x2_u8.npy",
+                   "tests/images/npy/tensor3x4x2x2_u16.npy"},
+                  {4, 4, 2, 2}, vals, ImageLayout::NHWC, ImageLayout::NHWC);
+}
+
 TEST(Image, readNonSquarePngImage) {
   auto range = std::make_pair(0.f, 1.f);
   Tensor vgaTensor;

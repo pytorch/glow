@@ -59,6 +59,9 @@ extern ImageChannelOrder imageChannelOrder;
 /// -image-layout flag.
 extern ImageLayout imageLayout;
 
+/// -input-layout flag
+extern ImageLayout inputLayout;
+
 /// -use-imagenet-normalization flag.
 extern bool useImagenetNormalization;
 
@@ -79,6 +82,9 @@ std::pair<float, float> normModeToRange(ImageNormalizationMode mode);
 /// Reads a png image header from png file \p filename and \returns a tuple
 /// containing height, width, and a bool if it is grayscale or not.
 std::tuple<size_t, size_t, bool> getPngInfo(const char *filename);
+
+/// Check if file \p filename is in png format.
+bool isPngFormat(const std::string &filename);
 
 /// Reads a png image. \returns True if an error occurred. The values of the
 /// image are in the range \p range.
@@ -129,16 +135,54 @@ void readPngImageAndPreprocess(Tensor &imageData, llvm::StringRef filename,
 
 /// Loads and normalizes all PNGs into a tensor in the NHWC format with the
 /// requested channel ordering.
-/// \param filenames list of filenames to read.
-/// \param inputImageData Tensor to save the resulting output.
+/// \param imageData the tensor into which the preprocessed image data
+///  will be stored.
+/// \param filename the png file to read.
 /// \param imageNormMode normalize values to this range.
 /// \param imageChannelOrder the order of color channels.
 /// \param imageLayout the order of dimensions (channel, height, and width).
+void readPngImagesAndPreprocess(Tensor &imageData,
+                                const llvm::ArrayRef<std::string> &filenames,
+                                ImageNormalizationMode imageNormMode,
+                                ImageChannelOrder imageChannelOrder,
+                                ImageLayout imageLayout);
+
+/// Loads either PNGs or NUMPY dumps into a tensor.
+/// \param filenames list of filenames to read.
+/// \param inputImageData Tensor to save the resulting output.
+/// \param imageNormMode normalize values to this range (not applicable to
+/// NUMPY).
+/// \param imageChannelOrder the order of color channels (not applicable
+/// to NUMPY).
+/// \param imageLayout the order of dimensions (channel, height, and
+/// width).
 void loadImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
                              Tensor *inputImageData,
                              ImageNormalizationMode imageNormMode,
                              ImageChannelOrder imageChannelOrder,
                              ImageLayout imageLayout);
+
+/// Check if file \p filename is in Numpy .npy format.
+bool isNumpyNpyFormat(const std::string &filename);
+
+/// Load & normalize tensors from multiple npy files given by \p filenames into
+/// \p inputData tensor. Npy tensors must be 4D or 3D (in this case they are
+/// expanded with the batch dimension) and are concatanted along the batch.
+/// Also, tensors are transposed from \p inputLayout to \p imageLayout. Tensor
+/// values are expected to be in 0-255 range. \param filenames list of filenames
+/// to read. \param inputData Tensor to save the resulting output. \param
+/// imageNormMode normalize values to this range. \param imageLayout the order
+/// of dimensions (channel, height, and width). \param inputLayout the order of
+/// dimensions (channel, height, and width) in the dumps. \param mean use
+/// special mean to normalize. \param stdev use special stddev to normalize.
+void loadNumpyImagesAndPreprocess(const llvm::ArrayRef<std::string> &filenames,
+                                  Tensor &inputData,
+                                  ImageNormalizationMode imageNormMode,
+                                  ImageLayout imageLayout,
+                                  ImageLayout inputLayout,
+                                  llvm::ArrayRef<float> mean = {},
+                                  llvm::ArrayRef<float> stddev = {});
+
 } // namespace glow
 
 #endif // GLOW_BASE_IMAGE_H
