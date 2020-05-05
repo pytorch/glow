@@ -44,6 +44,11 @@ llvm::cl::opt<unsigned> concurrentReqestsOpt(
     "concurrent-count", llvm::cl::desc("Number of concurrent requests."),
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(recSysTestCat));
 
+llvm::cl::opt<unsigned>
+    repsOpt("reps", llvm::cl::desc("Number of benchmark repetitions."),
+            llvm::cl::Optional, llvm::cl::init(1),
+            llvm::cl::cat(recSysTestCat));
+
 llvm::cl::opt<unsigned> embeddingDimOpt("embedding-dim",
                                         llvm::cl::desc("Embedding dim."),
                                         llvm::cl::Optional, llvm::cl::init(64),
@@ -713,6 +718,29 @@ protected:
     }
   }
 
+  void printPerfSummary(std::vector<double> times) {
+    std::cout << "_,benchName,concurrent-count,runtime,QPS" << std::endl;
+    for (auto t : times) {
+      auto qps = miniBatchOpt / t * concurrentReqestsOpt;
+      std::cout << "BenchResult,RecommendationSystemTest,"
+                << (unsigned)concurrentReqestsOpt << ","
+                << t / concurrentReqestsOpt << "," << qps << std::endl;
+    }
+    double min = *(std::min_element(times.begin(), times.end()));
+    dim_t midElt = times.size() / 2;
+    std::nth_element(times.begin(), times.begin() + midElt, times.end());
+    double median = times[midElt];
+    double medianRuntime = median / ((double)concurrentReqestsOpt);
+    double minRuntime = min / ((double)concurrentReqestsOpt);
+    std::cout << "_,benchName,reps,concurrent-count,medianRuntime,minRuntime,"
+                 "medianQPS,maxQPS"
+              << std::endl;
+    std::cout << "BenchSummary,RecommendationSystemTest," << (unsigned)repsOpt
+              << "," << (unsigned)concurrentReqestsOpt << "," << medianRuntime
+              << "," << minRuntime << "," << miniBatchOpt / medianRuntime << ","
+              << miniBatchOpt / minRuntime << std::endl;
+  }
+
   void testRecSys(bool checkConcat = false) {
     assert((!useFP16AccumSLWS || useFP16SLWS) &&
            "Can only use FP16 accumulation when using FP16 precision.");
@@ -742,9 +770,17 @@ protected:
     EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
     // Run graph
-    ExecutionContext context2{};
-    dispatchInference("main", hostManager.get(), context_,
-                      concurrentReqestsOpt);
+    std::vector<double> times(repsOpt);
+    for (size_t i = 0; i < repsOpt; i++) {
+      auto start = std::chrono::high_resolution_clock::now();
+      dispatchInference("main", hostManager.get(), context_,
+                        concurrentReqestsOpt);
+      auto end = std::chrono::high_resolution_clock::now();
+      auto duration = std::chrono::duration<double>(end - start).count();
+      times[i] = duration;
+    }
+
+    printPerfSummary(times);
 
     // NaNs are a sign of something gone wrong. Always verify there aren't any
     // in the result.
@@ -806,7 +842,7 @@ protected:
 
     assert(resultTensor && "Must run and set resultTensor before comparing "
                            "against the intepreter.");
-    EXPECT_TRUE(resultIT->isEqual(*resultTensor, 0.004));
+    EXPECT_TRUE(resultIT->isEqual(*resultTensor, 0.005));
   }
 
   /// Create partitions to run and compare results.
