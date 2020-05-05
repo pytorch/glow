@@ -27,8 +27,10 @@ void NetworkExecutionStatePool::addNewState(
   states_.push_back(std::move(state));
 }
 
-NetworkExecutionState::NetworkExecutionState(const DAGNode *root)
-    : inflightNodes_(0), module_(root->module), root_(root) {}
+NetworkExecutionState::NetworkExecutionState(const DAGNode *root,
+                                             bool enableDRT, bool enableP2P)
+    : enableDRT_(enableDRT), enableP2P_(enableP2P), inflightNodes_(0),
+      module_(root->module), root_(root) {}
 
 NetworkExecutionState::~NetworkExecutionState() {
   // Free all allocated buffers.
@@ -175,8 +177,8 @@ void NetworkExecutionState::init(
     // once we are done with it.
     std::unique_ptr<Backend> newBackend(createBackend(backendName));
 
-    EXIT_ON_ERR(newBackend->bindContexts(contexts, root_, /*enableP2P*/ true,
-                                         /*enableDRT*/ true));
+    EXIT_ON_ERR(
+        newBackend->bindContexts(contexts, root_, enableP2P_, enableDRT_));
   }
   initialized_ = true;
 }
