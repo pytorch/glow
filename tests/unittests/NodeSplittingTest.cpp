@@ -365,6 +365,39 @@ TEST_F(NodeSplitting, Conv2D_MaxMem) {
   checkNumericalEquivalence(0);
 }
 
+/// Test splitting a Conv2D based on an impossible constraint forcing the split
+/// procedure to go through all the split configurations while verifying them.
+/// In the end no split should be performed.
+TEST_F(NodeSplitting, Conv2D_NoSplit) {
+  Node *node = createConv2D(F_, bindings_,
+                            /* inputDims */ {5, 7, 8, 2},
+                            /* filterDims */ {8, 2, 2, 1},
+                            /* biasDims */ {8},
+                            /* outputDims */ {5, 6, 7, 8},
+                            /* kernels */ {2, 2},
+                            /* strides */ {1, 1},
+                            /* pads */ {0, 0, 0, 0},
+                            /* group */ 2,
+                            /* dilation */ 1);
+
+  // Save current function state as reference.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Split node by memory size 0.
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitNodes, ::glow::splitNode(node, SplitNodeMaxMemConstraint(0)));
+  runDCEPass(F_, cctx_);
+
+  // Check node count.
+  EXPECT_EQ(splitNodes.size(), 0);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 0);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConvolutionNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 0);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 0);
+  checkNumericalEquivalence(0);
+}
+
 ///===---------------------------------------------------------------------===//
 ///                                   MaxPool
 ///===---------------------------------------------------------------------===//
@@ -623,6 +656,35 @@ TEST_F(NodeSplitting, MaxPool_Argmax_NoSplit) {
   checkNumericalEquivalence(0);
 }
 
+/// Test splitting a MaxPool based on an impossible constraint forcing the
+/// split procedure to go through all the split configurations while verifying
+/// them. In the end no split should be performed.
+TEST_F(NodeSplitting, MaxPool_NoSplit) {
+  Node *node = createMaxPool(F_, bindings_,
+                             /* inputDims */ {3, 7, 8, 4},
+                             /* outputDims */ {3, 6, 7, 4},
+                             /* kernels */ {2, 2},
+                             /* strides */ {1, 1},
+                             /* pads */ {0, 0, 0, 0});
+
+  // Save current function state as reference.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Split node by memory size 0.
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitNodes, ::glow::splitNode(node, SplitNodeMaxMemConstraint(0)));
+  runDCEPass(F_, cctx_);
+
+  // Check node count.
+  EXPECT_EQ(splitNodes.size(), 0);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 0);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MaxPoolNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 0);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 0);
+  checkNumericalEquivalence(0);
+}
+
 ///===---------------------------------------------------------------------===//
 ///                                   AvgPool
 ///===---------------------------------------------------------------------===//
@@ -838,6 +900,35 @@ TEST_F(NodeSplitting, AvgPool_MaxMem) {
   for (auto *splitNode : splitNodes) {
     EXPECT_TRUE(splitNode->getTotMemSize() <= splitMaxMemSize);
   }
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a AvgPool based on an impossible constraint forcing the
+/// split procedure to go through all the split configurations while verifying
+/// them. In the end no split should be performed.
+TEST_F(NodeSplitting, AvgPool_NoSplit) {
+  Node *node = createAvgPool(F_, bindings_,
+                             /* inputDims */ {3, 7, 8, 4},
+                             /* outputDims */ {3, 6, 7, 4},
+                             /* kernels */ {2, 2},
+                             /* strides */ {1, 1},
+                             /* pads */ {0, 0, 0, 0});
+
+  // Save current function state as reference.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Split node by memory size 0.
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitNodes, ::glow::splitNode(node, SplitNodeMaxMemConstraint(0)));
+  runDCEPass(F_, cctx_);
+
+  // Check node count.
+  EXPECT_EQ(splitNodes.size(), 0);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 0);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::AvgPoolNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 0);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 0);
   checkNumericalEquivalence(0);
 }
 

@@ -4578,7 +4578,7 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   ::glow::optimize(F, cctx);
 
   // Perform node splitting by memory size.
-  if (splitNodesByMemSizeOpt > 0) {
+  if (splitNodesByMemSizeOpt) {
     SplitNodeMap splitMap;
     ASSIGN_VALUE_OR_RETURN_ERR(
         splitMap, ::glow::splitNodes(
