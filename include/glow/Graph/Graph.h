@@ -706,9 +706,13 @@ public:
   /// Result type will be implicitly set based on the \p input type.
   TanhNode *createTanh(llvm::StringRef name, NodeValue input);
 
-  /// Create an Exp  node with \p name, which calculates element-wise
+  /// Create an Exp node with \p name, which calculates element-wise
   /// exponential of \p input.
   ExpNode *createExp(llvm::StringRef name, NodeValue input);
+
+  /// Create an Exp node with \p name with output type \p outTy, which
+  /// calculates element-wise exponential of \p input.
+  ExpNode *createExp(llvm::StringRef name, TypeRef outTy, NodeValue input);
 
   /// Create a Log node with \p name, which calculates element-wise natural log
   /// of \p input, with output type \p outTy.

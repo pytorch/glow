@@ -3303,7 +3303,8 @@ TEST_F(GraphOptz, concatReshapes) {
   ASSERT_TRUE(newCN);
 }
 
-// Making sure we do not try to to optimize concat2(dim1, concat1(dim2, X, Y), Z)
+// Making sure we do not try to to optimize concat2(dim1, concat1(dim2, X, Y),
+// Z)
 // -> concat(dim1, X, Y, Z) when concat1 has multiple users.
 TEST_F(GraphOptz, ConcatSimplificationNegative) {
   const dim_t dim1[] = {1, 4, 4, 4};
