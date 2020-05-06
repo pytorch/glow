@@ -211,8 +211,10 @@ TEST(Interpreter, customHandleUnsupportedInstruction) {
   auto *F = mod.createFunction("test");
   auto *input1 =
       mod.createPlaceholder(ElemKind::FloatTy, {1, 10, 10, 3}, "in1", false);
-  auto *relu = F->createRELU("relu", input1);
-  auto *save = F->createSave("save", relu);
+  auto *splatTy = mod.uniqueType(ElemKind::FloatTy, {1, 10, 10, 3});
+  auto *splat = F->createSplat("splat", splatTy, 3);
+  auto *maxsplat = F->createMax("max", input1, splat);
+  auto *save = F->createSave("save", maxsplat);
   std::unique_ptr<PlaceholderBindings> cpuBindings(new PlaceholderBindings);
   cpuBindings->allocate({input1, save->getPlaceholder()});
   std::unique_ptr<PlaceholderBindings> customInterpreterBindings(

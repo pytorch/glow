@@ -54,6 +54,8 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int32ITy,
          ElemKind::Int64ITy});
 
+  case Kinded::Kind::ReluNodeKind:
+  case Kinded::Kind::ClipNodeKind:
   case Kinded::Kind::SubNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
@@ -478,6 +480,8 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
 
 bool CPUBackend::shouldLower(const Node *N) const {
   switch (N->getKind()) {
+  case Kinded::Kind::ReluNodeKind:
+  case Kinded::Kind::ClipNodeKind:
   case Kinded::Kind::ConvolutionNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
     return false;
