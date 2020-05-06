@@ -2961,28 +2961,47 @@ TEST_F(GraphOptz, FoldTileAddIntoBatchedAdd) {
   }
 }
 
-// Check that we are able to eliminate concat nodes.
-TEST_F(GraphOptz, concatElim) {
-  Node *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input", true);
+/// Test Concat(Slice, ..., Slice) opt works correctly. If \p reverseOrder then
+/// the optimization is inapplicable and should not occur.
+static void testConcatElim(Module &mod, Function *F, Function *&optimizedF,
+                           PlaceholderBindings &bindings, bool reverseOrder) {
+  Placeholder *input =
+      mod.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input", true);
+  bindings.allocate(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
 
   // Split the input to a bunch of small slices.
-  std::vector<NodeValue> inputs;
+  std::array<NodeValue, 10> inputs;
   for (dim_t i = 0; i < 10; i++) {
-    auto *K = F_->createSlice("extract", input, {i, 0, 0}, {i + 1, 10, 10});
-    // Insert the nodes in reverse order to make sure that we can catch
-    // non-consecutive graph-order slices.
-    inputs.insert(inputs.begin(), K);
+    dim_t idx = reverseOrder ? 9 - i : i;
+    inputs[i] =
+        F->createSlice("extract", input, {idx, 0, 0}, {idx + 1, 10, 10});
   }
 
-  auto *cc = F_->createConcat("merge", inputs, 0);
-  F_->createSave("save", cc);
+  auto *cc = F->createConcat("merge", inputs, 0);
+  F->createSave("save", cc);
 
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 10);
-  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 10);
 
-  // Check that the concat node is gone.
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 0);
+  optimizedF = optimizeFunction(F);
+
+  // Check that either the concat and slices are gone if the optimization was
+  // applicable, or otherwise that they're still there.
+  EXPECT_EQ(countNodeKind(optimizedF, Kinded::Kind::ConcatNodeKind),
+            reverseOrder ? 1 : 0);
+  EXPECT_EQ(countNodeKind(optimizedF, Kinded::Kind::SliceNodeKind),
+            reverseOrder ? 10 : 0);
+}
+
+// Check that we are able to eliminate concat nodes.
+TEST_F(GraphOptz, concatElim) {
+  testConcatElim(mod_, F_, optimizedF_, bindings_, /* reverseOrder */ false);
+  checkNumericalEquivalence(0.0f);
+}
+
+// Check that when the order of the Slices is reversed no optimization kicks in.
+TEST_F(GraphOptz, concatElimReverseOrder) {
+  testConcatElim(mod_, F_, optimizedF_, bindings_, /* reverseOrder */ true);
+  checkNumericalEquivalence(0.0f);
 }
 
 /// Check that we are able to eliminate concat followed by slices on axis
@@ -3026,17 +3045,52 @@ static void testConcatSliceElim(Module &mod, Function *F, Function *&optimizedF,
 
 TEST_F(GraphOptz, concatSliceElimInnerDim) {
   testConcatSliceElim(mod_, F_, optimizedF_, bindings_, 0);
-  checkNumericalEquivalence();
+  checkNumericalEquivalence(0.0f);
 }
 
 TEST_F(GraphOptz, concatSliceElimMiddleDim) {
   testConcatSliceElim(mod_, F_, optimizedF_, bindings_, 1);
-  checkNumericalEquivalence();
+  checkNumericalEquivalence(0.0f);
 }
 
 TEST_F(GraphOptz, concatSliceElimOuterDim) {
   testConcatSliceElim(mod_, F_, optimizedF_, bindings_, 2);
-  checkNumericalEquivalence();
+  checkNumericalEquivalence(0.0f);
+}
+
+/// Check the interaction between Sices(Concat) and Concat(Slices) optimizations
+/// to make sure they work nicely together. Builds Concat(Slices(Concat)) and
+/// expected a single Concat after optimizations.
+TEST_F(GraphOptz, concatSliceElimMultiConcat) {
+  std::array<NodeValue, 4> inputs;
+  for (size_t i = 0; i < 4; i++) {
+    auto *P = mod_.createPlaceholder(ElemKind::FloatTy, {2, 4},
+                                     "in_" + std::to_string(i), false);
+    bindings_.allocate(P)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+    inputs[i] = P;
+  }
+  auto *CN0 = F_->createConcat("merge0", inputs, /* axis */ 1);
+
+  auto *SN0 = F_->createSlice("slice0", CN0, {0, 0}, {2, 4});
+  auto *SN1 = F_->createSlice("slice1", CN0, {0, 4}, {2, 8});
+  auto *SN2 = F_->createSlice("slice2", CN0, {0, 8}, {2, 12});
+  auto *SN3 = F_->createSlice("slice3", CN0, {0, 12}, {2, 16});
+
+  auto *CN1 = F_->createConcat("merge1", {SN1, SN0, SN3, SN2}, /* axis */ 1);
+  F_->createSave("save", CN1);
+
+  // We created a concat followed by 4 slices of its results followed by another
+  // concat.
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 4);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Check that one concat and slices are gone.
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SliceNodeKind), 0);
+
+  checkNumericalEquivalence(0.0f);
 }
 
 // Check the transformation Concat(Reshape(x) * N) -> Reshape(Concat(x * N)).
@@ -4617,5 +4671,98 @@ TEST_F(GraphOptz, ClipReluTest) {
 
   bindings_.allocate(input)->getHandle<float16_t>().randomize(-50.0, 5.0,
                                                               mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+/// Test that if we have a concat with some dequantize inputs that are
+/// concatenated together, and then a quantize after the concat, that we can
+/// move the quantize above the concat and eliminate the dequantizes.
+TEST_F(GraphOptz, SinkConcatBelowQuantize) {
+  const float scale = 0.06;
+  const int32_t offset = -15;
+  std::array<NodeValue, 3> inputs;
+
+  // Concat input 0: Dequant(PH)
+  const TypeRef in0QTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {1, 3}, scale, offset);
+  Placeholder *input0 = mod_.createPlaceholder(in0QTy, "input", false);
+  inputs[0] =
+      F_->createDequantize("deq", input0, ElemKind::Float16Ty)->getResult();
+
+  // Concat input 1: Dequant(Add(PH, PH))
+  const TypeRef in1QTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {5, 3}, scale, offset + 1);
+  Placeholder *input1 = mod_.createPlaceholder(in1QTy, "input", false);
+  AddNode *add = F_->createAdd("add", input1, input1);
+  inputs[1] =
+      F_->createDequantize("deq", add, ElemKind::Float16Ty)->getResult();
+
+  // Concat input 2: PH
+  Placeholder *input2 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {10, 3}, "input_fp", false);
+  inputs[2] = input2->getOutput();
+
+  // Concat all 3 together, all FP16.
+  ConcatNode *concat = F_->createConcat("concat", inputs, 0);
+
+  // Now quantize the result of the concat.
+  const TypeRef QTy = mod_.uniqueType(
+      ElemKind::Int8QTy, concat->getResult().dims(), scale, offset);
+  QuantizeNode *QN = F_->createQuantize("quantize", concat, QTy);
+  SaveNode *SN = F_->createSave("ret", QN);
+
+  optimizedF_ = optimizeFunction(F_, {FunctionPassID::SinkConcatBelowQuantize,
+                                      {FunctionPassID::OptimizeQuantization,
+                                       ConvergenceMode::UntilFixedPoint},
+                                      getDCEPassConfig()});
+
+  EXPECT_EQ(optimizedF_->getNodes().size(), 4);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::AddNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::QuantizeNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind), 1);
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+
+  // Concat should be directly connected to save, with same quantization
+  // parameters as the quantize which used to follow it.
+  ConcatNode *optCN = llvm::dyn_cast<ConcatNode>(optSN->getInput());
+  ASSERT_TRUE(optCN);
+  ASSERT_EQ(ElemKind::Int8QTy, optCN->getResult().getType()->getElementType());
+  EXPECT_EQ(scale, optCN->getResult().getType()->getScale());
+  EXPECT_EQ(offset, optCN->getResult().getType()->getOffset());
+
+  ASSERT_EQ(optCN->getInputs().size(), 3);
+
+  // No rescale here for the PH since its scale/offset match the PH and so
+  // are optimized away.
+  EXPECT_EQ(optCN->getInputs()[0], input0->getOutput());
+
+  // No rescale here because it should be fused into optAN. Check the
+  // scale/offset use that scale/offset.
+  AddNode *optAN = llvm::dyn_cast<AddNode>(optCN->getInputs()[1]);
+  ASSERT_TRUE(optAN);
+  ASSERT_EQ(ElemKind::Int8QTy, optAN->getResult().getType()->getElementType());
+  EXPECT_EQ(scale, optAN->getResult().getType()->getScale());
+  EXPECT_EQ(offset, optAN->getResult().getType()->getOffset());
+  EXPECT_EQ(optAN->getLHS(), input1->getOutput());
+  EXPECT_EQ(optAN->getRHS(), input1->getOutput());
+
+  // Must quantize this input since the PH is float16.
+  QuantizeNode *optQN = llvm::dyn_cast<QuantizeNode>(optCN->getInputs()[2]);
+  ASSERT_TRUE(optQN);
+  ASSERT_EQ(ElemKind::Int8QTy, optQN->getResult().getType()->getElementType());
+  EXPECT_EQ(scale, optQN->getResult().getType()->getScale());
+  EXPECT_EQ(offset, optQN->getResult().getType()->getOffset());
+  EXPECT_EQ(optQN->getInput(), input2->getOutput());
+
+  bindings_.allocate(input0)->getHandle<int8_t>().randomize(-50, 50,
+                                                            mod_.getPRNG());
+  bindings_.allocate(input1)->getHandle<int8_t>().randomize(-50, 50,
+                                                            mod_.getPRNG());
+  bindings_.allocate(input2)->getHandle<float16_t>().randomize(-10, 10,
+                                                               mod_.getPRNG());
   checkNumericalEquivalence();
 }

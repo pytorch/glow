@@ -37,14 +37,6 @@
 
 #define DEBUG_TYPE "ir-optimizer"
 
-namespace {
-static llvm::cl::list<std::string> instrumentDebugOnly(
-    "instrument-debug-only",
-    llvm::cl::desc(
-        "Instrument the IR for debugging, but only the listed instructions"),
-    llvm::cl::CommaSeparated, llvm::cl::Hidden);
-} // namespace
-
 using namespace glow;
 
 using llvm::cast;
@@ -1507,77 +1499,6 @@ bool optimizeExtracts(IRFunction &M) {
   return changed;
 }
 
-/// Instrument the code to make it easier to debug issues.
-/// Add dumping of inputs before each instruction and
-/// dumping of outputs after each instruction.
-/// For each input/output tensor its name and its value are dumped.
-static bool performDebugInstrumentation(IRFunction &M) {
-  if (instrumentDebugOnly.empty()) {
-    return false;
-  }
-  bool changed = false;
-  auto &instrs = M.getInstrs();
-  for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
-    auto *I = &*it;
-    auto next = std::next(it);
-    // If current instruction is not one of the provided in the list, skip it.
-    if (!instrumentDebugOnly.empty()) {
-      if (std::find_if(instrumentDebugOnly.begin(), instrumentDebugOnly.end(),
-                       [&](const std::string &name) -> bool {
-                         return I->getName().contains(name);
-                       }) == instrumentDebugOnly.end()) {
-        it = next;
-        continue;
-      }
-    }
-    if (isa<DebugPrintInst>(I) || isa<AllocActivationInst>(I) ||
-        isa<DeallocActivationInst>(I)) {
-      it = next;
-      continue;
-    }
-    // Don't instrument tensorview since it can lead to liveness verification
-    // failures if the tensorview happens before any writes to the tensor.
-    if (isa<TensorViewInst>(I)) {
-      it = next;
-      continue;
-    }
-    auto instrName = I->getName();
-    for (const auto &Op : I->getOperands()) {
-      // Dump inputs of the current instruction before the instruction.
-      if (Op.second != OperandKind::Out) {
-        std::string name = "debug_print.before.";
-        name += Op.first->getName();
-        name += ".";
-        name += instrName;
-        name += ".";
-        name += I->getKindName();
-        auto *dumpInstr = new DebugPrintInst(name, Op.first);
-        M.insertInstruction(I, dumpInstr);
-        changed = true;
-      }
-
-      // Dump outputs of the current instruction after the instruction.
-      if (Op.second != OperandKind::In) {
-        std::string name = "debug_print.after.";
-        name += Op.first->getName();
-        name += ".";
-        name += instrName;
-        name += ".";
-        name += I->getKindName();
-        auto *dumpInstr = new DebugPrintInst(name, Op.first);
-        if (next == e) {
-          M.insertInstruction(dumpInstr);
-        } else {
-          M.insertInstruction(&*next, dumpInstr);
-        }
-        changed = true;
-      }
-    }
-    it = next;
-  }
-  return changed;
-}
-
 /// Perform peephole optimizations.
 bool performPeepholeOptimizations(IRFunction &M) {
   bool changed = false;
@@ -1759,10 +1680,6 @@ bool OptimizeInserts::run(IRFunction *M, const CompilationContext &cctx) {
 
 bool OptimizeExtracts::run(IRFunction *M, const CompilationContext &cctx) {
   return optimizeExtracts(*M);
-}
-
-bool DebugInstrument::run(IRFunction *M, const CompilationContext &cctx) {
-  return performDebugInstrumentation(*M);
 }
 
 bool IRVerify::run(IRFunction *M, const CompilationContext &cctx) {

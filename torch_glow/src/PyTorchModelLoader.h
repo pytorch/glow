@@ -112,6 +112,8 @@ private:
   /// during loading.
   std::unordered_map<const torch::jit::Value *, ValueMapping> valueMap_;
 
+  std::unordered_map<const torch::jit::Value *, torch::jit::IValue> qparamsMap_;
+
   /// Flags if the memory held by aten::Constants of Tensor type should be
   /// copied.
   const bool copyTensorMemory_;
@@ -184,7 +186,7 @@ public:
   static Error loadJITGraphForOnnxTraining(
       glow::Function &F, const torch::jit::Graph &graph,
       const at::ArrayRef<torch::jit::IValue> inputs,
-      const std::vector<at::Tensor> &parameters,
+      const std::vector<torch::jit::IValue> &parameters,
       std::vector<glow::Placeholder *> &inputPlaceholders,
       std::vector<glow::Placeholder *> &outputPlaceholders);
 
@@ -206,7 +208,7 @@ private:
   /// inputPlaceholders and \p outputPlaceholders are filled out.
   /// This is only used by loadJITGraphForOnnxTraining.
   PyTorchModelLoader(glow::Function &F, const torch::jit::Graph &graph,
-                     const std::vector<at::Tensor> &parameters,
+                     const std::vector<torch::jit::IValue> &parameters,
                      std::vector<glow::Placeholder *> &inputPlaceholders,
                      std::vector<glow::Placeholder *> &outputPlaceholders,
                      Error &error,
@@ -346,6 +348,17 @@ private:
   // Load a PyTorch fb::embedding_bag_byte_rowwise_offsets node.
   // \returns error on failure.
   Error loadEmbeddingBagByteRowwiseOffsets(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch fb::embedding_bag_4bit_rowwise_offsets.
+  // \returns error on failure.
+  Error loadEmbeddingBag4BitRowwiseOffsets(const torch::jit::Node *ptNode);
+
+  // Helper function that implements the loading logic for
+  // fb::embedding_bag_4bit_rowwise_offsets and
+  // fb::embedding_bag_byte_rowwise_offsets.
+  // \returns error on failure.
+  Error loadEmbeddingBagByteRowwiseOffsetsHelper(const torch::jit::Node *ptNode,
+                                                 bool is4Bit = false);
 
   /// Load all PyTorch prim::GetAttr nodes in \p graph. This method uses the
   /// PyTorch Module hierarchy to map Values for all outputs of prim::GetAttr

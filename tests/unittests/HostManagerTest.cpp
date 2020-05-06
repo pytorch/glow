@@ -34,6 +34,17 @@ public:
   std::string backendName_;
 };
 
+std::vector<std::unique_ptr<DeviceConfig>>
+generateConfigs(std::string backendName, unsigned numConfigs = 1) {
+  std::vector<std::unique_ptr<DeviceConfig>> configs;
+  for (unsigned i = 0; i < numConfigs; i++) {
+    auto deviceConfig = glow::make_unique<DeviceConfig>(backendName);
+    deviceConfig->deviceID = i;
+    configs.push_back(std::move(deviceConfig));
+  }
+  return configs;
+}
+
 std::unique_ptr<Module> setupModule(unsigned functionCount) {
   std::unique_ptr<Module> module = glow::make_unique<Module>();
   for (unsigned int i = 0; i < functionCount; i++) {
@@ -49,9 +60,8 @@ std::unique_ptr<Module> setupModule(unsigned functionCount) {
 std::unique_ptr<HostManager>
 createHostManager(llvm::StringRef backendName,
                   HostConfig hostConfig = HostConfig()) {
-  std::vector<std::unique_ptr<DeviceConfig>> configs;
-  auto deviceConfig = glow::make_unique<DeviceConfig>(backendName);
-  configs.push_back(std::move(deviceConfig));
+  std::vector<std::unique_ptr<DeviceConfig>> configs =
+      generateConfigs(backendName, 1);
   std::unique_ptr<HostManager> hostManager =
       glow::make_unique<HostManager>(std::move(configs), hostConfig);
   return hostManager;
@@ -299,11 +309,8 @@ TEST_P(HostManagerTest, testSaturateHost) {
   F->createSave("save", pow);
   auto *savePH = module->getPlaceholderByName("save");
 
-  std::vector<std::unique_ptr<DeviceConfig>> configs;
-  auto deviceConfig = glow::make_unique<DeviceConfig>(backendName_);
-  auto deviceConfig2 = glow::make_unique<DeviceConfig>(backendName_);
-  configs.push_back(std::move(deviceConfig));
-  configs.push_back(std::move(deviceConfig2));
+  std::vector<std::unique_ptr<DeviceConfig>> configs =
+      generateConfigs(backendName_, 2);
   std::unique_ptr<HostManager> hostManager =
       glow::make_unique<HostManager>(std::move(configs), HostConfig());
 
@@ -452,11 +459,8 @@ TEST_P(HostManagerTest, testPartitionConfigReplication) {
   auto *save = F->createSave("save", pow);
   auto savePH = save->getPlaceholder();
 
-  std::vector<std::unique_ptr<DeviceConfig>> configs;
-  auto deviceConfig = glow::make_unique<DeviceConfig>(backendName_);
-  auto deviceConfig2 = glow::make_unique<DeviceConfig>(backendName_);
-  configs.push_back(std::move(deviceConfig));
-  configs.push_back(std::move(deviceConfig2));
+  std::vector<std::unique_ptr<DeviceConfig>> configs =
+      generateConfigs(backendName_, 2);
   std::unique_ptr<HostManager> hostManager =
       glow::make_unique<HostManager>(std::move(configs), HostConfig());
   CompilationContext cctx;
@@ -570,13 +574,8 @@ TEST_P(HostManagerTest, testStaticAssignmentP2PandDRT) {
   auto *saveTensor =
       context->getPlaceholderBindings()->allocate(save->getPlaceholder());
 
-  std::vector<std::unique_ptr<DeviceConfig>> configs;
-  auto deviceConfig = glow::make_unique<DeviceConfig>(backendName_);
-  auto deviceConfig2 = glow::make_unique<DeviceConfig>(backendName_);
-  auto deviceConfig3 = glow::make_unique<DeviceConfig>(backendName_);
-  configs.push_back(std::move(deviceConfig));
-  configs.push_back(std::move(deviceConfig2));
-  configs.push_back(std::move(deviceConfig3));
+  std::vector<std::unique_ptr<DeviceConfig>> configs =
+      generateConfigs(backendName_, 3);
   std::unique_ptr<HostManager> hostManager =
       glow::make_unique<HostManager>(std::move(configs), HostConfig());
   CompilationContext cctx;
@@ -661,13 +660,8 @@ TEST_P(HostManagerTest, testStaticAssignmentDeviceResidentTensorOnly) {
   auto *saveTensor =
       context->getPlaceholderBindings()->allocate(save->getPlaceholder());
 
-  std::vector<std::unique_ptr<DeviceConfig>> configs;
-  auto deviceConfig = glow::make_unique<DeviceConfig>(backendName_);
-  auto deviceConfig2 = glow::make_unique<DeviceConfig>(backendName_);
-  auto deviceConfig3 = glow::make_unique<DeviceConfig>(backendName_);
-  configs.push_back(std::move(deviceConfig));
-  configs.push_back(std::move(deviceConfig2));
-  configs.push_back(std::move(deviceConfig3));
+  std::vector<std::unique_ptr<DeviceConfig>> configs =
+      generateConfigs(backendName_, 3);
   std::unique_ptr<HostManager> hostManager =
       glow::make_unique<HostManager>(std::move(configs), HostConfig());
   CompilationContext cctx;
@@ -751,13 +745,8 @@ TEST_P(HostManagerTest, testStaticAssignmentP2POnly) {
   auto *saveTensor =
       context->getPlaceholderBindings()->allocate(save->getPlaceholder());
 
-  std::vector<std::unique_ptr<DeviceConfig>> configs;
-  auto deviceConfig = glow::make_unique<DeviceConfig>(backendName_);
-  auto deviceConfig2 = glow::make_unique<DeviceConfig>(backendName_);
-  auto deviceConfig3 = glow::make_unique<DeviceConfig>(backendName_);
-  configs.push_back(std::move(deviceConfig));
-  configs.push_back(std::move(deviceConfig2));
-  configs.push_back(std::move(deviceConfig3));
+  std::vector<std::unique_ptr<DeviceConfig>> configs =
+      generateConfigs(backendName_, 3);
   std::unique_ptr<HostManager> hostManager =
       glow::make_unique<HostManager>(std::move(configs), HostConfig());
   CompilationContext cctx;
@@ -833,13 +822,8 @@ TEST_P(HostManagerTest, testStaticAssignmentP2PandDRTConcurrent) {
   F->createSave("save", pow);
   auto *savePH = module->getPlaceholderByName("save");
 
-  std::vector<std::unique_ptr<DeviceConfig>> configs;
-  auto deviceConfig = glow::make_unique<DeviceConfig>(backendName_);
-  auto deviceConfig2 = glow::make_unique<DeviceConfig>(backendName_);
-  auto deviceConfig3 = glow::make_unique<DeviceConfig>(backendName_);
-  configs.push_back(std::move(deviceConfig));
-  configs.push_back(std::move(deviceConfig2));
-  configs.push_back(std::move(deviceConfig3));
+  std::vector<std::unique_ptr<DeviceConfig>> configs =
+      generateConfigs(backendName_, 3);
   std::unique_ptr<HostManager> hostManager =
       glow::make_unique<HostManager>(std::move(configs), HostConfig());
   CompilationContext cctx;

@@ -52,6 +52,10 @@ setGraphRunnerForKey(const std::string &key,
 /// no CachingGraphRunner was registered for the given key.
 std::shared_ptr<CachingGraphRunner>
 getGraphRunnerForKey(const std::string &key);
+
+/// Remove an existing CachingGraphRunner for a given \p key. \returns false if
+/// no CachingGraphRunner was registered for the given key, true otherwise.
+bool removeGraphRunnerForKey(const std::string &key);
 } // namespace glow
 
 #endif // GLOW_TORCH_GLOW_SRC_REGISTRATION_H

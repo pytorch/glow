@@ -156,12 +156,15 @@ public:
 protected:
   void checkNumericalEquivalence(float allowedError = 0.0001) {
     // Check that the function and its optimized complement exist.
-    EXPECT_TRUE(F_);
-    EXPECT_TRUE(optimizedF_);
+    ASSERT_TRUE(F_);
+    ASSERT_TRUE(optimizedF_);
 
     // Check that the bindings are not empty. If they are, the numerical
     // equivalence check can produce a false positive.
     EXPECT_GT(bindings_.getDataSize(), 0);
+
+    // Allocate any leftover PHs; these are usually for SaveNodes.
+    bindings_.allocate(mod_.getPlaceholders());
 
     // Clone bindings to use for original and optimized functions.
     PlaceholderBindings originalBindings = bindings_.clone();

@@ -993,7 +993,8 @@ NNPIBackend::getOptimizationPipeline() const {
   pipeline->pushBack(FunctionPassID::OptimizeConcatQuantization);
 
   // Optimize quantization now that we've optimized some other quant nodes.
-  pipeline->pushBack(FunctionPassID::OptimizeQuantization);
+  pipeline->pushBack(
+      {FunctionPassID::OptimizeQuantization, ConvergenceMode::UntilFixedPoint});
 
   // Now try to sink conversions below concats.
   pipeline->pushBack(FunctionPassID::SinkConversions);
@@ -1006,6 +1007,22 @@ NNPIBackend::getOptimizationPipeline() const {
 
   // Optimize concats and quantized/dequantize patterns.
   pipeline->pushBack(FunctionPassID::OptimizeConcatQuantization);
+
+  // Sink concats below quantizes in order to try to eliminate unnecessary
+  // quantizes above the concat.
+  pipeline->pushBack(FunctionPassID::SinkConcatBelowQuantize);
+
+  // Optimize quantization now that we've optimized some other quant nodes.
+  pipeline->pushBack(
+      {FunctionPassID::OptimizeQuantization, ConvergenceMode::UntilFixedPoint});
+
+  // Now try to also optimize clips next to quantizes since we raised quantizes
+  // above concats.
+  pipeline->pushBack(FunctionPassID::OptimizeQuantizeClip);
+
+  // Now try to sink conversions below concats again in case the concat quantize
+  // sinking didn't help.
+  pipeline->pushBack(FunctionPassID::SinkConversions);
 
   // Cleanup everything now.
   pipeline->pushBack(getDCEPassConfig());

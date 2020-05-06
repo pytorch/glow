@@ -30,7 +30,8 @@ namespace runtime {
 class NetworkExecutionState final {
 public:
   /// Constructor.
-  explicit NetworkExecutionState(const DAGNode *root);
+  explicit NetworkExecutionState(const DAGNode *root, bool enableDRT,
+                                 bool enableP2P);
 
   const DAGNode *getRoot() { return root_; }
 
@@ -102,6 +103,12 @@ private:
 
   /// The callback that should be called when execution is done.
   ResultCBTy cb_;
+
+  /// Whether Device Resident Tensors optimization is enabled for the state.
+  bool enableDRT_;
+
+  /// Whether Peer to Peer optimization is enabled for the state.
+  bool enableP2P_;
 
   /// The ExecutionContext object containing the results of the execution
   /// (i.e. the outputs of the DAGNodes that have no children).

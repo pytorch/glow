@@ -148,6 +148,15 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor);
 /// matching type.
 at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
 
+/// Enable overriding signal handlers while exeucting torch_glow code. This
+/// should only be used in Python to enable easier debugging and not in
+/// production C++ multithreaded environments. \p enable is used to enable or
+/// disable overriding if set to false.
+void enableSignalHandlerOverrides(bool enable = true);
+
+/// \returns whether or not signal handler overriding is enabled.
+bool signalHandlerOverridesEnabled();
+
 } // namespace glow
 
 #endif // GLOW_TORCH_GLOW_SRC_COMMON_H
