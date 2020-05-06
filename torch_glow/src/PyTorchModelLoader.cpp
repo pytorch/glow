@@ -202,9 +202,10 @@ castVector(Expected<std::vector<OriginalT>> originalExpected) {
   }
 }
 
-std::vector<glow::unsigned_t> castToGlowIntList(const torch::List<int64_t>& int_list) {
+std::vector<glow::unsigned_t>
+castToGlowIntList(const torch::List<int64_t> &int_list) {
   std::vector<glow::unsigned_t> out;
-  for (const auto& elem : int_list) {
+  for (const auto &elem : int_list) {
     out.push_back(static_cast<glow::unsigned_t>(elem));
   }
   return out;
@@ -1052,40 +1053,42 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
   std::vector<glow::unsigned_t> strides, pads;
   glow::unsigned_t dilation, groups;
   if (isConv3d) {
-    auto packed_params =
-      qparamsMap_[inputs[input_mapping["packed_weights"]]]
-      .toCustomClass<ConvPackedParamsBase<3>>();
+    auto packed_params = qparamsMap_[inputs[input_mapping["packed_weights"]]]
+                             .toCustomClass<ConvPackedParamsBase<3>>();
     std::tie(ptWeightTensor, ptBiasTensorTmp) = packed_params->unpack();
     // strides
     strides = castToGlowIntList(packed_params->stride());
 
     // dilations
-    std::vector<glow::unsigned_t> dilations = castToGlowIntList(packed_params->dilation());
+    std::vector<glow::unsigned_t> dilations =
+        castToGlowIntList(packed_params->dilation());
     DCHECK(dilations[0] == dilations[1]);
     DCHECK(dilations[0] == dilations[2]);
     dilation = dilations[0];
 
     // pads
-    std::vector<glow::unsigned_t> pad = castToGlowIntList(packed_params->padding());
+    std::vector<glow::unsigned_t> pad =
+        castToGlowIntList(packed_params->padding());
     pads = {pad[0], pad[0], pad[1], pad[1], pad[2], pad[2]};
 
     // groups
     groups = static_cast<glow::unsigned_t>(packed_params->groups());
   } else {
-    auto packed_params =
-      qparamsMap_[inputs[input_mapping["packed_weights"]]]
-      .toCustomClass<ConvPackedParamsBase<2>>();
+    auto packed_params = qparamsMap_[inputs[input_mapping["packed_weights"]]]
+                             .toCustomClass<ConvPackedParamsBase<2>>();
     std::tie(ptWeightTensor, ptBiasTensorTmp) = packed_params->unpack();
     // strides
     strides = castToGlowIntList(packed_params->stride());
 
     // dilations
-    std::vector<glow::unsigned_t> dilations = castToGlowIntList(packed_params->dilation());
+    std::vector<glow::unsigned_t> dilations =
+        castToGlowIntList(packed_params->dilation());
     DCHECK(dilations[0] == dilations[1]);
     dilation = dilations[0];
 
     // pads
-    std::vector<glow::unsigned_t> pad = castToGlowIntList(packed_params->padding());
+    std::vector<glow::unsigned_t> pad =
+        castToGlowIntList(packed_params->padding());
     DCHECK(pad[0] == pad[1]);
     pads = {pad[0], pad[0], pad[1], pad[1]};
     // groups
@@ -3677,7 +3680,7 @@ Error PyTorchModelLoader::loadAttributes(
         qparamsMap_[outputValue] = ival;
       } else {
         objectTree[outputValue] =
-          std::make_pair(&ival.toObjectRef(), newNameHierarchy);
+            std::make_pair(&ival.toObjectRef(), newNameHierarchy);
       }
       continue;
     } else if (ival.isTensor()) {
