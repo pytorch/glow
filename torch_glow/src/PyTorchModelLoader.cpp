@@ -26,6 +26,7 @@
 #include <ATen/ATen.h>
 #include <ATen/core/dispatch/Dispatcher.h>
 #include <ATen/native/c10_utils.h>
+#include <ATen/native/quantized/cpu/conv_packed_params.h>
 #include <torch/csrc/jit/ir/ir.h>
 
 namespace glow {
@@ -199,6 +200,14 @@ castVector(Expected<std::vector<OriginalT>> originalExpected) {
   } else {
     return originalExpected.takeError();
   }
+}
+
+std::vector<glow::unsigned_t> castToGlowIntList(const torch::List<int64_t>& int_list) {
+  std::vector<glow::unsigned_t> out;
+  for (const auto& elem : int_list) {
+    out.push_back(static_cast<glow::unsigned_t>(elem));
+  }
+  return out;
 }
 
 /// Unwrap a Expected<OriginalT> \p originalExpected and calls
@@ -517,12 +526,8 @@ struct QuantizedConv2dInputs {
   enum {
     input = 0, // NCHW
     packed_weights = 1,
-    stride = 2,
-    padding = 3,
-    dilation = 4,
-    group = 5,
-    scale = 6,
-    zero_point = 7,
+    scale = 2,
+    zero_point = 3,
   };
 };
 
@@ -531,12 +536,8 @@ struct QuantizedConv3dInputs {
   enum {
     input = 0, // NCTHW
     packed_weights = 1,
-    stride = 2,
-    padding = 3,
-    dilation = 4,
-    group = 5,
-    scale = 6,
-    zero_point = 7,
+    scale = 2,
+    zero_point = 3,
   };
 };
 
@@ -1021,7 +1022,7 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
   auto outputs = ptNode->outputs();
   const glow::TransposeNode *output;
 
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 8, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 4, outputs, 1));
 
   // input
   glow::NodeValue input;
@@ -1037,56 +1038,67 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
   if (isConv3d) {
     input_mapping["input"] = QuantizedConv3dInputs::input;
     input_mapping["packed_weights"] = QuantizedConv3dInputs::packed_weights;
-    input_mapping["stride"] = QuantizedConv3dInputs::stride;
-    input_mapping["padding"] = QuantizedConv3dInputs::padding;
-    input_mapping["group"] = QuantizedConv3dInputs::group;
     input_mapping["scale"] = QuantizedConv3dInputs::scale;
     input_mapping["zero_point"] = QuantizedConv3dInputs::zero_point;
-
   } else {
     input_mapping["input"] = QuantizedConv2dInputs::input;
     input_mapping["packed_weights"] = QuantizedConv2dInputs::packed_weights;
-    input_mapping["stride"] = QuantizedConv2dInputs::stride;
-    input_mapping["padding"] = QuantizedConv2dInputs::padding;
-    input_mapping["dilation"] = QuantizedConv2dInputs::dilation;
-    input_mapping["group"] = QuantizedConv2dInputs::group;
     input_mapping["scale"] = QuantizedConv2dInputs::scale;
     input_mapping["zero_point"] = QuantizedConv2dInputs::zero_point;
   }
 
-  // weight and bias
-  at::Tensor *ptTensor;
-  ASSIGN_VALUE_OR_RETURN_ERR(ptTensor,
-                             iValToPTTensor(getGlowIValueForValue(
-                                 inputs[input_mapping["packed_weights"]])));
-
-  // groups
-  glow::unsigned_t groups;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      groups, static_cast_expected<glow::unsigned_t>(iValToInt(
-                  getGlowIValueForValue(inputs[input_mapping["group"]]))));
-
-  std::string unpack_op_name;
+  at::Tensor ptWeightTensor;
+  c10::optional<at::Tensor> ptBiasTensorTmp;
+  std::vector<glow::unsigned_t> strides, pads;
+  glow::unsigned_t dilation, groups;
   if (isConv3d) {
-    unpack_op_name = "quantized::conv3d_unpack";
+    auto packed_params =
+      qparamsMap_[inputs[input_mapping["packed_weights"]]]
+      .toCustomClass<ConvPackedParamsBase<3>>();
+    std::tie(ptWeightTensor, ptBiasTensorTmp) = packed_params->unpack();
+    // strides
+    strides = castToGlowIntList(packed_params->stride());
+
+    // dilations
+    std::vector<glow::unsigned_t> dilations = castToGlowIntList(packed_params->dilation());
+    DCHECK(dilations[0] == dilations[1]);
+    DCHECK(dilations[0] == dilations[2]);
+    dilation = dilations[0];
+
+    // pads
+    std::vector<glow::unsigned_t> pad = castToGlowIntList(packed_params->padding());
+    pads = {pad[0], pad[0], pad[1], pad[1], pad[2], pad[2]};
+
+    // groups
+    groups = static_cast<glow::unsigned_t>(packed_params->groups());
   } else {
-    unpack_op_name = "quantized::conv2d_unpack";
+    auto packed_params =
+      qparamsMap_[inputs[input_mapping["packed_weights"]]]
+      .toCustomClass<ConvPackedParamsBase<2>>();
+    std::tie(ptWeightTensor, ptBiasTensorTmp) = packed_params->unpack();
+    // strides
+    strides = castToGlowIntList(packed_params->stride());
+
+    // dilations
+    std::vector<glow::unsigned_t> dilations = castToGlowIntList(packed_params->dilation());
+    DCHECK(dilations[0] == dilations[1]);
+    dilation = dilations[0];
+
+    // pads
+    std::vector<glow::unsigned_t> pad = castToGlowIntList(packed_params->padding());
+    DCHECK(pad[0] == pad[1]);
+    pads = {pad[0], pad[0], pad[1], pad[1]};
+    // groups
+    groups = static_cast<glow::unsigned_t>(packed_params->groups());
   }
-  auto op = c10::Dispatcher::singleton().findSchema({unpack_op_name, ""});
-
-  CHECK(op.has_value());
-  auto unpackedParams = callOp(*op, *ptTensor);
-  const at::Tensor ptWeightTensor = unpackedParams[0].toTensor().contiguous();
-
-  const c10::optional<at::Tensor> ptBiasTensorTmp =
-      unpackedParams[1].toOptional<at::Tensor>();
 
   bool isPerChannelQuantized =
       ptWeightTensor.is_quantized() &&
       ptWeightTensor.qscheme() == at::kPerChannelAffine;
 
   // unpacked weights
-  auto weightTensor = ptTensorToGlowTensor(ptWeightTensor);
+  auto ptWeightTensorContig = ptWeightTensor.contiguous();
+  auto weightTensor = ptTensorToGlowTensor(ptWeightTensorContig);
   glow::Tensor weightTensorTransposed;
   std::string weightConstantName;
   if (isConv3d) {
@@ -1124,30 +1136,6 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
   biasConstant->ensureIsOwned();
   glow::NodeValue bias = biasConstant->getOutput();
 
-  // strides
-  std::vector<glow::unsigned_t> strides;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      strides, castVector<glow::unsigned_t>(expandIntIValIfNeeded(
-                   getGlowIValueForValue(inputs[input_mapping["stride"]]),
-                   input.dims().size() - 2)));
-
-  // pads
-  std::vector<glow::unsigned_t> pads;
-  if (isConv3d) {
-    std::vector<glow::unsigned_t> pad;
-
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        pad, castVector<glow::unsigned_t>(expandIntIValIfNeeded(
-                 getGlowIValueForValue(inputs[input_mapping["padding"]]), 3)));
-    pads = {pad[0], pad[0], pad[1], pad[1], pad[2], pad[2]};
-  } else {
-    glow::unsigned_t pad;
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        pad, static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
-                 getGlowIValueForValue(inputs[input_mapping["padding"]]))));
-    pads = {pad, pad, pad, pad};
-  }
-
   // quantized params
   float outScale;
   ASSIGN_VALUE_OR_RETURN_ERR(outScale, iValToDouble(getGlowIValueForValue(
@@ -1159,7 +1147,6 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
       iValToInt(getGlowIValueForValue(inputs[input_mapping["zero_point"]])));
 
   // calc output type
-  glow::unsigned_t dilation = 0;
   glow::TypeRef outTy;
   std::vector<glow::unsigned_t> kernels;
   if (isConv3d) {
@@ -1181,10 +1168,6 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
     glow::ShapeNHWC weightShape(weight.dims());
     kernels = {static_cast<glow::unsigned_t>(weightShape.h),
                static_cast<glow::unsigned_t>(weightShape.w)};
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        dilation,
-        static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
-            getGlowIValueForValue(inputs[QuantizedConv2dInputs::dilation]))));
     auto outSz = glow::calculateConvPoolOutputDims(
         inputShape.h, inputShape.w, kernels, strides, pads, dilation);
     std::array<glow::dim_t, 4> outDims = {
@@ -3690,8 +3673,12 @@ Error PyTorchModelLoader::loadAttributes(
         strFormat("%s_%s", nameHierarchy.c_str(), attrName.c_str());
 
     if (ival.isObject()) {
-      objectTree[outputValue] =
+      if (isPackedQParamNode(node)) {
+        qparamsMap_[outputValue] = ival;
+      } else {
+        objectTree[outputValue] =
           std::make_pair(&ival.toObjectRef(), newNameHierarchy);
+      }
       continue;
     } else if (ival.isTensor()) {
       GlowIValue glowIVal;
@@ -3861,7 +3848,7 @@ PyTorchModelLoader::PyTorchModelLoader(
 Error PyTorchModelLoader::loadJITGraphForOnnxTraining(
     glow::Function &F, const torch::jit::Graph &graph,
     const at::ArrayRef<torch::jit::IValue> inputs,
-    const std::vector<at::Tensor> &parameters,
+    const std::vector<torch::jit::IValue> &parameters,
     std::vector<glow::Placeholder *> &inputPlaceholders,
     std::vector<glow::Placeholder *> &outputPlaceholders) {
   Error error = Error::empty();
@@ -3872,7 +3859,7 @@ Error PyTorchModelLoader::loadJITGraphForOnnxTraining(
 
 PyTorchModelLoader::PyTorchModelLoader(
     glow::Function &F, const torch::jit::Graph &graph,
-    const std::vector<at::Tensor> &parameters,
+    const std::vector<torch::jit::IValue> &parameters,
     std::vector<glow::Placeholder *> &inputPlaceholders,
     std::vector<glow::Placeholder *> &outputPlaceholders, Error &error,
     const at::ArrayRef<torch::jit::IValue> inputs)
@@ -3912,8 +3899,9 @@ PyTorchModelLoader::PyTorchModelLoader(
     // Create Glow Placeholders for training parameters (don't put them in
     // inputPlaceholders though).
     for (size_t i = 0; i < parameters.size(); ++i, ++graphIdx) {
+      DCHECK(parameters[i].isTensor()) << "Expecting parameters to be Tensor";
       glow::Constant *C = F_.getParent()->createConstant(
-          "parameter", ptTensorToGlowTensor(parameters[i]));
+          "parameter", ptTensorToGlowTensor(parameters[i].toTensor()));
       C->ensureIsOwned();
 
       RETURN_IF_ERR(

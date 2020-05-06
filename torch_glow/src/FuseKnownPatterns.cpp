@@ -63,14 +63,14 @@ namespace detail {
 /// implementation in glow is still needed.
 void fuseConvPrepack(std::shared_ptr<torch::jit::Graph> &graph) {
   std::string convPrepackPattern = R"IR(
-graph(%input, %w, %b, %4, %5, %6, %7, %8, %9, %10, %11, %12):
-  %prepacked_weight = quantized::conv2d_prepack(%w, %b, %4, %5, %6, %7)
-  %res = quantized::conv2d(%input, %prepacked_weight, %8, %9, %10, %7, %11, %12)
+graph(%input, %w, %b, %stride, %padding, %dilation, %groups, %scale, %zero_point):
+  %prepacked_weight = quantized::conv2d_prepack(%w, %b, %stride, %padding, %dilation, %groups)
+  %res = quantized::conv2d(%input, %prepacked_weight, %scale, %zero_point)
   return (%res))IR";
 
   std::string convFused = R"IR(
-graph(%input, %w, %b, %4, %5, %6, %7, %8, %9, %10, %11, %12):
-  %res = glow::unpacked_quantized_conv2d(%input, %w, %b, %8, %9, %10, %7, %11, %12)
+graph(%input, %w, %b, %stride, %padding, %dilation, %groups, %scale, %zero_point):
+  %res = glow::unpacked_quantized_conv2d(%input, %w, %b, %stride, %padding, %dilation, %groups, %scale, %zero_point)
   return (%res))IR";
 
   // Replace conv_prepack + conv2d to unpacked_quantized_conv2d
@@ -79,14 +79,14 @@ graph(%input, %w, %b, %4, %5, %6, %7, %8, %9, %10, %11, %12):
   convToUnpackedConv.runOnGraph(graph);
 
   std::string conv3DPrepackPattern = R"IR(
-graph(%input, %w, %b, %4, %5, %6, %7, %8, %9, %10, %11, %12):
-  %prepacked_weight = quantized::conv3d_prepack(%w, %b, %4, %5, %6, %7)
-  %res = quantized::conv3d(%input, %prepacked_weight, %8, %9, %10, %7, %11, %12)
+graph(%input, %w, %b, %stride, %padding, %dilation, %groups, %scale, %zero_point):
+  %prepacked_weight = quantized::conv3d_prepack(%w, %b, %stride, %padding, %dilation, %groups)
+  %res = quantized::conv3d(%input, %prepacked_weight, %scale, %zero_point)
   return (%res))IR";
 
   std::string conv3DFused = R"IR(
-graph(%input, %w, %b, %4, %5, %6, %7, %8, %9, %10, %11, %12):
-  %res = glow::unpacked_quantized_conv3d(%input, %w, %b, %8, %9, %10, %7, %11, %12)
+graph(%input, %w, %b, %stride, %padding, %dilation, %groups, %scale, %zero_point):
+  %res = glow::unpacked_quantized_conv3d(%input, %w, %b, %stride, %padding, %dilation, %groups, %scale, %zero_point)
   return (%res))IR";
 
   // Replace conv_prepack + conv3d to unpacked_quantized_conv3d

@@ -112,6 +112,8 @@ private:
   /// during loading.
   std::unordered_map<const torch::jit::Value *, ValueMapping> valueMap_;
 
+  std::unordered_map<const torch::jit::Value *, torch::jit::IValue> qparamsMap_;
+
   /// Flags if the memory held by aten::Constants of Tensor type should be
   /// copied.
   const bool copyTensorMemory_;
@@ -184,7 +186,7 @@ public:
   static Error loadJITGraphForOnnxTraining(
       glow::Function &F, const torch::jit::Graph &graph,
       const at::ArrayRef<torch::jit::IValue> inputs,
-      const std::vector<at::Tensor> &parameters,
+      const std::vector<torch::jit::IValue> &parameters,
       std::vector<glow::Placeholder *> &inputPlaceholders,
       std::vector<glow::Placeholder *> &outputPlaceholders);
 
@@ -206,7 +208,7 @@ private:
   /// inputPlaceholders and \p outputPlaceholders are filled out.
   /// This is only used by loadJITGraphForOnnxTraining.
   PyTorchModelLoader(glow::Function &F, const torch::jit::Graph &graph,
-                     const std::vector<at::Tensor> &parameters,
+                     const std::vector<torch::jit::IValue> &parameters,
                      std::vector<glow::Placeholder *> &inputPlaceholders,
                      std::vector<glow::Placeholder *> &outputPlaceholders,
                      Error &error,
