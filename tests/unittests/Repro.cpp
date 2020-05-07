@@ -588,6 +588,10 @@ int run() {
 
   std::list<InferenceResult> results;
 
+  // Whether to collect results and check accuracy
+  bool runAccuracyChecks =
+      !skipCorrectnessCheck || topKCompare > 0 || cosineSimilarityStats;
+
   auto startTime = std::chrono::steady_clock::now();
   for (int ioIndex = 0, numInferencesIssued = 0;
        numInferencesIssued < numTotalInferences;
@@ -599,7 +603,7 @@ int run() {
     threadPool.add([&parsedInputs, &nonStaticPlaceholderList, ioIndex,
                     &mergedTraceContext, &hostManager, &result, &cv, &mutex,
                     numTotalInferences, &numFinishedInferences,
-                    usingGlowCustomOps]() {
+                    usingGlowCustomOps, runAccuracyChecks]() {
       // Setup the inputs.
       auto ctx = glow::make_unique<ExecutionContext>();
 
@@ -652,7 +656,7 @@ int run() {
         mergedTraceContext.merge(traceContext);
       }
 
-      if (skipCorrectnessCheck) {
+      if (!runAccuracyChecks) {
         // if skipping correctness check, throw away the context to keep
         // memory usage low.
         result.ctx.reset();
@@ -691,7 +695,7 @@ int run() {
         CHECK(of) << "Cannot create output dump file: " << ss.str();
       }
 
-      if (!skipCorrectnessCheck || topKCompare > 0 || cosineSimilarityStats) {
+      if (runAccuracyChecks) {
         CHECK(result.ctx);
         const auto &bindings = *result.ctx->getPlaceholderBindings();
         for (const auto &tp : outputGroup.initializer()) {
