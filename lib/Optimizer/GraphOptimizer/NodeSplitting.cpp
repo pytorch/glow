@@ -161,8 +161,9 @@ public:
   /// Verify whether this range is included by another range.
   bool isIncludedBy(const SliceRange &other) const {
     auto rangesOther = other.getRanges();
-    assert(ranges_.size() == rangesOther.size() &&
-           "Mismatch between ranges sizes!");
+    if (ranges_.size() != rangesOther.size()) {
+      return false;
+    }
     for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
       if (!((rangesOther[dim].first <= ranges_[dim].first) &&
             (ranges_[dim].second <= rangesOther[dim].second))) {
@@ -673,7 +674,7 @@ verifySplitNodes(const Node *node, dim_t splitOutputIdx,
   }
 
   // Explicitly destroy the temporary nodes.
-  for (auto splitNode : splitNodes) {
+  for (auto *splitNode : splitNodes) {
     Node::destroyNode(splitNode);
   }
 
@@ -804,7 +805,8 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
 
   // Allocate output tensors used for merging the partial output slices.
   std::vector<NodeValue> mergedOutputs(node->getNumResults());
-  for (size_t outIdx = 0; outIdx < node->getNumResults(); outIdx++) {
+  for (size_t outIdx = 0, outIdxEnd = node->getNumResults(); outIdx < outIdxEnd;
+       outIdx++) {
     auto nodeName =
         node->getName().str() + ".TouchOutput" + std::to_string(outIdx);
     mergedOutputs[outIdx] = F->createTouch(nodeName, node->getType(outIdx));
@@ -812,7 +814,8 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
 
   // Create split nodes.
   std::vector<Node *> splitNodes(splitOutputSlices.size(), nullptr);
-  for (size_t sliceIdx = 0; sliceIdx < splitOutputSlices.size(); sliceIdx++) {
+  for (size_t sliceIdx = 0, sliceIdxEnd = splitOutputSlices.size();
+       sliceIdx < sliceIdxEnd; sliceIdx++) {
 
     // Current split output slice.
     const auto &splitOutputSlice = splitOutputSlices[sliceIdx];
@@ -878,7 +881,8 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
     splitNodes[sliceIdx] = clone;
 
     // Merge the partial outputs of this clone.
-    for (size_t outIdx = 0; outIdx < node->getNumResults(); outIdx++) {
+    for (size_t outIdx = 0, outIdxEnd = node->getNumResults();
+         outIdx < outIdxEnd; outIdx++) {
       auto nodeName =
           clone->getName().str() + ".MergeOutput" + std::to_string(outIdx);
       mergedOutputs[outIdx] = F->createInsertTensor(
@@ -888,7 +892,8 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
   }
 
   // Replace all the node outputs with the merged outputs.
-  for (size_t outIdx = 0; outIdx < node->getNumResults(); outIdx++) {
+  for (size_t outIdx = 0, outIdxEnd = node->getNumResults(); outIdx < outIdxEnd;
+       outIdx++) {
     node->getNthResult(outIdx).replaceAllUsesOfWith(mergedOutputs[outIdx]);
   }
 
@@ -1368,7 +1373,6 @@ glow::splitNode(Node *node, const SplitNodeOption *splitOption,
         node, splitOption, splitConstraint, ConvolutionNode::ResultIdx,
         getConv2DInputIdxAndMaps<ShapeNHWC>(dyn_cast<ConvolutionNode>(node)),
         {}, Conv2DSplitNodeModifier<ShapeNHWC>);
-    break;
   }
 
   case Kinded::Kind::MaxPoolNodeKind: {
@@ -1385,7 +1389,6 @@ glow::splitNode(Node *node, const SplitNodeOption *splitOption,
             dyn_cast<MaxPoolNode>(node)),
         {{MaxPoolNode::ArgmaxIdx, CheckedSliceRangeMapIdentity}},
         PoolSplitNodeModifier<MaxPoolNode, ShapeNHWC>);
-    break;
   }
 
   case Kinded::Kind::AvgPoolNodeKind: {
@@ -1394,42 +1397,36 @@ glow::splitNode(Node *node, const SplitNodeOption *splitOption,
         getPoolInputIdxAndMaps<AvgPoolNode, ShapeNHWC>(
             dyn_cast<AvgPoolNode>(node)),
         {}, PoolSplitNodeModifier<AvgPoolNode, ShapeNHWC>);
-    break;
   }
 
   case Kinded::Kind::FullyConnectedNodeKind: {
     return splitAndReplaceNode(
         node, splitOption, splitConstraint, FullyConnectedNode::ResultIdx,
         getFullyConnectedInputIdxAndMaps(dyn_cast<FullyConnectedNode>(node)));
-    break;
   }
 
   case Kinded::Kind::MatMulNodeKind: {
     return splitAndReplaceNode(
         node, splitOption, splitConstraint, MatMulNode::ResultIdx,
         getMatMulInputIdxAndMaps(dyn_cast<MatMulNode>(node)));
-    break;
   }
 
   case Kinded::Kind::BatchMatMulNodeKind: {
     return splitAndReplaceNode(
         node, splitOption, splitConstraint, BatchMatMulNode::ResultIdx,
         getBatchMatMulInputIdxAndMaps(dyn_cast<BatchMatMulNode>(node)));
-    break;
   }
 
   case Kinded::Kind::BatchedAddNodeKind: {
     return splitAndReplaceNode(
         node, splitOption, splitConstraint, BatchedAddNode::ResultIdx,
         getBatchedAddInputIdxAndMaps(dyn_cast<BatchedAddNode>(node)));
-    break;
   }
 
   case Kinded::Kind::TransposeNodeKind: {
     return splitAndReplaceNode(
         node, splitOption, splitConstraint, TransposeNode::ResultIdx,
         getTransposeInputIdxAndMaps(dyn_cast<TransposeNode>(node)));
-    break;
   }
 
   case Kinded::Kind::AddNodeKind:
@@ -1447,7 +1444,6 @@ glow::splitNode(Node *node, const SplitNodeOption *splitOption,
     return splitAndReplaceNode(
         node, splitOption, splitConstraint, /*splitOutputIdx*/ 0,
         {{0, CheckedSliceRangeMapIdentity}, {1, CheckedSliceRangeMapIdentity}});
-    break;
   }
 
   case Kinded::Kind::ReluNodeKind:
@@ -1465,7 +1461,6 @@ glow::splitNode(Node *node, const SplitNodeOption *splitOption,
     return splitAndReplaceNode(node, splitOption, splitConstraint,
                                /*splitOutputIdx*/ 0,
                                {{0, CheckedSliceRangeMapIdentity}});
-    break;
   }
 
   default:

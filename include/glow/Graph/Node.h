@@ -111,7 +111,7 @@ public:
   /// Dump a textual representation of the Node to std::string.
   std::string toString() const;
 
-  /// Get the total memory size (in bytes) of the node as the sum of sizes
+  /// \returns the total memory size (in bytes) of the node as the sum of sizes
   /// for all the inputs and outputs.
   size_t getTotMemSize() const;
 

@@ -293,10 +293,10 @@ std::string Node::toString() const { return this->getDebugDesc(); }
 
 size_t Node::getTotMemSize() const {
   size_t totMemSize = 0;
-  for (unsigned idx = 0; idx < getNumInputs(); idx++) {
+  for (unsigned idx = 0, e = getNumInputs(); idx < e; idx++) {
     totMemSize += getNthInput(idx).getType()->getSizeInBytes();
   }
-  for (unsigned idx = 0; idx < getNumResults(); idx++) {
+  for (unsigned idx = 0, e = getNumResults(); idx < e; idx++) {
     totMemSize += getNthResult(idx).getType()->getSizeInBytes();
   }
   return totMemSize;

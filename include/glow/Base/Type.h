@@ -61,10 +61,10 @@ using ShapeVector = llvm::SmallVector<dim_t, max_tensor_dimensions>;
 
 struct ShapeNHWC {
 
-  static const size_t dimN = 0;
-  static const size_t dimH = 1;
-  static const size_t dimW = 2;
-  static const size_t dimC = 3;
+  static constexpr size_t dimN = 0;
+  static constexpr size_t dimH = 1;
+  static constexpr size_t dimW = 2;
+  static constexpr size_t dimC = 3;
 
   dim_t n; // Number of samples
   dim_t h; // Height
@@ -73,10 +73,10 @@ struct ShapeNHWC {
 
   template <typename T> explicit ShapeNHWC(llvm::ArrayRef<T> shape) {
     assert(shape.size() == 4 && "Invalid shape");
-    n = shape[0];
-    h = shape[1];
-    w = shape[2];
-    c = shape[3];
+    n = shape[dimN];
+    h = shape[dimH];
+    w = shape[dimW];
+    c = shape[dimC];
   }
 
   ShapeNHWC(dim_t samples, dim_t height, dim_t width, dim_t channels)
@@ -141,10 +141,10 @@ struct ShapeNHWTC {
 
 struct ShapeNCHW {
 
-  static const size_t dimN = 0;
-  static const size_t dimC = 1;
-  static const size_t dimH = 2;
-  static const size_t dimW = 3;
+  static constexpr size_t dimN = 0;
+  static constexpr size_t dimC = 1;
+  static constexpr size_t dimH = 2;
+  static constexpr size_t dimW = 3;
 
   dim_t n; // Number of samples
   dim_t c; // Number of Channels
@@ -153,10 +153,10 @@ struct ShapeNCHW {
 
   explicit ShapeNCHW(llvm::ArrayRef<dim_t> shape) {
     assert(shape.size() == 4 && "Invalid shape");
-    n = shape[0];
-    c = shape[1];
-    h = shape[2];
-    w = shape[3];
+    n = shape[dimN];
+    c = shape[dimC];
+    h = shape[dimH];
+    w = shape[dimW];
   }
 
   ShapeNCHW(dim_t samples, dim_t channels, dim_t height, dim_t width)
@@ -262,16 +262,16 @@ struct PaddingNFTBLR {
 
 struct ShapeHW {
 
-  static const size_t dimH = 0;
-  static const size_t dimW = 1;
+  static constexpr size_t dimH = 0;
+  static constexpr size_t dimW = 1;
 
   dim_t height;
   dim_t width;
 
   template <typename T> explicit ShapeHW(llvm::ArrayRef<T> shape) {
     assert(shape.size() == 2 && "Invalid shape");
-    height = shape[0];
-    width = shape[1];
+    height = shape[dimH];
+    width = shape[dimW];
   }
 
   bool isSquare() const { return height == width; }
@@ -279,9 +279,9 @@ struct ShapeHW {
 
 struct ShapeNHW {
 
-  static const size_t dimN = 0;
-  static const size_t dimH = 1;
-  static const size_t dimW = 2;
+  static constexpr size_t dimN = 0;
+  static constexpr size_t dimH = 1;
+  static constexpr size_t dimW = 2;
 
   dim_t n; // Number of samples
   dim_t h; // Height
@@ -289,9 +289,9 @@ struct ShapeNHW {
 
   template <typename T> explicit ShapeNHW(llvm::ArrayRef<T> shape) {
     assert(shape.size() == 3 && "Invalid shape");
-    n = shape[0];
-    h = shape[1];
-    w = shape[2];
+    n = shape[dimN];
+    h = shape[dimH];
+    w = shape[dimW];
   }
 
   bool isSquare() const { return h == w; }

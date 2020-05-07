@@ -33,7 +33,7 @@ bool operator==(const std::vector<dim_t> &lhs, const std::vector<dim_t> &rhs) {
 }
 
 /// Test for SplitNodeByNumChunks option.
-TEST_F(NodeSplitting, SplitNodeByNumChunksOptionTest) {
+TEST(TestSplitNodeOption, SplitNodeByNumChunksOptionTest) {
   auto opt1 = SplitNodeByNumChunks({0, 1, 2, 3}, {1, 2, 3, 4},
                                    /* bigChunksFirst */ false);
   EXPECT_EQ(opt1.splitAlongDim(0, 10), std::vector<dim_t>({10}));
@@ -52,7 +52,7 @@ TEST_F(NodeSplitting, SplitNodeByNumChunksOptionTest) {
 }
 
 /// Test for SplitNodeByChunkSize option.
-TEST_F(NodeSplitting, SplitNodeByChunkSizeOptionTest) {
+TEST(TestSplitNodeOption, SplitNodeByChunkSizeOptionTest) {
   auto opt1 = SplitNodeByChunkSize({0, 1, 2, 3}, {3, 4, 5, 6},
                                    /* bigChunksFirst */ false);
   EXPECT_EQ(opt1.splitAlongDim(0, 10), std::vector<dim_t>({1, 3, 3, 3}));
@@ -71,7 +71,7 @@ TEST_F(NodeSplitting, SplitNodeByChunkSizeOptionTest) {
 }
 
 /// Test for SplitNodeByChunkSizes option.
-TEST_F(NodeSplitting, SplitNodeByChunkSizesOptionTest) {
+TEST(TestSplitNodeOption, SplitNodeByChunkSizesOptionTest) {
   auto opt = SplitNodeByChunkSizes({0, 1, 2, 3},
                                    {{1, 3, 3, 3}, {2, 4, 4}, {5, 5}, {4, 6}});
   EXPECT_EQ(opt.splitAlongDim(0, 10), std::vector<dim_t>({1, 3, 3, 3}));
@@ -81,7 +81,7 @@ TEST_F(NodeSplitting, SplitNodeByChunkSizesOptionTest) {
 }
 
 /// Test for SplitNodeByChunkWeights option.
-TEST_F(NodeSplitting, SplitNodeByChunkWeightsOptionTest) {
+TEST(TestSplitNodeOption, SplitNodeByChunkWeightsOptionTest) {
   auto opt1 = SplitNodeByChunkWeights(
       {0, 1, 2, 3}, {{1, 3, 3, 3}, {2, 4, 4}, {5, 5}, {4, 6}});
   EXPECT_EQ(opt1.splitAlongDim(0, 20), std::vector<dim_t>({2, 6, 6, 6}));

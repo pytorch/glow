@@ -43,10 +43,10 @@ public:
   /// Ctor.
   SplitNodeOption(std::vector<size_t> splitDims) : splitDims_(splitDims) {}
 
-  /// Getter for split dims.
+  /// \returns the split dims.
   std::vector<size_t> getSplitDims() const { return splitDims_; }
 
-  /// Get index of \p splitDim in the \ref splitDims_ array.
+  /// \returns the index of \p splitDim in the \ref splitDims_ array.
   size_t getSplitDimIdx(dim_t splitDim) const;
 
   /// Split a given dimension size \p dimSize along the dimension \p dim.
@@ -178,7 +178,7 @@ public:
 struct SplitNodeContext {
   /// Original node which was used for splitting. When this context is provided
   /// the original node is still part of the graph so the user can also check
-  /// graph connexion properties (like whether the original node is followed or
+  /// graph connection properties (like whether the original node is followed or
   /// or preceded by another node, etc).
   const Node *origNode;
 
