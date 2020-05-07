@@ -103,10 +103,11 @@ TEST(TestSplitNodeOption, SplitNodeByChunkWeightsOptionTest) {
 /// the function \p F and the bindings \p bindings.
 static Node *
 createConv2D(Function *F, PlaceholderBindings &bindings,
-             std::vector<dim_t> inputDims, std::vector<dim_t> filterDims,
-             std::vector<dim_t> biasDims, std::vector<dim_t> outputDims,
-             std::vector<unsigned_t> kernels, std::vector<unsigned_t> strides,
-             std::vector<unsigned_t> pads, dim_t group, dim_t dilation) {
+             llvm::ArrayRef<dim_t> inputDims, llvm::ArrayRef<dim_t> filterDims,
+             llvm::ArrayRef<dim_t> biasDims, llvm::ArrayRef<dim_t> outputDims,
+             llvm::ArrayRef<unsigned_t> kernels,
+             llvm::ArrayRef<unsigned_t> strides,
+             llvm::ArrayRef<unsigned_t> pads, dim_t group, dim_t dilation) {
   // Create input placeholder.
   auto &mod = *(F->getParent());
   auto *input =
@@ -137,8 +138,8 @@ createConv2D(Function *F, PlaceholderBindings &bindings,
 static void splitConv2DBasic(Function *F, Function *&optF,
                              PlaceholderBindings &bindings,
                              CompilationContext &cctx,
-                             std::vector<size_t> splitDims,
-                             std::vector<dim_t> numChunks) {
+                             llvm::ArrayRef<size_t> splitDims,
+                             llvm::ArrayRef<dim_t> numChunks) {
   Node *node = createConv2D(F, bindings,
                             /* inputDims */ {5, 7, 8, 2},
                             /* filterDims */ {8, 2, 2, 1},
@@ -231,8 +232,8 @@ TEST_F(NodeSplitting, Conv2D_Basic_DimNHWC_Chunks16) {
 static void splitConv2DNonZeroPad(Function *F, Function *&optF,
                                   PlaceholderBindings &bindings,
                                   CompilationContext &cctx,
-                                  std::vector<size_t> splitDims,
-                                  std::vector<dim_t> numChunks) {
+                                  llvm::ArrayRef<size_t> splitDims,
+                                  llvm::ArrayRef<dim_t> numChunks) {
   Node *node = createConv2D(F, bindings,
                             /* inputDims */ {1, 4, 4, 1},
                             /* filterDims */ {2, 2, 2, 1},
@@ -404,11 +405,11 @@ TEST_F(NodeSplitting, Conv2D_NoSplit) {
 /// Utility function to create a simple network with a single MaxPool node using
 /// the function \p F and the bindings \p bindings.
 static Node *createMaxPool(Function *F, PlaceholderBindings &bindings,
-                           std::vector<dim_t> inputDims,
-                           std::vector<dim_t> outputDims,
-                           std::vector<unsigned_t> kernels,
-                           std::vector<unsigned_t> strides,
-                           std::vector<unsigned_t> pads) {
+                           llvm::ArrayRef<dim_t> inputDims,
+                           llvm::ArrayRef<dim_t> outputDims,
+                           llvm::ArrayRef<unsigned_t> kernels,
+                           llvm::ArrayRef<unsigned_t> strides,
+                           llvm::ArrayRef<unsigned_t> pads) {
   // Create input placeholder.
   auto &mod = *(F->getParent());
   auto *input =
@@ -420,8 +421,7 @@ static Node *createMaxPool(Function *F, PlaceholderBindings &bindings,
       F->createMaxPool("maxpool", input, kernels, strides, pads);
   SaveNode *save = F->createSave("save", maxpool->getResult());
   bindings.allocate(save->getPlaceholder());
-  std::vector<dim_t> actualOutputDims = maxpool->getResult().getType()->dims();
-  EXPECT_EQ(actualOutputDims, outputDims);
+  EXPECT_EQ(maxpool->getResult().getType()->dims(), outputDims);
   return maxpool;
 }
 
@@ -431,8 +431,8 @@ static Node *createMaxPool(Function *F, PlaceholderBindings &bindings,
 static void splitMaxPoolBasic(Function *F, Function *&optF,
                               PlaceholderBindings &bindings,
                               CompilationContext &cctx,
-                              std::vector<size_t> splitDims,
-                              std::vector<dim_t> numChunks) {
+                              llvm::ArrayRef<size_t> splitDims,
+                              llvm::ArrayRef<dim_t> numChunks) {
   Node *node = createMaxPool(F, bindings,
                              /* inputDims */ {3, 7, 8, 4},
                              /* outputDims */ {3, 6, 7, 4},
@@ -494,8 +494,8 @@ TEST_MAXPOOL_BASIC_SPLIT(C, 4)
 static void splitMaxPoolNonZeroPad(Function *F, Function *&optF,
                                    PlaceholderBindings &bindings,
                                    CompilationContext &cctx,
-                                   std::vector<size_t> splitDims,
-                                   std::vector<dim_t> numChunks) {
+                                   llvm::ArrayRef<size_t> splitDims,
+                                   llvm::ArrayRef<dim_t> numChunks) {
   Node *node = createMaxPool(F, bindings,
                              /* inputDims */ {1, 4, 4, 1},
                              /* outputDims */ {1, 4, 8, 1},
@@ -691,11 +691,11 @@ TEST_F(NodeSplitting, MaxPool_NoSplit) {
 /// Utility function to create a simple network with a single AvgPool node using
 /// the function \p F and the bindings \p bindings.
 static Node *createAvgPool(Function *F, PlaceholderBindings &bindings,
-                           std::vector<dim_t> inputDims,
-                           std::vector<dim_t> outputDims,
-                           std::vector<unsigned_t> kernels,
-                           std::vector<unsigned_t> strides,
-                           std::vector<unsigned_t> pads) {
+                           llvm::ArrayRef<dim_t> inputDims,
+                           llvm::ArrayRef<dim_t> outputDims,
+                           llvm::ArrayRef<unsigned_t> kernels,
+                           llvm::ArrayRef<unsigned_t> strides,
+                           llvm::ArrayRef<unsigned_t> pads) {
   // Create input placeholder.
   auto &mod = *(F->getParent());
   auto *input =
@@ -707,8 +707,7 @@ static Node *createAvgPool(Function *F, PlaceholderBindings &bindings,
       F->createAvgPool("avgpool", input, kernels, strides, pads);
   SaveNode *save = F->createSave("save", avgpool->getResult());
   bindings.allocate(save->getPlaceholder());
-  std::vector<dim_t> actualOutputDims = avgpool->getResult().getType()->dims();
-  EXPECT_EQ(actualOutputDims, outputDims);
+  EXPECT_EQ(avgpool->getResult().getType()->dims(), outputDims);
   return avgpool;
 }
 
@@ -718,8 +717,8 @@ static Node *createAvgPool(Function *F, PlaceholderBindings &bindings,
 static void splitAvgPoolBasic(Function *F, Function *&optF,
                               PlaceholderBindings &bindings,
                               CompilationContext &cctx,
-                              std::vector<size_t> splitDims,
-                              std::vector<dim_t> numChunks) {
+                              llvm::ArrayRef<size_t> splitDims,
+                              llvm::ArrayRef<dim_t> numChunks) {
   Node *node = createAvgPool(F, bindings,
                              /* inputDims */ {3, 7, 8, 4},
                              /* outputDims */ {3, 6, 7, 4},
@@ -781,8 +780,8 @@ TEST_AVGPOOL_BASIC_SPLIT(C, 4)
 static void splitAvgPoolNonZeroPad(Function *F, Function *&optF,
                                    PlaceholderBindings &bindings,
                                    CompilationContext &cctx,
-                                   std::vector<size_t> splitDims,
-                                   std::vector<dim_t> numChunks) {
+                                   llvm::ArrayRef<size_t> splitDims,
+                                   llvm::ArrayRef<dim_t> numChunks) {
   Node *node = createAvgPool(F, bindings,
                              /* inputDims */ {1, 4, 4, 1},
                              /* outputDims */ {1, 4, 8, 1},
@@ -939,8 +938,8 @@ TEST_F(NodeSplitting, AvgPool_NoSplit) {
 static void splitFullyConnected(Function *F, Function *&optF,
                                 PlaceholderBindings &bindings,
                                 CompilationContext &cctx,
-                                std::vector<size_t> splitDims,
-                                std::vector<dim_t> numChunks) {
+                                llvm::ArrayRef<size_t> splitDims,
+                                llvm::ArrayRef<dim_t> numChunks) {
   std::vector<dim_t> inputDims = {10, 13};
   std::vector<dim_t> weightsDims = {13, 20};
   std::vector<dim_t> biasDims = {20};
@@ -1010,8 +1009,8 @@ TEST_F(NodeSplitting, FullyConnected_DimHW_Chunks4) {
 /// Utility function to test splitting a MatMul node.
 static void splitMatMul(Function *F, Function *&optF,
                         PlaceholderBindings &bindings, CompilationContext &cctx,
-                        std::vector<size_t> splitDims,
-                        std::vector<dim_t> numChunks) {
+                        llvm::ArrayRef<size_t> splitDims,
+                        llvm::ArrayRef<dim_t> numChunks) {
   std::vector<dim_t> dimsLHS = {10, 13};
   std::vector<dim_t> dimsRHS = {13, 20};
   auto &mod = *(F->getParent());
@@ -1074,8 +1073,8 @@ TEST_F(NodeSplitting, MatMul_DimHW_Chunks4) {
 static void splitBatchMatMul(Function *F, Function *&optF,
                              PlaceholderBindings &bindings,
                              CompilationContext &cctx,
-                             std::vector<size_t> splitDims,
-                             std::vector<dim_t> numChunks) {
+                             llvm::ArrayRef<size_t> splitDims,
+                             llvm::ArrayRef<dim_t> numChunks) {
   std::vector<dim_t> dimsLHS = {2, 10, 13};
   std::vector<dim_t> dimsRHS = {2, 13, 20};
   auto &mod = *(F->getParent());
@@ -1151,8 +1150,8 @@ TEST_F(NodeSplitting, BatchMatMul_DimNHW_Chunks8) {
 static void splitBatchedAdd(Function *F, Function *&optF,
                             PlaceholderBindings &bindings,
                             CompilationContext &cctx,
-                            std::vector<size_t> splitDims,
-                            std::vector<dim_t> numChunks) {
+                            llvm::ArrayRef<size_t> splitDims,
+                            llvm::ArrayRef<dim_t> numChunks) {
   std::vector<dim_t> batchDims = {2, 10, 13};
   std::vector<dim_t> sliceDims = {10, 13};
   auto &mod = *(F->getParent());
@@ -1228,8 +1227,8 @@ TEST_F(NodeSplitting, BatchedAdd_Dim012_Chunks8) {
 static void splitTranspose(Function *F, Function *&optF,
                            PlaceholderBindings &bindings,
                            CompilationContext &cctx,
-                           std::vector<size_t> splitDims,
-                           std::vector<dim_t> numChunks) {
+                           llvm::ArrayRef<size_t> splitDims,
+                           llvm::ArrayRef<dim_t> numChunks) {
   std::vector<dim_t> inputDims = {3, 5, 7};
   std::vector<unsigned_t> shuffle = {2, 0, 1};
   auto &mod = *(F->getParent());

@@ -925,7 +925,10 @@ int main(int argc, char **argv) {
                     "Splat always keep floating point value internally but can"
                     "quantize it based on the output type.");
 
-  BB.newNode("Touch").addResultFromCtorArg().setDocstring(
+  // clang-format off
+  BB.newNode("Touch")
+    .addResultFromCtorArg()
+    .setDocstring(
       "Generate a tensor of a specific type without initializing "
       "it. This is useful when filling a big tensor entirely with "
       "multiple small slices using InsertTensor nodes such that "
@@ -933,6 +936,7 @@ int main(int argc, char **argv) {
       "with some value prior to insertion. This node is intended "
       "to remove the overhead associated with the initialization "
       "in situations where it is not required.");
+  // clang-format on
 
   BB.newNode("SGD")
       .addInput("Gradient")

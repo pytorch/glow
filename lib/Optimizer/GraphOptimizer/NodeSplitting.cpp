@@ -691,16 +691,16 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
     const llvm::ArrayRef<OpIdxAndMap> &outputIdxAndMaps = {},
     const SplitNodeModifier &splitNodeModifier = SplitNodeModifierNop) {
 
+  // If the split output operand has no dimensions then return.
+  if (!node->getType(splitOutputIdx)->dims().size()) {
+    return std::vector<Node *>();
+  }
+
   // The default split dims are all the dims of the split output operand.
   RETURN_ERR_IF_NOT(splitOutputIdx < node->getNumResults(),
                     "Invalid output index for splitting node!");
   std::vector<size_t> splitDims(node->getType(splitOutputIdx)->dims().size());
   std::iota(splitDims.begin(), splitDims.end(), 0);
-
-  // If default split dims are empty then return.
-  if (!splitDims.size()) {
-    return std::vector<Node *>();
-  }
 
   // Explicit split dims for this node.
   if (splitOption) {
