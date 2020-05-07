@@ -59,7 +59,7 @@ public:
   }
 
   /// Getter for ranges.
-  std::vector<DimRange> getRanges() const { return ranges_; }
+  llvm::ArrayRef<DimRange> getRanges() const { return ranges_; }
 
   /// Getter for ranges start values.
   std::vector<dim_t> getStarts() const {
@@ -84,12 +84,12 @@ public:
 
   /// Subscript operator for accessing a range for a given dimension.
   DimRange &operator[](size_t dim) {
-    assert(dim < ranges_.size() && "Invalid dimension!");
+    DCHECK_LT(dim, ranges_.size()) << "Invalid dimension!";
     return ranges_[dim];
   }
 
   const DimRange &operator[](size_t dim) const {
-    assert(dim < ranges_.size() && "Invalid dimension!");
+    DCHECK_LT(dim, ranges_.size()) << "Invalid dimension!";
     return ranges_[dim];
   }
 
@@ -109,15 +109,15 @@ public:
 
   /// Get slice range size along dimension \p dim.
   dim_t getDimSize(size_t dim) const {
-    assert(dim < ranges_.size() && "Invalid dimension!");
+    DCHECK_LT(dim, ranges_.size()) << "Invalid dimension!";
     return ranges_[dim].second - ranges_[dim].first + 1;
   }
 
   /// Extract the dimension ranges between \p dimStart and \p dimStop.
   SliceRange extractRanges(size_t dimStart, size_t dimStop) const {
-    assert(dimStart < ranges_.size() && "Invalid dimension start!");
-    assert(dimStop < ranges_.size() && "Invalid dimension stop!");
-    assert(dimStart <= dimStop && "Invalid dimension start/stop!");
+    DCHECK_LT(dimStart, ranges_.size()) << "Invalid start dimension!";
+    DCHECK_LT(dimStop, ranges_.size()) << "Invalid stop dimension!";
+    DCHECK_LE(dimStart, dimStop) << "Invalid start/stop dimension!";
     std::vector<DimRange> dimRanges(ranges_.cbegin() + dimStart,
                                     ranges_.cbegin() + dimStop + 1);
     return SliceRange(dimRanges);
@@ -125,16 +125,16 @@ public:
 
   /// Shuffle the dimension ranges using the indices \p shuffle. The flag
   /// \p invert allows optionally to invert the shuffle permutation.
-  SliceRange shuffleRanges(std::vector<size_t> shuffle,
+  SliceRange shuffleRanges(llvm::ArrayRef<size_t> shuffle,
                            bool invert = false) const {
-    assert(ranges_.size() == shuffle.size() &&
-           "Mismatch between ranges and shuffle sizes!");
+    DCHECK_EQ(ranges_.size(), shuffle.size())
+        << "Mismatch between ranges and shuffle sizes!";
     std::vector<DimRange> dimRanges(ranges_.size());
     for (size_t idx = 0, e = ranges_.size(); idx < e; ++idx) {
       size_t dimInp = invert ? idx : shuffle[idx];
       size_t dimOut = invert ? shuffle[idx] : idx;
-      assert(dimInp < ranges_.size() && "Invalid input shuffle index!");
-      assert(dimOut < ranges_.size() && "Invalid output shuffle index!");
+      DCHECK_LT(dimInp, ranges_.size()) << "Invalid input shuffle index!";
+      DCHECK_LT(dimOut, ranges_.size()) << "Invalid output shuffle index!";
       dimRanges[dimOut] = ranges_[dimInp];
     }
     return SliceRange(dimRanges);
@@ -153,7 +153,7 @@ public:
   /// Verify that both ends of a dimension \p dim are aligned to \p align. For
   /// example [0, 3] which is same as [0, 4) has both ends aligned to 4.
   bool isDimRangeAligned(size_t dim, dim_t align) const {
-    assert(dim < ranges_.size() && "Invalid dimension!");
+    DCHECK_LT(dim, ranges_.size()) << "Invalid dimension!";
     return (ranges_[dim].first % align == 0) &&
            ((ranges_[dim].second + 1) % align == 0);
   }
@@ -191,7 +191,8 @@ public:
 size_t SplitNodeOption::getSplitDimIdx(dim_t splitDim) const {
   auto splitDimsIt = std::find(splitDims_.begin(), splitDims_.end(), splitDim);
   CHECK(splitDimsIt != splitDims_.end())
-      << "Split dimension invalid! Not registered in this SplitNodeOption!";
+      << "Split dimension '" << splitDim
+      << "' invalid! Not registered in this SplitNodeOption!";
   return std::distance(splitDims_.begin(), splitDimsIt);
 }
 
@@ -266,7 +267,7 @@ std::vector<dim_t> SplitNodeByChunkSizes::splitAlongDim(size_t dim,
       << "SplitNodeByChunkSizes: Invalid number of sizes '" << numChunks
       << "' for splitting a dimension with size '" << dimSize << "'!";
   for (const auto &chunkSize : chunkSizes) {
-    CHECK(chunkSize > 0)
+    CHECK_GT(chunkSize, 0)
         << "SplitNodeByChunkSizes: Chunk size 0 is not allowed!";
   }
   return chunkSizes;
@@ -284,8 +285,8 @@ std::vector<dim_t> SplitNodeByChunkWeights::splitAlongDim(size_t dim,
   // Verify that all the weights are positive and compute the weights sum.
   float chunkWeightsSum = 0;
   for (const auto &weight : chunkWeights) {
-    CHECK(weight > 0) << "SplitNodeByChunkWeights: Chunk weight '" << weight
-                      << "' invalid! Should be strictly positive!";
+    CHECK_GT(weight, 0.f) << "SplitNodeByChunkWeights: Chunk weight '" << weight
+                          << "' invalid! Should be strictly positive!";
     chunkWeightsSum += weight;
   }
 
@@ -331,13 +332,13 @@ splitSliceRanges(const std::vector<SliceRange> &ranges, size_t dim,
 
     // Check for empty chunks.
     for (auto chunkSize : chunkSizes) {
-      CHECK(chunkSize > 0) << "Chunk size 0 is not allowed!";
+      CHECK_GT(chunkSize, 0) << "Chunk size 0 is not allowed!";
     }
 
     // Check dimension splitting consistency.
     dim_t chunkSizesSum =
         std::accumulate(chunkSizes.begin(), chunkSizes.end(), 0);
-    CHECK(dimSize == chunkSizesSum)
+    CHECK_EQ(dimSize, chunkSizesSum)
         << "Inconsistent splitting of dimension " << dim << " with size "
         << dimSize << " into chunks with total size " << chunkSizesSum << "!";
 
@@ -353,7 +354,7 @@ splitSliceRanges(const std::vector<SliceRange> &ranges, size_t dim,
       splitRanges[idx][dim].second = chunkStart + chunkSize - 1;
       chunkStart += chunkSize;
     }
-    CHECK(splitRanges.back()[dim].second == range[dim].second)
+    CHECK_EQ(splitRanges.back()[dim].second, range[dim].second)
         << "Inconsistent splitting of SliceRange!";
 
     // Append split slice ranges.
@@ -388,8 +389,8 @@ static bool isMappingExact(const CheckedSliceRangeMap &map,
                            const std::vector<SliceRange> &mapInputRanges,
                            const std::vector<SliceRange> &mapOutputRanges) {
   bool mapOk = true;
-  assert(mapInputRanges.size() == mapOutputRanges.size() &&
-         "Slice ranges length mismatch for CheckedSliceRangeMap verification!");
+  DCHECK_EQ(mapInputRanges.size(), mapOutputRanges.size())
+      << "Slice ranges length mismatch for CheckedSliceRangeMap verification!";
   for (size_t idx = 0, e = mapInputRanges.size(); idx < e; ++idx) {
     auto checkedSliceRange = map(mapInputRanges[idx]);
     mapOk = mapOk && checkedSliceRange.first;
@@ -405,8 +406,8 @@ static bool isMappingIncluded(const CheckedSliceRangeMap &map,
                               const std::vector<SliceRange> &mapInputRanges,
                               const std::vector<SliceRange> &mapOutputRanges) {
   bool mapOk = true;
-  assert(mapInputRanges.size() == mapOutputRanges.size() &&
-         "Slice ranges length mismatch for CheckedSliceRangeMap verification!");
+  DCHECK_EQ(mapInputRanges.size(), mapOutputRanges.size())
+      << "Slice ranges length mismatch for CheckedSliceRangeMap verification!";
   for (size_t idx = 0, e = mapInputRanges.size(); idx < e; ++idx) {
     auto checkedSliceRange = map(mapInputRanges[idx]);
     mapOk = mapOk && checkedSliceRange.first;
@@ -908,12 +909,12 @@ getConvInputCheckedRangeAndPads(const DimRange &outputSliceRange,
                                 const DimRange &inputRange, dim_t kernel,
                                 dim_t stride, DimPads pads, dim_t dilation) {
 
-  CHECK(outputSliceRange.first <= outputSliceRange.second)
+  CHECK_LE(outputSliceRange.first, outputSliceRange.second)
       << "Invalid output slice range!";
-  CHECK(inputRange.first == 0) << "Input range must start with 0!";
-  CHECK(kernel >= 1) << "Invalid kernel size!";
-  CHECK(stride >= 1) << "Invalid stride size!";
-  CHECK(dilation >= 1) << "Invalid dilation size!";
+  CHECK_EQ(inputRange.first, 0) << "Input range must start with 0!";
+  CHECK_GE(kernel, 1) << "Invalid kernel size!";
+  CHECK_GE(stride, 1) << "Invalid stride size!";
+  CHECK_GE(dilation, 1) << "Invalid dilation size!";
 
   // Get padded input range.
   dim_t inputStartPadded = inputRange.first + pads.first;
@@ -926,7 +927,7 @@ getConvInputCheckedRangeAndPads(const DimRange &outputSliceRange,
 
   // Verify input slice range bounds.
   dim_t inputSliceStopPaddedMax = pads.first + inputRange.second + pads.second;
-  CHECK(inputSliceStopPadded <= inputSliceStopPaddedMax)
+  CHECK_LE(inputSliceStopPadded, inputSliceStopPaddedMax)
       << "Input slice range out of bounds!";
 
   // Get intersection.
@@ -962,9 +963,9 @@ getConvInputChannelCheckedRange(const DimRange &outputSliceRange,
                                 const DimRange &inputRange, dim_t inputChannels,
                                 dim_t outputChannels, dim_t group) {
 
-  CHECK(inputChannels % group == 0)
+  CHECK_EQ(inputChannels % group, 0)
       << "Input channels must be divisible by group!";
-  CHECK(outputChannels % group == 0)
+  CHECK_EQ(outputChannels % group, 0)
       << "Output channels must be divisible by group!";
 
   dim_t inputChannelsPerGroup = inputChannels / group;
@@ -1116,7 +1117,7 @@ void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
           .getDimSize(Shape::dimC);
   auto group = convOrigNode->getGroup();
 
-  CHECK(outputChannels % group == 0)
+  CHECK_EQ(outputChannels % group, 0)
       << "Output channels must be divisible by group!";
   dim_t outputChannelsPerGroup = outputChannels / group;
 
@@ -1127,7 +1128,7 @@ void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
   } else {
     // If the output slice range spans more than a group then it must span a
     // multiple of outputChannelsPerGroup.
-    CHECK(outputSliceChannels % outputChannelsPerGroup == 0)
+    CHECK_EQ(outputSliceChannels % outputChannelsPerGroup, 0)
         << "Output slice channels must be divisible by the output channels per "
            "group!";
     dim_t splitGroup = outputSliceChannels / outputChannelsPerGroup;
@@ -1439,8 +1440,8 @@ glow::splitNode(Node *node, const SplitNodeOption *splitOption,
   case Kinded::Kind::CmpLTNodeKind:
   case Kinded::Kind::CmpEQNodeKind:
   case Kinded::Kind::PowNodeKind: {
-    assert(node->getNumInputs() == 2 && "Binary operator invalid!");
-    assert(node->getNumResults() == 1 && "Binary operator invalid!");
+    DCHECK_EQ(node->getNumInputs(), 2) << "Binary operator invalid!";
+    DCHECK_EQ(node->getNumResults(), 1) << "Binary operator invalid!";
     return splitAndReplaceNode(
         node, splitOption, splitConstraint, /*splitOutputIdx*/ 0,
         {{0, CheckedSliceRangeMapIdentity}, {1, CheckedSliceRangeMapIdentity}});
@@ -1456,8 +1457,8 @@ glow::splitNode(Node *node, const SplitNodeOption *splitOption,
   case Kinded::Kind::RescaleQuantizedNodeKind:
   case Kinded::Kind::DequantizeNodeKind:
   case Kinded::Kind::ConvertToNodeKind: {
-    assert(node->getNumInputs() == 1 && "Unary operator invalid!");
-    assert(node->getNumResults() == 1 && "Unary operator invalid!");
+    DCHECK_EQ(node->getNumInputs(), 1) << "Unary operator invalid!";
+    DCHECK_EQ(node->getNumResults(), 1) << "Unary operator invalid!";
     return splitAndReplaceNode(node, splitOption, splitConstraint,
                                /*splitOutputIdx*/ 0,
                                {{0, CheckedSliceRangeMapIdentity}});

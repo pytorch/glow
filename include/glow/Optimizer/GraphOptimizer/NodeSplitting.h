@@ -41,10 +41,10 @@ class SplitNodeOption {
 
 public:
   /// Ctor.
-  SplitNodeOption(std::vector<size_t> splitDims) : splitDims_(splitDims) {}
+  SplitNodeOption(llvm::ArrayRef<size_t> splitDims) : splitDims_(splitDims) {}
 
   /// \returns the split dims.
-  std::vector<size_t> getSplitDims() const { return splitDims_; }
+  llvm::ArrayRef<size_t> getSplitDims() const { return splitDims_; }
 
   /// \returns the index of \p splitDim in the \ref splitDims_ array.
   size_t getSplitDimIdx(dim_t splitDim) const;
@@ -73,11 +73,12 @@ class SplitNodeByNumChunks : public SplitNodeOption {
 
 public:
   /// Ctor.
-  SplitNodeByNumChunks(std::vector<size_t> splitDims,
-                       std::vector<dim_t> numChunks, bool bigChunksFirst = true)
+  SplitNodeByNumChunks(llvm::ArrayRef<size_t> splitDims,
+                       llvm::ArrayRef<dim_t> numChunks,
+                       bool bigChunksFirst = true)
       : SplitNodeOption(splitDims), numChunks_(numChunks),
         bigChunksFirst_(bigChunksFirst) {
-    CHECK(splitDims.size() == numChunks.size())
+    CHECK_EQ(splitDims.size(), numChunks.size())
         << "Mistmatch between 'splitDims' and 'numChunks' array sizes!";
   }
 
@@ -104,12 +105,12 @@ class SplitNodeByChunkSize : public SplitNodeOption {
 
 public:
   /// Ctor.
-  SplitNodeByChunkSize(std::vector<size_t> splitDims,
-                       std::vector<dim_t> chunkSizes,
+  SplitNodeByChunkSize(llvm::ArrayRef<size_t> splitDims,
+                       llvm::ArrayRef<dim_t> chunkSizes,
                        bool bigChunksFirst = true)
       : SplitNodeOption(splitDims), chunkSizes_(chunkSizes),
         bigChunksFirst_(bigChunksFirst) {
-    CHECK(splitDims.size() == chunkSizes.size())
+    CHECK_EQ(splitDims.size(), chunkSizes.size())
         << "Mistmatch between 'splitDims' and 'chunkSizes' array sizes!";
   }
 
@@ -130,10 +131,10 @@ class SplitNodeByChunkSizes : public SplitNodeOption {
 
 public:
   /// Ctor.
-  SplitNodeByChunkSizes(std::vector<size_t> splitDims,
-                        std::vector<std::vector<dim_t>> chunkSizes)
+  SplitNodeByChunkSizes(llvm::ArrayRef<size_t> splitDims,
+                        llvm::ArrayRef<std::vector<dim_t>> chunkSizes)
       : SplitNodeOption(splitDims), chunkSizes_(chunkSizes) {
-    CHECK(splitDims.size() == chunkSizes.size())
+    CHECK_EQ(splitDims.size(), chunkSizes.size())
         << "Mistmatch between 'splitDims' and 'chunkSizes' array sizes!";
   }
 
@@ -158,10 +159,10 @@ class SplitNodeByChunkWeights : public SplitNodeOption {
 
 public:
   /// Ctor.
-  SplitNodeByChunkWeights(std::vector<size_t> splitDims,
-                          std::vector<std::vector<float>> chunkWeights)
+  SplitNodeByChunkWeights(llvm::ArrayRef<size_t> splitDims,
+                          llvm::ArrayRef<std::vector<float>> chunkWeights)
       : SplitNodeOption(splitDims), chunkWeights_(chunkWeights) {
-    CHECK(splitDims.size() == chunkWeights.size())
+    CHECK_EQ(splitDims.size(), chunkWeights.size())
         << "Mistmatch between 'splitDims' and 'chunkWeights' array sizes!";
   }
 
@@ -245,12 +246,13 @@ splitNode(Node *node, const SplitNodeConstraint &splitConstraint);
 /// Split node option map provided to the node splitting procedure which
 /// consists in a mapping between a node and the split option to be used
 /// for that node.
-using SplitNodeOptionMap = llvm::DenseMap<Node *, SplitNodeOption *>;
+using SplitNodeOptionMap = llvm::DenseMap<Node *, const SplitNodeOption *>;
 
 /// Split node constraint map provided to the node splitting procedure which
 /// consists in a mapping between a node and the split constraint to be used
 /// for that node.
-using SplitNodeConstraintMap = llvm::DenseMap<Node *, SplitNodeConstraint *>;
+using SplitNodeConstraintMap =
+    llvm::DenseMap<Node *, const SplitNodeConstraint *>;
 
 /// Split node map returned by the node splitting procedure which consists in a
 /// mapping between the original node and the vector of nodes it was split into.
