@@ -374,6 +374,8 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 
     if (settings_.writeToOnnx) {
       glow::Tensor glowT = ptTensorToGlowTensor(ptTensor);
+      std::cout << "glow tensor output" << std::endl;
+      glowT.dump();
       auto *onnxT = outputG.add_initializer();
       onnxT->set_name(info.outputPlaceholders[i]->getName());
       ONNXModelWriter::writeTensor(glowT, onnxT, /*useGlowCustomOps*/ true);

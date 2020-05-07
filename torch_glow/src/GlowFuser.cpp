@@ -265,6 +265,14 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
 
   size_t i = 0;
   for (const torch::jit::Node *node : graph->nodes()) {
+    std::cout << "kind: " << node->kind().toQualString() << " at " << i
+              << std::endl;
+    if (node->kind() == at::Symbol::fromQualString("prim::Constant") ||
+        node->kind() == at::Symbol::fromQualString("prim::GetAttr")) {
+      i++;
+      continue;
+    }
+
     if (settings.fusionStartIndex >= 0 && i < settings.fusionStartIndex) {
       blacklistedNodes[node] = NodeBlacklistReason::Index;
     }
@@ -319,6 +327,8 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
   EliminateDeadCode(graph);
 
   verifyFusions(graph, kind);
+
+  std::cout << "graph after glow fusions\n" << *graph << std::endl;
 }
 
 void registDefaultGlowFusionSymbolOnce() {

@@ -794,6 +794,15 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets},
   });
 
+  // auto symbolLoaderMapping = MappingOfMemberFunctions({
+  //     {{"prim::Constant"}, &PyTorchModelLoader::loadConstant},
+  //     {{"quantized::conv2d"}, &PyTorchModelLoader::loadQuantizedConv},
+  //     {{"quantized::conv2d_relu"},
+  //     &PyTorchModelLoader::loadQuantizedConvRelu},
+  //     {{"glow::unpacked_quantized_conv2d"},
+  //      &PyTorchModelLoader::loadQuantizedConvUnpacked},
+  // });
+
   // Add in custom operator loaders.
   for (const auto &symbolAndLoader : getCustomPyTorchOpLoaders()) {
     const char *symbolStr = symbolAndLoader.first.toQualString();
