@@ -74,6 +74,9 @@ struct PyTorchLoaderSettings {
   /// Convert fp32 opts to fp16 ops during Glow compilation.
   bool convertToFP16 = false;
 
+  /// Convert fp32 fused opts to fp16 ops during Glow compilation.
+  bool convertFusedToFP16 = false;
+
   /// Dump Glow dot graph to file after Glow compilation is finished.
   bool dumpFinalGlowGraph = false;
 

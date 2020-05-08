@@ -35,6 +35,7 @@ DEFINE_bool(enableGlowTracing, false, "See PyTorchLoaderSettings");
 DEFINE_int32(numTracesPerDump, 1, "See PyTorchLoaderSettings");
 DEFINE_bool(saturateHost, false, "See PyTorchLoaderSettings");
 DEFINE_bool(convertToFP16, false, "See PyTorchLoaderSettings");
+DEFINE_bool(convertFusedToFP16, false, "See PyTorchLoaderSettings");
 DEFINE_string(opBlacklist, "", "See PyTorchLoaderSettings");
 DEFINE_int32(replicationCount, 1, "Number of replications on each device");
 
@@ -209,6 +210,7 @@ static PyTorchLoaderSettings getInitialSettings() {
   settings.numTracesPerDump = FLAGS_numTracesPerDump;
   settings.saturateHost = FLAGS_saturateHost;
   settings.convertToFP16 = FLAGS_convertToFP16;
+  settings.convertFusedToFP16 = FLAGS_convertFusedToFP16;
   settings.replicationCount = FLAGS_replicationCount;
 
   if (!FLAGS_opBlacklist.empty()) {
