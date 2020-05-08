@@ -180,6 +180,43 @@ void CachingGraphRunner::runOnJit(torch::jit::Stack &stack) {
   getPyTorchLoaderSettings().fusionPassEnabled = temp;
 }
 
+struct TensorCompareResult {
+  double relErr;
+  double maxErr;
+  double maxRelErr;
+};
+
+template <typename Ty>
+TensorCompareResult compareTensors(glow::Tensor &RefT, glow::Tensor &CmpT) {
+  TensorCompareResult result = {INFINITY, INFINITY, INFINITY};
+  if (CmpT.getHandle<Ty>().size() != RefT.getHandle<Ty>().size()) {
+    LOG(ERROR) << "Dimension mismatch: "
+               << "\tReference dims: " << RefT.getHandle().getType().dims()
+               << "\tGlow dims: " << CmpT.getHandle().getType().dims()
+               << std::endl;
+    return result;
+  }
+  double totalErrSq = 0.0;
+  double totalMagSq = 0.0;
+  double maxErr = 0.0;
+  double maxRelErr = 0.0;
+  for (dim_t idx = 0; idx < RefT.getHandle().size(); idx++) {
+    double refVal = (double)RefT.getHandle<Ty>().raw(idx);
+    double cmpVal = (double)CmpT.getHandle<Ty>().raw(idx);
+    double diff = refVal - cmpVal;
+    double mag = refVal * refVal;
+    double eltRelErr = (fabs(refVal)) > 0.0 ? fabs(diff) / fabs(refVal) : 0.0;
+    totalErrSq += diff * diff;
+    totalMagSq += mag;
+    maxErr = (fabs(diff) > maxErr) ? fabs(diff) : maxErr;
+    maxRelErr = (eltRelErr > maxRelErr) ? eltRelErr : maxRelErr;
+  }
+  result.relErr = (totalMagSq > 0.0) ? std::sqrt(totalErrSq / totalMagSq) : 0.0;
+  result.maxErr = maxErr;
+  result.maxRelErr = maxRelErr;
+  return result;
+}
+
 Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
                                   torch::jit::Stack &stack,
                                   std::unique_ptr<ExecutionContext> &ctx) {
@@ -187,8 +224,10 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 
   // Run the subgraph using JIT for comparison with Glow.
   torch::jit::Stack copyStack;
-  if (settings_.writeToOnnx) {
-    copyStack = stack;
+  if (settings_.writeToOnnx || settings_.jitVsGlowCompare) {
+    for (auto &ival : stack) {
+      copyStack.push_back(ival.deepcopy());
+    }
     runOnJit(copyStack);
   }
 
@@ -387,6 +426,29 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       jitOnnxT->set_name(info.outputPlaceholders[i]->getName());
       ONNXModelWriter::writeTensor(jitGlowT, jitOnnxT,
                                    /*useGlowCustomOps*/ true);
+    }
+
+    if (settings_.jitVsGlowCompare) {
+      glow::Tensor glowT = ptTensorToGlowTensor(ptTensor);
+      auto &jitOutput = torch::jit::peek(copyStack, i, outputs.size());
+      auto jitPtTensor = jitOutput.toTensor().contiguous();
+      glow::Tensor jitGlowT = ptTensorToGlowTensor(jitPtTensor);
+      auto tensorElemType = jitGlowT.getType().getElementType();
+      if (tensorElemType == glow::ElemKind::FloatTy) {
+        TensorCompareResult res = compareTensors<float_t>(jitGlowT, glowT);
+        LOG(INFO) << "Correctness check | Function: " << info.functionName
+                  << "\tTensor: "
+                  << std::string(info.outputPlaceholders[i]->getName())
+                  << "\tRelError: " << res.relErr << "\tMaxErr: " << res.maxErr
+                  << "\tMaxRelErr: " << res.maxRelErr << std::endl;
+      } else {
+        LOG(INFO) << "Correctness Check | Function: " << info.functionName
+                  << "\tTensor: "
+                  << std::string(info.outputPlaceholders[i]->getName())
+                  << "\tUnsupported type: "
+                  << std::string(glow::Type::getElementName(tensorElemType))
+                  << std::endl;
+      }
     }
 
     auto var = torch::autograd::make_variable(ptTensor);
