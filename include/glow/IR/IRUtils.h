@@ -17,6 +17,7 @@
 #define GLOW_IR_IRUTILS_H
 
 #include "glow/IR/IR.h"
+#include "glow/IR/Instrs.h"
 
 #include <iterator>
 
@@ -24,6 +25,9 @@ namespace glow {
 
 /// \returns true if the value \v is a tensor view.
 bool isTensorView(Value *v);
+
+/// \returns the offset for \p TVI into the underlying alloc activation.
+size_t calculateTensorViewOffset(const TensorViewInst *TVI);
 
 /// A helper class to iterate over all uses of a given Value.
 /// It also recursively iterates over uses of any tensorview

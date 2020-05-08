@@ -68,18 +68,14 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
       // source of the tensorview.
       assert(!symbolTable.count(std::string(TV->getName())) &&
              "Allocation already made!");
-      size_t offsetLength = TV->getOffsets().empty() ? 0 : TV->getOffsets()[0];
-      auto *tvSource = TV->getSrc();
-      if (tvSource->dims().size() > 1) {
-        for (size_t i = 1; i < tvSource->dims().size(); ++i) {
-          offsetLength *= tvSource->dims()[i];
-        }
-      }
+      auto *tvSource = getOrigin(TV);
       assert(symbolTable.count(std::string(tvSource->getName())) &&
              "Source allocation not found!");
       runtime::RuntimeSymbolInfo symbol;
-      symbol.offset = symbolTable[std::string(tvSource->getName())].offset +
-                      (offsetLength * TV->getType()->getElementSize());
+      size_t originAddr = symbolTable[std::string(tvSource->getName())].offset;
+      size_t offset = calculateTensorViewOffset(TV);
+
+      symbol.offset = originAddr + offset;
       symbol.size = TV->getSizeInBytes();
       symbol.type = *TV->getType();
       symbol.input = false;
