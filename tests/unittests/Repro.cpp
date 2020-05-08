@@ -207,6 +207,11 @@ llvm::cl::opt<bool> glowDumpTrace("glow_dump_debug_traces",
                                   llvm::cl::Optional, llvm::cl::init(false),
                                   llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<bool> glowEnableDeviceTrace(
+    "glow_enable_device_traces",
+    llvm::cl::desc("Enable trace events from inference backend device."),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
 llvm::cl::opt<bool> skipCorrectnessCheck(
     "skip_correctness_check", llvm::cl::desc("Skip correctness check"),
     llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
@@ -592,6 +597,16 @@ int run() {
   bool runAccuracyChecks =
       !skipCorrectnessCheck || topKCompare > 0 || cosineSimilarityStats;
 
+  if (glowDumpTrace && glowEnableDeviceTrace) {
+    // Start device traces.
+    hostManager->setTraceContext(
+        glow::make_unique<TraceContext>(TraceLevel::STANDARD));
+    Error startErr = hostManager->startDeviceTrace();
+    if (ERR_TO_BOOL(std::move(startErr))) {
+      LOG(WARNING) << "Failed to start device traces";
+    }
+  }
+
   auto startTime = std::chrono::steady_clock::now();
   for (int ioIndex = 0, numInferencesIssued = 0;
        numInferencesIssued < numTotalInferences;
@@ -772,6 +787,15 @@ int run() {
   }
 
   if (glowDumpTrace) {
+    if (glowEnableDeviceTrace) {
+      // Stop device traces and collect events.
+      Error stopErr = hostManager->stopDeviceTrace();
+      if (ERR_TO_BOOL(std::move(stopErr))) {
+        LOG(WARNING) << "Failed to stop device traces.";
+      } else {
+        mergedTraceContext.merge(hostManager->getTraceContext());
+      }
+    }
     llvm::SmallString<64> path;
     if (glowDumpTraceFile.empty()) {
       auto tempFileRes =
