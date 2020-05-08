@@ -907,7 +907,21 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
 ///===---------------------------------------------------------------------===//
 ///                                    Conv
 ///===---------------------------------------------------------------------===//
-static std::tuple<bool, DimRange, DimPads>
+/// Structure which contains a valid flag \p check, a dimension range \p range
+/// and a dimension padding \p pads.
+struct CheckedRangeAndPads {
+  bool check{false};
+  DimRange range;
+  DimPads pads;
+};
+
+/// Structure which contains a valid flag \p check a dimension range \p range.
+struct CheckedRange {
+  bool check{false};
+  DimRange range;
+};
+
+static CheckedRangeAndPads
 getConvInputCheckedRangeAndPads(const DimRange &outputSliceRange,
                                 const DimRange &inputRange, dim_t kernel,
                                 dim_t stride, DimPads pads, dim_t dilation) {
@@ -959,10 +973,10 @@ getConvInputCheckedRangeAndPads(const DimRange &outputSliceRange,
 
   DimRange inputSliceRange = {inputSliceStart, inputSliceStop};
   DimPads inputSlicePads = {inputSliceStartPad, inputSliceStopPad};
-  return std::make_tuple(allowed, inputSliceRange, inputSlicePads);
+  return CheckedRangeAndPads{allowed, inputSliceRange, inputSlicePads};
 }
 
-static std::pair<bool, DimRange>
+static CheckedRange
 getConvInputChannelCheckedRange(const DimRange &outputSliceRange,
                                 const DimRange &inputRange, dim_t inputChannels,
                                 dim_t outputChannels, dim_t group) {
@@ -999,7 +1013,7 @@ getConvInputChannelCheckedRange(const DimRange &outputSliceRange,
   inputSliceRange.first = outputSliceRangeStartGroupIdx * inputChannelsPerGroup;
   inputSliceRange.second =
       (outputSliceRangeStopGroupIdx + 1) * inputChannelsPerGroup;
-  return {allowed, inputSliceRange};
+  return CheckedRange{allowed, inputSliceRange};
 }
 
 ///===---------------------------------------------------------------------===//
@@ -1027,27 +1041,27 @@ getConv2DInputIdxAndMaps(const ConvolutionNode *node) {
       [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
     // Get range and pads for dimension H.
     auto checkedRangeAndPadsH = getConvInputCheckedRangeAndPads(
-        outputSliceRange[Shape::dimH], inputRange[Shape::dimH], kernels.height,
+        outputSliceRange[Shape::DimH], inputRange[Shape::DimH], kernels.height,
         strides.height, padsTB, dilations.height);
 
     // Get range and pads for dimension W.
     auto checkedRangeAndPadsW = getConvInputCheckedRangeAndPads(
-        outputSliceRange[Shape::dimW], inputRange[Shape::dimW], kernels.width,
+        outputSliceRange[Shape::DimW], inputRange[Shape::DimW], kernels.width,
         strides.width, padsLR, dilations.width);
 
     // Get range for dimension C.
     auto checkedRangeC = getConvInputChannelCheckedRange(
-        outputSliceRange[Shape::dimC], inputRange[Shape::dimC],
-        inputRange.getDimSize(Shape::dimC), outputRange.getDimSize(Shape::dimC),
+        outputSliceRange[Shape::DimC], inputRange[Shape::DimC],
+        inputRange.getDimSize(Shape::DimC), outputRange.getDimSize(Shape::DimC),
         group);
 
     std::vector<DimRange> inputDimRanges(4);
-    inputDimRanges[Shape::dimN] = outputSliceRange[Shape::dimN];
-    inputDimRanges[Shape::dimH] = std::get<1>(checkedRangeAndPadsH);
-    inputDimRanges[Shape::dimW] = std::get<1>(checkedRangeAndPadsW);
-    inputDimRanges[Shape::dimC] = checkedRangeC.second;
-    bool allowed = std::get<0>(checkedRangeAndPadsH) &&
-                   std::get<0>(checkedRangeAndPadsW) && checkedRangeC.first;
+    inputDimRanges[Shape::DimN] = outputSliceRange[Shape::DimN];
+    inputDimRanges[Shape::DimH] = checkedRangeAndPadsH.range;
+    inputDimRanges[Shape::DimW] = checkedRangeAndPadsW.range;
+    inputDimRanges[Shape::DimC] = checkedRangeC.range;
+    bool allowed = checkedRangeAndPadsH.check && checkedRangeAndPadsW.check &&
+                   checkedRangeC.check;
     return {allowed, SliceRange(inputDimRanges)};
   };
 
@@ -1055,17 +1069,17 @@ getConv2DInputIdxAndMaps(const ConvolutionNode *node) {
   CheckedSliceRangeMap filterSliceRangeMap =
       [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
     std::vector<DimRange> filterDimRanges(4);
-    filterDimRanges[Shape::dimN] = outputSliceRange[Shape::dimC];
-    filterDimRanges[Shape::dimH] = filterRange[Shape::dimH];
-    filterDimRanges[Shape::dimW] = filterRange[Shape::dimW];
-    filterDimRanges[Shape::dimC] = filterRange[Shape::dimC];
+    filterDimRanges[Shape::DimN] = outputSliceRange[Shape::DimC];
+    filterDimRanges[Shape::DimH] = filterRange[Shape::DimH];
+    filterDimRanges[Shape::DimW] = filterRange[Shape::DimW];
+    filterDimRanges[Shape::DimC] = filterRange[Shape::DimC];
     return {true, SliceRange(filterDimRanges)};
   };
 
   // Output slice to bias slice range map.
   CheckedSliceRangeMap biasSliceRangeMap =
       [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
-    return {true, SliceRange({outputSliceRange[Shape::dimC]})};
+    return {true, SliceRange({outputSliceRange[Shape::DimC]})};
   };
 
   // Return input indices and maps.
@@ -1096,13 +1110,13 @@ void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
   auto outputSliceRange = outputSliceRanges[ConvolutionNode::ResultIdx];
   auto inputRange = SliceRange(convOrigNode->getInput().getType());
   auto checkedRangeAndPadsH = getConvInputCheckedRangeAndPads(
-      outputSliceRange[Shape::dimH], inputRange[Shape::dimH], kernels.height,
+      outputSliceRange[Shape::DimH], inputRange[Shape::DimH], kernels.height,
       strides.height, padsTB, dilations.height);
   auto checkedRangeAndPadsW = getConvInputCheckedRangeAndPads(
-      outputSliceRange[Shape::dimW], inputRange[Shape::dimW], kernels.width,
+      outputSliceRange[Shape::DimW], inputRange[Shape::DimW], kernels.width,
       strides.width, padsLR, dilations.width);
-  DimPads splitPadsTB = std::get<2>(checkedRangeAndPadsH);
-  DimPads splitPadsLR = std::get<2>(checkedRangeAndPadsW);
+  DimPads splitPadsTB = checkedRangeAndPadsH.pads;
+  DimPads splitPadsLR = checkedRangeAndPadsW.pads;
 
   // Modify paddings for split node.
   std::vector<unsigned_t> splitPads = {
@@ -1115,10 +1129,10 @@ void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
   // Modify group for split node.
   dim_t outputChannels =
       SliceRange(convOrigNode->getType(ConvolutionNode::ResultIdx))
-          .getDimSize(Shape::dimC);
+          .getDimSize(Shape::DimC);
   dim_t outputSliceChannels =
       SliceRange(convSplitNode->getType(ConvolutionNode::ResultIdx))
-          .getDimSize(Shape::dimC);
+          .getDimSize(Shape::DimC);
   auto group = convOrigNode->getGroup();
 
   CHECK_EQ(outputChannels % group, 0)
@@ -1143,7 +1157,7 @@ void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
 ///===---------------------------------------------------------------------===//
 ///                                    Pool
 ///===---------------------------------------------------------------------===//
-static std::tuple<bool, DimRange, DimPads>
+static CheckedRangeAndPads
 getPoolInputCheckedRangeAndPads(const DimRange &outputSliceRange,
                                 const DimRange &inputRange, dim_t kernel,
                                 dim_t stride, DimPads pads) {
@@ -1166,21 +1180,20 @@ static std::vector<OpIdxAndMap> getPoolInputIdxAndMaps(const PoolNode *node) {
       [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
     // Get range and pads for dimension H.
     auto checkedRangeAndPadsH = getPoolInputCheckedRangeAndPads(
-        outputSliceRange[Shape::dimH], inputRange[Shape::dimH], kernels.height,
+        outputSliceRange[Shape::DimH], inputRange[Shape::DimH], kernels.height,
         strides.height, padsTB);
 
     // Get range and pads for dimension W.
     auto checkedRangeAndPadsW = getPoolInputCheckedRangeAndPads(
-        outputSliceRange[Shape::dimW], inputRange[Shape::dimW], kernels.width,
+        outputSliceRange[Shape::DimW], inputRange[Shape::DimW], kernels.width,
         strides.width, padsLR);
 
     std::vector<DimRange> inputDimRanges(4);
-    inputDimRanges[Shape::dimN] = outputSliceRange[Shape::dimN];
-    inputDimRanges[Shape::dimH] = std::get<1>(checkedRangeAndPadsH);
-    inputDimRanges[Shape::dimW] = std::get<1>(checkedRangeAndPadsW);
-    inputDimRanges[Shape::dimC] = outputSliceRange[Shape::dimC];
-    bool allowed =
-        std::get<0>(checkedRangeAndPadsH) && std::get<0>(checkedRangeAndPadsW);
+    inputDimRanges[Shape::DimN] = outputSliceRange[Shape::DimN];
+    inputDimRanges[Shape::DimH] = checkedRangeAndPadsH.range;
+    inputDimRanges[Shape::DimW] = checkedRangeAndPadsW.range;
+    inputDimRanges[Shape::DimC] = outputSliceRange[Shape::DimC];
+    bool allowed = checkedRangeAndPadsH.check && checkedRangeAndPadsW.check;
     return {allowed, SliceRange(inputDimRanges)};
   };
 
@@ -1208,13 +1221,13 @@ void PoolSplitNodeModifier(const Node *origNode, Node *splitNode,
   auto outputSliceRange = outputSliceRanges[PoolNode::ResultIdx];
   auto inputRange = SliceRange(poolOrigNode->getInput().getType());
   auto checkedRangeAndPadsH = getPoolInputCheckedRangeAndPads(
-      outputSliceRange[Shape::dimH], inputRange[Shape::dimH], kernels.height,
+      outputSliceRange[Shape::DimH], inputRange[Shape::DimH], kernels.height,
       strides.height, padsTB);
   auto checkedRangeAndPadsW = getPoolInputCheckedRangeAndPads(
-      outputSliceRange[Shape::dimW], inputRange[Shape::dimW], kernels.width,
+      outputSliceRange[Shape::DimW], inputRange[Shape::DimW], kernels.width,
       strides.width, padsLR);
-  DimPads splitPadsTB = std::get<2>(checkedRangeAndPadsH);
-  DimPads splitPadsLR = std::get<2>(checkedRangeAndPadsW);
+  DimPads splitPadsTB = checkedRangeAndPadsH.pads;
+  DimPads splitPadsLR = checkedRangeAndPadsW.pads;
 
   // Modify paddings for split node.
   std::vector<unsigned_t> splitPads = {
@@ -1234,7 +1247,7 @@ getFullyConnectedInputIdxAndMaps(const FullyConnectedNode *node) {
   CheckedSliceRangeMap inputSliceRangeMap =
       [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
     SliceRange inputRange = SliceRange(node->getInput().getType());
-    inputRange[ShapeHW::dimH] = outputSliceRange[ShapeHW::dimH];
+    inputRange[ShapeHW::DimH] = outputSliceRange[ShapeHW::DimH];
     return {true, inputRange};
   };
 
@@ -1242,14 +1255,14 @@ getFullyConnectedInputIdxAndMaps(const FullyConnectedNode *node) {
   CheckedSliceRangeMap weightsSliceRangeMap =
       [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
     SliceRange weightsRange = SliceRange(node->getWeights().getType());
-    weightsRange[ShapeHW::dimW] = outputSliceRange[ShapeHW::dimW];
+    weightsRange[ShapeHW::DimW] = outputSliceRange[ShapeHW::DimW];
     return {true, weightsRange};
   };
 
   // Output slice to bias slice range map.
   CheckedSliceRangeMap biasSliceRangeMap =
       [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
-    return {true, SliceRange({outputSliceRange[ShapeHW::dimW]})};
+    return {true, SliceRange({outputSliceRange[ShapeHW::DimW]})};
   };
 
   // Return input index and map.
@@ -1267,7 +1280,7 @@ getMatMulInputIdxAndMaps(const MatMulNode *node) {
   CheckedSliceRangeMap lhsSliceRangeMap =
       [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
     SliceRange lhsRange = SliceRange(node->getLHS().getType());
-    lhsRange[ShapeHW::dimH] = outputSliceRange[ShapeHW::dimH];
+    lhsRange[ShapeHW::DimH] = outputSliceRange[ShapeHW::DimH];
     return {true, lhsRange};
   };
 
@@ -1275,7 +1288,7 @@ getMatMulInputIdxAndMaps(const MatMulNode *node) {
   CheckedSliceRangeMap rhsSliceRangeMap =
       [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
     SliceRange rhsRange = SliceRange(node->getRHS().getType());
-    rhsRange[ShapeHW::dimW] = outputSliceRange[ShapeHW::dimW];
+    rhsRange[ShapeHW::DimW] = outputSliceRange[ShapeHW::DimW];
     return {true, rhsRange};
   };
 
@@ -1293,8 +1306,8 @@ getBatchMatMulInputIdxAndMaps(const BatchMatMulNode *node) {
   CheckedSliceRangeMap lhsSliceRangeMap =
       [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
     SliceRange lhsRange = SliceRange(node->getLHS().getType());
-    lhsRange[ShapeNHW::dimN] = outputSliceRange[ShapeNHW::dimN];
-    lhsRange[ShapeNHW::dimH] = outputSliceRange[ShapeNHW::dimH];
+    lhsRange[ShapeNHW::DimN] = outputSliceRange[ShapeNHW::DimN];
+    lhsRange[ShapeNHW::DimH] = outputSliceRange[ShapeNHW::DimH];
     return {true, lhsRange};
   };
 
@@ -1302,8 +1315,8 @@ getBatchMatMulInputIdxAndMaps(const BatchMatMulNode *node) {
   CheckedSliceRangeMap rhsSliceRangeMap =
       [=](const SliceRange &outputSliceRange) -> CheckedSliceRange {
     SliceRange rhsRange = SliceRange(node->getRHS().getType());
-    rhsRange[ShapeNHW::dimN] = outputSliceRange[ShapeNHW::dimN];
-    rhsRange[ShapeNHW::dimW] = outputSliceRange[ShapeNHW::dimW];
+    rhsRange[ShapeNHW::DimN] = outputSliceRange[ShapeNHW::DimN];
+    rhsRange[ShapeNHW::DimW] = outputSliceRange[ShapeNHW::DimW];
     return {true, rhsRange};
   };
 

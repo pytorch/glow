@@ -179,7 +179,7 @@ static void splitConv2DBasic(Function *F, Function *&optF,
 #define TEST_CONV2D_BASIC_SPLIT(splitDim, numChunks)                           \
   TEST_F(NodeSplitting, Conv2D_Basic_Dim##splitDim##_Chunks##numChunks) {      \
     splitConv2DBasic(F_, optimizedF_, bindings_, cctx_,                        \
-                     {ShapeNHWC::dim##splitDim}, {numChunks});                 \
+                     {ShapeNHWC::Dim##splitDim}, {numChunks});                 \
     checkNumericalEquivalence(0);                                              \
   }
 TEST_CONV2D_BASIC_SPLIT(N, 2)
@@ -205,14 +205,14 @@ TEST_CONV2D_BASIC_SPLIT(C, 8)
 /// Test splitting a Conv2D along dimensions N, H.
 TEST_F(NodeSplitting, Conv2D_Basic_DimNH_Chunks4) {
   splitConv2DBasic(F_, optimizedF_, bindings_, cctx_,
-                   {ShapeNHWC::dimN, ShapeNHWC::dimH}, {2, 2});
+                   {ShapeNHWC::DimN, ShapeNHWC::DimH}, {2, 2});
   checkNumericalEquivalence(0);
 }
 
 /// Test splitting a Conv2D along dimensions N, H, W.
 TEST_F(NodeSplitting, Conv2D_Basic_DimNHW_Chunks8) {
   splitConv2DBasic(F_, optimizedF_, bindings_, cctx_,
-                   {ShapeNHWC::dimN, ShapeNHWC::dimH, ShapeNHWC::dimW},
+                   {ShapeNHWC::DimN, ShapeNHWC::DimH, ShapeNHWC::DimW},
                    {2, 2, 2});
   checkNumericalEquivalence(0);
 }
@@ -221,7 +221,7 @@ TEST_F(NodeSplitting, Conv2D_Basic_DimNHW_Chunks8) {
 TEST_F(NodeSplitting, Conv2D_Basic_DimNHWC_Chunks16) {
   splitConv2DBasic(
       F_, optimizedF_, bindings_, cctx_,
-      {ShapeNHWC::dimN, ShapeNHWC::dimH, ShapeNHWC::dimW, ShapeNHWC::dimC},
+      {ShapeNHWC::DimN, ShapeNHWC::DimH, ShapeNHWC::DimW, ShapeNHWC::DimC},
       {2, 2, 2, 2});
   checkNumericalEquivalence(0);
 }
@@ -272,7 +272,7 @@ static void splitConv2DNonZeroPad(Function *F, Function *&optF,
 #define TEST_CONV2D_NONZEROPAD_SPLIT(splitDim, numChunks)                      \
   TEST_F(NodeSplitting, Conv2D_NonZeroPad_Dim##splitDim##_Chunks##numChunks) { \
     splitConv2DNonZeroPad(F_, optimizedF_, bindings_, cctx_,                   \
-                          {ShapeNHWC::dim##splitDim}, {numChunks});            \
+                          {ShapeNHWC::Dim##splitDim}, {numChunks});            \
     checkNumericalEquivalence(0);                                              \
   }
 TEST_CONV2D_NONZEROPAD_SPLIT(H, 2)
@@ -284,7 +284,7 @@ TEST_CONV2D_NONZEROPAD_SPLIT(W, 3)
 /// Test splitting a Conv2D with padding along dimensions H, W.
 TEST_F(NodeSplitting, Conv2D_NonZeroPad_DimHW_Chunks9) {
   splitConv2DNonZeroPad(F_, optimizedF_, bindings_, cctx_,
-                        {ShapeNHWC::dimH, ShapeNHWC::dimW}, {3, 3});
+                        {ShapeNHWC::DimH, ShapeNHWC::DimW}, {3, 3});
   checkNumericalEquivalence(0);
 }
 
@@ -314,7 +314,7 @@ static void splitConv2DGrouped(Function *F, Function *&optF,
   optF = F->clone(F->getName().str() + "_optimized");
 
   // Split node.
-  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::dimC}, {numChunks});
+  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimC}, {numChunks});
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
   runDCEPass(F, cctx);
@@ -360,7 +360,7 @@ TEST_CONV2D_GROUP_SPLIT(8, 16, 8, 8)
 /// splitting infrastructure uses a weaker verification of the mapping
 /// between input and output for Conv2D.
 TEST_F(NodeSplitting, Conv2D_IllDefined_DimHW) {
-  std::vector<size_t> splitDims = {ShapeNHWC::dimH, ShapeNHWC::dimW};
+  std::vector<size_t> splitDims = {ShapeNHWC::DimH, ShapeNHWC::DimW};
   std::vector<dim_t> numChunks = {3, 3};
   Node *node = createConv2D(F_, bindings_,
                             /* inputDims */ {1, 16, 18, 1},
@@ -535,7 +535,7 @@ static void splitMaxPoolBasic(Function *F, Function *&optF,
 #define TEST_MAXPOOL_BASIC_SPLIT(splitDim, numChunks)                          \
   TEST_F(NodeSplitting, MaxPool_Basic_Dim##splitDim##_Chunks##numChunks) {     \
     splitMaxPoolBasic(F_, optimizedF_, bindings_, cctx_,                       \
-                      {ShapeNHWC::dim##splitDim}, {numChunks});                \
+                      {ShapeNHWC::Dim##splitDim}, {numChunks});                \
     checkNumericalEquivalence(0);                                              \
   }
 TEST_MAXPOOL_BASIC_SPLIT(N, 2)
@@ -599,7 +599,7 @@ static void splitMaxPoolNonZeroPad(Function *F, Function *&optF,
   TEST_F(NodeSplitting,                                                        \
          MaxPool_NonZeroPad_Dim##splitDim##_Chunks##numChunks) {               \
     splitMaxPoolNonZeroPad(F_, optimizedF_, bindings_, cctx_,                  \
-                           {ShapeNHWC::dim##splitDim}, {numChunks});           \
+                           {ShapeNHWC::Dim##splitDim}, {numChunks});           \
     checkNumericalEquivalence(0);                                              \
   }
 TEST_MAXPOOL_NONZEROPAD_SPLIT(H, 2)
@@ -609,7 +609,7 @@ TEST_MAXPOOL_NONZEROPAD_SPLIT(W, 2)
 /// Test splitting a MaxPool with padding along dimensions H, W.
 TEST_F(NodeSplitting, MaxPool_NonZeroPad_DimHW_Chunks4) {
   splitMaxPoolNonZeroPad(F_, optimizedF_, bindings_, cctx_,
-                         {ShapeNHWC::dimH, ShapeNHWC::dimW}, {2, 2});
+                         {ShapeNHWC::DimH, ShapeNHWC::DimW}, {2, 2});
   checkNumericalEquivalence(0);
 }
 
@@ -619,7 +619,7 @@ TEST_F(NodeSplitting, MaxPool_NonZeroPad_DimHW_Chunks4) {
 /// splitting infrastructure uses a weaker verification of the mapping
 /// between input and output for MaxPool.
 TEST_F(NodeSplitting, MaxPool_IllDefined_DimHW) {
-  std::vector<size_t> splitDims = {ShapeNHWC::dimH, ShapeNHWC::dimW};
+  std::vector<size_t> splitDims = {ShapeNHWC::DimH, ShapeNHWC::DimW};
   std::vector<dim_t> numChunks = {3, 3};
   Node *node = createMaxPool(F_, bindings_,
                              /* inputDims */ {1, 16, 18, 1},
@@ -709,7 +709,7 @@ TEST_F(NodeSplitting, MaxPool_Argmax_NoSplit) {
   optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
 
   // Split node.
-  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::dimH}, {3});
+  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimH}, {3});
   std::vector<Node *> splitNodes;
   ASSIGN_VALUE_OR_FAIL_TEST(splitNodes,
                             ::glow::splitNode(maxpool, splitOption));
@@ -821,7 +821,7 @@ static void splitAvgPoolBasic(Function *F, Function *&optF,
 #define TEST_AVGPOOL_BASIC_SPLIT(splitDim, numChunks)                          \
   TEST_F(NodeSplitting, AvgPool_Basic_Dim##splitDim##_Chunks##numChunks) {     \
     splitAvgPoolBasic(F_, optimizedF_, bindings_, cctx_,                       \
-                      {ShapeNHWC::dim##splitDim}, {numChunks});                \
+                      {ShapeNHWC::Dim##splitDim}, {numChunks});                \
     checkNumericalEquivalence(0);                                              \
   }
 TEST_AVGPOOL_BASIC_SPLIT(N, 2)
@@ -885,7 +885,7 @@ static void splitAvgPoolNonZeroPad(Function *F, Function *&optF,
   TEST_F(NodeSplitting,                                                        \
          AvgPool_NonZeroPad_Dim##splitDim##_Chunks##numChunks) {               \
     splitAvgPoolNonZeroPad(F_, optimizedF_, bindings_, cctx_,                  \
-                           {ShapeNHWC::dim##splitDim}, {numChunks});           \
+                           {ShapeNHWC::Dim##splitDim}, {numChunks});           \
     checkNumericalEquivalence(0);                                              \
   }
 TEST_AVGPOOL_NONZEROPAD_SPLIT(H, 2)
@@ -895,7 +895,7 @@ TEST_AVGPOOL_NONZEROPAD_SPLIT(W, 2)
 /// Test splitting a AvgPool with padding along dimensions H, W.
 TEST_F(NodeSplitting, AvgPool_NonZeroPad_DimHW_Chunks4) {
   splitAvgPoolNonZeroPad(F_, optimizedF_, bindings_, cctx_,
-                         {ShapeNHWC::dimH, ShapeNHWC::dimW}, {2, 2});
+                         {ShapeNHWC::DimH, ShapeNHWC::DimW}, {2, 2});
   checkNumericalEquivalence(0);
 }
 
@@ -905,7 +905,7 @@ TEST_F(NodeSplitting, AvgPool_NonZeroPad_DimHW_Chunks4) {
 /// splitting infrastructure uses a weaker verification of the mapping
 /// between input and output for AvgPool.
 TEST_F(NodeSplitting, AvgPool_IllDefined_DimHW) {
-  std::vector<size_t> splitDims = {ShapeNHWC::dimH, ShapeNHWC::dimW};
+  std::vector<size_t> splitDims = {ShapeNHWC::DimH, ShapeNHWC::DimW};
   std::vector<dim_t> numChunks = {3, 3};
   Node *node = createAvgPool(F_, bindings_,
                              /* inputDims */ {1, 16, 18, 1},
@@ -1054,20 +1054,20 @@ static void splitFullyConnected(Function *F, Function *&optF,
 
 /// Test splitting FullyConnected along dimension H.
 TEST_F(NodeSplitting, FullyConnected_DimH_Chunks2) {
-  splitFullyConnected(F_, optimizedF_, bindings_, cctx_, {ShapeHW::dimH}, {2});
+  splitFullyConnected(F_, optimizedF_, bindings_, cctx_, {ShapeHW::DimH}, {2});
   checkNumericalEquivalence(0);
 }
 
 /// Test splitting FullyConnected along dimension W.
 TEST_F(NodeSplitting, FullyConnected_DimW_Chunks2) {
-  splitFullyConnected(F_, optimizedF_, bindings_, cctx_, {ShapeHW::dimW}, {2});
+  splitFullyConnected(F_, optimizedF_, bindings_, cctx_, {ShapeHW::DimW}, {2});
   checkNumericalEquivalence(0);
 }
 
 /// Test splitting FullyConnected along dimension H and W.
 TEST_F(NodeSplitting, FullyConnected_DimHW_Chunks4) {
   splitFullyConnected(F_, optimizedF_, bindings_, cctx_,
-                      {ShapeHW::dimH, ShapeHW::dimW}, {2, 2});
+                      {ShapeHW::DimH, ShapeHW::DimW}, {2, 2});
   checkNumericalEquivalence(0);
 }
 
@@ -1117,19 +1117,19 @@ static void splitMatMul(Function *F, Function *&optF,
 
 /// Test splitting MatMul along dimension H.
 TEST_F(NodeSplitting, MatMul_DimH_Chunks2) {
-  splitMatMul(F_, optimizedF_, bindings_, cctx_, {ShapeHW::dimH}, {2});
+  splitMatMul(F_, optimizedF_, bindings_, cctx_, {ShapeHW::DimH}, {2});
   checkNumericalEquivalence(0);
 }
 
 /// Test splitting MatMul along dimension W.
 TEST_F(NodeSplitting, MatMul_DimW_Chunks2) {
-  splitMatMul(F_, optimizedF_, bindings_, cctx_, {ShapeHW::dimW}, {2});
+  splitMatMul(F_, optimizedF_, bindings_, cctx_, {ShapeHW::DimW}, {2});
   checkNumericalEquivalence(0);
 }
 
 /// Test splitting MatMul along dimension H and W.
 TEST_F(NodeSplitting, MatMul_DimHW_Chunks4) {
-  splitMatMul(F_, optimizedF_, bindings_, cctx_, {ShapeHW::dimH, ShapeHW::dimW},
+  splitMatMul(F_, optimizedF_, bindings_, cctx_, {ShapeHW::DimH, ShapeHW::DimW},
               {2, 2});
   checkNumericalEquivalence(0);
 }
@@ -1181,33 +1181,33 @@ static void splitBatchMatMul(Function *F, Function *&optF,
 
 /// Test splitting BatchMatMul along dimension N.
 TEST_F(NodeSplitting, BatchMatMul_DimN_Chunks2) {
-  splitBatchMatMul(F_, optimizedF_, bindings_, cctx_, {ShapeNHW::dimN}, {2});
+  splitBatchMatMul(F_, optimizedF_, bindings_, cctx_, {ShapeNHW::DimN}, {2});
   checkNumericalEquivalence(0);
 }
 
 /// Test splitting BatchMatMul along dimension H.
 TEST_F(NodeSplitting, BatchMatMul_DimH_Chunks2) {
-  splitBatchMatMul(F_, optimizedF_, bindings_, cctx_, {ShapeNHW::dimH}, {2});
+  splitBatchMatMul(F_, optimizedF_, bindings_, cctx_, {ShapeNHW::DimH}, {2});
   checkNumericalEquivalence(0);
 }
 
 /// Test splitting BatchMatMul along dimension W.
 TEST_F(NodeSplitting, BatchMatMul_DimW_Chunks2) {
-  splitBatchMatMul(F_, optimizedF_, bindings_, cctx_, {ShapeNHW::dimW}, {2});
+  splitBatchMatMul(F_, optimizedF_, bindings_, cctx_, {ShapeNHW::DimW}, {2});
   checkNumericalEquivalence(0);
 }
 
 /// Test splitting BatchMatMul along dimension N and H.
 TEST_F(NodeSplitting, BatchMatMul_DimNH_Chunks4) {
   splitBatchMatMul(F_, optimizedF_, bindings_, cctx_,
-                   {ShapeNHW::dimN, ShapeNHW::dimH}, {2, 2});
+                   {ShapeNHW::DimN, ShapeNHW::DimH}, {2, 2});
   checkNumericalEquivalence(0);
 }
 
 /// Test splitting BatchMatMul along dimension N, H and W.
 TEST_F(NodeSplitting, BatchMatMul_DimNHW_Chunks8) {
   splitBatchMatMul(F_, optimizedF_, bindings_, cctx_,
-                   {ShapeNHW::dimN, ShapeNHW::dimH, ShapeNHW::dimW}, {2, 2, 2});
+                   {ShapeNHW::DimN, ShapeNHW::DimH, ShapeNHW::DimW}, {2, 2, 2});
   checkNumericalEquivalence(0);
 }
 
