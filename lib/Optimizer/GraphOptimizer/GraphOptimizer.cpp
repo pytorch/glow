@@ -29,7 +29,6 @@
 #include "glow/Graph/VerifierHelper.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
-#include "glow/Optimizer/GraphOptimizer/NodeSplitting.h"
 #include "glow/Optimizer/Lower/Lower.h"
 #include "glow/PassManager/PassManager.h"
 #include "glow/Quantization/Base/Base.h"
