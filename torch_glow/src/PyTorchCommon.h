@@ -102,6 +102,9 @@ struct PyTorchLoaderSettings {
   /// and from the function to file as ONNX graphs.
   bool writeToOnnx = false;
 
+  /// Whether or not to do a numerical comparions of Glow and jit outputs
+  bool jitVsGlowCompare = false;
+
   /// Name of a YAML file containing backend specific options.
   std::string backendOptionsFile;
 

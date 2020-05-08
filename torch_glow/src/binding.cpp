@@ -116,6 +116,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("disable_write_to_onnx",
         []() { getPyTorchLoaderSettings().writeToOnnx = false; });
 
+  /// Enable check Glow vs jit correctness.
+  m.def("enable_jit_vs_glow_compare",
+        []() { getPyTorchLoaderSettings().jitVsGlowCompare = true; });
+
+  /// Disable check Glow vs jit correctness.
+  m.def("disable_jit_vs_glow_compare",
+        []() { getPyTorchLoaderSettings().jitVsGlowCompare = false; });
+
   /// Enable saturateHost mode in Glow runtime.
   m.def("enable_saturate_host",
         []() { getPyTorchLoaderSettings().saturateHost = true; });
