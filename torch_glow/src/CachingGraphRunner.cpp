@@ -506,6 +506,10 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
 
   glow::CompilationContext cctx;
 
+  cctx.precisionConfig.convertToFP16 = settings_.convertToFP16;
+  cctx.precisionConfig.convertFusedToFP16 = settings_.convertFusedToFP16;
+  cctx.dumpFinalGraph = settings_.dumpFinalGlowGraph;
+
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(glowModule), cctx));
   // Randomly picked one key. There should be only one element in the map
   // when model is precompiled.
