@@ -27,7 +27,6 @@
 #include <ATen/core/dispatch/Dispatcher.h>
 #include <ATen/native/c10_utils.h>
 #include <ATen/native/quantized/cpu/conv_packed_params.h>
-#include <ATen/native/quantized/cpu/packed_params.h>
 #include <torch/csrc/jit/ir/ir.h>
 
 namespace glow {
@@ -1356,14 +1355,18 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[QuantizedLinearInputs::input]));
 
-  CHECK(qparamsMap_.count(inputs[QuantizedLinearInputs::packed_weights]));
-  auto packed_params =
-      qparamsMap_[inputs[QuantizedLinearInputs::packed_weights]]
-          .toCustomClass<LinearPackedParamsBase>();
+  at::Tensor *ptTensor;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      ptTensor, iValToPTTensor(getGlowIValueForValue(
+                    inputs[QuantizedLinearInputs::packed_weights])));
 
-  at::Tensor ptWeightTensor;
-  c10::optional<at::Tensor> ptBiasTensorTmp;
-  std::tie(ptWeightTensor, ptBiasTensorTmp) = packed_params->unpack();
+  auto op =
+      c10::Dispatcher::singleton().findSchema({"quantized::linear_unpack", ""});
+  CHECK(op.has_value());
+  auto unpackedParams = callOp(*op, *ptTensor);
+  const at::Tensor ptWeightTensor = unpackedParams[0].toTensor().contiguous();
+  const c10::optional<at::Tensor> ptBiasTensorTmp =
+      unpackedParams[1].toOptional<at::Tensor>();
 
   bool isRowwiseQuantized = ptWeightTensor.is_quantized() &&
                             ptWeightTensor.qscheme() == at::kPerChannelAffine;
