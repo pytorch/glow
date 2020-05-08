@@ -39,7 +39,7 @@ using DimRange = std::pair<dim_t, dim_t>;
 using DimPads = std::pair<dim_t, dim_t>;
 
 /// Slice range utility class representing the ranges for all the dimensions
-/// of a slice obtained by extraction from a bigger tensor.
+/// of a slice obtained by extraction from a larger tensor.
 class SliceRange {
 
   /// Vector of ranges for all the dimensions of a slice.
@@ -58,10 +58,10 @@ public:
     }
   }
 
-  /// Getter for ranges.
+  /// \returns the dimension ranges.
   llvm::ArrayRef<DimRange> getRanges() const { return ranges_; }
 
-  /// Getter for ranges start values.
+  /// \returns the start values of the dimension ranges.
   std::vector<dim_t> getStarts() const {
     std::vector<dim_t> starts(ranges_.size());
     for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
@@ -70,7 +70,7 @@ public:
     return starts;
   }
 
-  /// Getter for dimensions sizes.
+  /// \returns the sizes of the dimension ranges.
   std::vector<dim_t> getSizes() const {
     std::vector<dim_t> sizes(ranges_.size());
     for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
@@ -79,21 +79,22 @@ public:
     return sizes;
   }
 
-  /// Get number of dimensions.
+  /// \returns the number of dimensions.
   size_t getNumDims() const { return ranges_.size(); }
 
-  /// Subscript operator for accessing a range for a given dimension.
+  /// \returns a mutable range for the given dimension \p dim.
   DimRange &operator[](size_t dim) {
     DCHECK_LT(dim, ranges_.size()) << "Invalid dimension!";
     return ranges_[dim];
   }
 
+  /// \returns an immutable range for the given dimension \p dim.
   const DimRange &operator[](size_t dim) const {
     DCHECK_LT(dim, ranges_.size()) << "Invalid dimension!";
     return ranges_[dim];
   }
 
-  /// Equal operator for comparing range with another.
+  /// \returns whether this slice range is equal to \p other.
   bool operator==(const SliceRange &other) const {
     auto rangesOther = other.getRanges();
     if (ranges_.size() != rangesOther.size()) {
@@ -107,13 +108,14 @@ public:
     return true;
   }
 
-  /// Get slice range size along dimension \p dim.
+  /// \returns the range size along dimension \p dim.
   dim_t getDimSize(size_t dim) const {
     DCHECK_LT(dim, ranges_.size()) << "Invalid dimension!";
     return ranges_[dim].second - ranges_[dim].first + 1;
   }
 
-  /// Extract the dimension ranges between \p dimStart and \p dimStop.
+  /// \returns a slice range by extracting the dimension ranges between
+  /// \p dimStart and \p dimStop (both included).
   SliceRange extractRanges(size_t dimStart, size_t dimStop) const {
     DCHECK_LT(dimStart, ranges_.size()) << "Invalid start dimension!";
     DCHECK_LT(dimStop, ranges_.size()) << "Invalid stop dimension!";
@@ -123,8 +125,9 @@ public:
     return SliceRange(dimRanges);
   }
 
-  /// Shuffle the dimension ranges using the indices \p shuffle. The flag
-  /// \p invert allows optionally to invert the shuffle permutation.
+  /// \returns a slice range by shuffling the dimension ranges using the
+  /// indices \p shuffle. The flag \p invert allows optionally to invert
+  /// the shuffle permutation before using it.
   SliceRange shuffleRanges(llvm::ArrayRef<size_t> shuffle,
                            bool invert = false) const {
     DCHECK_EQ(ranges_.size(), shuffle.size())
@@ -140,25 +143,29 @@ public:
     return SliceRange(dimRanges);
   }
 
-  /// Verify that slice range is valid (non-empty).
-  bool isValid() const {
+  /// \returns whether this slice range is empty.
+  bool isEmpty() const {
+    if (!ranges_.size()) {
+      return true;
+    }
     for (const auto &range : ranges_) {
       if (!(range.first <= range.second)) {
-        return false;
+        return true;
       }
     }
-    return true;
+    return false;
   }
 
-  /// Verify that both ends of a dimension \p dim are aligned to \p align. For
-  /// example [0, 3] which is same as [0, 4) has both ends aligned to 4.
+  /// \returns whether both ends of the range for a given dimension \p dim are
+  /// aligned to \p align. For example [0, 3] which is same as [0, 4) has both
+  /// ends aligned to 4.
   bool isDimRangeAligned(size_t dim, dim_t align) const {
     DCHECK_LT(dim, ranges_.size()) << "Invalid dimension!";
     return (ranges_[dim].first % align == 0) &&
            ((ranges_[dim].second + 1) % align == 0);
   }
 
-  /// Verify whether this range is included by another range.
+  /// \returns whether this slice range is included by \p other.
   bool isIncludedBy(const SliceRange &other) const {
     auto rangesOther = other.getRanges();
     if (ranges_.size() != rangesOther.size()) {
@@ -173,7 +180,7 @@ public:
     return true;
   }
 
-  /// Get a textual representation.
+  /// \returns a textual representation of this slice range.
   std::string toString() const {
     std::string storage;
     llvm::raw_string_ostream os(storage);
@@ -580,7 +587,7 @@ verifySplitNodes(const Node *node, dim_t splitOutputIdx,
     for (const auto &inputIdxMap : inputIdxAndMaps) {
       auto inputCheckedRange = inputIdxMap.second(splitOutputSlice);
       splitNodesCheck = splitNodesCheck && inputCheckedRange.first;
-      splitNodesCheck = splitNodesCheck && inputCheckedRange.second.isValid();
+      splitNodesCheck = splitNodesCheck && !inputCheckedRange.second.isEmpty();
       inputRanges[inputIdxMap.first] = inputCheckedRange.second;
     }
 
@@ -591,7 +598,7 @@ verifySplitNodes(const Node *node, dim_t splitOutputIdx,
     for (const auto &outputIdxMap : outputIdxAndMaps) {
       auto outputCheckedRange = outputIdxMap.second(splitOutputSlice);
       splitNodesCheck = splitNodesCheck && outputCheckedRange.first;
-      splitNodesCheck = splitNodesCheck && outputCheckedRange.second.isValid();
+      splitNodesCheck = splitNodesCheck && !outputCheckedRange.second.isEmpty();
       outputRanges[outputIdxMap.first] = outputCheckedRange.second;
     }
 
@@ -668,10 +675,7 @@ verifySplitNodes(const Node *node, dim_t splitOutputIdx,
 
   // Check split nodes against user constraint (if any).
   if (splitConstraint) {
-    SplitNodeContext splitCtx;
-    splitCtx.origNode = node;
-    splitCtx.splitNodes = splitNodes;
-    splitNodesCheck = splitNodesCheck && (*splitConstraint)(splitCtx);
+    splitNodesCheck = splitNodesCheck && (*splitConstraint)(node, splitNodes);
   }
 
   // Explicitly destroy the temporary nodes.
@@ -1443,8 +1447,9 @@ glow::splitNode(Node *node, const SplitNodeOption *splitOption,
     DCHECK_EQ(node->getNumInputs(), 2) << "Binary operator invalid!";
     DCHECK_EQ(node->getNumResults(), 1) << "Binary operator invalid!";
     return splitAndReplaceNode(
-        node, splitOption, splitConstraint, /*splitOutputIdx*/ 0,
-        {{0, CheckedSliceRangeMapIdentity}, {1, CheckedSliceRangeMapIdentity}});
+        node, splitOption, splitConstraint, ArithmeticNode::ResultIdx,
+        {{ArithmeticNode::LHSIdx, CheckedSliceRangeMapIdentity},
+         {ArithmeticNode::RHSIdx, CheckedSliceRangeMapIdentity}});
   }
 
   case Kinded::Kind::ReluNodeKind:

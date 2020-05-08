@@ -51,15 +51,6 @@ llvm::cl::opt<unsigned> constDedupSizeOpt(
         "Max number of elements allowed for deduplicating Constants"),
     llvm::cl::Optional, llvm::cl::init(256), llvm::cl::cat(graphOptCat));
 
-llvm::cl::opt<unsigned> splitNodesByMemSizeOpt(
-    "split-nodes-by-mem-size",
-    llvm::cl::desc(
-        "Option to split the nodes in sufficiently many nodes such that "
-        "each node has a maximum memory size (in bytes) meaning that the "
-        "total size for all the inputs and outputs does not exceed a given "
-        "size. If 0 is given then no node splitting is performed."),
-    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(graphOptCat));
-
 using namespace glow;
 using llvm::cast;
 using llvm::dyn_cast;
@@ -4576,14 +4567,6 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
 
   // Optimize the graph again now that we have a lowered representation.
   ::glow::optimize(F, cctx);
-
-  // Perform node splitting by memory size.
-  if (splitNodesByMemSizeOpt) {
-    SplitNodeMap splitMap;
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        splitMap, ::glow::splitNodes(
-                      F, SplitNodeMaxMemConstraint(splitNodesByMemSizeOpt)));
-  }
 
   // If requested fold ElemKind conversion Nodes into static Placeholders,
   // inputs, and outputs (Placeholders and SaveNodes).

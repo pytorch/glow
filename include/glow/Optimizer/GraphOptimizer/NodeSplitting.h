@@ -79,7 +79,7 @@ public:
       : SplitNodeOption(splitDims), numChunks_(numChunks),
         bigChunksFirst_(bigChunksFirst) {
     CHECK_EQ(splitDims.size(), numChunks.size())
-        << "Mistmatch between 'splitDims' and 'numChunks' array sizes!";
+        << "Mismatch between 'splitDims' and 'numChunks' array sizes!";
   }
 
   /// Split a given dimension size \p dimSize along the dimension \p dim.
@@ -111,7 +111,7 @@ public:
       : SplitNodeOption(splitDims), chunkSizes_(chunkSizes),
         bigChunksFirst_(bigChunksFirst) {
     CHECK_EQ(splitDims.size(), chunkSizes.size())
-        << "Mistmatch between 'splitDims' and 'chunkSizes' array sizes!";
+        << "Mismatch between 'splitDims' and 'chunkSizes' array sizes!";
   }
 
   /// Split a given dimension size \p dimSize along the dimension \p dim.
@@ -135,7 +135,7 @@ public:
                         llvm::ArrayRef<std::vector<dim_t>> chunkSizes)
       : SplitNodeOption(splitDims), chunkSizes_(chunkSizes) {
     CHECK_EQ(splitDims.size(), chunkSizes.size())
-        << "Mistmatch between 'splitDims' and 'chunkSizes' array sizes!";
+        << "Mismatch between 'splitDims' and 'chunkSizes' array sizes!";
   }
 
   /// Split a given dimension size \p dimSize along the dimension \p dim.
@@ -163,7 +163,7 @@ public:
                           llvm::ArrayRef<std::vector<float>> chunkWeights)
       : SplitNodeOption(splitDims), chunkWeights_(chunkWeights) {
     CHECK_EQ(splitDims.size(), chunkWeights.size())
-        << "Mistmatch between 'splitDims' and 'chunkWeights' array sizes!";
+        << "Mismatch between 'splitDims' and 'chunkWeights' array sizes!";
   }
 
   /// Split a given dimension size \p dimSize along the dimension \p dim.
@@ -174,42 +174,38 @@ public:
 ///===---------------------------------------------------------------------===//
 ///                             SplitNodeConstraint
 ///===---------------------------------------------------------------------===//
-/// Context provided by the node splitting procedure for the user to define node
-/// splitting constraints.
-struct SplitNodeContext {
-  /// Original node which was used for splitting. When this context is provided
-  /// the original node is still part of the graph so the user can also check
-  /// graph connection properties (like whether the original node is followed or
-  /// or preceded by another node, etc).
-  const Node *origNode;
-
-  /// Split nodes obtained by splitting the original node. When this context is
-  /// provided, the split nodes are not yet part of the graph (orphans) and the
-  /// nodes have only temporary SliceNodes attached to their inputs without any
-  /// nodes attached to their outputs so you are only allowed to check the split
-  /// nodes types, attributes, input/output operand types and also the offsets
-  /// of the SliceNodes used for splitting the input operands.
-  std::vector<Node *> splitNodes;
-};
-
 /// User defined constraint which verifies whether a given split configuration
-/// given by the context \p ctx is allowed. \returns true if the configuration
-/// is allowed (accepted by the user) and false otherwise. The node splitting
-/// is performed only if the constraint is verified.
-using SplitNodeConstraint = std::function<bool(const SplitNodeContext &ctx)>;
+/// is allowed. The context provided by the node splitting procedure for the
+/// user to define a constraint is:
+/// \p origNode - original node which was used for splitting. When this context
+/// is provided the original node is still part of the graph so the user can
+/// also check graph connection properties (like whether the original node is
+/// followed or preceded by another node, etc).
+/// \p splitNodes - the array of split nodes obtained by splitting the original
+/// node. When this context is provided, the split nodes are not yet part of the
+/// graph (orphans) and the nodes have only temporary SliceNodes attached to
+/// their inputs without any nodes attached to their outputs so you are only
+/// allowed to check the split nodes types, attributes, input/output operand
+/// types and also the offsets of the SliceNodes used for splitting the input
+/// operands of the original node.
+/// \returns true if the configuration is accepted (allowed) by the user and
+/// false otherwise. The splitting is done only if the constraint is verified.
+using SplitNodeConstraint = std::function<bool(
+    const Node *origNode, const std::vector<Node *> &splitNodes)>;
 
 /// Particular split node constraint which requires that the total amount of
 /// memory for each split node (the size for all the inputs/outputs) be less
 /// than a maximum value (in bytes).
 inline SplitNodeConstraint SplitNodeMaxMemConstraint(unsigned maxMem) {
-  return [=](const SplitNodeContext &ctx) -> bool {
-    for (const auto *splitNode : ctx.splitNodes) {
-      if (!(splitNode->getTotMemSize() <= maxMem)) {
-        return false;
-      }
-    }
-    return true;
-  };
+  return
+      [=](const Node *origNode, const std::vector<Node *> &splitNodes) -> bool {
+        for (const auto *splitNode : splitNodes) {
+          if (!(splitNode->getTotMemSize() <= maxMem)) {
+            return false;
+          }
+        }
+        return true;
+      };
 }
 
 ///===---------------------------------------------------------------------===//
