@@ -61,6 +61,11 @@ struct PyTorchLoaderSettings {
   /// nodes. 0 indicates no minimum size.
   size_t minFusionGroupSize = 0;
 
+  /// The maximum total number of nodes which are allowed to merge when
+  /// fusing groups. The resulting group may be larger than this limit
+  /// however as additional nodes may be inserted during the merge.
+  size_t maxFusionMergeSize = 0;
+
   /// Index (inclusive) of the first node in the JIT graph to fuse. Ignored if
   /// negative.
   /// NOTE: this should only be used for debugging.
