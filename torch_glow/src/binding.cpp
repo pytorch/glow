@@ -195,6 +195,10 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("setMinFusionGroupSize",
         [](size_t k) { getPyTorchLoaderSettings().minFusionGroupSize = k; });
 
+  /// Set the maximum fusion merge size
+  m.def("setMaxFusionMergeSize",
+        [](size_t k) { getPyTorchLoaderSettings().maxFusionMergeSize = k; });
+
   /// Call the Glow fuser and accept all node kinds but don't actually run the
   /// PyTorchModelLoader.
   /// NOTE: This is only exposed for testing.
