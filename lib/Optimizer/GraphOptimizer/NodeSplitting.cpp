@@ -696,7 +696,7 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
     const SplitNodeModifier &splitNodeModifier = SplitNodeModifierNop) {
 
   // If the split output operand has no dimensions then return.
-  if (!node->getType(splitOutputIdx)->dims().size()) {
+  if (node->getType(splitOutputIdx)->dims().empty()) {
     return std::vector<Node *>();
   }
 

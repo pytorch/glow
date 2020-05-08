@@ -37,11 +37,12 @@ namespace glow {
 class SplitNodeOption {
 
   /// All the dimensions of a tensor used for splitting in increasing order.
-  std::vector<size_t> splitDims_;
+  llvm::SmallVector<size_t, max_tensor_dimensions> splitDims_;
 
 public:
   /// Ctor.
-  SplitNodeOption(llvm::ArrayRef<size_t> splitDims) : splitDims_(splitDims) {}
+  SplitNodeOption(llvm::ArrayRef<size_t> splitDims)
+      : splitDims_(splitDims.begin(), splitDims.end()) {}
 
   /// \returns the split dims.
   llvm::ArrayRef<size_t> getSplitDims() const { return splitDims_; }
@@ -66,7 +67,7 @@ public:
 class SplitNodeByNumChunks : public SplitNodeOption {
 
   /// Number of chunks for each split dimension.
-  std::vector<dim_t> numChunks_;
+  llvm::SmallVector<dim_t, max_tensor_dimensions> numChunks_;
 
   /// Whether to start splitting with bigger chunks first.
   bool bigChunksFirst_{true};
@@ -76,7 +77,8 @@ public:
   SplitNodeByNumChunks(llvm::ArrayRef<size_t> splitDims,
                        llvm::ArrayRef<dim_t> numChunks,
                        bool bigChunksFirst = true)
-      : SplitNodeOption(splitDims), numChunks_(numChunks),
+      : SplitNodeOption(splitDims),
+        numChunks_(numChunks.begin(), numChunks.end()),
         bigChunksFirst_(bigChunksFirst) {
     CHECK_EQ(splitDims.size(), numChunks.size())
         << "Mismatch between 'splitDims' and 'numChunks' array sizes!";
@@ -98,7 +100,7 @@ public:
 class SplitNodeByChunkSize : public SplitNodeOption {
 
   /// Chunk size for each split dimension.
-  std::vector<dim_t> chunkSizes_;
+  llvm::SmallVector<dim_t, max_tensor_dimensions> chunkSizes_;
 
   /// Whether to start splitting with bigger chunks first.
   bool bigChunksFirst_{true};
@@ -108,7 +110,8 @@ public:
   SplitNodeByChunkSize(llvm::ArrayRef<size_t> splitDims,
                        llvm::ArrayRef<dim_t> chunkSizes,
                        bool bigChunksFirst = true)
-      : SplitNodeOption(splitDims), chunkSizes_(chunkSizes),
+      : SplitNodeOption(splitDims),
+        chunkSizes_(chunkSizes.begin(), chunkSizes.end()),
         bigChunksFirst_(bigChunksFirst) {
     CHECK_EQ(splitDims.size(), chunkSizes.size())
         << "Mismatch between 'splitDims' and 'chunkSizes' array sizes!";
@@ -127,13 +130,14 @@ public:
 class SplitNodeByChunkSizes : public SplitNodeOption {
 
   /// Array of chunk sizes for each split dimension.
-  std::vector<std::vector<dim_t>> chunkSizes_;
+  llvm::SmallVector<std::vector<dim_t>, max_tensor_dimensions> chunkSizes_;
 
 public:
   /// Ctor.
   SplitNodeByChunkSizes(llvm::ArrayRef<size_t> splitDims,
                         llvm::ArrayRef<std::vector<dim_t>> chunkSizes)
-      : SplitNodeOption(splitDims), chunkSizes_(chunkSizes) {
+      : SplitNodeOption(splitDims),
+        chunkSizes_(chunkSizes.begin(), chunkSizes.end()) {
     CHECK_EQ(splitDims.size(), chunkSizes.size())
         << "Mismatch between 'splitDims' and 'chunkSizes' array sizes!";
   }
@@ -155,13 +159,14 @@ public:
 class SplitNodeByChunkWeights : public SplitNodeOption {
 
   /// Array of chunk weights for each split dimension.
-  std::vector<std::vector<float>> chunkWeights_;
+  llvm::SmallVector<std::vector<float>, max_tensor_dimensions> chunkWeights_;
 
 public:
   /// Ctor.
   SplitNodeByChunkWeights(llvm::ArrayRef<size_t> splitDims,
                           llvm::ArrayRef<std::vector<float>> chunkWeights)
-      : SplitNodeOption(splitDims), chunkWeights_(chunkWeights) {
+      : SplitNodeOption(splitDims),
+        chunkWeights_(chunkWeights.begin(), chunkWeights.end()) {
     CHECK_EQ(splitDims.size(), chunkWeights.size())
         << "Mismatch between 'splitDims' and 'chunkWeights' array sizes!";
   }
