@@ -235,15 +235,15 @@ static void splitConv2DNonZeroPad(Function *F, Function *&optF,
                                   llvm::ArrayRef<size_t> splitDims,
                                   llvm::ArrayRef<dim_t> numChunks) {
   Node *node = createConv2D(F, bindings,
-                            /* inputDims */ {1, 4, 4, 1},
-                            /* filterDims */ {2, 2, 2, 1},
-                            /* biasDims */ {2},
-                            /* outputDims */ {1, 4, 8, 2},
-                            /* kernels */ {2, 2},
+                            /* inputDims */ {1, 8, 9, 1},
+                            /* filterDims */ {1, 2, 3, 1},
+                            /* biasDims */ {1},
+                            /* outputDims */ {1, 11, 10, 1},
+                            /* kernels */ {2, 3},
                             /* strides */ {1, 1},
-                            /* pads */ {0, 2, 1, 3},
+                            /* pads */ {2, 1, 3, 4},
                             /* group */ 1,
-                            /* dilation */ 1);
+                            /* dilation */ 2);
 
   // Save current function state as reference.
   optF = F->clone(F->getName().str() + "_optimized");
@@ -276,15 +276,83 @@ static void splitConv2DNonZeroPad(Function *F, Function *&optF,
     checkNumericalEquivalence(0);                                              \
   }
 TEST_CONV2D_NONZEROPAD_SPLIT(H, 2)
+TEST_CONV2D_NONZEROPAD_SPLIT(H, 3)
 TEST_CONV2D_NONZEROPAD_SPLIT(W, 2)
+TEST_CONV2D_NONZEROPAD_SPLIT(W, 3)
 #undef TEST_CONV2D_NONZEROPAD_SPLIT
 
 /// Test splitting a Conv2D with padding along dimensions H, W.
-TEST_F(NodeSplitting, Conv2D_NonZeroPad_DimHW_Chunks4) {
+TEST_F(NodeSplitting, Conv2D_NonZeroPad_DimHW_Chunks9) {
   splitConv2DNonZeroPad(F_, optimizedF_, bindings_, cctx_,
-                        {ShapeNHWC::dimH, ShapeNHWC::dimW}, {2, 2});
+                        {ShapeNHWC::dimH, ShapeNHWC::dimW}, {3, 3});
   checkNumericalEquivalence(0);
 }
+
+/// Utility function to test splitting a group Conv2D node along dimension C in
+/// \p numChunks having the given number of \p inputChannels, \p outputChannels
+/// and the given \p group. The split is done implicitly relative to the Conv2D
+/// output operand.
+static void splitConv2DGrouped(Function *F, Function *&optF,
+                               PlaceholderBindings &bindings,
+                               CompilationContext &cctx, dim_t inputChannels,
+                               dim_t outputChannels, dim_t group,
+                               dim_t numChunks) {
+  dim_t filterChannels = inputChannels / group;
+  dim_t filterNum = outputChannels;
+  Node *node = createConv2D(F, bindings,
+                            /* inputDims */ {1, 2, 2, inputChannels},
+                            /* filterDims */ {filterNum, 2, 2, filterChannels},
+                            /* biasDims */ {outputChannels},
+                            /* outputDims */ {1, 1, 1, outputChannels},
+                            /* kernels */ {2, 2},
+                            /* strides */ {1, 1},
+                            /* pads */ {0, 0, 0, 0},
+                            /* group */ group,
+                            /* dilation */ 1);
+
+  // Save current function state as reference.
+  optF = F->clone(F->getName().str() + "_optimized");
+
+  // Split node.
+  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::dimC}, {numChunks});
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
+  runDCEPass(F, cctx);
+
+  // Check node count.
+  EXPECT_EQ(splitNodes.size(), numChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 3 * numChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::ConvolutionNodeKind), numChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), numChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
+}
+
+/// Test splitting a grouped Conv2D along dimension C.
+#define TEST_CONV2D_GROUP_SPLIT(IC, OC, G, chunks)                             \
+  TEST_F(NodeSplitting,                                                        \
+         Conv2D_Group_DimC_InpC##IC##_OutC##OC##_Group##G##_Chunks##chunks) {  \
+    splitConv2DGrouped(F_, optimizedF_, bindings_, cctx_, IC, OC, G, chunks);  \
+    checkNumericalEquivalence(0);                                              \
+  }
+TEST_CONV2D_GROUP_SPLIT(8, 8, 2, 2)
+TEST_CONV2D_GROUP_SPLIT(8, 8, 2, 4)
+TEST_CONV2D_GROUP_SPLIT(8, 8, 2, 8)
+TEST_CONV2D_GROUP_SPLIT(8, 8, 4, 2)
+TEST_CONV2D_GROUP_SPLIT(8, 8, 4, 4)
+TEST_CONV2D_GROUP_SPLIT(8, 8, 4, 8)
+TEST_CONV2D_GROUP_SPLIT(8, 8, 8, 2)
+TEST_CONV2D_GROUP_SPLIT(8, 8, 8, 4)
+TEST_CONV2D_GROUP_SPLIT(8, 8, 8, 8)
+TEST_CONV2D_GROUP_SPLIT(8, 16, 2, 2)
+TEST_CONV2D_GROUP_SPLIT(8, 16, 2, 4)
+TEST_CONV2D_GROUP_SPLIT(8, 16, 2, 8)
+TEST_CONV2D_GROUP_SPLIT(8, 16, 4, 2)
+TEST_CONV2D_GROUP_SPLIT(8, 16, 4, 4)
+TEST_CONV2D_GROUP_SPLIT(8, 16, 4, 8)
+TEST_CONV2D_GROUP_SPLIT(8, 16, 8, 2)
+TEST_CONV2D_GROUP_SPLIT(8, 16, 8, 4)
+TEST_CONV2D_GROUP_SPLIT(8, 16, 8, 8)
+#undef TEST_CONV2D_GROUP_SPLIT
 
 /// Test splitting an "ill-defined" Conv2D for which not all the input
 /// (including padding) is referenced by the output tensor. This happens

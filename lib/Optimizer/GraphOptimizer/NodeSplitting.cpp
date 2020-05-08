@@ -29,9 +29,9 @@ using llvm::isa;
 ///===---------------------------------------------------------------------===//
 ///                                SliceRange
 ///===---------------------------------------------------------------------===//
-/// Dimension range representing a contiguous [start, stop] index interval
-/// (both ends are included) along some tensor dimension. The indices are
-/// assumed to be 0 based (C indexing).
+/// Dimension range representing a contiguous [start, stop) index interval with
+/// start index included and stop index excluded, along some tensor dimension.
+/// The indices are assumed to be 0 based (C indexing).
 using DimRange = std::pair<dim_t, dim_t>;
 
 /// Dimension paddings representing a virtual padding before/after a given
@@ -54,7 +54,7 @@ public:
   /// Ctor.
   SliceRange(TypeRef type) {
     for (auto size : type->dims()) {
-      ranges_.emplace_back(0, size - 1);
+      ranges_.emplace_back(0, size);
     }
   }
 
@@ -74,7 +74,7 @@ public:
   std::vector<dim_t> getSizes() const {
     std::vector<dim_t> sizes(ranges_.size());
     for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
-      sizes[dim] = ranges_[dim].second - ranges_[dim].first + 1;
+      sizes[dim] = ranges_[dim].second - ranges_[dim].first;
     }
     return sizes;
   }
@@ -111,7 +111,7 @@ public:
   /// \returns the range size along dimension \p dim.
   dim_t getDimSize(size_t dim) const {
     DCHECK_LT(dim, ranges_.size()) << "Invalid dimension!";
-    return ranges_[dim].second - ranges_[dim].first + 1;
+    return ranges_[dim].second - ranges_[dim].first;
   }
 
   /// \returns a slice range by extracting the dimension ranges between
@@ -149,7 +149,7 @@ public:
       return true;
     }
     for (const auto &range : ranges_) {
-      if (!(range.first <= range.second)) {
+      if (!(range.first < range.second)) {
         return true;
       }
     }
@@ -157,12 +157,11 @@ public:
   }
 
   /// \returns whether both ends of the range for a given dimension \p dim are
-  /// aligned to \p align. For example [0, 3] which is same as [0, 4) has both
-  /// ends aligned to 4.
+  /// aligned to \p align. For example the range [4, 8) is aligned to 4.
   bool isDimRangeAligned(size_t dim, dim_t align) const {
     DCHECK_LT(dim, ranges_.size()) << "Invalid dimension!";
     return (ranges_[dim].first % align == 0) &&
-           ((ranges_[dim].second + 1) % align == 0);
+           (ranges_[dim].second % align == 0);
   }
 
   /// \returns whether this slice range is included by \p other.
@@ -186,7 +185,7 @@ public:
     llvm::raw_string_ostream os(storage);
     for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
       os << getDimSize(dim) << "[" << ranges_[dim].first << ":"
-         << ranges_[dim].second << "] ";
+         << ranges_[dim].second << ") ";
     }
     return os.str();
   }
@@ -358,7 +357,7 @@ splitSliceRanges(const std::vector<SliceRange> &ranges, size_t dim,
       dim_t chunkSize = chunkSizes[idx];
       // Update chunk bounds.
       splitRanges[idx][dim].first = chunkStart;
-      splitRanges[idx][dim].second = chunkStart + chunkSize - 1;
+      splitRanges[idx][dim].second = chunkStart + chunkSize;
       chunkStart += chunkSize;
     }
     CHECK_EQ(splitRanges.back()[dim].second, range[dim].second)
@@ -913,8 +912,9 @@ getConvInputCheckedRangeAndPads(const DimRange &outputSliceRange,
                                 const DimRange &inputRange, dim_t kernel,
                                 dim_t stride, DimPads pads, dim_t dilation) {
 
-  CHECK_LE(outputSliceRange.first, outputSliceRange.second)
+  CHECK_LT(outputSliceRange.first, outputSliceRange.second)
       << "Invalid output slice range!";
+  CHECK_LT(inputRange.first, inputRange.second) << "Invalid input range!";
   CHECK_EQ(inputRange.first, 0) << "Input range must start with 0!";
   CHECK_GE(kernel, 1) << "Invalid kernel size!";
   CHECK_GE(stride, 1) << "Invalid stride size!";
@@ -925,9 +925,9 @@ getConvInputCheckedRangeAndPads(const DimRange &outputSliceRange,
   dim_t inputStopPadded = inputRange.second + pads.first;
 
   // Get padded input slice range.
-  dim_t inputSliceStartPadded = outputSliceRange.first * stride + dilation * 0;
+  dim_t inputSliceStartPadded = outputSliceRange.first * stride;
   dim_t inputSliceStopPadded =
-      outputSliceRange.second * stride + dilation * (kernel - 1);
+      (outputSliceRange.second - 1) * stride + dilation * (kernel - 1) + 1;
 
   // Verify input slice range bounds.
   dim_t inputSliceStopPaddedMax = pads.first + inputRange.second + pads.second;
@@ -940,7 +940,7 @@ getConvInputCheckedRangeAndPads(const DimRange &outputSliceRange,
   dim_t intersectStopPadded = std::min(inputStopPadded, inputSliceStopPadded);
 
   // Get checked input range.
-  bool allowed = (intersectStartPadded <= intersectStopPadded);
+  bool allowed = (intersectStartPadded < intersectStopPadded);
   dim_t inputSliceStart = intersectStartPadded - pads.first;
   dim_t inputSliceStop =
       intersectStopPadded >= pads.first ? intersectStopPadded - pads.first : 0;
@@ -976,11 +976,11 @@ getConvInputChannelCheckedRange(const DimRange &outputSliceRange,
   dim_t outputChannelsPerGroup = outputChannels / group;
   dim_t outputSliceChannels = SliceRange({outputSliceRange}).getDimSize(0);
 
-  // Output slice range start/stop group index.
+  // Output slice range start/stop group index (inclusive).
   dim_t outputSliceRangeStartGroupIdx =
       outputSliceRange.first / outputChannelsPerGroup;
   dim_t outputSliceRangeStopGroupIdx =
-      outputSliceRange.second / outputChannelsPerGroup;
+      (outputSliceRange.second - 1) / outputChannelsPerGroup;
 
   bool allowed = false;
   if (outputSliceChannels <= outputChannelsPerGroup) {
@@ -998,7 +998,7 @@ getConvInputChannelCheckedRange(const DimRange &outputSliceRange,
   DimRange inputSliceRange;
   inputSliceRange.first = outputSliceRangeStartGroupIdx * inputChannelsPerGroup;
   inputSliceRange.second =
-      (outputSliceRangeStopGroupIdx + 1) * inputChannelsPerGroup - 1;
+      (outputSliceRangeStopGroupIdx + 1) * inputChannelsPerGroup;
   return {allowed, inputSliceRange};
 }
 
