@@ -247,6 +247,12 @@ public:
     ctx->logTraceEvent(name, level, TraceEvent::BeginType);                    \
   }
 
+/// Logs a new "Begin" event, beginning an event with duration.
+#define TRACE_EVENT_BEGIN_ATTR(ctx, level, name, attributes)                   \
+  if (ctx) {                                                                   \
+    ctx->logTraceEvent(name, level, TraceEvent::BeginType, attributes);        \
+  }
+
 /// Logs a new "End" event, ending an event with duration.
 #define TRACE_EVENT_END(ctx, level, name)                                      \
   if (ctx) {                                                                   \

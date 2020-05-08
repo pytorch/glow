@@ -354,4 +354,17 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
   }
 }
 
+static bool &_signalHandlerOverridesEnabled() {
+  static bool enabled = false;
+  return enabled;
+}
+
+void enableSignalHandlerOverrides(bool enable) {
+  _signalHandlerOverridesEnabled() = enable;
+}
+
+bool signalHandlerOverridesEnabled() {
+  return _signalHandlerOverridesEnabled();
+}
+
 } // namespace glow

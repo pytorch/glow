@@ -207,6 +207,11 @@ llvm::cl::opt<bool> glowDumpTrace("glow_dump_debug_traces",
                                   llvm::cl::Optional, llvm::cl::init(false),
                                   llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<bool> glowEnableDeviceTrace(
+    "glow_enable_device_traces",
+    llvm::cl::desc("Enable trace events from inference backend device."),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
 llvm::cl::opt<bool> skipCorrectnessCheck(
     "skip_correctness_check", llvm::cl::desc("Skip correctness check"),
     llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
@@ -588,6 +593,20 @@ int run() {
 
   std::list<InferenceResult> results;
 
+  // Whether to collect results and check accuracy
+  bool runAccuracyChecks =
+      !skipCorrectnessCheck || topKCompare > 0 || cosineSimilarityStats;
+
+  if (glowDumpTrace && glowEnableDeviceTrace) {
+    // Start device traces.
+    hostManager->setTraceContext(
+        glow::make_unique<TraceContext>(TraceLevel::STANDARD));
+    Error startErr = hostManager->startDeviceTrace();
+    if (ERR_TO_BOOL(std::move(startErr))) {
+      LOG(WARNING) << "Failed to start device traces";
+    }
+  }
+
   auto startTime = std::chrono::steady_clock::now();
   for (int ioIndex = 0, numInferencesIssued = 0;
        numInferencesIssued < numTotalInferences;
@@ -599,7 +618,7 @@ int run() {
     threadPool.add([&parsedInputs, &nonStaticPlaceholderList, ioIndex,
                     &mergedTraceContext, &hostManager, &result, &cv, &mutex,
                     numTotalInferences, &numFinishedInferences,
-                    usingGlowCustomOps]() {
+                    usingGlowCustomOps, runAccuracyChecks]() {
       // Setup the inputs.
       auto ctx = glow::make_unique<ExecutionContext>();
 
@@ -652,7 +671,7 @@ int run() {
         mergedTraceContext.merge(traceContext);
       }
 
-      if (skipCorrectnessCheck) {
+      if (!runAccuracyChecks) {
         // if skipping correctness check, throw away the context to keep
         // memory usage low.
         result.ctx.reset();
@@ -691,7 +710,7 @@ int run() {
         CHECK(of) << "Cannot create output dump file: " << ss.str();
       }
 
-      if (!skipCorrectnessCheck || topKCompare > 0 || cosineSimilarityStats) {
+      if (runAccuracyChecks) {
         CHECK(result.ctx);
         const auto &bindings = *result.ctx->getPlaceholderBindings();
         for (const auto &tp : outputGroup.initializer()) {
@@ -768,6 +787,15 @@ int run() {
   }
 
   if (glowDumpTrace) {
+    if (glowEnableDeviceTrace) {
+      // Stop device traces and collect events.
+      Error stopErr = hostManager->stopDeviceTrace();
+      if (ERR_TO_BOOL(std::move(stopErr))) {
+        LOG(WARNING) << "Failed to stop device traces.";
+      } else {
+        mergedTraceContext.merge(hostManager->getTraceContext());
+      }
+    }
     llvm::SmallString<64> path;
     if (glowDumpTraceFile.empty()) {
       auto tempFileRes =

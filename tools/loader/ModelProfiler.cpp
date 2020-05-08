@@ -33,8 +33,8 @@ llvm::cl::list<std::string> inputDatasetOpts(
         "<name>   the name of the model input placeholder (tensor) where the \n"
         "         dataset files will be loaded during run-time.              \n"
         "<format> the format of all the files from the given dataset:        \n"
-        "         - 'bin': raw binary format. Each binary file corresponds to\n"
-        "           a tensor and contains the data serialized as a binary    \n"
+        "         - 'rawbin': raw binary format. Each binary file corresponds\n"
+        "           to a tensor and contains the data serialized as a binary \n"
         "           blob without extra meta information (tensor data type or \n"
         "           shape) because the tensor is statically configured before\n"
         "           loading the data. The data is expected to be serialized  \n"
@@ -42,8 +42,8 @@ llvm::cl::list<std::string> inputDatasetOpts(
         "           it will be loaded. For example, for a float32 tensor with\n"
         "           shape [2,3], the binary file is expected to have the size\n"
         "           2 x 3 x 4 (float32) = 24 bytes.                          \n"
-        "         - 'txt': raw text format. Each text file corresponds to a  \n"
-        "           tensor and contains the data serialized as a linear list \n"
+        "         - 'rawtxt': raw text format. Each text file corresponds to \n"
+        "           a tensor and contains data serialized as a linear list   \n"
         "           of comma separated values in text format without extra   \n"
         "           meta information (tensor data type or shape) because the \n"
         "           tensor is statically configured before loading the data. \n"
@@ -80,15 +80,15 @@ llvm::cl::list<std::string> inputDatasetOpts(
         "<opts>   extra options dependent on the <source> field.             \n"
         "This option will be used for each of the model inputs.              \n"
         "\nExample 1:                                                        \n"
-        "    -input-dataset=input1,bin,file,dataset.csv                      \n"
+        "    -input-dataset=input1,rawbin,file,dataset.csv                   \n"
         "    The dataset paths for the 'input1' model input are read from the\n"
         "    'dataset.csv' file which could have the following content:      \n"
         "        /data_folder/data0.dat,                                     \n"
         "        /data_folder/data1.dat,                                     \n"
         "        .......................                                     \n"
-        "    All the files listed are assumed to be in binary format ('bin').\n"
+        "    All the files listed are assumed to be in raw binary format.    \n"
         "\nExample 2:                                                        \n"
-        "    -input-dataset=input2,bin,file,dataset.csv,/data_folder         \n"
+        "    -input-dataset=input2,rawbin,file,dataset.csv,/data_folder      \n"
         "    The dataset files for the 'input2' model input are read from the\n"
         "    'dataset.csv' file which could have the following content:      \n"
         "        data0.dat,                                                  \n"
@@ -96,12 +96,12 @@ llvm::cl::list<std::string> inputDatasetOpts(
         "        ..........                                                  \n"
         "    All the file paths listed will be concatenated (prepended) with \n"
         "    the '/data_folder' base directory path when loading. All the    \n"
-        "    files listed are assumed to be in binary format ('bin').        \n"
+        "    files listed are assumed to be in raw binary format.            \n"
         "\nExample 3:                                                        \n"
-        "    -input-dataset=input3,txt,dir,/data_folder                      \n"
+        "    -input-dataset=input3,rawtxt,dir,/data_folder                   \n"
         "    The dataset files for the 'input3' model input are all the files\n"
         "    from the '/data_folder' directory listed alphabetically. The    \n"
-        "    files are assumed to be in text format ('txt').\n"),
+        "    files are assumed to be in raw text format.\n"),
     llvm::cl::value_desc("name,format,source,opts"),
     llvm::cl::cat(modelProfilerCat));
 } // namespace
@@ -252,10 +252,14 @@ int main(int argc, char **argv) {
       Tensor *inputTensor = bindings.get(inputPlaceholders[inputIdx]);
       std::string filePath = inputDatasets[inputIdx][entryIdx];
       std::string fileFormat = inputFormats[inputIdx];
-      if (fileFormat == "bin") {
-        glow::loadFromRawBinaryFile(*inputTensor, filePath.c_str());
-      } else if (fileFormat == "txt") {
-        glow::loadFromRawTextFile(*inputTensor, filePath.c_str());
+      if (fileFormat == "rawbin") {
+        TensorSerializationOptions opts;
+        opts.withType = false;
+        glow::loadTensorFromBinaryFile(*inputTensor, filePath.c_str(), opts);
+      } else if (fileFormat == "rawtxt") {
+        TensorSerializationOptions opts;
+        opts.withType = false;
+        glow::loadTensorFromTextFile(*inputTensor, filePath.c_str(), opts);
       } else {
         exitWithErr(strFormat("Input dataset format '%s' invalid!",
                               fileFormat.c_str()));

@@ -18,6 +18,7 @@
 #include "Importer.h"
 #include "NNPI.h"
 #include "NNPIDeviceManager.h"
+#include "glow/Runtime/RequestData.h"
 #include "llvm/Support/raw_ostream.h"
 #include <fstream>
 #include <iomanip>
@@ -308,8 +309,21 @@ bool InferenceContext::init(
 void InferenceContext::execute(RunIdentifierTy runId,
                                std::unique_ptr<ExecutionContext> ctx,
                                runtime::ResultCBTy resultCB) {
-  TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::REQUEST,
-                    traceBackendExecuteContextName_);
+
+  std::map<std::string, std::string> attributes;
+
+  auto *data = ::glow::runtime::RequestData::get();
+  if (data) {
+    attributes["app level request id"] =
+        llvm::formatv("{0}", data->appLevelRequestId);
+  }
+
+  TRACE_EVENT_SCOPE_NAMED(ctx->getTraceContext(), TraceLevel::REQUEST,
+                          traceBackendExecuteContextName_, traceBlock);
+  for (const auto &iter : attributes) {
+    traceBlock.addArg(iter.first, iter.second);
+  }
+
   if (ctx->getTraceContext()) {
     ctx->getTraceContext()->setThreadName(
         llvm::formatv("Inf ctx - device: {0}: {1}", deviceId_, functionName_)
@@ -359,8 +373,9 @@ void InferenceContext::execute(RunIdentifierTy runId,
       partialTensorInputs.insert(pht.second);
     }
   }
-  TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::COPY,
-                    tracePreProcessContextName_);
+
+  TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::COPY,
+                         tracePreProcessContextName_, attributes);
 
   // Pre-inference
   std::vector<void *> rawInputs, rawOutputs;
@@ -385,8 +400,8 @@ void InferenceContext::execute(RunIdentifierTy runId,
       // No command lists (schedule individual commands).
       TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
                       tracePreProcessContextName_);
-      TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::OPERATOR,
-                        traceInferenceContextName_);
+      TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::OPERATOR,
+                             traceInferenceContextName_, attributes);
       // Queue inference.
       LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
           nnpiInferCommandQueue(inferCmd_, 0), "Failed to queue infer command.",
@@ -417,8 +432,8 @@ void InferenceContext::execute(RunIdentifierTy runId,
 
       TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
                       tracePreProcessContextName_);
-      TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::OPERATOR,
-                        traceInferenceContextName_);
+      TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::OPERATOR,
+                             traceInferenceContextName_, attributes);
       // Queue Command list
       LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
           nnpiCommandListQueue(commandList_, &(cmdConfigs_.at(0)), usedConfigs),
@@ -474,8 +489,8 @@ void InferenceContext::execute(RunIdentifierTy runId,
 
     TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
                     TRACING_PRE_PROCESS);
-    TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::OPERATOR,
-                      TRACING_INFERENCE);
+    TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::OPERATOR,
+                           TRACING_INFERENCE, attributes);
     LOG_AND_CALLBACK_EXECUTE_NNPI_IF_ERROR(
         nnpiNetworkInferOnHost(nnpiNetwork_, &(rawInputs[0]), rawInputs.size(),
                                &(rawOutputs[0]), rawOutputs.size(),
@@ -488,8 +503,8 @@ void InferenceContext::execute(RunIdentifierTy runId,
 
   TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::OPERATOR,
                   traceInferenceContextName_);
-  TRACE_EVENT_BEGIN(ctx->getTraceContext(), TraceLevel::COPY,
-                    tracePostProcessContextName_);
+  TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::COPY,
+                         tracePostProcessContextName_, attributes);
 
   // Post inference output handling.
   for (unsigned i = 0, e = outputResources_.size(); i < e; ++i) {
@@ -506,7 +521,7 @@ void InferenceContext::execute(RunIdentifierTy runId,
   if (deviceTracing_) {
     deviceTracing_->stopAndUpdate(ctx->getTraceContext(), device_);
   }
-  TRACE_EVENT_SCOPE_END(); // we move context in the line below
+  TRACE_EVENT_SCOPE_END_NAMED(traceBlock); // we move context in the line below
 
   // Invoke CB.
   resultCB(runId, Error::success(), std::move(ctx));

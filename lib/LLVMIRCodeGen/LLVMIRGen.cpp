@@ -2794,12 +2794,48 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     srcPtr = builder.CreateBitCast(srcPtr, builder.getInt8PtrTy());
     auto *srcDims = emitValueDims(builder, src);
     auto *srcDimsSize = emitConstDimT(builder, src->getType()->dims().size());
+    auto *srcSize = emitConstSizeT(builder, src->getType()->size());
+    auto *srcSizeBytes =
+        emitConstSizeT(builder, src->getType()->getSizeInBytes());
     auto *srcElemKind =
         emitConstDimT(builder, static_cast<size_t>(src->getElementType()));
     auto *name = emitStringConst(builder, I->getName());
+    auto *filename = emitStringConst(builder, DPI->getFileName());
+    auto srcTypeStr = src->getType()->toString();
 
-    auto *F = getFunction("dump_tensor");
-    createCall(builder, F, {srcPtr, srcDims, srcDimsSize, srcElemKind, name});
+    std::string format = DPI->getFormat();
+    if (format == "console") {
+      // Dump tensor in console.
+      auto *F = getFunction("dump_tensor_console");
+      createCall(builder, F, {srcPtr, srcDims, srcDimsSize, srcElemKind, name});
+
+    } else if (format == "bin") {
+      // Dump tensor in file in binary format.
+      auto *F = getFunction("dump_tensor_bin");
+      auto *header = emitStringConst(builder, srcTypeStr);
+      createCall(builder, F, {srcPtr, srcSizeBytes, filename, header});
+
+    } else if (format == "txt") {
+      // Dump tensor in file in text format.
+      auto *F = getFunction("dump_tensor_txt", src->getElementType());
+      auto *header = emitStringConst(builder, srcTypeStr);
+      createCall(builder, F, {srcPtr, srcSize, filename, header});
+
+    } else if (format == "rawbin") {
+      // Dump tensor in file in raw binary format.
+      auto *F = getFunction("dump_tensor_bin");
+      auto *header = emitStringConst(builder, "");
+      createCall(builder, F, {srcPtr, srcSizeBytes, filename, header});
+
+    } else if (format == "rawtxt") {
+      // Dump tensor in file in raw text format.
+      auto *F = getFunction("dump_tensor_txt", src->getElementType());
+      auto *header = emitStringConst(builder, "");
+      createCall(builder, F, {srcPtr, srcSize, filename, header});
+
+    } else {
+      LOG(FATAL) << "Invalid 'Format' attribute for DebugPrint instruction!";
+    }
     break;
   }
 

@@ -4673,3 +4673,96 @@ TEST_F(GraphOptz, ClipReluTest) {
                                                               mod_.getPRNG());
   checkNumericalEquivalence();
 }
+
+/// Test that if we have a concat with some dequantize inputs that are
+/// concatenated together, and then a quantize after the concat, that we can
+/// move the quantize above the concat and eliminate the dequantizes.
+TEST_F(GraphOptz, SinkConcatBelowQuantize) {
+  const float scale = 0.06;
+  const int32_t offset = -15;
+  std::array<NodeValue, 3> inputs;
+
+  // Concat input 0: Dequant(PH)
+  const TypeRef in0QTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {1, 3}, scale, offset);
+  Placeholder *input0 = mod_.createPlaceholder(in0QTy, "input", false);
+  inputs[0] =
+      F_->createDequantize("deq", input0, ElemKind::Float16Ty)->getResult();
+
+  // Concat input 1: Dequant(Add(PH, PH))
+  const TypeRef in1QTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {5, 3}, scale, offset + 1);
+  Placeholder *input1 = mod_.createPlaceholder(in1QTy, "input", false);
+  AddNode *add = F_->createAdd("add", input1, input1);
+  inputs[1] =
+      F_->createDequantize("deq", add, ElemKind::Float16Ty)->getResult();
+
+  // Concat input 2: PH
+  Placeholder *input2 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {10, 3}, "input_fp", false);
+  inputs[2] = input2->getOutput();
+
+  // Concat all 3 together, all FP16.
+  ConcatNode *concat = F_->createConcat("concat", inputs, 0);
+
+  // Now quantize the result of the concat.
+  const TypeRef QTy = mod_.uniqueType(
+      ElemKind::Int8QTy, concat->getResult().dims(), scale, offset);
+  QuantizeNode *QN = F_->createQuantize("quantize", concat, QTy);
+  SaveNode *SN = F_->createSave("ret", QN);
+
+  optimizedF_ = optimizeFunction(F_, {FunctionPassID::SinkConcatBelowQuantize,
+                                      {FunctionPassID::OptimizeQuantization,
+                                       ConvergenceMode::UntilFixedPoint},
+                                      getDCEPassConfig()});
+
+  EXPECT_EQ(optimizedF_->getNodes().size(), 4);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::AddNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::QuantizeNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind), 1);
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+
+  // Concat should be directly connected to save, with same quantization
+  // parameters as the quantize which used to follow it.
+  ConcatNode *optCN = llvm::dyn_cast<ConcatNode>(optSN->getInput());
+  ASSERT_TRUE(optCN);
+  ASSERT_EQ(ElemKind::Int8QTy, optCN->getResult().getType()->getElementType());
+  EXPECT_EQ(scale, optCN->getResult().getType()->getScale());
+  EXPECT_EQ(offset, optCN->getResult().getType()->getOffset());
+
+  ASSERT_EQ(optCN->getInputs().size(), 3);
+
+  // No rescale here for the PH since its scale/offset match the PH and so
+  // are optimized away.
+  EXPECT_EQ(optCN->getInputs()[0], input0->getOutput());
+
+  // No rescale here because it should be fused into optAN. Check the
+  // scale/offset use that scale/offset.
+  AddNode *optAN = llvm::dyn_cast<AddNode>(optCN->getInputs()[1]);
+  ASSERT_TRUE(optAN);
+  ASSERT_EQ(ElemKind::Int8QTy, optAN->getResult().getType()->getElementType());
+  EXPECT_EQ(scale, optAN->getResult().getType()->getScale());
+  EXPECT_EQ(offset, optAN->getResult().getType()->getOffset());
+  EXPECT_EQ(optAN->getLHS(), input1->getOutput());
+  EXPECT_EQ(optAN->getRHS(), input1->getOutput());
+
+  // Must quantize this input since the PH is float16.
+  QuantizeNode *optQN = llvm::dyn_cast<QuantizeNode>(optCN->getInputs()[2]);
+  ASSERT_TRUE(optQN);
+  ASSERT_EQ(ElemKind::Int8QTy, optQN->getResult().getType()->getElementType());
+  EXPECT_EQ(scale, optQN->getResult().getType()->getScale());
+  EXPECT_EQ(offset, optQN->getResult().getType()->getOffset());
+  EXPECT_EQ(optQN->getInput(), input2->getOutput());
+
+  bindings_.allocate(input0)->getHandle<int8_t>().randomize(-50, 50,
+                                                            mod_.getPRNG());
+  bindings_.allocate(input1)->getHandle<int8_t>().randomize(-50, 50,
+                                                            mod_.getPRNG());
+  bindings_.allocate(input2)->getHandle<float16_t>().randomize(-10, 10,
+                                                               mod_.getPRNG());
+  checkNumericalEquivalence();
+}

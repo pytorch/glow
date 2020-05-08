@@ -72,4 +72,64 @@ std::string Type::toString() const {
   return os.str();
 }
 
+Type Type::fromString(llvm::StringRef str) {
+
+  // Get element type.
+  std::pair<llvm::StringRef, llvm::StringRef> strPair;
+  auto strPair1 = str.split('<');
+  auto strPair2 = str.split('[');
+  if (strPair1.first.size() < strPair2.first.size()) {
+    strPair = strPair1;
+  } else {
+    strPair = strPair2;
+  }
+  CHECK(strPair.first.size()) << "Type string element type field invalid!";
+  ElemKind elemTy = Type::getElementKindFromName(strPair.first);
+
+  // Get scale and offset for quantized type.
+  double scale = 0;
+  int32_t offset = 0;
+  if (isQuantizedElemKind(elemTy)) {
+    // Get scale.
+    strPair = strPair.second.split(':').second.split(' ');
+    CHECK(!strPair.first.getAsDouble(scale))
+        << "Type string scale field invalid!";
+    // Get offset.
+    strPair = strPair.second.split(':').second.split(']');
+    CHECK(!strPair.first.getAsInteger(0, offset))
+        << "Type string offset field invalid!";
+    // Ignore quantized min/max range.
+    strPair = strPair.second.split('<');
+  }
+
+  // Get shape.
+  llvm::StringRef shapeStr = strPair.second;
+  CHECK(shapeStr.size()) << "Type string shape field invalid!";
+  CHECK_EQ(shapeStr.back(), '>') << "Type string shape field invalid!";
+  shapeStr = shapeStr.drop_back();
+  CHECK(shapeStr.size()) << "Type string shape field invalid!";
+
+  // Add the delimiter in the end to have the loop self contained.
+  // Note: Type alignment field not supported.
+  std::string shapeStrExt = shapeStr.str() + " x";
+  shapeStr = llvm::StringRef(shapeStrExt);
+  ShapeVector dims;
+  while (shapeStr.contains('x')) {
+    auto splitRes = shapeStr.split('x');
+    auto dimStr = splitRes.first.trim();
+    CHECK(!dimStr.contains(':')) << "Type with alignment field not supported!";
+    dim_t dim;
+    CHECK(!dimStr.getAsInteger(0, dim)) << "Type string shape field invalid!";
+    dims.push_back(dim);
+    shapeStr = splitRes.second;
+  }
+
+  // Return type.
+  if (isQuantizedElemKind(elemTy)) {
+    return Type(elemTy, dims, (float)scale, offset);
+  } else {
+    return Type(elemTy, dims);
+  }
+}
+
 } // namespace glow

@@ -24,6 +24,7 @@
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Importer/ONNXModelLoader.h"
+#include "glow/Optimizer/IROptimizer/CommandLine.h"
 
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/CommandLine.h"
@@ -221,6 +222,12 @@ int Executor::executeNetwork(int argc, char **argv) {
   CHECK(!(streamInputFilenamesMode && singleBatchRepeatedMode))
       << "singleBatchRepeatedMode is not compatible with "
          "streamInputFilenamesMode";
+
+  // When the mini-batch mode is enabled do not allow debug instrumentation.
+  if (miniBatchMode) {
+    CHECK(!instrumentDebug)
+        << "The minibatch option is not compatible with debug instrumentation.";
+  }
 
   // Print out the inferred image classification.
   llvm::outs() << "Model: " << Loader::getModelOptPath() << "\n";

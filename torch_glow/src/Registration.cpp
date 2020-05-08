@@ -147,8 +147,13 @@ void registerGlowOp(const c10::Symbol &symbol) {
           // handlers, so that it is possible to kill/interrupt the process if
           // needed.
           typedef void (*sighandler_t)(int);
-          sighandler_t oldSigIntHandler = signal(SIGINT, SIG_DFL);
-          sighandler_t oldSigTermHandler = signal(SIGTERM, SIG_DFL);
+          sighandler_t oldSigIntHandler = nullptr;
+          sighandler_t oldSigTermHandler = nullptr;
+
+          if (signalHandlerOverridesEnabled()) {
+            oldSigIntHandler = signal(SIGINT, SIG_DFL);
+            oldSigTermHandler = signal(SIGTERM, SIG_DFL);
+          }
 
           if (graphRunner->getSettings().preCompilePyTorchModule) {
             err = graphRunner->runOnly(stack);
@@ -156,9 +161,15 @@ void registerGlowOp(const c10::Symbol &symbol) {
             err = graphRunner->run(stack);
           }
 
-          // Restore old Python signal handlers.
-          signal(SIGINT, oldSigIntHandler);
-          signal(SIGTERM, oldSigTermHandler);
+          // Restore old signal handlers.
+          if (oldSigIntHandler != nullptr && oldSigIntHandler != SIG_ERR &&
+              oldSigIntHandler != SIG_DFL) {
+            signal(SIGINT, oldSigIntHandler);
+          }
+          if (oldSigTermHandler != nullptr && oldSigTermHandler != SIG_ERR &&
+              oldSigTermHandler != SIG_DFL) {
+            signal(SIGTERM, oldSigTermHandler);
+          }
 
           if (static_cast<bool>(err)) {
             // PyTorch framework expects an exception been thrown here.

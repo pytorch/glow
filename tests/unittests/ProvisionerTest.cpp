@@ -39,7 +39,8 @@ std::unique_ptr<Module> setupModule(unsigned functionCount) {
   return mod;
 }
 
-DAGListTy setupDAG(unsigned rootCount, unsigned childCount) {
+DAGListTy setupDAG(unsigned rootCount, unsigned childCount,
+                   unsigned replicationCount = 1) {
   DAGListTy partitions;
   unsigned currentFunction = 0;
   for (unsigned int root = 0; root < rootCount; root++) {
@@ -51,12 +52,14 @@ DAGListTy setupDAG(unsigned rootCount, unsigned childCount) {
     firstNode->name = "function" + std::to_string(currentFunction);
     firstNode->logicalDevices = {0, 1};
     firstNode->backendName = "CPU";
+    firstNode->replicationCount = replicationCount;
     currentFunction++;
     for (unsigned int child = 0; child < childCount; child++) {
       auto newChild = glow::make_unique<DAGNode>();
       newChild->name = "function" + std::to_string(currentFunction);
       newChild->logicalDevices = {0};
       newChild->backendName = "CPU";
+      newChild->replicationCount = replicationCount;
       currentFunction++;
       firstNode->children.push_back(newChild.get());
       nodes.push_back(std::move(newChild));
@@ -123,4 +126,94 @@ TEST_F(ProvisionerTest, provisionFailCleanup) {
   auto err = provisioner.provision(networks, *mod.get(), cctx);
   // Expect that there was an Error when provisioning
   EXPECT_TRUE(ERR_TO_BOOL(std::move(err)));
+}
+
+/// Check that when we replicate a DAG we propagaate the backend-specific node
+/// info to any clones.
+TEST_F(ProvisionerTest, provisionReplicateWithBackendSpecificNodeInfo) {
+  auto mod = setupModule(2);
+  auto networks = setupDAG(2, 0, /* replicationCount */ 2);
+
+  DeviceManagerMapTy devices;
+  for (int i = 0; i < 2; i++) {
+    std::unique_ptr<DeviceManager> device(
+        new CPUDeviceManager(DeviceConfig("CPU")));
+    devices.emplace(i, std::move(device));
+  }
+
+  ASSERT_EQ(mod->getFunctions().size(), 2);
+  Function *infoF = *mod->getFunctions().begin();
+  Function *noInfoF = *std::next(mod->getFunctions().begin());
+
+  MatMulNode *MM = nullptr;
+  for (Node &N : infoF->getNodes()) {
+    if (MatMulNode *MMN = llvm::dyn_cast<MatMulNode>(&N)) {
+      MM = MMN;
+      break;
+    }
+  }
+  ASSERT_TRUE(MM);
+
+  CompilationContext cctx;
+
+  // Set some backend-specific node info.
+  auto &funToNodeInfo = cctx.backendOpts.backendSpecificNodeInfo;
+  funToNodeInfo[infoF][MM]["CPU_OptionA"] = {"val0", "val1"};
+  funToNodeInfo[infoF][MM]["CPU_OptionB"] = {"val2"};
+
+  Provisioner provisioner(devices);
+  auto err = provisioner.provision(networks, *mod.get(), cctx);
+  // Expect that there was no Error when provisioning
+  EXPECT_FALSE(ERR_TO_BOOL(std::move(err)));
+
+  // Find the clone for each original Function.
+  ASSERT_EQ(mod->getFunctions().size(), 4);
+  Function *cloneInfoF = nullptr, *cloneNoInfoF = nullptr;
+  for (Function *F : mod->getFunctions()) {
+    if (F != infoF && F->getName().startswith(infoF->getName())) {
+      cloneInfoF = F;
+      continue;
+    }
+    if (F != noInfoF && F->getName().startswith(noInfoF->getName())) {
+      cloneNoInfoF = F;
+      continue;
+    }
+  }
+
+  ASSERT_TRUE(cloneInfoF);
+  ASSERT_TRUE(cloneNoInfoF);
+
+  // Check that backendSpecificNodeInfo was propagated correctly to the
+  // replicated infoF and not to noInfoF.
+  EXPECT_EQ(funToNodeInfo.find(noInfoF), funToNodeInfo.end());
+  EXPECT_EQ(funToNodeInfo.find(cloneNoInfoF), funToNodeInfo.end());
+
+  auto nodeInfoIt = funToNodeInfo.find(infoF);
+  auto cloneNodeInfoIt = funToNodeInfo.find(cloneInfoF);
+  ASSERT_NE(nodeInfoIt, funToNodeInfo.end());
+  ASSERT_NE(cloneNodeInfoIt, funToNodeInfo.end());
+
+  auto &nodeInfoFinal = nodeInfoIt->second;
+  auto &cloneNodeInfoFinal = cloneNodeInfoIt->second;
+
+  MatMulNode *cloneMM = nullptr;
+  for (Node &N : cloneInfoF->getNodes()) {
+    if (MatMulNode *cloneMMN = llvm::dyn_cast<MatMulNode>(&N)) {
+      cloneMM = cloneMMN;
+      break;
+    }
+  }
+  ASSERT_TRUE(cloneMM);
+
+  ASSERT_EQ(nodeInfoFinal[MM]["CPU_OptionA"].size(), 2);
+  EXPECT_EQ(nodeInfoFinal[MM]["CPU_OptionA"][0], "val0");
+  EXPECT_EQ(nodeInfoFinal[MM]["CPU_OptionA"][1], "val1");
+  ASSERT_EQ(nodeInfoFinal[MM]["CPU_OptionB"].size(), 1);
+  EXPECT_EQ(nodeInfoFinal[MM]["CPU_OptionB"][0], "val2");
+
+  ASSERT_EQ(cloneNodeInfoFinal[cloneMM]["CPU_OptionA"].size(), 2);
+  EXPECT_EQ(cloneNodeInfoFinal[cloneMM]["CPU_OptionA"][0], "val0");
+  EXPECT_EQ(cloneNodeInfoFinal[cloneMM]["CPU_OptionA"][1], "val1");
+  ASSERT_EQ(cloneNodeInfoFinal[cloneMM]["CPU_OptionB"].size(), 1);
+  EXPECT_EQ(cloneNodeInfoFinal[cloneMM]["CPU_OptionB"][0], "val2");
 }

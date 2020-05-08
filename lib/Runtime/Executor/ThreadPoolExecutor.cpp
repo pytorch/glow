@@ -324,7 +324,8 @@ void ThreadPoolExecutor::createPool(const DAGNode *root, unsigned poolSize,
   std::unique_ptr<NetworkExecutionStatePool> pool =
       glow::make_unique<NetworkExecutionStatePool>();
   for (unsigned i = 0; i < poolSize; i++) {
-    auto newState = glow::make_unique<NetworkExecutionState>(root);
+    auto newState =
+        glow::make_unique<NetworkExecutionState>(root, enableDRT, enableP2P);
     // If assignStatic, calculate the device assignments for this
     // executionState. For now we are assigning a round robin pattern per node.
     if (enableDRT || enableP2P) {

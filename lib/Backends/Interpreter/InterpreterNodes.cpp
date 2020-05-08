@@ -16,6 +16,7 @@
 
 #include "glow/Backends/Interpreter/Interpreter.h"
 
+#include "glow/Base/TensorSerialization.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Base/Profile.h"
@@ -4317,18 +4318,41 @@ void BoundInterpreterFunction::fwdDeallocActivationInst(
 //===----------------------------------------------------------------------===//
 //                       Debug instructions
 //===----------------------------------------------------------------------===//
-
 /// Prints a value of the instruction's operand.
 /// In most cases it will be the name of the variable and the value of the
 /// tensor.
 void BoundInterpreterFunction::fwdDebugPrintInst(const DebugPrintInst *I) {
   auto *V = I->getSrc();
-  llvm::outs() << I->getName() << ": ";
-  // Dump the content of a value.
-  V->dump();
-  llvm::outs() << "\n";
-  dumpImpl(getTensor(V));
-  llvm::outs() << "\n";
+  auto *T = getTensor(V);
+  std::string format = I->getFormat();
+  std::string filename = I->getFileName();
+
+  if (format == "console") {
+    // Dump tensor in console.
+    llvm::outs() << I->getName() << ": ";
+    V->dump();
+    llvm::outs() << "\n";
+    dumpImpl(T);
+    llvm::outs() << "\n";
+  } else if (format == "bin") {
+    TensorSerializationOptions opts;
+    opts.withType = true;
+    glow::dumpTensorToBinaryFile(*T, filename, opts);
+  } else if (format == "txt") {
+    TensorSerializationOptions opts;
+    opts.withType = true;
+    glow::dumpTensorToTextFile(*T, filename, opts);
+  } else if (format == "rawbin") {
+    TensorSerializationOptions opts;
+    opts.withType = false;
+    glow::dumpTensorToBinaryFile(*T, filename, opts);
+  } else if (format == "rawtxt") {
+    TensorSerializationOptions opts;
+    opts.withType = false;
+    glow::dumpTensorToTextFile(*T, filename, opts);
+  } else {
+    llvm_unreachable("DebugPrint format not supported!");
+  }
 }
 
 void BoundInterpreterFunction::fwdTraceEventInst(const TraceEventInst *I) {

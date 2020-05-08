@@ -224,6 +224,37 @@ Provisioner::generateDeviceAssignments(
   return deviceAssignment;
 }
 
+/// Updates \p allNodeInfo for all Nodes in \p newF given Nodes in \p oldF using
+/// mapping \p oldToNewMap. Copies the final new info added from \p allNodeInfo
+/// into \p origAllNodeInfo.
+static Error propagateBackendSpecificNodeInfo(
+    Function *oldF, Function *newF,
+    const llvm::DenseMap<const Node *, Node *> &oldToNewMap,
+    BackendSpecificNodeInfo &allNodeInfo,
+    BackendSpecificNodeInfo &origAllNodeInfo) {
+  // If there's no old node info for oldF then just return early.
+  if (!allNodeInfo.count(oldF)) {
+    return Error::success();
+  }
+
+  const auto &oldFunInfo = allNodeInfo[oldF];
+  auto &newFunInfo = allNodeInfo[newF];
+
+  for (const auto &oldNodeInfo : oldFunInfo) {
+    const Node *oldN = oldNodeInfo.first;
+    const auto oldToNewIt = oldToNewMap.find(oldN);
+    RETURN_ERR_IF_NOT(oldToNewIt != oldToNewMap.end(), "No old node in map");
+    const Node *newN = oldToNewIt->second;
+    newFunInfo[newN] = oldNodeInfo.second;
+  }
+
+  // Copy into the original info for this Function, since allNodeInfo is from a
+  // local copy of backendOpts we made in the caller to provision this Function.
+  origAllNodeInfo[newF] = newFunInfo;
+
+  return Error::success();
+}
+
 Error Provisioner::provision(DAGListTy &networks, Module &module,
                              CompilationContext &cctx) {
 
@@ -375,7 +406,12 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         for (unsigned i = 1; i < node->replicationCount; i++) {
           std::string replicatedName =
               getReplicatedName(function->getName(), i);
-          auto clonedFunction = function->clone(replicatedName);
+          llvm::DenseMap<const Node *, Node *> oldToNewMap;
+          auto *clonedFunction = function->clone(replicatedName, &oldToNewMap);
+          RETURN_IF_ERR(propagateBackendSpecificNodeInfo(
+              function, clonedFunction, oldToNewMap,
+              options.backendSpecificNodeInfo,
+              cctx.backendOpts.backendSpecificNodeInfo));
           auto compiledOrErr2 =
               backends_[deviceBackendName]->compile(clonedFunction, options);
           if (!compiledOrErr2) {

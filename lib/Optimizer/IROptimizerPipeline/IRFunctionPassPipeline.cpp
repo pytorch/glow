@@ -15,6 +15,7 @@
  */
 #include "glow/PassManager/Pipeline.h"
 
+#include "glow/Optimizer/IROptimizer/CommandLine.h"
 #include "glow/Optimizer/IROptimizer/IRFunctionPassManager.h"
 #include "glow/Optimizer/IROptimizer/IROptimizer.h"
 #include "glow/PassManager/PassConfigUtils.h"
@@ -24,20 +25,6 @@
 #include "llvm/Support/YAMLTraits.h"
 
 #include <fstream>
-
-namespace {
-static llvm::cl::opt<bool>
-    instrumentDebug("instrument-debug",
-                    llvm::cl::desc("Instrument the IR for debugging"),
-                    llvm::cl::init(false), llvm::cl::Hidden);
-
-static llvm::cl::opt<bool> optimizeIR("optimize-ir",
-                                      llvm::cl::desc("Enable IR optimizations"),
-                                      llvm::cl::init(true), llvm::cl::Hidden);
-
-static llvm::cl::opt<bool> dumpIR("dump-ir",
-                                  llvm::cl::desc("Prints IR to stdout"));
-} // namespace
 
 namespace glow {
 llvm::StringRef getNameOfPass(IRFunctionPassID passID) {
