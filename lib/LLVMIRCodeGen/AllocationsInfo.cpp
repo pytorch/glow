@@ -139,24 +139,6 @@ void AllocationsInfo::allocateActivations(const IRFunction *F) {
   });
 }
 
-/// Calculate the offset for \p TVI into the underlying alloc activation.
-static size_t calculateTensorViewOffset(const TensorViewInst *TVI) {
-  // Pop tensor views off repeatedly until we reach the origin, in case there
-  // are multiple stacked together, to calculate the total offset.
-  const TensorViewInst *currTVI = TVI;
-  size_t totalOffsetLength = 0;
-  do {
-    // Get the offset into the current base Tensor in bytes. Aggregate all
-    // offsets from stacked TVIs into totalOffsetLength.
-    totalOffsetLength +=
-        getFlattenedOffset(currTVI->getSrc()->getType()->strides(),
-                           currTVI->getOffsets()) *
-        currTVI->getType()->getElementSize();
-  } while ((currTVI = dyn_cast<TensorViewInst>(currTVI->getSrc())));
-
-  return totalOffsetLength;
-}
-
 void AllocationsInfo::allocateTensorViews(const IRFunction *F) {
   for (const auto &I : F->getInstrs()) {
     if (const auto *TVI = dyn_cast<TensorViewInst>(&I)) {

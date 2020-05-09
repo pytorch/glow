@@ -30,11 +30,13 @@ DEFINE_int32(torch_glow_num_devices, 1, "Number of devices for Glow backend");
 DEFINE_int32(torch_glow_min_fusion_group_size, 1,
              "Number of devices for Glow backend");
 DEFINE_bool(dumpGlowDag, false, "See PyTorchLoaderSettings");
+DEFINE_bool(jitVsGlowCompare, false, "Enable per-group error check");
 DEFINE_bool(dumpFinalGlowGraph, false, "See PyTorchLoaderSettings");
 DEFINE_bool(enableGlowTracing, false, "See PyTorchLoaderSettings");
 DEFINE_int32(numTracesPerDump, 1, "See PyTorchLoaderSettings");
 DEFINE_bool(saturateHost, false, "See PyTorchLoaderSettings");
 DEFINE_bool(convertToFP16, false, "See PyTorchLoaderSettings");
+DEFINE_bool(convertFusedToFP16, false, "See PyTorchLoaderSettings");
 DEFINE_string(opBlacklist, "", "See PyTorchLoaderSettings");
 DEFINE_int32(replicationCount, 1, "Number of replications on each device");
 
@@ -204,11 +206,13 @@ static PyTorchLoaderSettings getInitialSettings() {
   PyTorchLoaderSettings settings;
   settings.minFusionGroupSize = FLAGS_torch_glow_min_fusion_group_size;
   settings.dumpGlowDag = FLAGS_dumpGlowDag;
+  settings.jitVsGlowCompare = FLAGS_jitVsGlowCompare;
   settings.dumpFinalGlowGraph = FLAGS_dumpFinalGlowGraph;
   settings.enableGlowTracing = FLAGS_enableGlowTracing;
   settings.numTracesPerDump = FLAGS_numTracesPerDump;
   settings.saturateHost = FLAGS_saturateHost;
   settings.convertToFP16 = FLAGS_convertToFP16;
+  settings.convertFusedToFP16 = FLAGS_convertFusedToFP16;
   settings.replicationCount = FLAGS_replicationCount;
 
   if (!FLAGS_opBlacklist.empty()) {

@@ -184,6 +184,133 @@ TEST_F(GraphOptz, liveCodeNotEliminated) {
   EXPECT_EQ(mod_.getPlaceholders().size(), 3);
 }
 
+// Conv->Reshape->BatchNorm is optimized to Conv->Reshape after sinking Reshape
+// below BatchNorm. Reshape transforms [N][H][W][C] to [N][W][H][C].
+TEST_F(GraphOptz, optimizeBatchNormAfterConvAndReshapeNHWC) {
+  auto *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
+  Node *CV = F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);
+  Node *RS = F_->createReshape("reshape", CV, {1, 20, 10, 16});
+  Node *BN =
+      F_->createBatchNormalization(bindings_, "batch", RS, 3, 0.0001, 0.9);
+  F_->createSave("ret", BN);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
+  optimizedF_ = optimizeFunction(F_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+
+  ASSERT_EQ(A->getNumUsers(), 2);
+  Node *newCV = std::find_if_not(A->getUsers().begin(), A->getUsers().end(),
+                                 [CV](auto &it) { return it.getUser() == CV; })
+                    ->getUser();
+  EXPECT_TRUE(llvm::isa<ConvolutionNode>(newCV));
+  ASSERT_EQ(newCV->getNumUsers(), 1);
+  Node *reshape = newCV->getUsers().begin()->getUser();
+  EXPECT_TRUE(llvm::isa<ReshapeNode>(reshape));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+// Conv->Reshape->BatchNorm is optimized to Conv->Reshape after sinking Reshape
+// below BatchNorm. Reshape flattens [N][H][W][C] to [N][HxW][C].
+TEST_F(GraphOptz, optimizeBatchNormAfterConvAndReshapeNHWC2) {
+  auto *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
+  Node *CV = F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);
+  Node *RS = F_->createReshape("reshape", CV, {1, 200, 16});
+  Node *BN =
+      F_->createBatchNormalization(bindings_, "batch", RS, 2, 0.0001, 0.9);
+  F_->createSave("ret", BN);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
+  optimizedF_ = optimizeFunction(F_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+
+  ASSERT_EQ(A->getNumUsers(), 2);
+  Node *newCV = std::find_if_not(A->getUsers().begin(), A->getUsers().end(),
+                                 [CV](auto &it) { return it.getUser() == CV; })
+                    ->getUser();
+  EXPECT_TRUE(llvm::isa<ConvolutionNode>(newCV));
+  ASSERT_EQ(newCV->getNumUsers(), 1);
+  Node *reshape = newCV->getUsers().begin()->getUser();
+  EXPECT_TRUE(llvm::isa<ReshapeNode>(reshape));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+// BatchNorm is not folded into Conv. Reshape changes Channel Index dimensions
+// and it prevents optimization. Reshape transforms [N][H][W][C] to
+// [N][H][W/2][C*2].
+TEST_F(GraphOptz, optimizeBatchNormAfterConvAndReshapeNHWCneg) {
+  auto *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
+  Node *CV = F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1);
+  Node *RS = F_->createReshape("reshape", CV, {1, 10, 10, 32});
+  Node *BN =
+      F_->createBatchNormalization(bindings_, "batch", RS, 3, 0.0001, 0.9);
+  F_->createSave("ret", BN);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
+  optimizedF_ = optimizeFunction(F_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 4);
+
+  ASSERT_EQ(A->getNumUsers(), 2);
+  Node *newCV = std::find_if_not(A->getUsers().begin(), A->getUsers().end(),
+                                 [CV](auto &it) { return it.getUser() == CV; })
+                    ->getUser();
+  EXPECT_TRUE(llvm::isa<ConvolutionNode>(newCV));
+  ASSERT_EQ(newCV->getNumUsers(), 1);
+  Node *reshape = newCV->getUsers().begin()->getUser();
+  EXPECT_TRUE(llvm::isa<ReshapeNode>(reshape));
+  Node *bn = reshape->getUsers().begin()->getUser();
+  EXPECT_TRUE(llvm::isa<BatchNormalizationNode>(bn));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+// Conv->Reshape->BatchNorm. Sink Reshape below BatchNorm. Check that BatchNorm
+// does not fold in to Conv.
+TEST_F(GraphOptz, sinkReshapeBelowBatchNormAndDoNotFuseConvBatchNorm) {
+  auto *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);
+  Node *CV = F_->createConv(bindings_, "conv", A, 16, 5, 1, 2, 1,
+                            ConvolutionLayout::NCHW);
+  Node *RS = F_->createReshape("reshape", CV, {1, 10, 16, 20});
+  Node *BN =
+      F_->createBatchNormalization(bindings_, "batch", RS, 1, 0.0001, 0.9);
+  F_->createSave("ret", BN);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
+  optimizedF_ = optimizeFunction(F_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 4);
+
+  ASSERT_EQ(A->getNumUsers(), 2);
+  Node *newCV = std::find_if_not(A->getUsers().begin(), A->getUsers().end(),
+                                 [CV](auto &it) { return it.getUser() == CV; })
+                    ->getUser();
+
+  EXPECT_TRUE(llvm::isa<ConvolutionNode>(newCV));
+  ASSERT_EQ(newCV->getNumUsers(), 1);
+  Node *bn = newCV->getUsers().begin()->getUser();
+  EXPECT_TRUE(llvm::isa<BatchNormalizationNode>(bn));
+  Node *reshape = bn->getUsers().begin()->getUser();
+  EXPECT_TRUE(llvm::isa<ReshapeNode>(reshape));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
 TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
   auto *A =
       mod_.createPlaceholder(ElemKind::FloatTy, {1, 10, 20, 3}, "A", false);

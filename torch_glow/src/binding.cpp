@@ -79,6 +79,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("disable_convert_to_fp16",
         []() { getPyTorchLoaderSettings().convertToFP16 = false; });
 
+  /// Enable converting fp32 fused ops to fp16.
+  m.def("enable_convert_fused_to_fp16",
+        []() { getPyTorchLoaderSettings().convertFusedToFP16 = true; });
+
+  /// Disable converting fp32 fused ops to fp16.
+  m.def("disable_convert_fused_to_fp16",
+        []() { getPyTorchLoaderSettings().convertFusedToFP16 = false; });
+
   /// Enable dumping the final Glow dag after compilation.
   m.def("enable_dump_final_glow_graph",
         []() { getPyTorchLoaderSettings().dumpFinalGlowGraph = true; });
@@ -107,6 +115,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Disable write Glow graph to onnx after model loading finishes.
   m.def("disable_write_to_onnx",
         []() { getPyTorchLoaderSettings().writeToOnnx = false; });
+
+  /// Enable check Glow vs jit correctness.
+  m.def("enable_jit_vs_glow_compare",
+        []() { getPyTorchLoaderSettings().jitVsGlowCompare = true; });
+
+  /// Disable check Glow vs jit correctness.
+  m.def("disable_jit_vs_glow_compare",
+        []() { getPyTorchLoaderSettings().jitVsGlowCompare = false; });
 
   /// Enable saturateHost mode in Glow runtime.
   m.def("enable_saturate_host",
@@ -186,6 +202,10 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Set the minimum fusion group size.
   m.def("setMinFusionGroupSize",
         [](size_t k) { getPyTorchLoaderSettings().minFusionGroupSize = k; });
+
+  /// Set the maximum fusion merge size
+  m.def("setMaxFusionMergeSize",
+        [](size_t k) { getPyTorchLoaderSettings().maxFusionMergeSize = k; });
 
   /// Call the Glow fuser and accept all node kinds but don't actually run the
   /// PyTorchModelLoader.

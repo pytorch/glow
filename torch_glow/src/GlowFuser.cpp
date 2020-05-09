@@ -157,19 +157,7 @@ torch::jit::Node *tryMerge(torch::jit::Node *consumer,
   return consumer;
 }
 
-std::pair<torch::jit::graph_node_list::iterator, bool>
-getNewNode(torch::jit::Node *node, torch::jit::AliasDb &aliasDb,
-           torch::jit::Block *block, IsSupportFunc fn, at::Symbol kind) {
-  auto nodeInputs = sortReverseTopological(node->inputs(), block);
-  for (auto input : nodeInputs) {
-    if (auto *group = tryMerge(node, input->node(), aliasDb, fn, kind)) {
-      return {group->reverseIterator(), true};
-    }
-  }
-  return {++node->reverseIterator(), false};
-}
-
-size_t graphSize(const std::shared_ptr<torch::jit::Graph> graph) {
+size_t graphSize(const std::shared_ptr<torch::jit::Graph> &graph) {
   size_t size = 0;
   for (auto it = graph->nodes().begin(); it != graph->nodes().end(); ++it) {
     ++size;
@@ -186,8 +174,31 @@ getSubgraph(const torch::jit::Node *n) {
   return n->g(torch::jit::attr::Subgraph);
 }
 
+std::pair<torch::jit::graph_node_list::iterator, bool>
+getNewNode(torch::jit::Node *node, torch::jit::AliasDb &aliasDb,
+           torch::jit::Block *block, IsSupportFunc fn, at::Symbol kind,
+           const size_t maxFusionMergeSize) {
+  auto nodeInputs = sortReverseTopological(node->inputs(), block);
+  auto consumerSize = node->hasAttribute(torch::jit::attr::Subgraph)
+                          ? graphSize(getSubgraph(node))
+                          : 1;
+  for (auto input : nodeInputs) {
+    auto producerSize = input->node()->hasAttribute(torch::jit::attr::Subgraph)
+                            ? graphSize(getSubgraph(input->node()))
+                            : 1;
+    if ((maxFusionMergeSize == 0) ||
+        (producerSize + consumerSize <= maxFusionMergeSize)) {
+      if (auto *group = tryMerge(node, input->node(), aliasDb, fn, kind)) {
+        return {group->reverseIterator(), true};
+      }
+    }
+  }
+  return {++node->reverseIterator(), false};
+}
+
 void fuseJITNodesToGlow(std::shared_ptr<torch::jit::Graph> graph,
-                        IsSupportFunc fn, at::Symbol kind) {
+                        IsSupportFunc fn, at::Symbol kind,
+                        const size_t maxFusionMergeSize) {
   torch::jit::AliasDb aliasDb(graph);
   auto block = graph->block();
 
@@ -196,7 +207,8 @@ void fuseJITNodesToGlow(std::shared_ptr<torch::jit::Graph> graph,
     changed = false;
     for (auto it = block->nodes().rbegin(); it != block->nodes().rend();) {
       bool nodeChanged;
-      std::tie(it, nodeChanged) = getNewNode(*it, aliasDb, block, fn, kind);
+      std::tie(it, nodeChanged) =
+          getNewNode(*it, aliasDb, block, fn, kind, maxFusionMergeSize);
       changed |= nodeChanged;
     }
   } while (changed);
@@ -280,6 +292,7 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
   }
 
   const auto minFusionGroupSize = settings.minFusionGroupSize;
+  const auto maxFusionMergeSize = settings.maxFusionMergeSize;
 
   // Wrap fn in function that first checks the blacklist.
   IsSupportFunc nodeSupportedFn = [blacklist = std::move(blacklistedNodes),
@@ -308,7 +321,7 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
   // of the graph that Glow will not be running.
   fuseKnownPatterns(graph);
 
-  fuseJITNodesToGlow(graph, nodeSupportedFn, kind);
+  fuseJITNodesToGlow(graph, nodeSupportedFn, kind, maxFusionMergeSize);
 
   if (minFusionGroupSize > 0) {
     unfuseSmallGraphs(graph, minFusionGroupSize, kind);
