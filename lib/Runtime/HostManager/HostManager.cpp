@@ -512,6 +512,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
     }
 
     if (network == nullptr) {
+      TRACE_EVENT_SCOPE_END();
       callback(
           currentRun,
           MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_NOT_FOUND,
@@ -526,6 +527,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
       if (queueSize >= config_.maxQueueSize) {
         // The queue is full, return an error.
         network->refcount--;
+        TRACE_EVENT_SCOPE_END();
         callback(
             currentRun,
             MAKE_ERR(
@@ -543,6 +545,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
                                priority, currentRun);
     {
       std::unique_lock<std::shared_timed_mutex> lock(inferQueueLock_);
+      TRACE_EVENT_SCOPE_END();
       inferQueue_.push(std::move(queuedRequest));
     }
   }
@@ -550,7 +553,6 @@ HostManager::runNetwork(llvm::StringRef networkName,
   // If we haven't reached maxActiveRequests kick off next request.
   size_t activeRequestCount = activeRequestCount_++;
   if (activeRequestCount < config_.maxActiveRequests) {
-    TRACE_EVENT_SCOPE_END();
     dispatchNextRun();
     return currentRun;
   }
