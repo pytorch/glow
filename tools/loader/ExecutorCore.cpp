@@ -47,15 +47,17 @@ extern llvm::cl::opt<unsigned> traceLevel;
 
 using namespace glow;
 
-class PostProcessingExecutor final {
+namespace {
+
+class PostProcessExecutor : public PostProcessOutputDataExtension {
 public:
   /// Iterates over registered extensions for processing and printing results
   /// and executes them.
   /// \return accumulated errors. Value greater then 0 indicates one or more
   /// errros have occured.
-  int processOutputs(const llvm::StringMap<Placeholder *> &PHM,
-                     PlaceholderBindings &bindings,
-                     llvm::ArrayRef<std::string> inputImageBatchFilenames);
+  int processOutputs(
+      const llvm::StringMap<Placeholder *> &PHM, PlaceholderBindings &bindings,
+      llvm::ArrayRef<std::string> inputImageBatchFilenames) override;
 
   /// Registers Post Processing Output extensions.
   void registerPostProcessOutputExtensions(
@@ -67,12 +69,12 @@ private:
   std::vector<std::unique_ptr<PostProcessOutputDataExtension>> extensions_;
 };
 
-class PreProcessImageExecutor final {
+class PreProcessInputExecutor : public PreProcessInputDataExtension {
 public:
   /// Iterates over PreProcessInputDataExtension extensions and executes them
   /// one by ene.
-  void preProcessInputData(Tensor &inputImageData, size_t startId, size_t endId,
-                           size_t batchSz);
+  void processInputTensor(Tensor &inputImageData, size_t startId, size_t endId,
+                          size_t batchSz) override;
 
   /// Registers Input Data Preprocessing Extensions.
   void registerInputDataPreProcessingExtension(
@@ -84,7 +86,7 @@ private:
   std::vector<std::unique_ptr<PreProcessInputDataExtension>> extensions_;
 };
 
-void PostProcessingExecutor::registerPostProcessOutputExtensions(
+void PostProcessExecutor::registerPostProcessOutputExtensions(
     const std::vector<
         std::function<std::unique_ptr<PostProcessOutputDataExtension>()>>
         &extVector) {
@@ -93,9 +95,11 @@ void PostProcessingExecutor::registerPostProcessOutputExtensions(
   }
 }
 
+} // namespace
+
 /// Iterates over registered extensions for processing and Printing results
 /// and executes them.
-int PostProcessingExecutor::processOutputs(
+int PostProcessExecutor::processOutputs(
     const llvm::StringMap<Placeholder *> &PHM, PlaceholderBindings &bindings,
     llvm::ArrayRef<std::string> inputImageBatchFilenames) {
   int numErrors = 0;
@@ -107,20 +111,35 @@ int PostProcessingExecutor::processOutputs(
 
 /// Iterates over PreProcessInputDataExtension extensions and executes them one
 /// by ene.
-void PreProcessImageExecutor::preProcessInputData(Tensor &inputImageData,
-                                                  size_t startId, size_t endId,
-                                                  size_t batchSz) {
+void PreProcessInputExecutor::processInputTensor(Tensor &inputImageData,
+                                                 size_t startId, size_t endId,
+                                                 size_t batchSz) {
   for (auto &f : extensions_) {
     f->processInputTensor(inputImageData, startId, endId, batchSz);
   }
 }
 
-void PreProcessImageExecutor::registerInputDataPreProcessingExtension(
+void PreProcessInputExecutor::registerInputDataPreProcessingExtension(
     const std::vector<
         std::function<std::unique_ptr<PreProcessInputDataExtension>()>>
         &extVector) {
   for (auto &f : extVector) {
     extensions_.push_back(f());
+  }
+}
+
+Executor::Executor(std::string appName, int argc, char **argv) {
+  appName_ = appName;
+  // Verify/initialize command line parameters, and then loader initializes
+  // the ExecutionEngine and Function.
+  parseCommandLine(argc, argv);
+
+  if (!inputImageListFile.empty()) {
+    CHECK_EQ(inputImageFilenames.size(), 0)
+        << "When using -input-image-list-file all Input images must be "
+           "specified "
+           "using -input-image-list-file option.";
+    parseInputList(inputImageListFile);
   }
 }
 
@@ -157,10 +176,7 @@ void Executor::addLoaderExtensions(Loader &ld) {
 }
 
 /// This will parse command line, load, build and execute a network.
-int Executor::executeNetwork(int argc, char **argv) {
-  // Verify/initialize command line parameters, and then loader initializes
-  // the ExecutionEngine and Function.
-  parseCommandLine(argc, argv);
+int Executor::executeNetwork() {
 
   if (inputImageListFile.empty() && inputTensorListFile.empty() &&
       inputImageFilenames.size() == 0) {
@@ -169,14 +185,6 @@ int Executor::executeNetwork(int argc, char **argv) {
                     "-inputTensorListFile "
                     "must be used to specify input images.\n";
     return 1;
-  }
-
-  if (!inputImageListFile.empty()) {
-    CHECK_EQ(inputImageFilenames.size(), 0)
-        << "When using -input-image-list-file all Input images must be "
-           "specified "
-           "using -input-image-list-file option.";
-    parseInputList(inputImageListFile);
   }
 
   if (!inputTensorListFile.empty()) {
@@ -248,7 +256,7 @@ int Executor::executeNetwork(int argc, char **argv) {
   Tensor preloadedInputImageData;
   if (preloadAllImages) {
     Loader loader;
-    PreProcessImageExecutor ppImageExecutor;
+    PreProcessInputExecutor ppImageExecutor;
     addLoaderExtensions(loader);
     ppImageExecutor.registerInputDataPreProcessingExtension(
         ppInputDataExtensions_);
@@ -260,9 +268,9 @@ int Executor::executeNetwork(int argc, char **argv) {
       loadImagesAndPreprocess(inputImageFilenames, &preloadedInputImageData,
                               imageNormMode, imageChannelOrder, imageLayout);
 
-      ppImageExecutor.preProcessInputData(preloadedInputImageData, 0,
-                                          inputImageFilenames.size(),
-                                          preloadedInputImageData.dims()[0]);
+      ppImageExecutor.processInputTensor(preloadedInputImageData, 0,
+                                         inputImageFilenames.size(),
+                                         preloadedInputImageData.dims()[0]);
     }
   }
 
@@ -278,8 +286,8 @@ int Executor::executeNetwork(int argc, char **argv) {
     // If runAllInputsOnAllDevices, then assign this thread with TID to device
     // TID. E.g. if this is TID 2 then this will be assigned to device 2.
     Loader loader = runAllInputsOnAllDevices ? Loader(TID) : Loader();
-    PostProcessingExecutor ppResultExecutor;
-    PreProcessImageExecutor ppImageExecutor;
+    PostProcessExecutor ppResultExecutor;
+    PreProcessInputExecutor ppImageExecutor;
 
     // Registering all the extensions per thread.
     addLoaderExtensions(loader);
@@ -363,7 +371,7 @@ int Executor::executeNetwork(int argc, char **argv) {
                                   imageNormMode, imageChannelOrder,
                                   imageLayout);
 
-          ppImageExecutor.preProcessInputData(
+          ppImageExecutor.processInputTensor(
               inputImageData, startIndex, endIndex, inputImageData.dims()[0]);
         }
       }
@@ -448,15 +456,15 @@ int Executor::executeNetwork(int argc, char **argv) {
         traceContext->merge(exContext->getTraceContext());
       }
 
-      // Print the top-k results from the output Softmax tensor. Do this only
-      // when doing inference (and not profiling).
+      // Process output of the network. Each app cand do its own post-processing
+      // depending on type of the network.
       {
         std::lock_guard<std::mutex> lock(ioMu);
         numErrors += ppResultExecutor.processOutputs(PHM, bindings,
                                                      inputImageBatchFilenames);
       }
 
-      // Minibatch inference initialization of loader extensions
+      // Minibatch inference initialization of loader extensions.
       loader.inferEndMiniBatch(bindings, startMiniBatchIndex, miniBatch);
     }
 

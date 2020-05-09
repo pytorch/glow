@@ -67,7 +67,9 @@ public:
   virtual void postModelLoad(Loader &loader, PlaceholderBindings &bindings,
                              ProtobufLoader &protobufLoader,
                              llvm::StringMap<Placeholder *> &outputMap,
-                             size_t compilationBatchSize) {
+                             TypeRef inputImageType) {
+
+    size_t compilationBatchSize = inputImageType->dims()[0];
     // To check the method was executed.
     stage_ = 1;
 
@@ -117,7 +119,7 @@ public:
 
   /// Called once after ONNX or Caffe2 model loading.
   virtual void postModelLoad(Loader &, PlaceholderBindings &, ProtobufLoader &,
-                             llvm::StringMap<Placeholder *> &, size_t) {
+                             llvm::StringMap<Placeholder *> &, TypeRef) {
     stage_ = 1;
   }
   /// Called once at the beginning of the mini-batch inference.
@@ -186,8 +188,7 @@ TEST_F(LoaderTest, LoaderExtension) {
 
     // Get bindings and call post model load extensions.
     ASSERT_EQ(testLoaderExtension::stage_, 0);
-    loader.postModelLoad(bindings, caffe2LD, outputMap,
-                         inputData.getType().dims()[0]);
+    loader.postModelLoad(bindings, caffe2LD, outputMap, &inputData.getType());
     ASSERT_EQ(testLoaderExtension::stage_, 1);
     ASSERT_EQ(testLoaderExtension::loader_, &loader);
     ASSERT_EQ(testLoaderExtension::bindings_, &bindings);

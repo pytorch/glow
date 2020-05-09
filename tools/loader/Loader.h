@@ -64,7 +64,7 @@ public:
   /// Called once after ONNX or Caffe2 model loading.
   virtual void postModelLoad(Loader &, PlaceholderBindings &, ProtobufLoader &,
                              llvm::StringMap<Placeholder *> &,
-                             size_t compilationBatchSize) = 0;
+                             TypeRef inputImageType) = 0;
   /// Called once at the beginning of the mini-batch inference.
   virtual void inferInitMiniBatch(Loader &, PlaceholderBindings &,
                                   size_t minibatchIndex,
@@ -178,8 +178,7 @@ public:
   Loader &registerExtension(std::unique_ptr<LoaderExtension> ext);
   /// Called once after ONNX or Caffe2 model loading.
   void postModelLoad(PlaceholderBindings &bindings, ProtobufLoader &protoLoader,
-                     llvm::StringMap<Placeholder *> &,
-                     size_t compilationBatchSize);
+                     llvm::StringMap<Placeholder *> &, TypeRef inputImageType);
   /// Called at the beginning of each mini-batch inference.
   void inferInitMiniBatch(PlaceholderBindings &bindings, size_t minibatchIndex,
                           size_t minibatchSize);
