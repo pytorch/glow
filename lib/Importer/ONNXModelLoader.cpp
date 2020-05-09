@@ -1893,6 +1893,7 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
       for (dim_t i = 0; i < sizesH.size(); ++i) {
         outDims.push_back(sizesH.at({i}));
       }
+      vectorReorder(outDims, {NHWC2NCHW});
     } else {
       RETURN_ERR_IF_NOT(op.input_size() == 3,
                         "'sizes' not valid with 'scales' input");
