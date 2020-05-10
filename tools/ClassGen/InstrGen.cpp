@@ -49,7 +49,10 @@ int main(int argc, char **argv) {
 
   BB.newInstr("AllocActivation")
       .addMember(MemberType::TypeRef, "Ty")
-      .setType("Ty");
+      .setType("Ty")
+      .addExtraMethod(
+          "void setTy(TypeRef Ty);",
+          "void AllocActivationInst::setTy(TypeRef Ty) { Ty_ = Ty; }");
 
   BB.newInstr("TensorView")
       .addOperand("Src", OperandKind::In)
@@ -851,6 +854,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Int64, "WindowSize")
       .addMember(MemberType::Int64, "WindowStride")
       .addMember(MemberType::Boolean, "MagnitudeSquared")
+      .addScratch()
       .autoVerify(VerifyKind::SameElementType,
                   {"Spectrogram", "Input", "Window", "TwiddleFactors",
                    "ComplexToRealWeights", "ElemKind::FloatTy"})
@@ -869,6 +873,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "UpperFrequency")
       .addMember(MemberType::Int64, "FilterBankCount")
       .addMember(MemberType::Int64, "NumCoefficients")
+      .addScratch()
       .autoVerify(VerifyKind::SameElementType,
                   {"Coefficients", "Spectrogram", "MelWeights", "DctMat",
                    "ElemKind::FloatTy"})

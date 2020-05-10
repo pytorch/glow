@@ -63,6 +63,8 @@ public:
 
   TypeRef getType() const { return Ty_; }
 
+  void setType(TypeRef Ty) { Ty_ = Ty; }
+
   llvm::ArrayRef<dim_t> dims() const { return Ty_->dims(); }
 
   size_t size() const { return Ty_->size(); }

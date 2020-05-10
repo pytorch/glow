@@ -70,6 +70,9 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
 
   // The operands of the instruction class:
   for (const auto &op : operands_) {
+    if (requiresScratch_ && op.first == "Scratch") {
+      continue;
+    }
     osH << ", Value *" << op.first;
     osB << ", Value *" << op.first;
   }
@@ -79,11 +82,20 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
     osH << ", " << getStorageTypename(&op.first) << " " << op.second;
     osB << ", " << getStorageTypename(&op.first) << " " << op.second;
   }
-
   osH << ");\n";
+  osB << ") {\n";
+
+  // Create scratch allocation.
+  if (requiresScratch_) {
+    osB << "  std::string scratchName = name.str() + \".scratch\";\n"
+        << "  auto *scratchType = "
+           "F_->getGraph()->getParent()->uniqueType(ElemKind::Int8QTy, {1}, "
+           "0.0, 0);\n"
+        << "  auto *Scratch = createAllocActivationInst(scratchName, "
+           "scratchType);\n";
+  }
 
   // Initialize the base clases:
-  osB << ") {\n";
   osB << "  auto *A = new " << name_ << "Inst(uniqueName(name)";
 
   // The operands of the instruction class:
@@ -95,6 +107,17 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
     osB << ", " << op.second;
   }
   osB << ");\n";
+
+  // Modify scratch size based on the instruction requirements.
+  if (requiresScratch_) {
+    osB << "  dim_t scratchSize = A->getScratchSize();\n"
+        << "  auto *scratchTypeResized = "
+           "F_->getGraph()->getParent()->uniqueType(ElemKind::Int8QTy, "
+           "{scratchSize}, 0.0, 0);\n"
+        << "  Scratch->setType(scratchTypeResized);\n"
+        << "  Scratch->setTy(scratchTypeResized);\n";
+  }
+
   osB << "  F_->pushInstr(A);\n  return A;\n}\n";
 }
 
@@ -162,6 +185,12 @@ void InstrBuilder::emitSettersGetters(std::ostream &os) const {
 
   for (const auto &op : members_) {
     emitMemberGetter(os, &op.first, op.second);
+  }
+
+  // Print scratch size getter declaration. The function will be manually
+  // implemented by the the instruction creator.
+  if (requiresScratch_) {
+    os << "\n  dim_t getScratchSize() const;\n";
   }
 
   // Synthesize the 'classof' method that enables the non-rtti polymorphism.
@@ -235,7 +264,7 @@ void InstrBuilder::emitClass(std::ostream &os) const {
   emitProperties(os);
 
   for (const auto &m : extraMethods_) {
-    os << "  " << m.first << "\n";
+    os << "\n  " << m.first << "\n";
   }
 
   os << "\n  Instruction* clone() const;\n";
@@ -311,7 +340,7 @@ void InstrBuilder::emitCppMethods(std::ostream &os) const {
   emitGetOperandName(os);
   // Emit the "extra" method bodies.
   for (const auto &m : extraMethods_) {
-    os << "  " << m.second << "\n";
+    os << "\n" << m.second << "\n";
   }
 }
 
@@ -386,6 +415,11 @@ void InstrBuilder::emitAutoIRGen(std::ostream &os) const {
   llvm::SmallVector<std::pair<std::string, std::string>, 4>
       nodeResultNameToValueName;
   for (const auto &opPair : operands_) {
+    // Skip the scratch operand for this instruction since it is not a result
+    // of the node.
+    if (requiresScratch_ && opPair.first == "Scratch") {
+      continue;
+    }
     if (opPair.second == OperandKind::In) {
       // All inputs of a node were mapped to the glow::Values already.
       // So, just lookup for each input operand it's Value by using the

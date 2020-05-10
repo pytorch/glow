@@ -100,7 +100,11 @@ class InstrBuilder {
   /// Specifies if this Instr is backend specific.
   bool isBackendSpecific_{false};
 
+  /// Specifies if this Instr is data parallel.
   bool isDataParallel_{false};
+
+  /// Specifies if this Instr requires scratch allocation.
+  bool requiresScratch_{false};
 
   /// \returns the index of the operand with the name \p name. Aborts if no such
   /// name.
@@ -212,6 +216,13 @@ public:
 
   InstrBuilder &dataParallel() {
     isDataParallel_ = true;
+    return *this;
+  }
+
+  /// Add a scratch allocation mechanism for this instruction.
+  InstrBuilder &addScratch() {
+    operands_.push_back({"Scratch", OperandKind::Out});
+    requiresScratch_ = true;
     return *this;
   }
 

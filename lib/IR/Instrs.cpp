@@ -122,3 +122,16 @@ void ReluGradInst::verify() const {
   verifyRelu(getSrcGrad()->getType(), getDest()->getType());
   verifyRelu(getSrcGrad()->getType(), getDestGrad()->getType());
 }
+
+//===----------------------------------------------------------------------===//
+//                       Instruction scratch requirements
+//===----------------------------------------------------------------------===//
+dim_t AudioSpectrogramInst::getScratchSize() const {
+  dim_t spectrogramLen = getSpectrogram()->dims()[1];
+  dim_t fftLen = (spectrogramLen - 1) * 2;
+  return (2 * fftLen + 2) * sizeof(float);
+}
+
+dim_t MFCCInst::getScratchSize() const {
+  return getFilterBankCount() * sizeof(float);
+}

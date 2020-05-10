@@ -3145,7 +3145,7 @@ void libjit_fft_real_f(float *output, float *input, const float *twiddleFactors,
 /// FFT LUTs \p twiddleFactors and \p bitReverseIndices are computed at
 /// compile-time. More details in Graph.h about the AudioSpectrogram node.
 void libjit_audio_spectrogram_f(
-    float *spectrogram, const float *input, const float *window,
+    void *scratch, float *spectrogram, const float *input, const float *window,
     const float *twiddleFactors, const int32_t *bitReverseIndices,
     const float *complexToRealWeights, const dim_t *spectrogramDims,
     const dim_t inputLength, const dim_t windowSize, const dim_t windowStride,
@@ -3155,9 +3155,9 @@ void libjit_audio_spectrogram_f(
   dim_t specLen = spectrogramDims[1];
   dim_t fftLen = (specLen - 1) * 2;
 
-  // Temporary buffers.
-  float winOut[fftLen];
-  float fftOut[fftLen + 2];
+  // Scratch buffers.
+  float *winOut = (float *)scratch;
+  float *fftOut = winOut + fftLen;
   memset(winOut, 0, fftLen * sizeof(float));
 
   // Compute the spectrogram.
@@ -3190,14 +3190,13 @@ void libjit_audio_spectrogram_f(
 /// \p spectrogram power. The lookup tables \p melWeights, \p melRanges
 /// and \p dctMat are computed at compile-time. More details in Graph.h
 /// about the MFCC node.
-void libjit_mfcc_f(float *coefficients, const float *spectrogram,
+void libjit_mfcc_f(void *scratch, float *coefficients, const float *spectrogram,
                    const float *melWeights, const int32_t *melRanges,
                    const float *dctMat, const dim_t *coefficientsDims,
                    const dim_t *spectrogramDims, const dim_t filterBankCount) {
 
-  // Allocate intermediate buffer on the stack.
-  // The size is expected to be relatively small.
-  float melBuff[filterBankCount];
+  // Scratch buffer.
+  float *melBuff = (float *)scratch;
 
   // Perform MFCC for all the windows.
   dim_t winNum = spectrogramDims[0];
