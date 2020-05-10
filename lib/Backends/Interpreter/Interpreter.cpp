@@ -169,6 +169,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
          ElemKind::Int64ITy});
 
   case Kinded::Kind::SplatNodeKind:
+  case Kinded::Kind::TouchNodeKind:
   case Kinded::Kind::InsertTensorNodeKind:
   case Kinded::Kind::ConcatNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(

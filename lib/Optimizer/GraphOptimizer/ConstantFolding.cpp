@@ -291,7 +291,8 @@ bool glow::ConstantFold::run(Function *F, const CompilationContext &cctx) {
   for (auto *N : nodes) {
     // Skip trivial nodes/operations that do not require any constant
     // computations.
-    if (isa<Storage>(N) || isa<Constant>(N) || isa<SplatNode>(N)) {
+    if (isa<Storage>(N) || isa<Constant>(N) || isa<SplatNode>(N) ||
+        isa<TouchNode>(N)) {
       continue;
     }
 

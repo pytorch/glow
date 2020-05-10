@@ -1662,6 +1662,10 @@ SplatNode *Function::createSplat(llvm::StringRef name, TypeRef ty,
   return addNode(new SplatNode(name, getParent()->uniqueType(*ty), value));
 }
 
+TouchNode *Function::createTouch(llvm::StringRef name, TypeRef ty) {
+  return addNode(new TouchNode(name, getParent()->uniqueType(*ty)));
+}
+
 MatMulNode *Function::createMatMul(llvm::StringRef name, TypeRef outTy,
                                    NodeValue lhs, NodeValue rhs) {
   return addNode(
@@ -1767,14 +1771,14 @@ Function::createBatchedReduceMin(llvm::StringRef name, NodeValue batch,
 }
 
 BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name,
-                                           NodeValue batch, NodeValue sample) {
-  return addNode(new BatchedAddNode(name, batch.getType(), batch, sample));
+                                           NodeValue batch, NodeValue slice) {
+  return addNode(new BatchedAddNode(name, batch.getType(), batch, slice));
 }
 
 BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name, TypeRef outTy,
-                                           NodeValue batch, NodeValue sample) {
+                                           NodeValue batch, NodeValue slice) {
   return addNode(
-      new BatchedAddNode(name, getParent()->uniqueType(*outTy), batch, sample));
+      new BatchedAddNode(name, getParent()->uniqueType(*outTy), batch, slice));
 }
 
 CumSumNode *Function::createCumSum(llvm::StringRef name, NodeValue input,

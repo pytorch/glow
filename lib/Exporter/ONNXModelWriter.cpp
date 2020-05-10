@@ -1795,6 +1795,11 @@ Error ONNXModelWriter::writeSplat(const SplatNode *node, GraphType &graph) {
   return Error::success();
 }
 
+Error ONNXModelWriter::writeTouch(const TouchNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  return writeAllWithNode("Touch", node, graph, proto);
+}
+
 Error ONNXModelWriter::writeAdd(const AddNode *node, GraphType &graph) {
   return writeArithmetic("Add", node, graph, reportedNodes_);
 }

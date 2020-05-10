@@ -55,13 +55,8 @@ protected:
   /// of the current node.
   NodeHandle predicate_;
 
-  /// Destroys a node and deallocates the memory. This method is typically
-  /// implicitly invoked when a node is being removed from the intrusive list of
-  /// nodes.
-  static void destroyNode(Node *N);
-
   /// Link to the function holding this node.
-  Function *parent_;
+  Function *parent_{nullptr};
 
 public:
   Node(Kinded::Kind k, llvm::StringRef name)
@@ -116,6 +111,10 @@ public:
   /// Dump a textual representation of the Node to std::string.
   std::string toString() const;
 
+  /// \returns the total memory size (in bytes) of the node as the sum of sizes
+  /// for all the inputs and outputs.
+  size_t getTotMemSize() const;
+
   /// \returns copy of the current node. Notice that the new node is not
   /// inserted into any DAG. The caller of this method should add it to some
   /// node-list.
@@ -152,6 +151,12 @@ public:
   }
 
   ~Node() { releaseUsers(); }
+
+  /// Destroys a node and deallocates the memory. This method is implicitly
+  /// invoked by the parent function when a node is being removed from the
+  /// intrusive list of nodes. You can also invoke this method explicitly to
+  /// destroy a node which has no parent function (orphan node).
+  static void destroyNode(Node *N);
 
   /// \returns the n'th result type of the node.
   TypeRef getType(unsigned idx) const;

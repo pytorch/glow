@@ -755,6 +755,8 @@ public:
                                        unsigned_t count = 1,
                                        unsigned_t axis = 0);
 
+  /// Create a slice node \p name with the given starting points for each
+  /// dimension \p begin and end points \p end (exclusive).
   SliceNode *createSlice(llvm::StringRef name, NodeValue input,
                          UnsignedArrayRef begin, UnsignedArrayRef end);
 
@@ -940,6 +942,8 @@ public:
 
   SplatNode *createSplat(llvm::StringRef name, TypeRef ty, float value);
 
+  TouchNode *createTouch(llvm::StringRef name, TypeRef ty);
+
   MatMulNode *createMatMul(llvm::StringRef name, NodeValue lhs, NodeValue rhs);
 
   MatMulNode *createMatMul(llvm::StringRef name, TypeRef outTy, NodeValue lhs,
@@ -985,10 +989,10 @@ public:
                           llvm::ArrayRef<unsigned_t> axes);
 
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, NodeValue batch,
-                                   NodeValue sample);
+                                   NodeValue slice);
 
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, TypeRef outTy,
-                                   NodeValue batch, NodeValue sample);
+                                   NodeValue batch, NodeValue slice);
 
   /// Create a node performing a Cumulative Sum operation, output type matches
   /// \p input type.

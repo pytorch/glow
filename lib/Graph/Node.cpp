@@ -168,8 +168,10 @@ void Node::setNthInput(unsigned idx, NodeValue val) {
   switch (getKind()) {
 #define DEF_NODE(CLASS, NAME)                                                  \
   case glow::Kinded::Kind::CLASS##Kind:                                        \
-    getParent()->getLogContext()->logNodeInputChange(                          \
-        *this, this->getNthInput(idx), val);                                   \
+    if (getParent()) {                                                         \
+      getParent()->getLogContext()->logNodeInputChange(                        \
+          *this, this->getNthInput(idx), val);                                 \
+    }                                                                          \
     return static_cast<CLASS *>(this)->setNthInput(idx, val);
 #include "glow/AutoGenNodes.def"
   default:
@@ -252,6 +254,7 @@ bool Node::isArithmetic() const {
     ARITHMETIC_NODE_CASE(Max)
     ARITHMETIC_NODE_CASE(Min)
     ARITHMETIC_NODE_CASE(CmpLTE)
+    ARITHMETIC_NODE_CASE(CmpLT)
     ARITHMETIC_NODE_CASE(CmpEQ)
     ARITHMETIC_NODE_CASE(Pow)
     return true;
@@ -288,6 +291,17 @@ void Node::dump(llvm::raw_ostream &out) const { out << this->getDebugDesc(); }
 void Node::dump() const { dump(llvm::outs()); }
 
 std::string Node::toString() const { return this->getDebugDesc(); }
+
+size_t Node::getTotMemSize() const {
+  size_t totMemSize = 0;
+  for (unsigned idx = 0, e = getNumInputs(); idx < e; idx++) {
+    totMemSize += getNthInput(idx).getType()->getSizeInBytes();
+  }
+  for (unsigned idx = 0, e = getNumResults(); idx < e; idx++) {
+    totMemSize += getNthResult(idx).getType()->getSizeInBytes();
+  }
+  return totMemSize;
+}
 
 Node *Node::clone() const {
   switch (getKind()) {

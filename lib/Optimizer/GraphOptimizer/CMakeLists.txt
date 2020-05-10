@@ -4,7 +4,8 @@ add_library(GraphOptimizer
               GraphOptimizer.cpp
               Lower.cpp
               Quantization.cpp
-              TrainingPreparation.cpp)
+              TrainingPreparation.cpp
+              NodeSplitting.cpp)
 
 target_link_libraries(GraphOptimizer
                       PRIVATE

@@ -87,8 +87,8 @@ int main(int argc, char **argv) {
       .addInput("Bias")
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
-      .addMember(MemberType::VectorUnsigned, "Pads")
-      .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::VectorUnsigned, "Pads", /* addSetter */ true)
+      .addMember(MemberType::Unsigned, "Group", /* addSetter */ true)
       .addMember(MemberType::Unsigned, "Dilation")
       .addMember(MEMBER_TYPE_INFO(glow::ConvolutionLayout), "Layout")
       .addFusedActivation()
@@ -149,7 +149,7 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
-      .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::VectorUnsigned, "Pads", /* addSetter */ true)
       .addMember(MemberType::Enum, "Layout")
       .addResultFromCtorArg("Result")
       .addResultFromCtorArg("Argmax")
@@ -172,7 +172,7 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
-      .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::VectorUnsigned, "Pads", /* addSetter */ true)
       .addMember(MemberType::Enum, "Layout")
       .addResultFromCtorArg()
       .addGradient()
@@ -924,6 +924,19 @@ int main(int argc, char **argv) {
       .setDocstring("Generate a tensor of a specific type filled with 'Value'."
                     "Splat always keep floating point value internally but can"
                     "quantize it based on the output type.");
+
+  // clang-format off
+  BB.newNode("Touch")
+    .addResultFromCtorArg()
+    .setDocstring(
+      "Generate a tensor of a specific type without initializing "
+      "it. This is useful when filling a big tensor entirely with "
+      "multiple small slices using InsertTensor nodes such that "
+      "the big tensor is not required to be initialized (filled) "
+      "with some value prior to insertion. This node is intended "
+      "to remove the overhead associated with the initialization "
+      "in situations where it is not required.");
+  // clang-format on
 
   BB.newNode("SGD")
       .addInput("Gradient")

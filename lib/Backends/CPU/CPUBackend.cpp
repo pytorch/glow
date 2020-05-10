@@ -100,6 +100,7 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
     // Concat ==> Splat + Insert. Both only support the following.
   case Kinded::Kind::ConcatNodeKind:
   case Kinded::Kind::SplatNodeKind:
+  case Kinded::Kind::TouchNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int64ITy,
          ElemKind::Int32ITy, ElemKind::BoolTy});
