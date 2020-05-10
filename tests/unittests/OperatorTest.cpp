@@ -5197,7 +5197,7 @@ TEST_P(OperatorStatelessTest, FullyConnected_Int8_BiasInt8) {
 
 /// Test Int8 FullyConnected with Int32 bias.
 TEST_P(OperatorStatelessTest, FullyConnected_Int8_BiasInt32) {
-  ENABLED_BACKENDS("Interpreter", "CPU");
+  ENABLED_BACKENDS("Interpreter", "CPU", "NNPI");
   compareAgainstInterpreter(
       getBackendName(), createAndInitBasicFCTest, ElemKind::FloatTy,
       ElemKind::Int8QTy, 0.05f, parCloneCountOpt,
@@ -8482,7 +8482,7 @@ TEST_P(OperatorTest, Conv3DQuantizedTest_Int8_BiasInt32) {
 
 /// Test Int8 Conv3D with Float32 bias.
 TEST_P(OperatorTest, Conv3DQuantizedTest_Int8_BiasFloat) {
-  ENABLED_BACKENDS("Interpreter");
+  ENABLED_BACKENDS("Interpreter", "NNPI");
   Conv3DQuantizedTest(bindings_, mod_, F_, EE_, ElemKind::Int8QTy,
                       ElemKind::FloatTy);
 }
