@@ -3094,7 +3094,7 @@ Error ONNXModelLoader::loadNonZero(const ONNX_NAMESPACE::NodeProto &op,
 
     // Strides for each dimensions, needed to calculate NonZero output.
     std::vector<dim_t> strides;
-    strides.reserve(dims.size());
+    strides.resize(dims.size());
     strides[dims.size() - 1] = 1;
     if (dims.size() > 1) {
       for (int i = dims.size() - 2; i >= 0; i--) {
