@@ -2487,6 +2487,13 @@ ONNXModelLoader::foldOperator(const ONNX_NAMESPACE::NodeProto &op) {
   llvm::SmallVector<NodeValue, 4> inputs;
   inputs.reserve(numInputs);
   for (unsigned i = 0; i < numInputs; i++) {
+    // If the name of the input is empty then consider it to be unspecified,
+    // which is valid for optional inputs, so simply skip. If it is necessary
+    // for loading the op, then when we later try to load the proper error will
+    // be propagated upward.
+    if (op.input(i).empty()) {
+      continue;
+    }
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(i)));
     inputs.push_back(in);
@@ -4067,9 +4074,10 @@ Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
       auto tryFold = foldOperator(op);
       if (!tryFold) {
         // Error during constant folding; load the op normally below.
-        const std::string errStr = ERR_TO_STRING(tryFold.takeError());
-        LOG(INFO) << "Error while trying to ConstantFold "
-                  << loadOperatorName(op) << ": " << errStr;
+        const std::string errStr =
+            ERR_TO_STRING(tryFold.takeError(), /* warning */ true);
+        VLOG(1) << "Issue while trying to ConstantFold " << loadOperatorName(op)
+                << ": " << errStr;
       } else if (tryFold.get()) {
         // Folded successfully, so skip loading the op below.
         continue;
