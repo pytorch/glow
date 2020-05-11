@@ -315,7 +315,7 @@ static void testInsertOptimizer(llvm::ArrayRef<dim_t> srcShape,
   optimize(M, MockBackend().shouldShareBuffers());
 
   auto &instrs = M.getInstrs();
-  if (isSliceFull(srcShape, destShape)) {
+  if (srcShape == destShape) {
     // If the slice was fully inserted then we should be left with only the
     // the source Splat.
     EXPECT_EQ(instrs.size(), 1);
@@ -390,7 +390,7 @@ static void testExtractOptimizer(llvm::ArrayRef<dim_t> destShape,
   optimize(M, MockBackend().shouldShareBuffers());
 
   auto &instrs = M.getInstrs();
-  if (isSliceFull(destShape, srcShape)) {
+  if (destShape == srcShape) {
     // If the slice was fully extracted then we should be left with a Splat
     // and a Copy. The Alloc, Extract and Dealloc should be gone.
     EXPECT_EQ(instrs.size(), 2);

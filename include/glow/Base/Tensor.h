@@ -1046,51 +1046,14 @@ inline size_t getFlattenedOffset(llvm::ArrayRef<dim_t> strides,
 }
 
 /// Helper function which \returns true if a slice with the shape \p sliceShape
-/// references fully a tensor with the shape \p tensorShape. This happens when
-/// the shapes are the same.
-inline bool isSliceFull(llvm::ArrayRef<dim_t> sliceShape,
-                        llvm::ArrayRef<dim_t> tensorShape) {
-  assert(sliceShape.size() == tensorShape.size() &&
-         "Array length mismatch for slice/tensor sizes!");
-  for (size_t dim = 0, dimEnd = sliceShape.size(); dim < dimEnd; ++dim) {
-    if (sliceShape[dim] != tensorShape[dim]) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/// Helper function which \returns true if a slice with the shape \p sliceShape
 /// referenced from a larger tensor with the shape \p tensorShape is contiguous
 /// in memory (assuming the tensor it is referenced from is contiguous). This
 /// happens when the slice dimensions:
 /// - Start with singleton dimensions (dimensions equal to 1).
 /// - Continue with a partially extracted dimension (one maximum).
 /// - End with fully extracted dimensions.
-inline bool isSliceContiguous(llvm::ArrayRef<dim_t> sliceShape,
-                              llvm::ArrayRef<dim_t> tensorShape) {
-  assert(sliceShape.size() == tensorShape.size() &&
-         "Array length mismatch for slice/tensor sizes!");
-  // Search first non-singleton slice dimension. If all the dimensions are
-  // singleton then by convention the first non-singleton dimension is the
-  // slice size.
-  size_t firstNonSingleDim = sliceShape.size();
-  for (size_t dim = 0, dimEnd = sliceShape.size(); dim < dimEnd; ++dim) {
-    if (sliceShape[dim] != 1) {
-      firstNonSingleDim = dim;
-      break;
-    }
-  }
-  // First non-singleton slice dimension can be partially or fully extracted.
-  // The following dimensions must be fully extracted.
-  for (size_t dim = firstNonSingleDim + 1, dimEnd = sliceShape.size();
-       dim < dimEnd; ++dim) {
-    if (sliceShape[dim] != tensorShape[dim]) {
-      return false;
-    }
-  }
-  return true;
-}
+bool isSliceContiguous(llvm::ArrayRef<dim_t> sliceShape,
+                       llvm::ArrayRef<dim_t> tensorShape);
 
 /// A class that provides indexed access to a tensor. This class has value
 /// semantics and it's copied around. One of the reasons for making this class
