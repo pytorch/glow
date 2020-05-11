@@ -1308,36 +1308,6 @@ static bool eliminateDeadStores(IRFunction &M) {
   return changed;
 }
 
-/// \returns true if a slice with the shape \p sliceShape extracted from a
-/// tensor with the shape \p tensorShape is contiguous in memory. This happens
-/// when the slice dimensions:
-/// - Start with singleton dimensions (dimensions equal to 1).
-/// - Follow with a partially extracted dimension (one maximum).
-/// - Follow with fully extracted dimensions.
-static bool isSliceMemoryContiguous(llvm::ArrayRef<dim_t> sliceShape,
-                                    llvm::ArrayRef<dim_t> tensorShape) {
-  assert(sliceShape.size() == tensorShape.size() &&
-         "Array length mismatch for slice/tensor sizes!");
-  // Search first non-singleton slice dimension. If all the dimensions are
-  // singleton then by convention the first non-singleton dimension is the
-  // slice size.
-  size_t firstNonSingleDim = sliceShape.size();
-  for (size_t dim = 0; dim < sliceShape.size(); ++dim) {
-    if (sliceShape[dim] != 1) {
-      firstNonSingleDim = dim;
-      break;
-    }
-  }
-  // First non-singleton slice dimension can be partially or fully extracted.
-  // The following dimensions must be fully extracted.
-  for (size_t dim = firstNonSingleDim + 1; dim < sliceShape.size(); ++dim) {
-    if (sliceShape[dim] != tensorShape[dim]) {
-      return false;
-    }
-  }
-  return true;
-}
-
 /// Replace InsertTensors that are only offset in the first dimension with
 /// writing directly into the destination using TensorViews with the same
 /// offsets. This is possible because this means the underlying memory is
@@ -1366,8 +1336,7 @@ bool optimizeInserts(IRFunction &M) {
     }
 
     // TVI is used only when inserting a slice which is contiguous in memory.
-    if (!isSliceMemoryContiguous(ITI->getSrc()->dims(),
-                                 ITI->getDest()->dims())) {
+    if (!isSliceContiguous(ITI->getSrc()->dims(), ITI->getDest()->dims())) {
       continue;
     }
 
@@ -1444,8 +1413,7 @@ bool optimizeExtracts(IRFunction &M) {
     }
 
     // TVI is used only when extracting a slice which is contiguous in memory.
-    if (!isSliceMemoryContiguous(ETI->getDest()->dims(),
-                                 ETI->getSrc()->dims())) {
+    if (!isSliceContiguous(ETI->getDest()->dims(), ETI->getSrc()->dims())) {
       continue;
     }
 
