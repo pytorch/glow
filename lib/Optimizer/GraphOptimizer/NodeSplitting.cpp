@@ -17,6 +17,7 @@
 #include "glow/Optimizer/GraphOptimizer/NodeSplitting.h"
 
 #include <algorithm>
+#include <numeric>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
