@@ -97,6 +97,11 @@ void CachingGraphRunner::aggregateAndDumpTraces(TraceContext *traceContext,
 Expected<std::shared_ptr<CachingGraphRunner::PerGlowGraphInfo>>
 CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
                              TraceContext *traceContext) {
+  if (settings_.preCompilePyTorchModule) {
+    return MAKE_ERR(
+        "Calling JIT compilation when preCompilePyTorchModule is set");
+  }
+
   TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME, "torch_glow::loadImpl");
   const auto inputs = torch::jit::last(stack, graph_->inputs().size());
 
@@ -534,6 +539,13 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
 
   if (!graph_) {
     return MAKE_ERR("No graph found!");
+  }
+
+  // If this setting is missing we will not use pre compiled model at runtime,
+  // which will cause unexpected behaviors.
+  if (!settings_.preCompilePyTorchModule) {
+    return MAKE_ERR(
+        "Calling AOT compilation when preCompilePyTorchModule is not set");
   }
 
   std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
