@@ -126,10 +126,16 @@ void ReluGradInst::verify() const {
 //===----------------------------------------------------------------------===//
 //                       Instruction scratch requirements
 //===----------------------------------------------------------------------===//
-dim_t AudioSpectrogramInst::getScratchSize() const {
+dim_t AudioSpectrogramInst::getWinOutScratchSize() const {
   dim_t spectrogramLen = getSpectrogram()->dims()[1];
   dim_t fftLen = (spectrogramLen - 1) * 2;
-  return (2 * fftLen + 2) * sizeof(float);
+  return fftLen * sizeof(float);
+}
+
+dim_t AudioSpectrogramInst::getFftOutScratchSize() const {
+  dim_t spectrogramLen = getSpectrogram()->dims()[1];
+  dim_t fftLen = (spectrogramLen - 1) * 2;
+  return (fftLen + 2) * sizeof(float);
 }
 
 dim_t MFCCInst::getScratchSize() const {

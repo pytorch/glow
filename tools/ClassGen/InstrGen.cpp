@@ -851,10 +851,11 @@ int main(int argc, char **argv) {
       .addOperand("TwiddleFactors", OperandKind::In)
       .addOperand("BitReverseIndices", OperandKind::In)
       .addOperand("ComplexToRealWeights", OperandKind::In)
+      .addOperand("WinOutScratch", OperandKind::Scratch)
+      .addOperand("FftOutScratch", OperandKind::Scratch)
       .addMember(MemberType::Int64, "WindowSize")
       .addMember(MemberType::Int64, "WindowStride")
       .addMember(MemberType::Boolean, "MagnitudeSquared")
-      .addScratch()
       .autoVerify(VerifyKind::SameElementType,
                   {"Spectrogram", "Input", "Window", "TwiddleFactors",
                    "ComplexToRealWeights", "ElemKind::FloatTy"})
@@ -868,12 +869,12 @@ int main(int argc, char **argv) {
       .addOperand("MelWeights", OperandKind::In)
       .addOperand("MelRanges", OperandKind::In)
       .addOperand("DctMat", OperandKind::In)
+      .addOperand("Scratch", OperandKind::Scratch)
       .addMember(MemberType::Float, "SampleRate")
       .addMember(MemberType::Float, "LowerFrequency")
       .addMember(MemberType::Float, "UpperFrequency")
       .addMember(MemberType::Int64, "FilterBankCount")
       .addMember(MemberType::Int64, "NumCoefficients")
-      .addScratch()
       .autoVerify(VerifyKind::SameElementType,
                   {"Coefficients", "Spectrogram", "MelWeights", "DctMat",
                    "ElemKind::FloatTy"})

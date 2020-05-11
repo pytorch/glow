@@ -70,7 +70,9 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
 
   // The operands of the instruction class:
   for (const auto &op : operands_) {
-    if (requiresScratch_ && op.first == "Scratch") {
+    // Scratch operands are not exposed in the builder method interface
+    // but only in the instruction constructor.
+    if (op.second == OperandKind::Scratch) {
       continue;
     }
     osH << ", Value *" << op.first;
@@ -85,14 +87,17 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
   osH << ");\n";
   osB << ") {\n";
 
-  // Create scratch allocation.
-  if (requiresScratch_) {
-    osB << "  std::string scratchName = name.str() + \".scratch\";\n"
-        << "  auto *scratchType = "
-           "F_->getGraph()->getParent()->uniqueType(ElemKind::Int8QTy, {1}, "
-           "0.0, 0);\n"
-        << "  auto *Scratch = createAllocActivationInst(scratchName, "
-           "scratchType);\n";
+  // Create allocations for the scratch operands.
+  for (const auto &op : operands_) {
+    if (op.second == OperandKind::Scratch) {
+      std::string allocSuffix = llvm::StringRef(op.first).lower();
+      osB << "  std::string " << op.first << "Name = name.str() + \"."
+          << allocSuffix << "\";\n";
+      osB << "  auto *" << op.first << "Type = F_->getGraph()->getParent()"
+          << "->uniqueType(ElemKind::Int8QTy, {1}, 0.0, 0);\n";
+      osB << "  auto *" << op.first << " = createAllocActivationInst("
+          << op.first << "Name, " << op.first << "Type);\n";
+    }
   }
 
   // Initialize the base clases:
@@ -108,14 +113,21 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
   }
   osB << ");\n";
 
-  // Modify scratch size based on the instruction requirements.
-  if (requiresScratch_) {
-    osB << "  dim_t scratchSize = A->getScratchSize();\n"
-        << "  auto *scratchTypeResized = "
-           "F_->getGraph()->getParent()->uniqueType(ElemKind::Int8QTy, "
-           "{scratchSize}, 0.0, 0);\n"
-        << "  Scratch->setType(scratchTypeResized);\n"
-        << "  Scratch->setTy(scratchTypeResized);\n";
+  // Modify allocation sizes based on the instruction requirements.
+  // We allocate at least 1 byte since the memory allocator does not
+  // handle properly allocation sizes of 0.
+  for (const auto &op : operands_) {
+    if (op.second == OperandKind::Scratch) {
+      osB << "  dim_t " << op.first << "Size = A->get" << op.first
+          << "Size();\n";
+      osB << "  " << op.first << "Size = " << op.first << "Size > 0 ? "
+          << op.first << "Size : 1;\n";
+      osB << "  auto *" << op.first << "TypeResized = F_->getGraph()"
+          << "->getParent()->uniqueType(ElemKind::Int8QTy, {" << op.first
+          << "Size}, 0.0, 0);\n";
+      osB << "  " << op.first << "->setType(" << op.first << "TypeResized);\n";
+      osB << "  " << op.first << "->setTy(" << op.first << "TypeResized);\n";
+    }
   }
 
   osB << "  F_->pushInstr(A);\n  return A;\n}\n";
@@ -187,10 +199,12 @@ void InstrBuilder::emitSettersGetters(std::ostream &os) const {
     emitMemberGetter(os, &op.first, op.second);
   }
 
-  // Print scratch size getter declaration. The function will be manually
-  // implemented by the the instruction creator.
-  if (requiresScratch_) {
-    os << "\n  dim_t getScratchSize() const;\n";
+  // Print size getter declarations for scratch operands. The functions will be
+  // manually implemented by the instruction creator.
+  for (const auto &op : operands_) {
+    if (op.second == OperandKind::Scratch) {
+      os << "  dim_t get" << op.first << "Size() const;\n";
+    }
   }
 
   // Synthesize the 'classof' method that enables the non-rtti polymorphism.
@@ -415,9 +429,9 @@ void InstrBuilder::emitAutoIRGen(std::ostream &os) const {
   llvm::SmallVector<std::pair<std::string, std::string>, 4>
       nodeResultNameToValueName;
   for (const auto &opPair : operands_) {
-    // Skip the scratch operand for this instruction since it is not a result
-    // of the node.
-    if (requiresScratch_ && opPair.first == "Scratch") {
+    // Skip the scratch operands for this instruction since they are not
+    // registered as node operands.
+    if (opPair.second == OperandKind::Scratch) {
       continue;
     }
     if (opPair.second == OperandKind::In) {

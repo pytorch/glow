@@ -3145,10 +3145,11 @@ void libjit_fft_real_f(float *output, float *input, const float *twiddleFactors,
 /// FFT LUTs \p twiddleFactors and \p bitReverseIndices are computed at
 /// compile-time. More details in Graph.h about the AudioSpectrogram node.
 void libjit_audio_spectrogram_f(
-    void *scratch, float *spectrogram, const float *input, const float *window,
-    const float *twiddleFactors, const int32_t *bitReverseIndices,
-    const float *complexToRealWeights, const dim_t *spectrogramDims,
-    const dim_t inputLength, const dim_t windowSize, const dim_t windowStride,
+    void *winOutScratch, void *fftOutScratch, float *spectrogram,
+    const float *input, const float *window, const float *twiddleFactors,
+    const int32_t *bitReverseIndices, const float *complexToRealWeights,
+    const dim_t *spectrogramDims, const dim_t inputLength,
+    const dim_t windowSize, const dim_t windowStride,
     const bool magnitudeSquared) {
 
   dim_t winNum = spectrogramDims[0];
@@ -3156,8 +3157,8 @@ void libjit_audio_spectrogram_f(
   dim_t fftLen = (specLen - 1) * 2;
 
   // Scratch buffers.
-  float *winOut = (float *)scratch;
-  float *fftOut = winOut + fftLen;
+  float *winOut = (float *)winOutScratch;
+  float *fftOut = (float *)fftOutScratch;
   memset(winOut, 0, fftLen * sizeof(float));
 
   // Compute the spectrogram.

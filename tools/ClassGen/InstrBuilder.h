@@ -33,6 +33,7 @@ enum class OperandKind : unsigned char {
   In,
   Out,
   InOut,
+  Scratch,
 };
 
 enum class VerifyKind : unsigned char {
@@ -51,12 +52,14 @@ inline OperandKind negateOperandKind(OperandKind CC) {
     return OperandKind::In;
   case OperandKind::InOut:
     return OperandKind::InOut;
+  case OperandKind::Scratch:
+    return OperandKind::Scratch;
   }
   llvm_unreachable("Invalid operand kind.");
 }
 
 inline const char *getOperandKindStr(OperandKind CC) {
-  const char *names[] = {"In", "Out", "InOut", nullptr};
+  const char *names[] = {"In", "Out", "InOut", "Out", nullptr};
   return names[(int)CC];
 }
 
@@ -102,9 +105,6 @@ class InstrBuilder {
 
   /// Specifies if this Instr is data parallel.
   bool isDataParallel_{false};
-
-  /// Specifies if this Instr requires scratch allocation.
-  bool requiresScratch_{false};
 
   /// \returns the index of the operand with the name \p name. Aborts if no such
   /// name.
@@ -216,13 +216,6 @@ public:
 
   InstrBuilder &dataParallel() {
     isDataParallel_ = true;
-    return *this;
-  }
-
-  /// Add a scratch allocation mechanism for this instruction.
-  InstrBuilder &addScratch() {
-    operands_.push_back({"Scratch", OperandKind::Out});
-    requiresScratch_ = true;
     return *this;
   }
 

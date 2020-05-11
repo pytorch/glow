@@ -2924,7 +2924,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::AudioSpectrogramInstKind: {
     auto *ASI = llvm::cast<AudioSpectrogramInst>(I);
-    auto scratch = ASI->getScratch();
+    auto winOutScratch = ASI->getWinOutScratch();
+    auto fftOutScratch = ASI->getFftOutScratch();
     auto spectrogram = ASI->getSpectrogram();
     auto input = ASI->getInput();
     auto window = ASI->getWindow();
@@ -2935,7 +2936,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     int64_t windowStride = ASI->getWindowStride();
     bool magnitudeSquared = ASI->getMagnitudeSquared();
 
-    auto *scratchPtr = emitValueAddress(builder, scratch);
+    auto *winOutScratchPtr = emitValueAddress(builder, winOutScratch);
+    auto *fftOutScratchPtr = emitValueAddress(builder, fftOutScratch);
     auto *spectrogramPtr = emitValueAddress(builder, spectrogram);
     auto *inputPtr = emitValueAddress(builder, input);
     auto *windowPtr = emitValueAddress(builder, window);
@@ -2951,8 +2953,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *F = getFunction("audio_spectrogram", spectrogram->getElementType());
     createCall(builder, F,
-               {scratchPtr, spectrogramPtr, inputPtr, windowPtr,
-                twiddleFactorsPtr, bitReverseIndicesPtr,
+               {winOutScratchPtr, fftOutScratchPtr, spectrogramPtr, inputPtr,
+                windowPtr, twiddleFactorsPtr, bitReverseIndicesPtr,
                 complexToRealWeightsPtr, spectrogramDimVal, inputLengthVal,
                 windowSizeVal, windowStrideVal, magnitudeSquaredVal});
     break;
