@@ -825,7 +825,7 @@ int main(int argc, char **argv) {
       .addOperand("Values", OperandKind::Out)
       .addOperand("Indices", OperandKind::Out)
       .addOperand("Input", OperandKind::In)
-      .addOperand("Scratch", OperandKind::InOut)
+      .addOperand("Scratch", OperandKind::Scratch)
       .addMember(MemberType::Unsigned, "K")
       .autoVerify(VerifyKind::SameElementType, {"Values", "Input"})
       .autoVerify(VerifyKind::SameShape, {"Values", "Indices"});

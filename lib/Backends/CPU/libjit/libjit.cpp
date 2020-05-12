@@ -343,10 +343,13 @@ static int value_index_sort(const void *va, const void *vb) {
 /// size is the size of the input, and \p n is the size of the last dimension of
 /// the input.
 template <typename T, typename TI>
-static void libjit_topk(T *values, TI *indices, const T *input, TI *scratch,
+static void libjit_topk(T *values, TI *indices, const T *input, void *scratch,
                         dim_t k, dim_t n, dim_t size) {
   dim_t in = 0;
   dim_t out = 0;
+
+  // Initialize scratch with 0.
+  memset(scratch, 0, 2 * n * sizeof(TI));
 
   value_index<T, TI> *buffer = (value_index<T, TI> *)scratch;
 
@@ -2567,22 +2570,22 @@ void libjit_softmax_grad_f_i32(float *inG, float *outW,
 }
 
 void libjit_topk_f_u(float *values, size_t *indices, const float *input,
-                     size_t *scratch, dim_t k, dim_t n, dim_t size) {
+                     void *scratch, dim_t k, dim_t n, dim_t size) {
   libjit_topk(values, indices, input, scratch, k, n, size);
 }
 
 void libjit_topk_f_i32(float *values, int32_t *indices, const float *input,
-                       int32_t *scratch, dim_t k, dim_t n, dim_t size) {
+                       void *scratch, dim_t k, dim_t n, dim_t size) {
   libjit_topk(values, indices, input, scratch, k, n, size);
 }
 
 void libjit_topk_i8_u(int8_t *values, size_t *indices, const int8_t *input,
-                      size_t *scratch, dim_t k, dim_t n, dim_t size) {
+                      void *scratch, dim_t k, dim_t n, dim_t size) {
   libjit_topk(values, indices, input, scratch, k, n, size);
 }
 
 void libjit_topk_i8_i32(int8_t *values, int32_t *indices, const int8_t *input,
-                        int32_t *scratch, dim_t k, dim_t n, dim_t size) {
+                        void *scratch, dim_t k, dim_t n, dim_t size) {
   libjit_topk(values, indices, input, scratch, k, n, size);
 }
 

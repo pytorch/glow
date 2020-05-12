@@ -126,6 +126,13 @@ void ReluGradInst::verify() const {
 //===----------------------------------------------------------------------===//
 //                       Instruction scratch requirements
 //===----------------------------------------------------------------------===//
+dim_t TopKInst::getScratchSize() const {
+  // Allocate enough scratch space to hold N values and N indices.
+  dim_t N = getInput()->dims().back();
+  dim_t elemSize = getIndices()->getType()->getElementSize();
+  return (2 * N * elemSize);
+}
+
 dim_t AudioSpectrogramInst::getWinOutScratchSize() const {
   dim_t spectrogramLen = getSpectrogram()->dims()[1];
   dim_t fftLen = (spectrogramLen - 1) * 2;

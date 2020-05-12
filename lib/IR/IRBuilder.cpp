@@ -194,14 +194,10 @@ TopKInst *IRBuilder::createTopKOp(llvm::StringRef name, Value *input, size_t k,
   outDims.back() = k;
   auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
       input->getType(), outDims);
-  // Allocate enough scratch space to hold N values and N indices.
-  auto *scratch = createAllocActivationInst(name.str() + ".scratch",
-                                            outIndicesTy, {inDims.back() * 2});
-  createSplatInst(name.str() + ".zero.scratch", scratch, 0);
   auto *values = createAllocActivationInst(name.str() + ".values", outTy);
   auto *indices =
       createAllocActivationInst(name.str() + ".indices", outIndicesTy, outDims);
-  return createTopKInst(name.str(), values, indices, input, scratch, k);
+  return createTopKInst(name.str(), values, indices, input, k);
 }
 
 Value *IRBuilder::createReturnOp(Value *input) {

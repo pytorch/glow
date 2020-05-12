@@ -35,7 +35,7 @@ enum class OperandKind : unsigned char {
   InOut,
   /// The 'Scratch' operand kind is similar to the 'Out' operand kind with the
   /// following distinctions:
-  /// - is is intended to be used as a temporary memory buffer for Instructions
+  /// - is intended to be used as a temporary memory buffer for Instructions
   ///   to write some temporary data before writing the final results using
   ///   their 'Out' operands.
   /// - it is NOT intended to be consumed by other Instructions and hence it is
