@@ -719,7 +719,7 @@ int run() {
           CHECK(!ERR_TO_BOOL(std::move(error)))
               << "Cannot load output ref tensor";
           const auto *tensor =
-              bindings.get(bindings.getPlaceholderByName(tp.name()));
+              bindings.get(bindings.getPlaceholderByNameSlow(tp.name()));
           CHECK(tensor) << "Missing " << tp.name() << " in output placeholder";
 
           if (cosineSimilarityStats) {

@@ -115,7 +115,8 @@ protected:
       }
 
       // Look for an input PH by the same name as the original Function.
-      Placeholder *inputPH = loadedMod.getPlaceholderByName(p.first->getName());
+      Placeholder *inputPH =
+          loadedMod.getPlaceholderByNameSlow(p.first->getName());
       ASSERT_TRUE(inputPH);
       loadedBindings.insert(inputPH, p.second->getUnowned(inputPH->dims()));
     }
@@ -140,7 +141,7 @@ protected:
 
       // Find the result PH by the same name in the loaded Function.
       Placeholder *loadedResultPH =
-          loadedMod.getPlaceholderByName(resultPH->getName());
+          loadedMod.getPlaceholderByNameSlow(resultPH->getName());
       ASSERT_TRUE(loadedResultPH);
       const Tensor *loadedResultT = loadedBindings.get(loadedResultPH);
 

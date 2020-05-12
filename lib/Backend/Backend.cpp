@@ -76,7 +76,7 @@ void Backend::autoInstrument(TraceInfo &traceInfo, IRFunction *IR) const {
   // Default name for the instrumentation placeholder, will be made unique by
   // createPlaceholder.
   std::string name = F->getName().str() + "_instrumentation";
-  Placeholder *backingPH = F->getParent()->getPlaceholderByName(name);
+  Placeholder *backingPH = F->getParent()->getPlaceholderByNameSlow(name);
 
   auto &varmap = IR->getVariableMap();
   auto type = F->getParent()->uniqueType(

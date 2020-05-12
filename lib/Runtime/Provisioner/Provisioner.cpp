@@ -561,7 +561,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     // Load weights while there are weights to be loaded.
     while (weightName != "") {
       LOG(INFO) << "Loading " << weightName;
-      const auto PH = module.getPlaceholderByName(weightName);
+      const auto PH = module.getPlaceholderByNameSlow(weightName);
       if (!PH) {
         return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
                         llvm::formatv("Error loading deferred weight. Name: "

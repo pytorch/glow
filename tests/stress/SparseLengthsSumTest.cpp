@@ -144,7 +144,7 @@ TEST_P(SparseLengthsSum, Big) {
     auto *L = bindings.allocate(length);
     L->getHandle<int32_t>().randomize(0, 100, mod->getPRNG());
 
-    auto *lengthI = interpMod->getPlaceholderByName(length->getName());
+    auto *lengthI = interpMod->getPlaceholderByNameSlow(length->getName());
     auto *LI = interpBindings.allocate(lengthI);
     LI->assign(L);
   }
@@ -152,7 +152,7 @@ TEST_P(SparseLengthsSum, Big) {
     auto *W = bindings.allocate(weight);
     W->getHandle<float>().randomize(-1.0, 1.0, mod->getPRNG());
 
-    auto *weightI = interpMod->getPlaceholderByName(weight->getName());
+    auto *weightI = interpMod->getPlaceholderByNameSlow(weight->getName());
     auto *WI = interpBindings.allocate(weightI);
     WI->assign(W);
   }

@@ -52,7 +52,7 @@ static void testEltwiseUnaryOpFloat(std::string fileName,
   Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                              {input_name.c_str()}, {&input_type}, *F);
   graphOutputVar = EXIT_ON_ERR(caffe2LD.getSingleOutput());
-  auto PH = mod.getPlaceholderByName(input_name);
+  auto PH = mod.getPlaceholderByNameSlow(input_name);
   auto *inTensor = bindings.allocate(PH);
   inTensor->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
   EE.compile(CompilationMode::Infer);
@@ -1230,7 +1230,7 @@ TEST_F(Caffe2ImporterTest, importClip) {
   EXPECT_EQ(clipNode->getMax(), 60.0);
   EXPECT_EQ(clipNode->getMin(), 20.0);
   auto *inputNode = llvm::dyn_cast<Placeholder>(clipNode->getInput());
-  ASSERT_EQ(inputNode, mod.getPlaceholderByName("inputs_0"));
+  ASSERT_EQ(inputNode, mod.getPlaceholderByNameSlow("inputs_0"));
   // We have one input and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
 }
@@ -1267,7 +1267,7 @@ TEST_F(Caffe2ImporterTest, importClipDefault) {
   EXPECT_EQ(clipNode->getMax(), std::numeric_limits<float>::max());
   EXPECT_EQ(clipNode->getMin(), std::numeric_limits<float>::lowest());
   auto *inputNode = llvm::dyn_cast<Placeholder>(clipNode->getInput().getNode());
-  ASSERT_EQ(inputNode, mod.getPlaceholderByName("inputs_0"));
+  ASSERT_EQ(inputNode, mod.getPlaceholderByNameSlow("inputs_0"));
   // We have one input and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
 }
@@ -1310,7 +1310,7 @@ TEST_F(Caffe2ImporterTest, replaceNaN) {
   EXPECT_EQ(replaceNaNNode->getValue(), 1.0f);
   auto *inputNode =
       llvm::dyn_cast<Placeholder>(replaceNaNNode->getInput().getNode());
-  ASSERT_EQ(inputNode, mod.getPlaceholderByName("input"));
+  ASSERT_EQ(inputNode, mod.getPlaceholderByNameSlow("input"));
 
   // We have one input and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
@@ -2094,7 +2094,7 @@ TEST_F(Caffe2ImporterTest, elementwiseLinear) {
   ASSERT_TRUE(bTile);
   EXPECT_EQ(bTile->getAxis(), 1);
   auto *XPH = llvm::dyn_cast<Placeholder>(mul->getRHS().getNode());
-  EXPECT_EQ(XPH, mod.getPlaceholderByName("X"));
+  EXPECT_EQ(XPH, mod.getPlaceholderByNameSlow("X"));
   auto *wTile = llvm::dyn_cast<TileNode>(mul->getLHS().getNode());
   ASSERT_TRUE(wTile);
   EXPECT_EQ(wTile->getAxis(), 1);
@@ -2103,9 +2103,9 @@ TEST_F(Caffe2ImporterTest, elementwiseLinear) {
   auto *wReshape = llvm::dyn_cast<ReshapeNode>(wTile->getInput().getNode());
   ASSERT_TRUE(wReshape);
   auto *wPH = llvm::dyn_cast<Placeholder>(wReshape->getInput().getNode());
-  EXPECT_EQ(wPH, mod.getPlaceholderByName("w"));
+  EXPECT_EQ(wPH, mod.getPlaceholderByNameSlow("w"));
   auto *bPH = llvm::dyn_cast<Placeholder>(bReshape->getInput().getNode());
-  EXPECT_EQ(bPH, mod.getPlaceholderByName("b"));
+  EXPECT_EQ(bPH, mod.getPlaceholderByNameSlow("b"));
 
   // We have three inputs and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 4);
@@ -2174,7 +2174,7 @@ TEST_F(Caffe2ImporterTest, elementwiseLinearUnspecifiedAxis) {
   ASSERT_TRUE(bTile);
   EXPECT_EQ(bTile->getAxis(), 0);
   auto *XPH = llvm::dyn_cast<Placeholder>(mul->getRHS().getNode());
-  EXPECT_EQ(XPH, mod.getPlaceholderByName("X"));
+  EXPECT_EQ(XPH, mod.getPlaceholderByNameSlow("X"));
   auto *wTile = llvm::dyn_cast<TileNode>(mul->getLHS().getNode());
   ASSERT_TRUE(wTile);
   EXPECT_EQ(wTile->getAxis(), 0);
@@ -2183,9 +2183,9 @@ TEST_F(Caffe2ImporterTest, elementwiseLinearUnspecifiedAxis) {
   auto *wReshape = llvm::dyn_cast<ReshapeNode>(wTile->getInput().getNode());
   ASSERT_TRUE(wReshape);
   auto *wPH = llvm::dyn_cast<Placeholder>(wReshape->getInput().getNode());
-  EXPECT_EQ(wPH, mod.getPlaceholderByName("w"));
+  EXPECT_EQ(wPH, mod.getPlaceholderByNameSlow("w"));
   auto *bPH = llvm::dyn_cast<Placeholder>(bReshape->getInput().getNode());
-  EXPECT_EQ(bPH, mod.getPlaceholderByName("b"));
+  EXPECT_EQ(bPH, mod.getPlaceholderByNameSlow("b"));
 
   // We have three inputs and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 4);
@@ -2254,7 +2254,7 @@ TEST_F(Caffe2ImporterTest, elementwiseImplicitBroadcast) {
   ASSERT_TRUE(bTile);
   EXPECT_EQ(bTile->getAxis(), 0);
   auto *XPH = llvm::dyn_cast<Placeholder>(mul->getLHS().getNode());
-  EXPECT_EQ(XPH, mod.getPlaceholderByName("X"));
+  EXPECT_EQ(XPH, mod.getPlaceholderByNameSlow("X"));
   auto *wTile = llvm::dyn_cast<TileNode>(mul->getRHS().getNode());
   ASSERT_TRUE(wTile);
   EXPECT_EQ(wTile->getAxis(), 0);
@@ -2263,9 +2263,9 @@ TEST_F(Caffe2ImporterTest, elementwiseImplicitBroadcast) {
   auto *wReshape = llvm::dyn_cast<ReshapeNode>(wTile->getInput().getNode());
   ASSERT_TRUE(wReshape);
   auto *wPH = llvm::dyn_cast<Placeholder>(wReshape->getInput().getNode());
-  EXPECT_EQ(wPH, mod.getPlaceholderByName("w"));
+  EXPECT_EQ(wPH, mod.getPlaceholderByNameSlow("w"));
   auto *bPH = llvm::dyn_cast<Placeholder>(bReshape->getInput().getNode());
-  EXPECT_EQ(bPH, mod.getPlaceholderByName("b"));
+  EXPECT_EQ(bPH, mod.getPlaceholderByNameSlow("b"));
 
   // We have three inputs and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 4);
@@ -2982,7 +2982,7 @@ TEST_F(Caffe2ImporterTest, importNames) {
   Tensor input(ElemKind::FloatTy, {6});
   Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
                              {"sigmoid_test_input"}, {&input.getType()}, *F);
-  EXPECT_TRUE(mod.getPlaceholderByName("sigmoid_test_output"));
+  EXPECT_TRUE(mod.getPlaceholderByNameSlow("sigmoid_test_output"));
   EXPECT_TRUE(F->getNodeByName("sigmoid_test_output__1"));
 }
 

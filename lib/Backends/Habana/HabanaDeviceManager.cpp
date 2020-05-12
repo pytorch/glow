@@ -398,7 +398,8 @@ void HabanaDeviceManager::runFunctionImpl(RunIdentifierTy runId,
       for (const auto &ph : function->getOutputs()) {
         auto *tensor = bindings->get(ph);
         if (!tensor) {
-          tensor = bindings->get(bindings->getPlaceholderByName(ph->getName()));
+          tensor =
+              bindings->get(bindings->getPlaceholderByNameSlow(ph->getName()));
         }
         tensors++;
 

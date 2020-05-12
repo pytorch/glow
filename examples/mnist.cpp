@@ -220,8 +220,8 @@ void testMNIST() {
              imageInputs, labelInputs, A, selected);
 
   trainingBindings.copyTrainableWeightsTo(inferBindings);
-  A = inferBindings.getPlaceholderByName("input");
-  E = inferBindings.getPlaceholderByName("return");
+  A = inferBindings.getPlaceholderByNameSlow("input");
+  E = inferBindings.getPlaceholderByNameSlow("return");
 
   validateModel(EEI_, inferBindings, F, minibatchSize, numIterations,
                 imageInputs, labelInputs, A, E, false /*transpose*/);

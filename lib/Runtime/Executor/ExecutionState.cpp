@@ -70,9 +70,9 @@ void ExecutionState::init() {
       const auto &symbolInfo = symbolPair.second;
 
       if (symbolInfo.symbolCategory == SymbolCategory::Placeholder) {
-        auto *PH = resultBindings->getPlaceholderByName(symbolName);
+        auto *PH = resultBindings->getPlaceholderByNameSlow(symbolName);
         if (!PH) {
-          PH = module_->getPlaceholderByName(symbolName);
+          PH = module_->getPlaceholderByNameSlow(symbolName);
           DCHECK(PH) << "Placeholder: " << symbolName
                      << " is not in the module";
           // If PH is marked static skip it.

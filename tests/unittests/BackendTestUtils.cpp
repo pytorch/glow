@@ -549,14 +549,15 @@ void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
   trainingBindings.allocate(EET.getModule().getPlaceholders());
   inferBindings.allocate(EEI.getModule().getPlaceholders());
   bindings.copyTrainableWeightsTo(trainingBindings);
-  auto *res = inferBindings.get(EEI.getModule().getPlaceholderByName("ret"));
+  auto *res =
+      inferBindings.get(EEI.getModule().getPlaceholderByNameSlow("ret"));
 
   runBatch(EET, trainingBindings, 8, sampleCounter, {var1, var2},
            {inputs, selected}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI.compile(CompilationMode::Infer);
-  var1 = inferBindings.getPlaceholderByName("var1");
-  var2 = inferBindings.getPlaceholderByName("var2");
+  var1 = inferBindings.getPlaceholderByNameSlow("var1");
+  var2 = inferBindings.getPlaceholderByNameSlow("var2");
   updateInputPlaceholders(inferBindings, {var1, var2}, {inputs, selected});
   EEI.run(inferBindings, fName);
   out->assign(res);
@@ -628,12 +629,12 @@ void trainLocalResponseNormalizationNet(Tensor *inputs, Tensor *weights,
   runBatch(EET, trainingBindings, 8, sampleCounter, {var1, var2},
            {inputs, selected}, tfName);
   trainingBindings.copyTrainableWeightsTo(bindings);
-  var1 = bindings.getPlaceholderByName("var1");
-  var2 = bindings.getPlaceholderByName("var2");
+  var1 = bindings.getPlaceholderByNameSlow("var1");
+  var2 = bindings.getPlaceholderByNameSlow("var2");
   EEI.compile(CompilationMode::Infer);
 
   runBatch(EEI, bindings, 1, sampleCounter, {var1, var2}, {inputs, selected});
-  out->assign(bindings.get(bindings.getPlaceholderByName("ret")));
+  out->assign(bindings.get(bindings.getPlaceholderByNameSlow("ret")));
 }
 
 void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
@@ -682,13 +683,13 @@ void trainAvgPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   runBatch(EET, trainingBindings, 10, sampleCounter, {var1, var2},
            {inputs, selected}, tfName);
   trainingBindings.copyTrainableWeightsTo(bindings);
-  var1 = bindings.getPlaceholderByName("var1");
-  var2 = bindings.getPlaceholderByName("var2");
+  var1 = bindings.getPlaceholderByNameSlow("var1");
+  var2 = bindings.getPlaceholderByNameSlow("var2");
   EEI.compile(CompilationMode::Infer);
 
   updateInputPlaceholders(bindings, {var1, var2}, {inputs, selected});
   EEI.run(bindings);
-  out->assign(bindings.get(bindings.getPlaceholderByName("ret")));
+  out->assign(bindings.get(bindings.getPlaceholderByNameSlow("ret")));
 }
 
 void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
@@ -734,14 +735,15 @@ void trainMaxPoolNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   trainingBindings.allocate(EET.getModule().getPlaceholders());
   inferBindings.allocate(EEI.getModule().getPlaceholders());
   bindings.copyTrainableWeightsTo(trainingBindings);
-  auto *res = inferBindings.get(EEI.getModule().getPlaceholderByName("ret"));
+  auto *res =
+      inferBindings.get(EEI.getModule().getPlaceholderByNameSlow("ret"));
 
   runBatch(EET, trainingBindings, 7, sampleCounter, {var1, var2},
            {inputs, selected}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI.compile(CompilationMode::Infer);
-  var1 = inferBindings.getPlaceholderByName("var1");
-  var2 = inferBindings.getPlaceholderByName("var2");
+  var1 = inferBindings.getPlaceholderByNameSlow("var1");
+  var2 = inferBindings.getPlaceholderByNameSlow("var2");
   runBatch(EEI, inferBindings, 1, sampleCounter, {var1, var2},
            {inputs, selected}, fName);
   out->assign(res);
@@ -1012,9 +1014,10 @@ void trainSoftMaxNet(Tensor *inputs, Tensor *weights, Tensor *bias,
   EEI.compile(CompilationMode::Infer);
   inferBindings.allocate(EEI.getModule().getPlaceholders());
   trainingBindings.copyTrainableWeightsTo(inferBindings);
-  auto *res = inferBindings.get(EEI.getModule().getPlaceholderByName("ret"));
-  var1 = inferBindings.getPlaceholderByName("var1");
-  var2 = inferBindings.getPlaceholderByName("var2");
+  auto *res =
+      inferBindings.get(EEI.getModule().getPlaceholderByNameSlow("ret"));
+  var1 = inferBindings.getPlaceholderByNameSlow("var1");
+  var2 = inferBindings.getPlaceholderByNameSlow("var2");
   updateInputPlaceholders(inferBindings, {var1, var2}, {inputs, selected});
   EEI.run(inferBindings, fName);
   out->assign(res);

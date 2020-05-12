@@ -113,7 +113,7 @@ void glow::updateInputPlaceholdersByName(PlaceholderBindings &bindings,
          "The number of inputs does not match the number of Placeholders");
 
   for (int i = 0, e = ph.size(); i < e; i++) {
-    Placeholder *p = mod->getPlaceholderByName(legalizeName(ph[i]));
+    Placeholder *p = mod->getPlaceholderByNameSlow(legalizeName(ph[i]));
     Tensor *t = inputs[i];
     assert(t && "Invalid tensor.");
     assert(p && "Invalid placeholder.");

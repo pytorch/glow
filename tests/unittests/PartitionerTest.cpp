@@ -223,12 +223,12 @@ static void verifyDAGSerialization(DAGListTy &dagList, Module &origMod,
   loadedEE.compile(loadedCctx);
   std::vector<Placeholder *> inPHs;
   for (const llvm::StringRef &inName : inputNames) {
-    inPHs.push_back(bindings.getPlaceholderByName(inName));
+    inPHs.push_back(bindings.getPlaceholderByNameSlow(inName));
   }
   executeDAG(loadedDAG.root.get(), loadedMod, bindings, inPHs, inputs,
              &loadedEE);
   Tensor test =
-      bindings.get(bindings.getPlaceholderByName(resultName))->clone();
+      bindings.get(bindings.getPlaceholderByNameSlow(resultName))->clone();
   EXPECT_TRUE(ref.isEqual(test, 0.0f));
 }
 
@@ -297,10 +297,11 @@ TEST_F(PartitionerTest, Basic1) {
   EER.compile(CompilationMode::Infer);
   bindings_.clear();
   bindings_.allocate(EER.getModule().getPlaceholders());
-  updateInputPlaceholders(bindings_, {bindings_.getPlaceholderByName("input")},
-                          {&in});
+  updateInputPlaceholders(bindings_,
+                          {bindings_.getPlaceholderByNameSlow("input")}, {&in});
   EER.run(bindings_);
-  Tensor ref = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
+  Tensor ref =
+      bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
 
   std::vector<DeviceInfo> devices = {
       {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "Interpreter"}};
@@ -318,8 +319,9 @@ TEST_F(PartitionerTest, Basic1) {
   EEP.compile(cctx);
   for (auto it = dagList->begin(); it != dagList->end(); ++it) {
     executeDAG((*it).root.get(), EEP.getModule(), bindings_,
-               {bindings_.getPlaceholderByName("input")}, {&in}, &EEP);
-    Tensor test = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
+               {bindings_.getPlaceholderByNameSlow("input")}, {&in}, &EEP);
+    Tensor test =
+        bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
     EXPECT_TRUE(ref.isEqual(test, 0.0f));
     verifyDAGSerialization(*dagList, EEP.getModule(), bindings_, {"input"},
                            "ret", devices, {&in}, ref);
@@ -384,11 +386,12 @@ TEST_F(PartitionerTest, Basic2) {
   bindings_.clear();
   bindings_.allocate(EER.getModule().getPlaceholders());
   updateInputPlaceholders(bindings_,
-                          {bindings_.getPlaceholderByName("input"),
-                           bindings_.getPlaceholderByName("input1")},
+                          {bindings_.getPlaceholderByNameSlow("input"),
+                           bindings_.getPlaceholderByNameSlow("input1")},
                           {&in, &in});
   EER.run(bindings_);
-  Tensor ref = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
+  Tensor ref =
+      bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
 
   std::vector<DeviceInfo> devices = {{2048, "Interpreter"},
                                      {2048, "Interpreter"},
@@ -417,12 +420,13 @@ TEST_F(PartitionerTest, Basic2) {
   EEP.compile(cctx);
   for (auto it = dagList.begin(); it != dagList.end(); ++it) {
     updateInputPlaceholders(bindings_,
-                            {bindings_.getPlaceholderByName("input"),
-                             bindings_.getPlaceholderByName("input1")},
+                            {bindings_.getPlaceholderByNameSlow("input"),
+                             bindings_.getPlaceholderByNameSlow("input1")},
                             {&in, &in});
     executeDAG((*it).root.get(), EEP.getModule(), bindings_,
-               {bindings_.getPlaceholderByName("input")}, {&in}, &EEP);
-    Tensor test = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
+               {bindings_.getPlaceholderByNameSlow("input")}, {&in}, &EEP);
+    Tensor test =
+        bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
     ASSERT_TRUE(ref.isEqual(test, 0.0f));
     verifyDAGSerialization(dagList, EEP.getModule(), bindings_,
                            {"input", "input1"}, "ret", devices, {&in, &in},
@@ -486,8 +490,8 @@ TEST_F(PartitionerTest, Error1) {
   bindings_.clear();
   bindings_.allocate(EER.getModule().getPlaceholders());
   updateInputPlaceholders(bindings_,
-                          {bindings_.getPlaceholderByName("input"),
-                           bindings_.getPlaceholderByName("input1")},
+                          {bindings_.getPlaceholderByNameSlow("input"),
+                           bindings_.getPlaceholderByNameSlow("input1")},
                           {&in, &in});
   EER.run(bindings_);
 
@@ -1566,10 +1570,11 @@ TEST_F(PartitionerTest, loadBalancedPartition) {
   EER.compile(CompilationMode::Infer);
   bindings_.clear();
   bindings_.allocate(EER.getModule().getPlaceholders());
-  updateInputPlaceholders(bindings_, {bindings_.getPlaceholderByName("input")},
-                          {&in});
+  updateInputPlaceholders(bindings_,
+                          {bindings_.getPlaceholderByNameSlow("input")}, {&in});
   EER.run(bindings_);
-  Tensor ref = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
+  Tensor ref =
+      bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
 
   std::vector<DeviceInfo> devices = {
       {3072, "Interpreter"}, {3072, "Interpreter"}, {3072, "Interpreter"}};
@@ -1587,8 +1592,9 @@ TEST_F(PartitionerTest, loadBalancedPartition) {
   EEP.compile(cctx);
   for (auto it = dagList->begin(); it != dagList->end(); ++it) {
     executeDAG((*it).root.get(), EEP.getModule(), bindings_,
-               {bindings_.getPlaceholderByName("input")}, {&in}, &EEP);
-    Tensor test = bindings_.get(bindings_.getPlaceholderByName("ret"))->clone();
+               {bindings_.getPlaceholderByNameSlow("input")}, {&in}, &EEP);
+    Tensor test =
+        bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
     EXPECT_TRUE(ref.isEqual(test, 0.0f));
     verifyDAGSerialization(*dagList, EEP.getModule(), bindings_, {"input"},
                            "ret", devices, {&in}, ref);

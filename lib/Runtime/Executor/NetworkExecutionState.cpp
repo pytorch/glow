@@ -135,7 +135,7 @@ void NetworkExecutionState::init(
       const auto &symbolName = symbolPair.first;
       const auto &symbolInfo = symbolPair.second;
       if (symbolInfo.symbolCategory == SymbolCategory::Placeholder) {
-        auto PH = module_->getPlaceholderByName(symbolName);
+        auto PH = module_->getPlaceholderByNameSlow(symbolName);
 
         DCHECK(PH) << "Placeholder: " << symbolName << " is not in the module";
         // If PH is marked static skip it.

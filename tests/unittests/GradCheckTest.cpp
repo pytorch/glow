@@ -142,13 +142,13 @@ void performGradCheck(ExecutionEngine &EET, ExecutionEngine &EEI,
   for (auto PH : EEI.getModule().getPlaceholders()) {
     bindings.copyToTarget(PH->getName(), inferBindings);
   }
-  auto resultTensor =
-      inferBindings.get(inferBindings.getPlaceholderByName(result->getName()));
+  auto resultTensor = inferBindings.get(
+      inferBindings.getPlaceholderByNameSlow(result->getName()));
 
   auto analyticalGradsH = gradVarTensor->getHandle();
   auto inputsH = inputs->getHandle<>();
   bool allZeroGradients = true;
-  auto inferInput = inferBindings.getPlaceholderByName(inputVar->getName());
+  auto inferInput = inferBindings.getPlaceholderByNameSlow(inputVar->getName());
 
   for (size_t i = 0; i < analyticalGradsH.size(); i++) {
     auto old = inputsH.raw(i);

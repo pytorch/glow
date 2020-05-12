@@ -106,7 +106,7 @@ TEST(Graph, testGraphNames) {
   auto *top = F->createTopK("top", add, 5);
   Node *save = F->createSave("out", top->getValues());
 
-  EXPECT_TRUE(MD.getPlaceholderByName("op1"));
+  EXPECT_TRUE(MD.getPlaceholderByNameSlow("op1"));
   EXPECT_TRUE(MD.getConstantByName("op2"));
   EXPECT_TRUE(F->getNodeByName("add"));
   EXPECT_TRUE(F->getNodeByName("top"));
@@ -701,8 +701,10 @@ static void compileAndRun(ExecutionEngine &EE, PlaceholderBindings &bindings,
                           llvm::StringRef outputName) {
   EE.compile(glow::CompilationMode::Infer);
   // Allocate stprage for placeholders and initialize inputs.
-  bindings.allocate(M.getPlaceholderByName(inputName))->getHandle().clear(2.0);
-  bindings.allocate(M.getPlaceholderByName(outputName));
+  bindings.allocate(M.getPlaceholderByNameSlow(inputName))
+      ->getHandle()
+      .clear(2.0);
+  bindings.allocate(M.getPlaceholderByNameSlow(outputName));
   EE.run(bindings);
 }
 
@@ -758,7 +760,7 @@ TEST(Graph, moduleCloneTest) {
     compileAndRun(originalEE, originalBindings, originalM, "input", resultName);
     // Store the result of running the original module.
     originalResult.assign(originalBindings.get(
-        originalBindings.getPlaceholderByName(resultName)));
+        originalBindings.getPlaceholderByNameSlow(resultName)));
     // The old module should be removed when this scope ends. Thus, if the
     // cloned module newM refers to any deleted nodes from the original module,
     // it would result in a dangling reference and most likely in a crash.
@@ -770,7 +772,7 @@ TEST(Graph, moduleCloneTest) {
   compileAndRun(clonedEE, clonedBindings, clonedM, "input", resultName);
   // Store the result of running the cloned module.
   clonedResult.assign(
-      clonedBindings.get(clonedBindings.getPlaceholderByName(resultName)));
+      clonedBindings.get(clonedBindings.getPlaceholderByNameSlow(resultName)));
   // The results of execution should be exactly the same in both cases.
   EXPECT_TRUE(originalResult.isEqual(clonedResult, 0));
 }
