@@ -184,6 +184,20 @@ TEST_F(GraphOptz, liveCodeNotEliminated) {
   EXPECT_EQ(mod_.getPlaceholders().size(), 3);
 }
 
+/// Skip Reshape sinking below BatchNorm when inapplicable.
+TEST_F(GraphOptz, SkipReshapeSinkBatchNorm) {
+  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {32, 64}, "A", false);
+  Node *RS = F_->createReshape("reshape", A, {32, 64, 1});
+  Node *BN =
+      F_->createBatchNormalization(bindings_, "batch", RS, 1, 0.0001, 0.9);
+  F_->createSave("ret", BN);
+
+  optimizedF_ = optimizeFunction(F_);
+  EXPECT_EQ(F_->toString(/* skipUsersForStorage */ false, /* skipName */ true),
+            optimizedF_->toString(/* skipUsersForStorage */ false,
+                                  /* skipName */ true));
+}
+
 // Conv->Reshape->BatchNorm is optimized to Conv->Reshape after sinking Reshape
 // below BatchNorm. Reshape transforms [N][H][W][C] to [N][W][H][C].
 TEST_F(GraphOptz, optimizeBatchNormAfterConvAndReshapeNHWC) {

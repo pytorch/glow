@@ -1873,11 +1873,15 @@ public:
 
   /// Dump a textual representation of the Function to std::string. If
   /// \p skipUsersForStorage then user counts for Storage will not be dumped.
-  std::string toString(bool skipUsersForStorage = false) const;
+  /// If \p skipName then the name of the Function will not be dumped.
+  std::string toString(bool skipUsersForStorage = false,
+                       bool skipName = false) const;
 
   /// Dump a textual representation of the Function into default output stream.
   /// If \p skipUsersForStorage then user counts for Storage will not be dumped.
-  void dump(llvm::raw_ostream &os, bool skipUsersForStorage = false) const;
+  /// If \p skipName then the name of the Function will not be dumped.
+  void dump(llvm::raw_ostream &os, bool skipUsersForStorage = false,
+            bool skipName = false) const;
 
   /// Dump a dotty graph that depicts the function into a file.
   /// \returns full path to the file.

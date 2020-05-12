@@ -461,6 +461,12 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
         auto outDims = RS->getResult().dims();
         unsigned_t newChannelIdx;
 
+        // Skip sinking if the input was less than 3 dimensions, because we need
+        // spatial dimensions in addition to batch and channel.
+        if (RS->getInput().dims().size() < 3) {
+          continue;
+        }
+
         // Reshape should not change the BatchNorm ChannelIdx dimensions.
         // Only NH[W]C and NCH[W] are allowed.
         if (BN->getChannelIdx() == outDims.size() - 1) {
