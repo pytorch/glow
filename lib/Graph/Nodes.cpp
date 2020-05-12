@@ -379,6 +379,11 @@ static bool verifyBatchNormalization(NodeValue src, NodeValue dest,
   const Node *parent = dest.getNode();
   bool isValid = checkSameType(dest, src, parent);
 
+  isValid &= expectCompareTrue(
+      "Require some spatial dimensions in addition to batch and channel",
+      src.dims().size(), (size_t)2, parent,
+      CompareOperatorGreaterThan<size_t>());
+
   // Figure out how many channels are in the tensor.
   dim_t channels = src.dims()[channel];
 
