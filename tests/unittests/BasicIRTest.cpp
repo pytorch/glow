@@ -369,3 +369,19 @@ TEST(IR, getOperandName) {
     EXPECT_EQ(pool->getOperandName(1), "Src");
   }
 }
+
+/// Check that Scratch is allocated properly for instructions.
+TEST(IR, scratchAllocation) {
+  Module mod;
+  Function *F = mod.createFunction("main");
+  IRFunction M(F);
+  {
+    IRBuilder bb(&M);
+    auto *input = bb.createWeightVar(ElemKind::FloatTy, {10});
+    TopKInst *topk = bb.createTopKOp("topk", input, 3, ElemKind::Int64ITy);
+    // Verify scratch is allocated and has correct size.
+    auto *scratch = topk->getScratch();
+    EXPECT_TRUE(isa<AllocActivationInst>(scratch));
+    EXPECT_EQ(scratch->getType()->size(), topk->getScratchSize());
+  }
+}
