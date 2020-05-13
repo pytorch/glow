@@ -36,12 +36,11 @@ namespace {
 /// reloaded function. \p useGlowCustomOps is used for determining the format
 /// for ONNXModelWriter to write with.
 Expected<Function *>
-saveAndReloadFunction(Function *F, llvm::ArrayRef<const char *> inpuTensorNames,
+saveAndReloadFunction(Module &reloadMod, Function *F,
+                      llvm::ArrayRef<const char *> inpuTensorNames,
                       llvm::ArrayRef<TypeRef> inputTensorTypes,
                       size_t irVer = 5, size_t opsetVer = 10,
                       bool zipMode = false, bool useGlowCustomOps = false) {
-  auto &mod = *F->getParent();
-
   llvm::SmallString<64> path;
   auto tempFileRes = llvm::sys::fs::createTemporaryFile(
       "exporter", zipMode ? "output.zip" : "output.onnxtxt", path);
@@ -65,7 +64,7 @@ saveAndReloadFunction(Function *F, llvm::ArrayRef<const char *> inpuTensorNames,
   }
 
   // Load model from file.
-  Function *R = mod.createFunction("R");
+  Function *R = reloadMod.createFunction("R");
   {
     Error err = Error::empty();
     ONNXModelLoader onnxLD(outputFilename, inpuTensorNames, inputTensorTypes,
@@ -112,8 +111,9 @@ void testLoadAndSaveONNXModel(const std::string &name, bool zipMode) {
     FAIL_TEST_IF_ERR(std::move(err));
   }
 
-  FAIL_TEST_IF_ERR(saveAndReloadFunction(F, {}, {}, irVer, opsetVer, zipMode,
-                                         useGlowCustomOps)
+  Module reloadMod;
+  FAIL_TEST_IF_ERR(saveAndReloadFunction(reloadMod, F, {}, {}, irVer, opsetVer,
+                                         zipMode, useGlowCustomOps)
                        .takeError());
 }
 
@@ -318,8 +318,9 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
 
   // Save and reload F.
   Function *R;
+  Module reloadMod;
   ASSIGN_VALUE_OR_FAIL_TEST(
-      R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
+      R, saveAndReloadFunction(reloadMod, F, {"input"}, {input->getType()}));
 
   ChannelwiseQuantizedConvolutionNode *cqConvReloaded;
   ASSIGN_VALUE_OR_FAIL_TEST(
@@ -327,17 +328,19 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
       getSingleNodeWithKind<ChannelwiseQuantizedConvolutionNode>(
           R, Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind));
 
-  EXPECT_EQ(cqConvReloaded->getInput().getType(), cqConv->getInput().getType());
-  EXPECT_EQ(cqConvReloaded->getResult().getType(),
-            cqConv->getResult().getType());
+  EXPECT_TRUE(cqConvReloaded->getInput().getType()->isEqual(
+      *cqConv->getInput().getType()));
+  EXPECT_TRUE(cqConvReloaded->getResult().getType()->isEqual(
+      *cqConv->getResult().getType()));
 
-  EXPECT_EQ(cqConvReloaded->getFilter().getType(),
-            cqConv->getFilter().getType());
-  EXPECT_EQ(cqConvReloaded->getBias().getType(), cqConv->getBias().getType());
-  EXPECT_EQ(cqConvReloaded->getScales().getType(),
-            cqConv->getScales().getType());
-  EXPECT_EQ(cqConvReloaded->getOffsets().getType(),
-            cqConv->getOffsets().getType());
+  EXPECT_TRUE(cqConvReloaded->getFilter().getType()->isEqual(
+      *cqConv->getFilter().getType()));
+  EXPECT_TRUE(cqConvReloaded->getBias().getType()->isEqual(
+      *cqConv->getBias().getType()));
+  EXPECT_TRUE(cqConvReloaded->getScales().getType()->isEqual(
+      *cqConv->getScales().getType()));
+  EXPECT_TRUE(cqConvReloaded->getOffsets().getType()->isEqual(
+      *cqConv->getOffsets().getType()));
 
   EXPECT_EQ(cqConvReloaded->getKernels(), cqConv->getKernels());
   EXPECT_EQ(cqConvReloaded->getStrides(), cqConv->getStrides());
@@ -397,8 +400,9 @@ TEST(exporter, QuantizedConvolution) {
 
   // Save and reload F.
   Function *R;
+  Module reloadMod;
   ASSIGN_VALUE_OR_FAIL_TEST(
-      R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
+      R, saveAndReloadFunction(reloadMod, F, {"input"}, {input->getType()}));
 
   // Verify reloaded function matches the original.
   ConvolutionNode *qConvReloaded;
@@ -406,11 +410,15 @@ TEST(exporter, QuantizedConvolution) {
                             getSingleNodeWithKind<ConvolutionNode>(
                                 R, Kinded::Kind::ConvolutionNodeKind));
 
-  EXPECT_EQ(qConvReloaded->getInput().getType(), qConv->getInput().getType());
-  EXPECT_EQ(qConvReloaded->getResult().getType(), qConv->getResult().getType());
+  EXPECT_TRUE(qConvReloaded->getInput().getType()->isEqual(
+      *qConv->getInput().getType()));
+  EXPECT_TRUE(qConvReloaded->getResult().getType()->isEqual(
+      *qConv->getResult().getType()));
 
-  EXPECT_EQ(qConvReloaded->getFilter().getType(), qConv->getFilter().getType());
-  EXPECT_EQ(qConvReloaded->getBias().getType(), qConv->getBias().getType());
+  EXPECT_TRUE(qConvReloaded->getFilter().getType()->isEqual(
+      *qConv->getFilter().getType()));
+  EXPECT_TRUE(
+      qConvReloaded->getBias().getType()->isEqual(*qConv->getBias().getType()));
 
   EXPECT_EQ(qConvReloaded->getKernels(), qConv->getKernels());
   EXPECT_EQ(qConvReloaded->getStrides(), qConv->getStrides());
@@ -451,8 +459,9 @@ TEST(exporter, QuantizedMaxPool) {
 
   // Save and reload F.
   Function *R;
+  Module reloadMod;
   ASSIGN_VALUE_OR_FAIL_TEST(
-      R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
+      R, saveAndReloadFunction(reloadMod, F, {"input"}, {input->getType()}));
 
   // Verify reloaded function matches the original.
   MaxPoolNode *maxPoolReloaded;
@@ -460,10 +469,10 @@ TEST(exporter, QuantizedMaxPool) {
       maxPoolReloaded,
       getSingleNodeWithKind<MaxPoolNode>(R, Kinded::Kind::MaxPoolNodeKind));
 
-  EXPECT_EQ(maxPoolReloaded->getInput().getType(),
-            maxPool->getInput().getType());
-  EXPECT_EQ(maxPoolReloaded->getResult().getType(),
-            maxPool->getResult().getType());
+  EXPECT_TRUE(maxPoolReloaded->getInput().getType()->isEqual(
+      *maxPool->getInput().getType()));
+  EXPECT_TRUE(maxPoolReloaded->getResult().getType()->isEqual(
+      *maxPool->getResult().getType()));
 
   EXPECT_EQ(maxPoolReloaded->getKernels(), maxPool->getKernels());
   EXPECT_EQ(maxPoolReloaded->getStrides(), maxPool->getStrides());
@@ -502,8 +511,9 @@ TEST(exporter, QuantizedAvgPool) {
 
   // Save and reload F.
   Function *R;
+  Module reloadMod;
   ASSIGN_VALUE_OR_FAIL_TEST(
-      R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
+      R, saveAndReloadFunction(reloadMod, F, {"input"}, {input->getType()}));
 
   // Verify reloaded function matches the original.
   AvgPoolNode *avgPoolReloaded;
@@ -511,10 +521,10 @@ TEST(exporter, QuantizedAvgPool) {
       avgPoolReloaded,
       getSingleNodeWithKind<AvgPoolNode>(R, Kinded::Kind::AvgPoolNodeKind));
 
-  EXPECT_EQ(avgPoolReloaded->getInput().getType(),
-            avgPool->getInput().getType());
-  EXPECT_EQ(avgPoolReloaded->getResult().getType(),
-            avgPool->getResult().getType());
+  EXPECT_TRUE(avgPoolReloaded->getInput().getType()->isEqual(
+      *avgPool->getInput().getType()));
+  EXPECT_TRUE(avgPoolReloaded->getResult().getType()->isEqual(
+      *avgPool->getResult().getType()));
 
   EXPECT_EQ(avgPoolReloaded->getKernels(), avgPool->getKernels());
   EXPECT_EQ(avgPoolReloaded->getStrides(), avgPool->getStrides());
@@ -552,8 +562,9 @@ TEST(exporter, QuantizedAdaptiveAvgPool) {
 
   // Save and reload F.
   Function *R;
+  Module reloadMod;
   ASSIGN_VALUE_OR_FAIL_TEST(
-      R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
+      R, saveAndReloadFunction(reloadMod, F, {"input"}, {input->getType()}));
 
   // Verify reloaded function matches the original.
   AdaptiveAvgPoolNode *adaptiveAvgPoolReloaded;
@@ -561,10 +572,10 @@ TEST(exporter, QuantizedAdaptiveAvgPool) {
                             getSingleNodeWithKind<AdaptiveAvgPoolNode>(
                                 R, Kinded::Kind::AdaptiveAvgPoolNodeKind));
 
-  EXPECT_EQ(adaptiveAvgPoolReloaded->getInput().getType(),
-            adaptiveAvgPool->getInput().getType());
-  EXPECT_EQ(adaptiveAvgPoolReloaded->getResult().getType(),
-            adaptiveAvgPool->getResult().getType());
+  EXPECT_TRUE(adaptiveAvgPoolReloaded->getInput().getType()->isEqual(
+      *adaptiveAvgPool->getInput().getType()));
+  EXPECT_TRUE(adaptiveAvgPoolReloaded->getResult().getType()->isEqual(
+      *adaptiveAvgPool->getResult().getType()));
 }
 
 TEST(exporter, RowwiseQuantizedFullyConnected) {
@@ -604,8 +615,9 @@ TEST(exporter, RowwiseQuantizedFullyConnected) {
 
   // Save and reload F.
   Function *R;
+  Module reloadMod;
   ASSIGN_VALUE_OR_FAIL_TEST(
-      R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
+      R, saveAndReloadFunction(reloadMod, F, {"input"}, {input->getType()}));
 
   RowwiseQuantizedFullyConnectedNode *rwqFCReloaded;
   ASSIGN_VALUE_OR_FAIL_TEST(
@@ -613,13 +625,17 @@ TEST(exporter, RowwiseQuantizedFullyConnected) {
       getSingleNodeWithKind<RowwiseQuantizedFullyConnectedNode>(
           R, Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind));
 
-  EXPECT_EQ(rwqFCReloaded->getInput().getType(), rwqFC->getInput().getType());
-  EXPECT_EQ(rwqFCReloaded->getResult().getType(), rwqFC->getResult().getType());
+  EXPECT_TRUE(rwqFCReloaded->getInput().getType()->isEqual(
+      *rwqFC->getInput().getType()));
+  EXPECT_TRUE(rwqFCReloaded->getResult().getType()->isEqual(
+      *rwqFC->getResult().getType()));
 
-  EXPECT_EQ(rwqFCReloaded->getWeights().getType(),
-            rwqFC->getWeights().getType());
-  EXPECT_EQ(rwqFCReloaded->getBias().getType(), rwqFC->getBias().getType());
-  EXPECT_EQ(rwqFCReloaded->getScales().getType(), rwqFC->getScales().getType());
-  EXPECT_EQ(rwqFCReloaded->getOffsets().getType(),
-            rwqFC->getOffsets().getType());
+  EXPECT_TRUE(rwqFCReloaded->getWeights().getType()->isEqual(
+      *rwqFC->getWeights().getType()));
+  EXPECT_TRUE(
+      rwqFCReloaded->getBias().getType()->isEqual(*rwqFC->getBias().getType()));
+  EXPECT_TRUE(rwqFCReloaded->getScales().getType()->isEqual(
+      *rwqFC->getScales().getType()));
+  EXPECT_TRUE(rwqFCReloaded->getOffsets().getType()->isEqual(
+      *rwqFC->getOffsets().getType()));
 }

@@ -2325,6 +2325,7 @@ TEST_F(OnnxImporterTest, gatherOpConstantFoldingAndReshape) {
   {
     ONNXModelLoader onnxLD(netFilename, {"input"}, {&data.getType()}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    EXPECT_EQ(mod.getPlaceholders().size(), 2);
     bindings.allocate(mod.getPlaceholders());
   }
   EE.compile(CompilationMode::Infer);

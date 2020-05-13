@@ -223,6 +223,10 @@ ProtobufLoader::createAndRegisterPlaceholder(llvm::StringRef name, TypeRef T,
   RETURN_ERR_IF_NOT(
       !hasNodeByName(name),
       llvm::Twine("Creating an already existing node ", name).str());
+  RETURN_ERR_IF_NOT(!mod_.hasStorageName(name),
+                    strFormat("A Placeholder was already registered by name %s",
+                              name.data()));
+
   Placeholder *node = mod_.createPlaceholder(T, name, isTrainable, layout);
   node->setStatic(isStatic);
   nodeValueByName_[name] = node->getOutput();

@@ -236,6 +236,29 @@ void vectorReorder(std::vector<T> &v, std::vector<size_t> const &order) {
   }
 }
 
+/// Simple scope guard implementation.
+class ScopeGuard {
+  /// Function to call when the destructor is called.
+  std::function<void()> endFun_;
+  /// Whether the guard is enabled.
+  bool enabled_{true};
+
+public:
+  /// Ctor that takes the function to call in destructor.
+  ScopeGuard(std::function<void()> &&fun)
+      : endFun_(std::move(fun)), enabled_(true) {}
+
+  // Dtor that calls \ref endFun_ if \ref enabled_.
+  ~ScopeGuard() {
+    if (enabled_) {
+      endFun_();
+    }
+  }
+
+  /// Disables the guard.
+  void disable() { enabled_ = false; }
+};
+
 } // namespace glow
 
 #endif // GLOW_SUPPORT_SUPPORT_H
