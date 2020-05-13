@@ -219,7 +219,7 @@ static void importReduceL2Test(const std::string &netFilename,
   Type inputType(ElemKind::FloatTy, inputShape);
   ONNXModelLoader onnxLD(netFilename, {"input"}, {&inputType}, *F);
   graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
-  auto PH = mod.getPlaceholderByName("input");
+  auto PH = mod.getPlaceholderByNameSlow("input");
   auto *inTensor = bindings.allocate(PH);
   inTensor->getHandle() = inputValues;
   EE.compile(CompilationMode::Infer);
@@ -396,7 +396,7 @@ static void importExpandTest(const std::string &netFilename,
   Type inputType(ElemKind::FloatTy, inputShape);
   ONNXModelLoader onnxLD(netFilename, {"x"}, {&inputType}, *F);
   graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
-  auto *PH = mod.getPlaceholderByName("x");
+  auto *PH = mod.getPlaceholderByNameSlow("x");
   auto *inTensor = bindings.allocate(PH);
   inTensor->getHandle() = inputValues;
   EE.compile(CompilationMode::Infer);
@@ -427,7 +427,7 @@ static void importMaxPool1DTest(std::string &netFilename,
 
   graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
 
-  auto PH = mod.getPlaceholderByName("x");
+  auto PH = mod.getPlaceholderByNameSlow("x");
   auto *inTensor = bindings.allocate(PH);
   inTensor->getHandle() = inputValues;
 
@@ -651,7 +651,7 @@ static void testEltwiseUnaryOpFloat(std::string fileName,
   Type input_type(ElemKind::FloatTy, inputShape);
   ONNXModelLoader onnxLD(NetFilename, {input_name.c_str()}, {&input_type}, *F);
   graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
-  auto PH = mod.getPlaceholderByName(input_name);
+  auto PH = mod.getPlaceholderByNameSlow(input_name);
   auto *inTensor = bindings.allocate(PH);
   inTensor->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
   // Compile&run the graph, and check the output
@@ -697,7 +697,8 @@ static void testImportPRelu(std::string filename,
   // Compile&run the graph, and check the output.
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
-  auto dataH = bindings.get(bindings.getPlaceholderByName("data"))->getHandle();
+  auto dataH =
+      bindings.get(bindings.getPlaceholderByNameSlow("data"))->getHandle();
   auto result = bindings.get(graphOutputVar)->getHandle();
   std::vector<dim_t> expectedDims = {inputShape[0], inputShape[1],
                                      inputShape[2], inputShape[3]};
@@ -878,11 +879,11 @@ static void importConv1DTest(std::string &netFilename,
 
   graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
 
-  auto PHX = mod.getPlaceholderByName("x");
+  auto PHX = mod.getPlaceholderByNameSlow("x");
   auto *inTensorX = bindings.allocate(PHX);
   inTensorX->getHandle() = inputXValues;
 
-  auto PHW = mod.getPlaceholderByName("w");
+  auto PHW = mod.getPlaceholderByNameSlow("w");
   auto *inTensorW = bindings.allocate(PHW);
   inTensorW->getHandle() = inputWValues;
 
@@ -1992,7 +1993,7 @@ TEST_F(OnnxImporterTest, importReplaceNaN) {
   EXPECT_EQ(replaceNaNNode->getValue(), 1.0f);
   auto *inputNode =
       llvm::dyn_cast<Placeholder>(replaceNaNNode->getInput().getNode());
-  ASSERT_EQ(inputNode, mod.getPlaceholderByName("x"));
+  ASSERT_EQ(inputNode, mod.getPlaceholderByNameSlow("x"));
 
   // We have one input and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
@@ -2038,9 +2039,9 @@ TEST_F(OnnxImporterTest, importSparseToDense) {
   auto *STD = llvm::dyn_cast<SparseToDenseNode>(save->getInput().getNode());
   ASSERT_TRUE(STD);
   auto *idx = llvm::dyn_cast<Placeholder>(STD->getIndices().getNode());
-  EXPECT_EQ(idx, mod.getPlaceholderByName("indices"));
+  EXPECT_EQ(idx, mod.getPlaceholderByNameSlow("indices"));
   auto *vals = llvm::dyn_cast<Placeholder>(STD->getValues().getNode());
-  EXPECT_EQ(vals, mod.getPlaceholderByName("values"));
+  EXPECT_EQ(vals, mod.getPlaceholderByNameSlow("values"));
 }
 
 /// Test loading SparseLengthsSum from an ONNX model.
@@ -3278,8 +3279,8 @@ TEST_F(OnnxImporterTest, importDimParamExplicit) {
 
   // Validate placeholder sizes.
   Placeholder *inputPH, *outputPH;
-  inputPH = mod.getPlaceholderByName("input");
-  outputPH = mod.getPlaceholderByName("output");
+  inputPH = mod.getPlaceholderByNameSlow("input");
+  outputPH = mod.getPlaceholderByNameSlow("output");
   EXPECT_TRUE(inputPH);
   EXPECT_TRUE(outputPH);
   EXPECT_EQ(inputPH->dims()[0], 1);
@@ -3304,8 +3305,8 @@ TEST_F(OnnxImporterTest, importDimParamImplicit) {
 
   // Validate placeholder sizes.
   Placeholder *inputPH, *outputPH;
-  inputPH = mod.getPlaceholderByName("input");
-  outputPH = mod.getPlaceholderByName("output");
+  inputPH = mod.getPlaceholderByNameSlow("input");
+  outputPH = mod.getPlaceholderByNameSlow("output");
   EXPECT_TRUE(inputPH);
   EXPECT_TRUE(outputPH);
   EXPECT_EQ(inputPH->dims()[0], 1);
@@ -3343,7 +3344,7 @@ static void importRNN(std::string fileName) {
   EE.run(bindings);
 
   // Verify RNN error.
-  Placeholder *Y_err_ph = mod.getPlaceholderByName("Y_err");
+  Placeholder *Y_err_ph = mod.getPlaceholderByNameSlow("Y_err");
   EXPECT_TRUE(Y_err_ph);
   auto err = bindings.get(Y_err_ph)->getHandle();
   for (size_t idx = 0; idx < Y_err_ph->getType()->size(); idx++) {
@@ -3400,7 +3401,7 @@ static void importGRU(std::string fileName) {
   EE.run(bindings);
 
   // Verify GRU error.
-  Placeholder *Y_err_ph = mod.getPlaceholderByName("Y_err");
+  Placeholder *Y_err_ph = mod.getPlaceholderByNameSlow("Y_err");
   EXPECT_TRUE(Y_err_ph);
   auto err = bindings.get(Y_err_ph)->getHandle();
   for (size_t idx = 0; idx < Y_err_ph->getType()->size(); idx++) {
@@ -3469,7 +3470,7 @@ static void importLSTM(std::string fileName) {
   EE.run(bindings);
 
   // Verify LSTM error.
-  Placeholder *Y_err_ph = mod.getPlaceholderByName("Y_err");
+  Placeholder *Y_err_ph = mod.getPlaceholderByNameSlow("Y_err");
   EXPECT_TRUE(Y_err_ph);
   auto err = bindings.get(Y_err_ph)->getHandle();
   for (size_t idx = 0; idx < Y_err_ph->getType()->size(); idx++) {
@@ -3528,7 +3529,7 @@ static void importFlip(std::string fileName) {
   EE.run(bindings);
 
   // Verify error.
-  Placeholder *Y_err_ph = mod.getPlaceholderByName("Y_err");
+  Placeholder *Y_err_ph = mod.getPlaceholderByNameSlow("Y_err");
   EXPECT_TRUE(Y_err_ph);
   auto err = bindings.get(Y_err_ph)->getHandle();
   for (size_t idx = 0; idx < Y_err_ph->getType()->size(); idx++) {
@@ -3607,7 +3608,7 @@ static void importAudioSpectrogram(std::string fileName) {
   EE.run(bindings);
 
   // Verify error.
-  Placeholder *errPH = mod.getPlaceholderByName("spectrogram_err");
+  Placeholder *errPH = mod.getPlaceholderByNameSlow("spectrogram_err");
   EXPECT_TRUE(errPH);
   auto errH = bindings.get(errPH)->getHandle();
   auto fftLen = (errPH->getType()->dims()[1] - 1) * 2;
@@ -3653,7 +3654,7 @@ static void importMFCC(std::string fileName) {
   EE.run(bindings);
 
   // Verify error.
-  Placeholder *errPH = mod.getPlaceholderByName("coefficients_err");
+  Placeholder *errPH = mod.getPlaceholderByNameSlow("coefficients_err");
   EXPECT_TRUE(errPH);
   auto errH = bindings.get(errPH)->getHandle();
   for (size_t idx = 0; idx < errPH->getType()->size(); idx++) {

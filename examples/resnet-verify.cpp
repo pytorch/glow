@@ -67,7 +67,7 @@ public:
     auto hook = hookNode(FI, name);
     inferBindings.allocate(modI->getPlaceholders());
     for (auto PH : bindings.pairs()) {
-      auto iPH = inferBindings.getPlaceholderByName(PH.first->getName());
+      auto iPH = inferBindings.getPlaceholderByNameSlow(PH.first->getName());
       inferBindings.get(iPH)->assign(PH.second);
     }
 

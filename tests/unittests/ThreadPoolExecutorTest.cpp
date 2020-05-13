@@ -468,7 +468,7 @@ public:
     }
 
     for (const auto &symbol : outputSymbols) {
-      auto *placeholder = bindings_->getPlaceholderByName(symbol);
+      auto *placeholder = bindings_->getPlaceholderByNameSlow(symbol);
       if (!placeholder) {
         assert(!"Placeholder for DAG output not found!");
       }
@@ -549,7 +549,7 @@ private:
   /// mapped for the test being created, reuse the existing value.
   void insertSymbolIntoPlaceholderBindings(llvm::StringRef name,
                                            PlaceholderBindings *bindings) {
-    auto ph = module_->getPlaceholderByName(name);
+    auto ph = module_->getPlaceholderByNameSlow(name);
 
     if (!ph) {
       // This is a new symbol. Create a Placeholder and an initialize and new

@@ -455,7 +455,7 @@ void glow::fillPlaceholders(const ONNX_NAMESPACE::GraphProto &inputGroup,
                             bool usingGlowCustomOps) {
   for (const auto &tensorProto : inputGroup.initializer()) {
     auto *tensor =
-        bindings->get(bindings->getPlaceholderByName(tensorProto.name()));
+        bindings->get(bindings->getPlaceholderByNameSlow(tensorProto.name()));
     CHECK(tensor);
     size_t fullSize = tensor->getSizeInBytes();
     const auto fullType = tensor->getType();

@@ -224,7 +224,7 @@ Error HabanaFunction::execute(ExecutionContext *context) {
   for (auto *P : getInputs()) {
     Tensor *T = bindings->get(P);
     if (!T) {
-      T = bindings->get(bindings->getPlaceholderByName(P->getName()));
+      T = bindings->get(bindings->getPlaceholderByNameSlow(P->getName()));
     }
     tensors++;
     RETURN_ERR_IF_NOT(T, "Failed to get input tensor.");
@@ -277,7 +277,7 @@ Error HabanaFunction::execute(ExecutionContext *context) {
   for (auto *P : getOutputs()) {
     Tensor *T = bindings->get(P);
     if (!T) {
-      T = bindings->get(bindings->getPlaceholderByName(P->getName()));
+      T = bindings->get(bindings->getPlaceholderByNameSlow(P->getName()));
     }
     RETURN_ERR_IF_NOT(T, "Failed to get output tensor.");
 

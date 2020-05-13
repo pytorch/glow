@@ -265,7 +265,7 @@ TEST_P(HostManagerTest, runNetworkConcurrent) {
   auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
   auto *pow = F->createPow("Pow1", X, 2.0);
   F->createSave("save", pow);
-  auto *savePH = module->getPlaceholderByName("save");
+  auto *savePH = module->getPlaceholderByNameSlow("save");
 
   auto hostManager = createHostManager(backendName_);
   CompilationContext cctx;
@@ -307,7 +307,7 @@ TEST_P(HostManagerTest, testSaturateHost) {
   auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
   auto *pow = F->createPow("Pow1", X, 2.0);
   F->createSave("save", pow);
-  auto *savePH = module->getPlaceholderByName("save");
+  auto *savePH = module->getPlaceholderByNameSlow("save");
 
   std::vector<std::unique_ptr<DeviceConfig>> configs =
       generateConfigs(backendName_, 2);
@@ -820,7 +820,7 @@ TEST_P(HostManagerTest, testStaticAssignmentP2PandDRTConcurrent) {
   auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
   auto *pow = F->createPow("Pow1", X, 2.0);
   F->createSave("save", pow);
-  auto *savePH = module->getPlaceholderByName("save");
+  auto *savePH = module->getPlaceholderByNameSlow("save");
 
   std::vector<std::unique_ptr<DeviceConfig>> configs =
       generateConfigs(backendName_, 3);

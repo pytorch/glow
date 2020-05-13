@@ -4612,7 +4612,7 @@ NodeValue Function::getNodeValueByName(llvm::StringRef name) {
   auto nodeName = strPair.first;
   Node *node = getNodeByName(nodeName);
   node = node ? node : getParent()->getConstantByName(nodeName);
-  node = node ? node : getParent()->getPlaceholderByName(nodeName);
+  node = node ? node : getParent()->getPlaceholderByNameSlow(nodeName);
   if (!node || (node->getNumResults() == 0)) {
     return NodeValue();
   }
@@ -4659,7 +4659,7 @@ Constant *Module::getConstantByName(llvm::StringRef name) const {
   return nullptr;
 }
 
-Placeholder *Module::getPlaceholderByName(llvm::StringRef name) const {
+Placeholder *Module::getPlaceholderByNameSlow(llvm::StringRef name) const {
   for (auto *P : getPlaceholders()) {
     if (P->getName() == name) {
       return P;

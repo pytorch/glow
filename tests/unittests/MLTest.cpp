@@ -118,7 +118,7 @@ TEST_P(MLTest, trainASimpleNetwork) {
   }
   PlaceholderBindings trainingBindings;
   trainingBindings.allocate(EET_.getModule().getPlaceholders());
-  auto *resPH = EEI_.getModule().getPlaceholderByName("return");
+  auto *resPH = EEI_.getModule().getPlaceholderByNameSlow("return");
 
   // Values for the input and output variables.
   Tensor inputs(ElemKind::FloatTy, {1, 4});
@@ -138,7 +138,7 @@ TEST_P(MLTest, trainASimpleNetwork) {
   // Testing the output vector.
   PlaceholderBindings inferBindings;
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
-  A = EEI_.getModule().getPlaceholderByName("A");
+  A = EEI_.getModule().getPlaceholderByNameSlow("A");
   EEI_.compile(CompilationMode::Infer);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   updateInputPlaceholders(inferBindings, {A}, {&inputs});
@@ -183,7 +183,7 @@ TEST_P(MLTest, simpleRegression) {
     O = F->createRegression("reg", O, Ex);
     F->createSave("result", O);
   }
-  auto resPH = EEI_.getModule().getPlaceholderByName("result");
+  auto resPH = EEI_.getModule().getPlaceholderByNameSlow("result");
   trainingBindings.allocate(EET_.getModule().getPlaceholders());
   inferBindings.copyTrainableWeightsTo(trainingBindings);
   inferBindings.clear();
@@ -208,7 +208,7 @@ TEST_P(MLTest, simpleRegression) {
   // Verify the result of the regression layer.
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
   trainingBindings.copyTrainableWeightsTo(inferBindings);
-  A = inferBindings.getPlaceholderByName("A");
+  A = inferBindings.getPlaceholderByNameSlow("A");
   EEI_.compile(CompilationMode::Infer);
 
   // Test the output:
@@ -259,7 +259,8 @@ TEST_P(MLTest, learnXor) {
   inferBindings.clear();
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
 
-  auto *res = inferBindings.get(EEI_.getModule().getPlaceholderByName("ret"));
+  auto *res =
+      inferBindings.get(EEI_.getModule().getPlaceholderByNameSlow("ret"));
 
   // Prepare the training set and the testing set.
   Tensor trainingSet(ElemKind::FloatTy, {numInputs, 2});
@@ -295,7 +296,7 @@ TEST_P(MLTest, learnXor) {
     TS.at({i, 0}) = a;
     TS.at({i, 1}) = b;
   }
-  A = inferBindings.getPlaceholderByName("A");
+  A = inferBindings.getPlaceholderByNameSlow("A");
   updateInputPlaceholders(inferBindings, {A}, {&trainingSet});
   EEI_.run(inferBindings, fname);
 
@@ -343,7 +344,8 @@ TEST_P(MLTest, learnLog) {
   inferBindings.clear();
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
 
-  auto *res = inferBindings.get(EEI_.getModule().getPlaceholderByName("ret"));
+  auto *res =
+      inferBindings.get(EEI_.getModule().getPlaceholderByNameSlow("ret"));
 
   // Set the training data.
   Tensor trainingSet(ElemKind::FloatTy, {numInputs, 1});
@@ -386,7 +388,7 @@ TEST_P(MLTest, learnLog) {
     float a = EEI_.getModule().getPRNG().nextRandReal(LO_T, HI_T);
     TES.at({i, 0}) = a;
   }
-  A = inferBindings.getPlaceholderByName("A");
+  A = inferBindings.getPlaceholderByNameSlow("A");
   updateInputPlaceholders(inferBindings, {A}, {&testSet});
   EEI_.run(inferBindings, fname);
 
@@ -467,7 +469,8 @@ TEST_P(MLTest, circle) {
   inferBindings.copyTrainableWeightsTo(trainingBindings);
   inferBindings.clear();
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
-  auto *res = inferBindings.get(EEI_.getModule().getPlaceholderByName("ret"));
+  auto *res =
+      inferBindings.get(EEI_.getModule().getPlaceholderByNameSlow("ret"));
 
   auto *TF = glow::differentiate(F, TC);
   auto tfName = TF->getName();
@@ -484,7 +487,7 @@ TEST_P(MLTest, circle) {
            {&coordinates, &labels}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI_.compile(CompilationMode::Infer);
-  A = inferBindings.getPlaceholderByName("A");
+  A = inferBindings.getPlaceholderByNameSlow("A");
   // Print a diagram that depicts the network decision on a grid.
   Tensor sample(ElemKind::FloatTy, {minibatchSize, 2});
   sample.zero();
@@ -581,7 +584,8 @@ TEST_P(MLTest, learnSingleValueConcat) {
   inferBindings.copyTrainableWeightsTo(trainingBindings);
   inferBindings.clear();
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
-  auto *res = inferBindings.get(EEI_.getModule().getPlaceholderByName("ret"));
+  auto *res =
+      inferBindings.get(EEI_.getModule().getPlaceholderByNameSlow("ret"));
 
   Tensor inputs(ElemKind::FloatTy, {1, width});
   Tensor expected(ElemKind::FloatTy, {1, width * 2});
@@ -597,7 +601,7 @@ TEST_P(MLTest, learnSingleValueConcat) {
            {&inputs, &inputs, &expected}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI_.compile(CompilationMode::Infer);
-  A = inferBindings.getPlaceholderByName("A");
+  A = inferBindings.getPlaceholderByNameSlow("A");
   // Testing the output vector.
   updateInputPlaceholders(inferBindings, {A}, {&inputs});
   EEI_.run(inferBindings);
@@ -709,7 +713,8 @@ void testRNNCell(TCellGenerator cell) {
   inferBindings.copyTrainableWeightsTo(trainingBindings);
   inferBindings.clear();
   inferBindings.allocate(EEI.getModule().getPlaceholders());
-  auto *res = inferBindings.get(EEI.getModule().getPlaceholderByName("result"));
+  auto *res =
+      inferBindings.get(EEI.getModule().getPlaceholderByNameSlow("result"));
 
   auto *TF = glow::differentiate(F, TC);
   auto tfName = TF->getName();
@@ -732,7 +737,7 @@ void testRNNCell(TCellGenerator cell) {
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   // Testing the output vector.
   EEI.compile(CompilationMode::Infer);
-  X = inferBindings.getPlaceholderByName("X");
+  X = inferBindings.getPlaceholderByNameSlow("X");
   updateInputPlaceholders(inferBindings, {X}, {&inputs});
   EEI.run(inferBindings, fname);
 
@@ -903,7 +908,7 @@ TEST_P(MLTest, classifyPlayerSport) {
            {&players, &labels}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI_.compile(CompilationMode::Infer);
-  A = inferBindings.getPlaceholderByName("A");
+  A = inferBindings.getPlaceholderByNameSlow("A");
   std::vector<std::tuple<unsigned, unsigned, Sport>> testPlayers;
   testPlayers.emplace_back(82, 240, Sport::BASKETBALL);
   testPlayers.emplace_back(86, 260, Sport::BASKETBALL);
@@ -921,8 +926,9 @@ TEST_P(MLTest, classifyPlayerSport) {
   updateInputPlaceholders(inferBindings, {A}, {&testPlayersTensor});
   EEI_.run(inferBindings, fname);
 
-  auto SMH = inferBindings.get(inferBindings.getPlaceholderByName("result"))
-                 ->getHandle<>();
+  auto SMH =
+      inferBindings.get(inferBindings.getPlaceholderByNameSlow("result"))
+          ->getHandle<>();
   for (dim_t i = 0; i < testPlayers.size(); i++) {
     const dim_t sport = static_cast<dim_t>(std::get<2>(testPlayers[i]));
     EXPECT_NEAR(SMH.at({i, sport}), 1.0, 0.1);
@@ -986,7 +992,7 @@ TEST_P(MLTest, learnSinus) {
   inferBindings.clear();
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
   auto *res =
-      inferBindings.get(EEI_.getModule().getPlaceholderByName("return"));
+      inferBindings.get(EEI_.getModule().getPlaceholderByNameSlow("return"));
 
   auto *TF = glow::differentiate(F, TC);
   auto tfName = TF->getName();
@@ -1006,7 +1012,7 @@ TEST_P(MLTest, learnSinus) {
     tensorX.getHandle<>().at({i, 0}) = x;
     tensorY.getHandle<>().at({i, 0}) = y;
   }
-  inputX = inferBindings.getPlaceholderByName("input");
+  inputX = inferBindings.getPlaceholderByNameSlow("input");
   EEI_.compile(CompilationMode::Infer);
   updateInputPlaceholders(inferBindings, {inputX}, {&tensorX});
   EEI_.run(inferBindings, fname);
@@ -1055,7 +1061,8 @@ TEST_P(MLTest, nonLinearClassifier) {
   inferBindings.copyTrainableWeightsTo(trainingBindings);
   inferBindings.clear();
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
-  auto *res = inferBindings.get(EEI_.getModule().getPlaceholderByName("ret"));
+  auto *res =
+      inferBindings.get(EEI_.getModule().getPlaceholderByNameSlow("ret"));
 
   auto *TF = glow::differentiate(F, TC);
   auto tfName = TF->getName();
@@ -1079,7 +1086,7 @@ TEST_P(MLTest, nonLinearClassifier) {
            {&samples, &labels}, tfName);
   trainingBindings.copyTrainableWeightsTo(inferBindings);
   EEI_.compile(CompilationMode::Infer);
-  A = inferBindings.getPlaceholderByName("A");
+  A = inferBindings.getPlaceholderByNameSlow("A");
   std::vector<std::tuple<float, float, dim_t>> tests;
   tests.emplace_back(-0.8, -0.8, 0);
   tests.emplace_back(0.8, -0.8, 1);
@@ -1160,8 +1167,8 @@ TEST_P(MLTest, convNetForImageRecognition) {
   }
 
   auto *mod = &EET_.getModule();
-  auto input = mod->getPlaceholderByName("input");
-  auto ex = mod->getPlaceholderByName("exp");
+  auto input = mod->getPlaceholderByNameSlow("input");
+  auto ex = mod->getPlaceholderByNameSlow("exp");
 
   auto *TF = glow::differentiate(mod->getFunction(fName), TC);
   auto tfName = TF->getName();
@@ -1184,7 +1191,7 @@ TEST_P(MLTest, convNetForImageRecognition) {
   cctxProf.precisionConfig.quantMode = QuantizationMode::Profile;
 
   auto F = mod->getFunction(fName);
-  input = mod->getPlaceholderByName("input");
+  input = mod->getPlaceholderByNameSlow("input");
   trainingBindings.copyTrainableWeightsTo(profileBindings);
   EEP.compile(cctxProf);
   // Since we are compiling in profiling mode the partitioner will create a new
@@ -1214,7 +1221,7 @@ TEST_P(MLTest, convNetForImageRecognition) {
 
   F = mod->getFunction("convNetForImageRecognition");
   EEI_.compile(cctxQuant);
-  input = mod->getPlaceholderByName("input");
+  input = mod->getPlaceholderByNameSlow("input");
 
   // Generate the images used for testing.
   Tensor testImages(ElemKind::FloatTy, {batchSize, 8, 8, 1});
@@ -1224,7 +1231,8 @@ TEST_P(MLTest, convNetForImageRecognition) {
 
   EEI_.run(inferBindings);
 
-  Tensor *res = inferBindings.get(EEI_.getModule().getPlaceholderByName("ret"));
+  Tensor *res =
+      inferBindings.get(EEI_.getModule().getPlaceholderByNameSlow("ret"));
   auto SMH = res->getHandle<>();
   for (dim_t i = 0; i < batchSize; i++) {
     bool isLine = testLabels.getHandle<int64_t>().at({i, 0}) == 0;
@@ -1296,8 +1304,8 @@ TEST_P(MLTest, testFindPixelRegression) {
   }
 
   auto *mod = &EET_.getModule();
-  auto input = mod->getPlaceholderByName("input");
-  auto ex = mod->getPlaceholderByName("coordinates");
+  auto input = mod->getPlaceholderByNameSlow("input");
+  auto ex = mod->getPlaceholderByNameSlow("coordinates");
 
   auto *TF = glow::differentiate(mod->getFunction(fName), TC);
   auto tfName = TF->getName();
@@ -1329,7 +1337,7 @@ TEST_P(MLTest, testFindPixelRegression) {
   CompilationContext cctxProf{&profileBindings, &loweredMapForProf};
   cctxProf.precisionConfig.quantMode = QuantizationMode::Profile;
 
-  input = mod->getPlaceholderByName("input");
+  input = mod->getPlaceholderByNameSlow("input");
   trainingBindings.copyTrainableWeightsTo(profileBindings);
   EEP.compile(cctxProf);
   // Get new function after partitioning.
@@ -1354,7 +1362,7 @@ TEST_P(MLTest, testFindPixelRegression) {
 
   F = mod->getFunction(fName);
   EEI_.compile(cctxQuant);
-  input = mod->getPlaceholderByName("input");
+  input = mod->getPlaceholderByNameSlow("input");
 
   // Generate the images used for testing.
   Tensor testImages(ElemKind::FloatTy, {batchSize, 10, 10, 1});
@@ -1366,7 +1374,8 @@ TEST_P(MLTest, testFindPixelRegression) {
   EEI_.run(inferBindings);
 
   // A handle to the projected result.
-  Tensor *res = inferBindings.get(EEI_.getModule().getPlaceholderByName("ret"));
+  Tensor *res =
+      inferBindings.get(EEI_.getModule().getPlaceholderByNameSlow("ret"));
   auto RH = res->getHandle<>();
   // A handle to the true label.
   auto LH = testLabels.getHandle<>();
@@ -1508,7 +1517,7 @@ TEST_P(MLTest, matrixRotationRecognition) {
   inferBindings.clear();
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
   auto *res =
-      inferBindings.get(EEI_.getModule().getPlaceholderByName("result"));
+      inferBindings.get(EEI_.getModule().getPlaceholderByNameSlow("result"));
   auto *TF = glow::differentiate(F, TC);
   auto tfName = TF->getName();
   auto fname = F->getName();
@@ -1538,8 +1547,8 @@ TEST_P(MLTest, matrixRotationRecognition) {
   unsigned numBatches = numSamples / batchSize;
   unsigned batchStartIdx =
       EEI_.getModule().getPRNG().nextRandInt(0, numBatches - 1) * batchSize;
-  varMatricesA = inferBindings.getPlaceholderByName("matrixA");
-  varMatricesB = inferBindings.getPlaceholderByName("matrixB");
+  varMatricesA = inferBindings.getPlaceholderByNameSlow("matrixA");
+  varMatricesB = inferBindings.getPlaceholderByNameSlow("matrixB");
   auto batchMatricesA =
       matricesA.getUnowned({batchSize, 3, 3}, {batchStartIdx, 0, 0});
   auto batchMatricesB =
@@ -1618,9 +1627,11 @@ TEST_P(MLTest, learnSparseLengthsSumEmbeddings) {
   inferBindings.copyToTarget("expectedP", trainingBindings);
   inferBindings.clear();
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
-  EH = trainingBindings.get(trainingBindings.getPlaceholderByName("expectedP"))
+  EH = trainingBindings
+           .get(trainingBindings.getPlaceholderByNameSlow("expectedP"))
            ->getHandle();
-  auto *res = inferBindings.get(EEI_.getModule().getPlaceholderByName("save"));
+  auto *res =
+      inferBindings.get(EEI_.getModule().getPlaceholderByNameSlow("save"));
 
   // Train the network.
   auto *TF = glow::differentiate(F, TC);
@@ -1711,9 +1722,11 @@ TEST_P(MLTest, learnSparseLengthsWeightedSumEmbeddings) {
   inferBindings.copyToTarget("expectedP", trainingBindings);
   inferBindings.clear();
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
-  EH = trainingBindings.get(trainingBindings.getPlaceholderByName("expectedP"))
+  EH = trainingBindings
+           .get(trainingBindings.getPlaceholderByNameSlow("expectedP"))
            ->getHandle();
-  auto *res = inferBindings.get(EEI_.getModule().getPlaceholderByName("save"));
+  auto *res =
+      inferBindings.get(EEI_.getModule().getPlaceholderByNameSlow("save"));
 
   // Train the network.
   auto *TF = glow::differentiate(F, TC);
@@ -1804,8 +1817,10 @@ TEST_P(MLTest, learnSparseLengthsWeightedSumWeights) {
   inferBindings.copyToTarget("expectedP", trainingBindings);
   inferBindings.clear();
   inferBindings.allocate(EEI_.getModule().getPlaceholders());
-  auto *res = inferBindings.get(EEI_.getModule().getPlaceholderByName("save"));
-  EH = trainingBindings.get(trainingBindings.getPlaceholderByName("expectedP"))
+  auto *res =
+      inferBindings.get(EEI_.getModule().getPlaceholderByNameSlow("save"));
+  EH = trainingBindings
+           .get(trainingBindings.getPlaceholderByNameSlow("expectedP"))
            ->getHandle();
   // Train the network.
   auto *TF = glow::differentiate(F, TC);

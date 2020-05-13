@@ -343,7 +343,7 @@ void InferenceContext::execute(RunIdentifierTy runId,
       if (in->getUsage() == NNPIResource::ResourceUsage::StaticInputResource) {
         continue;
       }
-      auto *placeholder = bindings.getPlaceholderByName(in->getName());
+      auto *placeholder = bindings.getPlaceholderByNameSlow(in->getName());
       if (!placeholder) {
         netInputPlaceholders_.clear();
         LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, placeholder,
@@ -356,7 +356,7 @@ void InferenceContext::execute(RunIdentifierTy runId,
   }
   if (netOutputPlaceholders_.empty()) {
     for (const auto &out : outputResources_) {
-      auto *placeholder = bindings.getPlaceholderByName(out->getName());
+      auto *placeholder = bindings.getPlaceholderByNameSlow(out->getName());
       if (!placeholder) {
         netOutputPlaceholders_.clear();
         LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, placeholder,

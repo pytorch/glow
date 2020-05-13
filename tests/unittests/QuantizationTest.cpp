@@ -1187,9 +1187,9 @@ testQuantizationEnd2End(ExecutionEngine &profileEE,
 
   // STEP3 - Compare the results of the original and quantized functions.
   auto result1Handle =
-      bindings.get(bindings.getPlaceholderByName("save"))->getHandle();
+      bindings.get(bindings.getPlaceholderByNameSlow("save"))->getHandle();
   auto result2Handle =
-      bindingsBackend.get(bindingsBackend.getPlaceholderByName("save"))
+      bindingsBackend.get(bindingsBackend.getPlaceholderByNameSlow("save"))
           ->getHandle();
 
   EXPECT_EQ(result1Handle.size(), result2Handle.size());
@@ -1360,9 +1360,9 @@ TEST_P(Operator, end2endGRU) {
 
   // STEP3 - Compare the results of the original and quantized functions.
   auto result1Handle =
-      bindings.get(bindings.getPlaceholderByName("save"))->getHandle();
+      bindings.get(bindings.getPlaceholderByNameSlow("save"))->getHandle();
   auto result2Handle =
-      bindingsBackend.get(bindingsBackend.getPlaceholderByName("save"))
+      bindingsBackend.get(bindingsBackend.getPlaceholderByNameSlow("save"))
           ->getHandle();
 
   EXPECT_EQ(result1Handle.size(), result2Handle.size());

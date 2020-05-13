@@ -184,7 +184,7 @@ public:
 
   /// \returns a pointer to the placeholder with the name \p name or
   /// nullptr if no placeholder has this name.
-  Placeholder *getPlaceholderByName(llvm::StringRef name) const;
+  Placeholder *getPlaceholderByNameSlow(llvm::StringRef name) const;
 
   /// @name High-level Storage builders.
   ///@{

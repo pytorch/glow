@@ -370,7 +370,8 @@ int main(int argc, char **argv) {
 
   // Get all input tensors and zero them.
   for (const auto *name : inputNames) {
-    Tensor *T = bindings.get(loader.getModule()->getPlaceholderByName(name));
+    Tensor *T =
+        bindings.get(loader.getModule()->getPlaceholderByNameSlow(name));
     DCHECK(T && "input tensor missing!");
     T->zero();
   }

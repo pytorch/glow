@@ -234,8 +234,8 @@ int main(int argc, char **argv) {
   EET.compile(CompilationMode::Train);
   trainingBindings.allocate(modT.getPlaceholders());
 
-  auto *XT = modT.getPlaceholderByName("input");
-  auto *YT = modT.getPlaceholderByName("expected");
+  auto *XT = modT.getPlaceholderByNameSlow("input");
+  auto *YT = modT.getPlaceholderByNameSlow("expected");
 
   Tensor thisCharTrain(ElemKind::FloatTy, {batchSize, numSteps, 128});
   Tensor nextCharTrain(ElemKind::Int64ITy, {batchSize, numSteps});
@@ -259,7 +259,7 @@ int main(int argc, char **argv) {
     auto &mod = EEO.getModule();
     auto OF =
         createNetwork(mod, inferBindings, minibatchSize, numSteps, hiddenSize);
-    auto *X = mod.getPlaceholderByName("input");
+    auto *X = mod.getPlaceholderByNameSlow("input");
     inferBindings.allocate(mod.getPlaceholders());
     trainingBindings.copyTrainableWeightsTo(inferBindings);
 

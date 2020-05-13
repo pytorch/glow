@@ -899,7 +899,8 @@ protected:
 
     dispatchInference("main", hostManager.get(), context, concurrentReqestsOpt);
 
-    Tensor *resultTensorP = bindings.get(bindings.getPlaceholderByName("save"));
+    Tensor *resultTensorP =
+        bindings.get(bindings.getPlaceholderByNameSlow("save"));
     EXPECT_TRUE(referenceResultT.isEqual(*resultTensorP));
   }
 
