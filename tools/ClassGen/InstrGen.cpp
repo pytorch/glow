@@ -49,7 +49,10 @@ int main(int argc, char **argv) {
 
   BB.newInstr("AllocActivation")
       .addMember(MemberType::TypeRef, "Ty")
-      .setType("Ty");
+      .setType("Ty")
+      .addExtraMethod(
+          "void setTy(TypeRef Ty);",
+          "void AllocActivationInst::setTy(TypeRef Ty) { Ty_ = Ty; }");
 
   BB.newInstr("TensorView")
       .addOperand("Src", OperandKind::In)
@@ -823,7 +826,7 @@ int main(int argc, char **argv) {
       .addOperand("Values", OperandKind::Out)
       .addOperand("Indices", OperandKind::Out)
       .addOperand("Input", OperandKind::In)
-      .addOperand("Scratch", OperandKind::InOut)
+      .addOperand("Scratch", OperandKind::Scratch)
       .addMember(MemberType::Unsigned, "K")
       .autoVerify(VerifyKind::SameElementType, {"Values", "Input"})
       .autoVerify(VerifyKind::SameShape, {"Values", "Indices"});
@@ -849,6 +852,8 @@ int main(int argc, char **argv) {
       .addOperand("TwiddleFactors", OperandKind::In)
       .addOperand("BitReverseIndices", OperandKind::In)
       .addOperand("ComplexToRealWeights", OperandKind::In)
+      .addOperand("WinOutScratch", OperandKind::Scratch)
+      .addOperand("FftOutScratch", OperandKind::Scratch)
       .addMember(MemberType::Int64, "WindowSize")
       .addMember(MemberType::Int64, "WindowStride")
       .addMember(MemberType::Boolean, "MagnitudeSquared")
@@ -865,6 +870,7 @@ int main(int argc, char **argv) {
       .addOperand("MelWeights", OperandKind::In)
       .addOperand("MelRanges", OperandKind::In)
       .addOperand("DctMat", OperandKind::In)
+      .addOperand("Scratch", OperandKind::Scratch)
       .addMember(MemberType::Float, "SampleRate")
       .addMember(MemberType::Float, "LowerFrequency")
       .addMember(MemberType::Float, "UpperFrequency")

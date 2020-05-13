@@ -70,6 +70,11 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
 
   // The operands of the instruction class:
   for (const auto &op : operands_) {
+    // Scratch operands are not exposed in the builder method interface
+    // but only in the instruction constructor.
+    if (op.second == OperandKind::Scratch) {
+      continue;
+    }
     osH << ", Value *" << op.first;
     osB << ", Value *" << op.first;
   }
@@ -79,11 +84,23 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
     osH << ", " << getStorageTypename(&op.first) << " " << op.second;
     osB << ", " << getStorageTypename(&op.first) << " " << op.second;
   }
-
   osH << ");\n";
+  osB << ") {\n";
+
+  // Create allocations for the scratch operands.
+  for (const auto &op : operands_) {
+    if (op.second == OperandKind::Scratch) {
+      std::string allocSuffix = llvm::StringRef(op.first).lower();
+      osB << "  std::string " << op.first << "Name = name.str() + \"."
+          << allocSuffix << "\";\n";
+      osB << "  auto *" << op.first << "Type = F_->getGraph()->getParent()"
+          << "->uniqueType(ElemKind::Int8QTy, {1}, 0.0, 0);\n";
+      osB << "  auto *" << op.first << " = createAllocActivationInst("
+          << op.first << "Name, " << op.first << "Type);\n";
+    }
+  }
 
   // Initialize the base clases:
-  osB << ") {\n";
   osB << "  auto *A = new " << name_ << "Inst(uniqueName(name)";
 
   // The operands of the instruction class:
@@ -95,6 +112,24 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
     osB << ", " << op.second;
   }
   osB << ");\n";
+
+  // Modify allocation sizes based on the instruction requirements.
+  // We allocate at least 1 byte since the memory allocator does not
+  // handle properly allocation sizes of 0.
+  for (const auto &op : operands_) {
+    if (op.second == OperandKind::Scratch) {
+      osB << "  dim_t " << op.first << "Size = A->get" << op.first
+          << "Size();\n";
+      osB << "  " << op.first << "Size = " << op.first << "Size > 0 ? "
+          << op.first << "Size : 1;\n";
+      osB << "  auto *" << op.first << "TypeResized = F_->getGraph()"
+          << "->getParent()->uniqueType(ElemKind::Int8QTy, {" << op.first
+          << "Size}, 0.0, 0);\n";
+      osB << "  " << op.first << "->setType(" << op.first << "TypeResized);\n";
+      osB << "  " << op.first << "->setTy(" << op.first << "TypeResized);\n";
+    }
+  }
+
   osB << "  F_->pushInstr(A);\n  return A;\n}\n";
 }
 
@@ -162,6 +197,14 @@ void InstrBuilder::emitSettersGetters(std::ostream &os) const {
 
   for (const auto &op : members_) {
     emitMemberGetter(os, &op.first, op.second);
+  }
+
+  // Print size getter declarations for scratch operands. The functions will be
+  // manually implemented by the instruction creator.
+  for (const auto &op : operands_) {
+    if (op.second == OperandKind::Scratch) {
+      os << "  dim_t get" << op.first << "Size() const;\n";
+    }
   }
 
   // Synthesize the 'classof' method that enables the non-rtti polymorphism.
@@ -235,7 +278,7 @@ void InstrBuilder::emitClass(std::ostream &os) const {
   emitProperties(os);
 
   for (const auto &m : extraMethods_) {
-    os << "  " << m.first << "\n";
+    os << "\n  " << m.first << "\n";
   }
 
   os << "\n  Instruction* clone() const;\n";
@@ -311,7 +354,7 @@ void InstrBuilder::emitCppMethods(std::ostream &os) const {
   emitGetOperandName(os);
   // Emit the "extra" method bodies.
   for (const auto &m : extraMethods_) {
-    os << "  " << m.second << "\n";
+    os << "\n" << m.second << "\n";
   }
 }
 
@@ -386,6 +429,11 @@ void InstrBuilder::emitAutoIRGen(std::ostream &os) const {
   llvm::SmallVector<std::pair<std::string, std::string>, 4>
       nodeResultNameToValueName;
   for (const auto &opPair : operands_) {
+    // Skip the scratch operands for this instruction since they are not
+    // registered as node operands.
+    if (opPair.second == OperandKind::Scratch) {
+      continue;
+    }
     if (opPair.second == OperandKind::In) {
       // All inputs of a node were mapped to the glow::Values already.
       // So, just lookup for each input operand it's Value by using the

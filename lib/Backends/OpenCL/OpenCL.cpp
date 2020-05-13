@@ -1642,7 +1642,8 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       copyValueFromDevice(srcDev, clBindings, srcT.getUnsafePtr());
       clFinish(commands);
 
-      if (isQuantized) {
+      if (srcDev->getType()->isQuantizedType() ||
+          destDev->getType()->isQuantizedType()) {
         topK<int8_t>(destT, indT, srcT, k);
       } else {
         topK<float>(destT, indT, srcT, k);

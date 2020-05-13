@@ -2924,6 +2924,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::AudioSpectrogramInstKind: {
     auto *ASI = llvm::cast<AudioSpectrogramInst>(I);
+    auto winOutScratch = ASI->getWinOutScratch();
+    auto fftOutScratch = ASI->getFftOutScratch();
     auto spectrogram = ASI->getSpectrogram();
     auto input = ASI->getInput();
     auto window = ASI->getWindow();
@@ -2934,6 +2936,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     int64_t windowStride = ASI->getWindowStride();
     bool magnitudeSquared = ASI->getMagnitudeSquared();
 
+    auto *winOutScratchPtr = emitValueAddress(builder, winOutScratch);
+    auto *fftOutScratchPtr = emitValueAddress(builder, fftOutScratch);
     auto *spectrogramPtr = emitValueAddress(builder, spectrogram);
     auto *inputPtr = emitValueAddress(builder, input);
     auto *windowPtr = emitValueAddress(builder, window);
@@ -2949,15 +2953,16 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *F = getFunction("audio_spectrogram", spectrogram->getElementType());
     createCall(builder, F,
-               {spectrogramPtr, inputPtr, windowPtr, twiddleFactorsPtr,
-                bitReverseIndicesPtr, complexToRealWeightsPtr,
-                spectrogramDimVal, inputLengthVal, windowSizeVal,
-                windowStrideVal, magnitudeSquaredVal});
+               {winOutScratchPtr, fftOutScratchPtr, spectrogramPtr, inputPtr,
+                windowPtr, twiddleFactorsPtr, bitReverseIndicesPtr,
+                complexToRealWeightsPtr, spectrogramDimVal, inputLengthVal,
+                windowSizeVal, windowStrideVal, magnitudeSquaredVal});
     break;
   }
 
   case Kinded::Kind::MFCCInstKind: {
     auto *MFCCI = llvm::cast<MFCCInst>(I);
+    auto scratch = MFCCI->getScratch();
     auto coefficients = MFCCI->getCoefficients();
     auto spectrogram = MFCCI->getSpectrogram();
     auto melWeights = MFCCI->getMelWeights();
@@ -2965,6 +2970,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto dctMat = MFCCI->getDctMat();
     int64_t filterBankCount = MFCCI->getFilterBankCount();
 
+    auto *scratchPtr = emitValueAddress(builder, scratch);
     auto *coefficientsPtr = emitValueAddress(builder, coefficients);
     auto *spectrogramPtr = emitValueAddress(builder, spectrogram);
     auto *melWeightsPtr = emitValueAddress(builder, melWeights);
@@ -2976,8 +2982,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
     auto *F = getFunction("mfcc", coefficients->getElementType());
     createCall(builder, F,
-               {coefficientsPtr, spectrogramPtr, melWeightsPtr, melRangesPtr,
-                dctMatPtr, coefficientsDimVal, spectrogramDimVal,
+               {scratchPtr, coefficientsPtr, spectrogramPtr, melWeightsPtr,
+                melRangesPtr, dctMatPtr, coefficientsDimVal, spectrogramDimVal,
                 filterBankCountVal});
     break;
   }

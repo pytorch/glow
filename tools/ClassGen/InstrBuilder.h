@@ -33,6 +33,21 @@ enum class OperandKind : unsigned char {
   In,
   Out,
   InOut,
+  /// The 'Scratch' operand kind is similar to the 'Out' operand kind with the
+  /// following distinctions:
+  /// - is intended to be used as a temporary memory buffer for Instructions
+  ///   to write some temporary data before writing the final results using
+  ///   their 'Out' operands.
+  /// - it is NOT intended to be consumed by other Instructions and hence it is
+  ///   deallocated immediately after the Instruction execution.
+  /// - it is only exposed in the Instruction constructor and NOT in the IR
+  ///   builder method 'createXInst'. The intention is to have the IR builder
+  ///   method manage the scratch allocation/deallocation automatically.
+  /// - when defining a 'Scratch' operand named 'X', the instruction builder
+  ///   automatically declares and uses a method 'getXSize()' as part of the
+  ///   respective instruction which must be implemented by the developer in
+  ///   order for the scratch size requirements (in bytes) to be provided.
+  Scratch,
 };
 
 enum class VerifyKind : unsigned char {
@@ -51,12 +66,14 @@ inline OperandKind negateOperandKind(OperandKind CC) {
     return OperandKind::In;
   case OperandKind::InOut:
     return OperandKind::InOut;
+  case OperandKind::Scratch:
+    return OperandKind::Scratch;
   }
   llvm_unreachable("Invalid operand kind.");
 }
 
 inline const char *getOperandKindStr(OperandKind CC) {
-  const char *names[] = {"In", "Out", "InOut", nullptr};
+  const char *names[] = {"In", "Out", "InOut", "Out", nullptr};
   return names[(int)CC];
 }
 
@@ -100,6 +117,7 @@ class InstrBuilder {
   /// Specifies if this Instr is backend specific.
   bool isBackendSpecific_{false};
 
+  /// Specifies if this Instr is data parallel.
   bool isDataParallel_{false};
 
   /// \returns the index of the operand with the name \p name. Aborts if no such

@@ -343,10 +343,13 @@ static int value_index_sort(const void *va, const void *vb) {
 /// size is the size of the input, and \p n is the size of the last dimension of
 /// the input.
 template <typename T, typename TI>
-static void libjit_topk(T *values, TI *indices, const T *input, TI *scratch,
+static void libjit_topk(T *values, TI *indices, const T *input, void *scratch,
                         dim_t k, dim_t n, dim_t size) {
   dim_t in = 0;
   dim_t out = 0;
+
+  // Initialize scratch with 0.
+  memset(scratch, 0, 2 * n * sizeof(TI));
 
   value_index<T, TI> *buffer = (value_index<T, TI> *)scratch;
 
@@ -2567,22 +2570,22 @@ void libjit_softmax_grad_f_i32(float *inG, float *outW,
 }
 
 void libjit_topk_f_u(float *values, size_t *indices, const float *input,
-                     size_t *scratch, dim_t k, dim_t n, dim_t size) {
+                     void *scratch, dim_t k, dim_t n, dim_t size) {
   libjit_topk(values, indices, input, scratch, k, n, size);
 }
 
 void libjit_topk_f_i32(float *values, int32_t *indices, const float *input,
-                       int32_t *scratch, dim_t k, dim_t n, dim_t size) {
+                       void *scratch, dim_t k, dim_t n, dim_t size) {
   libjit_topk(values, indices, input, scratch, k, n, size);
 }
 
 void libjit_topk_i8_u(int8_t *values, size_t *indices, const int8_t *input,
-                      size_t *scratch, dim_t k, dim_t n, dim_t size) {
+                      void *scratch, dim_t k, dim_t n, dim_t size) {
   libjit_topk(values, indices, input, scratch, k, n, size);
 }
 
 void libjit_topk_i8_i32(int8_t *values, int32_t *indices, const int8_t *input,
-                        int32_t *scratch, dim_t k, dim_t n, dim_t size) {
+                        void *scratch, dim_t k, dim_t n, dim_t size) {
   libjit_topk(values, indices, input, scratch, k, n, size);
 }
 
@@ -3145,19 +3148,20 @@ void libjit_fft_real_f(float *output, float *input, const float *twiddleFactors,
 /// FFT LUTs \p twiddleFactors and \p bitReverseIndices are computed at
 /// compile-time. More details in Graph.h about the AudioSpectrogram node.
 void libjit_audio_spectrogram_f(
-    float *spectrogram, const float *input, const float *window,
-    const float *twiddleFactors, const int32_t *bitReverseIndices,
-    const float *complexToRealWeights, const dim_t *spectrogramDims,
-    const dim_t inputLength, const dim_t windowSize, const dim_t windowStride,
+    void *winOutScratch, void *fftOutScratch, float *spectrogram,
+    const float *input, const float *window, const float *twiddleFactors,
+    const int32_t *bitReverseIndices, const float *complexToRealWeights,
+    const dim_t *spectrogramDims, const dim_t inputLength,
+    const dim_t windowSize, const dim_t windowStride,
     const bool magnitudeSquared) {
 
   dim_t winNum = spectrogramDims[0];
   dim_t specLen = spectrogramDims[1];
   dim_t fftLen = (specLen - 1) * 2;
 
-  // Temporary buffers.
-  float winOut[fftLen];
-  float fftOut[fftLen + 2];
+  // Scratch buffers.
+  float *winOut = (float *)winOutScratch;
+  float *fftOut = (float *)fftOutScratch;
   memset(winOut, 0, fftLen * sizeof(float));
 
   // Compute the spectrogram.
@@ -3190,14 +3194,13 @@ void libjit_audio_spectrogram_f(
 /// \p spectrogram power. The lookup tables \p melWeights, \p melRanges
 /// and \p dctMat are computed at compile-time. More details in Graph.h
 /// about the MFCC node.
-void libjit_mfcc_f(float *coefficients, const float *spectrogram,
+void libjit_mfcc_f(void *scratch, float *coefficients, const float *spectrogram,
                    const float *melWeights, const int32_t *melRanges,
                    const float *dctMat, const dim_t *coefficientsDims,
                    const dim_t *spectrogramDims, const dim_t filterBankCount) {
 
-  // Allocate intermediate buffer on the stack.
-  // The size is expected to be relatively small.
-  float melBuff[filterBankCount];
+  // Scratch buffer.
+  float *melBuff = (float *)scratch;
 
   // Perform MFCC for all the windows.
   dim_t winNum = spectrogramDims[0];
