@@ -2675,8 +2675,9 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
     NodeValue filterScales, NodeValue filterOffsets, NodeValue biasScales,
     NodeValue biasOffsets, TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
     llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
-    unsigned_t group, unsigned_t dilation, quantization::Schema schema,
-    ElemKind filterElemQTy, ElemKind biasElemQTy) {
+    unsigned_t group, unsigned_t dilation, bool quantizeFilter,
+    bool quantizeBias, quantization::Schema schema, ElemKind filterElemQTy,
+    ElemKind biasElemQTy) {
 
   // Validate dimensions.
   bool isConv3D = (input.getType()->dims().size() == 5);
@@ -2752,7 +2753,7 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
   }
 
   // If input filter is FLOAT then quantize channel wise to filterElemQTy.
-  if (filterElemKind == ElemKind::FloatTy) {
+  if (quantizeFilter && filterElemKind == ElemKind::FloatTy) {
     Constant *filterC = dyn_cast<Constant>(filter.getNode());
     Constant *filterCQ = getParent()->createConstant(
         filterElemQTy, filterC->getType()->dims(), 1.0, 0, "filter");
@@ -2812,7 +2813,7 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
   }
 
   // If input bias is FLOAT then quantize channel wise to biasElemQTy.
-  if (biasElemKind == ElemKind::FloatTy) {
+  if (quantizeBias && biasElemKind == ElemKind::FloatTy) {
     Constant *biasC = dyn_cast<Constant>(bias.getNode());
     Constant *biasCQ = getParent()->createConstant(
         biasElemQTy, biasC->getType()->dims(), 1.0, 0, "bias");

@@ -909,12 +909,14 @@ public:
 
           if (filterC && biasC) {
             auto *convNodeCWQ = function_.createChannelwiseQuantizedConv(
-                "ChannelwiseQuantizedConv", input, filterC, biasC, nullptr,
-                nullptr, nullptr, nullptr, result.getType(),
-                convNode->getKernels(), convNode->getStrides(),
-                convNode->getPads(), convNode->getGroup(),
-                convNode->getDilation(), schema_, quantizationPrecision_,
-                quantizationPrecisionBias_);
+                "ChannelwiseQuantizedConv", input, filterC, biasC,
+                /* filterScales */ nullptr, /* filterOffsets */ nullptr,
+                /* biasScales */ nullptr, /* biasOffsets */ nullptr,
+                result.getType(), convNode->getKernels(),
+                convNode->getStrides(), convNode->getPads(),
+                convNode->getGroup(), convNode->getDilation(),
+                /* quantizeFilter */ true, /* quantizeBias */ true, schema_,
+                quantizationPrecision_, quantizationPrecisionBias_);
             result.replaceAllUsesOfWith(convNodeCWQ->getResult());
           }
         }

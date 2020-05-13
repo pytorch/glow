@@ -573,8 +573,9 @@ bool ChannelwiseQuantizedConvolutionNode::verify() const {
   isValid &= checkType(getResult(), ElemKind::Int8QTy, this);
   isValid &= checkType(getInput(), ElemKind::Int8QTy, this);
   isValid &= checkType(getFilter(), ElemKind::Int8QTy, this);
-  isValid &=
-      checkType(getBias(), {ElemKind::Int8QTy, ElemKind::Int32QTy}, this);
+  isValid &= checkType(
+      getBias(), {ElemKind::Int8QTy, ElemKind::Int32QTy, ElemKind::FloatTy},
+      this);
 
   // Check qparam types.
   isValid &= checkType(getFilterOffsets(), ElemKind::Int32ITy, this);

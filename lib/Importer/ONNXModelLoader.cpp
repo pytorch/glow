@@ -1435,12 +1435,14 @@ Error ONNXModelLoader::loadChannelwiseQuantizedConvolution(
       {idim.n, outSz.first, outSz.second, biasValue.dims()[0]}};
   auto outTy = mod_.uniqueType(ElemKind::Int8QTy, outDims, outScale, outOffset);
 
-  // Use nullptr for biasScales and biasOffsets. The implicit assumption is
-  // that the channel wise quantization parameters for bias are:
-  // biasScales[i] = inputScale * filterScales[i] and biasOffsets[i] = 0.
+  // Quantize the filter automatically (only if it is float). The bias is NOT
+  // quantized automatically and is left at the disposal of each Backend to
+  // quantize it later using custom logic.
   auto *node = G_->createChannelwiseQuantizedConv(
-      opName, input, filterValue, biasValue, scalesValue, offsetsValue, nullptr,
-      nullptr, outTy, kernels, strides, pads, group, dilation);
+      opName, input, filterValue, biasValue, scalesValue, offsetsValue,
+      /* biasScales */ nullptr, /* biasOffsets */ nullptr, outTy, kernels,
+      strides, pads, group, dilation, /* quantizeFilter */ true,
+      /* quantizeBias */ false);
 
   return addNodeAsOutput(op, node);
 }

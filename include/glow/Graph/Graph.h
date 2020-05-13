@@ -488,13 +488,19 @@ public:
   ///   biasScales[i] = inputScale * filterScales[i] and biasOffsets[i] = 0.
   ///   To be noted that this case can handle safely only INT32 bias data type
   ///   because for INT8 type the bias will almost certainly be saturated.
+  /// This function will only quantize the filter if \p quantizeFilter is set
+  /// to true and will only quantize the bias if \p quantizeBias is set to true
+  /// such that a floating-point filter/bias can be attached to the node as-is
+  /// without any modifications in order for the backends to perform their own
+  /// custom quantization later if desired.
   /// This function requires \p filter and \p bias operands to be constants.
   ChannelwiseQuantizedConvolutionNode *createChannelwiseQuantizedConv(
       llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
       NodeValue filterScales, NodeValue filterOffsets, NodeValue biasScales,
       NodeValue biasOffsets, TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
       llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
-      unsigned_t group, unsigned_t dilation = 1,
+      unsigned_t group, unsigned_t dilation = 1, bool quantizeFilter = true,
+      bool quantizeBias = true,
       quantization::Schema schema = quantization::Schema::Asymmetric,
       ElemKind filterElemQTy = ElemKind::Int8QTy,
       ElemKind biasElemQTy = ElemKind::Int32QTy);

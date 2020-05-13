@@ -7158,7 +7158,8 @@ static void testChannelwiseQuantizedConv2D(
   ChannelwiseQuantizedConvolutionNode *outQ = F->createChannelwiseQuantizedConv(
       "CWQConv", inputQ, filterCWQ, biasCWQ, filterScalesCWQ, filterOffsetsCWQ,
       biasScalesCWQ, biasOffsetsCWQ, outQTy, kernels, strides, pads, group,
-      dilation, schema, elemQKind, biasElemQKind);
+      dilation, /* quantizeFilter */ true, /* quantizeBias */ true, schema,
+      elemQKind, biasElemQKind);
   DequantizeNode *out =
       F->createDequantize("dequantize", outQ, ElemKind::FloatTy);
   SaveNode *saveOut = F->createSave("saveOut", out);
@@ -7354,8 +7355,8 @@ TEST_P(OperatorTest, ChannelwiseQuantizedConv2D) {
   auto *outTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 1, 3, 4}, 1.0, 0);
   ChannelwiseQuantizedConvolutionNode *CQC = F_->createChannelwiseQuantizedConv(
       "channelwiseQuantizedConv", qInput, filter, bias, filterScales,
-      filterOffsets, nullptr, nullptr, outTy, {2, 1}, {1, 1}, {0, 0, 0, 0},
-      groups);
+      filterOffsets, /* biasScales */ nullptr, /* biasOffsets */ nullptr, outTy,
+      {2, 1}, {1, 1}, {0, 0, 0, 0}, groups);
 
   DequantizeNode *dq =
       F_->createDequantize("dequantize", CQC, ElemKind::FloatTy);
@@ -7441,8 +7442,8 @@ TEST_P(OperatorTest, ChannelwiseQuantizedConv3D) {
                                 {1, output_channel / groups, 2, 3, 2}, 1.0, 0);
   ChannelwiseQuantizedConvolutionNode *CQC = F_->createChannelwiseQuantizedConv(
       "channelwiseQuantizedConv", qInput, filter, bias, scales, offsets,
-      nullptr, nullptr, outTy, {1, 1, 1}, {1, 1, 1}, {0, 0, 0, 0, 0, 0},
-      groups);
+      /* biasScales */ nullptr, /* biasOffsets */ nullptr, outTy, {1, 1, 1},
+      {1, 1, 1}, {0, 0, 0, 0, 0, 0}, groups);
 
   DequantizeNode *dq =
       F_->createDequantize("dequantize", CQC, ElemKind::FloatTy);
@@ -7572,8 +7573,8 @@ TEST_P(OperatorTest, ChannelwiseQuantizedConv2D_NonZero) {
   auto *outTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 1, 3, 4}, 2, 2);
   ChannelwiseQuantizedConvolutionNode *CQC = F_->createChannelwiseQuantizedConv(
       "channelwiseQuantizedConv", qInput, filter, bias, filterScales,
-      filterOffsets, nullptr, nullptr, outTy, {2, 1}, {1, 1}, {0, 0, 0, 0},
-      groups);
+      filterOffsets, /* biasScales */ nullptr, /* biasOffsets */ nullptr, outTy,
+      {2, 1}, {1, 1}, {0, 0, 0, 0}, groups);
 
   DequantizeNode *dq =
       F_->createDequantize("dequantize", CQC, ElemKind::FloatTy);

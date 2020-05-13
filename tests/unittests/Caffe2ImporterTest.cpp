@@ -280,7 +280,7 @@ TEST_F(Caffe2ImporterTest, convGroupQuantized) {
   ASSERT_TRUE(biasOffsetsConstant);
 
   const auto filterH = filterConstant->getPayload().getHandle<int8_t>();
-  const auto biasH = biasConstant->getPayload().getHandle<int32_t>();
+  const auto biasH = biasConstant->getPayload().getHandle<float>();
   const auto filterScalesH =
       filterScalesConstant->getPayload().getHandle<float>();
   const auto filterOffsetsH =
@@ -294,8 +294,7 @@ TEST_F(Caffe2ImporterTest, convGroupQuantized) {
   }
 
   for (size_t i = 0; i < biasH.size(); ++i) {
-    float matmulScale = filterScalesH.raw(i) * input.getType().getScale();
-    EXPECT_EQ(biasH.raw(i), (int32_t)(7.0 / matmulScale));
+    EXPECT_EQ(biasH.raw(i), 7.0);
   }
 
   for (size_t i = 0; i < filterScalesH.size(); ++i) {

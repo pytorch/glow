@@ -496,12 +496,13 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
     ASSIGN_VALUE_OR_RETURN_ERR(wScales, getConstantByName(wScalesName));
     ASSIGN_VALUE_OR_RETURN_ERR(wOffsets, getConstantByName(wOffsetsName));
 
-    // Use nullptr for biasScales and biasOffsets. The implicit assumption is
-    // that the channel wise quantization parameters for bias are:
-    // biasScales[i] = inputScale * filterScales[i] and biasOffsets[i] = 0.
+    // Quantize the filter automatically (only if it is float). The bias is NOT
+    // quantized automatically and is left at the disposal of each Backend to
+    // quantize it later using custom logic.
     node = G_->createChannelwiseQuantizedConv(
-        opName, finalIn, w, bias, wScales, wOffsets, nullptr, nullptr, outTy,
-        kernels, strides, pads, group, dilation);
+        opName, finalIn, w, bias, wScales, wOffsets, /* biasScales */ nullptr,
+        /* biasOffsets */ nullptr, outTy, kernels, strides, pads, group,
+        dilation, /* quantizeFilter */ true, /* quantizeBias */ false);
   } else {
     // If the bias isn't quantized for a non group quantized conv, quantize it.
     const Tensor &biasTensor = bias->getPayload();

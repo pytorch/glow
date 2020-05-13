@@ -1221,13 +1221,14 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
         "channel_wised_offsets_of_qconv", std::move(wOffsetsTensor));
     wOffsets->ensureIsOwned();
 
-    // Use nullptr for biasScales and biasOffsets. The implicit assumption is
-    // that the channel wise quantization parameters for bias are:
-    // biasScales[i] = inputScale * filterScales[i] and biasOffsets[i] = 0.
+    // Quantize the filter automatically (only if it is float). The bias is NOT
+    // quantized automatically and is left at the disposal of each Backend to
+    // quantize it later using custom logic.
     auto qconv = F_.createChannelwiseQuantizedConv(
         "qconv_channel_wised", input, weightConstant, biasConstant, wScales,
-        wOffsets, nullptr, nullptr, outTy, kernels, strides, pads, groups,
-        dilation);
+        wOffsets, /* biasScales */ nullptr, /* biasOffsets */ nullptr, outTy,
+        kernels, strides, pads, groups, dilation, /* quantizeFilter */ true,
+        /* quantizeBias */ false);
     output_not_transposed = qconv->getResult();
   } else {
     if (isConv3d) {

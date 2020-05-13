@@ -306,8 +306,9 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
 
   auto *cqConv = F->createChannelwiseQuantizedConv(
       "cqconv", input, weightsConstant, biasConstant, filterScalesConstant,
-      filterOffsetsConstant, nullptr, nullptr, outTy, kernels, strides, pads,
-      groups, dilation);
+      filterOffsetsConstant, /* biasScales */ nullptr,
+      /* biasOffsets */ nullptr, outTy, kernels, strides, pads, groups,
+      dilation);
 
   auto *save = F->createSave("save_out", cqConv);
 
