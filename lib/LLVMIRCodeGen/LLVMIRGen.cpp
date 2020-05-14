@@ -258,10 +258,12 @@ void LLVMIRGen::performCodeGen() {
   auto int8PtrTy = llvm::Type::getInt8PtrTy(getLLVMContext());
   auto dimTPtrTy = llvm::Type::getIntNPtrTy(getLLVMContext(), DIM_T_BITWIDTH);
   // The entry point has the following API:
-  // ssize_t entry(uint8_t *baseConstantWeightVars, uint8_t
-  // *baseInoutWeightVars, uint8_t *baseActivations, dim_t *offsets);
+  // int entry(uint8_t *baseConstantWeightVars,
+  //           uint8_t *baseInoutWeightVars,
+  //           uint8_t *baseActivations,
+  //           dim_t *offsets);
   llvm::Type *retTy =
-      llvm::Type::getIntNTy(getLLVMContext(), getLibjitSizeTWidth());
+      llvm::Type::getIntNTy(getLLVMContext(), getLibjitIntWidth());
   llvm::FunctionType *jitFuncTy = llvm::FunctionType::get(
       retTy, {int8PtrTy, int8PtrTy, int8PtrTy, dimTPtrTy}, false);
   llvmF_ = llvm::Function::Create(jitFuncTy, llvm::Function::ExternalLinkage,
@@ -273,7 +275,7 @@ void LLVMIRGen::performCodeGen() {
       llvm::BasicBlock::Create(getLLVMContext(), "entry", llvmF_);
   builder_ = glow::make_unique<llvm::IRBuilder<>>(entry_bb);
   // Terminate the function with a return instruction.
-  auto zero = builder_->getIntN(getLibjitSizeTWidth(), 0);
+  auto zero = builder_->getIntN(getLibjitIntWidth(), 0);
   auto *ret = builder_->CreateRet(zero);
   // Emit all the code before the retrun instruction.
   builder_->SetInsertPoint(ret);
@@ -681,7 +683,7 @@ llvm::CallInst *LLVMIRGen::createCall(llvm::IRBuilder<> &builder,
   currentBB->getTerminator()->eraseFromParent();
   builder.SetInsertPoint(trueBB);
   auto *castedResult =
-      builder.CreateBitCast(result, builder.getIntNTy(getLibjitSizeTWidth()));
+      builder.CreateBitCast(result, builder.getIntNTy(getLibjitIntWidth()));
   builder.CreateRet(castedResult);
   builder.SetInsertPoint(falseBB, insertionPoint);
   builder.SetInsertPoint(falseBB->getTerminator());
@@ -3065,6 +3067,13 @@ unsigned LLVMIRGen::getLibjitSizeTWidth() const {
                                                  /* allowInternal */ true);
   assert(sizeTVar && "libjit_sizeTVar is not found");
   return sizeTVar->getType()->getPointerElementType()->getIntegerBitWidth();
+}
+
+unsigned LLVMIRGen::getLibjitIntWidth() const {
+  auto *intVar = getModule().getGlobalVariable("libjit_intVar",
+                                               /* allowInternal */ true);
+  assert(intVar && "libjit_intVar is not found");
+  return intVar->getType()->getPointerElementType()->getIntegerBitWidth();
 }
 
 bool LLVMIRGen::isEligibleForSpecialization(const llvm::CallInst *call) {

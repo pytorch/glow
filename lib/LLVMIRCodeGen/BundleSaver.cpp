@@ -381,7 +381,7 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
     modelApi +=
         strFormat("// Bundle entry point (inference function). Returns 0\n"
                   "// for correct execution or some error code otherwise.\n"
-                  "ssize_t %s("
+                  "int %s("
                   "uint8_t *constantWeight, "
                   "uint8_t *mutableWeight, "
                   "uint8_t *activations"
@@ -532,12 +532,12 @@ void BundleSaver::produceBundle() {
 void BundleSaver::emitBundleEntryFunction(
     BundleSaver::SavedIRFunction &savedF) {
   // The bundle entry point has the following API:
-  // ssize_t entry(uint8_t *constantWeight,
-  //               uint8_t *mutableWeight,
-  //               uint8_t *activations);
+  // int entry(uint8_t *constantWeight,
+  //           uint8_t *mutableWeight,
+  //           uint8_t *activations);
   auto int8PtrTy = llvm::Type::getInt8PtrTy(irgen_->getLLVMContext());
   llvm::Type *retTy = llvm::Type::getIntNTy(irgen_->getLLVMContext(),
-                                            irgen_->getLibjitSizeTWidth());
+                                            irgen_->getLibjitIntWidth());
   llvm::FunctionType *bundleFuncTy =
       llvm::FunctionType::get(retTy, {int8PtrTy, int8PtrTy, int8PtrTy}, false);
   auto *func =
@@ -547,7 +547,7 @@ void BundleSaver::emitBundleEntryFunction(
       llvm::BasicBlock::Create(irgen_->getLLVMContext(), "entry", func);
   llvm::IRBuilder<> builder(entry_bb);
   // Add a provisional terminator to make the function well-formed.
-  auto *zero = builder.getIntN(irgen_->getLibjitSizeTWidth(), 0);
+  auto *zero = builder.getIntN(irgen_->getLibjitIntWidth(), 0);
   auto *ret = builder.CreateRet(zero);
   builder.SetInsertPoint(ret);
 

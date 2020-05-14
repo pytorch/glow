@@ -392,6 +392,9 @@ public:
   /// \returns the sizeof(size_t) of the actual target-specific size_t type that
   /// was used to compile libjit into LLVM bitcode.
   unsigned getLibjitSizeTWidth() const;
+  /// \returns the sizeof(int) of the actual target-specific int type that
+  /// was used to compile libjit into LLVM bitcode.
+  unsigned getLibjitIntWidth() const;
   /// \returns true if a call is eligible for specialization.
   virtual bool isEligibleForSpecialization(const llvm::CallInst *call);
   /// \returns true if a global symbol \p GV needs to be preserved in the module

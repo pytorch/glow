@@ -67,14 +67,14 @@ LLVMBackend::LLVMBackend() {}
 
 /// Emit the entry point for JIT called "jitmain".
 /// Function has the following API:
-///   ssize_t jitmain(uint8_t *baseConstantWeightVars,
-///                   uint8_t *baseInOutWeightVars,
-///                   uint8_t *baseActivations);
+/// int jitmain(uint8_t *baseConstantWeightVars,
+///             uint8_t *baseInOutWeightVars,
+///             uint8_t *baseActivations);
 void LLVMBackend::emitJitMain(LLVMIRGen &irgen) const {
   AllocationsInfo &allocationsInfo = irgen.getAllocationsInfo();
   auto int8PtrTy = llvm::Type::getInt8PtrTy(irgen.getLLVMContext());
   llvm::Type *retTy = llvm::Type::getIntNTy(irgen.getLLVMContext(),
-                                            irgen.getLibjitSizeTWidth());
+                                            irgen.getLibjitIntWidth());
   llvm::FunctionType *jitFuncTy =
       llvm::FunctionType::get(retTy, {int8PtrTy, int8PtrTy, int8PtrTy}, false);
   auto *func =
@@ -84,7 +84,7 @@ void LLVMBackend::emitJitMain(LLVMIRGen &irgen) const {
       llvm::BasicBlock::Create(irgen.getLLVMContext(), "entry", func);
   llvm::IRBuilder<> builder(entry_bb);
   // Add a provisional terminator to make the function well-formed.
-  auto *zero = builder.getIntN(irgen.getLibjitSizeTWidth(), 0);
+  auto *zero = builder.getIntN(irgen.getLibjitIntWidth(), 0);
   auto *ret = builder.CreateRet(zero);
   builder.SetInsertPoint(ret);
 

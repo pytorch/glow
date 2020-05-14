@@ -262,9 +262,9 @@ int main(int argc, char **argv) {
   initInputImages();
 
   // Perform the computation.
-  ssize_t errCode = lenet_mnist(constantWeight, mutableWeight, activations);
+  int errCode = lenet_mnist(constantWeight, mutableWeight, activations);
   if (errCode != GLOW_BUNDLE_SUCCESS) {
-    printf("Error running bundle: error code %d\n", (int)(errCode));
+    printf("Error running bundle: error code %d\n", errCode);
   }
 
   // Print results.
