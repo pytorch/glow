@@ -8889,6 +8889,45 @@ TEST_P(OperatorTest, Sigmoid_Float16) {
   testSigmoid<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
+/// Helper to test Swish using \p DTy.
+template <typename DataType>
+static void testSwish(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                      glow::Function *F, glow::ExecutionEngine &EE,
+                      ElemKind DTy) {
+  constexpr dim_t size = 10;
+  auto *input = mod.createPlaceholder(DTy, {size}, "input", false);
+  bindings.allocate(input)->getHandle<DataType>().randomize(-5.0, 5.0,
+                                                            mod.getPRNG());
+
+  auto *swish = F->createSwish("swish", input);
+  auto *save = F->createSave("Save", swish);
+  bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto RH = bindings.get(save->getPlaceholder())->getHandle<DataType>();
+  auto inH = bindings.get(input)->getHandle<DataType>();
+
+  for (dim_t i = 0; i < size; i++) {
+    float x = (float)inH.at({i});
+    float val = x / (1 + std::exp(-x));
+    EXPECT_NEAR(RH.at({i}), val, 0.002);
+  }
+}
+
+/// Verify that the Swish operator works correctly with FloatTy.
+TEST_P(OperatorTest, Swish_Float) {
+  CHECK_IF_ENABLED();
+  testSwish<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Verify that the Swish operator works correctly with Float16Ty.
+TEST_P(OperatorTest, Swish_Float16) {
+  CHECK_IF_ENABLED();
+  testSwish<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
 TEST_P(OperatorTest, IntLookupTable) {
   CHECK_IF_ENABLED();
 

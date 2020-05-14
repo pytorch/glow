@@ -83,6 +83,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "NonCubicStrideConv3D/0",
     "FP16BatchAdd/0",
     "Sigmoid_Float16/0",
+    "Swish_Float16/0",
     "testBatchAdd_Float16/0",
     "CumSum_Float/0",
     "CumSum_Float16/0",
