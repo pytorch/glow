@@ -73,8 +73,8 @@ LLVMBackend::LLVMBackend() {}
 void LLVMBackend::emitJitMain(LLVMIRGen &irgen) const {
   AllocationsInfo &allocationsInfo = irgen.getAllocationsInfo();
   auto int8PtrTy = llvm::Type::getInt8PtrTy(irgen.getLLVMContext());
-  llvm::Type *retTy = llvm::Type::getIntNTy(irgen.getLLVMContext(),
-                                            irgen.getLibjitIntWidth());
+  llvm::Type *retTy =
+      llvm::Type::getIntNTy(irgen.getLLVMContext(), irgen.getLibjitIntWidth());
   llvm::FunctionType *jitFuncTy =
       llvm::FunctionType::get(retTy, {int8PtrTy, int8PtrTy, int8PtrTy}, false);
   auto *func =
