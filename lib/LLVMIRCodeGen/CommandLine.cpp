@@ -92,11 +92,6 @@ llvm::cl::opt<llvm::FloatABI::ABIType>
                                          "Hard float ABI (hardfp)")),
              llvm::cl::init(llvm::FloatABI::Default));
 
-llvm::cl::opt<bool> checkedErrors(
-    "checked-errors",
-    llvm::cl::desc("Emit code for error checking during execution"),
-    llvm::cl::init(false), llvm::cl::cat(getLLVMBackendCat()));
-
 static llvm::cl::OptionCategory bundleSaverCat("Bundle Options");
 
 llvm::cl::opt<glow::BundleApiType>
