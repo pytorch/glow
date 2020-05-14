@@ -3084,3 +3084,5 @@ bool LLVMIRGen::canBePartOfDataParallelKernel(
     const glow::Instruction *I) const {
   return I->isDataParallel();
 }
+
+std::string LLVMIRGen::getBundleHeaderExtra() const { return ""; }

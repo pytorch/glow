@@ -74,6 +74,7 @@ static const char *headerFileTemplate =
 extern "C" {
 #endif
 %s
+%s
 #ifdef __cplusplus
 }
 #endif
@@ -84,14 +85,16 @@ extern "C" {
 static void printHeader(llvm::StringRef headerFileName,
                         llvm::StringRef bundleName,
                         llvm::StringRef commonDefines,
-                        llvm::StringRef modelInfo, llvm::StringRef modelApi) {
+                        llvm::StringRef modelInfo, llvm::StringRef modelApi,
+                        llvm::StringRef headerExtra) {
   std::error_code EC;
   llvm::raw_fd_ostream headerFile(headerFileName, EC,
                                   llvm::sys::fs::OpenFlags::F_Text);
   CHECK(!EC) << "Could not open header file!";
   headerFile << strFormat(headerFileTemplate, bundleName.upper().data(),
                           bundleName.upper().data(), commonDefines.data(),
-                          modelInfo.data(), modelApi.data());
+                          modelInfo.data(), modelApi.data(),
+                          headerExtra.data());
   headerFile.close();
 }
 
@@ -389,8 +392,12 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
                   savedIRFunction.entryName.c_str());
   }
 
+  // Get bundle header extra content.
+  std::string headerExtra = irgen_->getBundleHeaderExtra();
+
   // Print header file.
-  printHeader(headerFileName, bundleName, commonDefines, modelInfo, modelApi);
+  printHeader(headerFileName, bundleName, commonDefines, modelInfo, modelApi,
+              headerExtra);
 }
 
 void BundleSaver::emitSymbolTable() {

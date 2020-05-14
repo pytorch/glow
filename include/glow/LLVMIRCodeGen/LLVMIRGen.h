@@ -414,6 +414,9 @@ public:
   /// instruction \p I cannot be part of data-parallel kernels, because there is
   /// no support for this functionality in this backend yet.
   virtual bool canBePartOfDataParallelKernel(const glow::Instruction *I) const;
+  /// \returns a string which is printed at the end of the bundle header file
+  /// following the standard content produced by the bundle saver.
+  virtual std::string getBundleHeaderExtra() const;
 };
 
 } // namespace glow
