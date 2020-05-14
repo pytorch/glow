@@ -348,7 +348,11 @@ int main(int argc, char **argv) {
   uint8_t *activationsAddr = initActivations(resnet50_config);
 
   // Perform the computation.
-  resnet50(constantWeightVarsAddr, mutableWeightVarsAddr, activationsAddr);
+  ssize_t errCode =
+      resnet50(constantWeightVarsAddr, mutableWeightVarsAddr, activationsAddr);
+  if (errCode != GLOW_BUNDLE_SUCCESS) {
+    printf("Error running bundle: error code %d\n", (int)(errCode));
+  }
 
   // Report the results.
   dumpInferenceResults(resnet50_config, mutableWeightVarsAddr);
