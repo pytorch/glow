@@ -1323,6 +1323,15 @@ static void lowerConvolution3DNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, C3DN.getResult(), concatedOutput);
 }
 
+static void lowerSwishNode(Function *F, CompilationContext &cctx,
+                           const SwishNode &S) {
+  LOG_SCOPE(F->getLogContext(), "lowerSwishNode")
+
+  SigmoidNode *sig = F->createSigmoid(S.getName().str() + "_sig", S.getInput());
+  MulNode *mul = F->createMul(S.getName().str() + "_mul", sig, S.getInput());
+  replaceAllUsesOfWith(cctx.loweredInfoMap, S.getResult(), mul->getResult());
+}
+
 bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
 #define CASE_LOWER(NODE_NAME_)                                                 \
   case Kinded::Kind::NODE_NAME_##NodeKind:                                     \
@@ -1361,6 +1370,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(BatchBoxCox);
     CASE_LOWER(Clip);
     CASE_LOWER(Convolution3D);
+    CASE_LOWER(Swish);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
     if (CN->getGroup() > 1 && CN->hasFusedActivation()) {

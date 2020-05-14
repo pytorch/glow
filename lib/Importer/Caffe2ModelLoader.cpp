@@ -1168,6 +1168,14 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
+  if (typeName == "Swish") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    auto *S = G_->createSwish(opName, in);
+    RETURN_IF_ERR(addNodeAsOutput(op, S));
+    return Error::success();
+  }
+
   if (typeName == "Logit") {
     // Load the input and (optional) epsilon clamping value:
     NodeValue input;

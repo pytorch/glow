@@ -1113,6 +1113,10 @@ SigmoidNode *Function::createSigmoid(llvm::StringRef name, NodeValue input) {
   return createSigmoid(name, input.getType(), input);
 }
 
+SwishNode *Function::createSwish(llvm::StringRef name, NodeValue input) {
+  return addNode(new SwishNode(name, input.getType(), input));
+}
+
 TanhNode *Function::createTanh(llvm::StringRef name, TypeRef outTy,
                                NodeValue input) {
   return addNode(new TanhNode(name, outTy, input));

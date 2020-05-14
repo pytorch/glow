@@ -1565,6 +1565,48 @@ TEST_F(Caffe2ImporterTest, Logit) {
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
 }
 
+// Test loading Logit operator from a Caffe2 model.
+TEST_F(Caffe2ImporterTest, Swish) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(GLOW_DATA_PATH
+                              "tests/models/caffe2Models/swish_op_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+
+  // Input tensors.
+  Tensor X(ElemKind::FloatTy, {10});
+
+  // Destroy the loader after the graph is loaded
+  {
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename, {"input"},
+                               {&X.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&X});
+  }
+
+  // Check that the type of the output matches the input.
+  EXPECT_TRUE(output->getType()->isEqual(X.getType()));
+
+  // High level checks on the content of the graph.
+  EXPECT_EQ(F->getNodes().size(), 2); // Save and Swish
+  auto *saveNode = getSaveNodeFromDest(output);
+  auto *swish = llvm::dyn_cast<SwishNode>(saveNode->getInput());
+  ASSERT_TRUE(swish);
+
+  // Graph has one input and one output.
+  EXPECT_EQ(mod.getPlaceholders().size(), 2);
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+}
+
 // Test loading a SparseToDense operator.
 TEST_F(Caffe2ImporterTest, sparseToDense) {
   ExecutionEngine EE{};

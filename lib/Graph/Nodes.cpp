@@ -400,19 +400,7 @@ static bool verifyBatchNormalization(NodeValue src, NodeValue dest,
   return isValid;
 }
 
-static bool verifySigmoid(NodeValue src, NodeValue dest) {
-  const Node *parent = dest.getNode();
-  bool isValid = checkSameIsQuantized(src.getType(), dest.getType(), parent);
-  if (src.getType()->isQuantizedType()) {
-    isValid &= checkType(src, dest.getElementType(), dest.getNode());
-    isValid &= checkSameShape(src, dest, parent);
-  } else {
-    isValid &= checkSameType(src, dest, parent);
-  }
-  return isValid;
-}
-
-static bool verifyTanh(NodeValue src, NodeValue dest) {
+static bool verifyActivation(NodeValue src, NodeValue dest) {
   const Node *parent = dest.getNode();
   bool isValid = checkSameIsQuantized(src.getType(), dest.getType(), parent);
   if (src.getType()->isQuantizedType()) {
@@ -882,7 +870,7 @@ bool BatchMatMulNode::verify() const {
 }
 
 bool SigmoidNode::verify() const {
-  return verifySigmoid(getInput(), getResult());
+  return verifyActivation(getInput(), getResult());
 }
 
 bool SigmoidGradNode::verify() const {
@@ -890,20 +878,26 @@ bool SigmoidGradNode::verify() const {
                                               getGradOfInputNamedInput(), this);
   isValid &= verifyOutputAndGradOutputTypes(
       getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
-  isValid &= verifySigmoid(getGradOfInputNamedInput(),
-                           getGradOfOriginalOutputNamedResult());
+  isValid &= verifyActivation(getGradOfInputNamedInput(),
+                              getGradOfOriginalOutputNamedResult());
   return isValid;
 }
 
-bool TanhNode::verify() const { return verifyTanh(getInput(), getResult()); }
+bool SwishNode::verify() const {
+  return verifyActivation(getInput(), getResult());
+}
+
+bool TanhNode::verify() const {
+  return verifyActivation(getInput(), getResult());
+}
 
 bool TanhGradNode::verify() const {
   bool isValid = verifyInputAndGradInputTypes(getInput(),
                                               getGradOfInputNamedInput(), this);
   isValid &= verifyOutputAndGradOutputTypes(
       getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
-  isValid &= verifyTanh(getGradOfInputNamedInput(),
-                        getGradOfOriginalOutputNamedResult());
+  isValid &= verifyActivation(getGradOfInputNamedInput(),
+                              getGradOfOriginalOutputNamedResult());
   return isValid;
 }
 
