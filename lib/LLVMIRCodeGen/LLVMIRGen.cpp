@@ -258,11 +258,14 @@ void LLVMIRGen::performCodeGen() {
   auto int8PtrTy = llvm::Type::getInt8PtrTy(getLLVMContext());
   auto dimTPtrTy = llvm::Type::getIntNPtrTy(getLLVMContext(), DIM_T_BITWIDTH);
   // The entry point has the following API:
-  // void entry(uint8_t *baseConstantWeightVars, uint8_t
-  // *baseInoutWeightVars, uint8_t *baseActivations, dim_t *offsets);
-  llvm::Type *voidTy = llvm::Type::getVoidTy(getLLVMContext());
+  // int entry(uint8_t *baseConstantWeightVars,
+  //           uint8_t *baseInoutWeightVars,
+  //           uint8_t *baseActivations,
+  //           dim_t *offsets);
+  llvm::Type *retTy =
+      llvm::Type::getIntNTy(getLLVMContext(), getLibjitIntWidth());
   llvm::FunctionType *jitFuncTy = llvm::FunctionType::get(
-      voidTy, {int8PtrTy, int8PtrTy, int8PtrTy, dimTPtrTy}, false);
+      retTy, {int8PtrTy, int8PtrTy, int8PtrTy, dimTPtrTy}, false);
   llvmF_ = llvm::Function::Create(jitFuncTy, llvm::Function::ExternalLinkage,
                                   "main", llmodule_.get());
   emittedLLVMFunctions_.emplace_back(llvmF_);
@@ -272,7 +275,8 @@ void LLVMIRGen::performCodeGen() {
       llvm::BasicBlock::Create(getLLVMContext(), "entry", llvmF_);
   builder_ = glow::make_unique<llvm::IRBuilder<>>(entry_bb);
   // Terminate the function with a return instruction.
-  auto *ret = builder_->CreateRetVoid();
+  auto zero = builder_->getIntN(getLibjitIntWidth(), 0);
+  auto *ret = builder_->CreateRet(zero);
   // Emit all the code before the retrun instruction.
   builder_->SetInsertPoint(ret);
 
@@ -646,7 +650,8 @@ llvm::Function *LLVMIRGen::getLLVMFunction() { return llvmF_; }
 
 llvm::CallInst *LLVMIRGen::createCall(llvm::IRBuilder<> &builder,
                                       llvm::Function *callee,
-                                      llvm::ArrayRef<llvm::Value *> args) {
+                                      llvm::ArrayRef<llvm::Value *> args,
+                                      bool checked) {
 #ifndef NDEBUG
   llvm::FunctionType *FTy = callee->getFunctionType();
   assert((args.size() == FTy->getNumParams() ||
@@ -659,7 +664,43 @@ llvm::CallInst *LLVMIRGen::createCall(llvm::IRBuilder<> &builder,
            "Calling a function with a bad signature: argument type mismatch.");
   }
 #endif
-  return builder.CreateCall(callee, args);
+  if (!checked || !callee->getReturnType()->isIntegerTy()) {
+    return builder.CreateCall(callee, args);
+  }
+  // Check if callee returned an error, i.e. non-zero result.
+  // Emit a return with this error code in this case.
+  auto *result = builder.CreateCall(callee, args);
+  auto *zero = builder.getIntN(result->getType()->getIntegerBitWidth(), 0);
+  auto *cond = builder.CreateICmpNE(result, zero);
+  auto insertionPoint = builder.GetInsertPoint();
+  auto *currentBB = result->getParent();
+  auto *falseBB =
+      currentBB->splitBasicBlock(builder.GetInsertPoint(), "cont_bb");
+  auto *trueBB = llvm::BasicBlock::Create(getLLVMContext(), "error_bb",
+                                          result->getFunction());
+  builder.SetInsertPoint(currentBB->getTerminator());
+  builder.CreateCondBr(cond, trueBB, falseBB);
+  currentBB->getTerminator()->eraseFromParent();
+  builder.SetInsertPoint(trueBB);
+  auto *castedResult =
+      builder.CreateBitCast(result, builder.getIntNTy(getLibjitIntWidth()));
+  builder.CreateRet(castedResult);
+  builder.SetInsertPoint(falseBB, insertionPoint);
+  builder.SetInsertPoint(falseBB->getTerminator());
+  return result;
+}
+
+llvm::CallInst *
+LLVMIRGen::createCheckedCall(llvm::IRBuilder<> &builder, llvm::Function *callee,
+                             llvm::ArrayRef<llvm::Value *> args) {
+  return createCall(builder, callee, args, /* checked */ true);
+}
+
+llvm::CallInst *
+LLVMIRGen::createUncheckedCall(llvm::IRBuilder<> &builder,
+                               llvm::Function *callee,
+                               llvm::ArrayRef<llvm::Value *> args) {
+  return createCall(builder, callee, args, /* checked */ false);
 }
 
 std::pair<llvm::BasicBlock *, llvm::BasicBlock *>
@@ -788,7 +829,7 @@ void LLVMIRGen::emitDataParallelKernelImpl(
 
   setCurrentDebugLocation(builder, *bundle.begin());
   // Emit a call of the kernel.
-  createCall(builder, kernelFunc, buffers);
+  createUncheckedCall(builder, kernelFunc, buffers);
   // Emit debug info for the generated data-parallel kernel.
   generateFunctionDebugInfo(kernelFunc);
 }
@@ -974,15 +1015,15 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       TensorQuantizationParams TQP{destTy->getScale(), destTy->getOffset()};   \
       auto quantizedValue = quantization::quantize(value, TQP);                \
       auto *val = emitConstI8(builder, quantizedValue);                        \
-      auto *stackedOpCall =                                                    \
-          createCall(builder, F, {loopCount, val, pointerNull, pointerNull});  \
+      auto *stackedOpCall = createUncheckedCall(                               \
+          builder, F, {loopCount, val, pointerNull, pointerNull});             \
       auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,        \
                                          "buffer.element.addr");               \
       builder.CreateStore(stackedOpCall, destAddr);                            \
     } else {                                                                   \
       auto *val = emitConst(builder, value, dest->getElementType());           \
-      auto *stackedOpCall =                                                    \
-          createCall(builder, F, {loopCount, val, pointerNull, pointerNull});  \
+      auto *stackedOpCall = createUncheckedCall(                               \
+          builder, F, {loopCount, val, pointerNull, pointerNull});             \
       auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,        \
                                          "buffer.element.addr");               \
       builder.CreateStore(stackedOpCall, destAddr);                            \
@@ -1038,7 +1079,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       auto *rhsPost = emitConstI32(builder, rhsScaleParams.post);
       auto *rhsScale = emitConstI32(builder, rhsScaleParams.scale);
 
-      auto *stackedOpCall = createCall(
+      auto *stackedOpCall = createUncheckedCall(
           builder, F,
           {loopCount, condPtr, lhsPtr, rhsPtr, destOffset, lhsOffset, rhsOffset,
            lhsPre, lhsPost, lhsScale, rhsPre, rhsPost, rhsScale});
@@ -1047,7 +1088,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       builder.CreateStore(stackedOpCall, destAddr);
     } else {
       auto *stackedOpCall =
-          createCall(builder, F, {loopCount, condPtr, lhsPtr, rhsPtr});
+          createUncheckedCall(builder, F, {loopCount, condPtr, lhsPtr, rhsPtr});
       auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,
                                          loopCount, "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);
@@ -1085,8 +1126,8 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *elementTy = getElementType(builder, dest);                           \
     auto *pointerNull =                                                        \
         llvm::ConstantPointerNull::get(elementTy->getPointerTo());             \
-    auto *stackedOpCall =                                                      \
-        createCall(builder, F, {loopCount, srcPtr, pointerNull, pointerNull}); \
+    auto *stackedOpCall = createUncheckedCall(                                 \
+        builder, F, {loopCount, srcPtr, pointerNull, pointerNull});            \
     auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,          \
                                        loopCount, "buffer.element.addr");      \
     builder.CreateStore(stackedOpCall, destAddr);                              \
@@ -1107,7 +1148,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
     auto *srcPtr = emitBufferAddress(builder, src, kernel, bufferToArgNum);
     auto *F = getFunction("element_is_nan_kernel", src->getElementType());
-    auto *stackedOpCall = createCall(builder, F, {loopCount, srcPtr});
+    auto *stackedOpCall = createUncheckedCall(builder, F, {loopCount, srcPtr});
     auto *elementTy = getElementType(builder, dest);
     auto *destAddr =
         builder.CreateGEP(elementTy, destPtr, loopCount, "buffer.element.addr");
@@ -1126,8 +1167,8 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *destOffset = emitConstI32(builder, destTy->getOffset());
     auto *F = getFunction("element_quantize_kernel", dest->getElementType());
 
-    auto *stackedOpCall =
-        createCall(builder, F, {loopCount, srcPtr, destScale, destOffset});
+    auto *stackedOpCall = createUncheckedCall(
+        builder, F, {loopCount, srcPtr, destScale, destOffset});
     llvm::Value *destAddr = nullptr;
     if (dest->getElementType() == ElemKind::Int8QTy) {
       destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr, loopCount,
@@ -1154,8 +1195,8 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
     auto *F = getFunction("element_dequantize_kernel", dest->getElementType());
 
-    auto *stackedOpCall =
-        createCall(builder, F, {loopCount, srcPtr, srcScale, srcOffset});
+    auto *stackedOpCall = createUncheckedCall(
+        builder, F, {loopCount, srcPtr, srcScale, srcOffset});
     auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr, loopCount,
                                        "buffer.element.addr");
     builder.CreateStore(stackedOpCall, destAddr);
@@ -1182,7 +1223,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *scale = emitConstI32(builder, rescaleParams.scale);
     auto *F = getFunction("element_rescale_kernel", dest->getElementType());
 
-    auto *stackedOpCall = createCall(
+    auto *stackedOpCall = createUncheckedCall(
         builder, F,
         {loopCount, srcPtr, destOffset, srcOffset, preShift, postShift, scale});
     auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr, loopCount,
@@ -1201,8 +1242,8 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     auto *elementTy = getElementType(builder, dest);
     auto *pointerNull =
         llvm::ConstantPointerNull::get(elementTy->getPointerTo());
-    auto *stackedOpCall =
-        createCall(builder, F, {loopCount, srcPtr, pointerNull, pointerNull});
+    auto *stackedOpCall = createUncheckedCall(
+        builder, F, {loopCount, srcPtr, pointerNull, pointerNull});
     auto *destAddr = builder.CreateGEP(getElementType(builder, dest), destPtr,
                                        loopCount, "buffer.element.addr");
     builder.CreateStore(stackedOpCall, destAddr);
@@ -1247,16 +1288,16 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       auto *rhsPost = emitConstI32(builder, rhsScaleParams.post);              \
       auto *rhsScale = emitConstI32(builder, rhsScaleParams.scale);            \
                                                                                \
-      auto *stackedOpCall = createCall(builder, F,                             \
-                                       {loopCount, lhsPtr, rhsPtr, destOffset, \
-                                        lhsOffset, rhsOffset, lhsPre, lhsPost, \
-                                        lhsScale, rhsPre, rhsPost, rhsScale}); \
+      auto *stackedOpCall = createUncheckedCall(                               \
+          builder, F,                                                          \
+          {loopCount, lhsPtr, rhsPtr, destOffset, lhsOffset, rhsOffset,        \
+           lhsPre, lhsPost, lhsScale, rhsPre, rhsPost, rhsScale});             \
       auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr,         \
                                          loopCount, "buffer.element.addr");    \
       builder.CreateStore(stackedOpCall, destAddr);                            \
     } else {                                                                   \
-      auto *stackedOpCall =                                                    \
-          createCall(builder, F, {loopCount, lhsPtr, rhsPtr, pointerNull});    \
+      auto *stackedOpCall = createUncheckedCall(                               \
+          builder, F, {loopCount, lhsPtr, rhsPtr, pointerNull});               \
       auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,        \
                                          "buffer.element.addr");               \
       builder.CreateStore(stackedOpCall, destAddr);                            \
@@ -1318,14 +1359,16 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       auto *cmpPost = emitConstI32(builder, scaleParams.post);
       auto *cmpScale = emitConstI32(builder, scaleParams.scale);
 
-      auto *stackedOpCall = createCall(builder, F,
-                                       {loopCount, lhsPtr, rhsPtr, lhsOffset,
-                                        rhsOffset, cmpPre, cmpPost, cmpScale});
+      auto *stackedOpCall =
+          createUncheckedCall(builder, F,
+                              {loopCount, lhsPtr, rhsPtr, lhsOffset, rhsOffset,
+                               cmpPre, cmpPost, cmpScale});
       auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr,
                                          loopCount, "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);
     } else {
-      auto *stackedOpCall = createCall(builder, F, {loopCount, lhsPtr, rhsPtr});
+      auto *stackedOpCall =
+          createUncheckedCall(builder, F, {loopCount, lhsPtr, rhsPtr});
       auto *elementTy = getElementType(builder, dest);
       auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,
                                          "buffer.element.addr");
@@ -1348,7 +1391,8 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     // "data-parallel" kernels in libjit.
     auto *F = getFunction("element_cmp_eq_kernel", lhs->getElementType());
     auto *elementTy = getElementType(builder, dest);
-    auto *stackedOpCall = createCall(builder, F, {loopCount, lhsPtr, rhsPtr});
+    auto *stackedOpCall =
+        createUncheckedCall(builder, F, {loopCount, lhsPtr, rhsPtr});
     auto *destAddr =
         builder.CreateGEP(elementTy, destPtr, loopCount, "buffer.element.addr");
     builder.CreateStore(stackedOpCall, destAddr);
@@ -1390,17 +1434,17 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       auto *mulScale = emitConstI32(builder, scaleParams.scale);
 
       auto *stackedOpCall =
-          createCall(builder, F,
-                     {loopCount, lhsPtr, rhsPtr, destOffset, lhsOffset,
-                      rhsOffset, mulPre, mulPost, mulScale});
+          createUncheckedCall(builder, F,
+                              {loopCount, lhsPtr, rhsPtr, destOffset, lhsOffset,
+                               rhsOffset, mulPre, mulPost, mulScale});
       auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr,
                                          loopCount, "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);
     } else if (lhs->getType()->getElementType() == ElemKind::Int64ITy ||
                lhs->getType()->getElementType() == ElemKind::Int32ITy ||
                lhs->getType()->getElementType() == ElemKind::FloatTy) {
-      auto *stackedOpCall =
-          createCall(builder, F, {loopCount, lhsPtr, rhsPtr, pointerNull});
+      auto *stackedOpCall = createUncheckedCall(
+          builder, F, {loopCount, lhsPtr, rhsPtr, pointerNull});
       auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,
                                          "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);
@@ -1446,16 +1490,16 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       auto *divScale = emitConstI32(builder, scaleParams.scale);
 
       auto *stackedOpCall =
-          createCall(builder, F,
-                     {loopCount, lhsPtr, rhsPtr, destOffset, lhsOffset,
-                      rhsOffset, divPre, divPost, divScale});
+          createUncheckedCall(builder, F,
+                              {loopCount, lhsPtr, rhsPtr, destOffset, lhsOffset,
+                               rhsOffset, divPre, divPost, divScale});
       auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr,
                                          loopCount, "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);
     } else {
       auto *elementTy = getElementType(builder, dest);
-      auto *stackedOpCall =
-          createCall(builder, F, {loopCount, lhsPtr, rhsPtr, pointerNull});
+      auto *stackedOpCall = createUncheckedCall(
+          builder, F, {loopCount, lhsPtr, rhsPtr, pointerNull});
       auto *destAddr = builder.CreateGEP(elementTy, destPtr, loopCount,
                                          "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);
@@ -1480,7 +1524,8 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       F = getFunction("element_modulo_kernel_no_sign_follow",
                       dest->getElementType());
     }
-    auto *stackedOpCall = createCall(builder, F, {loopCount, divisor, srcPtr});
+    auto *stackedOpCall =
+        createUncheckedCall(builder, F, {loopCount, divisor, srcPtr});
     llvm::Value *destAddr = nullptr;
     if (dest->getElementType() == ElemKind::Int64ITy) {
       destAddr = builder.CreateGEP(builder.getInt64Ty(), destPtr, loopCount,
@@ -3024,6 +3069,13 @@ unsigned LLVMIRGen::getLibjitSizeTWidth() const {
   return sizeTVar->getType()->getPointerElementType()->getIntegerBitWidth();
 }
 
+unsigned LLVMIRGen::getLibjitIntWidth() const {
+  auto *intVar = getModule().getGlobalVariable("libjit_intVar",
+                                               /* allowInternal */ true);
+  assert(intVar && "libjit_intVar is not found");
+  return intVar->getType()->getPointerElementType()->getIntegerBitWidth();
+}
+
 bool LLVMIRGen::isEligibleForSpecialization(const llvm::CallInst *call) {
   return true;
 }
@@ -3032,3 +3084,5 @@ bool LLVMIRGen::canBePartOfDataParallelKernel(
     const glow::Instruction *I) const {
   return I->isDataParallel();
 }
+
+std::string LLVMIRGen::getBundleHeaderExtra() const { return ""; }

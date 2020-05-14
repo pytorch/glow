@@ -67,21 +67,26 @@ LLVMBackend::LLVMBackend() {}
 
 /// Emit the entry point for JIT called "jitmain".
 /// Function has the following API:
-///   void jitmain(uint8_t *baseConstantWeightVars,
-///                uint8_t *baseInOutWeightVars,
-///                uint8_t *baseActivations);
+/// int jitmain(uint8_t *baseConstantWeightVars,
+///             uint8_t *baseInOutWeightVars,
+///             uint8_t *baseActivations);
 void LLVMBackend::emitJitMain(LLVMIRGen &irgen) const {
   AllocationsInfo &allocationsInfo = irgen.getAllocationsInfo();
-  llvm::Type *voidTy = llvm::Type::getVoidTy(irgen.getLLVMContext());
   auto int8PtrTy = llvm::Type::getInt8PtrTy(irgen.getLLVMContext());
+  llvm::Type *retTy =
+      llvm::Type::getIntNTy(irgen.getLLVMContext(), irgen.getLibjitIntWidth());
   llvm::FunctionType *jitFuncTy =
-      llvm::FunctionType::get(voidTy, {int8PtrTy, int8PtrTy, int8PtrTy}, false);
+      llvm::FunctionType::get(retTy, {int8PtrTy, int8PtrTy, int8PtrTy}, false);
   auto *func =
       llvm::Function::Create(jitFuncTy, llvm::Function::ExternalLinkage,
                              "jitmain", &irgen.getModule());
   llvm::BasicBlock *entry_bb =
       llvm::BasicBlock::Create(irgen.getLLVMContext(), "entry", func);
   llvm::IRBuilder<> builder(entry_bb);
+  // Add a provisional terminator to make the function well-formed.
+  auto *zero = builder.getIntN(irgen.getLibjitIntWidth(), 0);
+  auto *ret = builder.CreateRet(zero);
+  builder.SetInsertPoint(ret);
 
   // Prepare arguments for the "main" function.
   llvm::SmallVector<llvm::Value *, 4> initFunctionCallArgs;
@@ -96,9 +101,11 @@ void LLVMBackend::emitJitMain(LLVMIRGen &irgen) const {
   // use of it.
   auto *entryF = irgen.getModule().getFunction(irgen.getMainEntryName());
   entryF->setLinkage(llvm::Function::InternalLinkage);
-  irgen.createCall(builder, entryF, initFunctionCallArgs);
+  auto *result = irgen.createCall(builder, entryF, initFunctionCallArgs);
   // Terminate the function.
-  builder.CreateRetVoid();
+  builder.CreateRet(result);
+  // Remove the provisional terminator.
+  ret->eraseFromParent();
   // Emit JIT file printer.
   irgen.generateJITFileWriter();
   // Create the debug info for the entry point function.

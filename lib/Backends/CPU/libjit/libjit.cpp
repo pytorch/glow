@@ -1489,9 +1489,10 @@ DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED_M(libjit_element_mul_kernel_i8, lhs *rhs)
 DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED_M(libjit_element_div_kernel_i8, lhs / rhs)
 
 /// This is a variable used by Glow backends to determine the actual type used
-/// for size_t and dim_t variables when libjit was compiled.
+/// for size_t, dim_t and int variables when libjit was compiled.
 size_t libjit_sizeTVar;
 dim_t libjit_dimTVar;
+int libjit_intVar;
 
 /// Specialize the Modulo kernel into two functions based on the
 /// value of SignFollowDivisor.

@@ -57,6 +57,9 @@ static const char *headerFileTemplate =
 // ---------------------------------------------------------------
 #ifndef _GLOW_BUNDLE_COMMON_DEFS
 #define _GLOW_BUNDLE_COMMON_DEFS
+
+// Glow bundle error code for correct execution.
+#define GLOW_SUCCESS 0
 %s
 #endif
 
@@ -70,7 +73,7 @@ static const char *headerFileTemplate =
 #ifdef __cplusplus
 extern "C" {
 #endif
-%s
+%s%s
 #ifdef __cplusplus
 }
 #endif
@@ -81,14 +84,16 @@ extern "C" {
 static void printHeader(llvm::StringRef headerFileName,
                         llvm::StringRef bundleName,
                         llvm::StringRef commonDefines,
-                        llvm::StringRef modelInfo, llvm::StringRef modelApi) {
+                        llvm::StringRef modelInfo, llvm::StringRef modelApi,
+                        llvm::StringRef headerExtra) {
   std::error_code EC;
   llvm::raw_fd_ostream headerFile(headerFileName, EC,
                                   llvm::sys::fs::OpenFlags::F_Text);
   CHECK(!EC) << "Could not open header file!";
   headerFile << strFormat(headerFileTemplate, bundleName.upper().data(),
                           bundleName.upper().data(), commonDefines.data(),
-                          modelInfo.data(), modelApi.data());
+                          modelInfo.data(), modelApi.data(),
+                          headerExtra.data());
   headerFile.close();
 }
 
@@ -329,7 +334,7 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
   std::string modelApi = "\n";
   if (bundleAPI_ == BundleApiType::Dynamic) {
     // Print bundle memory configuration.
-    modelApi += strFormat("// Bundle memory configuration (memory layout)\n"
+    modelApi += strFormat("// Bundle memory configuration (memory layout).\n"
                           "extern BundleConfig %s_config;\n"
                           "\n",
                           bundleName.data());
@@ -349,7 +354,7 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
 
     // Print placeholder address offsets.
     modelApi +=
-        "// Placeholder address offsets within mutable buffer (bytes)\n";
+        "// Placeholder address offsets within mutable buffer (bytes).\n";
     for (auto &pair : nameAddrPairs) {
       modelApi += strFormat(
           "#define %s_%s%s  %u\n", bundleNameUpper.data(), pair.first.data(),
@@ -360,12 +365,12 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
 
     // Print memory sizes and memory alignment.
     modelApi +=
-        strFormat("// Memory sizes (bytes)\n"
+        strFormat("// Memory sizes (bytes).\n"
                   "#define %s_CONSTANT_MEM_SIZE     %lu\n"
                   "#define %s_MUTABLE_MEM_SIZE      %lu\n"
                   "#define %s_ACTIVATIONS_MEM_SIZE  %lu\n"
                   "\n"
-                  "// Memory alignment (bytes)\n"
+                  "// Memory alignment (bytes).\n"
                   "#define %s_MEM_ALIGN  %d\n"
                   "\n",
                   bundleNameUpper.data(), constMemSize, bundleNameUpper.data(),
@@ -375,17 +380,23 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
 
   // Print bundle entry functions.
   for (auto &savedIRFunction : savedIRFunctions_) {
-    modelApi += strFormat("// Bundle entry point (inference function)\n"
-                          "void %s("
-                          "uint8_t *constantWeight, "
-                          "uint8_t *mutableWeight, "
-                          "uint8_t *activations"
-                          ");\n",
-                          savedIRFunction.entryName.c_str());
+    modelApi +=
+        strFormat("// Bundle entry point (inference function). Returns 0\n"
+                  "// for correct execution or some error code otherwise.\n"
+                  "int %s("
+                  "uint8_t *constantWeight, "
+                  "uint8_t *mutableWeight, "
+                  "uint8_t *activations"
+                  ");\n",
+                  savedIRFunction.entryName.c_str());
   }
 
+  // Get bundle header extra content.
+  std::string headerExtra = irgen_->getBundleHeaderExtra();
+
   // Print header file.
-  printHeader(headerFileName, bundleName, commonDefines, modelInfo, modelApi);
+  printHeader(headerFileName, bundleName, commonDefines, modelInfo, modelApi,
+              headerExtra);
 }
 
 void BundleSaver::emitSymbolTable() {
@@ -527,18 +538,24 @@ void BundleSaver::produceBundle() {
 void BundleSaver::emitBundleEntryFunction(
     BundleSaver::SavedIRFunction &savedF) {
   // The bundle entry point has the following API:
-  // void entry(uint8_t *baseConstantWeightVars, uint8_t *baseInoutWeightVars,
-  // uint8_t *baseActivations);
-  llvm::Type *voidTy = llvm::Type::getVoidTy(irgen_->getLLVMContext());
+  // int entry(uint8_t *constantWeight,
+  //           uint8_t *mutableWeight,
+  //           uint8_t *activations);
   auto int8PtrTy = llvm::Type::getInt8PtrTy(irgen_->getLLVMContext());
+  llvm::Type *retTy = llvm::Type::getIntNTy(irgen_->getLLVMContext(),
+                                            irgen_->getLibjitIntWidth());
   llvm::FunctionType *bundleFuncTy =
-      llvm::FunctionType::get(voidTy, {int8PtrTy, int8PtrTy, int8PtrTy}, false);
+      llvm::FunctionType::get(retTy, {int8PtrTy, int8PtrTy, int8PtrTy}, false);
   auto *func =
       llvm::Function::Create(bundleFuncTy, llvm::Function::ExternalLinkage,
                              savedF.entryName, &irgen_->getModule());
   llvm::BasicBlock *entry_bb =
       llvm::BasicBlock::Create(irgen_->getLLVMContext(), "entry", func);
   llvm::IRBuilder<> builder(entry_bb);
+  // Add a provisional terminator to make the function well-formed.
+  auto *zero = builder.getIntN(irgen_->getLibjitIntWidth(), 0);
+  auto *ret = builder.CreateRet(zero);
+  builder.SetInsertPoint(ret);
 
   // Prepare arguments for the "main" function.
   llvm::SmallVector<llvm::Value *, 4> initFunctionCallArgs;
@@ -552,9 +569,11 @@ void BundleSaver::emitBundleEntryFunction(
   // use of it.
   auto *entryF = savedF.llvmF;
   entryF->setLinkage(llvm::Function::InternalLinkage);
-  irgen_->createCall(builder, entryF, initFunctionCallArgs);
+  auto *result = irgen_->createCall(builder, entryF, initFunctionCallArgs);
   // Terminate the function.
-  builder.CreateRetVoid();
+  builder.CreateRet(result);
+  // Remove the provisional terminator.
+  ret->eraseFromParent();
   // Create the debug info for the bundle entry point function.
   irgen_->generateFunctionDebugInfo(func);
 }
