@@ -93,3 +93,12 @@ TEST(Support, loadStrStrMapYamlFile) {
   EXPECT_EQ(map["backendOption1"], "foo");
   EXPECT_EQ(map["backendOption2"], "bar");
 }
+
+TEST(Support, ScopeGuard) {
+  int val = 1;
+  {
+    ScopeGuard guard([&]() { val++; });
+    EXPECT_EQ(val, 1);
+  }
+  EXPECT_EQ(val, 2);
+}

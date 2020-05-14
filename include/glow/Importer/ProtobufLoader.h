@@ -309,16 +309,27 @@ Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
 
   // To collect the folded outputs allocate and add save nodes to the folding
   // function.
+  llvm::SmallVector<Placeholder *, 2> tmpPHs;
   for (int i = 0; i < op.output_size(); i++) {
     const auto &outputName = op.output(i);
     NodeValue r;
     ASSIGN_VALUE_OR_RETURN_ERR(r, tmpLoader.getNodeValueByName(outputName));
-    Placeholder *PH =
-        F->getParent()->createPlaceholder(r.getType(), outputName, false);
-    SaveNode *SN = F->createSave("save_" + outputName, r, PH);
+    Placeholder *PH = F->getParent()->createPlaceholder(
+        r.getType(), "__CONSTFOLD__TMP__" + outputName, false);
+    SaveNode *SN = F->createSave("save_" + PH->getName().str(), r, PH);
     auto *result = bindings.allocate(SN->getPlaceholder());
     outTensors.push_back(result);
+    tmpPHs.push_back(PH);
   }
+
+  // Cleanup to remove the temporary Placeholders we created.
+  ScopeGuard cleanup([&]() {
+    auto &mod = *F->getParent();
+    auto &modPHs = mod.getPlaceholders();
+    for (Placeholder *tmpPH : tmpPHs) {
+      mod.erasePlaceholder(std::find(modPHs.begin(), modPHs.end(), tmpPH));
+    }
+  });
 
   // Evaluate the constant outputs using interpreter backend.
   std::unique_ptr<Backend> backend(createBackend("Interpreter"));

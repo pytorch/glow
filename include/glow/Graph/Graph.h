@@ -115,6 +115,11 @@ public:
     usedStorageNames_.insert(name);
   }
 
+  /// \returns whether there's a Storage node already registered with \p name.
+  bool hasStorageName(llvm::StringRef name) {
+    return usedStorageNames_.count(name);
+  }
+
   /// Return a pointer to a uniqued type \p T.
   TypeRef uniqueType(const Type &T);
 
