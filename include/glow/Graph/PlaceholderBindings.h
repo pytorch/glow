@@ -104,6 +104,10 @@ public:
   /// \p P must be a valid Placeholder registered in the bindings.
   void update(Placeholder *P, Tensor &&T);
 
+  /// Check if Placeholder \p P already exists. If yes, bind \p T to \p P.
+  /// Otherwise, insert \p P to the map.
+  void insertOrUpdate(Placeholder *P, Tensor &&T);
+
   /// \returns a copy of the PlaceholderBindings, with each placeholder mapped
   /// to a new Tensor, with their own memory.
   PlaceholderBindings clone() const;

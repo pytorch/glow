@@ -112,6 +112,20 @@ void PlaceholderBindings::update(Placeholder *P, Tensor &&T) {
   map_[P] = new Tensor(std::move(T));
 }
 
+void PlaceholderBindings::insertOrUpdate(Placeholder *P, Tensor &&T) {
+  Tensor *t = new Tensor(std::move(T));
+  auto ret = map_.emplace(P, t);
+  if (!ret.second) {
+    auto &tensor = ret.first->second;
+    if (auto *tensorPool = tensor->getOwningPool()) {
+      tensorPool->reclaim(tensor);
+    } else {
+      delete tensor;
+    }
+    tensor = t;
+  }
+}
+
 void PlaceholderBindings::copyToTarget(llvm::StringRef name,
                                        PlaceholderBindings &dst) {
   auto *srcPH = this->getPlaceholderByNameSlow(name);
