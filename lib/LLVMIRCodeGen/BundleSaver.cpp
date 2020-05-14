@@ -52,7 +52,7 @@ static const char *headerFileTemplate =
 
 #include <stdint.h>
 
-// Glow bundle error codes
+// Glow bundle error codes.
 #define GLOW_BUNDLE_SUCCESS 0
 
 // ---------------------------------------------------------------
@@ -332,7 +332,7 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
   std::string modelApi = "\n";
   if (bundleAPI_ == BundleApiType::Dynamic) {
     // Print bundle memory configuration.
-    modelApi += strFormat("// Bundle memory configuration (memory layout)\n"
+    modelApi += strFormat("// Bundle memory configuration (memory layout).\n"
                           "extern BundleConfig %s_config;\n"
                           "\n",
                           bundleName.data());
@@ -352,7 +352,7 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
 
     // Print placeholder address offsets.
     modelApi +=
-        "// Placeholder address offsets within mutable buffer (bytes)\n";
+        "// Placeholder address offsets within mutable buffer (bytes).\n";
     for (auto &pair : nameAddrPairs) {
       modelApi += strFormat(
           "#define %s_%s%s  %u\n", bundleNameUpper.data(), pair.first.data(),
@@ -363,12 +363,12 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
 
     // Print memory sizes and memory alignment.
     modelApi +=
-        strFormat("// Memory sizes (bytes)\n"
+        strFormat("// Memory sizes (bytes).\n"
                   "#define %s_CONSTANT_MEM_SIZE     %lu\n"
                   "#define %s_MUTABLE_MEM_SIZE      %lu\n"
                   "#define %s_ACTIVATIONS_MEM_SIZE  %lu\n"
                   "\n"
-                  "// Memory alignment (bytes)\n"
+                  "// Memory alignment (bytes).\n"
                   "#define %s_MEM_ALIGN  %d\n"
                   "\n",
                   bundleNameUpper.data(), constMemSize, bundleNameUpper.data(),
@@ -380,7 +380,7 @@ void BundleSaver::saveHeader(llvm::StringRef headerFileName) {
   for (auto &savedIRFunction : savedIRFunctions_) {
     modelApi +=
         strFormat("// Bundle entry point (inference function). Returns 0\n"
-                  "// for correct execution or some error code otherwise\n"
+                  "// for correct execution or some error code otherwise.\n"
                   "ssize_t %s("
                   "uint8_t *constantWeight, "
                   "uint8_t *mutableWeight, "
