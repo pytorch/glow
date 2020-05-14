@@ -305,10 +305,22 @@ public:
   /// and then creates and \returns the CallInst.
   /// \param builder the IR builder to be used for creating the Call
   /// instruction. \param callee the function to be called. \param args
-  /// arguments to be passed in this call. \returns generated Call instruction
+  /// arguments to be passed in this call. If \p checked is set, this helper
+  /// emits checks for the int result of the call and returns from the caller if
+  /// it is non-zero. If callee does not return an int result, \p checked has no
+  /// effect. \returns generated Call instruction
   virtual llvm::CallInst *createCall(llvm::IRBuilder<> &builder,
                                      llvm::Function *callee,
-                                     llvm::ArrayRef<llvm::Value *> args);
+                                     llvm::ArrayRef<llvm::Value *> args,
+                                     bool checked = false);
+  /// The checked version of createCall.
+  virtual llvm::CallInst *createCheckedCall(llvm::IRBuilder<> &builder,
+                                            llvm::Function *callee,
+                                            llvm::ArrayRef<llvm::Value *> args);
+  /// The unchecked version of createCall.
+  virtual llvm::CallInst *
+  createUncheckedCall(llvm::IRBuilder<> &builder, llvm::Function *callee,
+                      llvm::ArrayRef<llvm::Value *> args);
   /// \returns a libjit API function by name.
   virtual llvm::Function *getFunction(const std::string &name);
   /// \returns a libjit API function by name and tensor element type.

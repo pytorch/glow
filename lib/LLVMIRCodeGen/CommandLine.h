@@ -67,6 +67,9 @@ extern llvm::cl::list<std::string> llvmCompilerOptions;
 /// Option to set float ABI. Used as -float-abi=<abi-type>.
 extern llvm::cl::opt<llvm::FloatABI::ABIType> floatABI;
 
+/// Option to enable error-checking during execution of compiled models.
+extern llvm::cl::opt<bool> checkedErrors;
+
 /// Option to specify which bundle API to use.
 extern llvm::cl::opt<glow::BundleApiType> bundleAPI;
 
