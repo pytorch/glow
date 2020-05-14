@@ -350,7 +350,7 @@ int main(int argc, char **argv) {
   // Perform the computation.
   int errCode =
       resnet50(constantWeightVarsAddr, mutableWeightVarsAddr, activationsAddr);
-  if (errCode != GLOW_BUNDLE_SUCCESS) {
+  if (errCode != GLOW_SUCCESS) {
     printf("Error running bundle: error code %d\n", errCode);
   }
 

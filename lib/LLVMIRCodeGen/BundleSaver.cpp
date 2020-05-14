@@ -52,14 +52,14 @@ static const char *headerFileTemplate =
 
 #include <stdint.h>
 
-// Glow bundle error codes.
-#define GLOW_BUNDLE_SUCCESS 0
-
 // ---------------------------------------------------------------
 //                       Common definitions
 // ---------------------------------------------------------------
 #ifndef _GLOW_BUNDLE_COMMON_DEFS
 #define _GLOW_BUNDLE_COMMON_DEFS
+
+// Glow bundle error code for correct execution.
+#define GLOW_SUCCESS 0
 %s
 #endif
 
@@ -73,8 +73,7 @@ static const char *headerFileTemplate =
 #ifdef __cplusplus
 extern "C" {
 #endif
-%s
-%s
+%s%s
 #ifdef __cplusplus
 }
 #endif

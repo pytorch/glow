@@ -263,7 +263,7 @@ int main(int argc, char **argv) {
 
   // Perform the computation.
   int errCode = lenet_mnist(constantWeight, mutableWeight, activations);
-  if (errCode != GLOW_BUNDLE_SUCCESS) {
+  if (errCode != GLOW_SUCCESS) {
     printf("Error running bundle: error code %d\n", errCode);
   }
 
