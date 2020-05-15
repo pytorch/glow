@@ -311,7 +311,7 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
 
   backendPtr_->runNetwork(
       this, std::move(ctx),
-      [outputEvent, traceEvents, threadId, startTime,
+      [outputEvent, traceEvents, threadId, startTime, data,
        attributes = std::move(attributes),
        this](runtime::RunIdentifierTy runId, Error err,
              std::unique_ptr<ExecutionContext> ctx) mutable {
@@ -340,6 +340,23 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
                                       TraceEvent::EndType, TraceEvent::now(),
                                       attributes, threadId, runId);
           setTraceEvents(traceEvents, traceContext);
+        }
+
+        // please make sure to keep this before outputEvent->signal
+        // Basically once outputEvent is signaled, it can cause the caller to
+        // unwind the stack and eventually delete the request context. If there
+        // is contention on the CPU, data could've already been deleted by the
+        // time we access counters_ here. Thus use after free.
+        if (traceContext) {
+          const auto traces = traceContext->getTraceEventsCopy();
+          std::vector<std::pair<std::string, int64_t>> counters;
+          for (const auto &trace : traces) {
+            counters.emplace_back(trace.name + "_" + trace.type,
+                                  trace.timestamp);
+          }
+          if (data) {
+            data->counters_.swap(counters);
+          }
         }
 
         // Signal to caller that the inference is completed.

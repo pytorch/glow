@@ -24,6 +24,7 @@ namespace runtime {
 class RequestData : public folly::RequestData {
 public:
   int64_t appLevelRequestId{0};
+  folly::Synchronized<std::vector<std::pair<std::string, int64_t>>> counters_;
 
   static RequestData *get() {
     auto data = dynamic_cast<RequestData *>(

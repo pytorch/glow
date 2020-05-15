@@ -177,6 +177,7 @@ public:
 
   /// \returns TraceEvents for the last run.
   std::list<TraceEvent> &getTraceEvents() { return traceEvents_; }
+  std::list<TraceEvent> getTraceEventsCopy();
 
   /// \returns the level of verbosity allowed for TraceEvents.
   int getTraceLevel() { return traceLevel_; }

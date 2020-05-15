@@ -189,6 +189,11 @@ void TraceContext::setThreadName(int tid, llvm::StringRef name) {
   threadNames_[tid] = name;
 }
 
+std::list<TraceEvent> TraceContext::getTraceEventsCopy() {
+  std::lock_guard<std::mutex> l(lock_);
+  return traceEvents_;
+}
+
 void TraceContext::setThreadName(llvm::StringRef name) {
   setThreadName(threads::getThreadId(), name);
 }
