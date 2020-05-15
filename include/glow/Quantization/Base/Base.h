@@ -185,6 +185,9 @@ struct QuantizationConfiguration {
   /// Whether to use rowwise quantization when quantizing a Function.
   bool enableRowwise{false};
 
+  /// Whether to use channelwise quantization when quantizing a Function.
+  bool enableChannelwise{false};
+
   /// New name for the quantized function. If no name is given then
   /// \ref quantizeFunction() will generate a name.
   std::string newFuncName{""};
@@ -313,6 +316,32 @@ chooseQuantizationParams(TensorProfilingParams profParams,
                          Schema schema = Asymmetric,
                          ElemKind qTy = ElemKind::Int8QTy,
                          Calibration calibration = Calibration::None);
+
+/// Function to specialize the TensorQuantizationParams of the bias operand
+/// for nodes like Convolution and FullyConnected given the initially computed
+/// parameters \p biasTQP and the parameters of the input \p inputTQP and the
+/// weights \p weightsTQP, for given quantization schema \p schema and bias type
+/// \p biasQTy. The bias operand requires a more thoughtful quantization since
+/// every bias value has a higher impact on the precision of the output value
+/// than any particular weight value. The specialization logic is:
+/// - for INT32 bias quantization: since the dynamic range of INT32 is large we
+///   can always force symmetric quantization (offset = 0). This allows a faster
+///   implementation since no offset subtraction is required at run-time.
+/// - for INT8/INT16 bias quantization: since the dynamic range is small we
+///   will keep the original offset.
+/// - regardless of precision, we try to force the bias scale parameter to
+///   bias_scale = input_scale * weights_scale since this has a performance
+///   benefit by specializing the parameters to biasPre = 0, biasPost = 0,
+///   biasScale = 1. We must verify that by changing the bias scale we don`t
+///   saturate the bias data. This is also equivalent to forcing the effective
+///   scale applied at run-time (bias_scale / (input_scale * weights_scale))
+///   to be always greater than or equal to 1.0 which is a common constraint
+///   for the bias for most libraries with quantized implementations.
+TensorQuantizationParams
+specializeBiasQuantizationParams(const TensorQuantizationParams &biasTQP,
+                                 const TensorQuantizationParams &inputTQP,
+                                 const TensorQuantizationParams &weightsTQP,
+                                 Schema schema, ElemKind biasQTy);
 
 /// \returns an int8 vector mapping from the \p inTy to the \p outTy given the
 /// function \p f.
@@ -486,6 +515,53 @@ void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output) {
     destH.setFusedScaleOffsetInRow<T>(i, scale, offset);
   }
 }
+
+/// Generic function to compute the quantization parameters for an input
+/// floating-point tensor \p tensor with given schema \p qSchema and type
+/// \p qTy. A separate set of quantization parameters (scale, offset) will
+/// be computed for each group of \p qStep indices along the \p qDim dimension.
+/// This allows quantizing a given tensor with finer granularity (e.g. rowwise
+/// or channelwise).
+/// For example, for a tensor of size [4, 6, 8, 10], qDim = 1 and qStep = 3:
+/// -> one set of quantization parameters will be computed for [:,0:2,:,:].
+/// -> one set of quantization parameters will be computed for [:,3:5,:,:].
+/// The number of sets of computed quantization parameters (scale, offset) is
+/// tensor.dims()[qDim] / qStep. \returns the set of quantization parameters.
+std::vector<TensorQuantizationParams>
+getTensorQuantizationParams(const Tensor &tensor, Schema qSchema = Asymmetric,
+                            ElemKind qTy = ElemKind::Int8QTy, dim_t qDim = 0,
+                            dim_t qStep = 1);
+
+/// Similar function to the one above with the difference that the quantization
+/// parameters scales and offsets are written into separate tensors \p scales
+/// and \p offsets which are assummed allocated with the correct type and size.
+void getTensorQuantizationParams(const Tensor &tensor, Tensor &scales,
+                                 Tensor &offsets, Schema qSchema = Asymmetric,
+                                 ElemKind qTy = ElemKind::Int8QTy,
+                                 dim_t qDim = 0, dim_t qStep = 1);
+
+/// Generic function to quantize a given input floating-point tensor \p tensor
+/// with given tensor quantization parameters \p TQP and type \p qTy. A separate
+/// set of quantization parameters (scale, offset) is provided for each group
+/// of \p qStep indices along the \p qDim dimension and can be obtained using
+/// the function \ref getTensorQuantizationParams. This allows quantizing a
+/// given tensor with finer granularity (e.g. rowwise or channelwise).
+/// For example, for a tensor of size [4, 6, 8, 10], qDim = 1 and qStep = 3:
+/// -> one set of quantization parameters will be provided for [:,0:2,:,:].
+/// -> one set of quantization parameters will be provided for [:,3:5,:,:].
+/// The number of sets of provided quantization parameters (scale, offset) is
+/// tensor.dims()[qDim] / qStep. \returns the quantized tensor.
+Tensor quantizeTensor(const Tensor &tensor,
+                      llvm::ArrayRef<TensorQuantizationParams> TQP,
+                      ElemKind qTy = ElemKind::Int8QTy, dim_t qDim = 0,
+                      dim_t qStep = 1);
+
+/// Similar function to the one above with the difference that the quantization
+/// parameters scales and offsets are loaded from separate tensors \p scales
+/// and \p offsets.
+Tensor quantizeTensor(const Tensor &tensor, const Tensor &scales,
+                      const Tensor &offsets, ElemKind qTy = ElemKind::Int8QTy,
+                      dim_t qDim = 0, dim_t qStep = 1);
 
 /// Verify if float is an exact power of 2 (mantissa is exactly 1.0).
 bool isFloatPowerOf2(float val);

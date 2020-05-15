@@ -40,14 +40,6 @@
 
 using namespace glow;
 
-/// -enable-rowwise : Command line option to enable rowwise quantized
-/// fullyconnected in quantization producure.
-bool enableRowwiseOpt;
-static llvm::cl::opt<bool, true>
-    enableRowwiseF("enable-rowwise",
-                   llvm::cl::desc("Enable rowwise quantized fully connected."),
-                   llvm::cl::location(enableRowwiseOpt), llvm::cl::init(false));
-
 llvm::cl::OptionCategory loaderCat("Loader Options");
 
 namespace {
@@ -159,6 +151,17 @@ llvm::cl::opt<ElemKind> quantizationPrecisionBias(
         clEnumValN(ElemKind::Int8QTy, "Int8", "Use Int8 bias quantization"),
         clEnumValN(ElemKind::Int32QTy, "Int32", "Use Int32 bias quantization")),
     llvm::cl::init(ElemKind::Int32QTy), llvm::cl::cat(loaderCat));
+
+llvm::cl::opt<bool>
+    enableRowwiseOpt("enable-rowwise",
+                     llvm::cl::desc("Enable rowwise quantized FullyConnected."),
+                     llvm::cl::Optional, llvm::cl::init(false),
+                     llvm::cl::cat(loaderCat));
+
+llvm::cl::opt<bool> enableChannelwiseOpt(
+    "enable-channelwise",
+    llvm::cl::desc("Enable channelwise quantized Convolution."),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<std::string> loadProfileFileOpt(
     "load-profile",
@@ -523,6 +526,7 @@ quantization::QuantizationConfiguration Loader::getQuantizationConfiguration() {
   quantConfig.calibration = quantizationCalibrationOpt;
   quantConfig.calibrateConstants = calibrateConstantsOpt;
   quantConfig.enableRowwise = enableRowwiseOpt;
+  quantConfig.enableChannelwise = enableChannelwiseOpt;
   quantConfig.assertAllNodesQuantized = assertAllNodesQuantizedOpt;
   if (!loadProfileFileOpt.empty()) {
     quantConfig.infos = deserializeProfilingInfosFromYaml(loadProfileFileOpt);

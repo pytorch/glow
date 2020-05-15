@@ -465,41 +465,50 @@ public:
                                   unsigned_t group);
 
   /// Creates a ChannelwiseQuantizedConvolutionNode with the given \p name which
-  /// convolves the 4D \p input with \p filter and \p bias. \p scales and \p
-  /// offsets provide individual quantization parameters for each filter group
-  /// in \p filter. \p kernels defines the size of the height and width
+  /// convolves the 4D/5D \p input with \p filter and \p bias. \p filterScales
+  /// and \p filterOffsets provide individual quantization parameters for each
+  /// filter group in \p filter while \p biasScales and \p biasOffsets provide
+  /// individual quantization parameters for each bias element corresponding to
+  /// each output channel. \p kernels defines the size of the height and width
   /// dimensions of the filters. \p strides defines the number of steps to take
   /// in the input for each output cell. \p pads defines how many zero padding
   /// cells should be added to the input during convolution. \p group defines
   /// the number of groups the input and output channels should be divided into
-  /// and convolved separately. If bias is FloatTy then it will be quantized
-  /// to Int32QTy automatically.
-  /// NOTE: ChannelwiseQuantizedConvolutionNode does
-  /// not yet have an implementation so attempting to run a graph containing
-  /// this node fails.
+  /// and convolved separately. \p dilation defines the filter dilation.
+  /// This function is flexible and has the following features:
+  /// - it can be provided with a floating-point \p filter and the function will
+  ///   quantize automatically the filter channelwise using the given schema
+  ///   \p schema and type \p filterElemQTy.
+  /// - it can be provided with a floating-point \p bias and the function will
+  ///   quantize automatically the bias channelwise using the given schema
+  ///   \p schema and type \p biasElemQTy.
+  /// - if \p filter is floating-point and \p filterScales or \p filterOffsets
+  ///   are not provided then this function will derive them automatically.
+  /// - if \p filter is quantized then \p filterScales or \p filterOffsets are
+  ///   mandatory.
+  /// - if \p bias is floating-point and \p biasScales or \p biasOffsets are not
+  ///   provided then this function will derive them automatically.
+  /// - if \p bias is quantized  and \p biasScales or \p biasOffsets are not
+  ///   provided then this function will assume the implicit parameters
+  ///   biasScales[i] = inputScale * filterScales[i] and biasOffsets[i] = 0.
+  ///   To be noted that this case can handle safely only INT32 bias data type
+  ///   because for INT8 type the bias will almost certainly be saturated.
+  /// This function will only quantize the filter if \p quantizeFilter is set
+  /// to true and will only quantize the bias if \p quantizeBias is set to true
+  /// such that a floating-point filter/bias can be attached to the node as-is
+  /// without any modifications in order for the backends to perform their own
+  /// custom quantization later if desired.
+  /// This function requires \p filter and \p bias operands to be constants.
   ChannelwiseQuantizedConvolutionNode *createChannelwiseQuantizedConv(
       llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
-      NodeValue scales, NodeValue offsets, TypeRef outTy,
-      llvm::ArrayRef<unsigned_t> kernels, llvm::ArrayRef<unsigned_t> strides,
-      llvm::ArrayRef<unsigned_t> pads, unsigned_t group);
-
-  /// Creates a ChannelwiseQuantizedConvolutionNode with the given \p name
-  /// which convolves the 5D \p input with \p filter and \p bias. \p scales and
-  /// \p offsets provide individual quantization parameters for each filter
-  /// group in \p filter. \p kernels defines the size of the temporal_frame,
-  /// height and width dimensions of the filters. \p strides defines the number
-  /// of steps to take in the input for each output cell. \p pads defines how
-  /// many zero padding cells should be added to the input during convolution.
-  /// \p group defines the number of groups the input and output channels should
-  /// be divided into and convolved separately. If bias is FloatTy then it will
-  /// be quantized to Int32QTy automatically. NOTE:
-  /// ChannelwiseQuantizedConvolutionNode does not yet have an implementation
-  /// so attempting to run a graph containing this node fails.
-  ChannelwiseQuantizedConvolutionNode *createChannelwiseQuantizedConv3D(
-      llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
-      NodeValue scales, NodeValue offsets, TypeRef outTy,
-      llvm::ArrayRef<unsigned_t> kernels, llvm::ArrayRef<unsigned_t> strides,
-      llvm::ArrayRef<unsigned_t> pads, unsigned_t group);
+      NodeValue filterScales, NodeValue filterOffsets, NodeValue biasScales,
+      NodeValue biasOffsets, TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
+      llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+      unsigned_t group, unsigned_t dilation = 1, bool quantizeFilter = true,
+      bool quantizeBias = true,
+      quantization::Schema schema = quantization::Schema::Asymmetric,
+      ElemKind filterElemQTy = ElemKind::Int8QTy,
+      ElemKind biasElemQTy = ElemKind::Int32QTy);
 
   /// Creates a ConvTransposeNode with the given \p name which does transposed
   /// convolution of the 4D \p input with \p filter and \bias. \p kernels define

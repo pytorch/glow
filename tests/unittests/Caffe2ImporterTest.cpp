@@ -212,14 +212,9 @@ TEST_F(Caffe2ImporterTest, convNHWC) {
 }
 
 /// Test loading ChannelwiseQuantizedConvolutionNode op from a Caffe2 model.
-/// The input is N*H*W*C (1*1*1*4), the kernel is 1,
-/// stride is 1, pad is 1, group is 2.
+/// The input is N*H*W*C (1*1*1*4), the kernel is 1, stride is 1, pad is 1,
+/// group is 2.
 TEST_F(Caffe2ImporterTest, convGroupQuantized) {
-  // TODO Due to https://github.com/pytorch/glow/pull/3877
-  // the API of channelwise quantized conv has been changed
-  // this test is skipped for now and should be enbaled once
-  // we fixed.
-  GTEST_SKIP();
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -261,48 +256,69 @@ TEST_F(Caffe2ImporterTest, convGroupQuantized) {
             llvm::makeArrayRef(expectedKernelsAndStrides));
   EXPECT_EQ(groupwiseConv->getPads(), llvm::makeArrayRef(expectedPads));
   EXPECT_EQ(groupwiseConv->getGroup(), 2);
+  EXPECT_EQ(groupwiseConv->getDilation(), 1);
 
   // Check constant inputs.
   Constant *filterConstant =
       llvm::dyn_cast<Constant>(groupwiseConv->getFilter().getNode());
   Constant *biasConstant =
       llvm::dyn_cast<Constant>(groupwiseConv->getBias().getNode());
-  Constant *scalesConstant =
-      llvm::dyn_cast<Constant>(groupwiseConv->getScales().getNode());
-  Constant *offsetsConstant =
-      llvm::dyn_cast<Constant>(groupwiseConv->getOffsets().getNode());
+  Constant *filterScalesConstant =
+      llvm::dyn_cast<Constant>(groupwiseConv->getFilterScales().getNode());
+  Constant *filterOffsetsConstant =
+      llvm::dyn_cast<Constant>(groupwiseConv->getFilterOffsets().getNode());
+  Constant *biasScalesConstant =
+      llvm::dyn_cast<Constant>(groupwiseConv->getBiasScales().getNode());
+  Constant *biasOffsetsConstant =
+      llvm::dyn_cast<Constant>(groupwiseConv->getBiasOffsets().getNode());
 
   ASSERT_TRUE(filterConstant);
   ASSERT_TRUE(biasConstant);
-  ASSERT_TRUE(scalesConstant);
-  ASSERT_TRUE(offsetsConstant);
+  ASSERT_TRUE(filterScalesConstant);
+  ASSERT_TRUE(filterOffsetsConstant);
+  ASSERT_TRUE(biasScalesConstant);
+  ASSERT_TRUE(biasOffsetsConstant);
 
   const auto filterH = filterConstant->getPayload().getHandle<int8_t>();
   const auto biasH = biasConstant->getPayload().getHandle<float>();
-  const auto scalesH = scalesConstant->getPayload().getHandle<float>();
-  const auto offsetsH = offsetsConstant->getPayload().getHandle<int32_t>();
+  const auto filterScalesH =
+      filterScalesConstant->getPayload().getHandle<float>();
+  const auto filterOffsetsH =
+      filterOffsetsConstant->getPayload().getHandle<int32_t>();
+  const auto biasScalesH = biasScalesConstant->getPayload().getHandle<float>();
+  const auto biasOffsetsH =
+      biasOffsetsConstant->getPayload().getHandle<int32_t>();
 
   for (size_t i = 0; i < filterH.size(); ++i) {
     EXPECT_EQ(filterH.raw(i), i % 2);
   }
 
   for (size_t i = 0; i < biasH.size(); ++i) {
-    EXPECT_EQ(biasH.raw(i), 7);
+    EXPECT_EQ(biasH.raw(i), 7.0);
   }
 
-  for (size_t i = 0; i < scalesH.size(); ++i) {
-    EXPECT_EQ(scalesH.raw(i), 6);
+  for (size_t i = 0; i < filterScalesH.size(); ++i) {
+    EXPECT_EQ(filterScalesH.raw(i), 6.0f);
   }
 
-  for (size_t i = 0; i < offsetsH.size(); ++i) {
-    EXPECT_EQ(offsetsH.raw(i), 5);
+  for (size_t i = 0; i < filterOffsetsH.size(); ++i) {
+    EXPECT_EQ(filterOffsetsH.raw(i), 5);
+  }
+
+  for (size_t i = 0; i < biasScalesH.size(); ++i) {
+    float matmulScale = filterScalesH.raw(i) * input.getType().getScale();
+    EXPECT_EQ(biasScalesH.raw(i), matmulScale);
+  }
+
+  for (size_t i = 0; i < biasOffsetsH.size(); ++i) {
+    EXPECT_EQ(biasOffsetsH.raw(i), 0);
   }
 
   // We have 2 placeholders: 1 input and 1 output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
-  // We have 4 constants: Bias, Weights, and Weights' separate scales and
-  // offsets.
-  EXPECT_EQ(mod.getConstants().size(), 4);
+  // We have 6 constants: Bias, Filter, FilterScales, FilterOffsets, BiasScales
+  // and BiasOffsets.
+  EXPECT_EQ(mod.getConstants().size(), 6);
 }
 
 /// Helper method to run the ConvTranspose operator test cases.

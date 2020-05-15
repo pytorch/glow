@@ -330,9 +330,12 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
              ElemKind::Int32QTy) ||
             (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
              ElemKind::FloatTy)) &&
-           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::ScalesIdx) ==
+           (NI.getInElemTy(
+                ChannelwiseQuantizedConvolutionNode::FilterScalesIdx) ==
             ElemKind::FloatTy) &&
-           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::OffsetsIdx) ==
+           (NI.getInElemTy(
+                ChannelwiseQuantizedConvolutionNode::FilterOffsetsIdx) ==
+
             ElemKind::Int32ITy) &&
            (NI.getOutElemTy(ChannelwiseQuantizedConvolutionNode::ResultIdx) ==
             ElemKind::Int8QTy);

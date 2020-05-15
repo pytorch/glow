@@ -7026,9 +7026,290 @@ TEST_P(OperatorTest, GroupConvolution) {
   EXPECT_FLOAT_EQ(result.at({0, 1, 0, 5}), (13 + 14 + 15 + 16) * 100000);
 }
 
+/// Utility function to test numerically the ChannelwiseQuantizedConvolution2D
+/// against a floating point Convolution for different parameters.
+static void testChannelwiseQuantizedConv2D(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
+    glow::ExecutionEngine &EE, quantization::Schema schema, ElemKind elemQKind,
+    ElemKind biasElemQKind, bool filterFloat, bool biasFloat,
+    bool biasScalesExplicit) {
+
+  std::vector<dim_t> inputDims = {5, 10, 10, 4};
+  std::vector<dim_t> filterDims = {8, 3, 3, 2};
+  std::vector<dim_t> biasDims = {8};
+  std::vector<dim_t> outputDims = {5, 6, 6, 8};
+  std::vector<unsigned_t> kernels = {3, 3};
+  std::vector<unsigned_t> strides = {1, 1};
+  std::vector<unsigned_t> pads = {0, 0, 0, 0};
+  dim_t group = 2;
+  dim_t dilation = 2;
+  dim_t qDim = 0;
+  dim_t qStep = 1;
+
+  // Create input placeholder.
+  auto *inputF =
+      mod.createPlaceholder(ElemKind::FloatTy, inputDims, "inputF", false);
+  bindings.allocate(inputF)->getHandle<float>().randomize(-1.0, 1.0,
+                                                          mod.getPRNG());
+
+  // Quantize input.
+  auto inputTQP =
+      quantization::chooseQuantizationParams({-1.0, 1.0}, schema, elemQKind);
+  auto *inputQTy =
+      mod.uniqueType(elemQKind, inputDims, inputTQP.scale, inputTQP.offset);
+  auto *inputQ = F->createQuantize("inputQ", inputF, inputQTy);
+
+  // Create float filter constant.
+  auto *filterF = mod.createConstant(ElemKind::FloatTy, filterDims, "filterF");
+  filterF->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                            mod.getPRNG());
+
+  // Create float bias constant.
+  auto *biasF = mod.createConstant(ElemKind::FloatTy, biasDims, "biasF");
+  biasF->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                          mod.getPRNG());
+
+  // Create quantized filter and filterScales/filterOffsets constants for
+  // ChannelwiseQuantizedConvolution.
+  dim_t numChannels = outputDims[3];
+  Constant *filterQ =
+      mod.createConstant(elemQKind, filterDims, 1.0, 0, "filterQ");
+  Constant *filterScales =
+      mod.createConstant(ElemKind::FloatTy, {numChannels}, "filterScales");
+  Constant *filterOffsets =
+      mod.createConstant(ElemKind::Int32ITy, {numChannels}, "filterOffsets");
+  quantization::getTensorQuantizationParams(
+      filterF->getPayload(), filterScales->getPayloadMutable(),
+      filterOffsets->getPayloadMutable(), schema, elemQKind, qDim, qStep);
+  filterQ->getPayloadMutable() = quantization::quantizeTensor(
+      filterF->getPayload(), filterScales->getPayload(),
+      filterOffsets->getPayload(), elemQKind, qDim, qStep);
+
+  // Create quantized bias and biasScales/biasOffsets constants for
+  // ChannelwiseQuantizedConvolution.
+  Constant *biasQ =
+      mod.createConstant(biasElemQKind, {numChannels}, 1.0, 0, "biasQ");
+  Constant *biasScales =
+      mod.createConstant(ElemKind::FloatTy, {numChannels}, "biasScales");
+  Constant *biasOffsets =
+      mod.createConstant(ElemKind::Int32ITy, {numChannels}, "biasOffsets");
+  auto biasScalesH = biasScales->getPayload().getHandle<float>();
+  auto biasOffsetsH = biasOffsets->getPayload().getHandle<int32_t>();
+  auto filterScalesH = filterScales->getPayload().getHandle<float>();
+  auto filterOffsetsH = filterOffsets->getPayload().getHandle<int32_t>();
+  auto inputScale = inputQ->getResult().getType()->getScale();
+  auto inputOffset = inputQ->getResult().getType()->getOffset();
+  if (biasScalesExplicit) {
+    quantization::getTensorQuantizationParams(
+        biasF->getPayload(), biasScales->getPayloadMutable(),
+        biasOffsets->getPayloadMutable(), schema, biasElemQKind, qDim, qStep);
+    for (dim_t idx = 0; idx < numChannels; idx++) {
+      auto biasTQPNew = specializeBiasQuantizationParams(
+          {biasScalesH.raw(idx), biasOffsetsH.raw(idx)},
+          {inputScale, inputOffset},
+          {filterScalesH.raw(idx), filterOffsetsH.raw(idx)}, schema,
+          biasElemQKind);
+      biasScalesH.raw(idx) = biasTQPNew.scale;
+      biasOffsetsH.raw(idx) = biasTQPNew.offset;
+    }
+  } else {
+    for (dim_t idx = 0; idx < numChannels; idx++) {
+      float filterScale = filterScalesH.raw(idx);
+      biasScalesH.raw(idx) = inputScale * filterScale;
+      biasOffsetsH.raw(idx) = 0;
+    }
+  }
+  biasQ->getPayloadMutable() = quantization::quantizeTensor(
+      biasF->getPayload(), biasScales->getPayload(), biasOffsets->getPayload(),
+      biasElemQKind, qDim, qStep);
+
+  // Get optimal output TQP based on inspecting the output range for the
+  // particular values of the convolution parameters. If the convolution
+  // sizes are changed than these parameters must be adjusted.
+  auto outputTQP =
+      quantization::chooseQuantizationParams({-6.0, 6.0}, schema, elemQKind);
+  auto *outQTy =
+      mod.uniqueType(elemQKind, outputDims, outputTQP.scale, outputTQP.offset);
+
+  // Prepare parameters for ChannelwiseQuantizedConvolutionNode.
+  Constant *filterCWQ = nullptr;
+  Constant *filterScalesCWQ = nullptr;
+  Constant *filterOffsetsCWQ = nullptr;
+  if (filterFloat) {
+    filterCWQ = filterF;
+  } else {
+    filterCWQ = filterQ;
+    filterScalesCWQ = filterScales;
+    filterOffsetsCWQ = filterOffsets;
+  }
+  Constant *biasCWQ = nullptr;
+  Constant *biasScalesCWQ = nullptr;
+  Constant *biasOffsetsCWQ = nullptr;
+  if (biasFloat) {
+    biasCWQ = biasF;
+  } else {
+    biasCWQ = biasQ;
+  }
+  if (biasScalesExplicit) {
+    biasScalesCWQ = biasScales;
+    biasOffsetsCWQ = biasOffsets;
+  }
+
+  // Create ChannelwiseQuantizedConvolution and Dequantize.
+  ChannelwiseQuantizedConvolutionNode *outQ = F->createChannelwiseQuantizedConv(
+      "CWQConv", inputQ, filterCWQ, biasCWQ, filterScalesCWQ, filterOffsetsCWQ,
+      biasScalesCWQ, biasOffsetsCWQ, outQTy, kernels, strides, pads, group,
+      dilation, /* quantizeFilter */ true, /* quantizeBias */ true, schema,
+      elemQKind, biasElemQKind);
+  DequantizeNode *out =
+      F->createDequantize("dequantize", outQ, ElemKind::FloatTy);
+  SaveNode *saveOut = F->createSave("saveOut", out);
+  bindings.allocate(saveOut->getPlaceholder());
+
+  // Create reference floating-point Convolution.
+  auto *refTy = mod.uniqueType(ElemKind::FloatTy, outputDims);
+  ConvolutionNode *ref = F->createConv("Conv", inputF, filterF, biasF, refTy,
+                                       kernels, strides, pads, group, dilation);
+  SaveNode *saveRef = F->createSave("saveRef", ref);
+  bindings.allocate(saveRef->getPlaceholder());
+
+  // Compile and run.
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  // Extra validations.
+  EXPECT_EQ(F->getNodes().size(), 6);
+  EXPECT_EQ(outQ->getFilter().getElementType(), elemQKind);
+  EXPECT_EQ(outQ->getBias().getElementType(), biasElemQKind);
+
+  // Check error. If bias is carefully quantized then the bias precision does
+  // not matter and so the error tolerance is the same.
+  auto outH = bindings.get(saveOut->getPlaceholder())->getHandle();
+  auto refH = bindings.get(saveRef->getPlaceholder())->getHandle();
+  for (dim_t idx = 0; idx < refH.size(); idx++) {
+    float errVal = std::abs(refH.raw(idx) - outH.raw(idx));
+    EXPECT_TRUE(errVal < 0.05);
+  }
+}
+
+#define TEST_CWQCONV(testName, ...)                                            \
+  TEST_P(OperatorTest, testName) {                                             \
+    CHECK_IF_ENABLED();                                                        \
+    testChannelwiseQuantizedConv2D(bindings_, mod_, F_, EE_,                   \
+                                   quantization::Schema::Asymmetric,           \
+                                   __VA_ARGS__);                               \
+  }
+
+/// These unit tests prove that the bias quantization for low precision (Int8)
+/// requires a special handling because if we provide a quantized bias with
+/// implicit quantization parameters biasScales[i] = inputScale*filterScales[i]
+/// and biasOffsets[i]=0 does not work numerically due to BIAS DATA saturation.
+/// Therefore in the unit tests below we do not use the *_*FF tests.
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt8_FFT, ElemKind::Int8QTy,
+             ElemKind::Int8QTy, false, false, true)
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt8_FTF, ElemKind::Int8QTy,
+             ElemKind::Int8QTy, false, true, false)
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt8_FTT, ElemKind::Int8QTy,
+             ElemKind::Int8QTy, false, true, true)
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt8_TFT, ElemKind::Int8QTy,
+             ElemKind::Int8QTy, true, false, true)
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt8_TTF, ElemKind::Int8QTy,
+             ElemKind::Int8QTy, true, true, false)
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt8_TTT, ElemKind::Int8QTy,
+             ElemKind::Int8QTy, true, true, true)
+
+/// These unit tests prove that the bias quantization for high precision (Int32)
+/// can work without a special handling (implicit quantization parameters).
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_FFF, ElemKind::Int8QTy,
+             ElemKind::Int32QTy, false, false, false)
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_FFT, ElemKind::Int8QTy,
+             ElemKind::Int32QTy, false, false, true)
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_FTF, ElemKind::Int8QTy,
+             ElemKind::Int32QTy, false, true, false)
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_FTT, ElemKind::Int8QTy,
+             ElemKind::Int32QTy, false, true, true)
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_TFF, ElemKind::Int8QTy,
+             ElemKind::Int32QTy, true, false, false)
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_TFT, ElemKind::Int8QTy,
+             ElemKind::Int32QTy, true, false, true)
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_TTF, ElemKind::Int8QTy,
+             ElemKind::Int32QTy, true, true, false)
+TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_TTT, ElemKind::Int8QTy,
+             ElemKind::Int32QTy, true, true, true)
+#undef TEST_CWQCONV
+
+/// Utility function to test numerically the ChannelwiseQuantizedConvolution2D
+/// against Interpreter implementation.
+static FunctionTensorPair
+createAndInitBasicChannelwiseConv2DTest(glow::PlaceholderBindings &bindings,
+                                        glow::ExecutionEngine &EE) {
+
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::vector<dim_t> inputDims = {5, 10, 10, 4};
+  std::vector<dim_t> filterDims = {8, 3, 3, 2};
+  std::vector<dim_t> biasDims = {8};
+  std::vector<dim_t> outputDims = {5, 6, 6, 8};
+  std::vector<unsigned_t> kernels = {3, 3};
+  std::vector<unsigned_t> strides = {1, 1};
+  std::vector<unsigned_t> pads = {0, 0, 0, 0};
+  dim_t group = 2;
+  dim_t dilation = 2;
+
+  // Create input placeholder.
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+
+  // Create filter constant.
+  auto *filter = mod.createConstant(ElemKind::FloatTy, filterDims, "filter");
+  filter->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod.getPRNG());
+
+  // Create bias constant.
+  auto *bias = mod.createConstant(ElemKind::FloatTy, biasDims, "bias");
+  bias->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+
+  // Create Convolution.
+  auto *outTy = mod.uniqueType(ElemKind::FloatTy, outputDims);
+  ConvolutionNode *conv =
+      F->createConv("Conv", input, filter, bias, outTy, kernels, strides, pads,
+                    group, dilation);
+  SaveNode *save = F->createSave("save", conv);
+  auto *outputTensor = bindings.allocate(save->getPlaceholder());
+  return std::make_pair(F, outputTensor);
+}
+
+/// Test Int8 ChannelwiseQuantizedConvolution2D with Int8 bias.
+TEST_P(OperatorStatelessTest, ChannelwiseQuantizedConv2D_Int8_BiasInt8) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitBasicChannelwiseConv2DTest,
+      ElemKind::FloatTy, ElemKind::Int8QTy, 0.05f, parCloneCountOpt,
+      /* convertToRowwiseQuantization */ false,
+      quantization::Schema::Asymmetric, ElemKind::Int8QTy,
+      /* forceFP16AccumSLS */ false,
+      /* convertToChannelwiseQuantization */ true);
+}
+
+/// Test Int8 ChannelwiseQuantizedConvolution2D with Int32 bias.
+TEST_P(OperatorStatelessTest, ChannelwiseQuantizedConv2D_Int8_BiasInt32) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitBasicChannelwiseConv2DTest,
+      ElemKind::FloatTy, ElemKind::Int8QTy, 0.05f, parCloneCountOpt,
+      /* convertToRowwiseQuantization */ false,
+      quantization::Schema::Asymmetric, ElemKind::Int32QTy,
+      /* forceFP16AccumSLS */ false,
+      /* convertToChannelwiseQuantization */ true);
+}
+
 /// Test the functionality of channelwise quantized group convolution using
 /// ChannelwiseQuantizedConvNode.
-TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolution) {
+TEST_P(OperatorTest, ChannelwiseQuantizedConv2D) {
   CHECK_IF_ENABLED();
 
   constexpr size_t groups = 2;
@@ -7060,19 +7341,22 @@ TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolution) {
   biasT.zero();
   auto *bias = mod_.createConstant("bias", std::move(biasT));
 
-  auto scalesT = Tensor(ElemKind::FloatTy, {output_channel});
-  for (size_t i = 0; i < scalesT.size(); i++) {
-    scalesT.getHandle<float>().raw(i) = 1;
+  auto filterScalesT = Tensor(ElemKind::FloatTy, {output_channel});
+  for (size_t i = 0; i < filterScalesT.size(); i++) {
+    filterScalesT.getHandle<float>().raw(i) = 1;
   }
-  auto *scales = mod_.createConstant("scales", std::move(scalesT));
+  auto *filterScales =
+      mod_.createConstant("filterScales", std::move(filterScalesT));
 
-  auto offsetsT = Tensor(ElemKind::Int32ITy, {output_channel});
-  offsetsT.zero();
-  auto *offsets = mod_.createConstant("offsets", std::move(offsetsT));
+  auto filterOffsetsT = Tensor(ElemKind::Int32ITy, {output_channel});
+  filterOffsetsT.zero();
+  auto *filterOffsets =
+      mod_.createConstant("filterOffsets", std::move(filterOffsetsT));
 
   auto *outTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 1, 3, 4}, 1.0, 0);
   ChannelwiseQuantizedConvolutionNode *CQC = F_->createChannelwiseQuantizedConv(
-      "channelwiseQuantizedConv", qInput, filter, bias, scales, offsets, outTy,
+      "channelwiseQuantizedConv", qInput, filter, bias, filterScales,
+      filterOffsets, /* biasScales */ nullptr, /* biasOffsets */ nullptr, outTy,
       {2, 1}, {1, 1}, {0, 0, 0, 0}, groups);
 
   DequantizeNode *dq =
@@ -7107,7 +7391,7 @@ TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolution) {
 
 /// Test the functionality of channelwise quantized group convolution using
 /// ChannelwiseQuantizedConvNode.
-TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolution3D) {
+TEST_P(OperatorTest, ChannelwiseQuantizedConv3D) {
   CHECK_IF_ENABLED();
 
   constexpr size_t groups = 2;
@@ -7157,10 +7441,10 @@ TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolution3D) {
 
   auto *outTy = mod_.uniqueType(ElemKind::Int8QTy,
                                 {1, output_channel / groups, 2, 3, 2}, 1.0, 0);
-  ChannelwiseQuantizedConvolutionNode *CQC =
-      F_->createChannelwiseQuantizedConv3D(
-          "channelwiseQuantizedConv", qInput, filter, bias, scales, offsets,
-          outTy, {1, 1, 1}, {1, 1, 1}, {0, 0, 0, 0, 0, 0}, groups);
+  ChannelwiseQuantizedConvolutionNode *CQC = F_->createChannelwiseQuantizedConv(
+      "channelwiseQuantizedConv", qInput, filter, bias, scales, offsets,
+      /* biasScales */ nullptr, /* biasOffsets */ nullptr, outTy, {1, 1, 1},
+      {1, 1, 1}, {0, 0, 0, 0, 0, 0}, groups);
 
   DequantizeNode *dq =
       F_->createDequantize("dequantize", CQC, ElemKind::FloatTy);
@@ -7240,21 +7524,22 @@ TEST_P(OperatorTest, DilatedConvolution) {
 
 /// Test the functionality of channelwise quantized group convolution using
 /// ChannelwiseQuantizedConvNode with non-zero offsets and biases.
-TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolutionNonZero) {
-  CHECK_IF_ENABLED();
-
+void testChannelwiseQuantizedConv2DNonZero(glow::PlaceholderBindings &bindings,
+                                           glow::Module &mod, glow::Function *F,
+                                           glow::ExecutionEngine &EE,
+                                           bool quantizeBias) {
   constexpr size_t groups = 2;
   constexpr dim_t output_channel = 4;
 
   auto *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 2}, "input", false);
-  auto IH = bindings_.allocate(input)->getHandle<float>();
+      mod.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 2}, "input", false);
+  auto IH = bindings.allocate(input)->getHandle<float>();
   for (size_t i = 0; i < 2 * 3 * 2; i++) {
     IH.raw(i) = i + 1;
   }
 
-  auto *qInTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 2, 3, 2}, 2.5, 3);
-  auto *qInput = F_->createQuantize("qInput", input, qInTy);
+  auto *qInTy = mod.uniqueType(ElemKind::Int8QTy, {1, 2, 3, 2}, 2.5, 3);
+  auto *qInput = F->createQuantize("qInput", input, qInTy);
 
   auto filterT = Tensor(ElemKind::Int8QTy, {4, 2, 1, 1}, 1.0, 0);
   for (dim_t i = 0; i < 4; i++) {
@@ -7266,42 +7551,46 @@ TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolutionNonZero) {
       }
     }
   }
-  auto *filter = mod_.createConstant("filter", std::move(filterT));
+  auto *filter = mod.createConstant("filter", std::move(filterT));
 
   auto biasT = Tensor(ElemKind::FloatTy, {4});
   for (dim_t i = 0; i < 4; i++) {
     biasT.getHandle<float>().raw(i) = i + 1;
   }
-  auto *bias = mod_.createConstant("bias", std::move(biasT));
+  auto *bias = mod.createConstant("bias", std::move(biasT));
 
-  auto scalesT = Tensor(ElemKind::FloatTy, {output_channel});
-  for (size_t i = 0; i < scalesT.size(); i++) {
-    scalesT.getHandle<float>().raw(i) = 1;
+  auto filterScalesT = Tensor(ElemKind::FloatTy, {output_channel});
+  for (size_t i = 0; i < filterScalesT.size(); i++) {
+    filterScalesT.getHandle<float>().raw(i) = 1;
   }
-  auto *scales = mod_.createConstant("scales", std::move(scalesT));
+  auto *filterScales =
+      mod.createConstant("filterScales", std::move(filterScalesT));
 
-  auto offsetsT = Tensor(ElemKind::Int32ITy, {output_channel});
-  offsetsT.zero();
+  auto filterOffsetsT = Tensor(ElemKind::Int32ITy, {output_channel});
+  filterOffsetsT.zero();
 
-  auto *offsets = mod_.createConstant("offsets", std::move(offsetsT));
+  auto *filterOffsets =
+      mod.createConstant("filterOffsets", std::move(filterOffsetsT));
 
-  auto *outTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 1, 3, 4}, 2, 2);
-  ChannelwiseQuantizedConvolutionNode *CQC = F_->createChannelwiseQuantizedConv(
-      "channelwiseQuantizedConv", qInput, filter, bias, scales, offsets, outTy,
-      {2, 1}, {1, 1}, {0, 0, 0, 0}, groups);
+  auto *outTy = mod.uniqueType(ElemKind::Int8QTy, {1, 1, 3, 4}, 2, 2);
+  ChannelwiseQuantizedConvolutionNode *CQC = F->createChannelwiseQuantizedConv(
+      "channelwiseQuantizedConv", qInput, filter, bias, filterScales,
+      filterOffsets, /* biasScales */ nullptr, /* biasOffsets */ nullptr, outTy,
+      {2, 1}, {1, 1}, {0, 0, 0, 0}, groups, /* dilation */ 1,
+      /* quantizeFilter */ false, quantizeBias);
 
   DequantizeNode *dq =
-      F_->createDequantize("dequantize", CQC, ElemKind::FloatTy);
-  SaveNode *S = F_->createSave("save", dq);
-  bindings_.allocate(S->getPlaceholder());
+      F->createDequantize("dequantize", CQC, ElemKind::FloatTy);
+  SaveNode *S = F->createSave("save", dq);
+  bindings.allocate(S->getPlaceholder());
 
-  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+  ::glow::convertPlaceholdersToConstants(F, bindings,
                                          {input, S->getPlaceholder()});
 
-  EE_.compile(CompilationMode::Infer);
-  EE_.run(bindings_);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
 
-  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+  auto result = bindings.get(S->getPlaceholder())->getHandle();
 
   std::vector<dim_t> expectedDims = {1, 1, 3, 4};
   ASSERT_TRUE(result.dims().vec() == expectedDims);
@@ -7318,6 +7607,18 @@ TEST_P(OperatorTest, ChannelwiseQuantizedGroupConvolutionNonZero) {
   EXPECT_FLOAT_EQ(result.at({0, 0, 2, 1}), 28);
   EXPECT_FLOAT_EQ(result.at({0, 0, 2, 2}), 32);
   EXPECT_FLOAT_EQ(result.at({0, 0, 2, 3}), 36);
+}
+
+TEST_P(OperatorTest, ChannelwiseQuantizedConv2D_NonZero_FloatBias) {
+  CHECK_IF_ENABLED();
+  testChannelwiseQuantizedConv2DNonZero(bindings_, mod_, F_, EE_,
+                                        /* quantizeBias */ false);
+}
+
+TEST_P(OperatorTest, ChannelwiseQuantizedConv2D_NonZero_QuantizedBias) {
+  CHECK_IF_ENABLED();
+  testChannelwiseQuantizedConv2DNonZero(bindings_, mod_, F_, EE_,
+                                        /* quantizeBias */ true);
 }
 
 TEST_P(OperatorTest, GroupDilatedConvolution) {

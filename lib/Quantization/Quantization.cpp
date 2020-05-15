@@ -210,40 +210,20 @@ protected:
 
     const TensorQuantizationParams &TQP = valTQPIt->second;
 
-    // Bias quantization is specialized for Convolution and Fully Connected:
-    // - for int32 bias quantization: since the dynamic range of int32 is
-    //   large we can force symmetric quantization (offset = 0). This allows
-    //   a faster implementation since no offset subtraction is required.
-    // - for int8/int16 bias quantization: since the dynamic range is small we
-    //   will keep the original offset.
-    // - regardless of precision, we try to force the bias scale parameter to
-    //   bias_scale = input_scale * weights_scale since this has a performance
-    //   benefit by specializing the parameters to biasPre = 0, biasPost = 0,
-    //   biasScale = 1. We must verify that by changing the bias scale we don`t
-    //   saturate the data. This is also equivalent to forcing the effective
-    //   scale applied at run-time (bias_scale / (input_scale * weights_scale))
-    //   to be always greater than or equal to 1.0 which is a common constraint
-    //   for the bias for most libraries with quantized implementations.
+    // Local lambda to specialize the bias quantization parameters.
     auto getBiasType = [&](TypeRef inputTy, TypeRef weightsTy) -> TypeRef {
-      // Choose bias offset. For int32 bias we always force offset 0 in order
-      // to simplify the implementation since the dynamic range allows it.
-      int32_t biasOffset = TQP.offset;
-      if (quantizationPrecisionBias_ == ElemKind::Int32QTy) {
-        biasOffset = 0;
-      }
-      // Choose bias scale. We try to force the bias scale value to the product
-      // input_scale * weights_scale but only if the resulting scale is larger
-      // (in order to avoid bias data saturation).
-      float scaleInput = inputTy->getScale();
-      float scaleWeights = weightsTy->getScale();
-      float biasScale = TQP.scale;
-      if (scaleInput * scaleWeights > TQP.scale) {
-        biasScale = scaleInput * scaleWeights;
-      }
-      return mod_.uniqueType(quantizationPrecisionBias_, val.dims(), biasScale,
-                             biasOffset);
+      TensorQuantizationParams inputTQP = {inputTy->getScale(),
+                                           inputTy->getOffset()};
+      TensorQuantizationParams weightsTQP = {weightsTy->getScale(),
+                                             weightsTy->getOffset()};
+      auto biasTQP = specializeBiasQuantizationParams(
+          TQP, inputTQP, weightsTQP, schema_, quantizationPrecisionBias_);
+      return mod_.uniqueType(quantizationPrecisionBias_, val.dims(),
+                             biasTQP.scale, biasTQP.offset);
     };
 
+    // NOTE: For every node for which the bias is specialized add the similar
+    // logic in the 'generateNodeQuantizationInfos' function.
     if (use.getKind() == glow::Kinded::Kind::ConvolutionNodeKind &&
         idx == ConvolutionNode::BiasIdx) {
       // Get the input and weights types. This ensures the types will be
@@ -744,6 +724,7 @@ public:
         continue;
       }
 
+      // ----------------------------------------------------------------------
       // After function "convert()" is called, one FullyConnectedNode is
       // converted into:
       // [fp32 input] [fp32 weights] [fp32 bias]
@@ -753,7 +734,7 @@ public:
       // [            FullyConnectedNode            ]
       //                     |
       //              [DequantizeNode]
-      // We need to find the above patern and convert it to:
+      // We need to find the above pattern and convert it to:
       // [fp32 input]              [fp32 weights]            [fp32 bias]
       //      |                    /      |       \              |
       //      |         [int8 weights] [scales] [offsets]        |
@@ -762,6 +743,7 @@ public:
       // [         RowwiseQuantizedFullyConnectedNode            ]
       //                              |
       //                       [DequantizeNode]
+      // ----------------------------------------------------------------------
       bool foundFC = false;
       NodeValue input, weights, bias, result;
       if (auto *fcN = llvm::dyn_cast<FullyConnectedNode>(Q->getInput())) {
@@ -866,6 +848,80 @@ public:
 
     } while (nodeIt != stopIt);
 
+    cleanUp();
+    assert(function_.verify() && "Conversion led to invalid function");
+  }
+
+  /// Traverse all nodes to find applicable quantized nodes, and convert them
+  /// to ChannelwiseQuantized versions if required inputs are Constant.
+  void enableChannelwise() {
+    auto nodeIt = function_.getNodes().end();
+    auto stopIt = function_.getNodes().begin();
+    do {
+      --nodeIt;
+      Node &node = *nodeIt;
+      auto *Q = llvm::dyn_cast<DequantizeNode>(&node);
+      if (!Q) {
+        continue;
+      }
+
+      // ----------------------------------------------------------------------
+      // After function "convert()" is called, one ConvolutionNode is
+      // converted into:
+      //  [fp32 input]  [fp32 filter]   [fp32 bias]
+      //       |              |              |
+      // [QuantizeNode] [QuantizeNode] [QuantizeNode]
+      //        \             |            /
+      // [             ConvolutionNode            ]
+      //                     |
+      //              [DequantizeNode]
+      // We need to find the above pattern and convert it to:
+      // [fp32 input]           [fp32 filter]                [fp32 bias]
+      //      |                /        |     \            /       |     \
+      //      |         [int8 filter|scales|offsets] [int8 bias|scales|offsets]
+      // [QuantizeNode]       |         |      |         |         |      |
+      //      \               |         |      |         /         /      /
+      // [         ChannelwiseQuantizedConvolutionNode                        ]
+      //                              |
+      //                       [DequantizeNode]
+      // ----------------------------------------------------------------------
+
+      // Replace ConvolutionNode with ChannelwiseQuantizedConvolutionNode
+      // if the filter and bias operands are constant. The node creation
+      // function will be provided with the floating-point filter and
+      // bias constants and will perform channel wise quantization.
+      if (auto *convNode = llvm::dyn_cast<ConvolutionNode>(Q->getInput())) {
+
+        NodeValue input = convNode->getInput();
+        NodeValue filter = convNode->getFilter();
+        NodeValue bias = convNode->getBias();
+        NodeValue result = convNode->getResult();
+
+        if (input.getType()->isQuantizedType() &&
+            llvm::isa<QuantizeNode>(filter.getNode()) &&
+            llvm::isa<QuantizeNode>(bias.getNode()) &&
+            result.getType()->isQuantizedType()) {
+
+          auto *filterQ = llvm::dyn_cast<QuantizeNode>(filter.getNode());
+          Constant *filterC = llvm::dyn_cast<Constant>(filterQ->getInput());
+          auto *biasQ = llvm::dyn_cast<QuantizeNode>(bias.getNode());
+          Constant *biasC = llvm::dyn_cast<Constant>(biasQ->getInput());
+
+          if (filterC && biasC) {
+            auto *convNodeCWQ = function_.createChannelwiseQuantizedConv(
+                "ChannelwiseQuantizedConv", input, filterC, biasC,
+                /* filterScales */ nullptr, /* filterOffsets */ nullptr,
+                /* biasScales */ nullptr, /* biasOffsets */ nullptr,
+                result.getType(), convNode->getKernels(),
+                convNode->getStrides(), convNode->getPads(),
+                convNode->getGroup(), convNode->getDilation(),
+                /* quantizeFilter */ true, /* quantizeBias */ true, schema_,
+                quantizationPrecision_, quantizationPrecisionBias_);
+            result.replaceAllUsesOfWith(convNodeCWQ->getResult());
+          }
+        }
+      }
+    } while (nodeIt != stopIt);
     cleanUp();
     assert(function_.verify() && "Conversion led to invalid function");
   }
@@ -1044,8 +1100,15 @@ void quantizeFunction(Function *F, const QuantizationConfiguration &quantConfig,
   FunctionQuantizer quantizer(*F, B, quantConfig, doNotQuantizeKinds,
                               loweredMap);
   quantizer.convert();
+
+  // Enable rowwise quantization for FullyConnected node.
   if (quantConfig.enableRowwise) {
     quantizer.enableRowwise();
+  }
+
+  // Enable channelwise quantization for Convolution node.
+  if (quantConfig.enableChannelwise) {
+    quantizer.enableChannelwise();
   }
 }
 

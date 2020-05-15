@@ -217,4 +217,5 @@ std::set<std::string> glow::backendTestBlacklist = {
     "FusedRowwiseQuantizedSLWSAllLengthsOne_Fused4Bit_Float16_AccumFloat16/0",
     "LayerNorm_Float16/0",
     "LayerNorm_Int8/0",
+    "ChannelwiseQuantizedConv2D_NonZero_FloatBias/0",
 };

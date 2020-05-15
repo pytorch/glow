@@ -1546,6 +1546,24 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
   }
 }
 
+Tensor LLVMIRGen::getTensorForConstantValue(Value *value) {
+  // Since we can't get the variable from a glow::Value directly,
+  // we need to traverse the var list and find the one matching the given
+  // Value.
+  Tensor tensor;
+  auto *F_ = getIRFunction();
+  for (auto &v : F_->findConstants()) {
+    assert(isa<WeightVar>(F_->getWeightForNode(v)));
+    auto *w = cast<glow::Value>(F_->getWeightForNode(v));
+    if (w == value) {
+      tensor.assign(&v->getPayload());
+      break;
+    }
+  }
+  CHECK(tensor.getUnsafePtr()) << "Can't find the constant value!";
+  return tensor;
+}
+
 void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                                        const glow::Instruction *I) {
   setCurrentDebugLocation(builder, I);
@@ -1617,21 +1635,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::RowwiseQuantizedFullyConnectedInstKind: {
     auto *RWQFC = cast<RowwiseQuantizedFullyConnectedInst>(I);
-    // Since we can't get the variable from a glow::Value directly,
-    // we need to traverse the var list and find the one matching the given
-    // Value.
-    Tensor scalesT;
-    auto *F_ = getIRFunction();
-    for (auto &v : F_->findConstants()) {
-      assert(isa<WeightVar>(F_->getWeightForNode(v)));
-      auto *w = cast<glow::Value>(F_->getWeightForNode(v));
-      if (w == RWQFC->getScales()) {
-        scalesT.assign(&v->getPayload());
-        break;
-      }
-    }
-    CHECK(scalesT.getUnsafePtr()) << "Can't find the variable.";
 
+    auto scalesT = getTensorForConstantValue(RWQFC->getScales());
     auto scalesH = scalesT.getHandle();
     size_t rowNum = scalesH.dims()[0];
     float inputScale = RWQFC->getSrc()->getType()->getScale();
@@ -1927,7 +1932,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       // multiplication part of the calculation.
       float matMulScale = srcTy->getScale() * filterTy->getScale();
 
-      // Calculate the sacling parameters for the bias and output.
+      // Calculate the scaling parameters for the bias and output.
       auto biasScaleParam = quantization::quantizeScaleOffset32To8(
           biasTy->getScale() / matMulScale, biasTy->getOffset());
       auto outScaleParam = quantization::quantizeScaleOffset32To8(
@@ -1942,16 +1947,8 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *outPost = emitConstI32(builder, outScaleParam.post);
       auto *outScale = emitConstI32(builder, outScaleParam.scale);
 
-      llvm::Function *F = nullptr;
-      if ((dest->getElementType() == ElemKind::Int8QTy) &&
-          (bias->getElementType() == ElemKind::Int8QTy)) {
-        F = getFunction("convolution_i8_i8");
-      } else if ((dest->getElementType() == ElemKind::Int8QTy) &&
-                 (bias->getElementType() == ElemKind::Int32QTy)) {
-        F = getFunction("convolution_i8_i32");
-      } else {
-        LOG(FATAL) << "Unsupported element/bias type for ConvolutionInst";
-      }
+      auto *F = getFunction("conv2d",
+                            {dest->getElementType(), bias->getElementType()});
 
       createCall(builder, F,
                  {destPtr,    srcPtr,     filterPtr,  biasPtr,   destDims,
@@ -1961,7 +1958,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                   outPost,    outScale,   unrollD,    dilation});
     } else {
 
-      auto *F = getFunction("convolution", dest->getElementType());
+      auto *F = getFunction("conv2d", dest->getElementType());
 
       createCall(builder, F,
                  {destPtr, srcPtr, filterPtr, biasPtr, destDims, srcDims,
@@ -2064,6 +2061,107 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                   filterDims, biasDims, kernels, strides, pads, group,
                   dilation});
     }
+    break;
+  }
+
+  case Kinded::Kind::ChannelwiseQuantizedConvolutionInstKind: {
+    auto *CQCI = cast<ChannelwiseQuantizedConvolutionInst>(I);
+    auto *dest = CQCI->getDest();
+    auto *src = CQCI->getSrc();
+    auto *filter = CQCI->getFilter();
+    auto *bias = CQCI->getBias();
+    auto *filterScales = CQCI->getFilterScales();
+    auto *filterOffsets = CQCI->getFilterOffsets();
+    auto *biasScales = CQCI->getBiasScales();
+    auto *biasOffsets = CQCI->getBiasOffsets();
+
+    auto *destTy = dest->getType();
+    auto *srcTy = src->getType();
+
+    auto filterScalesT = getTensorForConstantValue(filterScales);
+    auto filterScalesH = filterScalesT.getHandle<float>();
+
+    auto biasScalesT = getTensorForConstantValue(biasScales);
+    auto biasScalesH = biasScalesT.getHandle<float>();
+
+    // Compute quantization parameters for each channel.
+    auto channelNum = dest->dims().back();
+    std::vector<llvm::Constant *> biasPreV(channelNum);
+    std::vector<llvm::Constant *> biasPostV(channelNum);
+    std::vector<llvm::Constant *> biasScaleV(channelNum);
+    std::vector<llvm::Constant *> outputPreV(channelNum);
+    std::vector<llvm::Constant *> outputPostV(channelNum);
+    std::vector<llvm::Constant *> outputScaleV(channelNum);
+    for (size_t i = 0; i < channelNum; i++) {
+
+      // Compute the scaling parameters for bias and output.
+      float matMulScale = srcTy->getScale() * filterScalesH.raw(i);
+      auto biasScaleParam = quantization::quantizeScaleOffset32To8(
+          biasScalesH.raw(i) / matMulScale, 0);
+      auto outScaleParam = quantization::quantizeScaleOffset32To8(
+          matMulScale / destTy->getScale(), 0);
+
+      // Pass the pre-shift, post-shift and integer scale parameters for the
+      // bias and output calculation.
+      biasPreV[i] = llvm::ConstantInt::get(builder.getInt32Ty(),
+                                           biasScaleParam.pre, true);
+      biasPostV[i] = llvm::ConstantInt::get(builder.getInt32Ty(),
+                                            biasScaleParam.post, true);
+      biasScaleV[i] = llvm::ConstantInt::get(builder.getInt32Ty(),
+                                             biasScaleParam.scale, true);
+      outputPreV[i] =
+          llvm::ConstantInt::get(builder.getInt32Ty(), outScaleParam.pre, true);
+      outputPostV[i] = llvm::ConstantInt::get(builder.getInt32Ty(),
+                                              outScaleParam.post, true);
+      outputScaleV[i] = llvm::ConstantInt::get(builder.getInt32Ty(),
+                                               outScaleParam.scale, true);
+    }
+
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+    auto *filterPtr = emitValueAddress(builder, filter);
+    auto *biasPtr = emitValueAddress(builder, bias);
+
+    auto *destDims = emitValueDims(builder, dest);
+    auto *srcDims = emitValueDims(builder, src);
+    auto *filterDims = emitValueDims(builder, filter);
+    auto *biasDims = emitValueDims(builder, bias);
+
+    auto *kernels = emitConstDimTArray(builder, CQCI->getKernels());
+    auto *strides = emitConstDimTArray(builder, CQCI->getStrides());
+    auto *pads = emitConstDimTArray(builder, CQCI->getPads());
+    auto *group = emitConstDimT(builder, CQCI->getGroup());
+    auto *dilation = emitConstDimT(builder, CQCI->getDilation());
+
+    auto *destOffset = emitConstI32(builder, destTy->getOffset());
+    auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
+    auto *filterOffsetsPtr = emitValueAddress(builder, filterOffsets);
+    auto *biasOffsetsPtr = emitValueAddress(builder, biasOffsets);
+
+    auto *biasPrePtr = emitConstArray(builder, biasPreV, builder.getInt32Ty());
+    auto *biasPostPtr =
+        emitConstArray(builder, biasPostV, builder.getInt32Ty());
+    auto *biasScalePtr =
+        emitConstArray(builder, biasScaleV, builder.getInt32Ty());
+    auto *outputPrePtr =
+        emitConstArray(builder, outputPreV, builder.getInt32Ty());
+    auto *outputPostPtr =
+        emitConstArray(builder, outputPostV, builder.getInt32Ty());
+    auto *outputScalePtr =
+        emitConstArray(builder, outputScaleV, builder.getInt32Ty());
+
+    bool isConv3D = (srcTy->dims().size() == 5);
+    auto *F = getFunction(isConv3D ? "channelwise_quantized_conv3d"
+                                   : "channelwise_quantized_conv2d",
+                          {dest->getElementType(), bias->getElementType()});
+
+    createCall(builder, F,
+               {destPtr,        srcPtr,        filterPtr,     biasPtr,
+                destDims,       srcDims,       filterDims,    biasDims,
+                kernels,        strides,       pads,          group,
+                dilation,       destOffset,    srcOffset,     filterOffsetsPtr,
+                biasOffsetsPtr, biasPrePtr,    biasPostPtr,   biasScalePtr,
+                outputPrePtr,   outputPostPtr, outputScalePtr});
     break;
   }
 

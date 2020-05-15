@@ -3739,7 +3739,7 @@ TEST_F(OnnxImporterTest, CustomGlowChannelwiseQuantizedGroupConvolution) {
   // {(PH -> Quantize), Constant, Constant, Constant, Constant} ->
   // ChannelwiseQuantizedConvolution -> Save -> PH.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
-  EXPECT_EQ(mod.getConstants().size(), 4);
+  EXPECT_EQ(mod.getConstants().size(), 6);
   // ChannelwiseQuantizedConvolution, Save, Quantize, Dequantize
   EXPECT_EQ(F->getNodes().size(), 4);
 
@@ -3760,6 +3760,7 @@ TEST_F(OnnxImporterTest, CustomGlowChannelwiseQuantizedGroupConvolution) {
   EXPECT_EQ(CN->getStrides().vec(), std::vector<unsigned_t>({1, 1}));
   EXPECT_EQ(CN->getPads().vec(), std::vector<unsigned_t>({0, 0, 0, 0}));
   EXPECT_EQ(CN->getGroup(), 2);
+  EXPECT_EQ(CN->getDilation(), 1);
 
   auto *QN = llvm::dyn_cast<QuantizeNode>(CN->getInput());
   ASSERT_TRUE(QN);
@@ -3779,16 +3780,29 @@ TEST_F(OnnxImporterTest, CustomGlowChannelwiseQuantizedGroupConvolution) {
   EXPECT_EQ(bias->getOutput().getType()->getElementType(), ElemKind::Int32QTy);
   EXPECT_EQ(bias->getOutput().dims().vec(), std::vector<dim_t>({4}));
 
-  auto *scales = llvm::dyn_cast<Constant>(CN->getScales());
-  ASSERT_TRUE(scales);
-  EXPECT_EQ(scales->getOutput().getType()->getElementType(), ElemKind::FloatTy);
-  EXPECT_EQ(scales->getOutput().dims().vec(), std::vector<dim_t>({4}));
+  auto *filterScales = llvm::dyn_cast<Constant>(CN->getFilterScales());
+  ASSERT_TRUE(filterScales);
+  EXPECT_EQ(filterScales->getOutput().getType()->getElementType(),
+            ElemKind::FloatTy);
+  EXPECT_EQ(filterScales->getOutput().dims().vec(), std::vector<dim_t>({4}));
 
-  auto *offsets = llvm::dyn_cast<Constant>(CN->getOffsets());
-  ASSERT_TRUE(offsets);
-  EXPECT_EQ(offsets->getOutput().getType()->getElementType(),
+  auto *filterOffsets = llvm::dyn_cast<Constant>(CN->getFilterOffsets());
+  ASSERT_TRUE(filterOffsets);
+  EXPECT_EQ(filterOffsets->getOutput().getType()->getElementType(),
             ElemKind::Int32ITy);
-  EXPECT_EQ(offsets->getOutput().dims().vec(), std::vector<dim_t>({4}));
+  EXPECT_EQ(filterOffsets->getOutput().dims().vec(), std::vector<dim_t>({4}));
+
+  auto *biasScales = llvm::dyn_cast<Constant>(CN->getBiasScales());
+  ASSERT_TRUE(biasScales);
+  EXPECT_EQ(biasScales->getOutput().getType()->getElementType(),
+            ElemKind::FloatTy);
+  EXPECT_EQ(biasScales->getOutput().dims().vec(), std::vector<dim_t>({4}));
+
+  auto *biasOffsets = llvm::dyn_cast<Constant>(CN->getBiasOffsets());
+  ASSERT_TRUE(biasOffsets);
+  EXPECT_EQ(biasOffsets->getOutput().getType()->getElementType(),
+            ElemKind::Int32ITy);
+  EXPECT_EQ(biasOffsets->getOutput().dims().vec(), std::vector<dim_t>({4}));
 }
 
 /// Upsample Test Helper

@@ -274,6 +274,7 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
   unsigned_t outChannels = 12;
   unsigned_t filterSide = 3;
   unsigned_t groups = 4;
+  unsigned_t dilation = 1;
 
   Placeholder *input = mod.createPlaceholder(
       ElemKind::Int8QTy, {batchSize, inSide, inSide, inChannels}, 1.2, 3,
@@ -282,11 +283,11 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
   Constant *biasConstant =
       mod.createConstant(ElemKind::FloatTy, {outChannels}, "bias");
 
-  Constant *scalesConstant =
-      mod.createConstant(ElemKind::FloatTy, {outChannels}, "scales");
+  Constant *filterScalesConstant =
+      mod.createConstant(ElemKind::FloatTy, {outChannels}, "filter_scales");
 
-  Constant *offsetsConstant =
-      mod.createConstant(ElemKind::Int32ITy, {outChannels}, "offsets");
+  Constant *filterOffsetsConstant =
+      mod.createConstant(ElemKind::Int32ITy, {outChannels}, "filter_offsets");
 
   Constant *weightsConstant = mod.createConstant(
       ElemKind::Int8QTy,
@@ -304,8 +305,10 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
       {batchSize, outSize.first, outSize.second, outChannels}, 3.8, 4);
 
   auto *cqConv = F->createChannelwiseQuantizedConv(
-      "cqconv", input, weightsConstant, biasConstant, scalesConstant,
-      offsetsConstant, outTy, kernels, strides, pads, groups);
+      "cqconv", input, weightsConstant, biasConstant, filterScalesConstant,
+      filterOffsetsConstant, /* biasScales */ nullptr,
+      /* biasOffsets */ nullptr, outTy, kernels, strides, pads, groups,
+      dilation);
 
   auto *save = F->createSave("save_out", cqConv);
 
@@ -337,15 +340,20 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
       *cqConv->getFilter().getType()));
   EXPECT_TRUE(cqConvReloaded->getBias().getType()->isEqual(
       *cqConv->getBias().getType()));
-  EXPECT_TRUE(cqConvReloaded->getScales().getType()->isEqual(
-      *cqConv->getScales().getType()));
-  EXPECT_TRUE(cqConvReloaded->getOffsets().getType()->isEqual(
-      *cqConv->getOffsets().getType()));
+  EXPECT_TRUE(cqConvReloaded->getFilterScales().getType()->isEqual(
+      *cqConv->getFilterScales().getType()));
+  EXPECT_TRUE(cqConvReloaded->getFilterOffsets().getType()->isEqual(
+      *cqConv->getFilterOffsets().getType()));
+  EXPECT_TRUE(cqConvReloaded->getBiasScales().getType()->isEqual(
+      *cqConv->getBiasScales().getType()));
+  EXPECT_TRUE(cqConvReloaded->getBiasOffsets().getType()->isEqual(
+      *cqConv->getBiasOffsets().getType()));
 
   EXPECT_EQ(cqConvReloaded->getKernels(), cqConv->getKernels());
   EXPECT_EQ(cqConvReloaded->getStrides(), cqConv->getStrides());
   EXPECT_EQ(cqConvReloaded->getPads(), cqConv->getPads());
   EXPECT_EQ(cqConvReloaded->getGroup(), cqConv->getGroup());
+  EXPECT_EQ(cqConvReloaded->getDilation(), cqConv->getDilation());
 }
 
 TEST(exporter, QuantizedConvolution) {

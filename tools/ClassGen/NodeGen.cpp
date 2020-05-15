@@ -105,17 +105,23 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addInput("Filter")
       .addInput("Bias")
-      .addInput("Scales")
-      .addInput("Offsets")
+      .addInput("FilterScales")
+      .addInput("FilterOffsets")
+      .addInput("BiasScales")
+      .addInput("BiasOffsets")
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::Unsigned, "Dilation")
       .addResultFromCtorArg()
-      .setDocstring("Performs 2D Convolution using a given Input, Filter, and "
-                    "Bias tensors, as well as provided Kernels, Strides, Pads, "
-                    "and Group. Quantization parameters are provided by Scales "
-                    "and Offsets.");
+      .setDocstring(
+          "Performs 2D Convolution using a given Input, Filter, and "
+          "Bias tensors, as well as provided Kernels, Strides, Pads, "
+          "and Group. The filter channel wise quantization parameters "
+          "are provided by FilterScales and FilterOffsets while the "
+          "bias channel wise quantization parameters are provided by "
+          "BiasScales and BiasOffsets.");
 
   BB.newNode("ConvTranspose")
       .addInput("Input")

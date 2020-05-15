@@ -118,7 +118,8 @@ setupInterpAndBackendConfigs(
     ElemKind interpElemKind, ElemKind backendElemKind,
     quantization::Schema schema, bool convertToRowwiseQuantization,
     CreateAndInitFunction createAndInitFunction, ElemKind biasElemKind,
-    bool forceFP16AccumSLS, unsigned count) {
+    bool forceFP16AccumSLS, unsigned count,
+    bool convertToChannelwiseQuantization) {
   CompilationContext cctxI{&iBindings, &ILIM};
   CompilationContext cctxB{&bBindings, &BLIM};
   PrecisionConfiguration &precConfigI = cctxI.precisionConfig;
@@ -137,6 +138,8 @@ setupInterpAndBackendConfigs(
       precConfigI.quantMode = QuantizationMode::Quantize;
       precConfigI.quantConfig.infos = NQII;
       precConfigI.quantConfig.enableRowwise = convertToRowwiseQuantization;
+      precConfigI.quantConfig.enableChannelwise =
+          convertToChannelwiseQuantization;
       precConfigI.quantConfig.schema = schema;
       precConfigI.quantConfig.precision = interpElemKind;
       precConfigI.quantConfig.assertAllNodesQuantized = true;
@@ -151,6 +154,8 @@ setupInterpAndBackendConfigs(
       precConfigB.quantMode = QuantizationMode::Quantize;
       precConfigB.quantConfig.infos = NQIB;
       precConfigB.quantConfig.enableRowwise = convertToRowwiseQuantization;
+      precConfigB.quantConfig.enableChannelwise =
+          convertToChannelwiseQuantization;
       precConfigB.quantConfig.schema = schema;
       precConfigB.quantConfig.precision = backendElemKind;
       precConfigB.quantConfig.assertAllNodesQuantized = true;
@@ -216,24 +221,31 @@ void dispatchInference(const std::string &fname,
   contexts[0].release();
 }
 
-/// Helper that iterates over all of the Placeholders in \p PHs and converts the
-/// Tensor pair found in \p bindings to the same type as the Placeholder if
-/// necessary.
-static void convertBindingsToCorrectType(PlaceholderBindings &bindings,
-                                         PlaceholderList PHs) {
+/// Helper that iterates over all of the Placeholders from the function \p F
+/// and converts the Tensors found in \p bindings to the same type as the
+/// Placeholders if necessary.
+static void convertBindingsToCorrectType(Function *F,
+                                         PlaceholderBindings &bindings) {
+  PlaceholderList PHs = F->findPlaceholders();
   for (Placeholder *PH : PHs) {
     Tensor *T = bindings.get(PH);
     TypeRef newTy = PH->getType();
     if (T->getType().isEqual(newTy)) {
       continue;
     }
-    ElemKind newK = newTy->getElementType();
-    if (isQuantizedElemKind(newK)) {
-      Tensor QT = quantization::quantizeTensor(
-          *T, {newTy->getScale(), newTy->getOffset()}, newK);
-      T->assign(&QT);
+    // For input placeholders convert tensor type and values.
+    // For output placeholders convert only the tensor type.
+    if (isInput(PH, *F)) {
+      ElemKind newK = newTy->getElementType();
+      if (isQuantizedElemKind(newK)) {
+        Tensor QT = quantization::quantizeTensor(
+            *T, {newTy->getScale(), newTy->getOffset()}, newK);
+        T->assign(&QT);
+      } else {
+        T->convertToType(newK);
+      }
     } else {
-      T->convertToType(newK);
+      T->reset(*newTy);
     }
   }
 }
@@ -250,14 +262,12 @@ static Tensor convertToFloatIfNecessary(Tensor &T) {
   return T.getCopyConvertedToType(ElemKind::FloatTy);
 }
 
-void compareAgainstInterpreter(llvm::StringRef backendName,
-                               CreateAndInitFunction createAndInitFunction,
-                               ElemKind interpElemKind,
-                               ElemKind backendElemKind, float allowedError,
-                               unsigned count,
-                               bool convertToRowwiseQuantization,
-                               quantization::Schema schema,
-                               ElemKind biasElemKind, bool forceFP16AccumSLS) {
+void compareAgainstInterpreter(
+    llvm::StringRef backendName, CreateAndInitFunction createAndInitFunction,
+    ElemKind interpElemKind, ElemKind backendElemKind, float allowedError,
+    unsigned count, bool convertToRowwiseQuantization,
+    quantization::Schema schema, ElemKind biasElemKind, bool forceFP16AccumSLS,
+    bool convertToChannelwiseQuantization) {
   // Note: deviceMemory = 0 is a signal to use the defaultMemory.
   ExecutionEngine IEE{"Interpreter", /* deviceMemory */ 0,
                       /* ignoreUserDeviceConfig */ true};
@@ -284,7 +294,8 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   auto configs = setupInterpAndBackendConfigs(
       IF, IEE, iBindings, ILIM, bBindings, BLIM, interpElemKind,
       backendElemKind, schema, convertToRowwiseQuantization,
-      createAndInitFunction, biasElemKind, forceFP16AccumSLS, count);
+      createAndInitFunction, biasElemKind, forceFP16AccumSLS, count,
+      convertToChannelwiseQuantization);
   CompilationContext &cctxI = configs.first;
   CompilationContext &cctxB = configs.second;
 
@@ -310,10 +321,8 @@ void compareAgainstInterpreter(llvm::StringRef backendName,
   if (!convertToRowwiseQuantization) {
     // Now that we have compiled, precision transformation has occurred. Now
     // convert all mismatches for Placeholders given their original bindings.
-    convertBindingsToCorrectType(
-        iBindings, IEE.getSingleFunctionFromModule()->findPlaceholders());
-    convertBindingsToCorrectType(
-        bBindings, BEE.getSingleFunctionFromModule()->findPlaceholders());
+    convertBindingsToCorrectType(IEE.getSingleFunctionFromModule(), iBindings);
+    convertBindingsToCorrectType(BEE.getSingleFunctionFromModule(), bBindings);
   }
 
   IEE.run(iBindings);

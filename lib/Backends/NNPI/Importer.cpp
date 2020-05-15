@@ -1563,9 +1563,9 @@ public:
 
     LOG_AND_RETURN_IF_NOT(
         ERROR,
-        !(glowChannelwiseQuantizedConv->getOffsets()) ||
+        !(glowChannelwiseQuantizedConv->getFilterOffsets()) ||
             importer.zeroes(
-                nodeValueName(glowChannelwiseQuantizedConv->getOffsets())
+                nodeValueName(glowChannelwiseQuantizedConv->getFilterOffsets())
                     .c_str()),
         "Bad offset value", NNPI_INVALID_PARAM);
 
@@ -1658,8 +1658,8 @@ public:
         importer.addTensor(
             nodeValueName(glowChannelwiseQuantizedConv->getFilter()),
             /* alternativeLayout */ true,
-            nodeValueName(glowChannelwiseQuantizedConv->getScales()),
-            nodeValueName(glowChannelwiseQuantizedConv->getOffsets()),
+            nodeValueName(glowChannelwiseQuantizedConv->getFilterScales()),
+            nodeValueName(glowChannelwiseQuantizedConv->getFilterOffsets()),
             /* forceSymlowp */ true),
         "Failed to add tensor to NNPI");
 

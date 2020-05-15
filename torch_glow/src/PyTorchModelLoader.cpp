@@ -1183,10 +1183,10 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
   // create qconv
   glow::NodeValue output_not_transposed;
   if (isPerChannelQuantized) {
-    if (!isConv3d) {
+    if (isConv3d) {
       RETURN_ERR_IF_NOT(
-          dilation <= 1,
-          "Dilation not supported for group quantized convolution");
+          dilation == 1,
+          "Dilation not supported for channelwise quantized conv3d");
     }
 
     // extract qparams from ptWeightTensor.
@@ -1222,17 +1222,15 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
         "channel_wised_offsets_of_qconv", std::move(wOffsetsTensor));
     wOffsets->ensureIsOwned();
 
-    if (isConv3d) {
-      auto qconv = F_.createChannelwiseQuantizedConv3D(
-          "qconv_channel_wised", input, weightConstant, biasConstant, wScales,
-          wOffsets, outTy, kernels, strides, pads, groups);
-      output_not_transposed = qconv->getResult();
-    } else {
-      auto qconv = F_.createChannelwiseQuantizedConv(
-          "qconv_channel_wised", input, weightConstant, biasConstant, wScales,
-          wOffsets, outTy, kernels, strides, pads, groups);
-      output_not_transposed = qconv->getResult();
-    }
+    // Quantize the filter automatically (only if it is float). The bias is NOT
+    // quantized automatically and is left at the disposal of each Backend to
+    // quantize it later using custom logic.
+    auto qconv = F_.createChannelwiseQuantizedConv(
+        "qconv_channel_wised", input, weightConstant, biasConstant, wScales,
+        wOffsets, /* biasScales */ nullptr, /* biasOffsets */ nullptr, outTy,
+        kernels, strides, pads, groups, dilation, /* quantizeFilter */ true,
+        /* quantizeBias */ false);
+    output_not_transposed = qconv->getResult();
   } else {
     if (isConv3d) {
       auto qconv = F_.createConv3D("qconv", input, weight, bias, outTy, kernels,

@@ -100,12 +100,15 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addOperand("Filter", OperandKind::In)
       .addOperand("Bias", OperandKind::In)
-      .addOperand("Scales", OperandKind::In)
-      .addOperand("Offsets", OperandKind::In)
+      .addOperand("FilterScales", OperandKind::In)
+      .addOperand("FilterOffsets", OperandKind::In)
+      .addOperand("BiasScales", OperandKind::In)
+      .addOperand("BiasOffsets", OperandKind::In)
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::Unsigned, "Dilation")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType,
                   {"Dest", "Src", "Filter", "ElemKind::Int8QTy"});

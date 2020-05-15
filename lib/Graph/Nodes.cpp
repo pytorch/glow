@@ -555,36 +555,53 @@ bool ChannelwiseQuantizedConvolutionNode::verify() const {
   if (isConv3D) {
     isValid = verifyConvolution3D(getInput(), getResult(), getFilter(),
                                   getBias(), Kernels_, Strides_, Pads_, Group_);
+    isValid &= expectCompareTrue("For Conv3D dilation must be 1", Dilation_,
+                                 unsigned_t(1), this);
   } else {
     isValid = verifyConvolution<ShapeNHWC>(
         getInput(), getResult(), getFilter(), getBias(), Kernels_, Strides_,
-        Pads_, Group_,
-        /* dilation */ 1, /* checkBiasType */ false);
+        Pads_, Group_, Dilation_, /* checkBiasType */ false);
   }
 
-  isValid &=
-      checkType(getBias(), {ElemKind::Int32QTy, ElemKind::FloatTy}, this);
+  isValid &= checkType(getResult(), ElemKind::Int8QTy, this);
   isValid &= checkType(getInput(), ElemKind::Int8QTy, this);
+  isValid &= checkType(getFilter(), ElemKind::Int8QTy, this);
+  isValid &= checkType(
+      getBias(), {ElemKind::Int8QTy, ElemKind::Int32QTy, ElemKind::FloatTy},
+      this);
 
-  // check qparam types
-  isValid &= checkType(getOffsets(), ElemKind::Int32ITy, this);
-  isValid &= checkType(getScales(), ElemKind::FloatTy, this);
+  // Check qparam types.
+  isValid &= checkType(getFilterOffsets(), ElemKind::Int32ITy, this);
+  isValid &= checkType(getFilterScales(), ElemKind::FloatTy, this);
+  isValid &= checkType(getBiasOffsets(), ElemKind::Int32ITy, this);
+  isValid &= checkType(getBiasScales(), ElemKind::FloatTy, this);
 
-  // check qparam dimensions
-  isValid &= expectCompareTrue("Offsets must be a 1D vector",
-                               getOffsets().dims().size(), size_t(1), this);
-  isValid &= expectCompareTrue("Scales must be a 1D vector",
-                               getScales().dims().size(), size_t(1), this);
+  // Check qparam dimensions.
+  isValid &=
+      expectCompareTrue("Filter offsets must be a 1D vector",
+                        getFilterOffsets().dims().size(), size_t(1), this);
+  isValid &=
+      expectCompareTrue("Filter scales must be a 1D vector",
+                        getFilterScales().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Bias offsets must be a 1D vector",
+                               getBiasOffsets().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Bias scales must be a 1D vector",
+                               getBiasScales().dims().size(), size_t(1), this);
 
-  // check qparam sizes
+  // Check qparam sizes.
   isValid &= expectCompareTrue(
       "There must be one filter offset qparam per output channel",
-      getOffsets().dims()[0], dim_t(getResult().dims()[input_dims.size() - 1]),
-      this);
+      getFilterOffsets().dims()[0], dim_t(getResult().dims().back()), this);
   isValid &= expectCompareTrue(
       "There must be one filter scale qparam per output channel",
-      getScales().dims()[0], dim_t(getResult().dims()[input_dims.size() - 1]),
-      this);
+      getFilterScales().dims()[0], dim_t(getResult().dims().back()), this);
+  isValid &= expectCompareTrue(
+      "There must be one bias offset qparam per output channel",
+      getBiasOffsets().dims()[0], dim_t(getResult().dims().back()), this);
+  isValid &= expectCompareTrue(
+      "There must be one bias scale qparam per output channel",
+      getBiasScales().dims()[0], dim_t(getResult().dims().back()), this);
+
   return isValid;
 }
 

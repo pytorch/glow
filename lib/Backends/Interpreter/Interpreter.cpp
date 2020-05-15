@@ -231,11 +231,21 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
             ElemKind::Int8QTy) &&
            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::FilterIdx) ==
             ElemKind::Int8QTy) &&
-           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
-            ElemKind::Int32QTy) &&
-           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::ScalesIdx) ==
+           ((NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
+             ElemKind::Int8QTy) ||
+            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
+             ElemKind::Int32QTy)) &&
+           (NI.getInElemTy(
+                ChannelwiseQuantizedConvolutionNode::FilterScalesIdx) ==
             ElemKind::FloatTy) &&
-           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::OffsetsIdx) ==
+           (NI.getInElemTy(
+                ChannelwiseQuantizedConvolutionNode::FilterOffsetsIdx) ==
+            ElemKind::Int32ITy) &&
+           (NI.getInElemTy(
+                ChannelwiseQuantizedConvolutionNode::BiasScalesIdx) ==
+            ElemKind::FloatTy) &&
+           (NI.getInElemTy(
+                ChannelwiseQuantizedConvolutionNode::BiasOffsetsIdx) ==
             ElemKind::Int32ITy) &&
            (NI.getOutElemTy(ChannelwiseQuantizedConvolutionNode::ResultIdx) ==
             ElemKind::Int8QTy);
@@ -773,73 +783,68 @@ static bool quantizeFloatBias(Function *F, FullyConnectedNode &fullyConnected) {
   return true;
 }
 
-/// Channelwise quantize the given float \p bias as int32 using \p inputScale,
-/// per-channel \p scales and \p offsets. \returns false if the bias was already
-/// quantized and thus no change was made and true otherwise.
+/// This function performs the channelwise quantization for the bias operand of
+/// a ChannelwiseQuantizedConvolutionNode \p channelwiseConv from function \p F.
+/// The quantization is done only if the bias is float. \returns false if the
+/// bias was already quantized and thus no change was made and true otherwise.
 static bool channelwiseQuantizeFloatBias(
     Function *F, ChannelwiseQuantizedConvolutionNode &channelwiseConv) {
+
   // If bias is already quantized then quit.
-  if (channelwiseConv.getBias().getElementType() == ElemKind::Int32QTy) {
+  if (channelwiseConv.getBias().getType()->isQuantizedType()) {
     return false;
   }
 
-  assert(channelwiseConv.getBias().getElementType() == ElemKind::FloatTy &&
-         "Bias type must be a float in order to quantize it.");
-
-  auto *inType = channelwiseConv.getInput().getType();
+  DCHECK(channelwiseConv.getBias().getElementType() == ElemKind::FloatTy)
+      << "Bias type must be a float in order to quantize it!";
 
   Constant *biasC =
       llvm::dyn_cast<Constant>(channelwiseConv.getBias().getNode());
-  assert(biasC && "bias input to ChannelwiseQuantizedConvolutionNode "
-                  "must be a Constant in order to quantize the bias");
+  DCHECK(biasC)
+      << "Bias input to ChannelwiseQuantizedConvolutionNode must be a Constant "
+         "in order to quantize the bias!";
 
-  Constant *scalesC =
-      llvm::dyn_cast<Constant>(channelwiseConv.getScales().getNode());
-  assert(scalesC && "scales input to ChannelwiseQuantizedConvolutionNode must "
-                    "be a Constant in order to quantize the bias");
+  Constant *filterScalesC =
+      llvm::dyn_cast<Constant>(channelwiseConv.getFilterScales().getNode());
+  DCHECK(filterScalesC)
+      << "Filter scales input to ChannelwiseQuantizedConvolutionNode must be a "
+         "Constant in order to quantize the bias!";
 
-  const auto &biasUnquantizedH = biasC->getPayload().getHandle<float>();
-  const auto &scalesH = scalesC->getPayload().getHandle<float>();
+  // Create new constants for Bias, BiasScales and BiasOffsets operands.
+  Constant *biasCQ = F->getParent()->createConstant(
+      ElemKind::Int32QTy, biasC->getType()->dims(), 1.0, 0, biasC->getName());
+  Constant *biasScalesC = F->getParent()->createConstant(
+      ElemKind::FloatTy, biasC->getType()->dims(), "biasScales");
+  Constant *biasOffsetsC = F->getParent()->createConstant(
+      ElemKind::Int32ITy, biasC->getType()->dims(), "biasOffsets");
 
-  // biasQuantizedT is Int32QTy but the quantization parameters on the tensor
-  // are not real, instead quantization parameters are from scales and offsets
-  // inputs.
-  auto biasQuantizedT = Tensor(ElemKind::Int32QTy, biasUnquantizedH.dims(),
-                               /* scale */ 1.0, /* offset */ 0);
-  auto biasQuantizedH = biasQuantizedT.getHandle<int32_t>();
-
-  for (dim_t i = 0; i < biasQuantizedH.size(); ++i) {
-    TensorQuantizationParams tqp;
-    tqp.scale = inType->getScale() * scalesH.raw(i);
-    tqp.offset = 0;
-    biasQuantizedH.raw(i) =
-        quantization::quantize<int32_t>(biasUnquantizedH.raw(i), tqp);
+  // Quantize the bias operand manually from FloatTy to Int32QTy using the
+  // quantization parameters biasScales[i] = inputScale * filterScales[i] and
+  // biasOffsets[i] = 0.
+  float inputScale = channelwiseConv.getInput().getType()->getScale();
+  const auto &filterScalesH = filterScalesC->getPayload().getHandle<float>();
+  const auto &biasH = biasC->getPayload().getHandle<float>();
+  auto biasQH = biasCQ->getPayload().getHandle<int32_t>();
+  auto biasScalesH = biasScalesC->getPayload().getHandle<float>();
+  auto biasOffsetsH = biasOffsetsC->getPayload().getHandle<int32_t>();
+  for (dim_t idx = 0, idxEnd = biasC->getType()->size(); idx < idxEnd; ++idx) {
+    TensorQuantizationParams biasTQP;
+    biasTQP.scale = inputScale * filterScalesH.raw(idx);
+    biasTQP.offset = 0;
+    biasQH.raw(idx) = quantization::quantize<int32_t>(biasH.raw(idx), biasTQP);
+    biasScalesH.raw(idx) = biasTQP.scale;
+    biasOffsetsH.raw(idx) = biasTQP.offset;
   }
 
-  auto biasQuantizedC = F->getParent()->createConstant(
-      biasC->getName(), std::move(biasQuantizedT));
-
-  bool isConv3d = (channelwiseConv.getInput().getType()->dims().size() == 5);
-  glow::ChannelwiseQuantizedConvolutionNode *newChannelwiseConv;
-  if (isConv3d) {
-    newChannelwiseConv = F->createChannelwiseQuantizedConv3D(
-        channelwiseConv.getName(), channelwiseConv.getInput(),
-        channelwiseConv.getFilter(), biasQuantizedC,
-        channelwiseConv.getScales(), channelwiseConv.getOffsets(),
-        channelwiseConv.getResult().getType(), channelwiseConv.getKernels(),
-        channelwiseConv.getStrides(), channelwiseConv.getPads(),
-        channelwiseConv.getGroup());
-
-  } else {
-    newChannelwiseConv = F->createChannelwiseQuantizedConv(
-        channelwiseConv.getName(), channelwiseConv.getInput(),
-        channelwiseConv.getFilter(), biasQuantizedC,
-        channelwiseConv.getScales(), channelwiseConv.getOffsets(),
-        channelwiseConv.getResult().getType(), channelwiseConv.getKernels(),
-        channelwiseConv.getStrides(), channelwiseConv.getPads(),
-        channelwiseConv.getGroup());
-  }
-
+  // Create new ChannelwiseQuantizedConvolutionNode with quantized bias
+  // and explicit bias scales and offsets.
+  auto *newChannelwiseConv = F->createChannelwiseQuantizedConv(
+      channelwiseConv.getName(), channelwiseConv.getInput(),
+      channelwiseConv.getFilter(), biasCQ, channelwiseConv.getFilterScales(),
+      channelwiseConv.getFilterOffsets(), biasScalesC, biasOffsetsC,
+      channelwiseConv.getResult().getType(), channelwiseConv.getKernels(),
+      channelwiseConv.getStrides(), channelwiseConv.getPads(),
+      channelwiseConv.getGroup(), channelwiseConv.getDilation());
   channelwiseConv.getResult().replaceAllUsesOfWith(newChannelwiseConv);
   return true;
 }

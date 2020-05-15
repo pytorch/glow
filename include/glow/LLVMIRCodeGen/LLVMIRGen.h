@@ -276,6 +276,9 @@ protected:
   createLoop(llvm::IRBuilder<> &builder, llvm::LLVMContext &ctx,
              llvm::Value *numElements) const;
 
+  /// \returns the backing tensor associated to the IR constant value \p value.
+  Tensor getTensorForConstantValue(Value *value);
+
 public:
   /// Destructor
   virtual ~LLVMIRGen() {}
