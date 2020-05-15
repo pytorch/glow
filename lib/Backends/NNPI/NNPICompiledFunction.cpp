@@ -39,38 +39,26 @@ extern bool GlowUsePerPartitionIcetConfig;
 /// Looks for device stepping and sets it if possible in \p compilationOptions.
 static void trySetDeviceVersion(NNPICompilationOptions &compilationOptions) {
   std::ifstream inFile;
-  constexpr char infoLoc[] = "/sys/class/nnpi/nnpi0/info";
-  inFile.open(infoLoc);
-  if (!inFile.good()) {
-    LOG(INFO) << strFormat("Could not find device info at %s\n", infoLoc);
+  constexpr char stepLoc[] = "/sys/class/nnpi/nnpi0/card_stepping";
+  inFile.open(stepLoc);
+  if (!inFile.good() || inFile.eof()) {
+    LOG(INFO) << strFormat("Could not find device steppping at %s\n", stepLoc);
     return;
   }
 
-  // Look for a line formatted like "stepping: 1"
+  // Only value in the file should be a single int for which step we're using.
   std::string stepping;
-  while (!inFile.eof()) {
-    std::string str;
-    getline(inFile, str);
-    if (str.empty()) {
-      continue;
-    }
-    auto split = llvm::StringRef(str).split(": ");
-    if (split.first == "stepping") {
-      stepping = split.second;
-      break;
-    }
-  }
+  getline(inFile, stepping);
   inFile.close();
 
-  // If we found a stepping then set it.
-  if (!stepping.empty()) {
-    auto devVerOrErr = getIntFromStr(stepping);
-    if (ERR_TO_BOOL(devVerOrErr.takeError(), /* log */ false)) {
-      return;
-    }
-    // Stepping is off by one vs. deviceVersion.
-    compilationOptions.deviceVersion.setVal(*devVerOrErr + 1);
+  auto devVerOrErr = getIntFromStr(stepping);
+  if (ERR_TO_BOOL(devVerOrErr.takeError(), /* log */ false)) {
+    LOG(INFO) << strFormat("Invalid value for stepping at %s: '%s'\n", stepLoc,
+                           stepping.data());
+    return;
   }
+  // Stepping is off by one vs. deviceVersion.
+  compilationOptions.deviceVersion.setVal(*devVerOrErr + 1);
 }
 
 Error NNPICompiledFunction::updateCompilationConfigFromOptions(
