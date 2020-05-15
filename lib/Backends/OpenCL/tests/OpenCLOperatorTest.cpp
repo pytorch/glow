@@ -365,7 +365,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "ChannelwiseQuantizedConv2D_Int8_BiasInt32/0",
     "ChannelwiseQuantizedConv2D/0",
     "ChannelwiseQuantizedConv2D_NonZero_FloatBias/0",
-    "ChannelwiseQuantizedConv2D_NonZero_QuantiedBias/0",
+    "ChannelwiseQuantizedConv2D_NonZero_QuantizedBias/0",
     "ChannelwiseQuantizedConv3D/0",
     "ParallelBatchMatMul_Float16/0",
     "RWQSLWSAllSame_Float16_AccumFP16/0",
