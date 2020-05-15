@@ -61,30 +61,15 @@ std::atomic<RunIdentifierTy> NNPIDeviceManager::runIdentifier_;
 
 NNPIDeviceManager::NNPIDeviceManager(
     const DeviceConfig &config,
-    std::shared_ptr<NNPIDeviceOptions> deviceOptions, NNPIAdapter adapter,
-    unsigned numInferenceWorkers)
-    : DeviceManager(config), numWorkersPerFunction_(numInferenceWorkers),
-      deviceId_(config_.deviceID), adapter_(adapter),
+    std::shared_ptr<NNPIDeviceOptions> deviceOptions, NNPIAdapter adapter)
+    : DeviceManager(config), deviceId_(config_.deviceID), adapter_(adapter),
       device_(NNPI_INVALID_NNPIHANDLE), deviceOptions_(deviceOptions) {
-
   if (deviceOptions_->showVars) {
     LOG(INFO) << deviceOptions_->dumpStatus();
   }
   if (deviceOptions_->deviceId >= 0) {
     deviceId_ = static_cast<unsigned>(deviceOptions_->deviceId);
   }
-
-  if (!numWorkersPerFunction_) {
-    numWorkersPerFunction_ = 2;
-  }
-
-  if (deviceOptions_->numWorkers > 0) {
-    numWorkersPerFunction_ = deviceOptions_->numWorkers;
-  }
-
-  // Ice-ref not re-entrant for the same nnpiNetwork.
-  numWorkersPerFunction_ =
-      deviceOptions_->inferOnDevice ? numWorkersPerFunction_ : 1;
 }
 
 NNPIDeviceManager::~NNPIDeviceManager() {
@@ -202,8 +187,8 @@ void NNPIDeviceManager::addNetwork(const Module *module,
     functions_.emplace(func.first, func.second);
     usedMemoryBytes_ += functionCost_; // TODO:: static moduleSize.
     auto err = inferenceEnvs_[func.first].init(
-        numWorkersPerFunction_, adapter_, device_, deviceTracing_, func.second,
-        &staticPlaceholders_, deviceOptions_, func.first, deviceId_);
+        adapter_, device_, deviceTracing_, func.second, &staticPlaceholders_,
+        deviceOptions_, func.first, deviceId_);
     if (err) {
       functions_.erase(func.first);
       lock.unlock();

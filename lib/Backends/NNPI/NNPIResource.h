@@ -33,6 +33,8 @@ struct ResourceUsers {
   std::vector<std::shared_ptr<NNPIResource>> writers;
   std::vector<std::shared_ptr<NNPIResource>> readers;
   std::unordered_set<NNPIDeviceContext> devices;
+  bool disableP2P = false;
+  bool disableDRT = false;
 };
 using PlaceholderUsageMap = std::unordered_map<std::string, ResourceUsers>;
 

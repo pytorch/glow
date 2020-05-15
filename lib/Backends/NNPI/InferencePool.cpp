@@ -28,7 +28,7 @@ namespace glow {
 namespace runtime {
 
 InferencePoolEnv::InferencePoolEnv()
-    : numWorkers_(0), deviceOptions_(nullptr), nnpiCompiledFunction_(nullptr),
+    : deviceOptions_(nullptr), nnpiCompiledFunction_(nullptr),
       staticPlaceholderMap_(nullptr) {}
 
 InferencePoolEnv::~InferencePoolEnv() {
@@ -41,8 +41,7 @@ InferencePoolEnv::~InferencePoolEnv() {
   }
 }
 
-Error InferencePoolEnv::init(unsigned numWorkers, NNPIAdapter adapter,
-                             NNPIDeviceContext device,
+Error InferencePoolEnv::init(NNPIAdapter adapter, NNPIDeviceContext device,
                              std::shared_ptr<NNPIDeviceTracing> deviceTracing,
                              CompiledFunction *compiledFunction,
                              StaticPlaceholderMap *staticPlaceholderMap,
@@ -57,20 +56,24 @@ Error InferencePoolEnv::init(unsigned numWorkers, NNPIAdapter adapter,
   if (workersPool_) {
     return MAKE_ERR("InferencePool already initialized!");
   }
-  numWorkers_ = numWorkers;
+
+  nnpiCompiledFunction_ = static_cast<NNPICompiledFunction *>(compiledFunction);
+  size_t optionsNumWorkers =
+      nnpiCompiledFunction_->getCompilationOptions().numWorkers;
+  // Ice-ref not re-entrant for the same nnpiNetwork.
+  size_t numWorkers = deviceOptions_->inferOnDevice ? optionsNumWorkers : 1;
   workersPool_ = glow::make_unique<folly::CPUThreadPoolExecutor>(
-      numWorkers_, std::make_shared<folly::NamedThreadFactory>("NNPI-worker"));
+      numWorkers, std::make_shared<folly::NamedThreadFactory>("NNPI-worker"));
   deviceTracing_ = deviceTracing;
   staticPlaceholderMap_ = staticPlaceholderMap;
 
-  inferenceContexts_.resize(numWorkers_);
-  freeContexts_.resize(numWorkers_);
-  if (inferenceContexts_.size() != numWorkers_) {
+  inferenceContexts_.resize(numWorkers);
+  freeContexts_.resize(numWorkers);
+  if (inferenceContexts_.size() != numWorkers) {
     return MAKE_ERR("InferencePool failed to create inference contexts");
   }
 
   // Create host network.
-  nnpiCompiledFunction_ = static_cast<NNPICompiledFunction *>(compiledFunction);
   NNPIHostNetwork hostNetwork(NNPI_INVALID_NNPIHANDLE);
   if (deviceOptions_->inferOnDevice) {
     // Create NNPI host network (load compiled binary).

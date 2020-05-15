@@ -156,6 +156,13 @@ bool NNPIResource::init(const NNPIObjectName name,
   deviceOptions_ = deviceOptions;
   usage_ = usage;
   desc_ = *desc;
+
+  ResourceUsers *users = nullptr;
+  if (phUsage) {
+    users = &(phUsage->at(name_));
+    LOG_AND_RETURN_IF_NOT(ERROR, users, "Invalid resource users", false);
+  }
+
   if (!deviceOptions_->inferOnDevice) {
     // Handle stuff for ice ref (or compile only path).
     size_t resourceSize = CalcDescSize(&desc_);
@@ -170,7 +177,7 @@ bool NNPIResource::init(const NNPIObjectName name,
     return true;
   }
 
-  if (deviceOptions_->disableDRT) {
+  if (deviceOptions_->disableDRT || (users && users->disableDRT)) {
     switch (usage_) {
     case ResourceUsage::DRTInput:
       usage_ = ResourceUsage::InputResource;
@@ -181,7 +188,7 @@ bool NNPIResource::init(const NNPIObjectName name,
     default:; // Do nothing.
     }
   }
-  if (deviceOptions_->disableP2P) {
+  if (deviceOptions_->disableP2P || (users && users->disableP2P)) {
     switch (usage_) {
     case ResourceUsage::P2PInput:
       usage_ = ResourceUsage::InputResource;
@@ -230,11 +237,8 @@ bool NNPIResource::init(const NNPIObjectName name,
   // Create device resource.
   bool allocateDeviceResource = false;
 
-  ResourceUsers *users = nullptr;
   shared_ptr<NNPIResource> sharedResource = nullptr;
   if (phUsage) {
-    users = &(phUsage->at(name_));
-    LOG_AND_RETURN_IF_NOT(ERROR, users, "Invalid resource users", false);
     sharedResource = findResourceForDevice(*users, device_);
   }
 

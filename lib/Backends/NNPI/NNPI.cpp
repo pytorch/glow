@@ -198,7 +198,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     }
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy},
                                                   {ConvolutionNode::BiasIdx}) &&
-           (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int32QTy);
+           ((NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int32QTy) ||
+            (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::FloatTy));
 
   case Kinded::Kind::Convolution3DNodeKind:
     if (!NI.getInTy(Convolution3DNode::InputIdx)->isQuantizedType()) {
@@ -207,7 +208,9 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     }
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::Int8QTy}, {Convolution3DNode::BiasIdx}) &&
-           (NI.getInElemTy(Convolution3DNode::BiasIdx) == ElemKind::Int32QTy);
+           ((NI.getInElemTy(Convolution3DNode::BiasIdx) ==
+             ElemKind::Int32QTy) ||
+            (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::FloatTy));
   case Kinded::Kind::QuantizeNodeKind:
     return (NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::FloatTy ||
             NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::Float16Ty) &&
@@ -238,13 +241,15 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   }
 
   case Kinded::Kind::FullyConnectedNodeKind:
-    if (!NI.getInTy(ConvolutionNode::InputIdx)->isQuantizedType()) {
+    if (!NI.getInTy(FullyConnectedNode::InputIdx)->isQuantizedType()) {
       return NI.allInputsAndOutputsHaveSameElemKind(
           {ElemKind::FloatTy, ElemKind::Float16Ty});
     }
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::Int8QTy}, {FullyConnectedNode::BiasIdx}) &&
-           (NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::Int32QTy);
+           ((NI.getInElemTy(FullyConnectedNode::BiasIdx) ==
+             ElemKind::Int32QTy) ||
+            (NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::FloatTy));
 
   case Kinded::Kind::MaxPoolNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -309,8 +314,10 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
             ElemKind::FloatTy) &&
            (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::OffsetsIdx) ==
             ElemKind::Int32ITy) &&
-           (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
-            ElemKind::Int32QTy) &&
+           ((NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
+             ElemKind::Int32QTy) ||
+            (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
+             ElemKind::FloatTy)) &&
            (NI.getOutElemTy(RowwiseQuantizedFullyConnectedNode::ResultIdx) ==
             ElemKind::Int8QTy);
 
@@ -370,7 +377,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     auto resultK =
         NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx);
     return (dataK == ElemKind::UInt8FusedQTy ||
-            dataK == ElemKind::UInt8FusedFP16QTy) &&
+            dataK == ElemKind::UInt8FusedFP16QTy ||
+            dataK == ElemKind::UInt4FusedFP16QTy) &&
            (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
            (indicesK == ElemKind::Int64ITy) && (offsetsK == ElemKind::Int64ITy);
   }
@@ -500,6 +508,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:
   case Kinded::Kind::EmbeddingBagNodeKind:
   case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind:
+  case Kinded::Kind::LayerNormalizationNodeKind:
     return false;
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
     const FusedRowwiseQuantizedSparseLengthsSumNode *SLSN =
@@ -510,7 +519,6 @@ bool NNPIBackend::shouldLower(const Node *N) const {
       return true;
     }
   }
-  case Kinded::Kind::LayerNormalizationNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
     // WA - lower until ICE-T implements it.
     if (NNPIBackend::backendOptions_.useIceT ||
@@ -1150,8 +1158,6 @@ traversePostOrder(const runtime::DAGNode *root,
 Error NNPIBackend::bindContexts(
     llvm::ArrayRef<runtime::ContextBinding> bindings,
     const runtime::DAGNode *root, bool enableP2P, bool enableDRT) {
-  LOG(INFO) << "enableP2P/DRT not yet implemented. enableDRT = " << enableDRT
-            << ", enableP2P = " << enableP2P << ".\n";
   if (backendOptions_.dumpRuntime) {
     DotWriter::clear();
     DotWriter::addSubGraph("Host", "Host");
@@ -1171,10 +1177,12 @@ Error NNPIBackend::bindContexts(
     nnpiDM->addPlaceholderUsageCount(cb.networkName, phUsage);
   }
 
-  for (const auto &usage : phUsage) {
+  for (auto &usage : phUsage) {
     LOG_IF_NOT_RETURN_LLVMERROR(
         usage.second.numWriters < 2,
         "Multiple writes to the same placeholder not suported");
+    usage.second.disableP2P = !enableP2P;
+    usage.second.disableDRT = !enableDRT;
   }
 
   for (auto *dagNode : postOrder) {

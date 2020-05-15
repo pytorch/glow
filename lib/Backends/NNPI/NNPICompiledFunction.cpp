@@ -362,16 +362,16 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
                                    compilationFileName_.c_str(), NULL),
           "Failed NNPI Compile");
     }
-  }
-  if (compilationOptions_.inferOnDevice) {
-    DBG_MEM_USAGE("NNPICompiledFunction destroy network");
-    // NNPINetwork is not needed anymore on the inferfence api path.
-    // Once the complied stream is loaded, query on the network can be done
-    // using the host network instead.
-    LOG_NNPI_IF_ERROR(nnpiNetworkDestroy(network_),
-                      "Failed NNPI Network Destroy");
-    network_ = NNPI_INVALID_NNPIHANDLE;
-    DBG_MEM_USAGE("NNPICompiledFunction destroy network done");
+    if (compilationOptions_.inferOnDevice) {
+      DBG_MEM_USAGE("NNPICompiledFunction destroy network");
+      // NNPINetwork is not needed anymore on the inferfence api path.
+      // Once the complied stream is loaded, query on the network can be done
+      // using the host network instead.
+      LOG_NNPI_IF_ERROR(nnpiNetworkDestroy(network_),
+                        "Failed NNPI Network Destroy");
+      network_ = NNPI_INVALID_NNPIHANDLE;
+      DBG_MEM_USAGE("NNPICompiledFunction destroy network done");
+    }
   }
 
   // Determine and save what inputs can be treated as partial. Need to do this
@@ -389,6 +389,12 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   }
   return Error::success();
 }
+
+NNPICompiledFunction::NNPICompiledFunction(Function *F)
+    : CompiledFunction(runtime::RuntimeBundle::create(*F)),
+      compilationOptions_({}) {
+  std::memset(&config_, 0, sizeof(config_));
+};
 
 NNPICompiledFunction::~NNPICompiledFunction() {
   if (network_ != NNPI_INVALID_NNPIHANDLE) {

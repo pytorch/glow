@@ -53,8 +53,6 @@ class NNPIDeviceManager : public DeviceManager {
   uint64_t usedMemoryBytes_{0};
   /// Static memory cost of the InterpreterFunction.
   const uint64_t functionCost_{1};
-  /// Number of worker threads allocated per loaded function.
-  unsigned numWorkersPerFunction_;
 
   /// Inference id counter.
   static std::atomic<RunIdentifierTy> runIdentifier_;
@@ -82,8 +80,7 @@ class NNPIDeviceManager : public DeviceManager {
 public:
   explicit NNPIDeviceManager(const DeviceConfig &config,
                              std::shared_ptr<NNPIDeviceOptions> deviceOptions,
-                             NNPIAdapter adapter,
-                             unsigned numInferenceWorkers = 0);
+                             NNPIAdapter adapter);
   virtual ~NNPIDeviceManager();
 
   Error init() override;

@@ -251,6 +251,12 @@ public:
   DECLARE_NNPI_OPTION(disableConstFolding, bool, "DisableConstFolding",
                       "Disable constant folding during compilation.",
                       "NNPI_DISABLE_CONSTFOLD", "0");
+  /// Setting this variable will override the amount of worker threads allocated
+  /// for the network on the device (default:2).
+  DECLARE_NNPI_OPTION(numWorkers, int, "NumOfWorkers",
+                      "Override the amount of worker threads allocated for the "
+                      "network on the device.",
+                      "NNPI_NUM_WORKERS", "2");
 
   NNPICompilationOptions(const BackendSpecificOptions &parameters) {
     INIT_NNPI_OPTIONS(useIceT, parameters);
@@ -266,6 +272,7 @@ public:
     INIT_NNPI_OPTIONS(debugCompileConfigFile, parameters);
     INIT_NNPI_OPTIONS(reserveResources, parameters);
     INIT_NNPI_OPTIONS(disableConstFolding, parameters);
+    INIT_NNPI_OPTIONS(numWorkers, parameters);
     setLogLevel(this->compilationLogLevel);
   }
 
@@ -308,12 +315,6 @@ public:
   DECLARE_NNPI_OPTION(deviceId, int, "DeviceID",
                       "Override the target device ID used to run (0,1,...).",
                       "NNPI_DEVICE_ID", "-1");
-  /// Setting this variable will override the amount of worker threads allocated
-  /// per network on the device (default:2).
-  DECLARE_NNPI_OPTION(numWorkers, int, "NumOfWorkers",
-                      "Override the amount of worker threads allocated per "
-                      "network on the device.",
-                      "NNPI_NUM_WORKERS", "-1");
   /// Setting this variable will enabled device tracing (host2device,
   /// device2host copy infer etc.).
   DECLARE_NNPI_OPTION(
@@ -361,7 +362,6 @@ public:
     INIT_NNPI_OPTIONS(inferOnDevice, parameters);
     INIT_NNPI_OPTIONS(showVars, parameters);
     INIT_NNPI_OPTIONS(deviceId, parameters);
-    INIT_NNPI_OPTIONS(numWorkers, parameters);
     INIT_NNPI_OPTIONS(enabledDeviceTracing, parameters);
     INIT_NNPI_OPTIONS(deviceMemory, parameters);
     INIT_NNPI_OPTIONS(enabledCommandLists, parameters);
