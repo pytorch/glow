@@ -690,20 +690,8 @@ public:
   LogNode *createLog(llvm::StringRef name, NodeValue input,
                      TypeRef outTy = nullptr);
 
-  /// Create a series of nodes with \p name that implements an element-wise
-  /// logit transform. For each element of the \p input x, this is
-  /// defined as:
-  ///
-  /// y = log(x / (1 - x))
-  ///
-  /// where the \p input is clamped in (\p eps, 1 - \p eps), and
-  /// the transform parameter \p eps is a positive value (< 0.5)
-  /// (needed to avoid degenerate probabilities of 0 or 1,
-  /// which would result in taking the logarithm of zero).
-  /// The transform itself is implemented using element-wise Clip, Sub,
-  /// Splat, Div, and Log nodes.
-  /// \returns the final node.
-  Node *createLogit(llvm::StringRef name, NodeValue input, float eps);
+  /// \returns a LogitNode with \p name given \p input and \p eps.
+  LogitNode *createLogit(llvm::StringRef name, NodeValue input, float eps);
 
   SoftMaxNode *createSoftMax(llvm::StringRef name, NodeValue input,
                              NodeValue selected, TypeRef outTy = nullptr);

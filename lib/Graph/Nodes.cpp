@@ -901,6 +901,19 @@ bool TanhGradNode::verify() const {
   return isValid;
 }
 
+bool LogitNode::verify() const {
+  const Node *parent = getResult().getNode();
+  bool isValid = checkSameType(getInput(), getResult(), parent);
+  isValid &= checkSameShape(getInput(), getResult(), parent);
+  isValid &= expectCompareTrue(
+      "Clamping parameter eps must be strictly positive", getEpsilon(), 0.0f,
+      this, CompareOperatorGreaterThan<float>());
+  isValid &=
+      expectCompareTrue("Clamping parameter eps must be less than 0.5",
+                        getEpsilon(), 0.5f, this, CompareOperatorLess<float>());
+  return isValid;
+}
+
 bool ExpNode::verify() const {
   const Node *parent = getResult().getNode();
   bool isValid =

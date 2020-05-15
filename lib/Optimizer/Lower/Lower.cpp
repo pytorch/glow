@@ -1332,6 +1332,48 @@ static void lowerSwishNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, S.getResult(), mul->getResult());
 }
 
+/// Create a series of nodes with \p name that implements an element-wise
+/// logit transform. For each element of the \p input x, this is
+/// defined as:
+///
+/// y = log(x / (1 - x))
+///
+/// where the \p input is clamped in (\p eps, 1 - \p eps), and
+/// the transform parameter \p eps is a positive value (< 0.5)
+/// (needed to avoid degenerate probabilities of 0 or 1,
+/// which would result in taking the logarithm of zero).
+/// Implemented using element-wise Clip, Sub, Splat, Div, and Log nodes.
+static void lowerLogitNode(Function *F, CompilationContext &cctx,
+                           const LogitNode &L) {
+  LOG_SCOPE(F->getLogContext(), "lowerLogitNode")
+
+  const NodeValue input = L.getInput();
+  const float eps = L.getEpsilon();
+  const std::string name = L.getName().str();
+
+  // Compute clamped x using clip(x, eps, 1 - eps).
+  auto epsComplement = 1.0f - eps;
+  auto *MaxN = F->createClip(name + ".clip", input, eps, epsComplement);
+
+  // Compute the logit transform of clamped x,
+  // log(numerator / denominator),
+  // where numerator = clamped x = MaxN,
+  // and denominator = 1 - clamped x = 1 - MaxN.
+
+  // Compute denominator = 1 - clamped x.
+  auto *onesSplat = F->createSplat(name + ".onesSplat", input.getType(), 1.0f);
+
+  auto *SN = F->createSub(name + ".sub", onesSplat, MaxN);
+
+  // Compute the quotient = numerator / denominator.
+  auto *DN = F->createDiv(name + ".div", MaxN, SN);
+
+  // Compute and return the logit transform (the final node).
+  auto *LN = F->createLog(name + ".log", DN);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, L.getResult(), LN->getResult());
+}
+
 bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
 #define CASE_LOWER(NODE_NAME_)                                                 \
   case Kinded::Kind::NODE_NAME_##NodeKind:                                     \
@@ -1371,6 +1413,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(Clip);
     CASE_LOWER(Convolution3D);
     CASE_LOWER(Swish);
+    CASE_LOWER(Logit);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
     if (CN->getGroup() > 1 && CN->hasFusedActivation()) {

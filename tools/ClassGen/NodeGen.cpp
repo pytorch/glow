@@ -423,6 +423,13 @@ int main(int argc, char **argv) {
       .setDocstring("Performs element-wise exponential to the Input.");
   // clang-format on
 
+  BB.newNode("Logit")
+      .addInput("Input")
+      .addMember(MemberType::Float, "Epsilon")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Computes elementwise: result = log(input / (1 - input)).");
+
   BB.newNode("Select")
       .addInput("Cond")
       .addInput("LHS")

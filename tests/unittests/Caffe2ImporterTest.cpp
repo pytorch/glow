@@ -1557,9 +1557,8 @@ TEST_F(Caffe2ImporterTest, Logit) {
   EXPECT_EQ(output->dims().vec(), expectedDims);
 
   // High level checks on the content of the graph.
-  // We have 1 Clip (1 Splat, 1 Max, 1 Splat, 1 Min),
-  // 1 Splat, 1 Sub, 1 Div, 1 Log, and 1 Output.
-  EXPECT_EQ(F->getNodes().size(), 6);
+  // We have 1 Logit, 1 Save.
+  EXPECT_EQ(F->getNodes().size(), 2);
 
   // Graph has one input and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);

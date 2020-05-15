@@ -1616,30 +1616,9 @@ ExpNode *Function::createExp(llvm::StringRef name, NodeValue input) {
   return addNode(new ExpNode(name, input.getType(), input));
 }
 
-Node *Function::createLogit(llvm::StringRef name, NodeValue input, float eps) {
-  assert(eps > 0.0f && "Clamping parameter eps must be strictly positive.");
-  assert(eps < 0.5f && "Clamping parameter eps must be less than 0.5.");
-
-  // Compute clamped x using clip(x, eps, 1 - eps).
-  auto epsComplement = 1.0f - eps;
-  auto *MaxN = createClip(name.str() + ".clip", input, eps, epsComplement);
-
-  // Compute the logit transform of clamped x,
-  // log(numerator / denominator),
-  // where numerator = clamped x = MaxN,
-  // and denominator = 1 - clamped x = 1 - MaxN.
-
-  // Compute denominator = 1 - clamped x.
-  auto *onesSplat =
-      createSplat(name.str() + ".onesSplat", input.getType(), 1.0f);
-
-  auto *SN = createSub(name.str() + ".sub", onesSplat, MaxN);
-
-  // Compute the quotient = numerator / denominator.
-  auto *DN = createDiv(name.str() + ".div", MaxN, SN);
-
-  // Compute and return the logit transform (the final node).
-  return createLog(name.str() + ".log", DN);
+LogitNode *Function::createLogit(llvm::StringRef name, NodeValue input,
+                                 float eps) {
+  return addNode(new LogitNode(name, input.getType(), input, eps));
 }
 
 SelectNode *Function::createSelect(llvm::StringRef name, TypeRef outTy,
