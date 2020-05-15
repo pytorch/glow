@@ -716,4 +716,29 @@ void Tensor::copyRawToDevice(const Tensor *t) {
   DM->transferToDevice(*this, locationContext);
 }
 
+bool isSliceContiguous(llvm::ArrayRef<dim_t> sliceShape,
+                       llvm::ArrayRef<dim_t> tensorShape) {
+  assert(sliceShape.size() == tensorShape.size() &&
+         "Array length mismatch for slice/tensor sizes!");
+  // Search first non-singleton slice dimension. If all the dimensions are
+  // singleton then by convention the first non-singleton dimension is the
+  // slice size.
+  size_t firstNonSingleDim = sliceShape.size();
+  for (size_t dim = 0, dimEnd = sliceShape.size(); dim < dimEnd; ++dim) {
+    if (sliceShape[dim] != 1) {
+      firstNonSingleDim = dim;
+      break;
+    }
+  }
+  // First non-singleton slice dimension can be partially or fully extracted.
+  // The following dimensions must be fully extracted.
+  for (size_t dim = firstNonSingleDim + 1, dimEnd = sliceShape.size();
+       dim < dimEnd; ++dim) {
+    if (sliceShape[dim] != tensorShape[dim]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 } // namespace glow

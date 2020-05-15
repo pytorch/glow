@@ -1045,6 +1045,16 @@ inline size_t getFlattenedOffset(llvm::ArrayRef<dim_t> strides,
   return index;
 }
 
+/// Helper function which \returns true if a slice with the shape \p sliceShape
+/// referenced from a larger tensor with the shape \p tensorShape is contiguous
+/// in memory (assuming the tensor it is referenced from is contiguous). This
+/// happens when the slice dimensions:
+/// - Start with singleton dimensions (dimensions equal to 1).
+/// - Continue with a partially extracted dimension (one maximum).
+/// - End with fully extracted dimensions.
+bool isSliceContiguous(llvm::ArrayRef<dim_t> sliceShape,
+                       llvm::ArrayRef<dim_t> tensorShape);
+
 /// A class that provides indexed access to a tensor. This class has value
 /// semantics and it's copied around. One of the reasons for making this class
 /// value semantics is to allow efficient index calculation that the compiler
