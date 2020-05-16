@@ -299,8 +299,6 @@ struct PrePartitionedConfig {
   std::string funcName;
   /// Functions from the module which are partitioned.
   std::vector<Function *> funcs;
-  /// Names assigned to each partition.
-  std::vector<std::string> partitionNames;
   /// The logical IDs to assign to the partitions.
   std::vector<std::vector<DeviceIDTy>> logicalIDs;
   /// Backends that are used for each partition.
@@ -316,7 +314,6 @@ struct PrePartitionedConfig {
   /// for those vectors which need to have their parameter constructed.
   void resizeAndReserve(size_t size) {
     funcs.reserve(size);
-    partitionNames.reserve(size);
     logicalIDs.resize(size);
     backendNames.reserve(size);
     backendHints.reserve(size);

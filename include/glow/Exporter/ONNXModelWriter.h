@@ -62,6 +62,8 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   const bool zipMode_;
   /// Whether we use text mode or not
   const bool textMode_;
+  /// Whether to include Constant (initializer) data in the exported proto.
+  const bool includeConstantData_;
   /// Whether to use custom ONNX ops.
   const bool useGlowCustomOps_;
   /// Whether we are writing a DAG.
@@ -124,8 +126,11 @@ public:
   static typename TensorType::DataType convertType(const Type &glowType);
   /// Writes Glow tensor \p T to proto output \p out. Depending on
   /// \p useGlowCustomOps meta info will be annotated differently.
+  /// If \p includeData then the data from \p T will be included; otherwise only
+  /// the type info and name will be.
   static void writeTensor(const Tensor &T, TensorType *out,
-                          bool useGlowCustomOps = false);
+                          bool useGlowCustomOps = false,
+                          bool includeData = true);
 
   /// Creates an ONNX model writer to serialize \p F graph into file
   /// \p modelFilename, writing \p irVersion and \p opsetVersion.
@@ -152,11 +157,13 @@ public:
   /// supports serialization with text format or binary format depending on
   /// \p textMode. If \p zipMode is true, it will save weights into individual
   /// TensorProto file along with the model file and package them into a zip
-  /// file.
+  /// file. If \p includeConstantData then data for Constants will be serialized
+  /// in the written model, otherwise it will be skipped (but initializers will
+  /// still exist, they will just have no data).
   ONNXModelWriter(const std::string &modelFilename, runtime::DAGListTy &dagList,
                   size_t irVersion, size_t opsetVersion,
                   Error *errPtr = nullptr, bool textMode = false,
-                  bool zipMode = false);
+                  bool zipMode = false, bool includeConstantData = true);
 
 private:
   /// \returns error for the unexpected node kind.

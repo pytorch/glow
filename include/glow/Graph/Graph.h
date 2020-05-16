@@ -159,6 +159,9 @@ public:
 
   const FunctionList &getFunctions() const { return functions_; }
 
+  /// Clears out all Functions from \ref functions_.
+  void clearFunctions();
+
   /// \returns the list of types that the Module owns.
   const TypesList &getTypes() const { return types_; }
 
@@ -322,6 +325,9 @@ public:
   }
 
   ~Function();
+
+  /// Clear out \ref nodes_ and \ref uniqueNodeNames_.
+  void clear();
 
   /// Sets the state of the function.
   void setState(FunctionState state) { state_ = state; }
