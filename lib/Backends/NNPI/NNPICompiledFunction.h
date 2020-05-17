@@ -21,6 +21,7 @@
 #include "glow/Backend/CompiledFunction.h"
 #include "glow/Backends/BackendOptions.h"
 #include "glow/ExecutionContext/ExecutionContext.h"
+#include "nnpi_inference_types.h"
 #include "nnpi_transformer.h"
 #include <map>
 #include <memory>
@@ -85,6 +86,14 @@ public:
     return outputNames_;
   }
 
+  NNPIDeviceNetworkConfig getDeviceNetworkConfig() const {
+    return devNetConfig_;
+  }
+
+  const std::vector<std::string> &getIAExtensionPaths() const {
+    return iaExtensionPaths_;
+  }
+
 private:
   NNPINetwork network_;
   NNPICompilationConfig config_;
@@ -96,6 +105,8 @@ private:
   std::string compilationFileName_;
   std::vector<std::string> inputNames_;
   std::vector<std::string> outputNames_;
+  NNPIDeviceNetworkConfig devNetConfig_;
+  std::vector<std::string> iaExtensionPaths_;
 
   Error updateCompilationConfigFromOptions(
       NNPICompilationOptions &compilationOptions);

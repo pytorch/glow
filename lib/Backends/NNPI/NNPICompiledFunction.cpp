@@ -61,6 +61,24 @@ static void trySetDeviceVersion(NNPICompilationOptions &compilationOptions) {
   compilationOptions.deviceVersion.setVal(*devVerOrErr + 1);
 }
 
+/// Update device network config from the compilation config
+static NNPIDeviceNetworkConfig parseDeviceNetworkConfig(
+    const glow::NNPICompilationOptions &compilationOptions) {
+  NNPIDeviceNetworkConfig cfg;
+  std::memset(&cfg, 0, sizeof(cfg));
+  cfg.pnpHints.ringFrequencyPrio = compilationOptions.ringPrio;
+  cfg.pnpHints.iceBOFrequencyPrio[0] = compilationOptions.iceBOPrio0;
+  cfg.pnpHints.iceBOFrequencyPrio[1] = compilationOptions.iceBOPrio1;
+  cfg.pnpHints.iceBOFrequencyPrio[2] = compilationOptions.iceBOPrio2;
+  cfg.pnpHints.iceBOFrequencyPrio[3] = compilationOptions.iceBOPrio3;
+  cfg.pnpHints.iceBOFrequencyPrio[4] = compilationOptions.iceBOPrio4;
+  cfg.pnpHints.iceBOFrequencyPrio[5] = compilationOptions.iceBOPrio5;
+  cfg.pnpHints.IAFrequencyPrio[0] = compilationOptions.iaPrio0;
+  cfg.pnpHints.IAFrequencyPrio[1] = compilationOptions.iaPrio1;
+  cfg.pnpHints.DDRBandwidth = compilationOptions.ddrBandwidth;
+  return cfg;
+}
+
 Error NNPICompiledFunction::updateCompilationConfigFromOptions(
     NNPICompilationOptions &compilationOptions) {
   if (compilationOptions.showVars) {
@@ -103,6 +121,11 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
             compilationOptions.debugCompileConfigFile.get().c_str(),
             sizeof(config_.debugConfigFile));
   }
+
+  config_.disableSLSOnIA = compilationOptions.disableSLSOnIA;
+  config_.enableLightweightCompilation = compilationOptions.lightCompilation;
+  config_.dumpDotFiles = compilationOptions.dumpDotFiles;
+
   return Error::success();
 }
 
@@ -254,6 +277,7 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
 
   NNPIImporter importer(compilationOptions_);
   network_ = importer.importFunction(F, newOpts);
+  iaExtensionPaths_ = importer.getIAExtensionPaths();
 
   LOG_IF_INVALID_HANDLE_RETURN_LLVMERROR(network_, "Failed to import function");
   // Setting the network name.
@@ -375,6 +399,10 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
       staticInputs_.insert(P);
     }
   }
+
+  // Update device network config.
+  devNetConfig_ = parseDeviceNetworkConfig(compilationOptions_);
+
   return Error::success();
 }
 
@@ -382,6 +410,7 @@ NNPICompiledFunction::NNPICompiledFunction(Function *F)
     : CompiledFunction(runtime::RuntimeBundle::create(*F)),
       compilationOptions_({}) {
   std::memset(&config_, 0, sizeof(config_));
+  std::memset(&devNetConfig_, 0, sizeof(devNetConfig_));
 };
 
 NNPICompiledFunction::~NNPICompiledFunction() {

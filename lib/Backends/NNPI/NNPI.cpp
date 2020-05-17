@@ -466,6 +466,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::NNPICustomDSPNodeKind:
     return true;
+  case Kinded::Kind::NNPICustomIANodeKind:
+    return true;
 
   case Kinded::Kind::SpaceToDepthNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(

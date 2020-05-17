@@ -135,6 +135,7 @@ struct BlacklistInitializer {
              TestBlacklist::AnyDeviceAnyEngine},
             {"rowwiseQuantizedFCTest_Int8_BiasInt8/0",
              TestBlacklist::AnyDeviceAnyEngine},
+            {"rowwiseQuantizedFCTestSymmetric/0", TestBlacklist::A0AnyEngine},
             {"ScatterAddNDimensionalDuplicatingIndices/0",
              TestBlacklist::AnyDeviceAnyEngine},
             {"ScatterAddNDimensionalSimple/0",

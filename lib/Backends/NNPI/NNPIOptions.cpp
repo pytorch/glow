@@ -79,6 +79,14 @@ template <> unsigned NNPIOptions::getStringAsType<unsigned>(std::string sVal) {
   return 0;
 }
 
+template <> float NNPIOptions::getStringAsType<float>(std::string sVal) {
+  try {
+    return std::stof(sVal);
+  } catch (...) {
+    return 0.f;
+  }
+}
+
 std::string NNPIOptions::dumpStatus() {
   std::stringstream desc;
   desc << "\nNNPI " << getOptionsName().data() << " variables\n";

@@ -68,8 +68,6 @@ class NNPIDeviceManager : public DeviceManager {
   NNPIDeviceContext device_;
   /// Lock to synchronize function adding/removing to/from the device manager.
   std::mutex functionMapMutex_;
-  /// Device Tracing control.
-  std::shared_ptr<NNPIDeviceTracing> deviceTracing_;
   /// Static placeholders known by the device manager (the device manager
   /// doesn't own a ref on static resources, only networks added to the device
   /// manager).

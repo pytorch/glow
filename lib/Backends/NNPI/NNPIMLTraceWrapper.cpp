@@ -15,6 +15,8 @@
 
 #include "NNPIMLTraceWrapper.h"
 #include "DebugMacros.h"
+#include "nnpi_ice_caps_hwtrace.h"
+#include "nnpi_ice_caps_swtrace.h"
 #include "nnpi_inference.h"
 #include <chrono>
 #include <cstring>
@@ -26,8 +28,7 @@
 #include <unordered_map>
 #include <vector>
 
-#define MAX_TRACE_BUFFER_SIZE (1024 * 1024 * 5)
-#define TRACE_READ_BUFFER_SIZE (1024 * 10)
+#define MAX_TRACE_BUFFER_SIZE (1024 * 1024 * 100)
 
 static inline uint64_t secondsToMicroseconds(double seconds) {
   return (uint64_t)(seconds * 1e6f);
@@ -43,166 +44,30 @@ static uint64_t inline getNow() {
       .count();
 }
 
-enum NNPITraceColumnIndex {
-  NNPI_TRACE_PID_IDX = 0,
-  NNPI_TRACE_CPU_IDX = 1,
-  NNPI_TRACE_FLAG_IDX = 2,
-  NNPI_TRACE_TIMESTAMP_IDX = 3,
-  NNPI_TRACE_FUNCTION_IDX = 4,
-  NNPI_TRACE_DETAILS_IDX = 5
-};
-
-class NNPITraceParser {
-public:
-  void parseLine(std::string line, NNPITraceEntry &entry) {
-    size_t idx = 0;
-    std::istringstream linestream(line);
-    do {
-      std::string part;
-      linestream >> part;
-
-      switch (idx) {
-      case NNPI_TRACE_PID_IDX: {
-        entry.processID = getPID(part);
-        break;
-      }
-      case NNPI_TRACE_CPU_IDX: {
-        entry.cpuID = getCPUID(part);
-        break;
-      }
-      case NNPI_TRACE_FLAG_IDX: {
-        getFlags(part, entry.flags_);
-        break;
-      }
-      case NNPI_TRACE_TIMESTAMP_IDX: {
-        entry.deviceUpTime = getOriginTime(part);
-        entry.hostTime = entry.deviceUpTime;
-        break;
-      }
-      case NNPI_TRACE_FUNCTION_IDX: {
-        entry.traceType = getType(part);
-        break;
-      }
-      case NNPI_TRACE_DETAILS_IDX: {
-        // NNPI_TRACE_MARK lines (identified at NNPI_TRACE_FUNCTION_IDX column)
-        // has a sub level function type.
-        if (entry.traceType == NNPI_TRACE_MARK &&
-            part[part.size() - 1] == ':') {
-          entry.traceType = getType(part);
-          break;
-        }
-        // Not NNPI_TRACE_MARK: consider as params.
-      }
-      default: // Params.
-      {
-        addParam(part, entry);
-      }
-      }
-      idx++;
-    } while (linestream);
-  }
-
-protected:
-  uint32_t getPID(std::string part) {
-    std::istringstream partSplitStream(part);
-    std::string pid;
-    while (std::getline(partSplitStream, pid, '-'))
-      ;
-    return std::stoi(pid);
-  }
-
-  uint32_t getCPUID(std::string part) {
-    std::string cpuStr = part.substr(1, part.size() - 2);
-    return std::stoi(cpuStr);
-  }
-
-  uint64_t getOriginTime(std::string part) {
-    double dNumber = std::stod(part.substr(0, part.size() - 1));
-    return secondsToMicroseconds(dNumber);
-  }
-
-  void getFlags(std::string part, char *flags) {
-    if (part.size() != 4) {
-      return;
-    }
-    part.copy(flags, 4);
-  }
-
-  NNPITraceType getType(std::string part) {
-    if (part == "dma:") {
-      return NNPI_TRACE_DMA;
-    } else if (part == "copy:") {
-      return NNPI_TRACE_COPY;
-    } else if (part == "cmdlist:") {
-      return NNPI_TRACE_CMDLIST;
-    } else if (part == "icedrvExecuteNetwork:") {
-      return NNPI_TRACE_NETEXEC;
-    } else if (part == "runtime-subgraph:") {
-      return NNPI_TRACE_SUBGRAPH;
-    } else if (part == "infreq:") {
-      return NNPI_TRACE_INFER;
-    } else if (part == "clock_sync:") {
-      return NNPI_TRACE_CLOCK_SYNC;
-    } else if (part == "tracing_mark_write:") {
-      return NNPI_TRACE_MARK;
-    } else if (part == "vtune_time_sync:") {
-      return NNPI_TARCE_TIME_SYNC;
-    } else if (part == "runtime-infer-request:") {
-      return NNPI_TRACE_RUNTIME_INFER;
-    } else if (part == "icedrvScheduleJob:") {
-      return NNPI_TRACE_ICED_SCHED_JOB;
-    } else if (part == "icedrvCreateNetwork:") {
-      return NNPI_TARCE_ICED_CREAT_NET;
-    } else if (part == "icedrvNetworkResource:") {
-      return NNPI_TARCE_ICED_NET_RES;
-    } else if (part == "icedrvEventGeneration:") {
-      return NNPI_TARCE_ICED_NET_GEN;
-    } else if (part == "user_data:") {
-      return NNPI_TARCE_USER_DATA;
-    }
-    return NNPI_TRACE_OTHER;
-  }
-
-  bool addParam(std::string part, NNPITraceEntry &entry) {
-    std::string name;
-    std::string value;
-    std::istringstream partSplitStream(part);
-    std::getline(partSplitStream, name, '=');
-    std::getline(partSplitStream, value, '=');
-
-    while (value[value.size() - 1] == ',') {
-      value = value.substr(0, value.size() - 2);
-    }
-    entry.params[name] = value;
-    return true;
-  }
-};
-
-#define NNPI_SOFTWARE_EVENTS                                                   \
-  "cmdlist,copy,cpylist_create,icedrvCreateContext,icedrvCreateNetwork,"       \
-  "icedrvDestroyContext,icedrvDestroyNetwork,icedrvEventGeneration,"           \
-  "icedrvExecuteNetwork,icedrvNetworkResource,icedrvScheduleJob,inf_net_"      \
-  "subres,infreq,runtime_sw_events.runtime.infer,runtime_sw_events.runtime."   \
-  "subgraph,user_data"
+static eIceCapsSwTraceEvent swEventTypes[] = {
+    eIceCapsSwTraceEvent::ICE_CAPS_SW_EVENT_CMDLIST,
+    eIceCapsSwTraceEvent::ICE_CAPS_SW_EVENT_COPY,
+    eIceCapsSwTraceEvent::ICE_CAPS_SW_EVENT_CPYLIST_CREATE,
+    eIceCapsSwTraceEvent::ICE_CAPS_SW_EVENT_ICE_DRV,
+    eIceCapsSwTraceEvent::ICE_CAPS_SW_EVENT_INFR_SUBRES,
+    eIceCapsSwTraceEvent::ICE_CAPS_SW_EVENT_INFR_CREATE,
+    eIceCapsSwTraceEvent::ICE_CAPS_SW_EVENT_INFR_REQ,
+    eIceCapsSwTraceEvent::ICE_CAPS_SW_EVENT_RUNTIME,
+    eIceCapsSwTraceEvent::ICE_CAPS_SW_EVENT_USER_DATA};
 
 NNPITraceContext::NNPITraceContext(unsigned devID)
-    : traceCtx_(0), devID_(devID), devIDSet_(false),
-      events_(NNPI_SOFTWARE_EVENTS) {}
+    : capsSession_(0), devID_(devID), devIDSet_(false) {}
 
 NNPITraceContext::~NNPITraceContext() { destroyInternalContext(); }
 
-bool NNPITraceContext::startCapture(NNPIDeviceContext deviceContext) {
-  if (!createInternalContext()) {
+bool NNPITraceContext::startCapture(NNPIDeviceContext deviceContext,
+                                    bool swTracess, bool hwTraces) {
+  if (!createInternalContext(swTracess, hwTraces)) {
     LOG(WARNING) << "nnpi_trace: Failed to create trace device context.";
     return false;
   }
-  nnpimlTraceOptions traceOptions;
-  std::memset(&traceOptions, 0, sizeof(nnpimlTraceOptions));
-  traceOptions.max_bytes = MAX_TRACE_BUFFER_SIZE;
-  traceOptions.max_bytes_valid = true;
 
-  nnpimlStatus mlStatus =
-      nnpimlTraceStart(traceCtx_, devID_, &traceOptions, events_.c_str());
+  nnpimlStatus mlStatus = nnpiIceCapsStart(capsSession_);
   if (mlStatus != NNPIML_SUCCESS) {
     LOG(WARNING) << "nnpi_trace: Failed to start trace, err=" << mlStatus;
     return false;
@@ -215,34 +80,144 @@ bool NNPITraceContext::startCapture(NNPIDeviceContext deviceContext) {
 }
 
 bool NNPITraceContext::stopCapture(NNPIDeviceContext deviceContext) const {
-  uint32_t outBytes, discardEvents;
   LOG_NNPI_INF_IF_ERROR(
       nnpiDeviceContextTraceUserData(deviceContext, "EN", getNow()),
       "Failed to inject trace timestamp - device trace may not be "
       "synchronized");
-  nnpimlStatus mlStatus =
-      nnpimlTraceStop(traceCtx_, devID_, &outBytes, &discardEvents);
+  nnpimlStatus mlStatus = nnpiIceCapsStop(capsSession_);
   if (mlStatus != NNPIML_SUCCESS) {
     return false;
   }
   return true;
 }
 
-bool NNPITraceContext::readTraceOutput(std::stringstream &inputStream) {
-  char readData[TRACE_READ_BUFFER_SIZE + 1];
-  uint32_t size = TRACE_READ_BUFFER_SIZE;
-  uint32_t actualSize = size;
-  // Read trace bytes into stream.
-  uint32_t offset = 0;
-  while (actualSize >= size) {
-    nnpimlStatus mlStatus =
-        nnpimlTraceRead(traceCtx_, devID_, offset, size, readData, &actualSize);
-    inputStream.write(readData, actualSize);
-    offset += actualSize;
+bool NNPITraceContext::readTraceOutput() {
+  nnpimlStatus mlStatus = nnpiIceCapsRead(capsSession_);
+  if (mlStatus != NNPIML_SUCCESS) {
+    // Failed to read trace.
+    LOG(WARNING) << "nnpi_trace: Failed to read traces from device, err="
+                 << mlStatus;
+    return false;
+  }
+  mlStatus = nnpiIceCapsParse(capsSession_);
+  if (mlStatus != NNPIML_SUCCESS) {
+    // Failed to read trace.
+    LOG(WARNING) << "nnpi_trace: Failed to parse traces on device, err="
+                 << mlStatus;
+    return false;
+  }
+
+  mlStatus = nnpiIceCapsProcess(capsSession_);
+  if (mlStatus != NNPIML_SUCCESS) {
+    // Failed to read trace.
+    LOG(WARNING) << "nnpi_trace: Failed to process traces on device, err="
+                 << mlStatus;
+    return false;
+  }
+  size_t entryCount = 0;
+  mlStatus = nnpiIceCapsGetEntriesCount(capsSession_, &entryCount);
+  if (mlStatus != NNPIML_SUCCESS) {
+    // Failed to read trace.
+    LOG(WARNING) << "nnpi_trace: Failed to read traces count, err=" << mlStatus;
+    return false;
+  }
+
+  bool started = false;
+  uint64_t glowStart = 0;
+  uint64_t glowEnd = 0;
+  uint64_t deviceStart = 0;
+  uint64_t deviceEnd = 0;
+  uint64_t hostStart = 0;
+  uint64_t hostEnd = 0;
+  for (size_t i = 0; i < entryCount; i++) {
+    IceCapsEntry entry;
+    NNPITraceEntry traceEntry;
+    std::stringstream entryStrRep;
+    mlStatus = nnpiIceCapsGetEntry(capsSession_, i, &entry);
     if (mlStatus != NNPIML_SUCCESS) {
       // Failed to read trace.
+      LOG(WARNING) << "nnpi_trace: Failed to read trace entries, err="
+                   << mlStatus;
       return false;
     }
+
+    // Set parameters.
+    traceEntry.params["name"] = entry.event_name;
+    traceEntry.params["state"] = entry.state;
+    traceEntry.hostTime = entry.timestamp;
+    traceEntry.engineTime = entry.engine_timestamp;
+    traceEntry.params["engine"] =
+        ((entry.engine == eIceCapsEngine::ICE_CAPS_SW_TRACE)
+             ? std::string("SW")
+             : std::string("HW"));
+    traceEntry.params["event_key"] = std::to_string(entry.event_key);
+    traceEntry.params["device_id"] = std::to_string(entry.device_id);
+    traceEntry.params["context_id"] = std::to_string(entry.context_id);
+    traceEntry.params["network_id"] = std::to_string(entry.network_id);
+    traceEntry.params["infer_id"] = std::to_string(entry.infer_id);
+    traceEntry.params["ice_id"] = std::to_string(entry.ice_id);
+    traceEntry.params["core_id"] = std::to_string(entry.core_id);
+    traceEntry.params["network_name"] = entry.network_name;
+    traceEntry.params["kernel_name"] = entry.kernel_name;
+    traceEntry.params["opcode"] = entry.opcode;
+
+    std::stringstream params;
+    for (size_t p = 0; p < entry.params_count; p++) {
+      IceCapsParam param;
+      mlStatus = nnpiIceCapsGetEntryParam(capsSession_, i, p, &param);
+      if (mlStatus != NNPIML_SUCCESS) {
+        // Failed to read params.
+        LOG(WARNING) << "nnpi_trace: Failed to read trace entry params, err="
+                     << mlStatus;
+        break;
+      }
+      traceEntry.params[param.name] = param.value;
+      params << param.name << ":" << param.value << ", ";
+    }
+
+    if (entry.state == "created" || entry.state == "queued" ||
+        entry.state == "req" || entry.state == "add") {
+      entry.state = "q";
+    } else if (entry.state == "executed" || entry.state == "cbs" ||
+               entry.state == "start") {
+      entry.state = "s";
+    } else if (entry.state == "completed" || entry.state == "cbc") {
+      entry.state = "c";
+    }
+    traceEntry.params["state"] = entry.state;
+    entries_.push_back(traceEntry);
+    if (entry.event_name == "user_data" &&
+        traceEntry.params.count("user_data") > 0 &&
+        traceEntry.params.count("key") > 0) {
+      if (!started && traceEntry.params["key"] == "BG") {
+        glowStart = std::stol(traceEntry.params["user_data"]);
+        deviceStart = entry.engine_timestamp;
+        hostStart = entry.timestamp;
+        started = true;
+      } else if (traceEntry.params["key"] == "EN") {
+        glowEnd = std::stol(traceEntry.params["user_data"]);
+        deviceEnd = entry.engine_timestamp;
+        hostEnd = entry.timestamp;
+      }
+    }
+  }
+  // Sync clocks:
+  if (glowStart > 0 && glowEnd > 0 && hostStart > 0 && hostEnd > 0 &&
+      deviceStart > 0 && deviceEnd > 0) {
+    // Calculate host time function for host time.
+    double hostM =
+        (double)(glowEnd - glowStart) / (double)(hostEnd - hostStart);
+    double deviceM =
+        (double)(glowEnd - glowStart) / (double)(deviceEnd - deviceStart);
+    int64_t hostC = glowStart - hostM * hostStart;
+    int64_t deviceC = glowStart - deviceM * deviceStart;
+    // Update host time.
+    for (NNPITraceEntry &entry : entries_) {
+      entry.hostTime = entry.hostTime * hostM + hostC;
+      entry.engineTime = entry.engineTime * deviceM + deviceC;
+    }
+  } else {
+    LOG(WARNING) << "Failed to synchronize glow and nnpi device traces.";
   }
   return true;
 }
@@ -251,91 +226,96 @@ bool NNPITraceContext::load() {
   entries_.clear();
   std::stringstream inputStream;
 
-  if (!readTraceOutput(inputStream)) {
+  if (!readTraceOutput()) {
     destroyInternalContext();
     return false;
   }
   destroyInternalContext();
-
-  // Handle stream.
-  std::string line;
-  NNPITraceParser parser;
-  bool started = false;
-  uint64_t glowStart = 0;
-  uint64_t glowEnd = 0;
-  uint64_t nnpiStart = 0;
-  uint64_t nnpiEnd = 0;
-
-  while (std::getline(inputStream, line)) {
-    if (line.find("#", 0) == 0) {
-      // Skip comment.
-      continue;
-    }
-    NNPITraceEntry entry;
-    parser.parseLine(line, entry);
-    if (entry.traceType == NNPI_TARCE_USER_DATA) {
-      if (!started && entry.params["key"] == "BG") {
-        auto p = entry.params["user_data"];
-        glowStart = std::stol(entry.params["user_data"]);
-        nnpiStart = entry.deviceUpTime;
-        started = true;
-      } else if (entry.params["key"] == "EN") {
-        auto p = entry.params["user_data"];
-        glowEnd = std::stol(entry.params["user_data"]);
-        nnpiEnd = entry.deviceUpTime;
-        started = false;
-      }
-    }
-    if (started) {
-      entries_.push_back(entry);
-    }
-  }
-  if (glowStart > 0 && glowEnd > 0 && nnpiStart > 0 && nnpiEnd > 0) {
-    // Calculate host time function.
-    double m = (double)(glowEnd - glowStart) / (double)(nnpiEnd - nnpiStart);
-    int64_t C = glowStart - m * nnpiStart;
-    // Update host time.
-    for (NNPITraceEntry &entry : entries_) {
-      entry.hostTime = entry.deviceUpTime * m + C;
-    }
-  } else {
-    LOG(WARNING) << "Failed to synchronize glow and nnpi device traces.";
-  }
   return true;
 }
 
 bool NNPITraceContext::destroyInternalContext() {
-  if (traceCtx_ == 0) {
+  if (capsSession_ == 0) {
     return false;
   }
-  nnpimlStatus mlStatus = nnpimlDestroyTraceContext(traceCtx_);
-  traceCtx_ = 0;
+  nnpimlStatus mlStatus = nnpiIceCapsCloseSession(capsSession_);
+  capsSession_ = 0;
   if (mlStatus != NNPIML_SUCCESS) {
-    LOG(WARNING) << "nnpi_trace: Failed to stop device trace, err=" << mlStatus;
-    traceCtx_ = 0;
+    LOG(WARNING) << "nnpi_trace: Failed to stop device trace session, err="
+                 << mlStatus;
+    capsSession_ = 0;
     return false;
   }
 
   return true;
 }
 
-bool NNPITraceContext::createInternalContext() {
-  if (traceCtx_ != 0) {
+bool NNPITraceContext::createInternalContext(bool swTraces, bool hwTraces) {
+  if (capsSession_ != 0) {
+    return false;
+  }
+  nnpimlStatus mlStatus = nnpiIceCapsOpenSession(&capsSession_);
+  if (mlStatus != NNPIML_SUCCESS) {
+    LOG(WARNING) << "nnpi_trace: Failed to trace session, err=" << mlStatus;
+    capsSession_ = 0;
     return false;
   }
   devMask_ = 1UL << devID_;
-  nnpimlStatus mlStatus =
-      nnpimlCreateTraceContext(devMask_, &traceCtx_, &devMask_);
-  if (mlStatus != NNPIML_SUCCESS) {
-    LOG(WARNING) << "nnpi_trace: Failed to start device trace, err="
-                 << mlStatus;
-    traceCtx_ = 0;
-    return false;
+  if (swTraces) {
+    size_t swEventsCount = sizeof(swEventTypes) / sizeof(swEventTypes[0]);
+    size_t idx = 0;
+    IceCapsSwTraceConfig traceConfigs[1 + swEventsCount];
+    traceConfigs[idx].traceOptions.config_type =
+        eIceCapsSwTraceConfigType::ICE_CAPS_SWTRACE_OPTIONS;
+    traceConfigs[idx].traceOptions.device_mask = devMask_;
+    traceConfigs[idx].traceOptions.max_bytes = MAX_TRACE_BUFFER_SIZE;
+    idx++;
+    for (size_t i = 0; i < swEventsCount; i++) {
+      traceConfigs[idx].traceEvent.config_type =
+          eIceCapsSwTraceConfigType::ICE_CAPS_SWTRACE_EVENT;
+      traceConfigs[idx].traceEvent.event = swEventTypes[i];
+      idx++;
+    }
+
+    IceCapsConfig iceSWCapsConfig;
+    iceSWCapsConfig.engine = eIceCapsEngine::ICE_CAPS_SW_TRACE;
+    iceSWCapsConfig.size = sizeof(traceConfigs);
+    iceSWCapsConfig.buffer = traceConfigs;
+    mlStatus = nnpiIceCapsPrepare(capsSession_, &iceSWCapsConfig);
+    if (mlStatus != NNPIML_SUCCESS) {
+      LOG(WARNING)
+          << "nnpi_trace: Failed to set device Software trace options, err="
+          << mlStatus;
+      destroyInternalContext();
+      return false;
+    }
   }
-  if (!(1UL << devID_ & devMask_)) {
-    destroyInternalContext();
-    LOG(WARNING) << "nnpi_trace: Cloud not open trace for device " << devID_;
-    return false;
+  if (hwTraces) {
+    IceCapsHwTraceConfig traceConfigs[2];
+    traceConfigs[0].traceOptions.config_type =
+        eIceCapsHwTraceConfigType::ICE_CAPS_HWTRACE_OPTIONS;
+    traceConfigs[0].traceOptions.device_mask = devMask_;
+    traceConfigs[0].traceOptions.max_trace_size = MAX_TRACE_BUFFER_SIZE;
+    traceConfigs[1].iceFilter.config_type =
+        eIceCapsHwTraceConfigType::ICE_CAPS_HWTRACE_FILTER;
+    traceConfigs[1].iceFilter.ice_mask = 0xFFF; // All ICEs.
+    traceConfigs[1].iceFilter.filter_type =
+        eIceCapsHwTraceFilter::ICE_CAPS_HWTRACE_CAPTURE_ALL;
+
+    IceCapsConfig iceHWCapsConfig;
+    iceHWCapsConfig.engine = eIceCapsEngine::ICE_CAPS_HW_TRACE;
+    iceHWCapsConfig.size = sizeof(traceConfigs);
+    iceHWCapsConfig.buffer = traceConfigs;
+
+    mlStatus = nnpiIceCapsPrepare(capsSession_, &iceHWCapsConfig);
+    if (mlStatus != NNPIML_SUCCESS) {
+      LOG(WARNING)
+          << "nnpi_trace: Failed to set device Hardware trace options, err="
+          << mlStatus;
+      destroyInternalContext();
+      return false;
+    }
   }
+
   return true;
 }
