@@ -42,6 +42,7 @@ extern bool GlowUseCustomOpsForExport;
 extern bool GlowUseSparseNNPartitioningScheme;
 extern bool GlowSparseNNPartitioningAddSLSConcats;
 extern bool GlowDumpGraph;
+extern bool GlowUseDAGOptimizer;
 extern size_t GlowMaxActiveRequests;
 extern size_t GlowMaxQueueSize;
 extern size_t GlowExecutorThreads;
@@ -300,6 +301,13 @@ DEFINE_validator(glow_dump_graph, [](const char * /* unused */, bool value) {
   glow::onnxifi::GlowDumpGraph = value;
   return true;
 });
+
+DEFINE_bool(glow_use_dag_optimizer, false, "Whether to call the DAG optimizer");
+DEFINE_validator(glow_use_dag_optimizer,
+                 [](const char * /* unused */, bool value) {
+                   glow::onnxifi::GlowUseDAGOptimizer = value;
+                   return true;
+                 });
 
 #ifdef GLOW_WITH_NNPI
 // Defined in glow/lib/Backends/NNPI/NNPI.cpp

@@ -39,6 +39,7 @@ bool GlowFP16 = false;
 bool GlowFP16Placeholders = true;
 bool GlowFP16Constants = true;
 bool GlowDumpGraph = false;
+bool GlowUseDAGOptimizer = false;
 bool GlowFusedScaleOffsetFP16 = false;
 bool GlowForceSLSAccumFP16 = false;
 bool GlowClipFP16 = false;
@@ -217,6 +218,10 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
   }
   if (GlowDumpGraph) {
     cctx.dumpFinalGraph = true;
+  }
+  if (GlowUseDAGOptimizer) {
+    LOG(INFO) << "Will call the DAG optimizer.";
+    cctx.callDAGOptimizer = true;
   }
   if (GlowSaveOnnxifiDAG) {
     LOG(INFO) << "Serializing DAG after optimization and partitioning.";
