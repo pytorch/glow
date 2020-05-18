@@ -118,13 +118,16 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
   // handle properly allocation sizes of 0.
   for (const auto &op : operands_) {
     if (op.second == OperandKind::Scratch) {
-      osB << "  dim_t " << op.first << "Size = A->get" << op.first
-          << "Size();\n";
-      osB << "  " << op.first << "Size = " << op.first << "Size > 0 ? "
-          << op.first << "Size : 1;\n";
+      // A special case is when the instruction already has a member called
+      // "<Operand>Size" for which we allow a different type than dim_t for
+      // flexibility and hence we create a local cast here to dim_t.
+      osB << "  dim_t " << op.first << "SizeVar = static_cast<dim_t>(A->get"
+          << op.first << "Size());\n";
+      osB << "  " << op.first << "SizeVar = " << op.first << "SizeVar > 0 ? "
+          << op.first << "SizeVar : 1;\n";
       osB << "  auto *" << op.first << "TypeResized = F_->getGraph()"
           << "->getParent()->uniqueType(ElemKind::Int8QTy, {" << op.first
-          << "Size}, 0.0, 0);\n";
+          << "SizeVar}, 0.0, 0);\n";
       osB << "  " << op.first << "->setType(" << op.first << "TypeResized);\n";
       osB << "  " << op.first << "->setTy(" << op.first << "TypeResized);\n";
     }
@@ -203,7 +206,19 @@ void InstrBuilder::emitSettersGetters(std::ostream &os) const {
   // manually implemented by the instruction creator.
   for (const auto &op : operands_) {
     if (op.second == OperandKind::Scratch) {
-      os << "  dim_t get" << op.first << "Size() const;\n";
+      // A special case is when the instruction already has a member called
+      // "<Operand>Size" for which a getter was already emitted. We detect this
+      // particular case and not emit the getter again.
+      bool hasScratchSizeMember = false;
+      for (const auto &memb : members_) {
+        if (memb.second == (op.first + "Size")) {
+          hasScratchSizeMember = true;
+          break;
+        }
+      }
+      if (!hasScratchSizeMember) {
+        os << "  dim_t get" << op.first << "Size() const;\n";
+      }
     }
   }
 
