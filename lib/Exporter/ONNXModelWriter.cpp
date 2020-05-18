@@ -758,11 +758,12 @@ Error ONNXModelWriter::finalizeAndWriteProto(llvm::StringRef name) {
 ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
                                  size_t irVersion, size_t opsetVersion,
                                  Error *errPtr, bool textMode, bool zipMode,
-                                 bool useGlowCustomOps)
+                                 bool useGlowCustomOps,
+                                 bool includeConstantData)
     : CommonOperatorWriter(modelFilename, &F, errPtr), irVersion_(irVersion),
       opsetVersion_(opsetVersion), zipMode_(zipMode), textMode_(textMode),
-      includeConstantData_(true), useGlowCustomOps_(useGlowCustomOps),
-      dagMode_(false) {
+      includeConstantData_(includeConstantData),
+      useGlowCustomOps_(useGlowCustomOps), dagMode_(false) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;

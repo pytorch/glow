@@ -183,6 +183,23 @@ PlaceholderBindings PlaceholderBindings::clone() const {
   return cloned;
 }
 
+PlaceholderBindings
+PlaceholderBindings::clone(const PlaceholderList &newPHs) const {
+  PlaceholderBindings cloned;
+  for (auto PH : map_) {
+    Placeholder *P = PH.first;
+    Tensor *T = PH.second;
+    auto newPHIt = std::find_if(newPHs.begin(), newPHs.end(), [=](auto *newPH) {
+      return newPH->getName() == P->getName();
+    });
+    DCHECK(newPHIt != newPHs.end())
+        << "Expected to find corresponding PH by name " << P->getName().data();
+    cloned.insert(*newPHIt, T->clone());
+  }
+
+  return cloned;
+}
+
 Tensor *PlaceholderBindings::allocate(Placeholder *P) {
   DCHECK(!map_.count(P)) << "Placeholder with name \"" << P->getName().str()
                          << "\" already registered";

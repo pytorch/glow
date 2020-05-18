@@ -17,6 +17,7 @@
 #define GLOW_BASE_PLACEHOLDERBINDINGS_H
 
 #include "glow/ExecutionContext/TraceEvents.h"
+#include "glow/Graph/Graph.h"
 #include "llvm/ADT/ArrayRef.h"
 
 #include <list>
@@ -111,6 +112,12 @@ public:
   /// \returns a copy of the PlaceholderBindings, with each placeholder mapped
   /// to a new Tensor, with their own memory.
   PlaceholderBindings clone() const;
+
+  /// \returns a copy of the PlaceholderBindings, with each placeholder mapped
+  /// to a new Tensor, with their own memory. However instead of the current
+  /// Placeholders in the current mapping, use the Placeholder with the same
+  /// name found in \p newPHs.
+  PlaceholderBindings clone(const PlaceholderList &newPHs) const;
 
   /// \returns the mapping between placeholder to tensors.
   const PlaceholderMap &pairs() const { return map_; }

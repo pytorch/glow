@@ -499,13 +499,16 @@ public:
   /// there otherwise if an error occurs it will abort.
   /// If \p disableConstFoldInLoader then constant folding will be disabled
   /// during loading. \p B will be used during function verification after
-  /// loading.
+  /// loading. If \p loadIntoExistingModule then all Functions and Storage is
+  /// expected to already exist, so they will be searched for according to the
+  /// proto being loaded instead of created as usual.
   ONNXModelLoader(const std::string &modelDescFilename,
                   llvm::ArrayRef<const char *> tensorNames,
                   llvm::ArrayRef<TypeRef> types, Function &F,
                   Error *errPtr = nullptr, bool zipMode = false,
                   BackendSpecificNodeInfo *perNodeOpts = nullptr,
                   bool disableConstFoldInLoader = false,
+                  bool loadIntoExistingModule = false,
                   const Backend *B = nullptr);
 
   /// Loads the ONNX model that's represented by a model description file,

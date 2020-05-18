@@ -88,6 +88,7 @@ protected:
       ONNXModelLoader onnxLD(pathToModel, {}, {}, *loadedF, &err,
                              /* zipMode */ false, /* perNodeOpts */ nullptr,
                              /* disableConstFoldInLoader */ true,
+                             /* loadIntoExistingModule */ false,
                              &loadedEE.getBackend());
       if (ERR_TO_BOOL(std::move(err))) {
         llvm::sys::fs::remove(pathToModel);
