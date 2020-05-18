@@ -71,6 +71,17 @@ target_link_libraries(Int8GemmParallelBench
                         HostManager
                         CPURuntimeNative)
 
+add_executable(Int8Conv2dParallelBench
+               Int8Conv2dParallelBench.cpp)
+target_link_libraries(Int8Conv2dParallelBench
+                      PRIVATE
+                        Backends
+                        ExecutionEngine
+                        Graph
+                        GraphOptimizer
+                        HostManager
+                        CPURuntimeNative)
+
 add_executable(BatchGemmBench
                BatchGemmBench.cpp)
 target_link_libraries(BatchGemmBench
