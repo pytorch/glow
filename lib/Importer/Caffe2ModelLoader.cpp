@@ -2154,6 +2154,10 @@ Error Caffe2ModelLoader::initWithModule(caffe2::NetDef &networkDef,
       PPC->funcs.push_back(F);
       PPC->logicalIDs.emplace_back(funToIDs[F]);
       PPC->backendSpecificOpts.emplace_back(funToOpts[F]);
+      // Replication counts not currently loaded through C2, so default to 1.
+      PPC->replicationCounts.emplace_back(1);
+      // Backend hints not currently loaded through C2, so use default.
+      PPC->backendHints.emplace_back();
       RETURN_ERR_IF_NOT(F->verify(), "Function verification failed.");
     }
   }

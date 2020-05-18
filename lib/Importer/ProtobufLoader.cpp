@@ -239,8 +239,8 @@ bool ProtobufLoader::hasNodeByName(llvm::StringRef name) const {
 
 ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                                llvm::ArrayRef<TypeRef> types, Module &mod,
-                               Error *errPtr)
-    : G_(nullptr), mod_(mod) {
+                               Error *errPtr, bool loadIntoExistingModule)
+    : G_(nullptr), mod_(mod), loadIntoExistingModule_(loadIntoExistingModule) {
   setupLoader(tensorNames, types, errPtr);
 }
 

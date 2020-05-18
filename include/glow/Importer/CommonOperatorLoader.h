@@ -744,8 +744,14 @@ protected:
 
       if (intermediate) {
         const std::string &opName = loadOperatorName(op);
-        Placeholder *PH = mod_.createPlaceholder(in.getType(), op.output(0),
-                                                 /* isTrainable */ false);
+        Placeholder *PH = nullptr;
+        if (loadIntoExistingModule_) {
+          PH = mod_.getPlaceholderByNameSlow(op.output(0));
+          RETURN_ERR_IF_NOT(PH, "Did not find intermediate PH" + op.output(0));
+        } else {
+          PH = mod_.createPlaceholder(in.getType(), op.output(0),
+                                      /* isTrainable */ false);
+        }
         G_->createSave(opName, in, PH, /* skipSuffix */ true);
         intermediatePHsByName_[op.output(0)] = PH;
         in = PH->getOutput();

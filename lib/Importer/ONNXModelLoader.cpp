@@ -170,6 +170,20 @@ Expected<std::string> getAttrFromDocString(const std::string &attr,
   return docStr.substr(begin, docStr.find(startChar, begin) - begin);
 }
 
+Expected<std::pair<bool, std::string>>
+getTrainableLayoutPairFromDocString(const std::string &docString,
+                                    bool useGlowCustomOps) {
+  std::string layout = ANY_LAYOUT;
+  std::string isTrainableStr = "0";
+  if (useGlowCustomOps) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        isTrainableStr, getAttrFromDocString(trainableSignifier, docString));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        layout, getAttrFromDocString(layoutSignifier, docString));
+  }
+  return std::make_pair(isTrainableStr != "0", layout);
+}
+
 Expected<std::pair<float, int32_t>>
 getQuantParamsFromDocString(const std::string &docStr) {
   std::string scaleStr;
@@ -632,8 +646,47 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
   return Error::success();
 }
 
-Error ONNXModelLoader::setTensorType(const ONNX_NAMESPACE::ValueInfoProto &in,
-                                     Tensor *T) {
+Expected<Type>
+ONNXModelLoader::getTensorType(const ONNX_NAMESPACE::TensorProto &in) {
+  std::vector<dim_t> dim;
+  for (auto d : in.dims()) {
+    dim.push_back(d);
+  }
+
+  switch (in.data_type()) {
+  case ONNX_NAMESPACE::TensorProto::FLOAT:
+    return Type(ElemKind::FloatTy, dim);
+
+  case ONNX_NAMESPACE::TensorProto::FLOAT16:
+    return Type(ElemKind::Float16Ty, dim);
+
+  case ONNX_NAMESPACE::TensorProto::INT64:
+    return Type(ElemKind::Int64ITy, dim);
+
+  case ONNX_NAMESPACE::TensorProto::UINT8:
+  case ONNX_NAMESPACE::TensorProto::INT8:
+  case ONNX_NAMESPACE::TensorProto::INT16:
+    return parseTypeFromDocString(in.doc_string(), dim, useGlowCustomOps_);
+
+  case ONNX_NAMESPACE::TensorProto::INT32:
+    if (in.has_doc_string()) {
+      return parseTypeFromDocString(in.doc_string(), dim, useGlowCustomOps_);
+    }
+    return Type(ElemKind::Int32ITy, dim);
+
+  case ONNX_NAMESPACE::TensorProto::BOOL:
+    return Type(ElemKind::BoolTy, dim);
+
+  default:
+    RETURN_ERR(strFormat("Unsupported tensor data type: %u",
+                         static_cast<unsigned>(in.data_type())),
+               ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+  }
+  llvm_unreachable("Unsupported tensor data type");
+}
+
+Expected<Type>
+ONNXModelLoader::getTensorType(const ONNX_NAMESPACE::ValueInfoProto &in) {
   auto type = in.type();
 
   std::vector<dim_t> dim;
@@ -665,10 +718,25 @@ Error ONNXModelLoader::setTensorType(const ONNX_NAMESPACE::ValueInfoProto &in,
   if (isQuantizedElemKind(kind)) {
     assert(useGlowCustomOps_ &&
            "Quantized loading not fully supported without custom Glow ops.");
-    T->reset(kind, dim, scale, offset);
-  } else {
-    T->reset(kind, dim);
+    return Type(kind, dim, scale, offset);
   }
+  return Type(kind, dim);
+}
+
+/// \returns whether there's an issue with pre-existing \p S with name \p name,
+/// \p ty, \p layout, and \p trainable (for Placeholders).
+static Error verifyPreexistingStorage(const Storage *S, const std::string &name,
+                                      const Type &ty, const std::string &layout,
+                                      const bool trainable = false) {
+  RETURN_ERR_IF_NOT(S, "Storage did not exist in Module: " + name);
+  RETURN_ERR_IF_NOT(S->getType()->isEqual(ty),
+                    "Incorrect type for existing Storage " + name);
+  if (const Placeholder *PH = llvm::dyn_cast<Placeholder>(S)) {
+    RETURN_ERR_IF_NOT(trainable == PH->isTraining(),
+                      "Incorrect trainability for existing Storage " + name);
+  }
+  RETURN_ERR_IF_NOT(layout == S->getLayout(),
+                    "Incorrect layout for existing Storage " + name);
   return Error::success();
 }
 
@@ -680,30 +748,37 @@ Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
       continue;
     }
 
+    Type ty;
+    ASSIGN_VALUE_OR_RETURN_ERR(ty, getTensorType(in));
+    std::pair<bool, std::string> trainableLayoutPair;
+    ASSIGN_VALUE_OR_RETURN_ERR(trainableLayoutPair,
+                               getTrainableLayoutPairFromDocString(
+                                   in.doc_string(), useGlowCustomOps_));
+
+    // If we already have the existing module then just get the input PH that
+    // already exists.
+    if (loadIntoExistingModule_) {
+      RETURN_ERR_IF_NOT(
+          loadInputsAsPlaceholdersForOnnx,
+          "Must load inputs as Placeholders when using existing Module.");
+      Placeholder *PH = mod_.getPlaceholderByNameSlow(in.name());
+      RETURN_IF_ERR(verifyPreexistingStorage(PH, in.name(), ty,
+                                             trainableLayoutPair.second,
+                                             trainableLayoutPair.first));
+      nodeValueByName_[in.name()] = PH->getOutput();
+      continue;
+    }
+
     if (loadInputsAsPlaceholdersForOnnx) {
-      Tensor T;
-      RETURN_IF_ERR(setTensorType(in, &T));
-
-      std::string isTrainable = "0";
-      std::string layout = ANY_LAYOUT;
-      if (useGlowCustomOps_) {
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            isTrainable,
-            getAttrFromDocString(trainableSignifier, in.doc_string()));
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            layout, getAttrFromDocString(layoutSignifier, in.doc_string()));
-      }
-
       Placeholder *placeholder;
       ASSIGN_VALUE_OR_RETURN_ERR(
           placeholder,
-          createAndRegisterPlaceholder(in.name(), &T.getType(),
-                                       staticInputs_.count(in.name()),
-                                       isTrainable != "0", layout));
+          createAndRegisterPlaceholder(
+              in.name(), mod_.uniqueType(ty), staticInputs_.count(in.name()),
+              trainableLayoutPair.first, trainableLayoutPair.second));
       inputVarsByName_.try_emplace(in.name(), placeholder);
     } else {
-      Tensor T;
-      RETURN_IF_ERR(setTensorType(in, &T));
+      Tensor T(ty);
       RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(T)));
     }
   }
@@ -4003,6 +4078,22 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
 Error ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
   // Load the network initializers:
   for (const auto &in : net.initializer()) {
+    // If we already an existing module then expect to find Constants already
+    // existing for each initializer.
+    if (loadIntoExistingModule_) {
+      Constant *C = mod_.getConstantByName(in.name());
+      Type ty;
+      ASSIGN_VALUE_OR_RETURN_ERR(ty, getTensorType(in));
+      std::string layout = ANY_LAYOUT;
+      if (useGlowCustomOps_) {
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            layout, getAttrFromDocString(layoutSignifier, in.doc_string()));
+      }
+      RETURN_IF_ERR(verifyPreexistingStorage(C, in.name(), ty, layout));
+      nodeValueByName_[in.name()] = C->getOutput();
+      continue;
+    }
+
     Tensor T;
     RETURN_IF_ERR(loadTensor(in, &T, useGlowCustomOps_));
 
@@ -4037,19 +4128,24 @@ Error ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
     const std::string &saveNodeName =
         hasSpecifiedSaveName ? saveName.get() : outputName;
 
-    std::string isTrainable = "0";
-    std::string layout = ANY_LAYOUT;
-    if (useGlowCustomOps_) {
-      ASSIGN_VALUE_OR_RETURN_ERR(
-          isTrainable, getAttrFromDocString(trainableSignifier, docString));
-      ASSIGN_VALUE_OR_RETURN_ERR(
-          layout, getAttrFromDocString(layoutSignifier, docString));
-    }
+    std::pair<bool, std::string> trainableLayoutPair;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        trainableLayoutPair,
+        getTrainableLayoutPairFromDocString(docString, useGlowCustomOps_));
 
-    Placeholder *placeholder = mod_.createPlaceholder(
-        r.getType(), outputName, isTrainable != "0", layout);
+    Placeholder *savePH = nullptr;
+    if (loadIntoExistingModule_) {
+      savePH = mod_.getPlaceholderByNameSlow(outputName);
+      RETURN_IF_ERR(verifyPreexistingStorage(savePH, outputName, *r.getType(),
+                                             trainableLayoutPair.second,
+                                             trainableLayoutPair.first));
+    } else {
+      savePH = mod_.createPlaceholder(r.getType(), outputName,
+                                      trainableLayoutPair.first,
+                                      trainableLayoutPair.second);
+    }
     SaveNode *SN =
-        G_->createSave(saveNodeName, r, placeholder, hasSpecifiedSaveName);
+        G_->createSave(saveNodeName, r, savePH, hasSpecifiedSaveName);
     outputVarsByName_[outputName] = SN->getPlaceholder();
   }
 
@@ -4268,9 +4364,16 @@ Error ONNXModelLoader::setupPartitions(ONNX_NAMESPACE::ModelProto &modelDef,
     RETURN_ERR_IF_NOT(pName, "Didn't find expected partition name");
 
     // Load the partition name and create a Function with the same name.
-    const std::string funName = pName;
-    PPC.partitionNames.emplace_back(funName);
-    Function *PF = mod_.createFunction(funName);
+    Function *PF = nullptr;
+    if (loadIntoExistingModule_) {
+      PF = mod_.getFunction(pName);
+      RETURN_ERR_IF_NOT(PF,
+                        strFormat("Didn't find existing Function %s", pName));
+      RETURN_ERR_IF_NOT(PF->getNodes().size() == 0,
+                        "Function must be empty to load into.");
+    } else {
+      PF = mod_.createFunction(pName);
+    }
     partNameToFun_[pName] = PF;
     PPC.funcs.push_back(PF);
 
@@ -4336,8 +4439,10 @@ ONNXModelLoader::ONNXModelLoader(
     llvm::ArrayRef<const char *> tensorNames, llvm::ArrayRef<TypeRef> types,
     Module &mod, llvm::StringRef funName, PrePartitionedConfig *PPC,
     Error *errPtr, bool zipMode, BackendSpecificNodeInfo *perNodeOpts,
-    bool disableConstFoldInLoader, const Backend *B)
-    : CommonOperatorLoader(tensorNames, types, mod, errPtr),
+    bool loadIntoExistingModule, bool disableConstFoldInLoader,
+    const Backend *B)
+    : CommonOperatorLoader(tensorNames, types, mod, errPtr,
+                           loadIntoExistingModule),
       perNodeOpts_(perNodeOpts) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {

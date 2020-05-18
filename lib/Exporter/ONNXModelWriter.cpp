@@ -629,7 +629,8 @@ Error ONNXModelWriter::writeFunction() {
                                 ? C->getOutput().generateNodeOutputName(
                                       /* stripResNoFor0thInput */ true)
                                 : C->getName().str());
-      writeTensor(C->getPayload(), tensorProto, useGlowCustomOps_);
+      writeTensor(C->getPayload(), tensorProto, useGlowCustomOps_,
+                  includeConstantData_);
       if (useGlowCustomOps_) {
         // Also include the layout in the initializer to be loaded later.
         addAttrToDocString(tensorProto, layoutSignifier, C->getLayout());
@@ -649,6 +650,10 @@ Error ONNXModelWriter::writeFunction() {
         proto->add_input(SN->getInput().generateNodeOutputName(
             /* stripResNoFor0thInput */ true));
         proto->add_output(PH->getName().data());
+        addTypeAttributes(proto, SN->getInput(), SaveNode::InputIdx,
+                          /* isInput */ true);
+        addTypeAttributes(proto, SN->getOutput(), SaveNode::OutputIdx,
+                          /* isInput */ false);
         // If dumping a DAG then add partition names to each op that's written.
         if (dagMode_) {
           addValueAttribute(proto, "partitionName", F_->getName().str());
@@ -756,7 +761,8 @@ ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
                                  bool useGlowCustomOps)
     : CommonOperatorWriter(modelFilename, &F, errPtr), irVersion_(irVersion),
       opsetVersion_(opsetVersion), zipMode_(zipMode), textMode_(textMode),
-      useGlowCustomOps_(useGlowCustomOps), dagMode_(false) {
+      includeConstantData_(true), useGlowCustomOps_(useGlowCustomOps),
+      dagMode_(false) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -867,10 +873,12 @@ Error ONNXModelWriter::writePartitionAndMetadataProps(
 ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename,
                                  DAGListTy &dagList, size_t irVersion,
                                  size_t opsetVersion, Error *errPtr,
-                                 bool textMode, bool zipMode)
+                                 bool textMode, bool zipMode,
+                                 bool includeConstantData)
     : CommonOperatorWriter(modelFilename, nullptr, errPtr),
       irVersion_(irVersion), opsetVersion_(opsetVersion), zipMode_(zipMode),
-      textMode_(textMode), useGlowCustomOps_(true), dagMode_(true) {
+      textMode_(textMode), includeConstantData_(includeConstantData),
+      useGlowCustomOps_(true), dagMode_(true) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -953,7 +961,7 @@ static void addQuantParamsToDocString(T *out, const Type &type) {
 }
 
 void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out,
-                                  bool useGlowCustomOps) {
+                                  bool useGlowCustomOps, bool includeData) {
   const auto &type = T.getType();
   out->set_data_type(convertType(type));
   const auto &dims = type.dims();
@@ -961,7 +969,9 @@ void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out,
     out->add_dims(dims[b]);
   }
 
-  out->set_raw_data(T.getUnsafePtr(), type.getSizeInBytes());
+  if (includeData) {
+    out->set_raw_data(T.getUnsafePtr(), type.getSizeInBytes());
+  }
 
   if (useGlowCustomOps) {
     addAttrToDocString(out, elemKindSignifier, type.getElementName());

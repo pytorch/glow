@@ -111,33 +111,44 @@ static void verifyDAGSerialization(DAGListTy &dagList, Module &origMod,
   std::string outputFilename(path.c_str());
   std::cout << "Writing to file: " << outputFilename << std::endl;
   {
+    // Note: do not include Constant data when we write out; we will reuse the
+    // Module so we don't need to save it.
     Error err = Error::empty();
     ONNXModelWriter onnxWR(outputFilename, dagList, 7, 9, &err,
-                           /* textMode */ false, /* zipMode */ true);
+                           /* textMode */ false, /* zipMode */ false,
+                           /* includeConstantData */ false);
 
     if (ERR_TO_BOOL(std::move(err))) {
       llvm::errs() << "ONNXModelWriter failed to write model: "
-                   << outputFilename << ".\n";
+                   << outputFilename << "\n";
       llvm::sys::fs::remove(outputFilename);
       FAIL() << "Error exporting DAG.";
     }
   }
 
-  ExecutionEngine loadedEE("Interpreter", /* deviceMemory (16GB) */ 0x400000000,
+  // Create a new EE using the same module. Note that we assume devices are
+  // homogenous here.
+  ExecutionEngine loadedEE(devices[0].backendName, devices[0].availableMemory,
                            /* ignoreUserDeviceConfig */ false,
-                           /* numDevices */ 3);
+                           /* numDevices */ devices.size());
+  // Clone the original module into the one in the EE; we're going to
+  // deserialize the DAG into it as if we're reusing the same Module.
+  origMod.clone(&loadedEE.getModule());
   Module &loadedMod = loadedEE.getModule();
   CompilationContext loadedCctx;
   runtime::PrePartitionedConfig PPC;
   loadedCctx.prepartitionedConfig = &PPC;
   {
+    // Clear out Functions from Nodes. We will reuse the empty Functions.
+    loadedMod.clearFunctions();
     Error err = Error::empty();
-    ONNXModelLoader onnxLD(outputFilename, {}, {}, loadedMod, "main", &PPC,
-                           &err, /* zipMode */ true,
-                           &loadedCctx.backendOpts.backendSpecificNodeInfo);
+    ONNXModelLoader onnxLD(
+        outputFilename, {}, {}, loadedMod, "main", &PPC, &err,
+        /* zipMode */ false, &loadedCctx.backendOpts.backendSpecificNodeInfo,
+        /* loadIntoExistingModule */ true);
     if (ERR_TO_BOOL(std::move(err))) {
-      llvm::errs() << "ONNXModelLoader failed to load model: "
-                   << outputFilename;
+      llvm::errs() << "ONNXModelLoader failed to load model: " << outputFilename
+                   << "\n";
       llvm::sys::fs::remove(outputFilename);
       FAIL() << "Error importing DAG.";
     }
@@ -216,17 +227,18 @@ static void verifyDAGSerialization(DAGListTy &dagList, Module &origMod,
   }
   EXPECT_EQ(origMod.toString(), loadedMod.toString());
 
+  // Now reset bindings and run, checking results are bitwise equal from before
+  // and after serialization. Note that we still use the same PPC -- it will
+  // re-partition/setup the same DAG inside compilation.
+  loadedEE.compile(loadedCctx);
   bindings.clear();
   bindings.allocate(loadedMod.getPlaceholders());
-  // Reset prepartitioned config since we've already partitioned.
-  loadedCctx.prepartitionedConfig = nullptr;
-  loadedEE.compile(loadedCctx);
   std::vector<Placeholder *> inPHs;
   for (const llvm::StringRef &inName : inputNames) {
     inPHs.push_back(bindings.getPlaceholderByNameSlow(inName));
   }
-  executeDAG(loadedDAG.root.get(), loadedMod, bindings, inPHs, inputs,
-             &loadedEE);
+  updateInputPlaceholders(bindings, inPHs, inputs);
+  loadedEE.run(bindings);
   Tensor test =
       bindings.get(bindings.getPlaceholderByNameSlow(resultName))->clone();
   EXPECT_TRUE(ref.isEqual(test, 0.0f));
@@ -317,15 +329,13 @@ TEST_F(PartitionerTest, Basic1) {
   bindings_.clear();
   bindings_.allocate(EEP.getModule().getPlaceholders());
   EEP.compile(cctx);
-  for (auto it = dagList->begin(); it != dagList->end(); ++it) {
-    executeDAG((*it).root.get(), EEP.getModule(), bindings_,
-               {bindings_.getPlaceholderByNameSlow("input")}, {&in}, &EEP);
-    Tensor test =
-        bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
-    EXPECT_TRUE(ref.isEqual(test, 0.0f));
-    verifyDAGSerialization(*dagList, EEP.getModule(), bindings_, {"input"},
-                           "ret", devices, {&in}, ref);
-  }
+  executeDAG(dagList->begin()->root.get(), EEP.getModule(), bindings_,
+             {bindings_.getPlaceholderByNameSlow("input")}, {&in}, &EEP);
+  Tensor test =
+      bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
+  EXPECT_TRUE(ref.isEqual(test, 0.0f));
+  verifyDAGSerialization(*dagList, EEP.getModule(), bindings_, {"input"}, "ret",
+                         devices, {&in}, ref);
 }
 
 /// This one tests the model with this feature: after BFS, there is one level,
@@ -418,20 +428,17 @@ TEST_F(PartitionerTest, Basic2) {
   bindings_.clear();
   bindings_.allocate(EEP.getModule().getPlaceholders());
   EEP.compile(cctx);
-  for (auto it = dagList.begin(); it != dagList.end(); ++it) {
-    updateInputPlaceholders(bindings_,
-                            {bindings_.getPlaceholderByNameSlow("input"),
-                             bindings_.getPlaceholderByNameSlow("input1")},
-                            {&in, &in});
-    executeDAG((*it).root.get(), EEP.getModule(), bindings_,
-               {bindings_.getPlaceholderByNameSlow("input")}, {&in}, &EEP);
-    Tensor test =
-        bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
-    ASSERT_TRUE(ref.isEqual(test, 0.0f));
-    verifyDAGSerialization(dagList, EEP.getModule(), bindings_,
-                           {"input", "input1"}, "ret", devices, {&in, &in},
-                           ref);
-  }
+  updateInputPlaceholders(bindings_,
+                          {bindings_.getPlaceholderByNameSlow("input"),
+                           bindings_.getPlaceholderByNameSlow("input1")},
+                          {&in, &in});
+  executeDAG(dagList.begin()->root.get(), EEP.getModule(), bindings_,
+             {bindings_.getPlaceholderByNameSlow("input")}, {&in}, &EEP);
+  Tensor test =
+      bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
+  ASSERT_TRUE(ref.isEqual(test, 0.0f));
+  verifyDAGSerialization(dagList, EEP.getModule(), bindings_,
+                         {"input", "input1"}, "ret", devices, {&in, &in}, ref);
 }
 
 /// This one tests the error msg: if the number of partitions is larger than
@@ -1590,15 +1597,13 @@ TEST_F(PartitionerTest, loadBalancedPartition) {
   bindings_.clear();
   bindings_.allocate(EEP.getModule().getPlaceholders());
   EEP.compile(cctx);
-  for (auto it = dagList->begin(); it != dagList->end(); ++it) {
-    executeDAG((*it).root.get(), EEP.getModule(), bindings_,
-               {bindings_.getPlaceholderByNameSlow("input")}, {&in}, &EEP);
-    Tensor test =
-        bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
-    EXPECT_TRUE(ref.isEqual(test, 0.0f));
-    verifyDAGSerialization(*dagList, EEP.getModule(), bindings_, {"input"},
-                           "ret", devices, {&in}, ref);
-  }
+  executeDAG(dagList->begin()->root.get(), EEP.getModule(), bindings_,
+             {bindings_.getPlaceholderByNameSlow("input")}, {&in}, &EEP);
+  Tensor test =
+      bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
+  EXPECT_TRUE(ref.isEqual(test, 0.0f));
+  verifyDAGSerialization(*dagList, EEP.getModule(), bindings_, {"input"}, "ret",
+                         devices, {&in}, ref);
 }
 
 /// This tests the pre-partitioned flow.
@@ -1622,6 +1627,12 @@ TEST_F(PartitionerTest, PrePartitionedTest) {
   PPC.backendSpecificOpts.emplace_back(
       BackendSpecificOptions{{"opt2", "val2"}});
   PPC.backendSpecificOpts.emplace_back(BackendSpecificOptions{});
+  PPC.replicationCounts.push_back(3);
+  PPC.replicationCounts.push_back(4);
+  PPC.replicationCounts.push_back(1);
+  PPC.backendHints.push_back({7, {"a"}});
+  PPC.backendHints.push_back({8, {"b"}});
+  PPC.backendHints.push_back({9, {"c", "d"}});
 
   auto *I0 = mod_.createPlaceholder(ElemKind::FloatTy, {5, 5}, "I0", false);
   auto *I1 = mod_.createPlaceholder(ElemKind::FloatTy, {5, 5}, "I1", false);
@@ -1671,6 +1682,10 @@ TEST_F(PartitionerTest, PrePartitionedTest) {
   EXPECT_EQ(D0->backendSpecificOpts.at("opt0"), "val0");
   ASSERT_TRUE(D0->backendSpecificOpts.count("opt1"));
   EXPECT_EQ(D0->backendSpecificOpts.at("opt1"), "val1");
+  EXPECT_EQ(D0->replicationCount, 3);
+  EXPECT_EQ(D0->backendHints.executionUnits, 7);
+  ASSERT_EQ(D0->backendHints.SRAMPrioritization.size(), 1);
+  EXPECT_EQ(D0->backendHints.SRAMPrioritization[0], "a");
 
   ASSERT_EQ(D0->children.size(), 2);
   DAGNode *D1 = (D0->children[0]->name == F1->getName()) ? D0->children[0]
@@ -1686,6 +1701,10 @@ TEST_F(PartitionerTest, PrePartitionedTest) {
   EXPECT_EQ(D1->backendSpecificOpts.size(), 1);
   ASSERT_TRUE(D1->backendSpecificOpts.count("opt2"));
   EXPECT_EQ(D1->backendSpecificOpts.at("opt2"), "val2");
+  EXPECT_EQ(D1->replicationCount, 4);
+  EXPECT_EQ(D1->backendHints.executionUnits, 8);
+  ASSERT_EQ(D1->backendHints.SRAMPrioritization.size(), 1);
+  EXPECT_EQ(D1->backendHints.SRAMPrioritization[0], "b");
 
   DAGNode *D2 = (D1 == D0->children[0]) ? D0->children[1] : D0->children[0];
   ASSERT_EQ(D2->name, F2->getName());
@@ -1705,4 +1724,9 @@ TEST_F(PartitionerTest, PrePartitionedTest) {
                 SMM->getPlaceholder()->getType()->getSizeInBytes() +
                 finalSave->getPlaceholder()->getType()->getSizeInBytes());
   EXPECT_EQ(D2->backendSpecificOpts.size(), 0);
+  EXPECT_EQ(D2->replicationCount, 1);
+  EXPECT_EQ(D2->backendHints.executionUnits, 9);
+  ASSERT_EQ(D2->backendHints.SRAMPrioritization.size(), 2);
+  EXPECT_EQ(D2->backendHints.SRAMPrioritization[0], "c");
+  EXPECT_EQ(D2->backendHints.SRAMPrioritization[1], "d");
 }
