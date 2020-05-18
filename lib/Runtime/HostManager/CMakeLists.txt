@@ -6,6 +6,8 @@ target_link_libraries(HostManager
                         Backends
                         Base
                         Executor
+                        Exporter
+                        Importer
                         Graph
                         GraphOptimizer
                         Partitioner

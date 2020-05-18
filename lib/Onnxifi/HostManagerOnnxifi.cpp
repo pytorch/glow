@@ -48,6 +48,7 @@ bool GlowSparseNNPartitioningAddSLSConcats = false;
 size_t GlowMaxActiveRequests = 48;
 size_t GlowMaxQueueSize = 100;
 size_t GlowExecutorThreads = 10;
+bool GlowSaveOnnxifiDAG = false;
 
 static llvm::cl::opt<int32_t, true>
     GlowNumDevicesOpt("glow-num-devices",
@@ -216,6 +217,10 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
   }
   if (GlowDumpGraph) {
     cctx.dumpFinalGraph = true;
+  }
+  if (GlowSaveOnnxifiDAG) {
+    LOG(INFO) << "Serializing DAG after optimization and partitioning.";
+    cctx.serializeCompiledDAG = true;
   }
   cctx.saturateHost = GlowSaturateHost;
 

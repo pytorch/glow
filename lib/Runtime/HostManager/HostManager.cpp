@@ -16,6 +16,7 @@
 
 #include "glow/Runtime/HostManager/HostManager.h"
 #include "glow/Backends/DeviceManager.h"
+#include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Partitioner/Partitioner.h"
@@ -25,6 +26,7 @@
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormatVariadic.h"
 
 #include <glog/logging.h>
@@ -261,6 +263,19 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
     cleanupAddNetwork(names);
     return result.takeError();
+  }
+
+  // If requested, serialize the resulting DAG that was just optimized and
+  // partitioned.
+  if (cctx.serializeCompiledDAG) {
+    std::string loc = nodeList.begin()->root->name + ".zip";
+    LOG(INFO) << "Serializing DAG to " << loc;
+    {
+      Error writeErr = Error::empty();
+      ONNXModelWriter onnxWR(loc, nodeList, 7, 9, &writeErr,
+                             /* textMode */ false, /* zipMode */ true);
+      RETURN_IF_ERR(writeErr);
+    }
   }
 
   if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {
