@@ -142,9 +142,10 @@ void NetworkExecutionState::init(
         // reuse the allocation.
         auto bufferIt = buffers_.find(PH);
         if (bufferIt == buffers_.end()) {
-
-          buffers_[PH] =
+          auto *deviceBuffer =
               device->allocateDeviceIOBuffer(PH->getType()->getSizeInBytes());
+          buffers_[PH] = deviceBuffer;
+          deviceAllocations_.insert({deviceBuffer, device.get()});
         }
         auto buffer = buffers_[PH];
         Tensor *backingTensor = new Tensor(buffer, PH->getType());
