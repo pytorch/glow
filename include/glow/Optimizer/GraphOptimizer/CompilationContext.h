@@ -198,6 +198,9 @@ struct CompilationContext {
   /// Whether to serialize the DAG that has been optimized and partitioned.
   bool serializeCompiledDAG{false};
 
+  /// Whether to call the DAG optimizer after the DAG is created in HostManager.
+  bool callDAGOptimizer{false};
+
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)
       : bindings(bindings_), loweredInfoMap(loweredInfoMap_) {}

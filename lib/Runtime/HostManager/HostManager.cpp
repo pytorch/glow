@@ -55,6 +55,12 @@ bool GlowEnableDRT = false;
 } // namespace runtime
 } // namespace glow
 
+#if FACEBOOK_INTERNAL
+Error optimizeDAG(DAGListTy &nodeList, Module &mod,
+                  const std::vector<DeviceInfo> &devices,
+                  CompilationContext &cctx);
+#endif /* FACEBOOK_INTERNAL */
+
 /// The device configs file used for Runtime.
 llvm::cl::opt<std::string> loadDeviceConfigsFileOpt(
     "load-device-configs",
@@ -277,6 +283,17 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       RETURN_IF_ERR(writeErr);
     }
   }
+
+#if FACEBOOK_INTERNAL
+  if (cctx.callDAGOptimizer) {
+    auto optDagErr = optimizeDAG(nodeList, *module, deviceInfo, cctx);
+    if (optDagErr) {
+      std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+      cleanupAddNetwork(names);
+      return optDagErr;
+    }
+  }
+#endif /* FACEBOOK_INTERNAL */
 
   if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {
     // Since for profiling the provisioner will be reset, we only allow one
