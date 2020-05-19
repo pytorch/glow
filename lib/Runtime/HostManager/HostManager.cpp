@@ -181,6 +181,17 @@ void HostManager::cleanupAddNetwork(llvm::ArrayRef<std::string> names) {
 
 Error HostManager::addNetwork(std::unique_ptr<Module> module,
                               CompilationContext &cctx) {
+  ScopeGuard debugDumpDAGGuard([&]() {
+    if (cctx.dumpFinalGraph) {
+      for (Function *F : module->getFunctions()) {
+        auto fname =
+            strFormat("final_graph_dbg_err_%s.dot", F->getName().data());
+        LOG(INFO) << "Dumping final graph due to error to " << fname;
+        F->dumpDAG(fname);
+      }
+    }
+  });
+
   std::vector<std::string> names;
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
@@ -326,6 +337,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     }
     return err;
   }
+  debugDumpDAGGuard.dismiss();
 
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
