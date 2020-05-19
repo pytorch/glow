@@ -25,6 +25,7 @@
 
 #include <ATen/ATen.h>
 #include <ATen/core/dispatch/Dispatcher.h>
+#include <ATen/native/c10_utils.h>
 #include <ATen/native/quantized/cpu/conv_packed_params.h>
 #include <ATen/native/quantized/cpu/packed_params.h>
 #include <torch/csrc/jit/ir/ir.h>
