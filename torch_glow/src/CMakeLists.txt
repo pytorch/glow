@@ -61,7 +61,8 @@ target_link_libraries(_torch_glow
                         PyTorchModelLoader
                         TorchGlowTraining
                         Backends
-                        pybind11)
+                        pybind11
+                        torch_python)
 
 target_include_directories(PyTorchModelLoader PUBLIC
                             ${PYTORCH_DIR}/include)
