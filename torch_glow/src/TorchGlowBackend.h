@@ -3,7 +3,6 @@
 #define GLOW_TORCH_GLOW_BACKEND_H
 
 #include "CachingGraphRunner.h"
-#include <torch/csrc/jit/api/module.h>
 #include <torch/csrc/jit/backends/backend_interface.h>
 
 namespace glow {
