@@ -397,6 +397,18 @@ struct ConvInputs {
   };
 };
 
+struct Conv2DInputs {
+  enum {
+    input = 0, // NCHW
+    weights = 1,
+    bias = 2,
+    stride = 3,
+    padding = 4,
+    dilation = 5,
+    groups = 6,
+  };
+};
+
 /// Indexes of aten::mean inputs.
 struct MeanInputs {
   enum {
@@ -774,6 +786,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::reshape"}, &PyTorchModelLoader::loadReshape},
       {{"aten::view"}, &PyTorchModelLoader::loadView},
       {{"aten::_convolution"}, &PyTorchModelLoader::loadConvolution},
+      {{"aten::conv2d"}, &PyTorchModelLoader::loadConv2D},
       {{"aten::batch_norm"}, &PyTorchModelLoader::loadBatchNorm},
       {{"aten::layer_norm"}, &PyTorchModelLoader::loadLayerNorm},
       {{"aten::max_pool2d"}, &PyTorchModelLoader::loadMaxPool2d},
@@ -2241,6 +2254,80 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
     output = F_.createTranspose("conv_output_transposed", conv->getResult(),
                                 NHWC2NCHW);
   }
+  return addValueMapping(outputs[0], output->getResult());
+}
+
+Error PyTorchModelLoader::loadConv2D(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
+
+  // Glow expects conv inputs to be in NHWC but PyTorch keeps them in NCHW so
+  // we transpose them.
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[Conv2DInputs::input]));
+
+  // Glow expects conv weights to be in CRSK but PyTorch keeps them in CKRS
+  // so we transpose them. C - output_depth, R - filter_height, S -
+  // filter_width, K - input_depth.
+  glow::NodeValue weights;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weights, getGlowNodeValueForValue(inputs[Conv2DInputs::weights]));
+
+  RETURN_ERR_IF_NOT(input.dims().size() == 4 &&
+                        input.dims().size() == weights.dims().size(),
+                    "Expect 4 dims in input and weights for conv2d");
+
+  input = F_.createTranspose("conv_input_transposed", input, NCHW2NHWC);
+  weights = F_.createTranspose("conv_weights_transposed", weights, NCHW2NHWC);
+
+  // If a bias was provided then use it otherwise create a 0 bias.
+  glow::dim_t biasDim = weights.dims()[0];
+  glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[Conv2DInputs::bias], "conv_bias",
+      glow::Type(ElemKind::FloatTy, {biasDim}), 0);
+
+  std::vector<glow::unsigned_t> strides;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      strides, castVector<glow::unsigned_t>(expandIntIValIfNeeded(
+                   getGlowIValueForValue(inputs[Conv2DInputs::stride]),
+                   input.dims().size() - 2)));
+
+  std::vector<glow::unsigned_t> pads;
+  glow::unsigned_t pad;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      pad, static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
+               getGlowIValueForValue(inputs[Conv2DInputs::padding]))));
+  pads = {pad, pad, pad, pad};
+
+  glow::unsigned_t dilation;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dilation, static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
+                    getGlowIValueForValue(inputs[Conv2DInputs::dilation]))));
+
+  glow::unsigned_t groups;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      groups, static_cast_expected<glow::unsigned_t>(iValToInt(
+                  getGlowIValueForValue(inputs[Conv2DInputs::groups]))));
+  std::vector<glow::unsigned_t> kernels;
+  glow::ShapeNHWC weightsShape(weights.dims());
+  kernels = {static_cast<glow::unsigned_t>(weightsShape.h),
+             static_cast<glow::unsigned_t>(weightsShape.w)};
+
+  glow::TypeRef outTy;
+  glow::ShapeNHWC inputShape(input.dims());
+  auto outSz = glow::calculateConvPoolOutputDims(
+      inputShape.h, inputShape.w, kernels, strides, pads, dilation);
+  std::array<glow::dim_t, 4> outDims = {
+      {input.dims()[0], outSz.first, outSz.second, weights.dims()[0]}};
+  outTy = F_.getParent()->uniqueType(glow::ElemKind::FloatTy, outDims);
+
+  glow::ConvolutionNode *conv =
+      F_.createConv("conv", input, weights, bias, outTy, kernels, strides, pads,
+                    groups, dilation);
+  glow::TransposeNode *output = F_.createTranspose(
+      "conv_output_transposed", conv->getResult(), NHWC2NCHW);
   return addValueMapping(outputs[0], output->getResult());
 }
 

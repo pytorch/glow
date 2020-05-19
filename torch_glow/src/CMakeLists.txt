@@ -19,7 +19,8 @@ add_library(PyTorchModelLoader
                      GlowIValue.cpp
                      PyTorchCommon.cpp
                      Registration.cpp
-                     PyTorchModelLoader.cpp)
+                     PyTorchModelLoader.cpp
+                     TorchGlowBackend.cpp)
 target_compile_options(PyTorchModelLoader
                       PRIVATE
                         -frtti -fexceptions -DC10_USE_GLOG)
