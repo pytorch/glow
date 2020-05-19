@@ -2407,6 +2407,105 @@ bool EliminateConcatSlice::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Eliminate Slice-Concat patterns which are unnecessary. E.g.:
+///            --  NodeSrc ---                               -NodeSrc-
+///          /        |       |                            /          |
+///       SliceA   SliceB   SliceC     ----->           SliceAB       SliceC
+///           \       /      |                             |           |
+/// NodeE  -  ConcatABE       NodeD              NodeE - ConcatABE   NodeD
+bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
+    Node &node = *it;
+    auto *CN = dyn_cast<ConcatNode>(&node);
+    if (!CN) {
+      continue;
+    }
+    // avoid 1) merging through operators other than Slices
+    // e.g. Slice(A)-Other-Slice(B), A and B are consecutive
+    // 2) merging Slices from different sources
+    // e.g. Slice(A1)-Slice(B1)-Slice(A2)-Slice(B2), A1 and A2, B1 and B2 are
+    // consecutive respectively
+    std::vector<std::vector<SliceNode *>> consecutiveSlices;
+    std::vector<SliceNode *> currConsecutiveSlices;
+    SliceNode *lastSN = nullptr;
+    for (auto &concatInput : CN->getInputs()) {
+      auto *SN = dyn_cast<SliceNode>(concatInput.getNode());
+      // slices with multiple users will not be considered
+      if (!SN || SN->getResult().getNumUsers() > 1) {
+        if (currConsecutiveSlices.size()) {
+          consecutiveSlices.emplace_back(currConsecutiveSlices);
+          currConsecutiveSlices.clear();
+        }
+        lastSN = nullptr;
+        continue;
+      }
+      // slices with different sources will not be considered
+      if (lastSN && (lastSN->getInput() != SN->getInput() ||
+                     !areSlicesConsecutive(lastSN, SN, CN->getDim()))) {
+        consecutiveSlices.emplace_back(currConsecutiveSlices);
+        currConsecutiveSlices.clear();
+      }
+      lastSN = SN;
+      currConsecutiveSlices.emplace_back(SN);
+    }
+    if (currConsecutiveSlices.size()) {
+      consecutiveSlices.emplace_back(currConsecutiveSlices);
+    }
+
+    // Mapping from old Slices to new Slices where the range of each old Slice
+    // is a subset of the corresponding new Slice
+    std::unordered_map<SliceNode *, SliceNode *> oldToNewSlices;
+    for (const auto &slices : consecutiveSlices) {
+      if (slices.size() <= 1) {
+        continue;
+      }
+      SliceNode *firstSlice = slices.front();
+      auto *srcNode = firstSlice->getInput().getNode();
+      std::vector<dim_t> endDims;
+      for (size_t i = 0, e2 = firstSlice->getResult().dims().size(); i < e2;
+           i++) {
+        endDims.emplace_back(slices.back()->getStart()[i] +
+                             slices.back()->getResult().dims()[i]);
+      }
+      auto *newSlice = F->createSlice(firstSlice->getName(), srcNode,
+                                      firstSlice->getStart(), endDims);
+      for (auto *slice : slices) {
+        oldToNewSlices[slice] = newSlice;
+      }
+      changed = true;
+    }
+    if (!oldToNewSlices.size()) {
+      continue;
+    }
+    // Replace the input Slices to CN with the merged Slices
+    std::vector<NodeValue> newConcatInputs;
+    const SliceNode *lastNewSlice = nullptr;
+    for (const auto &concatInput : CN->getInputs()) {
+      auto *SN = dyn_cast<SliceNode>(concatInput.getNode());
+      if (!SN || !oldToNewSlices.count(SN)) {
+        newConcatInputs.emplace_back(concatInput);
+      } else {
+        auto *newSlice = oldToNewSlices[SN];
+        if (newSlice != lastNewSlice) {
+          lastNewSlice = newSlice;
+          newConcatInputs.emplace_back(newSlice);
+        }
+      }
+    }
+    if (newConcatInputs.size() != CN->getInputs().size()) {
+      auto *newConcat =
+          F->createConcat(CN->getName(), newConcatInputs, CN->getDim());
+      CN->getResult().replaceAllUsesOfWith(newConcat);
+    }
+  }
+
+  return changed;
+}
+
 /// Optimize Concat nodes.
 bool OptimizeConcatNodes::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());

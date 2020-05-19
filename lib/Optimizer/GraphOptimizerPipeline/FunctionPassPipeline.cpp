@@ -162,6 +162,9 @@ createDefaultGraphOptimizationPassPipeline() {
        ConvergenceMode::UntilFixedPoint,
        {CompilationMode::Infer}},
 
+      // Try to remove unnecessary Split-Concat operations
+      {FunctionPassID::EliminateSliceConcat},
+
       // Perform a round of Dead Code Elimination to cleanup the final pass.
       getDCEPassConfig(),
   };

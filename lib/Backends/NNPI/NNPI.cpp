@@ -1013,6 +1013,9 @@ NNPIBackend::getOptimizationPipeline() const {
   // Now that things have been sunk try to get rid of unnecessary concats.
   pipeline->pushBack(FunctionPassID::OptimizeConcatNodes);
 
+  // Now try to get rid of unnecessary splits right before concats.
+  pipeline->pushBack(FunctionPassID::EliminateSliceConcat);
+
   // Look for float Relus that we can fuse up into quantized FCs.
   pipeline->pushBack(FunctionPassID::OptimizeQuantFCFloatRelu);
 
