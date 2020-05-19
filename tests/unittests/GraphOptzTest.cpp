@@ -4905,5 +4905,56 @@ TEST_F(GraphOptz, SinkConcatBelowQuantize) {
                                                             mod_.getPRNG());
   bindings_.allocate(input2)->getHandle<float16_t>().randomize(-10, 10,
                                                                mod_.getPRNG());
+}
+
+TEST_F(GraphOptz, EliminateSliceConcatTest) {
+  auto *src1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 70}, "src1", false);
+  auto *src2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 80}, "src2", false);
+  auto *A = F_->createSlice("A", src1, {0, 0}, {10, 10});
+  auto *B = F_->createSlice("B", src1, {0, 10}, {10, 20});
+  auto *C = F_->createSlice("C", src1, {0, 20}, {10, 30});
+  // interleaved Slices with different sources shouldn't merge
+  auto *E = F_->createSlice("E", src1, {0, 30}, {10, 40});
+  auto *F = F_->createSlice("F", src2, {0, 30}, {10, 40});
+  auto *G = F_->createSlice("G", src1, {0, 40}, {10, 50});
+  auto *H = F_->createSlice("H", src2, {0, 40}, {10, 50});
+
+  auto *D = mod_.createPlaceholder(ElemKind::FloatTy, {10, 50}, "D", false);
+  auto *R = F_->createRELU("Relu", C);
+  auto *CN = F_->createConcat("Concat", {A, B, D, E, F, G, H}, 1);
+  F_->createSave("save1", CN);
+  F_->createSave("save2", R);
+
+  EXPECT_EQ(F_->getNodes().size(), 11);
+
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::EliminateSliceConcat, getDCEPassConfig()});
+
+  EXPECT_EQ(optimizedF_->getNodes().size(), 10);
+
+  int numSlicesToConcat = 0;
+  for (const auto &node : optimizedF_->getNodes()) {
+    auto *newCN = llvm::dyn_cast<ConcatNode>(&node);
+    if (!newCN) {
+      continue;
+    }
+    EXPECT_EQ(newCN->getInputs().size(), 6);
+    for (const auto &concatInput : newCN->getInputs()) {
+      auto *SN = llvm::dyn_cast<SliceNode>(concatInput.getNode());
+      if (SN) {
+        numSlicesToConcat++;
+      }
+    }
+  }
+  EXPECT_EQ(numSlicesToConcat, 5);
+
+  bindings_.allocate(src1)->getHandle<float>().randomize(-10.0, 10.0,
+                                                         mod_.getPRNG());
+  bindings_.allocate(src2)->getHandle<float>().randomize(-10.0, 10.0,
+                                                         mod_.getPRNG());
+  bindings_.allocate(D)->getHandle<float>().randomize(-10.0, 10.0,
+                                                      mod_.getPRNG());
   checkNumericalEquivalence();
 }
