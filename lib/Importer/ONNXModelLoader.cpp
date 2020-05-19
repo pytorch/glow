@@ -4301,8 +4301,9 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  Error *errPtr, bool zipMode,
                                  BackendSpecificNodeInfo *perNodeOpts,
                                  bool disableConstFoldInLoader,
-                                 const Backend *B)
-    : CommonOperatorLoader(tensorNames, types, &F, errPtr),
+                                 bool loadIntoExistingModule, const Backend *B)
+    : CommonOperatorLoader(tensorNames, types, &F, errPtr,
+                           loadIntoExistingModule),
       perNodeOpts_(perNodeOpts) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {

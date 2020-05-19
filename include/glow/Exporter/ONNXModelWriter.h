@@ -141,11 +141,14 @@ public:
   /// file along with the model file and package them into a zip file. If
   /// \p useGlowCustomOps then it will use auto-generated export logic via
   /// NodeGen to export all Glow Nodes as is via custom ops, instead of trying
-  /// to abide by the official ONNX ops.
+  /// to abide by the official ONNX ops. If \p includeConstantData then data for
+  /// Constants will be serialized in the written model, otherwise it will be
+  /// skipped (but initializers will still exist, they will just have no data).
   ONNXModelWriter(const std::string &modelFilename, Function &F,
                   size_t irVersion, size_t opsetVersion,
                   Error *errPtr = nullptr, bool textMode = false,
-                  bool zipMode = false, bool useGlowCustomOps = false);
+                  bool zipMode = false, bool useGlowCustomOps = false,
+                  bool includeConstantData = true);
 
   /// Creates an ONNX model writer to serialize \p dagList into file
 

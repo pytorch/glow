@@ -246,8 +246,9 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
 
 ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                                llvm::ArrayRef<TypeRef> types, Function *F,
-                               Error *errPtr)
-    : G_(F), mod_(*F->getParent()) {
+                               Error *errPtr, bool loadIntoExistingModule)
+    : G_(F), mod_(*F->getParent()),
+      loadIntoExistingModule_(loadIntoExistingModule) {
   setupLoader(tensorNames, types, errPtr);
 }
 

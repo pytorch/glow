@@ -56,8 +56,8 @@ bool GlowEnableDRT = false;
 } // namespace glow
 
 #if FACEBOOK_INTERNAL
-Error optimizeDAG(DAGListTy &nodeList, Module &mod,
-                  const std::vector<DeviceInfo> &devices,
+Error optimizeDAG(DAGListTy &nodeList, const Provisioner &provisioner,
+                  Module &mod, const std::vector<DeviceInfo> &devices,
                   CompilationContext &cctx);
 #endif /* FACEBOOK_INTERNAL */
 
@@ -286,7 +286,8 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
 
 #if FACEBOOK_INTERNAL
   if (cctx.callDAGOptimizer) {
-    auto optDagErr = optimizeDAG(nodeList, *module, deviceInfo, cctx);
+    auto optDagErr =
+        optimizeDAG(nodeList, *provisioner_, *module, deviceInfo, cctx);
     if (optDagErr) {
       std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
       cleanupAddNetwork(names);

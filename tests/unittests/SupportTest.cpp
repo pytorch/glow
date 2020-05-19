@@ -102,3 +102,45 @@ TEST(Support, ScopeGuard) {
   }
   EXPECT_EQ(val, 2);
 }
+
+TEST(Support, ScopeGuardDismiss) {
+  int val = 1;
+  {
+    ScopeGuard guard([&]() { val++; });
+    EXPECT_EQ(val, 1);
+    guard.dismiss();
+  }
+  EXPECT_EQ(val, 1);
+}
+
+TEST(Support, ScopeGuardRunAndDismiss) {
+  int val = 1;
+  {
+    ScopeGuard guard([&]() { val++; });
+    EXPECT_EQ(val, 1);
+    guard.runAndDismiss();
+  }
+  EXPECT_EQ(val, 2);
+}
+
+TEST(Support, ScopeGuardRunAndDismissMulti) {
+  int val = 1;
+  {
+    ScopeGuard guard([&]() { val++; });
+    EXPECT_EQ(val, 1);
+    guard.runAndDismiss();
+    guard.runAndDismiss(); // Should be ignored as already dismissed.
+  }
+  EXPECT_EQ(val, 2);
+}
+
+TEST(Support, ScopeGuardDismissAndRunAndDismiss) {
+  int val = 1;
+  {
+    ScopeGuard guard([&]() { val++; });
+    EXPECT_EQ(val, 1);
+    guard.dismiss();
+    guard.runAndDismiss(); // Should be ignored as already dismissed.
+  }
+  EXPECT_EQ(val, 1);
+}

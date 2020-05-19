@@ -228,10 +228,12 @@ public:
   /// \p F. The list \p types and \p names are used to initialize the inputs
   /// of the model with specific names and types. If \p errPtr is not null then
   /// if an error occurs it will get assigned there otherwise if an error
-  /// occurs it will abort.
+  /// occurs it will abort. If \p loadIntoExistingModule then all Functions and
+  /// Storage is expected to already exist, so they will be searched for
+  /// according to the proto being loaded instead of created as usual.
   ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                  llvm::ArrayRef<TypeRef> types, Function *F,
-                 Error *errPtr = nullptr);
+                 Error *errPtr = nullptr, bool loadIntoExistingModule = false);
 
   /// Constructs new ProtobufLoader object. It will populate the network into
   /// \p mod. The list \p types and \p names are used to initialize the inputs
