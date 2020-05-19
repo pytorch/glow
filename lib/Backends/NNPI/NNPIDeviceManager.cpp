@@ -119,9 +119,6 @@ Error NNPIDeviceManager::init() {
     LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
         nnpiDeviceContextCreate(adapter_, deviceId_, &device_),
         "Failed to create NNPI Device");
-    if (deviceOptions_->enabledDeviceTracing) {
-      deviceTracing_ = NNPIDeviceTracing::getForDevice(deviceId_);
-    }
     NNPIDeviceInfo deviceInfo;
     LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
         nnpiDeviceGetInfo(deviceId_, &deviceInfo),
@@ -187,8 +184,8 @@ void NNPIDeviceManager::addNetwork(const Module *module,
     functions_.emplace(func.first, func.second);
     usedMemoryBytes_ += functionCost_; // TODO:: static moduleSize.
     auto err = inferenceEnvs_[func.first].init(
-        adapter_, device_, deviceTracing_, func.second, &staticPlaceholders_,
-        deviceOptions_, func.first, deviceId_);
+        adapter_, device_, func.second, &staticPlaceholders_, deviceOptions_,
+        func.first, deviceId_);
     if (err) {
       functions_.erase(func.first);
       lock.unlock();
@@ -278,7 +275,13 @@ uint64_t NNPIDeviceManager::getAvailableMemory() const {
       LOG_NNPI_INF_IF_ERROR(res, "Failed to read available memory from device.")
       return 0;
     }
-    return static_cast<uint64_t>(devStatus.availableUnprotectedMemory) * KB;
+    const auto availableMem =
+        static_cast<uint64_t>(devStatus.availableUnprotectedMemory) * KB;
+    if (availableMem == 0) {
+      LOG(WARNING) << "NNPI Device " << deviceId_
+                   << " available memory: " << availableMem;
+    }
+    return availableMem;
   }
   auto freeMemory = getMaximumMemory();
   for (const auto &p : functions_) {
@@ -309,8 +312,9 @@ void NNPIDeviceManager::transferStaticPlaceholderToDevice(
 };
 
 Error NNPIDeviceManager::startDeviceTrace(TraceContext *traceContext) {
-  if (!NNPIDeviceTracing::getForDevice(deviceId_)->start(traceContext,
-                                                         device_)) {
+  if (!NNPIDeviceTracing::getForDevice(deviceId_)->start(
+          traceContext, device_, true /* Software traces are always enabled. */,
+          deviceOptions_->hardwareTraces)) {
     return MAKE_ERR("Failed to start NNPI device trace.");
   }
   return Error::success();

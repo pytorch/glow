@@ -106,6 +106,16 @@ public:
     channelwiseConverters_.emplace(s);
   }
 
+  /// Add a path to AI extension (that will be loaded by the inference API).
+  /// Will fail if a file does not exist at this path, validity of the file is
+  /// checked only when the extension is loaded.
+  NNPIErrorCode addIAExtentionPath(const std::string &extPath);
+
+  /// Get AI extension paths.
+  const std::vector<std::string> &getIAExtensionPaths() const {
+    return iaExtensionPaths_;
+  }
+
 private:
   /// Map of named external tensors (inputs, outputs, weights, etc...).
   std::unordered_map<std::string, const Tensor *> constants_;
@@ -135,6 +145,9 @@ private:
   /// an input is feeding into more than one channelwise ops. 2. an output of
   /// one channelwise op is consumed by another channelwise op.
   std::unordered_set<std::string> channelwiseConverters_;
+
+  /// A list of IA extensions that need to be loaded by the device.
+  std::vector<std::string> iaExtensionPaths_;
 };
 
 /// Interface class for all node specific importers.

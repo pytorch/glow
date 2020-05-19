@@ -44,25 +44,42 @@ public:
     return map[deviceId];
   }
 
+  static bool isFirstToChangeCaptureStart(bool startCapture) {
+    static bool started = false;
+    static std::mutex firstDevStartMutex;
+    std::lock_guard<std::mutex> lk(firstDevStartMutex);
+    if (started != startCapture) {
+      // First to change state.
+      started = startCapture;
+      return true;
+    }
+
+    return false;
+  }
+
   /// Dispose of tracing context.
   virtual ~NNPIDeviceTracing(){};
 
   /// Start recording events.
-  bool start(TraceContext *traceContext, NNPIDeviceContext deviceContext);
+  bool start(TraceContext *traceContext, NNPIDeviceContext deviceContext,
+             bool swTraces, bool hwTraces);
   /// Stop recording, read and update trace context.
   bool stopAndUpdate(TraceContext *traceContext,
                      NNPIDeviceContext deviceContext);
 
 protected:
   std::string getEntryName(NNPITraceEntry &entry);
-  bool addTrace(NNPITraceEntry &entry);
+  bool addTrace(NNPITraceEntry &entry,
+                std::map<std::string, NNPITraceEntry> &inflight,
+                TraceContext *traceContext);
+
+  /// Affinity has to be in a global for all devices.
+  static int getAffinityID(NNPITraceEntry &entry, std::string name,
+                           unsigned deviceId, TraceContext *traceContext);
 
 private:
   /// Per device tracing control.
   explicit NNPIDeviceTracing(unsigned deviceId);
-  /// Glow trace context. Used to identify start/stop and log traces (with
-  /// runId_).
-  TraceContext *glowTraceCtx_{nullptr};
   std::atomic_flag started_{false};
   /// NNPI Trace context.
   std::unique_ptr<NNPITraceContext> traceCtx_;
@@ -70,6 +87,9 @@ private:
   unsigned deviceId_{0};
   /// Device id string prefix for event names.
   std::string deviceInfo_;
+
+  /// Trace active affinities.
+  static std::map<std::string, int> activeAffinities_;
 };
 
 } // namespace glow

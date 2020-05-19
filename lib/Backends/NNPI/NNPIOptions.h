@@ -80,15 +80,17 @@ protected:
   llvm::StringMap<std::string> supportedOptions_;
 };
 
-/// Explicit forward decleration of template type.
+/// Explicit forward declaration of template type.
 template <> bool NNPIOptions::getStringAsType<bool>(std::string sVal);
-/// Explicit forward decleration of template type.
+/// Explicit forward declaration of template type.
 template <>
 std::string NNPIOptions::getStringAsType<std::string>(std::string sVal);
-/// Explicit forward decleration of template type.
+/// Explicit forward declaration of template type.
 template <> int NNPIOptions::getStringAsType<int>(std::string sVal);
-/// Explicit forward decleration of template type.
+/// Explicit forward declaration of template type.
 template <> unsigned NNPIOptions::getStringAsType<unsigned>(std::string sVal);
+/// Explicit forward declaration of template type.
+template <> float NNPIOptions::getStringAsType<float>(std::string sVal);
 
 #define DECLARE_NNPI_OPTION(VAR_NAME, VAR_TYPE, OPT_NAME, OPT_DESC, OPT_ENV,   \
                             OPT_DEFAULT)                                       \
@@ -257,6 +259,52 @@ public:
                       "Override the amount of worker threads allocated for the "
                       "network on the device.",
                       "NNPI_NUM_WORKERS", "2");
+  /// Power & Performance hints. See more details at:
+  /// https://github.com/IntelAI/nnpi-sw/blob/master/include/nnpi_inference_types.h
+  DECLARE_NNPI_OPTION(ringPrio, float, "RingPrio",
+                      "Set the ring frequency priority.", "NNPI_RING_PRIO",
+                      "0.f");
+  DECLARE_NNPI_OPTION(iceBOPrio0, float, "IceBOPrio0",
+                      "Set ICE-BO 0 frequency priority.", "NNPI_ICEBO_PRIO0",
+                      "0.f");
+  DECLARE_NNPI_OPTION(iceBOPrio1, float, "IceBOPrio1",
+                      "Set ICE-BO 1 frequency priority.", "NNPI_ICEBO_PRIO1",
+                      "0.f");
+  DECLARE_NNPI_OPTION(iceBOPrio2, float, "IceBOPrio2",
+                      "Set ICE-BO 2 frequency priority.", "NNPI_ICEBO_PRIO2",
+                      "0.f");
+  DECLARE_NNPI_OPTION(iceBOPrio3, float, "IceBOPrio3",
+                      "Set ICE-BO 3 frequency priority.", "NNPI_ICEBO_PRIO3",
+                      "0.f");
+  DECLARE_NNPI_OPTION(iceBOPrio4, float, "IceBOPrio4",
+                      "Set ICE-BO 4 frequency priority.", "NNPI_ICEBO_PRIO4",
+                      "0.f");
+  DECLARE_NNPI_OPTION(iceBOPrio5, float, "IceBOPrio5",
+                      "Set ICE-BO 5 frequency priority.", "NNPI_ICEBO_PRIO5",
+                      "0.f");
+  DECLARE_NNPI_OPTION(iaPrio0, float, "IAPrio0", "Set IA 0 frequency priority.",
+                      "NNPI_IA_PRIO0", "0.f");
+  DECLARE_NNPI_OPTION(iaPrio1, float, "IAPrio1", "Set IA 1 frequency priority.",
+                      "NNPI_IA_PRIO1", "0.f");
+  DECLARE_NNPI_OPTION(ddrBandwidth, float, "DDRBandwidth",
+                      "Set an estimated DDR bandwidth in GB/s.", "NNPI_DDR_BW",
+                      "0.f");
+  /// Disable SLS on IA.
+  DECLARE_NNPI_OPTION(disableSLSOnIA, bool, "DisableSLSOnIA",
+                      "Disable SLS exectuion on IA (SLS will execute on ICE).",
+                      "NNPI_DISABLE_SLS_ON_IA", "1");
+  /// Enable lightweight compilation.
+  DECLARE_NNPI_OPTION(lightCompilation, bool, "LightCompilation",
+                      "Enable light compilation (only for gathering metadata).",
+                      "NNPI_LIGHT_COMPILATION", "0");
+  /// Dump compiler DOT files.
+  DECLARE_NNPI_OPTION(dumpDotFiles, bool, "DumpDotFiles",
+                      "Dump Dot files of the network during compilation.",
+                      "NNPI_DUMP_DOT", "0");
+  /// Dump compilation info.
+  DECLARE_NNPI_OPTION(dumpCompilationInfo, bool, "dumpCompilationInfo",
+                      "Dump the compilation info in text form.",
+                      "NNPI_DUMP_COMP_INFO", "0");
 
   NNPICompilationOptions(const BackendSpecificOptions &parameters) {
     INIT_NNPI_OPTIONS(useIceT, parameters);
@@ -274,6 +322,20 @@ public:
     INIT_NNPI_OPTIONS(disableConstFolding, parameters);
     INIT_NNPI_OPTIONS(numWorkers, parameters);
     setLogLevel(this->compilationLogLevel);
+    INIT_NNPI_OPTIONS(ringPrio, parameters);
+    INIT_NNPI_OPTIONS(iceBOPrio0, parameters);
+    INIT_NNPI_OPTIONS(iceBOPrio1, parameters);
+    INIT_NNPI_OPTIONS(iceBOPrio2, parameters);
+    INIT_NNPI_OPTIONS(iceBOPrio3, parameters);
+    INIT_NNPI_OPTIONS(iceBOPrio4, parameters);
+    INIT_NNPI_OPTIONS(iceBOPrio5, parameters);
+    INIT_NNPI_OPTIONS(iaPrio0, parameters);
+    INIT_NNPI_OPTIONS(iaPrio1, parameters);
+    INIT_NNPI_OPTIONS(ddrBandwidth, parameters);
+    INIT_NNPI_OPTIONS(disableSLSOnIA, parameters);
+    INIT_NNPI_OPTIONS(lightCompilation, parameters);
+    INIT_NNPI_OPTIONS(dumpDotFiles, parameters);
+    INIT_NNPI_OPTIONS(dumpCompilationInfo, parameters);
   }
 
   virtual llvm::StringRef getOptionsName() const override {
@@ -315,12 +377,11 @@ public:
   DECLARE_NNPI_OPTION(deviceId, int, "DeviceID",
                       "Override the target device ID used to run (0,1,...).",
                       "NNPI_DEVICE_ID", "-1");
-  /// Setting this variable will enabled device tracing (host2device,
-  /// device2host copy infer etc.).
-  DECLARE_NNPI_OPTION(
-      enabledDeviceTracing, bool, "DeviceTracing",
-      "Enabled device tracing (host2device, device2host copy infer etc.).",
-      "NNPI_DEVICE_TRACING", "0");
+  /// Enable Hardware Trace.
+  DECLARE_NNPI_OPTION(hardwareTraces, bool, "hardwareTraces",
+                      "Enable hardware traces when device traces are started "
+                      "(default is disabled).",
+                      "NNPI_HW_TRACES", "0");
   /// Override the max NNPI device memory.
   DECLARE_NNPI_OPTION(
       deviceMemory, unsigned, "DeviceMemory",
@@ -362,7 +423,7 @@ public:
     INIT_NNPI_OPTIONS(inferOnDevice, parameters);
     INIT_NNPI_OPTIONS(showVars, parameters);
     INIT_NNPI_OPTIONS(deviceId, parameters);
-    INIT_NNPI_OPTIONS(enabledDeviceTracing, parameters);
+    INIT_NNPI_OPTIONS(hardwareTraces, parameters);
     INIT_NNPI_OPTIONS(deviceMemory, parameters);
     INIT_NNPI_OPTIONS(enabledCommandLists, parameters);
     INIT_NNPI_OPTIONS(dumpIOtoFiles, parameters);
