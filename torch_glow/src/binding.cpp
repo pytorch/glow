@@ -20,16 +20,26 @@
 #include "GlowFuser.h"
 #include "PyTorchCommon.h"
 #include "Registration.h"
+#include "TorchGlowBackend.h"
 #include "TorchGlowTraining.h"
 #include <pybind11/pybind11.h>
 /// Required include files for a proper binding TorchGlowTrainingWrapper class.
 #include <pybind11/stl.h>
+#include <torch/csrc/jit/backends/backend.h>
 
 #include "glow/Graph/Graph.h"
 
 namespace py = pybind11;
 
 using namespace glow;
+
+namespace glow {
+torch::jit::backend<glow::TorchGlowBackend> &torchGlowBackend() {
+  static auto cls = torch::jit::backend<glow::TorchGlowBackend>("glow_backend");
+  return cls;
+}
+
+} // namespace glow
 
 /// The torch_glow pybind11 module.
 #ifdef TORCH_GLOW_MODULE_NAME
@@ -46,6 +56,10 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// running processes possible. This should only be used when running
   /// torch_glow with Python.
   enableSignalHandlerOverrides();
+
+  /// Lowers and compiles a given torch.nn module following the given spec.
+  /// Returns a lowered module.
+  m.def("to_glow", torchGlowBackend().generateToBackendFn());
 
   /// Enable compiling PyTorch subgraphs to Glow Functions.
   m.def("enableFusionPass",

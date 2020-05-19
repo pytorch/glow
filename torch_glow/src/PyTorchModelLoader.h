@@ -462,6 +462,10 @@ private:
   /// \returns error on failure.
   Error loadConvolution(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch conv2d node.
+  /// \returns error on failure.
+  Error loadConv2D(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch batch_norm node.
   /// \returns error on failure.
   Error loadBatchNorm(const torch::jit::Node *ptNode);
