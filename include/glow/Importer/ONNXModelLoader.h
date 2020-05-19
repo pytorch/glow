@@ -455,10 +455,11 @@ protected:
   friend Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
                                     LoaderType *loader, const OpType &op);
 
-  /// Creates tensor \p T from the input \p in. Note, there is no data
-  /// associated with the Tensor. This method makes sure that the tensor is
-  /// created with the proper shape and element type.
-  Error setTensorType(const ONNX_NAMESPACE::ValueInfoProto &in, Tensor *T);
+  /// \returns a Type with the proper shape and element type given \p in.
+  Expected<Type> getTensorType(const ONNX_NAMESPACE::ValueInfoProto &in);
+
+  /// \returns a Type with the proper shape and element type given \p in.
+  Expected<Type> getTensorType(const ONNX_NAMESPACE::TensorProto &in);
 
   /// Load a model \p modelDef given \p tensorNames, \p types, \p B, and
   /// \p loadInputsAsPlaceholdersForOnnx.
@@ -520,7 +521,9 @@ public:
   /// there otherwise if an error occurs it will abort.
   /// If \p disableConstFoldInLoader then constant folding will be disabled
   /// during loading. \p B will be used during function verification after
-  /// loading.
+  /// loading. If \p loadIntoExistingModule then all Functions and Storage is
+  /// expected to already exist, so they will be searched for according to the
+  /// proto being loaded instead of created as usual.
   ONNXModelLoader(const std::string &modelDescFilename,
                   llvm::ArrayRef<const char *> tensorNames,
                   llvm::ArrayRef<TypeRef> types, Module &mod,
@@ -528,6 +531,7 @@ public:
                   runtime::PrePartitionedConfig *PPC = nullptr,
                   Error *errPtr = nullptr, bool zipMode = false,
                   BackendSpecificNodeInfo *perNodeOpts = nullptr,
+                  bool loadIntoExistingModule = false,
                   bool disableConstFoldInLoader = false,
                   const Backend *B = nullptr);
 

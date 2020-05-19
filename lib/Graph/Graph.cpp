@@ -148,6 +148,17 @@ Function::broadcastInputs(int axis, const llvm::ArrayRef<NodeValue> inputs) {
 
 bool Module::hasFunction(llvm::StringRef name) { return getFunction(name); }
 
+void Module::clearFunctions() {
+  for (auto *F : functions_) {
+    F->clear();
+  }
+}
+
+void Function::clear() {
+  nodes_.clear();
+  uniqueNodeNames_.clear();
+}
+
 Function *Module::getFunction(llvm::StringRef name) {
   for (auto *F : functions_) {
     if (F->getName() == name) {

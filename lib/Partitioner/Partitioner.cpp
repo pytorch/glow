@@ -934,12 +934,14 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
 
   const std::vector<Function *> &funcs = config.funcs;
 
+  Backend *B = backends[0];
+  auto backendName = B->getBackendName();
+
   // Optimize all Functions if necessary.
   if (!optimized_) {
-    Backend *B = backends[0];
     for (Function *F : funcs) {
       RETURN_IF_ERR(::glow::optimizeFunction(
-          F, *B, cctx, &getDeviceInfoForBackend(B->getBackendName())));
+          F, *B, cctx, &getDeviceInfoForBackend(backendName)));
     }
   }
 
@@ -972,11 +974,26 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
   }
   RETURN_IF_ERR(logicalDevicesValidation(partitionMap, backendMap_));
 
-  // Copy in backend-specific options that were loaded.
-  DCHECK(funcs.size() == config.backendSpecificOpts.size());
+  // Copy in or validate all members of the PPC.
+  RETURN_ERR_IF_NOT(
+      funcs.size() == config.backendSpecificOpts.size(),
+      "Number of Functions must equal number of backendSpecificOpts");
+  RETURN_ERR_IF_NOT(funcs.size() == config.backendHints.size(),
+                    "Number of Functions must equal number of backendHints");
+  RETURN_ERR_IF_NOT(funcs.size() == config.replicationCounts.size(),
+                    "Number of Functions must equal");
+  RETURN_ERR_IF_NOT(
+      funcs.size() == config.backendNames.size() || config.backendNames.empty(),
+      "If there are backendNames specified, there must be one per Function");
   for (size_t i = 0, e = funcs.size(); i < e; i++) {
     Function *F = funcs[i];
     partitionMap.setBackendSpecificOpts(F, config.backendSpecificOpts[i]);
+    partitionMap.setBackendHints(F, config.backendHints[i]);
+    partitionMap.addReplicationCount(F, config.replicationCounts[i]);
+    if (!config.backendNames.empty()) {
+      RETURN_ERR_IF_NOT(backendName == config.backendNames[i],
+                        "Mismatch on backendName for partition");
+    }
   }
 
   // Do partition.

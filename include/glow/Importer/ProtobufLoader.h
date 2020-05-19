@@ -155,6 +155,10 @@ protected:
   std::vector<std::string> positionalOutputNames_;
   /// Whether to try constant folding as we load each op from a protobuf.
   bool constFoldInLoader_{true};
+  /// Whether to load the proto into the existing module. All Functions and
+  /// Storage should already exist for the proto; the Functions should be empty
+  /// and will be filled with Nodes from the proto connected to Storage.
+  bool loadIntoExistingModule_{false};
 
   // Delete all Constants that have no users. This is useful because some
   // Constants may have been copied and modified during loading instead of used
@@ -233,10 +237,12 @@ public:
   /// \p mod. The list \p types and \p names are used to initialize the inputs
   /// of the model with specific names and types. If \p errPtr is not null then
   /// if an error occurs it will get assigned there otherwise if an error
-  /// occurs it will abort.
+  /// occurs it will abort. If \p loadIntoExistingModule then all Functions and
+  /// Storage is expected to already exist, so they will be searched for
+  /// according to the proto being loaded instead of created as usual.
   ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                  llvm::ArrayRef<TypeRef> types, Module &mod,
-                 Error *errPtr = nullptr);
+                 Error *errPtr = nullptr, bool loadIntoExistingModule = false);
 
   ProtobufLoader(const ProtobufLoader &other) = delete;
   ProtobufLoader &operator=(const ProtobufLoader &) = delete;

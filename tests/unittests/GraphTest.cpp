@@ -94,6 +94,36 @@ TEST(Graph, clear) {
   EXPECT_EQ(M.getFunctions().size(), 0);
 }
 
+/// Check that the clear method works as expected.
+TEST(Graph, clearFunctions) {
+  Module M;
+
+  // Check that the module is initially empty.
+  EXPECT_EQ(M.getConstants().size(), 0);
+  EXPECT_EQ(M.getPlaceholders().size(), 0);
+  EXPECT_EQ(M.getFunctions().size(), 0);
+
+  // Create a few things.
+  Function *F = M.createFunction("main");
+  auto *PH = M.createPlaceholder(ElemKind::FloatTy, {1}, "placeholder", true);
+  auto *C = M.createConstant(ElemKind::FloatTy, {1}, "var");
+  auto *AN = F->createAdd("add", PH, C);
+  F->createSave("save", AN);
+
+  EXPECT_EQ(M.getConstants().size(), 1);
+  EXPECT_EQ(M.getPlaceholders().size(), 2); // Input PH and PH for Save
+  EXPECT_EQ(M.getFunctions().size(), 1);
+  EXPECT_EQ(F->getNodes().size(), 2); // Add, Save
+
+  M.clearFunctions();
+  EXPECT_EQ(M.getConstants().size(), 1);
+  EXPECT_EQ(M.getPlaceholders().size(), 2);
+  ASSERT_EQ(M.getFunctions().size(), 1);
+  // Same Function ptr should exist, just nothing left in them.
+  EXPECT_EQ(*M.getFunctions().begin(), F);
+  EXPECT_EQ(F->getNodes().size(), 0);
+}
+
 /// Test the graph nodes names and utilities.
 TEST(Graph, testGraphNames) {
   Module MD;
