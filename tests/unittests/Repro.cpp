@@ -591,7 +591,31 @@ int run() {
   int numTotalInferences = inputGroupSize * itersOpt;
   int numFinishedInferences = 0;
 
+  // Figure out which placeholder is input.
+  std::unordered_set<std::string> inputTensorNames;
+  for (const auto &proto : parsedInputs[0].initializer()) {
+    inputTensorNames.insert(proto.name());
+  }
+
+  glow::PlaceholderList inputPlaceholderList;
+  std::copy_if(placeholderList.begin(), placeholderList.end(),
+               std::back_inserter(inputPlaceholderList),
+               [&](const glow::Placeholder *p) {
+                 return inputTensorNames.find(p->getName()) !=
+                        inputTensorNames.end();
+               });
+
   std::list<InferenceResult> results;
+  std::vector<Tensor> partialTensorPayloads;
+  std::vector<PlaceholderBindings> inputBindings;
+  for (const auto &inputGroup : parsedInputs) {
+    PlaceholderBindings bindings;
+    bindings.allocate(inputPlaceholderList);
+    fillPlaceholders(inputGroup, &bindings,
+                     enablePartialTensor ? &partialTensorPayloads : nullptr,
+                     usingGlowCustomOps);
+    inputBindings.emplace_back(std::move(bindings));
+  }
 
   // Whether to collect results and check accuracy
   bool runAccuracyChecks =
@@ -615,10 +639,10 @@ int run() {
     results.emplace_back(InferenceResult());
     auto &result = results.back();
 
-    threadPool.add([&parsedInputs, &nonStaticPlaceholderList, ioIndex,
+    threadPool.add([&inputBindings, &nonStaticPlaceholderList, ioIndex,
                     &mergedTraceContext, &hostManager, &result, &cv, &mutex,
                     numTotalInferences, &numFinishedInferences,
-                    usingGlowCustomOps, runAccuracyChecks]() {
+                    runAccuracyChecks]() {
       // Setup the inputs.
       auto ctx = glow::make_unique<ExecutionContext>();
 
@@ -632,21 +656,16 @@ int run() {
       TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
                         "Dispatch to prep input and dispatch");
 
+      // Set up input
       auto &bindings = *ctx->getPlaceholderBindings();
       bindings.clear();
       bindings.allocate(nonStaticPlaceholderList);
-      const auto &ps = bindings.pairs();
-      for (const auto &kv : ps) {
-        VLOG(1) << "Placeholder allocated: " << kv.first->getName().str();
-      }
 
-      const auto &inputGroup = parsedInputs[ioIndex];
-      // This holds the tensor that actually owns the data for all the partial
-      // inputs.
-      std::vector<Tensor> partialTensorPayloads;
-      fillPlaceholders(inputGroup, &bindings,
-                       enablePartialTensor ? &partialTensorPayloads : nullptr,
-                       usingGlowCustomOps);
+      for (auto &binding : inputBindings[ioIndex].pairs()) {
+        auto PH = binding.first;
+        auto resultTensor = binding.second;
+        bindings.insertOrUpdate(PH, resultTensor->getUnowned());
+      }
 
       std::promise<void> promise;
       auto future = promise.get_future();

@@ -470,7 +470,7 @@ void glow::fillPlaceholders(const ONNX_NAMESPACE::GraphProto &inputGroup,
   for (const auto &tensorProto : inputGroup.initializer()) {
     auto *tensor =
         bindings->get(bindings->getPlaceholderByNameSlow(tensorProto.name()));
-    CHECK(tensor);
+    CHECK(tensor) << "Missing " << tensorProto.name();
     size_t fullSize = tensor->getSizeInBytes();
     const auto fullType = tensor->getType();
     auto error = loadTensor(tensorProto, tensor, usingGlowCustomOps);
