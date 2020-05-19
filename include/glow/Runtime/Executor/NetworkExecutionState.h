@@ -140,8 +140,9 @@ private:
 
   /// Map of intermediate placeholder bindings that need to be pointed at
   /// resultCtx tensors.
-  std::unordered_map<Placeholder *, std::vector<PlaceholderBindings *>>
-      externalIntermediates_;
+  std::unordered_map<Placeholder *,
+                     std::vector<PlaceholderBindings::PlaceholderMap::iterator>>
+      externalPlaceholders_;
   /// Input contexts for all of the nodes. These are gradually
   /// populated as a node's parents finish.
   std::unordered_map<const DAGNode *, std::unique_ptr<ExecutionContext>>

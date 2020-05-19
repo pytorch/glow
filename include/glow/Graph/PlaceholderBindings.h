@@ -40,6 +40,7 @@ class PlaceholderBindings final {
 public:
   /// Maps placeholders to the tensors that back them.
   using PlaceholderMap = std::unordered_map<Placeholder *, Tensor *>;
+  using PlaceholderMapIterator = PlaceholderMap::iterator;
 
 private:
   /// Maps Placeholders to Tensors.
@@ -66,7 +67,7 @@ public:
   void insert(Placeholder *P, Tensor &&T);
 
   /// Inserts the Placeholder-Tensor pair. This takes ownership of the Tensor.
-  void insert(Placeholder *P, Tensor *T);
+  PlaceholderMapIterator insert(Placeholder *P, Tensor *T);
 
   /// Copy values from this PlaceholderBindings to another, \p dst, by \p name.
   /// This is useful when trained weights need to be transferred between
@@ -104,10 +105,6 @@ public:
   /// Removes the existing Tensor backing Placeholder \p P; Bind \p T to \P.
   /// \p P must be a valid Placeholder registered in the bindings.
   void update(Placeholder *P, Tensor &&T);
-
-  /// Check if Placeholder \p P already exists. If yes, bind \p T to \p P.
-  /// Otherwise, insert \p P to the map.
-  void insertOrUpdate(Placeholder *P, Tensor &&T);
 
   /// \returns a copy of the PlaceholderBindings, with each placeholder mapped
   /// to a new Tensor, with their own memory.
