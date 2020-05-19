@@ -136,18 +136,17 @@ public:
         size_t conv_ops = 0;
         for (auto conv_param : input_shapes_) {
           filters[core * input_shapes_.size() + conv_ops] =
-              mod->createPlaceholder(
-                  ElemKind::Int8QTy,
-                  {(unsigned long)(conv_param.OC),
-                   (unsigned long)(conv_param.K[0]),
-                   (unsigned long)(conv_param.K[1]),
-                   (unsigned long)(conv_param.IC / conv_param.G)},
-                  1.0, 0,
-                  "filters_" + std::to_string(core) + "_" +
-                      std::to_string(conv_ops),
-                  false);
+              mod->createPlaceholder(ElemKind::Int8QTy,
+                                     {(dim_t)(conv_param.OC),
+                                      (dim_t)(conv_param.K[0]),
+                                      (dim_t)(conv_param.K[1]),
+                                      (dim_t)(conv_param.IC / conv_param.G)},
+                                     1.0, 0,
+                                     "filters_" + std::to_string(core) + "_" +
+                                         std::to_string(conv_ops),
+                                     false);
           bias[core * input_shapes_.size() + conv_ops] = mod->createPlaceholder(
-              ElemKind::Int32QTy, {(unsigned long)(conv_param.OC)}, 1.0, 0,
+              ElemKind::Int32QTy, {(dim_t)(conv_param.OC)}, 1.0, 0,
               "bias_" + std::to_string(core) + "_" + std::to_string(conv_ops),
               false);
           bindings_.allocate(filters[core * input_shapes_.size() + conv_ops])
@@ -156,12 +155,11 @@ public:
           bindings_.allocate(bias[core * input_shapes_.size() + conv_ops])
               ->getHandle<int32_t>()
               .clear(0);
-          auto outTy = mod->uniqueType(ElemKind::Int8QTy,
-                                       {(unsigned long)(conv_param.MB),
-                                        (unsigned long)(conv_param.OUT_DIM[0]),
-                                        (unsigned long)(conv_param.OUT_DIM[1]),
-                                        (unsigned long)(conv_param.OC)},
-                                       1.0, 0);
+          auto outTy = mod->uniqueType(
+              ElemKind::Int8QTy,
+              {(dim_t)(conv_param.MB), (dim_t)(conv_param.OUT_DIM[0]),
+               (dim_t)(conv_param.OUT_DIM[1]), (dim_t)(conv_param.OC)},
+              1.0, 0);
           conv[core * input_shapes_.size() + conv_ops] = fn->createConv(
               "conv" + std::to_string(core) + "_" + std::to_string(layer) +
                   "_" + std::to_string(conv_ops),
@@ -174,8 +172,7 @@ public:
               {(unsigned int)(conv_param.pad[0]),
                (unsigned int)(conv_param.pad[1]),
                (unsigned int)(conv_param.pad[2]),
-               (unsigned int)(conv_param.pad[3]),
-               (unsigned int)(conv_param.pad[4])},
+               (unsigned int)(conv_param.pad[3])},
               (unsigned int)(conv_param.G),
               (unsigned int)(conv_param.dilation[0]));
 
