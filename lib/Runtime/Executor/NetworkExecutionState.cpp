@@ -70,8 +70,14 @@ void NetworkExecutionState::bind(std::unique_ptr<ExecutionContext> resultCtx,
   for (auto &pair : resultPHBindings->pairs()) {
     auto PH = pair.first;
     auto resultTensor = pair.second;
-    for (auto &binding : externalIntermediates_[PH]) {
-      binding->insertOrUpdate(PH, resultTensor->getUnowned());
+    for (auto &bindingIt : externalPlaceholders_[PH]) {
+      auto &tensor = bindingIt->second;
+      if (auto *tensorPool = tensor->getOwningPool()) {
+        tensorPool->reclaim(tensor);
+      } else {
+        delete tensor;
+      }
+      tensor = new Tensor(resultTensor->getUnowned());
     }
   }
 }
@@ -140,6 +146,8 @@ void NetworkExecutionState::init(
         }
         // If we haven't allocated a buffer for this PH yet do so, otherwise
         // reuse the allocation.
+        // TODO: for intermediate placeholders in DRT/P2P cases, we don't need
+        // to allocate a backing tensor on host.
         auto bufferIt = buffers_.find(PH);
         if (bufferIt == buffers_.end()) {
 
@@ -148,8 +156,9 @@ void NetworkExecutionState::init(
         }
         auto buffer = buffers_[PH];
         Tensor *backingTensor = new Tensor(buffer, PH->getType());
-        intermediatePHBindings->insert(PH, backingTensor);
-        externalIntermediates_[PH].push_back(intermediatePHBindings);
+        auto itt = intermediatePHBindings->insert(PH, backingTensor);
+        // TODO: Only add to externalPlaceholders_ of PH is external placeholder
+        externalPlaceholders_[PH].push_back(itt);
       }
     }
 

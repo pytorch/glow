@@ -664,7 +664,7 @@ int run() {
       for (auto &binding : inputBindings[ioIndex].pairs()) {
         auto PH = binding.first;
         auto resultTensor = binding.second;
-        bindings.insertOrUpdate(PH, resultTensor->getUnowned());
+        bindings.update(PH, resultTensor->getUnowned());
       }
 
       std::promise<void> promise;
