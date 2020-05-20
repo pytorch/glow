@@ -119,7 +119,7 @@ protected:
       Placeholder *inputPH =
           loadedMod.getPlaceholderByNameSlow(p.first->getName());
       ASSERT_TRUE(inputPH);
-      loadedBindings.insert(inputPH, p.second->getUnowned(inputPH->dims()));
+      loadedBindings.insert(inputPH, p.second.getUnowned(inputPH->dims()));
     }
 
     // Allocate all other PHs/tensors that need it (i.e. result PHs/tensors).
@@ -138,7 +138,7 @@ protected:
       if (!isOutput(resultPH, *F_)) {
         continue;
       }
-      const Tensor *resultT = p.second;
+      const Tensor &resultT = p.second;
 
       // Find the result PH by the same name in the loaded Function.
       Placeholder *loadedResultPH =
@@ -146,7 +146,7 @@ protected:
       ASSERT_TRUE(loadedResultPH);
       const Tensor *loadedResultT = loadedBindings.get(loadedResultPH);
 
-      EXPECT_TRUE(resultT->isBitwiseEqual(*loadedResultT, /* verbose */ true));
+      EXPECT_TRUE(resultT.isBitwiseEqual(*loadedResultT, /* verbose */ true));
     }
 
     llvm::sys::fs::remove(pathToModel);

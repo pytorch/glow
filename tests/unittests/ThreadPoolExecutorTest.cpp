@@ -89,7 +89,7 @@ public:
           equalInputs = false;
           break;
         }
-        equalInputs &= p.second->isEqual(*CT, 0.0001, true);
+        equalInputs &= p.second.isEqual(*CT, 0.0001, true);
       }
 
       if (equalInputs) {
@@ -99,9 +99,10 @@ public:
         runId = registeredResult->runId;
         successResult = registeredResult->success;
 
-        for (auto p : registeredResult->resultContext->getPlaceholderBindings()
-                          ->pairs()) {
-          context->getPlaceholderBindings()->get(p.first)->assign(p.second);
+        for (const auto &p :
+             registeredResult->resultContext->getPlaceholderBindings()
+                 ->pairs()) {
+          context->getPlaceholderBindings()->get(p.first)->assign(&p.second);
         }
       }
     }

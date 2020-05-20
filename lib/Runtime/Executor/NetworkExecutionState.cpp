@@ -69,15 +69,13 @@ void NetworkExecutionState::bind(std::unique_ptr<ExecutionContext> resultCtx,
   auto resultPHBindings = resultCtx_->getPlaceholderBindings();
   for (auto &pair : resultPHBindings->pairs()) {
     auto PH = pair.first;
-    auto resultTensor = pair.second;
+    const auto &resultTensor = pair.second;
     for (auto &bindingIt : externalPlaceholders_[PH]) {
       auto &tensor = bindingIt->second;
-      if (auto *tensorPool = tensor->getOwningPool()) {
-        tensorPool->reclaim(tensor);
-      } else {
-        delete tensor;
+      if (auto *tensorPool = tensor.getOwningPool()) {
+        tensorPool->reclaim(std::move(tensor));
       }
-      tensor = new Tensor(resultTensor->getUnowned());
+      tensor = resultTensor.getUnowned();
     }
   }
 }
@@ -155,8 +153,8 @@ void NetworkExecutionState::init(
               device->allocateDeviceIOBuffer(PH->getType()->getSizeInBytes());
         }
         auto buffer = buffers_[PH];
-        Tensor *backingTensor = new Tensor(buffer, PH->getType());
-        auto itt = intermediatePHBindings->insert(PH, backingTensor);
+        Tensor backingTensor(buffer, PH->getType());
+        auto itt = intermediatePHBindings->insert(PH, std::move(backingTensor));
         // TODO: Only add to externalPlaceholders_ of PH is external placeholder
         externalPlaceholders_[PH].push_back(itt);
       }

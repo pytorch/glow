@@ -200,14 +200,14 @@ TEST_P(DeviceManagerTest, PartialTensorCopy) {
 
   Tensor input1(ElemKind::FloatTy, {1});
   auto size = input->getType()->getSizeInBytes() / 2;
-  Tensor *virtualPaddedInput =
-      new Tensor(input1.getUnsafePtr(), input->getType(), size);
+  Tensor virtualPaddedInput(input1.getUnsafePtr(), input->getType(), size);
 
   Tensor output1(ElemKind::FloatTy, {1});
   input1.getHandle().clear(0.5);
   output1.getHandle().clear(std::max(std::tanh(0.5), 0.25));
 
-  context->getPlaceholderBindings()->insert(input, virtualPaddedInput);
+  context->getPlaceholderBindings()->insert(input,
+                                            std::move(virtualPaddedInput));
   std::promise<std::unique_ptr<ExecutionContext>> runPromise;
   std::future<std::unique_ptr<ExecutionContext>> runFuture;
 

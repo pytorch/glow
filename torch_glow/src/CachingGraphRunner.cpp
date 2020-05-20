@@ -307,24 +307,25 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
             ph, glow::Tensor((void *)zeroLengthSequence_.getUnsafePtr(), ty));
       } else {
         // For backends that does not support partial tensor, manually pad zeros
-        Tensor *inputTensor = tensorPool_.get(ty);
-        if (!inputTensor) {
+        auto inputTensorOpt = tensorPool_.get(ty);
+        if (!inputTensorOpt.hasValue()) {
           std::stringstream ss;
           ss << "Tensorpool tensor not found for input " << ptTensor.name();
           return MAKE_ERR(ss.str());
         }
         // We want fresh DeviceResidencyInfo for this fresh Tensor.
-        inputTensor->resetDeviceInfo();
+        Tensor inputTensor(std::move(inputTensorOpt.getValue()));
+        inputTensor.resetDeviceInfo();
         if (ptTensor.data_ptr()) {
-          memcpy(inputTensor->getUnsafePtr(), ptTensor.data_ptr(),
+          memcpy(inputTensor.getUnsafePtr(), ptTensor.data_ptr(),
                  ptTensor.nbytes());
           // Pad remaining space with zeroes.
-          memset(inputTensor->getUnsafePtr() + ptTensor.nbytes(), 0,
-                 inputTensor->getSizeInBytes() - ptTensor.nbytes());
+          memset(inputTensor.getUnsafePtr() + ptTensor.nbytes(), 0,
+                 inputTensor.getSizeInBytes() - ptTensor.nbytes());
         } else {
-          inputTensor->zero();
+          inputTensor.zero();
         }
-        bindings->insert(ph, inputTensor);
+        bindings->insert(ph, std::move(inputTensor));
       }
     } else if (input.isObject()) {
       // Objects are only used for loading attributes at compile time.
@@ -345,7 +346,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       for (const auto &p : bindings->pairs()) {
         auto *onnxT = inputG.add_initializer();
         const auto ph = p.first;
-        const auto &t = *p.second;
+        const auto &t = p.second;
         onnxT->set_name(ph->getName());
         size_t unpaddedSize = t.getUnpaddedSizeInBytes();
         size_t tensorSize = t.getSizeInBytes();

@@ -893,7 +893,7 @@ protected:
     bindings.clear();
     bindings.allocate(rawModule->getPlaceholders());
     bindingsP.allocate(rawModule->getPlaceholders());
-    for (auto PH : bindingsP.pairs()) {
+    for (const auto &PH : bindingsP.pairs()) {
       bindingsP.copyToTarget(PH.first->getName(), bindings);
     }
 

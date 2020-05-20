@@ -17,6 +17,7 @@
 #define GLOW_TENSORPOOL_H
 
 #include "glow/Base/Tensor.h"
+#include "llvm/ADT/Optional.h"
 
 #include <atomic>
 #include <iostream>
@@ -36,7 +37,7 @@ private:
     bool operator()(const Type &a, const Type &b) const { return a.isEqual(b); }
   };
   /// A stack of available Tensors per Type.
-  std::unordered_map<Type, std::vector<Tensor *>, TypeHash, TypeEquals> pools_;
+  std::unordered_map<Type, std::vector<Tensor>, TypeHash, TypeEquals> pools_;
 
   /// Mutex around pools_;
   std::mutex lock_;
@@ -73,11 +74,11 @@ public:
   /// previously been added by initialize. If the pool is empty this will
   /// allocate a new Tensor unless preventAllocs was set true at construction
   /// time.
-  Tensor *get(TypeRef ty);
+  llvm::Optional<Tensor> get(TypeRef ty);
 
   /// Return a Tensor \p t to the pool. This Tensor must have been previously
   /// allocated by this TensorPool.
-  void reclaim(Tensor *t);
+  void reclaim(Tensor &&t);
 
   /// Add \p count elements of the provided type \p ty to the pool.
   void reserve(TypeRef ty, size_t count);
