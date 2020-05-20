@@ -14,11 +14,9 @@
  * limitations under the License.
  */
 
-#include "ExecutionState.h"
-
+#include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/ExecutionContext/ExecutionContext.h"
-#include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 
 #include <queue>
 #include <unordered_set>
