@@ -1433,3 +1433,27 @@ TEST(TypeAToTypeBFunctionConverter, checkConvertClipStorage) {
 
   EXPECT_TRUE(F->verify());
 }
+
+/// Check that quantized FC with FP32 bias doesn't have bias converted to FP16.
+TEST(TypeAToTypeBFunctionConverter, DoNotConvertFloatBiasWithIntInput) {
+  Module mod;
+  Function *F = mod.createFunction("test");
+  PlaceholderBindings bindings;
+
+  auto *input = mod.createPlaceholder(ElemKind::Int8QTy, {3, 8}, 0.05, -2,
+                                      "input", false);
+  auto *weight = mod.createConstant(ElemKind::Int8QTy, {8, 10}, 0.02, 3, "w");
+  auto *bias = mod.createConstant(ElemKind::FloatTy, {10}, "w");
+
+  auto *FC = F->createFullyConnected("FC", input, weight, bias);
+  F->createSave("save", FC);
+
+  std::string origGraph = F->toString();
+
+  PrecisionConfiguration precConfig;
+  TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
+                                          ElemKind::Float16Ty, precConfig);
+  converter.convert();
+
+  EXPECT_EQ(origGraph, F->toString());
+}
