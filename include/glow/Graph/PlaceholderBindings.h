@@ -39,7 +39,7 @@ class Placeholder;
 class PlaceholderBindings final {
 public:
   /// Maps placeholders to the tensors that back them.
-  using PlaceholderMap = std::unordered_map<Placeholder *, Tensor *>;
+  using PlaceholderMap = std::unordered_map<Placeholder *, Tensor>;
   using PlaceholderMapIterator = PlaceholderMap::iterator;
 
 private:
@@ -56,18 +56,16 @@ public:
 
   /// \returns the tensor that corresponds to Placeholder \p P or Null if the
   /// tensor is not found.
-  Tensor *get(Placeholder *P) const;
+  Tensor *get(Placeholder *P);
+  const Tensor *get(Placeholder *P) const;
 
   /// \returns the Placeholder named \name or null of the Placeholder is not
   /// found. Note that this uses a linear search path. If you want to seatch by
   /// name more quickly, consider building a map yourself.
   Placeholder *getPlaceholderByNameSlow(llvm::StringRef name) const;
 
-  /// Inserts the Placeholder-Tensor pair.
-  void insert(Placeholder *P, Tensor &&T);
-
   /// Inserts the Placeholder-Tensor pair. This takes ownership of the Tensor.
-  PlaceholderMapIterator insert(Placeholder *P, Tensor *T);
+  PlaceholderMapIterator insert(Placeholder *P, Tensor &&T);
 
   /// Copy values from this PlaceholderBindings to another, \p dst, by \p name.
   /// This is useful when trained weights need to be transferred between
@@ -117,6 +115,7 @@ public:
   PlaceholderBindings clone(const PlaceholderList &newPHs) const;
 
   /// \returns the mapping between placeholder to tensors.
+  PlaceholderMap &pairs() { return map_; }
   const PlaceholderMap &pairs() const { return map_; }
 
   /// \returns the size in bytes of allocated Tensors owned by
@@ -125,8 +124,8 @@ public:
 
   /// Copies all Device Resident Tensors back to the host.
   void ensureOnHost() {
-    for (auto &ph : pairs()) {
-      ph.second->ensureOnHost();
+    for (auto &ph : map_) {
+      ph.second.ensureOnHost();
     }
   }
 

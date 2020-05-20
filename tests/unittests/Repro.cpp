@@ -639,10 +639,9 @@ int run() {
     results.emplace_back(InferenceResult());
     auto &result = results.back();
 
-    threadPool.add([&inputBindings, &nonStaticPlaceholderList, ioIndex,
-                    &mergedTraceContext, &hostManager, &result, &cv, &mutex,
-                    numTotalInferences, &numFinishedInferences,
-                    runAccuracyChecks]() {
+    threadPool.add([&inputBindings, ioIndex, &mergedTraceContext, &hostManager,
+                    &result, &cv, &mutex, numTotalInferences,
+                    &numFinishedInferences, runAccuracyChecks]() {
       // Setup the inputs.
       auto ctx = glow::make_unique<ExecutionContext>();
 
@@ -659,12 +658,10 @@ int run() {
       // Set up input
       auto &bindings = *ctx->getPlaceholderBindings();
       bindings.clear();
-      bindings.allocate(nonStaticPlaceholderList);
 
-      for (auto &binding : inputBindings[ioIndex].pairs()) {
-        auto PH = binding.first;
-        auto resultTensor = binding.second;
-        bindings.update(PH, resultTensor->getUnowned());
+      for (const auto &binding : inputBindings[ioIndex].pairs()) {
+        auto *PH = binding.first;
+        bindings.insert(PH, binding.second.getUnowned());
       }
 
       std::promise<void> promise;

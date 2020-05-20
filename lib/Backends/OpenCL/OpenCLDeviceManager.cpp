@@ -567,7 +567,7 @@ void OpenCLDeviceManager::copyInputsToDevice(
       (context->getTraceContext()->getTraceLevel() & TraceLevel::COPY);
 
   auto &symbolTable = runtimeBundle.getSymbolTable();
-  for (auto PH : context->getPlaceholderBindings()->pairs()) {
+  for (auto &PH : context->getPlaceholderBindings()->pairs()) {
     auto it = symbolTable.find(PH.first->getName());
     if (it == symbolTable.end()) {
       continue;
@@ -578,9 +578,9 @@ void OpenCLDeviceManager::copyInputsToDevice(
     }
     auto symbolInfo = it->second;
     auto addr = symbolInfo.offset;
-    auto numBytes = PH.second->getUnpaddedSizeInBytes();
+    auto numBytes = PH.second.getUnpaddedSizeInBytes();
     // Issue a non-blocking command to copy the buffer to the device.
-    auto buf = PH.second->getUnsafePtr();
+    auto buf = PH.second.getUnsafePtr();
     cl_event event{nullptr};
 
     cl_int err = clEnqueueWriteBuffer(
@@ -611,16 +611,16 @@ void OpenCLDeviceManager::copyOutputsFromDevice(
       (context->getTraceContext()->getTraceLevel() & TraceLevel::COPY);
 
   auto &symbolTable = runtimeBundle.getSymbolTable();
-  for (auto PH : context->getPlaceholderBindings()->pairs()) {
+  for (auto &PH : context->getPlaceholderBindings()->pairs()) {
     auto it = symbolTable.find(PH.first->getName());
     if (it == symbolTable.end()) {
       continue;
     }
     auto symbolInfo = it->second;
     auto addr = symbolInfo.offset;
-    auto numBytes = PH.second->getUnpaddedSizeInBytes();
+    auto numBytes = PH.second.getUnpaddedSizeInBytes();
     // Issue a non-blocking command to copy the buffer to the device.
-    auto buf = PH.second->getUnsafePtr();
+    auto buf = PH.second.getUnsafePtr();
     cl_event event{nullptr};
 
     cl_int err = clEnqueueReadBuffer(

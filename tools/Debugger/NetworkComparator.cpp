@@ -96,7 +96,7 @@ NetworkComparatorBase::InOutTensors RecursiveLayerComparator::hookAndRun(
   // we feed to the Temp network.
   for (auto &PH : bindings->pairs()) {
     auto iPH = inferBindings.getPlaceholderByNameSlow(PH.first->getName());
-    inferBindings.get(iPH)->assign(PH.second);
+    inferBindings.get(iPH)->assign(&PH.second);
   }
   InOutTensors inOutTensors;
   for (const auto &P : hook.outputs) {
@@ -188,9 +188,9 @@ void IntermediateLayerComparator::hookNodesInPlace(
 void IntermediateLayerComparator::copyInputBindingsToHookedBindings(
     PlaceholderBindings &hookedBindigs, PlaceholderBindings &inputBindings) {
   // Copy tensors from input bindings to the bindings we use for Inference.
-  for (auto PH : inputBindings.pairs()) {
+  for (auto &PH : inputBindings.pairs()) {
     auto iPH = hookedBindigs.getPlaceholderByNameSlow(PH.first->getName());
-    hookedBindigs.get(iPH)->assign(PH.second);
+    hookedBindigs.get(iPH)->assign(&PH.second);
   }
 }
 

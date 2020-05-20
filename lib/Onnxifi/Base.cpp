@@ -294,25 +294,27 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
           inPhPtr, Tensor((void *)(zeroLengthSequence_.getUnsafePtr()),
                           inPhPtr->getType()));
     } else {
-      Tensor *inputTensor = tensorPool_.get(inPhPtr->getType());
-      if (!inputTensor) {
+      llvm::Optional<Tensor> inputTensorOpt =
+          tensorPool_.get(inPhPtr->getType());
+      if (!inputTensorOpt.hasValue()) {
         DLOG(FATAL) << "Tensorpool tensor not found for input "
                     << inOnnxTensor.name;
         return ONNXIFI_STATUS_INTERNAL_ERROR;
       }
       // We want fresh DeviceResidencyInfo for this fresh Tensor.
-      inputTensor->resetDeviceInfo();
+      Tensor inputTensor(std::move(inputTensorOpt.getValue()));
+      inputTensor.resetDeviceInfo();
       // Copy the input from onnxTensorDescriptor unless it has a NULL buffer
       // pointer (which is a valid case if the tensor is empty).
       if (inOnnxBuffer) {
-        memcpy(inputTensor->getUnsafePtr(), inOnnxBuffer, onnxBytes);
+        memcpy(inputTensor.getUnsafePtr(), inOnnxBuffer, onnxBytes);
         // Pad remaining space with zeroes.
-        memset(inputTensor->getUnsafePtr() + onnxBytes, 0,
-               inputTensor->getSizeInBytes() - onnxBytes);
+        memset(inputTensor.getUnsafePtr() + onnxBytes, 0,
+               inputTensor.getSizeInBytes() - onnxBytes);
       } else {
-        inputTensor->zero();
+        inputTensor.zero();
       }
-      ctx->getPlaceholderBindings()->insert(inPhPtr, inputTensor);
+      ctx->getPlaceholderBindings()->insert(inPhPtr, std::move(inputTensor));
     }
   }
   return ONNXIFI_STATUS_SUCCESS;
@@ -353,7 +355,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
       ONNX_NAMESPACE::GraphProto inputG;
       for (const auto &p : ctx->getPlaceholderBindings()->pairs()) {
         auto *t = inputG.add_initializer();
-        const auto &inputTensor = *p.second;
+        const auto &inputTensor = p.second;
         size_t unpaddedSize = inputTensor.getUnpaddedSizeInBytes();
         size_t tensorSize = inputTensor.getSizeInBytes();
         if (unpaddedSize == tensorSize) {

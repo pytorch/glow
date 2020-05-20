@@ -370,7 +370,7 @@ void InferenceContext::execute(RunIdentifierTy runId,
   std::unordered_set<Tensor *> partialTensorInputs;
   for (auto &pht : bindings.pairs()) {
     if (partialInputs_->count(pht.first)) {
-      partialTensorInputs.insert(pht.second);
+      partialTensorInputs.insert(&pht.second);
     }
   }
 

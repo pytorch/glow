@@ -81,8 +81,9 @@ void ExecutionState::init() {
           }
           // allocate into the resultBindings because they have the longest
           // lifetime.
-          resultBindings->insert(PH,
-                                 intermediateTensorPool_.get(PH->getType()));
+          auto opt = intermediateTensorPool_.get(PH->getType());
+          DCHECK(opt.hasValue());
+          resultBindings->insert(PH, std::move(opt.getValue()));
           intermediatePlaceholders_.push_back(PH);
         }
         // Check that provided context does not contain a static PH.
