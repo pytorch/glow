@@ -225,6 +225,7 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
                                const onnxTensorDescriptorV1 *inputDescriptors,
                                ExecutionContext *ctx) {
   // Create tensors for input placeholders
+  auto &externalIOBindings = ctx->getExternalIOBindings();
   for (unsigned i = 0; i < inputsCount; ++i) {
     const auto &inOnnxTensor = inputDescriptors[i];
     auto *inOnnxBuffer = reinterpret_cast<void *>(inOnnxTensor.buffer);
@@ -280,17 +281,17 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
     }
     size_t onnxBytes = inOnnxTensorSize * elementSize;
     if (inPhPtr->dims().equals(inOnnxTensorDims)) {
-      ctx->getPlaceholderBindings()->insert(
-          inPhPtr, Tensor(inOnnxBuffer, inPhPtr->getType()));
+      externalIOBindings.emplace_back(inPhPtr,
+                                      Tensor(inOnnxBuffer, inPhPtr->getType()));
     } else if (GlowEnablePartialTensors &&
                backendPtr_->getBackend().supportsPartialTensors()) {
       // We have a partial input buffer.  Create a padded unowned tensor that
       // remembers the actual size of the input.
-      ctx->getPlaceholderBindings()->insert(
+      externalIOBindings.emplace_back(
           inPhPtr, Tensor(inOnnxBuffer, inPhPtr->getType(), onnxBytes));
     } else if (!inOnnxBuffer && inPhPtr->getType()->size() <=
                                     zeroLengthSequence_.getType().size()) {
-      ctx->getPlaceholderBindings()->insert(
+      externalIOBindings.emplace_back(
           inPhPtr, Tensor((void *)(zeroLengthSequence_.getUnsafePtr()),
                           inPhPtr->getType()));
     } else {
@@ -314,7 +315,7 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
       } else {
         inputTensor.zero();
       }
-      ctx->getPlaceholderBindings()->insert(inPhPtr, std::move(inputTensor));
+      externalIOBindings.emplace_back(inPhPtr, std::move(inputTensor));
     }
   }
   return ONNXIFI_STATUS_SUCCESS;
@@ -353,7 +354,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
       LOG(ERROR) << "Cannot create input file " << ss.str();
     } else {
       ONNX_NAMESPACE::GraphProto inputG;
-      for (const auto &p : ctx->getPlaceholderBindings()->pairs()) {
+      for (const auto &p : ctx->getExternalIOBindings()) {
         auto *t = inputG.add_initializer();
         const auto &inputTensor = p.second;
         size_t unpaddedSize = inputTensor.getUnpaddedSizeInBytes();
@@ -387,6 +388,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
                           "setOnnxifiOutputs", soEvent);
 
   // Create tensors for output placeholders
+  auto &externalIOBindings = ctx->getExternalIOBindings();
   for (unsigned i = 0; i < outputsCount; ++i) {
     const auto &outOnnxTensor = outputDescriptors[i];
     auto *outOnnxBuffer = reinterpret_cast<void *>(outOnnxTensor.buffer);
@@ -398,7 +400,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     } else {
       auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);
       if (outPhIt == onnxOutputToPlaceholder_.end()) {
-        llvm::outs() << "395outputNameunknown!\n";
+        LOG(ERROR) << "Output name unknown: " << outOnnxTensor.name;
         return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
       }
       outPhPtr = outPhIt->getValue();
@@ -422,7 +424,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     // Create a Glow tensor backed by the memory from the provided onnxifi
     // tensor and bind it to the appropriate placeholder for the graph output.
     Tensor outputTensor(outOnnxBuffer, outPhPtr->getType());
-    ctx->getPlaceholderBindings()->insert(outPhPtr, std::move(outputTensor));
+    externalIOBindings.emplace_back(outPhPtr, std::move(outputTensor));
   }
   TRACE_EVENT_SCOPE_END_NAMED(soEvent);
 

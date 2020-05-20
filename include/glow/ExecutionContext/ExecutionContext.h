@@ -53,9 +53,11 @@ class ExecutionContext {
   /// enablement. Unused otherwise.
   runtime::DeviceManager *boundDeviceManager_{nullptr};
 
+  /// Trace Events recorded during this run.
   std::unique_ptr<TraceContext> traceContext_;
 
-  /// Trace Events recorded during this run.
+  /// Positional bindings for external inputs/outputs
+  std::vector<std::pair<Placeholder *, Tensor>> externalIOBindings_;
 
 public:
   ExecutionContext()
@@ -68,6 +70,17 @@ public:
                    std::unique_ptr<DeviceBindings> devices)
       : placeholderBindings_(std::move(bindings)),
         deviceBindings_(std::move(devices)) {}
+
+  /// \returns positional bindings for external inputs
+  std::vector<std::pair<Placeholder *, Tensor>> &getExternalIOBindings() {
+    return externalIOBindings_;
+  }
+
+  /// \returns positional bindings for external inputs
+  const std::vector<std::pair<Placeholder *, Tensor>> &
+  getExternalIOBindings() const {
+    return externalIOBindings_;
+  }
 
   /// \returns a non-owning pointer to the PlaceholderBindings.
   PlaceholderBindings *getPlaceholderBindings() {

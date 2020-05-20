@@ -19,6 +19,15 @@
 using namespace glow;
 using namespace glow::runtime;
 
+namespace {
+static void updateTensor(Tensor &tensor, const Tensor &seed) {
+  if (auto *tensorPool = tensor.getOwningPool()) {
+    tensorPool->reclaim(std::move(tensor));
+  }
+  tensor = seed.getUnowned();
+}
+} // namespace
+
 void NetworkExecutionStatePool::addNewState(
     std::unique_ptr<NetworkExecutionState> state) {
 
@@ -66,16 +75,38 @@ void NetworkExecutionState::bind(std::unique_ptr<ExecutionContext> resultCtx,
   // Instead we point the tensors to the provided buffers to avoid copy in and
   // out. Once we have pinned allocations we will need to transfer.
   // For now point input and output tensors to buffers used in resultCtx.
-  auto resultPHBindings = resultCtx_->getPlaceholderBindings();
-  for (auto &pair : resultPHBindings->pairs()) {
-    auto PH = pair.first;
-    const auto &resultTensor = pair.second;
-    for (auto &bindingIt : externalPlaceholders_[PH]) {
-      auto &tensor = bindingIt->second;
-      if (auto *tensorPool = tensor.getOwningPool()) {
-        tensorPool->reclaim(std::move(tensor));
+  const auto &externalIOBindings = resultCtx_->getExternalIOBindings();
+  if (!externalIOBindings.empty()) {
+    // Fast path
+    if (ioIdxMapping_.empty()) {
+      for (const auto &pair : externalIOBindings) {
+        const auto it = externalPlaceholdersIdx_.find(pair.first);
+        CHECK(it != externalPlaceholdersIdx_.end())
+            << "Cannot match extenral placeholder.";
+        ioIdxMapping_.emplace_back(it->second);
       }
-      tensor = resultTensor.getUnowned();
+    }
+    DCHECK(ioIdxMapping_.size() == externalIOBindings.size());
+    for (unsigned i = 0, e = externalIOBindings.size(); i < e; ++i) {
+      const auto &pair = externalIOBindings[i];
+      const auto &resultTensor = pair.second;
+      for (auto &bindingIt : externalPlaceholders_[ioIdxMapping_[i]]) {
+        updateTensor(bindingIt->second, resultTensor);
+      }
+    }
+  } else {
+    // Slow path for backward compatibility, we will do extra hash lookup
+    auto *resultPHBindings = resultCtx_->getPlaceholderBindings();
+    for (auto &pair : resultPHBindings->pairs()) {
+      auto *PH = pair.first;
+      const auto &resultTensor = pair.second;
+      const auto it = externalPlaceholdersIdx_.find(PH);
+      if (it == externalPlaceholdersIdx_.end()) {
+        continue;
+      }
+      for (auto &bindingIt : externalPlaceholders_[it->second]) {
+        updateTensor(bindingIt->second, resultTensor);
+      }
     }
   }
 }
@@ -156,7 +187,16 @@ void NetworkExecutionState::init(
         Tensor backingTensor(buffer, PH->getType());
         auto itt = intermediatePHBindings->insert(PH, std::move(backingTensor));
         // TODO: Only add to externalPlaceholders_ of PH is external placeholder
-        externalPlaceholders_[PH].push_back(itt);
+        auto idxIt = externalPlaceholdersIdx_.find(PH);
+        if (idxIt == externalPlaceholdersIdx_.end()) {
+          externalPlaceholdersIdx_.emplace(PH, externalPlaceholders_.size());
+          externalPlaceholders_.emplace_back();
+          auto &vec = externalPlaceholders_.back();
+          vec.push_back(itt);
+        } else {
+          auto &vec = externalPlaceholders_[idxIt->second];
+          vec.push_back(itt);
+        }
       }
     }
 
@@ -255,7 +295,7 @@ void NetworkExecutionState::insertIntoTraceContext(TraceContext *runCtx) {
 
 std::unique_ptr<ExecutionContext>
 NetworkExecutionState::getUniqueResultContextPtr() {
-  // The result PlaceholderBindings should have been been created in the
+  // The result PlaceholderBindings should have been created in the
   // constructor.
   DCHECK_NOTNULL(resultCtx_.get());
   return std::move(resultCtx_);
