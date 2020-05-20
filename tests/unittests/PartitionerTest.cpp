@@ -708,7 +708,8 @@ static void createSimpleSparseNNModule(Module &mod, bool shareSplatWeights) {
 
   // Create SLS portion
   for (int table = 0; table < 5; table++) {
-    Tensor data(ElemKind::FloatTy, {tableEntries, tableWidth});
+    dim_t thisTableWidth = (table + 1) * tableWidth;
+    Tensor data(ElemKind::FloatTy, {tableEntries, thisTableWidth});
     auto *indices = mod.createPlaceholder(
         ElemKind::Int64ITy, {numIndices * batchSize}, "indices", false);
     if (!shareSplatWeights) {
@@ -729,9 +730,9 @@ static void createSimpleSparseNNModule(Module &mod, bool shareSplatWeights) {
 
   // Create FC portion
   for (dim_t layer = 0; layer < 4; layer++) {
-    Tensor FCWeights(ElemKind::FloatTy, {5 * tableWidth, 5 * tableWidth});
+    Tensor FCWeights(ElemKind::FloatTy, {15 * tableWidth, 15 * tableWidth});
     Constant *weights = mod.createConstant("FCWeights", FCWeights);
-    Tensor FCBias(ElemKind::FloatTy, {5 * tableWidth});
+    Tensor FCBias(ElemKind::FloatTy, {15 * tableWidth});
     Constant *bias = mod.createConstant("FCBias", FCBias);
 
     auto *FC = F->createFullyConnected("FC", cur, weights, bias);
@@ -780,7 +781,8 @@ static void sparseNNPartitionValidation(const DAGListTy &dagList, Module &mod,
               }
             }
           }
-        } else {
+        } else if (findNodeInFunction(func,
+                                      Kinded::Kind::FullyConnectedNodeKind)) {
           numOfFCNodes++;
           EXPECT_EQ(node->logicalDevices.size(), 3);
         }
@@ -793,8 +795,8 @@ static void sparseNNPartitionValidation(const DAGListTy &dagList, Module &mod,
   EXPECT_EQ(numOfFCNodes, 1);
 }
 
-static void testSimpleSparseNNPartitioning(Module &mod,
-                                           bool shareSplatWeights) {
+static void testSimpleSparseNNPartitioning(Module &mod, bool shareSplatWeights,
+                                           bool concatSLSOutputs) {
   createSimpleSparseNNModule(mod, shareSplatWeights);
   BackendWithoutSub backend1, backend2, backend3;
   std::vector<Backend *> backends;
@@ -802,13 +804,13 @@ static void testSimpleSparseNNPartitioning(Module &mod,
   backends.emplace_back(&backend2);
   backends.emplace_back(&backend3);
   std::vector<DeviceInfo> devices = {
-      {400000, "CPU"}, {400000, "CPU"}, {400000, "CPU"}};
+      {1200000, "CPU"}, {1200000, "CPU"}, {1200000, "CPU"}};
   Partitioner partitioner(&mod, devices, backends);
   CompilationContext cctx;
   cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
   cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards = 3;
   cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard = 200;
-  cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats = true;
+  cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats = concatSLSOutputs;
   auto dagList = partitioner.partition(cctx);
   ASSERT_TRUE((bool)dagList);
   EXPECT_EQ(mod.getFunctions().size(), 4);
@@ -820,13 +822,20 @@ static void testSimpleSparseNNPartitioning(Module &mod,
 
 /// Test using user-defined backends for SparseNN partition.
 TEST_F(PartitionerTest, SimpleSparseNNPartitioning) {
-  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false);
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
+                                 /*concatSLSOutputs*/ false);
+}
+
+TEST_F(PartitionerTest, SimpleSparseNNPartitioning_ConcatSLSOutputs) {
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
+                                 /*concatSLSOutputs*/ true);
 }
 
 /// Test using user-defined backends for SparseNN partition when weights are
 /// shared Splats by all SLSs.
 TEST_F(PartitionerTest, SimpleSparseNNPartitioning_SharedWeights) {
-  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ true);
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ true,
+                                 /*concatSLSOutputs*/ false);
 }
 
 /// To check if the generated DAG is correct for the Heterogeneous Partiton
