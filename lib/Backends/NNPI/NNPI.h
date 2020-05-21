@@ -90,5 +90,16 @@ constexpr char parallelTransformKindKey[] = "NNPI_parallelTransformKind";
 constexpr char extraEdgesKey[] = "NNPI_extraEdges";
 constexpr char coreAssignmentsKey[] = "NNPI_coreAssignments";
 
+/// These are used for parsing edge strings in the form of [#$]name[@#]
+struct ExtraEdgeSplitPair {
+  bool hasSplit;
+  std::string label;
+  int splitNum;
+};
+Expected<ExtraEdgeSplitPair>
+getExtraEdgeTargetSplitPair(const std::string &edge);
+Expected<ExtraEdgeSplitPair>
+getExtraEdgeSourceSplitPair(const std::string &edge);
+
 } // namespace glow
 #endif // GLOW_NNPI_BACKEND_H
