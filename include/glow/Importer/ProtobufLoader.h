@@ -157,7 +157,7 @@ static Expected<std::vector<ElemTy>> loadAxes(const T *arg, int rank) {
   std::vector<int> axes;
   ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<int>(arg));
   std::vector<ElemTy> axesPos;
-  for (const int &axis : axes) {
+  for (int axis : axes) {
     int axisPos;
     ASSIGN_VALUE_OR_RETURN_ERR(axisPos, getPositiveAxis(axis, rank));
     axesPos.push_back(static_cast<ElemTy>(axisPos));
