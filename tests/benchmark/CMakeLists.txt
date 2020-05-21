@@ -19,6 +19,16 @@ target_link_libraries(SLSBench
                         HostManager
                         CPURuntimeNative)
 
+add_executable(GatherBench
+               GatherBench.cpp)
+target_link_libraries(GatherBench
+                      PRIVATE
+                        Backends
+                        ExecutionEngine
+                        Graph
+                        HostManager
+                        CPURuntimeNative)
+
 add_executable(ConvBench
                ConvBench.cpp)
 target_link_libraries(ConvBench
