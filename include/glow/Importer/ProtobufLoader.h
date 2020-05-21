@@ -142,8 +142,8 @@ Expected<int> getPositiveAxis(int axis, int rank);
 
 /// Reads a single axis parameter which is wrapped if negative using \p rank
 /// based on the logic of \ref getPositiveAxis.
-template <typename ElemTy, typename T> static
-Expected<ElemTy> loadAxis(const T *arg, int rank) {
+template <typename ElemTy, typename T>
+static Expected<ElemTy> loadAxis(const T *arg, int rank) {
   int axis;
   ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(arg));
   ASSIGN_VALUE_OR_RETURN_ERR(axis, getPositiveAxis(axis, rank));
@@ -152,12 +152,12 @@ Expected<ElemTy> loadAxis(const T *arg, int rank) {
 
 /// Reads multiple axes as an array which are wrapped if negative using \p rank
 /// based on the logic of \ref getPositiveAxis.
-template <typename ElemTy, typename T> static
-Expected<std::vector<ElemTy>> loadAxes(const T *arg, int rank) {
+template <typename ElemTy, typename T>
+static Expected<std::vector<ElemTy>> loadAxes(const T *arg, int rank) {
   std::vector<int> axes;
   ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<int>(arg));
   std::vector<ElemTy> axesPos;
-  for (const int &axis: axes) {
+  for (const int &axis : axes) {
     int axisPos;
     ASSIGN_VALUE_OR_RETURN_ERR(axisPos, getPositiveAxis(axis, rank));
     axesPos.push_back(static_cast<ElemTy>(axisPos));
