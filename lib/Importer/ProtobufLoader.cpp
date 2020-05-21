@@ -35,6 +35,16 @@ bool isArrayConstant(llvm::ArrayRef<size_t> a) {
   return true;
 }
 
+Expected<int> getPositiveAxis(int axis, int rank) {
+  RETURN_ERR_IF_NOT(-rank <= axis, "Axis parameter invalid!");
+  RETURN_ERR_IF_NOT(axis < rank, "Axis parameter invalid!");
+  int axisPos = axis % rank;
+  if (axisPos < 0) {
+    axisPos += rank;
+  }
+  return axisPos;
+}
+
 void setConstantFoldLoaderOpsFlag(bool flag) { isConstFoldLoaderOps = flag; }
 
 bool getConstantFoldLoaderOpsFlag() { return isConstFoldLoaderOps; }

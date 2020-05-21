@@ -392,7 +392,8 @@ protected:
     // softmax function. This is similar to a bitcast operation.
     int axis = 1;
     if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
+      ASSIGN_VALUE_OR_RETURN_ERR(axis,
+                                 loadAxis<int>(dict["axis"], in.dims().size()));
     }
 
     auto *FN = G_->createFlatten("reshapeInput", in, axis);
@@ -604,7 +605,8 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     size_t axis = 0;
     if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axis, loadAxis<size_t>(dict["axis"], in.dims().size()));
     }
 
     std::vector<dim_t> split;
@@ -722,7 +724,8 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     int axis = 1;
     if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
+      ASSIGN_VALUE_OR_RETURN_ERR(axis,
+                                 loadAxis<int>(dict["axis"], in.dims().size()));
     }
     auto *node = G_->createFlatten(opName, in, axis);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
@@ -779,13 +782,11 @@ protected:
       ASSIGN_VALUE_OR_RETURN_ERR(k, loadInt(dict["k"]));
     }
 
-    int axis = -1;
-    if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
-    }
     int lastDim = in.dims().size() - 1;
-    if (axis == -1) {
-      axis = lastDim;
+    int axis = lastDim;
+    if (dict.count("axis")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(axis,
+                                 loadAxis<int>(dict["axis"], in.dims().size()));
     }
 
     RETURN_ERR_IF_NOT(axis == lastDim,
@@ -804,7 +805,8 @@ protected:
 
     std::vector<unsigned_t> shapeAxes = {};
     if (dict.count("axes")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(shapeAxes, getShape<unsigned_t>(dict["axes"]));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          shapeAxes, loadAxes<unsigned_t>(dict["axes"], in.dims().size()));
     } else {
       shapeAxes.resize(in.dims().size());
       std::iota(shapeAxes.begin(), shapeAxes.end(), 0);
@@ -1082,7 +1084,8 @@ protected:
 
     if (dict.count("axis")) {
       int axis;
-      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.find("axis")->second));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axis, loadAxis<int>(dict.find("axis")->second, data.dims().size()));
       if (axis != 0 && axis != 1) {
         RETURN_ERR("Axis must be 0 or 1.");
       }
