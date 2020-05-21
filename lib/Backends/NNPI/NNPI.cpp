@@ -56,6 +56,42 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true>
         llvm::cl::location(GlowNNPIAcceptUnarySLS), llvm::cl::Optional,
         llvm::cl::init(false), llvm::cl::cat(optionsForNNPI));
 
+/// Parse a string with format either "# .. splitChar .. label" or "label ..
+/// splitChar .. #". If splitChar is not found then return the original string
+/// as label.
+Expected<ExtraEdgeSplitPair>
+getExtraEdgeSourceSplitPair(const std::string &edge, char splitChar,
+                            bool labelPrecedesNum) {
+  ExtraEdgeSplitPair splitPair;
+  llvm::StringRef edgeRef(edge);
+  if (edgeRef.contains(splitChar)) {
+    auto splitEdge = edgeRef.split(splitChar);
+    if (labelPrecedesNum) {
+      std::swap(splitEdge.first, splitEdge.second);
+    }
+    RETURN_ERR_IF_NOT(splitEdge.first != "", "Edge must have an integer value");
+    ASSIGN_VALUE_OR_RETURN_ERR(splitPair.splitNum,
+                               getIntFromStr(std::string(splitEdge.first)));
+    splitPair.label = splitEdge.second.str();
+    splitPair.hasSplit = true;
+  } else {
+    splitPair.label = edge;
+    splitPair.splitNum = 0;
+    splitPair.hasSplit = false;
+  }
+  return splitPair;
+}
+
+Expected<ExtraEdgeSplitPair>
+getExtraEdgeTargetSplitPair(const std::string &edge) {
+  return getExtraEdgeSourceSplitPair(edge, '@', true);
+}
+
+Expected<ExtraEdgeSplitPair>
+getExtraEdgeSourceSplitPair(const std::string &edge) {
+  return getExtraEdgeSourceSplitPair(edge, '$', false);
+}
+
 namespace onnxifi {
 
 bool GlowDumpNNPICompilerData = false;
@@ -735,13 +771,29 @@ static Error propagateBackendSpecificNodeInfo(
     // Look for NNPI_extraEdges and propagate them into each Node.
     auto extraEdgesIt = nodeInfo.find(extraEdgesKey);
     if (extraEdgesIt != nodeInfo.end()) {
-      for (const NodeValue &inputCNNV : CN->getInputs()) {
+      for (dim_t inputNum = 0; inputNum < CN->getInputs().size(); inputNum++) {
+        const NodeValue &inputCNNV = CN->getInputs()[inputNum];
         auto &newExtraEdges = currFunInfo[inputCNNV.getNode()][extraEdgesKey];
         RETURN_ERR_IF_NOT(newExtraEdges.size() == 0,
                           std::string(extraEdgesKey) +
                               " should have been empty.");
-        for (const std::string &edge : extraEdgesIt->second) {
-          newExtraEdges.push_back(edge);
+        for (std::string &edge : extraEdgesIt->second) {
+          // If a source split ID is specified via '$' then apply
+          // only to that input
+          ExtraEdgeSplitPair sourceEdgePair;
+          ASSIGN_VALUE_OR_RETURN_ERR(sourceEdgePair,
+                                     getExtraEdgeSourceSplitPair(edge));
+          if (sourceEdgePair.hasSplit) {
+            RETURN_ERR_IF_NOT(
+                sourceEdgePair.splitNum < CN->getInputs().size(),
+                "Source split num for edge exceeded size of the source split.");
+            edge = sourceEdgePair.label;
+            if (sourceEdgePair.splitNum == inputNum) {
+              newExtraEdges.push_back(edge);
+            }
+          } else {
+            newExtraEdges.push_back(edge);
+          }
         }
       }
     }
@@ -765,31 +817,49 @@ static Error propagateBackendSpecificNodeInfo(
       }
 
       for (std::string &edge : opts) {
+        ExtraEdgeSplitPair sourceEdgePair, targetEdgePair;
+        ASSIGN_VALUE_OR_RETURN_ERR(sourceEdgePair,
+                                   getExtraEdgeSourceSplitPair(edge));
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            targetEdgePair, getExtraEdgeTargetSplitPair(sourceEdgePair.label));
+
         // Only process edges that were expected to be split.
-        llvm::StringRef edgeRef(edge);
-        if (!edgeRef.contains('@')) {
+        if (!targetEdgePair.hasSplit) {
           continue;
         }
+        auto it = nameToReplacementMap.find(targetEdgePair.label);
+        auto *targetNode = F->getNodeByName(targetEdgePair.label);
 
-        auto splitPair = edgeRef.split('@');
-        RETURN_ERR_IF_NOT(splitPair.second != "",
-                          "Edge must have an integer value after @");
+        // If the target of the edge was a parallelized node
+        if (it != nameToReplacementMap.end()) {
+          const ConcatNode *replaceCN = it->second;
+          RETURN_ERR_IF_NOT(
+              targetEdgePair.splitNum < replaceCN->getInputs().size(),
+              "targetEdgePair.splitNum for edge exceeded size of the split.");
 
-        int splitNum;
-        ASSIGN_VALUE_OR_RETURN_ERR(splitNum, getIntFromStr(splitPair.second));
+          // Finally, replace the name of the old edge (containing '@') with the
+          // name of the new edge created during the parallelization pass.
+          edge = replaceCN->getInputs()[targetEdgePair.splitNum]
+                     .getNode()
+                     ->getName()
+                     .str();
+        }
+        // If the target of the edge is a Concat
+        else if (targetNode && llvm::isa<ConcatNode>(targetNode)) {
+          ConcatNode *targetConcat = llvm::dyn_cast<ConcatNode>(targetNode);
+          edge = targetConcat->getName().str() + "@copy_" +
+                 std::to_string(targetEdgePair.splitNum);
+        } else {
+          RETURN_ERR_IF_NOT(it != nameToReplacementMap.end(),
+                            "Must target either a Concat or a replacement "
+                            "Concat for a parallelized edge: " +
+                                targetEdgePair.label);
+        }
 
-        auto it = nameToReplacementMap.find(splitPair.first);
-        RETURN_ERR_IF_NOT(
-            it != nameToReplacementMap.end(),
-            "Must have a replacement Concat for a parallelized edge.");
-
-        const ConcatNode *replaceCN = it->second;
-        RETURN_ERR_IF_NOT(splitNum < replaceCN->getInputs().size(),
-                          "splitNum for edge exceeded size of the split.");
-
-        // Finally, replace the name of the old edge (containing '@') with the
-        // name of the new edge created during the parallelization pass.
-        edge = replaceCN->getInputs()[splitNum].getNode()->getName().str();
+        // Add back the source edge annotation in case of Concat
+        if (sourceEdgePair.hasSplit) {
+          edge = std::to_string(sourceEdgePair.splitNum) + "$" + edge;
+        }
       }
     }
   }

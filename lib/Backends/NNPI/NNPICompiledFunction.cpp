@@ -133,6 +133,11 @@ Error NNPICompiledFunction::setupCompilationHints(
   llvm::StringSet<> allNodeNames;
   for (const Node &N : F->getNodes()) {
     allNodeNames.insert(N.getName().str());
+    if (const ConcatNode *CN = llvm::dyn_cast<ConcatNode>(&N)) {
+      for (dim_t i = 0, e = CN->getNumInputs(); i < e; i++) {
+        allNodeNames.insert(N.getName().str() + "@copy_" + std::to_string(i));
+      }
+    }
   }
 
   // Create hints here before copying into config_, as we don't know how many
@@ -182,7 +187,7 @@ Error NNPICompiledFunction::setupCompilationHints(
           hint.type = NNPI_HINT_ICE_CORE_PLACEMENT;
           const std::string opName =
               N->getName().str() +
-              (opts.size() == 1 ? "" : ("@" + std::to_string(i)));
+              (opts.size() == 1 ? "" : ("@copy_" + std::to_string(i)));
           strncpy(hint.iceCorePlacement.opName, opName.c_str(),
                   sizeof(NNPIObjectName));
           hint.iceCorePlacement.iceCore = core;
@@ -191,13 +196,30 @@ Error NNPICompiledFunction::setupCompilationHints(
       }
 
       if (key == extraEdgesKey) {
-        for (const std::string &edgeName : opts) {
+        for (const std::string &edgeNameInp : opts) {
+          ExtraEdgeSplitPair sourceEdgePair;
+          std::string opName = std::string(N->getName());
+          std::string edgeName = edgeNameInp;
+          ASSIGN_VALUE_OR_RETURN_ERR(sourceEdgePair,
+                                     getExtraEdgeSourceSplitPair(edgeNameInp));
+          if (sourceEdgePair.hasSplit) {
+            RETURN_ERR_IF_NOT(
+                llvm::isa<ConcatNode>(N),
+                "Extra edge " + edgeName +
+                    " has a source split, but was not sourced from either a "
+                    "parallelized node, or a Concat node.");
+            opName =
+                opName + "@copy_" + std::to_string(sourceEdgePair.splitNum);
+            edgeName = sourceEdgePair.label;
+          }
+
           RETURN_ERR_IF_NOT(allNodeNames.count(edgeName),
                             "Extra edge " + edgeName +
                                 " is not mapped to a current Node name.");
           NNPICompilationHint hint;
           hint.type = NNPI_HINT_OP_DEPENDENCY;
-          strncpy(hint.opDependency.opName, N->getName().data(),
+
+          strncpy(hint.opDependency.opName, opName.c_str(),
                   sizeof(NNPIObjectName));
           strncpy(hint.opDependency.dependsOnOpName, edgeName.c_str(),
                   sizeof(NNPIObjectName));
