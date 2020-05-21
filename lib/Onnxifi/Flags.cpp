@@ -38,7 +38,6 @@ extern bool GlowSaveOnnxifiModel;
 extern bool GlowSaveOnnxifiDAG;
 extern bool GlowSaveOnnxifiIO;
 extern bool GlowEnablePartialTensors;
-extern bool GlowUseCustomOpsForExport;
 extern bool GlowUseSparseNNPartitioningScheme;
 extern bool GlowSparseNNPartitioningAddSLSConcats;
 extern bool GlowDumpGraph;
@@ -284,14 +283,6 @@ DEFINE_bool(glow_enable_partial_tensors, true,
 DEFINE_validator(glow_enable_partial_tensors,
                  [](const char * /* unused */, bool value) {
                    glow::onnxifi::GlowEnablePartialTensors = value;
-                   return true;
-                 });
-
-DEFINE_bool(glow_use_custom_ops_for_export, true,
-            "Use custom ONNX ops when exporting Glow protos.");
-DEFINE_validator(glow_use_custom_ops_for_export,
-                 [](const char * /* unused */, bool value) {
-                   glow::onnxifi::GlowUseCustomOpsForExport = value;
                    return true;
                  });
 

@@ -11,17 +11,15 @@ as custom ops that are only used by Glow (see below).
 
 ## Exporting
 
-Glow supports exporting ONNX protobufs. One way this is done is by trying to
-abide by the ONNX spec for ops which can be represented in ONNX. However this
-can be problematic as not all ops may fit into ONNX. Additionally, if the
-intention is to later on reload this serialized model into Glow, then there is
-downside in moving to ONNX and back, as some information may be lost in the
-conversion from Glow -> ONNX -> Glow.
+Glow supports exporting custom Glow ONNX protobufs. Trying to abide by the ONNX
+spec for ops which can be represented in ONNX can be problematic, as not all ops
+may fit into ONNX. Additionally, if the intention is to later on reload this
+serialized model into Glow, then there is downside in moving to ONNX and back,
+as some information may be lost in the conversion from Glow -> ONNX -> Glow.
 
-As an alternative, Glow also supports exporting to custom ONNX ops, which are
-annotated with attributes to ensure that the Glow graph that is exported is the
-exact same as the one that is reloaded. See the `useGlowCustomOps_` flag in the
-`ONNXModelWriter`.
+Instead, Glow supports exporting to custom ONNX ops, which are annotated with
+attributes to ensure that the Glow graph that is exported is the exact same as
+the one that is reloaded.
 
 ### Format of custom Glow ops in ONNX
 

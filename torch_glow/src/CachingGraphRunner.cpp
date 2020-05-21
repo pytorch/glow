@@ -351,7 +351,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
         size_t unpaddedSize = t.getUnpaddedSizeInBytes();
         size_t tensorSize = t.getSizeInBytes();
         if (unpaddedSize == tensorSize) {
-          ONNXModelWriter::writeTensor(t, onnxT, /*useGlowCustomOps*/ true);
+          ONNXModelWriter::writeTensor(t, onnxT);
         } else {
           // If the input is a partial tensor, then save only the part that has
           // data.
@@ -360,8 +360,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
           assert(dims.size() > 0);
           dims[0] = dims[0] * unpaddedSize / tensorSize;
           const auto &resized = t.getUnowned(dims);
-          ONNXModelWriter::writeTensor(resized, onnxT,
-                                       /*useGlowCustomOps*/ true);
+          ONNXModelWriter::writeTensor(resized, onnxT);
         }
       }
       std::string buffer;
@@ -421,7 +420,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       glow::Tensor glowT = ptTensorToGlowTensor(ptTensor);
       auto *onnxT = outputG.add_initializer();
       onnxT->set_name(info.outputPlaceholders[i]->getName());
-      ONNXModelWriter::writeTensor(glowT, onnxT, /*useGlowCustomOps*/ true);
+      ONNXModelWriter::writeTensor(glowT, onnxT);
     }
 
     if (settings_.writeToOnnx) {
@@ -430,8 +429,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       glow::Tensor jitGlowT = ptTensorToGlowTensor(jitPtTensor);
       auto *jitOnnxT = jitOutputG.add_initializer();
       jitOnnxT->set_name(info.outputPlaceholders[i]->getName());
-      ONNXModelWriter::writeTensor(jitGlowT, jitOnnxT,
-                                   /*useGlowCustomOps*/ true);
+      ONNXModelWriter::writeTensor(jitGlowT, jitOnnxT);
     }
 
     if (settings_.jitVsGlowCompare) {

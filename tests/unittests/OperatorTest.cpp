@@ -70,8 +70,7 @@ protected:
 
     Error err = Error::empty();
     ONNXModelWriter onnxWR(pathToModel, *F_, 7, 9, &err,
-                           /* textMode */ true, /* zipMode */ false,
-                           /* useGlowCustomOps */ true);
+                           /* textMode */ true, /* zipMode */ false);
     ASSERT_FALSE(ERR_TO_BOOL(std::move(err))) << "Error exporting model";
 
     // Now that we've exported, load it back into a new module/function, run it,
@@ -84,7 +83,7 @@ protected:
       Error err = Error::empty();
       // Note: We disable constant folding here because we only need it to
       // calculate shapes that are the result of constant compute in the proto,
-      // but this won't be the case when using useGlowCustomOps exporting.
+      // but this won't be the case when using custom Glow ONNX exporting.
       ONNXModelLoader onnxLD(pathToModel, {}, {}, *loadedF, &err,
                              /* zipMode */ false, /* perNodeOpts */ nullptr,
                              /* disableConstFoldInLoader */ true,

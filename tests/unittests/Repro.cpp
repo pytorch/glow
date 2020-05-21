@@ -426,7 +426,6 @@ int run() {
   // Build the execution engine and deserialize the Function.
   auto mod = glow::make_unique<Module>();
   Error err = Error::empty();
-  bool usingGlowCustomOps = false;
   CompilationContext cctx;
   runtime::PrePartitionedConfig PPC;
   cctx.prepartitionedConfig = &PPC;
@@ -434,7 +433,6 @@ int run() {
     ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *mod, "test", &PPC, &err,
                            onnxLoaderZipMode,
                            &cctx.backendOpts.backendSpecificNodeInfo);
-    usingGlowCustomOps = onnxLD.usingGlowCustomOps();
   }
   CHECK(!ERR_TO_BOOL(std::move(err)))
       << "ONNXModelLoader failed to load model: " << modelPathOpt;
@@ -612,8 +610,7 @@ int run() {
     PlaceholderBindings bindings;
     bindings.allocate(inputPlaceholderList);
     fillPlaceholders(inputGroup, &bindings,
-                     enablePartialTensor ? &partialTensorPayloads : nullptr,
-                     usingGlowCustomOps);
+                     enablePartialTensor ? &partialTensorPayloads : nullptr);
     inputBindings.emplace_back(std::move(bindings));
   }
 
@@ -734,7 +731,7 @@ int run() {
         const auto &bindings = *result.ctx->getPlaceholderBindings();
         for (const auto &tp : outputGroup.initializer()) {
           Tensor tensorRef;
-          auto error = loadTensor(tp, &tensorRef, usingGlowCustomOps);
+          auto error = loadTensor(tp, &tensorRef);
           CHECK(!ERR_TO_BOOL(std::move(error)))
               << "Cannot load output ref tensor";
           const auto *tensor =
@@ -780,7 +777,7 @@ int run() {
 
           if (dumpOutputsOpt) {
             auto *t = outputG.add_initializer();
-            ONNXModelWriter::writeTensor(*tensor, t, usingGlowCustomOps);
+            ONNXModelWriter::writeTensor(*tensor, t);
             t->set_name(tp.name());
           }
 

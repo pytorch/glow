@@ -373,8 +373,7 @@ Error dumpOnnxModel(glow::Function &F, bool zipMode) {
   LOG(INFO) << "Writing ONNX model to " << fileName;
   Error err = Error::empty();
   ONNXModelWriter onnxWriter(fileName, F, kIrVer, kOpsetVer, &err,
-                             /* textMode */ !zipMode, /* zipMode */ zipMode,
-                             /* useGlowCustomOps */ true);
+                             /* textMode */ !zipMode, /* zipMode */ zipMode);
   return err;
 }
 
