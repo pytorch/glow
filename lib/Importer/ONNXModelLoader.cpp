@@ -1153,7 +1153,8 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
       // - 'starts' & 'ends' arrays must have the same size as the 'axes' array.
       // In case an axis is specified multiple times in 'axes', the later
       // parameters will simply overwrite the previous ones.
-      ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<ssize_t>(dict["axes"]));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axes, loadAxes<ssize_t>(dict["axes"], data.dims().size()));
     }
   }
   RETURN_ERR_IF_NOT(
@@ -1818,7 +1819,8 @@ Error ONNXModelLoader::loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   size_t axis = 0;
   if (dict.count("axis")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        axis, loadAxis<size_t>(dict.at("axis"), in.dims().size()));
   }
   bool keepDims = true;
   if (dict.count("keepDims")) {
@@ -2069,7 +2071,8 @@ Error ONNXModelLoader::loadSqueeze(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   std::vector<dim_t> axes;
-  ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<dim_t>(dict["axes"]));
+  ASSIGN_VALUE_OR_RETURN_ERR(axes,
+                             loadAxes<dim_t>(dict["axes"], in.dims().size()));
   Node *node = G_->createSqueeze(opName, in, axes);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
@@ -2081,8 +2084,16 @@ Error ONNXModelLoader::loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
 
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  // Compute output rank.
+  std::vector<int> axesTemp;
+  ASSIGN_VALUE_OR_RETURN_ERR(axesTemp, getShape<int>(dict["axes"]));
+  int outputRank = in.dims().size() + axesTemp.size();
+
+  // Read again the axes and use the output rank to wrap negative axes.
   std::vector<dim_t> axes;
-  ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<dim_t>(dict["axes"]));
+  ASSIGN_VALUE_OR_RETURN_ERR(axes, loadAxes<dim_t>(dict["axes"], outputRank));
+
   Node *node = G_->createExpandDims(opName, in, axes);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
@@ -2136,7 +2147,9 @@ Error ONNXModelLoader::loadConcat(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   int axis;
-  ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      axis, loadAxis<int>(dict.at("axis"), inputs.back().dims().size()));
+
   Node *node = G_->createConcat(opName, inputs, axis);
 
   RETURN_IF_ERR(addNodeAsOutput(op, node));
@@ -2152,7 +2165,8 @@ Error ONNXModelLoader::loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
   if (in.getType()->dims().size() > 2) {
     size_t axis = 1;
     if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axis, loadAxis<size_t>(dict.at("axis"), in.dims().size()));
     }
     in = G_->createFlatten("fc.in", in, axis);
   }
@@ -2396,12 +2410,8 @@ Error ONNXModelLoader::loadReduceL2(const ONNX_NAMESPACE::NodeProto &op,
   // ReduceAdd.
   std::vector<unsigned_t> shapeAxes = {};
   if (dict.count("axes")) {
-    for (int32_t axisValue : dict.at("axes")->ints()) {
-      if (axisValue < 0) {
-        axisValue += in.dims().size();
-      }
-      shapeAxes.push_back((unsigned_t)axisValue);
-    }
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        shapeAxes, loadAxes<unsigned_t>(dict.at("axes"), in.dims().size()));
     std::sort(shapeAxes.begin(), shapeAxes.end());
     if (shapeAxes.size() > 1) {
       auto it = std::unique(shapeAxes.begin(), shapeAxes.end());
@@ -3489,7 +3499,8 @@ Error ONNXModelLoader::loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
 
   unsigned_t axis = 1;
   if (dict.count("axis")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        axis, loadAxis<unsigned_t>(dict.at("axis"), in.dims().size()));
   }
 
   Node *N =
@@ -3637,7 +3648,8 @@ Error ONNXModelLoader::loadInsertTensor(const ONNX_NAMESPACE::NodeProto &op,
 
   unsigned_t axis = 0;
   if (dict.count("axis")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        axis, loadAxis<unsigned_t>(dict.at("axis"), big.dims().size()));
   }
 
   Node *N = G_->createInsertTensor(loadOperatorName(op), big, small, start,
@@ -3683,7 +3695,8 @@ Error ONNXModelLoader::loadFlip(const ONNX_NAMESPACE::NodeProto &op,
 
   unsigned_t axis = 0;
   if (dict.count("axis")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        axis, loadAxis<unsigned_t>(dict.at("axis"), input.dims().size()));
   }
 
   Node *N = G_->createFlip("flip", input, axis);

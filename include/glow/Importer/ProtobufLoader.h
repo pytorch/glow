@@ -131,6 +131,40 @@ template <typename T> std::string loadOperatorName(const T &op) {
   return op.op_type();
 }
 
+/// \returns the positive value (modulo) of \p axis given the \p rank (number
+/// of dimensions) of the tensor it refers to. The proto format allows negative
+/// axis in which case the axis is used for counting dimensions from the back.
+/// Since Glow cannot use a negative axis we use this converter utility. For
+/// example an axis value of -1 for a tensor with 3 dimensions (rank 3) is
+/// converted to 2. A good definition of the axis value requires to be in the
+/// range [rank, rank-1].
+Expected<int> getPositiveAxis(int axis, int rank);
+
+/// Reads a single axis parameter which is wrapped if negative using \p rank
+/// based on the logic of \ref getPositiveAxis.
+template <typename ElemTy, typename T>
+static Expected<ElemTy> loadAxis(const T *arg, int rank) {
+  int axis;
+  ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(arg));
+  ASSIGN_VALUE_OR_RETURN_ERR(axis, getPositiveAxis(axis, rank));
+  return static_cast<ElemTy>(axis);
+}
+
+/// Reads multiple axes as an array which are wrapped if negative using \p rank
+/// based on the logic of \ref getPositiveAxis.
+template <typename ElemTy, typename T>
+static Expected<std::vector<ElemTy>> loadAxes(const T *arg, int rank) {
+  std::vector<int> axes;
+  ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<int>(arg));
+  std::vector<ElemTy> axesPos;
+  for (int axis : axes) {
+    int axisPos;
+    ASSIGN_VALUE_OR_RETURN_ERR(axisPos, getPositiveAxis(axis, rank));
+    axesPos.push_back(static_cast<ElemTy>(axisPos));
+  }
+  return axesPos;
+}
+
 /// Loads model: graph and weights.
 class ProtobufLoader {
 protected:

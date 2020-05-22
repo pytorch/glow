@@ -232,6 +232,23 @@ static void importReduceL2Test(const std::string &netFilename,
   }
 }
 
+/// Test the utility function which wraps a negative axis.
+TEST_F(OnnxImporterTest, getPositiveAxis) {
+  int axisPos;
+  ASSIGN_VALUE_OR_FAIL_TEST(axisPos, getPositiveAxis(-3, 3));
+  EXPECT_EQ(axisPos, 0);
+  ASSIGN_VALUE_OR_FAIL_TEST(axisPos, getPositiveAxis(-2, 3));
+  EXPECT_EQ(axisPos, 1);
+  ASSIGN_VALUE_OR_FAIL_TEST(axisPos, getPositiveAxis(-1, 3));
+  EXPECT_EQ(axisPos, 2);
+  ASSIGN_VALUE_OR_FAIL_TEST(axisPos, getPositiveAxis(0, 3));
+  EXPECT_EQ(axisPos, 0);
+  ASSIGN_VALUE_OR_FAIL_TEST(axisPos, getPositiveAxis(1, 3));
+  EXPECT_EQ(axisPos, 1);
+  ASSIGN_VALUE_OR_FAIL_TEST(axisPos, getPositiveAxis(2, 3));
+  EXPECT_EQ(axisPos, 2);
+}
+
 /// Test loading reduceL2 op from an ONNX model
 /// with axes = [].
 TEST_F(OnnxImporterTest, reduceL2NoAxis) {
