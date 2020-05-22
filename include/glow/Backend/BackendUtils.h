@@ -237,5 +237,9 @@ bool allowsPartialInput(const Placeholder *V, const Function *F);
 /// \returns true if \p V is used in \p F; false otherwise.
 bool usedInFunction(const Placeholder *V, const Function *F);
 
+/// \returns whether \p type is 2 dimensional and unary. Usually the data input
+/// of SparseLengths(Weighted)Sum is passed in here.
+bool isUnaryLookup(TypeRef type);
+
 } // end namespace glow
 #endif // GLOW_BACKENDS_BACKENDUTILS_H

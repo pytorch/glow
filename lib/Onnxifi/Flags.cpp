@@ -61,6 +61,7 @@ extern int32_t GlowNNPINumParallelChunks;
 extern bool GlowEnableLoadBalancedPartitioning;
 extern bool GlowNNPILowerAllBatchMatMul;
 extern bool GlowNNPIAcceptUnarySLS;
+extern bool GlowNNPIForceUnarySLSToIA;
 
 namespace runtime {
 extern unsigned GlowInterpreterMemory;
@@ -354,6 +355,13 @@ DEFINE_bool(glow_nnpi_accept_unary_sls, false,
 DEFINE_validator(glow_nnpi_accept_unary_sls,
                  [](const char * /* unused */, bool value) {
                    glow::GlowNNPIAcceptUnarySLS = value;
+                   return true;
+                 });
+DEFINE_bool(glow_nnpi_force_unary_sls_to_ia, true,
+            "Whether to accept unary SLS ops during ONNXIFI loading.");
+DEFINE_validator(glow_nnpi_force_unary_sls_to_ia,
+                 [](const char * /* unused */, bool value) {
+                   glow::GlowNNPIForceUnarySLSToIA = value;
                    return true;
                  });
 DEFINE_int32(glow_nnpi_num_parallel_chunks, 1,

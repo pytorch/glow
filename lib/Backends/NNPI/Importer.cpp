@@ -21,11 +21,23 @@
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Quantization/Quantization.h"
 #include "nnpi_transformer.h"
+
+#include "llvm/Support/CommandLine.h"
+
 #include <cmath>
 #include <cstdio>
 #include <limits>
 
 using namespace glow;
+llvm::cl::OptionCategory optionsForNNPIImporter("NNPI Importer Options");
+
+bool GlowNNPIForceUnarySLSToIA = true;
+static llvm::cl::opt<bool, /* ExternalStorage */ true>
+    GlowNNPIForceUnarySLSToIAOpt(
+        "glow_nnpi_force_unary_sls_to_ia",
+        llvm::cl::desc("Whether to force unary SLS ops to NNPI IA core."),
+        llvm::cl::location(GlowNNPIForceUnarySLSToIA), llvm::cl::Optional,
+        llvm::cl::init(true), llvm::cl::cat(optionsForNNPIImporter));
 
 const std::string NNPIImporter::internalName_("_NNPI_");
 
@@ -1241,14 +1253,16 @@ public:
             NNPI_NO_ERROR,
         "Unhandled SLS length type", NNPI_INVALID_PARAM);
 
+    const bool forceToIA = GlowNNPIForceUnarySLSToIA &&
+                           isUnaryLookup(glowSLS->getData().getType());
+
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
         importer.getNetwork(), glowSLS->getName().begin(),
         nodeValueName(glowSLS->getData()).c_str(),
         nodeValueName(glowSLS->getResult()).c_str(), NULL,
         nodeValueName(glowSLS->getIndices()).c_str(),
         nodeValueName(glowSLS->getLengths()).c_str(), false, false,
-        glowSLS->getAvgLength(), lengthType,
-        /* force to IA */ false);
+        glowSLS->getAvgLength(), lengthType, forceToIA);
   }
 };
 
@@ -1274,6 +1288,9 @@ public:
                                        lengthType) == NNPI_NO_ERROR,
         "Unhandled SLS length type", NNPI_INVALID_PARAM);
 
+    const bool forceToIA = GlowNNPIForceUnarySLSToIA &&
+                           isUnaryLookup(glowSLWS->getData().getType());
+
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
         importer.getNetwork(), glowSLWS->getName().begin(),
         nodeValueName(glowSLWS->getData()).c_str(),
@@ -1281,8 +1298,7 @@ public:
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
         nodeValueName(glowSLWS->getLengths()).c_str(), false, false,
-        glowSLWS->getAvgLength(), lengthType,
-        /* force to IA */ false);
+        glowSLWS->getAvgLength(), lengthType, forceToIA);
   }
 };
 

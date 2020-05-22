@@ -444,6 +444,11 @@ bool usedInFunction(const Placeholder *V, const Function *F) {
   return false;
 }
 
+bool isUnaryLookup(TypeRef type) {
+  return (type->dims().size() == 1) ||
+         (type->dims().size() == 2 && type->dims()[1] == 1);
+}
+
 } // namespace glow
 
 runtime::RuntimeBundle

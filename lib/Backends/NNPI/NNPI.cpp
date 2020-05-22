@@ -142,15 +142,6 @@ unsigned NNPIBackend::numDevices() {
   return adapterInfo.numDevices;
 }
 
-/// \returns whether \p type is 2 dimensional and unary. Usually the data input
-/// of SparseLengths(Weighted)Sum is passed in here.
-static bool isUnaryLookup(TypeRef type) {
-  if (type->dims().size() != 2) {
-    return false;
-  }
-  return type->dims()[1] == 1;
-}
-
 bool NNPIBackend::acceptForExecution(const NodeInfo &NI) const {
   if (!isOpSupported(NI)) {
     return false;
