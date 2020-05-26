@@ -1,12 +1,12 @@
 ir_version: 3
-producer_name: "onnx-convtranspose"
+producer_name: "onnx-deconv"
 graph {
   node {
     input: "data"
     input: "W"
     input: "B"
     output: "y"
-    name: "convTranspose1"
+    name: "deconv1"
     op_type: "ConvTranspose"
     attribute {
       name: "kernel_shape"
@@ -16,7 +16,7 @@ graph {
     }
     attribute {
       name: "auto_pad"
-      s: "SAME_UPPER"
+      s: "SAME_LOWER"
       type: STRING
     }
     attribute {
@@ -35,10 +35,10 @@ graph {
     }
     attribute {
       name: "pads"
-      ints: 3
-      ints: 2
-      ints: 1
       ints: 0
+      ints: 1
+      ints: 2
+      ints: 3
       type: INTS
     }
     attribute {

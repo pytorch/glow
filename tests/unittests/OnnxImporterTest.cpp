@@ -1031,9 +1031,7 @@ static void convTransposeTestHelper(std::string &filename,
   }
 }
 
-/// Test loading ConvTranspose op from a ONNX model.
-/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
-/// strides is {1, 1}, pads is {0, 0, 0, 0}, group is 1.
+/// Test loading ConvTranspose op from a ONNX model, no pads.
 TEST_F(OnnxImporterTest, importConvTranspose) {
   std::string filename("simpleConvTranspose.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 4, 4};
@@ -1042,19 +1040,16 @@ TEST_F(OnnxImporterTest, importConvTranspose) {
   convTransposeTestHelper(filename, expectedDims, expectedValues);
 }
 
-/// Test loading ConvTranspose op from a ONNX model.
-/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
-/// strides is {1, 1}, pads is {1, 1, 1, 1}, group is 1.
+/// Test loading ConvTranspose op from a ONNX model, symmetric pads.
 TEST_F(OnnxImporterTest, importConvTransposePads) {
   std::string filename("simpleConvTransposePads.onnxtxt");
-  std::vector<dim_t> expectedDims = {1, 1, 2, 2};
-  std::vector<float> expectedValues = {51, 65, 93, 107};
+  std::vector<dim_t> expectedDims = {1, 1, 3, 3};
+  std::vector<float> expectedValues = {14., 19., 14.,  51., 65.,
+                                       43., 93., 107., 67.};
   convTransposeTestHelper(filename, expectedDims, expectedValues);
 }
 
-/// Test loading ConvTranspose op from a ONNX model.
-/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
-/// strides is {1, 1}, auto_pad VALID (i.e. no padding), group is 1.
+/// Test loading ConvTranspose op from a ONNX model, auto_pad=VALID
 TEST_F(OnnxImporterTest, importConvTransposeAutoPadValid) {
   std::string filename("simpleConvTransposeAutoPadValid.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 4, 4};
@@ -1063,29 +1058,23 @@ TEST_F(OnnxImporterTest, importConvTransposeAutoPadValid) {
   convTransposeTestHelper(filename, expectedDims, expectedValues);
 }
 
-/// Test loading conv op from a ONNX model.
-/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
-/// strides is {1, 1}, auto_pad SAME_UPPER, group is 1.
+/// Test loading ConvTranspose op from a ONNX model, auto_pad=SAME_UPPER
 TEST_F(OnnxImporterTest, importConvTransposeAutoPadSameUpper) {
   std::string filename("simpleConvTransposeAutoPadSameUpper.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 2, 2};
-  std::vector<float> expectedValues = {49, 63, 91, 105};
+  std::vector<float> expectedValues = {49., 63., 91., 105.};
   convTransposeTestHelper(filename, expectedDims, expectedValues);
 }
 
-/// Test loading conv op from a ONNX model.
-/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
-/// strides is {1, 1}, auto_pad SAME_LOWER, group is 1.
+/// Test loading ConvTranspose op from a ONNX model, auto_pad=SAME_LOWER
 TEST_F(OnnxImporterTest, importConvTransposeAutoPadSameLower) {
   std::string filename("simpleConvTransposeAutoPadSameLower.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 2, 2};
-  std::vector<float> expectedValues = {49, 63, 91, 105};
+  std::vector<float> expectedValues = {49., 63., 91., 105.};
   convTransposeTestHelper(filename, expectedDims, expectedValues);
 }
 
-/// Test loading conv op from a ONNX model.
-/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
-/// strides is {1, 1}, auto_pad SAME_LOWER, group is 1.
+/// Test loading ConvTranspose op, explicit output_shape, auto_pad=SAME_UPPER.
 TEST_F(OnnxImporterTest, importConvTransposeOutputShapeSameUpper) {
   std::string filename("simpleConvTransposeOutShapeSameUpper.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 4, 4};
@@ -1094,9 +1083,16 @@ TEST_F(OnnxImporterTest, importConvTransposeOutputShapeSameUpper) {
   convTransposeTestHelper(filename, expectedDims, expectedValues);
 }
 
-/// Test loading conv op from a ONNX model.
-/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
-/// strides is {1, 1}, auto_pad is not set, group is 1.
+/// Test loading deconv op, explicit output_shape, auto_pad=SAME_LOWER.
+TEST_F(OnnxImporterTest, importConvTransposeOutputShapeSameLower) {
+  std::string filename("simpleConvTransposeOutShapeSameLower.onnxtxt");
+  std::vector<dim_t> expectedDims = {1, 1, 4, 4};
+  std::vector<float> expectedValues = {4,  12, 17,  12, 18, 49, 63, 41,
+                                       36, 91, 105, 65, 32, 76, 85, 50};
+  convTransposeTestHelper(filename, expectedDims, expectedValues);
+}
+
+/// Test loading ConvTranspose op, explicit output_shape, auto_pad not set.
 TEST_F(OnnxImporterTest, importConvTransposeOutputShape) {
   std::string filename("simpleConvTransposeOutShape.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 4, 4};
@@ -1105,17 +1101,52 @@ TEST_F(OnnxImporterTest, importConvTransposeOutputShape) {
   convTransposeTestHelper(filename, expectedDims, expectedValues);
 }
 
-/// Test loading conv op from a ONNX model.
-/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
-/// strides is {1, 1}, dilations is {2, 2},
-/// auto_pad is not set, group is 1.
-TEST_F(OnnxImporterTest, importConvTransposeOutputShapeDilation) {
-  std::string filename("simpleConvTransposeOutShapeDilation.onnxtxt");
-  std::vector<dim_t> expectedDims = {1, 1, 6, 6};
-  std::vector<float> expectedValues = {
-      4,  6,  6,  9,  8,  12, 8,  10, 12, 15, 16, 20, 10, 15, 12, 18, 14, 21,
-      20, 25, 24, 30, 28, 35, 16, 24, 18, 27, 20, 30, 32, 40, 36, 45, 40, 50};
-  convTransposeTestHelper(filename, expectedDims, expectedValues);
+/// Test loading ConvTranspose, implicit kernel, multi-channel input/output,
+/// asymmetric kernel and pads.
+TEST(onnx, importDeconvAsymmetric) {
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetFilename = std::string(
+      GLOW_DATA_PATH "tests/models/onnxModels/convTransposeAsymmetric.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor input(ElemKind::FloatTy, {1, 3, 4, 4});
+    for (dim_t i = 0; i < 3 * 4 * 4; i++) {
+      input.getHandle().raw(i) = i;
+    }
+    Tensor filter(ElemKind::FloatTy, {3, 2, 3, 2});
+    for (dim_t i = 0; i < 3 * 2 * 3 * 2; i++) {
+      filter.getHandle().raw(i) = i * 2;
+    }
+    ONNXModelLoader onnxLD(NetFilename, {"X", "W"},
+                           {&input.getType(), &filter.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"X", "W"},
+                                  {&input, &filter});
+  }
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = res->getHandle();
+
+  EXPECT_TRUE(result.dims() == llvm::ArrayRef<dim_t>({1, 2, 5, 3}));
+
+  std::vector<float> expected = {
+      2095.1,  2065.1,  2173.1,  4705.1, 4633.1, 4873.1,  7879.1,  7753.1,
+      8149.1,  8959.1,  8761.1,  9229.1, 6697.1, 6553.1,  6889.1,  2708.2,
+      2714.2,  2822.2,  6074.2,  6074.2, 6314.2, 10148.2, 10130.2, 10526.2,
+      11660.2, 11570.2, 12038.2, 8642.2, 8570.2, 8906.2};
+
+  for (dim_t i = 0, e = expected.size(); i < e; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expected[i]);
+  }
 }
 
 /// Helper method to run the AveragePool operator test cases.
