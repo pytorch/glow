@@ -490,6 +490,11 @@ private:
   // \return error on failure.
   Error loadQuantizedConvUnpacked(const torch::jit::Node *ptNode);
 
+  Error loadQuantizedConvReluUnpacked(const torch::jit::Node *ptNode);
+
+  Error loadQuantizedConvUnpackedImpl(const torch::jit::Node *ptNode,
+                                      bool isRelu = false);
+
   /// Load a PyTorch quantized::conv2d node.
   // \return error on failure.
   Error loadQuantizedConv(const torch::jit::Node *ptNode);

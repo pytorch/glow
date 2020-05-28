@@ -767,6 +767,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadQuantizedConvUnpacked},
       {{"glow::unpacked_quantized_conv3d"},
        &PyTorchModelLoader::loadQuantizedConvUnpacked},
+      {{"glow::unpacked_quantized_conv2d_relu"},
+       &PyTorchModelLoader::loadQuantizedConvReluUnpacked},
       {{"glow::unpacked_quantized_linear"},
        &PyTorchModelLoader::loadQuantizedLinearUnpacked},
       {{"quantized::linear"}, &PyTorchModelLoader::loadQuantizedLinear},
@@ -2532,6 +2534,16 @@ Error PyTorchModelLoader::loadQuantizedConv(const torch::jit::Node *ptNode) {
 
 Error PyTorchModelLoader::loadQuantizedConvUnpacked(
     const torch::jit::Node *ptNode) {
+  return loadQuantizedConvUnpackedImpl(ptNode, /*isRelu*/ false);
+}
+
+Error PyTorchModelLoader::loadQuantizedConvReluUnpacked(
+    const torch::jit::Node *ptNode) {
+  return loadQuantizedConvUnpackedImpl(ptNode, /*isRelu*/ true);
+}
+
+Error PyTorchModelLoader::loadQuantizedConvUnpackedImpl(
+    const torch::jit::Node *ptNode, bool isRelu) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 9, outputs, 1));
@@ -2661,18 +2673,30 @@ Error PyTorchModelLoader::loadQuantizedConvUnpacked(
                                        outScale, outOffset - OFFSETSHIFT);
   }
 
-  glow::TransposeNode *output;
+  glow::NodeValue output_not_transposed;
   if (isConv3d) {
     glow::Convolution3DNode *qconv = F_.createConv3D(
         "qconv", input, weights, bias, outTy, kernels, strides, pads, groups);
-    output = F_.createTranspose("qconv_output_transposed", qconv->getResult(),
-                                NTHWC2NCTHW);
+    output_not_transposed = qconv->getResult();
   } else {
     glow::ConvolutionNode *qconv =
         F_.createConv("qconv", input, weights, bias, outTy, kernels, strides,
                       pads, groups, dilation);
-    output = F_.createTranspose("qconv_output_transposed", qconv->getResult(),
-                                NHWC2NCHW);
+    output_not_transposed = qconv->getResult();
+  }
+
+  if (isRelu) {
+    glow::ReluNode *qrelu = F_.createRELU("qconv_relu", output_not_transposed);
+    output_not_transposed = qrelu->getResult();
+  }
+
+  glow::TransposeNode *output;
+  if (isConv3d) {
+    output = F_.createTranspose("qconv_output_transposed",
+                                output_not_transposed, NTHWC2NCTHW);
+  } else {
+    output = F_.createTranspose("qconv_output_transposed",
+                                output_not_transposed, NHWC2NCHW);
   }
 
   c10::ScalarType dtype;
@@ -3708,7 +3732,6 @@ Error PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets(
 Error PyTorchModelLoader::loadAttributes(
     const torch::jit::Graph &graph,
     const at::ArrayRef<torch::jit::IValue> inputs) {
-
   // Map from the Value in the Graph of an ivalue::Object to the Object and a
   // string representing it's place in the module hierarchy.
   std::unordered_map<const torch::jit::Value *,
