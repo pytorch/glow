@@ -30,7 +30,7 @@ namespace runtime {
 InferenceContext::InferenceContext()
     : nnpiNetwork_(NNPI_INVALID_NNPIHANDLE), device_(NNPI_INVALID_NNPIHANDLE),
       inferCmd_(NNPI_INVALID_NNPIHANDLE), commandList_(NNPI_INVALID_NNPIHANDLE),
-      deviceTracing_(nullptr), deviceOptions_(nullptr) {}
+      deviceOptions_(nullptr) {}
 
 InferenceContext::~InferenceContext() {
   if (deviceOptions_ && deviceOptions_->inferOnDevice) {
@@ -52,7 +52,6 @@ bool InferenceContext::init(
     NNPIDeviceContext device,
     const std::unordered_set<const Placeholder *> &partialInputs,
     const std::unordered_set<const Placeholder *> &staticInputs,
-    std::shared_ptr<NNPIDeviceTracing> deviceTracing,
     StaticPlaceholderMap *staticPlaceholderMap,
     std::shared_ptr<NNPIDeviceOptions> deviceOptions,
     const std::string &functionName, unsigned deviceId,
@@ -63,7 +62,6 @@ bool InferenceContext::init(
   device_ = device;
   compilationConfig_ = config;
   partialInputs_ = &partialInputs;
-  deviceTracing_ = deviceTracing;
   functionName_ = functionName;
 
   // Initialize trace context titles with device ID.
@@ -309,6 +307,8 @@ bool InferenceContext::init(
 void InferenceContext::execute(RunIdentifierTy runId,
                                std::unique_ptr<ExecutionContext> ctx,
                                runtime::ResultCBTy resultCB) {
+  std::string traceBackendExecuteStr =
+      llvm::formatv("{0} {1:x}", traceBackendExecuteContextName_, ctx.get());
 
   std::map<std::string, std::string> attributes;
 
@@ -319,7 +319,7 @@ void InferenceContext::execute(RunIdentifierTy runId,
   }
 
   TRACE_EVENT_SCOPE_NAMED(ctx->getTraceContext(), TraceLevel::REQUEST,
-                          traceBackendExecuteContextName_, traceBlock);
+                          traceBackendExecuteStr, traceBlock);
   for (const auto &iter : attributes) {
     traceBlock.addArg(iter.first, iter.second);
   }
@@ -328,9 +328,6 @@ void InferenceContext::execute(RunIdentifierTy runId,
     ctx->getTraceContext()->setThreadName(
         llvm::formatv("Inf ctx - device: {0}: {1}", deviceId_, functionName_)
             .str());
-  }
-  if (deviceTracing_) {
-    deviceTracing_->start(ctx->getTraceContext(), device_);
   }
 
   // Pre inference input preparation.
@@ -393,15 +390,16 @@ void InferenceContext::execute(RunIdentifierTy runId,
     }
     rawInputs.push_back(in->getHostPtr());
   }
-
+  std::string inferContext = traceInferenceContextName_;
   // Inference.
   if (deviceOptions_->inferOnDevice) {
     if (deviceOptions_->enabledCommandLists < 1) {
       // No command lists (schedule individual commands).
+      inferContext = llvm::formatv("{0} {1:x}", inferContext, inferCmd_);
       TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
                       tracePreProcessContextName_);
       TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::OPERATOR,
-                             traceInferenceContextName_, attributes);
+                             inferContext, attributes);
       // Queue inference.
       LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
           nnpiInferCommandQueue(inferCmd_, 0), "Failed to queue infer command.",
@@ -429,11 +427,11 @@ void InferenceContext::execute(RunIdentifierTy runId,
           usedConfigs++;
         }
       }
-
+      inferContext = llvm::formatv("{0} {1:x}", inferContext, commandList_);
       TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
                       tracePreProcessContextName_);
       TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::OPERATOR,
-                             traceInferenceContextName_, attributes);
+                             inferContext, attributes);
       // Queue Command list
       LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
           nnpiCommandListQueue(commandList_, &(cmdConfigs_.at(0)), usedConfigs),
@@ -482,15 +480,18 @@ void InferenceContext::execute(RunIdentifierTy runId,
   } else if (!deviceOptions_->useIceT) {
     // Infer on ice-ref.
 
+    // Ice-ref not re-entrant - To be removed once ICE-29869 is implemented
+    static std::mutex icerefMutex;
+    std::lock_guard<std::mutex> guard(icerefMutex);
+
     for (auto &out : outputResources_) {
       // Collect output ptrs for ICE-Ref
       rawOutputs.push_back(out->getHostPtr());
     }
-
     TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
-                    TRACING_PRE_PROCESS);
+                    tracePreProcessContextName_);
     TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::OPERATOR,
-                           TRACING_INFERENCE, attributes);
+                           inferContext, attributes);
     LOG_AND_CALLBACK_EXECUTE_NNPI_IF_ERROR(
         nnpiNetworkInferOnHost(nnpiNetwork_, &(rawInputs[0]), rawInputs.size(),
                                &(rawOutputs[0]), rawOutputs.size(),
@@ -501,11 +502,9 @@ void InferenceContext::execute(RunIdentifierTy runId,
     // Nothing else to do here.
   }
 
-  TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::OPERATOR,
-                  traceInferenceContextName_);
+  TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::OPERATOR, inferContext);
   TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::COPY,
                          tracePostProcessContextName_, attributes);
-
   // Post inference output handling.
   for (unsigned i = 0, e = outputResources_.size(); i < e; ++i) {
     auto *t = bindings.get(netOutputPlaceholders_[i]);
@@ -518,9 +517,6 @@ void InferenceContext::execute(RunIdentifierTy runId,
 
   TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
                   tracePostProcessContextName_);
-  if (deviceTracing_) {
-    deviceTracing_->stopAndUpdate(ctx->getTraceContext(), device_);
-  }
   TRACE_EVENT_SCOPE_END_NAMED(traceBlock); // we move context in the line below
 
   // Invoke CB.

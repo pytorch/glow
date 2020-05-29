@@ -38,7 +38,6 @@ class InferencePoolEnv {
   std::vector<InferenceContext *> freeContexts_;
   std::mutex freeContextsLock_;
   NNPIDeviceNetwork deviceNetwork_;
-  std::shared_ptr<NNPIDeviceTracing> deviceTracing_;
   std::shared_ptr<NNPIDeviceOptions> deviceOptions_;
   unsigned deviceId_;
   ResourceDescVec inputDesc_;
@@ -53,7 +52,6 @@ public:
   InferencePoolEnv();
   ~InferencePoolEnv();
   Error init(NNPIAdapter adapter, NNPIDeviceContext device,
-             std::shared_ptr<NNPIDeviceTracing> deviceTracing,
              CompiledFunction *compiledFunction,
              StaticPlaceholderMap *staticPlaceholderMap,
              std::shared_ptr<NNPIDeviceOptions> deviceOptions,

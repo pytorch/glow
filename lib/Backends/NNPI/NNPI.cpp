@@ -501,6 +501,7 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(BatchOneHotNode::LengthsIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::NNPICustomDSPNodeKind:
+  case Kinded::Kind::NNPICustomIANodeKind:
     return true;
 
   case Kinded::Kind::SpaceToDepthNodeKind:
@@ -535,6 +536,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::ConvolutionNodeKind:
+  case Kinded::Kind::Convolution3DNodeKind:
   case Kinded::Kind::TileNodeKind:
   case Kinded::Kind::LogNodeKind:
   case Kinded::Kind::ReplaceNaNNodeKind:

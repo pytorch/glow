@@ -26,6 +26,13 @@ BB.newNode("NNPICustomDSP")
     .setDocstring("This is an experimental NNPI-specific node representing a "
                   "custom DSP op");
 
-BB.includeBackendSpecificVerification("glow/NNPISpecificNodesVerification.h");
+BB.newNode("NNPICustomIA")
+    .addMember(MemberType::VectorNodeValue, "Inputs")
+    .addResultFromCtorArg() // for now use single output
+    .addMember(MemberType::String, "KernelName")
+    .addMember(MemberType::String, "IAPath")
+    .setDocstring("This is an experimental NNPI-specific node representing a "
+                  "custom IA op");
 
+BB.includeBackendSpecificVerification("glow/NNPISpecificNodesVerification.h");
 #endif // GLOW_WITH_NNPI
