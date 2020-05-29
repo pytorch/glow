@@ -187,6 +187,7 @@ Error InferencePoolEnv::init(NNPIAdapter adapter, NNPIDeviceContext device,
         nnpiCompiledFunction_->getCompiledNetworkHandle(),
         nnpiCompiledFunction_->getCompilationConfig(), deviceNetwork_, adapter,
         device, nnpiCompiledFunction_->getPartialInputs(),
+        nnpiCompiledFunction_->getPaddedInputs(),
         nnpiCompiledFunction_->getStaticInputs(), deviceTracing_,
         staticPlaceholderMap_, deviceOptions_, functionName_, deviceId_);
     if (!success) {
@@ -269,6 +270,7 @@ InferencePoolEnv::createDetachedInferenceContext(PlaceholderUsageMap &phUsage) {
                     nnpiCompiledFunction_->getCompilationConfig(),
                     deviceNetwork_, adapter_, device_,
                     nnpiCompiledFunction_->getPartialInputs(),
+                    nnpiCompiledFunction_->getPaddedInputs(),
                     nnpiCompiledFunction_->getStaticInputs(), deviceTracing_,
                     staticPlaceholderMap_, deviceOptions_, functionName_,
                     deviceId_, &phUsage)) {
