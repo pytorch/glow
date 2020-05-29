@@ -237,7 +237,7 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
     } else {
       auto inPhIt = onnxInputToPlaceholder_.find(inOnnxTensor.name);
       if (inPhIt == onnxInputToPlaceholder_.end()) {
-        llvm::outs() << "235inputNameUnkown!!!\n";
+        LOG(ERROR) << "Input Name Unknown: " << inOnnxTensor.name;
         return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
       }
       inPhPtr = inPhIt->getValue();
