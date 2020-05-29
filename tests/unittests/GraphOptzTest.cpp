@@ -3953,6 +3953,23 @@ TEST_F(GraphOptz, constantFoldWholeFunction) {
   EXPECT_EQ(CH.at({1, 1}), 76.0f);
 }
 
+/// Test constant folding for operators which are lowered in Interpreter
+/// backend.
+TEST_F(GraphOptz, constantFoldWithLowering) {
+  auto *input = mod_.createConstant(ElemKind::FloatTy, {1, 6}, "input");
+  input->getHandle() = {5, 4, 3, 2, 1, 0};
+  auto *TN = F_->createTile("tile", input, 5, 0);
+  auto *SN = F_->createSave("ret", TN);
+
+  // Perform constant folding.
+  EXPECT_EQ(F_->getNodes().size(), 2);
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Tile with its input should be folded into a single Constant node.
+  EXPECT_EQ(F_->getNodes().size(), 1);
+  ASSERT_TRUE(llvm::isa<Constant>(SN->getInput()));
+}
+
 /// Test Splitting FC into multiple FCs.
 TEST_F(GraphOptz, SplitFCIntoMultipleOps) {
   auto *input =

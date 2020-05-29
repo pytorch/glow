@@ -296,12 +296,6 @@ bool glow::ConstantFold::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
 
-    // Don't try to constant fold Nodes that are not supported by the
-    // Interpreter. These are usually backend-specific.
-    if (!backend->isOpSupported(*N)) {
-      continue;
-    }
-
     // Skip nodes that are not constant operations.
     if (!isConstantOperation(N, *backend)) {
       continue;
