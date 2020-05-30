@@ -99,7 +99,8 @@ std::string Placeholder::getDebugDesc(bool skipUsers) const {
   db.addParam("name", quote(getName()))
       .addParam("layout", getLayout())
       .addParam("output", *getType())
-      .addParam("trainable", isTraining());
+      .addParam("trainable", isTraining())
+      .addParam("static", isStatic());
   if (!skipUsers) {
     db.addParam("users", getNumUsers());
   }
