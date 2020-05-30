@@ -364,6 +364,7 @@ constexpr char saveNameSignifier[] = "saveName";
 constexpr char qScaleSignifier[] = "qScale";
 constexpr char qOffsetSignifier[] = "qOffset";
 constexpr char shapeSignifier[] = "shape";
+constexpr char constFoldSubgraphNodeName[] = "Glow__ConstFoldSubgraph";
 
 /// \returns the string ID for a type attribute property for a specific \p ioNum
 /// and \p signifier and whether \p isInput. E.g. to retrieve result number 0's

@@ -156,11 +156,19 @@ static void bailOnNonCanonicalLayout(
   mod.eraseFunction(constEvaluationF);
 }
 
+/// Use to make sure we don't reuse the same name for const fold Functions.
+static uint64_t numFolds = 0;
+
 /// Evaluates a provided constant operation \p C using the provided \p backend
-/// and using the compilation context \p cctx.
+/// and using the compilation context \p cctx. If \p record is not a nullptr
+/// then the Constant created is added to the map, pointing to the SaveNode that
+/// generated that Constant. Additionally if \p record is not a nullptr then the
+/// constEvaluationF its associated Placeholders for saving results will not be
+/// deleted, and the caller is responsble for deleting them if necessary.
 /// \returns constant results.
 bool evaluateConstantOperation(Backend &backend, CompilationContext &cctx,
-                               Node *C, std::vector<Constant *> &constResults) {
+                               Node *C, std::vector<Constant *> &constResults,
+                               ConstantFoldingRecordMap *record) {
   PlaceholderBindings bindings;
   assert(isConstantOperation(C, backend) && "Expected a constant expression");
   // Constants and splats do not need to be constant evaluated.
@@ -168,20 +176,24 @@ bool evaluateConstantOperation(Backend &backend, CompilationContext &cctx,
     return true;
   }
   Module &mod = *C->getParent()->getParent();
+  const std::string funName = std::string(constEvaluationFunctionName) +
+                              std::to_string(numFolds++) + "__" +
+                              C->getName().data();
   // Create a temporary function to perform the constant operation.
-  Function *constEvaluationF = mod.createFunction(constEvaluationFunctionName);
+  Function *constEvaluationF = mod.createFunction(funName);
   // Mapping from existing nodes to the new ones.
   NodeMap currToNew;
   // Clone the constant operation and some of its inputs if necessary.
   auto *clonedC = recursiveClone(constEvaluationF, C, currToNew);
   // Create save nodes for each of the results.
   llvm::SmallVector<SaveNode *, 16> savedResults;
+
   for (size_t idx = 0, e = clonedC->getNumResults(); idx < e; ++idx) {
     auto RN = clonedC->getNthResult(idx);
     auto *SN = constEvaluationF->createSave(clonedC->getName(), RN);
     if (!isCanonicalLayout(RN, backend, clonedC, idx)) {
       bailOnNonCanonicalLayout(constEvaluationF, mod, savedResults);
-      return true;
+      return false;
     }
     savedResults.emplace_back(SN);
     bindings.allocate(SN->getPlaceholder());
@@ -203,13 +215,22 @@ bool evaluateConstantOperation(Backend &backend, CompilationContext &cctx,
         mod.createConstant(SN->getName(), std::move(*outputTensor));
     constResults.emplace_back(constResult);
 
-    // Now erase the Placeholder that we created for the SaveNode.
-    auto &vars = mod.getPlaceholders();
-    mod.erasePlaceholder(
-        std::find(vars.begin(), vars.end(), SN->getPlaceholder()));
+    if (record) {
+      // Note: we skip erasing the Placeholders during recording (someone else's
+      // responsibility to delete them).
+      (*record)[constResult] = SN;
+    } else {
+      // Now erase the Placeholder that we created for the SaveNode.
+      auto &vars = mod.getPlaceholders();
+      mod.erasePlaceholder(
+          std::find(vars.begin(), vars.end(), SN->getPlaceholder()));
+    }
   }
-  // Remove the temporary function.
-  mod.eraseFunction(constEvaluationF);
+  // Remove the temporary function, unless we're recording the changes (someone
+  // else's responsibility to delete them).
+  if (!record) {
+    mod.eraseFunction(constEvaluationF);
+  }
   return true;
 }
 
@@ -241,12 +262,14 @@ Error verifyConstantFunction(Backend &backend, Function &F) {
 }
 
 /// Perform a compile-time constant folding of the node \p N using the provided
-/// \p backend.
+/// \p backend. If \p record is not a nullptr then the Constant created is added
+/// to the map, pointing to the SaveNode that generated that Constant.
 /// \returns list of constants which are the result of the
 /// constant-folding. These constants correspond to results of the node. If no
 /// constant folding was possible an empty vector will be returned
 bool constantFoldNodeImpl(Backend &backend, Node *N,
-                          std::vector<Constant *> &constResults) {
+                          std::vector<Constant *> &constResults,
+                          ConstantFoldingRecordMap *record = nullptr) {
   CompilationContext cctx;
   // Do not recursively call constant folding.
   cctx.optimizationOpts.enableConstantFolding = false;
@@ -254,7 +277,7 @@ bool constantFoldNodeImpl(Backend &backend, Node *N,
   // Do not print out compilation errors encountered, as constant folding is a
   // best effort; simply silently give up and continue with compilation.
   cctx.verboseCompile = false;
-  return evaluateConstantOperation(backend, cctx, N, constResults);
+  return evaluateConstantOperation(backend, cctx, N, constResults, record);
 }
 
 } // namespace
@@ -274,7 +297,11 @@ Error glow::executeConstantFunction(Backend &backend, Function &F,
 /// Perform constant folding in the function \p F . Any non-trivial node (i.e.
 /// not a constant or a splat) that can be computed at compile-time is going to
 /// be computed at compile-time. \returns true if any foldings were performed.
-bool glow::ConstantFold::run(Function *F, const CompilationContext &cctx) {
+/// If \p record is not a nullptr then the Constants created for any constant
+/// chain of Nodes is added to the map, pointing to the SaveNode that generated
+/// that Constant.
+static bool constantFoldFun(Function *F, const CompilationContext &cctx,
+                            ConstantFoldingRecordMap *record = nullptr) {
   // Skip if specified in the cctx.
   if (!cctx.optimizationOpts.enableConstantFolding) {
     return false;
@@ -313,7 +340,7 @@ bool glow::ConstantFold::run(Function *F, const CompilationContext &cctx) {
 
     // Compute the constant value of the node.
     std::vector<Constant *> constResults;
-    if (!constantFoldNodeImpl(*backend, N, constResults)) {
+    if (!constantFoldNodeImpl(*backend, N, constResults, record)) {
       return false;
     }
     // Replace all results of the original operation by the computed
@@ -328,6 +355,20 @@ bool glow::ConstantFold::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Perform constant folding in the function \p F . Any non-trivial node (i.e.
+/// not a constant or a splat) that can be computed at compile-time is going to
+/// be computed at compile-time. \returns true if any foldings were performed.
+bool glow::ConstantFold::run(Function *F, const CompilationContext &cctx) {
+  return constantFoldFun(F, cctx);
+}
+
+ConstantFoldingRecordMap
+glow::constantFoldAndRecord(Function *F, const CompilationContext &cctx) {
+  ConstantFoldingRecordMap record;
+  constantFoldFun(F, cctx, &record);
+  return record;
+}
+
 std::vector<Constant *> glow::constantFold(Node *N) {
   LOG_SCOPE(N->getParent()->getLogContext(), "glow::constantFold")
   std::unique_ptr<Backend> backend(new Interpreter());
@@ -340,4 +381,23 @@ std::vector<Constant *> glow::constantFold(Node *N) {
   }
 
   return constResults;
+}
+
+void glow::cleanupConstantFolding(Module &mod,
+                                  const ConstantFoldingRecordMap &record,
+                                  PlaceholderBindings *bindings) {
+  auto &PHs = mod.getPlaceholders();
+  std::unordered_set<Function *> funsToErase;
+  for (auto &r : record) {
+    SaveNode *SN = r.second;
+    if (bindings && bindings->count(SN->getPlaceholder())) {
+      bindings->erase(SN->getPlaceholder());
+    }
+    mod.erasePlaceholder(
+        std::find(PHs.begin(), PHs.end(), SN->getPlaceholder()));
+    funsToErase.insert(SN->getParent());
+  }
+  for (Function *F : funsToErase) {
+    mod.eraseFunction(F);
+  }
 }
