@@ -231,7 +231,11 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   torch::jit::Stack copyStack;
   if (settings_.writeToOnnx || settings_.jitVsGlowCompare) {
     for (auto &ival : stack) {
-      copyStack.push_back(ival.deepcopy());
+      if (ival.isTensor()) {
+        copyStack.push_back(ival.deepcopy());
+      } else {
+        copyStack.push_back(ival);
+      }
     }
     runOnJit(copyStack);
   }
