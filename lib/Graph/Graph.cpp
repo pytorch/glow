@@ -2419,7 +2419,14 @@ DequantizeNode *Function::createDequantize(llvm::StringRef name,
   assert(input.getType()->isQuantizedType() &&
          "Input must be a quantized type");
   assert(isFloatElemKind(k) && "Result must be float type.");
-  TypeRef outTy = getParent()->uniqueType(Type(k, input.dims()));
+  ShapeVector outShape(input.dims().begin(), input.dims().end());
+  if (input.getElementType() == ElemKind::UInt8FusedQTy) {
+    assert(outShape.size() == 2 && "Fused tensors should be 2D");
+    assert(outShape[1] > 2 * sizeof(float) &&
+           "Expected space for per-row scale/offset");
+    outShape[1] -= 2 * sizeof(float);
+  }
+  TypeRef outTy = getParent()->uniqueType(Type(k, outShape));
   return createDequantize(name, input, outTy);
 }
 

@@ -215,6 +215,8 @@ struct BlacklistInitializer {
              TestBlacklist::AnyDeviceHWEngine},
             {"ConvertFrom_Int64ITy_To_FloatTy_AndBack/0",
              TestBlacklist::AnyDeviceHWEngine},
+            {"DequantizeFRWQ_Float/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"DequantizeFRWQ_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
             {"DilatedConvolution/0", TestBlacklist::AnyDeviceHWEngine},
             {"Exp/0", TestBlacklist::AnyDeviceHWEngine},
             {"FloatArgMaxKeepDim/0", TestBlacklist::AnyDeviceHWEngine},
