@@ -123,6 +123,9 @@ class ONNXModelLoader
   /// A set of inputs which will be static placeholders.
   std::unordered_set<std::string> staticInputs_;
 
+  /// A set of Functions used for ConstantFolding to be deleted after loading.
+  std::unordered_set<Function *> constFoldFuns_;
+
   /// Load ONNX NonZero Operator.
   /// Glow's requirement for static shapes results in required Constant
   /// input. Thus, the operator will be folded in the Importer.
@@ -383,9 +386,11 @@ class ONNXModelLoader
                  ArgumentDictionaryTy &dict);
 
 protected:
-  /// Load the network operators from the GraphProto.
+  /// Loads operators from \p net. If \p loadingConstFoldSubgraph then the
+  /// current Function \ref G_ is assumed to be the one to load into.
   /// \returns Error if network cannot be loaded.
-  Error loadNetwork(ONNX_NAMESPACE::GraphProto &net);
+  Error loadNetwork(ONNX_NAMESPACE::GraphProto &net,
+                    bool loadingConstFoldSubgraph);
 
   /// Set the output nodes of the network \p net. Initializes the map from the
   /// names of the outputs to the save nodes that save each output.
@@ -402,6 +407,19 @@ protected:
 
   /// Load the network initializers from the GraphProto.
   Error loadInitializers(ONNX_NAMESPACE::GraphProto &net);
+
+  /// Given some initializer \p in, check if it has some constant folding node
+  /// associated with it in \p net. If so, deserializes the Function if not
+  /// already done, performs the constant folding, and \returns the Constant
+  /// created as a result to be used for this initializer.
+  Expected<Constant *>
+  replaySerializedConstFold(const ONNX_NAMESPACE::TensorProto &in,
+                            ONNX_NAMESPACE::GraphProto &net);
+
+  /// Given some \p outputName that maps to a NodeValue that we want to constant
+  /// fold, run it and assign the resulting Constant \p initializerName.
+  Expected<Constant *> runDeserializedConstFold(llvm::StringRef initializerName,
+                                                llvm::StringRef outputName);
 
   /// Load the inputs from the GraphProto. If \p loadInputsAsPlaceholdersForOnnx
   /// is true then this will load each graph input as a placeholder otherwise it
@@ -474,6 +492,9 @@ protected:
   Error setupPartitions(ONNX_NAMESPACE::ModelProto &modelDef,
                         runtime::PrePartitionedConfig &PPC,
                         llvm::StringRef rootName, int numPartitions);
+
+  /// Deletes the Functions in \ref constFoldFuns_ from \ref mod_.
+  void deleteConstFoldFunctions();
 
 public:
   /// \returns ONNX model ir_version;

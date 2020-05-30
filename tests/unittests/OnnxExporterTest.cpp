@@ -30,17 +30,19 @@
 using namespace glow;
 
 namespace {
-/// Given a Function \p F and input names \p inpuTensorNames and input types \p
+/// Given a Function \p F and input names \p inputTensorNames and input types \p
 /// inputTensorTypes, writes the function to file and reads it back using the
 /// ONNXModelWriter and ONNXModelReader respectively then \returns the
 /// reloaded function. \p useGlowCustomOps is used for determining the format
 /// for ONNXModelWriter to write with.
 Expected<Function *>
 saveAndReloadFunction(Module &reloadMod, Function *F,
-                      llvm::ArrayRef<const char *> inpuTensorNames,
+                      llvm::ArrayRef<const char *> inputTensorNames,
                       llvm::ArrayRef<TypeRef> inputTensorTypes,
                       size_t irVer = 5, size_t opsetVer = 10,
-                      bool zipMode = false, bool useGlowCustomOps = false) {
+                      bool zipMode = false, bool useGlowCustomOps = false,
+                      bool includeConstantData = true,
+                      ConstantFoldingRecordMap *constFoldRecord = nullptr) {
   llvm::SmallString<64> path;
   auto tempFileRes = llvm::sys::fs::createTemporaryFile(
       "exporter", zipMode ? "output.zip" : "output.onnxtxt", path);
@@ -49,12 +51,15 @@ saveAndReloadFunction(Module &reloadMod, Function *F,
                     "Failed to create temp file to write into.");
 
   std::string outputFilename(path.c_str());
+  ScopeGuard cleanup([&]() { llvm::sys::fs::remove(outputFilename); });
 
   // Write model to file.
   {
     Error err = Error::empty();
     ONNXModelWriter onnxWR(outputFilename, *F, irVer, opsetVer, &err, !zipMode,
-                           zipMode, useGlowCustomOps);
+                           zipMode, useGlowCustomOps, includeConstantData,
+                           constFoldRecord ? *constFoldRecord
+                                           : ConstantFoldingRecordMap());
 
     if (err) {
       llvm::sys::fs::remove(outputFilename);
@@ -63,12 +68,42 @@ saveAndReloadFunction(Module &reloadMod, Function *F,
     RETURN_IF_ERR(std::move(err));
   }
 
+  Function *R = nullptr;
+  Module &origMod = *F->getParent();
+  if (!includeConstantData) {
+    R = reloadMod.getFunction(F->getName());
+    RETURN_ERR_IF_NOT(R, "Did not find Function to reload into.");
+    R->clear();
+    if (constFoldRecord) {
+      // Additionally remove the original Constants that we first folded, so
+      // that when we reload below we can recreate them.
+      std::unordered_set<Function *> funsToDelete;
+      for (auto &pair : *constFoldRecord) {
+        Function *origF = pair.second->getParent();
+        funsToDelete.insert(origF);
+        Constant *C = reloadMod.getConstantByName(pair.first->getName());
+        RETURN_ERR_IF_NOT(C, "Did not find constant that was initially folded");
+        reloadMod.eraseConstant(C);
+      }
+      for (Function *origF : funsToDelete) {
+        Function *reloadConstFoldF = reloadMod.getFunction(origF->getName());
+        RETURN_ERR_IF_NOT(reloadConstFoldF,
+                          "Did not find const folding function reloaded");
+        reloadMod.eraseFunction(reloadConstFoldF);
+        origMod.eraseFunction(origF);
+      }
+    }
+  } else {
+    R = reloadMod.createFunction("R");
+  }
+
   // Load model from file.
-  Function *R = reloadMod.createFunction("R");
   {
     Error err = Error::empty();
-    ONNXModelLoader onnxLD(outputFilename, inpuTensorNames, inputTensorTypes,
-                           *R, &err, zipMode);
+    ONNXModelLoader onnxLD(outputFilename, inputTensorNames, inputTensorTypes,
+                           *R, &err, zipMode, /* perNodeOpts */ nullptr,
+                           /* disableConstFoldInLoader */ true,
+                           /* loadIntoExistingModule */ !includeConstantData);
 
     if (err) {
       llvm::errs() << "ONNXModelLoader failed to reload model: "
@@ -80,6 +115,22 @@ saveAndReloadFunction(Module &reloadMod, Function *F,
 
   // Verify reloaded function is valid.
   RETURN_ERR_IF_NOT(R->verify(), "Reloaded function is not valid.");
+
+  // Verify that the Constants from the original Module have the same data as
+  // those in the reloaded module.
+  if (constFoldRecord) {
+    deleteUnusedConstants(reloadMod);
+    deleteUnusedConstants(origMod);
+    for (Constant *newC : reloadMod.getConstants()) {
+      Constant *origC = R->getParent()->getConstantByName(newC->getName());
+      RETURN_ERR_IF_NOT(origC,
+                        strFormat("Expected original Constant by name %s",
+                                  newC->getName().data()));
+      RETURN_ERR_IF_NOT(newC->getPayload().isBitwiseEqual(origC->getPayload()),
+                        strFormat("Mismatch on Constants of name %s",
+                                  newC->getName().data()));
+    }
+  }
 
   return R;
 }
@@ -154,6 +205,67 @@ Expected<T *> getSingleNodeWithKind(Function *F, Kinded::Kind type) {
   return node;
 }
 } // namespace
+
+/// Use to test constant folding exporting and reloading tests, where some
+/// constant folding is recorded and serialized in the custom Glow ONNX model.
+class ConstFoldReloadTest : public ::testing::Test {
+public:
+  ConstFoldReloadTest() : EE_("Interpreter"), mod_(EE_.getModule()) {
+    F_ = mod_.createFunction("main");
+  }
+
+protected:
+  ExecutionEngine EE_;
+  Module &mod_;
+  Function *F_;
+  PlaceholderBindings bindings_;
+  CompilationContext cctx_;
+
+  /// Constant folds \ref F_ and then serializes it. Then deserializes it and
+  /// runs it and makes sure that running the original and the reloaded Function
+  /// are bitwise equal. Verifies that \p numExpectedConstsFolded constant
+  /// folding records are created during constant folding/recording.
+  void serializeAndReloadAndCompareResults(unsigned numExpectedConstsFolded) {
+    bindings_.allocate(mod_.getPlaceholders());
+
+    // Perform constant folding, recording what occurs so we can serialize it.
+    ConstantFoldingRecordMap record = constantFoldAndRecord(F_, cctx_);
+    EXPECT_EQ(record.size(), numExpectedConstsFolded);
+    runDCEPass(F_, cctx_);
+
+    // Clone the original module into a new module used for reloading the model.
+    ExecutionEngine reloadEE(EE_.getBackendName());
+    Module &reloadMod = reloadEE.getModule();
+    mod_.clone(&reloadMod);
+
+    // Save and reload F.
+    Function *reloadF_;
+    ASSIGN_VALUE_OR_FAIL_TEST(
+        reloadF_,
+        saveAndReloadFunction(reloadMod, F_, {}, {}, 7, 9,
+                              /* zipMode */ false,
+                              /* useGlowCustomOps */ true,
+                              /* includeConstantData */ false, &record));
+
+    // Verify that the Function and its Module are the same before and after.
+    EXPECT_EQ(reloadF_->toString(), F_->toString());
+    EXPECT_EQ(reloadMod.toString(), mod_.toString());
+
+    PlaceholderBindings reloadBindings =
+        bindings_.clone(reloadMod.getPlaceholders());
+
+    // Now run both to check they have bitwise equal results.
+    EE_.compile(cctx_);
+    EE_.run(bindings_);
+
+    CompilationContext reloadCctx;
+    reloadEE.compile(reloadCctx);
+    reloadEE.run(reloadBindings);
+
+    EXPECT_TRUE(
+        PlaceholderBindings::compare(&bindings_, &reloadBindings, 0.0f));
+  }
+};
 
 TEST(exporter, onnxModels) {
   std::string inputDirectory(GLOW_DATA_PATH "tests/models/onnxModels");
@@ -282,6 +394,8 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
 
   Constant *biasConstant =
       mod.createConstant(ElemKind::FloatTy, {outChannels}, "bias");
+  biasConstant->getPayloadMutable().getHandle<float>().randomize(-0.1, 0.1,
+                                                                 mod.getPRNG());
 
   Constant *filterScalesConstant =
       mod.createConstant(ElemKind::FloatTy, {outChannels}, "filter_scales");
@@ -646,4 +760,71 @@ TEST(exporter, RowwiseQuantizedFullyConnected) {
       *rwqFC->getScales().getType()));
   EXPECT_TRUE(rwqFCReloaded->getOffsets().getType()->isEqual(
       *rwqFC->getOffsets().getType()));
+}
+
+TEST_F(ConstFoldReloadTest, exportGraphWithOneConstFoldingRecord) {
+  Placeholder *I =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {2, 100}, "input",
+                             /* isTrainable */ false);
+  Constant *W = mod_.createConstant(ElemKind::FloatTy, {10, 100}, "weight");
+  ClipNode *clipW = F_->createClip("clip", W, -5.f, 5.f);
+  ConvertToNode *convertW =
+      F_->createConvertTo("conv", clipW, ElemKind::Float16Ty);
+  TransposeNode *transposeW =
+      F_->createTranspose("transpose", convertW, {1, 0});
+  MatMulNode *MM = F_->createMatMul("matmul", I, transposeW);
+  F_->createSave("save", MM);
+
+  bindings_.allocate(I)->getHandle<float16_t>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  W->getPayloadMutable().getHandle<float>().randomize(-10, 10, mod_.getPRNG());
+
+  serializeAndReloadAndCompareResults(1);
+}
+
+TEST_F(ConstFoldReloadTest, exportGraphWithTwoConstFoldingRecords) {
+  Placeholder *I =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {2, 100}, "input",
+                             /* isTrainable */ false);
+  Constant *W = mod_.createConstant(ElemKind::FloatTy, {10, 100}, "weight");
+  ClipNode *clipW = F_->createClip("clip", W, -5.f, 5.f);
+  ConvertToNode *convertW =
+      F_->createConvertTo("conv", clipW, ElemKind::Float16Ty);
+  TransposeNode *transposeW =
+      F_->createTranspose("transpose", convertW, {1, 0});
+  MatMulNode *MM = F_->createMatMul("matmul", I, transposeW);
+  F_->createSave("save_mm", MM);
+
+  Constant *W2 = mod_.createConstant(ElemKind::Float16Ty, {2, 100}, "weight2");
+  TanhNode *tanhW = F_->createTanh("tanh", W2);
+  AddNode *add = F_->createAdd("add", tanhW, I);
+  F_->createSave("save_add", add);
+
+  bindings_.allocate(I)->getHandle<float16_t>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  W->getPayloadMutable().getHandle<float>().randomize(-10, 10, mod_.getPRNG());
+  W2->getPayloadMutable().getHandle<float16_t>().randomize(-10, 10,
+                                                           mod_.getPRNG());
+
+  serializeAndReloadAndCompareResults(2);
+}
+
+TEST_F(ConstFoldReloadTest, exportGraphWithTwoConstFoldingMultiOutputRecord) {
+  Constant *W = mod_.createConstant(ElemKind::FloatTy, {100}, "weight");
+  SigmoidNode *sigmoidW = F_->createSigmoid("sig", W);
+  ConvertToNode *convertW =
+      F_->createConvertTo("conv", sigmoidW, ElemKind::Float16Ty);
+  TopKNode *TK = F_->createTopK("topk", convertW, 5);
+  F_->createSave("save_indices", TK->getIndices());
+
+  Placeholder *I = mod_.createPlaceholder(ElemKind::Float16Ty, {5}, "input",
+                                          /* isTrainable */ false);
+  AddNode *add = F_->createAdd("add", I, TK->getValues());
+  F_->createSave("save_add", add);
+
+  bindings_.allocate(I)->getHandle<float16_t>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  W->getPayloadMutable().getHandle<float>().randomize(-10, 10, mod_.getPRNG());
+
+  serializeAndReloadAndCompareResults(2);
 }

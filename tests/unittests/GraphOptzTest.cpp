@@ -3904,6 +3904,281 @@ TEST_F(GraphOptz, constantFoldSingleNode) {
   EXPECT_EQ(CH.at({1, 1}), 18.0f);
 }
 
+/// Test that we correctly record a single constant folding subgraph that has a
+/// single output.
+TEST_F(GraphOptz, constantFoldWithRecordSingleChain) {
+  Placeholder *I =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {2, 100}, "input",
+                             /* isTrainable */ false);
+  Constant *W = mod_.createConstant(ElemKind::FloatTy, {10, 100}, "weight");
+  ClipNode *clipW = F_->createClip("clip", W, -5.f, 5.f);
+  ConvertToNode *convertW =
+      F_->createConvertTo("conv", clipW, ElemKind::Float16Ty);
+  TransposeNode *transposeW =
+      F_->createTranspose("transpose", convertW, {1, 0});
+  MatMulNode *MM = F_->createMatMul("matmul", I, transposeW);
+  SaveNode *save = F_->createSave("save", MM);
+  Placeholder *O = save->getPlaceholder();
+  bindings_.allocate(O);
+
+  ASSERT_TRUE(F_->verify());
+
+  Tensor *IT = bindings_.allocate(I);
+  IT->getHandle<float16_t>().randomize(-10, 10, mod_.getPRNG());
+  W->getPayloadMutable().getHandle<float>().randomize(-10, 10, mod_.getPRNG());
+
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  ConstantFoldingRecordMap record = constantFoldAndRecord(optimizedF_, cctx_);
+
+  runDCEPass(optimizedF_, cctx_);
+
+  ASSERT_EQ(record.size(), 1);
+  SaveNode *SN = record.begin()->second;
+  Function *constFoldF = SN->getParent();
+
+  // Expect to find a chain of Nodes based on Nodes above. Note that the clip is
+  // lowered for the Interpreter backend which performs constant folding.
+  EXPECT_EQ(2, countNodeKind(constFoldF, Kinded::Kind::SplatNodeKind));
+  EXPECT_EQ(1, countNodeKind(constFoldF, Kinded::Kind::MaxNodeKind));
+  EXPECT_EQ(1, countNodeKind(constFoldF, Kinded::Kind::MinNodeKind));
+  EXPECT_EQ(1, countNodeKind(constFoldF, Kinded::Kind::ConvertToNodeKind));
+  EXPECT_EQ(1, countNodeKind(constFoldF, Kinded::Kind::TransposeNodeKind));
+
+  // Skip optimizations -- we just want to run them as is (otherwise we'll
+  // constant fold them inside the optimization pipeline).
+  cctx_.optimizationOpts.onlyLowerFuns.insert(constFoldF);
+  cctx_.optimizationOpts.onlyLowerFuns.insert(F_);
+  cctx_.optimizationOpts.onlyLowerFuns.insert(optimizedF_);
+
+  // Don't strip the module as we want to compare the Constant values below.
+  EE_.setSkipModuleStrip(true);
+
+  EE_.compile(cctx_);
+  alreadyCompiled_ = true;
+
+  bindings_.allocate(mod_.getPlaceholders());
+
+  // Run the constant folding chain to check that we have the same constant used
+  // by the optimized Function.
+  EE_.run(bindings_, constFoldF->getName());
+  Tensor *rerunT = bindings_.get(SN->getPlaceholder());
+  ASSERT_TRUE(rerunT);
+  auto optimizedConstants = optimizedF_->findConstants();
+  ASSERT_EQ(optimizedConstants.size(), 1);
+  EXPECT_TRUE(
+      (*optimizedConstants.begin())->getPayload().isEqual(*rerunT, 0.f));
+
+  // Remove the temporary constant folding Functions and their Placeholders.
+  cleanupConstantFolding(mod_, record, &bindings_);
+
+  // Now compile/run/compare F_ and optimizedF_.
+  checkNumericalEquivalence(0.f);
+}
+
+/// Test that we correctly record two constant folding subgraphs, with each with
+/// a single output.
+TEST_F(GraphOptz, constantFoldWithRecordMultiChain) {
+  Placeholder *I =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {2, 100}, "input",
+                             /* isTrainable */ false);
+  Constant *W = mod_.createConstant(ElemKind::FloatTy, {10, 100}, "weight");
+  ClipNode *clipW = F_->createClip("clip", W, -5.f, 5.f);
+  ConvertToNode *convertW =
+      F_->createConvertTo("conv", clipW, ElemKind::Float16Ty);
+  TransposeNode *transposeW =
+      F_->createTranspose("transpose", convertW, {1, 0});
+  MatMulNode *MM = F_->createMatMul("matmul", I, transposeW);
+  SaveNode *saveMM = F_->createSave("save_mm", MM);
+  Placeholder *MMP = saveMM->getPlaceholder();
+  bindings_.allocate(MMP);
+
+  SigmoidNode *sigmoidW = F_->createSigmoid("sig", convertW);
+  SaveNode *saveSig = F_->createSave("save_sig", sigmoidW);
+  Placeholder *sigP = saveSig->getPlaceholder();
+  bindings_.allocate(sigP);
+
+  ASSERT_TRUE(F_->verify());
+
+  Tensor *IT = bindings_.allocate(I);
+  IT->getHandle<float16_t>().randomize(-10, 10, mod_.getPRNG());
+  W->getPayloadMutable().getHandle<float>().randomize(-10, 10, mod_.getPRNG());
+
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  ConstantFoldingRecordMap record = constantFoldAndRecord(optimizedF_, cctx_);
+
+  runDCEPass(optimizedF_, cctx_);
+
+  ASSERT_EQ(record.size(), 2);
+  SaveNode *sigSN = record.begin()->second;
+  SaveNode *transSN = std::next(record.begin())->second;
+  if (llvm::isa<SigmoidNode>(transSN->getInput())) {
+    std::swap(sigSN, transSN);
+  }
+
+  Function *constFoldSig = sigSN->getParent();
+  Function *constFoldTrans = transSN->getParent();
+
+  // Expect to find a chain of Nodes based on Nodes above. Note that the clip is
+  // lowered for the Interpreter backend which performs constant folding.
+  EXPECT_EQ(2, countNodeKind(constFoldTrans, Kinded::Kind::SplatNodeKind));
+  EXPECT_EQ(1, countNodeKind(constFoldTrans, Kinded::Kind::MaxNodeKind));
+  EXPECT_EQ(1, countNodeKind(constFoldTrans, Kinded::Kind::MinNodeKind));
+  EXPECT_EQ(1, countNodeKind(constFoldTrans, Kinded::Kind::ConvertToNodeKind));
+  EXPECT_EQ(1, countNodeKind(constFoldTrans, Kinded::Kind::TransposeNodeKind));
+
+  EXPECT_EQ(2, countNodeKind(constFoldSig, Kinded::Kind::SplatNodeKind));
+  EXPECT_EQ(1, countNodeKind(constFoldSig, Kinded::Kind::MaxNodeKind));
+  EXPECT_EQ(1, countNodeKind(constFoldSig, Kinded::Kind::MinNodeKind));
+  EXPECT_EQ(1, countNodeKind(constFoldSig, Kinded::Kind::ConvertToNodeKind));
+  EXPECT_EQ(1, countNodeKind(constFoldSig, Kinded::Kind::SigmoidNodeKind));
+
+  // Skip optimizations -- we just want to run them as is (otherwise we'll
+  // constant fold them inside the optimization pipeline).
+  cctx_.optimizationOpts.onlyLowerFuns.insert(constFoldTrans);
+  cctx_.optimizationOpts.onlyLowerFuns.insert(constFoldSig);
+  cctx_.optimizationOpts.onlyLowerFuns.insert(F_);
+  cctx_.optimizationOpts.onlyLowerFuns.insert(optimizedF_);
+
+  // Don't strip the module as we want to compare the Constant values below.
+  EE_.setSkipModuleStrip(true);
+
+  EE_.compile(cctx_);
+  alreadyCompiled_ = true;
+
+  bindings_.allocate(mod_.getPlaceholders());
+
+  // Run the constant folding chain to check that we have the same constant used
+  // by the optimized Function.
+  EE_.run(bindings_, constFoldTrans->getName());
+  EE_.run(bindings_, constFoldSig->getName());
+
+  // Find the correct PHs for each of the constant folding we do.
+  Tensor *rerunTransT = bindings_.get(transSN->getPlaceholder());
+  Tensor *rerunSigT = bindings_.get(sigSN->getPlaceholder());
+  ASSERT_TRUE(rerunTransT);
+  ASSERT_TRUE(rerunSigT);
+
+  auto optimizedConstants = optimizedF_->findConstants();
+  ASSERT_EQ(optimizedConstants.size(), 2);
+  Constant *transC = *optimizedConstants.begin();
+  Constant *sigC = *std::next(optimizedConstants.begin());
+  // If we have the constants backwards then swap them. Note that we know
+  // sigC must be directly saved, while transC is input to a MatMulNode.
+  ASSERT_EQ(transC->getNumUsers(), 1);
+  if (llvm::isa<SaveNode>(transC->getUsers().begin()->getUser())) {
+    std::swap(transC, sigC);
+  }
+  EXPECT_TRUE(transC->getPayload().isEqual(*rerunTransT, 0.f));
+  EXPECT_TRUE(sigC->getPayload().isEqual(*rerunSigT, 0.f));
+
+  // Remove the temporary constant folding Functions and their Placeholders.
+  cleanupConstantFolding(mod_, record, &bindings_);
+
+  // Now compile/run/compare F_ and optimizedF_.
+  checkNumericalEquivalence(0.f);
+}
+
+/// Test that we correctly record a single constant folding subgraph that has
+/// two outputs.
+TEST_F(GraphOptz, constantFoldWithRecordSingleChainMultiOutput) {
+  Constant *W = mod_.createConstant(ElemKind::FloatTy, {100}, "weight");
+  SigmoidNode *sigmoidW = F_->createSigmoid("sig", W);
+  ConvertToNode *convertW =
+      F_->createConvertTo("conv", sigmoidW, ElemKind::Float16Ty);
+  TopKNode *TK = F_->createTopK("topk", convertW, 5);
+
+  SaveNode *indicesSave = F_->createSave("save_indices", TK->getIndices());
+  Placeholder *indicesP = indicesSave->getPlaceholder();
+  bindings_.allocate(indicesP);
+
+  Placeholder *I = mod_.createPlaceholder(ElemKind::Float16Ty, {5}, "input",
+                                          /* isTrainable */ false);
+  AddNode *add = F_->createAdd("add", I, TK->getValues());
+  SaveNode *addSave = F_->createSave("save_add", add);
+  Placeholder *addP = addSave->getPlaceholder();
+  bindings_.allocate(addP);
+
+  ASSERT_TRUE(F_->verify());
+
+  Tensor *IT = bindings_.allocate(I);
+  IT->getHandle<float16_t>().randomize(-10, 10, mod_.getPRNG());
+  W->getPayloadMutable().getHandle<float>().randomize(-10, 10, mod_.getPRNG());
+
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  ConstantFoldingRecordMap record = constantFoldAndRecord(optimizedF_, cctx_);
+
+  runDCEPass(optimizedF_, cctx_);
+
+  ASSERT_EQ(record.size(), 2);
+  SaveNode *indicesSN = record.begin()->second;
+  SaveNode *addSN = std::next(record.begin())->second;
+
+  // Find the correct PHs for each of the constant folding we do.
+  if (indicesSN->getInput().getResNo() != TopKNode::IndicesIdx) {
+    std::swap(indicesSN, addSN);
+  }
+
+  // Expect that the two constants that we folded are from the same Function,
+  // and that the two saves use the two different outputs from a topk.
+  EXPECT_EQ(indicesSN->getParent(), addSN->getParent());
+  ASSERT_TRUE(llvm::isa<TopKNode>(addSN->getInput()));
+  ASSERT_TRUE(llvm::isa<TopKNode>(indicesSN->getInput()));
+  EXPECT_EQ(addSN->getInput().getNode(), indicesSN->getInput().getNode());
+
+  Function *constFoldF = addSN->getParent();
+
+  // Expect to find a chain of Nodes based on Nodes above.
+  EXPECT_EQ(1, countNodeKind(constFoldF, Kinded::Kind::TopKNodeKind));
+  EXPECT_EQ(1, countNodeKind(constFoldF, Kinded::Kind::SigmoidNodeKind));
+  EXPECT_EQ(1, countNodeKind(constFoldF, Kinded::Kind::ConvertToNodeKind));
+
+  // Skip optimizations -- we just want to run them as is (otherwise we'll
+  // constant fold them inside the optimization pipeline).
+  cctx_.optimizationOpts.onlyLowerFuns.insert(constFoldF);
+  cctx_.optimizationOpts.onlyLowerFuns.insert(F_);
+  cctx_.optimizationOpts.onlyLowerFuns.insert(optimizedF_);
+
+  // Don't strip the module as we want to compare the Constant values below.
+  EE_.setSkipModuleStrip(true);
+
+  EE_.compile(cctx_);
+  alreadyCompiled_ = true;
+
+  bindings_.allocate(mod_.getPlaceholders());
+
+  // Run the constant folding chain to check that we have the same constant used
+  // by the optimized Function.
+  EE_.run(bindings_, constFoldF->getName());
+
+  Tensor *rerunAddT = bindings_.get(addSN->getPlaceholder());
+  Tensor *rerunIndicesT = bindings_.get(indicesSN->getPlaceholder());
+  ASSERT_TRUE(rerunAddT);
+  ASSERT_TRUE(rerunIndicesT);
+
+  auto optimizedConstants = optimizedF_->findConstants();
+  ASSERT_EQ(optimizedConstants.size(), 2);
+  Constant *addC = *optimizedConstants.begin();
+  Constant *indicesC = *std::next(optimizedConstants.begin());
+
+  // If we have the constants backwards then swap them. Note that we know
+  // indicesC must be directly saved, while addC is input to an AddNode.
+  ASSERT_EQ(addC->getNumUsers(), 1);
+  if (llvm::isa<SaveNode>(addC->getUsers().begin()->getUser())) {
+    std::swap(addC, indicesC);
+  }
+  EXPECT_TRUE(addC->getPayload().isEqual(*rerunAddT, 0.f));
+  EXPECT_TRUE(indicesC->getPayload().isEqual(*rerunIndicesT, 0.f));
+
+  // Remove the temporary constant folding Functions and their Placeholders.
+  cleanupConstantFolding(mod_, record, &bindings_);
+
+  // Now compile/run/compare F_ and optimizedF_.
+  checkNumericalEquivalence(0.f);
+}
+
 TEST_F(GraphOptz, constantFoldWholeFunction) {
   auto *const1 = mod_.createConstant(ElemKind::FloatTy, {2, 2}, "const1");
   auto *const2 = mod_.createConstant(ElemKind::FloatTy, {2, 2}, "const2");
