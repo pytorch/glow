@@ -5250,3 +5250,50 @@ TEST_F(GraphOptz, EliminateSliceConcatTest) {
                                                       mod_.getPRNG());
   checkNumericalEquivalence();
 }
+
+/// Verify that when we want to prevent constant folding it doesn't occur.
+TEST_F(GraphOptz, constantFoldPreventedNoop) {
+  auto *const1 = mod_.createConstant(ElemKind::FloatTy, {2, 2}, "const1");
+  auto *const2 = mod_.createConstant(ElemKind::FloatTy, {2, 2}, "const2");
+  auto *ph1 = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2}, "input1",
+                                     /* isTrainable */ false);
+  setConstValue(const1, 1.0f);
+  setConstValue(const2, 2.0f);
+  auto *splat2 = F_->createSplat(
+      "splat2", mod_.uniqueType(ElemKind::FloatTy, {2, 2}), 2.0f);
+  auto *splat3 = F_->createSplat(
+      "splat3", mod_.uniqueType(ElemKind::FloatTy, {2, 2}), 3.0f);
+
+  auto *add1 = F_->createAdd("add", const1, const2);
+  auto *mul1 = F_->createMul("mul1", add1, splat2);
+  auto *mul2 = F_->createMul("mul2", mul1, splat3);
+  F_->createSave("save", mul2);
+  auto *add3 = F_->createAdd("add", const1, ph1);
+  F_->createSave("save", add3);
+
+  ConstantModificationPreventer constModPreventer(mod_);
+  constModPreventer.activate();
+
+  // Check that both Constants are protected and no change is made to the
+  // Function during optimization.
+  EXPECT_EQ(constModPreventer.getMapping().size(), 2);
+  optimizedF_ = optimizeFunction(F_);
+  EXPECT_EQ(F_->toString(/* skipUsersForStorage */ false,
+                         /* skipName */ true),
+            optimizedF_->toString(/* skipUsersForStorage */ false,
+                                  /* skipName */ true));
+
+  // Now deactivate the constModPreventer and check we can const fold still.
+  constModPreventer.deactivateAndCleanup();
+  mod_.eraseFunction(optimizedF_);
+  optimizedF_ = optimizeFunction(F_);
+
+  // After constant folding, left with just two Saves, one Add.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::AddNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SaveNodeKind), 2);
+
+  bindings_.allocate(ph1)->getHandle<float>().randomize(-10.0, 10.0,
+                                                        mod_.getPRNG());
+  checkNumericalEquivalence();
+}

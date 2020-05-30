@@ -4519,6 +4519,12 @@ void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
   CONVERT(int64_t, float16_t, ElemKind::Int64ITy, ElemKind::Float16Ty)
   CONVERT(int64_t, int32_t, ElemKind::Int64ITy, ElemKind::Int32ITy)
 #undef CONVERT
+
+  if (srcElType == ElemKind::UInt8FusedQTy &&
+      destElType == ElemKind::UInt8FusedFP16QTy) {
+    dest->convertToType(ElemKind::UInt8FusedFP16QTy);
+    return;
+  }
   llvm_unreachable("Type not supported");
 }
 

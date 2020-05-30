@@ -240,7 +240,9 @@ void vectorReorder(std::vector<T> &v, std::vector<size_t> const &order) {
 class ScopeGuard {
   /// Function to call when the destructor is called.
   std::function<void()> endFun_;
-  /// Whether the guard has been dismissed..
+
+protected:
+  /// Whether the guard has been dismissed.
   bool dismissed_{false};
 
 public:

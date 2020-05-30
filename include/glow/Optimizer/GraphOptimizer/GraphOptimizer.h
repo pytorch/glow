@@ -117,11 +117,13 @@ void cleanupConstantFolding(Module &mod, const ConstantFoldingRecordMap &record,
                             PlaceholderBindings *bindings = nullptr);
 
 /// Execute function \p F by the \p backend using the provided \p bindings and
-/// the compilation context \p cctx.
+/// the compilation context \p cctx. If \p enableQuantizeConstFolding then
+/// QuantizeNodes can be folded as part of a constant chain.
 /// \returns error if function is not a constant function.
 Error executeConstantFunction(Backend &backend, Function &F,
                               PlaceholderBindings &bindings,
-                              CompilationContext &cctx);
+                              CompilationContext &cctx,
+                              bool enableQuantizeConstFolding = false);
 
 /// Perform vertical split of FC weights in a given function.
 /// Optimization could facilitate parallel execution of FCs on multiple device
@@ -137,6 +139,42 @@ bool executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
 /// Represents what kind of parallelization transformation should be performed
 /// by \ref parallelizeOps().
 enum class ParallelTransformKind { None, Data, Model };
+
+/// A specialized ScopeGuard which prevents constant modification from occuring
+/// by swappiing in temporary Placeholders in place of Constants during the
+/// scope of the ConstantModificationPreventer. Automatically replaces the
+/// Constants back once the scope ends.
+class ConstantModificationPreventer : protected ScopeGuard {
+  /// Module which contains Constants we want to prevent modification of.
+  Module &mod_;
+
+  /// Map from temporary Placeholders to the Constants they replaced.
+  std::unordered_map<Placeholder *, Constant *> tmpPHToConstMap_;
+
+public:
+  /// Ctor.
+  ConstantModificationPreventer(Module &mod);
+
+  /// Make not copyable.
+  ConstantModificationPreventer(const ConstantModificationPreventer &) = delete;
+
+  /// Make not assignable.
+  ConstantModificationPreventer &
+  operator=(const ConstantModificationPreventer &) = delete;
+
+  /// \returns the mapping of tmp PH to Constants.
+  const std::unordered_map<Placeholder *, Constant *> &getMapping() const {
+    return tmpPHToConstMap_;
+  }
+
+  /// Activate the preventer. By default it is deactivated when constructed.
+  void activate();
+
+  /// Deactivate the preventer and cleanup. This just forwards to
+  /// ScopeGuard::runAndDismiss(), which would have otherwise occurred when
+  /// falling out of scope.
+  void deactivateAndCleanup() { runAndDismiss(); }
+};
 
 /// Perform data or model parallel transformation of supported Nodes in \p F.
 /// \p numOfChunksMap maps Nodes to how many chunks they should be split into;
