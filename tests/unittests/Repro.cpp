@@ -636,7 +636,7 @@ int run() {
        numInferencesIssued < numTotalInferences;
        ++numInferencesIssued, ioIndex = numInferencesIssued % inputGroupSize) {
 
-    results.emplace_back(InferenceResult());
+    results.emplace_back();
     auto &result = results.back();
 
     threadPool.add([&inputBindings, &nonStaticPlaceholderList, ioIndex,
