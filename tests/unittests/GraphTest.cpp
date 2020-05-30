@@ -1999,6 +1999,7 @@ name : "input"
 layout : *
 output : float<4 x 320 x 200 x 100 x 3>
 trainable : 1
+static : 0
 users : 0
 )";
   EXPECT_EQ(mesN, expectMes);
@@ -2010,6 +2011,7 @@ users : 0
   // Test Function
   Placeholder *I =
       MD.createPlaceholder(ElemKind::FloatTy, {10, 10}, "input", true);
+  I->setStatic(true);
   Function *F2 = MD.createFunction("F2");
   F2->createTopK("topk", I, 3);
   std::string storageF1;
@@ -2029,6 +2031,7 @@ name : "input__1"
 layout : *
 output : float<10 x 10>
 trainable : 1
+static : 1
 users : 1
 )";
   EXPECT_EQ(mesF, expectMesF);
@@ -2053,6 +2056,7 @@ name : "input__1"
 layout : *
 output : float<10 x 10>
 trainable : 1
+static : 1
 )";
   EXPECT_EQ(mesF, expectMesF);
   EXPECT_EQ(mesF, osF1.str());
@@ -2074,6 +2078,7 @@ name : "input__1"
 layout : *
 output : float<10 x 10>
 trainable : 1
+static : 1
 users : 1
 
 Placeholder
@@ -2081,6 +2086,7 @@ name : "input"
 layout : *
 output : float<4 x 320 x 200 x 100 x 3>
 trainable : 1
+static : 0
 users : 0
 
 Function : F2
