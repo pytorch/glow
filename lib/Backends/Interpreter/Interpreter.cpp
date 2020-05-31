@@ -509,8 +509,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         return false;
       }
     };
-    return isConversionSupportedFor(NI.getInElemTy(ConvertToNode::InputIdx)) &&
-           isConversionSupportedFor(NI.getOutElemTy(ConvertToNode::ResultIdx));
+    return (isConversionSupportedFor(NI.getInElemTy(ConvertToNode::InputIdx)) &&
+            isConversionSupportedFor(
+                NI.getOutElemTy(ConvertToNode::ResultIdx))) ||
+           (NI.getInElemTy(ConvertToNode::InputIdx) ==
+                ElemKind::UInt8FusedQTy &&
+            NI.getOutElemTy(ConvertToNode::ResultIdx) ==
+                ElemKind::UInt8FusedFP16QTy);
   }
 
   case Kinded::Kind::TopKNodeKind:

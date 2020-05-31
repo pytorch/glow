@@ -41,15 +41,17 @@ constexpr const char *constEvaluationFunctionName =
 /// \returns true if a node \p N is a constant operation, i.e. it is a trivial
 /// constant like Constant or Splat or all of its inputs are recursively
 /// constant operations, and it has no side-effects and supported by the \p
-/// backend.
-bool isConstantOperation(const Node *N, const Backend &backend) {
+/// backend. If \p enableQuantizeConstFolding then QuantizeNodes are considered
+/// a valid constant operation to fold.
+bool isConstantOperation(const Node *N, const Backend &backend,
+                         bool enableQuantizeConstFolding) {
   // An operation with side-effects cannot be computed at compile-time.
   if (N->hasSideEffects()) {
     return false;
   }
   // Quantize nodes are not handled by ConstantFolding but by a specific
   // quantization specific optimization.
-  if (isa<QuantizeNode>(N)) {
+  if (!enableQuantizeConstFolding && isa<QuantizeNode>(N)) {
     return false;
   }
   // Constant and splat nodes are trivially constant operations.
@@ -71,7 +73,8 @@ bool isConstantOperation(const Node *N, const Backend &backend) {
   }
   for (size_t idx = 0, e = N->getNumInputs(); idx < e; ++idx) {
     auto input = N->getNthInput(idx);
-    if (!isConstantOperation(input.getNode(), backend)) {
+    if (!isConstantOperation(input.getNode(), backend,
+                             enableQuantizeConstFolding)) {
       return false;
     }
   }
@@ -79,15 +82,19 @@ bool isConstantOperation(const Node *N, const Backend &backend) {
 }
 
 /// \returns true if node \p N has at least one non-constant operation user.
-bool hasNonConstantOperationUser(const Node *N, const Backend &backend) {
-  assert(isConstantOperation(N, backend) && "Expected constant operation");
+/// \p backend and \p enableQuantizeConstFolding are used to determine what is
+/// valid for folding.
+bool hasNonConstantOperationUser(const Node *N, const Backend &backend,
+                                 bool enableQuantizeConstFolding) {
+  assert(isConstantOperation(N, backend, enableQuantizeConstFolding) &&
+         "Expected constant operation");
   for (auto &use : N->getUsers()) {
     auto *user = use.getUser();
     // Only consider users in the current function.
     if (user->getParent() != N->getParent()) {
       continue;
     }
-    if (!isConstantOperation(user, backend)) {
+    if (!isConstantOperation(user, backend, enableQuantizeConstFolding)) {
       return true;
     }
   }
@@ -169,8 +176,11 @@ static uint64_t numFolds = 0;
 bool evaluateConstantOperation(Backend &backend, CompilationContext &cctx,
                                Node *C, std::vector<Constant *> &constResults,
                                ConstantFoldingRecordMap *record) {
+  // Allow for quantize folding when we have a const folding record.
+  const bool enableQuantizeConstFolding = record != nullptr;
   PlaceholderBindings bindings;
-  assert(isConstantOperation(C, backend) && "Expected a constant expression");
+  assert(isConstantOperation(C, backend, enableQuantizeConstFolding) &&
+         "Expected a constant expression");
   // Constants and splats do not need to be constant evaluated.
   if (isa<Constant>(C) || isa<SplatNode>(C)) {
     return true;
@@ -201,7 +211,7 @@ bool evaluateConstantOperation(Backend &backend, CompilationContext &cctx,
   // Run the temporary backend to perform this constant operation
   // evaluation.
   if (ERR_TO_BOOL(executeConstantFunction(backend, *constEvaluationF, bindings,
-                                          cctx))) {
+                                          cctx, enableQuantizeConstFolding))) {
     mod.eraseFunction(constEvaluationF);
     return false;
   }
@@ -236,7 +246,8 @@ bool evaluateConstantOperation(Backend &backend, CompilationContext &cctx,
 
 /// Check if function \p F consists of constant operations only.
 LLVM_ATTRIBUTE_USED
-Error verifyConstantFunction(Backend &backend, Function &F) {
+Error verifyConstantFunction(Backend &backend, Function &F,
+                             bool enableQuantizeConstFolding) {
   // Perform the checks in DEBUG builds only.
   for (auto &N : F.getNodes()) {
     // Saving results is fine.
@@ -245,8 +256,9 @@ Error verifyConstantFunction(Backend &backend, Function &F) {
     }
     // Placeholders can be used just to save results.
     if (!isa<Placeholder>(&N)) {
-      RETURN_ERR_IF_NOT(isConstantOperation(&N, backend),
-                        "Expected constant operation");
+      RETURN_ERR_IF_NOT(
+          isConstantOperation(&N, backend, enableQuantizeConstFolding),
+          "Expected constant operation");
       continue;
     }
     if (!N.hasOneUse()) {
@@ -284,10 +296,11 @@ bool constantFoldNodeImpl(Backend &backend, Node *N,
 
 Error glow::executeConstantFunction(Backend &backend, Function &F,
                                     PlaceholderBindings &bindings,
-                                    CompilationContext &cctx) {
+                                    CompilationContext &cctx,
+                                    bool enableQuantizeConstFolding) {
 // Perform the checks in DEBUG builds only.
 #ifndef NDEBUG
-  RETURN_IF_ERR(verifyConstantFunction(backend, F));
+  RETURN_IF_ERR(verifyConstantFunction(backend, F, enableQuantizeConstFolding));
 #endif
   std::unique_ptr<CompiledFunction> compiledF;
   ASSIGN_VALUE_OR_RETURN_ERR(compiledF, compile(backend, F, cctx));
@@ -307,6 +320,9 @@ static bool constantFoldFun(Function *F, const CompilationContext &cctx,
     return false;
   }
 
+  // Allow for quantize folding when we have a const folding record.
+  const bool enableQuantizeConstFolding = record != nullptr;
+
   LOG_SCOPE(F->getLogContext(), "glow::constantFold")
   bool changed = false;
   // Backend to be used for compile-time computations.
@@ -324,7 +340,7 @@ static bool constantFoldFun(Function *F, const CompilationContext &cctx,
     }
 
     // Skip nodes that are not constant operations.
-    if (!isConstantOperation(N, *backend)) {
+    if (!isConstantOperation(N, *backend, enableQuantizeConstFolding)) {
       continue;
     }
 
@@ -334,7 +350,7 @@ static bool constantFoldFun(Function *F, const CompilationContext &cctx,
     // of its computation. Doing this check allows for performing a smaller
     // number of evaluateConstantOperation calls later and thus reduces the
     // overhead.
-    if (!hasNonConstantOperationUser(N, *backend)) {
+    if (!hasNonConstantOperationUser(N, *backend, enableQuantizeConstFolding)) {
       continue;
     }
 
@@ -372,7 +388,8 @@ glow::constantFoldAndRecord(Function *F, const CompilationContext &cctx) {
 std::vector<Constant *> glow::constantFold(Node *N) {
   LOG_SCOPE(N->getParent()->getLogContext(), "glow::constantFold")
   std::unique_ptr<Backend> backend(new Interpreter());
-  if (!isConstantOperation(N, *backend)) {
+  if (!isConstantOperation(N, *backend,
+                           /* enableQuantizeConstFolding */ false)) {
     return {};
   }
   std::vector<Constant *> constResults;

@@ -37,6 +37,7 @@ extern bool GlowSaturateHost;
 extern bool GlowSaveOnnxifiModel;
 extern bool GlowSaveOnnxifiDAG;
 extern bool GlowSaveOnnxifiIO;
+extern bool GlowDelayAndRecordConstantModification;
 extern bool GlowEnablePartialTensors;
 extern bool GlowUseCustomOpsForExport;
 extern bool GlowUseSparseNNPartitioningScheme;
@@ -227,6 +228,16 @@ DEFINE_validator(glow_save_onnxifi_dag, [](const char *flagname, bool value) {
   glow::onnxifi::GlowSaveOnnxifiDAG = value;
   return true;
 });
+
+DEFINE_bool(
+    glow_delay_and_record_constant_modification, false,
+    "Whether to delay and record constant modification for serialization.");
+DEFINE_validator(glow_delay_and_record_constant_modification,
+                 [](const char *flagname, bool value) {
+                   glow::onnxifi::GlowDelayAndRecordConstantModification =
+                       value;
+                   return true;
+                 });
 
 DEFINE_int32(glow_max_active_requests, 48,
              "Number of max active requests before host manager start queuing");

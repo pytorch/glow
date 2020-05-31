@@ -69,6 +69,35 @@ static bool shouldDeleteNode(Node *N) {
   return true;
 }
 
+ConstantModificationPreventer::ConstantModificationPreventer(Module &mod)
+    : ScopeGuard([&]() {
+        // Ensure we cleanup Placeholder-Constant swap if necessary.
+        auto &PHs = mod_.getPlaceholders();
+        for (auto &pair : tmpPHToConstMap_) {
+          Placeholder *tmpPH = pair.first;
+          Constant *C = pair.second;
+          tmpPH->getOutput().replaceAllUsesOfWith(C->getOutput());
+          mod_.erasePlaceholder(std::find(PHs.begin(), PHs.end(), tmpPH));
+        }
+      }),
+      mod_(mod) {
+  // By default dismiss until explicitly activated.
+  dismissed_ = true;
+}
+
+void ConstantModificationPreventer::activate() {
+  dismissed_ = false;
+  // Prevent Constant modification by temporarily replacing them with PHs.
+  for (Constant *C : mod_.getConstants()) {
+    Placeholder *tmpPH = mod_.createPlaceholder(
+        C->getType(), C->getName().str() + "_SWAP_CONST_FOLD",
+        /* isTrainable */ false, C->getLayout());
+    tmpPH->setStatic(true);
+    tmpPHToConstMap_[tmpPH] = C;
+    C->getOutput().replaceAllUsesOfWith(tmpPH->getOutput());
+  }
+}
+
 /// Helper that \returns whether all sibling Functions of \p F (other Functions
 /// inside its Module) are Loaded.
 static bool shouldDeleteConstants(Function *F) {
@@ -168,6 +197,12 @@ bool DCE::run(Function *F, const CompilationContext &cctx) {
     if (!changedLocally) {
       break;
     }
+  }
+
+  // Don't remove unused Constants since many may be temporarily unused during
+  // optimizations.
+  if (cctx.optimizationOpts.delayAndRecordConstantModification) {
+    return changed;
   }
 
   if (!shouldDeleteConstants(F)) {
@@ -4804,8 +4839,11 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
 
   // We already started using backend specific verification when the function
   // state became lowered. Do one more verification pass to make sure everything
-  // is in order and to bail if it is not.
-  if (!B.verify(*F, cctx.verboseCompile)) {
+  // is in order and to bail if it is not. Only do so if we are allowing
+  // constant modification, as otherwise we may have prevent a backend from
+  // supporting some Nodes. Expect the caller to verify later on in such cases.
+  if (!cctx.optimizationOpts.delayAndRecordConstantModification &&
+      !B.verify(*F, cctx.verboseCompile)) {
     return MAKE_ERR(
         ErrorValue::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
         "Unsupported node(s) found after optimizing Function " +
