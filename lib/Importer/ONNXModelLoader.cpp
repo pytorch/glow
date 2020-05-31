@@ -4473,6 +4473,7 @@ ONNXModelLoader::ONNXModelLoader(
 
     auto numPartitionsOrErr = getIntMetadataProp(modelDef, "numPartitions");
     if (!numPartitionsOrErr) {
+      ERR_TO_VOID(numPartitionsOrErr.takeError());
       G_ = mod_.createFunction(funName);
     } else {
       RETURN_ERR_IF_NOT(PPC, "No PrePartitionConfig to load partitions into");
