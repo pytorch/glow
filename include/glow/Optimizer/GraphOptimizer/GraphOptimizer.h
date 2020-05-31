@@ -34,10 +34,19 @@ namespace runtime {
 struct DeviceInfo;
 }
 
+/// Use to keep a record what happened during constant folding -- key is the
+/// Constant created during constant folding, and associated value is the
+/// SaveNode from the constant folding partition that saved that Constant when
+/// it was run.
+using ConstantFoldingRecordMap = llvm::DenseMap<Constant *, SaveNode *>;
+
 /// Perform optimizations on the graph representation.
 void optimize(Function *F, CompilationContext &cctx);
 void optimize(Function *F, CompilationMode mode);
 void optimize(Function *F, CompilationContext &cctx, const Backend &B);
+
+/// Delete unused Constants from \p mod.
+void deleteUnusedConstants(Module &mod);
 
 /// Fold nodes that were expressed lowered in the input model.
 void fold(Function *F, CompilationContext &cctx, const Backend *B = nullptr);
@@ -93,6 +102,19 @@ void transformForPrecisionMode(const Backend &B, Function *F,
 /// These constants correspond to results of the node. If no constant folding
 /// was possible an empty vector will be returned.
 std::vector<Constant *> constantFold(Node *N);
+
+/// Perform constant folding for all Nodes in \p F given \p cctx. \returns a
+/// record of what Constants are created by what SaveNodes pointing to
+/// Placeholders that replace them. The Functions and output Placeholders
+/// created for running the constant folding subgraph are not deleted from the
+/// module for this API.
+ConstantFoldingRecordMap constantFoldAndRecord(Function *F,
+                                               const CompilationContext &cctx);
+
+/// Given \p record, remove the constant folding Functions and their associated
+/// output Placeholder from \p mod and \p bindings.
+void cleanupConstantFolding(Module &mod, const ConstantFoldingRecordMap &record,
+                            PlaceholderBindings *bindings = nullptr);
 
 /// Execute function \p F by the \p backend using the provided \p bindings and
 /// the compilation context \p cctx.

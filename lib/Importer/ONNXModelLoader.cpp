@@ -3880,6 +3880,12 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
       return loadPerNodeOptions(loadedNode, *perNodeOpts_, dict);
     }
 
+    // These are handled earlier when loading initializers and so can be safely
+    // ignored here.
+    if (typeName == constFoldSubgraphNodeName) {
+      return Error::success();
+    }
+
     // Identity is the only official ONNX op used with useGlowCustomOps. Let it
     // fall through to logic to handle below, otherwise return error.
     if (typeName != "Identity") {
@@ -4088,27 +4094,132 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
              ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
 }
 
+void ONNXModelLoader::deleteConstFoldFunctions() {
+  for (Function *constFoldF : constFoldFuns_) {
+    mod_.eraseFunction(constFoldF);
+  }
+}
+
+Expected<Constant *>
+ONNXModelLoader::runDeserializedConstFold(llvm::StringRef initializerName,
+                                          llvm::StringRef outputName) {
+  NodeValue NV;
+  ASSIGN_VALUE_OR_RETURN_ERR(NV, getNodeValueByName(outputName));
+
+  std::vector<Constant *> constResults = constantFold(NV.getNode());
+  RETURN_ERR_IF_NOT(constResults.size() > 0,
+                    strFormat("Constant folding did not occur for %s",
+                              NV.getNode()->getName().data()));
+  RETURN_ERR_IF_NOT(NV.getResNo() < constResults.size(),
+                    strFormat("Needed result %u from const folding results, "
+                              "but only got %lu results",
+                              NV.getResNo(), constResults.size()));
+  Constant *foldedC = constResults[NV.getResNo()];
+
+  // Now we have the final Constant we want and it exists in the module. Set
+  // its name to the actual initializer it came with.
+  RETURN_ERR_IF_NOT(
+      mod_.getConstantByName(initializerName) == nullptr,
+      strFormat("Already had a Constant by name %s", initializerName.data()));
+  foldedC->setName(initializerName);
+  RETURN_ERR_IF_NOT(
+      nodeValueByName_.count(initializerName) == 0,
+      strFormat("Should not have been a Constant by name %s registered yet",
+                initializerName.data()));
+  nodeValueByName_[initializerName] = foldedC->getOutput();
+
+  return foldedC;
+}
+
+Expected<Constant *> ONNXModelLoader::replaySerializedConstFold(
+    const ONNX_NAMESPACE::TensorProto &in, ONNX_NAMESPACE::GraphProto &net) {
+  // Check if ins has a constant folding node associated with it.
+  const char *constFoldNodeName = nullptr;
+  int resNo = -1;
+  for (const auto &keyVal : in.external_data()) {
+    if (keyVal.key() == "ConstFoldNodeName") {
+      constFoldNodeName = keyVal.value().data();
+      continue;
+    }
+    if (keyVal.key() == "ConstFoldResNo") {
+      ASSIGN_VALUE_OR_RETURN_ERR(resNo, getIntFromStr(keyVal.value()));
+      continue;
+    }
+  }
+  if (!constFoldNodeName) {
+    return nullptr;
+  }
+  RETURN_ERR_IF_NOT(resNo >= 0,
+                    "Require ConstFoldResNo for Glow__ConstFoldSubgraph");
+
+  // Look through the ops in the graph to find the Node we need by name.
+  ONNX_NAMESPACE::NodeProto *op = nullptr;
+  for (int i = 0; i < net.node_size(); i++) {
+    auto *curOp = net.mutable_node(i);
+    if (loadOperatorName(*curOp) == constFoldNodeName) {
+      op = curOp;
+      break;
+    }
+  }
+  RETURN_ERR_IF_NOT(
+      op, strFormat("Did not find Node by name %s", constFoldNodeName));
+  RETURN_ERR_IF_NOT(
+      op->op_type() == constFoldSubgraphNodeName,
+      strFormat("Node %s has type %s but expected Glow__ConstFoldSubgraph",
+                constFoldNodeName, op->op_type().data()));
+
+  // Now look through the Node's attributes to find the subgraph.
+  ONNX_NAMESPACE::GraphProto *subgraph = nullptr;
+  for (auto &arg : *op->mutable_attribute()) {
+    if (arg.name() == "ConstFoldSubgraph") {
+      subgraph = arg.mutable_g();
+      break;
+    }
+  }
+
+  RETURN_ERR_IF_NOT(subgraph, strFormat("Expected associated subgraph for %s",
+                                        constFoldNodeName));
+
+  // We have the constant folding subgraph proto and need to load it to run it.
+  const bool functionAlreadyLoaded = mod_.hasFunction(constFoldNodeName);
+  Function *constFoldF = functionAlreadyLoaded
+                             ? mod_.getFunction(constFoldNodeName)
+                             : mod_.createFunction(constFoldNodeName);
+  const auto insert = constFoldFuns_.insert(constFoldF);
+  RETURN_ERR_IF_NOT(!(functionAlreadyLoaded && insert.second),
+                    strFormat("Function %s should only be processed once",
+                              constFoldNodeName));
+
+  // Temporarily swap in state for the constant folding Function.
+  Function *origF = G_;
+  G_ = constFoldF;
+  llvm::StringMap<Function *> partNameToFunBackup;
+  std::swap(partNameToFun_, partNameToFunBackup);
+  // Make sure to restore original state of the loader when exiting this scope.
+  ScopeGuard restoreOrigStateGuard([&]() {
+    G_ = origF;
+    std::swap(partNameToFun_, partNameToFunBackup);
+  });
+
+  // Deserialize the Function if not already done.
+  if (!functionAlreadyLoaded) {
+    RETURN_IF_ERR(loadNetwork(*subgraph, /* loadingConstFoldSubgraph */ true));
+  }
+
+  // Now that we have the Function deserialized, actually run and return the
+  // resulting Constant that is foldled.
+  RETURN_ERR_IF_NOT(subgraph->output_size() > resNo,
+                    strFormat("ConstFoldResNo %d invalid output idx.", resNo));
+  return runDeserializedConstFold(in.name(), subgraph->output(resNo).name());
+}
+
 Error ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
   // Load the network initializers:
   for (const auto &in : net.initializer()) {
-    // If we already an existing module then expect to find Constants already
-    // existing for each initializer.
-    if (loadIntoExistingModule_) {
-      Constant *C = mod_.getConstantByName(in.name());
-      Type ty;
-      ASSIGN_VALUE_OR_RETURN_ERR(ty, getTensorType(in));
-      std::string layout = ANY_LAYOUT;
-      if (useGlowCustomOps_) {
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            layout, getAttrFromDocString(layoutSignifier, in.doc_string()));
-      }
-      RETURN_IF_ERR(verifyPreexistingStorage(C, in.name(), ty, layout));
-      nodeValueByName_[in.name()] = C->getOutput();
-      continue;
-    }
-
-    Tensor T;
-    RETURN_IF_ERR(loadTensor(in, &T, useGlowCustomOps_));
+    // Replay any constant folding that occurred from previous optimization if
+    // necessary. foldedC will be left as nullptr if no constant folding occurs.
+    Constant *foldedC;
+    ASSIGN_VALUE_OR_RETURN_ERR(foldedC, replaySerializedConstFold(in, net));
 
     std::string layout = ANY_LAYOUT;
     if (useGlowCustomOps_) {
@@ -4116,8 +4227,24 @@ Error ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
           layout, getAttrFromDocString(layoutSignifier, in.doc_string()));
     }
 
+    // If we already an existing module then expect to find Constants already
+    // existing for each initializer.
+    if (foldedC || loadIntoExistingModule_) {
+      Constant *C = foldedC ? foldedC : mod_.getConstantByName(in.name());
+      Type ty;
+      ASSIGN_VALUE_OR_RETURN_ERR(ty, getTensorType(in));
+      RETURN_IF_ERR(verifyPreexistingStorage(C, in.name(), ty, layout));
+      nodeValueByName_[in.name()] = C->getOutput();
+      continue;
+    }
+
+    // If we are loading into an existing module then we would expect this
+    // initializer doesn't have any data associated with it.
+    Tensor T;
+    RETURN_IF_ERR(loadTensor(in, &T, useGlowCustomOps_));
     RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(T), layout));
   }
+
   return Error::success();
 }
 
@@ -4165,13 +4292,15 @@ Error ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
   return Error::success();
 }
 
-Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
+Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net,
+                                   bool loadingConstFoldSubgraph) {
   /// Load the network operators:
   for (int i = 0; i < net.node_size(); i++) {
     auto &op = net.node(i);
 
     // Set up current partition to load into if relevant.
-    if (partNameToFun_.size()) {
+    if (partNameToFun_.size() && !loadingConstFoldSubgraph &&
+        op.op_type() != constFoldSubgraphNodeName) {
       const ONNX_NAMESPACE::AttributeProto *pNameAttr = nullptr;
       for (auto &arg : op.attribute()) {
         if (arg.name() == "partitionName") {
@@ -4297,13 +4426,15 @@ Error ONNXModelLoader::loadModel(ONNX_NAMESPACE::ModelProto &modelDef,
     RETURN_IF_ERR(loadInputs(graphDef, loadInputsAsPlaceholdersForOnnx));
   }
 
-  RETURN_IF_ERR(loadNetwork(graphDef));
+  RETURN_IF_ERR(loadNetwork(graphDef, /* loadingConstFoldSubgraph */ false));
 
   RETURN_IF_ERR(setOutputNodes(graphDef));
 
   RETURN_ERR_IF_NOT(G_->verify(B), "Function verification failed.");
 
   deleteUnusedConstants();
+
+  deleteConstFoldFunctions();
 
   return Error::success();
 }

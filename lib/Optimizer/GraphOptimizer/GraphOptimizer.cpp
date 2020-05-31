@@ -139,9 +139,7 @@ bool DCE::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
 
   auto &nodes = F->getNodes();
-  auto &consts = F->getParent()->getConstants();
 
-  std::vector<ConstList::iterator> erasedConsts{};
   std::vector<NodesList::iterator> erasedNodes{};
 
   bool changed = false;
@@ -177,6 +175,14 @@ bool DCE::run(Function *F, const CompilationContext &cctx) {
   }
 
   // Delete unused Constants.
+  deleteUnusedConstants(*F->getParent());
+
+  return changed;
+}
+
+void glow::deleteUnusedConstants(Module &mod) {
+  auto &consts = mod.getConstants();
+  std::vector<ConstList::iterator> erasedConsts{};
   for (auto it = consts.begin(), e = consts.end(); it != e;) {
     if (!shouldDeleteNode(*it)) {
       ++it;
@@ -188,11 +194,9 @@ bool DCE::run(Function *F, const CompilationContext &cctx) {
 
   while (!erasedConsts.empty()) {
     auto it = erasedConsts.back();
-    F->getParent()->eraseConstant(it);
+    mod.eraseConstant(it);
     erasedConsts.pop_back();
   }
-
-  return changed;
 }
 
 /// \returns true if the \p shuffle corresponds to an identity operation, false

@@ -19,6 +19,7 @@
 
 #include "glow/Exporter/CommonOperatorWriter.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Runtime/RuntimeTypes.h"
 
 #include "onnx/onnx_pb.h"
@@ -52,6 +53,10 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   ONNX_NAMESPACE::ModelProto modelProto_;
   // GraphProto that we are writing to.
   ONNX_TRAITS::GraphProto *graphProto_;
+  // Root GraphProto that we are writing to. Equal to \ref graphProto_ unless
+  // when writing a constant folding subgraph, when graphProto_ is temporarily
+  // changed.
+  ONNX_TRAITS::GraphProto *graphProtoRoot_;
   /// Current IR version of ONNX.
   const size_t irVersion_;
   /// Current version of ONNX standard.
@@ -68,11 +73,16 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   const bool useGlowCustomOps_;
   /// Whether we are writing a DAG.
   const bool dagMode_;
+  /// A map containing a record of what constant folding took place, to record
+  /// in serialized DAGs.
+  const ConstantFoldingRecordMap &constFoldRecord_;
   /// A dedicated list of initializers in case the tensors get too big and don't
   /// fit into the model.
   std::list<TensorType> initializers_;
   /// Holds all Functions from a DAG that are being written when in dagMode_.
   llvm::SmallSet<Function *, 6> functionsFromDAG_;
+  /// Holds all constant folding Functions that have been processed.
+  llvm::SmallSet<Function *, 6> processedConstFoldFunctions_;
   /// Writes tensor shape from placeholder \p PH into protpbuf \p valueProto.
   void tensorShapeFromPlaceholder(const Placeholder *PH,
                                   ValueInfoType *valueProto);
@@ -104,6 +114,15 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   /// Write the current Function \ref F_ to \ref graphProto_. \returns if there
   /// was an issue during iteration or writing.
   Error writeFunction();
+
+  /// Given a Constant \p C that was previously created during Constant folding,
+  /// Serializes the constant folding Function saved by \p SN, where the
+  /// Function is the parent of \p SN. The function is written to an attribute
+  /// in a Glow__ConstFoldSubgraph NodeProto. \returns if an Error occurs.
+  Error writeConstantFoldingSubgraph(const Constant *C, SaveNode *SN);
+
+  /// \returns whether currently writing a constant folding subgraph.
+  bool isWritingConstFoldSubgraph();
 
   /// Finalize the written function and write it out to \p filename. \returns if
   /// there is an error encountered.
@@ -144,11 +163,15 @@ public:
   /// to abide by the official ONNX ops. If \p includeConstantData then data for
   /// Constants will be serialized in the written model, otherwise it will be
   /// skipped (but initializers will still exist, they will just have no data).
+  /// \p constFoldRecord contains any records of constant folding that should be
+  /// included in the serialized model.
   ONNXModelWriter(const std::string &modelFilename, Function &F,
                   size_t irVersion, size_t opsetVersion,
                   Error *errPtr = nullptr, bool textMode = false,
                   bool zipMode = false, bool useGlowCustomOps = false,
-                  bool includeConstantData = true);
+                  bool includeConstantData = true,
+                  const ConstantFoldingRecordMap &constFoldRecord =
+                      ConstantFoldingRecordMap());
 
   /// Creates an ONNX model writer to serialize \p dagList into file
 
@@ -162,11 +185,15 @@ public:
   /// TensorProto file along with the model file and package them into a zip
   /// file. If \p includeConstantData then data for Constants will be serialized
   /// in the written model, otherwise it will be skipped (but initializers will
-  /// still exist, they will just have no data).
+  /// still exist, they will just have no data). \p constFoldRecord contains any
+  /// records of constant folding that should be included in the serialized
+  /// model.
   ONNXModelWriter(const std::string &modelFilename, runtime::DAGListTy &dagList,
                   size_t irVersion, size_t opsetVersion,
                   Error *errPtr = nullptr, bool textMode = false,
-                  bool zipMode = false, bool includeConstantData = true);
+                  bool zipMode = false, bool includeConstantData = true,
+                  const ConstantFoldingRecordMap &constFoldRecord =
+                      ConstantFoldingRecordMap());
 
 private:
   /// \returns error for the unexpected node kind.
