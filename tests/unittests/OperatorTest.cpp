@@ -13729,5 +13729,40 @@ TEST_P(OperatorStatelessTest, LayerNorm_Int8) {
                             parCloneCountOpt);
 }
 
+static void testDequantizeFRWQ(glow::PlaceholderBindings &bindings,
+                               glow::Module &mod, glow::Function *F,
+                               glow::ExecutionEngine &EE, ElemKind destTy) {
+  Tensor FT(ElemKind::FloatTy, {10, 20});
+  FT.getHandle().randomize(-0.5, 0.5, mod.getPRNG());
+  TypeRef RWQTy = mod.uniqueType(ElemKind::UInt8FusedQTy,
+                                 {10, 20 + 2 * sizeof(float)}, 1.0, 0);
+  Tensor RWQT(RWQTy);
+  quantization::tensorFusedRowwiseQuantization<float>(FT, RWQT);
+
+  auto *input = mod.createPlaceholder(RWQTy, "input", false);
+  bindings.insert(input, std::move(RWQT));
+
+  auto *D = F->createDequantize("dequantize", input, destTy);
+  auto *save = F->createSave("ret", D);
+  auto *result = bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  if (destTy == ElemKind::Float16Ty) {
+    FT.convertToType(destTy);
+  }
+  EXPECT_TRUE(FT.isEqual(*result, 0.002f));
+}
+
+TEST_P(OperatorTest, DequantizeFRWQ_Float) {
+  CHECK_IF_ENABLED();
+  testDequantizeFRWQ(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+TEST_P(OperatorTest, DequantizeFRWQ_Float16) {
+  CHECK_IF_ENABLED();
+  testDequantizeFRWQ(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
 INSTANTIATE_BACKEND_TEST(OperatorStatelessTest);
 INSTANTIATE_BACKEND_TEST(OperatorTest);

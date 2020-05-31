@@ -482,7 +482,9 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return ((NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int8QTy) ||
             (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::UInt8QTy) ||
             (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int16QTy) ||
-            (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int32QTy)) &&
+            (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int32QTy) ||
+            (NI.getInElemTy(DequantizeNode::InputIdx) ==
+             ElemKind::UInt8FusedQTy)) &&
            ((NI.getOutElemTy(DequantizeNode::ResultIdx) == ElemKind::FloatTy) ||
             (NI.getOutElemTy(DequantizeNode::ResultIdx) ==
              ElemKind::Float16Ty));

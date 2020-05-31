@@ -808,7 +808,6 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .autoVerify(VerifyKind::TypeCheck, {"Dest", "isFPType()"})
       .autoVerify(VerifyKind::TypeCheck, {"Src", "isQuantizedType()"})
-      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
       .dataParallel()
       .autoIRGen();
 
