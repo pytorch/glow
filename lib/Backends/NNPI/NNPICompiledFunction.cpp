@@ -428,6 +428,8 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
     }
     if (allowsPartialInput(P, F)) {
       partialInputs_.insert(P);
+    } else if (requiresPadding(P, F)) {
+      paddedInputs_.insert(P);
     }
     if (P->isStatic()) {
       staticInputs_.insert(P);

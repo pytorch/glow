@@ -91,6 +91,14 @@ public:
     return partialInputs_;
   }
 
+  /// \returns a reference to the set of Placeholders that needed to be padded.
+  /// This set is introduced because we need to pad some tensors with its last
+  /// element instead of zeros. In the future, we may introduce a flag to
+  /// determine other padding schemes.
+  const std::unordered_set<const Placeholder *> &getPaddedInputs() const {
+    return paddedInputs_;
+  }
+
   /// \returns a reference to the set of static Placeholders.
   const std::unordered_set<const Placeholder *> &getStaticInputs() const {
     return staticInputs_;
@@ -136,6 +144,7 @@ private:
   BlockStream compiledStream_;
   std::mutex compiledStreamMutex_;
   std::unordered_set<const Placeholder *> partialInputs_;
+  std::unordered_set<const Placeholder *> paddedInputs_;
   std::unordered_set<const Placeholder *> staticInputs_;
   NNPICompilationOptions compilationOptions_;
   std::string compilationFileName_;

@@ -51,6 +51,7 @@ bool InferenceContext::init(
     NNPIDeviceNetwork deviceNetwork, NNPIAdapter adapter,
     NNPIDeviceContext device,
     const std::unordered_set<const Placeholder *> &partialInputs,
+    const std::unordered_set<const Placeholder *> &paddedInputs,
     const std::unordered_set<const Placeholder *> &staticInputs,
     StaticPlaceholderMap *staticPlaceholderMap,
     std::shared_ptr<NNPIDeviceOptions> deviceOptions,
@@ -62,6 +63,7 @@ bool InferenceContext::init(
   device_ = device;
   compilationConfig_ = config;
   partialInputs_ = &partialInputs;
+  paddedInputs_ = &paddedInputs;
   functionName_ = functionName;
 
   // Initialize trace context titles with device ID.
@@ -364,13 +366,6 @@ void InferenceContext::execute(RunIdentifierTy runId,
     }
   }
 
-  std::unordered_set<Tensor *> partialTensorInputs;
-  for (auto &pht : bindings.pairs()) {
-    if (partialInputs_->count(pht.first)) {
-      partialTensorInputs.insert(&pht.second);
-    }
-  }
-
   TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::COPY,
                          tracePreProcessContextName_, attributes);
 
@@ -379,13 +374,14 @@ void InferenceContext::execute(RunIdentifierTy runId,
   unsigned idx = 0;
   for (const auto &in : inputResources_) {
     if (in->getUsage() != NNPIResource::ResourceUsage::StaticInputResource) {
-      auto *t = bindings.get(netInputPlaceholders_[idx++]);
+      auto *ph = netInputPlaceholders_[idx++];
+      auto *t = bindings.get(ph);
       LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
           ERROR, t, "Can't find tensor for input", runId, ctx, resultCB);
       LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
           ERROR,
-          in->preInference(t, partialTensorInputs.count(t)) ==
-              NNPI_INF_NO_ERROR,
+          in->preInference(t, partialInputs_->count(ph),
+                           paddedInputs_->count(ph)) == NNPI_INF_NO_ERROR,
           "Failed pre-inference for input", runId, ctx, resultCB);
     }
     rawInputs.push_back(in->getHostPtr());

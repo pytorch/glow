@@ -357,15 +357,16 @@ bool NNPIResource::init(const NNPIObjectName name,
   return true;
 }
 
-NNPIInferenceErrorCode NNPIResource::preInference(Tensor *t,
-                                                  bool partialTensor) {
+NNPIInferenceErrorCode
+NNPIResource::preInference(Tensor *t, bool partialTensor,
+                           bool requiresLastElementPadding) {
   if (usage_ != ResourceUsage::InputResource) {
     // Nothing to do here yet.
     return NNPI_INF_NO_ERROR;
   }
 
   // Update the host resource from the tensor content.
-  updateHostResourceFromTensor(t, partialTensor);
+  updateHostResourceFromTensor(t, partialTensor, requiresLastElementPadding);
 
   if (deviceOptions_->dumpIOtoFiles) {
     size_t unpaddedSize = t->getUnpaddedSizeInBytes();
@@ -482,8 +483,10 @@ void NNPIResource::updateDeviceResourceFromTensor(
   LOG_AND_FAIL_CALLBACK_IF_NOT(
       t != nullptr, "Invalid tensor used to update static input", resultCB);
 
-  LOG_AND_FAIL_CALLBACK_IF_NOT(updateHostResourceFromTensor(t, false),
-                               "Invalid Static placeholder", resultCB);
+  LOG_AND_FAIL_CALLBACK_IF_NOT(
+      updateHostResourceFromTensor(t, /* partialTensor */ false,
+                                   /* requiresLastElementPadding */ false),
+      "Invalid Static placeholder", resultCB);
 
   if (deviceOptions_->inferOnDevice) {
     LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
@@ -495,7 +498,8 @@ void NNPIResource::updateDeviceResourceFromTensor(
   resultCB(Error::success());
 }
 
-bool NNPIResource::updateHostResourceFromTensor(Tensor *t, bool partialTensor) {
+bool NNPIResource::updateHostResourceFromTensor(
+    Tensor *t, bool partialTensor, bool requiresLastElementPadding) {
   // Prepare data on the host resource (for ice-ref use int32sTorage).
   char *tensorData = t->getUnsafePtr();
   const bool downcastInt64 = t->getElementType() == glow::ElemKind::Int64ITy;
@@ -542,14 +546,46 @@ bool NNPIResource::updateHostResourceFromTensor(Tensor *t, bool partialTensor) {
     memcpy(hostPtr_, tensorData, unpaddedSize);
   }
 
-  // Pad with zeros if needed.
+  // Pad with zeros or last element if needed.
   if (partialData && !partialTensor) {
-    memset(reinterpret_cast<uint8_t *>(hostPtr_) + unpaddedSize, 0,
-           paddedSize - unpaddedSize);
+    if (!requiresLastElementPadding) {
+      memset(reinterpret_cast<uint8_t *>(hostPtr_) + unpaddedSize, 0,
+             paddedSize - unpaddedSize);
+    } else {
+      // size of elements in hostPtr_
+      auto hostElementSize =
+          downcastInt64 ? sizeof(int32_t) : t->getType().getElementSize();
+      int numElements = unpaddedSize / hostElementSize;
+      int totalElements = paddedSize / hostElementSize;
+      if (hostElementSize == 1) {
+        std::fill(reinterpret_cast<uint8_t *>(hostPtr_) + numElements,
+                  reinterpret_cast<uint8_t *>(hostPtr_) + totalElements,
+                  reinterpret_cast<const uint8_t *>(hostPtr_)[numElements - 1]);
+      } else if (hostElementSize == 2) {
+        std::fill(
+            reinterpret_cast<uint16_t *>(hostPtr_) + numElements,
+            reinterpret_cast<uint16_t *>(hostPtr_) + totalElements,
+            reinterpret_cast<const uint16_t *>(hostPtr_)[numElements - 1]);
+      } else if (hostElementSize == 4) {
+        std::fill(
+            reinterpret_cast<uint32_t *>(hostPtr_) + numElements,
+            reinterpret_cast<uint32_t *>(hostPtr_) + totalElements,
+            reinterpret_cast<const uint32_t *>(hostPtr_)[numElements - 1]);
+      } else if (hostElementSize == 8) {
+        std::fill(
+            reinterpret_cast<uint64_t *>(hostPtr_) + numElements,
+            reinterpret_cast<uint64_t *>(hostPtr_) + totalElements,
+            reinterpret_cast<const uint64_t *>(hostPtr_)[numElements - 1]);
+      } else {
+        LOG(ERROR) << "Invalid Tensor type, padding is unsuccessful";
+      }
+    }
+    partialSize_ = 0;
+  } else if (partialData) {
+    partialSize_ = unpaddedSize;
+  } else {
+    partialSize_ = 0;
   }
-
-  // Update partial size.
-  partialSize_ = (partialData && partialTensor) ? unpaddedSize : 0;
 
   return true;
 }
