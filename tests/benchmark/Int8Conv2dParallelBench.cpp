@@ -182,8 +182,7 @@ public:
       }
     }
     for (size_t core = 0; core < numCores_; core++) {
-      fn->createSave("save" + std::to_string(core),
-                     cur[(core + 1) * input_shapes_.size() - 1], output[core]);
+      fn->createSave("save" + std::to_string(core), cur[core], output[core]);
     }
 
     for (size_t core = 0; core < numCores_; core++) {
@@ -245,9 +244,8 @@ int main(int argc, char *argv[]) {
     double gflops = 0;
     string shape_info = "";
     for (auto shape : shapes) {
-      gflops += 2.0 * shape.G * (shape.IC / shape.G) * shape.IN_DIM[0] *
-                shape.IN_DIM[1] * (shape.OC / shape.G) * shape.OUT_DIM[0] *
-                shape.OUT_DIM[1];
+      gflops += 2.0 * shape.G * (shape.IC / shape.G) * shape.K[0] * shape.K[1] *
+                (shape.OC / shape.G) * shape.OUT_DIM[0] * shape.OUT_DIM[1];
       if (shape_info != "") {
         shape_info += ";";
       }
