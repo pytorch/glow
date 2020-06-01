@@ -785,6 +785,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::adaptive_avg_pool2d"},
        &PyTorchModelLoader::loadAdaptiveAvgPool2d},
       {{"aten::reshape"}, &PyTorchModelLoader::loadReshape},
+      {{"aten::upsample_nearest3d"},
+       &PyTorchModelLoader::loadUpsampleNearest3D},
       {{"aten::view"}, &PyTorchModelLoader::loadView},
       {{"aten::_convolution"}, &PyTorchModelLoader::loadConvolution},
       {{"aten::conv2d"}, &PyTorchModelLoader::loadConv2D},
@@ -2026,6 +2028,60 @@ Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
   return addValueMapping(
       outputs[0], F_.createReshape("reshape", input, castVector<dim_t>(shape)),
       dtype);
+}
+
+Error PyTorchModelLoader::loadUpsampleNearest3D(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+  RETURN_ERR_IF_NOT(input.dims().size() == 5, "Expecting 5D input Tensor");
+
+  std::vector<int64_t> *outputSize;
+  ASSIGN_VALUE_OR_RETURN_ERR(outputSize,
+                             iValToIntList(getGlowIValueForValue(inputs[1])));
+  RETURN_ERR_IF_NOT((*outputSize).size() == 3, "Expecting 3D output size");
+
+  dim_t ia = input.dims()[0];
+  dim_t ib = input.dims()[1];
+  dim_t ix = input.dims()[2];
+  dim_t iy = input.dims()[3];
+  dim_t iz = input.dims()[4];
+  dim_t ox = (dim_t)(*outputSize)[0];
+  dim_t oy = (dim_t)(*outputSize)[1];
+  dim_t oz = (dim_t)(*outputSize)[2];
+
+  // Special case when output size is 2x input in all 3 dims
+  bool isUpsample2x = (ox == 2 * ix) && (oy == 2 * iy) && (oz == 2 * iz);
+  if (isUpsample2x) {
+    c10::ScalarType dtype;
+    RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+    return addValueMapping(
+        outputs[0], F_.createUpsample("upsample_nearest3d", input, 3), dtype);
+  } else {
+    // Otherwise revert to Glow ResizeNearest, which only can handle 4D tensors
+    std::vector<glow::SliceNode *> splitOutputs;
+    std::vector<glow::NodeValue> concatInputs;
+    F_.createSplit("upsample_nearest3d_split", input, ia, 0, {}, splitOutputs);
+    for (auto &splitOutput : splitOutputs) {
+      auto *reshape1 = F_.createReshape("upsample_nearest3d_reshape1",
+                                        splitOutput, {ib, ix, iy, iz});
+      auto resizeTy = F_.getParent()->uniqueTypeWithNewShape(input.getType(),
+                                                             {ib, ox, oy, oz});
+      auto *resize = F_.createResizeNearest("upsample_nearest3d_resize",
+                                            reshape1, resizeTy);
+      auto *reshape2 = F_.createReshape("upsample_nearest3d_reshape2", resize,
+                                        {1, ib, ox, oy, oz});
+      concatInputs.push_back(reshape2);
+    }
+    c10::ScalarType dtype;
+    RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+    return addValueMapping(
+        outputs[0],
+        F_.createConcat("upsample_nearest3d_concat", concatInputs, 0), dtype);
+  }
 }
 
 Error PyTorchModelLoader::loadView(const torch::jit::Node *ptNode) {

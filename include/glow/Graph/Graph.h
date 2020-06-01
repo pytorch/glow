@@ -1299,6 +1299,12 @@ public:
   SpaceToDepthNode *createSpaceToDepth(llvm::StringRef name, NodeValue input,
                                        unsigned blockSize);
 
+  /// Given \p input tensor, \returns an upsampled tensor which has
+  /// doubled the size of dimensions N, N-1, N-2...N-numLeadingDims,
+  /// copying the nearest pixel value to the new locations.
+  ReshapeNode *createUpsample(llvm::StringRef name, NodeValue input,
+                              dim_t numLeadingDims);
+
   /// Given \p input tensor of [N,H,W,C], where N is the batch, C is the channel
   /// or depth, H is the height and W is the width, and \p scale tensor with
   /// tensor format same as \p input then ResizeNearest generates an Output
