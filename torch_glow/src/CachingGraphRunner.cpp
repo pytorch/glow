@@ -38,6 +38,9 @@ size_t CachingGraphRunner::computeGraphHash(
       const auto ptTensorType = c10::TensorType::create(input.toTensor());
       size_t tensorHash = std::hash<c10::TensorType>()(*ptTensorType);
       hash = torch::hash_combine(hash, tensorHash);
+    } else if (input.isBool()) {
+      size_t inputHash = std::hash<bool>()(input.toBool());
+      hash = torch::hash_combine(hash, inputHash);
     } else if (input.isInt()) {
       // just doing Int and IntList for now.
       size_t inputHash = std::hash<int64_t>()(input.toInt());
@@ -334,7 +337,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     } else if (input.isObject()) {
       // Objects are only used for loading attributes at compile time.
       continue;
-    } else if (!(input.isInt() || input.isIntList())) {
+    } else if (!(input.isBool() || input.isInt() || input.isIntList())) {
       return MAKE_ERR(
           "Only Int/IntList, Tensor and Object IValue inputs are accepted");
     }
