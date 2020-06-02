@@ -670,6 +670,8 @@ int run() {
       std::promise<void> promise;
       auto future = promise.get_future();
 
+      TRACE_EVENT_SCOPE_END();
+
       hostManager->runNetwork(
           "test", std::move(ctx),
           [&promise, index = ioIndex,
