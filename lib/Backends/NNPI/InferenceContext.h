@@ -27,6 +27,7 @@
 #include <vector>
 
 namespace glow {
+class NNPIAdapterContainer;
 namespace runtime {
 class NNPIDeviceManager;
 
@@ -91,7 +92,7 @@ public:
             // For ICE-Ref path.
             NNPINetwork network, NNPICompilationConfig config,
             // For ICE-T path.
-            NNPIDeviceNetwork deviceNetwork, NNPIAdapter adapter,
+            NNPIDeviceNetwork deviceNetwork, NNPIAdapterContainer *adapter,
             NNPIDeviceContext device,
             const std::unordered_set<const Placeholder *> &partialInputs,
             const std::unordered_set<const Placeholder *> &paddedInputs,

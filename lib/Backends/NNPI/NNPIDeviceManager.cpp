@@ -17,6 +17,7 @@
 #include "Importer.h"
 #include "InferencePool.h"
 #include "NNPI.h"
+#include "NNPIAdapterContainer.h"
 #include "NNPICompiledFunction.h"
 #include "NNPITracing.h"
 #include "NNPIUtils.h"
@@ -45,12 +46,12 @@ DeviceManager *createNNPIDeviceManager(const DeviceConfig &config,
                                        NNPIAdapterContainer *adapter) {
   std::shared_ptr<NNPIDeviceOptions> deviceOptions =
       std::make_shared<NNPIDeviceOptions>(config.parameters);
-  NNPIAdapter nnpiAdapter = adapter->get(deviceOptions->inferOnDevice);
-  if (deviceOptions->inferOnDevice && nnpiAdapter == NNPI_INVALID_NNPIHANDLE) {
+  if (deviceOptions->inferOnDevice &&
+      adapter->getHandle() == NNPI_INVALID_NNPIHANDLE) {
     LOG(ERROR) << "Adapter allocation failed";
     return nullptr;
   }
-  return new NNPIDeviceManager(config, deviceOptions, nnpiAdapter);
+  return new NNPIDeviceManager(config, deviceOptions, adapter);
 }
 
 // 1K bytes.
@@ -61,8 +62,9 @@ std::atomic<RunIdentifierTy> NNPIDeviceManager::runIdentifier_;
 
 NNPIDeviceManager::NNPIDeviceManager(
     const DeviceConfig &config,
-    std::shared_ptr<NNPIDeviceOptions> deviceOptions, NNPIAdapter adapter)
-    : DeviceManager(config), deviceId_(config_.deviceID), adapter_(adapter),
+    std::shared_ptr<NNPIDeviceOptions> deviceOptions,
+    NNPIAdapterContainer *adapter)
+    : DeviceManager(config), deviceId_(config_.deviceID), pAdapter_(adapter),
       device_(NNPI_INVALID_NNPIHANDLE), deviceOptions_(deviceOptions) {
   if (deviceOptions_->showVars) {
     LOG(INFO) << deviceOptions_->dumpStatus();
@@ -117,7 +119,7 @@ Error NNPIDeviceManager::init() {
   if (deviceOptions_->inferOnDevice) {
     // Create NNPI device.
     LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
-        nnpiDeviceContextCreate(adapter_, deviceId_, &device_),
+        nnpiDeviceContextCreate(pAdapter_->getHandle(), deviceId_, &device_),
         "Failed to create NNPI Device");
     NNPIDeviceInfo deviceInfo;
     LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
@@ -184,7 +186,7 @@ void NNPIDeviceManager::addNetwork(const Module *module,
     functions_.emplace(func.first, func.second);
     usedMemoryBytes_ += functionCost_; // TODO:: static moduleSize.
     auto err = inferenceEnvs_[func.first].init(
-        adapter_, device_, func.second, &staticPlaceholders_, deviceOptions_,
+        pAdapter_, device_, func.second, &staticPlaceholders_, deviceOptions_,
         func.first, deviceId_);
     if (err) {
       functions_.erase(func.first);
@@ -362,6 +364,22 @@ void NNPIDeviceManager::addPlaceholderUsageCount(std::string functionName,
       phUsage[outputName].numWriters++;
       phUsage[outputName].devices.insert(device_);
     }
+  }
+}
+
+void *NNPIDeviceManager::allocateDeviceIOBuffer(dim_t size) {
+  if (deviceOptions_->inferOnDevice && !deviceOptions_->disableDeviceIOBuffer) {
+    return pAdapter_->allocateHostResource(size);
+  } else {
+    return DeviceManager::allocateDeviceIOBuffer(size);
+  }
+}
+
+void NNPIDeviceManager::freeAllocatedDeviceIOBuffer(void *buffer) {
+  if (deviceOptions_->inferOnDevice && !deviceOptions_->disableDeviceIOBuffer) {
+    return pAdapter_->freeHostResource(buffer);
+  } else {
+    return DeviceManager::freeAllocatedDeviceIOBuffer(buffer);
   }
 }
 
