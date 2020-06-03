@@ -13969,5 +13969,24 @@ TEST_P(OperatorTest, Upsample2D_Int8) {
   testUpsample2D<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
+TEST_P(OperatorTest, powSingle) {
+  CHECK_IF_ENABLED();
+
+  auto *X = mod_.createPlaceholder(ElemKind::Float16Ty, {1}, "X", false);
+  auto *Y = mod_.createPlaceholder(ElemKind::Float16Ty, {1}, "Y", false);
+
+  bindings_.allocate(X)->getHandle<float16_t>() = {2.0f};
+  bindings_.allocate(Y)->getHandle<float16_t>() = {8.0f};
+
+  auto *pow = F_->createPow("pow", X, Y);
+  auto *save = F_->createSave("save", pow);
+  Tensor *saveT = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  ASSERT_NEAR(saveT->getHandle<float16_t>().at({0}), 256.0f, 1E-5);
+}
+
 INSTANTIATE_BACKEND_TEST(OperatorStatelessTest);
 INSTANTIATE_BACKEND_TEST(OperatorTest);
