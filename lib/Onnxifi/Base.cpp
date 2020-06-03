@@ -390,7 +390,8 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
   // Create tensors for output placeholders
   auto &externalIOBindings = ctx->getExternalIOBindings();
   for (unsigned i = 0; i < outputsCount; ++i) {
-    const auto &outOnnxTensor = outputDescriptors[i];
+    auto &outOnnxTensor =
+        const_cast<onnxTensorDescriptorV1 &>(outputDescriptors[i]);
     auto *outOnnxBuffer = reinterpret_cast<void *>(outOnnxTensor.buffer);
     Placeholder *outPhPtr;
 
@@ -419,6 +420,14 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
                  << " total dims vs " << outPhPtr->getType()->size() << ": "
                  << outOnnxTensor.name;
       return ONNXIFI_STATUS_INVALID_SHAPE;
+    }
+
+    // Set quantized output scale/output. Do not support channelwise quantized
+    // output with multiple quantization parameters for now.
+    auto type = outPhPtr->getType();
+    if (outOnnxTensor.quantizationParams == 1 && type->isQuantizedType()) {
+      const_cast<float *>(outOnnxTensor.scales)[0] = type->getScale();
+      const_cast<int32_t *>(outOnnxTensor.biases)[0] = type->getOffset();
     }
 
     // Create a Glow tensor backed by the memory from the provided onnxifi
