@@ -569,7 +569,6 @@ bool NNPIResource::updateHostResourceFromTensor(
   } else {
     partialSize_ = -1;
   }
-  
   return true;
 }
 
