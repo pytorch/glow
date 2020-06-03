@@ -62,6 +62,7 @@ extern int32_t GlowNNPINumParallelChunks;
 extern bool GlowEnableLoadBalancedPartitioning;
 extern bool GlowNNPILowerAllBatchMatMul;
 extern bool GlowNNPIAcceptUnarySLS;
+extern bool GlowNNPISpecializeAllOneSLS;
 
 namespace runtime {
 extern unsigned GlowInterpreterMemory;
@@ -334,6 +335,14 @@ DEFINE_bool(glow_dump_nnpi_compiler_data, false,
 DEFINE_validator(glow_dump_nnpi_compiler_data,
                  [](const char * /* unused */, bool value) {
                    glow::onnxifi::GlowDumpNNPICompilerData = value;
+                   return true;
+                 });
+
+DEFINE_bool(glow_nnpi_specialize_all_one_sls, false,
+            "Whether to import SLS ops with AllOne attribute to NNPI.");
+DEFINE_validator(glow_nnpi_specialize_all_one_sls,
+                 [](const char * /*unused*/, bool value) {
+                   glow::GlowNNPISpecializeAllOneSLS = value;
                    return true;
                  });
 

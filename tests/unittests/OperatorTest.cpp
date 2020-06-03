@@ -11435,13 +11435,13 @@ static void testSLWSLengthsMode(glow::PlaceholderBindings &bindings,
   if (fusedData) {
     SLWS = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
         "RQSLWS", data, weights, indices, lengths, dataDTy, useFP16Accumulation,
-        LengthsMode::AllOne);
+        lengthsMode);
   } else {
     Placeholder *dataP = mod.createPlaceholder(&data.getType(), "data",
                                                /* isTrainable */ false);
     bindings.insert(dataP, std::move(data));
     SLWS = F->createSparseLengthsWeightedSum("SLWS", dataP, weights, indices,
-                                             lengths, LengthsMode::AllOne);
+                                             lengths, lengthsMode);
   }
   SaveNode *S = F->createSave("save", SLWS);
   bindings.allocate(S->getPlaceholder());

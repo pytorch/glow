@@ -26,7 +26,23 @@
 #include <fstream>
 #include <limits>
 
+#include "llvm/Support/CommandLine.h"
+
 using namespace glow;
+
+namespace glow {
+llvm::cl::OptionCategory optionsForNNPIImporter("NNPI Importer Options");
+
+bool GlowNNPISpecializeAllOneSLS = false;
+static llvm::cl::opt<bool, /* ExternalStorage */ true>
+    GlowNNPISpecializeAllOneSLSOpt(
+        "glow_nnpi_specialize_all_one_sls",
+        llvm::cl::desc(
+            "Whether to import SLS ops with AllOne attribute to NNPI."),
+        llvm::cl::location(GlowNNPISpecializeAllOneSLS), llvm::cl::Optional,
+        llvm::cl::init(false), llvm::cl::cat(optionsForNNPIImporter));
+
+} // namespace glow
 
 const std::string NNPIImporter::internalName_("_NNPI_");
 
@@ -43,6 +59,9 @@ static std::string nodeValueName(const glow::NodeValue &nv) {
 static inline NNPIErrorCode
 convertLengthsModeToLengthType(glow::LengthsMode mode,
                                NNPI_LENGTH_TYPE &lengthType) {
+  if (!GlowNNPISpecializeAllOneSLS) {
+    mode = LengthsMode::Variable;
+  }
   switch (mode) {
   case LengthsMode::Variable:
     lengthType = NNPI_LENGTH_VARIABLE;
