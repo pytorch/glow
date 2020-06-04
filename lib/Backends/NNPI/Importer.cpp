@@ -58,6 +58,9 @@ static std::string nodeValueName(const glow::NodeValue &nv) {
 
 NNPIErrorCode glow::NNPIImporter::convertLengthsModeToLengthType(
     glow::LengthsMode mode, NNPI_LENGTH_TYPE &lengthType) {
+  if (!GlowNNPISpecializeAllOneSLS) {
+    mode = LengthsMode::Variable;
+  }
   switch (mode) {
   case LengthsMode::Variable:
     lengthType = NNPI_LENGTH_VARIABLE;

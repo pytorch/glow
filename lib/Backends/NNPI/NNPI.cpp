@@ -1309,7 +1309,7 @@ Error NNPIBackend::bindContexts(
     }
     if (ctx && devMgr) {
       // Update the tensors bound to placeholders.
-      auto phBindings = ctx->getPlaceholderBindings();
+      auto *phBindings = ctx->getPlaceholderBindings();
       for (auto &usage : phUsage) {
         const auto &phName = usage.first;
         auto *ph = phBindings->getPlaceholderByNameSlow(phName);
@@ -1332,9 +1332,9 @@ Error NNPIBackend::bindContexts(
   return Error::success();
 }
 
-// Partial update of the NNPITensorDesc. Some members are ignored as they're
-// not used for estimation.
-static bool UpdateDescForEstimate(NNPITensorDesc &desc,
+/// Partial update of the NNPITensorDesc. Some members are ignored as they're
+/// not used for estimation.
+static bool updateDescForEstimate(NNPITensorDesc &desc,
                                   const glow::TypeRef ty) {
   LOG_AND_RETURN_IF(ERROR, ty == nullptr, "Invalid type", false);
 
@@ -1404,16 +1404,16 @@ static bool UpdateDescForEstimate(NNPITensorDesc &desc,
   return true;
 }
 
-// Prepare the list of NNPITensorDesc for the estimate call.
-static bool UpdateDescListForEstimate(std::vector<NNPITensorDesc> &descs,
-                                      std::vector<glow::TypeRef> types) {
+/// Prepare the list of NNPITensorDesc for the estimate call.
+static bool updateDescListForEstimate(std::vector<NNPITensorDesc> &descs,
+                                      const std::vector<glow::TypeRef> types) {
   if (descs.size() != types.size()) {
     return false;
   }
   bool retVal = true;
   for (size_t i = 0; i < descs.size(); i++) {
     if (types.at(i) != nullptr) {
-      retVal &= UpdateDescForEstimate(descs.at(i), types.at(i));
+      retVal &= updateDescForEstimate(descs.at(i), types.at(i));
     }
   }
   return retVal;
@@ -1452,7 +1452,7 @@ double NNPIBackend::estimateEmbeddingNode(const glow::NodeInfo &NI,
 
   case Kinded::Kind::SparseLengthsSumNodeKind:
     LOG_AND_RETURN_IF(ERROR,
-                      !UpdateDescListForEstimate(
+                      !updateDescListForEstimate(
                           descs,
                           {
                               NI.getInTy(SparseLengthsSumNode::DataIdx),
@@ -1468,7 +1468,7 @@ double NNPIBackend::estimateEmbeddingNode(const glow::NodeInfo &NI,
     validWeight = true;
     LOG_AND_RETURN_IF(
         ERROR,
-        !UpdateDescListForEstimate(
+        !updateDescListForEstimate(
             descs,
             {
                 NI.getInTy(SparseLengthsWeightedSumNode::DataIdx),
@@ -1484,7 +1484,7 @@ double NNPIBackend::estimateEmbeddingNode(const glow::NodeInfo &NI,
     validWeight = true;
     LOG_AND_RETURN_IF(
         ERROR,
-        !UpdateDescListForEstimate(
+        !updateDescListForEstimate(
             descs,
             {
                 NI.getInTy(
@@ -1504,7 +1504,7 @@ double NNPIBackend::estimateEmbeddingNode(const glow::NodeInfo &NI,
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
     LOG_AND_RETURN_IF(
         ERROR,
-        !UpdateDescListForEstimate(
+        !updateDescListForEstimate(
             descs,
             {
                 NI.getInTy(FusedRowwiseQuantizedSparseLengthsSumNode::DataIdx),
@@ -1523,7 +1523,7 @@ double NNPIBackend::estimateEmbeddingNode(const glow::NodeInfo &NI,
     validWeight = true;
     LOG_AND_RETURN_IF(
         ERROR,
-        !UpdateDescListForEstimate(
+        !updateDescListForEstimate(
             descs,
             {
                 NI.getInTy(
@@ -1545,7 +1545,7 @@ double NNPIBackend::estimateEmbeddingNode(const glow::NodeInfo &NI,
     useLengthAsOffset = true;
     LOG_AND_RETURN_IF(
         ERROR,
-        !UpdateDescListForEstimate(descs,
+        !updateDescListForEstimate(descs,
                                    {
                                        NI.getInTy(EmbeddingBagNode::DataIdx),
                                        NI.getOutTy(EmbeddingBagNode::ResultIdx),
@@ -1561,7 +1561,7 @@ double NNPIBackend::estimateEmbeddingNode(const glow::NodeInfo &NI,
     useLengthAsOffset = true;
     LOG_AND_RETURN_IF(
         ERROR,
-        !UpdateDescListForEstimate(
+        !updateDescListForEstimate(
             descs,
             {
                 NI.getInTy(EmbeddingBagByteRowwiseOffsetsNode::DataIdx),
