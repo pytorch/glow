@@ -1,20 +1,17 @@
 ## Testing the Glow compiler
 
 The Glow test suite contains four major categories: unit tests, regression
-tests, example programs, and the model loader.  Unit tests are the small tests
-that stress specific parts of the compiler.  These tests are added to the
-compiler when developing a feature. For example, we train a number of small
-network and perform a gradient check on the operators.  We also compile networks
-to IR and look for specific patterns.  Regression tests are tests that are added
-when we fix bugs.  Both regression tests and feature tests are found under the
-"test/" directory. To run the feature and regression tests run "ninja test".
+tests, the model loader, integrated tests and example programs.  
 
-## Example test suites.
+Unit tests are the small tests that stress specific parts of the compiler.  
+These tests are added to the compiler when developing a feature. For example, 
+we train a number of small network and perform a gradient check on the operators.  
+We also compile networks to intermediate representations (IRs) and look for 
+specific patterns.  
 
-We rely on external test suites to test the compiler. We use the data sets
-CIFAR10 and MNIST (located in the "example/" directory) to test the correctness
-of the whole system.  The script under 'utils/' downloads and extracts the data
-set.
+Regression tests are tests that are added when we fix bugs.  Both regression 
+tests and feature tests are found under the "test/" directory. To run the feature 
+and regression tests run "ninja test".
 
 ## Model Loader
 
@@ -124,7 +121,7 @@ Caffe2:
 python caffe2_pb_runner.py -i [location_of_image] -d resnet50
 ```
 
-## Integrated Testing
+## Integrated testing
 
 Glow also comes with tests integrated with the build environment for our command
 line tools. We run those tests as part of our continuous integration (CI).
@@ -147,3 +144,10 @@ such as the integration tests.
 Note: The difference between `ninja test` and `ninja check` is that
 `ninja check` makes sure the build dependencies are current before
 running the tests.
+
+## Example programs
+
+We rely on external test suites to test the compiler. We use the data sets
+CIFAR10 and MNIST (located in the "example/" directory) to test the correctness
+of the whole system.  The script under 'utils/' downloads and extracts the data
+set.
