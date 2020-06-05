@@ -218,6 +218,9 @@ int main(int argc, char *argv[]) {
   printf("Usage: GemmBench m(Int) n(Int) k(Int) numLayers(Int) numReps(Int) "
          "numAsyncLaunches(Int) numSplits(Int) backendStr(String) "
          "dtypeStr(\"Float16\"|\"Float32\") dev_id(Int)\n");
+  printf("Standard Glow command-line options may be passed via the GLOW_OPTS "
+         "environment variable\n");
+  llvm::cl::ParseEnvironmentOptions(argv[0], "GLOW_OPTS", "");
 
   std::vector<GemmParam> params;
   std::string runHeader;
