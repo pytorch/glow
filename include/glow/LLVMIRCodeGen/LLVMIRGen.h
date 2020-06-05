@@ -422,6 +422,37 @@ public:
   virtual std::string getBundleHeaderExtra() const;
 };
 
+template <typename T>
+llvm::Value *LLVMIRGen::emitConstSizeTArray(llvm::IRBuilder<> &builder,
+                                            llvm::ArrayRef<T> vals) {
+  assert(std::is_integral<T>() && "Can only convert integral type to size_t.");
+  auto SizeTType = builder.getIntNTy(getLibjitSizeTWidth());
+  std::vector<llvm::Constant *> elems;
+  for (auto I : vals) {
+    assert(I >= 0 && "Only allow casting positive values into size_t.");
+    assert(I <= std::numeric_limits<size_t>::max() &&
+           "Do not allow overflow of size_t.");
+    elems.push_back(llvm::ConstantInt::get(SizeTType, (size_t)I));
+  }
+  return emitConstArray(builder, elems, SizeTType);
+}
+
+template <typename T>
+llvm::Value *LLVMIRGen::emitConstDimTArray(llvm::IRBuilder<> &builder,
+                                           llvm::ArrayRef<T> vals) {
+  assert(std::is_integral<T>() && "Can only convert integral type to dim_t.");
+  auto DimTType = builder.getIntNTy(sizeof(dim_t) * 8);
+  std::vector<llvm::Constant *> elems;
+  for (auto I : vals) {
+    assert(I >= 0 && "Only allow casting positive values into size_t.");
+    assert(I <= std::numeric_limits<dim_t>::max() &&
+           "Do not allow overflow of size_t.");
+    elems.push_back(llvm::ConstantInt::get(DimTType, (dim_t)I));
+  }
+  return emitConstArray(builder, elems, DimTType);
+}
+
 } // namespace glow
 
 #endif // GLOW_LLVMIRCODEGEN_LLVMIRGEN_H
+
