@@ -569,16 +569,9 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::EmbeddingBagNodeKind:
   case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind:
   case Kinded::Kind::LayerNormalizationNodeKind:
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
+  case Kinded::Kind::PReluNodeKind:
     return false;
-  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
-    const FusedRowwiseQuantizedSparseLengthsSumNode *SLSN =
-        llvm::cast<FusedRowwiseQuantizedSparseLengthsSumNode>(N);
-    if (SLSN->getResult().getElementType() == ElemKind::Float16Ty) {
-      return false; // Don't lower == keep without weights
-    } else {
-      return true;
-    }
-  }
   case Kinded::Kind::SparseLengthsSumNodeKind:
     // WA - lower until ICE-T implements it.
     if (NNPIBackend::backendOptions_.useIceT ||
@@ -586,13 +579,8 @@ bool NNPIBackend::shouldLower(const Node *N) const {
       return true;
     }
     return false;
-  case Kinded::Kind::PReluNodeKind: {
-    NodeInfo NI(*N);
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
-  }
   default:
     return true;
-    break;
   }
   return true;
 }
@@ -1140,19 +1128,40 @@ NNPIBackend::getOptimizationPipeline() const {
 static bool lowerRequiredNodes(Function *F, CompilationContext &cctx) {
   bool changed = false;
   for (auto &N : F->getNodes()) {
-    BatchMatMulNode *BMMN = llvm::dyn_cast<BatchMatMulNode>(&N);
-    if (!BMMN) {
+    if (BatchMatMulNode *BMMN = llvm::dyn_cast<BatchMatMulNode>(&N)) {
+      if (!GlowNNPILowerAllBatchMatMul &&
+          !NodeInfo(*BMMN).allInputsAndOutputsHaveSameElemKind(
+              {ElemKind::FloatTy})) {
+        continue;
+      }
+
+      lowerNode(F, BMMN, cctx);
+      changed = true;
       continue;
     }
 
-    if (!GlowNNPILowerAllBatchMatMul &&
-        !NodeInfo(*BMMN).allInputsAndOutputsHaveSameElemKind(
-            {ElemKind::FloatTy})) {
+    if (FusedRowwiseQuantizedSparseLengthsSumNode *SLS =
+            llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(&N)) {
+      // Lower FRWQSLS only if not FP16.
+      if (SLS->getResult().getElementType() == ElemKind::Float16Ty) {
+        continue;
+      }
+
+      lowerNode(F, SLS, cctx);
+      changed = true;
       continue;
     }
 
-    lowerNode(F, BMMN, cctx);
-    changed = true;
+    if (PReluNode *PR = llvm::dyn_cast<PReluNode>(&N)) {
+      // Lower PRelu only if not FP16.
+      if (PR->getResult().getElementType() == ElemKind::Float16Ty) {
+        continue;
+      }
+
+      lowerNode(F, PR, cctx);
+      changed = true;
+      continue;
+    }
   }
   return changed;
 }
