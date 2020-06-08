@@ -650,17 +650,21 @@ void HostManager::updateExecutionStats(
     uint64_t startTime, std::unique_ptr<ExecutionContext> &context,
     llvm::StringRef networkName, const Error &error) {
   auto duration = TraceEvent::now() - startTime;
-  statsExporterRegistry_->addTimeSeriesValue(
-      ("glow.execution_duration_e2e." + networkName).str(), duration);
-  statsExporterRegistry_->incrementCounter(
-      ("glow.requests_processed." + networkName).str());
-  if (error.peekErrorValue()) {
+  auto updateCountersFn = [&](llvm::StringRef s) {
+    statsExporterRegistry_->addTimeSeriesValue(
+        ("glow.execution_duration_e2e." + s).str(), duration);
     statsExporterRegistry_->incrementCounter(
-        ("glow.requests_failed." + networkName).str());
-  } else {
-    statsExporterRegistry_->incrementCounter(
-        ("glow.requests_succeeded." + networkName).str());
-  }
+        ("glow.requests_processed." + s).str());
+    if (error.peekErrorValue()) {
+      statsExporterRegistry_->incrementCounter(
+          ("glow.requests_failed." + s).str());
+    } else {
+      statsExporterRegistry_->incrementCounter(
+          ("glow.requests_succeeded." + s).str());
+    }
+  };
+  updateCountersFn(networkName);
+  updateCountersFn("global");
 }
 
 /// Helper to get the parameters in DeviceConfig from \p str. The \p str has
