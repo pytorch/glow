@@ -2375,6 +2375,41 @@ TEST_F(OnnxImporterTest, FCTransposedWithFlatten) {
   ASSERT_TRUE(reshape);
 }
 
+/// Test loading Flatten node.
+TEST_F(OnnxImporterTest, importFlatten) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/flatten.onnxtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+  std::vector<float> init(2 * 3 * 4 * 5);
+  for (size_t i = 0; i < init.size(); i++) {
+    init[i] = i;
+  }
+  {
+    Tensor data(ElemKind::FloatTy, {2, 3, 4, 5});
+    data.getHandle() = init;
+    ONNXModelLoader onnxLD(netFilename, {"data"}, {&data.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"data"}, {&data});
+  }
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  auto result = bindings.get(output)->getHandle();
+  std::vector<dim_t> expectedDims = {24, 5};
+
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < init.size(); i++) {
+    EXPECT_EQ(result.raw(i), init[i]);
+  }
+}
+
 /// Test loading Constant from an ONNX model.
 TEST_F(OnnxImporterTest, constant) {
   ExecutionEngine EE;

@@ -955,6 +955,10 @@ protected:
       ASSIGN_VALUE_OR_RETURN_ERR(axis,
                                  loadAxis<int>(dict["axis"], in.dims().size()));
     }
+    if (axis < 0) {
+      // Negative value means counting dimensions from the back.
+      axis = in.dims().size() + axis;
+    }
     auto *node = G_->createFlatten(opName, in, axis);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
     return Error::success();
