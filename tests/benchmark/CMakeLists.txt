@@ -36,7 +36,8 @@ target_link_libraries(GemmBench
                         Graph
                         GraphOptimizer
                         HostManager
-                        CPURuntimeNative)
+                        CPURuntimeNative
+                        BackendTestUtils)
 
 add_executable(Int8GemmBench
                Int8GemmBench.cpp)
@@ -47,7 +48,8 @@ target_link_libraries(Int8GemmBench
                         Graph
                         GraphOptimizer
                         HostManager
-                        CPURuntimeNative)
+                        CPURuntimeNative
+                        BackendTestUtils)
 
 add_executable(GemmParallelBench
                GemmParallelBench.cpp)
