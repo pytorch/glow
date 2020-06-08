@@ -281,19 +281,22 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
     }
     size_t onnxBytes = inOnnxTensorSize * elementSize;
     if (inPhPtr->dims().equals(inOnnxTensorDims)) {
-      externalIOBindings.emplace_back(inPhPtr,
-                                      Tensor(inOnnxBuffer, inPhPtr->getType()));
+      externalIOBindings.emplace_back(
+          std::piecewise_construct, std::forward_as_tuple(inPhPtr),
+          std::forward_as_tuple(inOnnxBuffer, inPhPtr->getType()));
     } else if (GlowEnablePartialTensors &&
                backendPtr_->getBackend().supportsPartialTensors()) {
       // We have a partial input buffer.  Create a padded unowned tensor that
       // remembers the actual size of the input.
       externalIOBindings.emplace_back(
-          inPhPtr, Tensor(inOnnxBuffer, inPhPtr->getType(), onnxBytes));
+          std::piecewise_construct, std::forward_as_tuple(inPhPtr),
+          std::forward_as_tuple(inOnnxBuffer, inPhPtr->getType(), onnxBytes));
     } else if (!inOnnxBuffer && inPhPtr->getType()->size() <=
                                     zeroLengthSequence_.getType().size()) {
       externalIOBindings.emplace_back(
-          inPhPtr, Tensor((void *)(zeroLengthSequence_.getUnsafePtr()),
-                          inPhPtr->getType()));
+          std::piecewise_construct, std::forward_as_tuple(inPhPtr),
+          std::forward_as_tuple((void *)(zeroLengthSequence_.getUnsafePtr()),
+                                inPhPtr->getType()));
     } else {
       llvm::Optional<Tensor> inputTensorOpt =
           tensorPool_.get(inPhPtr->getType());
@@ -303,7 +306,9 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
         return ONNXIFI_STATUS_INTERNAL_ERROR;
       }
       // We want fresh DeviceResidencyInfo for this fresh Tensor.
-      Tensor inputTensor(std::move(inputTensorOpt.getValue()));
+      externalIOBindings.emplace_back(inPhPtr,
+                                      std::move(inputTensorOpt.getValue()));
+      Tensor &inputTensor = externalIOBindings.back().second;
       inputTensor.resetDeviceInfo();
       // Copy the input from onnxTensorDescriptor unless it has a NULL buffer
       // pointer (which is a valid case if the tensor is empty).
@@ -315,7 +320,6 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
       } else {
         inputTensor.zero();
       }
-      externalIOBindings.emplace_back(inPhPtr, std::move(inputTensor));
     }
   }
   return ONNXIFI_STATUS_SUCCESS;
