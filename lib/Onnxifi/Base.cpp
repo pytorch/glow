@@ -399,8 +399,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
     auto *outOnnxBuffer = reinterpret_cast<void *>(outOnnxTensor.buffer);
     Placeholder *outPhPtr;
 
-    if (outputsCount == onnxOutputNames_.size() &&
-        outOnnxTensor.name == onnxOutputNames_[i]) {
+    if (outputsCount == onnxOutputNames_.size()) {
       outPhPtr = onnxOutputPlaceholders_[i];
     } else {
       auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);
@@ -465,8 +464,7 @@ onnxStatus Graph::setIOAndRun(uint32_t inputsCount,
         const auto &outOnnxTensor = outputDescriptors[i];
         auto *outOnnxBuffer = reinterpret_cast<void *>(outOnnxTensor.buffer);
         Placeholder *outPhPtr;
-        if (outputsCount == onnxOutputNames_.size() &&
-            onnxOutputNames_[i] == outOnnxTensor.name) {
+        if (outputsCount == onnxOutputNames_.size()) {
           outPhPtr = onnxOutputPlaceholders_[i];
         } else {
           auto outPhIt = onnxOutputToPlaceholder_.find(outOnnxTensor.name);
