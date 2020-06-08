@@ -455,4 +455,3 @@ llvm::Value *LLVMIRGen::emitConstDimTArray(llvm::IRBuilder<> &builder,
 } // namespace glow
 
 #endif // GLOW_LLVMIRCODEGEN_LLVMIRGEN_H
-
