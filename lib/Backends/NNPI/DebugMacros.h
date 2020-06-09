@@ -21,6 +21,7 @@
 #include "nnpi_transformer.h"
 #include <chrono>
 #include <glog/logging.h>
+#include <sstream>
 #include <string>
 
 // Macro for memory instrumentation.
@@ -271,6 +272,16 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
                        timer_end_ - timer_name)                                \
                        .count()) +                                             \
                "\n";                                                           \
+  }
+
+// Break long log messages to individual lines (Glog limits to 30k chars).
+#define LONG_LOG(level, msg)                                                   \
+  {                                                                            \
+    std::istringstream iss(msg);                                               \
+    std::string line;                                                          \
+    while (std::getline(iss, line)) {                                          \
+      LOG(level) << line;                                                      \
+    }                                                                          \
   }
 
 #endif // GLOW_NNPI_DEBUG_MACROS_H

@@ -192,6 +192,14 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     }
   });
 
+  /// If specified in the cctx, this will prevent Constants from being modified
+  /// until the current scope ends or the preventer is dismissed. Does so by
+  /// swapping in temporary Placeholders instead of Constants.
+  ConstantModificationPreventer constModPreventer(*module);
+  if (cctx.optimizationOpts.delayAndRecordConstantModification) {
+    constModPreventer.activate();
+  }
+
   std::vector<std::string> names;
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
@@ -282,31 +290,6 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     return result.takeError();
   }
 
-  // If requested, serialize the resulting DAG that was just optimized and
-  // partitioned.
-  if (cctx.serializeCompiledDAG) {
-    std::string loc = nodeList.begin()->root->name + ".zip";
-    LOG(INFO) << "Serializing DAG to " << loc;
-    {
-      Error writeErr = Error::empty();
-      ONNXModelWriter onnxWR(loc, nodeList, 7, 9, &writeErr,
-                             /* textMode */ false, /* zipMode */ true);
-      RETURN_IF_ERR(writeErr);
-    }
-  }
-
-#if FACEBOOK_INTERNAL
-  if (cctx.callDAGOptimizer) {
-    auto optDagErr =
-        optimizeDAG(nodeList, *provisioner_, *module, deviceInfo, cctx);
-    if (optDagErr) {
-      std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
-      cleanupAddNetwork(names);
-      return optDagErr;
-    }
-  }
-#endif /* FACEBOOK_INTERNAL */
-
   if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {
     // Since for profiling the provisioner will be reset, we only allow one
     // network in one HM.
@@ -328,6 +311,64 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     provisioner_.reset(new Provisioner(devices_));
     executor_.reset(new ThreadPoolExecutor(devices_, config_.executorThreads));
   }
+
+  // If we prevented constant modification then run constant folding with
+  // recording now. Record so that if we are going to serialize we can embed the
+  // constant folding subgraphs in the Glow ONNX model.
+  ConstantFoldingRecordMap record;
+  if (cctx.optimizationOpts.delayAndRecordConstantModification) {
+    constModPreventer.deactivateAndCleanup();
+
+    RETURN_ERR_IF_NOT(nodeList.size() == 1, "Expect only one DAG.");
+    const auto &dag = *nodeList.begin();
+    for (auto &dagNode : dag.nodes) {
+      Function *F = module->getFunction(dagNode->name);
+      RETURN_ERR_IF_NOT(
+          F, strFormat("Function %s not found", dagNode->name.data()));
+
+      ConstantFoldingRecordMap currRecord = constantFoldAndRecord(F, cctx);
+      record.insert(currRecord.begin(), currRecord.end());
+      runDCEPass(F, cctx);
+
+      // Verify the Function is valid after constant folding takes place.
+      Backend &B = provisioner_->getBackend(dagNode->backendName);
+      RETURN_ERR_IF_NOT(B.verify(*F, cctx.verboseCompile),
+                        "Unsupported node(s) found after optimizing Function " +
+                            F->getName().str() + " for backend " +
+                            B.getBackendName());
+    }
+  }
+
+#if FACEBOOK_INTERNAL
+  if (cctx.callDAGOptimizer) {
+    auto optDagErr =
+        optimizeDAG(nodeList, *provisioner_, *module, deviceInfo, cctx);
+    if (optDagErr) {
+      std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+      cleanupAddNetwork(names);
+      return optDagErr;
+    }
+  }
+#endif /* FACEBOOK_INTERNAL */
+
+  // If requested, serialize the resulting DAG that was just optimized and
+  // partitioned.
+  if (cctx.serializeCompiledDAG) {
+    std::string loc = nodeList.begin()->root->name + ".onnx";
+    LOG(INFO) << "Serializing DAG to " << loc;
+    {
+      Error writeErr = Error::empty();
+      ONNXModelWriter onnxWR(loc, nodeList, 7, 9, &writeErr,
+                             /* textMode */ false, /* zipMode */ false,
+                             /* includeConstantData */ false,
+                             /* extraMetadataProps */ {}, record);
+      RETURN_IF_ERR(writeErr);
+    }
+  }
+
+  // Now that we've serialized the model if requested, cleanup the temporary
+  // Functions and PHs used for constant folding.
+  cleanupConstantFolding(*module, record);
 
   auto err = provisioner_->provision(nodeList, *module, cctx);
   if (err) {
@@ -610,17 +651,21 @@ void HostManager::updateExecutionStats(
     uint64_t startTime, std::unique_ptr<ExecutionContext> &context,
     llvm::StringRef networkName, const Error &error) {
   auto duration = TraceEvent::now() - startTime;
-  statsExporterRegistry_->addTimeSeriesValue(
-      ("glow.execution_duration_e2e." + networkName).str(), duration);
-  statsExporterRegistry_->incrementCounter(
-      ("glow.requests_processed." + networkName).str());
-  if (error.peekErrorValue()) {
+  auto updateCountersFn = [&](llvm::StringRef s) {
+    statsExporterRegistry_->addTimeSeriesValue(
+        ("glow.execution_duration_e2e." + s).str(), duration);
     statsExporterRegistry_->incrementCounter(
-        ("glow.requests_failed." + networkName).str());
-  } else {
-    statsExporterRegistry_->incrementCounter(
-        ("glow.requests_succeeded." + networkName).str());
-  }
+        ("glow.requests_processed." + s).str());
+    if (error.peekErrorValue()) {
+      statsExporterRegistry_->incrementCounter(
+          ("glow.requests_failed." + s).str());
+    } else {
+      statsExporterRegistry_->incrementCounter(
+          ("glow.requests_succeeded." + s).str());
+    }
+  };
+  updateCountersFn(networkName);
+  updateCountersFn("global");
 }
 
 /// Helper to get the parameters in DeviceConfig from \p str. The \p str has

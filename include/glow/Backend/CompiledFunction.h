@@ -64,6 +64,10 @@ public:
   /// but not needed for running on the device.
   virtual void freeCompilationResources(){};
 
+  /// \returns a JSON representation of the result of compilation. Structure of
+  /// the JSON is dependent on the backend.
+  virtual const std::string toJSON() const { return ""; }
+
 protected:
   /// Contains symbol offsets and allocation sizes.
   runtime::RuntimeBundle runtimeBundle_;

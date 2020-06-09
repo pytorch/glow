@@ -72,7 +72,8 @@ public:
             PlaceholderUsageMap *phUsage = nullptr);
 
   /// Pre-inference processing on the resource.
-  NNPIInferenceErrorCode preInference(Tensor *t, bool partialTensor);
+  NNPIInferenceErrorCode preInference(Tensor *t, bool partialTensor,
+                                      bool requiresLastElementPadding);
   /// Post-inference processing on the resource.
   NNPIInferenceErrorCode postInference(Tensor *t);
 
@@ -122,8 +123,12 @@ private:
       p2pDeviceResource_; // the resource on the other device used in p2p.
 
   /// Update the owned host resource with data taken from the given tensor.
-  // return true when successfull, false otherwise.
-  bool updateHostResourceFromTensor(Tensor *t, bool partialTensor);
+  /// If \p partialTensor is set to true partialSize_ will be updated to
+  /// unpadded size; and if \p requiresLastElementPadding is set to true the
+  /// partial tensor data will be padded with its last element and to be handled
+  /// as full tensor. \returns true when successfull, false otherwise.
+  bool updateHostResourceFromTensor(Tensor *t, bool partialTensor,
+                                    bool requiresLastElementPadding);
 };
 
 } // namespace runtime

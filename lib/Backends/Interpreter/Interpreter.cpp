@@ -495,7 +495,9 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return ((NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int8QTy) ||
             (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::UInt8QTy) ||
             (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int16QTy) ||
-            (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int32QTy)) &&
+            (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int32QTy) ||
+            (NI.getInElemTy(DequantizeNode::InputIdx) ==
+             ElemKind::UInt8FusedQTy)) &&
            ((NI.getOutElemTy(DequantizeNode::ResultIdx) == ElemKind::FloatTy) ||
             (NI.getOutElemTy(DequantizeNode::ResultIdx) ==
              ElemKind::Float16Ty));
@@ -520,8 +522,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
         return false;
       }
     };
-    return isConversionSupportedFor(NI.getInElemTy(ConvertToNode::InputIdx)) &&
-           isConversionSupportedFor(NI.getOutElemTy(ConvertToNode::ResultIdx));
+    return (isConversionSupportedFor(NI.getInElemTy(ConvertToNode::InputIdx)) &&
+            isConversionSupportedFor(
+                NI.getOutElemTy(ConvertToNode::ResultIdx))) ||
+           (NI.getInElemTy(ConvertToNode::InputIdx) ==
+                ElemKind::UInt8FusedQTy &&
+            NI.getOutElemTy(ConvertToNode::ResultIdx) ==
+                ElemKind::UInt8FusedFP16QTy);
   }
 
   case Kinded::Kind::TopKNodeKind:

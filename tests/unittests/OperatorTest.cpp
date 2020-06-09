@@ -10566,12 +10566,100 @@ TEST_P(OperatorTest, SparseLengthsWeightedSumI8) {
   EXPECT_TRUE(expected.isEqual(result));
 }
 
+/// Helper function to construct indices/offsets pair for EmbeddingBag
+/// and EmbeddingBagByteRowwiseOffsets
+template <typename DataType>
+static void addEmbeddingBagPartialInputs(
+    glow::PlaceholderBindings &bindings, glow::Module &mod, ElemKind DTy,
+    Placeholder *&weights, Placeholder *&indices, Placeholder *&offsets,
+    bool hasEndOffset, bool partialInput = false) {
+
+  if (hasEndOffset) {
+    Tensor weightsTensorReal(DTy, {10});
+    Tensor indicesTensorReal(ElemKind::Int64ITy, {10});
+    Tensor offsetsTensorReal(ElemKind::Int64ITy, {5});
+
+    weightsTensorReal.getHandle<DataType>() = {
+        3, 1, 0, 0, 0, 0, 2, -0.5, 42.0, 42.0,
+    };
+    indicesTensorReal.getHandle<int64_t>() = {
+        1, 0, 2, 0, 1, 2, 2, 0, 13, 10,
+    };
+    offsetsTensorReal.getHandle<int64_t>() = {
+        0, 3, 3, 6,
+        8, // extra end offset
+    };
+
+    if (partialInput) {
+      weights = mod.createPlaceholder(DTy, {20}, "weights", false);
+      indices =
+          mod.createPlaceholder(ElemKind::Int64ITy, {20}, "indices", false);
+      offsets =
+          mod.createPlaceholder(ElemKind::Int64ITy, {6}, "offsets", false);
+
+      // If we use partial weights, it will cause problems when it added as a
+      // Constant. So here we pad it with zeros.
+      Tensor weightsTensorPadded(weights->getType());
+      memcpy(weightsTensorPadded.getUnsafePtr(),
+             weightsTensorReal.getUnsafePtr(),
+             weightsTensorReal.getSizeInBytes());
+      memset(weightsTensorPadded.getUnsafePtr() +
+                 weightsTensorReal.getSizeInBytes(),
+             0,
+             weightsTensorPadded.getSizeInBytes() -
+                 weightsTensorReal.getSizeInBytes());
+
+      Tensor indicesTensorPartial(indicesTensorReal.getUnsafePtr(),
+                                  indices->getType(),
+                                  indicesTensorReal.getSizeInBytes());
+      Tensor offsetsTensorPartial(offsetsTensorReal.getUnsafePtr(),
+                                  offsets->getType(),
+                                  offsetsTensorReal.getSizeInBytes());
+      bindings.insert(weights, std::move(weightsTensorPadded));
+      bindings.insert(indices, indicesTensorPartial.clone());
+      bindings.insert(offsets, offsetsTensorPartial.clone());
+    } else {
+      weights = mod.createPlaceholder(DTy, {10}, "weights", false);
+      indices =
+          mod.createPlaceholder(ElemKind::Int64ITy, {10}, "indices", false);
+      offsets =
+          mod.createPlaceholder(ElemKind::Int64ITy, {5}, "offsets", false);
+
+      bindings.insert(weights, std::move(weightsTensorReal));
+      bindings.insert(indices, std::move(indicesTensorReal));
+      bindings.insert(offsets, std::move(offsetsTensorReal));
+    }
+  } else {
+    // We assume no partial inputs will be used if hasEndOffset is false
+    Tensor weightsTensorReal(DTy, {8});
+    Tensor indicesTensorReal(ElemKind::Int64ITy, {8});
+    Tensor offsetsTensorReal(ElemKind::Int64ITy, {4});
+
+    weightsTensorReal.getHandle<DataType>() = {
+        3, 1, 0, 0, 0, 0, 2, -0.5,
+    };
+    indicesTensorReal.getHandle<int64_t>() = {
+        1, 0, 2, 0, 1, 2, 2, 0,
+    };
+    offsetsTensorReal.getHandle<int64_t>() = {0, 3, 3, 6};
+
+    weights = mod.createPlaceholder(DTy, {8}, "weights", false);
+    indices = mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
+    offsets = mod.createPlaceholder(ElemKind::Int64ITy, {4}, "offsets", false);
+
+    bindings.insert(weights, std::move(weightsTensorReal));
+    bindings.insert(indices, std::move(indicesTensorReal));
+    bindings.insert(offsets, std::move(offsetsTensorReal));
+  }
+}
+
 /// Test EmbeddingBag with an N-dimension embedding table.
 template <typename DataType>
-static void
-testEmbeddingBag(glow::PlaceholderBindings &bindings, glow::Module &mod,
-                 glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
-                 float allowedError, dim_t ndims, bool hasEndOffset) {
+static void testEmbeddingBag(glow::PlaceholderBindings &bindings,
+                             glow::Module &mod, glow::Function *F,
+                             glow::ExecutionEngine &EE, ElemKind DTy,
+                             float allowedError, dim_t ndims, bool hasEndOffset,
+                             bool partialInput = false) {
   /*
     DATA  =   [[2.0, -0.5, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -10582,7 +10670,7 @@ testEmbeddingBag(glow::PlaceholderBindings &bindings, glow::Module &mod,
   ShapeVector idims(ndims, 1);
   ShapeVector odims(ndims, 1);
   idims[0] = 3;
-  odims[0] = 4;
+  odims[0] = partialInput ? 5 : 4;
 
   auto *data = mod.createPlaceholder(DTy, idims, "data", false);
 
@@ -10597,40 +10685,9 @@ testEmbeddingBag(glow::PlaceholderBindings &bindings, glow::Module &mod,
   Placeholder *weights;
   Placeholder *indices;
   Placeholder *offsets;
-  if (hasEndOffset) {
-    weights = mod.createPlaceholder(DTy, {10}, "weights", false);
-    indices = mod.createPlaceholder(ElemKind::Int64ITy, {10}, "indices", false);
-    offsets = mod.createPlaceholder(ElemKind::Int64ITy, {5}, "offsets", false);
 
-    bindings.allocate(weights)->getHandle<DataType>() = {
-        3, 1, 0, 0, 0, 0, 2, -0.5, 42.0, 42.0,
-    };
-    bindings.allocate(indices)->getHandle<int64_t>() = {
-        1, 0, 2, 0, 1, 2, 2, 0, 13, 10,
-    };
-    bindings.allocate(offsets)->getHandle<int64_t>() = {
-        0, 3, 3, 6,
-        8, // extra end offset
-    };
-
-  } else {
-    weights = mod.createPlaceholder(DTy, {8}, "weights", false);
-    indices = mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices", false);
-    offsets = mod.createPlaceholder(ElemKind::Int64ITy, {4}, "offsets", false);
-
-    bindings.allocate(weights)->getHandle<DataType>() = {
-        3, 1, 0, 0, 0, 0, 2, -0.5,
-    };
-    bindings.allocate(indices)->getHandle<int64_t>() = {
-        1, 0, 2, 0, 1, 2, 2, 0,
-    };
-    bindings.allocate(offsets)->getHandle<int64_t>() = {
-        0,
-        3,
-        3,
-        6,
-    };
-  }
+  addEmbeddingBagPartialInputs<DataType>(bindings, mod, DTy, weights, indices,
+                                         offsets, hasEndOffset, partialInput);
 
   auto *R = F->createEmbeddingBag("EB", data, weights, indices, offsets,
                                   hasEndOffset);
@@ -10642,12 +10699,18 @@ testEmbeddingBag(glow::PlaceholderBindings &bindings, glow::Module &mod,
 
   Tensor &result = *bindings.get(S->getPlaceholder());
   Tensor expected(DTy, odims);
-  expected.getHandle<DataType>() = {
-      0.5,
-      0,
-      0,
-      25,
-  };
+  if (partialInput) {
+    expected.getHandle<DataType>() = {
+        0.5, 0, 0, 25, 0,
+    };
+  } else {
+    expected.getHandle<DataType>() = {
+        0.5,
+        0,
+        0,
+        25,
+    };
+  }
 
   EXPECT_TRUE(expected.isEqual(result, allowedError));
 }
@@ -10712,12 +10775,32 @@ TEST_P(OperatorTest, EmbeddingBag_2D_Float16_End_Offset) {
                               /* ndims */ 2, /* hasEndOffset */ true);
 }
 
+/// Test that EB is correctly supported in FloatTy in 1D with an end offset and
+/// partial inputs.
+TEST_P(OperatorTest, EmbeddingBag_1D_Float_End_Offset_Partial) {
+  CHECK_IF_ENABLED();
+  ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
+  testEmbeddingBag<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
+                          /* ndims */ 1, /* hasEndOffset */ true,
+                          /* partialInput */ true);
+}
+
+/// Test that EB is correctly supported in Float16Ty in 1D with an end offset
+/// and partial inputs.
+TEST_P(OperatorTest, EmbeddingBag_2D_Float_End_Offset_Partial) {
+  CHECK_IF_ENABLED();
+  ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
+  testEmbeddingBag<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 0.0001,
+                          /* ndims */ 2, /* hasEndOffset */ true,
+                          /* partialInput */ true);
+}
+
 /// Helper to test EmbeddingBagByteRowwiseOffsets using \p DTy.
 template <typename DataType>
 static void testEmbeddingBagByteRowwiseOffsets(
     glow::PlaceholderBindings &bindings, glow::Module &mod, glow::Function *F,
     glow::ExecutionEngine &EE, ElemKind fusedDTy, float allowedError,
-    bool useFP16Accumulation, bool hasEndOffset) {
+    bool useFP16Accumulation, bool hasEndOffset, bool partialInput = false) {
   /*
     DATA  =   [[2.0, -0.5, 13]]
     WEIGHTS = [3, 1, 0, 0, 0, 0, 2, -0.5]
@@ -10737,47 +10820,14 @@ static void testEmbeddingBagByteRowwiseOffsets(
 
   // If hasEndOffset then add some additional junk to the end of indices and
   // weights and an extra offset to offsets.
-  Constant *weights;
+  // Note that weights here needs to be Constant instead of Placeholder for
+  // EmbeddingBagByteRowwiseOffsets, so we need to convert it later on
+  Placeholder *weights;
   Placeholder *indices;
   Placeholder *offsets;
-  if (hasEndOffset) {
-    weights = mod.createConstant(DTy, {10}, "weights");
-    weights->getPayloadMutable().getHandle<DataType>() = {
-        3., 1., 0., 0., 0., 0., 2., -0.5, 42.0, 35.0,
-    };
 
-    indices = mod.createPlaceholder(ElemKind::Int64ITy, {10}, "indices",
-                                    /* isTrainable */ false);
-    offsets = mod.createPlaceholder(ElemKind::Int64ITy, {5}, "offsets",
-                                    /* isTrainable */ false);
-
-    bindings.allocate(indices)->getHandle<int64_t>() = {1, 0, 2, 0, 1,
-                                                        2, 2, 0, 1, 5};
-    bindings.allocate(offsets)->getHandle<int64_t>() = {
-        0, 3, 3, 6,
-        8, // extra end offset
-    };
-  } else {
-    weights = mod.createConstant(DTy, {8}, "weights");
-    weights->getPayloadMutable().getHandle<DataType>() = {
-        3., 1., 0., 0., 0., 0., 2., -0.5,
-    };
-
-    indices = mod.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
-                                    /* isTrainable */ false);
-    offsets = mod.createPlaceholder(ElemKind::Int64ITy, {4}, "offsets",
-                                    /* isTrainable */ false);
-
-    bindings.allocate(indices)->getHandle<int64_t>() = {
-        1, 0, 2, 0, 1, 2, 2, 0,
-    };
-    bindings.allocate(offsets)->getHandle<int64_t>() = {
-        0,
-        3,
-        3,
-        6,
-    };
-  }
+  addEmbeddingBagPartialInputs<DataType>(bindings, mod, DTy, weights, indices,
+                                         offsets, hasEndOffset, partialInput);
 
   auto *R = F->createEmbeddingBagByteRowwiseOffsets(
       "EBBRO", data, weights, indices, offsets, fusedDTy, useFP16Accumulation,
@@ -10785,17 +10835,28 @@ static void testEmbeddingBagByteRowwiseOffsets(
   SaveNode *S = F->createSave("save", R);
   bindings.allocate(S->getPlaceholder());
 
+  ::glow::convertPlaceholdersToConstants(
+      F, bindings, {indices, offsets, S->getPlaceholder()});
+
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
   Tensor &result = *bindings.get(S->getPlaceholder());
-  Tensor expected(DTy, {4, 1});
-  expected.getHandle<DataType>() = {
-      0.5,
-      0,
-      0,
-      25,
-  };
+  ShapeVector odims(2, 1);
+  odims[0] = partialInput ? 5 : 4;
+  Tensor expected(DTy, odims);
+  if (partialInput) {
+    expected.getHandle<DataType>() = {
+        0.5, 0, 0, 25, 0,
+    };
+  } else {
+    expected.getHandle<DataType>() = {
+        0.5,
+        0,
+        0,
+        25,
+    };
+  }
 
   EXPECT_TRUE(expected.isEqual(result, allowedError));
 }
@@ -10816,6 +10877,17 @@ TEST_P(OperatorTest, EmbeddingBagByteRowwiseOffsets_Float_End_Offset) {
       /* useFP16Accumulation */ false, /* hasEndOffset */ true);
 }
 
+/// Test EmbeddingBagByteRowwiseOffsets in Float with end offset and partial
+/// inputs.
+TEST_P(OperatorTest, EmbeddingBagByteRowwiseOffsets_Float_End_Offset_Partial) {
+  CHECK_IF_ENABLED();
+  ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
+  testEmbeddingBagByteRowwiseOffsets<float>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedQTy, 0.0001,
+      /* useFP16Accumulation */ false, /* hasEndOffset */ true,
+      /* partialInputs */ true);
+}
+
 /// Test EmbeddingBagByteRowwiseOffsets in Float16. Uses Float accumulation.
 TEST_P(OperatorTest, EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat) {
   CHECK_IF_ENABLED();
@@ -10834,6 +10906,18 @@ TEST_P(OperatorTest,
       /* useFP16Accumulation */ false, /* hasEndOffset */ true);
 }
 
+/// Test EmbeddingBagByteRowwiseOffsets in Float16. Uses Float accumulation.
+/// Has end offset and using partial inputs.
+TEST_P(OperatorTest,
+       EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat_End_Offset_Partial) {
+  CHECK_IF_ENABLED();
+  ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
+  testEmbeddingBagByteRowwiseOffsets<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
+      /* useFP16Accumulation */ false, /* hasEndOffset */ true,
+      /* partialInputs */ true);
+}
+
 /// Test EmbeddingBagByteRowwiseOffsets in Float16. Uses Float16 accumulation.
 TEST_P(OperatorTest, EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat16) {
   CHECK_IF_ENABLED();
@@ -10850,6 +10934,18 @@ TEST_P(OperatorTest,
   testEmbeddingBagByteRowwiseOffsets<float16_t>(
       bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
       /* useFP16Accumulation */ true, /* hasEndOffset */ true);
+}
+
+/// Test EmbeddingBagByteRowwiseOffsets in Float16. Uses Float16 accumulation.
+/// Has end offset and using partial inputs.
+TEST_P(OperatorTest,
+       EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat16_End_Offset_Partial) {
+  CHECK_IF_ENABLED();
+  ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
+  testEmbeddingBagByteRowwiseOffsets<float16_t>(
+      bindings_, mod_, F_, EE_, ElemKind::UInt8FusedFP16QTy, 0.0001,
+      /* useFP16Accumulation */ false, /* hasEndOffset */ true,
+      /* partialInputs */ true);
 }
 
 /// Helper to test EmbeddingBag4BitRowwiseOffsets.
@@ -12047,13 +12143,13 @@ static void testSLWSLengthsMode(glow::PlaceholderBindings &bindings,
   if (fusedData) {
     SLWS = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
         "RQSLWS", data, weights, indices, lengths, dataDTy, useFP16Accumulation,
-        LengthsMode::AllOne);
+        lengthsMode);
   } else {
     Placeholder *dataP = mod.createPlaceholder(&data.getType(), "data",
                                                /* isTrainable */ false);
     bindings.insert(dataP, std::move(data));
     SLWS = F->createSparseLengthsWeightedSum("SLWS", dataP, weights, indices,
-                                             lengths, LengthsMode::AllOne);
+                                             lengths, lengthsMode);
   }
   SaveNode *S = F->createSave("save", SLWS);
   bindings.allocate(S->getPlaceholder());
@@ -14435,6 +14531,150 @@ TEST_P(OperatorStatelessTest, LayerNorm_Int8) {
   compareAgainstInterpreter(getBackendName(), createAndInitLayerNormTest,
                             ElemKind::FloatTy, ElemKind::Int8QTy, 0.04f,
                             parCloneCountOpt);
+}
+
+static void testDequantizeFRWQ(glow::PlaceholderBindings &bindings,
+                               glow::Module &mod, glow::Function *F,
+                               glow::ExecutionEngine &EE, ElemKind destTy) {
+  Tensor FT(ElemKind::FloatTy, {10, 20});
+  FT.getHandle().randomize(-0.5, 0.5, mod.getPRNG());
+  TypeRef RWQTy = mod.uniqueType(ElemKind::UInt8FusedQTy,
+                                 {10, 20 + 2 * sizeof(float)}, 1.0, 0);
+  Tensor RWQT(RWQTy);
+  quantization::tensorFusedRowwiseQuantization<float>(FT, RWQT);
+
+  auto *input = mod.createPlaceholder(RWQTy, "input", false);
+  bindings.insert(input, std::move(RWQT));
+
+  auto *D = F->createDequantize("dequantize", input, destTy);
+  auto *save = F->createSave("ret", D);
+  auto *result = bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  if (destTy == ElemKind::Float16Ty) {
+    FT.convertToType(destTy);
+  }
+  EXPECT_TRUE(FT.isEqual(*result, 0.002f));
+}
+
+TEST_P(OperatorTest, DequantizeFRWQ_Float) {
+  CHECK_IF_ENABLED();
+  testDequantizeFRWQ(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+TEST_P(OperatorTest, DequantizeFRWQ_Float16) {
+  CHECK_IF_ENABLED();
+  testDequantizeFRWQ(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+template <typename DataType>
+static void testUpsample3D(glow::PlaceholderBindings &bindings,
+                           glow::Module &mod, glow::Function *F,
+                           glow::ExecutionEngine &EE, ElemKind DTy) {
+  constexpr dim_t size[4] = {3, 2, 3, 4};
+  auto *input =
+      createPlaceholderConditionallyQuantized(mod, DTy, size, "input", false);
+  bindings.allocate(input)->getHandle<DataType>().randomize(-10.0, 10.0,
+                                                            mod.getPRNG());
+
+  auto *output = F->createUpsample("Upsample", input, 3);
+  auto *save = F->createSave("Save", output);
+  bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto resultH = bindings.get(save->getPlaceholder())->getHandle<DataType>();
+  auto inputH = bindings.get(input)->getHandle<DataType>();
+
+  EXPECT_EQ(resultH.dims()[0], inputH.dims()[0]);
+  EXPECT_EQ(resultH.dims()[1], 2 * inputH.dims()[1]);
+  EXPECT_EQ(resultH.dims()[2], 2 * inputH.dims()[2]);
+  EXPECT_EQ(resultH.dims()[3], 2 * inputH.dims()[3]);
+  for (dim_t m = 0; m < size[0]; m++) {
+    for (dim_t i = 0; i < size[1]; i++) {
+      for (dim_t j = 0; j < size[2]; j++) {
+        for (dim_t k = 0; k < size[3]; k++) {
+          EXPECT_EQ(resultH.at({m, 2 * i + 0, 2 * j + 0, 2 * k + 0}),
+                    static_cast<DataType>(inputH.at({m, i, j, k})));
+          EXPECT_EQ(resultH.at({m, 2 * i + 0, 2 * j + 0, 2 * k + 1}),
+                    static_cast<DataType>(inputH.at({m, i, j, k})));
+          EXPECT_EQ(resultH.at({m, 2 * i + 0, 2 * j + 1, 2 * k + 0}),
+                    static_cast<DataType>(inputH.at({m, i, j, k})));
+          EXPECT_EQ(resultH.at({m, 2 * i + 0, 2 * j + 1, 2 * k + 1}),
+                    static_cast<DataType>(inputH.at({m, i, j, k})));
+          EXPECT_EQ(resultH.at({m, 2 * i + 1, 2 * j + 0, 2 * k + 0}),
+                    static_cast<DataType>(inputH.at({m, i, j, k})));
+          EXPECT_EQ(resultH.at({m, 2 * i + 1, 2 * j + 0, 2 * k + 1}),
+                    static_cast<DataType>(inputH.at({m, i, j, k})));
+          EXPECT_EQ(resultH.at({m, 2 * i + 1, 2 * j + 1, 2 * k + 0}),
+                    static_cast<DataType>(inputH.at({m, i, j, k})));
+          EXPECT_EQ(resultH.at({m, 2 * i + 1, 2 * j + 1, 2 * k + 1}),
+                    static_cast<DataType>(inputH.at({m, i, j, k})));
+        }
+      }
+    }
+  }
+}
+
+template <typename DataType>
+static void testUpsample2D(glow::PlaceholderBindings &bindings,
+                           glow::Module &mod, glow::Function *F,
+                           glow::ExecutionEngine &EE, ElemKind DTy) {
+  constexpr dim_t size[3] = {2, 3, 4};
+  auto *input =
+      createPlaceholderConditionallyQuantized(mod, DTy, size, "input", false);
+  bindings.allocate(input)->getHandle<DataType>().randomize(-10.0, 10.0,
+                                                            mod.getPRNG());
+
+  auto *output = F->createUpsample("Upsample", input, 2);
+  auto *save = F->createSave("Save", output);
+  bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto resultH = bindings.get(save->getPlaceholder())->getHandle<DataType>();
+  auto inputH = bindings.get(input)->getHandle<DataType>();
+
+  EXPECT_EQ(resultH.dims()[0], inputH.dims()[0]);
+  EXPECT_EQ(resultH.dims()[1], 2 * inputH.dims()[1]);
+  EXPECT_EQ(resultH.dims()[2], 2 * inputH.dims()[2]);
+  for (dim_t m = 0; m < size[0]; m++) {
+    for (dim_t i = 0; i < size[1]; i++) {
+      for (dim_t j = 0; j < size[2]; j++) {
+        EXPECT_EQ(resultH.at({m, 2 * i + 0, 2 * j + 0}),
+                  static_cast<DataType>(inputH.at({m, i, j})));
+        EXPECT_EQ(resultH.at({m, 2 * i + 0, 2 * j + 1}),
+                  static_cast<DataType>(inputH.at({m, i, j})));
+        EXPECT_EQ(resultH.at({m, 2 * i + 1, 2 * j + 0}),
+                  static_cast<DataType>(inputH.at({m, i, j})));
+        EXPECT_EQ(resultH.at({m, 2 * i + 1, 2 * j + 1}),
+                  static_cast<DataType>(inputH.at({m, i, j})));
+      }
+    }
+  }
+}
+
+TEST_P(OperatorTest, Upsample3D_Float) {
+  CHECK_IF_ENABLED();
+  testUpsample3D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, Upsample3D_Int8) {
+  CHECK_IF_ENABLED();
+  testUpsample3D<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+TEST_P(OperatorTest, Upsample2D_Float) {
+  CHECK_IF_ENABLED();
+  testUpsample2D<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, Upsample2D_Int8) {
+  CHECK_IF_ENABLED();
+  testUpsample2D<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
 INSTANTIATE_BACKEND_TEST(OperatorStatelessTest);

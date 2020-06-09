@@ -171,6 +171,12 @@ bool NNPIBackend::acceptForExecution(const NodeInfo &NI) const {
   }
 }
 
+/// \returns whether SLS indices type is valid for NNPI.
+static bool isSLSIndicesValid(TypeRef type) {
+  // Don't support more than 64k indices.
+  return type->dims().size() == 1 && type->dims()[0] < (1 << 16);
+}
+
 bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
   // General math fp32/fp16/i8.
@@ -377,7 +383,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
             ElemKind::Int8QTy);
 
   case Kinded::Kind::SparseLengthsSumNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    return isSLSIndicesValid(NI.getInTy(SparseLengthsSumNode::IndicesIdx)) &&
+           NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
                {SparseLengthsSumNode::IndicesIdx,
                 SparseLengthsSumNode::LengthsIdx}) &&
@@ -388,7 +395,9 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(SparseLengthsSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    return isSLSIndicesValid(
+               NI.getInTy(SparseLengthsWeightedSumNode::IndicesIdx)) &&
+           NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
                {SparseLengthsWeightedSumNode::IndicesIdx,
                 SparseLengthsWeightedSumNode::LengthsIdx}) &&
@@ -400,7 +409,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
             ElemKind::Int32ITy);
 
   case Kinded::Kind::EmbeddingBagNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    return isSLSIndicesValid(NI.getInTy(EmbeddingBagNode::IndicesIdx)) &&
+           NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
                {EmbeddingBagNode::IndicesIdx, EmbeddingBagNode::OffsetsIdx}) &&
            (NI.getInElemTy(EmbeddingBagNode::IndicesIdx) ==
@@ -415,7 +425,9 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
         NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx);
     auto resultK =
         NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx);
-    return (dataK == ElemKind::UInt8FusedQTy ||
+    return isSLSIndicesValid(
+               NI.getInTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx)) &&
+           (dataK == ElemKind::UInt8FusedQTy ||
             dataK == ElemKind::UInt8FusedFP16QTy ||
             dataK == ElemKind::UInt4FusedFP16QTy) &&
            (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
@@ -431,7 +443,9 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
         NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::IndicesIdx);
     auto resultK =
         NI.getOutElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::ResultIdx);
-    return (dataK == ElemKind::UInt8FusedQTy ||
+    return isSLSIndicesValid(NI.getInTy(
+               FusedRowwiseQuantizedSparseLengthsSumNode::IndicesIdx)) &&
+           (dataK == ElemKind::UInt8FusedQTy ||
             dataK == ElemKind::UInt8FusedFP16QTy ||
             dataK == ElemKind::UInt4FusedFP16QTy) &&
            (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
@@ -450,7 +464,10 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
         FusedRowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx);
     auto resultK = NI.getOutElemTy(
         FusedRowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx);
-    return (dataK == ElemKind::UInt8FusedQTy ||
+    return isSLSIndicesValid(
+               NI.getInTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                              IndicesIdx)) &&
+           (dataK == ElemKind::UInt8FusedQTy ||
             dataK == ElemKind::UInt8FusedFP16QTy ||
             dataK == ElemKind::UInt4FusedFP16QTy) &&
            (weightsK == ElemKind::FloatTy || weightsK == ElemKind::Float16Ty) &&
@@ -460,7 +477,9 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   }
 
   case Kinded::Kind::RowwiseQuantizedSparseLengthsWeightedSumNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    return isSLSIndicesValid(NI.getInTy(
+               RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx)) &&
+           NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty},
                {RowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx,
                 RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx,
@@ -501,6 +520,7 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(BatchOneHotNode::LengthsIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::NNPICustomDSPNodeKind:
+  case Kinded::Kind::NNPICustomIANodeKind:
     return true;
 
   case Kinded::Kind::SpaceToDepthNodeKind:
@@ -535,6 +555,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::ConvolutionNodeKind:
+  case Kinded::Kind::Convolution3DNodeKind:
   case Kinded::Kind::TileNodeKind:
   case Kinded::Kind::LogNodeKind:
   case Kinded::Kind::ReplaceNaNNodeKind:
@@ -548,16 +569,9 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::EmbeddingBagNodeKind:
   case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind:
   case Kinded::Kind::LayerNormalizationNodeKind:
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
+  case Kinded::Kind::PReluNodeKind:
     return false;
-  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
-    const FusedRowwiseQuantizedSparseLengthsSumNode *SLSN =
-        llvm::cast<FusedRowwiseQuantizedSparseLengthsSumNode>(N);
-    if (SLSN->getResult().getElementType() == ElemKind::Float16Ty) {
-      return false; // Don't lower == keep without weights
-    } else {
-      return true;
-    }
-  }
   case Kinded::Kind::SparseLengthsSumNodeKind:
     // WA - lower until ICE-T implements it.
     if (NNPIBackend::backendOptions_.useIceT ||
@@ -565,13 +579,8 @@ bool NNPIBackend::shouldLower(const Node *N) const {
       return true;
     }
     return false;
-  case Kinded::Kind::PReluNodeKind: {
-    NodeInfo NI(*N);
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
-  }
   default:
     return true;
-    break;
   }
   return true;
 }
@@ -1119,19 +1128,40 @@ NNPIBackend::getOptimizationPipeline() const {
 static bool lowerRequiredNodes(Function *F, CompilationContext &cctx) {
   bool changed = false;
   for (auto &N : F->getNodes()) {
-    BatchMatMulNode *BMMN = llvm::dyn_cast<BatchMatMulNode>(&N);
-    if (!BMMN) {
+    if (BatchMatMulNode *BMMN = llvm::dyn_cast<BatchMatMulNode>(&N)) {
+      if (!GlowNNPILowerAllBatchMatMul &&
+          !NodeInfo(*BMMN).allInputsAndOutputsHaveSameElemKind(
+              {ElemKind::FloatTy})) {
+        continue;
+      }
+
+      lowerNode(F, BMMN, cctx);
+      changed = true;
       continue;
     }
 
-    if (!GlowNNPILowerAllBatchMatMul &&
-        !NodeInfo(*BMMN).allInputsAndOutputsHaveSameElemKind(
-            {ElemKind::FloatTy})) {
+    if (FusedRowwiseQuantizedSparseLengthsSumNode *SLS =
+            llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(&N)) {
+      // Lower FRWQSLS only if not FP16.
+      if (SLS->getResult().getElementType() == ElemKind::Float16Ty) {
+        continue;
+      }
+
+      lowerNode(F, SLS, cctx);
+      changed = true;
       continue;
     }
 
-    lowerNode(F, BMMN, cctx);
-    changed = true;
+    if (PReluNode *PR = llvm::dyn_cast<PReluNode>(&N)) {
+      // Lower PRelu only if not FP16.
+      if (PR->getResult().getElementType() == ElemKind::Float16Ty) {
+        continue;
+      }
+
+      lowerNode(F, PR, cctx);
+      changed = true;
+      continue;
+    }
   }
   return changed;
 }

@@ -132,9 +132,9 @@ TEST_P(DeferredWeightLoaderTest, FP16StaticPlaceholderInference) {
   // Set X and Y as static.
   X->setStatic(true);
   Y->setStatic(true);
-  auto pow1 = F->createPow("pow", X, Y);
-  auto pow2 = F->createPow("pow2", Z, pow1);
-  F->createSave("save", pow2, output);
+  auto mul1 = F->createMul("mul", X, Y);
+  auto mul2 = F->createMul("mul2", Z, mul1);
+  F->createSave("save", mul2, output);
   std::vector<Tensor> staticInputs;
   auto xTensor = Tensor(X->getType());
   auto yTensor = Tensor(Y->getType());
@@ -164,7 +164,7 @@ TEST_P(DeferredWeightLoaderTest, FP16StaticPlaceholderInference) {
   updateInputPlaceholders(pBindings, {Z}, {&zTensor});
   EE.run(pBindings);
   auto resHandle = pBindings.get(output)->getHandle();
-  EXPECT_NEAR(resHandle.at({0}), 256.0, 1E-5);
+  EXPECT_NEAR(resHandle.at({0}), 12.0, 1E-5);
 }
 
 INSTANTIATE_BACKEND_TEST(DeferredWeightLoaderTest);
