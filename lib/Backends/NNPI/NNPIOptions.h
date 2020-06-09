@@ -387,15 +387,6 @@ public:
       deviceMemory, unsigned, "DeviceMemory",
       "Override the amount of DRAM to allocate per NNPI device, in kilobytes.",
       "NNPI_DEVICE_MEMORY", "0");
-  /// Enable using command list instead of per command queuing.
-  DECLARE_NNPI_OPTION(
-      enabledCommandLists, int, "CommandLists",
-      "Enabled command lists. "
-      "\n  0 = disabled. "
-      "\n  1+ = enable command list to queue copy/infer. "
-      "\n  2+ = enable command list wait instead of locking host resources. "
-      "\n  3+ = enable copy command config (partial copies). ",
-      "NNPI_COMMAND_LISTS", "3");
   /// Dump IO to files.
   DECLARE_NNPI_OPTION(dumpIOtoFiles, bool, "DumpIOtoFiles",
                       "Dump Inputs/Outputs to files.", "NNPI_DUMP_IO", "0");
@@ -417,6 +408,10 @@ public:
   DECLARE_NNPI_OPTION(dumpRuntime, bool, "DumpRuntime",
                       "Dump runtime graph (bindContexts).", "NNPI_DUMP_RUNTIME",
                       "0");
+  /// Disable Device IO Buffers.
+  DECLARE_NNPI_OPTION(disableDeviceIOBuffer, bool, "DisableDeviceIOBuffer",
+                      "Disable IO buffers allocation by the NNPI stack.",
+                      "NNPI_DISABLE_IOBUFFER", "1");
 
   NNPIDeviceOptions(const llvm::StringMap<std::string> &parameters) {
     INIT_NNPI_OPTIONS(useIceT, parameters);
@@ -425,12 +420,12 @@ public:
     INIT_NNPI_OPTIONS(deviceId, parameters);
     INIT_NNPI_OPTIONS(hardwareTraces, parameters);
     INIT_NNPI_OPTIONS(deviceMemory, parameters);
-    INIT_NNPI_OPTIONS(enabledCommandLists, parameters);
     INIT_NNPI_OPTIONS(dumpIOtoFiles, parameters);
     INIT_NNPI_OPTIONS(avxType, parameters);
     INIT_NNPI_OPTIONS(disableDRT, parameters);
     INIT_NNPI_OPTIONS(disableP2P, parameters);
     INIT_NNPI_OPTIONS(dumpRuntime, parameters);
+    INIT_NNPI_OPTIONS(disableDeviceIOBuffer, parameters);
 
     if (avxType == -1) {
       if (isStringFoundInCpuInfo("avx512f")) {

@@ -41,10 +41,21 @@ struct BlacklistInitializer {
         {"BatchMatMulTest_Int8/95", TestBlacklist::AnyDeviceAnyEngine},
         {"FCTest_Int8/139", TestBlacklist::AnyDeviceAnyEngine},
     };
+
+    std::vector<int> passingTestsRWQSLWS_Float16 = {
+        43, 47, 48, 49, 53, 54, 57, 58, 59, 61, 62, 63, 64, 65,
+        66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79};
+    std::vector<int>::const_iterator passingTestIt =
+        passingTestsRWQSLWS_Float16.begin();
+
     for (int i = 0; i < 80; i++) {
-      testBlacklistedSetups.push_back(
-          {"RWQSLWS_Float16_AccumFloat16/" + std::to_string(i),
-           TestBlacklist::AnyDeviceAnyEngine});
+      if (i == *passingTestIt) {
+        passingTestIt++;
+      } else {
+        testBlacklistedSetups.push_back(
+            {"RWQSLWS_Float16_AccumFloat16/" + std::to_string(i),
+             TestBlacklist::AnyDeviceAnyEngine});
+      }
     }
     for (int i = 0; i < 80; i++) {
       testBlacklistedSetups.push_back(

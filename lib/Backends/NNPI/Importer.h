@@ -18,6 +18,7 @@
 
 #include "NNPIOptions.h"
 #include "glow/Backends/BackendOptions.h"
+#include "glow/Graph/Nodes.h"
 #include "glow/Support/Compiler.h"
 #include "nnpi_network_builder.h"
 #include "nnpi_network_builder_EXPERIMENTAL.h"
@@ -115,6 +116,11 @@ public:
   const std::vector<std::string> &getIAExtensionPaths() const {
     return iaExtensionPaths_;
   }
+
+  /// Convert from Glow lengths mode enum to NNPI length type enum.
+  static NNPIErrorCode
+  convertLengthsModeToLengthType(glow::LengthsMode mode,
+                                 NNPI_LENGTH_TYPE &lengthType);
 
 private:
   /// Map of named external tensors (inputs, outputs, weights, etc...).

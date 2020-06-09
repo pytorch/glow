@@ -24,6 +24,7 @@
 
 namespace glow {
 class Tensor;
+class NNPIAdapterContainer;
 
 namespace runtime {
 
@@ -35,6 +36,7 @@ struct ResourceUsers {
   std::unordered_set<NNPIDeviceContext> devices;
   bool disableP2P = false;
   bool disableDRT = false;
+  Tensor *tensor = nullptr;
 };
 using PlaceholderUsageMap = std::unordered_map<std::string, ResourceUsers>;
 
@@ -67,7 +69,7 @@ public:
   /// Initialize a resource.
   bool init(const NNPIObjectName name,
             std::shared_ptr<NNPIDeviceOptions> deviceOptions,
-            NNPIAdapter adapter, NNPIDeviceContext device,
+            NNPIAdapterContainer *adapter, NNPIDeviceContext device,
             const NNPIResourceDesc *desc, ResourceUsage usage,
             PlaceholderUsageMap *phUsage = nullptr);
 
@@ -89,7 +91,7 @@ public:
   inline NNPICopyCommand getCopyCommand() const { return copyCommand_; }
   inline uint32_t getCmdListIdx() const { return cmdListIdx_; }
   inline void setCmdListIdx(uint32_t idx) { cmdListIdx_ = idx; }
-  inline uint64_t getPartialSize() const { return partialSize_; }
+  inline int64_t getPartialSize() const { return partialSize_; }
   inline ResourceUsage getUsage() const { return usage_; }
   inline NNPIDeviceResource getP2PDeviceResource() const {
     return p2pDeviceResource_;
@@ -103,7 +105,8 @@ public:
   std::string dump() const;
 
 private:
-  NNPIAdapter adapter_;      // This handle isn't owned by the object.
+  NNPIAdapterContainer
+      *pAdapter_;            // This handle container isn't owned by the object.
   NNPIDeviceContext device_; // This handle isn't owned by the object.
   NNPIObjectName name_;
   NNPIResourceDesc desc_;
@@ -111,13 +114,15 @@ private:
   NNPIHostResource hostResource_;
   void *hostPtr_;
   NNPICopyCommand copyCommand_;
-  uint64_t partialSize_;
+  int64_t partialSize_;
   ResourceUsage usage_;
   std::shared_ptr<NNPIDeviceOptions> deviceOptions_;
   std::vector<uint8_t> refStorage_;
   uint32_t cmdListIdx_;
   bool ownsDeviceResource_; // Used for DRT (only one NNPIResource will own the
-                            // device resource)
+                            // device resource).
+  bool ownsHostResource_;   // Used to indicate a private host resource was
+                            // allocated.
   NNPIDeviceContext p2pDevice_; // the other device used in p2p
   NNPIDeviceResource
       p2pDeviceResource_; // the resource on the other device used in p2p.
