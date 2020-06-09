@@ -738,8 +738,10 @@ static void createSimpleSparseNNModule(Module &mod, bool shareSplatWeights) {
     }
     auto *lengths = mod.createPlaceholder(ElemKind::Int32ITy, {batchSize},
                                           "lengths", false);
+    float avgLength = (table % 2) ? 12.0f : 10.0f;
     auto *output = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
-        "SLS", data, weights, indices, lengths, ElemKind::UInt8FusedQTy, false);
+        "SLS", data, weights, indices, lengths, ElemKind::UInt8FusedQTy, false,
+        /* lengthsMode */ LengthsMode::Variable, /* avgLength */ avgLength);
     slsOutputs.push_back(output);
   }
 
@@ -815,7 +817,8 @@ static void sparseNNPartitionValidation(const DAGListTy &dagList, Module &mod,
 }
 
 static void testSimpleSparseNNPartitioning(Module &mod, bool shareSplatWeights,
-                                           bool concatSLSOutputs) {
+                                           bool concatSLSOutputs,
+                                           bool balancePerfModel) {
   createSimpleSparseNNModule(mod, shareSplatWeights);
   BackendWithoutSub backend1, backend2, backend3;
   std::vector<Backend *> backends;
@@ -830,6 +833,7 @@ static void testSimpleSparseNNPartitioning(Module &mod, bool shareSplatWeights,
   cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards = 3;
   cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard = 200;
   cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats = concatSLSOutputs;
+  cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel = balancePerfModel;
   auto dagList = partitioner.partition(cctx);
   ASSERT_TRUE((bool)dagList);
   EXPECT_EQ(mod.getFunctions().size(), 4);
@@ -842,19 +846,29 @@ static void testSimpleSparseNNPartitioning(Module &mod, bool shareSplatWeights,
 /// Test using user-defined backends for SparseNN partition.
 TEST_F(PartitionerTest, SimpleSparseNNPartitioning) {
   testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
-                                 /*concatSLSOutputs*/ false);
+                                 /*concatSLSOutputs*/ false,
+                                 /*balancePerfModel*/ false);
 }
 
 TEST_F(PartitionerTest, SimpleSparseNNPartitioning_ConcatSLSOutputs) {
   testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
-                                 /*concatSLSOutputs*/ true);
+                                 /*concatSLSOutputs*/ true,
+                                 /*balancePerfModel*/ false);
 }
 
 /// Test using user-defined backends for SparseNN partition when weights are
 /// shared Splats by all SLSs.
 TEST_F(PartitionerTest, SimpleSparseNNPartitioning_SharedWeights) {
   testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ true,
-                                 /*concatSLSOutputs*/ false);
+                                 /*concatSLSOutputs*/ false,
+                                 /*balancePerfModel*/ false);
+}
+
+/// Test using user-defined backends for SparseNN partition.
+TEST_F(PartitionerTest, SimpleSparseNNPartitioningBalancePerfModel) {
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
+                                 /*concatSLSOutputs*/ false,
+                                 /*balancePerfModel*/ true);
 }
 
 /// To check if the generated DAG is correct for the Heterogeneous Partiton
