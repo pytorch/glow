@@ -85,6 +85,8 @@ class Loader {
   std::string caffe2NetWeightFilename_;
   /// ONNX model file name.
   std::string onnxModelFilename_;
+  /// TensorFlowLite model file name.
+  std::string tfliteModelFilename_;
   /// Name of loaded function.
   std::string functionName_;
   /// Host Manager for running the model.
@@ -129,6 +131,9 @@ public:
 
   /// Getter for the ONNX model file name.
   llvm::StringRef getOnnxModelFilename() { return onnxModelFilename_; }
+
+  /// Getter for the TensorFlowLite model file name.
+  llvm::StringRef getTFLiteModelFilename() { return tfliteModelFilename_; }
 
   /// Getter for the model path.
   /// \pre (modelPathOpt.size() == 1)

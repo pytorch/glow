@@ -227,6 +227,10 @@ private:
             typename CmpTy = ElemTy>
   void fwdElementCmpEQInstImpl(const ElementCmpEQInst *I);
 
+  template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
+            typename CmpTy = ElemTy>
+  void fwdElementCmpNEQInstImpl(const ElementCmpNEQInst *I);
+
   template <typename ElemTy>
   void fwdBatchOneHotImpl(const glow::BatchOneHotInst *I);
 
@@ -259,6 +263,10 @@ private:
   template <typename ElemTy>
   void fwdElementMinInstArithmeticImpl(const ElementMinInst *I);
 
+  template <typename ElemTy, typename InstKind>
+  void fwdUnaryArithmeticImpl(const InstKind *I,
+                              std::function<float(float)> func);
+
   template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
             typename CmpTy = ElemTy>
   void fwdElementCmpLTEInstImpl(const ElementCmpLTEInst *I);
@@ -266,6 +274,14 @@ private:
   template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
             typename CmpTy = ElemTy>
   void fwdElementCmpLTInstImpl(const ElementCmpLTInst *I);
+
+  template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
+            typename CmpTy = ElemTy>
+  void fwdElementCmpGTEInstImpl(const ElementCmpGTEInst *I);
+
+  template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
+            typename CmpTy = ElemTy>
+  void fwdElementCmpGTInstImpl(const ElementCmpGTInst *I);
 
   template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
             typename CmpTy, typename InstCmpKind>

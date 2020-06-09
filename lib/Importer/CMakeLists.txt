@@ -35,9 +35,11 @@ add_library(Importer
               Caffe2ModelLoader.cpp
               ONNXModelLoader.cpp
               ONNXIFIModelLoader.cpp
+              TFLiteModelLoader.cpp
               ${CAFFE_SRCS}
               ${GLOW_BINARY_DIR}/caffe2/proto/caffe2.pb.h)
 target_include_directories(Importer PUBLIC ${ONNX_INCLUDE_DIRS} ${GLOW_THIRDPARTY_DIR}/foxi)
+target_include_directories(Importer PUBLIC ${CMAKE_SOURCE_DIR}/include/glow/Importer/tflite_flatbuffer)
 target_compile_definitions(Importer
                            INTERFACE
                              -DGOOGLE_PROTOBUF_NO_RTTI)
