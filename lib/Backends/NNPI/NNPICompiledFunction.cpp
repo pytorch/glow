@@ -203,6 +203,10 @@ Error NNPICompiledFunction::setupCompilationHints(
                         N->getName().data()));
         }
         for (size_t i = 0, e = opts.size(); i < e; i++) {
+          // Skip empty core assignment strings
+          if (opts[i] == std::string("")) {
+            continue;
+          }
           int core;
           ASSIGN_VALUE_OR_RETURN_ERR(core, getIntFromStr(opts[i]));
           RETURN_ERR_IF_NOT(core >= 0 && core <= 11,

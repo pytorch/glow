@@ -428,6 +428,8 @@ static void setupSplitParallelizationTestFCReluNNPI(
   nodeInfo[FC]["NNPI_coreAssignments"].push_back("7");
   nodeInfo[FC]["NNPI_coreAssignments"].push_back("3");
   nodeInfo[FC]["NNPI_coreAssignments"].push_back("0");
+  nodeInfo[CI]["NNPI_coreAssignments"].push_back("");
+  nodeInfo[CI]["NNPI_coreAssignments"].push_back("3");
 }
 
 /// Test model parallel splitting inside of NNPIPrivateTransforms.cpp for
