@@ -1409,7 +1409,7 @@ Error TFLiteModelLoader::loadPad(const tflite::Operator *op,
                     opErrMsg(opInfo, "Paddings should have INT32 type!"));
   auto padsH = padsC->getPayload().getHandle<int32_t>();
   std::vector<int> padsVec(padsH.size());
-  for (size_t dim = 0; dim < numDims; ++dim) {
+  for (dim_t dim = 0; dim < numDims; ++dim) {
     auto padStart = padsH.at({dim, 0});
     auto padStop = padsH.at({dim, 1});
     RETURN_ERR_IF_NOT((padStart >= 0) && (padStop >= 0),
