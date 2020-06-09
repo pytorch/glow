@@ -756,7 +756,9 @@ const std::string TFLiteModelLoader::opErrMsg(const OperatorInfo &opInfo,
                    errMsg.c_str());
 }
 
-template <typename T> Expected<T> TFLiteModelLoader::loadAxis(const OperatorInfo &opInfo, NodeValue axis, NodeValue value) {
+template <typename T>
+Expected<T> TFLiteModelLoader::loadAxis(const OperatorInfo &opInfo,
+                                        NodeValue axis, NodeValue value) {
   Constant *axisC = llvm::dyn_cast<Constant>(axis.getNode());
   RETURN_ERR_IF_NOT(axisC,
                     opErrMsg(opInfo, "Non constant axis not supported!"));
@@ -1455,7 +1457,8 @@ Error TFLiteModelLoader::loadReduce(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(axis, getInputNodeValue(op, 1));
 
   unsigned_t axisVal;
-  ASSIGN_VALUE_OR_RETURN_ERR(axisVal, loadAxis<unsigned_t>(opInfo, axis, input));
+  ASSIGN_VALUE_OR_RETURN_ERR(axisVal,
+                             loadAxis<unsigned_t>(opInfo, axis, input));
 
   bool keepDims = opts->keep_dims();
 
@@ -1483,7 +1486,8 @@ Error TFLiteModelLoader::loadSplit(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 1));
 
   unsigned_t axisVal;
-  ASSIGN_VALUE_OR_RETURN_ERR(axisVal, loadAxis<unsigned_t>(opInfo, axis, input));
+  ASSIGN_VALUE_OR_RETURN_ERR(axisVal,
+                             loadAxis<unsigned_t>(opInfo, axis, input));
 
   unsigned_t numSplits = static_cast<unsigned_t>(opts->num_splits());
   RETURN_ERR_IF_NOT(
@@ -1511,7 +1515,8 @@ Error TFLiteModelLoader::loadArg(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
   unsigned_t axisVal;
-  ASSIGN_VALUE_OR_RETURN_ERR(axisVal, loadAxis<unsigned_t>(opInfo, axis, input));
+  ASSIGN_VALUE_OR_RETURN_ERR(axisVal,
+                             loadAxis<unsigned_t>(opInfo, axis, input));
 
   auto opCode = opInfo.code;
   NodeValue output = nullptr;

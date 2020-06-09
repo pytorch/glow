@@ -1676,7 +1676,8 @@ bool ArgMaxNode::verify() const {
       llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}), this);
 
   // Check output shape.
-  ShapeVector expDstDims = reduceDims(getInput().dims(), {getAxis()}, getKeepDims());
+  ShapeVector expDstDims =
+      reduceDims(getInput().dims(), {getAxis()}, getKeepDims());
   isValid &= expectCompareTrue("Invalid output dims", getResult().dims(),
                                llvm::makeArrayRef(expDstDims), this);
   return isValid;
@@ -1691,7 +1692,8 @@ bool ArgMinNode::verify() const {
       llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}), this);
 
   // Check output shape.
-  ShapeVector expDstDims = reduceDims(getInput().dims(), {getAxis()}, getKeepDims());
+  ShapeVector expDstDims =
+      reduceDims(getInput().dims(), {getAxis()}, getKeepDims());
   isValid &= expectCompareTrue("Invalid output dims", getResult().dims(),
                                llvm::makeArrayRef(expDstDims), this);
   return isValid;

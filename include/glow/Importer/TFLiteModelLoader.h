@@ -169,7 +169,9 @@ class TFLiteModelLoader {
   /// \returns the value of axis given the operator info \p opInfo, the node
   /// value \p axis which stores the axis value and the node value \p value
   /// which the axis refers to which is used to wrap the axis value if negative.
-  template <typename T> Expected<T> loadAxis(const OperatorInfo &opInfo, NodeValue axis, NodeValue value);
+  template <typename T>
+  Expected<T> loadAxis(const OperatorInfo &opInfo, NodeValue axis,
+                       NodeValue value);
 
   /// Load the operator \p op into the current graph. \p opInfo provides meta
   /// information about \p op. \returns Error if operator cannot be loaded.
