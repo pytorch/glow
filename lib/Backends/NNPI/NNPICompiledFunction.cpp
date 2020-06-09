@@ -23,6 +23,7 @@
 #include "glow/Backend/BackendUtils.h"
 
 #include <fstream>
+#include <sstream>
 
 #include "llvm/ADT/StringSet.h"
 
@@ -639,4 +640,32 @@ std::string NNPICompilationInfo::dump(const std::string &functionName) const {
          << "\":\n";
 
   return stream.str();
+}
+
+const std::string NNPICompiledFunction::toJSON() const {
+  std::stringstream fs;
+  fs << "{" << std::endl;
+  fs << "  \"ops\": [ " << std::endl;
+  for (auto it = compilationInfo_.ops.begin(); it != compilationInfo_.ops.end();
+       it++) {
+    if (it != compilationInfo_.ops.begin()) {
+      fs << "," << std::endl;
+      ;
+    }
+    fs << " \"" << it->second.name << "\"";
+    ;
+  }
+  fs << "  ]," << std::endl;
+  fs << "  \"edges\": [ " << std::endl;
+  for (auto it = compilationInfo_.opDependencies.begin();
+       it != compilationInfo_.opDependencies.end(); it++) {
+    if (it != compilationInfo_.opDependencies.begin()) {
+      fs << "," << std::endl;
+      ;
+    }
+    fs << " \"" << it->first << "\",\"" << it->second << "\"";
+  }
+  fs << "  ]" << std::endl;
+  fs << "}" << std::endl;
+  return fs.str();
 }
