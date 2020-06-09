@@ -37,6 +37,7 @@ extern bool GlowSaturateHost;
 extern bool GlowSaveOnnxifiModel;
 extern bool GlowSaveOnnxifiDAG;
 extern bool GlowSaveOnnxifiIO;
+extern bool GlowDelayAndRecordConstantModification;
 extern bool GlowEnablePartialTensors;
 extern bool GlowUseCustomOpsForExport;
 extern bool GlowUseSparseNNPartitioningScheme;
@@ -61,6 +62,7 @@ extern int32_t GlowNNPINumParallelChunks;
 extern bool GlowEnableLoadBalancedPartitioning;
 extern bool GlowNNPILowerAllBatchMatMul;
 extern bool GlowNNPIAcceptUnarySLS;
+extern bool GlowNNPISpecializeAllOneSLS;
 
 namespace runtime {
 extern unsigned GlowInterpreterMemory;
@@ -228,6 +230,16 @@ DEFINE_validator(glow_save_onnxifi_dag, [](const char *flagname, bool value) {
   return true;
 });
 
+DEFINE_bool(
+    glow_delay_and_record_constant_modification, false,
+    "Whether to delay and record constant modification for serialization.");
+DEFINE_validator(glow_delay_and_record_constant_modification,
+                 [](const char *flagname, bool value) {
+                   glow::onnxifi::GlowDelayAndRecordConstantModification =
+                       value;
+                   return true;
+                 });
+
 DEFINE_int32(glow_max_active_requests, 48,
              "Number of max active requests before host manager start queuing");
 DEFINE_validator(glow_max_active_requests,
@@ -323,6 +335,14 @@ DEFINE_bool(glow_dump_nnpi_compiler_data, false,
 DEFINE_validator(glow_dump_nnpi_compiler_data,
                  [](const char * /* unused */, bool value) {
                    glow::onnxifi::GlowDumpNNPICompilerData = value;
+                   return true;
+                 });
+
+DEFINE_bool(glow_nnpi_specialize_all_one_sls, false,
+            "Whether to import SLS ops with AllOne attribute to NNPI.");
+DEFINE_validator(glow_nnpi_specialize_all_one_sls,
+                 [](const char * /*unused*/, bool value) {
+                   glow::GlowNNPISpecializeAllOneSLS = value;
                    return true;
                  });
 

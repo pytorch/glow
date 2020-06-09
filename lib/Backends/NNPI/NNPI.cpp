@@ -15,6 +15,7 @@
 
 #include "NNPI.h"
 #include "DebugMacros.h"
+#include "Importer.h"
 #include "InferenceContext.h"
 #include "NNPICompiledFunction.h"
 #include "NNPIDeviceManager.h"
@@ -169,6 +170,12 @@ bool NNPIBackend::acceptForExecution(const NodeInfo &NI) const {
   default:
     return true;
   }
+}
+
+/// \returns whether SLS indices type is valid for NNPI.
+static bool isSLSIndicesValid(TypeRef type) {
+  // Don't support more than 64k indices.
+  return type->dims().size() == 1 && type->dims()[0] < (1 << 16);
 }
 
 bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
@@ -377,7 +384,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
             ElemKind::Int8QTy);
 
   case Kinded::Kind::SparseLengthsSumNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    return isSLSIndicesValid(NI.getInTy(SparseLengthsSumNode::IndicesIdx)) &&
+           NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
                {SparseLengthsSumNode::IndicesIdx,
                 SparseLengthsSumNode::LengthsIdx}) &&
@@ -388,7 +396,9 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(SparseLengthsSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    return isSLSIndicesValid(
+               NI.getInTy(SparseLengthsWeightedSumNode::IndicesIdx)) &&
+           NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
                {SparseLengthsWeightedSumNode::IndicesIdx,
                 SparseLengthsWeightedSumNode::LengthsIdx}) &&
@@ -400,7 +410,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
             ElemKind::Int32ITy);
 
   case Kinded::Kind::EmbeddingBagNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    return isSLSIndicesValid(NI.getInTy(EmbeddingBagNode::IndicesIdx)) &&
+           NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
                {EmbeddingBagNode::IndicesIdx, EmbeddingBagNode::OffsetsIdx}) &&
            (NI.getInElemTy(EmbeddingBagNode::IndicesIdx) ==
@@ -415,7 +426,9 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
         NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx);
     auto resultK =
         NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx);
-    return (dataK == ElemKind::UInt8FusedQTy ||
+    return isSLSIndicesValid(
+               NI.getInTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx)) &&
+           (dataK == ElemKind::UInt8FusedQTy ||
             dataK == ElemKind::UInt8FusedFP16QTy ||
             dataK == ElemKind::UInt4FusedFP16QTy) &&
            (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
@@ -431,7 +444,9 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
         NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::IndicesIdx);
     auto resultK =
         NI.getOutElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::ResultIdx);
-    return (dataK == ElemKind::UInt8FusedQTy ||
+    return isSLSIndicesValid(NI.getInTy(
+               FusedRowwiseQuantizedSparseLengthsSumNode::IndicesIdx)) &&
+           (dataK == ElemKind::UInt8FusedQTy ||
             dataK == ElemKind::UInt8FusedFP16QTy ||
             dataK == ElemKind::UInt4FusedFP16QTy) &&
            (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
@@ -450,7 +465,10 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
         FusedRowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx);
     auto resultK = NI.getOutElemTy(
         FusedRowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx);
-    return (dataK == ElemKind::UInt8FusedQTy ||
+    return isSLSIndicesValid(
+               NI.getInTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                              IndicesIdx)) &&
+           (dataK == ElemKind::UInt8FusedQTy ||
             dataK == ElemKind::UInt8FusedFP16QTy ||
             dataK == ElemKind::UInt4FusedFP16QTy) &&
            (weightsK == ElemKind::FloatTy || weightsK == ElemKind::Float16Ty) &&
@@ -460,7 +478,9 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   }
 
   case Kinded::Kind::RowwiseQuantizedSparseLengthsWeightedSumNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    return isSLSIndicesValid(NI.getInTy(
+               RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx)) &&
+           NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty},
                {RowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx,
                 RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx,
@@ -501,6 +521,7 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(BatchOneHotNode::LengthsIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::NNPICustomDSPNodeKind:
+  case Kinded::Kind::NNPICustomIANodeKind:
     return true;
 
   case Kinded::Kind::SpaceToDepthNodeKind:
@@ -510,6 +531,11 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::ArgMaxNodeKind:
     return (NI.getOutElemTy(ArgMaxNode::ArgmaxIdx) == ElemKind::Int64ITy);
+
+  case Kinded::Kind::LogitNodeKind: {
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty});
+  }
 
   default:
     llvm::outs() << "Unsupported op:\n" << NI.getDebugDesc() << "\n";
@@ -535,6 +561,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::ConvolutionNodeKind:
+  case Kinded::Kind::Convolution3DNodeKind:
   case Kinded::Kind::TileNodeKind:
   case Kinded::Kind::LogNodeKind:
   case Kinded::Kind::ReplaceNaNNodeKind:
@@ -548,16 +575,9 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::EmbeddingBagNodeKind:
   case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind:
   case Kinded::Kind::LayerNormalizationNodeKind:
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
+  case Kinded::Kind::PReluNodeKind:
     return false;
-  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
-    const FusedRowwiseQuantizedSparseLengthsSumNode *SLSN =
-        llvm::cast<FusedRowwiseQuantizedSparseLengthsSumNode>(N);
-    if (SLSN->getResult().getElementType() == ElemKind::Float16Ty) {
-      return false; // Don't lower == keep without weights
-    } else {
-      return true;
-    }
-  }
   case Kinded::Kind::SparseLengthsSumNodeKind:
     // WA - lower until ICE-T implements it.
     if (NNPIBackend::backendOptions_.useIceT ||
@@ -565,13 +585,12 @@ bool NNPIBackend::shouldLower(const Node *N) const {
       return true;
     }
     return false;
-  case Kinded::Kind::PReluNodeKind: {
+  case Kinded::Kind::LogitNodeKind: {
     NodeInfo NI(*N);
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
   }
   default:
     return true;
-    break;
   }
   return true;
 }
@@ -1119,19 +1138,40 @@ NNPIBackend::getOptimizationPipeline() const {
 static bool lowerRequiredNodes(Function *F, CompilationContext &cctx) {
   bool changed = false;
   for (auto &N : F->getNodes()) {
-    BatchMatMulNode *BMMN = llvm::dyn_cast<BatchMatMulNode>(&N);
-    if (!BMMN) {
+    if (BatchMatMulNode *BMMN = llvm::dyn_cast<BatchMatMulNode>(&N)) {
+      if (!GlowNNPILowerAllBatchMatMul &&
+          !NodeInfo(*BMMN).allInputsAndOutputsHaveSameElemKind(
+              {ElemKind::FloatTy})) {
+        continue;
+      }
+
+      lowerNode(F, BMMN, cctx);
+      changed = true;
       continue;
     }
 
-    if (!GlowNNPILowerAllBatchMatMul &&
-        !NodeInfo(*BMMN).allInputsAndOutputsHaveSameElemKind(
-            {ElemKind::FloatTy})) {
+    if (FusedRowwiseQuantizedSparseLengthsSumNode *SLS =
+            llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(&N)) {
+      // Lower FRWQSLS only if not FP16.
+      if (SLS->getResult().getElementType() == ElemKind::Float16Ty) {
+        continue;
+      }
+
+      lowerNode(F, SLS, cctx);
+      changed = true;
       continue;
     }
 
-    lowerNode(F, BMMN, cctx);
-    changed = true;
+    if (PReluNode *PR = llvm::dyn_cast<PReluNode>(&N)) {
+      // Lower PRelu only if not FP16.
+      if (PR->getResult().getElementType() == ElemKind::Float16Ty) {
+        continue;
+      }
+
+      lowerNode(F, PR, cctx);
+      changed = true;
+      continue;
+    }
   }
   return changed;
 }
@@ -1277,6 +1317,14 @@ Error NNPIBackend::bindContexts(
       }
     }
     if (ctx && devMgr) {
+      // Update the tensors bound to placeholders.
+      auto *phBindings = ctx->getPlaceholderBindings();
+      for (auto &usage : phUsage) {
+        const auto &phName = usage.first;
+        auto *ph = phBindings->getPlaceholderByNameSlow(phName);
+        usage.second.tensor = phBindings->get(ph);
+      }
+
       runtime::NNPIDeviceManager *nnpiDM =
           dynamic_cast<runtime::NNPIDeviceManager *>(devMgr);
       LOG_IF_NOT_RETURN_LLVMERROR(nnpiDM, "Invalid device manager bound");
@@ -1291,4 +1339,261 @@ Error NNPIBackend::bindContexts(
   }
 
   return Error::success();
+}
+
+/// Partial update of the NNPITensorDesc. Some members are ignored as they're
+/// not used for estimation.
+static bool updateDescForEstimate(NNPITensorDesc &desc,
+                                  const glow::TypeRef ty) {
+  LOG_AND_RETURN_IF(ERROR, ty == nullptr, "Invalid type", false);
+
+  // Update dims and layout.
+  NNPIImporter::updateDescDimsFromGlow(ty->dims(), desc);
+
+  // Update Quantization.
+  switch (ty->getElementType()) {
+  case glow::ElemKind::FloatTy:
+    desc.quantParams.precision = NNPI_PRECISION_FLOAT32;
+    desc.quantParams.type = NNPI_QUANTIZATION_NONE;
+    break;
+  case glow::ElemKind::Float16Ty:
+    desc.quantParams.precision = NNPI_PRECISION_FLOAT16;
+    desc.quantParams.type = NNPI_QUANTIZATION_NONE;
+    break;
+  case glow::ElemKind::Int8QTy:
+    desc.quantParams.precision = NNPI_PRECISION_INT8;
+    desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP;
+    break;
+  case glow::ElemKind::UInt8QTy:
+    desc.quantParams.precision = NNPI_PRECISION_UINT8;
+    desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP;
+    break;
+  case glow::ElemKind::Int32ITy:
+    desc.quantParams.precision =
+        NNPI_PRECISION_INT32; // The backend will convert to Int32 when
+                              // compiling.
+    desc.quantParams.type = NNPI_QUANTIZATION_NONE;
+    break;
+  case glow::ElemKind::Int64ITy:
+    desc.quantParams.precision =
+        NNPI_PRECISION_INT32; // The backend will convert to Int32 when
+                              // compiling.
+    desc.quantParams.type = NNPI_QUANTIZATION_NONE;
+    break;
+  case glow::ElemKind::Int32QTy:
+    desc.quantParams.precision = NNPI_PRECISION_INT32;
+    desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP;
+    break;
+  case glow::ElemKind::UInt8FusedQTy:
+    desc.quantParams.precision = NNPI_PRECISION_UINT8;
+    desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP_PCQ_FUSED;
+    break;
+  case glow::ElemKind::UInt8FusedFP16QTy:
+    desc.quantParams.precision = NNPI_PRECISION_UINT8;
+    desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP_PCQ_FUSED_FP16;
+    break;
+  case glow::ElemKind::UInt4FusedFP16QTy:
+    desc.quantParams.precision = NNPI_PRECISION_UINT8;
+    desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP_PCQ_4BIT_FUSED_FP16;
+    break;
+  case glow::ElemKind::BoolTy:
+    desc.quantParams.precision = NNPI_PRECISION_BOOLEAN;
+    desc.quantParams.type = NNPI_QUANTIZATION_NONE;
+    break;
+
+  default:
+    LOG_AND_RETURN_IF(ERROR, true, "Invalid type", false);
+    break;
+  }
+  memset(&desc.quantParams.params, 0,
+         sizeof(desc.quantParams.params)); // Actual values are not needed here.
+
+  desc.attributes.value = 0; // No attributes needed here.
+
+  return true;
+}
+
+/// Prepare the list of NNPITensorDesc for the estimate call.
+static bool updateDescListForEstimate(std::vector<NNPITensorDesc> &descs,
+                                      const std::vector<glow::TypeRef> types) {
+  if (descs.size() != types.size()) {
+    return false;
+  }
+  bool retVal = true;
+  for (size_t i = 0; i < descs.size(); i++) {
+    if (types.at(i) != nullptr) {
+      retVal &= updateDescForEstimate(descs.at(i), types.at(i));
+    }
+  }
+  return retVal;
+}
+
+double NNPIBackend::estimateEmbeddingNode(const glow::NodeInfo &NI,
+                                          bool fp32Accumulation,
+                                          glow::LengthsMode lengthsMode,
+                                          float averageLength) const {
+  if (!isOpSupported(NI)) {
+    // Op isn't supported.
+    return -1.0;
+  }
+  NNPI_LENGTH_TYPE lengthType = NNPI_LENGTH_VARIABLE;
+  LOG_AND_RETURN_IF(ERROR,
+                    NNPIImporter::convertLengthsModeToLengthType(
+                        lengthsMode, lengthType) != NNPI_NO_ERROR,
+                    "Failed to convert LengthsMode", -1.0);
+
+  enum DescIndex {
+    Input = 0,
+    Output = 1,
+    Weight = 2,
+    Index = 3,
+    Length = 4,
+
+    // Keep this last.
+    NumIndices = 5,
+  };
+  std::vector<NNPITensorDesc> descs(NumIndices);
+
+  bool validWeight = false;
+  bool useLengthAsOffset = false;
+  glow::TypeRef tr(nullptr);
+  switch (NI.getKind()) {
+
+  case Kinded::Kind::SparseLengthsSumNodeKind:
+    LOG_AND_RETURN_IF(ERROR,
+                      !updateDescListForEstimate(
+                          descs,
+                          {
+                              NI.getInTy(SparseLengthsSumNode::DataIdx),
+                              NI.getOutTy(SparseLengthsSumNode::ResultIdx),
+                              nullptr,
+                              NI.getInTy(SparseLengthsSumNode::IndicesIdx),
+                              NI.getInTy(SparseLengthsSumNode::LengthsIdx),
+                          }),
+                      "Failed to update NNPITensorDesc", -1.0);
+    break;
+
+  case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
+    validWeight = true;
+    LOG_AND_RETURN_IF(
+        ERROR,
+        !updateDescListForEstimate(
+            descs,
+            {
+                NI.getInTy(SparseLengthsWeightedSumNode::DataIdx),
+                NI.getOutTy(SparseLengthsWeightedSumNode::ResultIdx),
+                NI.getInTy(SparseLengthsWeightedSumNode::WeightsIdx),
+                NI.getInTy(SparseLengthsWeightedSumNode::IndicesIdx),
+                NI.getInTy(SparseLengthsWeightedSumNode::LengthsIdx),
+            }),
+        "Failed to update NNPITensorDesc", -1.0);
+    break;
+
+  case Kinded::Kind::RowwiseQuantizedSparseLengthsWeightedSumNodeKind:
+    validWeight = true;
+    LOG_AND_RETURN_IF(
+        ERROR,
+        !updateDescListForEstimate(
+            descs,
+            {
+                NI.getInTy(
+                    RowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx),
+                NI.getOutTy(
+                    RowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx),
+                NI.getInTy(
+                    RowwiseQuantizedSparseLengthsWeightedSumNode::WeightsIdx),
+                NI.getInTy(
+                    RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx),
+                NI.getInTy(
+                    RowwiseQuantizedSparseLengthsWeightedSumNode::LengthsIdx),
+            }),
+        "Failed to update NNPITensorDesc", -1.0);
+    break;
+
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
+    LOG_AND_RETURN_IF(
+        ERROR,
+        !updateDescListForEstimate(
+            descs,
+            {
+                NI.getInTy(FusedRowwiseQuantizedSparseLengthsSumNode::DataIdx),
+                NI.getOutTy(
+                    FusedRowwiseQuantizedSparseLengthsSumNode::ResultIdx),
+                nullptr,
+                NI.getInTy(
+                    FusedRowwiseQuantizedSparseLengthsSumNode::IndicesIdx),
+                NI.getInTy(
+                    FusedRowwiseQuantizedSparseLengthsSumNode::LengthsIdx),
+            }),
+        "Failed to update NNPITensorDesc", -1.0);
+    break;
+
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind:
+    validWeight = true;
+    LOG_AND_RETURN_IF(
+        ERROR,
+        !updateDescListForEstimate(
+            descs,
+            {
+                NI.getInTy(
+                    FusedRowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx),
+                NI.getOutTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                                ResultIdx),
+                NI.getInTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                               WeightsIdx),
+                NI.getInTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                               IndicesIdx),
+                NI.getInTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                               LengthsIdx),
+            }),
+        "Failed to update NNPITensorDesc", -1.0);
+    break;
+
+  case Kinded::Kind::EmbeddingBagNodeKind:
+    validWeight = true;
+    useLengthAsOffset = true;
+    LOG_AND_RETURN_IF(
+        ERROR,
+        !updateDescListForEstimate(descs,
+                                   {
+                                       NI.getInTy(EmbeddingBagNode::DataIdx),
+                                       NI.getOutTy(EmbeddingBagNode::ResultIdx),
+                                       NI.getInTy(EmbeddingBagNode::WeightsIdx),
+                                       NI.getInTy(EmbeddingBagNode::IndicesIdx),
+                                       NI.getInTy(EmbeddingBagNode::OffsetsIdx),
+                                   }),
+        "Failed to update NNPITensorDesc", -1.0);
+    break;
+
+  case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind:
+    validWeight = true;
+    useLengthAsOffset = true;
+    LOG_AND_RETURN_IF(
+        ERROR,
+        !updateDescListForEstimate(
+            descs,
+            {
+                NI.getInTy(EmbeddingBagByteRowwiseOffsetsNode::DataIdx),
+                NI.getOutTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx),
+                NI.getInTy(EmbeddingBagByteRowwiseOffsetsNode::WeightsIdx),
+                NI.getInTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx),
+                NI.getInTy(EmbeddingBagByteRowwiseOffsetsNode::OffsetsIdx),
+            }),
+        "Failed to update NNPITensorDesc", -1.0);
+    break;
+
+  default:
+    return -1.0;
+  }
+
+  double estimate = -1.0;
+  LOG_NNPI_IF_ERROR(nnpiEstimateSparseLengthsWeightedSumOp(
+                        &(descs.at(Input)), &(descs.at(Output)),
+                        validWeight ? &(descs.at(Weight)) : nullptr,
+                        &(descs.at(Index)), &(descs.at(Length)),
+                        fp32Accumulation, useLengthAsOffset, averageLength,
+                        lengthType, &estimate),
+                    "Failed to estimate SLS op.");
+
+  return estimate;
 }

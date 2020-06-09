@@ -103,6 +103,8 @@ struct BlacklistInitializer {
             {"mul_int64/0", TestBlacklist::AnyDeviceHWEngine},
             {"NonCubicKernelConv3DQuantized/0",
              TestBlacklist::AnyDeviceAnyEngine},
+            {"NonCubicPaddingConv3D/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"GroupConv3D/0", TestBlacklist::AnyDeviceHWEngine},
             {"NonSquarePaddingAveragePool/0",
              TestBlacklist::AnyDeviceAnyEngine},
             {"NonSquarePaddingMaxPool/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -135,6 +137,7 @@ struct BlacklistInitializer {
              TestBlacklist::AnyDeviceAnyEngine},
             {"rowwiseQuantizedFCTest_Int8_BiasInt8/0",
              TestBlacklist::AnyDeviceAnyEngine},
+            {"rowwiseQuantizedFCTestSymmetric/0", TestBlacklist::A0AnyEngine},
             {"ScatterAddNDimensionalDuplicatingIndices/0",
              TestBlacklist::AnyDeviceAnyEngine},
             {"ScatterAddNDimensionalSimple/0",
@@ -166,11 +169,6 @@ struct BlacklistInitializer {
              TestBlacklist::AnyDeviceAnyEngine},
             {"EmbeddingBag4BitRowwiseOffsets_Float16_AccumFloat/0",
              TestBlacklist::AnyDeviceAnyEngine},
-            {"EmbeddingBag4BitRowwiseOffsets_Float16_HasEndOffset/0",
-             TestBlacklist::AnyDeviceAnyEngine},
-            {"EmbeddingBag4BitRowwiseOffsets_Float16_HasEndOffset_AccumFloat/0",
-             TestBlacklist::AnyDeviceAnyEngine},
-
             {"SparseToDense_Float/0", TestBlacklist::AnyDeviceAnyEngine},
             {"SparseToDense_Int64/0", TestBlacklist::AnyDeviceAnyEngine},
             {"SparseToDenseMask1/0", TestBlacklist::AnyDeviceAnyEngine},
@@ -217,6 +215,8 @@ struct BlacklistInitializer {
              TestBlacklist::AnyDeviceHWEngine},
             {"ConvertFrom_Int64ITy_To_FloatTy_AndBack/0",
              TestBlacklist::AnyDeviceHWEngine},
+            {"DequantizeFRWQ_Float/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"DequantizeFRWQ_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
             {"DilatedConvolution/0", TestBlacklist::AnyDeviceHWEngine},
             {"Exp/0", TestBlacklist::AnyDeviceHWEngine},
             {"FloatArgMaxKeepDim/0", TestBlacklist::AnyDeviceHWEngine},
@@ -230,9 +230,6 @@ struct BlacklistInitializer {
              TestBlacklist::AnyDeviceHWEngine},
             {"FusedRowwiseQuantizedSparseLengthsWeightedSum_ConvertedFloat16_"
              "NoFusedConvert_FP32Accum/0",
-             TestBlacklist::AnyDeviceHWEngine},
-            {"FusedRowwiseQuantizedSparseLengthsSum_Fused4Bit_Float16_"
-             "AccumFloat16/0",
              TestBlacklist::AnyDeviceHWEngine},
             {"to_back2/0", TestBlacklist::AnyDeviceHWEngine},
             {"GroupDilatedConvolution/0", TestBlacklist::AnyDeviceHWEngine},
@@ -315,7 +312,6 @@ struct BlacklistInitializer {
              TestBlacklist::AnyDeviceAnyEngine},
             {"ChannelwiseQuantizedConv2D_Int8_BiasInt32/0",
              TestBlacklist::AnyDeviceAnyEngine},
-
         };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);

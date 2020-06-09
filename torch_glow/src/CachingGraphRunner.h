@@ -71,7 +71,7 @@ class CachingGraphRunner {
   /// Use for quantization int8/uint8 rescale.
   std::vector<c10::ScalarType> outputCorrectType_;
 
-  /// Mutex that protects numTraces_ and mergedTraceContext_.
+  /// Mutex that protects numTraces_ and traceContext_.
   std::mutex tracesMutex_;
 
   /// The number of runs traced
@@ -79,7 +79,7 @@ class CachingGraphRunner {
 
   /// TraceContext used to aggregate traces from runs before dumping them
   /// in groups to file.
-  std::unique_ptr<TraceContext> mergedTraceContext_;
+  std::unique_ptr<TraceContext> traceContext_;
 
   /// Lock for concurrent accessing to perGlowGraphInfoMap_.
   std::shared_timed_mutex graphInfoMapMutex;
@@ -102,7 +102,7 @@ class CachingGraphRunner {
   /// subgraph into the owned HostManager, creates a PerGlowGraphInfo which is
   /// cached for the given inputs, and then \returns this PerGlowGraphInfo.
   Expected<std::shared_ptr<PerGlowGraphInfo>>
-  loadImpl(torch::jit::Stack &stack, TraceContext *traceContext);
+  loadImpl(torch::jit::Stack &stack);
 
   /// Given a PerGlowGraphInfo \p info for a subgraph that was previously
   /// loaded, this runs the Glow function that corresponds to that
@@ -122,11 +122,9 @@ class CachingGraphRunner {
   /// CachingGraphRunner owns.
   PyTorchLoaderSettings settings_;
 
-  /// Given a TraceContext \p traceContext, aggregate it with prvious
-  /// TraceContexts and if enough have been aggregated according to settings_
-  /// then dump them to file. If flush is true then dump aggregated traces to
-  /// file no matter what.
-  void aggregateAndDumpTraces(TraceContext *traceContext, bool flush = false);
+  /// Dump traces to file if enough have been aggregated according to settings_.
+  /// If flush is true then dump aggregated traces to a file no matter what.
+  void aggregateAndDumpTraces(bool flush = false);
 
 public:
   CachingGraphRunner(std::shared_ptr<torch::jit::Graph> graph,

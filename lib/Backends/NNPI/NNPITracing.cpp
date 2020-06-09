@@ -21,148 +21,139 @@
 
 using namespace glow;
 
-NNPIDeviceTracing::NNPIDeviceTracing(unsigned deviceID) {
-  traceCtx_ = glow::make_unique<NNPITraceContext>(deviceID);
+std::map<std::string, int> NNPIDeviceTracing::activeAffinities_ = {};
+
+NNPIDeviceTracing::NNPIDeviceTracing(unsigned deviceId) : deviceId_(deviceId) {
+  traceCtx_ = glow::make_unique<NNPITraceContext>(deviceId_);
   deviceInfo_ =
-      std::string("[Device #") + std::to_string(deviceID) + std::string("] ");
+      std::string("[Device #") + std::to_string(deviceId_) + std::string("] ");
 }
 
 bool NNPIDeviceTracing::start(TraceContext *traceContext,
-                              NNPIDeviceContext deviceContext) {
+                              NNPIDeviceContext deviceContext, bool swTraces,
+                              bool hwTraces) {
   if (!traceContext ||
       !traceContext->shouldLog(TraceEvent::TraceLevel::OPERATOR)) {
     return false;
   }
   if (started_.test_and_set()) {
-    ASSERT_WITH_MSG(glowTraceCtx_ != traceContext,
-                    "Trying to start tracing for an already started context.");
     // Trace already started.
     return false;
   }
-  glowTraceCtx_ = traceContext;
-  if (!traceCtx_->startCapture(deviceContext)) {
-    LOG(WARNING) << "Failed to start trace capture";
+  bool isFirstToStart = NNPIDeviceTracing::isFirstToChangeCaptureStart(true);
+  if (!traceCtx_->startCapture(deviceContext, swTraces, hwTraces)) {
+    LOG(WARNING) << "Failed to start trace capture for device " << deviceId_
+                 << " is first = " << (isFirstToStart);
     return false;
   }
   return true;
 }
 
 std::string NNPIDeviceTracing::getEntryName(NNPITraceEntry &entry) {
-  std::stringstream name;
-  name << deviceInfo_;
-  switch (entry.traceType) {
-  case NNPI_TRACE_UNKNOWN:
-    name << "UnknownTrace";
-    break;
-  case NNPI_TRACE_DMA:
-    name << "DMA";
-    break;
-  case NNPI_TRACE_INFER:
-    name << "Infer";
-    break;
-  case NNPI_TRACE_COPY:
-    name << "Copy";
-    break;
-  case NNPI_TRACE_MARK:
-    name << "MarkTrace";
-    break;
-  case NNPI_TRACE_CLOCK_SYNC:
-    name << "ClockSync";
-    break;
-  case NNPI_TRACE_CMDLIST:
-    name << "CommandList";
-    break;
-  case NNPI_TRACE_NETEXEC:
-    name << "NetExecute";
-    break;
-  case NNPI_TRACE_SUBGRAPH:
-    name << "SubGraph";
-    break;
-  case NNPI_TRACE_RUNTIME_INFER:
-    name << "RunTimeInf";
-    break;
-  case NNPI_TRACE_ICED_SCHED_JOB:
-    name << "DSchedJob";
-    break;
-  case NNPI_TARCE_ICED_CREAT_NET:
-    name << "DCreateNet";
-    break;
-  case NNPI_TARCE_ICED_NET_RES:
-    name << "DNetRes";
-    break;
-  case NNPI_TARCE_ICED_NET_GEN:
-    name << "DNetGen";
-    break;
-  default:
-    name << "Othertrace";
+  std::string entryName = entry.params["name"];
+  if (entryName.rfind("icedrv", 0) == 0) {
+    entryName = entryName.substr(strlen("icedrv"));
+  } else if (entryName.rfind("runtime-", 0) == 0) {
+    entryName = entryName.substr(strlen("runtime-"));
   }
+  if (entry.params.count("command") > 0) {
+    entryName = entry.params["command"];
+  }
+
+  std::stringstream name;
+
+  name << entryName;
   if (entry.params.count("isC2H") > 0) {
     if (entry.params["isC2H"] == "1") {
-      name << "-Card2Host";
+      name << " Card2Host";
     } else {
-      name << "-Host2Card";
+      name << " Host2Card";
     }
   }
   auto params = entry.params;
-  if (entry.params.count("iceId") > 0) {
-    name << "-ICE_" << entry.params["iceId"];
+  if (entry.params.count("ice_id") > 0) {
+    name << " ICE_" << entry.params["ice_id"];
   }
-  if (entry.params.count("netID") > 0) {
-    name << "-NET_" << entry.params["netID"];
+  if (entry.params.count("network_id") > 0) {
+    name << " Net " << entry.params["network_id"];
   }
-  if (entry.params.count("reqID") > 0) {
-    name << "REQ_" << entry.params["reqID"];
+  if (entry.params.count("network_name") > 0 &&
+      entry.params["network_name"] != "NA") {
+    name << " NetName " << entry.params["network_name"];
   }
-  if (entry.params.count("ctxID") > 0) {
-    name << "-CTX_" << entry.params["ctxID"];
+  if (entry.params.count("context_id") > 0) {
+    name << " CTX 0x" << std::hex << std::stol(entry.params["context_id"]);
   }
   if (entry.params.count("subNetId") > 0) {
-    name << "-SUBNET_" << entry.params["subNetId"];
+    name << " Subnet " << entry.params["subNetId"];
   }
-  if (entry.params.count("inferID") > 0) {
-    name << "-INFR_" << entry.params["inferID"];
+  if (entry.params.count("infer_id") > 0) {
+    name << " InfID " << entry.params["infer_id"];
   }
   if (entry.params.count("subGraphID") > 0) {
-    name << "-SUBGRAPH_" << entry.params["subGraphID"];
+    name << " Subgraph " << entry.params["subGraphID"];
   }
   if (entry.params.count("agent") > 0) {
-    name << "-AGENT_" << entry.params["agent"];
+    name << " Agent " << entry.params["agent"];
   }
-  if (entry.params.count("copyID") > 0) {
-    name << "-CPID_" << entry.params["copyID"];
+  if (entry.params.count("kernel_name") > 0 &&
+      entry.params["kernel_name"] != "NA") {
+    name << " Krnl " << entry.params["kernel_name"];
   }
-  if (entry.params.count("size") > 0) {
-    name << "-SIZE_" << entry.params["size"];
+  if (entry.params.count("userHandle") > 0) {
+    name << " 0x" << std::hex << std::stol(entry.params["userHandle"]);
   }
+
   return name.str();
 }
 
-bool NNPIDeviceTracing::addTrace(NNPITraceEntry &entry) {
-  // Filter traces.
-  switch (entry.traceType) {
-  case NNPI_TRACE_INFER:
-  case NNPI_TRACE_COPY:
-  case NNPI_TRACE_CMDLIST:
-  case NNPI_TRACE_NETEXEC:
-  case NNPI_TRACE_SUBGRAPH:
-  case NNPI_TRACE_RUNTIME_INFER:
-  case NNPI_TRACE_ICED_SCHED_JOB:
-  case NNPI_TARCE_ICED_CREAT_NET:
-  case NNPI_TARCE_ICED_NET_RES:
-  case NNPI_TARCE_ICED_NET_GEN:
-    break;
-  case NNPI_TRACE_UNKNOWN:
-  case NNPI_TRACE_DMA:
-  case NNPI_TRACE_MARK:
-  case NNPI_TRACE_CLOCK_SYNC:
-  case NNPI_TARCE_TIME_SYNC:
-  case NNPI_TARCE_USER_DATA:
-    return false;
-  default:
-    LOG(WARNING) << "Trying to add unsupported trace type:" << entry.traceType;
-    return false;
+int NNPIDeviceTracing::getAffinityID(NNPITraceEntry &entry, std::string name,
+                                     unsigned deviceId,
+                                     TraceContext *traceContext) {
+  // Need to be guarded when multiple devices are active.
+  static std::mutex affinityMutext;
+  std::lock_guard<std::mutex> lk(affinityMutext);
+
+  // Start affinity at some high number to avoid collisions.
+  int affinId = 10000;
+  std::string iceId = entry.params["ice_id"];
+  std::string contextId = entry.params["context_id"];
+  std::stringstream affinityNameStuct;
+
+  affinityNameStuct << "Device #" << deviceId << " ICE #" << iceId;
+
+  // Add additional info to title.
+  if (entry.params["opcode"] != "NA") {
+    affinityNameStuct << " opcode " << entry.params["opcode"];
+  }
+  // Use the op name.
+  affinityNameStuct << " " << name.substr(0, name.find(' '));
+  if (entry.params["state"] == "q") {
+    affinityNameStuct << " Queue";
   }
 
+  if (activeAffinities_.count(affinityNameStuct.str()) <= 0) {
+    affinId += activeAffinities_.size();
+    activeAffinities_[affinityNameStuct.str()] = affinId;
+    traceContext->setThreadName(affinId, affinityNameStuct.str());
+  } else {
+    affinId = activeAffinities_[affinityNameStuct.str()];
+  }
+
+  return affinId;
+}
+
+bool NNPIDeviceTracing::addTrace(
+    NNPITraceEntry &entry, std::map<std::string, NNPITraceEntry> &inflight,
+    TraceContext *traceContext) {
+  std::stringstream entryLog;
+  for (auto const &paramEntry : entry.params) {
+    entryLog << paramEntry.first << ":" << paramEntry.second << " ,";
+  }
+  // Filter traces.
+  if (entry.params["state"] == "NA") {
+    return false;
+  }
   std::string name = getEntryName(entry);
 
   if (entry.params.count("state") <= 0) {
@@ -170,29 +161,39 @@ bool NNPIDeviceTracing::addTrace(NNPITraceEntry &entry) {
   }
   std::string state = entry.params["state"];
 
-  if (state == "q" || state == "queued") {
+  // Calculate affinity - use the trace thread id to make sections in the
+  // representation.
+  int affinId =
+      NNPIDeviceTracing::getAffinityID(entry, name, deviceId_, traceContext);
+  if (affinId <= 0) {
+    LOG(WARNING) << "Found unexpected affinity ID " << affinId << " for "
+                 << name;
+  }
+  // Add events.
+  if (state == "q") {
     name += "-Queue";
-    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR,
-                                 TraceEvent::InstantType, entry.hostTime, {});
-  } else if (state == "s" || state == "cbs" || state == "executed") {
-    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR,
-                                 TraceEvent::BeginType, entry.hostTime, {});
-  } else if (state == "c" || state == "cbc" || state == "completed") {
-    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR,
-                                 TraceEvent::EndType, entry.hostTime, {});
-  } else if (state == "cbs") {
-    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR,
-                                 TraceEvent::BeginType, entry.hostTime, {});
-  } else if (state == "cbc") {
-    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR,
-                                 TraceEvent::EndType, entry.hostTime, {});
-  } else if (state == "cbnwc") {
-    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR,
-                                 TraceEvent::InstantType, entry.hostTime, {});
-  } else if (state == "req") {
-    name += "-Req";
-    glowTraceCtx_->logTraceEvent(name, TraceLevel::OPERATOR,
-                                 TraceEvent::InstantType, entry.hostTime, {});
+    traceContext->logTraceEvent(name, TraceLevel::OPERATOR,
+                                TraceEvent::InstantType, entry.hostTime,
+                                entry.params, affinId);
+  } else if (state == "s" && inflight.count(name) <= 0) {
+    inflight[name] = entry;
+  } else if (state == "c" && inflight.count(name) > 0) {
+    // Add only complate events.
+    if (entry.hostTime > inflight[name].hostTime) {
+      traceContext->logTraceEvent(
+          name, TraceLevel::OPERATOR, TraceEvent::BeginType,
+          inflight[name].hostTime, inflight[name].params, affinId);
+      traceContext->logTraceEvent(name, TraceLevel::OPERATOR,
+                                  TraceEvent::EndType, entry.hostTime,
+                                  entry.params, affinId);
+    } else {
+      LOG(WARNING) << "Fount incomplete trace event " << name;
+    }
+    inflight.erase(name);
+  } else if (state == "po") {
+    traceContext->logTraceEvent(name, TraceLevel::OPERATOR,
+                                TraceEvent::InstantType, entry.hostTime,
+                                entry.params, affinId);
   }
 
   return true;
@@ -200,25 +201,25 @@ bool NNPIDeviceTracing::addTrace(NNPITraceEntry &entry) {
 
 bool NNPIDeviceTracing::stopAndUpdate(TraceContext *traceContext,
                                       NNPIDeviceContext deviceContext) {
-  if (glowTraceCtx_ !=
-          nullptr && // For null glowTraceCtx assume global context (per device)
-      (glowTraceCtx_ != traceContext)) {
-    // Ignore stop from other contexts.
+  if (traceContext == nullptr) {
+    LOG(WARNING) << "Failed to stop trace capture trace context is null.";
     return false;
   }
+  bool isFirstToStop = NNPIDeviceTracing::isFirstToChangeCaptureStart(false);
   if (!traceCtx_->stopCapture(deviceContext)) {
-    LOG(WARNING) << "Failed to stop trace capture";
+    LOG(WARNING) << "Failed to stop trace capture (first device stop ="
+                 << isFirstToStop;
     return false;
   }
 
   if (!traceCtx_->load()) {
-    LOG(WARNING) << "Failed to stop trace capture";
+    LOG(WARNING) << "Failed to stop trace capture =" << isFirstToStop;
     return false;
   }
   traceContext->setThreadName("NNPI_Trace");
+  std::map<std::string, NNPITraceEntry> inflight;
   for (auto entry : traceCtx_->getEntries()) {
-    std::map<std::string, std::string> params = entry.params;
-    addTrace(entry);
+    addTrace(entry, inflight, traceContext);
   }
   started_.clear();
   return true;

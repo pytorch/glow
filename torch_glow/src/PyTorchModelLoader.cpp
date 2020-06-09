@@ -767,6 +767,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadQuantizedConvUnpacked},
       {{"glow::unpacked_quantized_conv3d"},
        &PyTorchModelLoader::loadQuantizedConvUnpacked},
+      {{"glow::unpacked_quantized_conv2d_relu"},
+       &PyTorchModelLoader::loadQuantizedConvReluUnpacked},
       {{"glow::unpacked_quantized_linear"},
        &PyTorchModelLoader::loadQuantizedLinearUnpacked},
       {{"quantized::linear"}, &PyTorchModelLoader::loadQuantizedLinear},
@@ -783,6 +785,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::adaptive_avg_pool2d"},
        &PyTorchModelLoader::loadAdaptiveAvgPool2d},
       {{"aten::reshape"}, &PyTorchModelLoader::loadReshape},
+      {{"aten::upsample_nearest3d"},
+       &PyTorchModelLoader::loadUpsampleNearest3D},
       {{"aten::view"}, &PyTorchModelLoader::loadView},
       {{"aten::_convolution"}, &PyTorchModelLoader::loadConvolution},
       {{"aten::conv2d"}, &PyTorchModelLoader::loadConv2D},
@@ -2026,6 +2030,60 @@ Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
       dtype);
 }
 
+Error PyTorchModelLoader::loadUpsampleNearest3D(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+  RETURN_ERR_IF_NOT(input.dims().size() == 5, "Expecting 5D input Tensor");
+
+  std::vector<int64_t> *outputSize;
+  ASSIGN_VALUE_OR_RETURN_ERR(outputSize,
+                             iValToIntList(getGlowIValueForValue(inputs[1])));
+  RETURN_ERR_IF_NOT((*outputSize).size() == 3, "Expecting 3D output size");
+
+  dim_t ia = input.dims()[0];
+  dim_t ib = input.dims()[1];
+  dim_t ix = input.dims()[2];
+  dim_t iy = input.dims()[3];
+  dim_t iz = input.dims()[4];
+  dim_t ox = (dim_t)(*outputSize)[0];
+  dim_t oy = (dim_t)(*outputSize)[1];
+  dim_t oz = (dim_t)(*outputSize)[2];
+
+  // Special case when output size is 2x input in all 3 dims
+  bool isUpsample2x = (ox == 2 * ix) && (oy == 2 * iy) && (oz == 2 * iz);
+  if (isUpsample2x) {
+    c10::ScalarType dtype;
+    RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+    return addValueMapping(
+        outputs[0], F_.createUpsample("upsample_nearest3d", input, 3), dtype);
+  } else {
+    // Otherwise revert to Glow ResizeNearest, which only can handle 4D tensors
+    std::vector<glow::SliceNode *> splitOutputs;
+    std::vector<glow::NodeValue> concatInputs;
+    F_.createSplit("upsample_nearest3d_split", input, ia, 0, {}, splitOutputs);
+    for (auto &splitOutput : splitOutputs) {
+      auto *reshape1 = F_.createReshape("upsample_nearest3d_reshape1",
+                                        splitOutput, {ib, ix, iy, iz});
+      auto resizeTy = F_.getParent()->uniqueTypeWithNewShape(input.getType(),
+                                                             {ib, ox, oy, oz});
+      auto *resize = F_.createResizeNearest("upsample_nearest3d_resize",
+                                            reshape1, resizeTy);
+      auto *reshape2 = F_.createReshape("upsample_nearest3d_reshape2", resize,
+                                        {1, ib, ox, oy, oz});
+      concatInputs.push_back(reshape2);
+    }
+    c10::ScalarType dtype;
+    RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+    return addValueMapping(
+        outputs[0],
+        F_.createConcat("upsample_nearest3d_concat", concatInputs, 0), dtype);
+  }
+}
+
 Error PyTorchModelLoader::loadView(const torch::jit::Node *ptNode) {
   // loadView is just like Reshape, except reshape should call contiguous
   // for non-contiguous data and view should fail
@@ -2532,6 +2590,16 @@ Error PyTorchModelLoader::loadQuantizedConv(const torch::jit::Node *ptNode) {
 
 Error PyTorchModelLoader::loadQuantizedConvUnpacked(
     const torch::jit::Node *ptNode) {
+  return loadQuantizedConvUnpackedImpl(ptNode, /*isRelu*/ false);
+}
+
+Error PyTorchModelLoader::loadQuantizedConvReluUnpacked(
+    const torch::jit::Node *ptNode) {
+  return loadQuantizedConvUnpackedImpl(ptNode, /*isRelu*/ true);
+}
+
+Error PyTorchModelLoader::loadQuantizedConvUnpackedImpl(
+    const torch::jit::Node *ptNode, bool isRelu) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 9, outputs, 1));
@@ -2661,18 +2729,30 @@ Error PyTorchModelLoader::loadQuantizedConvUnpacked(
                                        outScale, outOffset - OFFSETSHIFT);
   }
 
-  glow::TransposeNode *output;
+  glow::NodeValue output_not_transposed;
   if (isConv3d) {
     glow::Convolution3DNode *qconv = F_.createConv3D(
         "qconv", input, weights, bias, outTy, kernels, strides, pads, groups);
-    output = F_.createTranspose("qconv_output_transposed", qconv->getResult(),
-                                NTHWC2NCTHW);
+    output_not_transposed = qconv->getResult();
   } else {
     glow::ConvolutionNode *qconv =
         F_.createConv("qconv", input, weights, bias, outTy, kernels, strides,
                       pads, groups, dilation);
-    output = F_.createTranspose("qconv_output_transposed", qconv->getResult(),
-                                NHWC2NCHW);
+    output_not_transposed = qconv->getResult();
+  }
+
+  if (isRelu) {
+    glow::ReluNode *qrelu = F_.createRELU("qconv_relu", output_not_transposed);
+    output_not_transposed = qrelu->getResult();
+  }
+
+  glow::TransposeNode *output;
+  if (isConv3d) {
+    output = F_.createTranspose("qconv_output_transposed",
+                                output_not_transposed, NTHWC2NCTHW);
+  } else {
+    output = F_.createTranspose("qconv_output_transposed",
+                                output_not_transposed, NHWC2NCHW);
   }
 
   c10::ScalarType dtype;
@@ -3708,7 +3788,6 @@ Error PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets(
 Error PyTorchModelLoader::loadAttributes(
     const torch::jit::Graph &graph,
     const at::ArrayRef<torch::jit::IValue> inputs) {
-
   // Map from the Value in the Graph of an ivalue::Object to the Object and a
   // string representing it's place in the module hierarchy.
   std::unordered_map<const torch::jit::Value *,

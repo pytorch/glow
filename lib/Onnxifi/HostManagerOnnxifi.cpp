@@ -50,6 +50,7 @@ size_t GlowMaxActiveRequests = 48;
 size_t GlowMaxQueueSize = 100;
 size_t GlowExecutorThreads = 10;
 bool GlowSaveOnnxifiDAG = false;
+bool GlowDelayAndRecordConstantModification = false;
 
 static llvm::cl::opt<int32_t, true>
     GlowNumDevicesOpt("glow-num-devices",
@@ -226,6 +227,11 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
   if (GlowSaveOnnxifiDAG) {
     LOG(INFO) << "Serializing DAG after optimization and partitioning.";
     cctx.serializeCompiledDAG = true;
+  }
+  if (GlowDelayAndRecordConstantModification) {
+    LOG(INFO) << "Delaying constant modification until after optimizations, "
+                 "including recording constant folding for DAG serialization.";
+    cctx.optimizationOpts.delayAndRecordConstantModification = true;
   }
   cctx.saturateHost = GlowSaturateHost;
 

@@ -89,6 +89,13 @@ struct OptimizationOptions {
   /// If true, perform compile-time computation of constant operations.
   bool enableConstantFolding{true};
 
+  /// If true, before any Function optimization, all the Constants will be
+  /// temporarily replaced by Placeholders, preventing the Constants from being
+  /// modified during the normal optimization pipeline. The original Constants
+  /// will be put back in place automatically afterward, and then Constant
+  /// Folding will be run.
+  bool delayAndRecordConstantModification{false};
+
   /// If true, this will merge ConvertTo and Quantize nodes into inputs and
   /// outputs of the Function. This means modifying the types of Placeholders
   /// and SaveNodes if they have a corresponding ElemKind conversion (ConvertTo,
@@ -237,6 +244,16 @@ struct CompilationContext {
     case QuantizationMode::None:
       break;
     }
+
+    RETURN_ERR_IF_NOT(!(optimizationOpts.foldElemKindConversionIntoIO &&
+                        optimizationOpts.delayAndRecordConstantModification),
+                      "Cannot currently perform elem kind merging into PHs "
+                      "when also preventing constant modification.");
+
+    RETURN_ERR_IF_NOT(!(serializeCompiledDAG &&
+                        !optimizationOpts.delayAndRecordConstantModification),
+                      "When serializing the compiled DAG, must also enable "
+                      "delayAndRecordConstantModification.");
 
     return Error::success();
   }

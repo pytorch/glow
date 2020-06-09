@@ -27,6 +27,7 @@
 #include <vector>
 
 namespace glow {
+class NNPIAdapterContainer;
 namespace runtime {
 class NNPIDeviceManager;
 
@@ -49,11 +50,11 @@ private:
   /// Set of inputs that can be partial tensors.
   const std::unordered_set<const Placeholder *> *partialInputs_;
 
+  /// Set of inputs that requires non-zero paddings.
+  const std::unordered_set<const Placeholder *> *paddedInputs_;
+
   /// Set of inputs that are static tensors.
   std::unordered_set<const Placeholder *> staticInputs_;
-
-  /// Device tracing handler.
-  std::shared_ptr<NNPIDeviceTracing> deviceTracing_;
 
   /// NNPI Device configuration.
   std::shared_ptr<NNPIDeviceOptions> deviceOptions_;
@@ -91,11 +92,11 @@ public:
             // For ICE-Ref path.
             NNPINetwork network, NNPICompilationConfig config,
             // For ICE-T path.
-            NNPIDeviceNetwork deviceNetwork, NNPIAdapter adapter,
+            NNPIDeviceNetwork deviceNetwork, NNPIAdapterContainer *adapter,
             NNPIDeviceContext device,
             const std::unordered_set<const Placeholder *> &partialInputs,
+            const std::unordered_set<const Placeholder *> &paddedInputs,
             const std::unordered_set<const Placeholder *> &staticInputs,
-            std::shared_ptr<NNPIDeviceTracing> deviceTracing,
             StaticPlaceholderMap *staticPlaceholderMap,
             std::shared_ptr<NNPIDeviceOptions> deviceOptions,
             const std::string &functionName, unsigned deviceId,

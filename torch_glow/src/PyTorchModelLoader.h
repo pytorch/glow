@@ -490,6 +490,11 @@ private:
   // \return error on failure.
   Error loadQuantizedConvUnpacked(const torch::jit::Node *ptNode);
 
+  Error loadQuantizedConvReluUnpacked(const torch::jit::Node *ptNode);
+
+  Error loadQuantizedConvUnpackedImpl(const torch::jit::Node *ptNode,
+                                      bool isRelu = false);
+
   /// Load a PyTorch quantized::conv2d node.
   // \return error on failure.
   Error loadQuantizedConv(const torch::jit::Node *ptNode);
@@ -581,6 +586,10 @@ private:
   /// Load a PyTorch aten::reshape node.
   /// \returns error on failure.
   Error loadReshape(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::upsample_nearest3d node.
+  /// \returns error on failure.
+  Error loadUpsampleNearest3D(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch aten::view node.
   /// \returns error on failure.

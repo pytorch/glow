@@ -39,6 +39,7 @@ const uint32_t AnyDeviceHWEngine =
     AnyDeviceAnyEngine ^ NNPI_EXECUTION_ENGINE_SW;
 const uint32_t AnyDeviceSWEngine =
     AnyDeviceAnyEngine ^ NNPI_EXECUTION_ENGINE_HW;
+const uint32_t A0AnyEngine = NNPI_DEVICE_VERSION_1 | NNPI_EXECUTION_ENGINE_ANY;
 
 static uint32_t getCurrentDeviceVersion() {
   static const std::map<std::string, NNPI_DEVICE_VERSION> devices = {

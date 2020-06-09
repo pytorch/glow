@@ -99,7 +99,8 @@ std::string Placeholder::getDebugDesc(bool skipUsers) const {
   db.addParam("name", quote(getName()))
       .addParam("layout", getLayout())
       .addParam("output", *getType())
-      .addParam("trainable", isTraining());
+      .addParam("trainable", isTraining())
+      .addParam("static", isStatic());
   if (!skipUsers) {
     db.addParam("users", getNumUsers());
   }
@@ -1646,7 +1647,15 @@ bool DequantizeNode::verify() const {
   isValid &=
       expectCompareTrue("Src must be quantized",
                         getInput().getType()->isQuantizedType(), true, this);
-  isValid &= checkSameShape(getResult(), getInput(), this);
+  if (getInput().getElementType() == ElemKind::UInt8FusedQTy) {
+    isValid &= expectCompareTrue("Fused tensors should be 2D",
+                                 getInput().dims().size(), size_t(2), this);
+    isValid &= expectCompareTrue(
+        "Expected space for per-row scale/offset", getInput().dims()[1],
+        (dim_t)(2 * sizeof(float)), this, CompareOperatorGreaterThan<dim_t>());
+  } else {
+    isValid &= checkSameShape(getResult(), getInput(), this);
+  }
   return isValid;
 }
 

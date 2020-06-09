@@ -636,7 +636,7 @@ int run() {
        numInferencesIssued < numTotalInferences;
        ++numInferencesIssued, ioIndex = numInferencesIssued % inputGroupSize) {
 
-    results.emplace_back(InferenceResult());
+    results.emplace_back();
     auto &result = results.back();
 
     threadPool.add([&inputBindings, &nonStaticPlaceholderList, ioIndex,
@@ -669,6 +669,8 @@ int run() {
 
       std::promise<void> promise;
       auto future = promise.get_future();
+
+      TRACE_EVENT_SCOPE_END();
 
       hostManager->runNetwork(
           "test", std::move(ctx),
