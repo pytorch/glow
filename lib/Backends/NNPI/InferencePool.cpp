@@ -73,7 +73,8 @@ InferencePoolEnv::~InferencePoolEnv() {
   }
 }
 
-Error InferencePoolEnv::init(NNPIAdapter adapter, NNPIDeviceContext device,
+Error InferencePoolEnv::init(NNPIAdapterContainer *adapter,
+                             NNPIDeviceContext device,
                              CompiledFunction *compiledFunction,
                              StaticPlaceholderMap *staticPlaceholderMap,
                              std::shared_ptr<NNPIDeviceOptions> deviceOptions,
@@ -83,7 +84,7 @@ Error InferencePoolEnv::init(NNPIAdapter adapter, NNPIDeviceContext device,
   deviceId_ = deviceId;
   functionName_ = functionName;
   device_ = device;
-  adapter_ = adapter;
+  pAdapter_ = adapter;
   if (workersPool_) {
     return MAKE_ERR("InferencePool already initialized!");
   }
@@ -132,7 +133,8 @@ Error InferencePoolEnv::init(NNPIAdapter adapter, NNPIDeviceContext device,
       inputStream.seekCallback = NULL;
       DBG_MEM_USAGE("call nnpiHostNetworkCreateFromStream");
       LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
-          nnpiHostNetworkCreateFromStream(adapter, &inputStream, &hostNetwork),
+          nnpiHostNetworkCreateFromStream(pAdapter_->getHandle(), &inputStream,
+                                          &hostNetwork),
           "Failed to create NNPI host network");
       DBG_MEM_USAGE("done nnpiHostNetworkCreateFromStream");
       nnpiCompiledFunction_->unlockCompiledStream();
@@ -140,8 +142,8 @@ Error InferencePoolEnv::init(NNPIAdapter adapter, NNPIDeviceContext device,
     {
       filename += ".zip";
       LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
-          nnpiHostNetworkCreateFromFile(adapter, filename.c_str(),
-                                        &hostNetwork),
+          nnpiHostNetworkCreateFromFile(pAdapter_->getHandle(),
+                                        filename.c_str(), &hostNetwork),
           "Failed to create NNPI host network");
     }
 
@@ -332,7 +334,7 @@ InferencePoolEnv::createDetachedInferenceContext(PlaceholderUsageMap &phUsage) {
           inputDesc_, outputDesc_,
           nnpiCompiledFunction_->getCompiledNetworkHandle(),
           nnpiCompiledFunction_->getCompilationConfig(), deviceNetwork_,
-          adapter_, device_, nnpiCompiledFunction_->getPartialInputs(),
+          pAdapter_, device_, nnpiCompiledFunction_->getPartialInputs(),
           nnpiCompiledFunction_->getPaddedInputs(),
           nnpiCompiledFunction_->getStaticInputs(), staticPlaceholderMap_,
           deviceOptions_, functionName_, deviceId_, &phUsage)) {

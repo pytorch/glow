@@ -142,9 +142,10 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
 #define LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(exp, msg)                           \
   {                                                                            \
     NNPIErrorCode exp_res = (exp);                                             \
-    LOG_IF(ERROR, exp_res != NNPI_NO_ERROR) << NNPI_ERROR_MSG(exp_res, msg);   \
-    if (exp_res != NNPI_NO_ERROR)                                              \
+    if (exp_res != NNPI_NO_ERROR) {                                            \
+      LOG(ERROR) << NNPI_ERROR_MSG(exp_res, msg);                              \
       RETURN_ERR(msg);                                                         \
+    }                                                                          \
   }
 
 #define LOG_NNPI_INF_IF_ERROR(exp_to_log, msg)                                 \
@@ -157,67 +158,64 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
 #define LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(exp, msg)                           \
   {                                                                            \
     NNPIInferenceErrorCode exp_res = (exp);                                    \
-    LOG_IF(ERROR, exp_res != NNPI_INF_NO_ERROR)                                \
-        << NNPI_INF_ERROR_MSG(exp_res, msg);                                   \
-    if (exp_res != NNPI_INF_NO_ERROR)                                          \
-      return false;                                                            \
+    LOG_AND_RETURN_IF(ERROR, exp_res != NNPI_INF_NO_ERROR,                     \
+                      NNPI_INF_ERROR_MSG(exp_res, msg), false);                \
   }
 
 #define LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(exp, msg)                       \
   {                                                                            \
     NNPIInferenceErrorCode exp_res = (exp);                                    \
-    LOG_IF(ERROR, exp_res != NNPI_INF_NO_ERROR)                                \
-        << NNPI_INF_ERROR_MSG(exp_res, msg);                                   \
-    if (exp_res != NNPI_INF_NO_ERROR)                                          \
+    if (exp_res != NNPI_INF_NO_ERROR) {                                        \
+      LOG(ERROR) << NNPI_INF_ERROR_MSG(exp_res, msg);                          \
       RETURN_ERR(msg);                                                         \
+    }                                                                          \
   }
 
 #define LOG_NNPI_IF_ERROR_RETURN_VALUE(exp, msg)                               \
   {                                                                            \
     NNPIErrorCode exp_res = (exp);                                             \
-    LOG_IF(ERROR, exp_res != NNPI_NO_ERROR) << NNPI_ERROR_MSG(exp_res, msg);   \
-    if (exp_res != NNPI_NO_ERROR)                                              \
-      return exp_res;                                                          \
+    LOG_AND_RETURN_IF(ERROR, exp_res != NNPI_NO_ERROR,                         \
+                      NNPI_ERROR_MSG(exp_res, msg), exp_res);                  \
   }
 
 #define LOG_NNPI_IF_ERROR_RETURN_INVALID_HANDLE(exp, msg)                      \
   {                                                                            \
     NNPIErrorCode exp_res = (exp);                                             \
-    LOG_IF(ERROR, exp_res != NNPI_NO_ERROR) << NNPI_ERROR_MSG(exp_res, msg);   \
-    if (exp_res != NNPI_NO_ERROR)                                              \
-      return NNPI_INVALID_NNPIHANDLE;                                          \
+    LOG_AND_RETURN_IF(ERROR, exp_res != NNPI_NO_ERROR,                         \
+                      NNPI_ERROR_MSG(exp_res, msg), NNPI_INVALID_NNPIHANDLE);  \
   }
 
 #define LOG_NNPI_IF_ERROR_RETURN_FALSE(exp, msg)                               \
   {                                                                            \
     NNPIErrorCode exp_res = (exp);                                             \
-    LOG_IF(ERROR, exp_res != NNPI_NO_ERROR) << NNPI_ERROR_MSG(exp_res, msg);   \
-    if (exp_res != NNPI_NO_ERROR)                                              \
-      return false;                                                            \
+    LOG_AND_RETURN_IF(ERROR, exp_res != NNPI_NO_ERROR,                         \
+                      NNPI_ERROR_MSG(exp_res, msg), false);                    \
   }
 
 #define LOG_IF_INVALID_HANDLE_RETURN_LLVMERROR(exp, msg)                       \
   {                                                                            \
     NNPIHandle exp_res = (exp);                                                \
-    LOG_IF(ERROR, exp_res == NNPI_INVALID_NNPIHANDLE) << msg;                  \
-    if (exp_res == NNPI_INVALID_NNPIHANDLE)                                    \
+    if (exp_res == NNPI_INVALID_NNPIHANDLE) {                                  \
+      LOG(ERROR) << msg;                                                       \
       RETURN_ERR(msg);                                                         \
+    }                                                                          \
   }
 
 #define LOG_IF_NOT_RETURN_LLVMERROR(exp, msg)                                  \
   {                                                                            \
     bool exp_res = (exp);                                                      \
-    LOG_IF(ERROR, !exp_res) << msg;                                            \
-    if (!exp_res)                                                              \
+    if (!exp_res) {                                                            \
+      LOG(ERROR) << msg;                                                       \
       RETURN_ERR(msg);                                                         \
+    }                                                                          \
   }
 
 #define LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(loglevel, exp, msg, runId, ctx,   \
                                              callback)                         \
   {                                                                            \
     bool exp_res = (exp);                                                      \
-    LOG_IF(loglevel, !exp_res) << msg;                                         \
     if (!exp_res) {                                                            \
+      LOG(loglevel) << msg;                                                    \
       callback(runId, MAKE_ERR(msg), std::move(ctx));                          \
       return;                                                                  \
     }                                                                          \
@@ -226,8 +224,8 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
 #define LOG_AND_FAIL_CALLBACK_IF_NOT(exp, msg, callback)                       \
   {                                                                            \
     bool exp_res = (exp);                                                      \
-    LOG_IF(ERROR, !exp_res) << msg;                                            \
     if (!exp_res) {                                                            \
+      LOG(ERROR) << msg;                                                       \
       callback(MAKE_ERR(msg));                                                 \
       return;                                                                  \
     }                                                                          \
@@ -237,26 +235,30 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
                                                    callback)                   \
   {                                                                            \
     NNPIInferenceErrorCode exp_res = (exp);                                    \
-    bool nnpiOK = (exp_res == NNPI_INF_NO_ERROR);                              \
-    LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, nnpiOK, msg, runId, ctx,       \
-                                         callback);                            \
+    if ((exp_res != NNPI_INF_NO_ERROR)) {                                      \
+      LOG(ERROR) << NNPI_INF_ERROR_MSG(exp_res, msg);                          \
+      callback(runId, MAKE_ERR(msg), std::move(ctx));                          \
+      return;                                                                  \
+    }                                                                          \
   }
 
 #define LOG_AND_CALLBACK_EXECUTE_NNPI_IF_ERROR(exp, msg, runId, ctx, callback) \
   {                                                                            \
     NNPIErrorCode exp_res = (exp);                                             \
-    bool nnpiOK = (exp_res == NNPI_NO_ERROR);                                  \
-    LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, nnpiOK, msg, runId, ctx,       \
-                                         callback);                            \
+    if (exp_res != NNPI_NO_ERROR) {                                            \
+      LOG(ERROR) << NNPI_ERROR_MSG(exp_res, msg);                              \
+      callback(runId, MAKE_ERR(msg), std::move(ctx));                          \
+      return;                                                                  \
+    }                                                                          \
   }
 
 #define LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(exp, msg, callback)                 \
   {                                                                            \
     NNPIInferenceErrorCode exp_res = (exp);                                    \
-    LOG_IF(ERROR, exp_res != NNPI_INF_NO_ERROR)                                \
-        << NNPI_INF_ERROR_MSG(exp_res, msg);                                   \
-    if (exp_res != NNPI_INF_NO_ERROR)                                          \
+    if (exp_res != NNPI_INF_NO_ERROR) {                                        \
+      LOG(ERROR) << NNPI_INF_ERROR_MSG(exp_res, msg);                          \
       callback(MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR, msg));           \
+    }                                                                          \
   }
 
 // Used in debugging.

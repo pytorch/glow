@@ -30,6 +30,7 @@
 #include <vector>
 
 namespace glow {
+class NNPIAdapterContainer;
 namespace runtime {
 class NNPIDeviceBindings;
 class InferencePoolEnv {
@@ -42,7 +43,7 @@ class InferencePoolEnv {
   unsigned deviceId_;
   ResourceDescVec inputDesc_;
   ResourceDescVec outputDesc_;
-  NNPIAdapter adapter_;
+  NNPIAdapterContainer *pAdapter_;
   NNPIDeviceContext device_;
   NNPICompiledFunction *nnpiCompiledFunction_;
   StaticPlaceholderMap *staticPlaceholderMap_;
@@ -51,7 +52,7 @@ class InferencePoolEnv {
 public:
   InferencePoolEnv();
   ~InferencePoolEnv();
-  Error init(NNPIAdapter adapter, NNPIDeviceContext device,
+  Error init(NNPIAdapterContainer *adapter, NNPIDeviceContext device,
              CompiledFunction *compiledFunction,
              StaticPlaceholderMap *staticPlaceholderMap,
              std::shared_ptr<NNPIDeviceOptions> deviceOptions,

@@ -56,9 +56,8 @@ static std::string nodeValueName(const glow::NodeValue &nv) {
          std::to_string(nv.getResNo());
 }
 
-static inline NNPIErrorCode
-convertLengthsModeToLengthType(glow::LengthsMode mode,
-                               NNPI_LENGTH_TYPE &lengthType) {
+NNPIErrorCode glow::NNPIImporter::convertLengthsModeToLengthType(
+    glow::LengthsMode mode, NNPI_LENGTH_TYPE &lengthType) {
   if (!GlowNNPISpecializeAllOneSLS) {
     mode = LengthsMode::Variable;
   }
@@ -107,7 +106,7 @@ NNPIErrorCode glow::NNPIImporter::addTensor(std::string name,
   const auto &dims = t->dims();
   desc.numDims = dims.size();
   updateDescQuantFromGlow(t->getType(), desc, scaleTensor, offsetTensor,
-                          forceSymlowp);
+                          forceSymlowp || compileOptions_.useSymlowp);
   updateDescDimsFromGlow(dims, desc, alternativeLayout);
 
   const void *pRawData(nullptr);
@@ -189,7 +188,7 @@ NNPIErrorCode glow::NNPIImporter::addValue(
   desc.attributes.input = input;
   desc.attributes.output = output;
   updateDescQuantFromGlow(*vType, desc, scaleTensor, offsetTensor,
-                          forceSymlowp);
+                          forceSymlowp || compileOptions_.useSymlowp);
   updateDescDimsFromGlow(vType->dims(), desc, alternativeLayout);
 
   const void *pRawData(nullptr);
@@ -335,8 +334,7 @@ void glow::NNPIImporter::updateDescQuantFromGlow(
     if (!scaleTensor.empty()) {
       // If there is no offsets, or Symlowp workaround is used and all offsets
       // are zero, the quantization type is SYMLOWP_PCQ.
-      if (forceSymlowp || offsetTensor.empty() ||
-          (compileOptions_.useSymlowp && zeroes(offsetTensor))) {
+      if (offsetTensor.empty() || (forceSymlowp && zeroes(offsetTensor))) {
         desc.quantParams.type = NNPI_QUANTIZATION_SYMLOWP_PCQ;
         std::strncpy(desc.quantParams.params.symlowpPCQ.scalesTensor,
                      scaleTensor.c_str(),
@@ -354,13 +352,11 @@ void glow::NNPIImporter::updateDescQuantFromGlow(
       desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP;
       desc.quantParams.params.gemlowp.scale = t.getScale();
       desc.quantParams.params.gemlowp.offset = t.getOffset();
-      if (forceSymlowp || compileOptions_.useSymlowp) {
+      if (forceSymlowp && (t.getOffset() == 0)) {
         // WA use SYMLOWP for zero offset tensors.
-        if (t.getOffset() == 0) {
-          DBG("SYMLOWP WA");
-          desc.quantParams.type = NNPI_QUANTIZATION_SYMLOWP;
-          desc.quantParams.params.symlowp.scale = t.getScale();
-        }
+        DBG("SYMLOWP WA");
+        desc.quantParams.type = NNPI_QUANTIZATION_SYMLOWP;
+        desc.quantParams.params.symlowp.scale = t.getScale();
       }
     }
 
@@ -385,7 +381,6 @@ void glow::NNPIImporter::updateDescQuantFromGlow(
     desc.quantParams.precision = NNPI_PRECISION_UINT8;
     desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP_PCQ_FUSED;
     break;
-    break;
   case glow::ElemKind::UInt8FusedFP16QTy:
     desc.quantParams.precision = NNPI_PRECISION_UINT8;
     desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP_PCQ_FUSED_FP16;
@@ -400,7 +395,7 @@ void glow::NNPIImporter::updateDescQuantFromGlow(
     break;
   case glow::ElemKind::Int32QTy:
     desc.quantParams.precision = NNPI_PRECISION_INT32;
-    if ((forceSymlowp || compileOptions_.useSymlowp) && t.getOffset() == 0) {
+    if (forceSymlowp && t.getOffset() == 0) {
       desc.quantParams.type = NNPI_QUANTIZATION_SYMLOWP;
     } else {
       desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP;
@@ -1135,7 +1130,7 @@ public:
         importer.getNetwork(), glowReduce->getName().begin(),
         nodeValueName(glowReduce->getBatch()).c_str(),
         nodeValueName(glowReduce->getResult()).c_str(), NNPI_REDUCE_SUM, &axis,
-        1);
+        1, 0);
   }
 };
 
@@ -1156,7 +1151,8 @@ public:
     return nnpiNetworkAddReduceOp(
         importer.getNetwork(), glowReduce->getName().begin(),
         nodeValueName(glowReduce->getBatch()).c_str(),
-        nodeValueName(glowReduce->getResult()).c_str(), reduceType, &axis, 1);
+        nodeValueName(glowReduce->getResult()).c_str(), reduceType, &axis, 1,
+        0);
   }
 };
 
@@ -1279,11 +1275,11 @@ public:
         {nodeValueName(glowSLS->getResult())});
 
     NNPI_LENGTH_TYPE lengthType;
-    LOG_AND_RETURN_IF_NOT(
-        ERROR,
-        convertLengthsModeToLengthType(glowSLS->getLengthsMode(), lengthType) ==
-            NNPI_NO_ERROR,
-        "Unhandled SLS length type", NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(ERROR,
+                          NNPIImporter::convertLengthsModeToLengthType(
+                              glowSLS->getLengthsMode(), lengthType) ==
+                              NNPI_NO_ERROR,
+                          "Unhandled SLS length type", NNPI_INVALID_PARAM);
 
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
         importer.getNetwork(), glowSLS->getName().begin(),
@@ -1312,11 +1308,11 @@ public:
         {nodeValueName(glowSLWS->getResult())});
 
     NNPI_LENGTH_TYPE lengthType;
-    LOG_AND_RETURN_IF_NOT(
-        ERROR,
-        convertLengthsModeToLengthType(glowSLWS->getLengthsMode(),
-                                       lengthType) == NNPI_NO_ERROR,
-        "Unhandled SLS length type", NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(ERROR,
+                          NNPIImporter::convertLengthsModeToLengthType(
+                              glowSLWS->getLengthsMode(), lengthType) ==
+                              NNPI_NO_ERROR,
+                          "Unhandled SLS length type", NNPI_INVALID_PARAM);
 
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
         importer.getNetwork(), glowSLWS->getName().begin(),
@@ -1352,11 +1348,11 @@ public:
         {nodeValueName(glowEmbeddingBag->getResult())});
 
     NNPI_LENGTH_TYPE lengthType;
-    LOG_AND_RETURN_IF_NOT(
-        ERROR,
-        convertLengthsModeToLengthType(glowEmbeddingBag->getLengthsMode(),
-                                       lengthType) == NNPI_NO_ERROR,
-        "Unhandled SLS length type", NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(ERROR,
+                          NNPIImporter::convertLengthsModeToLengthType(
+                              glowEmbeddingBag->getLengthsMode(), lengthType) ==
+                              NNPI_NO_ERROR,
+                          "Unhandled SLS length type", NNPI_INVALID_PARAM);
 
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
         importer.getNetwork(), glowEmbeddingBag->getName().begin(),
@@ -1396,11 +1392,11 @@ public:
                           glow::ElemKind::Float16Ty));
 
     NNPI_LENGTH_TYPE lengthType;
-    LOG_AND_RETURN_IF_NOT(
-        ERROR,
-        convertLengthsModeToLengthType(glowEBBRO->getLengthsMode(),
-                                       lengthType) == NNPI_NO_ERROR,
-        "Unhandled SLS length type", NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(ERROR,
+                          NNPIImporter::convertLengthsModeToLengthType(
+                              glowEBBRO->getLengthsMode(), lengthType) ==
+                              NNPI_NO_ERROR,
+                          "Unhandled SLS length type", NNPI_INVALID_PARAM);
 
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
         importer.getNetwork(), glowEBBRO->getName().begin(),
@@ -1723,11 +1719,11 @@ public:
                           glow::ElemKind::Float16Ty));
 
     NNPI_LENGTH_TYPE lengthType;
-    LOG_AND_RETURN_IF_NOT(
-        ERROR,
-        convertLengthsModeToLengthType(glowSLWS->getLengthsMode(),
-                                       lengthType) == NNPI_NO_ERROR,
-        "Unhandled SLS length type", NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(ERROR,
+                          NNPIImporter::convertLengthsModeToLengthType(
+                              glowSLWS->getLengthsMode(), lengthType) ==
+                              NNPI_NO_ERROR,
+                          "Unhandled SLS length type", NNPI_INVALID_PARAM);
 
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
         importer.getNetwork(), glowSLWS->getName().begin(),
@@ -1761,11 +1757,11 @@ public:
                           glow::ElemKind::Float16Ty));
 
     NNPI_LENGTH_TYPE lengthType;
-    LOG_AND_RETURN_IF_NOT(
-        ERROR,
-        convertLengthsModeToLengthType(glowSLWS->getLengthsMode(),
-                                       lengthType) == NNPI_NO_ERROR,
-        "Unhandled SLS length type", NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(ERROR,
+                          NNPIImporter::convertLengthsModeToLengthType(
+                              glowSLWS->getLengthsMode(), lengthType) ==
+                              NNPI_NO_ERROR,
+                          "Unhandled SLS length type", NNPI_INVALID_PARAM);
 
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
         importer.getNetwork(), glowSLWS->getName().begin(),
@@ -1799,11 +1795,11 @@ public:
                           glow::ElemKind::Float16Ty));
 
     NNPI_LENGTH_TYPE lengthType;
-    LOG_AND_RETURN_IF_NOT(
-        ERROR,
-        convertLengthsModeToLengthType(glowSLWS->getLengthsMode(),
-                                       lengthType) == NNPI_NO_ERROR,
-        "Unhandled SLS length type", NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(ERROR,
+                          NNPIImporter::convertLengthsModeToLengthType(
+                              glowSLWS->getLengthsMode(), lengthType) ==
+                              NNPI_NO_ERROR,
+                          "Unhandled SLS length type", NNPI_INVALID_PARAM);
 
     return nnpiNetworkAddSparseLengthsWeightedSumOp(
         importer.getNetwork(), glowSLWS->getName().begin(),
@@ -2030,6 +2026,22 @@ public:
   }
 };
 
+class LogitNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowLogit = llvm::dyn_cast<LogitNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowLogit, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors({nodeValueName(glowLogit->getInput()),
+                             nodeValueName(glowLogit->getResult())});
+
+    return nnpiNetworkAddLogitOp(
+        importer.getNetwork(), glowLogit->getName().begin(),
+        nodeValueName(glowLogit->getInput()).c_str(),
+        nodeValueName(glowLogit->getResult()).c_str(), glowLogit->getEpsilon());
+  }
+};
 //////////////////////////////////////////////////////////////////////////
 namespace {
 std::unordered_map<
@@ -2130,6 +2142,7 @@ std::unordered_map<
     {"EmbeddingBag", glow::make_unique<EmbeddingBagNodeImporter>()},
     {"EmbeddingBagByteRowwiseOffsets",
      glow::make_unique<EmbeddingBagByteRowwiseOffsetsNodeImporter>()},
+    {"Logit", glow::make_unique<LogitNodeImporter>()},
 };
 }
 

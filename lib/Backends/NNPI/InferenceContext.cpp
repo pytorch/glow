@@ -17,6 +17,7 @@
 #include "DebugMacros.h"
 #include "Importer.h"
 #include "NNPI.h"
+#include "NNPIAdapterContainer.h"
 #include "NNPIDeviceManager.h"
 #include "glow/Runtime/RequestData.h"
 #include "llvm/Support/raw_ostream.h"
@@ -48,7 +49,7 @@ bool InferenceContext::init(
     // For ICE-Ref path.
     NNPINetwork network, NNPICompilationConfig config,
     // For ICE-T path.
-    NNPIDeviceNetwork deviceNetwork, NNPIAdapter adapter,
+    NNPIDeviceNetwork deviceNetwork, NNPIAdapterContainer *adapter,
     NNPIDeviceContext device,
     const std::unordered_set<const Placeholder *> &partialInputs,
     const std::unordered_set<const Placeholder *> &paddedInputs,
@@ -255,49 +256,47 @@ bool InferenceContext::init(
                              outputHandles, numOutputs, &inferCmd_),
       "Failed to create NNPI inference command");
 
-  if (deviceOptions_->enabledCommandLists > 0) {
-    // Collect copy commands for the list (some resources may not need copying).
-    std::vector<NNPICommandHandle> commands;
-    std::vector<NNPICopyCommand> inputCopyCmds, outputCopyCmds;
-    for (auto &res : inputResources_) {
-      auto copyCmd = res->getCopyCommand();
-      if (copyCmd) {
-        res->setCmdListIdx(static_cast<uint32_t>(commands.size()));
-        NNPICommandHandle cmd;
-        cmd.type = NNPI_COMMAND_TYPE_COPY;
-        cmd.copyCommand = copyCmd;
-        commands.push_back(cmd);
-      }
-    }
-    {
+  // Collect copy commands for the list (some resources may not need copying).
+  std::vector<NNPICommandHandle> commands;
+  std::vector<NNPICopyCommand> inputCopyCmds, outputCopyCmds;
+  for (auto &res : inputResources_) {
+    auto copyCmd = res->getCopyCommand();
+    if (copyCmd) {
+      res->setCmdListIdx(static_cast<uint32_t>(commands.size()));
       NNPICommandHandle cmd;
-      cmd.type = NNPI_COMMAND_TYPE_INFER;
-      cmd.inferCommand = inferCmd_;
+      cmd.type = NNPI_COMMAND_TYPE_COPY;
+      cmd.copyCommand = copyCmd;
       commands.push_back(cmd);
     }
-    for (auto &res : outputResources_) {
-      auto copyCmd = res->getCopyCommand();
-      if (copyCmd) {
-        res->setCmdListIdx(static_cast<uint32_t>(commands.size()));
-        NNPICommandHandle cmd;
-        cmd.type = NNPI_COMMAND_TYPE_COPY;
-        cmd.copyCommand = copyCmd;
-        commands.push_back(cmd);
-      }
-    }
-
-    // Create command list.
-    LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
-        nnpiCommandListCreate(&(commands[0]),
-                              static_cast<uint32_t>(commands.size()), nullptr,
-                              0, &commandList_),
-        "Failed to create NNPI command list");
-
-    // Preallocate enough configs to be used for partials later on.
-    cmdConfigs_.resize(commands.size());
-    // Preallocate enough errors to be used later durin inference.
-    cmdListErrors_.resize(commands.size());
   }
+  {
+    NNPICommandHandle cmd;
+    cmd.type = NNPI_COMMAND_TYPE_INFER;
+    cmd.inferCommand = inferCmd_;
+    commands.push_back(cmd);
+  }
+  for (auto &res : outputResources_) {
+    auto copyCmd = res->getCopyCommand();
+    if (copyCmd) {
+      res->setCmdListIdx(static_cast<uint32_t>(commands.size()));
+      NNPICommandHandle cmd;
+      cmd.type = NNPI_COMMAND_TYPE_COPY;
+      cmd.copyCommand = copyCmd;
+      commands.push_back(cmd);
+    }
+  }
+
+  // Create command list.
+  LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
+      nnpiCommandListCreate(&(commands[0]),
+                            static_cast<uint32_t>(commands.size()), nullptr, 0,
+                            &commandList_),
+      "Failed to create NNPI command list");
+
+  // Preallocate enough configs to be used for partials later on.
+  cmdConfigs_.resize(commands.size());
+  // Preallocate enough errors to be used later durin inference.
+  cmdListErrors_.resize(commands.size());
 
   if (deviceOptions_->dumpRuntime) {
     dumpRuntime();
@@ -389,89 +388,69 @@ void InferenceContext::execute(RunIdentifierTy runId,
   std::string inferContext = traceInferenceContextName_;
   // Inference.
   if (deviceOptions_->inferOnDevice) {
-    if (deviceOptions_->enabledCommandLists < 1) {
-      // No command lists (schedule individual commands).
-      inferContext = llvm::formatv("{0} {1:x}", inferContext, inferCmd_);
-      TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
-                      tracePreProcessContextName_);
-      TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::OPERATOR,
-                             inferContext, attributes);
-      // Queue inference.
+    // Prepare updates for partial copies.
+    uint32_t usedConfigs = 0;
+    for (auto &res : inputResources_) {
+      const auto partialSize = res->getPartialSize();
+      if (partialSize > -1) {
+        memset(&(cmdConfigs_[usedConfigs]), 0, sizeof(NNPICommandConfig));
+        cmdConfigs_[usedConfigs].index = res->getCmdListIdx();
+        cmdConfigs_[usedConfigs].type = NNPI_COMMAND_TYPE_COPY;
+        cmdConfigs_[usedConfigs].copyConfig.size = partialSize;
+        if (partialSize == 0) {
+          cmdConfigs_[usedConfigs].copyConfig.disableCopy = 1;
+        }
+        usedConfigs++;
+      }
+    }
+    inferContext = llvm::formatv("{0} {1:x}", inferContext, commandList_);
+    TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
+                    tracePreProcessContextName_);
+    TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::OPERATOR,
+                           inferContext, attributes);
+    // Queue Command list
+    LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
+        nnpiCommandListQueue(commandList_, &(cmdConfigs_.at(0)), usedConfigs),
+        "Failed to queue command list.", runId, ctx, resultCB);
+
+    // Wait on completion and error handling.
+    uint32_t numErrors(0);
+    // First wait for the command list to complete.
+    NNPIInferenceErrorCode res =
+        nnpiCommandListWait(commandList_, UINT32_MAX, NULL, 0, &numErrors);
+    if (res != NNPI_INF_NO_ERROR) {
+      LOG_NNPI_INF_IF_ERROR(res, "Failed to wait on command list");
+    } else if (numErrors > 0) {
+      LOG(ERROR) << "Errors returned from command list";
+
+      // Errors were generate so we allocate error objects to hold the data.
+      NNPICommandListError commandErrors[numErrors];
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+          ERROR, commandErrors, "Failed to allocate command error array", runId,
+          ctx, resultCB);
+      memset(commandErrors, 0, sizeof(NNPICommandListError) * numErrors);
+
+      // Then query all errors using another wait call (should return
+      // immediately).
+      NNPIInferenceErrorCode tmpRes = nnpiCommandListWait(
+          commandList_, UINT32_MAX, commandErrors, numErrors, &numErrors);
+      if (tmpRes != NNPI_INF_NO_ERROR) {
+        LOG_NNPI_INF_IF_ERROR(tmpRes,
+                              "Failed to wait on command list to get errors");
+      } else {
+        for (uint32_t i = 0; i < numErrors; i++) {
+          LOG(ERROR) << NNPI_INF_ERROR_MSG(commandErrors[i].err,
+                                           commandErrors[i].desc);
+        }
+      }
+    }
+    if (res != NNPI_INF_NO_ERROR || numErrors > 0) {
       LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
-          nnpiInferCommandQueue(inferCmd_, 0), "Failed to queue infer command.",
+          nnpiCommandListClearErrors(commandList_),
+          "Failed to clear command list errors", runId, ctx, resultCB);
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+          ERROR, false /* fail */, "Errors found in command list execution",
           runId, ctx, resultCB);
-
-      // Queue output copies
-      for (auto &res : outputResources_) {
-        auto cmd = res->getCopyCommand();
-        if (cmd) {
-          // todo: assert no partial output
-          LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
-              nnpiCopyCommandQueue(cmd, nullptr),
-              "Failed to queue output copy command.", runId, ctx, resultCB);
-        }
-      }
-    } else { // Use commands lists.
-      // Prepare updates for partial copies.
-      uint32_t usedConfigs = 0;
-      for (auto &res : inputResources_) {
-        const auto partialSize = res->getPartialSize();
-        if (partialSize > 0) {
-          cmdConfigs_[usedConfigs].index = res->getCmdListIdx();
-          cmdConfigs_[usedConfigs].type = NNPI_COMMAND_TYPE_COPY;
-          cmdConfigs_[usedConfigs].copyConfig.size = partialSize;
-          usedConfigs++;
-        }
-      }
-      inferContext = llvm::formatv("{0} {1:x}", inferContext, commandList_);
-      TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
-                      tracePreProcessContextName_);
-      TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::OPERATOR,
-                             inferContext, attributes);
-      // Queue Command list
-      LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
-          nnpiCommandListQueue(commandList_, &(cmdConfigs_.at(0)), usedConfigs),
-          "Failed to queue command list.", runId, ctx, resultCB);
-
-      // Wait on completion and error handling.
-      uint32_t numErrors(0);
-      // First wait for the command list to complete.
-      NNPIInferenceErrorCode res =
-          nnpiCommandListWait(commandList_, UINT32_MAX, NULL, 0, &numErrors);
-      if (res != NNPI_INF_NO_ERROR) {
-        LOG_NNPI_INF_IF_ERROR(res, "Failed to wait on command list");
-      } else if (numErrors > 0) {
-        LOG(ERROR) << "Errors returned from command list";
-
-        // Errors were generate so we allocate error objects to hold the data.
-        NNPICommandListError commandErrors[numErrors];
-        LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
-            ERROR, commandErrors, "Failed to allocate command error array",
-            runId, ctx, resultCB);
-        memset(commandErrors, 0, sizeof(NNPICommandListError) * numErrors);
-
-        // Then query all errors using another wait call (should return
-        // immediately).
-        NNPIInferenceErrorCode tmpRes = nnpiCommandListWait(
-            commandList_, UINT32_MAX, commandErrors, numErrors, &numErrors);
-        if (tmpRes != NNPI_INF_NO_ERROR) {
-          LOG_NNPI_INF_IF_ERROR(tmpRes,
-                                "Failed to wait on command list to get errors");
-        } else {
-          for (uint32_t i = 0; i < numErrors; i++) {
-            LOG(ERROR) << NNPI_INF_ERROR_MSG(commandErrors[i].err,
-                                             commandErrors[i].desc);
-          }
-        }
-      }
-      if (res != NNPI_INF_NO_ERROR || numErrors > 0) {
-        LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
-            nnpiCommandListClearErrors(commandList_),
-            "Failed to clear command list errors", runId, ctx, resultCB);
-        LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
-            ERROR, false /* fail */, "Errors found in command list execution",
-            runId, ctx, resultCB);
-      }
     }
   } else if (!deviceOptions_->useIceT) {
     // Infer on ice-ref.
