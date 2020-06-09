@@ -116,6 +116,10 @@ struct OptimizationOptions {
   /// SLS partition for more efficient inter-partition transfers
   bool sparseNNPartitioningAddSLSConcats{false};
 
+  /// If true, SparseNN partiitoning scheme will balance SLS tables across
+  /// cards using a performance model
+  bool sparseNNPartitioningBalancePerfModel{false};
+
   /// The number of cards over which to split SLS tables when using SparseNN
   /// partitioning scheme
   unsigned int sparseNNPartitioningSchemeNumCards{1};
