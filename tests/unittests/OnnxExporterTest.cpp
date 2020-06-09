@@ -56,10 +56,12 @@ saveAndReloadFunction(Module &reloadMod, Function *F,
   // Write model to file.
   {
     Error err = Error::empty();
-    ONNXModelWriter onnxWR(outputFilename, *F, irVer, opsetVer, &err, !zipMode,
-                           zipMode, useGlowCustomOps, includeConstantData,
-                           constFoldRecord ? *constFoldRecord
-                                           : ConstantFoldingRecordMap());
+
+    llvm::StringMap<std::string> extraMetadataProps;
+    ONNXModelWriter onnxWR(
+        outputFilename, *F, irVer, opsetVer, &err, !zipMode, zipMode,
+        useGlowCustomOps, includeConstantData, extraMetadataProps,
+        constFoldRecord ? *constFoldRecord : ConstantFoldingRecordMap());
 
     if (err) {
       llvm::sys::fs::remove(outputFilename);

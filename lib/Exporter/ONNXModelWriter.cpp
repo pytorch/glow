@@ -846,10 +846,12 @@ ONNXModelWriter::ONNXModelWriter(
     const std::string &modelFilename, Function &F, size_t irVersion,
     size_t opsetVersion, Error *errPtr, bool textMode, bool zipMode,
     bool useGlowCustomOps, bool includeConstantData,
+    const llvm::StringMap<std::string> &extraMetadataProps,
     const ConstantFoldingRecordMap &constFoldRecord)
     : CommonOperatorWriter(modelFilename, &F, errPtr), irVersion_(irVersion),
       opsetVersion_(opsetVersion), zipMode_(zipMode), textMode_(textMode),
       includeConstantData_(includeConstantData),
+      extraMetadataProps_(extraMetadataProps),
       useGlowCustomOps_(useGlowCustomOps), dagMode_(false),
       constFoldRecord_(constFoldRecord) {
   // If errPtr already contains an error then don't continue with constructor.
@@ -860,6 +862,9 @@ ONNXModelWriter::ONNXModelWriter(
   // Lambda to setup the ONNXModelWriter and return any Errors that were raised.
   auto setup = [&]() -> Error {
     setupNewProto();
+    for (auto &prop : extraMetadataProps_) {
+      addMetadataProp(prop.getKey(), prop.second);
+    }
 
     RETURN_IF_ERR(writeFunction());
 
@@ -962,12 +967,14 @@ Error ONNXModelWriter::writePartitionAndMetadataProps(
 ONNXModelWriter::ONNXModelWriter(
     const std::string &modelFilename, DAGListTy &dagList, size_t irVersion,
     size_t opsetVersion, Error *errPtr, bool textMode, bool zipMode,
-    bool includeConstantData, const ConstantFoldingRecordMap &constFoldRecord)
+    bool includeConstantData,
+    const llvm::StringMap<std::string> &extraMetadataProps,
+    const ConstantFoldingRecordMap &constFoldRecord)
     : CommonOperatorWriter(modelFilename, nullptr, errPtr),
       irVersion_(irVersion), opsetVersion_(opsetVersion), zipMode_(zipMode),
       textMode_(textMode), includeConstantData_(includeConstantData),
-      useGlowCustomOps_(true), dagMode_(true),
-      constFoldRecord_(constFoldRecord) {
+      extraMetadataProps_(extraMetadataProps), useGlowCustomOps_(true),
+      dagMode_(true), constFoldRecord_(constFoldRecord) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -976,6 +983,9 @@ ONNXModelWriter::ONNXModelWriter(
   // Lambda to setup the ONNXModelWriter and return any Errors that were raised.
   auto setup = [&]() -> Error {
     setupNewProto();
+    for (auto &prop : extraMetadataProps_) {
+      addMetadataProp(prop.getKey(), prop.second);
+    }
 
     RETURN_ERR_IF_NOT(dagList.size() == 1, "Expect only one DAG.");
     const auto &dag = *dagList.begin();

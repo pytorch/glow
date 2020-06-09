@@ -112,9 +112,10 @@ static void verifyDAGSerialization(
     // Note: do not include Constant data when we write out; we will reuse the
     // Module so we don't need to save it.
     Error err = Error::empty();
+    llvm::StringMap<std::string> extraMetadataProps;
     ONNXModelWriter onnxWR(outputFilename, dagList, 7, 9, &err,
                            /* textMode */ false, /* zipMode */ false,
-                           /* includeConstantData */ false,
+                           /* includeConstantData */ false, extraMetadataProps,
                            constFoldRecord ? *constFoldRecord
                                            : ConstantFoldingRecordMap());
 
