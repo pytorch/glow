@@ -69,6 +69,8 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   const bool textMode_;
   /// Whether to include Constant (initializer) data in the exported proto.
   const bool includeConstantData_;
+  /// Extra metadata properties to add to the ONNX file
+  const llvm::StringMap<std::string> &extraMetadataProps_;
   /// Whether to use custom ONNX ops.
   const bool useGlowCustomOps_;
   /// Whether we are writing a DAG.
@@ -163,6 +165,8 @@ public:
   /// to abide by the official ONNX ops. If \p includeConstantData then data for
   /// Constants will be serialized in the written model, otherwise it will be
   /// skipped (but initializers will still exist, they will just have no data).
+  /// \p extraMetadataProps is a mapping of key value pairs which are added to
+  /// the metadata props portion of the ONNX.
   /// \p constFoldRecord contains any records of constant folding that should be
   /// included in the serialized model.
   ONNXModelWriter(const std::string &modelFilename, Function &F,
@@ -170,6 +174,8 @@ public:
                   Error *errPtr = nullptr, bool textMode = false,
                   bool zipMode = false, bool useGlowCustomOps = false,
                   bool includeConstantData = true,
+                  const llvm::StringMap<std::string> &extraMetadataProps =
+                      llvm::StringMap<std::string>(),
                   const ConstantFoldingRecordMap &constFoldRecord =
                       ConstantFoldingRecordMap());
 
@@ -185,13 +191,16 @@ public:
   /// TensorProto file along with the model file and package them into a zip
   /// file. If \p includeConstantData then data for Constants will be serialized
   /// in the written model, otherwise it will be skipped (but initializers will
-  /// still exist, they will just have no data). \p constFoldRecord contains any
-  /// records of constant folding that should be included in the serialized
-  /// model.
+  /// still exist, they will just have no data). \p extraMetadataProps is
+  /// a mapping of key value pairs which are added to the metadata props portion
+  /// of the ONNX. \p constFoldRecord contains any records of constant folding
+  /// that should be included in the serialized model.
   ONNXModelWriter(const std::string &modelFilename, runtime::DAGListTy &dagList,
                   size_t irVersion, size_t opsetVersion,
                   Error *errPtr = nullptr, bool textMode = false,
                   bool zipMode = false, bool includeConstantData = true,
+                  const llvm::StringMap<std::string> &extraMetadataProps =
+                      llvm::StringMap<std::string>(),
                   const ConstantFoldingRecordMap &constFoldRecord =
                       ConstantFoldingRecordMap());
 
