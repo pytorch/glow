@@ -138,6 +138,8 @@ public:
     return compilationInfo_;
   }
 
+  const std::string toJSON() const override;
+
 private:
   NNPINetwork network_;
   NNPICompilationConfig config_;

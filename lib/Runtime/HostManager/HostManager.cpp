@@ -360,7 +360,8 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       Error writeErr = Error::empty();
       ONNXModelWriter onnxWR(loc, nodeList, 7, 9, &writeErr,
                              /* textMode */ false, /* zipMode */ false,
-                             /* includeConstantData */ false, record);
+                             /* includeConstantData */ false,
+                             /* extraMetadataProps */ {}, record);
       RETURN_IF_ERR(writeErr);
     }
   }
