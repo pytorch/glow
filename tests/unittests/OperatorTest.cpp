@@ -13345,7 +13345,13 @@ static void testConvertTo(glow::PlaceholderBindings &bindings_,
   auto *data = mod_.createPlaceholder(STy, shape, "data",
                                       /* isTrainable */ false);
   auto dataH = bindings_.allocate(data)->getHandle<SourceType>();
-  dataH.randomize(-1000, 1000, mod_.getPRNG());
+  if (STy == ElemKind::BoolTy) {
+    for (dim_t i = 0; i < dataH.size(); i++) {
+      dataH.raw(i) = static_cast<bool>(i % 2 == 0);
+    }
+  } else {
+    dataH.randomize(-1000, 1000, mod_.getPRNG());
+  }
 
   // Construct the graph for the backend to run, converting to dest type.
   auto OT = mod_.uniqueType(DTy, shape);
@@ -13400,6 +13406,8 @@ TEST_CONVERT_TO(int64_t, float, Int64ITy, FloatTy)
 TEST_CONVERT_TO(int64_t, float16_t, Int64ITy, Float16Ty)
 TEST_CONVERT_TO(int64_t, int32_t, Int64ITy, Int32ITy)
 TEST_CONVERT_TO(int64_t, int64_t, Int64ITy, Int64ITy)
+TEST_CONVERT_TO(bool, float, BoolTy, FloatTy)
+TEST_CONVERT_TO(bool, float16_t, BoolTy, Float16Ty)
 
 #undef TEST_CONVERT_TO
 
