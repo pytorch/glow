@@ -1017,19 +1017,32 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
 
 template <typename SLSType>
 void Partitioner::appendSLSTable(
-    Node &node, std::vector<Partitioner::SLSTableInfo> &slsTables) {
+    Node &node, std::vector<Partitioner::SLSTableInfo> &slsTables,
+    bool doPerfModelBalance) {
   auto *SLS0 = llvm::dyn_cast<SLSType>(&node);
   if (SLS0) {
     auto SLSDataDims = SLS0->getData().dims();
-    auto SLSIndexDims = SLS0->getIndices().dims();
-    size_t numElementsPerRowUpperBound =
-        std::max((size_t)SLSDataDims[1], (size_t)0);
-    size_t numIndices = SLSIndexDims[0];
+    uint64_t cost = 1;
     uint64_t numBytesInTable =
-        (uint64_t)SLSDataDims[0] * (uint64_t)SLSDataDims[1];
+        (uint64_t)SLS0->getData().getType()->getSizeInBytes();
+    float avgLength = SLS0->getAvgLength();
+
+    // If average length is available, then compute cost using perf model
+    if (doPerfModelBalance) {
+      avgLength = std::isnan(avgLength) ? 1.0f : avgLength;
+      uint64_t numBytesInRow = numBytesInTable / SLSDataDims[0];
+      float numBytesPerElement = (float)numBytesInRow / (float)(SLSDataDims[1]);
+      uint64_t algo1a = 32 * avgLength * ceil(((float)numBytesInRow) / 16.0);
+      uint64_t algo1b =
+          32 * avgLength *
+          ceil((((float)numBytesInRow) * numBytesPerElement + 4.0f) / 32.0f);
+      float algou = avgLength * 32.0f / 64.0f;
+      algou = (algou < 1.0f) ? algou : 1.0f;
+      uint64_t algo1 = (uint64_t)(algou * algo1b + (1.0f - algou) * algo1a);
+      cost = algo1;
+    }
     auto slsResult = SLS0->getResult();
-    slsTables.push_back({SLS0, numBytesInTable, numElementsPerRowUpperBound,
-                         numIndices, 0, slsResult});
+    slsTables.push_back({SLS0, numBytesInTable, 0, slsResult, cost});
   }
 }
 
@@ -1186,13 +1199,17 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   partitionConfig.funcName = std::string(F->getName());
   VLOG(1) << "Function: " << std::string(F->getName()) << std::endl;
   for (auto &node : F->getNodes()) {
+    bool doPerfModelBalance =
+        cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel;
     appendSLSTable<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
-        node, slsTables);
-    appendSLSTable<FusedRowwiseQuantizedSparseLengthsSumNode>(node, slsTables);
-    appendSLSTable<RowwiseQuantizedSparseLengthsWeightedSumNode>(node,
-                                                                 slsTables);
-    appendSLSTable<SparseLengthsSumNode>(node, slsTables);
-    appendSLSTable<SparseLengthsWeightedSumNode>(node, slsTables);
+        node, slsTables, doPerfModelBalance);
+    appendSLSTable<FusedRowwiseQuantizedSparseLengthsSumNode>(
+        node, slsTables, doPerfModelBalance);
+    appendSLSTable<RowwiseQuantizedSparseLengthsWeightedSumNode>(
+        node, slsTables, doPerfModelBalance);
+    appendSLSTable<SparseLengthsSumNode>(node, slsTables, doPerfModelBalance);
+    appendSLSTable<SparseLengthsWeightedSumNode>(node, slsTables,
+                                                 doPerfModelBalance);
   }
 
   // Now sort SLS tables by size decreasing
@@ -1204,11 +1221,9 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
 
   // Print SLS tables
   for (auto &table : slsTables) {
-    VLOG(1) << "(numBytesInTable, numElementsPerRowUpperBound, numIndices, "
-               "deviceId)"
-            << "\t" << table.numBytesInTable << "\t"
-            << table.numElementsPerRowUpperBound << "\t" << table.numIndices
-            << "\t" << table.deviceId << std::endl;
+    VLOG(1) << "(numBytesInTable, deviceID, cost)"
+            << "\t" << table.numBytesInTable << "\t" << table.deviceId << "\t"
+            << table.cost << std::endl;
   }
 
   // Create table of devices
@@ -1247,7 +1262,7 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
       if (slsDevices[d].memAvailableInBytes >= table.numBytesInTable) {
         deviceFound = true;
         slsDevices[d].memAvailableInBytes -= table.numBytesInTable;
-        slsDevices[d].currentCost += 1; // Cost is 1 per table
+        slsDevices[d].currentCost += (size_t)table.cost;
         table.deviceId = slsDevices[d].deviceId;
         break;
       }
@@ -1268,10 +1283,9 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
 
   // Print assignments
   for (auto &table : slsTables) {
-    VLOG(1) << "(numBytesInTable, numElementsPerRow, numIndices, deviceId)"
-            << "\t" << table.numBytesInTable << "\t"
-            << table.numElementsPerRowUpperBound << "\t" << table.numIndices
-            << "\t" << table.deviceId << std::endl;
+    VLOG(1) << "(numBytesInTable, deviceId, cost)"
+            << "\t" << table.numBytesInTable << "\t" << table.deviceId << "\t"
+            << table.cost << std::endl;
   }
 
   // Create manual partition

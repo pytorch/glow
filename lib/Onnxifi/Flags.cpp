@@ -42,6 +42,7 @@ extern bool GlowEnablePartialTensors;
 extern bool GlowUseCustomOpsForExport;
 extern bool GlowUseSparseNNPartitioningScheme;
 extern bool GlowSparseNNPartitioningAddSLSConcats;
+extern bool GlowSparseNNPartitioningBalancePerfModel;
 extern bool GlowDumpGraph;
 extern bool GlowUseDAGOptimizer;
 extern size_t GlowMaxActiveRequests;
@@ -198,6 +199,15 @@ DEFINE_bool(glow_sparsenn_partitioning_add_sls_concats, false,
 DEFINE_validator(glow_sparsenn_partitioning_add_sls_concats,
                  [](const char * /* flagname */, bool value) {
                    glow::onnxifi::GlowSparseNNPartitioningAddSLSConcats = value;
+                   return true;
+                 });
+
+DEFINE_bool(glow_sparsenn_partitioning_balance_perf_model, false,
+            "Balance SLS tables across cards using a perf model");
+DEFINE_validator(glow_sparsenn_partitioning_balance_perf_model,
+                 [](const char * /* flagname */, bool value) {
+                   glow::onnxifi::GlowSparseNNPartitioningBalancePerfModel =
+                       value;
                    return true;
                  });
 
