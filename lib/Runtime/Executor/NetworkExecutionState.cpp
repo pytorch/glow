@@ -179,9 +179,10 @@ void NetworkExecutionState::init(
         // to allocate a backing tensor on host.
         auto bufferIt = buffers_.find(PH);
         if (bufferIt == buffers_.end()) {
-
-          buffers_[PH] =
+          auto *deviceBuffer =
               device->allocateDeviceIOBuffer(PH->getType()->getSizeInBytes());
+          buffers_[PH] = deviceBuffer;
+          deviceAllocations_.insert({deviceBuffer, device.get()});
         }
         auto buffer = buffers_[PH];
         Tensor backingTensor(buffer, PH->getType());
