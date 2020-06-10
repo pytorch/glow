@@ -1647,7 +1647,7 @@ SelectNode *Function::createSelect(llvm::StringRef name, NodeValue Cond,
   auto inDims = LHS.dims();
   assert(inDims.size() > 0);
   ShapeVector outDims(inDims.begin(), inDims.end());
-  auto OT = getParent()->uniqueType(LHS.getElementType(), outDims);
+  auto OT = getParent()->uniqueTypeWithNewShape(LHS.getType(), outDims);
   return createSelect(name, OT, Cond, LHS, RHS);
 }
 
