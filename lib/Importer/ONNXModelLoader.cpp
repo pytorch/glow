@@ -4281,9 +4281,40 @@ Error ONNXModelLoader::loadNonMaxSuppression(
   ASSIGN_VALUE_OR_RETURN_ERR(boxesNV, getNodeValueByName(op.input(0)));
   NodeValue scoresNV;
   ASSIGN_VALUE_OR_RETURN_ERR(scoresNV, getNodeValueByName(op.input(1)));
-  Constant *maxOutputBoxesPerClassC = getConstantByNameOrNull(op.input(2));
-  Constant *iouThresholdC = getConstantByNameOrNull(op.input(3));
-  Constant *scoreThresholdC = getConstantByNameOrNull(op.input(4));
+  unsigned maxOutputBoxesPerClass = 0;
+  Constant *maxOutputBoxesPerClassC = nullptr;
+  if (op.input_size() > 2 && !op.input(2).empty()) {
+    maxOutputBoxesPerClassC = getConstantByNameOrNull(op.input(2));
+    RETURN_ERR_IF_NOT(maxOutputBoxesPerClassC,
+                      "NMS: maxOutputBoxesPerClass is not a contant tensor.");
+    if (maxOutputBoxesPerClassC->getPayload().getElementType() ==
+        ElemKind::Int64ITy) {
+      maxOutputBoxesPerClass =
+          maxOutputBoxesPerClassC->getPayload().getHandle<int64_t>().raw(0);
+    } else if (maxOutputBoxesPerClassC->getPayload().getElementType() ==
+               ElemKind::Int32ITy) {
+      maxOutputBoxesPerClass =
+          maxOutputBoxesPerClassC->getPayload().getHandle<int32_t>().raw(0);
+    } else {
+      return MAKE_ERR("NMS: Unsupported type for maxoutputboxesperclass.");
+    }
+  }
+  float iouThreshold = 0.0f;
+  Constant *iouThresholdC = nullptr;
+  if (op.input_size() > 3 && !op.input(3).empty()) {
+    iouThresholdC = getConstantByNameOrNull(op.input(3));
+    RETURN_ERR_IF_NOT(iouThresholdC,
+                      "NMS: iouThreshold is not a contant tensor.");
+    iouThreshold = iouThresholdC->getPayload().getHandle<float>().raw(0);
+  }
+  float scoreThreshold = 0.0f;
+  Constant *scoreThresholdC = nullptr;
+  if (op.input_size() > 4 && !op.input(4).empty()) {
+    scoreThresholdC = getConstantByNameOrNull(op.input(4));
+    RETURN_ERR_IF_NOT(scoreThresholdC,
+                      "NMS: scoreThrehold is not a contant tensor.");
+    scoreThreshold = scoreThresholdC->getPayload().getHandle<float>().raw(0);
+  }
 
   // Defaults to 0 which is the same representation as TF.
   unsigned centerPointBox = 0;
@@ -4304,40 +4335,6 @@ Error ONNXModelLoader::loadNonMaxSuppression(
     RETURN_ERR_IF_NOT(
         padToMaxOutputSize == 1,
         opErrMsg(op, "NonMaxSuppressionV4 does not support non-padding mode."));
-  }
-
-  unsigned maxOutputBoxesPerClass = 0;
-  float iouThreshold = 0.0f;
-  float scoreThreshold = 0.0f;
-
-  if (maxOutputBoxesPerClassC) {
-    if (maxOutputBoxesPerClassC->getPayload().getElementType() ==
-        ElemKind::Int64ITy) {
-      maxOutputBoxesPerClass =
-          maxOutputBoxesPerClassC->getPayload().getHandle<int64_t>().raw(0);
-    } else if (maxOutputBoxesPerClassC->getPayload().getElementType() ==
-               ElemKind::Int32ITy) {
-      maxOutputBoxesPerClass =
-          maxOutputBoxesPerClassC->getPayload().getHandle<int32_t>().raw(0);
-    } else {
-      return MAKE_ERR(
-          opErrMsg(op, "NMS Unsupported type for maxoutputboxesperclass."));
-    }
-  } else {
-    return MAKE_ERR(
-        opErrMsg(op, "NMS maxOutputBoxesPerClass is not a contant tensor."));
-  }
-
-  if (iouThresholdC) {
-    iouThreshold = iouThresholdC->getPayload().getHandle<float>().raw(0);
-  } else {
-    return MAKE_ERR(opErrMsg(op, "NMS iouThreshold is not a contant tensor."));
-  }
-
-  if (scoreThresholdC) {
-    scoreThreshold = scoreThresholdC->getPayload().getHandle<float>().raw(0);
-  } else {
-    return MAKE_ERR(opErrMsg(op, "NMS scoreThrehold is not a contant tensor."));
   }
 
   // Create Node.
