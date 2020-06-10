@@ -1172,6 +1172,22 @@ static bool lowerRequiredNodes(Function *F, CompilationContext &cctx) {
       changed = true;
       continue;
     }
+
+    if (ConvertToNode *CT = llvm::dyn_cast<ConvertToNode>(&N)) {
+      // Handle bool->float conversion
+      if (((CT->getResult().getElementType() == ElemKind::FloatTy) ||
+           (CT->getResult().getElementType() == ElemKind::Float16Ty)) &&
+          CT->getInput().getElementType() == ElemKind::BoolTy) {
+        auto outputType = CT->getResult().getType();
+        auto ctName = CT->getName().str();
+        auto *s0 = F->createSplat(ctName + "_s0", outputType, 0.0f);
+        auto *s1 = F->createSplat(ctName + "_s1", outputType, 1.0f);
+        auto *sel = F->createSelect(ctName + "_sel", CT->getInput(), s1, s0);
+        CT->getResult().replaceAllUsesOfWith(sel);
+        changed = true;
+        continue;
+      }
+    }
   }
   return changed;
 }
