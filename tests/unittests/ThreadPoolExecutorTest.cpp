@@ -265,7 +265,7 @@ public:
         runIdsMatch && resultsMatch && (!runSuccess || bindingsMatch);
 
     testRun_ = true;
-
+    executor_->freePool(root_.get());
     return testPassed;
   }
 
