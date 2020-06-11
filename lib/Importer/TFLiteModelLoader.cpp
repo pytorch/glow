@@ -64,6 +64,28 @@ llvm::cl::opt<bool> tfliteFloatSoftmaxOpt(
     llvm::cl::init(true), llvm::cl::Optional,
     llvm::cl::cat(tfliteModelLoaderCat));
 
+llvm::cl::opt<float> tfliteBiasScaleCheckMaxErrorOpt(
+    "tflite-bias-scale-check-max-error",
+    llvm::cl::desc(
+        "TensorFlowLite mandates that for quantized operators like Conv2D the "
+        "bias quantization parameter biasScale = inputScale * weightsScale but "
+        "some pre-quantized models do not EXACTLY satisfy this relation but "
+        "with very small relative errors (around 1e-8). Hence we allow a "
+        "tolerance of 1e-6 which, if satisfied, then we adjust the bias to "
+        "conform to the restriction."),
+    llvm::cl::init(1e-6), llvm::cl::Optional,
+    llvm::cl::cat(tfliteModelLoaderCat));
+
+llvm::cl::opt<bool> tfliteBiasScaleCheckThrowErrorOpt(
+    "tflite-bias-scale-check-throw-error",
+    llvm::cl::desc(
+        "TensorFlowLite mandates that for quantized operators like Conv2D the "
+        "bias quantization parameter biasScale = inputScale * weightsScale. If "
+        "this contraint is not met within the given tolerance then an error "
+        "will be thrown if this option is enabled."),
+    llvm::cl::init(false), llvm::cl::Optional,
+    llvm::cl::cat(tfliteModelLoaderCat));
+
 /// Function to read a TensorFlowLite model from the file \p modelFilename into
 /// the data buffer \p modelData provided by the caller. The \p modelData buffer
 /// is allocated and initialized by this function but the caller must ensure its
@@ -164,19 +186,15 @@ Error checkBiasQuantizationParams(Module &mod, NodeValue input,
     float weightsScale = weightsTy->getScale();
     float matMulScale = inputScale * weightsScale;
     float biasScale = biasTy->getScale();
+    // Check bias scale relative error to inputScale * weightsScale.
     if (biasScale != matMulScale) {
-      // TensorFlowLite mandates that biasScale = inputScale * weightsScale but
-      // some pre-quantized models do not EXACTLY satisfy this relation but with
-      // very small relative errors (around 1e-8). Hence we allow a tolerance of
-      // 1e-6 which, if satisfied, then we only throw a warning and adjust the
-      // bias to conform to the restriction, otherwise we throw an error.
       float relErr = std::abs(matMulScale - biasScale) / matMulScale;
-      if (relErr < 1e-6) {
-        llvm::outs() << strFormat(
-            "TensorFlowLite: WARNING: Bias scale value was expected "
-            "to be exactly %E (inputScale * weightsScale) but found "
-            "%E instead! Relative absolute error is %E!\n",
-            matMulScale, biasScale, relErr);
+      llvm::outs() << strFormat(
+          "TensorFlowLite: WARNING: Bias scale value was expected "
+          "to be exactly %E (inputScale * weightsScale) but found "
+          "%E instead! Relative absolute error is %E!\n",
+          matMulScale, biasScale, relErr);
+      if (relErr < tfliteBiasScaleCheckMaxErrorOpt) {
         // Set new bias type.
         TypeRef newBiasTy =
             mod.uniqueType(biasTy->getElementType(), biasTy->dims(),
@@ -186,7 +204,7 @@ Error checkBiasQuantizationParams(Module &mod, NodeValue input,
         if (auto *biasC = llvm::dyn_cast<Constant>(bias.getNode())) {
           biasC->setPayloadType(newBiasTy);
         }
-      } else {
+      } else if (tfliteBiasScaleCheckThrowErrorOpt) {
         RETURN_ERR(
             strFormat("TensorFlowLite: ERROR: Bias scale value was expected "
                       "to be exactly %E (inputScale * weightsScale) but found "
@@ -239,8 +257,6 @@ TFLiteModelLoader::getTensorShape(const tflite::Tensor *tensor) {
   return shape;
 }
 
-// TODO: Add methods for reading multiple scales/offsets for per-channel
-// quantization!
 Expected<ElemKind>
 TFLiteModelLoader::getTensorElemKind(const tflite::Tensor *tensor) {
   bool isQuantized = isTensorQuantized(tensor);
@@ -326,6 +342,16 @@ bool TFLiteModelLoader::isTensorQuantized(const tflite::Tensor *tensor) {
   return true;
 }
 
+bool TFLiteModelLoader::isTensorPerAxisQuantized(const tflite::Tensor *tensor) {
+  if (!isTensorQuantized(tensor)) {
+    return false;
+  }
+  auto *tensorQParams = tensor->quantization();
+  auto *scales = tensorQParams->scale();
+  auto *offsets = tensorQParams->zero_point();
+  return (scales->size() > 1) && (offsets->size() > 1);
+}
+
 Expected<float>
 TFLiteModelLoader::getTensorScale(const tflite::Tensor *tensor) {
   auto *tensorQParams = tensor->quantization();
@@ -382,16 +408,79 @@ TFLiteModelLoader::getTensorOffset(const tflite::Tensor *tensor) {
   return offset;
 }
 
+Expected<std::vector<float>>
+TFLiteModelLoader::getTensorScales(const tflite::Tensor *tensor) {
+  auto *tensorQParams = tensor->quantization();
+  RETURN_ERR_IF_NOT(
+      isTensorQuantized(tensor),
+      strFormat("TensorFlowLite: Tensor '%s' has no quantization parameters!",
+                getTensorName(tensor).c_str()));
+  RETURN_ERR_IF_NOT(
+      tensorQParams->details_type() == tflite::QuantizationDetails_NONE,
+      strFormat("TensorFlowLite: Tensor '%s' has custom quantization which is "
+                "not supported!",
+                getTensorName(tensor).c_str()));
+  auto *scales = tensorQParams->scale();
+  RETURN_ERR_IF_NOT(scales->size() > 1,
+                    strFormat("TensorFlowLite: Tensor '%s' has %d quantization "
+                              "parameters but at least one was expected!",
+                              getTensorName(tensor).c_str(), scales->size()));
+  std::vector<float> scalesVec =
+      std::vector<float>(scales->begin(), scales->end());
+  return scalesVec;
+}
+
+Expected<std::vector<int32_t>>
+TFLiteModelLoader::getTensorOffsets(const tflite::Tensor *tensor) {
+  auto *tensorQParams = tensor->quantization();
+  RETURN_ERR_IF_NOT(
+      isTensorQuantized(tensor),
+      strFormat("TensorFlowLite: Tensor '%s' has no quantization parameters!",
+                getTensorName(tensor).c_str()));
+  RETURN_ERR_IF_NOT(
+      tensorQParams->details_type() == tflite::QuantizationDetails_NONE,
+      strFormat("TensorFlowLite: Tensor '%s' has custom quantization which is "
+                "not supported!",
+                getTensorName(tensor).c_str()));
+  auto *offsets = tensorQParams->zero_point();
+  RETURN_ERR_IF_NOT(offsets->size() > 1,
+                    strFormat("TensorFlowLite: Tensor '%s' has %d quantization "
+                              "parameters but at least one was expected!",
+                              getTensorName(tensor).c_str(), offsets->size()));
+  // TensorFlowLite defines the offset as int64 since it also supports int64
+  // quantized type. Since Glow defines the offset as int32 we perform a cast
+  // here and also validate that the offset is within the int32 range.
+  std::vector<int32_t> offsetsVec;
+  for (auto offsetInt64 : *offsets) {
+    RETURN_ERR_IF_NOT(
+        (std::numeric_limits<int32_t>::min() <= offsetInt64) &&
+            (offsetInt64 <= std::numeric_limits<int32_t>::max()),
+        strFormat(
+            "TensorFlowLite: Tensor '%s' has an offset out of the int32 range!",
+            getTensorName(tensor).c_str()));
+    int32_t offset = static_cast<int32_t>(offsetInt64);
+    // Convert UINT8 offset to INT8 offset.
+    if (tfliteUint8ToInt8Opt && (tensor->type() == tflite::TensorType_UINT8)) {
+      offset -= 128;
+    }
+    offsetsVec.push_back(offset);
+  }
+  return offsetsVec;
+}
+
 Expected<Type> TFLiteModelLoader::getTensorType(const tflite::Tensor *tensor) {
   ElemKind elemKind;
   ASSIGN_VALUE_OR_RETURN_ERR(elemKind, getTensorElemKind(tensor));
   std::vector<dim_t> shape;
   ASSIGN_VALUE_OR_RETURN_ERR(shape, getTensorShape(tensor));
   if (isQuantizedElemKind(elemKind)) {
-    float scale;
-    ASSIGN_VALUE_OR_RETURN_ERR(scale, getTensorScale(tensor));
-    int32_t offset;
-    ASSIGN_VALUE_OR_RETURN_ERR(offset, getTensorOffset(tensor));
+    // If tensor is quantized per-axis we use a dummy scale 1.0 and offset 0.
+    float scale = 1.0;
+    int32_t offset = 0;
+    if (!isTensorPerAxisQuantized(tensor)) {
+      ASSIGN_VALUE_OR_RETURN_ERR(scale, getTensorScale(tensor));
+      ASSIGN_VALUE_OR_RETURN_ERR(offset, getTensorOffset(tensor));
+    }
     return Type(elemKind, shape, scale, offset);
   } else {
     return Type(elemKind, shape);
@@ -837,6 +926,126 @@ TFLiteModelLoader::loadArray(const OperatorInfo &opInfo, NodeValue value) {
   return valueV;
 }
 
+Expected<bool> TFLiteModelLoader::isConv2DPerAxisQuantized(
+    const tflite::Operator *op, const OperatorInfo &opInfo,
+    Constant *&filterScalesC, Constant *&filterOffsetsC, Constant *&biasScalesC,
+    Constant *&biasOffsetsC) {
+  // Get filter/bias tensors.
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
+  size_t filterTensorIdx;
+  ASSIGN_VALUE_OR_RETURN_ERR(filterTensorIdx, getOperatorInputTensorIdx(op, 1));
+  size_t biasTensorIdx;
+  ASSIGN_VALUE_OR_RETURN_ERR(biasTensorIdx, getOperatorInputTensorIdx(op, 2));
+  const tflite::Tensor *filterTensor;
+  ASSIGN_VALUE_OR_RETURN_ERR(filterTensor, getTensorByIndex(filterTensorIdx));
+  const tflite::Tensor *biasTensor;
+  ASSIGN_VALUE_OR_RETURN_ERR(biasTensor, getTensorByIndex(biasTensorIdx));
+
+  bool isPerAxisQuantized = isTensorPerAxisQuantized(filterTensor) &&
+                            isTensorPerAxisQuantized(biasTensor);
+
+  // If it is not per-axis quantized return directly.
+  if (!isPerAxisQuantized) {
+    filterScalesC = nullptr;
+    filterOffsetsC = nullptr;
+    biasScalesC = nullptr;
+    biasOffsetsC = nullptr;
+    return false;
+  }
+
+  dim_t numChannels = outTy->dims().back();
+
+  // Get filter/bias quantization parameters.
+  std::vector<float> filterScalesV;
+  ASSIGN_VALUE_OR_RETURN_ERR(filterScalesV, getTensorScales(filterTensor));
+  std::vector<int32_t> filterOffsetsV;
+  ASSIGN_VALUE_OR_RETURN_ERR(filterOffsetsV, getTensorOffsets(filterTensor));
+  std::vector<float> biasScalesV;
+  ASSIGN_VALUE_OR_RETURN_ERR(biasScalesV, getTensorScales(biasTensor));
+  std::vector<int32_t> biasOffsetsV;
+  ASSIGN_VALUE_OR_RETURN_ERR(biasOffsetsV, getTensorOffsets(biasTensor));
+
+  // Create filter/bias quantization parameters graph constants.
+  filterScalesC =
+      mod_.createConstant(ElemKind::FloatTy, {numChannels}, "filterScales");
+  filterOffsetsC =
+      mod_.createConstant(ElemKind::Int32ITy, {numChannels}, "filterOffsets");
+  biasScalesC =
+      mod_.createConstant(ElemKind::FloatTy, {numChannels}, "biasScales");
+  biasOffsetsC =
+      mod_.createConstant(ElemKind::Int32ITy, {numChannels}, "biasOffsets");
+
+  RETURN_ERR_IF_NOT(
+      filterScalesV.size() == numChannels,
+      opErrMsg(opInfo,
+               "Weights scales length should match the output channels!"));
+  RETURN_ERR_IF_NOT(
+      filterOffsetsV.size() == numChannels,
+      opErrMsg(opInfo,
+               "Weights offsets length should match the output channels!"));
+  RETURN_ERR_IF_NOT(
+      biasScalesV.size() == numChannels,
+      opErrMsg(opInfo, "Bias scales length should match the output channels!"));
+  RETURN_ERR_IF_NOT(
+      biasOffsetsV.size() == numChannels,
+      opErrMsg(opInfo,
+               "Bias offsets length should match the output channels!"));
+
+  filterScalesC->getPayloadMutable().copyRawFrom(
+      reinterpret_cast<const char *>(filterScalesV.data()));
+  filterOffsetsC->getPayloadMutable().copyRawFrom(
+      reinterpret_cast<const char *>(filterOffsetsV.data()));
+  biasScalesC->getPayloadMutable().copyRawFrom(
+      reinterpret_cast<const char *>(biasScalesV.data()));
+  biasOffsetsC->getPayloadMutable().copyRawFrom(
+      reinterpret_cast<const char *>(biasOffsetsV.data()));
+
+  // Validate filter/bias quantization parameters.
+  float inputScale = input.getType()->getScale();
+  auto filterScalesH = filterScalesC->getPayload().getHandle<float>();
+  auto filterOffsetsH = filterOffsetsC->getPayload().getHandle<int32_t>();
+  auto biasScalesH = biasScalesC->getPayload().getHandle<float>();
+  auto biasOffsetsH = biasOffsetsC->getPayload().getHandle<int32_t>();
+  for (size_t idx = 0; idx < numChannels; ++idx) {
+    // TensorFlowLite mandates that filterOffset and biasOffset are 0.
+    RETURN_ERR_IF_NOT(filterOffsetsH.raw(idx) == 0,
+                      opErrMsg(opInfo, "Filter offset was expected to be 0!"));
+    RETURN_ERR_IF_NOT(biasOffsetsH.raw(idx) == 0,
+                      opErrMsg(opInfo, "Bias offset was expected to be 0!"));
+
+    float filterScale = filterScalesH.raw(idx);
+    float matMulScale = inputScale * filterScale;
+    float biasScale = biasScalesH.raw(idx);
+
+    // Check bias scale relative error to inputScale * filterScale.
+    if (biasScale != matMulScale) {
+      float relErr = std::abs(matMulScale - biasScale) / matMulScale;
+      llvm::outs() << opErrMsg(
+          opInfo,
+          strFormat("WARNING: Bias scale value was expected "
+                    "to be exactly %E (inputScale * weightsScale) but found "
+                    "%E instead! Relative absolute error is %E!\n",
+                    matMulScale, biasScale, relErr));
+      if (relErr < tfliteBiasScaleCheckMaxErrorOpt) {
+        // Modify bias scale.
+        biasScalesH.raw(idx) = matMulScale;
+      } else if (tfliteBiasScaleCheckThrowErrorOpt) {
+        RETURN_ERR(opErrMsg(
+            opInfo,
+            strFormat("ERROR: Bias scale value was expected "
+                      "to be exactly %E (inputScale * weightsScale) but found "
+                      "%E instead! Relative absolute error is %E!\n",
+                      matMulScale, biasScale, relErr)));
+      }
+    }
+  }
+
+  return true;
+}
+
 Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
                                       const OperatorInfo &opInfo) {
   // Opcodes are treated in increasing order to allow easy tracking
@@ -1086,6 +1295,20 @@ Error TFLiteModelLoader::loadBinaryArithmetic(const tflite::Operator *op,
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
+  // LHS operand broadcasting.
+  if (LHS.dims().size() < RHS.dims().size()) {
+    unsigned_t axis = RHS.dims().size() - LHS.dims().size();
+    LHS =
+        F_->createBroadcast(opInfo.name + ".Broadcast", LHS, RHS.dims(), axis);
+  }
+
+  // RHS operand broadcasting.
+  if (RHS.dims().size() < LHS.dims().size()) {
+    unsigned_t axis = LHS.dims().size() - RHS.dims().size();
+    RHS =
+        F_->createBroadcast(opInfo.name + ".Broadcast", RHS, LHS.dims(), axis);
+  }
+
   auto opCode = opInfo.code;
   NodeValue output;
   if (opCode == tflite::BuiltinOperator_ADD) {
@@ -1229,7 +1452,6 @@ Error TFLiteModelLoader::loadConcat(const tflite::Operator *op,
   return setOutputNodeValue(op, output);
 }
 
-// TODO: Clarify what happens for per-channel quantization.
 Error TFLiteModelLoader::loadConv2D(const tflite::Operator *op,
                                     const OperatorInfo &opInfo) {
   const auto *opts = op->builtin_options_as_Conv2DOptions();
@@ -1241,8 +1463,6 @@ Error TFLiteModelLoader::loadConv2D(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(bias, getInputNodeValue(op, 2));
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
-
-  RETURN_IF_ERR(checkBiasQuantizationParams(mod_, input, filter, bias));
 
   ShapeNHWC inputShape = ShapeNHWC(input.dims());
   ShapeNHWC filterShape = ShapeNHWC(filter.dims());
@@ -1279,14 +1499,51 @@ Error TFLiteModelLoader::loadConv2D(const tflite::Operator *op,
                     opErrMsg(opInfo, "Non square dilation not supported!"));
   unsigned_t dilation = dilations[0];
 
-  NodeValue output =
-      F_->createConv(opInfo.name, input, filter, bias, outTy, kernels, strides,
-                     pads, /* group */ 1, dilation);
+  // There are TensorFlowLite models which have only the weights quantized
+  // to INT8 (the rest of the operands being FLOAT32). Since Glow does not
+  // support mixed precision operation we dequantize the weights.
+  if (input.getType()->isFPType() && filter.getType()->isQuantizedType() &&
+      bias.getType()->isFPType() && outTy->isFPType()) {
+    filter = F_->createDequantize(opInfo.name + ".Dequantize", filter,
+                                  outTy->getElementType());
+  }
+
+  // Check whether this operator is quantized per axis.
+  bool isPerAxisQuantized;
+  Constant *filterScales = nullptr;
+  Constant *filterOffsets = nullptr;
+  Constant *biasScales = nullptr;
+  Constant *biasOffsets = nullptr;
+  ASSIGN_VALUE_OR_RETURN_ERR(isPerAxisQuantized,
+                             isConv2DPerAxisQuantized(op, opInfo, filterScales,
+                                                      filterOffsets, biasScales,
+                                                      biasOffsets));
+
+  // Create convolution node.
+  NodeValue output;
+  if (isPerAxisQuantized) {
+    // Check that filter and bias are constants.
+    RETURN_ERR_IF_NOT(llvm::dyn_cast<Constant>(filter.getNode()),
+                      opErrMsg(opInfo, "Filter must be constant!"));
+    RETURN_ERR_IF_NOT(llvm::dyn_cast<Constant>(bias.getNode()),
+                      opErrMsg(opInfo, "Bias must be constant!"));
+    // Create ChannelwiseQuantizedConvolution node.
+    output = F_->createChannelwiseQuantizedConv(
+        opInfo.name, input, filter, bias, filterScales, filterOffsets,
+        biasScales, biasOffsets, outTy, kernels, strides, pads, /* group */ 1,
+        dilation, /* quantizeFilter */ false, /* quantizeBias */ false);
+  } else {
+    // Check bias quantization parameters.
+    RETURN_IF_ERR(checkBiasQuantizationParams(mod_, input, filter, bias));
+    // Create Convolution node.
+    output = F_->createConv(opInfo.name, input, filter, bias, outTy, kernels,
+                            strides, pads, /* group */ 1, dilation);
+  }
+
   RETURN_IF_ERR(addActivation(output, opts->fused_activation_function()));
   return setOutputNodeValue(op, output);
 }
 
-// TODO: Clarify what happens for per-channel quantization.
 Error TFLiteModelLoader::loadDepthwiseConv2D(const tflite::Operator *op,
                                              const OperatorInfo &opInfo) {
   const auto *opts = op->builtin_options_as_DepthwiseConv2DOptions();
@@ -1298,8 +1555,6 @@ Error TFLiteModelLoader::loadDepthwiseConv2D(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(bias, getInputNodeValue(op, 2));
   TypeRef outTy;
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
-
-  RETURN_IF_ERR(checkBiasQuantizationParams(mod_, input, filter, bias));
 
   ShapeNHWC inputShape = ShapeNHWC(input.dims());
   ShapeNHWC filterShape = ShapeNHWC(filter.dims());
@@ -1337,19 +1592,74 @@ Error TFLiteModelLoader::loadDepthwiseConv2D(const tflite::Operator *op,
                     opErrMsg(opInfo, "Non square dilation not supported!"));
   unsigned_t dilation = dilations[0];
 
-  // Transpose filter from CHWN to NHWC.
-  RETURN_ERR_IF_NOT(filter.dims().size() == 4,
-                    opErrMsg(opInfo, "Filter should be 4D!"));
-  filter = F_->createTranspose(opInfo.name + ".Transpose", filter, {3, 1, 2, 0},
-                               "NHWC");
-  RETURN_ERR_IF_NOT(filter.dims().back() == 1,
-                    opErrMsg(opInfo, "Filter should have 1 channel!"));
-
   // Convolution group is inputChannels / filterChannels = inputChannels.
   unsigned_t group = input.dims().back();
 
-  NodeValue output = F_->createConv(opInfo.name, input, filter, bias, outTy,
-                                    kernels, strides, pads, group, dilation);
+  // There are TensorFlowLite models which have only the weights quantized
+  // to INT8 (the rest of the operands being FLOAT32). Since Glow does not
+  // support mixed precision operation we dequantize the weights.
+  if (input.getType()->isFPType() && filter.getType()->isQuantizedType() &&
+      bias.getType()->isFPType() && outTy->isFPType()) {
+    filter = F_->createDequantize(opInfo.name + ".Dequantize", filter,
+                                  outTy->getElementType());
+  }
+
+  // Check whether this operator is quantized per axis.
+  bool isPerAxisQuantized;
+  Constant *filterScales = nullptr;
+  Constant *filterOffsets = nullptr;
+  Constant *biasScales = nullptr;
+  Constant *biasOffsets = nullptr;
+  ASSIGN_VALUE_OR_RETURN_ERR(isPerAxisQuantized,
+                             isConv2DPerAxisQuantized(op, opInfo, filterScales,
+                                                      filterOffsets, biasScales,
+                                                      biasOffsets));
+
+  // Transpose filter from CHWN to NHWC in-place without using a Reshape
+  // node because further down the ChannelwiseQuantizedConvolution requires
+  // the filter to be a Constant.
+  RETURN_ERR_IF_NOT(filter.dims().size() == 4,
+                    opErrMsg(opInfo, "Filter should be 4D!"));
+  if (isPerAxisQuantized) {
+    Constant *filterC = llvm::dyn_cast<Constant>(filter.getNode());
+    RETURN_ERR_IF_NOT(filterC, opErrMsg(opInfo, "Filter must be constant!"));
+    TypeRef filterTy = filterC->getType();
+    auto filterDims = filterTy->dims();
+    TypeRef newFilterTy = mod_.uniqueTypeWithNewShape(
+        filterTy, {filterDims[3], filterDims[1], filterDims[2], filterDims[0]});
+    Tensor newFilterT = Tensor(newFilterTy);
+    filterC->getPayload().transpose(&newFilterT, {3, 1, 2, 0});
+    Constant *newFilterC = mod_.createConstant(
+        filterC->getName().str() + ".Reshape", std::move(newFilterT), "NHWC");
+    filter = newFilterC->getOutput();
+  } else {
+    filter = F_->createTranspose(opInfo.name + ".Transpose", filter,
+                                 {3, 1, 2, 0}, "NHWC");
+  }
+  RETURN_ERR_IF_NOT(filter.dims().back() == 1,
+                    opErrMsg(opInfo, "Filter should have 1 channel!"));
+
+  // Create convolution node.
+  NodeValue output;
+  if (isPerAxisQuantized) {
+    // Check that filter and bias are constants.
+    RETURN_ERR_IF_NOT(llvm::dyn_cast<Constant>(filter.getNode()),
+                      opErrMsg(opInfo, "Filter must be constant!"));
+    RETURN_ERR_IF_NOT(llvm::dyn_cast<Constant>(bias.getNode()),
+                      opErrMsg(opInfo, "Bias must be constant!"));
+    // Create ChannelwiseQuantizedConvolution node.
+    output = F_->createChannelwiseQuantizedConv(
+        opInfo.name, input, filter, bias, filterScales, filterOffsets,
+        biasScales, biasOffsets, outTy, kernels, strides, pads, group, dilation,
+        /* quantizeFilter */ false, /* quantizeBias */ false);
+  } else {
+    // Check bias quantization parameters.
+    RETURN_IF_ERR(checkBiasQuantizationParams(mod_, input, filter, bias));
+    // Create Convolution node.
+    output = F_->createConv(opInfo.name, input, filter, bias, outTy, kernels,
+                            strides, pads, group, dilation);
+  }
+
   RETURN_IF_ERR(addActivation(output, opts->fused_activation_function()));
   return setOutputNodeValue(op, output);
 }
@@ -1367,6 +1677,15 @@ Error TFLiteModelLoader::loadFullyConnected(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
   RETURN_IF_ERR(checkBiasQuantizationParams(mod_, input, weights, bias));
+
+  // There are TensorFlowLite models which have only the weights quantized
+  // to INT8 (the rest of the operands being FLOAT32). Since Glow does not
+  // support mixed precision operation we dequantize the weights.
+  if (input.getType()->isFPType() && weights.getType()->isQuantizedType() &&
+      bias.getType()->isFPType() && outTy->isFPType()) {
+    weights = F_->createDequantize(opInfo.name + ".Dequantize", weights,
+                                   outTy->getElementType());
+  }
 
   if (opInfo.version >= 2) {
     RETURN_ERR_IF_NOT(
@@ -1535,6 +1854,8 @@ Error TFLiteModelLoader::loadReduce(const tflite::Operator *op,
   ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
   NodeValue axes;
   ASSIGN_VALUE_OR_RETURN_ERR(axes, getInputNodeValue(op, 1));
+  TypeRef outTy;
+  ASSIGN_VALUE_OR_RETURN_ERR(outTy, getOutputType(op, 0));
 
   std::vector<unsigned_t> axesVal;
   ASSIGN_VALUE_OR_RETURN_ERR(axesVal,
@@ -1548,12 +1869,19 @@ Error TFLiteModelLoader::loadReduce(const tflite::Operator *op,
   auto opCode = opInfo.code;
   NodeValue output = input;
   for (size_t idx = 0, end = axesVal.size(); idx < end; ++idx) {
+    // Current axis value.
     unsigned_t axisVal = axesVal[idx];
     if (!keepDims) {
       axisVal = axisVal - idx;
     }
+    // Current output type.
+    ShapeVector outDimsCurr(output.dims().begin(), output.dims().end());
+    outDimsCurr.erase(outDimsCurr.begin() + axisVal);
+    auto outTypeCurr = mod_.uniqueTypeWithNewShape(outTy, outDimsCurr);
+    // Create reduce operator.
     if (opCode == tflite::BuiltinOperator_MEAN) {
-      output = F_->createBatchedReduceMean(opInfo.name, output, {axisVal});
+      output = F_->createBatchedReduceMean(opInfo.name, outTypeCurr, output,
+                                           {axisVal});
       // The BatchedReduceMean reduces the output dimension and hence we expand
       // the output dimensions if keepDims is true.
       if (keepDims) {

@@ -20,3 +20,9 @@ Files from the [flatbuffer](https://github.com/google/flatbuffers) repository:
 - flatbuffers\stl_emulation.h
   Location: https://github.com/google/flatbuffers/blob/master/include/flatbuffers/stl_emulation.h
   Commit: 4e45f7c9e8da64a9601eeba1231079c3ce0a6dc2
+
+## Useful links
+
+https://www.tensorflow.org/lite/guide/ops_compatibility
+https://www.tensorflow.org/lite/performance/quantization_spec
+https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/schema/schema.fbs

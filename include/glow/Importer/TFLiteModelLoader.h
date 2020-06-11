@@ -68,11 +68,20 @@ class TFLiteModelLoader {
   /// \returns whether the tensor \p tensor is quantized or not.
   bool isTensorQuantized(const tflite::Tensor *tensor);
 
+  /// \returns whether the tensor \p tensor is quantized per axis or not.
+  bool isTensorPerAxisQuantized(const tflite::Tensor *tensor);
+
   /// \returns the scale quantization parameter of the tensor \p tensor.
   Expected<float> getTensorScale(const tflite::Tensor *tensor);
 
   /// \returns the offset quantization parameter of the tensor \p tensor.
   Expected<int32_t> getTensorOffset(const tflite::Tensor *tensor);
+
+  /// \returns the scales quantization parameters of the tensor \p tensor.
+  Expected<std::vector<float>> getTensorScales(const tflite::Tensor *tensor);
+
+  /// \returns the offsets quantization parameters of the tensor \p tensor.
+  Expected<std::vector<int32_t>> getTensorOffsets(const tflite::Tensor *tensor);
 
   /// \returns the type of the tensor \p tensor.
   Expected<Type> getTensorType(const tflite::Tensor *tensor);
@@ -185,6 +194,18 @@ class TFLiteModelLoader {
   template <typename T>
   Expected<std::vector<T>> loadArray(const OperatorInfo &opInfo,
                                      NodeValue value);
+
+  /// Helper tool to verify whether the Conv2D or DepthwiseConv2D operator \p op
+  /// with the operator info \p opInfo is quantized per axis. \returns true if
+  /// the operator is quantized per axis and creates new graph constants by
+  /// setting the pointers \p filterScalesC, \p filterOffsetsC, \p biasScalesC
+  /// and \b biasOffsetsC and returns \p false otherwise.
+  Expected<bool> isConv2DPerAxisQuantized(const tflite::Operator *op,
+                                          const OperatorInfo &opInfo,
+                                          Constant *&filterScalesC,
+                                          Constant *&filterOffsetsC,
+                                          Constant *&biasScalesC,
+                                          Constant *&biasOffsetsC);
 
   /// Load the operator \p op into the current graph. \p opInfo provides meta
   /// information about \p op. \returns Error if operator cannot be loaded.

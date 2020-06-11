@@ -1846,7 +1846,7 @@ Function::createBatchedReduceMean(llvm::StringRef name, NodeValue batch,
                                   llvm::ArrayRef<unsigned_t> axes) {
   // Create new shape with specified dimensions either reduced or removed.
   auto outDims = getNewShapeWithoutAxes(batch.dims(), axes);
-  auto OT = getParent()->uniqueType(batch.getType()->getElementType(), outDims);
+  auto OT = getParent()->uniqueTypeWithNewShape(batch.getType(), outDims);
   return createBatchedReduceMean(name, OT, batch, axes);
 }
 
