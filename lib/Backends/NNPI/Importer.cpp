@@ -444,6 +444,36 @@ glow::NNPIImporter::addIAExtentionPath(const std::string &extPath) {
 
 NNPINetwork glow::NNPIImporter::importFunction(Function *F,
                                                const BackendOptions &opts) {
+  if (compileOptions_.normalizeLayerNames) {
+    std::map<std::string, uint32_t> type2count;
+    std::map<std::string, glow::Node *> nodes;
+    for (auto &N : F->getNodes()) {
+      nodes[N.getName()] = &N;
+    }
+    auto *module = F->getParent();
+    std::string prefix;
+
+    if (module->getFunctions().size() > 1) {
+      uint32_t netID = 0;
+      for (const auto &function : module->getFunctions()) {
+        if (function == F) {
+          break;
+        }
+        netID++;
+      }
+      prefix = std::string("Net") + std::to_string(netID) + "_";
+    }
+    for (auto &pN : nodes) {
+      std::string kindStr = pN.second->getKindName();
+      if (type2count.count(kindStr) == 0) {
+        type2count[kindStr] = 0;
+      }
+      auto counter = type2count[kindStr]++;
+      auto newName = prefix + kindStr + "_" + std::to_string(counter);
+      pN.second->setName(newName);
+    }
+  }
+
   // Clear internals.
   constants_.clear();
   readTensors_.clear();

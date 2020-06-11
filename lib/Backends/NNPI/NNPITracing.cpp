@@ -31,7 +31,8 @@ NNPIDeviceTracing::NNPIDeviceTracing(unsigned deviceId) : deviceId_(deviceId) {
 
 bool NNPIDeviceTracing::start(TraceContext *traceContext,
                               NNPIDeviceContext deviceContext, bool swTraces,
-                              bool hwTraces) {
+                              bool hwTraces, uint32_t softwareBufferSizeMB,
+                              uint32_t hardwareBufferSizeMB) {
   if (!traceContext ||
       !traceContext->shouldLog(TraceEvent::TraceLevel::OPERATOR)) {
     return false;
@@ -41,7 +42,8 @@ bool NNPIDeviceTracing::start(TraceContext *traceContext,
     return false;
   }
   bool isFirstToStart = NNPIDeviceTracing::isFirstToChangeCaptureStart(true);
-  if (!traceCtx_->startCapture(deviceContext, swTraces, hwTraces)) {
+  if (!traceCtx_->startCapture(deviceContext, swTraces, hwTraces,
+                               softwareBufferSizeMB, hardwareBufferSizeMB)) {
     LOG(WARNING) << "Failed to start trace capture for device " << deviceId_
                  << " is first = " << (isFirstToStart);
     return false;
@@ -116,11 +118,15 @@ int NNPIDeviceTracing::getAffinityID(NNPITraceEntry &entry, std::string name,
 
   // Start affinity at some high number to avoid collisions.
   int affinId = 10000;
-  std::string iceId = entry.params["ice_id"];
+
   std::string contextId = entry.params["context_id"];
   std::stringstream affinityNameStuct;
 
-  affinityNameStuct << "Device #" << deviceId << " ICE #" << iceId;
+  affinityNameStuct << "Device #" << deviceId;
+  if (entry.params.count("ice_id")) {
+    std::string iceId = entry.params["ice_id"];
+    affinityNameStuct << " ICE #" << iceId;
+  }
 
   // Add additional info to title.
   if (entry.params["opcode"] != "NA") {
@@ -179,7 +185,7 @@ bool NNPIDeviceTracing::addTrace(
     inflight[name] = entry;
   } else if (state == "c" && inflight.count(name) > 0) {
     // Add only complate events.
-    if (entry.hostTime > inflight[name].hostTime) {
+    if (entry.hostTime >= inflight[name].hostTime) {
       traceContext->logTraceEvent(
           name, TraceLevel::OPERATOR, TraceEvent::BeginType,
           inflight[name].hostTime, inflight[name].params, affinId);
@@ -187,7 +193,8 @@ bool NNPIDeviceTracing::addTrace(
                                   TraceEvent::EndType, entry.hostTime,
                                   entry.params, affinId);
     } else {
-      LOG(WARNING) << "Fount incomplete trace event " << name;
+      LOG(WARNING) << "Found incomplete trace event " << name << ": start time "
+                   << inflight[name].hostTime << " end time " << entry.hostTime;
     }
     inflight.erase(name);
   } else if (state == "po") {
