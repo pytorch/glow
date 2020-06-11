@@ -150,6 +150,10 @@ TFLITE_UNIT_TEST(Transpose, "transpose.tflite")
 
 TFLITE_UNIT_TEST(MeanKeepDims, "mean_keep_dims.tflite")
 TFLITE_UNIT_TEST(MeanNoKeepDims, "mean_no_keep_dims.tflite")
+TFLITE_UNIT_TEST(MeanMultipleAxisKeepDims,
+                 "mean_multiple_axis_keep_dims.tflite")
+TFLITE_UNIT_TEST(MeanMultipleAxisNoKeepDims,
+                 "mean_multiple_axis_no_keep_dims.tflite")
 
 TFLITE_UNIT_TEST(Sub, "sub.tflite")
 
@@ -181,6 +185,8 @@ TFLITE_UNIT_TEST(Slice, "slice.tflite")
 TFLITE_UNIT_TEST(SliceNegSize, "slice_neg_size.tflite")
 
 TFLITE_UNIT_TEST(Sin, "sin.tflite")
+
+TFLITE_UNIT_TEST(Tile, "tile.tflite")
 
 TFLITE_UNIT_TEST(Equal, "equal.tflite")
 

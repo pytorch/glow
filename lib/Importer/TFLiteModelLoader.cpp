@@ -780,6 +780,63 @@ Expected<T> TFLiteModelLoader::loadAxis(const OperatorInfo &opInfo,
   return axisVal;
 }
 
+template <typename T>
+Expected<std::vector<T>> TFLiteModelLoader::loadAxes(const OperatorInfo &opInfo,
+                                                     NodeValue axes,
+                                                     NodeValue value) {
+  Constant *axesC = llvm::dyn_cast<Constant>(axes.getNode());
+  RETURN_ERR_IF_NOT(axesC,
+                    opErrMsg(opInfo, "Non constant axis not supported!"));
+  RETURN_ERR_IF_NOT(axesC->getType()->size() >= 1,
+                    opErrMsg(opInfo, "Axis should have at least 1 element!"));
+  std::vector<T> axesVal = std::vector<T>(axesC->getType()->size());
+  auto elemType = axesC->getType()->getElementType();
+  for (size_t idx = 0; idx < axesC->getType()->size(); ++idx) {
+    if (elemType == ElemKind::Int32ITy) {
+      auto axesH = axesC->getPayload().getHandle<int32_t>();
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axesVal[idx],
+          getPositiveAxis<T>(static_cast<int>(axesH.raw(idx)), value));
+    } else if (elemType == ElemKind::Int64ITy) {
+      auto axesH = axesC->getPayload().getHandle<int64_t>();
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axesVal[idx],
+          getPositiveAxis<T>(static_cast<int>(axesH.raw(idx)), value));
+    } else {
+      RETURN_ERR(opErrMsg(opInfo, "Axis should have INT32 or INT64 type!"));
+    }
+  }
+  return axesVal;
+}
+
+template <typename T>
+Expected<std::vector<T>>
+TFLiteModelLoader::loadArray(const OperatorInfo &opInfo, NodeValue value) {
+  Constant *valueC = llvm::dyn_cast<Constant>(value.getNode());
+  RETURN_ERR_IF_NOT(valueC,
+                    opErrMsg(opInfo, "Non constant array not supported!"));
+  auto valueSize = valueC->getType()->size();
+  RETURN_ERR_IF_NOT(valueSize >= 1,
+                    opErrMsg(opInfo, "Array should have at least 1 element!"));
+  std::vector<T> valueV = std::vector<T>(valueSize);
+  auto elemType = valueC->getType()->getElementType();
+  for (size_t idx = 0; idx < valueSize; ++idx) {
+    if (elemType == ElemKind::FloatTy) {
+      auto valueH = valueC->getPayload().getHandle<float>();
+      valueV[idx] = static_cast<T>(valueH.raw(idx));
+    } else if (elemType == ElemKind::Int32ITy) {
+      auto valueH = valueC->getPayload().getHandle<int32_t>();
+      valueV[idx] = static_cast<T>(valueH.raw(idx));
+    } else if (elemType == ElemKind::Int64ITy) {
+      auto valueH = valueC->getPayload().getHandle<int64_t>();
+      valueV[idx] = static_cast<T>(valueH.raw(idx));
+    } else {
+      RETURN_ERR(opErrMsg(opInfo, "Array type not supported!"));
+    }
+  }
+  return valueV;
+}
+
 Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
                                       const OperatorInfo &opInfo) {
   // Opcodes are treated in increasing order to allow easy tracking
@@ -892,6 +949,9 @@ Error TFLiteModelLoader::loadOperator(const tflite::Operator *op,
   }
   if (opCode == tflite::BuiltinOperator_SIN) {
     return loadUnaryArithmetic(op, opInfo);
+  }
+  if (opCode == tflite::BuiltinOperator_TILE) {
+    return loadTile(op, opInfo);
   }
   if (opCode == tflite::BuiltinOperator_EXPAND_DIMS) {
     return loadReshape(op, opInfo);
@@ -1138,6 +1198,26 @@ Error TFLiteModelLoader::loadConcat(const tflite::Operator *op,
     NodeValue input;
     ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, idx));
     inputs.push_back(input);
+  }
+
+  // If this node is quantized and there is a mismatch between the input and
+  // output quantization parameters then we pull Rescale nodes from the inputs
+  // to match the output quantization parameters.
+  if (outTy->isQuantizedType()) {
+    for (size_t idx = 0; idx < numInputs; ++idx) {
+      NodeValue input = inputs[idx];
+      TypeRef inpTy = input.getType();
+      RETURN_ERR_IF_NOT(
+          inpTy->isQuantizedType(),
+          opErrMsg(opInfo, "Mixed precision for input/output not supported!"));
+      if ((inpTy->getScale() != outTy->getScale()) ||
+          (inpTy->getOffset() != outTy->getOffset())) {
+        TypeRef inpTyNew = mod_.uniqueTypeWithNewShape(outTy, inpTy->dims());
+        auto *rescaleNode = F_->createRescaleQuantized(
+            opInfo.name + ".Rescale" + std::to_string(idx), input, inpTyNew);
+        inputs[idx] = rescaleNode->getResult();
+      }
+    }
   }
 
   unsigned_t axis;
@@ -1453,26 +1533,36 @@ Error TFLiteModelLoader::loadReduce(const tflite::Operator *op,
   const auto *opts = op->builtin_options_as_ReducerOptions();
   NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
-  NodeValue axis;
-  ASSIGN_VALUE_OR_RETURN_ERR(axis, getInputNodeValue(op, 1));
+  NodeValue axes;
+  ASSIGN_VALUE_OR_RETURN_ERR(axes, getInputNodeValue(op, 1));
 
-  unsigned_t axisVal;
-  ASSIGN_VALUE_OR_RETURN_ERR(axisVal,
-                             loadAxis<unsigned_t>(opInfo, axis, input));
+  std::vector<unsigned_t> axesVal;
+  ASSIGN_VALUE_OR_RETURN_ERR(axesVal,
+                             loadAxes<unsigned_t>(opInfo, axes, input));
 
   bool keepDims = opts->keep_dims();
 
+  // Currently the Glow reduce operators do not support multiple axes so we
+  // create chained reduce operators with single axis.
+  // TODO: When Glow supports reduce operators with multiple axes remove this!
   auto opCode = opInfo.code;
-  NodeValue output = nullptr;
-  if (opCode == tflite::BuiltinOperator_MEAN) {
-    output = F_->createBatchedReduceMean(opInfo.name, input, {axisVal});
-    // The BatchedReduceMean reduces the output dimension and hence we expand
-    // the output dimensions if keepDims is true.
-    if (keepDims) {
-      output = F_->createExpandDims(opInfo.name + ".Expand", output, {axisVal});
+  NodeValue output = input;
+  for (size_t idx = 0, end = axesVal.size(); idx < end; ++idx) {
+    unsigned_t axisVal = axesVal[idx];
+    if (!keepDims) {
+      axisVal = axisVal - idx;
     }
-  } else {
-    RETURN_ERR(opErrMsg(opInfo, "Unsupported Reduce operator!"));
+    if (opCode == tflite::BuiltinOperator_MEAN) {
+      output = F_->createBatchedReduceMean(opInfo.name, output, {axisVal});
+      // The BatchedReduceMean reduces the output dimension and hence we expand
+      // the output dimensions if keepDims is true.
+      if (keepDims) {
+        output =
+            F_->createExpandDims(opInfo.name + ".Expand", output, {axisVal});
+      }
+    } else {
+      RETURN_ERR(opErrMsg(opInfo, "Unsupported Reduce operator!"));
+    }
   }
   return setOutputNodeValue(op, output);
 }
@@ -1558,6 +1648,32 @@ Error TFLiteModelLoader::loadSlice(const tflite::Operator *op,
   }
 
   NodeValue output = F_->createSlice(opInfo.name, input, start, outTy);
+  return setOutputNodeValue(op, output);
+}
+
+Error TFLiteModelLoader::loadTile(const tflite::Operator *op,
+                                  const OperatorInfo &opInfo) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getInputNodeValue(op, 0));
+  NodeValue multiples;
+  ASSIGN_VALUE_OR_RETURN_ERR(multiples, getInputNodeValue(op, 1));
+
+  auto numDims = input.getType()->dims().size();
+  std::vector<unsigned_t> numTiles;
+  ASSIGN_VALUE_OR_RETURN_ERR(numTiles,
+                             loadArray<unsigned_t>(opInfo, multiples));
+  RETURN_ERR_IF_NOT(numTiles.size() == numDims,
+                    opErrMsg(opInfo, "Input operand 'multiples' length should "
+                                     "match the number of input dimensions!"));
+
+  NodeValue output = input;
+  for (unsigned_t axis = 0; axis < numDims; ++axis) {
+    unsigned_t tiles = numTiles[axis];
+    if (tiles != 1) {
+      output = F_->createTile(opInfo.name + std::to_string(axis), output, tiles,
+                              axis);
+    }
+  }
   return setOutputNodeValue(op, output);
 }
 

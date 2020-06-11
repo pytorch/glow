@@ -926,3 +926,33 @@ gen_mean_test(name='mean_keep_dims', input_shape=(
     1, 2, 10), axis=2, keep_dims=True)
 gen_mean_test(name='mean_no_keep_dims', input_shape=(
     1, 2, 10), axis=2, keep_dims=False)
+gen_mean_test(name='mean_multiple_axis_keep_dims', input_shape=(
+    1, 2, 10), axis=(1, 2), keep_dims=True)
+gen_mean_test(name='mean_multiple_axis_no_keep_dims', input_shape=(
+    1, 2, 10), axis=(1, 2), keep_dims=False)
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+#                                                        Tile
+# ----------------------------------------------------------------------------------------------------------------------
+def gen_tile_test(name, input_shape, tiles):
+    # Create model.
+    inp = layers.Input(name='input',
+                       batch_size=input_shape[0],
+                       shape=input_shape[1:])
+    out = tf.tile(inp, multiples=tiles)
+    model = Model(inputs=[inp], outputs=[out])
+    # Create data.
+    np.random.seed(0)
+    inp_tensor = np.random.rand(*input_shape).astype(np.float32)
+    out_tensor = model.predict(inp_tensor)
+    # Save model.
+    save_model(model, name)
+    # Save data.
+    save_tensor(inp_tensor, name + '.inp0')
+    save_tensor(out_tensor, name + '.out0')
+    # Clear session.
+    keras_backend.clear_session()
+
+
+gen_tile_test(name='tile', input_shape=(1, 2, 3), tiles=[1, 3, 2])

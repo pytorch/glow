@@ -18,7 +18,7 @@
 #define GLOW_IMPORTER_TFLITEMODELLOADER_H
 
 #include "glow/Graph/Graph.h"
-#include "glow/Importer/tflite_flatbuffer/schema_generated.h"
+#include "schema_generated.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -173,6 +173,19 @@ class TFLiteModelLoader {
   Expected<T> loadAxis(const OperatorInfo &opInfo, NodeValue axis,
                        NodeValue value);
 
+  /// \returns the value of axes given the operator info \p opInfo, the node
+  /// value \p axes which stores the axes values and the node value \p value
+  /// which the axes refer to which is used to wrap the axes values if negative.
+  template <typename T>
+  Expected<std::vector<T>> loadAxes(const OperatorInfo &opInfo, NodeValue axes,
+                                    NodeValue value);
+
+  /// \returns the values stored in the node value \p value as a 1D array given
+  /// the operator info \p opInfo. The node value \p value must be a Constant.
+  template <typename T>
+  Expected<std::vector<T>> loadArray(const OperatorInfo &opInfo,
+                                     NodeValue value);
+
   /// Load the operator \p op into the current graph. \p opInfo provides meta
   /// information about \p op. \returns Error if operator cannot be loaded.
   Error loadOperator(const tflite::Operator *op, const OperatorInfo &opInfo);
@@ -225,6 +238,9 @@ class TFLiteModelLoader {
 
   /// Load Slice operator.
   Error loadSlice(const tflite::Operator *op, const OperatorInfo &opInfo);
+
+  /// Load Tile operator.
+  Error loadTile(const tflite::Operator *op, const OperatorInfo &opInfo);
 
   /// Load Pack operator.
   Error loadPack(const tflite::Operator *op, const OperatorInfo &opInfo);
