@@ -6544,7 +6544,7 @@ TEST_P(OperatorTest, Ceil_Int8QTy) {
 TEST_P(OperatorTest, Round_FloatTy) {
   CHECK_IF_ENABLED();
   auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {5}, "inp", false);
-  bindings_.allocate(inp)->getHandle<float>() = {-0.2, 1.0, 1.2, 1.5, 1.8};
+  bindings_.allocate(inp)->getHandle<float>() = {0.9, 2.5, 2.3, 1.5, -4.5};
   auto *node = F_->createRound("round", inp);
   auto *save = F_->createSave("save", node);
   auto *outT = bindings_.allocate(save->getPlaceholder());
@@ -6552,11 +6552,13 @@ TEST_P(OperatorTest, Round_FloatTy) {
   EE_.run(bindings_);
   auto outH = outT->getHandle<float>();
   EXPECT_EQ(outH.size(), 5);
-  EXPECT_FLOAT_EQ(outH.raw(0), 0.0);
-  EXPECT_FLOAT_EQ(outH.raw(1), 1.0);
-  EXPECT_FLOAT_EQ(outH.raw(2), 1.0);
+  // Rounding mode required by ONNX, Nympy, TensorFlow is round to even which
+  // rounds to nearest even integer those values with fractional part 0.5.
+  EXPECT_FLOAT_EQ(outH.raw(0), 1.0);
+  EXPECT_FLOAT_EQ(outH.raw(1), 2.0);
+  EXPECT_FLOAT_EQ(outH.raw(2), 2.0);
   EXPECT_FLOAT_EQ(outH.raw(3), 2.0);
-  EXPECT_FLOAT_EQ(outH.raw(4), 2.0);
+  EXPECT_FLOAT_EQ(outH.raw(4), -4.0);
 }
 
 TEST_P(OperatorTest, Round_Int8QTy) {

@@ -171,7 +171,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "Axis")
       .addMember(MemberType::Boolean, "KeepDims")
       .addResultFromCtorArg()
-      .setDocstring("Finds index of a maximum element along Axis."
+      .setDocstring("Finds index of a maximum element along Axis. "
                     "If KeepDims is not true, the axis is removed from output");
 
   BB.newNode("ArgMin")
@@ -179,7 +179,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "Axis")
       .addMember(MemberType::Boolean, "KeepDims")
       .addResultFromCtorArg()
-      .setDocstring("Finds index of a minimum element along Axis."
+      .setDocstring("Finds index of a minimum element along Axis. "
                     "If KeepDims is not true, the axis is removed from output");
 
   BB.newNode("AvgPool")

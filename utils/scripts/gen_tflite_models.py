@@ -12,6 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# This is a helper script that generates the TensorFlowLite models used
+# for testing the Glow importer. The models will be generated in a local
+# folder here 'tflite_models'. In order for the models to be used for unit
+# testing the files must be copied in the folder:
+#     'glow\tests\models\tfliteModels'
+# To generate the models you need to run this script without arguments:
+#     python gen_tflite_models.py
+# Python requirements: Python 3.6
+# Python package requirements:
+#     TensorFlow 2.1.0
+#     Keras 2.3.1
+#     Numpy 1.16.2
+#     shutil, os, other dependencies
+
 import tensorflow as tf
 import tensorflow.keras.backend as keras_backend
 import tensorflow.keras.layers as layers

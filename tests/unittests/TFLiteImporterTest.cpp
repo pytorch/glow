@@ -24,9 +24,6 @@
 
 using namespace glow;
 
-#include <fstream>
-using namespace std;
-
 class TFLiteImporterTest : public ::testing::Test {};
 
 /// \p returns the full path of the TensorFlowLite model \p name.
