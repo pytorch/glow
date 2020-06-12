@@ -15,6 +15,7 @@
  */
 #include "BackendTestUtils.h"
 
+#include "glow/Base/TensorSerialization.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
@@ -28,6 +29,7 @@
 #include "gtest/gtest.h"
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
 
 constexpr size_t MAX_MEMORY = 64e+9;
 
@@ -126,6 +128,11 @@ llvm::cl::opt<std::string> traceDir(
     llvm::cl::desc("Directory used to store Glow trace events files. If not "
                    "used, tracing is not enabled."),
     llvm::cl::Optional, llvm::cl::cat(recSysTestCat));
+
+llvm::cl::opt<bool> dumpBinaryResults(
+    "dump-binary-results",
+    llvm::cl::desc("Dump raw binary Tensor results after execution."),
+    llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
 } // namespace
 
 /// Fills the tensor \p H with some stable random data with the seed \p seed
@@ -325,6 +332,23 @@ protected:
   }
 
   void TearDown() override {
+    if (dumpBinaryResults) {
+      ASSERT_TRUE(resultTensor) << "Could not dump result tensor, was nullptr";
+      llvm::SmallString<64> path;
+      auto tempFileRes =
+          llvm::sys::fs::createTemporaryFile("result", "bin", path);
+      if (tempFileRes.value() != 0) {
+        FAIL() << "Failed to create temp file to write into.";
+      }
+      std::cout
+          << "Dumping binary results of "
+          << ::testing::UnitTest::GetInstance()->current_test_info()->name()
+          << " to " << path.data() << std::endl;
+      TensorSerializationOptions opts;
+      opts.withType = false;
+      dumpTensorToBinaryFile(*resultTensor, path, opts);
+    }
+
     resultTensor = nullptr;
     bindings_->clear();
 
