@@ -409,6 +409,7 @@ void InferenceContext::execute(RunIdentifierTy runId,
     TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::OPERATOR,
                            inferContext, attributes);
     // Queue Command list
+    int64_t issueTime = TraceEvent::now();
     LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
         nnpiCommandListQueue(commandList_, &(cmdConfigs_.at(0)), usedConfigs),
         "Failed to queue command list.", runId, ctx, resultCB);
@@ -418,6 +419,13 @@ void InferenceContext::execute(RunIdentifierTy runId,
     // First wait for the command list to complete.
     NNPIInferenceErrorCode res =
         nnpiCommandListWait(commandList_, UINT32_MAX, NULL, 0, &numErrors);
+    uint64_t completeTime = TraceEvent::now();
+    // Set batchDeviceTimestamps.
+    auto requestData = ::glow::runtime::RequestData::get();
+    if (requestData) {
+      auto duration = completeTime - issueTime;
+      requestData->deviceRuntime.fetch_add(duration);
+    }
     if (res != NNPI_INF_NO_ERROR) {
       LOG_NNPI_INF_IF_ERROR(res, "Failed to wait on command list");
     } else if (numErrors > 0) {

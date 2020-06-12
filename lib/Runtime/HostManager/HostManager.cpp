@@ -22,6 +22,7 @@
 #include "glow/Partitioner/Partitioner.h"
 #include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
+#include "glow/Runtime/RequestData.h"
 #include "glow/Runtime/RuntimeTypes.h"
 #include "glow/Support/Support.h"
 
@@ -558,12 +559,13 @@ void HostManager::dispatchNextRun() {
   assert(pRequest.hasValue());
   InferRequest request = std::move(pRequest.getValue());
   auto startTime = TraceEvent::now();
+  auto requestReceived = request.startTime;
   executor_->run(
       networks_[request.networkName].dag.root.get(), std::move(request.context),
       request.requestID,
-      [this, callback = request.callback, name = request.networkName,
-       startTime](RunIdentifierTy runID, Error err,
-                  std::unique_ptr<ExecutionContext> context) mutable {
+      [this, callback = request.callback, name = request.networkName, startTime,
+       requestReceived](RunIdentifierTy runID, Error err,
+                        std::unique_ptr<ExecutionContext> context) mutable {
         {
           std::shared_lock<std::shared_timed_mutex> netLock(networkLock_);
           auto it = networks_.find(name);
@@ -573,6 +575,15 @@ void HostManager::dispatchNextRun() {
         }
 
         updateExecutionStats(startTime, context, name, err);
+        // Update request runtime.
+        auto requestData = ::glow::runtime::RequestData::get();
+        if (requestData) {
+          uint64_t end = TraceEvent::now();
+          requestData->startTime =
+              requestReceived - requestData->requestStartTime;
+          requestData->stopTime = end - requestData->requestStartTime;
+        }
+
         callback(runID, std::move(err), std::move(context));
         dispatchNextRun();
       });
@@ -587,6 +598,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
   TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
                     "HostManager::runNetwork");
   auto currentRun = totalRequestCount_++;
+  uint64_t requestReceived = TraceEvent::now();
 
   NetworkData *network = nullptr;
   {
@@ -628,7 +640,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
     }
     // Setup the request
     InferRequest queuedRequest(networkName, std::move(context), callback,
-                               priority, currentRun);
+                               priority, currentRun, requestReceived);
     {
       std::unique_lock<std::shared_timed_mutex> lock(inferQueueLock_);
       TRACE_EVENT_SCOPE_END();
