@@ -248,14 +248,19 @@ static bool isIdentityShuffle(llvm::ArrayRef<unsigned> shuffle) {
 /// \returns True if the node \p N always evaluates to \p val.
 bool isSplatOfVal(Node *N, float val) {
   SplatNode *Z = dyn_cast<SplatNode>(N);
-  if (!Z) {
-    return false;
+  if (Z) {
+    return (Z->getValue() == val);
   }
-  return (Z->getValue() == val);
+  Constant *C = dyn_cast<Constant>(N);
+  if (C) {
+    float fval;
+    return isUniformConstant<float>(*C, fval) && (fval == val);
+  }
+  return false;
 }
 
 /// \returns True if the node returns a constant value.
-bool isConstant(Node *N) { return isa<SplatNode>(N); }
+bool isConstant(Node *N) { return isa<SplatNode>(N) || isa<Constant>(N); }
 
 /// \returns the new simplified NodeValue or the original node's first result.
 static NodeValue simplifyNode(Node *node, Function *F) {
