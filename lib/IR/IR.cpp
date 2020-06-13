@@ -358,6 +358,24 @@ Value *IRFunction::getWeightForNode(const Storage *V) const {
   return it->second;
 }
 
+bool Instruction::isCanonical() const {
+  switch (getKind()) {
+  default:
+    llvm_unreachable("Unknown value kind");
+    break;
+#define DEF_INSTR(CLASS, NAME)                                                 \
+  case Kinded::Kind::CLASS##Kind: {                                            \
+    auto *X = llvm::cast<const CLASS>(this);                                   \
+    return X->isCanonical();                                                   \
+    break;                                                                     \
+  }
+#define DEF_BACKEND_SPECIFIC_INSTR(CLASS, NAME) DEF_INSTR(CLASS, NAME)
+#define DEF_VALUE(CLASS, NAME)
+#include "glow/AutoGenInstr.def"
+  }
+  return false;
+}
+
 bool Instruction::isDataParallel() const {
   switch (getKind()) {
   default:
