@@ -1518,7 +1518,7 @@ DEFINE_DATA_PARALLEL_KERNEL(libjit_element_floor_kernel_f, float,
                             std::floor(LHS[idx]))
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_ceil_kernel_f, float,
                             std::ceil(LHS[idx]))
-// Rounding mode required by ONNX, Nympy, TensorFlow is round to even which
+// Rounding mode required by ONNX, Numpy, TensorFlow is round to even which
 // rounds to nearest even integer those values with fractional part 0.5.
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_round_kernel_f, float,
                             std::nearbyintf(LHS[idx]))

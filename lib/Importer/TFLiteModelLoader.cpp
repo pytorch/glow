@@ -18,6 +18,7 @@
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Importer/CommonOperatorLoader.h"
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/Casting.h"
@@ -120,30 +121,9 @@ Expected<const tflite::Model *> readModel(std::vector<char> &modelData,
 void convertUint8ToInt8(const uint8_t *inpPtr, int8_t *outPtr, size_t numElem) {
   for (size_t idx = 0, idxEnd = numElem; idx < idxEnd; ++idx) {
     int32_t val = inpPtr[idx];
-    val -= 128;
+    val -= UINT8_TO_INT8_SHIFT;
     outPtr[idx] = static_cast<int8_t>(val);
   }
-}
-
-/// \returns the positive value (modulo) of \p axis given the \p rank (number
-/// of dimensions) of the tensor it refers to. The TFLite format allows negative
-/// axis in which case the axis is used for counting dimensions from the back.
-/// Since Glow cannot use a negative axis we use this converter utility. For
-/// example an axis value of -1 for a tensor with 3 dimensions (rank 3) is
-/// converted to 2. A good definition of the axis value requires to be in the
-/// range [rank, rank-1].
-template <typename T> Expected<T> getPositiveAxis(int axis, int rank) {
-  RETURN_ERR_IF_NOT((-rank <= axis) && (axis < rank),
-                    strFormat("TensorFlowLite: Axis value %d is invalid! "
-                              "Should be in the range [%d, %d]!",
-                              axis, -rank, rank - 1));
-  int axisPos = (axis < 0) ? axis + rank : axis;
-  return static_cast<T>(axisPos);
-}
-
-/// \returns the positive value of \p axis given the rank of the value \p val.
-template <typename T> Expected<T> getPositiveAxis(int axis, NodeValue val) {
-  return getPositiveAxis<T>(axis, val.dims().size());
 }
 
 /// Function to compute the padding according to the TensorFlowLite "SAME"
@@ -403,7 +383,7 @@ TFLiteModelLoader::getTensorOffset(const tflite::Tensor *tensor) {
   int32_t offset = static_cast<int32_t>(offsetInt64);
   // Convert UINT8 offset to INT8 offset.
   if (tfliteUint8ToInt8Opt && (tensor->type() == tflite::TensorType_UINT8)) {
-    offset -= 128;
+    offset -= UINT8_TO_INT8_SHIFT;
   }
   return offset;
 }
@@ -461,7 +441,7 @@ TFLiteModelLoader::getTensorOffsets(const tflite::Tensor *tensor) {
     int32_t offset = static_cast<int32_t>(offsetInt64);
     // Convert UINT8 offset to INT8 offset.
     if (tfliteUint8ToInt8Opt && (tensor->type() == tflite::TensorType_UINT8)) {
-      offset -= 128;
+      offset -= UINT8_TO_INT8_SHIFT;
     }
     offsetsVec.push_back(offset);
   }

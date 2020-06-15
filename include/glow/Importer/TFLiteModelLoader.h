@@ -50,7 +50,7 @@ class TFLiteModelLoader {
   /// in the original model. This vector contains only the node values (tensors)
   /// registered in the original model since only those are needed for chaining
   /// the model graph operators. Other node values created during graph loading
-  /// will node be registered in this vector.
+  /// will not be registered in this vector.
   std::vector<NodeValue> nodeValueByIndex_;
 
   /// \returns a tensor from the model using the index \p index.

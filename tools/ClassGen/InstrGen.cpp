@@ -178,6 +178,7 @@ int main(int argc, char **argv) {
       .addOperand("Src", OperandKind::In)
       .addMember(MemberType::Unsigned, "Axis")
       .addMember(MemberType::Boolean, "KeepDims")
+      .autoIRGen()
       .autoVerify(VerifyKind::NoVerify);
 
   BB.newInstr("ArgMin")

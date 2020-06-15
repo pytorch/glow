@@ -2658,7 +2658,7 @@ void BoundInterpreterFunction::fwdElementCeilInst(const ElementCeilInst *I) {
 }
 
 void BoundInterpreterFunction::fwdElementRoundInst(const ElementRoundInst *I) {
-  // Rounding mode required by ONNX, Nympy, TensorFlow is round to even which
+  // Rounding mode required by ONNX, Numpy, TensorFlow is round to even which
   // rounds to nearest even integer those values with fractional part 0.5.
   auto func = [](float x) -> float { return std::nearbyintf(x); };
   dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);

@@ -164,15 +164,6 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     registerIR(P->getArgmax(), argmax);
     break;
   }
-  case glow::Kinded::Kind::ArgMaxNodeKind: {
-    auto *P = cast<ArgMaxNode>(N);
-    auto *in = valueForNode(P->getInput());
-    auto *V = builder_.createArgMaxOp(N->getName(), in, P->getAxis(),
-                                      P->getKeepDims(),
-                                      P->getResult().getElementType());
-    registerIR(P->getResult(), V->getDest());
-    break;
-  }
   case glow::Kinded::Kind::MaxPoolGradNodeKind: {
     auto *PG = cast<MaxPoolGradNode>(N);
 

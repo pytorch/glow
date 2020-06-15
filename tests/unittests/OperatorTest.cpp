@@ -6552,7 +6552,7 @@ TEST_P(OperatorTest, Round_FloatTy) {
   EE_.run(bindings_);
   auto outH = outT->getHandle<float>();
   EXPECT_EQ(outH.size(), 5);
-  // Rounding mode required by ONNX, Nympy, TensorFlow is round to even which
+  // Rounding mode required by ONNX, Numpy, TensorFlow is round to even which
   // rounds to nearest even integer those values with fractional part 0.5.
   EXPECT_FLOAT_EQ(outH.raw(0), 1.0);
   EXPECT_FLOAT_EQ(outH.raw(1), 2.0);
