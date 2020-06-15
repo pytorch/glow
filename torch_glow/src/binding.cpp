@@ -17,6 +17,7 @@
 #include <pybind11/pybind11.h>
 
 #include "FuseKnownPatterns.h"
+#include "GlowCompileSpec.h"
 #include "GlowFuser.h"
 #include "PyTorchCommon.h"
 #include "Registration.h"
@@ -51,6 +52,9 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// fusionPassEnabled is set in PyTorchLoaderSettings.
   registerGlowFusionOpAndPass(
       []() { return getPyTorchLoaderSettings().fusionPassEnabled; });
+
+  /// Register GlowCompileSpec as PyTorch custom class
+  registerGlowCompileSpecCustomClass();
 
   /// Enable overriding signal handlers for torch_glow to make interruping long
   /// running processes possible. This should only be used when running
