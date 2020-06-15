@@ -1648,18 +1648,18 @@ CmpLTNode *Function::createCmpLT(llvm::StringRef name, NodeValue LHS,
   return addNode(new CmpLTNode(name, OT, LHS, RHS));
 }
 
-CmpGTENode *Function::createCmpGTE(llvm::StringRef name, NodeValue LHS,
+CmpLTENode *Function::createCmpGTE(llvm::StringRef name, NodeValue LHS,
                                    NodeValue RHS) {
   assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
   TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
-  return addNode(new CmpGTENode(name, OT, LHS, RHS));
+  return addNode(new CmpLTENode(name, OT, RHS, LHS));
 }
 
-CmpGTNode *Function::createCmpGT(llvm::StringRef name, NodeValue LHS,
+CmpLTNode *Function::createCmpGT(llvm::StringRef name, NodeValue LHS,
                                  NodeValue RHS) {
   assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
   TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
-  return addNode(new CmpGTNode(name, OT, LHS, RHS));
+  return addNode(new CmpLTNode(name, OT, RHS, LHS));
 }
 
 CmpEQNode *Function::createCmpEQ(llvm::StringRef name, NodeValue LHS,

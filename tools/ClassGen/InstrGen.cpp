@@ -563,26 +563,6 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
       .autoIRGen("CmpLTE");
 
-  BB.newInstr("ElementCmpGT")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("LHS", OperandKind::In)
-      .addOperand("RHS", OperandKind::In)
-      .dataParallel()
-      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
-      .autoVerify(VerifyKind::SameElementType, {"LHS", "RHS"})
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
-      .autoIRGen("CmpGT");
-
-  BB.newInstr("ElementCmpGTE")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("LHS", OperandKind::In)
-      .addOperand("RHS", OperandKind::In)
-      .dataParallel()
-      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
-      .autoVerify(VerifyKind::SameElementType, {"LHS", "RHS"})
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
-      .autoIRGen("CmpGTE");
-
   BB.newInstr("ElementIsNaN")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)

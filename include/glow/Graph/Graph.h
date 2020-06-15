@@ -908,8 +908,6 @@ public:
   ARITHMETIC_FUN_DECL(CmpNEQ);
   ARITHMETIC_FUN_DECL(CmpLT);
   ARITHMETIC_FUN_DECL(CmpLTE);
-  ARITHMETIC_FUN_DECL(CmpGT);
-  ARITHMETIC_FUN_DECL(CmpGTE);
   ARITHMETIC_FUN_DECL(And);
   ARITHMETIC_FUN_DECL(Or);
   ARITHMETIC_FUN_DECL(Xor);
@@ -979,6 +977,14 @@ public:
 #undef DECLARE_BROADCAST_NODE
 #undef DECLARE_CMP_BROADCAST_NODE
 #undef BROADCAST_FUNC_COMMON_CODE
+
+  /// Create an element-wise GREATER THAN comparison between \p LHS and \p RHS
+  /// by creating a CmpLTNode with given \p name and swapped inputs.
+  CmpLTNode *createCmpGT(llvm::StringRef name, NodeValue LHS, NodeValue RHS);
+
+  /// Create an element-wise GREATER THAN or EQUAL comparison between \p LHS and
+  /// \p RHS by creating a CmpLTENode with given \p name and swapped inputs.
+  CmpLTENode *createCmpGTE(llvm::StringRef name, NodeValue LHS, NodeValue RHS);
 
   /// Create a MulNode with given \p name which multiplies \p input with itself
   /// to produce an equivalent Square node.

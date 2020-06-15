@@ -1618,8 +1618,6 @@ DEFINE_CMP_KERNEL_QUANTIZED(libjit_element_cmp_eq_kernel_i8, int8_t, ==)
 DEFINE_CMP_KERNEL_QUANTIZED(libjit_element_cmp_neq_kernel_i8, int8_t, !=)
 DEFINE_CMP_KERNEL_QUANTIZED(libjit_element_cmp_lt_kernel_i8, int8_t, <)
 DEFINE_CMP_KERNEL_QUANTIZED(libjit_element_cmp_lte_kernel_i8, int8_t, <=)
-DEFINE_CMP_KERNEL_QUANTIZED(libjit_element_cmp_gt_kernel_i8, int8_t, >)
-DEFINE_CMP_KERNEL_QUANTIZED(libjit_element_cmp_gte_kernel_i8, int8_t, >=)
 #undef DEFINE_CMP_KERNEL_QUANTIZED
 
 #define DEFINE_CMP_KERNEL_NON_QUANTIZED(name, type, cmp)                       \
@@ -1642,14 +1640,6 @@ DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_lt_kernel_u, size_t, <)
 DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_lte_kernel_f, float, <=)
 DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_lte_kernel_i32, int32_t, <=)
 DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_lte_kernel_u, size_t, <=)
-
-DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_gt_kernel_f, float, >)
-DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_gt_kernel_i32, int32_t, >)
-DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_gt_kernel_u, size_t, >)
-
-DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_gte_kernel_f, float, >=)
-DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_gte_kernel_i32, int32_t, >=)
-DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_gte_kernel_u, size_t, >=)
 #undef DEFINE_CMP_KERNEL_NON_QUANTIZED
 
 int8_t libjit_element_is_nan_kernel_f(dim_t idx, const float *input) {

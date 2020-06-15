@@ -1300,8 +1300,6 @@ VERIFY_CMP(CmpEQ)
 VERIFY_CMP(CmpNEQ)
 VERIFY_CMP(CmpLT)
 VERIFY_CMP(CmpLTE)
-VERIFY_CMP(CmpGT)
-VERIFY_CMP(CmpGTE)
 #undef VERIFY_CMP
 
 bool BatchedPairwiseDotProductNode::verify() const {

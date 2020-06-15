@@ -1362,9 +1362,7 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
   case Kinded::Kind::ElementCmpEQInstKind:
   case Kinded::Kind::ElementCmpNEQInstKind:
   case Kinded::Kind::ElementCmpLTInstKind:
-  case Kinded::Kind::ElementCmpLTEInstKind:
-  case Kinded::Kind::ElementCmpGTInstKind:
-  case Kinded::Kind::ElementCmpGTEInstKind: {
+  case Kinded::Kind::ElementCmpLTEInstKind: {
     Value *dest = nullptr;
     Value *lhs = nullptr;
     Value *rhs = nullptr;
@@ -1390,16 +1388,6 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       lhs = CLTI->getLHS();
       rhs = CLTI->getRHS();
       kernelName = "element_cmp_lt_kernel";
-    } else if (auto *CGTEI = dyn_cast<ElementCmpGTEInst>(I)) {
-      dest = CGTEI->getDest();
-      lhs = CGTEI->getLHS();
-      rhs = CGTEI->getRHS();
-      kernelName = "element_cmp_gte_kernel";
-    } else if (auto *CGTI = dyn_cast<ElementCmpGTInst>(I)) {
-      dest = CGTI->getDest();
-      lhs = CGTI->getLHS();
-      rhs = CGTI->getRHS();
-      kernelName = "element_cmp_gt_kernel";
     } else {
       llvm_unreachable(
           "Missmatch between Instruction Kind and instruction instance.");

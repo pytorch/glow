@@ -421,22 +421,6 @@ int main(int argc, char **argv) {
       .setDocstring("Performs an element-wise LESS THAN OR EQUAL comparison "
                     "between the LHS and RHS operands.");
 
-  BB.newNode("CmpGT")
-      .addInput("LHS")
-      .addInput("RHS")
-      .addResultFromCtorArg()
-      .dataParallel()
-      .setDocstring("Performs an element-wise GREATER THAN comparison between "
-                    "the LHS and RHS operands.");
-
-  BB.newNode("CmpGTE")
-      .addInput("LHS")
-      .addInput("RHS")
-      .addResultFromCtorArg()
-      .dataParallel()
-      .setDocstring("Performs an element-wise GREATER THAN OR EQUAL comparison "
-                    "between the LHS and RHS operands.");
-
   BB.newNode("Pow")
       .addInput("LHS")
       .addInput("RHS")

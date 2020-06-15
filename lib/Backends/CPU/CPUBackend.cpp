@@ -346,8 +346,6 @@ bool CPUBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::CmpNEQNodeKind:
   case Kinded::Kind::CmpLTNodeKind:
   case Kinded::Kind::CmpLTENodeKind:
-  case Kinded::Kind::CmpGTNodeKind:
-  case Kinded::Kind::CmpGTENodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int32ITy,
                 ElemKind::Int64ITy},

@@ -276,14 +276,6 @@ private:
   void fwdElementCmpLTInstImpl(const ElementCmpLTInst *I);
 
   template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
-            typename CmpTy = ElemTy>
-  void fwdElementCmpGTEInstImpl(const ElementCmpGTEInst *I);
-
-  template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
-            typename CmpTy = ElemTy>
-  void fwdElementCmpGTInstImpl(const ElementCmpGTInst *I);
-
-  template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
             typename CmpTy, typename InstCmpKind>
   void
   fwdElementCmpHelperImpl(const InstCmpKind *I,

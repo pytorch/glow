@@ -2766,42 +2766,6 @@ void BoundInterpreterFunction::fwdElementCmpLTEInst(
 
 template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
           typename CmpTy>
-void BoundInterpreterFunction::fwdElementCmpGTEInstImpl(
-    const ElementCmpGTEInst *I) {
-  auto cmpHelper = [](CmpTy LHS, CmpTy RHS) -> bool { return LHS >= RHS; };
-  fwdElementCmpHelperImpl<ElemTy, ElemOffsetTy, ElemScaleTy, CmpTy,
-                          ElementCmpGTEInst>(I, cmpHelper);
-}
-
-void BoundInterpreterFunction::fwdElementCmpGTEInst(
-    const ElementCmpGTEInst *I) {
-  auto *T = getTensor(I->getLHS());
-
-  if (T->getType().isQuantizedType()) {
-    fwdElementCmpGTEInstImpl<int8_t, int32_t, float, int32_t>(I);
-    return;
-  }
-
-  switch (T->getElementType()) {
-  case ElemKind::FloatTy:
-    fwdElementCmpGTEInstImpl<float, float, float>(I);
-    break;
-  case ElemKind::Float16Ty:
-    fwdElementCmpGTEInstImpl<float16_t, float16_t, float16_t>(I);
-    break;
-  case ElemKind::Int32ITy:
-    fwdElementCmpGTEInstImpl<int32_t, int32_t, float>(I);
-    break;
-  case ElemKind::Int64ITy:
-    fwdElementCmpGTEInstImpl<int64_t, int64_t, float>(I);
-    break;
-  default:
-    llvm_unreachable("Type is not supported");
-  }
-}
-
-template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
-          typename CmpTy>
 void BoundInterpreterFunction::fwdElementCmpEQInstImpl(
     const ElementCmpEQInst *I) {
   auto cmpHelper = [](CmpTy LHS, CmpTy RHS) -> bool { return LHS == RHS; };
@@ -2899,40 +2863,6 @@ void BoundInterpreterFunction::fwdElementCmpLTInst(ElementCmpLTInst const *I) {
     break;
   case ElemKind::Int64ITy:
     fwdElementCmpLTInstImpl<int64_t, int64_t, float>(I);
-    break;
-  default:
-    llvm_unreachable("Type is not supported");
-  }
-}
-
-template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
-          typename CmpTy>
-void BoundInterpreterFunction::fwdElementCmpGTInstImpl(
-    const ElementCmpGTInst *I) {
-  auto cmpHelper = [](CmpTy LHS, CmpTy RHS) -> bool { return LHS > RHS; };
-  fwdElementCmpHelperImpl<ElemTy, ElemOffsetTy, ElemScaleTy, CmpTy,
-                          ElementCmpGTInst>(I, cmpHelper);
-}
-
-void BoundInterpreterFunction::fwdElementCmpGTInst(ElementCmpGTInst const *I) {
-  auto *T = getTensor(I->getLHS());
-  if (T->getType().isQuantizedType()) {
-    fwdElementCmpGTInstImpl<int8_t, int32_t, float, int32_t>(I);
-    return;
-  }
-
-  switch (T->getElementType()) {
-  case ElemKind::FloatTy:
-    fwdElementCmpGTInstImpl<float, float, float>(I);
-    break;
-  case ElemKind::Float16Ty:
-    fwdElementCmpGTInstImpl<float16_t, float16_t, float16_t>(I);
-    break;
-  case ElemKind::Int32ITy:
-    fwdElementCmpGTInstImpl<int32_t, int32_t, float>(I);
-    break;
-  case ElemKind::Int64ITy:
-    fwdElementCmpGTInstImpl<int64_t, int64_t, float>(I);
     break;
   default:
     llvm_unreachable("Type is not supported");
