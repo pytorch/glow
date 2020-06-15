@@ -167,7 +167,7 @@ void validateModel(ExecutionEngine &EE, PlaceholderBindings &bindings,
             imageInputs, labelInputs, F->getName(),
             [&](const Tensor &sampleIn, const Tensor &sampleOut,
                 const Tensor &label, size_t sampleIndex) {
-              auto correct = label.getHandle<sdim_t>().at({0, 0});
+              auto correct = label.getHandle<sdim_t>().at({0});
               auto guess = sampleOut.getHandle().minMaxArg().second;
               rightAnswer += (guess == correct);
               if (sampleIndex < offset + minibatchSize) {
