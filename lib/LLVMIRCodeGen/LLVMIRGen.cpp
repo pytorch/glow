@@ -321,10 +321,14 @@ void LLVMIRGen::finishCodeGen() {
 #if FACEBOOK_INTERNAL && LLVM_VERSION_MAJOR < 8
     getTargetMachine().addPassesToEmitFile(
         PM, asmStream, llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
-#else
+#elif LLVM_VERSION_MAJOR < 10
     getTargetMachine().addPassesToEmitFile(
         PM, asmStream, nullptr,
         llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
+#else
+    getTargetMachine().addPassesToEmitFile(
+        PM, asmStream, nullptr,
+        llvm::CGFT_AssemblyFile);
 #endif
 
     PM.run(*llmodule_);

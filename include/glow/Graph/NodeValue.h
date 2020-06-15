@@ -18,6 +18,7 @@
 
 #include "glow/Base/Traits.h"
 #include "glow/Base/Type.h"
+#include "llvm/ADT/StringMap.h"
 
 namespace glow {
 

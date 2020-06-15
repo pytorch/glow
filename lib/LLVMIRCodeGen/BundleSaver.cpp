@@ -508,10 +508,14 @@ void BundleSaver::produceBundle() {
 #if FACEBOOK_INTERNAL && LLVM_VERSION_MAJOR < 8
     TM.addPassesToEmitFile(
         PM, outputFile, llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
-#else
+#elif LLVM_VERSION_MAJOR < 10
     TM.addPassesToEmitFile(
         PM, outputFile, nullptr,
         llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
+#else
+    TM.addPassesToEmitFile(
+        PM, outputFile, nullptr,
+        llvm::CGFT_ObjectFile);
 #endif
 
     PM.run(M);
