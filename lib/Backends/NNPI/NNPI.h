@@ -96,19 +96,11 @@ private:
 /// These are used for parsing backend-specific node options.
 constexpr char numParallelChunksKey[] = "NNPI_numParallelChunks";
 constexpr char parallelTransformKindKey[] = "NNPI_parallelTransformKind";
-constexpr char extraEdgesKey[] = "NNPI_extraEdges";
+constexpr char extraEdgesTargetNameKey[] = "NNPI_extraEdgesTargetName";
+constexpr char extraEdgesTargetSuffixKey[] = "NNPI_extraEdgesTargetSuffix";
+constexpr char extraEdgesSourceSuffixKey[] = "NNPI_extraEdgesSourceSuffix";
 constexpr char coreAssignmentsKey[] = "NNPI_coreAssignments";
-
-/// These are used for parsing edge strings in the form of [#$]name[@#]
-struct ExtraEdgeSplitPair {
-  bool hasSplit;
-  std::string label;
-  int splitNum;
-};
-Expected<ExtraEdgeSplitPair>
-getExtraEdgeTargetSplitPair(const std::string &edge);
-Expected<ExtraEdgeSplitPair>
-getExtraEdgeSourceSplitPair(const std::string &edge);
+constexpr char coreAssignmentsSuffixKey[] = "NNPI_coreAssignmentsSuffix";
 
 } // namespace glow
 #endif // GLOW_NNPI_BACKEND_H

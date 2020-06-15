@@ -57,42 +57,6 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true>
         llvm::cl::location(GlowNNPIAcceptUnarySLS), llvm::cl::Optional,
         llvm::cl::init(false), llvm::cl::cat(optionsForNNPI));
 
-/// Parse a string with format either "# .. splitChar .. label" or "label ..
-/// splitChar .. #". If splitChar is not found then return the original string
-/// as label.
-Expected<ExtraEdgeSplitPair>
-getExtraEdgeSourceSplitPair(const std::string &edge, char splitChar,
-                            bool labelPrecedesNum) {
-  ExtraEdgeSplitPair splitPair;
-  llvm::StringRef edgeRef(edge);
-  if (edgeRef.contains(splitChar)) {
-    auto splitEdge = edgeRef.split(splitChar);
-    if (labelPrecedesNum) {
-      std::swap(splitEdge.first, splitEdge.second);
-    }
-    RETURN_ERR_IF_NOT(splitEdge.first != "", "Edge must have an integer value");
-    ASSIGN_VALUE_OR_RETURN_ERR(splitPair.splitNum,
-                               getIntFromStr(std::string(splitEdge.first)));
-    splitPair.label = splitEdge.second.str();
-    splitPair.hasSplit = true;
-  } else {
-    splitPair.label = edge;
-    splitPair.splitNum = 0;
-    splitPair.hasSplit = false;
-  }
-  return splitPair;
-}
-
-Expected<ExtraEdgeSplitPair>
-getExtraEdgeTargetSplitPair(const std::string &edge) {
-  return getExtraEdgeSourceSplitPair(edge, '@', true);
-}
-
-Expected<ExtraEdgeSplitPair>
-getExtraEdgeSourceSplitPair(const std::string &edge) {
-  return getExtraEdgeSourceSplitPair(edge, '$', false);
-}
-
 namespace onnxifi {
 
 bool GlowDumpNNPICompilerData = false;
@@ -724,12 +688,10 @@ static void setupBasicParallelizationConfigs(
   }
 }
 
-/// If we've done some paralleization specified in \p replacedMap then propagate
-/// any NodeInfo from original nodes to the newly created Nodes in
-/// \p backendSpecificNodeInfo. Additionally, validate that the parallelization
-/// matches with the specified previous NodeInfo. \returns whether any
-/// validation error is found.
-static Error propagateBackendSpecificNodeInfo(
+/// If we've done some paralleization specified in \p replacedMap then
+/// validate that the parallelization matches with the specified previous
+/// NodeInfo. \returns whether any validation error is found.
+static Error validateBackendSpecificNodeInfo(
     Function *F, const std::unordered_map<Node *, ConcatNode *> &replacedMap,
     BackendSpecificNodeInfo &backendSpecificNodeInfo) {
   // Build a map from replaced names of a Node to the ConcatNode that replaced
@@ -771,116 +733,56 @@ static Error propagateBackendSpecificNodeInfo(
     RETURN_ERR_IF_NOT(numParChunksVal == CN->getInputs().size(),
                       "Node not split the expected number of times.");
 
-    // Look for coreAssignments and propagate them into each Node.
-    auto coreAssignmentsIt = nodeInfo.find(coreAssignmentsKey);
-    if (coreAssignmentsIt != nodeInfo.end()) {
-      RETURN_ERR_IF_NOT(coreAssignmentsIt->second.size() ==
-                            CN->getInputs().size(),
-                        "Require same number of assignments as split factor");
-      for (size_t i = 0, e = CN->getInputs().size(); i < e; i++) {
-        Node *inputCN = CN->getInputs()[i].getNode();
-        auto &newCoreAssignments = currFunInfo[inputCN][coreAssignmentsKey];
-        RETURN_ERR_IF_NOT(newCoreAssignments.size() == 0,
-                          std::string(coreAssignmentsKey) +
-                              " should have been empty.");
-        newCoreAssignments.push_back(coreAssignmentsIt->second[i]);
-      }
-    }
-
-    // Look for NNPI_extraEdges and propagate them into each Node.
-    auto extraEdgesIt = nodeInfo.find(extraEdgesKey);
-    if (extraEdgesIt != nodeInfo.end()) {
-      for (dim_t inputNum = 0; inputNum < CN->getInputs().size(); inputNum++) {
-        const NodeValue &inputCNNV = CN->getInputs()[inputNum];
-        auto &newExtraEdges = currFunInfo[inputCNNV.getNode()][extraEdgesKey];
-        RETURN_ERR_IF_NOT(newExtraEdges.size() == 0,
-                          std::string(extraEdgesKey) +
-                              " should have been empty.");
-        for (std::string &edge : extraEdgesIt->second) {
-          // If a source split ID is specified via '$' then apply
-          // only to that input
-          ExtraEdgeSplitPair sourceEdgePair;
-          ASSIGN_VALUE_OR_RETURN_ERR(sourceEdgePair,
-                                     getExtraEdgeSourceSplitPair(edge));
-          if (sourceEdgePair.hasSplit) {
-            RETURN_ERR_IF_NOT(
-                sourceEdgePair.splitNum < CN->getInputs().size(),
-                "Source split num for edge exceeded size of the source split.");
-            edge = sourceEdgePair.label;
-            if (sourceEdgePair.splitNum == inputNum) {
-              newExtraEdges.push_back(edge);
-            }
-          } else {
-            newExtraEdges.push_back(edge);
-          }
-        }
-      }
-    }
-
     // Now we can erase this Node's info from currFunInfo because it has been
     // replaced and will be DCE'd soon.
     currFunInfo.erase(curNodeInfoIt);
   }
 
-  // Now we need to look through all extraEdges and clean them up so they point
-  // to parallelized names of opts. They should be formatted like "nodeName@#",
-  // where '#' is an int representing which parallel chunk edge should be used.
-  for (auto &nodeInfoPair : currFunInfo) {
-    for (auto &keyOptsPair : nodeInfoPair.second) {
-      const llvm::StringRef &key = keyOptsPair.getKey();
-      std::vector<std::string> &opts = keyOptsPair.getValue();
-
-      // Look for any extraEdges options.
-      if (key != extraEdgesKey) {
-        continue;
-      }
-
-      for (std::string &edge : opts) {
-        ExtraEdgeSplitPair sourceEdgePair, targetEdgePair;
-        ASSIGN_VALUE_OR_RETURN_ERR(sourceEdgePair,
-                                   getExtraEdgeSourceSplitPair(edge));
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            targetEdgePair, getExtraEdgeTargetSplitPair(sourceEdgePair.label));
-
-        // Only process edges that were expected to be split.
-        if (!targetEdgePair.hasSplit) {
-          continue;
-        }
-        auto it = nameToReplacementMap.find(targetEdgePair.label);
-        auto *targetNode = F->getNodeByName(targetEdgePair.label);
-
-        // If the target of the edge was a parallelized node
-        if (it != nameToReplacementMap.end()) {
-          const ConcatNode *replaceCN = it->second;
-          RETURN_ERR_IF_NOT(
-              targetEdgePair.splitNum < replaceCN->getInputs().size(),
-              "targetEdgePair.splitNum for edge exceeded size of the split.");
-
-          // Finally, replace the name of the old edge (containing '@') with the
-          // name of the new edge created during the parallelization pass.
-          edge = replaceCN->getInputs()[targetEdgePair.splitNum]
-                     .getNode()
-                     ->getName()
-                     .str();
-        }
-        // If the target of the edge is a Concat
-        else if (targetNode && llvm::isa<ConcatNode>(targetNode)) {
-          ConcatNode *targetConcat = llvm::dyn_cast<ConcatNode>(targetNode);
-          edge = targetConcat->getName().str() + "@copy_" +
-                 std::to_string(targetEdgePair.splitNum);
-        } else {
-          RETURN_ERR_IF_NOT(it != nameToReplacementMap.end(),
-                            "Must target either a Concat or a replacement "
-                            "Concat for a parallelized edge: " +
-                                targetEdgePair.label);
-        }
-
-        // Add back the source edge annotation in case of Concat
-        if (sourceEdgePair.hasSplit) {
-          edge = std::to_string(sourceEdgePair.splitNum) + "$" + edge;
-        }
-      }
+  // No parallelization or placement hints should be present at this point
+  for (auto &node : F->getNodes()) {
+    auto curNodeInfoIt = currFunInfo.find(&node);
+    if (curNodeInfoIt == currFunInfo.end()) {
+      continue;
     }
+    auto &nodeInfo = curNodeInfoIt->second;
+
+    RETURN_ERR_IF_NOT(!nodeInfo.count(parallelTransformKindKey),
+                      strFormat("Node %s should not have a "
+                                "parallelTransformKind after parallelization",
+                                node.getName().str().c_str()));
+
+    RETURN_ERR_IF_NOT(
+        !nodeInfo.count(numParallelChunksKey),
+        strFormat(
+            "Node %s should not have a numParallelChunks after parallelization",
+            node.getName().str().c_str()));
+
+    RETURN_ERR_IF_NOT(
+        !nodeInfo.count(coreAssignmentsKey),
+        strFormat(
+            "Node %s should not have a coreAssignments prior to placement",
+            node.getName().str().c_str()));
+
+    RETURN_ERR_IF_NOT(!nodeInfo.count(coreAssignmentsSuffixKey),
+                      strFormat("Node %s should not have a "
+                                "coreAssignmentsSuffix prior to placement",
+                                node.getName().str().c_str()));
+
+    RETURN_ERR_IF_NOT(
+        !nodeInfo.count(extraEdgesTargetNameKey),
+        strFormat(
+            "Node %s should not have a extraEdgesTargetName prior to placement",
+            node.getName().str().c_str()));
+
+    RETURN_ERR_IF_NOT(!nodeInfo.count(extraEdgesTargetSuffixKey),
+                      strFormat("Node %s should not have a "
+                                "extraEdgesTargetSuffix prior to placement",
+                                node.getName().str().c_str()));
+
+    RETURN_ERR_IF_NOT(!nodeInfo.count(extraEdgesSourceSuffixKey),
+                      strFormat("Node %s should not have a "
+                                "extraEdgesSourceSuffix prior to placement",
+                                node.getName().str().c_str()));
   }
   return Error::success();
 }
@@ -1015,9 +917,9 @@ static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts,
                     "Expected that numChunks and replacedMap have same size.");
 
   if (usePerNodeParallelizationSpec) {
-    // If parallelization was based on backend-specific node info then propagate
-    // it to new nodes that were added.
-    RETURN_IF_ERR(propagateBackendSpecificNodeInfo(
+    // If parallelization was based on backend-specific node info then
+    // validate the new nodes that were added.
+    RETURN_IF_ERR(validateBackendSpecificNodeInfo(
         F, replacedMap, opts.backendSpecificNodeInfo));
   }
 
