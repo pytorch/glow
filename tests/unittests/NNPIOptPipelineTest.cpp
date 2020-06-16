@@ -372,7 +372,8 @@ TEST_F(NNPIOptPipelineTest, SplitParallelizationTestTanhReluNNPI) {
 
 static void setupSplitParallelizationTestFCReluNNPI(
     Module &mod_, Function *F_, CompilationContext &cctx_,
-    PlaceholderBindings &bindings_, const std::string &parKind) {
+    PlaceholderBindings &bindings_, const std::string &parKind,
+    const bool addParallelizationHints, const bool addPlacementHints) {
   auto *input1 =
       mod_.createPlaceholder(ElemKind::Float16Ty, {512, 32}, "input1", false);
   auto *input2 =
@@ -402,40 +403,47 @@ static void setupSplitParallelizationTestFCReluNNPI(
                                                                mod_.getPRNG());
 
   auto &nodeInfo = cctx_.backendOpts.backendSpecificNodeInfo[F_];
-  // Setup some parallelization.
-  nodeInfo[FC]["NNPI_numParallelChunks"].push_back("8");
-  nodeInfo[FC]["NNPI_parallelTransformKind"].push_back(parKind);
-  nodeInfo[RN]["NNPI_numParallelChunks"].push_back("8");
-  nodeInfo[RN]["NNPI_parallelTransformKind"].push_back(parKind);
-  // Add some extra edges.
-  nodeInfo[AN]["NNPI_extraEdges"].push_back(CI->getName().str() + "@1");
-  nodeInfo[CI]["NNPI_extraEdges"].push_back("1$" + TN->getName().str());
-  nodeInfo[CI]["NNPI_extraEdges"].push_back("1$" + FC->getName().str() + "@3");
-  nodeInfo[AN]["NNPI_extraEdges"].push_back(CI->getName().str() + "@1");
-  nodeInfo[TN]["NNPI_extraEdges"].push_back(FC->getName().str() + "@3");
-  nodeInfo[TN]["NNPI_extraEdges"].push_back(FC->getName().str() + "@7");
-  nodeInfo[FC]["NNPI_extraEdges"].push_back("2$" + RN->getName().str() + "@7");
-  nodeInfo[RN]["NNPI_extraEdges"].push_back(SN->getName().str());
-  nodeInfo[TN]["NNPI_extraEdges"].push_back(SN->getName().str());
-  nodeInfo[AN]["NNPI_extraEdges"].push_back(TN->getName().str());
-  // Assign some ops to cores.
-  nodeInfo[TN]["NNPI_coreAssignments"].push_back("3");
-  nodeInfo[FC]["NNPI_coreAssignments"].push_back("2");
-  nodeInfo[FC]["NNPI_coreAssignments"].push_back("0");
-  nodeInfo[FC]["NNPI_coreAssignments"].push_back("10");
-  nodeInfo[FC]["NNPI_coreAssignments"].push_back("5");
-  nodeInfo[FC]["NNPI_coreAssignments"].push_back("1");
-  nodeInfo[FC]["NNPI_coreAssignments"].push_back("7");
-  nodeInfo[FC]["NNPI_coreAssignments"].push_back("3");
-  nodeInfo[FC]["NNPI_coreAssignments"].push_back("0");
-  nodeInfo[CI]["NNPI_coreAssignments"].push_back("");
-  nodeInfo[CI]["NNPI_coreAssignments"].push_back("3");
+  // Placement and parallelization cannot happen at the same time
+  ASSERT_FALSE(addParallelizationHints && addPlacementHints);
+
+  if (addParallelizationHints) {
+    // Setup some parallelization.
+    nodeInfo[FC]["NNPI_numParallelChunks"].push_back("8");
+    nodeInfo[FC]["NNPI_parallelTransformKind"].push_back(parKind);
+    nodeInfo[RN]["NNPI_numParallelChunks"].push_back("8");
+    nodeInfo[RN]["NNPI_parallelTransformKind"].push_back(parKind);
+  }
+
+  if (addPlacementHints) {
+    // Add some extra edges.
+    nodeInfo[AN]["NNPI_extraEdgesTargetName"].push_back(CI->getName().str());
+    nodeInfo[AN]["NNPI_extraEdgesTargetSuffix"].push_back("@copy_1");
+    nodeInfo[CI]["NNPI_extraEdgesTargetName"].push_back(TN->getName().str());
+    nodeInfo[CI]["NNPI_extraEdgesSourceSuffix"].push_back("@copy_1");
+    nodeInfo[CI]["NNPI_extraEdgesTargetName"].push_back(FC->getName().str());
+    nodeInfo[CI]["NNPI_extraEdgesSourceSuffix"].push_back("@copy_1");
+    nodeInfo[AN]["NNPI_extraEdgesTargetName"].push_back(CI->getName().str());
+    nodeInfo[AN]["NNPI_extraEdgesTargetSuffix"].push_back("@copy_1");
+    nodeInfo[TN]["NNPI_extraEdgesTargetName"].push_back(FC->getName().str());
+    nodeInfo[TN]["NNPI_extraEdgesTargetName"].push_back(SN->getName().str());
+    nodeInfo[FC]["NNPI_extraEdgesTargetName"].push_back(RN->getName().str());
+
+    // Assign some ops to cores.
+    nodeInfo[TN]["NNPI_coreAssignments"].push_back("3");
+    nodeInfo[FC]["NNPI_coreAssignments"].push_back("2");
+    nodeInfo[CI]["NNPI_coreAssignments"].push_back("1");
+    nodeInfo[CI]["NNPI_coreAssignmentsSuffix"].push_back("@copy_0");
+    nodeInfo[CI]["NNPI_coreAssignments"].push_back("3");
+    nodeInfo[CI]["NNPI_coreAssignmentsSuffix"].push_back("@copy_1");
+  }
 }
 
 /// Test model parallel splitting inside of NNPIPrivateTransforms.cpp for
 /// FC/RELU
 TEST_F(NNPIOptPipelineTestNodeOpts, ModelSplitParallelizationTestFCReluNNPI) {
-  setupSplitParallelizationTestFCReluNNPI(mod_, F_, cctx_, bindings_, "Model");
+  setupSplitParallelizationTestFCReluNNPI(mod_, F_, cctx_, bindings_, "Model",
+                                          /* addParallelizationHints */ true,
+                                          /* addPlacementHints */ false);
   cloneAndCompile();
 
   EXPECT_LT(unoptimizedF_->getNodes().size(), optimizedF_->getNodes().size());
@@ -462,7 +470,9 @@ TEST_F(NNPIOptPipelineTestNodeOpts, ModelSplitParallelizationTestFCReluNNPI) {
 
 /// Test data parallel splitting inside of NNPIPrivateTransforms.cpp for FC/RELU
 TEST_F(NNPIOptPipelineTestNodeOpts, DataSplitParallelizationTestFCReluNNPI) {
-  setupSplitParallelizationTestFCReluNNPI(mod_, F_, cctx_, bindings_, "Data");
+  setupSplitParallelizationTestFCReluNNPI(mod_, F_, cctx_, bindings_, "Data",
+                                          /* addParallelizationHints */ true,
+                                          /* addPlacementHints */ false);
   cloneAndCompile();
 
   EXPECT_LT(unoptimizedF_->getNodes().size(), optimizedF_->getNodes().size());
@@ -483,6 +493,32 @@ TEST_F(NNPIOptPipelineTestNodeOpts, DataSplitParallelizationTestFCReluNNPI) {
   ConcatNode *CN = llvm::dyn_cast<ConcatNode>(SN->getInput());
   ASSERT_TRUE(CN);
   EXPECT_EQ(CN->getDim(), 0);
+
+  checkNumericalEquivalence(/* allowedError */ 0.f);
+}
+
+/// Test placement hints
+TEST_F(NNPIOptPipelineTestNodeOpts, PlacementTestFCReluNNPI) {
+  setupSplitParallelizationTestFCReluNNPI(mod_, F_, cctx_, bindings_, "Data",
+                                          /* addParallelizationHints */ false,
+                                          /* addPlacementHints */ true);
+  cloneAndCompile();
+
+  EXPECT_EQ(unoptimizedF_->getNodes().size(), optimizedF_->getNodes().size());
+  EXPECT_EQ(countNodeKind(unoptimizedF_, Kinded::Kind::FullyConnectedNodeKind),
+            1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::FullyConnectedNodeKind),
+            1);
+  EXPECT_EQ(countNodeKind(unoptimizedF_, Kinded::Kind::ReluNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
+
+  SaveNode *optSave = getSaveByName(optimizedF_, "ret_save");
+  ASSERT_TRUE(optSave);
+
+  // Data parallel split concats results on 0th dim.
+  SigmoidNode *SN = llvm::dyn_cast<SigmoidNode>(optSave->getInput());
+  ASSERT_TRUE(SN);
 
   checkNumericalEquivalence(/* allowedError */ 0.f);
 }

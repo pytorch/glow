@@ -16,9 +16,11 @@
 
 #include "Loader.h"
 
+#include "glow/Base/TensorSerialization.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <fstream>
@@ -69,6 +71,11 @@ llvm::cl::opt<std::string> expectedResultSentencesFile(
                    "-input-text-file."),
     llvm::cl::value_desc("string_name"), llvm::cl::Optional,
     llvm::cl::cat(textTranslatorCat));
+
+llvm::cl::opt<bool> dumpBinaryResults(
+    "dump-binary-results",
+    llvm::cl::desc("Dump raw binary Tensor results after execution."),
+    llvm::cl::init(false), llvm::cl::cat(textTranslatorCat));
 } // namespace
 
 /// These should be kept in sync with pytorch_translate/vocab_constants.py
@@ -368,12 +375,9 @@ int main(int argc, char **argv) {
   // Allocate tensors to back all inputs and outputs.
   bindings.allocate(loader.getModule()->getPlaceholders());
 
-  // Get all input tensors and zero them.
-  for (const auto *name : inputNames) {
-    Tensor *T =
-        bindings.get(loader.getModule()->getPlaceholderByNameSlow(name));
-    DCHECK(T && "input tensor missing!");
-    T->zero();
+  // Get all bound tensors and zero them.
+  for (auto &pair : bindings.pairs()) {
+    pair.second.zero();
   }
 
   Placeholder *encoderInputsVar = llvm::cast<Placeholder>(
@@ -399,6 +403,19 @@ int main(int argc, char **argv) {
   if (!expectedResultSentencesFile.empty()) {
     expectedResultFile.open(expectedResultSentencesFile, std::ifstream::in);
   }
+
+  // We reuse the same output Tensors for every inference, so it's safe to get
+  // them ahead of the inference loop.
+  Tensor *outputTokenBeamListT = bindings.get(outputTokenBeamList);
+  Tensor *outputScoreBeamListT = bindings.get(outputScoreBeamList);
+  Tensor *outputPrevIndexBeamListT = bindings.get(outputPrevIndexBeamList);
+
+  // Store copies of results of each inference for dumping after the inference
+  // loop if requested.
+  std::vector<Tensor> outputTokenBeamListResults;
+  std::vector<Tensor> outputScoreBeamListResults;
+  std::vector<Tensor> outputPrevIndexBeamListResults;
+
   int incorrectTranslationCount = 0;
   while (loadNextInputTranslationText(&encoderInputs, inFile)) {
     // Update the inputs.
@@ -407,14 +424,45 @@ int main(int argc, char **argv) {
     // Run actual translation.
     loader.runInference(bindings);
 
+    // Keep around copies of all results to dump after inference loop.
+    if (dumpBinaryResults) {
+      outputTokenBeamListResults.emplace_back(outputTokenBeamListT->clone());
+      outputScoreBeamListResults.emplace_back(outputScoreBeamListT->clone());
+      outputPrevIndexBeamListResults.emplace_back(
+          outputPrevIndexBeamListT->clone());
+    }
+
     // Process the outputs to determine the highest likelihood sentence, and
     // print out the decoded translation using the dest dictionary.
     if (!processAndPrintDecodedTranslation(
-            bindings.get(outputTokenBeamList),
-            bindings.get(outputScoreBeamList),
-            bindings.get(outputPrevIndexBeamList), expectedResultFile)) {
+            outputTokenBeamListT, outputScoreBeamListT,
+            outputPrevIndexBeamListT, expectedResultFile)) {
       incorrectTranslationCount += 1;
     }
+  }
+
+  if (dumpBinaryResults) {
+    TensorSerializationOptions opts;
+    opts.withType = false;
+    auto dumpRes = [&](const std::string &name,
+                       const std::vector<Tensor> &vecT) {
+      std::ofstream fs;
+      llvm::SmallString<64> path;
+      auto tempFileRes = llvm::sys::fs::createTemporaryFile(name, "bin", path);
+      CHECK_EQ(tempFileRes.value(), 0)
+          << "Failed to create temp file to write into.";
+      fs.open(path.data(), std::ios::binary);
+      CHECK(fs.is_open()) << "Error opening file '" << path.data() << "'!";
+      std::cout << "Dumping binary results of " << name << " to " << path.data()
+                << std::endl;
+      for (const Tensor &T : vecT) {
+        dumpTensorToBinaryFile(T, fs, opts);
+      }
+      fs.close();
+    };
+    dumpRes("outputTokenBeamList", outputTokenBeamListResults);
+    dumpRes("outputScoreBeamList", outputScoreBeamListResults);
+    dumpRes("outputPrevIndexBeamList", outputPrevIndexBeamListResults);
   }
 
   // If profiling, generate and serialize the profiling infos now that we

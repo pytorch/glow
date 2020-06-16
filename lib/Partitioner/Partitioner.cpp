@@ -1158,9 +1158,14 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
                     "Did not find a partition with an SLS node");
   }
 
-  if (deviceInfo_.size() == 0) {
-    return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
-                    "Not enough devices to partition");
+  if (deviceInfo_.size() <
+      cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards) {
+    return MAKE_ERR(
+        ErrorValue::ErrorCode::PARTITIONER_ERROR,
+        strFormat("Not enough devices to partition. Num Devices is %zu and Num "
+                  "SparseNN Cards Needed is %u",
+                  deviceInfo_.size(),
+                  cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards));
   }
 
   // Otherwise partition this function
@@ -1389,10 +1394,12 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
     VLOG(1) << "\n";
   }
 
-  auto partitions = partitionFromConfig(partitionConfig, cctx);
+  DAGListTy partitions;
+  ASSIGN_VALUE_OR_RETURN_ERR(partitions,
+                             partitionFromConfig(partitionConfig, cctx));
   if (cctx.saturateHost) {
     saturateHost(cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards,
-                 std::move(partitions.get()));
+                 partitions);
   }
   return partitions;
 }

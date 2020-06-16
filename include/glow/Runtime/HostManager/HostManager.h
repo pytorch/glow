@@ -68,6 +68,9 @@ class HostManager final {
     /// The runtime generated ID for the run request.
     uint64_t requestID;
 
+    /// Timestamp for request creation.
+    uint64_t startTime;
+
     // Define greater than operator to allow sorting in priority_heap for queue
     // reqests. If priority is the same fall back to order of submission.
     bool operator>(const InferRequest &inferReq) const {
@@ -78,7 +81,7 @@ class HostManager final {
     }
     InferRequest(std::string networkName,
                  std::unique_ptr<ExecutionContext> context, ResultCBTy callback,
-                 uint64_t priority, uint64_t requestID)
+                 uint64_t priority, uint64_t requestID, uint64_t startTime = 0)
         : networkName{networkName}, context{std::move(context)},
           callback{callback}, priority{priority}, requestID{requestID} {}
   };

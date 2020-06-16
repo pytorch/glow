@@ -17,6 +17,7 @@
 #define GLOW_RUNTIME_REQUESTDATA_H
 
 #include "folly/io/async/Request.h"
+#include <atomic>
 
 namespace glow {
 namespace runtime {
@@ -24,6 +25,16 @@ namespace runtime {
 class RequestData : public folly::RequestData {
 public:
   int64_t appLevelRequestId{0};
+
+  /// Start and stop times for the glow request, relative to request start time.
+  uint64_t startTime{0};
+  uint64_t stopTime{0};
+
+  /// Request start time.
+  uint64_t requestStartTime{0};
+
+  /// Time spent waiting on the device stack sum of time of all partitions.
+  std::atomic<uint64_t> deviceRuntime{0};
 
   static RequestData *get() {
     auto data = dynamic_cast<RequestData *>(
