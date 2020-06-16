@@ -513,9 +513,7 @@ void BundleSaver::produceBundle() {
         PM, outputFile, nullptr,
         llvm::TargetMachine::CodeGenFileType::CGFT_ObjectFile);
 #else
-    TM.addPassesToEmitFile(
-        PM, outputFile, nullptr,
-        llvm::CGFT_ObjectFile);
+    TM.addPassesToEmitFile(PM, outputFile, nullptr, llvm::CGFT_ObjectFile);
 #endif
 
     PM.run(M);
