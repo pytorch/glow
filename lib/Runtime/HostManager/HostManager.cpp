@@ -579,9 +579,8 @@ void HostManager::dispatchNextRun() {
         auto requestData = ::glow::runtime::RequestData::get();
         if (requestData) {
           uint64_t end = TraceEvent::now();
-          requestData->startTime =
-              requestReceived - requestData->requestStartTime;
-          requestData->stopTime = end - requestData->requestStartTime;
+          requestData->startTime = requestReceived;
+          requestData->stopTime = end;
         }
 
         callback(runID, std::move(err), std::move(context));
