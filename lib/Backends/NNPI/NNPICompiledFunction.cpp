@@ -167,92 +167,100 @@ Error NNPICompiledFunction::setupCompilationHints(
   // Create hints here before copying into config_, as we don't know how many
   // there are a priori.
   std::vector<NNPICompilationHint> hints;
-
   for (const auto &nodeInfoPair : currFunInfo) {
     const Node *N = nodeInfoPair.first;
     RETURN_ERR_IF_NOT(N->getParent() == F,
                       "Node mapped to this Function in backendSpecificNodeInfo "
                       "has incorrect parent.");
-    for (const auto &keyOptsPair : nodeInfoPair.second) {
-      const llvm::StringRef &key = keyOptsPair.getKey();
-      const std::vector<std::string> &opts = keyOptsPair.getValue();
 
-      RETURN_ERR_IF_NOT(key != numParallelChunksKey,
-                        "Should have processed and removed all " +
-                            std::string(numParallelChunksKey));
+    const auto &nodeInfo = nodeInfoPair.second;
 
-      RETURN_ERR_IF_NOT(key != parallelTransformKindKey,
-                        "Should have processed and removed all " +
-                            std::string(parallelTransformKindKey));
-
-      RETURN_ERR_IF_NOT(N->getName().size() < sizeof(NNPIObjectName),
-                        "Name lengths must fit inside NNPIObjectName.");
-
-      if (key == coreAssignmentsKey) {
-        if (const ConcatNode *CN = llvm::dyn_cast<ConcatNode>(N)) {
-          RETURN_ERR_IF_NOT(opts.size() == CN->getInputs().size(),
-                            "Should have same number of " +
-                                std::string(coreAssignmentsKey) + " (" +
-                                std::to_string(opts.size()) +
-                                ") as inputs to " + N->getName().str() + " (" +
-                                std::to_string(CN->getInputs().size()) + ")");
-        } else {
-          RETURN_ERR_IF_NOT(
-              opts.size() == 1,
-              strFormat("Should have only a single coreAssignment for %s",
-                        N->getName().data()));
-        }
-        for (size_t i = 0, e = opts.size(); i < e; i++) {
-          // Skip empty core assignment strings
-          if (opts[i] == std::string("")) {
-            continue;
-          }
-          int core;
-          ASSIGN_VALUE_OR_RETURN_ERR(core, getIntFromStr(opts[i]));
-          RETURN_ERR_IF_NOT(core >= 0 && core <= 11,
-                            "Core assignment must be [0-11]");
-          NNPICompilationHint hint;
-          hint.type = NNPI_HINT_ICE_CORE_PLACEMENT;
-          const std::string opName =
-              N->getName().str() +
-              (opts.size() == 1 ? "" : ("@copy_" + std::to_string(i)));
-          strncpy(hint.iceCorePlacement.opName, opName.c_str(),
-                  sizeof(NNPIObjectName));
-          hint.iceCorePlacement.iceCore = core;
-          hints.emplace_back(hint);
-        }
+    // Read core assignments
+    auto coreAssignmentsIt = nodeInfo.find(coreAssignmentsKey);
+    auto coreAssignmentsSuffixIt = nodeInfo.find(coreAssignmentsSuffixKey);
+    if (coreAssignmentsIt != nodeInfo.end()) {
+      auto coreAssignments = coreAssignmentsIt->second;
+      if (coreAssignmentsSuffixIt != nodeInfo.end()) {
+        auto coreAssignmentsSuffix = coreAssignmentsSuffixIt->second;
+        RETURN_ERR_IF_NOT(
+            coreAssignments.size() == coreAssignmentsSuffix.size(),
+            strFormat("Node %s coreAssignmentsSuffix has length "
+                      "%zu, but coreAssignments has length %zu",
+                      N->getName().data(), coreAssignmentsSuffix.size(),
+                      coreAssignments.size()));
       }
 
-      if (key == extraEdgesKey) {
-        for (const std::string &edgeNameInp : opts) {
-          ExtraEdgeSplitPair sourceEdgePair;
-          std::string opName = std::string(N->getName());
-          std::string edgeName = edgeNameInp;
-          ASSIGN_VALUE_OR_RETURN_ERR(sourceEdgePair,
-                                     getExtraEdgeSourceSplitPair(edgeNameInp));
-          if (sourceEdgePair.hasSplit) {
-            RETURN_ERR_IF_NOT(
-                llvm::isa<ConcatNode>(N),
-                "Extra edge " + edgeName +
-                    " has a source split, but was not sourced from either a "
-                    "parallelized node, or a Concat node.");
-            opName =
-                opName + "@copy_" + std::to_string(sourceEdgePair.splitNum);
-            edgeName = sourceEdgePair.label;
+      for (dim_t i = 0; i < coreAssignments.size(); i++) {
+        int core;
+        ASSIGN_VALUE_OR_RETURN_ERR(core, getIntFromStr(coreAssignments[i]));
+        RETURN_ERR_IF_NOT(core >= 0 && core <= 11,
+                          "Core assignment must be [0-11]");
+        NNPICompilationHint hint;
+        hint.type = NNPI_HINT_ICE_CORE_PLACEMENT;
+        std::string opName = N->getName().str();
+        if (coreAssignmentsSuffixIt != nodeInfo.end()) {
+          auto coreAssignmentsSuffix = coreAssignmentsSuffixIt->second;
+          if (i < coreAssignmentsSuffix.size()) {
+            opName = opName + coreAssignmentsSuffix[i];
           }
-
-          RETURN_ERR_IF_NOT(allNodeNames.count(edgeName),
-                            "Extra edge " + edgeName +
-                                " is not mapped to a current Node name.");
-          NNPICompilationHint hint;
-          hint.type = NNPI_HINT_OP_DEPENDENCY;
-
-          strncpy(hint.opDependency.opName, opName.c_str(),
-                  sizeof(NNPIObjectName));
-          strncpy(hint.opDependency.dependsOnOpName, edgeName.c_str(),
-                  sizeof(NNPIObjectName));
-          hints.emplace_back(hint);
         }
+        strncpy(hint.iceCorePlacement.opName, opName.c_str(),
+                sizeof(NNPIObjectName));
+        hint.iceCorePlacement.iceCore = core;
+        hints.emplace_back(hint);
+      }
+    }
+
+    // Read extra edges
+    auto extraEdgesTargetNameIt = nodeInfo.find(extraEdgesTargetNameKey);
+    auto extraEdgesTargetSuffixIt = nodeInfo.find(extraEdgesTargetSuffixKey);
+    auto extraEdgesSourceSuffixIt = nodeInfo.find(extraEdgesSourceSuffixKey);
+
+    if (extraEdgesTargetNameIt != nodeInfo.end()) {
+      auto extraEdgesTargetName = extraEdgesTargetNameIt->second;
+      if (extraEdgesTargetSuffixIt != nodeInfo.end()) {
+        auto extraEdgesTargetSuffix = extraEdgesTargetSuffixIt->second;
+        RETURN_ERR_IF_NOT(
+            extraEdgesTargetName.size() == extraEdgesTargetSuffix.size(),
+            strFormat("Node %s extraEdgesTargetSuffix has length %zu, but "
+                      "extraEdgesTargetName has length %zu",
+                      N->getName().data(), extraEdgesTargetSuffix.size(),
+                      extraEdgesTargetName.size()));
+      }
+
+      if (extraEdgesSourceSuffixIt != nodeInfo.end()) {
+        auto extraEdgesSourceSuffix = extraEdgesSourceSuffixIt->second;
+        RETURN_ERR_IF_NOT(
+            extraEdgesTargetName.size() == extraEdgesSourceSuffix.size(),
+            strFormat("Node %s extraEdgesSourceSuffix has length %zu, but "
+                      "extraEdgesTargetName has length %zu",
+                      N->getName().data(), extraEdgesSourceSuffix.size(),
+                      extraEdgesTargetName.size()));
+      }
+
+      for (dim_t i = 0; i < extraEdgesTargetName.size(); i++) {
+        std::string opName = std::string(N->getName());
+        if (extraEdgesSourceSuffixIt != nodeInfo.end()) {
+          auto extraEdgesSourceSuffix = extraEdgesSourceSuffixIt->second;
+          opName = opName + extraEdgesSourceSuffix[i];
+        }
+
+        std::string edgeName = extraEdgesTargetName[i];
+        if (extraEdgesTargetSuffixIt != nodeInfo.end()) {
+          auto extraEdgesTargetSuffix = extraEdgesTargetSuffixIt->second;
+          edgeName = edgeName + extraEdgesTargetSuffix[i];
+        }
+
+        RETURN_ERR_IF_NOT(allNodeNames.count(extraEdgesTargetName[i]),
+                          "Extra edge target " + extraEdgesTargetName[i] +
+                              " is not mapped to a current Node name.");
+        NNPICompilationHint hint;
+        hint.type = NNPI_HINT_OP_DEPENDENCY;
+        strncpy(hint.opDependency.opName, opName.c_str(),
+                sizeof(NNPIObjectName));
+        strncpy(hint.opDependency.dependsOnOpName, edgeName.c_str(),
+                sizeof(NNPIObjectName));
+        hints.emplace_back(hint);
       }
     }
   }
@@ -260,7 +268,9 @@ Error NNPICompiledFunction::setupCompilationHints(
   config_.numCompilationHints = hints.size();
   const size_t hintsBytes = hints.size() * sizeof(NNPICompilationHint);
   config_.compilationHints = (NNPICompilationHint *)malloc(hintsBytes);
-  memcpy(config_.compilationHints, hints.data(), hintsBytes);
+  if (hintsBytes > 0) {
+    memcpy(config_.compilationHints, hints.data(), hintsBytes);
+  }
 
   return Error::success();
 }
