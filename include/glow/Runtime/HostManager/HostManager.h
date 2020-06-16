@@ -83,7 +83,8 @@ class HostManager final {
                  std::unique_ptr<ExecutionContext> context, ResultCBTy callback,
                  uint64_t priority, uint64_t requestID, uint64_t startTime = 0)
         : networkName{networkName}, context{std::move(context)},
-          callback{callback}, priority{priority}, requestID{requestID} {}
+          callback{callback}, priority{priority}, requestID{requestID},
+          startTime{startTime} {}
   };
 
   /// Count of current in-flight networks being run. Atomic to allow
