@@ -169,7 +169,7 @@ Error checkBiasQuantizationParams(Module &mod, NodeValue input,
     // Check bias scale relative error to inputScale * weightsScale.
     if (biasScale != matMulScale) {
       float relErr = std::abs(matMulScale - biasScale) / matMulScale;
-      llvm::outs() << strFormat(
+      llvm::errs() << strFormat(
           "TensorFlowLite: WARNING: Bias scale value was expected "
           "to be exactly %E (inputScale * weightsScale) but found "
           "%E instead! Relative absolute error is %E!\n",
@@ -1003,7 +1003,7 @@ Expected<bool> TFLiteModelLoader::isConv2DPerAxisQuantized(
     // Check bias scale relative error to inputScale * filterScale.
     if (biasScale != matMulScale) {
       float relErr = std::abs(matMulScale - biasScale) / matMulScale;
-      llvm::outs() << opErrMsg(
+      llvm::errs() << opErrMsg(
           opInfo,
           strFormat("WARNING: Bias scale value was expected "
                     "to be exactly %E (inputScale * weightsScale) but found "
