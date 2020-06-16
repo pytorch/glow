@@ -77,6 +77,9 @@ class CachingGraphRunner {
   /// The number of runs traced
   size_t numTraces_{0};
 
+  /// The number of trace dumps already generated
+  size_t numTraceDumps_{0};
+
   /// TraceContext used to aggregate traces from runs before dumping them
   /// in groups to file.
   std::unique_ptr<TraceContext> mergedTraceContext_;
