@@ -63,7 +63,7 @@ PYBIND11_MODULE(_torch_glow, m) {
 
   /// Lowers and compiles a given torch.nn module following the given spec.
   /// Returns a lowered module.
-  m.def("to_glow", torchGlowBackend().generateToBackendFn());
+  (void)torchGlowBackend();
 
   /// Enable compiling PyTorch subgraphs to Glow Functions.
   m.def("enableFusionPass",
