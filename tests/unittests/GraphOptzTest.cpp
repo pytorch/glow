@@ -3146,6 +3146,59 @@ TEST_F(GraphOptz, concatElimReverseOrder) {
   checkNumericalEquivalence(0.0f);
 }
 
+/// Check that we are able to eliminate concat nodes with redundant arithmetic
+/// ops in way.
+TEST_F(GraphOptz, concatArithElim) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input", true);
+  bindings_.allocate(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+
+  Type t(ElemKind::FloatTy, {1, 10, 10});
+  Node *one = F_->createSplat("one", &t, 1.0);
+  Node *zero = F_->createSplat("zero", &t, 0.0);
+
+  // Split the input to a bunch of small slices.
+  std::vector<NodeValue> inputs;
+  for (dim_t i = 0; i < 10; i++) {
+    auto *K = F_->createSlice("extract", input, {i, 0, 0}, {i + 1, 10, 10});
+    // Insert the nodes in reverse order to make sure that we can catch
+    // non-consecutive graph-order slices.
+    Node *N = K;
+    switch (i) {
+    case 0:
+      N = F_->createAdd("add0", K, zero);
+      break;
+    case 1:
+      N = F_->createSub("sub0", K, zero);
+      break;
+    case 2:
+      N = F_->createAdd("add_0", zero, K);
+      break;
+    case 3:
+      N = F_->createMul("mul1", K, one);
+      break;
+    case 4:
+      N = F_->createDiv("div1", K, one);
+      break;
+    case 5:
+      N = F_->createMul("mul_1", one, K);
+      break;
+    default:
+      break;
+    }
+    inputs.push_back(N);
+  }
+
+  auto *cc = F_->createConcat("merge", inputs, 0);
+  F_->createSave("save", cc);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 10);
+  optimizedF_ = optimizeFunction(F_);
+
+  // Check that the concat node is gone.
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 0);
+  checkNumericalEquivalence(0.0f);
+}
+
 /// Check that we are able to eliminate concat followed by slices on axis
 /// \p dim under certain conditions.
 static void testConcatSliceElim(Module &mod, Function *F, Function *&optimizedF,

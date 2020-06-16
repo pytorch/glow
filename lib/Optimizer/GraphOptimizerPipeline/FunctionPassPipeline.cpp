@@ -115,17 +115,17 @@ createDefaultGraphOptimizationPassPipeline() {
       // Perform Common Subexpression Elimination.
       {FunctionPassID::CSE},
 
-      // Optimize Concat nodes.
-      {FunctionPassID::OptimizeConcatNodes},
-
-      // Eliminate Concat-Slice patterns which are unnecessary.
-      {FunctionPassID::EliminateConcatSlice},
-
       // Optimize arithmetic nodes based on algebraic identities.
       {FunctionPassID::OptimizeArithmeticNodes},
 
       // Optimize Splat nodes.
       {FunctionPassID::OptimizeSplat},
+
+      // Optimize Concat nodes.
+      {FunctionPassID::OptimizeConcatNodes},
+
+      // Eliminate Concat-Slice patterns which are unnecessary.
+      {FunctionPassID::EliminateConcatSlice},
 
       // Merge Transpose into MatMul/FC.
       {FunctionPassID::MergeTransposeIntoMatMulOrFC},
