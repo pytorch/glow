@@ -60,40 +60,35 @@ size_t CachingGraphRunner::computeGraphHash(
 
 void CachingGraphRunner::aggregateAndDumpTraces(TraceContext *traceContext,
                                                 bool flush) {
-  if (!traceContext && !flush) {
-    return;
-  }
-
   size_t numTracesPerDump = settings_.numTracesPerDump;
+  bool doDump = false;
+  std::string filename;
+  {
+    std::unique_lock<std::mutex> lock(tracesMutex_);
 
-  std::unique_lock<std::mutex> lock(tracesMutex_);
-
-  auto numTraces = ++numTraces_;
-
-  if (flush) {
-    if (mergedTraceContext_) {
-      size_t dumpNum = numTraces / numTracesPerDump;
-      std::string filename = strFormat("glow-trace-%zu.json", dumpNum);
-      if (traceContext) {
-        mergedTraceContext_->merge(traceContext);
-      }
-      mergedTraceContext_->dump(filename);
-      mergedTraceContext_ = nullptr;
+    if (traceContext) {
+      mergedTraceContext_->merge(traceContext);
+      numTraces_++;
+    } else if (mergedTraceContext_->getTraceEvents().empty()) {
+      return;
     }
-    return;
+    size_t numTraces = numTraces_;
+
+    // If numTracesPerDump <= 0, it means we don't merge unless there is a flush
+    if (flush || (numTracesPerDump > 0 && numTraces % numTracesPerDump == 0)) {
+      // Initial way of differentiating the dump files when there are multiple
+      // graph runners
+      // TODO(allwu): find a better way to generate trace file names
+      size_t hash = reinterpret_cast<size_t>(this);
+      size_t dumpNum = numTraceDumps_++;
+      filename =
+          strFormat("glow-trace-%04lx-%zu.json", hash % (1 << 16), dumpNum);
+      doDump = true;
+    }
   }
-
-  if (!mergedTraceContext_) {
-    mergedTraceContext_ = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
-  }
-
-  mergedTraceContext_->merge(traceContext);
-
-  if (numTraces % numTracesPerDump == 0) {
-    size_t dumpNum = (numTraces / numTracesPerDump) - 1;
-    std::string filename = strFormat("glow-trace-%zu.json", dumpNum);
+  if (doDump) {
     mergedTraceContext_->dump(filename);
-    mergedTraceContext_ = nullptr;
+    mergedTraceContext_ = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
   }
 }
 
@@ -537,7 +532,22 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
   }
 
   std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
-  return runImpl(*DCHECK_NOTNULL(info.get()), stack, ctx);
+  TraceContext *traceContext = nullptr;
+  if (getSettings().enableGlowTracing) {
+    ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
+    traceContext = ctx->getTraceContext();
+    traceContext->setThreadName("torch_glow");
+  }
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "torch_glow::runOnly");
+  auto err = runImpl(*DCHECK_NOTNULL(info.get()), stack, ctx);
+
+  // Reset the traceContext again in case it was changed during run.
+  traceContext = ctx->getTraceContext();
+
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "torch_glow::runOnly");
+
+  aggregateAndDumpTraces(traceContext);
+  return err;
 }
 
 Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
@@ -548,6 +558,14 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
   if (!graph_) {
     return MAKE_ERR("No graph found!");
   }
+
+  std::unique_ptr<TraceContext> traceContext;
+  if (getSettings().enableGlowTracing) {
+    traceContext = std::make_unique<TraceContext>(TraceLevel::STANDARD);
+    traceContext->setThreadName("torch_glow");
+  }
+  TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME,
+                    "torch_glow::warmCache");
 
   // If this setting is missing we will not use pre compiled model at runtime,
   // which will cause unexpected behaviors.
@@ -567,9 +585,11 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
   std::unique_ptr<Module> glowModule = llvm::make_unique<Module>();
   Function *f = glowModule->createFunction(info->functionName);
 
+  TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME, "loadJITGraph");
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
       *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
       outputCorrectType_, getPyTorchLoaderSettings(), {}, inputMeta));
+  TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME, "loadJITGraph");
 
   // Obtain maxSeqLength from inputMeta
   // This step can also be done with a user input, but the overhead of the
@@ -592,10 +612,18 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
   cctx.precisionConfig.convertFusedToFP16 = settings_.convertFusedToFP16;
   cctx.dumpFinalGraph = settings_.dumpFinalGlowGraph;
 
+  TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(glowModule), cctx));
+  TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");
+
   // Randomly picked one key. There should be only one element in the map
   // when model is precompiled.
   perGlowGraphInfoMap_[0] = info;
+
+  TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME,
+                  "torch_glow::warmCache");
+
+  aggregateAndDumpTraces(traceContext.get());
   return Error::success();
 }
 
@@ -609,9 +637,14 @@ CachingGraphRunner::CachingGraphRunner(
     PyTorchLoaderSettings settings)
     : graph_(graph), ptGraphExecutor_(graph, "forward"),
       hostManager_(hostManager), backend_(hostManager->getBackend(backendName)),
-      settings_(settings) {}
+      settings_(settings) {
+  mergedTraceContext_ = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
+}
 
 CachingGraphRunner::~CachingGraphRunner() {
+  // Dump trace for the last time if there are remaining
+  aggregateAndDumpTraces(nullptr, true);
+
   // Remove Glow functions saved in HostManager when being destroyed.
   std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
   for (auto &kv : perGlowGraphInfoMap_) {
