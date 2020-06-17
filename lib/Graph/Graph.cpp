@@ -925,16 +925,30 @@ AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
                                      llvm::ArrayRef<unsigned_t> strides,
                                      llvm::ArrayRef<unsigned_t> pads,
                                      ConvolutionLayout layout) {
-  ShapeNHWC idim = ShapeNHWC(input.dims());
-  checkKernelSize(idim, kernels, pads);
+  if (!is3DData(layout)) {
 
-  auto outSz =
-      calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
-  auto OT = getParent()->uniqueTypeWithNewShape(
-      input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
+    ShapeNHWC idim = ShapeNHWC(input.dims());
+    checkKernelSize(idim, kernels, pads);
 
-  return addNode(
-      new AvgPoolNode(name, OT, input, kernels, strides, pads, layout));
+    auto outSz =
+        calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
+    auto OT = getParent()->uniqueTypeWithNewShape(
+        input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
+    return addNode(
+        new AvgPoolNode(name, OT, input, kernels, strides, pads, layout));
+
+  } else {
+    ShapeNTHWC idim = ShapeNTHWC(input.dims());
+    check3DKernelSize(idim, kernels, pads);
+
+    auto outSz = calculate3DConvPoolOutputDims(idim.t, idim.h, idim.w, kernels,
+                                               strides, pads);
+    auto OT = getParent()->uniqueTypeWithNewShape(
+        input.getType(),
+        {idim.n, outSz.temporal_frames, outSz.height, outSz.width, idim.c});
+    return addNode(
+        new AvgPoolNode(name, OT, input, kernels, strides, pads, layout));
+  }
 }
 
 AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
@@ -943,21 +957,43 @@ AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
                                      llvm::ArrayRef<unsigned_t> strides,
                                      llvm::ArrayRef<unsigned_t> pads,
                                      ConvolutionLayout layout) {
-  ShapeNHWC idim = ShapeNHWC(input.dims());
-  ShapeHW kdim(kernels);
-  (void)kdim;
-  checkKernelSize(idim, kernels, pads);
-  return addNode(
-      new AvgPoolNode(name, outTy, input, kernels, strides, pads, layout));
+  if (!is3DData(layout)) {
+
+    ShapeNHWC idim = ShapeNHWC(input.dims());
+    ShapeHW kdim(kernels);
+    (void)kdim;
+    checkKernelSize(idim, kernels, pads);
+    return addNode(
+        new AvgPoolNode(name, outTy, input, kernels, strides, pads, layout));
+
+  } else {
+
+    ShapeNTHWC idim = ShapeNTHWC(input.dims());
+    ShapeTHW kdim(kernels);
+    (void)kdim;
+    check3DKernelSize(idim, kernels, pads);
+    return addNode(
+        new AvgPoolNode(name, outTy, input, kernels, strides, pads, layout));
+  }
 }
 
 AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
                                      unsigned_t kernel, unsigned_t stride,
                                      unsigned_t pad, ConvolutionLayout layout) {
-  llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
-  llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
-  llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
-  return createAvgPool(name, input, kernels, strides, pads, layout);
+  if (!is3DData(layout)) {
+
+    llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
+    llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
+    llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
+    return createAvgPool(name, input, kernels, strides, pads, layout);
+
+  } else {
+
+    llvm::SmallVector<unsigned_t, 6> pads = {pad, pad, pad, pad, pad, pad};
+    llvm::SmallVector<unsigned_t, 3> strides = {stride, stride, stride};
+    llvm::SmallVector<unsigned_t, 3> kernels = {kernel, kernel, kernel};
+    return createAvgPool(name, input, kernels, strides, pads, layout);
+  }
 }
 
 AdaptiveAvgPoolNode *Function::createAdaptiveAvgPool(llvm::StringRef name,

@@ -259,7 +259,10 @@ enum PaddingMode { CONSTANT = 0, REFLECT, EDGE };
 enum class LengthsMode { Variable, AllOne };
 
 /// Convolution Layouts.
-enum ConvolutionLayout { NHWC = 0, NCHW };
+enum ConvolutionLayout { NHWC = 0, NCHW, NTHWC, NCTHW };
+inline bool is3DData(ConvolutionLayout layout) {
+  return (layout == NTHWC || layout == NCTHW);
+}
 
 /// Activations fused into ConvolutionNode (not supported on all backends).
 enum FusedActivation { NONE = 0, RELU, TANH, SIGMOID };

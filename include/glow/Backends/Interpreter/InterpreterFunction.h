@@ -179,6 +179,10 @@ private:
   void fwdAvgPoolInstI8Impl(const AvgPoolInst *I);
   template <typename ElemTy> void fwdAvgPoolInstFloatImpl(const AvgPoolInst *I);
 
+  void fwdAvgPool3DInstI8Impl(const AvgPoolInst *I);
+  template <typename ElemTy>
+  void fwdAvgPool3DInstFloatImpl(const AvgPoolInst *I);
+
   void fwdAdaptiveAvgPoolInstI8Impl(const AdaptiveAvgPoolInst *I);
   template <typename ElemTy>
   void fwdAdaptiveAvgPoolInstFloatImpl(const AdaptiveAvgPoolInst *I);
@@ -369,6 +373,9 @@ private:
   template <typename ElemTy>
   void fwdBatchedPairwiseDotProductGradInstImpl(
       const glow::BatchedPairwiseDotProductGradInst *I);
+  void fwdAvgPool2DGradInst(const AvgPoolGradInst *I);
+  void fwdAvgPool3DGradInst(const AvgPoolGradInst *I);
+
   ///@}
 };
 

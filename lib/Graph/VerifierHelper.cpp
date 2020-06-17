@@ -36,6 +36,18 @@ void glow::reportContext(const ShapeNCHW &shapeNCHW) {
       {shapeNCHW.n, shapeNCHW.c, shapeNCHW.h, shapeNCHW.w}));
 }
 
+void glow::reportContext(const ShapeNTHWC &shapeNTHWC) {
+  report("NTHWC: ");
+  reportContext(llvm::ArrayRef<size_t>(
+      {shapeNTHWC.n, shapeNTHWC.t, shapeNTHWC.h, shapeNTHWC.w, shapeNTHWC.c}));
+}
+
+void glow::reportContext(const ShapeNCTHW &shapeNCTHW) {
+  report("NCTHW: ");
+  reportContext(llvm::ArrayRef<size_t>(
+      {shapeNCTHW.n, shapeNCTHW.c, shapeNCTHW.t, shapeNCTHW.h, shapeNCTHW.w}));
+}
+
 void glow::reportContext(const Node *node) {
   report("In '");
   report(node->getName());
