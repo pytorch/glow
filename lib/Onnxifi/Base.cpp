@@ -231,8 +231,7 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
     auto *inOnnxBuffer = reinterpret_cast<void *>(inOnnxTensor.buffer);
     Placeholder *inPhPtr;
 
-    if (onnxInputNames_.size() == inputsCount &&
-        onnxInputNames_[i] == inOnnxTensor.name) {
+    if (onnxInputNames_.size() == inputsCount) {
       inPhPtr = onnxInputPlaceholders_[i];
     } else {
       auto inPhIt = onnxInputToPlaceholder_.find(inOnnxTensor.name);
