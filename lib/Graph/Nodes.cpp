@@ -373,6 +373,51 @@ static bool verifyPool(NodeValue src, NodeValue dest,
   return isValid;
 }
 
+template <typename Shape>
+static bool
+verifyPool3D(NodeValue src, NodeValue dest, llvm::ArrayRef<unsigned_t> kernels,
+             llvm::ArrayRef<unsigned_t> strides,
+             llvm::ArrayRef<unsigned_t> pads, bool isAvgPool = true) {
+  const Node *parent = dest.getNode();
+  Shape idim(src.getType()->dims());
+  Shape odim(dest.getType()->dims());
+  PaddingTLNBRF pdim(pads);
+  ShapeTHW kdim(kernels);
+
+  bool isValid =
+      expectCompareTrue("buffer height too small for selected stride",
+                        idim.h + pdim.top + pdim.bottom, kdim.height, parent,
+                        CompareOperatorGreaterEqual<dim_t>());
+  isValid &= expectCompareTrue("buffer width too small for selected stride",
+                               idim.w + pdim.left + pdim.right, kdim.width,
+                               parent, CompareOperatorGreaterEqual<dim_t>());
+  isValid &=
+      expectCompareTrue("buffer temporal_frames are too small for "
+                        "selected stride",
+                        idim.t + pdim.near + pdim.far, kdim.temporal_frames,
+                        parent, CompareOperatorGreaterEqual<dim_t>());
+
+  auto outSz = calculate3DConvPoolOutputDims(idim.t, idim.h, idim.w, kernels,
+                                             strides, pads);
+  Shape exp(idim);
+  exp.t = outSz.temporal_frames;
+  exp.h = outSz.height;
+  exp.w = outSz.width;
+  isValid &=
+      expectCompareTrue("Unexpected output dimensions", exp, odim, parent);
+
+  // For quantized AvgPool, the scale and offset of its input and output could
+  // be different. But for quantized MaxPool, the scale and offset of its input
+  // and output should be the same.
+  isValid =
+      isValid && checkSameIsQuantized(src.getType(), dest.getType(), parent);
+  if (!isAvgPool) {
+    isValid = isValid && checkTypeIgnoreShape(src, dest, parent);
+  }
+
+  return isValid;
+}
+
 static bool verifyBatchNormalization(NodeValue src, NodeValue dest,
                                      NodeValue bias, NodeValue scale,
                                      NodeValue mean, NodeValue var,
@@ -714,24 +759,36 @@ bool ConvertToNode::verify() const {
 }
 
 bool MaxPoolNode::verify() const {
-  if (getLayout() == NHWC) {
+  switch (getLayout()) {
+  case NHWC:
     return verifyPool<ShapeNHWC>(getInput(), getResult(), Kernels_, Strides_,
                                  Pads_,
                                  /* isAvgPool */ false);
-  } else {
+  case NCHW:
     return verifyPool<ShapeNCHW>(getInput(), getResult(), Kernels_, Strides_,
                                  Pads_,
                                  /* isAvgPool */ false);
+  default: // MaxPool3D is unsupported
+    return false;
   }
 }
 
 bool AvgPoolNode::verify() const {
-  if (getLayout() == NHWC) {
+  switch (getLayout()) {
+  case NHWC:
     return verifyPool<ShapeNHWC>(getInput(), getResult(), Kernels_, Strides_,
                                  Pads_);
-  } else {
+  case NCHW:
     return verifyPool<ShapeNCHW>(getInput(), getResult(), Kernels_, Strides_,
                                  Pads_);
+  case NTHWC:
+    return verifyPool3D<ShapeNTHWC>(getInput(), getResult(), Kernels_, Strides_,
+                                    Pads_);
+  case NCTHW:
+    return verifyPool3D<ShapeNCTHW>(getInput(), getResult(), Kernels_, Strides_,
+                                    Pads_);
+  default:
+    llvm_unreachable("Unsupported format");
   }
 }
 
@@ -820,17 +877,30 @@ bool AvgPoolGradNode::verify() const {
   isValid &= verifyOutputAndGradOutputTypes(
       getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
 
-  if (getLayout() == NHWC) {
-    isValid &= verifyPool<ShapeNHWC>(getGradOfInputNamedInput(),
-                                     getGradOfOriginalOutputNamedResult(),
-                                     Kernels_, Strides_, Pads_);
-  } else {
-    isValid &= verifyPool<ShapeNCHW>(getGradOfInputNamedInput(),
-                                     getGradOfOriginalOutputNamedResult(),
-                                     Kernels_, Strides_, Pads_);
+  switch (getLayout()) {
+  case NHWC:
+    return isValid &&
+           verifyPool<ShapeNHWC>(getGradOfInputNamedInput(),
+                                 getGradOfOriginalOutputNamedResult(), Kernels_,
+                                 Strides_, Pads_);
+  case NCHW:
+    return isValid &&
+           verifyPool<ShapeNCHW>(getGradOfInputNamedInput(),
+                                 getGradOfOriginalOutputNamedResult(), Kernels_,
+                                 Strides_, Pads_);
+  case NTHWC:
+    return isValid &&
+           verifyPool3D<ShapeNTHWC>(getGradOfInputNamedInput(),
+                                    getGradOfOriginalOutputNamedResult(),
+                                    Kernels_, Strides_, Pads_);
+  case NCTHW:
+    return isValid &&
+           verifyPool3D<ShapeNCTHW>(getGradOfInputNamedInput(),
+                                    getGradOfOriginalOutputNamedResult(),
+                                    Kernels_, Strides_, Pads_);
+  default:
+    llvm_unreachable("Unsupported format");
   }
-
-  return isValid;
 }
 
 bool MatMulNode::verify() const {
@@ -2197,6 +2267,14 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ConvolutionLayout layout) {
   case ConvolutionLayout::NHWC:
     os << "NHWC";
     break;
+  case ConvolutionLayout::NCTHW:
+    os << "NCTHW";
+    break;
+  case ConvolutionLayout::NTHWC:
+    os << "NTHWC";
+    break;
+  default:
+    llvm_unreachable("Unknown format");
   }
   return os;
 }

@@ -670,8 +670,8 @@ static bool checkLayout(const T &I) {
 template <typename T,
           std::enable_if_t<has_getLayout<T, ConvolutionLayout>::value, int> = 0>
 static bool checkLayout(const T &I) {
-  if (I.getLayout() != NHWC) {
-    report("Glow Interpreter supports only NHWC");
+  if (I.getLayout() != NHWC && I.getLayout() != NTHWC) {
+    report("Glow Interpreter supports only NHWC and NTHWC");
     return false;
   }
   return true;

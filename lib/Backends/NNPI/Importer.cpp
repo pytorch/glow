@@ -643,26 +643,40 @@ class PoolNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
     auto *glowPool = llvm::dyn_cast<PoolNodeType>(n);
+    int inputDimension = glowPool->getInput().dims().size();
+    int numDims = inputDimension - 2;
+    LOG_AND_RETURN_IF_NOT(ERROR, numDims == 2 || numDims == 3,
+                          "Input dimension is incorrect", NNPI_INVALID_PARAM);
+
+    std::string poolStr = (numDims == 2) ? "Pool" : "Pool3D";
     LOG_AND_RETURN_IF_NOT(ERROR, glowPool, "Bad node type", NNPI_INVALID_PARAM);
 
-    const uint32_t SPATIAL_DIMS2 = 2;
-    LOG_AND_RETURN_IF_NOT(ERROR, glowPool->getKernels().size() == SPATIAL_DIMS2,
-                          "[Pool] Invalid number of kernel sizes",
+    LOG_AND_RETURN_IF_NOT(ERROR, glowPool->getKernels().size() == numDims,
+                          "[" + poolStr + "] Invalid number of kernel sizes",
                           NNPI_INVALID_PARAM);
-    LOG_AND_RETURN_IF_NOT(ERROR,
-                          glowPool->getPads().size() == 2 * SPATIAL_DIMS2,
-                          "[Pool] Invalid number of pads", NNPI_INVALID_PARAM);
-    LOG_AND_RETURN_IF_NOT(ERROR, glowPool->getStrides().size() == SPATIAL_DIMS2,
-                          "[Pool] Invalid number of strides",
+    LOG_AND_RETURN_IF_NOT(ERROR, glowPool->getPads().size() == 2 * numDims,
+                          "[" + poolStr + "] Invalid number of pads",
                           NNPI_INVALID_PARAM);
-    uint32_t kernel[SPATIAL_DIMS2] = {glowPool->getKernels()[0],
-                                      glowPool->getKernels()[1]};
-    uint32_t paddingStart[SPATIAL_DIMS2] = {glowPool->getPads()[0],
-                                            glowPool->getPads()[1]};
-    uint32_t paddingEnd[SPATIAL_DIMS2] = {glowPool->getPads()[2],
-                                          glowPool->getPads()[3]};
-    uint32_t stride[SPATIAL_DIMS2] = {glowPool->getStrides()[0],
-                                      glowPool->getStrides()[1]};
+    LOG_AND_RETURN_IF_NOT(ERROR, glowPool->getStrides().size() == numDims,
+                          "[" + poolStr + "] Invalid number of strides",
+                          NNPI_INVALID_PARAM);
+
+    std::vector<uint32_t> kernel(numDims);
+    std::vector<uint32_t> paddingStart(numDims);
+    std::vector<uint32_t> paddingEnd(numDims);
+    std::vector<uint32_t> stride(numDims);
+
+    for (size_t i = 0; i < numDims; i++) {
+      kernel[i] = glowPool->getKernels()[i];
+      stride[i] = glowPool->getStrides()[i];
+      if (numDims == 2) {
+        paddingStart[i] = glowPool->getPads()[i];
+        paddingEnd[i] = glowPool->getPads()[numDims + i];
+      } else {
+        paddingStart[i] = glowPool->getPads()[i * 2];
+        paddingEnd[i] = glowPool->getPads()[i * 2 + 1];
+      }
+    }
 
     // Overwrite input/output values for layout.
     LOG_NNPI_IF_ERROR_RETURN_VALUE(
@@ -682,8 +696,9 @@ public:
     return nnpiNetworkAddPoolingOp(
         importer.getNetwork(), glowPool->getName().begin(),
         nodeValueName(glowPool->getInput()).c_str(),
-        nodeValueName(glowPool->getResult()).c_str(), NULL, kernel,
-        paddingStart, paddingEnd, stride, SPATIAL_DIMS2, poolType, 0, 0);
+        nodeValueName(glowPool->getResult()).c_str(), NULL, kernel.data(),
+        paddingStart.data(), paddingEnd.data(), stride.data(), numDims,
+        poolType, 0, 0);
   }
 };
 

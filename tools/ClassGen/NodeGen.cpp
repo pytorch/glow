@@ -185,7 +185,7 @@ int main(int argc, char **argv) {
       .setDocstring(
           "Performs an Average Pool operation on the Input given "
           "provided Kernels, Strides, and Pads. Supported layouts are defined "
-          "in the ConvolutionLayout enum: NHWC and NCHW.");
+          "in the ConvolutionLayout enum: NHWC, NCHW, NTHWC and NCTHW.");
 
   BB.newNode("AdaptiveAvgPool")
       .addInput("Input")

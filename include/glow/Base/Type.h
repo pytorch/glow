@@ -364,6 +364,14 @@ inline bool operator==(const ShapeNHWTC &LHS, const ShapeNHWTC &RHS) {
   return LHS.equals(RHS);
 }
 
+inline bool operator==(const ShapeNTHWC &LHS, const ShapeNTHWC &RHS) {
+  return LHS.equals(RHS);
+}
+
+inline bool operator==(const ShapeNCTHW &LHS, const ShapeNCTHW &RHS) {
+  return LHS.equals(RHS);
+}
+
 /// An enum representing the type used by the elements of a tensor. The types of
 /// Handles for these tensors should match the element kind.
 /// When adding new type, note that this enum definition must match with

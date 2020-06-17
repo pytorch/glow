@@ -1764,7 +1764,8 @@ void writePool(const T *node, const std::string &op,
   // The similar algorithm will be applied for Result. If Transpose NHWC2NCHW
   // node is found for Result user then remove it, otherwise create a "mirror"
   // Transpose, i.e. NCHW2NHWC.
-  assert(node->getLayout() == NHWC && "can only write NHWC Pools");
+  assert((node->getLayout() == NHWC || node->getLayout() == NTHWC) &&
+         "can only write NHWC (2D) or NTHWC (3D) Pool ops");
 
   auto *proto = graph.add_node();
 
