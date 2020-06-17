@@ -334,6 +334,9 @@ void InferenceContext::execute(RunIdentifierTy runId,
   // Pre inference input preparation.
   PlaceholderBindings &bindings = *ctx->getPlaceholderBindings();
 
+  // Size of Inputs/Outputs
+  uint64_t outputSize{0}, inputSize{0};
+
   // Initialize placeholder lists in the same orders as inputResources_ and
   // outputResources_.
   if (netInputPlaceholders_.empty()) {
@@ -375,6 +378,7 @@ void InferenceContext::execute(RunIdentifierTy runId,
     if (in->getUsage() != NNPIResource::ResourceUsage::StaticInputResource) {
       auto *ph = netInputPlaceholders_[idx++];
       auto *t = bindings.get(ph);
+      inputSize += t->getUnpaddedSizeInBytes();
       LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
           ERROR, t, "Can't find tensor for input", runId, ctx, resultCB);
       LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
@@ -384,6 +388,10 @@ void InferenceContext::execute(RunIdentifierTy runId,
           "Failed pre-inference for input", runId, ctx, resultCB);
     }
     rawInputs.push_back(in->getHostPtr());
+  }
+  auto requestData = ::glow::runtime::RequestData::get();
+  if (requestData) {
+    requestData->inputSize += inputSize;
   }
   std::string inferContext = traceInferenceContextName_;
   // Inference.
@@ -491,11 +499,15 @@ void InferenceContext::execute(RunIdentifierTy runId,
   // Post inference output handling.
   for (unsigned i = 0, e = outputResources_.size(); i < e; ++i) {
     auto *t = bindings.get(netOutputPlaceholders_[i]);
+    outputSize += t->getSizeInBytes();
     LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
         ERROR, t, "Can't find tensor for output", runId, ctx, resultCB);
     LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
         ERROR, outputResources_[i]->postInference(t) == NNPI_INF_NO_ERROR,
         "Failed in output postInference", runId, ctx, resultCB);
+  }
+  if (requestData) {
+    requestData->outputSize += outputSize;
   }
 
   TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
