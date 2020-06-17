@@ -1401,7 +1401,7 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
     saturateHost(cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards,
                  partitions);
   }
-  return partitions;
+  return std::move(partitions);
 }
 
 Expected<DAGListTy> Partitioner::partition(CompilationContext &cctx) {
