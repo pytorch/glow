@@ -65,6 +65,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Returns a lowered module.
   (void)torchGlowBackend();
 
+  /// Wrapping registered glow_backend call
+  m.def("to_glow", [](const torch::jit::Module &orig_module,
+                      const py::dict &method_compile_spec) {
+    auto callback =
+        py::module::import("torch").attr("_C").attr("_jit_to_glow_backend");
+    return callback(orig_module, method_compile_spec);
+  });
+
   /// Enable compiling PyTorch subgraphs to Glow Functions.
   m.def("enableFusionPass",
         []() { getPyTorchLoaderSettings().fusionPassEnabled = true; });
