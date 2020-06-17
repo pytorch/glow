@@ -9293,6 +9293,80 @@ TEST_P(OperatorTest, Swish_Float16) {
   testSwish<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
+/// Reference ideal swish implementation. Computes an fp32 swish
+/// and casts the result to FP16.
+static float16_t refSwishFp16(float x) {
+  float res = x / (1 + exp(-x));
+
+  return (float16_t)res;
+}
+
+/// Test to verify that the swish implementation is equal to the
+/// Mirrored LUT implementation
+/// Does a sweep of -25,25 and prints the outputs of the NNPI implementation
+/// compared to the LUT one, the ideal swish in fp16 is also provided as
+/// a visual sanity check, but nothing is enforced against that last one.
+static void testSwishFp16Sweep(glow::PlaceholderBindings &bindings,
+                               glow::Module &mod, glow::Function *F,
+                               glow::ExecutionEngine &EE) {
+  constexpr dim_t N = 100;
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {N}, "input", false);
+  auto inputH = bindings.allocate(input)->getHandle();
+
+  constexpr float rangeStart = -25;
+  constexpr float rangeEnd = 25;
+  constexpr float delta = (rangeEnd - rangeStart) / N;
+
+  for (dim_t i = 0; i < N; i++) {
+    inputH.raw(i) = rangeStart + i * delta;
+  }
+
+  auto *swish = F->createSwish("swish", input);
+  auto *save = F->createSave("Save", swish);
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+
+  CompilationContext cctx;
+  cctx.precisionConfig.convertToFP16 = true;
+  cctx.precisionConfig.convertFusedToFP16 = true;
+
+  EE.compile(cctx);
+  EE.run(bindings);
+
+  auto resultH = resultTensor->getHandle();
+  int numDiffs = 0;
+
+  for (dim_t i = 0; i < N; i++) {
+    float inputV = inputH.at({i});
+    float refIdeal = refSwishFp16(inputV);
+    float output = resultH.at({i});
+    float absDiff = fabs(output - refIdeal);
+    float relDiff = fabs(absDiff / (refIdeal + 1e-8));
+
+    bool failed = false;
+    // Relative error should be 2^-11 but we are relaxing this constraint
+    // due to linear interpolation
+    // Absolute error can remain 1e-5 for now
+    if (absDiff > 1e-5 && relDiff > 2e-3) {
+      numDiffs++;
+      failed = true;
+    }
+
+    llvm::outs() << "Swish " << i << " " << inputV << " Backend:" << output
+                 << " ref_ideal:" << refIdeal << " relDiff:" << relDiff
+                 << " absDiff:" << absDiff << " failed:" << failed << "\n";
+  }
+  llvm::outs() << "Number of diffs: " << numDiffs << "\n";
+  llvm::outs().flush();
+
+  EXPECT_EQ(numDiffs, 0);
+}
+
+TEST_P(OperatorTest, SwishSweep_Float16) {
+  CHECK_IF_ENABLED();
+
+  testSwishFp16Sweep(bindings_, mod_, F_, EE_);
+}
+
 TEST_P(OperatorTest, IntLookupTable) {
   CHECK_IF_ENABLED();
 

@@ -312,6 +312,7 @@ struct BlacklistInitializer {
              TestBlacklist::AnyDeviceAnyEngine},
             {"ChannelwiseQuantizedConv2D_Int8_BiasInt32/0",
              TestBlacklist::AnyDeviceAnyEngine},
+            {"SwishSweep_Float16", TestBlacklist::AnyDeviceAnyEngine},
         };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);
