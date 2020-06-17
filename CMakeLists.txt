@@ -102,6 +102,10 @@ execute_process(COMMAND
   ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
 add_definitions("-DGIT_DATE=\"${GIT_DATE}\"")
 
+# Compile definition for Glow build date in Y-M-D format.
+string(TIMESTAMP GLOW_BUILD_DATE "%Y-%m-%d")
+add_definitions("-DGLOW_BUILD_DATE=\"${GLOW_BUILD_DATE}\"")
+
 if(GLOW_USE_PNG_IF_REQUIRED)
   find_package(PNG)
   if(PNG_FOUND)

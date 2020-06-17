@@ -501,6 +501,9 @@ static bool commandLineIsInvalid() {
 }
 
 void glow::parseCommandLine(int argc, char **argv) {
+  llvm::cl::SetVersionPrinter([](llvm::raw_ostream &os) {
+    os << "Glow Tools version: " << GLOW_BUILD_DATE << "\n";
+  });
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
   llvm::cl::ParseCommandLineOptions(
       argc, argv,
