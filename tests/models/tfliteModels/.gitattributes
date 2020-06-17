@@ -1,3 +1,10 @@
+# Mark files as binary to not show diff.
 *.tflite binary
-*.inp* binary
-*.out* binary
+*.inp0 binary
+*.inp1 binary
+*.inp2 binary
+*.inp3 binary
+*.out0* binary
+*.out1* binary
+*.out2* binary
+*.out3* binary
