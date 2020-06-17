@@ -30,6 +30,10 @@ public:
   uint64_t startTime{0};
   uint64_t stopTime{0};
 
+  /// Total size of inputs and outputs transferred to device.
+  std::atomic<uint64_t> inputSize{0};
+  std::atomic<uint64_t> outputSize{0};
+
   /// Request start time.
   uint64_t requestStartTime{0};
 
