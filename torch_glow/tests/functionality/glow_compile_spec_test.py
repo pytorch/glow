@@ -7,18 +7,20 @@ import unittest
 
 class TestGlowCompileSpec(unittest.TestCase):
     def test_glow_compile_spec(self):
-        """Create glow compile spec."""
+        """Test glow compile spec basics."""
 
         dims = [2, 2]
         gcs = torch.classes.glow.GlowCompileSpec()
         gcs.setBackend("Interpreter")
-        gcs.addInputTensor("float", dims)
 
+        # Test SpecInputMeta setters
         sim = torch.classes.glow.SpecInputMeta()
-        sim.setSpec("float", dims)
+        sim.set(dims, torch.float32)
+        t = torch.tensor(dims)
+        sim.setSameAs(t)
+
+        # Test adding input methods
+        gcs.addInputTensor(dims, torch.float32)
         gcs.addInput(sim)
         inputs = [sim, sim]
         gcs.addInputs(inputs)
-
-        t = torch.tensor(dims)
-        sim.setSpecFromTensor(t)
