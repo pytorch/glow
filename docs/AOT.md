@@ -51,8 +51,8 @@ You can find the sample images used in the examples above in the following direc
 
 ## Compile a bundle for a floating-point model
 
-The **model-compiler** front-end tool is the main Glow tool used to compile ONNX and
-Caffe2 models into bundles. The tool is generic in the sense that it can compile
+The **model-compiler** front-end tool is the main Glow tool used to compile ONNX, Caffe2 and
+TensorFlowLite models into bundles. The tool is generic in the sense that it can compile
 models with any number of inputs or outputs, without being limited to a particular
 application.
 
@@ -72,12 +72,13 @@ model-compiler -backend=CPU -model=<model-path> -emit-bundle=<bundle-dir>
 - The option `emit-bundle` specifies the output **directory** where all the bundle
   artifacts will be generated. If the directory does not exist, it will be created.
 
-There is a small difference when using this tool with ONNX versus Caffe2 models:
-- For **ONNX models** the tool can infer automatically the inputs of the model
+There is a small difference when using this tool with ONNX/TFLite versus Caffe2 models:
+- For **ONNX or TensorFlowLite models** the tool can infer automatically the inputs of the model
 since the description of the input tensors is part of the model. Therefore the tool
 will be used in the form shown above:
   ```
   model-compiler -backend=CPU -model=<onnx-model-path> -emit-bundle=<bundle-dir>
+  model-compiler -backend=CPU -model=<tflite-model-path> -emit-bundle=<bundle-dir>
   ```
 - For **Caffe2 models** the user must also explicitly provide the description
 of the input tensors which are not part of model. The option `model-input` will be used

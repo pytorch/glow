@@ -1118,14 +1118,14 @@ public:
                           NNPI_INVALID_PARAM);
 
     importer.setUsedTensors({nodeValueName(glowArgMax->getInput())},
-                            {nodeValueName(glowArgMax->getArgmax())});
+                            {nodeValueName(glowArgMax->getResult())});
 
     uint32_t axis = glowArgMax->getAxis();
     auto keepDims = glowArgMax->getKeepDims() ? 1 : 0;
     return nnpiNetworkAddReduceOp(
         importer.getNetwork(), glowArgMax->getName().begin(),
         nodeValueName(glowArgMax->getInput()).c_str(),
-        nodeValueName(glowArgMax->getArgmax()).c_str(), NNPI_REDUCE_ARG_MAX,
+        nodeValueName(glowArgMax->getResult()).c_str(), NNPI_REDUCE_ARG_MAX,
         &axis, 1, keepDims);
   }
 };

@@ -49,6 +49,14 @@ void genericTranspose(const Tensor *src, Tensor *dest,
 /// returned dims. For example, input {2,1,4} would result in {2,1,4,1,1,1}.
 ShapeVector expandDimsToMax(llvm::ArrayRef<dim_t> currDims);
 
+/// Helper function that \returns a ShapeVector obtained from \p dims by
+/// reducing (setting to 1) the dimensions given by \p axes. If the flag
+/// \p keepDims is also used then the reduced dimensions are kept, otherwise
+/// are pruned. For example, given the dimensions [2,3,4] and axes [0,2] the
+/// returned shape will be [1,3,1] for keepDims true and [3] for keepDims false.
+ShapeVector reduceDims(llvm::ArrayRef<dim_t> dims,
+                       llvm::ArrayRef<unsigned_t> axes, bool keepDims);
+
 namespace runtime {
 class DeviceManager;
 }
@@ -683,6 +691,15 @@ public:
            "Do not support copying between different unpadded sized tensors");
     size_t bufferSize = type_.getSizeInBytes();
     std::copy(&t->getData()[0], &t->getData()[bufferSize], getData());
+  }
+
+  /// Update the raw data of the tensor from a raw buffer \p data.
+  void copyRawFrom(const char *data) {
+    assert(!isDeviceResident() && "Tensor must reside on host to access data.");
+    assert(data && "Null data pointer!");
+    assert(getData() != data && "Copying to self");
+    size_t bufferSize = type_.getSizeInBytes();
+    std::memcpy(getData(), data, bufferSize);
   }
 
   /// Update the content of the tensor with a slice from tensor \p t. A slice

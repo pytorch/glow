@@ -21,6 +21,7 @@
 #include "glow/IR/IR.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Importer/ONNXModelLoader.h"
+#include "glow/Importer/TFLiteModelLoader.h"
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Quantization/Serialization.h"
@@ -434,6 +435,12 @@ std::unique_ptr<ProtobufLoader> Loader::loadModel() {
     protoLoader.reset(new Caffe2ModelLoader(
         getCaffe2NetDescFilename(), getCaffe2NetWeightFilename(), inputNameRefs,
         inputTypeRefs, *getFunction()));
+  } else if (!getTFLiteModelFilename().empty()) {
+    // For TensorFlowLite format the input placeholder names/types are not
+    // provided since are used directly from the model. We also set the protobuf
+    // loader to nullptr since the TensorFlowLite does not use it.
+    TFLiteModelLoader(getTFLiteModelFilename(), getFunction());
+    protoLoader = nullptr;
   } else {
     // For ONNX format the input placeholders names/types can be optionally
     // provided but is not mandatory. If not provided (the arrays are empty)
@@ -768,7 +775,12 @@ Loader::Loader(llvm::ArrayRef<size_t> configDeviceIDs) {
       caffe2NetDescFilename_ = modelPathOpt[0] + "/predict_net.pb";
       caffe2NetWeightFilename_ = modelPathOpt[0] + "/init_net.pb";
     } else {
-      onnxModelFilename_ = modelPathOpt[0];
+      llvm::StringRef modelPath = modelPathOpt[0];
+      if (modelPath.endswith("tflite")) {
+        tfliteModelFilename_ = modelPath.str();
+      } else {
+        onnxModelFilename_ = modelPath.str();
+      }
     }
   } else {
     caffe2NetDescFilename_ = modelPathOpt[0];

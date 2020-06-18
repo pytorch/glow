@@ -2756,6 +2756,134 @@ void BoundInterpreterFunction::fwdElementMinInst(const ElementMinInst *I) {
                          I->getDest()->getElementType(), I);
 }
 
+//===----------------------------------------------------------------------===//
+//                              Logical operations
+//===----------------------------------------------------------------------===//
+void BoundInterpreterFunction::fwdElementNotInst(const ElementNotInst *I) {
+  auto inpW = getWeightHandle<bool>(I->getSrc());
+  auto outW = getWeightHandle<bool>(I->getDest());
+  for (size_t i = 0, e = outW.size(); i < e; ++i) {
+    outW.raw(i) = (!inpW.raw(i));
+  }
+}
+
+void BoundInterpreterFunction::fwdElementAndInst(const ElementAndInst *I) {
+  auto lhsW = getWeightHandle<bool>(I->getLHS());
+  auto rhsW = getWeightHandle<bool>(I->getRHS());
+  auto outW = getWeightHandle<bool>(I->getDest());
+  for (size_t i = 0, e = outW.size(); i < e; ++i) {
+    outW.raw(i) = (lhsW.raw(i) && rhsW.raw(i));
+  }
+}
+
+void BoundInterpreterFunction::fwdElementOrInst(const ElementOrInst *I) {
+  auto lhsW = getWeightHandle<bool>(I->getLHS());
+  auto rhsW = getWeightHandle<bool>(I->getRHS());
+  auto outW = getWeightHandle<bool>(I->getDest());
+  for (size_t i = 0, e = outW.size(); i < e; ++i) {
+    outW.raw(i) = (lhsW.raw(i) || rhsW.raw(i));
+  }
+}
+
+void BoundInterpreterFunction::fwdElementXorInst(const ElementXorInst *I) {
+  auto lhsW = getWeightHandle<bool>(I->getLHS());
+  auto rhsW = getWeightHandle<bool>(I->getRHS());
+  auto outW = getWeightHandle<bool>(I->getDest());
+  for (size_t i = 0, e = outW.size(); i < e; ++i) {
+    outW.raw(i) = (lhsW.raw(i) ^ rhsW.raw(i));
+  }
+}
+
+//===----------------------------------------------------------------------===//
+//                         Unary arithmetic operations
+//===----------------------------------------------------------------------===//
+template <typename ElemTy, typename InstKind>
+void BoundInterpreterFunction::fwdUnaryArithmeticImpl(
+    const InstKind *I, std::function<float(float)> func) {
+  Value *inpV = I->getSrc();
+  Value *outV = I->getDest();
+  auto inpTy = inpV->getType();
+  auto outTy = outV->getType();
+  auto inpH = getWeightHandle<ElemTy>(inpV);
+  auto outH = getWeightHandle<ElemTy>(outV);
+
+  if (inpTy->isQuantizedType()) {
+    float inpScale = inpTy->getScale();
+    int32_t inpOffset = inpTy->getOffset();
+    float outScale = outTy->getScale();
+    int32_t outOffset = outTy->getOffset();
+    for (size_t i = 0, e = outH.size(); i < e; ++i) {
+      float inpVal =
+          quantization::dequantize<ElemTy>(inpH.raw(i), {inpScale, inpOffset});
+      float outVal = func(inpVal);
+      outH.raw(i) =
+          quantization::quantize<ElemTy>(outVal, {outScale, outOffset});
+    }
+  } else {
+    for (size_t i = 0, e = outH.size(); i < e; ++i) {
+      float inpVal = static_cast<float>(inpH.raw(i));
+      float outVal = func(inpVal);
+      outH.raw(i) = static_cast<ElemTy>(outVal);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdElementAbsInst(const ElementAbsInst *I) {
+  auto func = [](float x) -> float { return std::abs(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementNegInst(const ElementNegInst *I) {
+  auto func = [](float x) -> float { return -x; };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementFloorInst(const ElementFloorInst *I) {
+  auto func = [](float x) -> float { return std::floor(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementCeilInst(const ElementCeilInst *I) {
+  auto func = [](float x) -> float { return std::ceil(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementRoundInst(const ElementRoundInst *I) {
+  // Rounding mode required by ONNX, Numpy, TensorFlow is round to even which
+  // rounds to nearest even integer those values with fractional part 0.5.
+  auto func = [](float x) -> float { return std::nearbyintf(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementSqrtInst(const ElementSqrtInst *I) {
+  auto func = [](float x) -> float { return std::sqrt(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementRsqrtInst(const ElementRsqrtInst *I) {
+  auto func = [](float x) -> float { return 1 / std::sqrt(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementReciprocalInst(
+    const ElementReciprocalInst *I) {
+  auto func = [](float x) -> float { return 1 / x; };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementSinInst(const ElementSinInst *I) {
+  auto func = [](float x) -> float { return std::sin(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementCosInst(const ElementCosInst *I) {
+  auto func = [](float x) -> float { return std::cos(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+//===----------------------------------------------------------------------===//
+//                              Compare operations
+//===----------------------------------------------------------------------===//
 template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
           typename CmpTy, typename InstCmpKind>
 void BoundInterpreterFunction::fwdElementCmpHelperImpl(
@@ -2856,6 +2984,42 @@ void BoundInterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
     break;
   case ElemKind::Int64ITy:
     fwdElementCmpEQInstImpl<int64_t, int64_t, float>(I);
+    break;
+  default:
+    llvm_unreachable("Type is not supported");
+  }
+}
+
+template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
+          typename CmpTy>
+void BoundInterpreterFunction::fwdElementCmpNEQInstImpl(
+    const ElementCmpNEQInst *I) {
+  auto cmpHelper = [](CmpTy LHS, CmpTy RHS) -> bool { return !(LHS == RHS); };
+  fwdElementCmpHelperImpl<ElemTy, ElemOffsetTy, ElemScaleTy, CmpTy,
+                          ElementCmpNEQInst>(I, cmpHelper);
+}
+
+void BoundInterpreterFunction::fwdElementCmpNEQInst(
+    const ElementCmpNEQInst *I) {
+  auto *T = getTensor(I->getLHS());
+
+  if (T->getType().isQuantizedType()) {
+    fwdElementCmpNEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+    return;
+  }
+
+  switch (T->getElementType()) {
+  case ElemKind::FloatTy:
+    fwdElementCmpNEQInstImpl<float, float, float>(I);
+    break;
+  case ElemKind::Float16Ty:
+    fwdElementCmpNEQInstImpl<float16_t, float16_t, float16_t>(I);
+    break;
+  case ElemKind::Int32ITy:
+    fwdElementCmpNEQInstImpl<int32_t, int32_t, float>(I);
+    break;
+  case ElemKind::Int64ITy:
+    fwdElementCmpNEQInstImpl<int64_t, int64_t, float>(I);
     break;
   default:
     llvm_unreachable("Type is not supported");
@@ -4445,55 +4609,97 @@ static void fwdTopK(Tensor *outW, Tensor *indW, Tensor *inW, size_t k) {
   }
 }
 
-template <typename T>
-static void fwdArgMax(Tensor *argmaxW, Tensor *inW, size_t axis) {
-  auto argmaxH = argmaxW->getHandle<int64_t>();
-  auto inH = inW->getHandle<T>();
+template <typename inpType, typename outType>
+static void fwdArgMax(Tensor *inpT, Tensor *outT, size_t axis) {
 
-  auto idim = inW->dims();
+  // Get input/output handles with dimensions expanded to maximum.
+  ShapeVector inpDims = expandDimsToMax(inpT->dims());
+  ShapeVector outDims = inpDims;
+  outDims[axis] = 1;
+  auto eInpT = inpT->getUnowned(inpDims);
+  auto eOutT = outT->getUnowned(outDims);
+  auto inpH = eInpT.getHandle<inpType>();
+  auto outH = eOutT.getHandle<outType>();
 
-  dim_t a, b, c, d = 0;
+  static_assert(max_tensor_dimensions == 6,
+                "Loops below assume max_tensor_dimensions = 6.");
 
-  dim_t *dim[4];
+  for (dim_t idx0 = 0; idx0 < outDims[0]; idx0++) {
+    for (dim_t idx1 = 0; idx1 < outDims[1]; idx1++) {
+      for (dim_t idx2 = 0; idx2 < outDims[2]; idx2++) {
+        for (dim_t idx3 = 0; idx3 < outDims[3]; idx3++) {
+          for (dim_t idx4 = 0; idx4 < outDims[4]; idx4++) {
+            for (dim_t idx5 = 0; idx5 < outDims[5]; idx5++) {
 
-  assert((axis >= 0) && (axis <= 3) && "Axis values should be between 0 and 3");
+              // Initialize maximum value/index.
+              inpType maxVal = std::numeric_limits<inpType>::lowest();
+              outType maxIdx = 0;
 
-  dim[(axis + 1) % 4] = &a;
-  dim[(axis + 2) % 4] = &b;
-  dim[(axis + 3) % 4] = &c;
-  dim[axis] = &d;
+              // Iterate input axis dimension.
+              for (dim_t axisIdx = 0; axisIdx < inpDims[axis]; axisIdx++) {
+                std::vector<dim_t> inpIdx = {idx0, idx1, idx2,
+                                             idx3, idx4, idx5};
+                inpIdx[axis] = axisIdx;
+                inpType inpVal = inpH.at(inpIdx);
+                if (inpVal > maxVal) {
+                  maxVal = inpVal;
+                  maxIdx = axisIdx;
+                }
+              }
 
-  dim_t odim[4] = {idim[0], idim[1], idim[2], idim[3]};
-  odim[axis] = 1;
-
-  for (a = 0; a < idim[(axis + 1) % 4]; a++) {
-    for (b = 0; b < idim[(axis + 2) % 4]; b++) {
-      for (c = 0; c < idim[(axis + 3) % 4]; c++) {
-        T max = std::numeric_limits<T>::min();
-        if (axis == 0) {
-          max = inH.at({0, *dim[1], *dim[2], *dim[3]});
-        } else if (axis == 1) {
-          max = inH.at({*dim[0], 0, *dim[2], *dim[3]});
-        } else if (axis == 2) {
-          max = inH.at({*dim[0], *dim[1], 0, *dim[3]});
-        } else {
-          max = inH.at({*dim[0], *dim[1], *dim[2], 0});
-        }
-
-        dim_t maxi = 0;
-
-        for (d = 0; d < idim[axis]; d++) {
-          T elem = inH.at({*dim[0], *dim[1], *dim[2], *dim[3]});
-          if (elem > max) {
-            max = elem;
-            maxi = d;
+              // Store maximum index.
+              outH.at({idx0, idx1, idx2, idx3, idx4, idx5}) = maxIdx;
+            }
           }
         }
-        *dim[axis] = 0;
-        dim_t ind = (*dim[0]) * odim[1] * odim[2] * odim[3] +
-                    (*dim[1]) * odim[2] * odim[3] + (*dim[2]) * odim[3] +
-                    (*dim[3]);
-        argmaxH.raw(ind) = maxi;
+      }
+    }
+  }
+}
+
+template <typename inpType, typename outType>
+static void fwdArgMin(Tensor *inpT, Tensor *outT, size_t axis) {
+
+  // Get input/output handles with dimensions expanded to maximum.
+  ShapeVector inpDims = expandDimsToMax(inpT->dims());
+  ShapeVector outDims = inpDims;
+  outDims[axis] = 1;
+  auto eInpT = inpT->getUnowned(inpDims);
+  auto eOutT = outT->getUnowned(outDims);
+  auto inpH = eInpT.getHandle<inpType>();
+  auto outH = eOutT.getHandle<outType>();
+
+  static_assert(max_tensor_dimensions == 6,
+                "Loops below assume max_tensor_dimensions = 6.");
+
+  for (dim_t idx0 = 0; idx0 < outDims[0]; idx0++) {
+    for (dim_t idx1 = 0; idx1 < outDims[1]; idx1++) {
+      for (dim_t idx2 = 0; idx2 < outDims[2]; idx2++) {
+        for (dim_t idx3 = 0; idx3 < outDims[3]; idx3++) {
+          for (dim_t idx4 = 0; idx4 < outDims[4]; idx4++) {
+            for (dim_t idx5 = 0; idx5 < outDims[5]; idx5++) {
+
+              // Initialize minimum value/index.
+              inpType minVal = std::numeric_limits<inpType>::max();
+              outType minIdx = 0;
+
+              // Iterate input axis dimension.
+              for (dim_t axisIdx = 0; axisIdx < inpDims[axis]; axisIdx++) {
+                std::vector<dim_t> inpIdx = {idx0, idx1, idx2,
+                                             idx3, idx4, idx5};
+                inpIdx[axis] = axisIdx;
+                inpType inpVal = inpH.at(inpIdx);
+                if (inpVal < minVal) {
+                  minVal = inpVal;
+                  minIdx = axisIdx;
+                }
+              }
+
+              // Store minimum index.
+              outH.at({idx0, idx1, idx2, idx3, idx4, idx5}) = minIdx;
+            }
+          }
+        }
       }
     }
   }
@@ -4523,18 +4729,44 @@ void BoundInterpreterFunction::fwdTopKInst(const TopKInst *I) {
                                     indW->getElementType(), outW, indW, inW, k);
 }
 
-void BoundInterpreterFunction::fwdArgMaxInst(const ArgMaxInst *I) {
-  auto argmaxW = getTensor(I->getArgmax());
-  auto inW = getTensor(I->getInput());
-  size_t axis = I->getAxis();
-
-  if (inW->getType().isQuantizedType()) {
-    dispatchQuantizedImpl(fwdArgMax, inW->getElementType(), argmaxW, inW, axis);
-    return;
+#define DISPATCH_ARG_MIN_MAX(functionName, elemTy, elemTyIndex, ...)           \
+  switch (elemTy) {                                                            \
+  case ElemKind::FloatTy:                                                      \
+    if (elemTyIndex == ElemKind::Int64ITy) {                                   \
+      functionName<float, int64_t>(__VA_ARGS__);                               \
+    } else if (elemTyIndex == ElemKind::Int32ITy) {                            \
+      functionName<float, int32_t>(__VA_ARGS__);                               \
+    }                                                                          \
+    break;                                                                     \
+  case ElemKind::Int8QTy:                                                      \
+    if (elemTyIndex == ElemKind::Int64ITy) {                                   \
+      functionName<int8_t, int64_t>(__VA_ARGS__);                              \
+    } else if (elemTyIndex == ElemKind::Int32ITy) {                            \
+      functionName<int8_t, int32_t>(__VA_ARGS__);                              \
+    }                                                                          \
+    break;                                                                     \
+  default:                                                                     \
+    llvm_unreachable("Type is not supported");                                 \
   }
-  dispatchFloatingPointImpl(fwdArgMax, inW->getElementType(), argmaxW, inW,
-                            axis);
+
+void BoundInterpreterFunction::fwdArgMaxInst(const ArgMaxInst *I) {
+  auto inpT = getTensor(I->getSrc());
+  auto outT = getTensor(I->getDest());
+  size_t axis = I->getAxis();
+  auto inpElemType = inpT->getElementType();
+  auto outElemType = outT->getElementType();
+  DISPATCH_ARG_MIN_MAX(fwdArgMax, inpElemType, outElemType, inpT, outT, axis);
 }
+
+void BoundInterpreterFunction::fwdArgMinInst(const ArgMinInst *I) {
+  auto inpT = getTensor(I->getSrc());
+  auto outT = getTensor(I->getDest());
+  size_t axis = I->getAxis();
+  auto inpElemType = inpT->getElementType();
+  auto outElemType = outT->getElementType();
+  DISPATCH_ARG_MIN_MAX(fwdArgMin, inpElemType, outElemType, inpT, outT, axis);
+}
+#undef DISPATCH_ARG_MIN_MAX
 
 //===----------------------------------------------------------------------===//
 //                  Tensor allocation operations

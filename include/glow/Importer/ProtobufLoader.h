@@ -138,7 +138,19 @@ template <typename T> std::string loadOperatorName(const T &op) {
 /// example an axis value of -1 for a tensor with 3 dimensions (rank 3) is
 /// converted to 2. A good definition of the axis value requires to be in the
 /// range [rank, rank-1].
-Expected<int> getPositiveAxis(int axis, int rank);
+template <typename T> Expected<T> getPositiveAxis(int axis, int rank) {
+  RETURN_ERR_IF_NOT(
+      (-rank <= axis) && (axis < rank),
+      strFormat("Axis value %d is invalid! Should be in the range [%d, %d]!",
+                axis, -rank, rank - 1));
+  int axisPos = (axis < 0) ? axis + rank : axis;
+  return static_cast<T>(axisPos);
+}
+
+/// \returns the positive value of \p axis given the rank of the value \p val.
+template <typename T> Expected<T> getPositiveAxis(int axis, NodeValue val) {
+  return getPositiveAxis<T>(axis, val.dims().size());
+}
 
 /// Reads a single axis parameter which is wrapped if negative using \p rank
 /// based on the logic of \ref getPositiveAxis.
@@ -146,7 +158,7 @@ template <typename ElemTy, typename T>
 static Expected<ElemTy> loadAxis(const T *arg, int rank) {
   int axis;
   ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(arg));
-  ASSIGN_VALUE_OR_RETURN_ERR(axis, getPositiveAxis(axis, rank));
+  ASSIGN_VALUE_OR_RETURN_ERR(axis, getPositiveAxis<int>(axis, rank));
   return static_cast<ElemTy>(axis);
 }
 
@@ -159,7 +171,7 @@ static Expected<std::vector<ElemTy>> loadAxes(const T *arg, int rank) {
   std::vector<ElemTy> axesPos;
   for (int axis : axes) {
     int axisPos;
-    ASSIGN_VALUE_OR_RETURN_ERR(axisPos, getPositiveAxis(axis, rank));
+    ASSIGN_VALUE_OR_RETURN_ERR(axisPos, getPositiveAxis<int>(axis, rank));
     axesPos.push_back(static_cast<ElemTy>(axisPos));
   }
   return axesPos;

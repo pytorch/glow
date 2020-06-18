@@ -170,8 +170,16 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addMember(MemberType::Unsigned, "Axis")
       .addMember(MemberType::Boolean, "KeepDims")
-      .addResultFromCtorArg("Argmax")
-      .setDocstring("Finds index of a maximum element along Axis."
+      .addResultFromCtorArg()
+      .setDocstring("Finds index of a maximum element along Axis. "
+                    "If KeepDims is not true, the axis is removed from output");
+
+  BB.newNode("ArgMin")
+      .addInput("Input")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addMember(MemberType::Boolean, "KeepDims")
+      .addResultFromCtorArg()
+      .setDocstring("Finds index of a minimum element along Axis. "
                     "If KeepDims is not true, the axis is removed from output");
 
   BB.newNode("AvgPool")
@@ -381,32 +389,37 @@ int main(int argc, char **argv) {
       .dataParallel()
       .setDocstring("Clip range of inputs to lie in [Min, Max].");
 
-  BB.newNode("CmpLTE")
-      .addInput("LHS")
-      .addInput("RHS")
-      .addResultFromCtorArg()
-      .dataParallel()
-      .setDocstring("Performs CmpLTE on the LHS and RHS operands. Generates a "
-                    "mask that's consumed by the select instruction. The "
-                    "format of the result is target- and type-specific.");
-
   BB.newNode("CmpEQ")
       .addInput("LHS")
       .addInput("RHS")
       .addResultFromCtorArg()
       .dataParallel()
-      .setDocstring("Performs an element-wise equal comparison on the LHS and "
-                    "RHS operands. Inputs must be integer.");
+      .setDocstring("Performs an element-wise EQUAL comparison between the "
+                    "LHS and RHS operands.");
+
+  BB.newNode("CmpNEQ")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise NOT EQUAL comparison between "
+                    "the LHS and RHS operands.");
 
   BB.newNode("CmpLT")
       .addInput("LHS")
       .addInput("RHS")
       .addResultFromCtorArg()
       .dataParallel()
-      .setDocstring(
-          "Compares X and Y element wise sets Dest[i] true if LHS[i] < "
-          "RHS[i] otherwise false. Final result is a mask consumed by "
-          "Select, ONNX Where, operator.");
+      .setDocstring("Performs an element-wise LESS THAN comparison between "
+                    "the LHS and RHS operands.");
+
+  BB.newNode("CmpLTE")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise LESS THAN OR EQUAL comparison "
+                    "between the LHS and RHS operands.");
 
   BB.newNode("Pow")
       .addInput("LHS")
@@ -414,6 +427,100 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .dataParallel()
       .setDocstring("Performs elementwise pow(LHS, RHS).");
+
+  BB.newNode("And")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise logical AND between the LHS and "
+                    "RHS operands.");
+
+  BB.newNode("Or")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise logical OR between the LHS and "
+                    "RHS operands.");
+
+  BB.newNode("Xor")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise logical XOR between the LHS and "
+                    "RHS operands.");
+
+  BB.newNode("Not")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise logical NOT of the Input "
+                    "operand.");
+
+  BB.newNode("Neg")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise negation (sign flip) of the "
+                    "Input operand.");
+
+  BB.newNode("Abs")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise ABS(x) of the Input operand.");
+
+  BB.newNode("Floor")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise FLOOR(x) of the Input operand.");
+
+  BB.newNode("Ceil")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise CEIL(x) of the Input operand.");
+
+  BB.newNode("Round")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise ROUND(x) of the Input operand.");
+
+  BB.newNode("Sqrt")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise SQRT(x) of the Input operand.");
+
+  BB.newNode("Rsqrt")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise RSQRT(x) = 1 / SQRT(x) of the "
+                    "Input operand.");
+
+  BB.newNode("Reciprocal")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise RECIPROCAL(x) = 1 / x of the "
+                    "Input operand.");
+
+  BB.newNode("Sin")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise SIN(x) of the Input operand.");
+
+  BB.newNode("Cos")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise COS(x) of the Input operand.");
 
   // clang-format off
   BB.newNode("Log")

@@ -3353,6 +3353,166 @@ TEST_P(OperatorTest, FloatArgMaxNoKeepDimWithAxis2) {
   EXPECT_EQ(I.raw(7), 0);
 }
 
+template <typename DataType>
+static void testArgMinKeepDim(glow::PlaceholderBindings &bindings,
+                              glow::Module &mod, glow::Function *F,
+                              glow::ExecutionEngine &EE, ElemKind DTy) {
+  auto *input = createPlaceholderConditionallyQuantized(mod, DTy, {2, 3, 2, 2},
+                                                        "input", false, "NHWC");
+  auto *argmin = mod.createPlaceholder(ElemKind::Int64ITy, {1, 3, 2, 2},
+                                       "argmin", false, "NHWC");
+
+  bindings.allocate(input)->getHandle<DataType>() = {
+      11, 24, 33, 41, 15, 26, 37, 48, 12, 28, 31, 42,
+      13, 24, 35, 46, 12, 28, 39, 40, 11, 22, 33, 47};
+  bindings.allocate(argmin);
+
+  auto *AM = F->createArgMin("argmin", input, 0, true);
+  F->createSave("save.argmin", AM, argmin);
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto I = bindings.get(argmin)->getHandle<int64_t>();
+  EXPECT_EQ(I.raw(0), 0);
+  EXPECT_EQ(I.raw(1), 0);
+  EXPECT_EQ(I.raw(2), 0);
+  EXPECT_EQ(I.raw(3), 0);
+  EXPECT_EQ(I.raw(4), 1);
+  EXPECT_EQ(I.raw(5), 0);
+  EXPECT_EQ(I.raw(6), 0);
+  EXPECT_EQ(I.raw(7), 1);
+  EXPECT_EQ(I.raw(8), 1);
+  EXPECT_EQ(I.raw(9), 1);
+  EXPECT_EQ(I.raw(10), 0);
+  EXPECT_EQ(I.raw(11), 0);
+}
+
+TEST_P(OperatorTest, FloatArgMinKeepDim) {
+  CHECK_IF_ENABLED();
+  testArgMinKeepDim<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, QuantizedArgMinKeepDim) {
+  CHECK_IF_ENABLED();
+  testArgMinKeepDim<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+template <typename DataType>
+static void testArgMinNoKeepDim(glow::PlaceholderBindings &bindings,
+                                glow::Module &mod, glow::Function *F,
+                                glow::ExecutionEngine &EE, ElemKind DTy) {
+  auto *input = createPlaceholderConditionallyQuantized(mod, DTy, {2, 3, 2, 2},
+                                                        "input", false, "NHWC");
+  auto *argmin =
+      mod.createPlaceholder(ElemKind::Int64ITy, {2, 2, 2}, "argmin", false);
+
+  bindings.allocate(input)->getHandle<DataType>() = {
+      11, 24, 33, 41, 15, 26, 37, 48, 12, 28, 31, 42,
+      13, 24, 35, 46, 12, 28, 39, 40, 11, 22, 33, 47};
+  bindings.allocate(argmin);
+
+  auto *AM = F->createArgMin("argmin", input, 1, false);
+  F->createSave("save.argmin", AM, argmin);
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto I = bindings.get(argmin)->getHandle<int64_t>();
+  EXPECT_EQ(I.raw(0), 0);
+  EXPECT_EQ(I.raw(1), 0);
+  EXPECT_EQ(I.raw(2), 2);
+  EXPECT_EQ(I.raw(3), 0);
+  EXPECT_EQ(I.raw(4), 2);
+  EXPECT_EQ(I.raw(5), 2);
+  EXPECT_EQ(I.raw(6), 2);
+  EXPECT_EQ(I.raw(7), 1);
+}
+
+TEST_P(OperatorTest, FloatArgMinNoKeepDim) {
+  CHECK_IF_ENABLED();
+  testArgMinNoKeepDim<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, QuantizedArgMinNoKeepDim) {
+  CHECK_IF_ENABLED();
+  testArgMinNoKeepDim<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+TEST_P(OperatorTest, FloatArgMinNoKeepDimWithAxis1) {
+  CHECK_IF_ENABLED();
+
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 4}, "input",
+                                       false, "NHWC");
+  auto *argmin =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {1, 3, 4}, "argmin", false);
+
+  bindings_.allocate(input)->getHandle<float>() = {
+      -2.0031254,  1.6150867,  -0.7161922,  -0.25389647, -2.3863597,
+      1.3052065,   -1.2064048, -0.12670185, 1.4289513,   0.38050872,
+      -0.15112245, 1.360533,   -1.9638863,  -0.7602536,  0.68145376,
+      1.1685915,   0.35476854, 1.0272173,   -1.554366,   -1.6835353,
+      -1.4499142,  0.9042695,  1.0751117,   -1.0798755};
+
+  bindings_.allocate(argmin);
+
+  auto *AM =
+      F_->createArgMin("argmin", input, /* axis */ 1, /* keepDims */ false);
+  F_->createSave("save.argmin", AM, argmin);
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto I = bindings_.get(argmin)->getHandle<int64_t>();
+  EXPECT_EQ(I.raw(0), 0);
+  EXPECT_EQ(I.raw(1), 1);
+  EXPECT_EQ(I.raw(2), 0);
+  EXPECT_EQ(I.raw(3), 0);
+  EXPECT_EQ(I.raw(4), 0);
+  EXPECT_EQ(I.raw(5), 1);
+  EXPECT_EQ(I.raw(6), 1);
+  EXPECT_EQ(I.raw(7), 1);
+  EXPECT_EQ(I.raw(8), 1);
+  EXPECT_EQ(I.raw(9), 0);
+  EXPECT_EQ(I.raw(10), 0);
+  EXPECT_EQ(I.raw(11), 1);
+}
+
+TEST_P(OperatorTest, FloatArgMinNoKeepDimWithAxis2) {
+  CHECK_IF_ENABLED();
+
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 4}, "input",
+                                       false, "NHWC");
+  auto *argmin =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {1, 2, 4}, "argmin", false);
+
+  bindings_.allocate(input)->getHandle<float>() = {
+      -0.11289205, -0.13215652, -1.184799,  0.2295995,   0.03064479,
+      -0.28138036, -0.51807016, 0.89983666, -0.46122625, -0.70558083,
+      0.43882176,  -0.6988644,  2.0838234,  -0.22806482, -0.6829437,
+      0.70269305,  -0.8199907,  0.25597557, 0.3598691,   -0.9919779,
+      2.069314,    -1.8825238,  1.2604765,  -0.78306365};
+
+  bindings_.allocate(argmin);
+
+  auto *AM =
+      F_->createArgMin("argmin", input, /* axis */ 2, /* keepDims */ false);
+  F_->createSave("save.argmin", AM, argmin);
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto I = bindings_.get(argmin)->getHandle<int64_t>();
+  EXPECT_EQ(I.raw(0), 2);
+  EXPECT_EQ(I.raw(1), 2);
+  EXPECT_EQ(I.raw(2), 0);
+  EXPECT_EQ(I.raw(3), 2);
+  EXPECT_EQ(I.raw(4), 1);
+  EXPECT_EQ(I.raw(5), 2);
+  EXPECT_EQ(I.raw(6), 0);
+  EXPECT_EQ(I.raw(7), 1);
+}
+
 // Check that concatenating Nodes with multiple outputs works correctly.
 TEST_P(OperatorTest, ConcatTopK) {
   CHECK_IF_ENABLED();
@@ -6175,6 +6335,556 @@ TEST_P(OperatorTest, Clip) {
   for (size_t i = 0; i < 5 * 5; i++) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
   }
+}
+
+TEST_P(OperatorTest, Not) {
+  CHECK_IF_ENABLED();
+  auto *input = mod_.createPlaceholder(ElemKind::BoolTy, {2}, "inp", false);
+  bindings_.allocate(input)->getHandle<bool>() = {false, true};
+  auto *node = F_->createNot("not", input);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<bool>();
+  EXPECT_EQ(outH.size(), 2);
+  EXPECT_EQ(outH.raw(0), true);
+  EXPECT_EQ(outH.raw(1), false);
+}
+
+TEST_P(OperatorTest, And) {
+  CHECK_IF_ENABLED();
+  auto *LHS = mod_.createPlaceholder(ElemKind::BoolTy, {4}, "LHS", false);
+  auto *RHS = mod_.createPlaceholder(ElemKind::BoolTy, {4}, "RHS", false);
+  bindings_.allocate(LHS)->getHandle<bool>() = {false, true, false, true};
+  bindings_.allocate(RHS)->getHandle<bool>() = {false, false, true, true};
+  auto *node = F_->createAnd("and", LHS, RHS);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<bool>();
+  EXPECT_EQ(outH.size(), 4);
+  EXPECT_EQ(outH.raw(0), false);
+  EXPECT_EQ(outH.raw(1), false);
+  EXPECT_EQ(outH.raw(2), false);
+  EXPECT_EQ(outH.raw(3), true);
+}
+
+TEST_P(OperatorTest, Or) {
+  CHECK_IF_ENABLED();
+  auto *LHS = mod_.createPlaceholder(ElemKind::BoolTy, {4}, "LHS", false);
+  auto *RHS = mod_.createPlaceholder(ElemKind::BoolTy, {4}, "RHS", false);
+  bindings_.allocate(LHS)->getHandle<bool>() = {false, true, false, true};
+  bindings_.allocate(RHS)->getHandle<bool>() = {false, false, true, true};
+  auto *node = F_->createOr("or", LHS, RHS);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<bool>();
+  EXPECT_EQ(outH.size(), 4);
+  EXPECT_EQ(outH.raw(0), false);
+  EXPECT_EQ(outH.raw(1), true);
+  EXPECT_EQ(outH.raw(2), true);
+  EXPECT_EQ(outH.raw(3), true);
+}
+
+TEST_P(OperatorTest, Xor) {
+  CHECK_IF_ENABLED();
+  auto *LHS = mod_.createPlaceholder(ElemKind::BoolTy, {4}, "LHS", false);
+  auto *RHS = mod_.createPlaceholder(ElemKind::BoolTy, {4}, "RHS", false);
+  bindings_.allocate(LHS)->getHandle<bool>() = {false, true, false, true};
+  bindings_.allocate(RHS)->getHandle<bool>() = {false, false, true, true};
+  auto *node = F_->createXor("xor", LHS, RHS);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<bool>();
+  EXPECT_EQ(outH.size(), 4);
+  EXPECT_EQ(outH.raw(0), false);
+  EXPECT_EQ(outH.raw(1), true);
+  EXPECT_EQ(outH.raw(2), true);
+  EXPECT_EQ(outH.raw(3), false);
+}
+
+TEST_P(OperatorTest, Abs_FloatTy) {
+  CHECK_IF_ENABLED();
+  auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "inp", false);
+  bindings_.allocate(inp)->getHandle<float>() = {-1.0, 1.0};
+  auto *node = F_->createAbs("abs", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float>();
+  EXPECT_EQ(outH.size(), 2);
+  EXPECT_FLOAT_EQ(outH.raw(0), 1.0);
+  EXPECT_FLOAT_EQ(outH.raw(1), 1.0);
+}
+
+TEST_P(OperatorTest, Abs_Int8QTy) {
+  CHECK_IF_ENABLED();
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {2}, 1.0, 0, "inp", false);
+  bindings_.allocate(inp)->getHandle<int8_t>() = {-1, 1};
+  auto *node = F_->createAbs("abs", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<int8_t>();
+  EXPECT_EQ(outH.size(), 2);
+  EXPECT_EQ(outH.raw(0), 1);
+  EXPECT_EQ(outH.raw(1), 1);
+}
+
+TEST_P(OperatorTest, Neg_FloatTy) {
+  CHECK_IF_ENABLED();
+  auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "inp", false);
+  bindings_.allocate(inp)->getHandle<float>() = {1.0, -1.0};
+  auto *node = F_->createNeg("neg", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float>();
+  EXPECT_EQ(outH.size(), 2);
+  EXPECT_FLOAT_EQ(outH.raw(0), -1.0);
+  EXPECT_FLOAT_EQ(outH.raw(1), 1.0);
+}
+
+TEST_P(OperatorTest, Neg_Int8QTy) {
+  CHECK_IF_ENABLED();
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {2}, 1.0, 0, "inp", false);
+  bindings_.allocate(inp)->getHandle<int8_t>() = {-1, 1};
+  auto *node = F_->createNeg("neg", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<int8_t>();
+  EXPECT_EQ(outH.size(), 2);
+  EXPECT_EQ(outH.raw(0), 1);
+  EXPECT_EQ(outH.raw(1), -1);
+}
+
+TEST_P(OperatorTest, Floor_FloatTy) {
+  CHECK_IF_ENABLED();
+  auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {3}, "inp", false);
+  bindings_.allocate(inp)->getHandle<float>() = {-0.2, 1.0, 1.99};
+  auto *node = F_->createFloor("floor", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float>();
+  EXPECT_EQ(outH.size(), 3);
+  EXPECT_FLOAT_EQ(outH.raw(0), -1.0);
+  EXPECT_FLOAT_EQ(outH.raw(1), 1.0);
+  EXPECT_FLOAT_EQ(outH.raw(2), 1.0);
+}
+
+TEST_P(OperatorTest, Floor_Int8QTy) {
+  CHECK_IF_ENABLED();
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {5}, 0.5, 0, "inp", false);
+  bindings_.allocate(inp)->getHandle<int8_t>() = {-2, -1, 0, 1, 2};
+  auto *node = F_->createFloor("floor", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<int8_t>();
+  EXPECT_EQ(outH.size(), 5);
+  EXPECT_EQ(outH.raw(0), -2);
+  EXPECT_EQ(outH.raw(1), -2);
+  EXPECT_EQ(outH.raw(2), 0);
+  EXPECT_EQ(outH.raw(3), 0);
+  EXPECT_EQ(outH.raw(4), 2);
+}
+
+TEST_P(OperatorTest, Ceil_FloatTy) {
+  CHECK_IF_ENABLED();
+  auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {3}, "inp", false);
+  bindings_.allocate(inp)->getHandle<float>() = {-0.2, 1.0, 1.99};
+  auto *node = F_->createCeil("ceil", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float>();
+  EXPECT_EQ(outH.size(), 3);
+  EXPECT_FLOAT_EQ(outH.raw(0), 0.0);
+  EXPECT_FLOAT_EQ(outH.raw(1), 1.0);
+  EXPECT_FLOAT_EQ(outH.raw(2), 2.0);
+}
+
+TEST_P(OperatorTest, Ceil_Int8QTy) {
+  CHECK_IF_ENABLED();
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {5}, 0.5, 0, "inp", false);
+  bindings_.allocate(inp)->getHandle<int8_t>() = {-2, -1, 0, 1, 2};
+  auto *node = F_->createCeil("ceil", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<int8_t>();
+  EXPECT_EQ(outH.size(), 5);
+  EXPECT_EQ(outH.raw(0), -2);
+  EXPECT_EQ(outH.raw(1), 0);
+  EXPECT_EQ(outH.raw(2), 0);
+  EXPECT_EQ(outH.raw(3), 2);
+  EXPECT_EQ(outH.raw(4), 2);
+}
+
+TEST_P(OperatorTest, Round_FloatTy) {
+  CHECK_IF_ENABLED();
+  auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {5}, "inp", false);
+  bindings_.allocate(inp)->getHandle<float>() = {0.9, 2.5, 2.3, 1.5, -4.5};
+  auto *node = F_->createRound("round", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float>();
+  EXPECT_EQ(outH.size(), 5);
+  // Rounding mode required by ONNX, Numpy, TensorFlow is round to even which
+  // rounds to nearest even integer those values with fractional part 0.5.
+  EXPECT_FLOAT_EQ(outH.raw(0), 1.0);
+  EXPECT_FLOAT_EQ(outH.raw(1), 2.0);
+  EXPECT_FLOAT_EQ(outH.raw(2), 2.0);
+  EXPECT_FLOAT_EQ(outH.raw(3), 2.0);
+  EXPECT_FLOAT_EQ(outH.raw(4), -4.0);
+}
+
+TEST_P(OperatorTest, Round_Int8QTy) {
+  CHECK_IF_ENABLED();
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {5}, 0.1, 0, "inp", false);
+  bindings_.allocate(inp)->getHandle<int8_t>() = {-8, -2, 0, 2, 8};
+  auto *node = F_->createRound("round", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<int8_t>();
+  EXPECT_EQ(outH.size(), 5);
+  EXPECT_EQ(outH.raw(0), -10);
+  EXPECT_EQ(outH.raw(1), 0);
+  EXPECT_EQ(outH.raw(2), 0);
+  EXPECT_EQ(outH.raw(3), 0);
+  EXPECT_EQ(outH.raw(4), 10);
+}
+
+TEST_P(OperatorTest, Sqrt_FloatTy) {
+  CHECK_IF_ENABLED();
+  auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "inp", false);
+  bindings_.allocate(inp)->getHandle<float>() = {0.0, 1.0, 4.0, 9.0};
+  auto *node = F_->createSqrt("sqrt", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float>();
+  EXPECT_EQ(outH.size(), 4);
+  EXPECT_FLOAT_EQ(outH.raw(0), 0.0);
+  EXPECT_FLOAT_EQ(outH.raw(1), 1.0);
+  EXPECT_FLOAT_EQ(outH.raw(2), 2.0);
+  EXPECT_FLOAT_EQ(outH.raw(3), 3.0);
+}
+
+TEST_P(OperatorTest, Sqrt_Int8QTy) {
+  CHECK_IF_ENABLED();
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {4}, 1.0, 0, "inp", false);
+  bindings_.allocate(inp)->getHandle<int8_t>() = {0, 1, 4, 9};
+  auto *node = F_->createSqrt("sqrt", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<int8_t>();
+  EXPECT_EQ(outH.size(), 4);
+  EXPECT_EQ(outH.raw(0), 0);
+  EXPECT_EQ(outH.raw(1), 1);
+  EXPECT_EQ(outH.raw(2), 2);
+  EXPECT_EQ(outH.raw(3), 3);
+}
+
+TEST_P(OperatorTest, Rsqrt_FloatTy) {
+  CHECK_IF_ENABLED();
+  auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "inp", false);
+  bindings_.allocate(inp)->getHandle<float>() = {1.0, 4.0, 16.0, 64.0};
+  auto *node = F_->createRsqrt("rsqrt", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float>();
+  EXPECT_EQ(outH.size(), 4);
+  EXPECT_FLOAT_EQ(outH.raw(0), 1.0);
+  EXPECT_FLOAT_EQ(outH.raw(1), 0.5);
+  EXPECT_FLOAT_EQ(outH.raw(2), 0.25);
+  EXPECT_FLOAT_EQ(outH.raw(3), 0.125);
+}
+
+TEST_P(OperatorTest, Rsqrt_Int8QTy) {
+  CHECK_IF_ENABLED();
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {4}, 1.0, 0, "inp", false);
+  bindings_.allocate(inp)->getHandle<int8_t>() = {1, 4, 16, 64};
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {4}, 1.0 / 8.0, 0);
+  auto *node = F_->createRsqrt("rsqrt", outTy, inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<int8_t>();
+  EXPECT_EQ(outH.size(), 4);
+  EXPECT_EQ(outH.raw(0), 8);
+  EXPECT_EQ(outH.raw(1), 4);
+  EXPECT_EQ(outH.raw(2), 2);
+  EXPECT_EQ(outH.raw(3), 1);
+}
+
+TEST_P(OperatorTest, Reciprocal_FloatTy) {
+  CHECK_IF_ENABLED();
+  auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "inp", false);
+  bindings_.allocate(inp)->getHandle<float>() = {1.0, 2.0, 4.0, 8.0};
+  auto *node = F_->createReciprocal("reciprocal", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float>();
+  EXPECT_EQ(outH.size(), 4);
+  EXPECT_FLOAT_EQ(outH.raw(0), 1.0);
+  EXPECT_FLOAT_EQ(outH.raw(1), 0.5);
+  EXPECT_FLOAT_EQ(outH.raw(2), 0.25);
+  EXPECT_FLOAT_EQ(outH.raw(3), 0.125);
+}
+
+TEST_P(OperatorTest, Reciprocal_Int8QTy) {
+  CHECK_IF_ENABLED();
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {4}, 1.0, 0, "inp", false);
+  bindings_.allocate(inp)->getHandle<int8_t>() = {1, 2, 4, 8};
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {4}, 1.0 / 8.0, 0);
+  auto *node = F_->createReciprocal("reciprocal", outTy, inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<int8_t>();
+  EXPECT_EQ(outH.size(), 4);
+  EXPECT_EQ(outH.raw(0), 8);
+  EXPECT_EQ(outH.raw(1), 4);
+  EXPECT_EQ(outH.raw(2), 2);
+  EXPECT_EQ(outH.raw(3), 1);
+}
+
+TEST_P(OperatorTest, Sin_FloatTy) {
+  CHECK_IF_ENABLED();
+  auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "inp", false);
+  bindings_.allocate(inp)->getHandle<float>() = {-1.0, 0.0, 1.0, 2.0};
+  auto *node = F_->createSin("sin", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float>();
+  EXPECT_EQ(outH.size(), 4);
+  EXPECT_FLOAT_EQ(outH.raw(0), std::sin(-1.0));
+  EXPECT_FLOAT_EQ(outH.raw(1), std::sin(0.0));
+  EXPECT_FLOAT_EQ(outH.raw(2), std::sin(1.0));
+  EXPECT_FLOAT_EQ(outH.raw(3), std::sin(2.0));
+}
+
+TEST_P(OperatorTest, Sin_Int8QTy) {
+  CHECK_IF_ENABLED();
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {4}, 1.0, 0, "inp", false);
+  bindings_.allocate(inp)->getHandle<int8_t>() = {-1, 0, 1, 2};
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {4}, 1.0 / 127.0, 0);
+  auto *node = F_->createSin("sin", outTy, inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<int8_t>();
+  EXPECT_EQ(outH.size(), 4);
+  EXPECT_EQ(outH.raw(0), static_cast<int8_t>(std::round(std::sin(-1) * 127)));
+  EXPECT_EQ(outH.raw(1), static_cast<int8_t>(std::round(std::sin(0) * 127)));
+  EXPECT_EQ(outH.raw(2), static_cast<int8_t>(std::round(std::sin(1) * 127)));
+  EXPECT_EQ(outH.raw(3), static_cast<int8_t>(std::round(std::sin(2) * 127)));
+}
+
+TEST_P(OperatorTest, Cos_FloatTy) {
+  CHECK_IF_ENABLED();
+  auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "inp", false);
+  bindings_.allocate(inp)->getHandle<float>() = {-1.0, 0.0, 1.0, 2.0};
+  auto *node = F_->createCos("cos", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float>();
+  EXPECT_EQ(outH.size(), 4);
+  EXPECT_FLOAT_EQ(outH.raw(0), std::cos(-1.0));
+  EXPECT_FLOAT_EQ(outH.raw(1), std::cos(0.0));
+  EXPECT_FLOAT_EQ(outH.raw(2), std::cos(1.0));
+  EXPECT_FLOAT_EQ(outH.raw(3), std::cos(2.0));
+}
+
+TEST_P(OperatorTest, Cos_Int8QTy) {
+  CHECK_IF_ENABLED();
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {4}, 1.0, 0, "inp", false);
+  bindings_.allocate(inp)->getHandle<int8_t>() = {-1, 0, 1, 2};
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {4}, 1.0 / 127.0, 0);
+  auto *node = F_->createCos("cos", outTy, inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<int8_t>();
+  EXPECT_EQ(outH.size(), 4);
+  EXPECT_EQ(outH.raw(0), static_cast<int8_t>(std::round(std::cos(-1) * 127)));
+  EXPECT_EQ(outH.raw(1), static_cast<int8_t>(std::round(std::cos(0) * 127)));
+  EXPECT_EQ(outH.raw(2), static_cast<int8_t>(std::round(std::cos(1) * 127)));
+  EXPECT_EQ(outH.raw(3), static_cast<int8_t>(std::round(std::cos(2) * 127)));
+}
+
+/// Helper to test CmpNEQ using \p elemKind.
+template <typename ElemType>
+static void testCmpNEQ(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                       glow::Function *F, glow::ExecutionEngine &EE,
+                       ElemKind elemKind) {
+  auto *LHS =
+      createPlaceholderConditionallyQuantized(mod, elemKind, {2}, "LHS", false);
+  auto *RHS =
+      createPlaceholderConditionallyQuantized(mod, elemKind, {2}, "RHS", false);
+  bindings.allocate(LHS)->getHandle<ElemType>() = {1, 1};
+  bindings.allocate(RHS)->getHandle<ElemType>() = {1, 2};
+  auto *node = F->createCmpNEQ("cmpNEQ", LHS, RHS);
+  auto *save = F->createSave("save", node);
+  auto *outT = bindings.allocate(save->getPlaceholder());
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  auto outH = outT->getHandle<bool>();
+  EXPECT_EQ(outH.size(), 2);
+  EXPECT_EQ(outH.raw(0), false);
+  EXPECT_EQ(outH.raw(1), true);
+}
+
+TEST_P(OperatorTest, CmpNEQ_FloatTy) {
+  CHECK_IF_ENABLED();
+  testCmpNEQ<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, CmpNEQ_Int8QTy) {
+  CHECK_IF_ENABLED();
+  testCmpNEQ<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+TEST_P(OperatorTest, CmpNEQ_Int32ITy) {
+  CHECK_IF_ENABLED();
+  testCmpNEQ<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, CmpNEQ_Int64ITy) {
+  CHECK_IF_ENABLED();
+  testCmpNEQ<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+
+/// Helper to test CmpGT using \p elemKind.
+template <typename ElemType>
+static void testCmpGT(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                      glow::Function *F, glow::ExecutionEngine &EE,
+                      ElemKind elemKind) {
+  auto *LHS =
+      createPlaceholderConditionallyQuantized(mod, elemKind, {3}, "LHS", false);
+  auto *RHS =
+      createPlaceholderConditionallyQuantized(mod, elemKind, {3}, "RHS", false);
+  bindings.allocate(LHS)->getHandle<ElemType>() = {1, 1, 2};
+  bindings.allocate(RHS)->getHandle<ElemType>() = {1, 2, 1};
+  auto *node = F->createCmpGT("cmpGT", LHS, RHS);
+  auto *save = F->createSave("save", node);
+  auto *outT = bindings.allocate(save->getPlaceholder());
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  auto outH = outT->getHandle<bool>();
+  EXPECT_EQ(outH.size(), 3);
+  EXPECT_EQ(outH.raw(0), false);
+  EXPECT_EQ(outH.raw(1), false);
+  EXPECT_EQ(outH.raw(2), true);
+}
+
+TEST_P(OperatorTest, CmpGT_FloatTy) {
+  CHECK_IF_ENABLED();
+  testCmpGT<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, CmpGT_Int8QTy) {
+  CHECK_IF_ENABLED();
+  testCmpGT<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+TEST_P(OperatorTest, CmpGT_Int32ITy) {
+  CHECK_IF_ENABLED();
+  testCmpGT<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, CmpGT_Int64ITy) {
+  CHECK_IF_ENABLED();
+  testCmpGT<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+
+/// Helper to test CmpGTE using \p elemKind.
+template <typename ElemType>
+static void testCmpGTE(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                       glow::Function *F, glow::ExecutionEngine &EE,
+                       ElemKind elemKind) {
+  auto *LHS =
+      createPlaceholderConditionallyQuantized(mod, elemKind, {3}, "LHS", false);
+  auto *RHS =
+      createPlaceholderConditionallyQuantized(mod, elemKind, {3}, "RHS", false);
+  bindings.allocate(LHS)->getHandle<ElemType>() = {1, 1, 2};
+  bindings.allocate(RHS)->getHandle<ElemType>() = {1, 2, 1};
+  auto *node = F->createCmpGTE("cmpGTE", LHS, RHS);
+  auto *save = F->createSave("save", node);
+  auto *outT = bindings.allocate(save->getPlaceholder());
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  auto outH = outT->getHandle<bool>();
+  EXPECT_EQ(outH.size(), 3);
+  EXPECT_EQ(outH.raw(0), true);
+  EXPECT_EQ(outH.raw(1), false);
+  EXPECT_EQ(outH.raw(2), true);
+}
+
+TEST_P(OperatorTest, CmpGTE_FloatTy) {
+  CHECK_IF_ENABLED();
+  testCmpGTE<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+TEST_P(OperatorTest, CmpGTE_Int8QTy) {
+  CHECK_IF_ENABLED();
+  testCmpGTE<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
+}
+
+TEST_P(OperatorTest, CmpGTE_Int32ITy) {
+  CHECK_IF_ENABLED();
+  testCmpGTE<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+}
+
+TEST_P(OperatorTest, CmpGTE_Int64ITy) {
+  CHECK_IF_ENABLED();
+  testCmpGTE<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
 }
 
 TEST_P(OperatorTest, simpleCmpSelectPredication) {

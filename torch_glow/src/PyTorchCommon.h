@@ -19,7 +19,7 @@
 
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Type.h"
-
+#include "glow/Importer/CommonOperatorLoader.h"
 #include "glow/Runtime/HostManager/HostManager.h"
 
 #include <torch/csrc/jit/ir/ir.h>
@@ -27,11 +27,6 @@
 DECLARE_bool(dumpFinalGlowGraph);
 
 namespace glow {
-
-/// For Glow: -128 <= orig_fp32/scale_1 + offset_1 <= 127
-/// For PyTorch: 0 <= orig_fp32/scale_2 + offset_2 <= 255
-/// Therefore, we can make scale_1 == scale_2, and offset_1 = offset2 - 128
-const int32_t OFFSETSHIFT = 128;
 
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling

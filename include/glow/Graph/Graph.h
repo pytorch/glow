@@ -402,6 +402,16 @@ public:
   /// @name High-level, operation-level IRBuilder.
   ///@{
 
+  /// Creates a PadNode with the given \p name and output type \p outTy which
+  /// pads the given \p input with the explicit pads \p pads according to the
+  /// padding mode \p mode and with the given value \p value. The padding mode
+  /// \p mode is one of enumeration values from \ref PaddingMode. For an input
+  /// with N dimensions (rank N) the \p pads must be a vector with 2*N values
+  /// with the following format:
+  /// pads = [pad_before(D1), pad_before(D2), ..., pad_before(DN),
+  ///         pad_after (D1), pad_after (D2), ..., pad_after (DN)].
+  /// The mode PaddingMode::CONSTANT pads the input using the constant value
+  /// \p value and currently is the only mode supported.
   PadNode *createPad(llvm::StringRef name, NodeValue input, TypeRef outTy,
                      unsigned_t mode, llvm::ArrayRef<int> pads, float value);
 
@@ -709,7 +719,8 @@ public:
   LogitNode *createLogit(llvm::StringRef name, NodeValue input, float eps);
 
   SoftMaxNode *createSoftMax(llvm::StringRef name, NodeValue input,
-                             NodeValue selected, TypeRef outTy = nullptr);
+                             NodeValue selected, TypeRef outTy = nullptr,
+                             float beta = 1.0);
 
   CrossEntropyLossNode *createCrossEntropyLoss(llvm::StringRef name,
                                                NodeValue input,
@@ -787,9 +798,18 @@ public:
   /// Computes the indices of the max elements of the input tensor along the
   /// provided \p axis. The resulted tensor has the same rank as the input if \p
   /// keepDims equal 1. If \p keepdims equals 0, the resulted tensor has the
-  /// reduced dimension pruned. The type of the output tensor is int64.
+  /// reduced dimension pruned. The type of the output tensor is \p elemTy.
   ArgMaxNode *createArgMax(llvm::StringRef name, NodeValue input,
-                           unsigned_t axis, bool keepDims);
+                           unsigned_t axis, bool keepDims,
+                           ElemKind elemTy = ElemKind::Int64ITy);
+
+  /// Computes the indices of the min elements of the input tensor along the
+  /// provided \p axis. The resulted tensor has the same rank as the input if \p
+  /// keepDims equal 1. If \p keepdims equals 0, the resulted tensor has the
+  /// reduced dimension pruned. The type of the output tensor is \p elemTy.
+  ArgMinNode *createArgMin(llvm::StringRef name, NodeValue input,
+                           unsigned_t axis, bool keepDims,
+                           ElemKind elemTy = ElemKind::Int64ITy);
 
   /// Removes single-dimensional entries from the shape of a tensor. The
   /// parameter \p axes is a list of positive integers, indicating the
@@ -854,6 +874,25 @@ public:
   ModuloNode *createModulo(llvm::StringRef name, NodeValue input,
                            int64_t divisor, bool signFollowDivisor = false);
 
+  /// Create a logical NOT node with name \p name and input \p input.
+  NotNode *createNot(llvm::StringRef name, NodeValue input);
+
+#define UNARY_ARITHMETIC_FUN_DECL(NODE_NAME_)                                  \
+  NODE_NAME_##Node *create##NODE_NAME_(llvm::StringRef name, NodeValue input); \
+  NODE_NAME_##Node *create##NODE_NAME_(llvm::StringRef name, TypeRef Ty,       \
+                                       NodeValue input);
+  UNARY_ARITHMETIC_FUN_DECL(Abs)
+  UNARY_ARITHMETIC_FUN_DECL(Neg)
+  UNARY_ARITHMETIC_FUN_DECL(Floor)
+  UNARY_ARITHMETIC_FUN_DECL(Ceil)
+  UNARY_ARITHMETIC_FUN_DECL(Round)
+  UNARY_ARITHMETIC_FUN_DECL(Sqrt)
+  UNARY_ARITHMETIC_FUN_DECL(Rsqrt)
+  UNARY_ARITHMETIC_FUN_DECL(Reciprocal)
+  UNARY_ARITHMETIC_FUN_DECL(Sin)
+  UNARY_ARITHMETIC_FUN_DECL(Cos)
+#undef UNARY_ARITHMETIC_FUN_DECL
+
 #define ARITHMETIC_FUN_DECL(NODE_NAME_)                                        \
   NODE_NAME_##Node *create##NODE_NAME_(llvm::StringRef name, NodeValue LHS,    \
                                        NodeValue RHS);                         \
@@ -865,9 +904,13 @@ public:
   ARITHMETIC_FUN_DECL(Div);
   ARITHMETIC_FUN_DECL(Max);
   ARITHMETIC_FUN_DECL(Min);
-  ARITHMETIC_FUN_DECL(CmpLTE);
-  ARITHMETIC_FUN_DECL(CmpLT);
   ARITHMETIC_FUN_DECL(CmpEQ);
+  ARITHMETIC_FUN_DECL(CmpNEQ);
+  ARITHMETIC_FUN_DECL(CmpLT);
+  ARITHMETIC_FUN_DECL(CmpLTE);
+  ARITHMETIC_FUN_DECL(And);
+  ARITHMETIC_FUN_DECL(Or);
+  ARITHMETIC_FUN_DECL(Xor);
   ARITHMETIC_FUN_DECL(Pow);
 #undef ARITHMETIC_FUN_DECL
 
@@ -934,6 +977,32 @@ public:
 #undef DECLARE_BROADCAST_NODE
 #undef DECLARE_CMP_BROADCAST_NODE
 #undef BROADCAST_FUNC_COMMON_CODE
+
+  /// Create an element-wise GREATER THAN comparison between \p LHS and \p RHS
+  /// by creating a CmpLTNode with given \p name and swapped inputs.
+  CmpLTNode *createCmpGT(llvm::StringRef name, NodeValue LHS, NodeValue RHS);
+
+  /// Create an element-wise GREATER THAN or EQUAL comparison between \p LHS and
+  /// \p RHS by creating a CmpLTENode with given \p name and swapped inputs.
+  CmpLTENode *createCmpGTE(llvm::StringRef name, NodeValue LHS, NodeValue RHS);
+
+  /// Create a MulNode with given \p name which multiplies \p input with itself
+  /// to produce an equivalent Square node.
+  MulNode *createSquare(llvm::StringRef name, NodeValue input);
+
+  /// Create a MulNode with given \p name and output type \p outTy which
+  /// multiplies \p input with itself to produce an equivalent Square node.
+  MulNode *createSquare(llvm::StringRef name, TypeRef outTy, NodeValue input);
+
+  /// Create an equivalent LeakyRELU node with given \p name, \p input and slope
+  /// \p alpha by using a SplatNode and a PRELU node.
+  PReluNode *createLeakyRELU(llvm::StringRef name, NodeValue input,
+                             float alpha);
+
+  /// Create an equivalent LeakyRELU node with given \p name, \p outTy, \p input
+  /// and slope \p alpha by using a SplatNode and a PRELU node.
+  PReluNode *createLeakyRELU(llvm::StringRef name, TypeRef outTy,
+                             NodeValue input, float alpha);
 
   /// Create a node that produces an boolean output of the same shape as
   /// \p input in which each element indicates whether or not the corresponding

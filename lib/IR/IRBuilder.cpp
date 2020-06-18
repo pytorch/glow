@@ -99,18 +99,7 @@ MaxPoolWithArgmaxInst *IRBuilder::createMaxPoolWithArgmaxOp(
 ArgMaxInst *IRBuilder::createArgMaxOp(llvm::StringRef name, Value *input,
                                       unsigned_t axis, bool keepDims,
                                       ElemKind outIndicesTy) {
-  auto idim = input->dims();
-
-  ShapeVector odim;
-  for (size_t i = 0, e = 4; i < e; i++) {
-    if (i == axis && !keepDims) {
-      continue;
-    } else {
-      odim.push_back(i == axis ? 1 : idim[i]);
-    }
-  }
-
-  // Allocate storage for flattened NCHW index of max element.
+  ShapeVector odim = reduceDims(input->dims(), {axis}, keepDims);
   Value *argmax =
       createAllocActivationInst(name.str() + ".argmax", outIndicesTy, odim);
   return createArgMaxInst(name, argmax, input, axis, keepDims);
