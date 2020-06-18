@@ -17,6 +17,7 @@
 #include <pybind11/pybind11.h>
 
 #include "FuseKnownPatterns.h"
+#include "GlowCompileSpec.h"
 #include "GlowFuser.h"
 #include "PyTorchCommon.h"
 #include "Registration.h"
@@ -52,6 +53,9 @@ PYBIND11_MODULE(_torch_glow, m) {
   registerGlowFusionOpAndPass(
       []() { return getPyTorchLoaderSettings().fusionPassEnabled; });
 
+  /// Register GlowCompileSpec as PyTorch custom class
+  registerGlowCompileSpecCustomClass();
+
   /// Enable overriding signal handlers for torch_glow to make interruping long
   /// running processes possible. This should only be used when running
   /// torch_glow with Python.
@@ -59,7 +63,15 @@ PYBIND11_MODULE(_torch_glow, m) {
 
   /// Lowers and compiles a given torch.nn module following the given spec.
   /// Returns a lowered module.
-  m.def("to_glow", torchGlowBackend().generateToBackendFn());
+  (void)torchGlowBackend();
+
+  /// Wrapping registered glow_backend call
+  m.def("to_glow", [](const torch::jit::Module &orig_module,
+                      const py::dict &method_compile_spec) {
+    auto callback =
+        py::module::import("torch").attr("_C").attr("_jit_to_glow_backend");
+    return callback(orig_module, method_compile_spec);
+  });
 
   /// Enable compiling PyTorch subgraphs to Glow Functions.
   m.def("enableFusionPass",

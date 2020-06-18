@@ -334,6 +334,9 @@ void InferenceContext::execute(RunIdentifierTy runId,
   // Pre inference input preparation.
   PlaceholderBindings &bindings = *ctx->getPlaceholderBindings();
 
+  // Size of Inputs/Outputs
+  uint64_t outputSize{0}, inputSize{0};
+
   // Initialize placeholder lists in the same orders as inputResources_ and
   // outputResources_.
   if (netInputPlaceholders_.empty()) {
@@ -375,6 +378,7 @@ void InferenceContext::execute(RunIdentifierTy runId,
     if (in->getUsage() != NNPIResource::ResourceUsage::StaticInputResource) {
       auto *ph = netInputPlaceholders_[idx++];
       auto *t = bindings.get(ph);
+      inputSize += t->getUnpaddedSizeInBytes();
       LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
           ERROR, t, "Can't find tensor for input", runId, ctx, resultCB);
       LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
@@ -384,6 +388,10 @@ void InferenceContext::execute(RunIdentifierTy runId,
           "Failed pre-inference for input", runId, ctx, resultCB);
     }
     rawInputs.push_back(in->getHostPtr());
+  }
+  auto requestData = ::glow::runtime::RequestData::get();
+  if (requestData) {
+    requestData->inputSize += inputSize;
   }
   std::string inferContext = traceInferenceContextName_;
   // Inference.
@@ -409,6 +417,7 @@ void InferenceContext::execute(RunIdentifierTy runId,
     TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::OPERATOR,
                            inferContext, attributes);
     // Queue Command list
+    int64_t issueTime = TraceEvent::now();
     LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
         nnpiCommandListQueue(commandList_, &(cmdConfigs_.at(0)), usedConfigs),
         "Failed to queue command list.", runId, ctx, resultCB);
@@ -418,6 +427,13 @@ void InferenceContext::execute(RunIdentifierTy runId,
     // First wait for the command list to complete.
     NNPIInferenceErrorCode res =
         nnpiCommandListWait(commandList_, UINT32_MAX, NULL, 0, &numErrors);
+    uint64_t completeTime = TraceEvent::now();
+    // Set batchDeviceTimestamps.
+    auto requestData = ::glow::runtime::RequestData::get();
+    if (requestData) {
+      auto duration = completeTime - issueTime;
+      requestData->deviceRuntime.fetch_add(duration);
+    }
     if (res != NNPI_INF_NO_ERROR) {
       LOG_NNPI_INF_IF_ERROR(res, "Failed to wait on command list");
     } else if (numErrors > 0) {
@@ -483,11 +499,15 @@ void InferenceContext::execute(RunIdentifierTy runId,
   // Post inference output handling.
   for (unsigned i = 0, e = outputResources_.size(); i < e; ++i) {
     auto *t = bindings.get(netOutputPlaceholders_[i]);
+    outputSize += t->getSizeInBytes();
     LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
         ERROR, t, "Can't find tensor for output", runId, ctx, resultCB);
     LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
         ERROR, outputResources_[i]->postInference(t) == NNPI_INF_NO_ERROR,
         "Failed in output postInference", runId, ctx, resultCB);
+  }
+  if (requestData) {
+    requestData->outputSize += outputSize;
   }
 
   TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,

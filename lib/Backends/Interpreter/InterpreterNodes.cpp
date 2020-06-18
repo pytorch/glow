@@ -1178,14 +1178,141 @@ void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
   }       // N
 }
 
-void BoundInterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
-  if (I->getSrc()->getType()->isQuantizedType()) {
-    fwdAvgPoolInstI8Impl(I);
-    return;
-  }
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdAvgPool3DInstFloatImpl(const AvgPoolInst *I) {
+  staticAssertFloatingPointType(ElemTy);
 
-  dispatchFloatingPointImpl(fwdAvgPoolInstFloatImpl,
-                            I->getSrc()->getElementType(), I);
+  ShapeNTHWC odim(I->getDest()->dims());
+  ShapeNTHWC idim(I->getSrc()->dims());
+
+  PaddingNFTBLR pdim(I->getPads());
+  ShapeTHW kdim(I->getKernels());
+  ShapeTHW sdim(I->getStrides());
+  // Implement the avg pooling operation as defined here:
+  // https://arxiv.org/abs/1312.4400
+  float filterArea = kdim.temporal_frames * kdim.height * kdim.width;
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+
+  // For each input in the batch:
+  for (dim_t n = 0; n < odim.n; n++) {
+    // For each layer in the output tensor:
+    for (dim_t z = 0; z < idim.c; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t t = -ssize_t(pdim.near);
+      for (dim_t at = 0; at < odim.t; t += sdim.temporal_frames, at++) {
+        ssize_t x = -ssize_t(pdim.top);
+        for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          ssize_t y = -ssize_t(pdim.left);
+          for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+            float sum = 0;
+
+            for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
+              for (dim_t fx = 0; fx < kdim.height; fx++) {
+                for (dim_t fy = 0; fy < kdim.width; fy++) {
+                  sdim_t ot = t + ft;
+                  sdim_t ox = x + fx;
+                  sdim_t oy = y + fy;
+
+                  // Ignore index access below zero (this is due to padding).
+                  if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
+                      ox >= ssize_t(idim.h) || oy >= ssize_t(idim.w)) {
+                    continue;
+                  }
+
+                  sum += float(inW.at({n, (dim_t)ot, (dim_t)ox, (dim_t)oy, z}));
+                }
+              }
+              outW.at({n, at, ax, ay, z}) = ElemTy(sum / filterArea);
+            }
+          } // W
+        }   // H
+      }     // T
+    }       // C
+  }         // N
+}
+
+void BoundInterpreterFunction::fwdAvgPool3DInstI8Impl(const AvgPoolInst *I) {
+  ShapeNTHWC odim(I->getDest()->dims());
+  ShapeNTHWC idim(I->getSrc()->dims());
+
+  PaddingNFTBLR pdim(I->getPads());
+  ShapeTHW kdim(I->getKernels());
+  ShapeTHW sdim(I->getStrides());
+  // Implement the avg pooling operation as defined here:
+  // https://arxiv.org/abs/1312.4400
+  float filterArea = kdim.temporal_frames * kdim.height * kdim.width;
+
+  auto inW = getWeightHandle<int8_t>(I->getSrc());
+  auto outW = getWeightHandle<int8_t>(I->getDest());
+  TensorQuantizationParams inQP{I->getSrc()->getType()->getScale(),
+                                I->getSrc()->getType()->getOffset()};
+  TensorQuantizationParams outQP{I->getDest()->getType()->getScale(),
+                                 I->getDest()->getType()->getOffset()};
+
+  // For each input in the batch:
+  for (dim_t n = 0; n < odim.n; n++) {
+    // For each layer in the output tensor:
+    for (dim_t z = 0; z < idim.c; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t t = -ssize_t(pdim.near);
+      for (dim_t at = 0; at < odim.t; t += sdim.temporal_frames, at++) {
+        ssize_t x = -ssize_t(pdim.top);
+        for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          ssize_t y = -ssize_t(pdim.left);
+          for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+            int32_t sum = 0;
+
+            for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
+              for (dim_t fx = 0; fx < kdim.height; fx++) {
+                for (dim_t fy = 0; fy < kdim.width; fy++) {
+                  sdim_t ot = t + ft;
+                  sdim_t ox = x + fx;
+                  sdim_t oy = y + fy;
+
+                  // Ignore index access below zero (this is due to padding).
+                  if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
+                      ox >= ssize_t(idim.h) || oy >= ssize_t(idim.w)) {
+                    continue;
+                  }
+
+                  sum += inW.at({n, (dim_t)ot, (dim_t)ox, (dim_t)oy, z}) -
+                         inQP.offset;
+                }
+              }
+            }
+            // Instead of dividing by filterArea, just change scale.
+            outW.at({n, at, ax, ay, z}) =
+                quantization::clip<int32_t, int8_t>(std::round(
+                    float(sum) * (inQP.scale / outQP.scale / filterArea) +
+                    outQP.offset));
+          } // W
+        }   // H
+      }     // T
+    }       // C
+  }         // N
+}
+
+void BoundInterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
+  bool isConv3D = is3DData(ConvolutionLayout(I->getLayout()));
+  bool isQuantized = I->getSrc()->getType()->isQuantizedType();
+
+  if (isConv3D) {
+    if (isQuantized) {
+      fwdAvgPool3DInstI8Impl(I);
+    } else {
+      dispatchFloatingPointImpl(fwdAvgPool3DInstFloatImpl,
+                                I->getSrc()->getElementType(), I);
+    }
+  } else {
+    if (isQuantized) {
+      fwdAvgPoolInstI8Impl(I);
+    } else {
+      dispatchFloatingPointImpl(fwdAvgPoolInstFloatImpl,
+                                I->getSrc()->getElementType(), I);
+    }
+  }
 }
 
 template <typename ElemTy>
@@ -1381,7 +1508,7 @@ void BoundInterpreterFunction::fwdMaxPoolWithArgmaxGradInst(
   }       // N
 }
 
-void BoundInterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
+void BoundInterpreterFunction::fwdAvgPool2DGradInst(const AvgPoolGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
@@ -1427,6 +1554,70 @@ void BoundInterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
       }   // H
     }     // C
   }       // N
+}
+
+void BoundInterpreterFunction::fwdAvgPool3DGradInst(const AvgPoolGradInst *I) {
+  auto inG = getWeightHandle(I->getSrcGrad());
+  auto outW = getWeightHandle(I->getDest());
+  auto outG = getWeightHandle(I->getDestGrad());
+
+  ShapeNTHWC odim(outW.dims());
+  ShapeNTHWC idim(inG.dims());
+
+  PaddingNFTBLR pdim(I->getPads());
+  ShapeTHW kdim(I->getKernels());
+  ShapeTHW sdim(I->getStrides());
+
+  inG.clear();
+
+  float filterArea = kdim.temporal_frames * kdim.height * kdim.width;
+
+  // For each input in the batch:
+  for (dim_t n = 0; n < odim.n; n++) {
+
+    // For each layer in the output tensor:
+    for (dim_t z = 0; z < odim.c; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t t = -ssize_t(pdim.near);
+      for (dim_t at = 0; at < odim.t; t += sdim.temporal_frames, at++) {
+        ssize_t x = -ssize_t(pdim.top);
+        for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          ssize_t y = -ssize_t(pdim.left);
+          for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+
+            float dy = outG.at({n, at, ax, ay, z}) / filterArea;
+
+            for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
+              for (dim_t fx = 0; fx < kdim.height; fx++) {
+                for (dim_t fy = 0; fy < kdim.width; fy++) {
+                  ssize_t ot = t + ft;
+                  ssize_t ox = x + fx;
+                  ssize_t oy = y + fy;
+
+                  // Ignore index access below zero (this is due to padding).
+                  if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
+                      ox >= ssize_t(idim.h) || oy >= ssize_t(idim.w)) {
+                    continue;
+                  }
+                  inG.at({n, (dim_t)ot, (dim_t)ox, (dim_t)oy, z}) += dy;
+                }
+              }
+            }
+          } // W
+        }   // H
+      }     // T
+    }       // C
+  }         // N
+}
+
+void BoundInterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
+  bool isConv3D = is3DData(ConvolutionLayout(I->getLayout()));
+
+  if (isConv3D) {
+    fwdAvgPool3DGradInst(I);
+  } else {
+    fwdAvgPool2DGradInst(I);
+  }
 }
 
 //===----------------------------------------------------------------------===//

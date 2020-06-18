@@ -40,6 +40,8 @@ DEFINE_bool(convertFusedToFP16, false, "See PyTorchLoaderSettings");
 DEFINE_string(opBlacklist, "", "See PyTorchLoaderSettings");
 DEFINE_int32(replicationCount, 1, "Number of replications on each device");
 DEFINE_bool(writeToOnnx, false, "See PyTorchLoaderSettings");
+DEFINE_int32(maxActiveRequests, 250,
+             "Max number of active requests before HostManager starts queuing");
 
 namespace glow {
 
@@ -105,8 +107,11 @@ void setHostManager(const std::string &backendName, size_t numDevices) {
     deviceConfigs.push_back(std::move(config));
   }
 
-  state->hostManager =
-      std::make_shared<runtime::HostManager>(std::move(deviceConfigs));
+  glow::runtime::HostConfig hostConfig;
+  hostConfig.maxActiveRequests = FLAGS_maxActiveRequests;
+
+  state->hostManager = std::make_shared<runtime::HostManager>(
+      std::move(deviceConfigs), hostConfig);
 }
 
 /// Given a Glow ElemKind \p ty, \returns a matching PyTorch ScalarType.

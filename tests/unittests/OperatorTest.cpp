@@ -8760,6 +8760,69 @@ TEST_P(OperatorTest, Int8AvgPool) {
   }
 }
 
+TEST_P(OperatorTest, FP16AvgPool3D) {
+  CHECK_IF_ENABLED();
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 1, 3, 3, 3}, // NCTHW
+                             "input", false);
+  bindings_.allocate(input)->getHandle<float16_t>() = {
+      0., 1., 2., 3., 4., 5., 6., 7., 8., 0., 1., 2., 3., 4.,
+      5., 6., 7., 8., 0., 1., 2., 3., 4., 5., 6., 7., 8.};
+  auto *inputNTHWC =
+      F_->createTranspose("avgpool3d_input_NCTHW2NTHWC", input, NCTHW2NTHWC);
+  auto *Pool = F_->createAvgPool("pool", inputNTHWC, {2, 2, 2}, // kernel
+                                 {1, 1, 1},                     // stride
+                                 {0, 0, 0, 0, 0, 0},            // padding
+                                 NTHWC);
+  auto *outputNCTHW =
+      F_->createTranspose("avgpool3d_output_NTHWC2NCTHW", Pool, NTHWC2NCTHW);
+  auto *S = F_->createSave("save", outputNCTHW);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto *result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::Float16Ty, {1, 1, 2, 2, 2});
+  out.getHandle<float16_t>() = {2., 3., 5., 6., 2., 3., 5., 6.};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
+TEST_P(OperatorTest, Int8AvgPool3D) {
+  CHECK_IF_ENABLED();
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {1, 1, 3, 3, 3}, // NCTHW
+                             1, 0, // scale, offset
+                             "input", false);
+  bindings_.allocate(input)->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8,
+                                                    0, 1, 2, 3, 4, 5, 6, 7, 8,
+                                                    0, 1, 2, 3, 4, 5, 6, 7, 8};
+  auto *inputNTHWC =
+      F_->createTranspose("avgpool3d_input_NCTHW2NTHWC", input, NCTHW2NTHWC);
+  auto *Pool = F_->createAvgPool("avgpool3d", inputNTHWC, {2, 2, 2}, // kernel
+                                 {1, 1, 1},                          // stride
+                                 {0, 0, 0, 0, 0, 0},                 // padding
+                                 NTHWC);
+  auto *outputNCTHW =
+      F_->createTranspose("avgpool3d_output_NTHWC2NCTHW", Pool, NTHWC2NCTHW);
+  auto *S = F_->createSave("save", outputNCTHW);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<int8_t>();
+  Tensor out(ElemKind::Int8QTy, {1, 1, 2, 2, 2}, 1, 0);
+  out.getHandle<int8_t>() = {
+      2, 3, 5, 6, 2, 3, 5, 6,
+  };
+  for (size_t i = 0; i < 2 * 2 * 2; i++) {
+    EXPECT_EQ(result.raw(i), out.getHandle<int8_t>().raw(i));
+  }
+}
+
 /// Verify that the AdaptiveAvgPool operator works correctly.
 TEST_P(OperatorTest, AdaptiveAvgPool) {
   CHECK_IF_ENABLED();
@@ -13233,6 +13296,32 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTestSymmetric) {
       /* convertToRowwiseQuantization */ true, quantization::Schema::Symmetric);
 }
 
+TEST_P(OperatorStatelessTest,
+       rowwiseQuantizedFCTestSymmetric_Int8_BiasFloat32) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitBasicRowwiseFCTest, ElemKind::FloatTy,
+      ElemKind::Int8QTy, 0.07f, parCloneCountOpt,
+      /* convertToRowwiseQuantization */ true, quantization::Schema::Symmetric,
+      /*biasElemKind*/ ElemKind::Int32QTy,
+      /*forceFP16AccumSLS*/ false,
+      /*convertToChannelwiseQuantization*/ false,
+      /*skipQuantizeFCBias*/ true);
+}
+
+TEST_P(OperatorStatelessTest,
+       rowwiseQuantizedFCTestAsymmetric_Int8_BiasFloat32) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitBasicRowwiseFCTest, ElemKind::FloatTy,
+      ElemKind::Int8QTy, 0.06f, parCloneCountOpt,
+      /* convertToRowwiseQuantization */ true, quantization::Schema::Asymmetric,
+      /*biasElemKind*/ ElemKind::Int32QTy,
+      /*forceFP16AccumSLS*/ false,
+      /*convertToChannelwiseQuantization*/ false,
+      /*skipQuantizeFCBias*/ true);
+}
+
 static FunctionTensorPair
 createAndInitBasicSLWSTest(glow::PlaceholderBindings &bindings,
                            glow::ExecutionEngine &EE) {
@@ -14055,7 +14144,13 @@ static void testConvertTo(glow::PlaceholderBindings &bindings_,
   auto *data = mod_.createPlaceholder(STy, shape, "data",
                                       /* isTrainable */ false);
   auto dataH = bindings_.allocate(data)->getHandle<SourceType>();
-  dataH.randomize(-1000, 1000, mod_.getPRNG());
+  if (STy == ElemKind::BoolTy) {
+    for (dim_t i = 0; i < dataH.size(); i++) {
+      dataH.raw(i) = static_cast<bool>(i % 2 == 0);
+    }
+  } else {
+    dataH.randomize(-1000, 1000, mod_.getPRNG());
+  }
 
   // Construct the graph for the backend to run, converting to dest type.
   auto OT = mod_.uniqueType(DTy, shape);
@@ -14110,6 +14205,8 @@ TEST_CONVERT_TO(int64_t, float, Int64ITy, FloatTy)
 TEST_CONVERT_TO(int64_t, float16_t, Int64ITy, Float16Ty)
 TEST_CONVERT_TO(int64_t, int32_t, Int64ITy, Int32ITy)
 TEST_CONVERT_TO(int64_t, int64_t, Int64ITy, Int64ITy)
+TEST_CONVERT_TO(bool, float, BoolTy, FloatTy)
+TEST_CONVERT_TO(bool, float16_t, BoolTy, Float16Ty)
 
 #undef TEST_CONVERT_TO
 

@@ -57,6 +57,8 @@ template <typename Ty> void reportContext(const llvm::ArrayRef<Ty> &arrayRef) {
 void reportContext(ElemKind Ty);
 void reportContext(const ShapeNHWC &shapeNHWC);
 void reportContext(const ShapeNCHW &shapeNCHW);
+void reportContext(const ShapeNTHWC &shapeNTHWC);
+void reportContext(const ShapeNCTHW &shapeNCTHW);
 void reportContext(const Node *node);
 void reportContext(const Function *function);
 

@@ -314,6 +314,10 @@ template <> struct AttributeRetriever<false, ConvolutionLayout> {
       return ConvolutionLayout::NHWC;
     } else if (str == "NCHW") {
       return ConvolutionLayout::NCHW;
+    } else if (str == "NTHWC") {
+      return ConvolutionLayout::NTHWC;
+    } else if (str == "NCTHW") {
+      return ConvolutionLayout::NCTHW;
     } else {
       return MAKE_ERR("Invalid ConvolutionLayout");
     }

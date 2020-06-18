@@ -108,11 +108,18 @@ void glow::registerInputTensorFileLoader(InputTensorFileLoaderFn loader) {
   inputTensorFileLoader_ = loader;
 }
 
-void glow::dumpTensorToBinaryFile(Tensor &tensor, llvm::StringRef filename,
+void glow::dumpTensorToBinaryFile(const Tensor &tensor,
+                                  llvm::StringRef filename,
                                   const TensorSerializationOptions &opts) {
   std::ofstream fs;
   fs.open(filename.data(), std::ios::binary);
   CHECK(fs.is_open()) << "Error opening file '" << filename.data() << "'!";
+  dumpTensorToBinaryFile(tensor, fs, opts);
+  fs.close();
+}
+
+void glow::dumpTensorToBinaryFile(const Tensor &tensor, std::ofstream &fs,
+                                  const TensorSerializationOptions &opts) {
   CHECK(tensor.getUnsafePtr())
       << "Tensor not initialized before dumping to binary file!";
   // Dump tensor type.
@@ -122,7 +129,6 @@ void glow::dumpTensorToBinaryFile(Tensor &tensor, llvm::StringRef filename,
   }
   // Dump tensor data.
   fs.write(tensor.getUnsafePtr(), tensor.getSizeInBytes());
-  fs.close();
 }
 
 void glow::loadTensorFromBinaryFile(Tensor &tensor, llvm::StringRef filename,

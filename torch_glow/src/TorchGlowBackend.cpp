@@ -1,5 +1,6 @@
 // Copyright 2004-present Facebook. All Rights Reserved.
 #include "TorchGlowBackend.h"
+#include "GlowCompileSpec.h"
 #include "Registration.h"
 #include <ATen/native/quantized/cpu/conv_packed_params.h>
 #include <ATen/native/quantized/cpu/packed_params.h>
@@ -10,35 +11,17 @@
 
 namespace glow {
 
-static c10::ScalarType scalarTypeFromString(const std::string str) {
-  if (str == "float") {
-    return c10::ScalarType::Float;
-  } else {
-    throw std::invalid_argument("Invalid type");
-  }
-}
-
 static std::vector<glow::InputMeta>
-parseMethodCompileSpec(const c10::ivalue::Tuple method_spec) {
-  // method_spec format:
-  // backend_name(string) , input#0(tuple) , input#1(tuple) ...
-  // Where:
-  // input#k := scalar_type, dim#0, dim#1 ....
-  std::string glowBackend = method_spec.elements()[0].toStringRef();
-  setHostManager(glowBackend);
+parseMethodCompileSpec(const GlowCompileSpec &method_spec) {
+  setHostManager(method_spec.getBackend());
   std::vector<glow::InputMeta> inputMeta;
-  for (int i = 1; i < method_spec.elements().size(); ++i) {
-    auto input_spec = method_spec.elements()[i].toTuple();
-    c10::ScalarType st =
-        scalarTypeFromString(input_spec->elements()[0].toStringRef());
+  for (const auto &in : method_spec.inputs()) {
     std::vector<glow::dim_t> dims;
-    for (auto e = ++(input_spec->elements().begin());
-         e != input_spec->elements().end(); e++) {
-      dims.emplace_back(e->toInt());
+    for (auto d : in.dims()) {
+      dims.emplace_back(static_cast<size_t>(d));
     }
-    inputMeta.emplace_back(st, std::move(dims));
+    inputMeta.emplace_back(in.type(), std::move(dims));
   }
-
   return inputMeta;
 }
 
@@ -354,14 +337,14 @@ TorchGlowBackend::compile(c10::IValue processed,
         << "Could not find corresponding method_compile_spec for method: "
         << method.name();
     c10::IValue methodSpec = spec->value();
-    c10::intrusive_ptr<c10::ivalue::Tuple> tup;
+    c10::intrusive_ptr<GlowCompileSpec> gcs;
     try {
-      tup = methodSpec.toTuple();
+      gcs = methodSpec.toCustomClass<GlowCompileSpec>();
     } catch (const std::exception &e) {
       throw std::invalid_argument(
-          "method_copmile_spec does not match a tuple type.");
+          "method_compile_spec does not match GlowCompileSpec type.");
     }
-    std::vector<glow::InputMeta> inputMeta = parseMethodCompileSpec(*tup);
+    std::vector<glow::InputMeta> inputMeta = parseMethodCompileSpec(*gcs);
 
     // Compile
     auto e = runner->warmCache(inputMeta);

@@ -33,7 +33,13 @@ struct TensorSerializationOptions {
 /// Dump the content of \p tensor to a binary file \p filename using the options
 /// \p opts. The binary representation of data is guaranteed to preserve data
 /// precision (bit exactness) upon round-trips (dump/load).
-void dumpTensorToBinaryFile(Tensor &tensor, llvm::StringRef filename,
+void dumpTensorToBinaryFile(const Tensor &tensor, llvm::StringRef filename,
+                            const TensorSerializationOptions &opts);
+
+/// Dump the content of \p tensor to \p fs using the options \p opts. The binary
+/// representation of data is guaranteed to preserve data precision (bit
+/// exactness) upon round-trips (dump/load).
+void dumpTensorToBinaryFile(const Tensor &tensor, std::ofstream &fs,
                             const TensorSerializationOptions &opts);
 
 /// Load the content of \p tensor from a binary file \p filename using the

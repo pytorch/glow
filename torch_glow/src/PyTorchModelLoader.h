@@ -341,6 +341,11 @@ private:
   Expected<NodeValue> loadQuantizedConvImpl(const torch::jit::Node *ptNode,
                                             const bool isRelu);
 
+  /// Common function to load both 2D and 3D AvgPool nodes
+  /// \returns error on failure.
+  Expected<NodeValue> loadAvgPoolImpl(const torch::jit::Node *ptNode,
+                                      int numDims);
+
   // Load a PyTorch aten::embedding_bag node.
   // \returns error on failure.
   Error loadEmbeddingBag(const torch::jit::Node *ptNode);
@@ -530,6 +535,10 @@ private:
   /// Load a PyTorch avg_pool2d node.
   /// \returns error on failure.
   Error loadAvgPool2d(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch avg_pool3d node.
+  /// \returns error on failure.
+  Error loadAvgPool3d(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch adaptive_avg_pool2d node.
   /// \returns error on failure.

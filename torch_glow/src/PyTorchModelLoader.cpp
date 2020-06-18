@@ -794,6 +794,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::layer_norm"}, &PyTorchModelLoader::loadLayerNorm},
       {{"aten::max_pool2d"}, &PyTorchModelLoader::loadMaxPool2d},
       {{"aten::avg_pool2d"}, &PyTorchModelLoader::loadAvgPool2d},
+      {{"aten::avg_pool3d"}, &PyTorchModelLoader::loadAvgPool3d},
       {{"aten::matmul"}, &PyTorchModelLoader::loadMatMul},
       {{"aten::mm"}, &PyTorchModelLoader::loadMM},
       {{"aten::bmm"}, &PyTorchModelLoader::loadBmm},
@@ -1381,17 +1382,14 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   c10::optional<at::Tensor> ptBiasTensorTmp;
   std::tie(ptWeightTensor, ptBiasTensorTmp) = packed_params->unpack();
 
-  bool isRowwiseQuantized = ptWeightTensor.is_quantized() &&
-                            ptWeightTensor.qscheme() == at::kPerChannelAffine;
-
   // unpacked weights
   auto weightTensor = ptTensorToGlowTensor(ptWeightTensor);
   glow::Constant *weightConstant = F_.getParent()->createConstant(
       "quantized_linear_weights", std::move(weightTensor));
   weightConstant->ensureIsOwned();
+  RETURN_ERR_IF_NOT(weightConstant->dims().size() == 2,
+                    "Expected 2d Linear weights");
   auto weight = weightConstant->getOutput();
-  weight = rescaleUIntToInt(weight);
-  RETURN_ERR_IF_NOT(weight.dims().size() == 2, "Expected 2d Linear weights");
 
   // unpacked bias
   glow::Tensor biasTensor;
@@ -1403,25 +1401,12 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
     biasTensor.zero();
   }
 
-  // Choose bias quantization params and quantize it.
   glow::Constant *biasConstant = F_.getParent()->createConstant(
       "quantized_linear_bias", std::move(biasTensor));
   biasConstant->ensureIsOwned();
   RETURN_ERR_IF_NOT(biasConstant, "quantized::linear bias must be constant");
-  const auto biasHandle = biasConstant->getPayload().getHandle<float>();
-  const auto biasMinMaxIdx = biasHandle.minMaxArg();
-
-  const auto biasQParams = chooseQuantizationParams(
-      {biasHandle.raw(biasMinMaxIdx.first),
-       biasHandle.raw(biasMinMaxIdx.second)},
-      glow::quantization::Schema::Asymmetric, glow::ElemKind::Int32QTy);
 
   auto bias = biasConstant->getOutput();
-
-  auto biasType =
-      F_.getParent()->uniqueType(glow::ElemKind::Int32QTy, bias.dims(),
-                                 biasQParams.scale, biasQParams.offset);
-  bias = F_.createQuantize("quantize_bias", bias, biasType);
 
   float outScale;
   ASSIGN_VALUE_OR_RETURN_ERR(outScale,
@@ -1436,6 +1421,10 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   auto outTy = F_.getParent()->uniqueType(
       ElemKind::Int8QTy, {input.dims()[0], weight.dims()[0]}, outScale,
       outZeroPoint - UINT8_TO_INT8_SHIFT);
+
+  bool isRowwiseQuantized = ptWeightTensor.is_quantized() &&
+                            ptWeightTensor.qscheme() == at::kPerChannelAffine;
+
   if (isRowwiseQuantized) {
     // extract qparams from ptWeightTensor.
     // Notice since the memory of qparams may not be continous
@@ -1474,6 +1463,8 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
         outTy);
     return addValueMapping(outputs[0], rowwise_fc->getResult());
   } else {
+    weight = rescaleUIntToInt(weight);
+
     weight = F_.createTranspose("weight_transpose", weight, {1, 0});
     auto fc =
         F_.createFullyConnected("quantized_fc", input, weight, bias, outTy);
@@ -2823,7 +2814,9 @@ Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], output, dtype);
 }
 
-Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
+Expected<NodeValue>
+PyTorchModelLoader::loadAvgPoolImpl(const torch::jit::Node *ptNode,
+                                    int numDims) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
@@ -2831,27 +2824,44 @@ Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[AvgPoolInputs::input]));
-  input = F_.createTranspose("avgpool2d_input_transposed", input, NCHW2NHWC);
+  bool isConv3d = (numDims == 3);
+  std::string opName = isConv3d ? "avgpool3d" : "avgpool2d";
+
+  if (isConv3d) {
+    input =
+        F_.createTranspose(opName + "_input_transposed", input, NCTHW2NTHWC);
+  } else {
+    input = F_.createTranspose(opName + "_input_transposed", input, NCHW2NHWC);
+  }
 
   std::vector<glow::unsigned_t> kernels;
   ASSIGN_VALUE_OR_RETURN_ERR(
       kernels,
       castVector<glow::unsigned_t>(expandIntIValIfNeeded(
-          getGlowIValueForValue(inputs[AvgPoolInputs::kernel_size]), 2)));
+          getGlowIValueForValue(inputs[AvgPoolInputs::kernel_size]), numDims)));
 
   std::vector<glow::unsigned_t> padsPair;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      padsPair, castVector<glow::unsigned_t>(expandIntIValIfNeeded(
-                    getGlowIValueForValue(inputs[AvgPoolInputs::padding]), 2)));
-  std::vector<glow::unsigned_t> pads = {padsPair[0], padsPair[1], padsPair[0],
-                                        padsPair[1]};
+      padsPair,
+      castVector<glow::unsigned_t>(expandIntIValIfNeeded(
+          getGlowIValueForValue(inputs[AvgPoolInputs::padding]), numDims)));
+  RETURN_ERR_IF_NOT(padsPair.size() == numDims,
+                    "Number of pad values is incorrect");
+  std::vector<glow::unsigned_t> pads;
+  if (isConv3d) {
+    pads = {padsPair[0], padsPair[1], padsPair[2],
+            padsPair[0], padsPair[1], padsPair[2]};
+  } else {
+    pads = {padsPair[0], padsPair[1], padsPair[0], padsPair[1]};
+  }
 
   // Stride defaults to kernel_size.
   std::vector<glow::unsigned_t> strides;
   if (hasGlowIValueForValue(inputs[AvgPoolInputs::stride])) {
     ASSIGN_VALUE_OR_RETURN_ERR(
-        strides, castVector<glow::unsigned_t>(expandIntIValIfNeeded(
-                     getGlowIValueForValue(inputs[AvgPoolInputs::stride]), 2)));
+        strides,
+        castVector<glow::unsigned_t>(expandIntIValIfNeeded(
+            getGlowIValueForValue(inputs[AvgPoolInputs::stride]), numDims)));
   } else {
     strides = kernels;
   }
@@ -2870,13 +2880,41 @@ Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
                                  inputs[AvgPoolInputs::count_include_pad])));
   RETURN_ERR_IF_NOT(countIncludePad, "countIncludePad must be true.");
 
-  glow::AvgPoolNode *ap =
-      F_.createAvgPool("avgpool2d", input, kernels, strides, pads);
-  glow::NodeValue output = ap->getResult();
-  output = F_.createTranspose("avgpool2d_output_transposed", output, NHWC2NCHW);
+  glow::AvgPoolNode *ap = F_.createAvgPool(opName, input, kernels, strides,
+                                           pads, (isConv3d ? NTHWC : NHWC));
+  glow::NodeValue ap_output = ap->getResult();
+  const glow::TransposeNode *output;
+
+  if (isConv3d) {
+    output = F_.createTranspose(opName + "_output_transposed", ap_output,
+                                NTHWC2NCTHW);
+  } else {
+    output =
+        F_.createTranspose(opName + "_output_transposed", ap_output, NHWC2NCHW);
+  }
+
+  return Expected<NodeValue>(output->getResult());
+}
+
+Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  glow::NodeValue output;
+  ASSIGN_VALUE_OR_RETURN_ERR(output, loadAvgPoolImpl(ptNode, 2 /* numDims */));
 
   c10::ScalarType dtype;
-  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[AvgPoolInputs::input]));
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+  return addValueMapping(outputs[0], output, dtype);
+}
+
+Error PyTorchModelLoader::loadAvgPool3d(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  glow::NodeValue output;
+  ASSIGN_VALUE_OR_RETURN_ERR(output, loadAvgPoolImpl(ptNode, 3 /* numDims */));
+
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
   return addValueMapping(outputs[0], output, dtype);
 }
 

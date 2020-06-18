@@ -165,6 +165,7 @@ void InstrBuilder::emitDataParallelProperty(std::ostream &os) const {
 
 void InstrBuilder::emitProperties(std::ostream &os) const {
   emitInplaceMethod(os);
+  emitCanonicalProperty(os);
   emitDataParallelProperty(os);
 }
 
