@@ -119,7 +119,7 @@ setupInterpAndBackendConfigs(
     quantization::Schema schema, bool convertToRowwiseQuantization,
     CreateAndInitFunction createAndInitFunction, ElemKind biasElemKind,
     bool forceFP16AccumSLS, unsigned count,
-    bool convertToChannelwiseQuantization) {
+    bool convertToChannelwiseQuantization, bool skipQuantizeFCBias) {
   CompilationContext cctxI{&iBindings, &ILIM};
   CompilationContext cctxB{&bBindings, &BLIM};
   PrecisionConfiguration &precConfigI = cctxI.precisionConfig;
@@ -144,6 +144,7 @@ setupInterpAndBackendConfigs(
       precConfigI.quantConfig.precision = interpElemKind;
       precConfigI.quantConfig.assertAllNodesQuantized = true;
       precConfigI.quantConfig.precisionBias = biasElemKind;
+      precConfigI.quantConfig.skipQuantizeFCBias = skipQuantizeFCBias;
     }
 
     if (isQuantizedElemKind(backendElemKind)) {
@@ -160,6 +161,7 @@ setupInterpAndBackendConfigs(
       precConfigB.quantConfig.precision = backendElemKind;
       precConfigB.quantConfig.assertAllNodesQuantized = true;
       precConfigB.quantConfig.precisionBias = biasElemKind;
+      precConfigB.quantConfig.skipQuantizeFCBias = skipQuantizeFCBias;
     }
   }
 
@@ -267,7 +269,7 @@ void compareAgainstInterpreter(
     ElemKind interpElemKind, ElemKind backendElemKind, float allowedError,
     unsigned count, bool convertToRowwiseQuantization,
     quantization::Schema schema, ElemKind biasElemKind, bool forceFP16AccumSLS,
-    bool convertToChannelwiseQuantization) {
+    bool convertToChannelwiseQuantization, bool skipQuantizeFCBias) {
   // Note: deviceMemory = 0 is a signal to use the defaultMemory.
   ExecutionEngine IEE{"Interpreter", /* deviceMemory */ 0,
                       /* ignoreUserDeviceConfig */ true};
@@ -278,7 +280,8 @@ void compareAgainstInterpreter(
             << Type::getElementName(interpElemKind).str() << " against "
             << backendName.str() << " with precision "
             << Type::getElementName(backendElemKind).str() << " with Bias "
-            << Type::getElementName(biasElemKind).str()
+            << (skipQuantizeFCBias ? "unquantized"
+                                   : Type::getElementName(biasElemKind).str())
             << " with FP16 AccumulationSLS " << forceFP16AccumSLS;
 
   // Create the same network on the interpreter and the backend being tested.
@@ -295,7 +298,7 @@ void compareAgainstInterpreter(
       IF, IEE, iBindings, ILIM, bBindings, BLIM, interpElemKind,
       backendElemKind, schema, convertToRowwiseQuantization,
       createAndInitFunction, biasElemKind, forceFP16AccumSLS, count,
-      convertToChannelwiseQuantization);
+      convertToChannelwiseQuantization, skipQuantizeFCBias);
   CompilationContext &cctxI = configs.first;
   CompilationContext &cctxB = configs.second;
 

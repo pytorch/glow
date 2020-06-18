@@ -12586,6 +12586,32 @@ TEST_P(OperatorStatelessTest, rowwiseQuantizedFCTestSymmetric) {
       /* convertToRowwiseQuantization */ true, quantization::Schema::Symmetric);
 }
 
+TEST_P(OperatorStatelessTest,
+       rowwiseQuantizedFCTestSymmetric_Int8_BiasFloat32) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitBasicRowwiseFCTest, ElemKind::FloatTy,
+      ElemKind::Int8QTy, 0.07f, parCloneCountOpt,
+      /* convertToRowwiseQuantization */ true, quantization::Schema::Symmetric,
+      /*biasElemKind*/ ElemKind::Int32QTy,
+      /*forceFP16AccumSLS*/ false,
+      /*convertToChannelwiseQuantization*/ false,
+      /*skipQuantizeFCBias*/ true);
+}
+
+TEST_P(OperatorStatelessTest,
+       rowwiseQuantizedFCTestAsymmetric_Int8_BiasFloat32) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitBasicRowwiseFCTest, ElemKind::FloatTy,
+      ElemKind::Int8QTy, 0.06f, parCloneCountOpt,
+      /* convertToRowwiseQuantization */ true, quantization::Schema::Asymmetric,
+      /*biasElemKind*/ ElemKind::Int32QTy,
+      /*forceFP16AccumSLS*/ false,
+      /*convertToChannelwiseQuantization*/ false,
+      /*skipQuantizeFCBias*/ true);
+}
+
 static FunctionTensorPair
 createAndInitBasicSLWSTest(glow::PlaceholderBindings &bindings,
                            glow::ExecutionEngine &EE) {
