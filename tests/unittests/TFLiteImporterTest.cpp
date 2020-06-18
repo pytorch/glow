@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 #include "ImporterTestUtils.h"
-#include "glow/Base/TensorSerialization.h"
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Importer/TFLiteModelLoader.h"
 #include "gtest/gtest.h"
+
+#include <fstream>
 
 using namespace glow;
 
@@ -29,6 +30,20 @@ class TFLiteImporterTest : public ::testing::Test {};
 /// \p returns the full path of the TensorFlowLite model \p name.
 static std::string getModelPath(std::string name) {
   return "tests/models/tfliteModels/" + name;
+}
+
+/// Utility function to load a binary file from \p fileName into \p tensor.
+/// The binary files have a special format with an extra byte of '0' at the
+/// start of the file followed by the actual tensor binary content. The extra
+/// '0' leading byte was required in order for the GIT system to correctly
+/// recognize the files as being binary files.
+static void loadTensor(Tensor *tensor, const std::string &fileName) {
+  std::ifstream file;
+  file.open(fileName, std::ios::binary);
+  assert(file.is_open() && "Error opening tensor file!");
+  file.seekg(1);
+  file.read(tensor->getUnsafePtr(), tensor->getSizeInBytes());
+  file.close();
 }
 
 /// Utility function to load and run TensorFlowLite model named \p modelName.
@@ -68,9 +83,7 @@ static void loadAndRunModel(std::string modelName, float maxError = 1e-6) {
   for (const auto &inpPH : inputPH) {
     std::string inpFilename = dataBasename + ".inp" + std::to_string(inpIdx++);
     Tensor *inpT = bindings.get(inpPH);
-    TensorSerializationOptions opts;
-    opts.withType = false;
-    loadTensorFromBinaryFile(*inpT, inpFilename, opts);
+    loadTensor(inpT, inpFilename);
   }
 
   // Run model.
@@ -80,16 +93,14 @@ static void loadAndRunModel(std::string modelName, float maxError = 1e-6) {
   // Compare output data versus reference.
   size_t outIdx = 0;
   for (const auto &outPH : outputPH) {
-    std::string outFilename = dataBasename + ".out" + std::to_string(outIdx++);
+    std::string refFilename = dataBasename + ".out" + std::to_string(outIdx++);
 
     // Get output tensor.
     Tensor *outT = bindings.get(outPH);
 
     // Load reference tensor.
     Tensor refT(outT->getType());
-    TensorSerializationOptions opts;
-    opts.withType = false;
-    loadTensorFromBinaryFile(refT, outFilename, opts);
+    loadTensor(&refT, refFilename);
 
     // Compare.
     ASSERT_TRUE(outT->isEqual(refT, maxError, /* verbose */ true));

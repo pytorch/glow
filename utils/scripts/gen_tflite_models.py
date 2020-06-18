@@ -122,9 +122,13 @@ def save_model(model, filename):
     rm_dir(TEMP_DIR)
 
 
-# Function to save a tensor in binary format.
+# Function to save a tensor in binary format. In order for the GIT system
+# to correctly recognize these files as binary we will add a leading '0'
+# byte into the file.
 def save_tensor(tensor, filename):
-    tensor.tofile(os.path.join(OUT_DIR, filename))
+    byte_array = b'\x00' + tensor.tobytes(order='C')
+    with open(os.path.join(OUT_DIR, filename), 'wb') as fh:
+        fh.write(byte_array)
 
 
 # Create output directory.
