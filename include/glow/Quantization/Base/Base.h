@@ -201,6 +201,9 @@ struct QuantizationConfiguration {
   /// This allows specializing the bias quantization. Default is int32.
   ElemKind precisionBias{ElemKind::Int32QTy};
 
+  /// If true, don't apply quantization to FC bias inputs.
+  bool skipQuantizeFCBias{false};
+
   QuantizationConfiguration() = default;
   QuantizationConfiguration(llvm::ArrayRef<NodeProfilingInfo> i) : infos(i) {}
 };

@@ -401,4 +401,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "LayerNorm_Int8/0",
     "DequantizeFRWQ_Float/0",
     "DequantizeFRWQ_Float16/0",
+    "rowwiseQuantizedFCTestAsymmetric_Int8_BiasFloat32/0",
+    "rowwiseQuantizedFCTestSymmetric_Int8_BiasFloat32/0",
 };

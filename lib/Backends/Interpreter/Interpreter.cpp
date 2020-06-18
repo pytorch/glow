@@ -751,10 +751,11 @@ bool Interpreter::shouldLower(const Node *N) const {
   }
 }
 
-/// Quantize the given float \p bias as int32 using \p inputScale,
-/// weight \p scales and \p offset=0. \returns false if the bias was already
-/// quantized and thus no change was made and true otherwise.
-static bool quantizeFloatBias(Function *F, FullyConnectedNode &fullyConnected) {
+/// Quantize the float \p bias for the given FullyConnectedNode as int32 using
+/// \p inputScale, weight \p scales and \p offset=0. \returns false if the bias
+/// was already quantized and thus no change was made and true otherwise.
+static bool quantizeFCFloatBias(Function *F,
+                                FullyConnectedNode &fullyConnected) {
   if (fullyConnected.getBias().getType()->isQuantizedType() ||
       (!fullyConnected.getWeights().getType()->isQuantizedType())) {
     return false;
@@ -763,8 +764,8 @@ static bool quantizeFloatBias(Function *F, FullyConnectedNode &fullyConnected) {
          "Bias type must be a float in order to quantize it.");
   Constant *biasC =
       llvm::dyn_cast<Constant>(fullyConnected.getBias().getNode());
-  assert(biasC && "bias input to ChannelwiseQuantizedConvolutionNode "
-                  "must be a Constant in order to quantize the bias");
+  assert(biasC && "bias input to FullyConnectedNode must be Constant in order "
+                  "to quantize the bias");
   const auto &biasUnquantizedH = biasC->getPayload().getHandle<float>();
   // biasQuantizedT is Int32QTy
   const float inputScale = fullyConnected.getInput().getType()->getScale();
@@ -787,6 +788,48 @@ static bool quantizeFloatBias(Function *F, FullyConnectedNode &fullyConnected) {
       fullyConnected.getWeights(), biasQuantizedC,
       fullyConnected.getResult().getType(), /* axis doens't matter */ 1);
   fullyConnected.getResult().replaceAllUsesOfWith(newFullyConnectedNode);
+  return true;
+}
+
+/// Quantize the float \p bias for the given RowwiseQuantizedFullyConnectedNode
+/// as int32. \returns false if the bias was already quantized and thus no
+/// change was made and true otherwise.
+static bool quantizeRQFCFloatBias(Function *F,
+                                  RowwiseQuantizedFullyConnectedNode &rqfc) {
+  if (rqfc.getBias().getType()->isQuantizedType() ||
+      (!rqfc.getWeights().getType()->isQuantizedType())) {
+    return false;
+  }
+  assert(rqfc.getBias().getElementType() == ElemKind::FloatTy &&
+         "Bias type must be a float in order to quantize it.");
+  Constant *biasC = llvm::dyn_cast<Constant>(rqfc.getBias().getNode());
+  assert(biasC && "bias input to RowwiseQuantizedFullyConnectedNode must be a "
+                  "Constant in order to quantize the bias");
+
+  auto TQPs = getTensorQuantizationParams(
+      biasC->getPayload(), quantization::Schema::Asymmetric, ElemKind::Int8QTy,
+      0, biasC->dims()[0]);
+
+  DCHECK_EQ(TQPs.size(), 1) << "Should only be one dimension to quantize on";
+
+  auto biasQuantizedT =
+      quantization::quantizeTensor(biasC->getPayload(), TQPs[0]);
+
+  auto biasQuantizedC = F->getParent()->createConstant(
+      biasC->getName(), std::move(biasQuantizedT));
+
+  Constant *weights = llvm::dyn_cast<Constant>(rqfc.getWeights().getNode());
+  Constant *scales = llvm::dyn_cast<Constant>(rqfc.getScales().getNode());
+  Constant *offsets = llvm::dyn_cast<Constant>(rqfc.getOffsets().getNode());
+
+  DCHECK(weights);
+  DCHECK(scales);
+  DCHECK(offsets);
+
+  auto newRQFC = F->createRowwiseQuantizedFullyConnected(
+      rqfc.getName(), rqfc.getInput(), weights, scales, offsets, biasQuantizedC,
+      rqfc.getResult().getType());
+  rqfc.getResult().replaceAllUsesOfWith(newRQFC);
   return true;
 }
 
@@ -868,7 +911,10 @@ Expected<bool> Interpreter::transformPostLowering(
       changed |= channelwiseQuantizeFloatBias(F, *channelwiseConv);
     } else if (auto *fullyConnected =
                    llvm::dyn_cast<FullyConnectedNode>(&node)) {
-      changed |= quantizeFloatBias(F, *fullyConnected);
+      changed |= quantizeFCFloatBias(F, *fullyConnected);
+    } else if (auto *rowwiseFC =
+                   llvm::dyn_cast<RowwiseQuantizedFullyConnectedNode>(&node)) {
+      changed |= quantizeRQFCFloatBias(F, *rowwiseFC);
     }
   }
   return changed;

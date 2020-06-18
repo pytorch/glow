@@ -1380,17 +1380,14 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   c10::optional<at::Tensor> ptBiasTensorTmp;
   std::tie(ptWeightTensor, ptBiasTensorTmp) = packed_params->unpack();
 
-  bool isRowwiseQuantized = ptWeightTensor.is_quantized() &&
-                            ptWeightTensor.qscheme() == at::kPerChannelAffine;
-
   // unpacked weights
   auto weightTensor = ptTensorToGlowTensor(ptWeightTensor);
   glow::Constant *weightConstant = F_.getParent()->createConstant(
       "quantized_linear_weights", std::move(weightTensor));
   weightConstant->ensureIsOwned();
+  RETURN_ERR_IF_NOT(weightConstant->dims().size() == 2,
+                    "Expected 2d Linear weights");
   auto weight = weightConstant->getOutput();
-  weight = rescaleUIntToInt(weight);
-  RETURN_ERR_IF_NOT(weight.dims().size() == 2, "Expected 2d Linear weights");
 
   // unpacked bias
   glow::Tensor biasTensor;
@@ -1402,25 +1399,12 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
     biasTensor.zero();
   }
 
-  // Choose bias quantization params and quantize it.
   glow::Constant *biasConstant = F_.getParent()->createConstant(
       "quantized_linear_bias", std::move(biasTensor));
   biasConstant->ensureIsOwned();
   RETURN_ERR_IF_NOT(biasConstant, "quantized::linear bias must be constant");
-  const auto biasHandle = biasConstant->getPayload().getHandle<float>();
-  const auto biasMinMaxIdx = biasHandle.minMaxArg();
-
-  const auto biasQParams = chooseQuantizationParams(
-      {biasHandle.raw(biasMinMaxIdx.first),
-       biasHandle.raw(biasMinMaxIdx.second)},
-      glow::quantization::Schema::Asymmetric, glow::ElemKind::Int32QTy);
 
   auto bias = biasConstant->getOutput();
-
-  auto biasType =
-      F_.getParent()->uniqueType(glow::ElemKind::Int32QTy, bias.dims(),
-                                 biasQParams.scale, biasQParams.offset);
-  bias = F_.createQuantize("quantize_bias", bias, biasType);
 
   float outScale;
   ASSIGN_VALUE_OR_RETURN_ERR(outScale,
@@ -1435,6 +1419,10 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy,
                                           {input.dims()[0], weight.dims()[0]},
                                           outScale, outZeroPoint - OFFSETSHIFT);
+
+  bool isRowwiseQuantized = ptWeightTensor.is_quantized() &&
+                            ptWeightTensor.qscheme() == at::kPerChannelAffine;
+
   if (isRowwiseQuantized) {
     // extract qparams from ptWeightTensor.
     // Notice since the memory of qparams may not be continous
@@ -1473,6 +1461,8 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
         outTy);
     return addValueMapping(outputs[0], rowwise_fc->getResult());
   } else {
+    weight = rescaleUIntToInt(weight);
+
     weight = F_.createTranspose("weight_transpose", weight, {1, 0});
     auto fc =
         F_.createFullyConnected("quantized_fc", input, weight, bias, outTy);

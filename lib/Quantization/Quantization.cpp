@@ -250,6 +250,10 @@ protected:
           getTargetTypeForInput(use, ConvTransposeNode::FilterIdx));
     } else if (use.getKind() == glow::Kinded::Kind::FullyConnectedNodeKind &&
                idx == FullyConnectedNode::BiasIdx) {
+      // Return the original type if we don't want to convert FC biases.
+      if (skipQuantizeFCBias_) {
+        return val.getType();
+      }
       // Get the input and weights types. This ensures the types will be
       // quantized. This is often the case when calling into this function from
       // canConvert(), as we have not yet converted the inputs.
@@ -678,6 +682,9 @@ private:
   /// This allows specializing the bias quantization.
   const ElemKind quantizationPrecisionBias_;
 
+  // If true, don't apply quantization to FC bias inputs.
+  const bool skipQuantizeFCBias_;
+
 public:
   /// Creates a function quantizer for function \p F using the quantization
   /// configuration \p quantConfig. This method quantizes as many nodes as
@@ -694,7 +701,8 @@ public:
         quantizationPrecision_(quantConfig.precision),
         doNotQuantizeKinds_(doNotQuantizeKinds), loweredMap_(loweredMap),
         assertAllNodesQuantized_(quantConfig.assertAllNodesQuantized),
-        quantizationPrecisionBias_(quantConfig.precisionBias) {
+        quantizationPrecisionBias_(quantConfig.precisionBias),
+        skipQuantizeFCBias_(quantConfig.skipQuantizeFCBias) {
 
     // Compute the TensorQuantizationParams using the profiling infos.
     auto quantizationInfos =
@@ -729,7 +737,7 @@ public:
       // converted into:
       // [fp32 input] [fp32 weights] [fp32 bias]
       //      |              |           |
-      // [QuantizeNode] [QuantizeNode] [QuantizeNode]
+      // [QuantizeNode] [QuantizeNode] [QuantizeNode (optional)]
       //      \              |           /
       // [            FullyConnectedNode            ]
       //                     |
@@ -779,7 +787,6 @@ public:
         // representation in MatMul + BatchedAdd form).
         if (input.getType()->isQuantizedType() &&
             llvm::isa<QuantizeNode>(weights.getNode()) &&
-            bias.getType()->isQuantizedType() &&
             result.getType()->isQuantizedType()) {
           auto *wq = llvm::dyn_cast<QuantizeNode>(weights.getNode());
           // For RowwiseQuantizedFullyConnected, the weights need to be
