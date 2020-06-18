@@ -621,6 +621,90 @@ static void libjit_flip_generic(const T *inW, T *outW, const dim_t *dims,
   }
 }
 
+template <typename inpT, typename outT>
+static void libjit_arg_max_generic(const inpT *inpW, outT *outW,
+                                   const dim_t *dims, size_t numDims,
+                                   size_t axis) {
+
+  // Product of outer dimensions excluding the axis dimension.
+  dim_t outerLen = 1;
+  for (dim_t idx = 0; idx < axis; ++idx) {
+    outerLen *= dims[idx];
+  }
+
+  // Axis dimension length.
+  dim_t axisLen = dims[axis];
+
+  // Product of inner dimensions excluding the axis dimension.
+  dim_t innerLen = 1;
+  for (dim_t idx = axis + 1; idx < numDims; ++idx) {
+    innerLen *= dims[idx];
+  }
+
+  // Traverse data such that output is written linearly.
+  const inpT *inpPtr = inpW;
+  outT *outPtr = outW;
+  for (dim_t outerIdx = 0; outerIdx < outerLen; ++outerIdx) {
+    for (dim_t innerIdx = 0; innerIdx < innerLen; ++innerIdx) {
+      inpT maxVal = std::numeric_limits<inpT>::lowest();
+      outT maxIdx = 0;
+      for (dim_t axisIdx = 0; axisIdx < axisLen; ++axisIdx) {
+        inpT inpVal = *inpPtr;
+        if (inpVal > maxVal) {
+          maxVal = inpVal;
+          maxIdx = axisIdx;
+        }
+        inpPtr += innerLen;
+      }
+      inpPtr = inpPtr - axisLen * innerLen + 1;
+      *outPtr++ = maxIdx;
+    }
+    inpPtr = inpPtr - innerLen + axisLen * innerLen;
+  }
+}
+
+template <typename inpT, typename outT>
+static void libjit_arg_min_generic(const inpT *inpW, outT *outW,
+                                   const dim_t *dims, size_t numDims,
+                                   size_t axis) {
+
+  // Product of outer dimensions excluding the axis dimension.
+  dim_t outerLen = 1;
+  for (dim_t idx = 0; idx < axis; ++idx) {
+    outerLen *= dims[idx];
+  }
+
+  // Axis dimension length.
+  dim_t axisLen = dims[axis];
+
+  // Product of inner dimensions excluding the axis dimension.
+  dim_t innerLen = 1;
+  for (dim_t idx = axis + 1; idx < numDims; ++idx) {
+    innerLen *= dims[idx];
+  }
+
+  // Traverse data such that output is written linearly.
+  const inpT *inpPtr = inpW;
+  outT *outPtr = outW;
+  for (dim_t outerIdx = 0; outerIdx < outerLen; ++outerIdx) {
+    for (dim_t innerIdx = 0; innerIdx < innerLen; ++innerIdx) {
+      inpT minVal = std::numeric_limits<inpT>::max();
+      outT minIdx = 0;
+      for (dim_t axisIdx = 0; axisIdx < axisLen; ++axisIdx) {
+        inpT inpVal = *inpPtr;
+        if (inpVal < minVal) {
+          minVal = inpVal;
+          minIdx = axisIdx;
+        }
+        inpPtr += innerLen;
+      }
+      inpPtr = inpPtr - axisLen * innerLen + 1;
+      *outPtr++ = minIdx;
+    }
+    inpPtr = inpPtr - innerLen + axisLen * innerLen;
+  }
+}
+
 template <typename T>
 static void libjit_max_pool_generic(const T *inW, T *outW, const dim_t *inWdims,
                                     const dim_t *outWdims, dim_t *kernelSizes,
@@ -726,56 +810,6 @@ libjit_max_pool_argmax_generic(const T *inW, T *outW, T2 *argmax,
       }   // W
     }     // H
   }       // N
-}
-
-template <typename T, typename T2>
-static void libjit_arg_max_generic(const T *inW, T2 *outW, const dim_t *inWdims,
-                                   size_t axis) {
-
-  dim_t a, b, c, d = 0;
-
-  dim_t *dim[4];
-  assert((axis >= 0) && (axis <= 3) && "Axis values should be between 0 and 3");
-  dim[(axis + 1) % 4] = &a;
-  dim[(axis + 2) % 4] = &b;
-  dim[(axis + 3) % 4] = &c;
-  dim[axis] = &d;
-
-  dim_t odim[4] = {inWdims[0], inWdims[1], inWdims[2], inWdims[3]};
-  odim[axis] = 1;
-
-  // Iterate over axes != argmax axis.
-  for (a = 0; a < inWdims[(axis + 1) % 4]; a++) {
-    for (b = 0; b < inWdims[(axis + 2) % 4]; b++) {
-      for (c = 0; c < inWdims[(axis + 3) % 4]; c++) {
-
-        T max = std::numeric_limits<T>::min();
-        if (axis == 0) {
-          max = inW[libjit_getXYZW(inWdims, 0, *dim[1], *dim[2], *dim[3])];
-        } else if (axis == 1) {
-          max = inW[libjit_getXYZW(inWdims, *dim[0], 0, *dim[2], *dim[3])];
-        } else if (axis == 2) {
-          max = inW[libjit_getXYZW(inWdims, *dim[0], *dim[1], 0, *dim[3])];
-        } else {
-          max = inW[libjit_getXYZW(inWdims, *dim[0], *dim[1], *dim[2], 0)];
-        }
-
-        dim_t maxi = 0;
-
-        // Iterate over argmax axis.
-        for (d = 0; d < inWdims[axis]; d++) {
-          T elem =
-              inW[libjit_getXYZW(inWdims, *dim[0], *dim[1], *dim[2], *dim[3])];
-          if (elem > max) {
-            max = elem;
-            maxi = d;
-          }
-        }
-        *dim[axis] = 0;
-        outW[libjit_getXYZW(odim, *dim[0], *dim[1], *dim[2], *dim[3])] = maxi;
-      }
-    }
-  }
 }
 
 template <typename T>
@@ -1477,6 +1511,27 @@ DEFINE_DATA_PARALLEL_KERNEL(libjit_element_pow_kernel_f, float,
                             pow(LHS[idx], RHS[idx]))
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_log_kernel_f, float, log(LHS[idx]))
 DEFINE_DATA_PARALLEL_KERNEL(libjit_element_exp_kernel_f, float, exp(LHS[idx]))
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_abs_kernel_f, float,
+                            std::abs(LHS[idx]))
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_neg_kernel_f, float, -LHS[idx])
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_floor_kernel_f, float,
+                            std::floor(LHS[idx]))
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_ceil_kernel_f, float,
+                            std::ceil(LHS[idx]))
+// Rounding mode required by ONNX, Numpy, TensorFlow is round to even which
+// rounds to nearest even integer those values with fractional part 0.5.
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_round_kernel_f, float,
+                            std::nearbyintf(LHS[idx]))
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_sqrt_kernel_f, float,
+                            std::sqrt(LHS[idx]))
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_rsqrt_kernel_f, float,
+                            1 / std::sqrt(LHS[idx]))
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_reciprocal_kernel_f, float,
+                            1 / LHS[idx])
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_sin_kernel_f, float,
+                            std::sin(LHS[idx]))
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_cos_kernel_f, float,
+                            std::cos(LHS[idx]))
 DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_element_add_kernel_i8, int8_t,
                                       lhs + rhs)
 DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_element_sub_kernel_i8, int8_t,
@@ -1528,51 +1583,67 @@ int32_t libjit_element_modulo_kernel_no_sign_follow_i32(dim_t idx,
   return input[idx] % divisor;
 }
 
-int8_t libjit_element_cmp_eq_kernel_u(dim_t idx, const size_t *LHS,
-                                      const size_t *RHS) {
-  return LHS[idx] == RHS[idx] ? 1 : 0;
+//===----------------------------------------------------------------------===//
+//                              Logical operations
+//===----------------------------------------------------------------------===//
+int8_t libjit_element_not_kernel_b(dim_t idx, const bool *input) {
+  return !input[idx];
 }
 
-int8_t libjit_element_cmp_eq_kernel_i32(dim_t idx, const int32_t *LHS,
-                                        const int32_t *RHS) {
-  return LHS[idx] == RHS[idx] ? 1 : 0;
+int8_t libjit_element_and_kernel_b(dim_t idx, const bool *LHS,
+                                   const bool *RHS) {
+  return LHS[idx] && RHS[idx];
 }
+
+int8_t libjit_element_or_kernel_b(dim_t idx, const bool *LHS, const bool *RHS) {
+  return LHS[idx] || RHS[idx];
+}
+
+int8_t libjit_element_xor_kernel_b(dim_t idx, const bool *LHS,
+                                   const bool *RHS) {
+  return LHS[idx] ^ RHS[idx];
+}
+
+//===----------------------------------------------------------------------===//
+//                              Compare operations
+//===----------------------------------------------------------------------===//
+#define DEFINE_CMP_KERNEL_QUANTIZED(name, type, cmp)                           \
+  int8_t name(dim_t idx, const type *LHS, const type *RHS, int32_t lhsOffset,  \
+              int32_t rhsOffset, int32_t pre, int32_t post, int32_t scale) {   \
+    int32_t lhs = LHS[idx] - lhsOffset;                                        \
+    int32_t rhs = RHS[idx] - rhsOffset;                                        \
+    return (libjit_scale_i32i8(lhs, pre, post, scale, 0) cmp rhs) ? 1 : 0;     \
+  }
+DEFINE_CMP_KERNEL_QUANTIZED(libjit_element_cmp_eq_kernel_i8, int8_t, ==)
+DEFINE_CMP_KERNEL_QUANTIZED(libjit_element_cmp_neq_kernel_i8, int8_t, !=)
+DEFINE_CMP_KERNEL_QUANTIZED(libjit_element_cmp_lt_kernel_i8, int8_t, <)
+DEFINE_CMP_KERNEL_QUANTIZED(libjit_element_cmp_lte_kernel_i8, int8_t, <=)
+#undef DEFINE_CMP_KERNEL_QUANTIZED
+
+#define DEFINE_CMP_KERNEL_NON_QUANTIZED(name, type, cmp)                       \
+  int8_t name(dim_t idx, const type *LHS, const type *RHS) {                   \
+    return (LHS[idx] cmp RHS[idx]) ? 1 : 0;                                    \
+  }
+
+DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_eq_kernel_f, float, ==)
+DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_eq_kernel_i32, int32_t, ==)
+DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_eq_kernel_u, size_t, ==)
+
+DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_neq_kernel_f, float, !=)
+DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_neq_kernel_i32, int32_t, !=)
+DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_neq_kernel_u, size_t, !=)
+
+DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_lt_kernel_f, float, <)
+DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_lt_kernel_i32, int32_t, <)
+DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_lt_kernel_u, size_t, <)
+
+DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_lte_kernel_f, float, <=)
+DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_lte_kernel_i32, int32_t, <=)
+DEFINE_CMP_KERNEL_NON_QUANTIZED(libjit_element_cmp_lte_kernel_u, size_t, <=)
+#undef DEFINE_CMP_KERNEL_NON_QUANTIZED
 
 int8_t libjit_element_is_nan_kernel_f(dim_t idx, const float *input) {
   return std::isnan(input[idx]) ? 1 : 0;
-}
-
-int8_t libjit_element_cmp_lte_kernel_f(dim_t idx, const float *LHS,
-                                       const float *RHS) {
-  return LHS[idx] <= RHS[idx] ? 1 : 0;
-}
-
-int8_t libjit_element_cmp_lte_kernel_i8(dim_t idx, const int8_t *LHS,
-                                        const int8_t *RHS, int32_t lhsOffset,
-                                        int32_t rhsOffset, int32_t pre,
-                                        int32_t post, int32_t scale) {
-  int32_t lhs = LHS[idx] - lhsOffset;
-  int32_t rhs = RHS[idx] - rhsOffset;
-  return libjit_scale_i32i8(lhs, pre, post, scale, 0) <= rhs ? 1 : 0;
-}
-
-int8_t libjit_element_cmp_lt_kernel_f(dim_t idx, const float *LHS,
-                                      const float *RHS) {
-  return LHS[idx] < RHS[idx] ? 1 : 0;
-}
-
-int8_t libjit_element_cmp_lt_kernel_i32(dim_t idx, const int32_t *LHS,
-                                        const int32_t *RHS) {
-  return LHS[idx] < RHS[idx] ? 1 : 0;
-}
-
-int8_t libjit_element_cmp_lt_kernel_i8(dim_t idx, const int8_t *LHS,
-                                       const int8_t *RHS, int32_t lhsOffset,
-                                       int32_t rhsOffset, int32_t pre,
-                                       int32_t post, int32_t scale) {
-  int32_t lhs = LHS[idx] - lhsOffset;
-  int32_t rhs = RHS[idx] - rhsOffset;
-  return libjit_scale_i32i8(lhs, pre, post, scale, 0) < rhs ? 1 : 0;
 }
 
 // Tanh cannot be vectorized by LLVM yet. Therefore we use the following
@@ -2258,23 +2329,45 @@ void libjit_max_pool_argmax_f_i32(const float *inW, float *outW,
 }
 
 void libjit_arg_max_i8_u(const int8_t *inW, int64_t *outW, const dim_t *inWdims,
-                         size_t axis) {
-  libjit_arg_max_generic(inW, outW, inWdims, axis);
+                         size_t inWNumDims, size_t axis) {
+  libjit_arg_max_generic(inW, outW, inWdims, inWNumDims, axis);
 }
 
 void libjit_arg_max_i8_i32(const int8_t *inW, int32_t *outW,
-                           const dim_t *inWdims, size_t axis) {
-  libjit_arg_max_generic(inW, outW, inWdims, axis);
+                           const dim_t *inWdims, size_t inWNumDims,
+                           size_t axis) {
+  libjit_arg_max_generic(inW, outW, inWdims, inWNumDims, axis);
 }
 
 void libjit_arg_max_f_u(const float *inW, int64_t *outW, const dim_t *inWdims,
-                        size_t axis) {
-  libjit_arg_max_generic(inW, outW, inWdims, axis);
+                        size_t inWNumDims, size_t axis) {
+  libjit_arg_max_generic(inW, outW, inWdims, inWNumDims, axis);
 }
 
 void libjit_arg_max_f_i32(const float *inW, int32_t *outW, const dim_t *inWdims,
-                          size_t axis) {
-  libjit_arg_max_generic(inW, outW, inWdims, axis);
+                          size_t inWNumDims, size_t axis) {
+  libjit_arg_max_generic(inW, outW, inWdims, inWNumDims, axis);
+}
+
+void libjit_arg_min_i8_u(const int8_t *inW, int64_t *outW, const dim_t *inWdims,
+                         size_t inWNumDims, size_t axis) {
+  libjit_arg_min_generic(inW, outW, inWdims, inWNumDims, axis);
+}
+
+void libjit_arg_min_i8_i32(const int8_t *inW, int32_t *outW,
+                           const dim_t *inWdims, size_t inWNumDims,
+                           size_t axis) {
+  libjit_arg_min_generic(inW, outW, inWdims, inWNumDims, axis);
+}
+
+void libjit_arg_min_f_u(const float *inW, int64_t *outW, const dim_t *inWdims,
+                        size_t inWNumDims, size_t axis) {
+  libjit_arg_min_generic(inW, outW, inWdims, inWNumDims, axis);
+}
+
+void libjit_arg_min_f_i32(const float *inW, int32_t *outW, const dim_t *inWdims,
+                          size_t inWNumDims, size_t axis) {
+  libjit_arg_min_generic(inW, outW, inWdims, inWNumDims, axis);
 }
 
 void libjit_max_pool_argmax_grad_f_u(float *inG, const float *outG,

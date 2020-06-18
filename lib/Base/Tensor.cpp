@@ -490,6 +490,25 @@ ShapeVector glow::expandDimsToMax(llvm::ArrayRef<dim_t> currDims) {
   return newDims;
 }
 
+ShapeVector glow::reduceDims(llvm::ArrayRef<dim_t> dims,
+                             llvm::ArrayRef<unsigned_t> axes, bool keepDims) {
+  ShapeVector newDims;
+  for (unsigned_t dim = 0, end = dims.size(); dim < end; ++dim) {
+    auto it = std::find(axes.begin(), axes.end(), dim);
+    bool dimReduced = (it != axes.end());
+    if (dimReduced) {
+      if (keepDims) {
+        newDims.push_back(1);
+      } else {
+        continue;
+      }
+    } else {
+      newDims.push_back(dims[dim]);
+    }
+  }
+  return newDims;
+}
+
 void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
   assert(!isDeviceResident() && "Tensor must reside on host to access data.");
   switch (init) {

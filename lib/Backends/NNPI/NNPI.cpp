@@ -494,7 +494,7 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
          ElemKind::Int32ITy, ElemKind::Int64ITy});
 
   case Kinded::Kind::ArgMaxNodeKind:
-    return (NI.getOutElemTy(ArgMaxNode::ArgmaxIdx) == ElemKind::Int64ITy);
+    return (NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int64ITy);
 
   case Kinded::Kind::LogitNodeKind: {
     return NI.allInputsAndOutputsHaveSameElemKind(

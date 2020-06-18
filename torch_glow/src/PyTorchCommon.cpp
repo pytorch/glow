@@ -296,10 +296,10 @@ at::Tensor convertQuantizedToDtype(at::Tensor ptTensor, c10::ScalarType dtype) {
   // We need to manually cast ptTensor to targetDQType, then make it quantized
   // tensor. In PyTorch, int8 is char and uint8 is byte.
   if (dtype == at::kQUInt8 && ptTensor.scalar_type() == at::kQInt8) {
-    offsetShift = OFFSETSHIFT;
+    offsetShift = UINT8_TO_INT8_SHIFT;
     targetDQType = at::kByte;
   } else if (dtype == at::kQInt8 && ptTensor.scalar_type() == at::kQUInt8) {
-    offsetShift = -OFFSETSHIFT;
+    offsetShift = -UINT8_TO_INT8_SHIFT;
     targetDQType = at::kChar;
   } else {
     LOG(FATAL) << "Can not reach here.";

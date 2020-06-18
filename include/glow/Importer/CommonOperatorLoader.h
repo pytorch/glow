@@ -34,6 +34,17 @@
 #include <vector>
 
 namespace glow {
+
+/// Some model formats (Caffe2, PyTorch, TensorFlowLite) allow defining weights
+/// and activations in UINT8 format. Since Glow supports only INT8 weights and
+/// activations we do a transformation from UINT8 to INT8 quantized data by
+/// subtracting the value 128 from both the quantized values and the offset:
+///   val(int8) = val(uint8) - 128
+///   scale(int8) = scale(uint8) (scale value is preserved)
+///   offset(int8) = scale(uint8) - 128
+/// The constant definition below defines the value used for subtraction.
+constexpr int32_t UINT8_TO_INT8_SHIFT = 128;
+
 /// Result of loading a weight, potentially with additional offsets and
 /// scales tensors containing quantization parameters only if the loaded weight
 /// was found to have multiple quantization parameters.
@@ -120,9 +131,6 @@ class CommonOperatorLoader : public ProtobufLoader {
       return Expected<LoadWeightResult>(std::move(result));
     }
 
-    // This is a caffe2 offset shift.
-    constexpr int32_t OFFSETSHIFT = 128;
-
     // Load quantized tensor with either a single or multiple qparams.
     float scale = 1.0;
     int32_t offset = 0;
@@ -142,15 +150,16 @@ class CommonOperatorLoader : public ProtobufLoader {
 
     if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
       // Must copy the weights here because we will need to modify them by
-      // adjusting for OFFSETSHIFT.
-      result.type = Type(ElemKind::Int8QTy, dims, scale, offset - OFFSETSHIFT);
+      // adjusting for UINT8_TO_INT8_SHIFT.
+      result.type =
+          Type(ElemKind::Int8QTy, dims, scale, offset - UINT8_TO_INT8_SHIFT);
       if (!in.isOffline) {
         result.t->reset(result.type);
 
         auto TH = result.t->getHandle<int8_t>();
         uint8_t *data = (uint8_t *)in.buffer;
         for (size_t i = 0; i < TH.size(); ++i) {
-          TH.raw(i) = (int8_t)(data[i] - OFFSETSHIFT);
+          TH.raw(i) = (int8_t)(data[i] - UINT8_TO_INT8_SHIFT);
         }
       }
     } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {

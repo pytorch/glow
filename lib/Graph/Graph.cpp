@@ -1174,8 +1174,14 @@ TanhNode *Function::createTanh(llvm::StringRef name, NodeValue input) {
 }
 
 SoftMaxNode *Function::createSoftMax(llvm::StringRef name, NodeValue input,
-                                     NodeValue selected, TypeRef outTy) {
-  // By default, pick the input type
+                                     NodeValue selected, TypeRef outTy,
+                                     float beta) {
+  // Create input multiplier with beta.
+  if (beta != 1.0) {
+    auto *splat = createSplat(name, input.getType(), 1);
+    input = createMul(name, input, splat);
+  }
+  // By default, pick the input type.
   if (!outTy) {
     outTy = getParent()->uniqueType(*input.getType());
   }
@@ -1596,6 +1602,33 @@ ModuloNode *Function::createModulo(llvm::StringRef name, NodeValue input,
   return addNode(new ModuloNode(name, OT, input, divisor, signFollowDivisor));
 }
 
+NotNode *Function::createNot(llvm::StringRef name, NodeValue input) {
+  TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, input.dims());
+  return addNode(new NotNode(name, OT, input));
+}
+
+#define UNARY_ARITHMETIC_FUN_DEF(NODE_NAME_)                                   \
+  NODE_NAME_##Node *Function::create##NODE_NAME_(llvm::StringRef name,         \
+                                                 NodeValue input) {            \
+    return create##NODE_NAME_(name, input.getType(), input);                   \
+  }                                                                            \
+  NODE_NAME_##Node *Function::create##NODE_NAME_(llvm::StringRef name,         \
+                                                 TypeRef T, NodeValue input) { \
+    TypeRef OT = getParent()->uniqueType(*T);                                  \
+    return addNode(new NODE_NAME_##Node(name, OT, input));                     \
+  }
+UNARY_ARITHMETIC_FUN_DEF(Abs)
+UNARY_ARITHMETIC_FUN_DEF(Neg)
+UNARY_ARITHMETIC_FUN_DEF(Floor)
+UNARY_ARITHMETIC_FUN_DEF(Ceil)
+UNARY_ARITHMETIC_FUN_DEF(Round)
+UNARY_ARITHMETIC_FUN_DEF(Sqrt)
+UNARY_ARITHMETIC_FUN_DEF(Rsqrt)
+UNARY_ARITHMETIC_FUN_DEF(Reciprocal)
+UNARY_ARITHMETIC_FUN_DEF(Sin)
+UNARY_ARITHMETIC_FUN_DEF(Cos)
+#undef UNARY_ARITHMETIC_FUN_DEF
+
 #define ARITHMETIC_FUN_DEF(NODE_NAME_)                                         \
   NODE_NAME_##Node *Function::create##NODE_NAME_(                              \
       llvm::StringRef name, NodeValue LHS, NodeValue RHS) {                    \
@@ -1608,7 +1641,6 @@ ModuloNode *Function::createModulo(llvm::StringRef name, NodeValue input,
     TypeRef OT = getParent()->uniqueType(*T);                                  \
     return addNode(new NODE_NAME_##Node(name, OT, LHS, RHS));                  \
   }
-
 ARITHMETIC_FUN_DEF(Add);
 ARITHMETIC_FUN_DEF(Mul);
 ARITHMETIC_FUN_DEF(Sub);
@@ -1617,6 +1649,26 @@ ARITHMETIC_FUN_DEF(Max);
 ARITHMETIC_FUN_DEF(Min);
 ARITHMETIC_FUN_DEF(Pow);
 #undef ARITHMETIC_FUN_DEF
+
+AndNode *Function::createAnd(llvm::StringRef name, NodeValue LHS,
+                             NodeValue RHS) {
+  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
+  TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
+  return addNode(new AndNode(name, OT, LHS, RHS));
+}
+
+OrNode *Function::createOr(llvm::StringRef name, NodeValue LHS, NodeValue RHS) {
+  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
+  TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
+  return addNode(new OrNode(name, OT, LHS, RHS));
+}
+
+XorNode *Function::createXor(llvm::StringRef name, NodeValue LHS,
+                             NodeValue RHS) {
+  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
+  TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
+  return addNode(new XorNode(name, OT, LHS, RHS));
+}
 
 CmpLTENode *Function::createCmpLTE(llvm::StringRef name, NodeValue LHS,
                                    NodeValue RHS) {
@@ -1632,11 +1684,54 @@ CmpLTNode *Function::createCmpLT(llvm::StringRef name, NodeValue LHS,
   return addNode(new CmpLTNode(name, OT, LHS, RHS));
 }
 
+CmpLTENode *Function::createCmpGTE(llvm::StringRef name, NodeValue LHS,
+                                   NodeValue RHS) {
+  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
+  TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
+  return addNode(new CmpLTENode(name, OT, RHS, LHS));
+}
+
+CmpLTNode *Function::createCmpGT(llvm::StringRef name, NodeValue LHS,
+                                 NodeValue RHS) {
+  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
+  TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
+  return addNode(new CmpLTNode(name, OT, RHS, LHS));
+}
+
 CmpEQNode *Function::createCmpEQ(llvm::StringRef name, NodeValue LHS,
                                  NodeValue RHS) {
   assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
   TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
   return addNode(new CmpEQNode(name, OT, LHS, RHS));
+}
+
+CmpNEQNode *Function::createCmpNEQ(llvm::StringRef name, NodeValue LHS,
+                                   NodeValue RHS) {
+  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
+  TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
+  return addNode(new CmpNEQNode(name, OT, LHS, RHS));
+}
+
+MulNode *Function::createSquare(llvm::StringRef name, NodeValue input) {
+  return createMul(name, input, input);
+}
+
+MulNode *Function::createSquare(llvm::StringRef name, TypeRef outTy,
+                                NodeValue input) {
+  return createMul(name, outTy, input, input);
+}
+
+PReluNode *Function::createLeakyRELU(llvm::StringRef name, NodeValue input,
+                                     float alpha) {
+  return createLeakyRELU(name, input.getType(), input, alpha);
+}
+
+PReluNode *Function::createLeakyRELU(llvm::StringRef name, TypeRef outTy,
+                                     NodeValue input, float alpha) {
+  auto splatType = getParent()->uniqueType(*(input.getType()));
+  SplatNode *splat = createSplat(name.str() + ".alpha", splatType, alpha);
+  auto OT = getParent()->uniqueType(*outTy);
+  return createPRELU(name, input, splat, OT);
 }
 
 IsNaNNode *Function::createIsNaN(llvm::StringRef name, NodeValue input) {
@@ -1787,7 +1882,7 @@ Function::createBatchedReduceMean(llvm::StringRef name, NodeValue batch,
                                   llvm::ArrayRef<unsigned_t> axes) {
   // Create new shape with specified dimensions either reduced or removed.
   auto outDims = getNewShapeWithoutAxes(batch.dims(), axes);
-  auto OT = getParent()->uniqueType(batch.getType()->getElementType(), outDims);
+  auto OT = getParent()->uniqueTypeWithNewShape(batch.getType(), outDims);
   return createBatchedReduceMean(name, OT, batch, axes);
 }
 
@@ -2285,18 +2380,19 @@ TopKNode *Function::createTopK(llvm::StringRef name, NodeValue input,
 }
 
 ArgMaxNode *Function::createArgMax(llvm::StringRef name, NodeValue input,
-                                   unsigned_t axis, bool keepDims) {
-  auto inDims = input.dims();
-  ShapeVector newDims;
-  for (size_t i = 0, e = inDims.size(); i < e; i++) {
-    if (i == axis && !keepDims) {
-      continue;
-    } else {
-      newDims.push_back(i == axis ? 1 : inDims[i]);
-    }
-  }
-  auto TR = getParent()->uniqueType(ElemKind::Int64ITy, newDims);
-  return addNode(new ArgMaxNode(name, TR, input, axis, keepDims));
+                                   unsigned_t axis, bool keepDims,
+                                   ElemKind elemTy) {
+  ShapeVector outDims = reduceDims(input.dims(), {axis}, keepDims);
+  auto OT = getParent()->uniqueType(elemTy, outDims);
+  return addNode(new ArgMaxNode(name, OT, input, axis, keepDims));
+}
+
+ArgMinNode *Function::createArgMin(llvm::StringRef name, NodeValue input,
+                                   unsigned_t axis, bool keepDims,
+                                   ElemKind elemTy) {
+  ShapeVector outDims = reduceDims(input.dims(), {axis}, keepDims);
+  auto OT = getParent()->uniqueType(elemTy, outDims);
+  return addNode(new ArgMinNode(name, OT, input, axis, keepDims));
 }
 
 GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,

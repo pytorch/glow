@@ -1108,7 +1108,16 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     ARITHMETIC_UNARY_OP_CASE(Tanh, "tanh");
     ARITHMETIC_UNARY_OP_CASE(ElementLog, "element_log");
     ARITHMETIC_UNARY_OP_CASE(ElementExp, "element_exp");
-
+    ARITHMETIC_UNARY_OP_CASE(ElementAbs, "element_abs");
+    ARITHMETIC_UNARY_OP_CASE(ElementNeg, "element_neg");
+    ARITHMETIC_UNARY_OP_CASE(ElementFloor, "element_floor");
+    ARITHMETIC_UNARY_OP_CASE(ElementCeil, "element_ceil");
+    ARITHMETIC_UNARY_OP_CASE(ElementRound, "element_round");
+    ARITHMETIC_UNARY_OP_CASE(ElementSqrt, "element_sqrt");
+    ARITHMETIC_UNARY_OP_CASE(ElementRsqrt, "element_rsqrt");
+    ARITHMETIC_UNARY_OP_CASE(ElementReciprocal, "element_reciprocal");
+    ARITHMETIC_UNARY_OP_CASE(ElementSin, "element_sin");
+    ARITHMETIC_UNARY_OP_CASE(ElementCos, "element_cos");
 #undef ARITHMETIC_UNARY_OP_CASE
 
   case Kinded::Kind::ElementIsNaNInstKind: {
@@ -1281,14 +1290,95 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     ARITHMETIC_BINARY_OP_CASE(ElementPow, "element_pow");
 #undef ARITHMETIC_BINARY_OP_CASE
 
-  case Kinded::Kind::ElementCmpLTEInstKind:
-  case Kinded::Kind::ElementCmpLTInstKind: {
+  case Kinded::Kind::ElementNotInstKind: {
+    auto *NI = cast<ElementNotInst>(I);
+    auto *dest = NI->getDest();
+    auto *src = NI->getSrc();
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto *srcPtr = emitBufferAddress(builder, src, kernel, bufferToArgNum);
+    auto *F = getFunction("element_not_kernel", src->getElementType());
+    auto *elementTy = getElementType(builder, dest);
+    auto *stackedOpCall = createUncheckedCall(builder, F, {loopCount, srcPtr});
+    auto *destAddr =
+        builder.CreateGEP(elementTy, destPtr, loopCount, "buffer.element.addr");
+    builder.CreateStore(stackedOpCall, destAddr);
+    break;
+  }
+
+  case Kinded::Kind::ElementAndInstKind: {
+    auto *AI = cast<ElementAndInst>(I);
+    auto *dest = AI->getDest();
+    auto *lhs = AI->getLHS();
+    auto *rhs = AI->getRHS();
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto *lhsPtr = emitBufferAddress(builder, lhs, kernel, bufferToArgNum);
+    auto *rhsPtr = emitBufferAddress(builder, rhs, kernel, bufferToArgNum);
+    auto *F = getFunction("element_and_kernel", lhs->getElementType());
+    auto *elementTy = getElementType(builder, dest);
+    auto *stackedOpCall =
+        createUncheckedCall(builder, F, {loopCount, lhsPtr, rhsPtr});
+    auto *destAddr =
+        builder.CreateGEP(elementTy, destPtr, loopCount, "buffer.element.addr");
+    builder.CreateStore(stackedOpCall, destAddr);
+    break;
+  }
+
+  case Kinded::Kind::ElementOrInstKind: {
+    auto *OI = cast<ElementOrInst>(I);
+    auto *dest = OI->getDest();
+    auto *lhs = OI->getLHS();
+    auto *rhs = OI->getRHS();
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto *lhsPtr = emitBufferAddress(builder, lhs, kernel, bufferToArgNum);
+    auto *rhsPtr = emitBufferAddress(builder, rhs, kernel, bufferToArgNum);
+    auto *F = getFunction("element_or_kernel", lhs->getElementType());
+    auto *elementTy = getElementType(builder, dest);
+    auto *stackedOpCall =
+        createUncheckedCall(builder, F, {loopCount, lhsPtr, rhsPtr});
+    auto *destAddr =
+        builder.CreateGEP(elementTy, destPtr, loopCount, "buffer.element.addr");
+    builder.CreateStore(stackedOpCall, destAddr);
+    break;
+  }
+
+  case Kinded::Kind::ElementXorInstKind: {
+    auto *XI = cast<ElementXorInst>(I);
+    auto *dest = XI->getDest();
+    auto *lhs = XI->getLHS();
+    auto *rhs = XI->getRHS();
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto *lhsPtr = emitBufferAddress(builder, lhs, kernel, bufferToArgNum);
+    auto *rhsPtr = emitBufferAddress(builder, rhs, kernel, bufferToArgNum);
+    auto *F = getFunction("element_xor_kernel", lhs->getElementType());
+    auto *elementTy = getElementType(builder, dest);
+    auto *stackedOpCall =
+        createUncheckedCall(builder, F, {loopCount, lhsPtr, rhsPtr});
+    auto *destAddr =
+        builder.CreateGEP(elementTy, destPtr, loopCount, "buffer.element.addr");
+    builder.CreateStore(stackedOpCall, destAddr);
+    break;
+  }
+
+  case Kinded::Kind::ElementCmpEQInstKind:
+  case Kinded::Kind::ElementCmpNEQInstKind:
+  case Kinded::Kind::ElementCmpLTInstKind:
+  case Kinded::Kind::ElementCmpLTEInstKind: {
     Value *dest = nullptr;
     Value *lhs = nullptr;
     Value *rhs = nullptr;
     std::string kernelName;
 
-    if (auto *CLTEI = dyn_cast<ElementCmpLTEInst>(I)) {
+    if (auto *CEQI = dyn_cast<ElementCmpEQInst>(I)) {
+      dest = CEQI->getDest();
+      lhs = CEQI->getLHS();
+      rhs = CEQI->getRHS();
+      kernelName = "element_cmp_eq_kernel";
+    } else if (auto *CNEQI = dyn_cast<ElementCmpNEQInst>(I)) {
+      dest = CNEQI->getDest();
+      lhs = CNEQI->getLHS();
+      rhs = CNEQI->getRHS();
+      kernelName = "element_cmp_neq_kernel";
+    } else if (auto *CLTEI = dyn_cast<ElementCmpLTEInst>(I)) {
       dest = CLTEI->getDest();
       lhs = CLTEI->getLHS();
       rhs = CLTEI->getRHS();
@@ -1344,28 +1434,6 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
                                          "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);
     }
-    break;
-  }
-
-  case Kinded::Kind::ElementCmpEQInstKind: {
-    auto *CI = cast<ElementCmpEQInst>(I);
-    auto *dest = CI->getDest();
-
-    auto *lhs = CI->getLHS();
-    auto *rhs = CI->getRHS();
-    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
-    auto *lhsPtr = emitBufferAddress(builder, lhs, kernel, bufferToArgNum);
-    auto *rhsPtr = emitBufferAddress(builder, rhs, kernel, bufferToArgNum);
-
-    // Need _kernel suffix since these operations are implemented as
-    // "data-parallel" kernels in libjit.
-    auto *F = getFunction("element_cmp_eq_kernel", lhs->getElementType());
-    auto *elementTy = getElementType(builder, dest);
-    auto *stackedOpCall =
-        createUncheckedCall(builder, F, {loopCount, lhsPtr, rhsPtr});
-    auto *destAddr =
-        builder.CreateGEP(elementTy, destPtr, loopCount, "buffer.element.addr");
-    builder.CreateStore(stackedOpCall, destAddr);
     break;
   }
 
@@ -2302,18 +2370,31 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::ArgMaxInstKind: {
     auto *AM = cast<ArgMaxInst>(I);
-    auto *argmax = AM->getArgmax();
-    auto *input = AM->getInput();
-    auto *argmaxPtr = emitValueAddress(builder, argmax);
-    auto *inputPtr = emitValueAddress(builder, input);
-
-    auto *srcDims = emitValueDims(builder, input);
-
+    auto *dest = AM->getDest();
+    auto *src = AM->getSrc();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+    auto *srcDims = emitValueDims(builder, src);
+    auto *srcNumDims = emitConstSizeT(builder, src->dims().size());
     auto *axis = emitConstSizeT(builder, AM->getAxis());
+    auto *F =
+        getFunction("arg_max", {src->getElementType(), dest->getElementType()});
+    createCall(builder, F, {srcPtr, destPtr, srcDims, srcNumDims, axis});
+    break;
+  }
 
-    auto *F = getFunction("arg_max",
-                          {input->getElementType(), argmax->getElementType()});
-    createCall(builder, F, {inputPtr, argmaxPtr, srcDims, axis});
+  case Kinded::Kind::ArgMinInstKind: {
+    auto *AM = cast<ArgMinInst>(I);
+    auto *dest = AM->getDest();
+    auto *src = AM->getSrc();
+    auto *destPtr = emitValueAddress(builder, dest);
+    auto *srcPtr = emitValueAddress(builder, src);
+    auto *srcDims = emitValueDims(builder, src);
+    auto *srcNumDims = emitConstSizeT(builder, src->dims().size());
+    auto *axis = emitConstSizeT(builder, AM->getAxis());
+    auto *F =
+        getFunction("arg_min", {src->getElementType(), dest->getElementType()});
+    createCall(builder, F, {srcPtr, destPtr, srcDims, srcNumDims, axis});
     break;
   }
 

@@ -1284,6 +1284,46 @@ bool LocalResponseNormalizationGradNode::verify() const {
   return isValid;
 }
 
+#define VERIFY_UNARY_LOGICAL(NODE_NAME_)                                       \
+  bool NODE_NAME_##Node::verify() const {                                      \
+    bool isValid = checkSameShape(getInput(), getResult(), this);              \
+    isValid &= checkType(getInput(), ElemKind::BoolTy, this);                  \
+    isValid &= checkType(getResult(), ElemKind::BoolTy, this);                 \
+    return isValid;                                                            \
+  }
+VERIFY_UNARY_LOGICAL(Not)
+#undef VERIFY_UNARY_LOGICAL
+
+#define VERIFY_BINARY_LOGICAL(NODE_NAME_)                                      \
+  bool NODE_NAME_##Node::verify() const {                                      \
+    bool isValid = checkSameShape(getLHS(), getResult(), this);                \
+    isValid &= checkSameShape(getRHS(), getResult(), this);                    \
+    isValid &= checkType(getLHS(), ElemKind::BoolTy, this);                    \
+    isValid &= checkType(getRHS(), ElemKind::BoolTy, this);                    \
+    isValid &= checkType(getResult(), ElemKind::BoolTy, this);                 \
+    return isValid;                                                            \
+  }
+VERIFY_BINARY_LOGICAL(And)
+VERIFY_BINARY_LOGICAL(Or)
+VERIFY_BINARY_LOGICAL(Xor)
+#undef VERIFY_BINARY_LOGICAL
+
+#define VERIFY_UNARY_ARITHMETIC(NODE_NAME_)                                    \
+  bool NODE_NAME_##Node::verify() const {                                      \
+    return checkSameShape(getInput(), getResult(), this);                      \
+  }
+VERIFY_UNARY_ARITHMETIC(Abs);
+VERIFY_UNARY_ARITHMETIC(Neg);
+VERIFY_UNARY_ARITHMETIC(Floor);
+VERIFY_UNARY_ARITHMETIC(Ceil);
+VERIFY_UNARY_ARITHMETIC(Round);
+VERIFY_UNARY_ARITHMETIC(Sqrt);
+VERIFY_UNARY_ARITHMETIC(Rsqrt);
+VERIFY_UNARY_ARITHMETIC(Reciprocal);
+VERIFY_UNARY_ARITHMETIC(Sin);
+VERIFY_UNARY_ARITHMETIC(Cos);
+#undef VERIFY_UNARY_ARITHMETIC
+
 #define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
   bool NODE_NAME_##Node::verify() const {                                      \
     return verifyArithmetic(getLHS(), getRHS(), getResult());                  \
@@ -1326,9 +1366,10 @@ VERIFY_ARITHMETIC(DivGrad);
     return isValid;                                                            \
   }
 
-VERIFY_CMP(CmpLTE)
-VERIFY_CMP(CmpLT)
 VERIFY_CMP(CmpEQ)
+VERIFY_CMP(CmpNEQ)
+VERIFY_CMP(CmpLT)
+VERIFY_CMP(CmpLTE)
 #undef VERIFY_CMP
 
 bool BatchedPairwiseDotProductNode::verify() const {
@@ -1706,30 +1747,31 @@ bool TopKNode::verify() const {
 bool ArgMaxNode::verify() const {
   bool isValid = true;
 
-  // Check input type.
+  // Check output type.
   isValid &= checkType(
-      getArgmax(),
+      getResult(),
       llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}), this);
 
-  isValid &= expectCompareTrue("Input must be a 4D tensor",
-                               getInput().dims().size(), size_t(4), this);
+  // Check output shape.
+  ShapeVector expDstDims =
+      reduceDims(getInput().dims(), {getAxis()}, getKeepDims());
+  isValid &= expectCompareTrue("Invalid output dims", getResult().dims(),
+                               llvm::makeArrayRef(expDstDims), this);
+  return isValid;
+}
 
-  // Check expected output type.
-  bool keepdims = getKeepDims();
-  const unsigned_t axis = getAxis();
+bool ArgMinNode::verify() const {
+  bool isValid = true;
 
-  ShapeVector expDstDims;
-  auto srcDim = getInput().dims();
-  for (size_t i = 0; i < srcDim.size(); i++) {
-    if (i == axis) {
-      if (keepdims) {
-        expDstDims.push_back(1);
-      }
-    } else {
-      expDstDims.push_back(srcDim[i]);
-    }
-  }
-  isValid &= expectCompareTrue("Invalid output dims", getArgmax().dims(),
+  // Check output type.
+  isValid &= checkType(
+      getResult(),
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}), this);
+
+  // Check output shape.
+  ShapeVector expDstDims =
+      reduceDims(getInput().dims(), {getAxis()}, getKeepDims());
+  isValid &= expectCompareTrue("Invalid output dims", getResult().dims(),
                                llvm::makeArrayRef(expDstDims), this);
   return isValid;
 }

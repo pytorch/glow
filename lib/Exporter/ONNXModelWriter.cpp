@@ -1533,6 +1533,28 @@ Error ONNXModelWriter::writeArgMax(const ArgMaxNode *node, GraphType &graph) {
   return Error::success();
 }
 
+Error ONNXModelWriter::writeArgMin(const ArgMinNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+
+  Tensor axis(ElemKind::Int64ITy, {1});
+  Tensor keepDims(ElemKind::BoolTy, {1});
+  auto axisH = axis.getHandle<int64_t>();
+  auto keepDimsH = keepDims.getHandle<int8_t>();
+  axisH.raw(0) = node->getAxis();
+  keepDimsH.raw(0) = node->getKeepDims();
+
+  auto *tensorProto = addInitializer(graph);
+  tensorProto->set_name("axis");
+  writeTensor(axis, tensorProto, useGlowCustomOps_);
+
+  tensorProto = addInitializer(graph);
+  tensorProto->set_name("keepDims");
+  writeTensor(keepDims, tensorProto, useGlowCustomOps_);
+  RETURN_IF_ERR(writeAllWithNode("ArgMin", node, graph, proto));
+
+  return Error::success();
+}
+
 Error ONNXModelWriter::writePRelu(const PReluNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   proto->set_name(node->getName());
@@ -1934,6 +1956,20 @@ Error ONNXModelWriter::writeSub(const SubNode *node, GraphType &graph) {
   }
 
 // ONNX nodes with default exporting algorithm.
+DEF_ALL_WRITER_NODE(And)
+DEF_ALL_WRITER_NODE(Or)
+DEF_ALL_WRITER_NODE(Xor)
+DEF_ALL_WRITER_NODE(Not)
+DEF_ALL_WRITER_NODE(Abs)
+DEF_ALL_WRITER_NODE(Neg)
+DEF_ALL_WRITER_NODE(Floor)
+DEF_ALL_WRITER_NODE(Ceil)
+DEF_ALL_WRITER_NODE(Round)
+DEF_ALL_WRITER_NODE(Sqrt)
+DEF_ALL_WRITER_NODE(Rsqrt)
+DEF_ALL_WRITER_NODE(Reciprocal)
+DEF_ALL_WRITER_NODE(Sin)
+DEF_ALL_WRITER_NODE(Cos)
 DEF_ALL_WRITER_NODE(Min)
 DEF_ALL_WRITER_NODE(Max)
 DEF_ALL_WRITER_NODE(Log)
@@ -1952,8 +1988,9 @@ DEF_ALL_WRITER_NODE(EmbeddingBag)
 
 // Glow nodes with default exporting algorithm.
 DEF_ALL_WRITER_NODE(CmpEQ)
-DEF_ALL_WRITER_NODE(CmpLTE)
+DEF_ALL_WRITER_NODE(CmpNEQ)
 DEF_ALL_WRITER_NODE(CmpLT)
+DEF_ALL_WRITER_NODE(CmpLTE)
 DEF_ALL_WRITER_NODE(BatchedAdd)
 DEF_ALL_WRITER_NODE(Dequantize)
 DEF_ALL_WRITER_NODE(Regression)

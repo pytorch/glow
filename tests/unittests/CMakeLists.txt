@@ -425,6 +425,21 @@ add_glow_test(NAME OnnxExporterTest
                   --gtest_output=xml:OnnxExporterTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(TFLiteImporterTest
+               TFLiteImporterTest.cpp)
+target_link_libraries(TFLiteImporterTest
+                      PRIVATE
+                        Backend
+                        Graph
+                        Importer
+                        ExecutionEngine
+                        gtest
+                        TestMain)
+add_glow_test(NAME TFLiteImporterTest
+              COMMAND ${GLOW_BINARY_DIR}/tests/TFLiteImporterTest
+                  --gtest_output=xml:TFLiteImporterTest.xml
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(TypeAToTypeBFunctionConverterTest
                TypeAToTypeBFunctionConverterTest.cpp)
 target_link_libraries(TypeAToTypeBFunctionConverterTest

@@ -174,10 +174,19 @@ int main(int argc, char **argv) {
       .addGradientInstr({"Dest", "Src"}, {"Dest", "Src"});
 
   BB.newInstr("ArgMax")
-      .addOperand("Argmax", OperandKind::Out)
-      .addOperand("Input", OperandKind::In)
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
       .addMember(MemberType::Unsigned, "Axis")
       .addMember(MemberType::Boolean, "KeepDims")
+      .autoIRGen()
+      .autoVerify(VerifyKind::NoVerify);
+
+  BB.newInstr("ArgMin")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::Unsigned, "Axis")
+      .addMember(MemberType::Boolean, "KeepDims")
+      .autoIRGen()
       .autoVerify(VerifyKind::NoVerify);
 
   BB.newInstr("AdaptiveAvgPool")
@@ -514,6 +523,36 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Min");
 
+  BB.newInstr("ElementCmpEQ")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
+      .autoVerify(VerifyKind::SameElementType, {"LHS", "RHS"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
+      .autoIRGen("CmpEQ");
+
+  BB.newInstr("ElementCmpNEQ")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
+      .autoVerify(VerifyKind::SameElementType, {"LHS", "RHS"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
+      .autoIRGen("CmpNEQ");
+
+  BB.newInstr("ElementCmpLT")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
+      .autoVerify(VerifyKind::SameElementType, {"LHS", "RHS"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
+      .autoIRGen("CmpLT");
+
   BB.newInstr("ElementCmpLTE")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("LHS", OperandKind::In)
@@ -523,26 +562,6 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"LHS", "RHS"})
       .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
       .autoIRGen("CmpLTE");
-
-  BB.newInstr("ElementCmpEQ")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("LHS", OperandKind::In)
-      .addOperand("RHS", OperandKind::In)
-      .dataParallel()
-      .autoVerify(VerifyKind::SameType, {"LHS", "RHS"})
-      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS"})
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
-      .autoIRGen("CmpEQ");
-
-  BB.newInstr("ElementCmpLT")
-      .addOperand("Dest", OperandKind::Out)
-      .addOperand("LHS", OperandKind::In)
-      .addOperand("RHS", OperandKind::In)
-      .dataParallel()
-      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
-      .autoVerify(VerifyKind::SameShape, {"LHS", "RHS"})
-      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
-      .autoIRGen("CmpLT");
 
   BB.newInstr("ElementIsNaN")
       .addOperand("Dest", OperandKind::Out)
@@ -560,6 +579,142 @@ int main(int argc, char **argv) {
       .dataParallel()
       .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
       .autoIRGen("Pow");
+
+  BB.newInstr("ElementAnd")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
+      .autoVerify(VerifyKind::SameElementType, {"LHS", "ElemKind::BoolTy"})
+      .autoVerify(VerifyKind::SameElementType, {"RHS", "ElemKind::BoolTy"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
+      .autoIRGen("And");
+
+  BB.newInstr("ElementOr")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
+      .autoVerify(VerifyKind::SameElementType, {"LHS", "ElemKind::BoolTy"})
+      .autoVerify(VerifyKind::SameElementType, {"RHS", "ElemKind::BoolTy"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
+      .autoIRGen("Or");
+
+  BB.newInstr("ElementXor")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("LHS", OperandKind::In)
+      .addOperand("RHS", OperandKind::In)
+      .inplaceOperand({"Dest", "LHS", "RHS"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "LHS", "RHS"})
+      .autoVerify(VerifyKind::SameElementType, {"LHS", "ElemKind::BoolTy"})
+      .autoVerify(VerifyKind::SameElementType, {"RHS", "ElemKind::BoolTy"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
+      .autoIRGen("Xor");
+
+  BB.newInstr("ElementNot")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Src", "ElemKind::BoolTy"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "ElemKind::BoolTy"})
+      .autoIRGen("Not");
+
+  BB.newInstr("ElementNeg")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Neg");
+
+  BB.newInstr("ElementAbs")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Abs");
+
+  BB.newInstr("ElementFloor")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Floor");
+
+  BB.newInstr("ElementCeil")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Ceil");
+
+  BB.newInstr("ElementRound")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Round");
+
+  BB.newInstr("ElementSqrt")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Sqrt");
+
+  BB.newInstr("ElementRsqrt")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Rsqrt");
+
+  BB.newInstr("ElementReciprocal")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Reciprocal");
+
+  BB.newInstr("ElementSin")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Sin");
+
+  BB.newInstr("ElementCos")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Cos");
 
   BB.newInstr("ElementLog")
       .addOperand("Dest", OperandKind::Out)
