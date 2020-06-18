@@ -323,6 +323,7 @@ using CreateAndInitFunction =
 /// precision \p biasElemKind. \p forceFP16AccumSLS is propagated into the
 /// precision config for compilation. If \p convertToChannelwiseQuantization
 /// is enabled then nodes supporting channelwise quantization will be converted.
+/// If \p skipQuantizeFCBias then don't apply quantization to FC bias inputs.
 void compareAgainstInterpreter(
     llvm::StringRef backendName, CreateAndInitFunction createAndInitFunction,
     ElemKind interpElemKind, ElemKind backendElemKind,
@@ -330,7 +331,8 @@ void compareAgainstInterpreter(
     bool convertToRowwiseQuantization = false,
     quantization::Schema schema = quantization::Schema::Asymmetric,
     ElemKind biasElemKind = ElemKind::Int32QTy, bool forceFP16AccumSLS = false,
-    bool convertToChannelwiseQuantization = false);
+    bool convertToChannelwiseQuantization = false,
+    bool skipQuantizeFCBias = false);
 
 /// Given some \p FTP representing a Function with a single SaveNode and its
 /// Tensor output, duplicate the Nodes in the Function and their Placeholder
