@@ -35,6 +35,8 @@
 #include "glow/Quantization/Quantization.h"
 #include "glow/Runtime/RuntimeTypes.h"
 
+#include "glow/Extractor/Extractor.h"
+
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 
@@ -4286,6 +4288,75 @@ bool FoldElemKindConversionIntoOutputs::run(Function *F,
   return changed;
 }
 
+bool FalconMerge::run(Function * F, const CompilationContext &cctx) {
+  std::cout << "FalconMerge Pass called" << std::endl;
+
+  auto &nodes = F->getNodes();
+
+  Graph_Config graph_config;
+
+  for (auto it = nodes.begin(), e = nodes.end(); it != e; it++) {
+    
+    Merged_Layer merged_layer;
+
+    Node * node = &*it;
+    //std::cout << node->toString() << std::endl;
+
+    auto *convNode = dyn_cast<ConvolutionNode>(node);
+    if (!convNode) {
+      continue;
+    }
+    std::cout << "-------------------------" << std::endl;
+    std::cout << "Convolution Node Detected" << std::endl;
+
+    std::cout << "Number of results: " << convNode->getNumResults() << std::endl;
+
+    auto stepNode =  node; 
+    merged_layer.add_layer(*(new Layer(stepNode)));
+    if (convNode->getNumResults() > 1) {
+      merged_layer.add_to_ddr(0);
+    }
+
+    while (stepNode = stepNode->getUsers().front().getUser()) {
+      std::cout << "In Loop: " << stepNode->getKindName() << std::endl;
+      std::cout << "Number of results: " << stepNode->getNumResults() << std::endl;
+      if (stepNode->getNumResults() > 1) {
+        merged_layer.add_to_ddr(0);
+      }
+      bool end = false;
+      switch (stepNode->getKind()) {
+        case Kinded::Kind::ConvolutionNodeKind:
+          end = true;
+          break;
+        case Kinded::Kind::SaveNodeKind:
+          end = true;
+          break;
+        case Kinded::Kind::PReluNodeKind:
+          merged_layer.add_relu(0);
+          break;
+        case Kinded::Kind::MaxPoolNodeKind:
+          merged_layer.add_layer(*(new Layer(stepNode)));
+          break;
+        case Kinded::Kind::ResizeNearestNodeKind:
+          merged_layer.add_layer(*(new Layer(stepNode)));
+          break;
+        default:
+          std::cout << "Next node is: " << stepNode->getKindName() << std::endl;
+          break;
+      }
+      if (end) break;
+    }
+
+    std::cout << "End of the block." << std::endl;
+    std::cout << "------------------------" << std::endl;
+
+    merged_layer.print_layers();
+
+  }
+
+  return true;
+}
+
 /// Looks for an activation directly following \p N from \p F that the backend
 /// \p B supports for fusion.
 template <class T> bool fuseActivation(T *N, Function *F, const Backend *B) {
@@ -4493,10 +4564,8 @@ Error glow::optimizeFunctionBeforeLowering(Function *F,
 
   // Verify the function pre-optimization/lowering.
   assert(F->verify() && "Function must be valid");
-
   // Verify that the CompilationContext is set up correctly.
   RETURN_IF_ERR(cctx.verify());
-
   // Fold low-level operators into higher-level operators.
   // This is useful when compiling an input model where some high-level
   // operators have been lowered (this can be for instance a side effect of
@@ -4504,11 +4573,13 @@ Error glow::optimizeFunctionBeforeLowering(Function *F,
   // situation, such folding can then enable more optimizations and also improve
   // the performance backends that support natively such high-level operators.
   ::glow::fold(F, cctx);
-
   // Optimize the graph. Only runs optimizations that are target-independent.
   ::glow::optimize(F, cctx);
   return Error::success();
 }
+
+#include <iostream>
+#include <fstream>
 
 // NOTE: When updating this function, please also update the documentation in
 // docs/GraphOptimizationPipeline.md
@@ -4516,7 +4587,6 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
                              CompilationContext &cctx,
                              const glow::runtime::DeviceInfo *devInfo) {
   LOG_SCOPE(F->getLogContext(), "glow::optimizeFunction")
-
   // If requested only lower the Function and early return.
   if (cctx.optimizationOpts.onlyLowerFuns.count(F)) {
     ::glow::lower(F, cctx, &B);
@@ -4531,8 +4601,15 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
     }
     return Error::success();
   }
-
+  std::ofstream myfile;
+  myfile.open ("before_preoptimization.txt");
+  myfile << F->toString() << std::endl; 
+  myfile.close();
   RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx));
+  myfile.open ("after_preoptimization.txt");
+  myfile << F->toString() << std::endl; 
+  myfile.close();
+  F->dumpDAG("after_preoptimization.dag");
 
   // Lower the graph into a sequence of low-level linear algebra operations.
   const PrecisionConfiguration &precConfig = cctx.precisionConfig;
@@ -4547,26 +4624,39 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
     // Lower based on the backend's preferences.
     ::glow::lower(F, cctx, &B);
   }
-
+  myfile.open ("after_lowering_1.txt");
+  myfile << F->toString() << std::endl; 
+  myfile.close();
   // Transforms the graph by demoting i64 to i32.
   transformIndexTypeDemotion(B, F, cctx);
-
+  myfile.open ("after_transform.txt");
+  myfile << F->toString() << std::endl; 
+  myfile.close();
   // Transform given precision mode; may quantize, convert to fp16, or
   // instrument with profiling nodes. This must be done after lowering.
   transformForPrecisionMode(B, F, cctx);
-
+  myfile.open ("after_precision_mode.txt");
+  myfile << F->toString() << std::endl; 
+  myfile.close();
   // Fold activations before lowering to enable cases which would not fuse after
   // lowering. This concerns particularly convolution&relu since relu will be
   // lowered to max(0, x).
   foldActivations(F, cctx, &B);
-
+  myfile.open ("after_fold_activation.txt");
+  myfile << F->toString() << std::endl; 
+  myfile.close();
   // Lower once more, in case precision transform has introduced operators that
   // need to be lowered, e.g., Clip.
   ::glow::lower(F, cctx, &B);
-
+  myfile.open ("after_lowering_2.txt");
+  myfile << F->toString() << std::endl; 
+  myfile.close();
+  F->dumpDAG("after_lowering.dag");
   // Optimize the graph again now that we have a lowered representation.
   ::glow::optimize(F, cctx);
-
+  myfile.open ("after_optimization.txt");
+  myfile << F->toString() << std::endl; 
+  myfile.close();
   // If requested fold ElemKind conversion Nodes into static Placeholders,
   // inputs, and outputs (Placeholders and SaveNodes).
   if (cctx.optimizationOpts.foldStaticPlaceholderConversions ||
@@ -4584,26 +4674,36 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
       ::glow::optimize(F, cctx);
     }
   }
-
+  myfile.open ("after_foldstaticplaceholderConversions.txt");
+  myfile << F->toString() << std::endl; 
+  myfile.close();
   if (B.shouldPreQuantizeConstants()) {
     // Do the actual float ->fix-point conversion of constant tensors before
     // Post-lowering.
     ::glow::convertQuantizedConstants(F, cctx);
   }
-
+  myfile.open ("after_convertQuantizedConstants.txt");
+  myfile << F->toString() << std::endl; 
+  myfile.close();
   // Allow the backend to transform the graph after lowering.
   RETURN_IF_EXPECTED_IS_ERR(B.transformPostLowering(F, cctx, devInfo));
-
+  myfile.open ("after_transformPostLowering.txt");
+  myfile << F->toString() << std::endl; 
+  myfile.close();
   if (!B.shouldPreQuantizeConstants()) {
     // Do the actual float ->fix-point conversion of constant tensors after
     // Post-lowering.
     ::glow::convertQuantizedConstants(F, cctx);
   }
-
+  myfile.open ("after_convertQuantizedConstants.txt");
+  myfile << F->toString() << std::endl; 
+  myfile.close();
   // Optimize the graph again after the backend transformation.
   // In particular, DCE is very likely to be useful.
   ::glow::optimize(F, cctx, B);
-
+  myfile.open ("after_optimization_again.txt");
+  myfile << F->toString() << std::endl; 
+  myfile.close();
   // We already started using backend specific verification when the function
   // state became lowered. Do one more verification pass to make sure everything
   // is in order and to bail if it is not.
@@ -4613,6 +4713,9 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
         "Unsupported node(s) found after optimizing Function " +
             F->getName().str() + " for backend " + B.getBackendName());
   }
+  myfile.open ("after_verify.txt");
+  myfile << F->toString() << std::endl; 
+  myfile.close();
   return Error::success();
 }
 

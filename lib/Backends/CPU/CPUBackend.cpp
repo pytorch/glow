@@ -482,7 +482,7 @@ bool CPUBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::SparseLengthsSumNodeKind:
     return false;
   default:
-    return true;
+    return false;
   }
 }
 

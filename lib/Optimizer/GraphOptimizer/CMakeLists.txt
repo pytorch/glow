@@ -16,4 +16,5 @@ target_link_libraries(GraphOptimizer
                         Interpreter
                         PassManager
                         Quantization
-                        QuantizationBase)
+                        QuantizationBase
+                        Extractor)
