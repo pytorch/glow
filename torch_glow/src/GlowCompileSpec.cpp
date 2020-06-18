@@ -8,51 +8,38 @@ namespace glow {
 
 // tuple<tensor_element_type, tensor_dims>
 using SpecInputMetaSerializationType =
-    std::tuple<std::string, std::vector<int64_t>>;
-
-static c10::ScalarType scalarTypeFromString(const std::string &str) {
-  if (str == "float") {
-    return c10::ScalarType::Float;
-  } else {
-    throw std::invalid_argument("Invalid SpecInputMeta type");
-  }
-}
+    std::tuple<c10::ScalarType, std::vector<int64_t>>;
 
 SpecInputMeta::SpecInputMeta(const SpecInputMeta &other) {
   type_ = other.type_;
   dims_ = other.dims_;
 }
 
-SpecInputMeta::SpecInputMeta(const std::string &typeStr,
-                             std::vector<int64_t> dims) {
-  type_ = scalarTypeFromString(typeStr);
-  dims_ = dims;
-}
-
 SpecInputMeta::SpecInputMeta(const SpecInputMetaSerializationType &state) {
-  std::string typeStr;
-  std::tie(typeStr, dims_) = state;
-  type_ = scalarTypeFromString(typeStr);
+  std::tie(type_, dims_) = state;
 }
 
-void SpecInputMeta::setSpec(const std::string &typeStr,
-                            std::vector<int64_t> dims) {
-  type_ = scalarTypeFromString(typeStr);
+void SpecInputMeta::set(std::vector<int64_t> dims, c10::ScalarType type) {
+  type_ = type;
   dims_ = dims;
 }
 
-void SpecInputMeta::setSpecFromTensor(const at::Tensor &t) {
+void SpecInputMeta::setSameAs(const at::Tensor &t) {
+  if (t.is_quantized()) {
+    throw std::invalid_argument(
+        "Quantized PyTorch Tensor is not supported yet in GlowCompileSpec.");
+  }
   type_ = t.scalar_type();
   std::copy(t.sizes().begin(), t.sizes().end(), std::back_inserter(dims_));
 }
 
 SpecInputMetaSerializationType SpecInputMeta::serializeToTuple() const {
-  return make_tuple(c10::toString(type_), dims_);
+  return make_tuple(type_, dims_);
 }
 
-void GlowCompileSpec::addInputTensor(const std::string &type,
-                                     std::vector<int64_t> dims) {
-  inputs_.emplace_back(SpecInputMeta(type, std::move(dims)));
+void GlowCompileSpec::addInputTensor(std::vector<int64_t> dims,
+                                     c10::ScalarType type) {
+  inputs_.emplace_back(SpecInputMeta(std::move(dims), type));
 }
 
 void GlowCompileSpec::addInput(c10::intrusive_ptr<SpecInputMeta> input) {
@@ -71,8 +58,9 @@ void registerGlowCompileSpecCustomClass() {
   static auto spec_input_meta_registry =
       torch::class_<SpecInputMeta>("glow", "SpecInputMeta")
           .def(torch::init())
-          .def("setSpec", &SpecInputMeta::setSpec)
-          .def("setSpecFromTensor", &SpecInputMeta::setSpecFromTensor)
+          .def("set", &SpecInputMeta::set)
+          .def("setSameAs", &SpecInputMeta::setSameAs)
+          .def("type", &SpecInputMeta::type)
           .def_pickle(
               [](const c10::intrusive_ptr<SpecInputMeta> &sim)
                   -> SpecInputMetaSerializationType { // __getstate__
