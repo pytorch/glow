@@ -14,19 +14,21 @@ void registerGlowCompileSpecCustomClass();
 class SpecInputMeta : public torch::jit::CustomClassHolder {
   /// tuple<type, dims>
   using SpecInputMetaSerializationType =
-      std::tuple<std::string, std::vector<int64_t>>;
+      std::tuple<c10::ScalarType, std::vector<int64_t>>;
 
 public:
   // Constructors
   SpecInputMeta() = default;
   SpecInputMeta(const SpecInputMeta &other);
-  SpecInputMeta(const std::string &typeStr, std::vector<int64_t> dims);
+  SpecInputMeta(std::vector<int64_t> dims, c10::ScalarType type)
+      : type_(type), dims_(dims) {}
   SpecInputMeta(const SpecInputMetaSerializationType &state);
 
   SpecInputMeta &operator=(const SpecInputMeta &other) = default;
 
-  void setSpec(const std::string &typeStr, std::vector<int64_t> dims);
-  void setSpecFromTensor(const at::Tensor &t);
+  void set(std::vector<int64_t> dims,
+           c10::ScalarType type = c10::ScalarType::Float);
+  void setSameAs(const at::Tensor &t);
 
   SpecInputMetaSerializationType serializeToTuple() const;
   // Element type
@@ -52,7 +54,7 @@ public:
   void setBackend(const std::string &backendName) {
     backendName_ = backendName;
   }
-  void addInputTensor(const std::string &type, std::vector<int64_t> dims);
+  void addInputTensor(std::vector<int64_t> dims, c10::ScalarType type);
   void addInputFromTensor(at::Tensor);
   void addInput(c10::intrusive_ptr<SpecInputMeta> input);
   void addInputs(std::vector<c10::intrusive_ptr<SpecInputMeta>> inputs);
