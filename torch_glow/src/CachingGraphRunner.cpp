@@ -580,7 +580,8 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
   }
 
   auto info = std::make_shared<PerGlowGraphInfo>();
-  info->functionName = strFormat("PTFunction_precompiled");
+  static std::atomic<int32_t> aotNum{0};
+  info->functionName = strFormat("PTFunction_precompiled_%d", aotNum++);
 
   std::unique_ptr<Module> glowModule = llvm::make_unique<Module>();
   Function *f = glowModule->createFunction(info->functionName);
