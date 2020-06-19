@@ -123,7 +123,7 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
             sizeof(config_.debugConfigFile));
   }
 
-  config_.disableSLSOnIA = compilationOptions.disableSLSOnIA;
+  config_.disableSLSOffloadToIA = compilationOptions.disableSLSOffloadToIA;
   config_.enableLightweightCompilation = compilationOptions.lightCompilation;
   config_.dumpDotFiles = compilationOptions.dumpDotFiles;
 

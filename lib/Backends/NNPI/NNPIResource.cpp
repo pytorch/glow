@@ -407,7 +407,8 @@ NNPIInferenceErrorCode NNPIResource::postInference(Tensor *t) {
     const size_t outputSize = unpaddedSize / t->getType().getElementSize();
     int64_t *i64Data = reinterpret_cast<int64_t *>(tensorData);
     int32_t *i32Data = reinterpret_cast<int32_t *>(hostPtr_);
-    for (size_t j = 0; j < outputSize; j++) {
+    // Convert from end to start for the case where (tensorData == hostPtr_).
+    for (int64_t j = (outputSize - 1); j >= 0; j--) {
       i64Data[j] = static_cast<int64_t>(i32Data[j]);
     }
   } else {
