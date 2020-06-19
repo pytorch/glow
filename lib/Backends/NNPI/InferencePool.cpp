@@ -55,7 +55,6 @@ static bool isEmptyDeviceNetworkConfig(const NNPIDeviceNetworkConfig &cfg) {
   if (cfg.pnpHints.DDRBandwidth != 0.f) {
     return false;
   }
-
   return true;
 }
 

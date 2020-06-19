@@ -34,7 +34,8 @@ public:
   virtual ~NNPITraceContext();
   /// Start capturing traces from the HW device.
   bool startCapture(NNPIDeviceContext deviceContext, bool swTraces,
-                    bool hwTraces);
+                    bool hwTraces, uint32_t softwareBufferSizeMB,
+                    uint32_t hardwareBufferSizeMB);
   /// Start capturing.
   bool stopCapture(NNPIDeviceContext deviceContext) const;
   /// Load traces (valid only after stopCapture()).
@@ -53,7 +54,9 @@ public:
 
 private:
   bool destroyInternalContext();
-  bool createInternalContext(bool swTraces, bool hwTraces);
+  bool createInternalContext(bool swTraces, bool hwTraces,
+                             uint32_t softwareBufferSizeMB,
+                             uint32_t hardwareBufferSizeMB);
   bool readTraceOutput();
 
   IceCaps_t capsSession_{0};

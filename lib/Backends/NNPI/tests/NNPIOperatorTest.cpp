@@ -104,7 +104,6 @@ struct BlacklistInitializer {
             {"NonCubicKernelConv3DQuantized/0",
              TestBlacklist::AnyDeviceAnyEngine},
             {"NonCubicPaddingConv3D/0", TestBlacklist::AnyDeviceAnyEngine},
-            {"GroupConv3D/0", TestBlacklist::AnyDeviceHWEngine},
             {"NonSquarePaddingAveragePool/0",
              TestBlacklist::AnyDeviceAnyEngine},
             {"NonSquarePaddingMaxPool/0", TestBlacklist::AnyDeviceAnyEngine},
