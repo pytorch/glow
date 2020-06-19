@@ -767,6 +767,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadQuantizedConvUnpacked},
       {{"glow::unpacked_quantized_conv3d"},
        &PyTorchModelLoader::loadQuantizedConvUnpacked},
+      {{"glow::unpacked_quantized_conv3d_relu"},
+       &PyTorchModelLoader::loadQuantizedConvReluUnpacked},
       {{"glow::unpacked_quantized_conv2d_relu"},
        &PyTorchModelLoader::loadQuantizedConvReluUnpacked},
       {{"glow::unpacked_quantized_linear"},

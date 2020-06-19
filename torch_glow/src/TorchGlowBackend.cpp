@@ -5,6 +5,9 @@
 #include <ATen/native/quantized/cpu/conv_packed_params.h>
 #include <ATen/native/quantized/cpu/packed_params.h>
 #include <torch/csrc/jit/ir/node_hashing.h>
+#include <torch/csrc/jit/passes/common_subexpression_elimination.h>
+#include <torch/csrc/jit/passes/constant_pooling.h>
+#include <torch/csrc/jit/passes/dead_code_elimination.h>
 #include <torch/csrc/jit/passes/freeze_module.h>
 #include <torch/csrc/jit/passes/inliner.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
@@ -45,6 +48,15 @@ RewriteQuantPackedParamOps(std::shared_ptr<torch::jit::Graph> &graph) {
     %res = glow::unpacked_quantized_conv2d(%a_quant, %w_quant, %b, %stride, %padding, %dilation, %groups, %r_scale, %r_zero_point)
     return (%res))IR";
 
+  torch::jit::SubgraphRewriter quantized_conv2d_rewriter;
+  quantized_conv2d_rewriter.RegisterRewritePattern(
+      quantized_conv2d_pattern, glow_quantized_conv2d_pattern);
+  quantized_conv2d_rewriter.runOnGraph(graph);
+  std::string conv2dSymbol = "glow::unpacked_quantized_conv2d";
+  c10::Symbol glowUnpackedConv2dSymbol =
+      at::Symbol::fromQualString(conv2dSymbol);
+  registerGlowOp(glowUnpackedConv2dSymbol);
+
   // Quantized Conv2d + Relu pattern
   std::string quantized_conv2d_relu_pattern = R"IR(
   graph(%a_quant, %packed_params, %r_scale, %r_zero_point) :
@@ -60,6 +72,63 @@ RewriteQuantPackedParamOps(std::shared_ptr<torch::jit::Graph> &graph) {
     %res = glow::unpacked_quantized_conv2d_relu(%a_quant, %w_quant, %b, %stride, %padding, %dilation, %groups, %r_scale, %r_zero_point)
     return (%res))IR";
 
+  torch::jit::SubgraphRewriter quantized_conv2d_relu_rewriter;
+  quantized_conv2d_relu_rewriter.RegisterRewritePattern(
+      quantized_conv2d_relu_pattern, glow_quantized_conv2d_relu_pattern);
+  quantized_conv2d_relu_rewriter.runOnGraph(graph);
+  std::string conv2dReluSymbol = "glow::unpacked_quantized_conv2d_relu";
+  c10::Symbol glowUnpackedConv2dReluSymbol =
+      at::Symbol::fromQualString(conv2dReluSymbol);
+  registerGlowOp(glowUnpackedConv2dReluSymbol);
+
+  // Quantized Conv3d pattern
+  std::string quantized_conv3d_pattern = R"IR(
+  graph(%a_quant, %packed_params, %r_scale, %r_zero_point) :
+        %res = quantized::conv3d(%a_quant, %packed_params, %r_scale, %r_zero_point)
+        return (%res))IR";
+  std::string glow_quantized_conv3d_pattern = R"IR(
+  graph(%a_quant, %packed_params, %r_scale, %r_zero_point):
+    %w_quant : Tensor, %b : Tensor? = quantized::conv3d_unpack(%packed_params)
+    %stride : int[] = quantized::conv3d_stride(%packed_params)
+    %padding : int[] = quantized::conv3d_padding(%packed_params)
+    %dilation : int[] = quantized::conv3d_dilation(%packed_params)
+    %groups : int = quantized::conv3d_groups(%packed_params)
+    %res = glow::unpacked_quantized_conv3d(%a_quant, %w_quant, %b, %stride, %padding, %dilation, %groups, %r_scale, %r_zero_point)
+    return (%res))IR";
+
+  torch::jit::SubgraphRewriter quantized_conv3d_rewriter;
+  quantized_conv3d_rewriter.RegisterRewritePattern(
+      quantized_conv3d_pattern, glow_quantized_conv3d_pattern);
+  quantized_conv3d_rewriter.runOnGraph(graph);
+  std::string conv3dSymbol = "glow::unpacked_quantized_conv3d";
+  c10::Symbol glowUnpackedConv3dSymbol =
+      at::Symbol::fromQualString(conv3dSymbol);
+  registerGlowOp(glowUnpackedConv3dSymbol);
+
+  // Quantized Conv3d + Relu pattern
+  std::string quantized_conv3d_relu_pattern = R"IR(
+  graph(%a_quant, %packed_params, %r_scale, %r_zero_point) :
+        %res = quantized::conv3d_relu(%a_quant, %packed_params, %r_scale, %r_zero_point)
+        return (%res))IR";
+  std::string glow_quantized_conv3d_relu_pattern = R"IR(
+  graph(%a_quant, %packed_params, %r_scale, %r_zero_point):
+    %w_quant : Tensor, %b : Tensor? = quantized::conv3d_unpack(%packed_params)
+    %stride : int[] = quantized::conv3d_stride(%packed_params)
+    %padding : int[] = quantized::conv3d_padding(%packed_params)
+    %dilation : int[] = quantized::conv3d_dilation(%packed_params)
+    %groups : int = quantized::conv3d_groups(%packed_params)
+    %res = glow::unpacked_quantized_conv3d_relu(%a_quant, %w_quant, %b, %stride, %padding, %dilation, %groups, %r_scale, %r_zero_point)
+    return (%res))IR";
+
+  torch::jit::SubgraphRewriter quantized_conv3d_relu_rewriter;
+  quantized_conv3d_relu_rewriter.RegisterRewritePattern(
+      quantized_conv3d_relu_pattern, glow_quantized_conv3d_relu_pattern);
+  quantized_conv3d_relu_rewriter.runOnGraph(graph);
+  std::string conv3dReluSymbol = "glow::unpacked_quantized_conv3d_relu";
+  c10::Symbol glowUnpackedConv3dReluSymbol =
+      at::Symbol::fromQualString(conv3dReluSymbol);
+  registerGlowOp(glowUnpackedConv3dReluSymbol);
+
   // Quantized Linear pattern
   std::string quantized_linear_pattern = R"IR(
   graph(%a_quant, %packed_params, %r_scale, %r_zero_point) :
@@ -71,24 +140,6 @@ RewriteQuantPackedParamOps(std::shared_ptr<torch::jit::Graph> &graph) {
     %res = glow::unpacked_quantized_linear(%a_quant, %w_quant, %b, %r_scale, %r_zero_point)
     return (%res))IR";
 
-  torch::jit::SubgraphRewriter quantized_conv2d_rewriter;
-  quantized_conv2d_rewriter.RegisterRewritePattern(
-      quantized_conv2d_pattern, glow_quantized_conv2d_pattern);
-  quantized_conv2d_rewriter.runOnGraph(graph);
-  std::string conv2dSymbol = "glow::unpacked_quantized_conv2d";
-  c10::Symbol glowUnpackedConv2dSymbol =
-      at::Symbol::fromQualString(conv2dSymbol);
-  registerGlowOp(glowUnpackedConv2dSymbol);
-
-  torch::jit::SubgraphRewriter quantized_conv2d_relu_rewriter;
-  quantized_conv2d_relu_rewriter.RegisterRewritePattern(
-      quantized_conv2d_relu_pattern, glow_quantized_conv2d_relu_pattern);
-  quantized_conv2d_relu_rewriter.runOnGraph(graph);
-  std::string conv2dReluSymbol = "glow::unpacked_quantized_conv2d_relu";
-  c10::Symbol glowUnpackedConv2dReluSymbol =
-      at::Symbol::fromQualString(conv2dReluSymbol);
-  registerGlowOp(glowUnpackedConv2dReluSymbol);
-
   torch::jit::SubgraphRewriter quantized_linear_rewriter;
   quantized_linear_rewriter.RegisterRewritePattern(
       quantized_linear_pattern, glow_quantized_linear_pattern);
@@ -99,9 +150,14 @@ RewriteQuantPackedParamOps(std::shared_ptr<torch::jit::Graph> &graph) {
   registerGlowOp(glowUnpackedLinearSymbol);
 }
 
-static bool hasConv2dUnpackQParamUser(const torch::jit::Node *node) {
+template <int DIMS>
+static bool hasConvUnpackQParamUser(const torch::jit::Node *node) {
+  static_assert(DIMS == 2 || DIMS == 3, "Only 2d and 3d conv supported");
+  const char *convType = DIMS == 2 ? "conv2d" : "conv3d";
+
   static std::unordered_set<torch::jit::Symbol> unpackQuantNodeKinds = {
-      torch::jit::Symbol::fromQualString("quantized::conv2d_unpack"),
+      torch::jit::Symbol::fromQualString(
+          strFormat("quantized::%s_unpack", convType)),
   };
 
   const auto uses = node->output()->uses();
@@ -113,8 +169,9 @@ static bool hasConv2dUnpackQParamUser(const torch::jit::Node *node) {
     const auto userKind = u.user->kind();
     if (unpackQuantNodeKinds.count(userKind)) {
       DCHECK_EQ(uses.size(), 5)
-          << "Expected conv2d packed quantization parameters "
-             "to be used by exactly 5 unpacking nodes";
+          << strFormat("Expected %s packed quantization parameters "
+                       "to be used by exactly 5 unpacking nodes",
+                       convType);
       return true;
     }
   }
@@ -129,17 +186,20 @@ static void overrideTensorGradient(at::Tensor &t) {
   }
 }
 
-static void processConv2dPackedQParams(torch::jit::Graph &graph,
-                                       const c10::IValue &ival,
-                                       torch::jit::Node *paramsNode) {
-  auto packed_params = ival.toCustomClass<ConvPackedParamsBase<2>>();
+template <int DIMS>
+static void processConvPackedQParams(torch::jit::Graph &graph,
+                                     const c10::IValue &ival,
+                                     torch::jit::Node *paramsNode) {
+  static_assert(DIMS == 2 || DIMS == 3, "Only 2d and 3d conv supported");
+  const char *convType = DIMS == 2 ? "conv2d" : "conv3d";
+  auto packed_params = ival.toCustomClass<ConvPackedParamsBase<DIMS>>();
   torch::jit::WithInsertPoint guard(paramsNode);
   const auto uses = paramsNode->output()->uses();
   for (const auto &u : uses) {
     auto node = u.user;
     const auto userKind = node->kind();
-    if (userKind ==
-        torch::jit::Symbol::fromQualString("quantized::conv2d_unpack")) {
+    if (userKind == torch::jit::Symbol::fromQualString(
+                        strFormat("quantized::%s_unpack", convType))) {
       at::Tensor ptWeightTensor;
       c10::optional<at::Tensor> ptBiasTensorTmp;
       std::tie(ptWeightTensor, ptBiasTensorTmp) = packed_params->unpack();
@@ -157,27 +217,27 @@ static void processConv2dPackedQParams(torch::jit::Graph &graph,
         throw std::invalid_argument(
             "Preprocess for empty bias is not yet supported.");
       }
-    } else if (node->kind() ==
-               torch::jit::Symbol::fromQualString("quantized::conv2d_stride")) {
+    } else if (node->kind() == torch::jit::Symbol::fromQualString(strFormat(
+                                   "quantized::%s_stride", convType))) {
       torch::List<int64_t> stride;
       stride = packed_params->stride();
       torch::jit::Value *paramConst = torch::jit::insertConstant(graph, stride);
       node->outputs().at(0)->replaceAllUsesWith(paramConst);
-    } else if (node->kind() == torch::jit::Symbol::fromQualString(
-                                   "quantized::conv2d_padding")) {
+    } else if (node->kind() == torch::jit::Symbol::fromQualString(strFormat(
+                                   "quantized::%s_padding", convType))) {
       torch::List<int64_t> pad;
       pad = packed_params->padding();
       torch::jit::Value *paramConst = torch::jit::insertConstant(graph, pad);
       node->outputs().at(0)->replaceAllUsesWith(paramConst);
-    } else if (node->kind() == torch::jit::Symbol::fromQualString(
-                                   "quantized::conv2d_dilation")) {
+    } else if (node->kind() == torch::jit::Symbol::fromQualString(strFormat(
+                                   "quantized::%s_dilation", convType))) {
       torch::List<int64_t> dilation;
       dilation = packed_params->dilation();
       torch::jit::Value *paramConst =
           torch::jit::insertConstant(graph, dilation);
       node->outputs().at(0)->replaceAllUsesWith(paramConst);
-    } else if (node->kind() ==
-               torch::jit::Symbol::fromQualString("quantized::conv2d_groups")) {
+    } else if (node->kind() == torch::jit::Symbol::fromQualString(strFormat(
+                                   "quantized::%s_groups", convType))) {
       int64_t groups;
       groups = packed_params->groups();
       torch::jit::Value *paramConst = torch::jit::insertConstant(graph, groups);
@@ -278,8 +338,10 @@ static Error ProcessPackedParams(torch::jit::Graph &graph,
         strFormat("%s_%s", nameHierarchy.c_str(), attrName.c_str());
 
     if (ival.isObject()) {
-      if (hasConv2dUnpackQParamUser(node)) {
-        processConv2dPackedQParams(graph, ival, node);
+      if (hasConvUnpackQParamUser<2>(node)) {
+        processConvPackedQParams<2>(graph, ival, node);
+      } else if (hasConvUnpackQParamUser<3>(node)) {
+        processConvPackedQParams<3>(graph, ival, node);
       } else if (hasLinearUnpackQParamUser(node)) {
         processLinearPackedQParams(graph, ival, node);
       } else {
@@ -296,16 +358,34 @@ TorchGlowBackend::preprocess(c10::IValue mod,
                              c10::impl::GenericDict method_compile_spec) {
   torch::jit::Module m = mod.toModule();
   m.eval();
-  auto method = m.get_method("forward");
-  auto graph = method.graph();
-  torch::jit::Inline(*graph);
-  RewriteQuantPackedParamOps(graph);
-  glow::Error err = ProcessPackedParams(*graph, m._ivalue());
-  if (static_cast<bool>(err)) {
-    throw std::invalid_argument(ERR_TO_STRING(std::move(err)));
+
+  // Unpack qparams
+  for (const auto &kv : method_compile_spec) {
+    const auto &methodName = kv.key().toStringRef();
+    auto method = m.get_method(methodName);
+    auto graph = method.graph();
+    torch::jit::Inline(*graph);
+    RewriteQuantPackedParamOps(graph);
+    glow::Error err = ProcessPackedParams(*graph, m._ivalue());
+    if (static_cast<bool>(err)) {
+      throw std::invalid_argument(ERR_TO_STRING(std::move(err)));
+    }
   }
-  torch::jit::Module processed = torch::jit::freeze_module(m);
-  return processed._ivalue();
+
+  // Freeze
+  m = torch::jit::freeze_module(m);
+
+  // Cleanup JIT graphs
+  for (const auto &kv : method_compile_spec) {
+    const auto &methodName = kv.key().toStringRef();
+    auto method = m.get_method(methodName);
+    auto graph = method.graph();
+    EliminateDeadCode(graph);
+    EliminateCommonSubexpression(graph);
+    ConstantPooling(graph);
+  }
+
+  return m._ivalue();
 }
 
 c10::impl::GenericDict
