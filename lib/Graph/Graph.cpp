@@ -5320,7 +5320,8 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function *F) {
 
 bool isConvolutionSameAsFullyConnected(const ConvolutionNode *node) {
   bool isConv2D = (node->getInput().getType()->dims().size() == 4);
-  if (!(isConv2D && node->getLayout() == ConvolutionLayout::NHWC)) {
+  if (!(isConv2D && node->getLayout() == ConvolutionLayout::NHWC &&
+        !node->hasFusedActivation())) {
     return false;
   }
   auto filterDims = ShapeNHWC(node->getFilter().getType()->dims());

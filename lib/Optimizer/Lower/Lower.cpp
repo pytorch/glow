@@ -823,19 +823,18 @@ static void lowerConvolutionToFullyConnected(Function *F,
   // Reshape input to 2D.
   auto inpDims = ShapeNHWC(input.getType()->dims());
   std::vector<dim_t> inpDimsFC = {inpDims.n * inpDims.h * inpDims.w, inpDims.c};
-  input =
-      F->createReshape(CN.getName().str() + ".ReshapeInput", input, inpDimsFC);
+  input = F->createReshape(DECORATE_NODE_NAME(CN, "ReshapeInput"), input,
+                           inpDimsFC);
 
   // Reshape filter to 2D and Transpose.
   auto filterDims = ShapeNHWC(filter.getType()->dims());
   std::vector<dim_t> weightsDimsFC = {filterDims.n, filterDims.c};
-  NodeValue weights = F->createReshape(CN.getName().str() + ".ReshapeWeights",
+  NodeValue weights = F->createReshape(DECORATE_NODE_NAME(CN, "ReshapeWeights"),
                                        filter, weightsDimsFC);
-  weights = F->createTranspose(CN.getName().str() + ".TransposeWeights",
+  weights = F->createTranspose(DECORATE_NODE_NAME(CN, "TransposeWeights"),
                                weights, {1, 0});
 
   // Create FullyConnected node with same output type but 2D shape.
-  // The 4D convolution input will be flattened along the channel dimension.
   auto outDims = ShapeNHWC(output.getType()->dims());
   std::vector<dim_t> outDimsFC = {outDims.n * outDims.h * outDims.w, outDims.c};
   auto outTyFC =
@@ -844,7 +843,7 @@ static void lowerConvolutionToFullyConnected(Function *F,
       CN.getName().str(), input, weights, bias, outTyFC, ShapeNHWC::DimC);
 
   // Reshape the 2D output back to its original shape.
-  outputFC = F->createReshape(CN.getName().str() + ".ReshapeOutput", outputFC,
+  outputFC = F->createReshape(DECORATE_NODE_NAME(CN, "ReshapeOutput"), outputFC,
                               output.getType()->dims());
   replaceAllUsesOfWith(cctx.loweredInfoMap, output, outputFC);
 }
