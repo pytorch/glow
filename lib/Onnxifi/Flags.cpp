@@ -49,8 +49,8 @@ extern size_t GlowMaxActiveRequests;
 extern size_t GlowMaxQueueSize;
 extern size_t GlowExecutorThreads;
 
-#ifdef GLOW_WITH_NNPI
 // Defined in glow/lib/Backends/NNPI/NNPI.cpp
+#ifdef GLOW_WITH_NNPI
 extern bool GlowDumpNNPICompilerData;
 extern bool GlowUsePerPartitionIcetConfig;
 extern bool GlowDisableNNPITransforms;
@@ -69,7 +69,10 @@ namespace runtime {
 extern unsigned GlowInterpreterMemory;
 extern unsigned GlowCPUMemory;
 extern unsigned GlowHabanaMemory;
+#ifdef GLOW_WITH_NNPI
 extern unsigned GlowNNPIMemory;
+extern unsigned GlowNNPITimeout;
+#endif
 extern bool GlowEnableDRT;
 extern bool GlowEnableP2P;
 } // namespace runtime
@@ -424,6 +427,14 @@ DEFINE_int32(glow_nnpi_memory, 16 << 20,
              "Amount of DRAM to allocate per NNPI device in KiB");
 DEFINE_validator(glow_nnpi_memory, [](const char *flagname, int32_t value) {
   glow::runtime::GlowNNPIMemory = value;
+  return true;
+});
+
+DEFINE_int32(glow_nnpi_timeout_ms, 0,
+             "Timeout threshold for inferecnce in milliseconds. Default 0 "
+             "means infinity");
+DEFINE_validator(glow_nnpi_timeout_ms, [](const char *flagname, int32_t value) {
+  glow::runtime::GlowNNPITimeout = value * 1000;
   return true;
 });
 #endif
