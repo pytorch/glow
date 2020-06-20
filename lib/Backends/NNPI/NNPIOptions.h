@@ -431,6 +431,9 @@ public:
                       "Disable IO buffers allocation by the NNPI stack.",
                       "NNPI_DISABLE_IOBUFFER", "1");
 
+  /// Inference timeout threshold. Default UINT32_MAX means infinity.
+  unsigned inferTimeout{UINT32_MAX};
+
   NNPIDeviceOptions(const llvm::StringMap<std::string> &parameters) {
     INIT_NNPI_OPTIONS(useIceT, parameters);
     INIT_NNPI_OPTIONS(inferOnDevice, parameters);
