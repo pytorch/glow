@@ -91,7 +91,9 @@ static void printHeader(llvm::StringRef headerFileName,
   CHECK(!EC) << "Could not open header file!";
   std::string header;
   header += "// Bundle API auto-generated header file. Do not edit!\n";
+#ifdef GLOW_BUILD_DATE
   header += "// Glow Tools version: " + std::string(GLOW_BUILD_DATE) + "\n";
+#endif
   headerFile << strFormat(headerFileTemplate, header.c_str(),
                           bundleName.upper().data(), bundleName.upper().data(),
                           commonDefines.data(), modelInfo.data(),
