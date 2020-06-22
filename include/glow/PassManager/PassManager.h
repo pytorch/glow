@@ -66,6 +66,11 @@ struct PassManagerOptions {
 /// all pass managers, but provides a number of hooks that can be overridden by
 /// concrete pass manager to customize the behavior.
 class PassManagerBase : public Named {
+
+private:
+  /// The index of pass iteration
+  int iterationCount = 0;
+
 protected:
   /// The index of the current pass being executed in the pipeline.
   size_t passIdx_ = 0;
@@ -149,6 +154,12 @@ public:
   virtual std::atomic<unsigned> &globalPassCounter() = 0;
   /// Get the global pass counter associated with the pass manager.
   virtual const std::atomic<unsigned> &globalPassCounter() const = 0;
+
+  /// increase the index and return the current index
+  int globalInterationCounter(){
+    iterationCount++;
+    return iterationCount;
+  }
 };
 
 template <typename IRPassTy, typename PassIDTy>
