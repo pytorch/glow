@@ -9987,7 +9987,7 @@ static void testSwish(glow::PlaceholderBindings &bindings, glow::Module &mod,
   for (dim_t i = 0; i < size; i++) {
     float x = (float)inH.at({i});
     float val = x / (1 + std::exp(-x));
-    EXPECT_NEAR(RH.at({i}), val, 0.002);
+    EXPECT_NEAR(RH.at({i}), val, 0.006);
   }
 }
 
