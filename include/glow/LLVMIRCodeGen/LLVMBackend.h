@@ -135,6 +135,9 @@ public:
   /// Sets LLVM backend options.
   void setOptions(const LLVMBackendOptions &options) { options_ = options; }
 
+  /// \returns whether the provided \p NI is supported by the backend.
+  bool isOpSupported(const NodeInfo &NI) const override;
+
   virtual std::unique_ptr<CompiledFunction>
   compileIR(std::unique_ptr<IRFunction> IR) const override;
 
