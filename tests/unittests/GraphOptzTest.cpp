@@ -22,6 +22,7 @@
 #include "glow/IR/IR.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
+#include "glow/Optimizer/Lower/Lower.h"
 
 #include "gtest/gtest.h"
 
@@ -5296,4 +5297,76 @@ TEST_F(GraphOptz, constantFoldPreventedNoop) {
   bindings_.allocate(ph1)->getHandle<float>().randomize(-10.0, 10.0,
                                                         mod_.getPRNG());
   checkNumericalEquivalence();
+}
+
+/// Test that a Conv2D is correctly lowered to FC for single batch.
+TEST_F(GraphOptz, lowerConv2DToFCSingleBatch) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 4},
+                                              "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+
+  Constant *filter =
+      mod_.createConstant(ElemKind::FloatTy, {8, 1, 1, 4}, "filter");
+  filter->getPayloadMutable().getHandle<float>().randomize(-10, 10,
+                                                           mod_.getPRNG());
+
+  Constant *bias = mod_.createConstant(ElemKind::FloatTy, {8}, "bias");
+  bias->getPayloadMutable().getHandle<float>().randomize(-10, 10,
+                                                         mod_.getPRNG());
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 2, 3, 8});
+  auto *conv = F_->createConv("conv", input, filter, bias, outTy, {1, 1},
+                              {1, 1}, {0, 0, 0, 0}, 1, 1);
+  SaveNode *save = F_->createSave("save", conv);
+  bindings_.allocate(save->getPlaceholder());
+
+  // Backup function in optimizedF_.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Lower Convolution.
+  EXPECT_TRUE(isConvolutionSameAsFullyConnected(conv));
+  EXPECT_TRUE(glow::lowerNode(F_, conv, cctx_));
+  runDCEPass(F_, cctx_);
+  EXPECT_EQ(0, countNodeKind(F_, Kinded::Kind::ConvolutionNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind));
+
+  // Now compile/run/compare F_ and optimizedF_.
+  checkNumericalEquivalence(1e-6);
+}
+
+/// Test that a Conv2D is correctly lowered to FC for multi batch.
+TEST_F(GraphOptz, lowerConv2DToFCMultiBatch) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 3, 4},
+                                              "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+
+  Constant *filter =
+      mod_.createConstant(ElemKind::FloatTy, {8, 1, 1, 4}, "filter");
+  filter->getPayloadMutable().getHandle<float>().randomize(-10, 10,
+                                                           mod_.getPRNG());
+
+  Constant *bias = mod_.createConstant(ElemKind::FloatTy, {8}, "bias");
+  bias->getPayloadMutable().getHandle<float>().randomize(-10, 10,
+                                                         mod_.getPRNG());
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {2, 2, 3, 8});
+  auto *conv = F_->createConv("conv", input, filter, bias, outTy, {1, 1},
+                              {1, 1}, {0, 0, 0, 0}, 1, 1);
+  SaveNode *save = F_->createSave("save", conv);
+  bindings_.allocate(save->getPlaceholder());
+
+  // Backup function in optimizedF_.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Lower Convolution.
+  EXPECT_TRUE(isConvolutionSameAsFullyConnected(conv));
+  EXPECT_TRUE(glow::lowerNode(F_, conv, cctx_));
+  runDCEPass(F_, cctx_);
+  EXPECT_EQ(0, countNodeKind(F_, Kinded::Kind::ConvolutionNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind));
+
+  // Now compile/run/compare F_ and optimizedF_.
+  checkNumericalEquivalence(1e-6);
 }
