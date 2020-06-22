@@ -809,6 +809,45 @@ static void lowerBatchNormalizationGradNode(Function *F,
                        zeroSplat);
 }
 
+static void lowerConvolutionToFullyConnected(Function *F,
+                                             CompilationContext &cctx,
+                                             const ConvolutionNode &CN) {
+
+  LOG_SCOPE(F->getLogContext(), "lowerConvolutionToFullyConnected");
+
+  NodeValue output = CN.getResult();
+  NodeValue input = CN.getInput();
+  NodeValue filter = CN.getFilter();
+  NodeValue bias = CN.getBias();
+
+  // Reshape input to 2D.
+  auto inpDims = ShapeNHWC(input.getType()->dims());
+  std::vector<dim_t> inpDimsFC = {inpDims.n * inpDims.h * inpDims.w, inpDims.c};
+  input = F->createReshape(DECORATE_NODE_NAME(CN, "ReshapeInput"), input,
+                           inpDimsFC);
+
+  // Reshape filter to 2D and Transpose.
+  auto filterDims = ShapeNHWC(filter.getType()->dims());
+  std::vector<dim_t> weightsDimsFC = {filterDims.n, filterDims.c};
+  NodeValue weights = F->createReshape(DECORATE_NODE_NAME(CN, "ReshapeWeights"),
+                                       filter, weightsDimsFC);
+  weights = F->createTranspose(DECORATE_NODE_NAME(CN, "TransposeWeights"),
+                               weights, {1, 0});
+
+  // Create FullyConnected node with same output type but 2D shape.
+  auto outDims = ShapeNHWC(output.getType()->dims());
+  std::vector<dim_t> outDimsFC = {outDims.n * outDims.h * outDims.w, outDims.c};
+  auto outTyFC =
+      F->getParent()->uniqueTypeWithNewShape(output.getType(), outDimsFC);
+  NodeValue outputFC = F->createFullyConnected(
+      CN.getName().str(), input, weights, bias, outTyFC, ShapeNHWC::DimC);
+
+  // Reshape the 2D output back to its original shape.
+  outputFC = F->createReshape(DECORATE_NODE_NAME(CN, "ReshapeOutput"), outputFC,
+                              output.getType()->dims());
+  replaceAllUsesOfWith(cctx.loweredInfoMap, output, outputFC);
+}
+
 static void lowerGroupConvolutionNode(Function *F, CompilationContext &cctx,
                                       const ConvolutionNode &BNG) {
   // When Group parameter is more than 1, ConvolutionNode can be represented as
@@ -1418,6 +1457,10 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
     if (CN->getGroup() > 1 && CN->hasFusedActivation()) {
       lowerGroupConvolutionNode(F, cctx, *CN);
+      return true;
+    }
+    if (isConvolutionSameAsFullyConnected(CN)) {
+      lowerConvolutionToFullyConnected(F, cctx, *CN);
       return true;
     }
   }

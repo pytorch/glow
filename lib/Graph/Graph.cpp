@@ -5413,4 +5413,28 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function *F) {
   F->dump(os);
   return os;
 }
+
+bool isConvolutionSameAsFullyConnected(const ConvolutionNode *node) {
+  bool isConv2D = (node->getInput().getType()->dims().size() == 4);
+  if (!(isConv2D && node->getLayout() == ConvolutionLayout::NHWC &&
+        !node->hasFusedActivation())) {
+    return false;
+  }
+  auto filterDims = ShapeNHWC(node->getFilter().getType()->dims());
+  ShapeHW kernels = ShapeHW(node->getKernels());
+  ShapeHW strides = ShapeHW(node->getStrides());
+  PaddingTLBR pads = PaddingTLBR(node->getPads());
+  auto group = node->getGroup();
+  auto dilation = node->getDilation();
+
+  bool isSame = (filterDims.h == 1) && (filterDims.w == 1);
+  isSame &= (kernels.height == 1) && (kernels.width == 1);
+  isSame &= (strides.height == 1) && (strides.width == 1);
+  isSame &= (pads.top == 0) && (pads.left == 0) && (pads.bottom == 0) &&
+            (pads.right == 0);
+  isSame &= (group == 1);
+  isSame &= (dilation == 1);
+  return isSame;
+}
+
 } // namespace glow
