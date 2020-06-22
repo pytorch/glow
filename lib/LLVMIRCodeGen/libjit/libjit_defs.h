@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_BACKENDS_CPU_LIBJIT_LIBJIT_DEFS_H
-#define GLOW_BACKENDS_CPU_LIBJIT_LIBJIT_DEFS_H
+#ifndef GLOW_LLVMIRCODEGEN_LIBJIT_LIBJIT_DEFS_H
+#define GLOW_LLVMIRCODEGEN_LIBJIT_LIBJIT_DEFS_H
 
 #include <cstdlib>
 #include <stdint.h>
@@ -136,4 +136,4 @@ inline int32_t libjit_scale_i32i8(int32_t input, int32_t pre, int32_t post,
 #define libjit_aligned_free(p) free(p)
 #endif
 
-#endif // GLOW_BACKENDS_CPU_LIBJIT_LIBJIT_DEFS_H
+#endif // GLOW_LLVMIRCODEGEN_LIBJIT_LIBJIT_DEFS_H

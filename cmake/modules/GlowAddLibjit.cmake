@@ -16,9 +16,9 @@
 # DESCRIPTION:
 #   CMake utility function used to build a Glow LIBJIT library for an LLVM based
 #   backend. The byproducts of this function are:
-#   - LLVM bitcode library in binary format ("libjit_cpu.bc") stored in the
+#   - LLVM bitcode library in binary format (e.g. "libjit_cpu.bc") stored in the
 #     "<glow_build_folder>/libjit" folder.
-#   - LLVM bitcode library in text format ("libjit_cpu.inc") stored in the
+#   - LLVM bitcode library in text format (e.g. "libjit_cpu.inc") stored in the
 #     "<glow_build_folder>/glow/libjit" folder.
 #
 # ARGUMENTS:
@@ -36,23 +36,22 @@
 #
 # OPTIONS:
 #   COMPILE_ONLY    If used then the source files are only compiled to object
-#                   files without linking. (OPTIONAL)
+#                   files without linking into a library. (OPTIONAL)
 #
 # RETURN:
 #  When function returns it will define in the PARENT SCOPE (caller scope) the
-#  following variables:
-#    LIBJIT_OBJECT_FILES  List of absolute paths of all the LIBJIT object files.
-#    LIBJIT_BINARY_FILE   The full absolute path of the LIBJIT binary file.
-#    LIBJIT_INCLUDE_FILE  The full absolute path of the LIBJIT include file.
-#  Upon function return it will also define a custom target available in the
-#  PARENT SCOPE (caller scope) which can be used as further dependency (for
-#  example for the target which is building the Backend) and which has the
-#  following name:
-#    <NAME>_TARGET
+#  following:
+#    <NAME>_OBJECT_FILES  List of absolute paths of all the LIBJIT object files.
+#    <NAME>_BINARY_FILE   The full absolute path of the LIBJIT binary file.
+#    <NAME>_INCLUDE_FILE  The full absolute path of the LIBJIT include file.
+#    <NAME>_TARGET        Custom target which can be used as dependency for
+#                         other targets/libraries (e.g. for the Backend which
+#                         depends on and is using this LIBJIT), for example:
+#                           add_dependencies(BackendTarget libjit_cpu_TARGET)
 #===============================================================================
 function(glow_add_libjit)
 
-  # Parse arguments (arguments are prepended with a "LIBJIT_" prefix).
+  # Parse arguments (arguments are concatenated with a "LIBJIT_" prefix).
   set(options OPTIONAL COMPILE_ONLY)
   set(oneValueArgs NAME CLANG_BIN LLVM_LINK_BIN)
   set(multiValueArgs SOURCE_FILES OBJECT_FILES COMPILE_OPTIONS DEPENDS)
@@ -109,7 +108,11 @@ function(glow_add_libjit)
 
   # LIBJIT common compile options.
   set(LIBJIT_COMMON_COMPILE_OPTIONS
+    # Clang option to emit LLVM IR bitcode.
     -emit-llvm
+    # Clang option for Windows to NOT generate the "#pragma detect_mismatch"
+    # metadata in the "llvm.linker.options" to avoid incompatibilities between
+    # linked objects.
     -fno-autolink
   )
 
@@ -121,9 +124,6 @@ function(glow_add_libjit)
   set(LIBJIT_INCLUDE_DIR ${GLOW_BINARY_DIR}/glow/libjit)
   file(MAKE_DIRECTORY ${LIBJIT_INCLUDE_DIR})
 
-  # LIBJIT target name.
-  set(LIBJIT_TARGET_NAME ${LIBJIT_NAME}_TARGET)
-
   # Directory path to store object files.
   set(LIBJIT_OBJECT_DIR ${LIBJIT_BINARY_DIR}/${LIBJIT_NAME}_obj)
   file(MAKE_DIRECTORY ${LIBJIT_OBJECT_DIR})
@@ -131,6 +131,9 @@ function(glow_add_libjit)
   # LIBJIT binary/include file path.
   set(LIBJIT_BINARY_FILE ${LIBJIT_BINARY_DIR}/${LIBJIT_NAME}.bc)
   set(LIBJIT_INCLUDE_FILE ${LIBJIT_INCLUDE_DIR}/${LIBJIT_NAME}.inc)
+
+  # Print status.
+  message(STATUS "Adding LIBJIT library: ${LIBJIT_NAME}.")
 
   # Compile all source files to LLVM bitcode.  
   foreach(src_file ${LIBJIT_SOURCE_FILES})
@@ -146,7 +149,7 @@ function(glow_add_libjit)
   endforeach()
 
   # Propagate the list of object files to parent scope.
-  set(LIBJIT_OBJECT_FILES ${LIBJIT_OBJECT_FILES} PARENT_SCOPE)
+  set("${LIBJIT_NAME}_OBJECT_FILES" ${LIBJIT_OBJECT_FILES} PARENT_SCOPE)
 
   if (NOT LIBJIT_COMPILE_ONLY)
 
@@ -167,14 +170,15 @@ function(glow_add_libjit)
     )
 
     # Add custom LIBJIT target.
-    add_custom_target(LIBJIT_TARGET_NAME
+    set(LIBJIT_TARGET_NAME "${LIBJIT_NAME}_TARGET")
+    add_custom_target(${LIBJIT_TARGET_NAME}
       DEPENDS ${LIBJIT_INCLUDE_FILE}
       WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
     )
 
     # Propagate variables to the parent scope.
-    set(LIBJIT_BINARY_FILE ${LIBJIT_BINARY_FILE} PARENT_SCOPE)
-    set(LIBJIT_INCLUDE_FILE ${LIBJIT_INCLUDE_FILE} PARENT_SCOPE)
+    set("${LIBJIT_NAME}_BINARY_FILE" ${LIBJIT_BINARY_FILE} PARENT_SCOPE)
+    set("${LIBJIT_NAME}_INCLUDE_FILE" ${LIBJIT_INCLUDE_FILE} PARENT_SCOPE)
 
   endif()
 

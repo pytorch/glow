@@ -1,21 +1,26 @@
 add_subdirectory(ClassGen)
 
-include(AddLibjit)
+include(GlowAddLibjit)
 
-# LIBJIT CPU source files.
+# LIBJIT LLVM common source files.
 set(LIBJIT_CPU_SOURCE_FILES)
 list(APPEND LIBJIT_CPU_SOURCE_FILES
-  ${CMAKE_CURRENT_SOURCE_DIR}/libjit/libjit.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/libjit/libjit_conv.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/libjit/libjit_matmul.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../LLVMIRCodeGen/libjit/libjit.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../LLVMIRCodeGen/libjit/libjit_conv.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../LLVMIRCodeGen/libjit/libjit_matmul.cpp
+)
+
+# LIBJIT CPU specific source files.
+list(APPEND LIBJIT_CPU_SOURCE_FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/libjit_cpu/libjit_cpu.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/libjit_cpu/libjit_cpu_conv.cpp
 )
 
 # LIBJIT CPU compile options.
 set(LIBJIT_CPU_COMPILE_OPTIONS
-  -I ${CMAKE_CURRENT_SOURCE_DIR}/../../../../glow/include
+  -I${CMAKE_CURRENT_SOURCE_DIR}/../../LLVMIRCodeGen/libjit
   -std=c++14
   -g
-  -I${CMAKE_SOURCE_DIR}/include
   -O0
 
   # When building for a custom target, use this as an example of how to
@@ -33,7 +38,7 @@ set(LIBJIT_CPU_COMPILE_OPTIONS
 
 # Add CPU LIBJIT.
 glow_add_libjit(
-  NAME libjit_cpu
+  NAME "libjit_cpu"
   SOURCE_FILES ${LIBJIT_CPU_SOURCE_FILES}
   COMPILE_OPTIONS ${LIBJIT_CPU_COMPILE_OPTIONS}
 )
@@ -45,7 +50,7 @@ if (NOT MSVC)
 endif(NOT MSVC)
 
 add_library(CPUBackend
-            ${LIBJIT_INCLUDE_FILE}
+            ${libjit_cpu_INCLUDE_FILE}
             CPUBackend.cpp
             CPUDeviceManager.cpp
             CPUFactory.cpp
