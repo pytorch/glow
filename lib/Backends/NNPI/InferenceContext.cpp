@@ -269,7 +269,7 @@ bool InferenceContext::init(
       commands.push_back(cmd);
     }
   }
-  {
+  if (deviceOptions_->disableCommands < 1) {
     NNPICommandHandle cmd;
     cmd.type = NNPI_COMMAND_TYPE_INFER;
     cmd.inferCommand = inferCmd_;
@@ -308,6 +308,12 @@ bool InferenceContext::init(
 void InferenceContext::execute(RunIdentifierTy runId,
                                std::unique_ptr<ExecutionContext> ctx,
                                runtime::ResultCBTy resultCB) {
+  if (deviceOptions_->disableCommands > 2) {
+    // Return immediately without doing anything.
+    resultCB(runId, Error::success(), std::move(ctx));
+    return;
+  }
+
   std::string traceBackendExecuteStr =
       llvm::formatv("{0} {1:x}", traceBackendExecuteContextName_, ctx.get());
 
@@ -416,59 +422,62 @@ void InferenceContext::execute(RunIdentifierTy runId,
                     tracePreProcessContextName_);
     TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::OPERATOR,
                            inferContext, attributes);
-    // Queue Command list
-    int64_t issueTime = TraceEvent::now();
-    LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
-        nnpiCommandListQueue(commandList_, &(cmdConfigs_.at(0)), usedConfigs),
-        "Failed to queue command list.", runId, ctx, resultCB);
 
-    // Wait on completion and error handling.
-    uint32_t numErrors(0);
-    // First wait for the command list to complete.
-    NNPIInferenceErrorCode res = nnpiCommandListWait(
-        commandList_, deviceOptions_->inferTimeout, NULL, 0, &numErrors);
-    uint64_t completeTime = TraceEvent::now();
-    // Set batchDeviceTimestamps.
-    auto requestData = ::glow::runtime::RequestData::get();
-    if (requestData) {
-      auto duration = completeTime - issueTime;
-      requestData->deviceRuntime.fetch_add(duration);
-    }
-    if (res != NNPI_INF_NO_ERROR) {
-      LOG_NNPI_INF_IF_ERROR(res, "Failed to wait on command list");
-    } else if (numErrors > 0) {
-      LOG(ERROR) << "Errors returned from command list";
+    if (deviceOptions_->disableCommands < 2) {
+      // Queue Command list
+      int64_t issueTime = TraceEvent::now();
+      LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
+          nnpiCommandListQueue(commandList_, &(cmdConfigs_.at(0)), usedConfigs),
+          "Failed to queue command list.", runId, ctx, resultCB);
 
-      // Errors were generate so we allocate error objects to hold the data.
-      NNPICommandListError commandErrors[numErrors];
-      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
-          ERROR, commandErrors, "Failed to allocate command error array", runId,
-          ctx, resultCB);
-      memset(commandErrors, 0, sizeof(NNPICommandListError) * numErrors);
+      // Wait on completion and error handling.
+      uint32_t numErrors(0);
+      // First wait for the command list to complete.
+      NNPIInferenceErrorCode res = nnpiCommandListWait(
+          commandList_, deviceOptions_->inferTimeout, NULL, 0, &numErrors);
+      uint64_t completeTime = TraceEvent::now();
+      // Set batchDeviceTimestamps.
+      auto requestData = ::glow::runtime::RequestData::get();
+      if (requestData) {
+        auto duration = completeTime - issueTime;
+        requestData->deviceRuntime.fetch_add(duration);
+      }
+      if (res != NNPI_INF_NO_ERROR) {
+        LOG_NNPI_INF_IF_ERROR(res, "Failed to wait on command list");
+      } else if (numErrors > 0) {
+        LOG(ERROR) << "Errors returned from command list";
 
-      // Then query all errors using another wait call (should return
-      // immediately).
-      NNPIInferenceErrorCode tmpRes =
-          nnpiCommandListWait(commandList_, deviceOptions_->inferTimeout,
-                              commandErrors, numErrors, &numErrors);
-      if (tmpRes != NNPI_INF_NO_ERROR) {
-        LOG_NNPI_INF_IF_ERROR(tmpRes,
-                              "Failed to wait on command list to get errors");
-      } else {
-        for (uint32_t i = 0; i < numErrors; i++) {
-          LOG(ERROR) << NNPI_INF_ERROR_MSG(commandErrors[i].err,
-                                           commandErrors[i].desc);
+        // Errors were generate so we allocate error objects to hold the data.
+        NNPICommandListError commandErrors[numErrors];
+        LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+            ERROR, commandErrors, "Failed to allocate command error array",
+            runId, ctx, resultCB);
+        memset(commandErrors, 0, sizeof(NNPICommandListError) * numErrors);
+
+        // Then query all errors using another wait call (should return
+        // immediately).
+        NNPIInferenceErrorCode tmpRes =
+            nnpiCommandListWait(commandList_, deviceOptions_->inferTimeout,
+                                commandErrors, numErrors, &numErrors);
+        if (tmpRes != NNPI_INF_NO_ERROR) {
+          LOG_NNPI_INF_IF_ERROR(tmpRes,
+                                "Failed to wait on command list to get errors");
+        } else {
+          for (uint32_t i = 0; i < numErrors; i++) {
+            LOG(ERROR) << NNPI_INF_ERROR_MSG(commandErrors[i].err,
+                                             commandErrors[i].desc);
+          }
         }
       }
-    }
-    if (res != NNPI_INF_NO_ERROR || numErrors > 0) {
-      LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
-          nnpiCommandListClearErrors(commandList_),
-          "Failed to clear command list errors", runId, ctx, resultCB);
-      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
-          ERROR, false /* fail */, "Errors found in command list execution",
-          runId, ctx, resultCB);
-      LOG(FATAL) << "Non-recoverable inference error";
+      if (res != NNPI_INF_NO_ERROR || numErrors > 0) {
+        LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
+            nnpiCommandListClearErrors(commandList_),
+            "Failed to clear command list errors", runId, ctx, resultCB);
+        LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+            ERROR, false /* fail */, "Errors found in command list execution",
+            runId, ctx, resultCB);
+        LOG(FATAL) << "Non-recoverable inference error";
+      }
     }
   } else if (!deviceOptions_->useIceT) {
     // Infer on ice-ref.
