@@ -164,6 +164,9 @@ llvm::cl::opt<bool> enablePartialTensor("glow_enable_partial_tensor",
 llvm::cl::opt<unsigned> itersOpt(
     "iters", llvm::cl::desc("Number of times to loop over provided input."),
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
+llvm::cl::opt<unsigned> durationMinOpt(
+    "duration_min", llvm::cl::desc("Running duration limit in minutes"),
+    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool> useSparseNNPartitioningScheme(
     "glow_use_sparsenn_partitioning_scheme",
@@ -591,311 +594,320 @@ int run() {
   }
 
   llvm::outs() << "Starting inference\n";
-  TraceContext mergedTraceContext(TraceLevel::STANDARD);
-  folly::CPUThreadPoolExecutor threadPool(concurrentRequestsOpt);
-  std::mutex mutex;
-  std::condition_variable cv;
-  int numTotalInferences = inputGroupSize * itersOpt;
-  int numFinishedInferences = 0;
+  auto nowTime = std::chrono::steady_clock::now();
+  auto endTimeDuration = nowTime + std::chrono::minutes(durationMinOpt);
+  do {
+    TraceContext mergedTraceContext(TraceLevel::STANDARD);
+    folly::CPUThreadPoolExecutor threadPool(concurrentRequestsOpt);
+    std::mutex mutex;
+    std::condition_variable cv;
+    int numTotalInferences = inputGroupSize * itersOpt;
+    int numFinishedInferences = 0;
 
-  // Figure out which placeholder is input.
-  std::unordered_set<std::string> inputTensorNames;
-  for (const auto &proto : parsedInputs[0].initializer()) {
-    inputTensorNames.insert(proto.name());
-  }
-
-  glow::PlaceholderList inputPlaceholderList;
-  std::copy_if(placeholderList.begin(), placeholderList.end(),
-               std::back_inserter(inputPlaceholderList),
-               [&](const glow::Placeholder *p) {
-                 return inputTensorNames.find(p->getName()) !=
-                        inputTensorNames.end();
-               });
-
-  std::list<InferenceResult> results;
-  std::vector<Tensor> partialTensorPayloads;
-  std::vector<PlaceholderBindings> inputBindings;
-  for (const auto &inputGroup : parsedInputs) {
-    PlaceholderBindings bindings;
-    bindings.allocate(inputPlaceholderList);
-    fillPlaceholders(inputGroup, &bindings,
-                     enablePartialTensor ? &partialTensorPayloads : nullptr,
-                     usingGlowCustomOps);
-    inputBindings.emplace_back(std::move(bindings));
-  }
-
-  // Whether to collect results and check accuracy
-  bool runAccuracyChecks =
-      !skipCorrectnessCheck || topKCompare > 0 || cosineSimilarityStats;
-
-  if (glowDumpTrace && glowEnableDeviceTrace) {
-    // Start device traces.
-    hostManager->setTraceContext(
-        glow::make_unique<TraceContext>(TraceLevel::STANDARD));
-    Error startErr = hostManager->startDeviceTrace();
-    if (ERR_TO_BOOL(std::move(startErr))) {
-      LOG(WARNING) << "Failed to start device traces";
-    }
-  }
-
-  auto startTime = std::chrono::steady_clock::now();
-  for (int ioIndex = 0, numInferencesIssued = 0;
-       numInferencesIssued < numTotalInferences;
-       ++numInferencesIssued, ioIndex = numInferencesIssued % inputGroupSize) {
-
-    results.emplace_back();
-    auto &result = results.back();
-
-    threadPool.add([&inputBindings, &nonStaticPlaceholderList, ioIndex,
-                    &mergedTraceContext, &hostManager, &result, &cv, &mutex,
-                    numTotalInferences, &numFinishedInferences,
-                    runAccuracyChecks]() {
-      // Setup the inputs.
-      auto ctx = glow::make_unique<ExecutionContext>();
-
-      TraceContext *traceContext = nullptr;
-      if (glowDumpTrace) {
-        ctx->setTraceContext(
-            glow::make_unique<TraceContext>(TraceLevel::STANDARD));
-        traceContext = ctx->getTraceContext();
-        traceContext->setThreadName("Caller");
-      }
-      TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
-                        "Dispatch to prep input and dispatch");
-
-      // Set up input
-      auto &bindings = *ctx->getPlaceholderBindings();
-      bindings.clear();
-
-      for (const auto &binding : inputBindings[ioIndex].pairs()) {
-        auto *PH = binding.first;
-        bindings.insert(PH, binding.second.getUnowned());
-      }
-      // Allocate for output
-      bindings.allocate(nonStaticPlaceholderList);
-
-      std::promise<void> promise;
-      auto future = promise.get_future();
-
-      TRACE_EVENT_SCOPE_END();
-
-      hostManager->runNetwork(
-          "test", std::move(ctx),
-          [&promise, index = ioIndex,
-           &result](runtime::RunIdentifierTy, Error err,
-                    std::unique_ptr<ExecutionContext> contextPtr) mutable {
-            result.error = std::move(err);
-            result.ctx = std::move(contextPtr);
-            result.index = index;
-            result.endTime = std::chrono::steady_clock::now();
-            promise.set_value();
-          });
-
-      // wait for glow to finish.
-      future.wait();
-      traceContext = result.ctx->getTraceContext();
-      if (traceContext) {
-        // merge() has internal lock and is thread safe.
-        mergedTraceContext.merge(traceContext);
-      }
-
-      if (!runAccuracyChecks) {
-        // if skipping correctness check, throw away the context to keep
-        // memory usage low.
-        result.ctx.reset();
-      }
-
-      std::unique_lock<std::mutex> lock(mutex);
-      if (++numFinishedInferences >= numTotalInferences) {
-        lock.unlock();
-        cv.notify_all();
-      }
-    });
-  }
-
-  // wait for all inferneces to finish
-  std::unique_lock<std::mutex> lock(mutex);
-  cv.wait(lock, [&]() { return numFinishedInferences >= numTotalInferences; });
-
-  auto endTime = startTime;
-  llvm::outs() << "All inferences done. Checking results\n";
-  for (auto &result : results) {
-    if (result.endTime > endTime) {
-      endTime = result.endTime;
+    // Figure out which placeholder is input.
+    std::unordered_set<std::string> inputTensorNames;
+    for (const auto &proto : parsedInputs[0].initializer()) {
+      inputTensorNames.insert(proto.name());
     }
 
-    if (result.error) {
-      llvm::outs() << "Inference failed!\n";
-      ++numFailed;
-    } else {
-      const auto &outputGroup = parsedOutputs[result.index];
-      ONNX_NAMESPACE::GraphProto outputG;
-      std::ofstream of;
-      if (dumpOutputsOpt) {
-        std::stringstream ss;
-        ss << "output_dump_" << result.index << ".onnx";
-        of.open(ss.str(), std::ios::binary);
-        CHECK(of) << "Cannot create output dump file: " << ss.str();
+    glow::PlaceholderList inputPlaceholderList;
+    std::copy_if(placeholderList.begin(), placeholderList.end(),
+                 std::back_inserter(inputPlaceholderList),
+                 [&](const glow::Placeholder *p) {
+                   return inputTensorNames.find(p->getName()) !=
+                          inputTensorNames.end();
+                 });
+
+    std::vector<Tensor> partialTensorPayloads;
+    std::vector<PlaceholderBindings> inputBindings;
+    for (const auto &inputGroup : parsedInputs) {
+      PlaceholderBindings bindings;
+      bindings.allocate(inputPlaceholderList);
+      fillPlaceholders(inputGroup, &bindings,
+                       enablePartialTensor ? &partialTensorPayloads : nullptr,
+                       usingGlowCustomOps);
+      inputBindings.emplace_back(std::move(bindings));
+    }
+
+    // Whether to collect results and check accuracy
+    bool runAccuracyChecks =
+        !skipCorrectnessCheck || topKCompare > 0 || cosineSimilarityStats;
+
+    if (glowDumpTrace && glowEnableDeviceTrace) {
+      // Start device traces.
+      hostManager->setTraceContext(
+          glow::make_unique<TraceContext>(TraceLevel::STANDARD));
+      Error startErr = hostManager->startDeviceTrace();
+      if (ERR_TO_BOOL(std::move(startErr))) {
+        LOG(WARNING) << "Failed to start device traces";
+      }
+    }
+
+    auto startTime = std::chrono::steady_clock::now();
+    std::list<InferenceResult> results;
+    for (int ioIndex = 0, numInferencesIssued = 0;
+         numInferencesIssued < numTotalInferences; ++numInferencesIssued,
+             ioIndex = numInferencesIssued % inputGroupSize) {
+
+      results.emplace_back();
+      auto &result = results.back();
+
+      threadPool.add([&inputBindings, &nonStaticPlaceholderList, ioIndex,
+                      &mergedTraceContext, &hostManager, &result, &cv, &mutex,
+                      numTotalInferences, &numFinishedInferences,
+                      runAccuracyChecks]() {
+        // Setup the inputs.
+        auto ctx = glow::make_unique<ExecutionContext>();
+
+        TraceContext *traceContext = nullptr;
+        if (glowDumpTrace) {
+          ctx->setTraceContext(
+              glow::make_unique<TraceContext>(TraceLevel::STANDARD));
+          traceContext = ctx->getTraceContext();
+          traceContext->setThreadName("Caller");
+        }
+        TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME,
+                          "Dispatch to prep input and dispatch");
+
+        // Set up input
+        auto &bindings = *ctx->getPlaceholderBindings();
+        bindings.clear();
+
+        for (const auto &binding : inputBindings[ioIndex].pairs()) {
+          auto *PH = binding.first;
+          bindings.insert(PH, binding.second.getUnowned());
+        }
+        // Allocate for output
+        bindings.allocate(nonStaticPlaceholderList);
+
+        std::promise<void> promise;
+        auto future = promise.get_future();
+
+        TRACE_EVENT_SCOPE_END();
+
+        hostManager->runNetwork(
+            "test", std::move(ctx),
+            [&promise, index = ioIndex,
+             &result](runtime::RunIdentifierTy, Error err,
+                      std::unique_ptr<ExecutionContext> contextPtr) mutable {
+              result.error = std::move(err);
+              result.ctx = std::move(contextPtr);
+              result.index = index;
+              result.endTime = std::chrono::steady_clock::now();
+              promise.set_value();
+            });
+
+        // wait for glow to finish.
+        future.wait();
+        traceContext = result.ctx->getTraceContext();
+        if (traceContext) {
+          // merge() has internal lock and is thread safe.
+          mergedTraceContext.merge(traceContext);
+        }
+
+        if (!runAccuracyChecks) {
+          // if skipping correctness check, throw away the context to keep
+          // memory usage low.
+          result.ctx.reset();
+        }
+
+        std::unique_lock<std::mutex> lock(mutex);
+        if (++numFinishedInferences >= numTotalInferences) {
+          lock.unlock();
+          cv.notify_all();
+        }
+      });
+    }
+
+    // wait for all inferneces to finish
+    std::unique_lock<std::mutex> lock(mutex);
+    cv.wait(lock,
+            [&]() { return numFinishedInferences >= numTotalInferences; });
+
+    auto endTime = startTime;
+    llvm::outs() << "All inferences done. Checking results\n";
+    for (auto &result : results) {
+      if (result.endTime > endTime) {
+        endTime = result.endTime;
       }
 
-      if (runAccuracyChecks) {
-        CHECK(result.ctx);
-        const auto &bindings = *result.ctx->getPlaceholderBindings();
-        for (const auto &tp : outputGroup.initializer()) {
-          Tensor tensorRef;
-          auto error = loadTensor(tp, &tensorRef, usingGlowCustomOps);
-          CHECK(!ERR_TO_BOOL(std::move(error)))
-              << "Cannot load output ref tensor";
-          const auto *tensor =
-              bindings.get(bindings.getPlaceholderByNameSlow(tp.name()));
-          CHECK(tensor) << "Missing " << tp.name() << " in output placeholder";
+      if (result.error) {
+        llvm::outs() << "Inference failed!\n";
+        ++numFailed;
+      } else {
+        const auto &outputGroup = parsedOutputs[result.index];
+        ONNX_NAMESPACE::GraphProto outputG;
+        std::ofstream of;
+        if (dumpOutputsOpt) {
+          std::stringstream ss;
+          ss << "output_dump_" << result.index << ".onnx";
+          of.open(ss.str(), std::ios::binary);
+          CHECK(of) << "Cannot create output dump file: " << ss.str();
+        }
 
-          if (cosineSimilarityStats) {
-            cosineHist.addValue(cosineSimilarity(*tensor, tensorRef));
-          }
+        if (runAccuracyChecks) {
+          CHECK(result.ctx);
+          const auto &bindings = *result.ctx->getPlaceholderBindings();
+          for (const auto &tp : outputGroup.initializer()) {
+            Tensor tensorRef;
+            auto error = loadTensor(tp, &tensorRef, usingGlowCustomOps);
+            CHECK(!ERR_TO_BOOL(std::move(error)))
+                << "Cannot load output ref tensor";
+            const auto *tensor =
+                bindings.get(bindings.getPlaceholderByNameSlow(tp.name()));
+            CHECK(tensor) << "Missing " << tp.name()
+                          << " in output placeholder";
 
-          if (topKCompare > 0) {
-            numTotalTopKCompares++;
-            assert(tensor->size() == tensorRef.size());
-            auto sortedResults = partialSortFloatTensor(*tensor, topKCompare);
-            auto sortedRefs = partialSortFloatTensor(tensorRef, topKCompare);
-            assert(sortedResults.size() == topKCompare &&
-                   sortedResults.size() == topKCompare);
+            if (cosineSimilarityStats) {
+              cosineHist.addValue(cosineSimilarity(*tensor, tensorRef));
+            }
 
-            bool allKMatch = true;
-            std::stringstream ss;
-            for (auto i = 0; i < topKCompare; i++) {
-              if (sortedResults[i].second == sortedRefs[i].second) {
-                if (i == 0) {
-                  numTop1Matches++;
+            if (topKCompare > 0) {
+              numTotalTopKCompares++;
+              assert(tensor->size() == tensorRef.size());
+              auto sortedResults = partialSortFloatTensor(*tensor, topKCompare);
+              auto sortedRefs = partialSortFloatTensor(tensorRef, topKCompare);
+              assert(sortedResults.size() == topKCompare &&
+                     sortedResults.size() == topKCompare);
+
+              bool allKMatch = true;
+              std::stringstream ss;
+              for (auto i = 0; i < topKCompare; i++) {
+                if (sortedResults[i].second == sortedRefs[i].second) {
+                  if (i == 0) {
+                    numTop1Matches++;
+                  }
+                } else {
+                  allKMatch = false;
                 }
-              } else {
-                allKMatch = false;
+                if (logTopKResultsPerExample) {
+                  ss << i << ": Test result: " << sortedResults[i].second
+                     << " (p=" << sortedResults[i].first
+                     << ") Reference result: " << sortedRefs[i].second
+                     << " (p=" << sortedRefs[i].first << ")\n";
+                }
               }
               if (logTopKResultsPerExample) {
-                ss << i << ": Test result: " << sortedResults[i].second
-                   << " (p=" << sortedResults[i].first
-                   << ") Reference result: " << sortedRefs[i].second
-                   << " (p=" << sortedRefs[i].first << ")\n";
+                llvm::outs() << ss.str() << "\n";
+              }
+              if (allKMatch) {
+                numTopKMatches++;
               }
             }
-            if (logTopKResultsPerExample) {
-              llvm::outs() << ss.str() << "\n";
-            }
-            if (allKMatch) {
-              numTopKMatches++;
-            }
-          }
 
-          if (dumpOutputsOpt) {
-            auto *t = outputG.add_initializer();
-            ONNXModelWriter::writeTensor(*tensor, t, usingGlowCustomOps);
-            t->set_name(tp.name());
-          }
+            if (dumpOutputsOpt) {
+              auto *t = outputG.add_initializer();
+              ONNXModelWriter::writeTensor(*tensor, t, usingGlowCustomOps);
+              t->set_name(tp.name());
+            }
 
-          if (!skipCorrectnessCheck) {
-            bool equal = tensorRef.isEqual(*tensor, thresholdOpt, true);
-            if (!equal) {
-              llvm::outs() << "Verification failed at input/output pair "
-                           << result.index << " for output tensor " << tp.name()
-                           << "\n";
-              ++numFailed;
-              break;
+            if (!skipCorrectnessCheck) {
+              bool equal = tensorRef.isEqual(*tensor, thresholdOpt, true);
+              if (!equal) {
+                llvm::outs() << "Verification failed at input/output pair "
+                             << result.index << " for output tensor "
+                             << tp.name() << "\n";
+                ++numFailed;
+                break;
+              }
             }
           }
         }
-      }
 
-      if (dumpOutputsOpt) {
-        std::string buffer;
-        outputG.SerializeToString(&buffer);
-        of << buffer;
+        if (dumpOutputsOpt) {
+          std::string buffer;
+          outputG.SerializeToString(&buffer);
+          of << buffer;
+        }
       }
     }
-  }
 
-  if (glowDumpTrace) {
-    if (glowEnableDeviceTrace) {
-      // Stop device traces and collect events.
-      Error stopErr = hostManager->stopDeviceTrace();
-      if (ERR_TO_BOOL(std::move(stopErr))) {
-        LOG(WARNING) << "Failed to stop device traces.";
-      } else {
-        mergedTraceContext.merge(hostManager->getTraceContext());
+    if (glowDumpTrace) {
+      if (glowEnableDeviceTrace) {
+        // Stop device traces and collect events.
+        Error stopErr = hostManager->stopDeviceTrace();
+        if (ERR_TO_BOOL(std::move(stopErr))) {
+          LOG(WARNING) << "Failed to stop device traces.";
+        } else {
+          mergedTraceContext.merge(hostManager->getTraceContext());
+        }
       }
-    }
-    llvm::SmallString<64> path;
-    if (glowDumpTraceFile.empty()) {
-      auto tempFileRes =
-          llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
-      if (tempFileRes.value() != 0) {
-        LOG(ERROR) << "Failed to create temp file for Glow trace events: "
-                   << tempFileRes;
+      llvm::SmallString<64> path;
+      if (glowDumpTraceFile.empty()) {
+        auto tempFileRes =
+            llvm::sys::fs::createTemporaryFile("glow-trace", "json", path);
+        if (tempFileRes.value() != 0) {
+          LOG(ERROR) << "Failed to create temp file for Glow trace events: "
+                     << tempFileRes;
+        } else {
+          LOG(INFO) << "Trace path=" << path.c_str();
+          mergedTraceContext.dump(path);
+        }
       } else {
         LOG(INFO) << "Trace path=" << path.c_str();
-        mergedTraceContext.dump(path);
-      }
-    } else {
-      LOG(INFO) << "Trace path=" << path.c_str();
-      mergedTraceContext.dump(glowDumpTraceFile);
-    }
-  }
-
-  if (!skipCorrectnessCheck) {
-    if (numFailed == 0) {
-      llvm::outs() << "All passed!\n";
-    } else {
-      llvm::outs() << numFailed << " inferences failed to match reference.\n";
-    }
-  }
-
-  if (topKCompare > 0) {
-    llvm::outs() << "Num top1 exact matches: " << numTop1Matches << "/"
-                 << numTotalTopKCompares << "\n";
-    llvm::outs() << "Num topK exact matches (k=" << topKCompare
-                 << "): " << numTopKMatches << "/" << numTotalTopKCompares
-                 << "\n";
-
-    if (top1Threshold > 0.0) {
-      float top1MatchRate = float(numTop1Matches) / numTotalTopKCompares;
-      if (top1MatchRate < top1Threshold) {
-        llvm::outs() << "Expected top1 match rate of at least " << top1Threshold
-                     << " but only achieved " << top1MatchRate << "\n";
-        return numTotalTopKCompares - numTop1Matches;
+        mergedTraceContext.dump(glowDumpTraceFile);
       }
     }
-  }
 
-  if (cosineSimilarityStats) {
-    float p50Similarity = cosineHist.getPercentileEstimate(0.5);
-    llvm::outs() << "cosine similarity stats:\n"
-                 << "p01: " << cosineHist.getPercentileEstimate(0.01) << "\n"
-                 << "p02: " << cosineHist.getPercentileEstimate(0.02) << "\n"
-                 << "p05: " << cosineHist.getPercentileEstimate(0.05) << "\n"
-                 << "p10: " << cosineHist.getPercentileEstimate(0.1) << "\n"
-                 << "p25: " << cosineHist.getPercentileEstimate(0.25) << "\n"
-                 << "p50: " << p50Similarity << "\n"
-                 << "p75: " << cosineHist.getPercentileEstimate(0.75) << "\n"
-                 << "p90: " << cosineHist.getPercentileEstimate(0.90) << "\n"
-                 << "p95: " << cosineHist.getPercentileEstimate(0.95) << "\n"
-                 << "p98: " << cosineHist.getPercentileEstimate(0.98) << "\n"
-                 << "p99: " << cosineHist.getPercentileEstimate(0.99) << "\n";
-    if (cosineSimilarityThreshold > 0.0) {
-      if (p50Similarity < cosineSimilarityThreshold) {
-        llvm::outs() << "Expected p50 cosine similarity of at least "
-                     << cosineSimilarityThreshold << " but only achieved "
-                     << p50Similarity << "\n";
-        return 1;
+    if (!skipCorrectnessCheck) {
+      if (numFailed == 0) {
+        llvm::outs() << "All passed!\n";
+      } else {
+        llvm::outs() << numFailed << " inferences failed to match reference.\n";
       }
     }
-  }
 
-  std::chrono::duration<double, std::milli> duration = endTime - startTime;
-  std::cout << "Total inference duration (ms): " << duration.count() << "\n";
-  std::cout << "Avg inference duration (ms): "
-            << duration.count() / numTotalInferences << "\n";
-  std::cout << "Avg inference per second: "
-            << numTotalInferences * 1000 / duration.count() << "\n";
+    if (topKCompare > 0) {
+      llvm::outs() << "Num top1 exact matches: " << numTop1Matches << "/"
+                   << numTotalTopKCompares << "\n";
+      llvm::outs() << "Num topK exact matches (k=" << topKCompare
+                   << "): " << numTopKMatches << "/" << numTotalTopKCompares
+                   << "\n";
+
+      if (top1Threshold > 0.0) {
+        float top1MatchRate = float(numTop1Matches) / numTotalTopKCompares;
+        if (top1MatchRate < top1Threshold) {
+          llvm::outs() << "Expected top1 match rate of at least "
+                       << top1Threshold << " but only achieved "
+                       << top1MatchRate << "\n";
+          return numTotalTopKCompares - numTop1Matches;
+        }
+      }
+    }
+
+    if (cosineSimilarityStats) {
+      float p50Similarity = cosineHist.getPercentileEstimate(0.5);
+      llvm::outs() << "cosine similarity stats:\n"
+                   << "p01: " << cosineHist.getPercentileEstimate(0.01) << "\n"
+                   << "p02: " << cosineHist.getPercentileEstimate(0.02) << "\n"
+                   << "p05: " << cosineHist.getPercentileEstimate(0.05) << "\n"
+                   << "p10: " << cosineHist.getPercentileEstimate(0.1) << "\n"
+                   << "p25: " << cosineHist.getPercentileEstimate(0.25) << "\n"
+                   << "p50: " << p50Similarity << "\n"
+                   << "p75: " << cosineHist.getPercentileEstimate(0.75) << "\n"
+                   << "p90: " << cosineHist.getPercentileEstimate(0.90) << "\n"
+                   << "p95: " << cosineHist.getPercentileEstimate(0.95) << "\n"
+                   << "p98: " << cosineHist.getPercentileEstimate(0.98) << "\n"
+                   << "p99: " << cosineHist.getPercentileEstimate(0.99) << "\n";
+      if (cosineSimilarityThreshold > 0.0) {
+        if (p50Similarity < cosineSimilarityThreshold) {
+          llvm::outs() << "Expected p50 cosine similarity of at least "
+                       << cosineSimilarityThreshold << " but only achieved "
+                       << p50Similarity << "\n";
+          return 1;
+        }
+      }
+    }
+    std::chrono::duration<double, std::milli> duration = endTime - startTime;
+    std::cout << "Total inference duration (ms): " << duration.count() << "\n";
+    std::cout << "Avg inference duration (ms): "
+              << duration.count() / numTotalInferences << "\n";
+    std::cout << "Avg inference per second: "
+              << numTotalInferences * 1000 / duration.count() << "\n";
+    nowTime = std::chrono::steady_clock::now();
+  } while (std::chrono::duration_cast<std::chrono::seconds>(nowTime -
+                                                            endTimeDuration)
+               .count() < 0);
 
   return numFailed;
 }
