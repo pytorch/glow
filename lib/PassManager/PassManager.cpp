@@ -166,7 +166,7 @@ void PassManagerBase::runPrePassHook(IRContainer *C,
                  << "\n";
     dumpIR(C, glow::outs(),
            C->getName().str() + "_PrePass_" + P.getName().str() + "_n" +
-               std::to_string(globalPassCounter()) + "_"+std::to_string(globalInterationCounter())+ ".dot");
+               std::to_string(globalPassCounter()) + "_"+std::to_string(iterationCount_++)+ ".dot");
   }
 }
 
@@ -180,7 +180,7 @@ void PassManagerBase::runPostPassHook(IRContainer *C,
                  << "\n";
     dumpIR(C, glow::outs(),
            C->getName().str() + "_PostPass_" + P.getName().str() + "_n" +
-               std::to_string(globalPassCounter()) + "_"+std::to_string(globalInterationCounter())+ ".dot");
+               std::to_string(globalPassCounter()) + "_"+std::to_string(iterationCount_++)+ ".dot");
   }
 }
 

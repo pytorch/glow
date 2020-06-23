@@ -69,7 +69,7 @@ class PassManagerBase : public Named {
 
 private:
   /// The index of pass iteration
-  int iterationCount = 0;
+  int iterationCount_ = 0;
 
 protected:
   /// The index of the current pass being executed in the pipeline.
@@ -155,11 +155,6 @@ public:
   /// Get the global pass counter associated with the pass manager.
   virtual const std::atomic<unsigned> &globalPassCounter() const = 0;
 
-  /// increase the index and return the current index
-  int globalInterationCounter(){
-    iterationCount++;
-    return iterationCount;
-  }
 };
 
 template <typename IRPassTy, typename PassIDTy>
