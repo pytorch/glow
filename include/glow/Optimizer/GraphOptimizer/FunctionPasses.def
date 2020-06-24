@@ -59,6 +59,7 @@ FUN_PASS(OptimizeOutIntermediateConversions)
 FUN_PASS(OptimizeQuantFCFloatRelu)
 FUN_PASS(OptimizeConcatQuantization)
 FUN_PASS(SinkConcatBelowQuantize)
+FUN_PASS(FoldLayerNormArithmetic)
 
 
 // NOTE: This pass must be last; it's used to count the total number of passes.

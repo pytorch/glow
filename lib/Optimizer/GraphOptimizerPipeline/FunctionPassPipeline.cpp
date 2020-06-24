@@ -71,6 +71,12 @@ createDefaultGraphOptimizationPassPipeline() {
       // enables further optimizations.
       {FunctionPassID::OptimizeTransposeIntoReshape},
 
+      // Optimize arithmetic nodes based on algebraic identities.
+      {FunctionPassID::OptimizeArithmeticNodes},
+
+      // Fold some Arithmetic ops following a LayerNorm into LayerNorm.
+      {FunctionPassID::FoldLayerNormArithmetic},
+
       // Reshapes and transposes can prevent other optimizations from
       // triggering,
       // so try to optimize them out first.

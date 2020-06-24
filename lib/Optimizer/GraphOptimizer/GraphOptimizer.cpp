@@ -4519,6 +4519,109 @@ bool FoldElemKindConversionIntoOutputs::run(Function *F,
   return changed;
 }
 
+/// Broadcasts are implemented via a series of Tiles. This helper unwinds them
+/// -- it \returns an original Node starting from \p N that was broadcasted from
+/// the 0th dimension up until \p endDim. Strips off base Reshape as well if
+/// there was one used before tiling.
+static NodeValue unwindBroadcast(NodeValue N, unsigned_t endDim) {
+  while (TileNode *TN = dyn_cast<TileNode>(N)) {
+    // Check that the axis of the current Tile is inside of the expected
+    // provided endDim.
+    if (TN->getAxis() >= endDim) {
+      return nullptr;
+    }
+    // Applicable only if original dim is 1 in the Broadcast's Tile.
+    if (TN->getInput().dims()[TN->getAxis()] != 1) {
+      return nullptr;
+    }
+    N = TN->getInput();
+  }
+  if (ReshapeNode *RN = dyn_cast<ReshapeNode>(N)) {
+    return RN->getInput();
+  }
+  return N;
+}
+
+/// Looks for supported arithmetic ops following LayerNorm and folds them into
+/// the scale/bias of the LayerNorm if the scale/bias are single-use
+/// Splat/Constant, as we can then later on constant fold them in.
+bool FoldLayerNormArithmetic::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    if (!isa<MulNode>(&N) && !isa<AddNode>(&N)) {
+      continue;
+    }
+
+    // Currently only support floating point, as otherwise there will be
+    // quantization parameter mismatches.
+    if (!isFloatElemKind(N.getElementType(ArithmeticNode::ResultIdx))) {
+      continue;
+    }
+
+    // Check if the Mul/Add is consuming an LN.
+    LayerNormalizationNode *LN =
+        dyn_cast<LayerNormalizationNode>(N.getNthInput(ArithmeticNode::LHSIdx));
+    if (!LN) {
+      continue;
+    }
+
+    // Check if the RHS is a Splat or Constant. It may have been broadcasted to
+    // the correct shape.
+    NodeValue RHS = unwindBroadcast(N.getNthInput(ArithmeticNode::RHSIdx),
+                                    LN->getResult().dims().size() -
+                                        LN->getScale().dims().size());
+    if (!RHS.getNode() || !(isa<Constant>(RHS) || isa<SplatNode>(RHS))) {
+      continue;
+    }
+
+    // Make sure the RHS that we want to merge into the LN's Scale/Bias have the
+    // same number of elements, since we're about to reshape them to match.
+    if (RHS.getType()->size() != LN->getScale().getType()->size()) {
+      continue;
+    }
+
+    // RHS may have already been fused with a Reshape to get ready for
+    // Tiling. Reshape RHS back here if necessary.
+    if (RHS.dims() != LN->getScale().dims()) {
+      RHS = F->createReshape(RHS.getNode()->getName().str() + "_squeezed", RHS,
+                             LN->getScale().dims());
+    }
+
+    if (MulNode *MN = dyn_cast<MulNode>(&N)) {
+      // Merge the Mul into a new Scale and Bias, multiplying by the original
+      // Mul RHS that followed the LayerNorm.
+      MulNode *newScale =
+          F->createMul(LN->getScale().getNode()->getName().str() + "_fuse_" +
+                           MN->getName().data(),
+                       LN->getScale(), RHS);
+      MulNode *newBias = F->createMul(LN->getBias().getNode()->getName().str() +
+                                          "_fuse_" + MN->getName().data(),
+                                      LN->getBias(), RHS);
+      LN->getScale().replaceAllUsesOfWith(newScale->getResult(), F, newScale);
+      LN->getBias().replaceAllUsesOfWith(newBias->getResult(), F, newBias);
+      MN->getResult().replaceAllUsesOfWith(LN->getResult());
+      changed = true;
+      continue;
+    }
+
+    if (AddNode *AN = dyn_cast<AddNode>(&N)) {
+      // Merge the Add into a new Bias, adding the original Add RHS that
+      // followed the LayerNorm.
+      AddNode *newBias = F->createAdd(LN->getBias().getNode()->getName().str() +
+                                          "_fuse_" + AN->getName().data(),
+                                      LN->getBias(), RHS);
+      LN->getBias().replaceAllUsesOfWith(newBias->getResult(), F, newBias);
+      AN->getResult().replaceAllUsesOfWith(LN->getResult());
+      changed = true;
+      continue;
+    }
+  }
+
+  return changed;
+}
+
 /// Looks for an activation directly following \p N from \p F that the backend
 /// \p B supports for fusion.
 template <class T> bool fuseActivation(T *N, Function *F, const Backend *B) {
