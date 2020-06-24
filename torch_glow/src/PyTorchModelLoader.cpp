@@ -713,8 +713,8 @@ struct EmbeddingBagInputs {
   };
 };
 
-/// Indexes used for fb::embedding_bag_byte_rowwise_offsets and
-/// fb::embedding_bag_4bit_rowwise_offsets inputs.
+/// Indexes used for quantized::embedding_bag_byte_rowwise_offsets and
+/// quantized::embedding_bag_4bit_rowwise_offsets inputs.
 struct EmbeddingBagByteRowwiseOffsetsInputs {
   enum {
     weight,
@@ -808,9 +808,9 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::topk"}, &PyTorchModelLoader::loadTopK},
       {{"prim::ConstantChunk"}, &PyTorchModelLoader::loadConstantChunk},
       {{"aten::embedding_bag"}, &PyTorchModelLoader::loadEmbeddingBag},
-      {{"fb::embedding_bag_byte_rowwise_offsets"},
+      {{"quantized::embedding_bag_byte_rowwise_offsets"},
        &PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets},
-      {{"fb::embedding_bag_4bit_rowwise_offsets"},
+      {{"quantized::embedding_bag_4bit_rowwise_offsets"},
        &PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets},
   });
 
