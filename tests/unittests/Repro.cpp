@@ -441,7 +441,9 @@ int run() {
   {
     ONNXModelLoader onnxLD(modelPathOpt, {}, {}, *mod, "test", &PPC, &err,
                            onnxLoaderZipMode,
-                           &cctx.backendOpts.backendSpecificNodeInfo);
+                           &cctx.backendOpts.backendSpecificNodeInfo,
+                           /* loadIntoExistingModule */ false,
+                           /* disableConstFoldInLoader */ true);
     usingGlowCustomOps = onnxLD.usingGlowCustomOps();
   }
   CHECK(!ERR_TO_BOOL(std::move(err)))

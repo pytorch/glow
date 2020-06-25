@@ -5370,3 +5370,76 @@ TEST_F(GraphOptz, lowerConv2DToFCMultiBatch) {
   // Now compile/run/compare F_ and optimizedF_.
   checkNumericalEquivalence(1e-6);
 }
+
+/// Test that Mul and Add can be folded into LayerNorm.
+TEST_F(GraphOptz, foldMulAddIntoLayerNorm) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 4, 10, 20}, "in", false);
+
+  Tensor scaleT(ElemKind::FloatTy, {10, 20});
+  scaleT.getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
+  Constant *scaleC = mod_.createConstant("scale", std::move(scaleT));
+  SplatNode *biasS = F_->createSplat("bias", scaleC->getType(), 1.5f);
+
+  auto *LN = F_->createLayerNormalization("LN", input, scaleC, biasS, 1e-5);
+
+  SplatNode *splat = F_->createSplat("splat", scaleC->getType(), 0.5f);
+  MulNode *MN =
+      F_->createNodeWithBroadcast<MulNode>("mul", /* axis */ -1, LN, splat);
+
+  Tensor addT(ElemKind::FloatTy, {1, 1, 10, 20});
+  addT.getHandle().randomize(-1.0f, 1.0f, mod_.getPRNG());
+  Constant *addC = mod_.createConstant("addC", std::move(addT));
+  AddNode *AN =
+      F_->createNodeWithBroadcast<AddNode>("add", /* axis */ -1, MN, addC);
+  F_->createSave("save", AN);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Because Mul and Add are folded in, they should not exist anymore, nor
+  // should tiles that expand them to match the output of LN.
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MulNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::AddNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::TileNodeKind));
+
+  // Now compile/run/compare F_ and optimizedF_.
+  bindings_.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
+  checkNumericalEquivalence(1e-6);
+}
+
+/// Test that Mul and Add can be folded into LayerNorm when the leading dims are
+/// all one.
+TEST_F(GraphOptz, foldMulAddIntoLayerNormNoBatch) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 10, 20}, "in", false);
+
+  Tensor scaleT(ElemKind::FloatTy, {10, 20});
+  scaleT.getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
+  Constant *scaleC = mod_.createConstant("scale", std::move(scaleT));
+  SplatNode *biasS = F_->createSplat("bias", scaleC->getType(), 1.5f);
+
+  auto *LN = F_->createLayerNormalization("LN", input, scaleC, biasS, 1e-5);
+
+  SplatNode *splat = F_->createSplat("splat", scaleC->getType(), 0.5f);
+  MulNode *MN =
+      F_->createNodeWithBroadcast<MulNode>("mul", /* axis */ -1, LN, splat);
+
+  Tensor addT(ElemKind::FloatTy, {1, 1, 10, 20});
+  addT.getHandle().randomize(-1.0f, 1.0f, mod_.getPRNG());
+  Constant *addC = mod_.createConstant("addC", std::move(addT));
+  AddNode *AN =
+      F_->createNodeWithBroadcast<AddNode>("add", /* axis */ -1, MN, addC);
+  F_->createSave("save", AN);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Because Mul and Add are folded in, they should not exist anymore, nor
+  // should tiles that expand them to match the output of LN.
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MulNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::AddNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::TileNodeKind));
+
+  // Now compile/run/compare F_ and optimizedF_.
+  bindings_.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
+  checkNumericalEquivalence(1e-6);
+}
