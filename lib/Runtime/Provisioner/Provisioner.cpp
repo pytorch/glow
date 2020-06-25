@@ -60,8 +60,10 @@ auto sortMostMemory = [](const std::pair<DeviceIDTy, uint64_t> &a,
 } // namespace
 
 Provisioner::Provisioner(DeviceManagerMapTy &devices) {
+  unsigned deviceMapping{0};
   for (auto &device : devices) {
     devices_.push_back(device.second.get());
+    deviceMappings_.push_back(deviceMapping++);
     auto backendName = device.second->getBackendName();
     if (backends_.find(backendName) == backends_.end()) {
       std::unique_ptr<Backend> newBackend(createBackend(backendName));
@@ -218,7 +220,8 @@ Provisioner::generateDeviceAssignments(
   // Update nodes in logicalDevices with their assignments.
   for (auto &assignment : deviceAssignment) {
     for (auto &node : logicalDevices[assignment.first]) {
-      node->deviceRuntimeInfos[assignment.second] = DeviceRuntimeInfo();
+      node->deviceRuntimeInfos[deviceMappings_[assignment.second]] =
+          DeviceRuntimeInfo();
     }
   }
   return deviceAssignment;
@@ -656,15 +659,15 @@ Error Provisioner::removeFunction(llvm::StringRef name) {
   return Error::success();
 }
 
-Error Provisioner::evictFunction(llvm::StringRef name, DeviceIDTy device) {
+Error Provisioner::evictFunction(llvm::StringRef name, DeviceManager *device) {
   std::promise<void> evictPromise;
   Error evictErr = Error::empty();
   auto done = evictPromise.get_future();
-  devices_[device]->evictNetwork(
-      name, [&evictPromise, &evictErr](std::string, Error err) {
-        evictErr = std::move(err);
-        evictPromise.set_value();
-      });
+  device->evictNetwork(name,
+                       [&evictPromise, &evictErr](std::string, Error err) {
+                         evictErr = std::move(err);
+                         evictPromise.set_value();
+                       });
   done.get();
   return evictErr;
 }
@@ -686,7 +689,7 @@ void Provisioner::cleanupProvision(
     // Remove any partitions added to devices.
     for (auto &device : currentNetworkResidency) {
       for (auto &network : device.second) {
-        Error evictErr = evictFunction(network, device.first);
+        Error evictErr = evictFunction(network, devices_[device.first]);
         if (evictErr) {
           LOG(ERROR) << "Unable to evict network: " << network << "\n";
         }

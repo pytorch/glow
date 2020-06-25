@@ -32,6 +32,8 @@
 
 #include <glog/logging.h>
 
+#include "folly/String.h"
+
 #include <future>
 #include <queue>
 #include <shared_mutex>
@@ -53,6 +55,7 @@ namespace glow {
 namespace runtime {
 bool GlowEnableP2P = false;
 bool GlowEnableDRT = false;
+std::string GlowAvailableDevices = "";
 } // namespace runtime
 } // namespace glow
 
@@ -82,6 +85,13 @@ llvm::cl::opt<bool, /* ExternalStorage */ true>
               llvm::cl::Optional,
               llvm::cl::location(glow::runtime::GlowEnableP2P),
               llvm::cl::cat(hostManagerCat));
+
+/// Set which devices are available to add a network to.
+llvm::cl::opt<std::string, true> GlowAvailableDevicesOpt(
+    "glow-available-devices",
+    llvm::cl::desc("Comma separated list of devices which "
+                   "should be used, example 2,3,4"),
+    llvm::cl::location(GlowAvailableDevices), llvm::cl::cat(hostManagerCat));
 
 HostManager::HostManager()
     : config_(), statsExporterRegistry_(StatsExporterRegistry::Stats()) {}
@@ -146,14 +156,41 @@ Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
         DeviceManager::createDeviceManager(*config));
 
     RETURN_IF_ERR(devices_[deviceCount]->init());
-
+    availableDevices_.push_back(deviceCount);
     deviceCount++;
   }
   provisioner_.reset(new Provisioner(devices_));
   executor_.reset(
       new ThreadPoolExecutor(devices_, config_.executorThreads, "HostManager"));
   exportMemoryCounters();
+  if (GlowAvailableDevices.length()) {
+    std::vector<unsigned> devices;
+    folly::split<char, std::string, unsigned>(',', GlowAvailableDevices,
+                                              devices, /* ignoreEmpty */ true);
+    std::vector<runtime::DeviceIDTy> convertedDevs(devices.begin(),
+                                                   devices.end());
+    setAvailableDevices(convertedDevs);
+  }
   return Error::success();
+}
+
+void HostManager::setAvailableDevices(const std::vector<DeviceIDTy> &devices) {
+  // Validate new device list.
+  availableDevices_.clear();
+  std::vector<DeviceIDTy> mapping;
+  std::vector<DeviceManager *> availableDevices;
+  // Grab a lock to prevent devices_ getting changed concurrently.
+  std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+  for (auto dev : devices) {
+    auto it = devices_.find(dev);
+    if (it != devices_.end()) {
+      availableDevices_.push_back(dev);
+      availableDevices.push_back(devices_[dev].get());
+      mapping.push_back(it->first);
+    }
+  }
+  // Update the provisioner.
+  provisioner_->updateAvailableDevices(availableDevices, mapping);
 }
 
 void HostManager::exportMemoryCounters() {
@@ -244,13 +281,13 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   std::vector<DeviceInfo> deviceInfo;
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
-    for (auto &device : devices_) {
-      DeviceInfo info = device.second->getDeviceInfo();
-      info.availableMemory = device.second->getAvailableMemory();
-      info.backendName = device.second->getBackendName();
+    for (auto &device : availableDevices_) {
+      DeviceInfo info = devices_[device]->getDeviceInfo();
+      info.availableMemory = devices_[device]->getAvailableMemory();
+      info.backendName = devices_[device]->getBackendName();
       info.nonSupportedNodes =
-          device.second->getParamByName("nonSupportedNodes");
-      info.supportedNodes = device.second->getParamByName("supportedNodes");
+          devices_[device]->getParamByName("nonSupportedNodes");
+      info.supportedNodes = devices_[device]->getParamByName("supportedNodes");
       deviceInfo.push_back(info);
     }
   }
@@ -443,7 +480,8 @@ Error HostManager::removeNetwork(llvm::StringRef networkName) {
   executor_->freePool(networkIterator->second.dag.root.get());
   for (auto &node : nodes) {
     for (auto device : node->deviceRuntimeInfos) {
-      Error evictErr = provisioner_->evictFunction(node->name, device.first);
+      Error evictErr =
+          provisioner_->evictFunction(node->name, devices_[device.first].get());
       err.set(std::move(evictErr));
     }
     // Also remove compiledFunction from Provisioner.

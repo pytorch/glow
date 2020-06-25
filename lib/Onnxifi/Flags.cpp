@@ -77,6 +77,7 @@ extern bool GlowNNPIDeviceCheck;
 #endif
 extern bool GlowEnableDRT;
 extern bool GlowEnableP2P;
+extern std::string GlowAvailableDevices;
 } // namespace runtime
 
 extern bool GlowDumpCompilationLog;
@@ -147,6 +148,15 @@ DEFINE_string(glow_onnxifi_backend, "", "Glow backend used for ONNXIFI");
 DEFINE_validator(glow_onnxifi_backend,
                  [](const char *flagname, const std::string &value) {
                    glow::onnxifi::GlowOnnxifiBackend = value;
+                   return true;
+                 });
+
+DEFINE_string(
+    glow_available_devices, "",
+    "Comma separated list of devices which should be used, example 2,3,4");
+DEFINE_validator(glow_available_devices,
+                 [](const char * /* unused */, const std::string &value) {
+                   glow::runtime::GlowAvailableDevices = value;
                    return true;
                  });
 
