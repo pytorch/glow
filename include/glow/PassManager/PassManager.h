@@ -154,7 +154,6 @@ public:
   virtual std::atomic<unsigned> &globalPassCounter() = 0;
   /// Get the global pass counter associated with the pass manager.
   virtual const std::atomic<unsigned> &globalPassCounter() const = 0;
-
 };
 
 template <typename IRPassTy, typename PassIDTy>
