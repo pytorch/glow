@@ -3303,6 +3303,30 @@ TEST_F(GraphOptz, concatReshapes) {
   ASSERT_TRUE(newCN);
 }
 
+// Making sure we do not try to to optimize concat2(dim1, concat1(dim2, X, Y),
+// Z)
+// -> concat(dim1, X, Y, Z) when concat1 has multiple users.
+TEST_F(GraphOptz, ConcatSimplificationNegative) {
+  const dim_t dim1[] = {1, 4, 4, 4};
+  const dim_t dim2[] = {1, 4, 4, 8};
+  auto *in1 = mod_.createPlaceholder(ElemKind::FloatTy, dim1, "in1", false);
+  auto *in2 = mod_.createPlaceholder(ElemKind::FloatTy, dim1, "in2", false);
+  auto *in3 = mod_.createPlaceholder(ElemKind::FloatTy, dim2, "in3", false);
+
+  auto *cnc1 = F_->createConcat("cnc1", {in1, in2}, 3);
+  auto *add1 = F_->createAdd("add1", in3, cnc1);
+  auto *cnc2 = F_->createConcat("cnc2", {add1, cnc1}, 3);
+  F_->createSave("ret", cnc2);
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  for (auto &n : F_->getNodes()) {
+    if (auto *tcnc = llvm::dyn_cast<ConcatNode>(&n)) {
+      EXPECT_EQ(tcnc->getNumInputs(), 2);
+    }
+  }
+}
+
 /// Check that Variable CSE works correctly, combining small Variables that
 /// have the same data.
 TEST_F(GraphOptz, VarsCSE) {
@@ -5442,4 +5466,23 @@ TEST_F(GraphOptz, foldMulAddIntoLayerNormNoBatch) {
   // Now compile/run/compare F_ and optimizedF_.
   bindings_.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
   checkNumericalEquivalence(1e-6);
+}
+
+/// Tests select optimization with uniform constant condition.
+TEST_F(GraphOptz, SelectConstCondOptimization) {
+  llvm::SmallVector<dim_t, 4> dims = {1, 1, 4, 2};
+  auto *condConst =
+      mod_.createConstant(ElemKind::BoolTy, dims, "condition_const");
+  condConst->getHandle<bool>().clear(true);
+  auto *RHS =
+      mod_.createPlaceholder(ElemKind::FloatTy, dims, "rhs_input", false);
+  auto *LHS =
+      mod_.createPlaceholder(ElemKind::FloatTy, dims, "lhs_input", false);
+
+  auto *select = F_->createSelect("select", condConst, LHS, RHS);
+  auto *save = F_->createSave("save", select);
+  ::glow::optimize(F_, CompilationMode::Infer);
+  auto saveInput = save->getInput();
+  EXPECT_FALSE(llvm::isa<SelectNode>(saveInput));
+  EXPECT_TRUE((*saveInput).getHash() == LHS->getHash());
 }

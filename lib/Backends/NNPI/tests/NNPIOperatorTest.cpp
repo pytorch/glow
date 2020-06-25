@@ -198,6 +198,8 @@ struct BlacklistInitializer {
             {"CmpEQ_Int32/0", TestBlacklist::AnyDeviceHWEngine},
             {"CmpEQ_Int64/0", TestBlacklist::AnyDeviceHWEngine},
             {"ConcatTopK/0", TestBlacklist::AnyDeviceHWEngine},
+            {"ConvertFrom_FloatTy_To_BoolTy/0",
+             TestBlacklist::AnyDeviceAnyEngine},
             {"ConvertFrom_FloatTy_To_Int32ITy/0",
              TestBlacklist::AnyDeviceHWEngine},
             {"ConvertFrom_FloatTy_To_Int32ITy_AndBack/0",

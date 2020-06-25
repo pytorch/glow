@@ -2925,6 +2925,12 @@ void libjit_convertTo_f_b(float *dstPtr, const bool *srcPtr, const dim_t *dims,
                                                   numDims);
 }
 
+void libjit_convertTo_b_f(bool *dstPtr, const float *srcPtr, const dim_t *dims,
+                          dim_t numDims) {
+  libjit_copy_kernel_with_conversion<bool, float>(dstPtr, srcPtr, dims,
+                                                  numDims);
+}
+
 void libjit_convertTo_f_i32(float *dstPtr, const int32_t *srcPtr,
                             const dim_t *dims, dim_t numDims) {
   libjit_copy_kernel_with_conversion<float, int32_t>(dstPtr, srcPtr, dims,

@@ -171,6 +171,8 @@ createDefaultGraphOptimizationPassPipeline() {
       // Try to remove unnecessary Split-Concat operations
       {FunctionPassID::EliminateSliceConcat},
 
+      // Optimize select operations.
+      {FunctionPassID::OptimizeSelect},
       // Perform a round of Dead Code Elimination to cleanup the final pass.
       getDCEPassConfig(),
   };

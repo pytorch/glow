@@ -2324,6 +2324,13 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
         continue;
       }
 
+      // Preventing this from kicking in.
+      // Otherwise we will end up sequence of concats with more and more inputs,
+      // without really eliminating any.
+      if (CNI->getResult().getNumUsers() > 1) {
+        continue;
+      }
+
       merged = true;
       // Replace current input by its own inputs, i.e. merge them into the
       // parent concat node.
@@ -4744,6 +4751,41 @@ static void setFP16AccumSLS(Function *F,
       continue;
     }
   } while (nodeIt != stopIt);
+}
+
+/// Gets Constant or returns nullptr if input is not Constant.
+/// Skips QuantizeNode if present.
+static Constant *getConstant(const NodeValue &NV) {
+  Node *N = NV.getNode();
+  if (isa<QuantizeNode>(N)) {
+    N = N->getNthInput(QuantizeNode::InputIdx);
+  }
+  return dyn_cast<Constant>(N);
+}
+
+/// Simple optimization if select cond is constant and uniform, just pick
+/// appropriate input.
+bool OptimizeSelect::run(Function *F, const CompilationContext &cctx) {
+  bool changed = false;
+  for (auto &n : F->getNodes()) {
+    auto *selectN = llvm::dyn_cast<SelectNode>(&n);
+    if (!selectN) {
+      continue;
+    }
+
+    auto *constCond = getConstant(selectN->getCond());
+    bool val = false;
+    if (!constCond || !isUniformConstant<bool>(*constCond, val)) {
+      continue;
+    }
+    changed = true;
+    if (val) {
+      selectN->getResult().replaceAllUsesOfWith(selectN->getLHS());
+    } else {
+      selectN->getResult().replaceAllUsesOfWith(selectN->getRHS());
+    }
+  }
+  return changed;
 }
 
 /// This funciton uses TypeAToTypeBFunctionConverter to do a whole graph

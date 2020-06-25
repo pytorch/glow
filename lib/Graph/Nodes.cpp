@@ -1006,11 +1006,15 @@ bool ExpNode::verify() const {
   const Node *parent = getResult().getNode();
   bool isValid =
       checkSameIsQuantized(getInput().getType(), getResult().getType(), parent);
+
   if (getInput().getType()->isQuantizedType()) {
-    return false;
+    isValid &= checkType(getInput(), getResult().getElementType(),
+                         getResult().getNode());
+    isValid &= checkSameShape(getInput(), getResult(), parent);
+  } else {
+    isValid &= checkSameType(getInput(), getResult(), parent);
   }
-  isValid &= checkSameType(getInput(), getResult(), parent);
-  isValid &= checkSameShape(getInput(), getResult(), parent);
+
   return isValid;
 }
 
