@@ -1758,6 +1758,11 @@ ExpNode *Function::createExp(llvm::StringRef name, NodeValue input) {
   return addNode(new ExpNode(name, input.getType(), input));
 }
 
+ExpNode *Function::createExp(llvm::StringRef name, TypeRef outTy,
+                             NodeValue input) {
+  return addNode(new ExpNode(name, outTy, input));
+}
+
 LogitNode *Function::createLogit(llvm::StringRef name, NodeValue input,
                                  float eps) {
   return addNode(new LogitNode(name, input.getType(), input, eps));
