@@ -1434,6 +1434,8 @@ TEST(Tensor, accessToRawTextFile) {
   }
 }
 
+#ifdef WITH_PNG
+
 /// Testing loading of input tensors from a file.
 static void tensorInputWriterLoader(ImageLayout outImageLayout,
                                     ImageLayout inImageLayout) {
@@ -1505,6 +1507,8 @@ TEST(Tensor, tensorCustomInputLoader) {
   EXPECT_EQ(entered, true);
   EXPECT_EQ(testT.dims(), llvm::ArrayRef<dim_t>({1, 2, 3, 4}));
 }
+
+#endif // WITH_PNG
 
 // Check that write/read of tensors data from/to raw-binary files is
 // working properly.

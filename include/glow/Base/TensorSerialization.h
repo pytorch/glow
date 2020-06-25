@@ -16,7 +16,9 @@
 #ifndef GLOW_BASE_TENSOR_SERIALIZATION_H
 #define GLOW_BASE_TENSOR_SERIALIZATION_H
 
+#ifdef WITH_PNG
 #include "glow/Base/Image.h"
+#endif // WITH_PNG
 #include "glow/Base/Tensor.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -64,6 +66,8 @@ void dumpTensorToTextFile(Tensor &tensor, llvm::StringRef filename,
 void loadTensorFromTextFile(Tensor &tensor, llvm::StringRef filename,
                             const TensorSerializationOptions &opts);
 
+#ifdef WITH_PNG
+
 /// Load network input tensor (same one images are loaded into) from the tensor
 /// blobs files in \p filenames. All the loaded tensors are concatenated along
 /// the batch dimension. The default loader expected the following tensor blob
@@ -90,6 +94,7 @@ using InputTensorFileLoaderFn = std::function<void(
 /// Register input tensor loader function.
 void registerInputTensorFileLoader(InputTensorFileLoaderFn loader);
 
+#endif // WITH_PNG
 } // namespace glow
 
 #endif // GLOW_BASE_TENSOR_SERIALIZATION_H

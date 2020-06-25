@@ -1,9 +1,11 @@
-add_executable(resnet-training
-                 main.cpp)
-target_link_libraries(resnet-training
-                      PRIVATE
-                        Backends
-                        ExecutionEngine
-                        Graph
-                        Importer
-                        GraphOptimizer)
+if(PNG_FOUND)
+  add_executable(resnet-training
+                  main.cpp)
+  target_link_libraries(resnet-training
+                        PRIVATE
+                          Backends
+                          ExecutionEngine
+                          Graph
+                          Importer
+                          GraphOptimizer)
+endif()
