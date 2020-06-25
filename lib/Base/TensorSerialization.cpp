@@ -15,7 +15,9 @@
  */
 
 #include "glow/Base/TensorSerialization.h"
+#ifdef WITH_PNG
 #include "glow/Base/Image.h"
+#endif
 #include "glow/Graph/Graph.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -64,6 +66,8 @@ static void loadTensorFromTextFileImpl(Tensor &tensor, llvm::StringRef filename,
                       << handle.actualSize() << " elements!";
 }
 
+#ifdef WITH_PNG
+
 /// Helper method to load tensor files into the model input tensor.
 static void loadTensorFromFileWithType(Tensor &T, llvm::StringRef filename,
                                        ImageLayout imageLayout) {
@@ -102,11 +106,17 @@ static void loadTensorFromFileWithType(Tensor &T, llvm::StringRef filename,
 static InputTensorFileLoaderFn inputTensorFileLoader_ =
     loadTensorFromFileWithType;
 
+#endif // WITH_PNG
+
 } // namespace glow
+
+#ifdef WITH_PNG
 
 void glow::registerInputTensorFileLoader(InputTensorFileLoaderFn loader) {
   inputTensorFileLoader_ = loader;
 }
+
+#endif // WITH_PNG
 
 void glow::dumpTensorToBinaryFile(const Tensor &tensor,
                                   llvm::StringRef filename,
@@ -260,6 +270,8 @@ void glow::loadTensorFromTextFile(Tensor &tensor, llvm::StringRef filename,
   fs.close();
 }
 
+#ifdef WITH_PNG
+
 void glow::loadInputImageFromFileWithType(
     const llvm::ArrayRef<std::string> &filenames, Tensor *inputData,
     ImageLayout imageLayout) {
@@ -321,3 +333,5 @@ void glow::dumpInputTensorToFileWithType(
     outfile << e << " ";
   }
 }
+
+#endif // WITH_PNG
