@@ -122,6 +122,9 @@ class HostManager final {
   /// a stable iteration order over devices.
   DeviceManagerMapTy devices_;
 
+  /// A vector of devices available for new networks to be added to.
+  std::vector<DeviceIDTy> availableDevices_;
+
   /// Executor class, this handles dispatching execution requests to the
   /// appropriate device managers for an inference request.
   std::unique_ptr<Executor> executor_;
@@ -190,6 +193,9 @@ public:
   /// removes the network from any backends setup to execute it.
   /// \returns an Error indicating success or failure of the operation.
   Error removeNetwork(llvm::StringRef networkName);
+
+  /// Update the list of available devices.
+  void setAvailableDevices(const std::vector<DeviceIDTy> &devices);
 
   /// Returns true if \p networkName is already added to the host.
   bool networkAdded(llvm::StringRef networkName);
