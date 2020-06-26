@@ -2051,34 +2051,45 @@ bool FoldMatMulAddIntoFullyConnected::run(Function *F,
     auto *matMulNode_LHS = dyn_cast<MatMulNode>(addNode->getLHS());
     auto *matMulNode_RHS = dyn_cast<MatMulNode>(addNode->getRHS());
     auto *matMulNode = matMulNode_LHS ? matMulNode_LHS : matMulNode_RHS;
-    NodeValue biasNode = matMulNode_LHS ? addNode->getRHS() : addNode->getLHS();
+    NodeValue bias = matMulNode_LHS ? addNode->getRHS() : addNode->getLHS();
     if (!matMulNode) {
       continue;
     }
 
-    // The corresponding length of the FullyConnected Bias operand.
-    auto fcBiasLen = matMulNode->getRHS().dims()[1];
-
-    // TODO: If Bias is a constant 2D tensor (e.g. [2,10]) we should also
-    // verify if the Bias is broadcasted from a 1D tensor (e.g. [10]) in
-    // order to instantiate a batched FullyConnected using the Bias slice.
-
-    // Verify the bias size.
-    if (biasNode.getType()->size() != fcBiasLen) {
+    // Folding is allowed only if MatMul has one use.
+    if (!matMulNode->getResult().hasOneUse()) {
       continue;
     }
 
-    // Reshape the bias to 1D (if needed).
-    if (biasNode.dims().size() > 1) {
-      biasNode =
-          F->createReshape(biasNode.getNode()->getName().str() + ".reshape",
-                           biasNode, {biasNode.getType()->size()});
+    // The corresponding batch/length of the FullyConnected Bias operand.
+    assert(bias.dims().size() == 2 && "Bias should be 2D!");
+    auto biasBatch = bias.dims()[0];
+    auto biasLength = bias.dims()[1];
+    if (biasBatch == 1) {
+      // If bias is not batched then reshape to 1D.
+      bias = F->createReshape(bias.getNode()->getName().str() + ".reshape",
+                              bias, {bias.getType()->size()});
+    } else {
+      // If bias is batched then we must verify that the bias data
+      // is same for all batches. For this the bias must be a Constant.
+      auto *biasC = llvm::dyn_cast<Constant>(bias.getNode());
+      if (!biasC) {
+        continue;
+      }
+      if (!biasC->getPayload().isTiledAlongAxis(0)) {
+        continue;
+      }
+      // Slice batched 2D bias and reshape to 1D.
+      bias = F->createSlice(bias.getNode()->getName().str() + ".slice", bias,
+                            {0, 0}, {1, biasLength});
+      bias = F->createReshape(bias.getNode()->getName().str() + ".reshape",
+                              bias, {biasLength});
     }
 
     // Create a new FullyConnected node.
     auto *newFC = F->createFullyConnected(
-        matMulNode->getName(), matMulNode->getLHS(), matMulNode->getRHS(),
-        biasNode, addNode->getResult().getType());
+        matMulNode->getName(), matMulNode->getLHS(), matMulNode->getRHS(), bias,
+        addNode->getResult().getType());
     addNode->getResult().replaceAllUsesOfWith(newFC);
     changed = true;
   }

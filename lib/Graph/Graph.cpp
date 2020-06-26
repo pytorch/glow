@@ -1002,6 +1002,27 @@ AdaptiveAvgPoolNode *Function::createAdaptiveAvgPool(llvm::StringRef name,
   return addNode(new AdaptiveAvgPoolNode(name, outTy, input));
 }
 
+GemmNode *Function::createGemm(llvm::StringRef name, NodeValue A, NodeValue B,
+                               NodeValue C, float alpha, float beta,
+                               bool transposeA, bool transposeB) {
+  std::vector<dim_t> outDims(2);
+  outDims[0] = transposeA ? A.dims()[1] : A.dims()[0];
+  outDims[1] = transposeB ? B.dims()[0] : B.dims()[1];
+  TypeRef outTy = getParent()->uniqueTypeWithNewShape(A.getType(), outDims);
+  return createGemm(name, outTy, A, B, C, alpha, beta, transposeA, transposeB);
+}
+
+GemmNode *Function::createGemm(llvm::StringRef name, TypeRef outTy, NodeValue A,
+                               NodeValue B, NodeValue C, float alpha,
+                               float beta, bool transposeA, bool transposeB) {
+  if (!C.getNode()) {
+    C = createSplat(name.str() + ".SplatC", outTy, 0.0f);
+  }
+  TypeRef OT = getParent()->uniqueType(*outTy);
+  return addNode(
+      new GemmNode(name, OT, A, B, C, alpha, beta, transposeA, transposeB));
+}
+
 FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
                                                    NodeValue input, Storage *W,
                                                    Storage *B,
@@ -5435,6 +5456,12 @@ bool isConvolutionSameAsFullyConnected(const ConvolutionNode *node) {
   isSame &= (group == 1);
   isSame &= (dilation == 1);
   return isSame;
+}
+
+bool isGemmSameAsFullyConnected(const GemmNode *node) {
+  NodeValue inpC = node->getC();
+  return (node->getAlpha() == 1.0) && (node->getBeta() == 1.0) &&
+         (inpC.getNode()) && (inpC.dims().size() == 1);
 }
 
 } // namespace glow

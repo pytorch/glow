@@ -4580,6 +4580,36 @@ TEST_F(GraphOptz, FoldMatMulAddIntoFullyConnected) {
   EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ReshapeNodeKind));
 }
 
+/// Test that batched MatMul + Add is folded into batched FullyConnected.
+/// This optimization takes place only if the Bias is constant and the
+/// bias data repeats for all the batches.
+TEST_F(GraphOptz, FoldMatMulAddIntoFullyConnectedBatched) {
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 3}, "input", false);
+  auto *weights =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 5}, "weights", false);
+  auto *bias = mod_.createConstant(ElemKind::FloatTy, {2, 5}, "bias");
+  auto biasH = bias->getPayloadMutable().getHandle<float>();
+  biasH = {1, 2, 3, 4, 5, 1, 2, 3, 4, 5};
+
+  MatMulNode *matmul = F_->createMatMul("matmul", input, weights);
+  AddNode *add = F_->createAdd("add", matmul, bias);
+  F_->createSave("save", add);
+  EXPECT_EQ(3, F_->getNodes().size());
+
+  // The folding should replace the MatMul + Add into a FullyConnected and a
+  // Reshape to 1D for the Bias.
+  CompilationContext cctx;
+  ::glow::fold(F_, cctx);
+  EXPECT_EQ(4, F_->getNodes().size());
+  EXPECT_EQ(0, countNodeKind(F_, Kinded::Kind::AddNodeKind));
+  EXPECT_EQ(0, countNodeKind(F_, Kinded::Kind::MatMulNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::SliceNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ReshapeNodeKind));
+}
+
 /// Test that FoldSlicesIntoConstants pass works as expected.
 TEST_F(GraphOptz, FoldSlicesIntoConstantsTest) {
   Constant *C = mod_.createConstant(ElemKind::FloatTy, {3, 4}, "C");

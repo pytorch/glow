@@ -672,6 +672,15 @@ public:
     llvm_unreachable("unreachable");
   }
 
+  /// \returns whether this Tensor is tiled (repeated) along \p axis for the
+  /// given tile size \p size. Some examples:
+  /// - a Tensor with size [2, 3] equal to [[1,2,3],[1,2,3]] is tiled along
+  ///   axis 0 for a tile size equal to 1.
+  /// - a Tensor with size [2, 4] equal to [[1, 2, 1, 2],[3, 4, 3, 4]] is tiled
+  ///   along axis 1 for a tile size equal to 2.
+  /// When the tile size matches the dimensions size this function returns true.
+  bool isTiledAlongAxis(size_t axis, size_t size = 1) const;
+
   /// Update the content and type of the tensor from the tensor \p t.
   void assign(const Tensor *t) {
     assert(!isDeviceResident() && "Tensor must reside on host to access data.");

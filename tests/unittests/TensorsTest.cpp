@@ -180,6 +180,50 @@ TEST(Tensor, isZero) {
   }
 }
 
+TEST(Tensor, isTiledAlongAxis) {
+  {
+    Tensor T(ElemKind::FloatTy, {2, 3});
+    T.getHandle() = {
+        1, 2, 3, 1, 2, 3,
+    };
+    EXPECT_TRUE(T.isTiledAlongAxis(0, 1));
+    EXPECT_TRUE(T.isTiledAlongAxis(0, 2));
+    EXPECT_FALSE(T.isTiledAlongAxis(1, 1));
+    EXPECT_FALSE(T.isTiledAlongAxis(1, 2));
+    EXPECT_TRUE(T.isTiledAlongAxis(1, 3));
+  }
+  {
+    Tensor T(ElemKind::FloatTy, {2, 4});
+    T.getHandle() = {1, 2, 1, 2, 3, 4, 3, 4};
+    EXPECT_FALSE(T.isTiledAlongAxis(0, 1));
+    EXPECT_TRUE(T.isTiledAlongAxis(0, 2));
+    EXPECT_FALSE(T.isTiledAlongAxis(1, 1));
+    EXPECT_TRUE(T.isTiledAlongAxis(1, 2));
+    EXPECT_FALSE(T.isTiledAlongAxis(1, 3));
+    EXPECT_TRUE(T.isTiledAlongAxis(1, 4));
+  }
+  {
+    Tensor T(ElemKind::FloatTy, {2, 4});
+    T.getHandle() = {1, 2, 1, 2, 1, 2, 1, 2};
+    EXPECT_TRUE(T.isTiledAlongAxis(0, 1));
+    EXPECT_TRUE(T.isTiledAlongAxis(0, 2));
+    EXPECT_FALSE(T.isTiledAlongAxis(1, 1));
+    EXPECT_TRUE(T.isTiledAlongAxis(1, 2));
+    EXPECT_FALSE(T.isTiledAlongAxis(1, 3));
+    EXPECT_TRUE(T.isTiledAlongAxis(1, 4));
+  }
+  {
+    Tensor T(ElemKind::FloatTy, {2, 4});
+    T.getHandle() = {1, 2, 1, 2, 3, 4, 3, 44};
+    EXPECT_FALSE(T.isTiledAlongAxis(0, 1));
+    EXPECT_TRUE(T.isTiledAlongAxis(0, 2));
+    EXPECT_FALSE(T.isTiledAlongAxis(1, 1));
+    EXPECT_FALSE(T.isTiledAlongAxis(1, 2));
+    EXPECT_FALSE(T.isTiledAlongAxis(1, 3));
+    EXPECT_TRUE(T.isTiledAlongAxis(1, 4));
+  }
+}
+
 TEST(Tensor, inBounds) {
   Tensor A(ElemKind::FloatTy, {15, 5, 3});
 

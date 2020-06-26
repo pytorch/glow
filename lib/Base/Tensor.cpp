@@ -282,6 +282,48 @@ static void transposeSelectImpl(const Handle<ElemTy> &src, Handle<ElemTy> &dest,
     transposeGenericImpl(src, dest, srcCoor, destCoor, shuffle);
   }
 }
+
+template <class ElemTy>
+static bool isTiledAlongAxisImpl(const Tensor *tensor, size_t axis,
+                                 size_t size) {
+  assert(axis < tensor->dims().size() && "Axis parameter invalid!");
+  assert(size <= tensor->dims()[axis] && "Size parameter invalid!");
+  assert(size >= 1 && "Size parameter invalid!");
+
+  // When the tile size matches the dimension size then we return true.
+  if (size == tensor->dims()[axis]) {
+    return true;
+  }
+
+  static_assert(max_tensor_dimensions == 6,
+                "Implementation assumes max_tensor_dimensions = 6.");
+
+  // Get tensor view with maximum number of dimensions.
+  auto dimsMax = expandDimsToMax(tensor->dims());
+  Tensor tensorMax = tensor->getUnowned(dimsMax);
+  auto tensorH = tensorMax.getHandle<ElemTy>();
+  for (dim_t idx0 = 0; idx0 < dimsMax[0]; ++idx0) {
+    for (dim_t idx1 = 0; idx1 < dimsMax[1]; ++idx1) {
+      for (dim_t idx2 = 0; idx2 < dimsMax[2]; ++idx2) {
+        for (dim_t idx3 = 0; idx3 < dimsMax[3]; ++idx3) {
+          for (dim_t idx4 = 0; idx4 < dimsMax[4]; ++idx4) {
+            for (dim_t idx5 = 0; idx5 < dimsMax[5]; ++idx5) {
+              std::vector<dim_t> idx = {idx0, idx1, idx2, idx3, idx4, idx5};
+              std::vector<dim_t> idxWrapped = idx;
+              idxWrapped[axis] = (idx[axis] % size);
+              double valIdx = tensorH.at(idx);
+              double valIdxWrapped = tensorH.at(idxWrapped);
+              if (valIdx != valIdxWrapped) {
+                return false;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return true;
+}
 } // namespace
 
 void glow::dumpAsciiImpl(const Tensor *T, llvm::raw_ostream &os) {
@@ -733,6 +775,41 @@ void Tensor::copyRawToDevice(const Tensor *t) {
   clearDeviceResidency();
   copyRawFrom(t);
   DM->transferToDevice(*this, locationContext);
+}
+
+bool Tensor::isTiledAlongAxis(size_t axis, size_t size) const {
+  switch (getElementType()) {
+  case ElemKind::FloatTy: {
+    return isTiledAlongAxisImpl<float>(this, axis, size);
+  }
+  case ElemKind::Float16Ty: {
+    return isTiledAlongAxisImpl<float16_t>(this, axis, size);
+  }
+  case ElemKind::Int8QTy: {
+    return isTiledAlongAxisImpl<int8_t>(this, axis, size);
+  }
+  case ElemKind::UInt8QTy: {
+    return isTiledAlongAxisImpl<uint8_t>(this, axis, size);
+  }
+  case ElemKind::Int16QTy: {
+    return isTiledAlongAxisImpl<int16_t>(this, axis, size);
+  }
+  case ElemKind::Int32QTy: {
+    return isTiledAlongAxisImpl<int32_t>(this, axis, size);
+  }
+  case ElemKind::Int32ITy: {
+    return isTiledAlongAxisImpl<int32_t>(this, axis, size);
+  }
+  case ElemKind::Int64ITy: {
+    return isTiledAlongAxisImpl<int64_t>(this, axis, size);
+  }
+  case ElemKind::BoolTy: {
+    return isTiledAlongAxisImpl<bool>(this, axis, size);
+  }
+  default: {
+    llvm_unreachable("Precision not supported!");
+  }
+  }
 }
 
 bool isSliceContiguous(llvm::ArrayRef<dim_t> sliceShape,
