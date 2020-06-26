@@ -459,8 +459,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       }
     }
 
-    auto var = torch::autograd::make_variable(ptTensor);
-    stack.push_back(at::IValue(var));
+    stack.push_back(at::IValue(std::move(ptTensor)));
   }
 
   if (settings_.writeToOnnx) {
