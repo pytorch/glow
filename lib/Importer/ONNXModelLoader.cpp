@@ -937,6 +937,8 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
                        llvm::ArrayRef<unsigned_t> kdim,
                        llvm::ArrayRef<unsigned_t> sdim,
                        llvm::ArrayRef<unsigned_t> idim) {
+  // TODO: ONNX spec disallows using "pads" and "auto_pad" together. However,
+  // the implementation allows mixing them and onnxruntime gives pads priority.
   if (dict.count("pads")) {
     if (dict.at("pads")->ints_size() == 2) { // For maxPool1D
       return Pads({0, (unsigned_t)dict.at("pads")->ints(0), 0,
@@ -1014,10 +1016,10 @@ static Expected<Pads> getConvTransposePadsfromOutput(
       // if odd number for pdim[i], use extra padding at the end.
       //   pads[start_i] = total_padding[i] - (total_padding[i]/2);
       //   pads[end_i] = (total_padding[i]/2).
-      top = pdim[0] / 2;
-      bottom = top + (pdim[0] & 0x1);
-      left = pdim[1] / 2;
-      right = left + (pdim[1] & 0x1);
+      top = pdim[0] - pdim[0] / 2;
+      bottom = pdim[0] / 2;
+      left = pdim[1] - pdim[1] / 2;
+      right = pdim[1] / 2;
       return Pads({top, left, bottom, right});
     }
   }
@@ -1025,9 +1027,9 @@ static Expected<Pads> getConvTransposePadsfromOutput(
   //   pads[start_i] = total_padding[i]/2;
   //   pads[end_i] = total_padding[i] - (total_padding[i]/2)
   top = pdim[0] / 2;
-  bottom = top + (pdim[0] & 0x1);
+  bottom = pdim[0] - pdim[0] / 2;
   left = pdim[1] / 2;
-  right = left + (pdim[1] & 0x1);
+  right = pdim[1] - pdim[1] / 2;
   return Pads({top, left, bottom, right});
 }
 
@@ -1644,8 +1646,14 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
                       "Expected/calculated pads don't match");
   } else {
     if (dict.count("output_padding")) {
-      RETURN_ERR("output_padding not supported!",
-                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
+      std::vector<dim_t> outPad;
+      ASSIGN_VALUE_OR_RETURN_ERR(outPad,
+                                 getShape<dim_t>(dict["output_padding"]));
+      if (std::equal(outPad.begin() + 1, outPad.end(), outPad.begin()) &&
+          outPad[0] != 0) {
+        LOG(FATAL)
+            << "ConvTranspose argument 'output_padding' is not supported.";
+      }
     }
     ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict, kernels, strides, idimHW));
     outSz = calculateConvTransposeOutputDims(idim.h, idim.w, kernels, strides,

@@ -316,6 +316,15 @@ TEST(exporter, onnxModels) {
         name.find("simpleConvTransposeOutShape.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShapeDilation.onnxtxt") !=
             std::string::npos ||
+        name.find("simpleConvTransposeOutShapeSameLower.onnxtxt") !=
+            std::string::npos ||
+        name.find("simpleConvTransposeOutShapeSameUpper.onnxtxt") !=
+            std::string::npos ||
+        name.find("simpleConvTransposeAutoPadSameLower.onnxtxt") !=
+            std::string::npos ||
+        name.find("simpleConvTransposeAutoPadSameUpper.onnxtxt") !=
+            std::string::npos ||
+        name.find("convTransposeAsymmetric.onnxtxt") != std::string::npos ||
         name.find("NonZero.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposePads.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeAutoPadValid.onnxtxt") !=
