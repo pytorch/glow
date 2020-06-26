@@ -20,8 +20,11 @@
 #include <random>
 
 #include "Bench.h"
+
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
+
+#include "tests/unittests/BackendTestUtils.h"
 
 using namespace glow;
 
@@ -49,16 +52,20 @@ struct Int8GemmParam {
 
 class Int8GemmBench : public Benchmark {
   Int8GemmParam param_;
-  PlaceholderBindings bindings_;
+  ExecutionContext context_;
+  PlaceholderBindings &bindings_;
   std::unique_ptr<runtime::HostManager> hostManager_;
 
 public:
-  explicit Int8GemmBench(Int8GemmParam param_) : param_(param_) {}
+  explicit Int8GemmBench(Int8GemmParam param_)
+      : param_(param_), bindings_(*context_.getPlaceholderBindings()) {}
 
   void addInt8GemmNode(std::unique_ptr<Module> &mod, Function *fn,
                        Int8GemmParam param) {
     auto *input = mod->createPlaceholder(ElemKind::Float16Ty,
                                          {param.m_, param.k_}, "input", false);
+    bindings_.allocate(input)->getHandle<float16>().randomize(-128.f, 127.f,
+                                                              mod->getPRNG());
     auto *output = mod->createPlaceholder(
         ElemKind::Float16Ty, {param.m_, param.n_}, "output", false);
     auto *q_input = fn->createQuantize(
@@ -85,7 +92,8 @@ public:
       bias = mod->createPlaceholder(ElemKind::Int32QTy, {param.n_}, 1.0, 0,
                                     "bias" + std::to_string(layer), false);
 
-      bindings_.allocate(weights)->getHandle<int8_t>().clear(1);
+      bindings_.allocate(weights)->getHandle<int8_t>().randomize(
+          -128, 127, mod->getPRNG());
       bindings_.allocate(bias)->getHandle<int32_t>().clear(2);
 
       Node *fc;
@@ -159,24 +167,8 @@ public:
   }
 
   void run() override {
-    std::vector<std::promise<void>> promises(param_.numAsyncLaunches_);
-    std::vector<std::future<void>> futures;
-
-    // Launch a number of independent requests
-    for (auto &runPromise : promises) {
-      std::unique_ptr<ExecutionContext> contextPtr(new ExecutionContext);
-      futures.push_back(runPromise.get_future());
-      hostManager_->runNetwork(
-          "singleNode", std::move(contextPtr),
-          [&runPromise](runtime::RunIdentifierTy, Error err,
-                        std::unique_ptr<ExecutionContext> /* contextPtr */) {
-            EXIT_ON_ERR(std::move(err));
-            runPromise.set_value();
-          });
-    }
-    for (auto &fut : futures) {
-      fut.wait();
-    }
+    dispatchInference("singleNode", hostManager_.get(), context_,
+                      param_.numAsyncLaunches_);
   }
 
   void teardown() override {}
