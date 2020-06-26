@@ -688,6 +688,21 @@ TEST_F(OnnxImporterTest, importExp) {
                           [](float a) { return std::exp(a); });
 }
 
+TEST(onnx, importNeg) {
+  testEltwiseUnaryOpFloat("neg.onnxtxt", {1, 2, 4, 3}, "data", 0.000,
+                          [](float a) { return -a; });
+}
+
+TEST(onnx, importCeil) {
+  testEltwiseUnaryOpFloat("ceil.onnxtxt", {1, 2, 4, 3}, "data", 0.000,
+                          [](float a) { return std::ceil(a); });
+}
+
+TEST(onnx, importFloor) {
+  testEltwiseUnaryOpFloat("floor.onnxtxt", {1, 2, 4, 3}, "data", 0.000,
+                          [](float a) { return std::floor(a); });
+}
+
 static void testImportPRelu(std::string filename,
                             llvm::ArrayRef<dim_t> inputShape,
                             std::vector<float> expectedSlope) {
