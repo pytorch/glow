@@ -1,66 +1,36 @@
 ir_version: 3
-producer_name: "onnx-convtranspose"
+producer_name: "onnx-deconv"
 graph {
+  initializer {
+    dims: 2
+    data_type: 1
+    float_data: [1.1, 2.2]
+    name: "B"
+  }
   node {
-    input: "data"
+    input: "X"
     input: "W"
     input: "B"
-    output: "y"
-    name: "convTranspose"
+    output: "Y"
     op_type: "ConvTranspose"
-    attribute {
-      name: "kernel_shape"
-      ints: 3
-      ints: 3
-      type: INTS
-    }
     attribute {
       name: "pads"
       ints: 0
+      ints: 3
       ints: 1
-      ints: 1
-      ints: 0
+      ints: 2
       type: INTS
     }
     attribute {
       name: "strides"
       ints: 1
-      ints: 1
+      ints: 2
       type: INTS
     }
-    attribute {
-      name: "dilations"
-      ints: 1
-      ints: 1
-      type: INTS
-    }    
   }
-  name: "test-model"
-  initializer {
-    dims: 1
-    dims: 1
-    dims: 3
-    dims: 3
-    data_type: 1
-    float_data: 2.0
-    float_data: 3.0
-    float_data: 4.0
-    float_data: 5.0
-    float_data: 6.0
-    float_data: 7.0
-    float_data: 8.0
-    float_data: 9.0
-    float_data: 10.0
-    name: "W"
-  }
-  initializer {
-    dims: 1
-    data_type: 1
-    float_data: 2.
-    name: "B"
-  }
+  name: "deconv-model"
   input {
-    name: "data"
+    name: "X"
     type {
       tensor_type {
         elem_type: 1
@@ -69,13 +39,13 @@ graph {
             dim_value: 1
           }
           dim {
-            dim_value: 1
+            dim_value: 3
           }
           dim {
-            dim_value: 2
+            dim_value: 4
           }
           dim {
-            dim_value: 2
+            dim_value: 4
           }
         }
       }
@@ -88,16 +58,16 @@ graph {
         elem_type: 1
         shape {
           dim {
-            dim_value: 1
+            dim_value: 3
           }
           dim {
-            dim_value: 1
+            dim_value: 2
           }
           dim {
             dim_value: 3
           }
           dim {
-            dim_value: 3
+            dim_value: 2
           }
         }
       }
@@ -110,14 +80,14 @@ graph {
         elem_type: 1
         shape {
           dim {
-            dim_value: 1
+            dim_value: 2
           }
         }
       }
     }
   }
   output {
-    name: "y"
+    name: "Y"
     type {
       tensor_type {
         elem_type: 1
@@ -126,10 +96,10 @@ graph {
             dim_value: 1
           }
           dim {
-            dim_value: 1
+            dim_value: 2
           }
           dim {
-            dim_value: 3
+            dim_value: 5
           }
           dim {
             dim_value: 3
@@ -140,5 +110,5 @@ graph {
   }
 }
 opset_import {
-  version: 4
+  version: 10
 }
