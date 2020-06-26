@@ -4317,3 +4317,31 @@ TEST_F(OnnxImporterTest, CustomGlowDAGMultiOp) {
   EXPECT_TRUE(resultPartitionedT->isBitwiseEqual(*resultUnpartitonedT,
                                                  /* verbose */ true));
 }
+
+TEST(onnx, importNames) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string NetFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/legalizeNames.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+  Type input_type(ElemKind::FloatTy, {1, 2, 4, 3});
+  ONNXModelLoader onnxLD(NetFilename, {"data"}, {&input_type}, *F);
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  auto PH = mod.getPlaceholderByNameSlow("data");
+  auto *inTensor = bindings.allocate(PH);
+  inTensor->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
+  // Compile&run the graph, and check the output
+  EE.compile(CompilationMode::Infer);
+  vector<std::string> origNames = {"a__1",  "a__1", "a__3__3", "a__2",
+                                   "a__1_", "a__b", "a"};
+  auto *currNode = (Node *)getSaveNodeFromDest(graphOutputVar);
+  for (int i = 0; i < origNames.size(); i++) {
+    auto *prevNode = currNode->getNthInput(0).getNode();
+    // Make sure original names are retained in the legalized names.
+    EXPECT_EQ(prevNode->getName().find(origNames[i]), 0);
+    currNode = prevNode;
+  }
+}

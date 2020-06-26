@@ -765,6 +765,7 @@ Error TFLiteModelLoader::loadOperators() {
     ASSIGN_VALUE_OR_RETURN_ERR(opInfo.version, getOperatorVersion(op));
     opInfo.index = opIdx;
     // Load operator.
+    mod_.registerOriginalName(opInfo.name);
     RETURN_IF_ERR(loadOperator(op, opInfo));
   }
   return Error::success();

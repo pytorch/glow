@@ -3882,6 +3882,7 @@ static Error loadPerNodeOptions(const Node *loadedNode,
 Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.op_type();
+  mod_.registerOriginalName(op.name());
 
   if (useGlowCustomOps_) {
     Node *loadedNode;
