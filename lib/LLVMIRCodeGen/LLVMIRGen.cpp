@@ -254,6 +254,7 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
 }
 
 void LLVMIRGen::performCodeGen() {
+  std::cout << "codegen called" << std::endl;
   // Create the entry function into the LLVM module.
   auto int8PtrTy = llvm::Type::getInt8PtrTy(getLLVMContext());
   auto dimTPtrTy = llvm::Type::getIntNPtrTy(getLLVMContext(), DIM_T_BITWIDTH);
@@ -2960,6 +2961,31 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                           {output->getElementType(), input->getElementType()});
 
     createCall(builder, F, {outptVal, inputVal, dimsVal, dimSizeVal});
+    break;
+  }
+
+  // case Kinded::Kind::FalconMergedNodeKind: {
+  //   std::cout << "FalconMergedNode passed" << std::endl;
+  //   break;
+  // }
+
+  case Kinded::Kind::FalconMergedInstKind: {
+    std::cout << "FalconMergedInst passed" << std::endl;
+    auto *FMI = llvm::cast<FalconMergedInst>(I);
+    auto *src = FMI->getSrc();
+    auto *dest = FMI->getDest();
+    auto *filter = FMI->getFilter();
+    auto *config = FMI->getConfig();
+
+    auto *srcVal = emitValueAddress(builder, src);
+    auto *destVal = emitValueAddress(builder, dest);
+    auto *filterVal = emitValueAddress(builder, filter);
+    auto *configVal = emitValueAddress(builder, config);
+
+    auto *F = getFunction("falcon_merge", {});
+
+    createCall(builder, F, {});
+
     break;
   }
 

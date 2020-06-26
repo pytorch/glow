@@ -34,3 +34,9 @@ Error ONNXModelWriter::writeCPUConvDKKC8(const CPUConvDKKC8Node *node,
 
   return writeAllWithNode("CPUConvDKKC8", node, graph, proto);
 }
+
+Error ONNXModelWriter::writeFalconMerged(const FalconMergedNode * node,
+                                         GraphType &graph) {
+  auto *proto = graph.add_node();
+  return writeAllWithNode("FalconMerged", node, graph, proto);
+}

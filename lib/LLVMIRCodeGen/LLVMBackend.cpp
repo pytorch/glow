@@ -144,6 +144,7 @@ LLVMBackend::compileIRWithoutConstants(IRFunction *IR) const {
 
 Expected<std::unique_ptr<CompiledFunction>>
 LLVMBackend::compile(Function *F, const BackendOptions &opts) const {
+  std::cout << "llvm compile called." << std::endl; 
   TraceInfo traceInfo = buildManualTraceInfo(F);
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
 
@@ -165,6 +166,7 @@ LLVMBackend::compile(Function *F, const BackendOptions &opts) const {
 void LLVMBackend::save(Function *F, llvm::StringRef outputDir,
                        llvm::StringRef bundleName,
                        llvm::StringRef mainEntryName) const {
+  std::cout << "llvm save called." << std::endl;
   llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
                                                    llvmTargetFeatures.end());
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());

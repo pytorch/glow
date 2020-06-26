@@ -537,7 +537,7 @@ CompilationContext Loader::getCompilationContext(QuantizationMode mode) {
   cctx.loweredInfoMap = &loweredMap_;
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
   precConfig.convertToFP16 = convertToFP16;
-
+  std::cout << "1" << std::endl;
   // Specific configurations.
   precConfig.quantMode = mode;
   if (mode == QuantizationMode::None) {
@@ -550,7 +550,7 @@ CompilationContext Loader::getCompilationContext(QuantizationMode mode) {
     for (llvm::StringRef kindName : keepOriginalPrecisionForNodesOpt) {
       precConfig.precisionModeKindSet.insert(getKindFromNodeName(kindName));
     }
-
+std::cout << "2" << std::endl;
   } else if (mode == QuantizationMode::Quantize) {
 
     // By default, when converting models, all nodes that can be converted are
@@ -562,7 +562,7 @@ CompilationContext Loader::getCompilationContext(QuantizationMode mode) {
       precConfig.precisionModeKindSet.insert(getKindFromNodeName(kindName));
     }
     precConfig.quantConfig = getQuantizationConfiguration();
-
+std::cout << "3" << std::endl;
   } else if (mode == QuantizationMode::Profile) {
 
     // Profiling parameters.
@@ -576,11 +576,11 @@ CompilationContext Loader::getCompilationContext(QuantizationMode mode) {
     for (llvm::StringRef kindName : doNotLowerNodesForProfilingOpt) {
       precConfig.precisionModeKindSet.insert(getKindFromNodeName(kindName));
     }
-
+std::cout << "4" << std::endl;
   } else {
     LOG(FATAL) << "Quantization mode not supported";
   }
-
+std::cout << "5" << std::endl;
   // When converting the model placeholders, if the placeholders are already
   // allocated, we should also convert the backing tensors. Since this procedure
   // is not yet in place, we only convert when emitting a bundle.
@@ -589,8 +589,9 @@ CompilationContext Loader::getCompilationContext(QuantizationMode mode) {
                     "emitting a bundle!\n";
     std::exit(1);
   }
+  std::cout << "6" << std::endl;
   cctx.optimizationOpts.foldElemKindConversionIntoIO = convertPlaceholdersOpt;
-
+std::cout << "7" << std::endl;
   return cctx;
 }
 
@@ -655,6 +656,27 @@ void Loader::compile(CompilationContext &cctx) {
       function->dumpDAG(filename.c_str());
     }
   }
+}
+
+void Loader::extractInfo(CompilationContext &cctx) {
+  // std::cout << "1" << std::endl;
+  // auto error = glow::optimizeFunctionBeforeLowering(F_, cctx);
+  // EXIT_ON_ERR(std::move(error));
+  // std::cout << "2" << std::endl;
+  // Extractor my_extractor(F_);
+  // std::cout << "3" << std::endl;
+  // my_extractor.run();
+  // std::cout << "4" << std::endl;
+  // TODO: topological sort
+  // for (auto const &N : F_->getNodes()) {
+  //     auto NI = NodeInfo(N);
+  //     NI.getInTypes();
+  //     NI.getOutTypes();
+  //     NI.getName();
+  //     N.hasPredicate();
+  //     std::string res = N.toString();
+  //     std::cout << res << std::endl;
+  // }
 }
 
 void Loader::runInference(PlaceholderBindings &bindings, size_t batchSize) {

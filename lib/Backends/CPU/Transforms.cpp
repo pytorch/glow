@@ -125,25 +125,25 @@ CPUBackend::transformPostLowering(Function *F, CompilationContext &,
   LOG_SCOPE(F->getLogContext(), "CPUBackend::transformPostLowering")
 
   bool changed = false;
-  for (auto &node : F->getNodes()) {
-    // Try to replace generic convolution with cpu-optimized version.
-    if (auto *CN = dyn_cast<ConvolutionNode>(&node)) {
-      if (Node *NCN = optimizeCPUConv(CN, F)) {
-        CN->getResult().replaceAllUsesOfWith(NCN);
-        changed = true;
-        continue;
-      }
-    }
+  // for (auto &node : F->getNodes()) {
+  //   // Try to replace generic convolution with cpu-optimized version.
+  //   if (auto *CN = dyn_cast<ConvolutionNode>(&node)) {
+  //     if (Node *NCN = optimizeCPUConv(CN, F)) {
+  //       CN->getResult().replaceAllUsesOfWith(NCN);
+  //       changed = true;
+  //       continue;
+  //     }
+  //   }
 
-    // Merge Max and Splat nodes into CPUMaxSplat.
-    if (auto *MN = dyn_cast<MaxNode>(&node)) {
-      if (Node *MSN = optimizeCPUMaxSplat(MN, F)) {
-        MN->getResult().replaceAllUsesOfWith(MSN);
-        changed = true;
-        continue;
-      }
-    }
-  }
+  //   // Merge Max and Splat nodes into CPUMaxSplat.
+  //   if (auto *MN = dyn_cast<MaxNode>(&node)) {
+  //     if (Node *MSN = optimizeCPUMaxSplat(MN, F)) {
+  //       MN->getResult().replaceAllUsesOfWith(MSN);
+  //       changed = true;
+  //       continue;
+  //     }
+  //   }
+  // }
 
   return changed;
 }

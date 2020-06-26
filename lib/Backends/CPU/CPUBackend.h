@@ -66,6 +66,12 @@ public:
   /// @}
 
 public:
+
+  Expected<std::unique_ptr<CompiledFunction>> 
+  compile(Function *F, const BackendOptions &opts) const override;
+
+  std::unique_ptr<FunctionPassPipeline> getOptimizationPipeline() const override;
+
   /// @name LLVMBackend methods.
   /// This is the implementation of the LLVMBackend interface.
   ///@{

@@ -199,18 +199,15 @@ bool PassManagerBase::run(IRContainer *C, const CompilationContext &cctx) {
   size_t e = getPipelineSize();
   for (passIdx_ = 0; passIdx_ < e; passIdx_++) {
     const PassConfigBase &passConfig = getPipelineElement(passIdx_);
-
     // If we've exceeded the number of passes to run then early exit.
     if (++globalPassCounter() > getOptions().stopAfterPassNumOpt) {
       return changed;
     }
-
     // Skip some passes if specified by the config that they shouldn't be
     // executed in this compilation mode.
     if (!passConfig.isEnabledForCompilationMode(cctx.compMode)) {
       continue;
     }
-
     switch (passConfig.getConvergenceMode()) {
     case ConvergenceMode::OnePass:
       changed |= runPassWithConfig(passConfig, C, cctx);

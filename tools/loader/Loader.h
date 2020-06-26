@@ -20,6 +20,7 @@
 #include "glow/Importer/ProtobufLoader.h"
 #include "glow/Quantization/Quantization.h"
 #include "glow/Runtime/HostManager/HostManager.h"
+#include "glow/Extractor/Extractor.h"
 
 #include "llvm/Support/CommandLine.h"
 
@@ -163,6 +164,9 @@ public:
   /// Compiles the Function F_. Handles quantization, emitting bundles, and
   /// dumping debug information. \p cctx is used for compiling F_.
   void compile(CompilationContext &cctx);
+
+  /// Extract network info for FlexCNN
+  void extractInfo(CompilationContext &cctx);
 
   /// Runs inference, unless emit bundle mode is enabled. \p bindings
   /// binds specific placeholders to concrete tensors. The concrete

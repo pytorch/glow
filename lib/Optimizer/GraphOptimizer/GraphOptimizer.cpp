@@ -4295,6 +4295,14 @@ bool FalconMerge::run(Function * F, const CompilationContext &cctx) {
 
   Graph_Config graph_config;
 
+  auto begin_node = nodes.begin();
+  std::cout << "Begin Node is: " << begin_node->getKindName() << std::endl;
+  auto begin_tarnspose_node = dyn_cast<TransposeNode>(begin_node);
+  std::cout << "Input of Begin Node is: " << begin_tarnspose_node->getInput().getNode()->getKindName() << std::endl;
+  auto begin_placeholder = begin_tarnspose_node->getInput().getNode();
+
+  std::vector<glow::SaveNode *> saveNodes;
+
   for (auto it = nodes.begin(), e = nodes.end(); it != e; it++) {
     
     Merged_Layer merged_layer;
@@ -4329,6 +4337,7 @@ bool FalconMerge::run(Function * F, const CompilationContext &cctx) {
           end = true;
           break;
         case Kinded::Kind::SaveNodeKind:
+          saveNodes.push_back(dyn_cast<SaveNode>(stepNode));
           end = true;
           break;
         case Kinded::Kind::PReluNodeKind:
@@ -4353,6 +4362,18 @@ bool FalconMerge::run(Function * F, const CompilationContext &cctx) {
     merged_layer.print_layers();
 
   }
+
+  auto const1 = F->getParent()->createConstant(begin_tarnspose_node->getInput().getType(), "const1");
+  auto const2 = F->getParent()->createConstant(begin_tarnspose_node->getInput().getType(), "const2");
+  // auto mergedNode = FalconMergedNode("Falcon Merge Node", begin_placeholder, const1, const2);
+  auto mergedNode = F->addNode(new FalconMergedNode("Falcon Merge Node", begin_placeholder, const1, const2));
+  auto save1 = F->createSave("save1", mergedNode);
+  auto save2 = F->createSave("save2", mergedNode);
+
+  F->eraseNode(saveNodes[0]);
+  F->eraseNode(saveNodes[1]);
+  // saveNodes[0]->getResult().replaceAllUsesOfWith(save1->getResult());
+  // saveNodes[1]->getResult().replaceAllUsesOfWith(save2->getResult());
 
   return true;
 }

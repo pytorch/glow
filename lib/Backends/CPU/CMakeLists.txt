@@ -43,7 +43,7 @@ set(CPURunttimeCompilationOptions
       # -I/usr/arm-linux-gnueabihf/include/c++/7.4.0/arm-linux-gnueabihf/
       ${LLVMCPURuntimeExtraFlags})
 
-set(libjit_files "libjit;libjit_conv;libjit_matmul")
+set(libjit_files "libjit;libjit_conv;libjit_matmul;libjit_falcon")
 
 set(libjit_obj_file_path ${CMAKE_CURRENT_BINARY_DIR}/CPURuntime)
 file(MAKE_DIRECTORY ${libjit_obj_file_path})
@@ -87,7 +87,8 @@ if (NOT MSVC)
   add_library(CPURuntimeNative
               libjit/libjit.cpp
               libjit/libjit_conv.cpp
-              libjit/libjit_matmul.cpp)
+              libjit/libjit_matmul.cpp
+              libjit/libjit_falcon.cpp)
 endif(NOT MSVC)
 
 add_library(CPUBackend
@@ -97,7 +98,8 @@ add_library(CPUBackend
             CPUFactory.cpp
             CPUFunction.cpp
             CPULLVMIRGen.cpp
-            Transforms.cpp)
+            Transforms.cpp
+            FalconTransform.cpp)
 target_link_libraries(CPUBackend
                       PUBLIC
                         Backend
