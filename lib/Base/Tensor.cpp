@@ -806,9 +806,7 @@ bool Tensor::isTiledAlongAxis(size_t axis, size_t size) const {
   case ElemKind::BoolTy: {
     return isTiledAlongAxisImpl<bool>(this, axis, size);
   }
-  default: {
-    llvm_unreachable("Precision not supported!");
-  }
+  default: { llvm_unreachable("isTiledAlongAxis: Precision not supported!"); }
   }
 }
 
