@@ -4918,6 +4918,94 @@ Constant *Module::getConstantByName(llvm::StringRef name) const {
   return nullptr;
 }
 
+void Function::randomizeConstants() {
+  for (Constant *c : getParent()->getConstants()) {
+    bool usedHere = false;
+    bool usedElsewhere = false;
+
+    for (auto &user : c->getUsers()) {
+      if (user.getUser()->getParent() == this) {
+        usedHere = true;
+      } else {
+        usedElsewhere = true;
+      }
+    }
+
+    if (!usedHere) {
+      continue;
+    }
+
+    if (usedElsewhere) {
+      LOG(FATAL) << "Can't randomize Constant \"" << c->getName().str()
+                 << "\" because it is used by another function";
+    }
+
+    auto &payload = c->getPayloadMutable();
+
+    switch (c->getElementType()) {
+    case ElemKind::FloatTy:
+      payload.getHandle<float>().randomize(std::numeric_limits<float>::lowest(),
+                                           std::numeric_limits<float>::max(),
+                                           getPRNG());
+      break;
+    case ElemKind::Float16Ty:
+      payload.getHandle<float16_t>().randomize(-65504.0f, 65504.0f, getPRNG());
+      break;
+    case ElemKind::Int8QTy:
+      payload.getHandle<int8_t>().randomize(
+          std::numeric_limits<int8_t>::lowest(),
+          std::numeric_limits<int8_t>::max(), getPRNG());
+      break;
+    case ElemKind::UInt8QTy:
+      payload.getHandle<uint8_t>().randomize(
+          std::numeric_limits<uint8_t>::lowest(),
+          std::numeric_limits<uint8_t>::max(), getPRNG());
+      break;
+    case ElemKind::Int16QTy:
+      payload.getHandle<int16_t>().randomize(
+          std::numeric_limits<int16_t>::lowest(),
+          std::numeric_limits<int16_t>::max(), getPRNG());
+      break;
+    case ElemKind::Int32QTy:
+      payload.getHandle<int32_t>().randomize(
+          std::numeric_limits<int32_t>::lowest(),
+          std::numeric_limits<int32_t>::max(), getPRNG());
+      break;
+    case ElemKind::Int32ITy:
+      payload.getHandle<int32_t>().randomize(
+          std::numeric_limits<int32_t>::lowest(),
+          std::numeric_limits<int32_t>::max(), getPRNG());
+      break;
+    case ElemKind::Int64ITy:
+      // Use int32_t due to randomize() range
+      payload.getHandle<int32_t>().randomize(
+          std::numeric_limits<int32_t>::lowest(),
+          std::numeric_limits<int32_t>::max(), getPRNG());
+      break;
+    case ElemKind::UInt8FusedQTy:
+      payload.getHandle<uint8_t>().randomize(
+          std::numeric_limits<uint8_t>::lowest(),
+          std::numeric_limits<uint8_t>::max(), getPRNG());
+      break;
+    case ElemKind::UInt8FusedFP16QTy:
+      payload.getHandle<uint8_t>().randomize(
+          std::numeric_limits<uint8_t>::lowest(),
+          std::numeric_limits<uint8_t>::max(), getPRNG());
+      break;
+    case ElemKind::UInt4FusedFP16QTy:
+      payload.getHandle<uint8_t>().randomize(
+          std::numeric_limits<uint8_t>::lowest(),
+          std::numeric_limits<uint8_t>::max(), getPRNG());
+      break;
+    case ElemKind::BoolTy:
+      payload.getHandle<bool>().randomize(false, true, getPRNG());
+      break;
+    default:
+      LOG(FATAL) << "Unsupported ElemKind";
+    }
+  }
+}
+
 Placeholder *Module::getPlaceholderByNameSlow(llvm::StringRef name) const {
   for (auto *P : getPlaceholders()) {
     if (P->getName() == name) {

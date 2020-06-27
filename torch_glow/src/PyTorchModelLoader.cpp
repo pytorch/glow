@@ -4033,6 +4033,10 @@ PyTorchModelLoader::PyTorchModelLoader(
       outputCorrectType.push_back(outputScalarType);
     }
 
+    if (settings.randomizeConstants) {
+      F_.randomizeConstants();
+    }
+
     if (settings.dumpGlowDag) {
       F_.dumpDAG(strFormat("%s.dot", F_.getName().data()));
     }
