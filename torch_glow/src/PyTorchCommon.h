@@ -106,6 +106,10 @@ struct PyTorchLoaderSettings {
   /// Whether not to set the saturateHost flag (use all available device) when
   /// adding networks to HostManager.
   bool saturateHost = false;
+
+  /// If true then randomize the Constants in the Function loaded by
+  /// PyTorchModelLoader.
+  bool randomizeConstants = false;
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.

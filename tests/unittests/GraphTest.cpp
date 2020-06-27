@@ -2099,3 +2099,102 @@ Function : F
   osM2 << MD;
   EXPECT_EQ(mesM, osM2.str());
 }
+
+// Test that randomizing Constants in a Function works.
+TEST(Graph, testRandomizeConstants) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+
+  // Create tensors to be used in Constants
+  Tensor floatT(ElemKind::FloatTy, {10});
+  floatT = {3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0};
+
+  Tensor halfT(ElemKind::Float16Ty, {10});
+  halfT = {3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0};
+
+  Tensor int8QT(ElemKind::Int8QTy, {10}, 1.0, 0);
+  int8QT = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+
+  Tensor uint8QT(ElemKind::UInt8QTy, {10}, 1.0, 0);
+  uint8QT = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+
+  Tensor int16QT(ElemKind::Int16QTy, {10}, 1.0, 0);
+  int16QT = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+
+  Tensor int32QT(ElemKind::Int32QTy, {10}, 1.0, 0);
+  int32QT = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+
+  Tensor int32IT(ElemKind::Int32ITy, {10});
+  int32IT = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+
+  Tensor int64IT(ElemKind::Int64ITy, {10});
+  int64IT = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+
+  Tensor uint8FusedQT(ElemKind::UInt8FusedQTy, {10}, 1.0, 0);
+  uint8FusedQT = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+
+  Tensor uint8FusedFP16QT(ElemKind::UInt8FusedFP16QTy, {10}, 1.0, 0);
+  uint8FusedFP16QT = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+
+  Tensor uint4FusedFP16QT(ElemKind::UInt4FusedFP16QTy, {10}, 1.0, 0);
+  uint4FusedFP16QT = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+
+  Tensor boolT(ElemKind::BoolTy, {10});
+  boolT = {true, true, true, true, true, true, true, true, true, true, true};
+
+  // Create Constants and use them in F
+  auto *floatC = MD.createConstant("floatC", floatT);
+  F->createAdd("add", floatC, floatC);
+
+  auto *halfC = MD.createConstant("halfC", halfT);
+  F->createAdd("add", halfC, halfC);
+
+  auto *int8QC = MD.createConstant("int8QC", int8QT);
+  F->createAdd("add", int8QC, int8QC);
+
+  auto *uint8QC = MD.createConstant("uint8QC", uint8QT);
+  F->createAdd("add", uint8QC, uint8QC);
+
+  auto *int16QC = MD.createConstant("int16QC", int16QT);
+  F->createAdd("add", int16QC, int16QC);
+
+  auto *int32QC = MD.createConstant("int32QC", int32QT);
+  F->createAdd("add", int32QC, int32QC);
+
+  auto *int32IC = MD.createConstant("int32IC", int32IT);
+  F->createAdd("add", int32IC, int32IC);
+
+  auto *int64IC = MD.createConstant("int64IC", int64IT);
+  F->createAdd("add", int64IC, int64IC);
+
+  auto *uint8FusedQC = MD.createConstant("uint8FusedQC", uint8FusedQT);
+  F->createAdd("add", uint8FusedQC, uint8FusedQC);
+
+  auto *uint8FusedFP16QC =
+      MD.createConstant("uint8FusedFP16QC", uint8FusedFP16QT);
+  F->createAdd("add", uint8FusedFP16QC, uint8FusedFP16QC);
+
+  auto *uint4FusedFP16QC =
+      MD.createConstant("uint4FusedFP16QC", uint4FusedFP16QT);
+  F->createAdd("add", uint4FusedFP16QC, uint4FusedFP16QC);
+
+  auto *boolC = MD.createConstant("boolC", boolT);
+  F->createAdd("add", boolC, boolC);
+
+  // Randomize Constants in F
+  F->randomizeConstants();
+
+  // Check that no Constant is the same as what it started as
+  EXPECT_FALSE(floatT.isEqual(floatC->getPayload()));
+  EXPECT_FALSE(halfT.isEqual(halfC->getPayload()));
+  EXPECT_FALSE(int8QT.isEqual(int8QC->getPayload()));
+  EXPECT_FALSE(uint8QT.isEqual(uint8QC->getPayload()));
+  EXPECT_FALSE(int16QT.isEqual(int16QC->getPayload()));
+  EXPECT_FALSE(int32QT.isEqual(int32QC->getPayload()));
+  EXPECT_FALSE(int32IT.isEqual(int32IC->getPayload()));
+  EXPECT_FALSE(int64IT.isEqual(int64IC->getPayload()));
+  EXPECT_FALSE(uint8FusedQT.isEqual(uint8FusedQC->getPayload()));
+  EXPECT_FALSE(uint8FusedFP16QT.isEqual(uint8FusedFP16QC->getPayload()));
+  EXPECT_FALSE(uint4FusedFP16QT.isEqual(uint4FusedFP16QC->getPayload()));
+  EXPECT_FALSE(boolT.isEqual(boolC->getPayload()));
+}
