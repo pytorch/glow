@@ -42,6 +42,7 @@ DEFINE_int32(replicationCount, 1, "Number of replications on each device");
 DEFINE_bool(writeToOnnx, false, "See PyTorchLoaderSettings");
 DEFINE_int32(maxActiveRequests, 250,
              "Max number of active requests before HostManager starts queuing");
+DEFINE_bool(randomizeConstants, false, "See PyTorchLoaderSettings");
 
 namespace glow {
 
@@ -221,6 +222,7 @@ static PyTorchLoaderSettings getInitialSettings() {
   settings.convertFusedToFP16 = FLAGS_convertFusedToFP16;
   settings.replicationCount = FLAGS_replicationCount;
   settings.writeToOnnx = FLAGS_writeToOnnx;
+  settings.randomizeConstants = FLAGS_randomizeConstants;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
