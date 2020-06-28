@@ -69,7 +69,7 @@ template <> struct ScalarTraits<FloatWrapper> {
 /// Mapping for YAMLGraphPreLowerHash yaml serializer.
 template <> struct MappingTraits<YAMLGraphPreLowerHash> {
   static void mapping(IO &io, YAMLGraphPreLowerHash &hash) {
-    io.mapRequired("graphPreLowerHash", hash.value);
+    io.mapRequired("GraphPreLowerHash", hash.value);
   }
 };
 
@@ -86,10 +86,10 @@ template <> struct MappingTraits<glow::NodeProfilingInfo> {
         io, info.tensorProfilingParams_.min);
     MappingNormalization<FloatNormalized, float> max(
         io, info.tensorProfilingParams_.max);
-    io.mapRequired("nodeOutputName", info.nodeOutputName_);
-    io.mapRequired("min", min->val_);
-    io.mapRequired("max", max->val_);
-    io.mapRequired("histogram", info.tensorProfilingParams_.histogram);
+    io.mapRequired("NodeOutputName", info.nodeOutputName_);
+    io.mapRequired("Min", min->val_);
+    io.mapRequired("Max", max->val_);
+    io.mapRequired("Histogram", info.tensorProfilingParams_.histogram);
   }
 };
 
