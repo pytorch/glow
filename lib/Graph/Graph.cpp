@@ -4773,6 +4773,12 @@ std::string Function::toString(bool skipUsersForStorage, bool skipName) const {
   return os.str();
 }
 
+llvm::hash_code Function::getHash() const {
+  // Omit function name when generating the hash.
+  return llvm::hash_value(toString(/* skipUsersForStorage */ false,
+                                   /* skipName */ true));
+}
+
 void Function::dump(llvm::raw_ostream &os, bool skipUsersForStorage,
                     bool skipName) const {
   os << "Graph structure";

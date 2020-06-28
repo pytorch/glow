@@ -104,6 +104,8 @@ class Loader {
   LoweredInfoMap loweredMap_;
   /// List of Loader owned extension objects.
   std::vector<std::unique_ptr<LoaderExtension>> loaderExtensionList_;
+  /// Info produced after calling the \ref compile function.
+  CompilationInfo compilationInfo_;
 
 public:
   /// Getter for the hostManager, this can be useful for calling into the

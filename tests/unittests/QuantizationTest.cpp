@@ -139,10 +139,13 @@ void testProfilingInfosSerialization(
   llvm::SmallVector<char, 10> resultPath;
   llvm::sys::fs::createTemporaryFile("prefix", "suffix", resultPath);
   std::string filePath(resultPath.begin(), resultPath.end());
-  serializeProfilingInfosToYaml(filePath, expected);
-  std::vector<NodeProfilingInfo> deserialized =
-      deserializeProfilingInfosFromYaml(filePath);
+  llvm::hash_code hash = 13;
+  serializeProfilingInfosToYaml(filePath, hash, expected);
+  std::vector<NodeProfilingInfo> deserialized;
+  llvm::hash_code hashDeserialized;
+  deserializeProfilingInfosFromYaml(filePath, hashDeserialized, deserialized);
   llvm::sys::fs::remove(filePath);
+  EXPECT_EQ(static_cast<size_t>(hash), static_cast<size_t>(hashDeserialized));
   EXPECT_EQ(expected, deserialized);
 }
 
@@ -170,48 +173,7 @@ TEST(Quantization, ProfilingSerializePower2Range) {
 #if LLVM_VERSION_MAJOR < 8
 TEST(Quantization, ProfilingSerializeEmpty) {
   std::vector<NodeProfilingInfo> expected;
-
   testProfilingInfosSerialization(expected);
-}
-#endif
-
-void testQuantizationInfosSerialization(
-    const std::vector<NodeQuantizationInfo> &expected) {
-  llvm::SmallVector<char, 10> resultPath;
-  llvm::sys::fs::createTemporaryFile("prefix", "suffix", resultPath);
-  std::string filePath(resultPath.begin(), resultPath.end());
-
-  serializeQuantizationInfosToYaml(filePath, expected);
-  std::vector<NodeQuantizationInfo> deserialized =
-      deserializeQuantizationInfosFromYaml(filePath);
-  llvm::sys::fs::remove(filePath);
-  EXPECT_EQ(expected, deserialized);
-}
-
-TEST(Quantization, QuantizationSerialize) {
-  std::vector<NodeQuantizationInfo> expected{{"first", {1, 10}},
-                                             {"second", {-1, 3}},
-                                             {"third", {-10, 30}},
-                                             {"fourth", {0.1, -10}},
-                                             {"fifth", {0.123, -30}}};
-  testQuantizationInfosSerialization(expected);
-}
-
-TEST(Quantization, QuantizationSerializePower2Scale) {
-  std::vector<NodeQuantizationInfo> expected{
-      {"pwr_neg_0", {1.0000000000f, 0}}, {"pwr_neg_1", {0.5000000000f, 0}},
-      {"pwr_neg_2", {0.2500000000f, 0}}, {"pwr_neg_3", {0.1250000000f, 0}},
-      {"pwr_neg_4", {0.0625000000f, 0}}, {"pwr_neg_5", {0.0312500000f, 0}},
-      {"pwr_neg_6", {0.0156250000f, 0}}, {"pwr_neg_7", {0.0078125000f, 0}},
-      {"pwr_neg_8", {0.0039062500f, 0}}, {"pwr_neg_9", {0.0019531250f, 0}}};
-  testQuantizationInfosSerialization(expected);
-}
-
-#if LLVM_VERSION_MAJOR < 8
-TEST(Quantization, QuantizationSerializeEmpty) {
-  std::vector<NodeQuantizationInfo> expected;
-
-  testQuantizationInfosSerialization(expected);
 }
 #endif
 

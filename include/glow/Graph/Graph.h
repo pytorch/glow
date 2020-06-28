@@ -1985,6 +1985,9 @@ public:
   std::string toString(bool skipUsersForStorage = false,
                        bool skipName = false) const;
 
+  /// \returns a hash code of the function.
+  llvm::hash_code getHash() const;
+
   /// Dump a textual representation of the Function into default output stream.
   /// If \p skipUsersForStorage then user counts for Storage will not be dumped.
   /// If \p skipName then the name of the Function will not be dumped.

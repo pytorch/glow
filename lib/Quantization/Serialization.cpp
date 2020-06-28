@@ -15,7 +15,6 @@
  */
 
 #include "glow/Quantization/Serialization.h"
-
 #include "glow/Quantization/Base/Base.h"
 
 #include "llvm/Support/FileSystem.h"
@@ -24,6 +23,12 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <glog/logging.h>
+
+/// Yaml serializer for the graph hash code.
+LLVM_YAML_STRONG_TYPEDEF(llvm::yaml::Hex64, YAMLGraphPreLowerHash)
+
+/// Yaml serializer for vector of NodeProfilingInfo.
+LLVM_YAML_IS_SEQUENCE_VECTOR(glow::NodeProfilingInfo);
 
 namespace llvm {
 namespace yaml {
@@ -61,6 +66,13 @@ template <> struct ScalarTraits<FloatWrapper> {
   static QuotingType mustQuote(StringRef) { return QuotingType::None; }
 };
 
+/// Mapping for YAMLGraphPreLowerHash yaml serializer.
+template <> struct MappingTraits<YAMLGraphPreLowerHash> {
+  static void mapping(IO &io, YAMLGraphPreLowerHash &hash) {
+    io.mapRequired("graphPreLowerHash", hash.value);
+  }
+};
+
 /// Mapping for NodeProfilingInfo yaml serializer.
 template <> struct MappingTraits<glow::NodeProfilingInfo> {
   struct FloatNormalized {
@@ -81,96 +93,52 @@ template <> struct MappingTraits<glow::NodeProfilingInfo> {
   }
 };
 
-/// Mapping for NodeQuantizationInfo yaml serializer.
-template <> struct MappingTraits<glow::NodeQuantizationInfo> {
-  struct FloatNormalized {
-    FloatNormalized(IO &io) : val_(0.0) {}
-    FloatNormalized(IO &, float &val) : val_(val) {}
-    float denormalize(IO &) { return val_.val_; }
-    FloatWrapper val_;
-  };
-  static void mapping(IO &io, glow::NodeQuantizationInfo &info) {
-    MappingNormalization<FloatNormalized, float> scale(
-        io, info.tensorQuantizationParams_.scale);
-    io.mapRequired("nodeOutputName", info.nodeOutputName_);
-    io.mapRequired("scale", scale->val_);
-    io.mapRequired("offset", info.tensorQuantizationParams_.offset);
-  }
-};
-
 } // end namespace yaml
 } // end namespace llvm
-
-/// Yaml serializer for vector of NodeProfilingInfo.
-LLVM_YAML_IS_SEQUENCE_VECTOR(glow::NodeProfilingInfo);
-
-/// Yaml serializer for vector of NodeQuantizationInfo.
-LLVM_YAML_IS_SEQUENCE_VECTOR(glow::NodeQuantizationInfo);
 
 namespace glow {
 
 void serializeProfilingInfosToYaml(
-    llvm::StringRef fileName,
-    llvm::ArrayRef<NodeProfilingInfo> profilingInfos) {
+    llvm::StringRef fileName, llvm::hash_code graphPreLowerHash,
+    std::vector<NodeProfilingInfo> &profilingInfos) {
+
+  // Open YAML output stream.
   std::error_code EC;
   llvm::raw_fd_ostream outputStream(fileName, EC, llvm::sys::fs::F_None);
-  CHECK(!EC) << "Unable to create output stream";
-
+  CHECK(!EC) << "Error opening YAML file '" << fileName.str() << "'!";
   llvm::yaml::Output yout(outputStream);
-  // LLVM_YAML_IS_SEQUENCE_VECTOR cannot serialize ArrayRef.
-  // Explicitly use a separate vector to allow serialization.
-  std::vector<NodeProfilingInfo> info = profilingInfos;
-  yout << info;
+
+  // Write graph hash.
+  auto uint64Hash = static_cast<uint64_t>(graphPreLowerHash);
+  YAMLGraphPreLowerHash yamlHash = llvm::yaml::Hex64(uint64Hash);
+  yout << yamlHash;
+
+  // Write profiling info.
+  yout << profilingInfos;
 }
 
-std::vector<NodeProfilingInfo>
-deserializeProfilingInfosFromYaml(llvm::StringRef fileName) {
-  std::vector<NodeProfilingInfo> result;
+void deserializeProfilingInfosFromYaml(
+    llvm::StringRef fileName, llvm::hash_code &graphPreLowerHash,
+    std::vector<NodeProfilingInfo> &profilingInfos) {
 
+  // Open YAML input stream.
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> text =
       llvm::MemoryBuffer::getFileAsStream(fileName);
   CHECK(!text.getError()) << "Unable to open file with name: "
                           << fileName.str();
-
   std::unique_ptr<llvm::MemoryBuffer> buffer = std::move(*text);
   llvm::yaml::Input yin(buffer->getBuffer());
-  yin >> result;
 
-  CHECK(!yin.error()) << "Error reading yaml file";
+  // Read graph hash.
+  YAMLGraphPreLowerHash hash;
+  yin >> hash;
+  graphPreLowerHash = llvm::hash_code(static_cast<size_t>(hash.value));
+  CHECK(yin.nextDocument())
+      << "Error reading YAML file '" << fileName.str() << "'!";
 
-  return result;
-}
-
-void serializeQuantizationInfosToYaml(
-    llvm::StringRef fileName,
-    llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos) {
-  std::error_code EC;
-  llvm::raw_fd_ostream outputStream(fileName, EC, llvm::sys::fs::F_None);
-  CHECK(!EC) << "Unable to create output stream";
-
-  llvm::yaml::Output yout(outputStream);
-  // LLVM_YAML_IS_SEQUENCE_VECTOR cannot serialize ArrayRef.
-  // Explicitly use a separate vector to allow serialization.
-  std::vector<NodeQuantizationInfo> info = quantizationInfos;
-  yout << info;
-}
-
-std::vector<NodeQuantizationInfo>
-deserializeQuantizationInfosFromYaml(llvm::StringRef fileName) {
-  std::vector<NodeQuantizationInfo> result;
-
-  llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> text =
-      llvm::MemoryBuffer::getFileAsStream(fileName);
-  CHECK(!text.getError()) << "Unable to open file with name: "
-                          << fileName.str();
-
-  std::unique_ptr<llvm::MemoryBuffer> buffer = std::move(*text);
-  llvm::yaml::Input yin(buffer->getBuffer());
-  yin >> result;
-
-  CHECK(!yin.error()) << "Error reading yaml file";
-
-  return result;
+  // Read profiling info.
+  yin >> profilingInfos;
+  CHECK(!yin.error()) << "Error reading YAML file '" << fileName.str() << "'!";
 }
 
 } // namespace glow

@@ -83,8 +83,10 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
 
   // If quantizing, load quantization infos and setup the schema.
   if (quantizationMode_ == QuantizationMode::Quantize) {
-    precConfig.quantConfig.infos =
-        deserializeProfilingInfosFromYaml(getProfileFile(modelHash_));
+    deserializeProfilingInfosFromYaml(getProfileFile(modelHash_),
+                                      precConfig.quantConfig.graphPreLowerHash,
+                                      precConfig.quantConfig.infos);
+    precConfig.quantConfig.checkGraphPreLowerHash = false;
     precConfig.quantConfig.schema = quantization::Schema::Symmetric;
   }
 
@@ -102,7 +104,8 @@ onnxStatus InlineGraph::run(std::unique_ptr<ExecutionContext> ctx,
   if (quantizationMode_ == QuantizationMode::Profile) {
     auto PI = quantization::generateNodeProfilingInfos(
         *(ctx->getPlaceholderBindings()), function_, loweredMap_);
-    serializeProfilingInfosToYaml(getProfileFile(modelHash_), PI);
+    serializeProfilingInfosToYaml(getProfileFile(modelHash_),
+                                  /* graphPreLowerHash */ 0, PI);
   }
 
   if (auto *traceContext = ctx->getTraceContext()) {

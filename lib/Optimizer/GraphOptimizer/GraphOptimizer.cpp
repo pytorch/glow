@@ -4754,6 +4754,21 @@ Error glow::optimizeFunctionBeforeLowering(Function *F,
   return Error::success();
 }
 
+/// Error message to print when there is a graph hash checking error.
+static const char *graphPreLowerHashCheckErrMsg =
+    R"RAW(Graph check error: graph hash mismatch! Potential causes:
+1. The profile YAML file was produced with an older version of the Glow tools
+   while the quantization of the model is performed with a newer version.
+2. The profile YAML file was produced for a different model than the model used
+   for quantization.
+3. The profile YAML file was produced for the same model but for a different
+   batch size. If the profile was generated using the 'image-classifier' Glow
+   tool you can select the batch size of the model during profiling using the
+   'minibatch' option. During quantization you can choose the batch size of the
+   model by choosing for each input placeholder the tensor size using the
+   'model-input' option.
+)RAW";
+
 // NOTE: When updating this function, please also update the documentation in
 // docs/GraphOptimizationPipeline.md
 Error glow::optimizeFunction(Function *F, const Backend &B,
@@ -4778,8 +4793,24 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
 
   RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx));
 
-  // Lower the graph into a sequence of low-level linear algebra operations.
+  // Graph hash check:
+  // - During PROFILING store the hash of the graph at this point of the
+  //   optimization pipeline. The hash will be exported in the YAML profile.
+  // - During QUANTIZATION the hash imported from the YAML profile is used to
+  //   verify the hash of the graph. This is helpful to catch mismatches between
+  //   the graph used during profiling/quantization.
   const PrecisionConfiguration &precConfig = cctx.precisionConfig;
+  if (precConfig.quantMode == QuantizationMode::Profile) {
+    cctx.info.graphPreLowerHash = F->getHash();
+  } else if (precConfig.quantMode == QuantizationMode::Quantize) {
+    const auto &quantConfig = cctx.precisionConfig.quantConfig;
+    if (quantConfig.checkGraphPreLowerHash) {
+      RETURN_ERR_IF_NOT(F->getHash() == quantConfig.graphPreLowerHash,
+                        graphPreLowerHashCheckErrMsg);
+    }
+  }
+
+  // Lower the graph into a sequence of low-level linear algebra operations.
   if (precConfig.quantMode == QuantizationMode::Profile) {
     // When profiling, pass a nullptr for the backend, signaling that all nodes
     // should be lowered. loweredInfoMap logs what is lowered from what for

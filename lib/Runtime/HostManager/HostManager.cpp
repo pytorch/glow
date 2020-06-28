@@ -261,9 +261,17 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   const bool skipOptimizations =
       cctx.backendOpts.backendSpecificNodeInfo.size() > 0;
 
+  // Flag to check whether we are in profiling mode.
+  bool profilingMode =
+      (cctx.precisionConfig.quantMode == QuantizationMode::Profile);
+
   // Perform a round of target-independent graph optimizations. This helps the
   // partitioner to do its job more efficiently.
-  if (!skipOptimizations) {
+  // When profiling we skip the optimization since in order for the quantization
+  // to be done properly same optimizations must be performed until the lowering
+  // stage for both the profiling and quantization path. Since the quantization
+  // for Ahead Of Time mode lacks this optimization we must disable it also.
+  if (!skipOptimizations && !profilingMode) {
     for (Function *F : module->getFunctions()) {
       auto err = optimizeFunctionBeforeLowering(F, cctx);
       if (err) {
