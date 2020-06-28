@@ -544,6 +544,7 @@ quantization::QuantizationConfiguration Loader::getQuantizationConfiguration() {
     deserializeProfilingInfosFromYaml(
         loadProfileFileOpt, quantConfig.graphPreLowerHash, quantConfig.infos);
   }
+  quantConfig.checkGraphPreLowerHash = true;
   return quantConfig;
 }
 

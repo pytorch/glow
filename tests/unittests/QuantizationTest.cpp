@@ -134,8 +134,7 @@ TEST(Quantization, optimizeKLTest) {
   EXPECT_EQ(rangeEmpty.second, 1.0f);
 }
 
-void testProfilingInfosSerialization(
-    std::vector<NodeProfilingInfo> &expected) {
+void testProfilingInfosSerialization(std::vector<NodeProfilingInfo> &expected) {
   llvm::SmallVector<char, 10> resultPath;
   llvm::sys::fs::createTemporaryFile("prefix", "suffix", resultPath);
   std::string filePath(resultPath.begin(), resultPath.end());

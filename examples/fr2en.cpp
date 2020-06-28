@@ -163,7 +163,6 @@ struct Model {
       deserializeProfilingInfosFromYaml(
           loadProfileFileOpt, precConfig.quantConfig.graphPreLowerHash,
           precConfig.quantConfig.infos);
-      precConfig.quantConfig.checkGraphPreLowerHash = false;
       precConfig.quantConfig.assertAllNodesQuantized = true;
     }
 

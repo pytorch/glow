@@ -86,7 +86,6 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
     deserializeProfilingInfosFromYaml(getProfileFile(modelHash_),
                                       precConfig.quantConfig.graphPreLowerHash,
                                       precConfig.quantConfig.infos);
-    precConfig.quantConfig.checkGraphPreLowerHash = false;
     precConfig.quantConfig.schema = quantization::Schema::Symmetric;
   }
 

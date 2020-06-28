@@ -176,7 +176,7 @@ struct QuantizationConfiguration {
   llvm::hash_code graphPreLowerHash{0};
 
   /// Whether to check the graph hash during quantization.
-  bool checkGraphPreLowerHash{true};
+  bool checkGraphPreLowerHash{false};
 
   /// Precision to use when quantizing a Function.
   ElemKind precision{ElemKind::Int8QTy};
