@@ -284,6 +284,9 @@ llvm::cl::opt<float> cosineSimilarityThreshold(
 llvm::cl::opt<bool> onnxLoaderZipMode(
     "zip_mode", llvm::cl::desc("zipMode to use with OnnxModelLoader"),
     llvm::cl::Optional, llvm::cl::init(true), llvm::cl::cat(reproTestCat));
+llvm::cl::opt<unsigned> replicationCountOpt(
+    "replication_count", llvm::cl::desc("Set the network replication count"),
+    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
 
 void parseCommandLine(int argc, char **argv) {
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
@@ -436,6 +439,7 @@ int run() {
   Error err = Error::empty();
   bool usingGlowCustomOps = false;
   CompilationContext cctx;
+  cctx.replicationCount = replicationCountOpt;
   runtime::PrePartitionedConfig PPC;
   cctx.prepartitionedConfig = &PPC;
   {
