@@ -64,6 +64,7 @@ extern bool GlowEnableLoadBalancedPartitioning;
 extern bool GlowNNPILowerAllBatchMatMul;
 extern bool GlowNNPIAcceptUnarySLS;
 extern bool GlowNNPISpecializeAllOneSLS;
+extern bool GlowNNPIForceSLSToIA;
 
 namespace runtime {
 extern unsigned GlowInterpreterMemory;
@@ -368,6 +369,14 @@ DEFINE_bool(glow_nnpi_specialize_all_one_sls, false,
 DEFINE_validator(glow_nnpi_specialize_all_one_sls,
                  [](const char * /*unused*/, bool value) {
                    glow::GlowNNPISpecializeAllOneSLS = value;
+                   return true;
+                 });
+
+DEFINE_bool(glow_nnpi_force_sls_to_ia, false,
+            "Whether to force all SLS ops to IA for NNPI.");
+DEFINE_validator(glow_nnpi_force_sls_to_ia,
+                 [](const char * /*unused*/, bool value) {
+                   glow::GlowNNPIForceSLSToIA = value;
                    return true;
                  });
 

@@ -42,6 +42,13 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true>
         llvm::cl::location(GlowNNPISpecializeAllOneSLS), llvm::cl::Optional,
         llvm::cl::init(false), llvm::cl::cat(optionsForNNPIImporter));
 
+bool GlowNNPIForceSLSToIA = false;
+static llvm::cl::opt<bool, /* ExternalStorage */ true> GlowNNPIForceSLSToIAOpt(
+    "glow_nnpi_force_sls_to_ia",
+    llvm::cl::desc("Whether to import SLS ops with AllOne attribute to NNPI."),
+    llvm::cl::location(GlowNNPIForceSLSToIA), llvm::cl::Optional,
+    llvm::cl::init(false), llvm::cl::cat(optionsForNNPIImporter));
+
 } // namespace glow
 
 const std::string NNPIImporter::internalName_("_NNPI_");
@@ -1332,8 +1339,7 @@ public:
         nodeValueName(glowSLS->getResult()).c_str(), NULL,
         nodeValueName(glowSLS->getIndices()).c_str(),
         nodeValueName(glowSLS->getLengths()).c_str(), false, false,
-        glowSLS->getAvgLength(), lengthType,
-        /* force to IA */ false);
+        glowSLS->getAvgLength(), lengthType, GlowNNPIForceSLSToIA);
   }
 };
 
@@ -1366,8 +1372,7 @@ public:
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
         nodeValueName(glowSLWS->getLengths()).c_str(), false, false,
-        glowSLWS->getAvgLength(), lengthType,
-        /* force to IA */ false);
+        glowSLWS->getAvgLength(), lengthType, GlowNNPIForceSLSToIA);
   }
 };
 
@@ -1406,8 +1411,7 @@ public:
         nodeValueName(glowEmbeddingBag->getWeights()).c_str(),
         nodeValueName(glowEmbeddingBag->getIndices()).c_str(),
         nodeValueName(glowEmbeddingBag->getOffsets()).c_str(), false, true,
-        glowEmbeddingBag->getAvgLength(), lengthType,
-        /* force to IA */ false);
+        glowEmbeddingBag->getAvgLength(), lengthType, GlowNNPIForceSLSToIA);
   }
 };
 
@@ -1450,8 +1454,7 @@ public:
         nodeValueName(glowEBBRO->getWeights()).c_str(),
         nodeValueName(glowEBBRO->getIndices()).c_str(),
         nodeValueName(glowEBBRO->getOffsets()).c_str(), usFp32Accum, true,
-        glowEBBRO->getAvgLength(), lengthType,
-        /* force to IA */ false);
+        glowEBBRO->getAvgLength(), lengthType, GlowNNPIForceSLSToIA);
   }
 };
 
@@ -1743,11 +1746,10 @@ public:
     LOG_AND_RETURN_IF_NOT(ERROR, glowSLWS, "Bad node type", NNPI_INVALID_PARAM);
 
     LOG_NNPI_IF_ERROR_RETURN_VALUE(
-        importer.addTensor(nodeValueName(glowSLWS->getData()),
-                           /* alternativeLayout */ false,
-                           nodeValueName(glowSLWS->getScales()),
-                           nodeValueName(glowSLWS->getOffsets()),
-                           /* force to IA */ false),
+        importer.addTensor(
+            nodeValueName(glowSLWS->getData()),
+            /* alternativeLayout */ false, nodeValueName(glowSLWS->getScales()),
+            nodeValueName(glowSLWS->getOffsets()), GlowNNPIForceSLSToIA),
         "Failed to add tensor to NNPI");
 
     importer.setUsedTensors(
@@ -1777,8 +1779,7 @@ public:
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
         nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, false,
-        glowSLWS->getAvgLength(), lengthType,
-        /* force to IA */ false);
+        glowSLWS->getAvgLength(), lengthType, GlowNNPIForceSLSToIA);
   }
 };
 
@@ -1814,8 +1815,7 @@ public:
         nodeValueName(glowSLWS->getResult()).c_str(), NULL,
         nodeValueName(glowSLWS->getIndices()).c_str(),
         nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, false,
-        glowSLWS->getAvgLength(), lengthType,
-        /* force to IA */ false);
+        glowSLWS->getAvgLength(), lengthType, GlowNNPIForceSLSToIA);
   }
 };
 
@@ -1853,8 +1853,7 @@ public:
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
         nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, false,
-        glowSLWS->getAvgLength(), lengthType,
-        /* force to IA */ false);
+        glowSLWS->getAvgLength(), lengthType, GlowNNPIForceSLSToIA);
   }
 };
 
