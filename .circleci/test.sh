@@ -69,6 +69,9 @@ case ${CIRCLE_JOB} in
     OPENCL)
         run_unit_tests check
         ;;
+    FEATURE_COMPILATION)
+        run_unit_tests check
+        ;;
     DEBUG)
         run_unit_tests check
         run_unit_tests test_unopt
