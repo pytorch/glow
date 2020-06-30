@@ -559,13 +559,18 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     auto startTime = std::chrono::steady_clock::now();
     auto loader = cctx.deferredWeightLoader;
     // Load the first weight.
-    RETURN_IF_ERR(loader->loadNextWeight());
+    auto err = loader->loadNextWeight();
+    if (err) {
+      cleanupProvision(localActiveNames, addedNetworks);
+      return err;
+    }
     std::string weightName = loader->getName();
     // Load weights while there are weights to be loaded.
     while (weightName != "") {
       LOG(INFO) << "Loading " << weightName;
       const auto PH = module.getPlaceholderByNameSlow(weightName);
       if (!PH) {
+        cleanupProvision(localActiveNames, addedNetworks);
         return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
                         llvm::formatv("Error loading deferred weight. Name: "
                                       "{0} not found in module.",
@@ -612,7 +617,11 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         RETURN_IF_ERR(error);
       }
 
-      RETURN_IF_ERR(loader->loadNextWeight());
+      err = loader->loadNextWeight();
+      if (err) {
+        cleanupProvision(localActiveNames, addedNetworks);
+        return err;
+      }
       weightName = loader->getName();
       // Remove PH from map, this way we can know that we've added all static
       // PH's
