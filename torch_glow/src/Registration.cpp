@@ -141,7 +141,7 @@ void registerGlowOp(const c10::Symbol &symbol) {
           });
         }
 
-        return [graphRunner](torch::jit::Stack &stack) {
+        return [graphRunner](torch::jit::Stack *stack) {
           Error err = Error::empty();
           // Store old Python signal handlers and install standard signal
           // handlers, so that it is possible to kill/interrupt the process if
@@ -156,9 +156,9 @@ void registerGlowOp(const c10::Symbol &symbol) {
           }
 
           if (graphRunner->getSettings().preCompilePyTorchModule) {
-            err = graphRunner->runOnly(stack);
+            err = graphRunner->runOnly(*stack);
           } else {
-            err = graphRunner->run(stack);
+            err = graphRunner->run(*stack);
           }
 
           // Restore old signal handlers.
@@ -175,7 +175,6 @@ void registerGlowOp(const c10::Symbol &symbol) {
             // PyTorch framework expects an exception been thrown here.
             throw std::invalid_argument(ERR_TO_STRING(std::move(err)));
           }
-          return 0;
         };
       },
       at::AliasAnalysisKind::PURE_FUNCTION)});
