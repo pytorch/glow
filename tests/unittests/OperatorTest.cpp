@@ -18123,6 +18123,50 @@ TEST_P(OperatorTest, insertTensorCrossDimensions) {
   }
 }
 
+/// Test that InsertTensor node works correctly for 6D tensors.
+TEST_P(OperatorTest, insertTensorTest6D) {
+  CHECK_IF_ENABLED();
+  // 0 0 0 0 0 0
+  // 0 0 0 0 0 0
+  // 0 0 0 0 0 0
+  // 0 0 0 0 0 0
+  auto *SN0 = mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1, 1, 1, 4, 6},
+                                     "SN0", false);
+  bindings_.allocate(SN0)->init(Tensor::InitKind::Broadcast, 0, mod_.getPRNG());
+
+  // 1 1
+  // 1 1
+  auto *SN1 = mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1, 1, 1, 2, 2},
+                                     "SN1", false);
+  bindings_.allocate(SN1)->init(Tensor::InitKind::Broadcast, 1, mod_.getPRNG());
+
+  // 0 0 0 0 0 0
+  // 0 1 1 1 1 0
+  // 0 1 1 1 1 0
+  // 0 0 0 0 0 0
+  Node *IN =
+      F_->createInsertTensor("insert", SN0, SN1, /* start */ {0, 0, 0, 0, 1, 1},
+                             /* count */ 2, /* axis */ 5);
+  SaveNode *result = F_->createSave("result", IN);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  // Verify the output looks as expected (pictured above).
+  auto resultH = bindings_.get(result->getPlaceholder())->getHandle<int64_t>();
+  for (dim_t i = 0; i < 4; i++) {
+    for (dim_t j = 0; j < 6; j++) {
+      int64_t expected = 1;
+      if (i == 0 || i == 3 || j == 0 || j == 5) {
+        expected = 0;
+      }
+      EXPECT_EQ(resultH.at({0, 0, 0, 0, i, j}), expected);
+    }
+  }
+}
+
 /// Test the InsertTensor operator works correctly when inserting across an
 /// outer dimension where the inner dimensions have different sizes.
 TEST_P(OperatorTest, insertTensorPartialSliceInnerDim) {

@@ -177,6 +177,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "concatVectorsRepeated_Int32/0",
     "concatVectorsRepeated_Bool/0",
     "concatVectorsRepeated_Float16/0",
+    "insertTensorTest6D/0",
     "sliceReshape_Int32/0",
     "sliceVectors_Int32Q/0",
     "sliceVectors_Int32I/0",
