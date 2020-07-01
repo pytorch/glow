@@ -88,7 +88,7 @@ public:
             std::string reason;
             getline(inFile, reason);
             inFile.close();
-            LOG(INFO) << "Device " << i << ": " << reason;
+            VLOG(1) << "Device " << i << ": " << reason;
             if (reason.find("None") == std::string::npos) {
               LOG(FATAL) << "Broken device " << i << ": " << reason;
             }
