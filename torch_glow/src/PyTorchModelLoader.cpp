@@ -812,6 +812,10 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets},
       {{"quantized::embedding_bag_4bit_rowwise_offsets"},
        &PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets},
+      {{"fb::embedding_bag_byte_rowwise_offsets"},
+       &PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets},
+      {{"fb::embedding_bag_4bit_rowwise_offsets"},
+       &PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets},
   });
 
   // Add in custom operator loaders.
