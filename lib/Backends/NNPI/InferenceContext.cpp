@@ -448,8 +448,9 @@ void InferenceContext::execute(RunIdentifierTy runId,
 
       // Then query all errors using another wait call (should return
       // immediately).
-      NNPIInferenceErrorCode tmpRes = nnpiCommandListWait(
-          commandList_, UINT32_MAX, commandErrors, numErrors, &numErrors);
+      NNPIInferenceErrorCode tmpRes =
+          nnpiCommandListWait(commandList_, deviceOptions_->inferTimeout,
+                              commandErrors, numErrors, &numErrors);
       if (tmpRes != NNPI_INF_NO_ERROR) {
         LOG_NNPI_INF_IF_ERROR(tmpRes,
                               "Failed to wait on command list to get errors");
@@ -467,6 +468,7 @@ void InferenceContext::execute(RunIdentifierTy runId,
       LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
           ERROR, false /* fail */, "Errors found in command list execution",
           runId, ctx, resultCB);
+      LOG(FATAL) << "Non-recoverable inference error";
     }
   } else if (!deviceOptions_->useIceT) {
     // Infer on ice-ref.
