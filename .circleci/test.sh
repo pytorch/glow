@@ -96,7 +96,7 @@ case ${CIRCLE_JOB} in
         ;;
     CHECK_CLANG_AND_PEP8_FORMAT)
         cd "${GLOW_SRC}"
-        sudo ln -s /usr/bin/clang-format-7 /usr/bin/clang-format
+        sudo ln -s /usr/bin/clang-format-8 /usr/bin/clang-format
         ./utils/format.sh check
         ;;
     *)

@@ -67,6 +67,8 @@ if [[ -n ${1:0} ]]; then
     exit 1
   fi
 
+  $CLANG_COMMAND --version
+
   if [ "$1" = "fix" ]; then
     echo "Running fix format."
     fix_format
@@ -81,4 +83,3 @@ else
   print_usage
   exit 1
 fi
-

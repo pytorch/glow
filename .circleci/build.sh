@@ -145,7 +145,7 @@ elif [[ "$CIRCLE_JOB" == "COVERAGE" ]]; then
           -DGLOW_USE_COVERAGE=ON \
           ../
 elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_AND_PEP8_FORMAT" ]]; then
-    sudo apt-get install -y clang-format-7
+    sudo apt-get install -y clang-format-8
 elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     # Build PyTorch
     cd /tmp
