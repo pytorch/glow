@@ -19,6 +19,16 @@ target_link_libraries(SLSBench
                         HostManager
                         CPURuntimeNative)
 
+add_executable(GatherBench
+               GatherBench.cpp)
+target_link_libraries(GatherBench
+                      PRIVATE
+                        Backends
+                        ExecutionEngine
+                        Graph
+                        HostManager
+                        CPURuntimeNative)
+
 add_executable(ConvBench
                ConvBench.cpp)
 target_link_libraries(ConvBench
@@ -36,7 +46,8 @@ target_link_libraries(GemmBench
                         Graph
                         GraphOptimizer
                         HostManager
-                        CPURuntimeNative)
+                        CPURuntimeNative
+                        BackendTestUtils)
 
 add_executable(Int8GemmBench
                Int8GemmBench.cpp)
@@ -47,7 +58,8 @@ target_link_libraries(Int8GemmBench
                         Graph
                         GraphOptimizer
                         HostManager
-                        CPURuntimeNative)
+                        CPURuntimeNative
+                        BackendTestUtils)
 
 add_executable(GemmParallelBench
                GemmParallelBench.cpp)
@@ -63,6 +75,28 @@ target_link_libraries(GemmParallelBench
 add_executable(Int8GemmParallelBench
                Int8GemmParallelBench.cpp)
 target_link_libraries(Int8GemmParallelBench
+                      PRIVATE
+                        Backends
+                        ExecutionEngine
+                        Graph
+                        GraphOptimizer
+                        HostManager
+                        CPURuntimeNative)
+
+add_executable(Int8Conv2dParallelBench
+               Int8Conv2dParallelBench.cpp)
+target_link_libraries(Int8Conv2dParallelBench
+                      PRIVATE
+                        Backends
+                        ExecutionEngine
+                        Graph
+                        GraphOptimizer
+                        HostManager
+                        CPURuntimeNative)
+
+add_executable(Int8Conv3dParallelBench
+               Int8Conv3dParallelBench.cpp)
+target_link_libraries(Int8Conv3dParallelBench
                       PRIVATE
                         Backends
                         ExecutionEngine

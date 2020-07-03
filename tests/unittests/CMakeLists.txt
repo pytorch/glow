@@ -351,6 +351,22 @@ add_glow_test(MemoryAllocatorTest
               ${GLOW_BINARY_DIR}/tests/MemoryAllocatorTest
                   --gtest_output=xml:MemoryAllocatorTest.xml)
 
+add_executable(NodeSplittingTest
+               NodeSplittingTest.cpp)
+target_link_libraries(NodeSplittingTest
+                      PRIVATE
+                        Backends
+                        BackendTestUtils
+                        ExecutionEngine
+                        Graph
+                        IR
+                        GraphOptimizer
+                        gtest
+                        TestMain)
+add_glow_test(NodeSplittingTest
+              ${GLOW_BINARY_DIR}/tests/NodeSplittingTest
+                  --gtest_output=xml:NodeSplittingTest.xml)
+
 if(GLOW_WITH_OPENCL)
   add_executable(OCLTest
                  OCLTest.cpp)
@@ -407,6 +423,21 @@ target_link_libraries(OnnxExporterTest
 add_glow_test(NAME OnnxExporterTest
               COMMAND ${GLOW_BINARY_DIR}/tests/OnnxExporterTest
                   --gtest_output=xml:OnnxExporterTest.xml
+              WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(TFLiteImporterTest
+               TFLiteImporterTest.cpp)
+target_link_libraries(TFLiteImporterTest
+                      PRIVATE
+                        Backend
+                        Graph
+                        Importer
+                        ExecutionEngine
+                        gtest
+                        TestMain)
+add_glow_test(NAME TFLiteImporterTest
+              COMMAND ${GLOW_BINARY_DIR}/tests/TFLiteImporterTest
+                  --gtest_output=xml:TFLiteImporterTest.xml
               WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(TypeAToTypeBFunctionConverterTest

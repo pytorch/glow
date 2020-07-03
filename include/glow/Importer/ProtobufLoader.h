@@ -131,6 +131,52 @@ template <typename T> std::string loadOperatorName(const T &op) {
   return op.op_type();
 }
 
+/// \returns the positive value (modulo) of \p axis given the \p rank (number
+/// of dimensions) of the tensor it refers to. The proto format allows negative
+/// axis in which case the axis is used for counting dimensions from the back.
+/// Since Glow cannot use a negative axis we use this converter utility. For
+/// example an axis value of -1 for a tensor with 3 dimensions (rank 3) is
+/// converted to 2. A good definition of the axis value requires to be in the
+/// range [rank, rank-1].
+template <typename T> Expected<T> getPositiveAxis(int axis, int rank) {
+  RETURN_ERR_IF_NOT(
+      (-rank <= axis) && (axis < rank),
+      strFormat("Axis value %d is invalid! Should be in the range [%d, %d]!",
+                axis, -rank, rank - 1));
+  int axisPos = (axis < 0) ? axis + rank : axis;
+  return static_cast<T>(axisPos);
+}
+
+/// \returns the positive value of \p axis given the rank of the value \p val.
+template <typename T> Expected<T> getPositiveAxis(int axis, NodeValue val) {
+  return getPositiveAxis<T>(axis, val.dims().size());
+}
+
+/// Reads a single axis parameter which is wrapped if negative using \p rank
+/// based on the logic of \ref getPositiveAxis.
+template <typename ElemTy, typename T>
+static Expected<ElemTy> loadAxis(const T *arg, int rank) {
+  int axis;
+  ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(arg));
+  ASSIGN_VALUE_OR_RETURN_ERR(axis, getPositiveAxis<int>(axis, rank));
+  return static_cast<ElemTy>(axis);
+}
+
+/// Reads multiple axes as an array which are wrapped if negative using \p rank
+/// based on the logic of \ref getPositiveAxis.
+template <typename ElemTy, typename T>
+static Expected<std::vector<ElemTy>> loadAxes(const T *arg, int rank) {
+  std::vector<int> axes;
+  ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<int>(arg));
+  std::vector<ElemTy> axesPos;
+  for (int axis : axes) {
+    int axisPos;
+    ASSIGN_VALUE_OR_RETURN_ERR(axisPos, getPositiveAxis<int>(axis, rank));
+    axesPos.push_back(static_cast<ElemTy>(axisPos));
+  }
+  return axesPos;
+}
+
 /// Loads model: graph and weights.
 class ProtobufLoader {
 protected:
@@ -155,6 +201,10 @@ protected:
   std::vector<std::string> positionalOutputNames_;
   /// Whether to try constant folding as we load each op from a protobuf.
   bool constFoldInLoader_{true};
+  /// Whether to load the proto into the existing module. All Functions and
+  /// Storage should already exist for the proto; the Functions should be empty
+  /// and will be filled with Nodes from the proto connected to Storage.
+  bool loadIntoExistingModule_{false};
 
   // Delete all Constants that have no users. This is useful because some
   // Constants may have been copied and modified during loading instead of used
@@ -224,19 +274,23 @@ public:
   /// \p F. The list \p types and \p names are used to initialize the inputs
   /// of the model with specific names and types. If \p errPtr is not null then
   /// if an error occurs it will get assigned there otherwise if an error
-  /// occurs it will abort.
+  /// occurs it will abort. If \p loadIntoExistingModule then all Functions and
+  /// Storage is expected to already exist, so they will be searched for
+  /// according to the proto being loaded instead of created as usual.
   ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                  llvm::ArrayRef<TypeRef> types, Function *F,
-                 Error *errPtr = nullptr);
+                 Error *errPtr = nullptr, bool loadIntoExistingModule = false);
 
   /// Constructs new ProtobufLoader object. It will populate the network into
   /// \p mod. The list \p types and \p names are used to initialize the inputs
   /// of the model with specific names and types. If \p errPtr is not null then
   /// if an error occurs it will get assigned there otherwise if an error
-  /// occurs it will abort.
+  /// occurs it will abort. If \p loadIntoExistingModule then all Functions and
+  /// Storage is expected to already exist, so they will be searched for
+  /// according to the proto being loaded instead of created as usual.
   ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                  llvm::ArrayRef<TypeRef> types, Module &mod,
-                 Error *errPtr = nullptr);
+                 Error *errPtr = nullptr, bool loadIntoExistingModule = false);
 
   ProtobufLoader(const ProtobufLoader &other) = delete;
   ProtobufLoader &operator=(const ProtobufLoader &) = delete;
@@ -309,16 +363,27 @@ Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
 
   // To collect the folded outputs allocate and add save nodes to the folding
   // function.
+  llvm::SmallVector<Placeholder *, 2> tmpPHs;
   for (int i = 0; i < op.output_size(); i++) {
     const auto &outputName = op.output(i);
     NodeValue r;
     ASSIGN_VALUE_OR_RETURN_ERR(r, tmpLoader.getNodeValueByName(outputName));
-    Placeholder *PH =
-        F->getParent()->createPlaceholder(r.getType(), outputName, false);
-    SaveNode *SN = F->createSave("save_" + outputName, r, PH);
+    Placeholder *PH = F->getParent()->createPlaceholder(
+        r.getType(), "__CONSTFOLD__TMP__" + outputName, false);
+    SaveNode *SN = F->createSave("save_" + PH->getName().str(), r, PH);
     auto *result = bindings.allocate(SN->getPlaceholder());
     outTensors.push_back(result);
+    tmpPHs.push_back(PH);
   }
+
+  // Cleanup to remove the temporary Placeholders we created.
+  ScopeGuard cleanup([&]() {
+    auto &mod = *F->getParent();
+    auto &modPHs = mod.getPlaceholders();
+    for (Placeholder *tmpPH : tmpPHs) {
+      mod.erasePlaceholder(std::find(modPHs.begin(), modPHs.end(), tmpPH));
+    }
+  });
 
   // Evaluate the constant outputs using interpreter backend.
   std::unique_ptr<Backend> backend(createBackend("Interpreter"));

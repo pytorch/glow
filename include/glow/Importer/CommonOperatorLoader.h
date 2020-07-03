@@ -34,6 +34,17 @@
 #include <vector>
 
 namespace glow {
+
+/// Some model formats (Caffe2, PyTorch, TensorFlowLite) allow defining weights
+/// and activations in UINT8 format. Since Glow supports only INT8 weights and
+/// activations we do a transformation from UINT8 to INT8 quantized data by
+/// subtracting the value 128 from both the quantized values and the offset:
+///   val(int8) = val(uint8) - 128
+///   scale(int8) = scale(uint8) (scale value is preserved)
+///   offset(int8) = scale(uint8) - 128
+/// The constant definition below defines the value used for subtraction.
+constexpr int32_t UINT8_TO_INT8_SHIFT = 128;
+
 /// Result of loading a weight, potentially with additional offsets and
 /// scales tensors containing quantization parameters only if the loaded weight
 /// was found to have multiple quantization parameters.
@@ -120,9 +131,6 @@ class CommonOperatorLoader : public ProtobufLoader {
       return Expected<LoadWeightResult>(std::move(result));
     }
 
-    // This is a caffe2 offset shift.
-    constexpr int32_t OFFSETSHIFT = 128;
-
     // Load quantized tensor with either a single or multiple qparams.
     float scale = 1.0;
     int32_t offset = 0;
@@ -142,15 +150,16 @@ class CommonOperatorLoader : public ProtobufLoader {
 
     if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
       // Must copy the weights here because we will need to modify them by
-      // adjusting for OFFSETSHIFT.
-      result.type = Type(ElemKind::Int8QTy, dims, scale, offset - OFFSETSHIFT);
+      // adjusting for UINT8_TO_INT8_SHIFT.
+      result.type =
+          Type(ElemKind::Int8QTy, dims, scale, offset - UINT8_TO_INT8_SHIFT);
       if (!in.isOffline) {
         result.t->reset(result.type);
 
         auto TH = result.t->getHandle<int8_t>();
         uint8_t *data = (uint8_t *)in.buffer;
         for (size_t i = 0; i < TH.size(); ++i) {
-          TH.raw(i) = (int8_t)(data[i] - OFFSETSHIFT);
+          TH.raw(i) = (int8_t)(data[i] - UINT8_TO_INT8_SHIFT);
         }
       }
     } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
@@ -392,7 +401,8 @@ protected:
     // softmax function. This is similar to a bitcast operation.
     int axis = 1;
     if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
+      ASSIGN_VALUE_OR_RETURN_ERR(axis,
+                                 loadAxis<int>(dict["axis"], in.dims().size()));
     }
 
     auto *FN = G_->createFlatten("reshapeInput", in, axis);
@@ -443,9 +453,9 @@ protected:
 
     Node *node = nullptr;
     if (typeName == "Min") {
-      node = G_->createMin(opName, in0, in1);
+      node = G_->createNodeWithBroadcast<MinNode>(opName, -1, in0, in1);
     } else if (typeName == "Max") {
-      node = G_->createMax(opName, in0, in1);
+      node = G_->createNodeWithBroadcast<MaxNode>(opName, -1, in0, in1);
     } else {
       RETURN_ERR("Invalid min or max operator");
     }
@@ -604,7 +614,8 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     size_t axis = 0;
     if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axis, loadAxis<size_t>(dict["axis"], in.dims().size()));
     }
 
     std::vector<dim_t> split;
@@ -722,7 +733,8 @@ protected:
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
     int axis = 1;
     if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
+      ASSIGN_VALUE_OR_RETURN_ERR(axis,
+                                 loadAxis<int>(dict["axis"], in.dims().size()));
     }
     auto *node = G_->createFlatten(opName, in, axis);
     RETURN_IF_ERR(addNodeAsOutput(op, node));
@@ -744,8 +756,14 @@ protected:
 
       if (intermediate) {
         const std::string &opName = loadOperatorName(op);
-        Placeholder *PH = mod_.createPlaceholder(in.getType(), op.output(0),
-                                                 /* isTrainable */ false);
+        Placeholder *PH = nullptr;
+        if (loadIntoExistingModule_) {
+          PH = mod_.getPlaceholderByNameSlow(op.output(0));
+          RETURN_ERR_IF_NOT(PH, "Did not find intermediate PH" + op.output(0));
+        } else {
+          PH = mod_.createPlaceholder(in.getType(), op.output(0),
+                                      /* isTrainable */ false);
+        }
         G_->createSave(opName, in, PH, /* skipSuffix */ true);
         intermediatePHsByName_[op.output(0)] = PH;
         in = PH->getOutput();
@@ -773,13 +791,11 @@ protected:
       ASSIGN_VALUE_OR_RETURN_ERR(k, loadInt(dict["k"]));
     }
 
-    int axis = -1;
-    if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict["axis"]));
-    }
     int lastDim = in.dims().size() - 1;
-    if (axis == -1) {
-      axis = lastDim;
+    int axis = lastDim;
+    if (dict.count("axis")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(axis,
+                                 loadAxis<int>(dict["axis"], in.dims().size()));
     }
 
     RETURN_ERR_IF_NOT(axis == lastDim,
@@ -798,7 +814,8 @@ protected:
 
     std::vector<unsigned_t> shapeAxes = {};
     if (dict.count("axes")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(shapeAxes, getShape<unsigned_t>(dict["axes"]));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          shapeAxes, loadAxes<unsigned_t>(dict["axes"], in.dims().size()));
     } else {
       shapeAxes.resize(in.dims().size());
       std::iota(shapeAxes.begin(), shapeAxes.end(), 0);
@@ -1066,7 +1083,7 @@ protected:
   }
 
   Error loadGatherOps(const std::string &typeName, const OpType &op,
-                      ArgumentDictionaryTy &dict) {
+                      const ArgumentDictionaryTy &dict) {
 
     NodeValue data;
     ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
@@ -1076,7 +1093,8 @@ protected:
 
     if (dict.count("axis")) {
       int axis;
-      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.find("axis")->second));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axis, loadAxis<int>(dict.find("axis")->second, data.dims().size()));
       if (axis != 0 && axis != 1) {
         RETURN_ERR("Axis must be 0 or 1.");
       }
@@ -1084,7 +1102,17 @@ protected:
       batchDims = axis;
     }
 
-    Node *GN = G_->createGather(loadOperatorName(op), data, indices, batchDims);
+    if (indices.getElementType() != ElemKind::Int64ITy &&
+        indices.getElementType() != ElemKind::Int32ITy) {
+      // If the index type is not Int32 or Int64 insert a conversion layer to
+      // introduce robustness against model problems. Constant Float indices
+      // will get converted to integer indices via constant folding pass.
+      indices = G_->createConvertTo(
+          loadOperatorName(op) + "_idx_convertToi32", indices,
+          G_->getParent()->uniqueType(ElemKind::Int32ITy, indices.dims()));
+    }
+
+    auto *GN = G_->createGather(loadOperatorName(op), data, indices, batchDims);
     RETURN_IF_ERR(addNodeAsOutput(op, GN));
     return Error::success();
   }

@@ -71,6 +71,15 @@ public:
   virtual Error bindContexts(llvm::ArrayRef<runtime::ContextBinding> bindings,
                              const runtime::DAGNode *root, bool enableP2P,
                              bool enableDRT) override;
+
+  /// Estimate performance cost for a given Node \p N.
+  /// Returns a unitless value to be used when comparing to other estimates
+  /// or -1 if no estimate could be generated.
+  /// SparseLength and EmbeddingBag type nodes are supported.
+  double
+  estimateEmbeddingNode(const glow::NodeInfo &NI, bool fp32Accumulation = false,
+                        glow::LengthsMode lengthsMode = LengthsMode::Variable,
+                        float averageLength = NAN) const;
   /// @}
 
 private:
@@ -87,8 +96,11 @@ private:
 /// These are used for parsing backend-specific node options.
 constexpr char numParallelChunksKey[] = "NNPI_numParallelChunks";
 constexpr char parallelTransformKindKey[] = "NNPI_parallelTransformKind";
-constexpr char extraEdgesKey[] = "NNPI_extraEdges";
+constexpr char extraEdgesTargetNameKey[] = "NNPI_extraEdgesTargetName";
+constexpr char extraEdgesTargetSuffixKey[] = "NNPI_extraEdgesTargetSuffix";
+constexpr char extraEdgesSourceSuffixKey[] = "NNPI_extraEdgesSourceSuffix";
 constexpr char coreAssignmentsKey[] = "NNPI_coreAssignments";
+constexpr char coreAssignmentsSuffixKey[] = "NNPI_coreAssignmentsSuffix";
 
 } // namespace glow
 #endif // GLOW_NNPI_BACKEND_H

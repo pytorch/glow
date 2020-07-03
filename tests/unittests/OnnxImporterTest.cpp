@@ -219,7 +219,7 @@ static void importReduceL2Test(const std::string &netFilename,
   Type inputType(ElemKind::FloatTy, inputShape);
   ONNXModelLoader onnxLD(netFilename, {"input"}, {&inputType}, *F);
   graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
-  auto PH = mod.getPlaceholderByName("input");
+  auto PH = mod.getPlaceholderByNameSlow("input");
   auto *inTensor = bindings.allocate(PH);
   inTensor->getHandle() = inputValues;
   EE.compile(CompilationMode::Infer);
@@ -230,6 +230,23 @@ static void importReduceL2Test(const std::string &netFilename,
   for (size_t i = 0; i < result.getType().size(); i++) {
     EXPECT_NEAR(result.raw(i), expectedValues[i], delta);
   }
+}
+
+/// Test the utility function which wraps a negative axis.
+TEST_F(OnnxImporterTest, getPositiveAxis) {
+  int axisPos;
+  ASSIGN_VALUE_OR_FAIL_TEST(axisPos, getPositiveAxis<int>(-3, 3));
+  EXPECT_EQ(axisPos, 0);
+  ASSIGN_VALUE_OR_FAIL_TEST(axisPos, getPositiveAxis<int>(-2, 3));
+  EXPECT_EQ(axisPos, 1);
+  ASSIGN_VALUE_OR_FAIL_TEST(axisPos, getPositiveAxis<int>(-1, 3));
+  EXPECT_EQ(axisPos, 2);
+  ASSIGN_VALUE_OR_FAIL_TEST(axisPos, getPositiveAxis<int>(0, 3));
+  EXPECT_EQ(axisPos, 0);
+  ASSIGN_VALUE_OR_FAIL_TEST(axisPos, getPositiveAxis<int>(1, 3));
+  EXPECT_EQ(axisPos, 1);
+  ASSIGN_VALUE_OR_FAIL_TEST(axisPos, getPositiveAxis<int>(2, 3));
+  EXPECT_EQ(axisPos, 2);
 }
 
 /// Test loading reduceL2 op from an ONNX model
@@ -396,7 +413,7 @@ static void importExpandTest(const std::string &netFilename,
   Type inputType(ElemKind::FloatTy, inputShape);
   ONNXModelLoader onnxLD(netFilename, {"x"}, {&inputType}, *F);
   graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
-  auto *PH = mod.getPlaceholderByName("x");
+  auto *PH = mod.getPlaceholderByNameSlow("x");
   auto *inTensor = bindings.allocate(PH);
   inTensor->getHandle() = inputValues;
   EE.compile(CompilationMode::Infer);
@@ -427,7 +444,7 @@ static void importMaxPool1DTest(std::string &netFilename,
 
   graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
 
-  auto PH = mod.getPlaceholderByName("x");
+  auto PH = mod.getPlaceholderByNameSlow("x");
   auto *inTensor = bindings.allocate(PH);
   inTensor->getHandle() = inputValues;
 
@@ -651,7 +668,7 @@ static void testEltwiseUnaryOpFloat(std::string fileName,
   Type input_type(ElemKind::FloatTy, inputShape);
   ONNXModelLoader onnxLD(NetFilename, {input_name.c_str()}, {&input_type}, *F);
   graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
-  auto PH = mod.getPlaceholderByName(input_name);
+  auto PH = mod.getPlaceholderByNameSlow(input_name);
   auto *inTensor = bindings.allocate(PH);
   inTensor->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
   // Compile&run the graph, and check the output
@@ -697,7 +714,8 @@ static void testImportPRelu(std::string filename,
   // Compile&run the graph, and check the output.
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
-  auto dataH = bindings.get(bindings.getPlaceholderByName("data"))->getHandle();
+  auto dataH =
+      bindings.get(bindings.getPlaceholderByNameSlow("data"))->getHandle();
   auto result = bindings.get(graphOutputVar)->getHandle();
   std::vector<dim_t> expectedDims = {inputShape[0], inputShape[1],
                                      inputShape[2], inputShape[3]};
@@ -878,11 +896,11 @@ static void importConv1DTest(std::string &netFilename,
 
   graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
 
-  auto PHX = mod.getPlaceholderByName("x");
+  auto PHX = mod.getPlaceholderByNameSlow("x");
   auto *inTensorX = bindings.allocate(PHX);
   inTensorX->getHandle() = inputXValues;
 
-  auto PHW = mod.getPlaceholderByName("w");
+  auto PHW = mod.getPlaceholderByNameSlow("w");
   auto *inTensorW = bindings.allocate(PHW);
   inTensorW->getHandle() = inputWValues;
 
@@ -1013,9 +1031,7 @@ static void convTransposeTestHelper(std::string &filename,
   }
 }
 
-/// Test loading ConvTranspose op from a ONNX model.
-/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
-/// strides is {1, 1}, pads is {0, 0, 0, 0}, group is 1.
+/// Test loading ConvTranspose op from a ONNX model, no pads.
 TEST_F(OnnxImporterTest, importConvTranspose) {
   std::string filename("simpleConvTranspose.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 4, 4};
@@ -1024,19 +1040,16 @@ TEST_F(OnnxImporterTest, importConvTranspose) {
   convTransposeTestHelper(filename, expectedDims, expectedValues);
 }
 
-/// Test loading ConvTranspose op from a ONNX model.
-/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
-/// strides is {1, 1}, pads is {1, 1, 1, 1}, group is 1.
+/// Test loading ConvTranspose op from a ONNX model, symmetric pads.
 TEST_F(OnnxImporterTest, importConvTransposePads) {
   std::string filename("simpleConvTransposePads.onnxtxt");
-  std::vector<dim_t> expectedDims = {1, 1, 2, 2};
-  std::vector<float> expectedValues = {51, 65, 93, 107};
+  std::vector<dim_t> expectedDims = {1, 1, 3, 3};
+  std::vector<float> expectedValues = {14., 19., 14.,  51., 65.,
+                                       43., 93., 107., 67.};
   convTransposeTestHelper(filename, expectedDims, expectedValues);
 }
 
-/// Test loading ConvTranspose op from a ONNX model.
-/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
-/// strides is {1, 1}, auto_pad VALID (i.e. no padding), group is 1.
+/// Test loading ConvTranspose op from a ONNX model, auto_pad=VALID
 TEST_F(OnnxImporterTest, importConvTransposeAutoPadValid) {
   std::string filename("simpleConvTransposeAutoPadValid.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 4, 4};
@@ -1045,29 +1058,23 @@ TEST_F(OnnxImporterTest, importConvTransposeAutoPadValid) {
   convTransposeTestHelper(filename, expectedDims, expectedValues);
 }
 
-/// Test loading conv op from a ONNX model.
-/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
-/// strides is {1, 1}, auto_pad SAME_UPPER, group is 1.
+/// Test loading ConvTranspose op from a ONNX model, auto_pad=SAME_UPPER
 TEST_F(OnnxImporterTest, importConvTransposeAutoPadSameUpper) {
   std::string filename("simpleConvTransposeAutoPadSameUpper.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 2, 2};
-  std::vector<float> expectedValues = {49, 63, 91, 105};
+  std::vector<float> expectedValues = {49., 63., 91., 105.};
   convTransposeTestHelper(filename, expectedDims, expectedValues);
 }
 
-/// Test loading conv op from a ONNX model.
-/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
-/// strides is {1, 1}, auto_pad SAME_LOWER, group is 1.
+/// Test loading ConvTranspose op from a ONNX model, auto_pad=SAME_LOWER
 TEST_F(OnnxImporterTest, importConvTransposeAutoPadSameLower) {
   std::string filename("simpleConvTransposeAutoPadSameLower.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 2, 2};
-  std::vector<float> expectedValues = {49, 63, 91, 105};
+  std::vector<float> expectedValues = {49., 63., 91., 105.};
   convTransposeTestHelper(filename, expectedDims, expectedValues);
 }
 
-/// Test loading conv op from a ONNX model.
-/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
-/// strides is {1, 1}, auto_pad SAME_LOWER, group is 1.
+/// Test loading ConvTranspose op, explicit output_shape, auto_pad=SAME_UPPER.
 TEST_F(OnnxImporterTest, importConvTransposeOutputShapeSameUpper) {
   std::string filename("simpleConvTransposeOutShapeSameUpper.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 4, 4};
@@ -1076,9 +1083,16 @@ TEST_F(OnnxImporterTest, importConvTransposeOutputShapeSameUpper) {
   convTransposeTestHelper(filename, expectedDims, expectedValues);
 }
 
-/// Test loading conv op from a ONNX model.
-/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
-/// strides is {1, 1}, auto_pad is not set, group is 1.
+/// Test loading deconv op, explicit output_shape, auto_pad=SAME_LOWER.
+TEST_F(OnnxImporterTest, importConvTransposeOutputShapeSameLower) {
+  std::string filename("simpleConvTransposeOutShapeSameLower.onnxtxt");
+  std::vector<dim_t> expectedDims = {1, 1, 4, 4};
+  std::vector<float> expectedValues = {4,  12, 17,  12, 18, 49, 63, 41,
+                                       36, 91, 105, 65, 32, 76, 85, 50};
+  convTransposeTestHelper(filename, expectedDims, expectedValues);
+}
+
+/// Test loading ConvTranspose op, explicit output_shape, auto_pad not set.
 TEST_F(OnnxImporterTest, importConvTransposeOutputShape) {
   std::string filename("simpleConvTransposeOutShape.onnxtxt");
   std::vector<dim_t> expectedDims = {1, 1, 4, 4};
@@ -1087,17 +1101,52 @@ TEST_F(OnnxImporterTest, importConvTransposeOutputShape) {
   convTransposeTestHelper(filename, expectedDims, expectedValues);
 }
 
-/// Test loading conv op from a ONNX model.
-/// The input is N*C*H*W (1*1*2*2), the kernels is {3, 3},
-/// strides is {1, 1}, dilations is {2, 2},
-/// auto_pad is not set, group is 1.
-TEST_F(OnnxImporterTest, importConvTransposeOutputShapeDilation) {
-  std::string filename("simpleConvTransposeOutShapeDilation.onnxtxt");
-  std::vector<dim_t> expectedDims = {1, 1, 6, 6};
-  std::vector<float> expectedValues = {
-      4,  6,  6,  9,  8,  12, 8,  10, 12, 15, 16, 20, 10, 15, 12, 18, 14, 21,
-      20, 25, 24, 30, 28, 35, 16, 24, 18, 27, 20, 30, 32, 40, 36, 45, 40, 50};
-  convTransposeTestHelper(filename, expectedDims, expectedValues);
+/// Test loading ConvTranspose, implicit kernel, multi-channel input/output,
+/// asymmetric kernel and pads.
+TEST(onnx, importDeconvAsymmetric) {
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetFilename = std::string(
+      GLOW_DATA_PATH "tests/models/onnxModels/convTransposeAsymmetric.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor input(ElemKind::FloatTy, {1, 3, 4, 4});
+    for (dim_t i = 0; i < 3 * 4 * 4; i++) {
+      input.getHandle().raw(i) = i;
+    }
+    Tensor filter(ElemKind::FloatTy, {3, 2, 3, 2});
+    for (dim_t i = 0; i < 3 * 2 * 3 * 2; i++) {
+      filter.getHandle().raw(i) = i * 2;
+    }
+    ONNXModelLoader onnxLD(NetFilename, {"X", "W"},
+                           {&input.getType(), &filter.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"X", "W"},
+                                  {&input, &filter});
+  }
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = res->getHandle();
+
+  EXPECT_TRUE(result.dims() == llvm::ArrayRef<dim_t>({1, 2, 5, 3}));
+
+  std::vector<float> expected = {
+      2095.1,  2065.1,  2173.1,  4705.1, 4633.1, 4873.1,  7879.1,  7753.1,
+      8149.1,  8959.1,  8761.1,  9229.1, 6697.1, 6553.1,  6889.1,  2708.2,
+      2714.2,  2822.2,  6074.2,  6074.2, 6314.2, 10148.2, 10130.2, 10526.2,
+      11660.2, 11570.2, 12038.2, 8642.2, 8570.2, 8906.2};
+
+  for (dim_t i = 0, e = expected.size(); i < e; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expected[i]);
+  }
 }
 
 /// Helper method to run the AveragePool operator test cases.
@@ -1992,7 +2041,7 @@ TEST_F(OnnxImporterTest, importReplaceNaN) {
   EXPECT_EQ(replaceNaNNode->getValue(), 1.0f);
   auto *inputNode =
       llvm::dyn_cast<Placeholder>(replaceNaNNode->getInput().getNode());
-  ASSERT_EQ(inputNode, mod.getPlaceholderByName("x"));
+  ASSERT_EQ(inputNode, mod.getPlaceholderByNameSlow("x"));
 
   // We have one input and one output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
@@ -2038,9 +2087,9 @@ TEST_F(OnnxImporterTest, importSparseToDense) {
   auto *STD = llvm::dyn_cast<SparseToDenseNode>(save->getInput().getNode());
   ASSERT_TRUE(STD);
   auto *idx = llvm::dyn_cast<Placeholder>(STD->getIndices().getNode());
-  EXPECT_EQ(idx, mod.getPlaceholderByName("indices"));
+  EXPECT_EQ(idx, mod.getPlaceholderByNameSlow("indices"));
   auto *vals = llvm::dyn_cast<Placeholder>(STD->getValues().getNode());
-  EXPECT_EQ(vals, mod.getPlaceholderByName("values"));
+  EXPECT_EQ(vals, mod.getPlaceholderByNameSlow("values"));
 }
 
 /// Test loading SparseLengthsSum from an ONNX model.
@@ -2324,6 +2373,7 @@ TEST_F(OnnxImporterTest, gatherOpConstantFoldingAndReshape) {
   {
     ONNXModelLoader onnxLD(netFilename, {"input"}, {&data.getType()}, *F);
     output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    EXPECT_EQ(mod.getPlaceholders().size(), 2);
     bindings.allocate(mod.getPlaceholders());
   }
   EE.compile(CompilationMode::Infer);
@@ -2478,6 +2528,9 @@ TEST_F(OnnxImporterTest, importCastToInt32) {
 }
 TEST_F(OnnxImporterTest, importCastToInt64) {
   importCast("castToInt64.onnxtxt", "data", {1, 2, 2, 2}, ElemKind::Int64ITy);
+}
+TEST(onnx, importCastToBool) {
+  importCast("castToBool.onnxtxt", "data", {1, 2, 2, 2}, ElemKind::BoolTy);
 }
 
 TEST_F(OnnxImporterTest, cast_32_64) {
@@ -3278,8 +3331,8 @@ TEST_F(OnnxImporterTest, importDimParamExplicit) {
 
   // Validate placeholder sizes.
   Placeholder *inputPH, *outputPH;
-  inputPH = mod.getPlaceholderByName("input");
-  outputPH = mod.getPlaceholderByName("output");
+  inputPH = mod.getPlaceholderByNameSlow("input");
+  outputPH = mod.getPlaceholderByNameSlow("output");
   EXPECT_TRUE(inputPH);
   EXPECT_TRUE(outputPH);
   EXPECT_EQ(inputPH->dims()[0], 1);
@@ -3304,8 +3357,8 @@ TEST_F(OnnxImporterTest, importDimParamImplicit) {
 
   // Validate placeholder sizes.
   Placeholder *inputPH, *outputPH;
-  inputPH = mod.getPlaceholderByName("input");
-  outputPH = mod.getPlaceholderByName("output");
+  inputPH = mod.getPlaceholderByNameSlow("input");
+  outputPH = mod.getPlaceholderByNameSlow("output");
   EXPECT_TRUE(inputPH);
   EXPECT_TRUE(outputPH);
   EXPECT_EQ(inputPH->dims()[0], 1);
@@ -3343,7 +3396,7 @@ static void importRNN(std::string fileName) {
   EE.run(bindings);
 
   // Verify RNN error.
-  Placeholder *Y_err_ph = mod.getPlaceholderByName("Y_err");
+  Placeholder *Y_err_ph = mod.getPlaceholderByNameSlow("Y_err");
   EXPECT_TRUE(Y_err_ph);
   auto err = bindings.get(Y_err_ph)->getHandle();
   for (size_t idx = 0; idx < Y_err_ph->getType()->size(); idx++) {
@@ -3400,7 +3453,7 @@ static void importGRU(std::string fileName) {
   EE.run(bindings);
 
   // Verify GRU error.
-  Placeholder *Y_err_ph = mod.getPlaceholderByName("Y_err");
+  Placeholder *Y_err_ph = mod.getPlaceholderByNameSlow("Y_err");
   EXPECT_TRUE(Y_err_ph);
   auto err = bindings.get(Y_err_ph)->getHandle();
   for (size_t idx = 0; idx < Y_err_ph->getType()->size(); idx++) {
@@ -3469,7 +3522,7 @@ static void importLSTM(std::string fileName) {
   EE.run(bindings);
 
   // Verify LSTM error.
-  Placeholder *Y_err_ph = mod.getPlaceholderByName("Y_err");
+  Placeholder *Y_err_ph = mod.getPlaceholderByNameSlow("Y_err");
   EXPECT_TRUE(Y_err_ph);
   auto err = bindings.get(Y_err_ph)->getHandle();
   for (size_t idx = 0; idx < Y_err_ph->getType()->size(); idx++) {
@@ -3528,7 +3581,7 @@ static void importFlip(std::string fileName) {
   EE.run(bindings);
 
   // Verify error.
-  Placeholder *Y_err_ph = mod.getPlaceholderByName("Y_err");
+  Placeholder *Y_err_ph = mod.getPlaceholderByNameSlow("Y_err");
   EXPECT_TRUE(Y_err_ph);
   auto err = bindings.get(Y_err_ph)->getHandle();
   for (size_t idx = 0; idx < Y_err_ph->getType()->size(); idx++) {
@@ -3607,7 +3660,7 @@ static void importAudioSpectrogram(std::string fileName) {
   EE.run(bindings);
 
   // Verify error.
-  Placeholder *errPH = mod.getPlaceholderByName("spectrogram_err");
+  Placeholder *errPH = mod.getPlaceholderByNameSlow("spectrogram_err");
   EXPECT_TRUE(errPH);
   auto errH = bindings.get(errPH)->getHandle();
   auto fftLen = (errPH->getType()->dims()[1] - 1) * 2;
@@ -3653,7 +3706,7 @@ static void importMFCC(std::string fileName) {
   EE.run(bindings);
 
   // Verify error.
-  Placeholder *errPH = mod.getPlaceholderByName("coefficients_err");
+  Placeholder *errPH = mod.getPlaceholderByNameSlow("coefficients_err");
   EXPECT_TRUE(errPH);
   auto errH = bindings.get(errPH)->getHandle();
   for (size_t idx = 0; idx < errPH->getType()->size(); idx++) {
@@ -3737,7 +3790,7 @@ TEST_F(OnnxImporterTest, CustomGlowChannelwiseQuantizedGroupConvolution) {
   // {(PH -> Quantize), Constant, Constant, Constant, Constant} ->
   // ChannelwiseQuantizedConvolution -> Save -> PH.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
-  EXPECT_EQ(mod.getConstants().size(), 4);
+  EXPECT_EQ(mod.getConstants().size(), 6);
   // ChannelwiseQuantizedConvolution, Save, Quantize, Dequantize
   EXPECT_EQ(F->getNodes().size(), 4);
 
@@ -3758,6 +3811,7 @@ TEST_F(OnnxImporterTest, CustomGlowChannelwiseQuantizedGroupConvolution) {
   EXPECT_EQ(CN->getStrides().vec(), std::vector<unsigned_t>({1, 1}));
   EXPECT_EQ(CN->getPads().vec(), std::vector<unsigned_t>({0, 0, 0, 0}));
   EXPECT_EQ(CN->getGroup(), 2);
+  EXPECT_EQ(CN->getDilation(), 1);
 
   auto *QN = llvm::dyn_cast<QuantizeNode>(CN->getInput());
   ASSERT_TRUE(QN);
@@ -3777,16 +3831,29 @@ TEST_F(OnnxImporterTest, CustomGlowChannelwiseQuantizedGroupConvolution) {
   EXPECT_EQ(bias->getOutput().getType()->getElementType(), ElemKind::Int32QTy);
   EXPECT_EQ(bias->getOutput().dims().vec(), std::vector<dim_t>({4}));
 
-  auto *scales = llvm::dyn_cast<Constant>(CN->getScales());
-  ASSERT_TRUE(scales);
-  EXPECT_EQ(scales->getOutput().getType()->getElementType(), ElemKind::FloatTy);
-  EXPECT_EQ(scales->getOutput().dims().vec(), std::vector<dim_t>({4}));
+  auto *filterScales = llvm::dyn_cast<Constant>(CN->getFilterScales());
+  ASSERT_TRUE(filterScales);
+  EXPECT_EQ(filterScales->getOutput().getType()->getElementType(),
+            ElemKind::FloatTy);
+  EXPECT_EQ(filterScales->getOutput().dims().vec(), std::vector<dim_t>({4}));
 
-  auto *offsets = llvm::dyn_cast<Constant>(CN->getOffsets());
-  ASSERT_TRUE(offsets);
-  EXPECT_EQ(offsets->getOutput().getType()->getElementType(),
+  auto *filterOffsets = llvm::dyn_cast<Constant>(CN->getFilterOffsets());
+  ASSERT_TRUE(filterOffsets);
+  EXPECT_EQ(filterOffsets->getOutput().getType()->getElementType(),
             ElemKind::Int32ITy);
-  EXPECT_EQ(offsets->getOutput().dims().vec(), std::vector<dim_t>({4}));
+  EXPECT_EQ(filterOffsets->getOutput().dims().vec(), std::vector<dim_t>({4}));
+
+  auto *biasScales = llvm::dyn_cast<Constant>(CN->getBiasScales());
+  ASSERT_TRUE(biasScales);
+  EXPECT_EQ(biasScales->getOutput().getType()->getElementType(),
+            ElemKind::FloatTy);
+  EXPECT_EQ(biasScales->getOutput().dims().vec(), std::vector<dim_t>({4}));
+
+  auto *biasOffsets = llvm::dyn_cast<Constant>(CN->getBiasOffsets());
+  ASSERT_TRUE(biasOffsets);
+  EXPECT_EQ(biasOffsets->getOutput().getType()->getElementType(),
+            ElemKind::Int32ITy);
+  EXPECT_EQ(biasOffsets->getOutput().dims().vec(), std::vector<dim_t>({4}));
 }
 
 /// Upsample Test Helper

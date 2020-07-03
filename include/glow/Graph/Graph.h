@@ -115,6 +115,11 @@ public:
     usedStorageNames_.insert(name);
   }
 
+  /// \returns whether there's a Storage node already registered with \p name.
+  bool hasStorageName(llvm::StringRef name) {
+    return usedStorageNames_.count(name);
+  }
+
   /// Return a pointer to a uniqued type \p T.
   TypeRef uniqueType(const Type &T);
 
@@ -154,6 +159,9 @@ public:
 
   const FunctionList &getFunctions() const { return functions_; }
 
+  /// Clears out all Functions from \ref functions_.
+  void clearFunctions();
+
   /// \returns the list of types that the Module owns.
   const TypesList &getTypes() const { return types_; }
 
@@ -184,7 +192,7 @@ public:
 
   /// \returns a pointer to the placeholder with the name \p name or
   /// nullptr if no placeholder has this name.
-  Placeholder *getPlaceholderByName(llvm::StringRef name) const;
+  Placeholder *getPlaceholderByNameSlow(llvm::StringRef name) const;
 
   /// @name High-level Storage builders.
   ///@{
@@ -318,6 +326,9 @@ public:
 
   ~Function();
 
+  /// Clear out \ref nodes_ and \ref uniqueNodeNames_.
+  void clear();
+
   /// Sets the state of the function.
   void setState(FunctionState state) { state_ = state; }
 
@@ -391,6 +402,16 @@ public:
   /// @name High-level, operation-level IRBuilder.
   ///@{
 
+  /// Creates a PadNode with the given \p name and output type \p outTy which
+  /// pads the given \p input with the explicit pads \p pads according to the
+  /// padding mode \p mode and with the given value \p value. The padding mode
+  /// \p mode is one of enumeration values from \ref PaddingMode. For an input
+  /// with N dimensions (rank N) the \p pads must be a vector with 2*N values
+  /// with the following format:
+  /// pads = [pad_before(D1), pad_before(D2), ..., pad_before(DN),
+  ///         pad_after (D1), pad_after (D2), ..., pad_after (DN)].
+  /// The mode PaddingMode::CONSTANT pads the input using the constant value
+  /// \p value and currently is the only mode supported.
   PadNode *createPad(llvm::StringRef name, NodeValue input, TypeRef outTy,
                      unsigned_t mode, llvm::ArrayRef<int> pads, float value);
 
@@ -460,41 +481,50 @@ public:
                                   unsigned_t group);
 
   /// Creates a ChannelwiseQuantizedConvolutionNode with the given \p name which
-  /// convolves the 4D \p input with \p filter and \p bias. \p scales and \p
-  /// offsets provide individual quantization parameters for each filter group
-  /// in \p filter. \p kernels defines the size of the height and width
+  /// convolves the 4D/5D \p input with \p filter and \p bias. \p filterScales
+  /// and \p filterOffsets provide individual quantization parameters for each
+  /// filter group in \p filter while \p biasScales and \p biasOffsets provide
+  /// individual quantization parameters for each bias element corresponding to
+  /// each output channel. \p kernels defines the size of the height and width
   /// dimensions of the filters. \p strides defines the number of steps to take
   /// in the input for each output cell. \p pads defines how many zero padding
   /// cells should be added to the input during convolution. \p group defines
   /// the number of groups the input and output channels should be divided into
-  /// and convolved separately. If bias is FloatTy then it will be quantized
-  /// to Int32QTy automatically.
-  /// NOTE: ChannelwiseQuantizedConvolutionNode does
-  /// not yet have an implementation so attempting to run a graph containing
-  /// this node fails.
+  /// and convolved separately. \p dilation defines the filter dilation.
+  /// This function is flexible and has the following features:
+  /// - it can be provided with a floating-point \p filter and the function will
+  ///   quantize automatically the filter channelwise using the given schema
+  ///   \p schema and type \p filterElemQTy.
+  /// - it can be provided with a floating-point \p bias and the function will
+  ///   quantize automatically the bias channelwise using the given schema
+  ///   \p schema and type \p biasElemQTy.
+  /// - if \p filter is floating-point and \p filterScales or \p filterOffsets
+  ///   are not provided then this function will derive them automatically.
+  /// - if \p filter is quantized then \p filterScales or \p filterOffsets are
+  ///   mandatory.
+  /// - if \p bias is floating-point and \p biasScales or \p biasOffsets are not
+  ///   provided then this function will derive them automatically.
+  /// - if \p bias is quantized  and \p biasScales or \p biasOffsets are not
+  ///   provided then this function will assume the implicit parameters
+  ///   biasScales[i] = inputScale * filterScales[i] and biasOffsets[i] = 0.
+  ///   To be noted that this case can handle safely only INT32 bias data type
+  ///   because for INT8 type the bias will almost certainly be saturated.
+  /// This function will only quantize the filter if \p quantizeFilter is set
+  /// to true and will only quantize the bias if \p quantizeBias is set to true
+  /// such that a floating-point filter/bias can be attached to the node as-is
+  /// without any modifications in order for the backends to perform their own
+  /// custom quantization later if desired.
+  /// This function requires \p filter and \p bias operands to be constants.
   ChannelwiseQuantizedConvolutionNode *createChannelwiseQuantizedConv(
       llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
-      NodeValue scales, NodeValue offsets, TypeRef outTy,
-      llvm::ArrayRef<unsigned_t> kernels, llvm::ArrayRef<unsigned_t> strides,
-      llvm::ArrayRef<unsigned_t> pads, unsigned_t group);
-
-  /// Creates a ChannelwiseQuantizedConvolutionNode with the given \p name
-  /// which convolves the 5D \p input with \p filter and \p bias. \p scales and
-  /// \p offsets provide individual quantization parameters for each filter
-  /// group in \p filter. \p kernels defines the size of the temporal_frame,
-  /// height and width dimensions of the filters. \p strides defines the number
-  /// of steps to take in the input for each output cell. \p pads defines how
-  /// many zero padding cells should be added to the input during convolution.
-  /// \p group defines the number of groups the input and output channels should
-  /// be divided into and convolved separately. If bias is FloatTy then it will
-  /// be quantized to Int32QTy automatically. NOTE:
-  /// ChannelwiseQuantizedConvolutionNode does not yet have an implementation
-  /// so attempting to run a graph containing this node fails.
-  ChannelwiseQuantizedConvolutionNode *createChannelwiseQuantizedConv3D(
-      llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
-      NodeValue scales, NodeValue offsets, TypeRef outTy,
-      llvm::ArrayRef<unsigned_t> kernels, llvm::ArrayRef<unsigned_t> strides,
-      llvm::ArrayRef<unsigned_t> pads, unsigned_t group);
+      NodeValue filterScales, NodeValue filterOffsets, NodeValue biasScales,
+      NodeValue biasOffsets, TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
+      llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+      unsigned_t group, unsigned_t dilation = 1, bool quantizeFilter = true,
+      bool quantizeBias = true,
+      quantization::Schema schema = quantization::Schema::Asymmetric,
+      ElemKind filterElemQTy = ElemKind::Int8QTy,
+      ElemKind biasElemQTy = ElemKind::Int32QTy);
 
   /// Creates a ConvTransposeNode with the given \p name which does transposed
   /// convolution of the 4D \p input with \p filter and \bias. \p kernels define
@@ -664,6 +694,10 @@ public:
   /// Result type will be implicitly set based on the \p input type.
   SigmoidNode *createSigmoid(llvm::StringRef name, NodeValue input);
 
+  /// Create a Swish node with the given \p name and \p input.
+  /// Result type will be implicitly set based on the \p input type.
+  SwishNode *createSwish(llvm::StringRef name, NodeValue input);
+
   /// Create a Tanh node with the given \p name, \p input and
   /// output type \p outTy.
   TanhNode *createTanh(llvm::StringRef name, TypeRef outTy, NodeValue input);
@@ -672,32 +706,25 @@ public:
   /// Result type will be implicitly set based on the \p input type.
   TanhNode *createTanh(llvm::StringRef name, NodeValue input);
 
-  /// Create an Exp  node with \p name, which calculates element-wise
+  /// Create an Exp node with \p name, which calculates element-wise
   /// exponential of \p input.
   ExpNode *createExp(llvm::StringRef name, NodeValue input);
+
+  /// Create an Exp node with \p name with output type \p outTy, which
+  /// calculates element-wise exponential of \p input.
+  ExpNode *createExp(llvm::StringRef name, TypeRef outTy, NodeValue input);
 
   /// Create a Log node with \p name, which calculates element-wise natural log
   /// of \p input, with output type \p outTy.
   LogNode *createLog(llvm::StringRef name, NodeValue input,
                      TypeRef outTy = nullptr);
 
-  /// Create a series of nodes with \p name that implements an element-wise
-  /// logit transform. For each element of the \p input x, this is
-  /// defined as:
-  ///
-  /// y = log(x / (1 - x))
-  ///
-  /// where the \p input is clamped in (\p eps, 1 - \p eps), and
-  /// the transform parameter \p eps is a positive value (< 0.5)
-  /// (needed to avoid degenerate probabilities of 0 or 1,
-  /// which would result in taking the logarithm of zero).
-  /// The transform itself is implemented using element-wise Clip, Sub,
-  /// Splat, Div, and Log nodes.
-  /// \returns the final node.
-  Node *createLogit(llvm::StringRef name, NodeValue input, float eps);
+  /// \returns a LogitNode with \p name given \p input and \p eps.
+  LogitNode *createLogit(llvm::StringRef name, NodeValue input, float eps);
 
   SoftMaxNode *createSoftMax(llvm::StringRef name, NodeValue input,
-                             NodeValue selected, TypeRef outTy = nullptr);
+                             NodeValue selected, TypeRef outTy = nullptr,
+                             float beta = 1.0);
 
   CrossEntropyLossNode *createCrossEntropyLoss(llvm::StringRef name,
                                                NodeValue input,
@@ -755,6 +782,8 @@ public:
                                        unsigned_t count = 1,
                                        unsigned_t axis = 0);
 
+  /// Create a slice node \p name with the given starting points for each
+  /// dimension \p begin and end points \p end (exclusive).
   SliceNode *createSlice(llvm::StringRef name, NodeValue input,
                          UnsignedArrayRef begin, UnsignedArrayRef end);
 
@@ -773,9 +802,18 @@ public:
   /// Computes the indices of the max elements of the input tensor along the
   /// provided \p axis. The resulted tensor has the same rank as the input if \p
   /// keepDims equal 1. If \p keepdims equals 0, the resulted tensor has the
-  /// reduced dimension pruned. The type of the output tensor is int64.
+  /// reduced dimension pruned. The type of the output tensor is \p elemTy.
   ArgMaxNode *createArgMax(llvm::StringRef name, NodeValue input,
-                           unsigned_t axis, bool keepDims);
+                           unsigned_t axis, bool keepDims,
+                           ElemKind elemTy = ElemKind::Int64ITy);
+
+  /// Computes the indices of the min elements of the input tensor along the
+  /// provided \p axis. The resulted tensor has the same rank as the input if \p
+  /// keepDims equal 1. If \p keepdims equals 0, the resulted tensor has the
+  /// reduced dimension pruned. The type of the output tensor is \p elemTy.
+  ArgMinNode *createArgMin(llvm::StringRef name, NodeValue input,
+                           unsigned_t axis, bool keepDims,
+                           ElemKind elemTy = ElemKind::Int64ITy);
 
   /// Removes single-dimensional entries from the shape of a tensor. The
   /// parameter \p axes is a list of positive integers, indicating the
@@ -840,6 +878,25 @@ public:
   ModuloNode *createModulo(llvm::StringRef name, NodeValue input,
                            int64_t divisor, bool signFollowDivisor = false);
 
+  /// Create a logical NOT node with name \p name and input \p input.
+  NotNode *createNot(llvm::StringRef name, NodeValue input);
+
+#define UNARY_ARITHMETIC_FUN_DECL(NODE_NAME_)                                  \
+  NODE_NAME_##Node *create##NODE_NAME_(llvm::StringRef name, NodeValue input); \
+  NODE_NAME_##Node *create##NODE_NAME_(llvm::StringRef name, TypeRef Ty,       \
+                                       NodeValue input);
+  UNARY_ARITHMETIC_FUN_DECL(Abs)
+  UNARY_ARITHMETIC_FUN_DECL(Neg)
+  UNARY_ARITHMETIC_FUN_DECL(Floor)
+  UNARY_ARITHMETIC_FUN_DECL(Ceil)
+  UNARY_ARITHMETIC_FUN_DECL(Round)
+  UNARY_ARITHMETIC_FUN_DECL(Sqrt)
+  UNARY_ARITHMETIC_FUN_DECL(Rsqrt)
+  UNARY_ARITHMETIC_FUN_DECL(Reciprocal)
+  UNARY_ARITHMETIC_FUN_DECL(Sin)
+  UNARY_ARITHMETIC_FUN_DECL(Cos)
+#undef UNARY_ARITHMETIC_FUN_DECL
+
 #define ARITHMETIC_FUN_DECL(NODE_NAME_)                                        \
   NODE_NAME_##Node *create##NODE_NAME_(llvm::StringRef name, NodeValue LHS,    \
                                        NodeValue RHS);                         \
@@ -851,9 +908,13 @@ public:
   ARITHMETIC_FUN_DECL(Div);
   ARITHMETIC_FUN_DECL(Max);
   ARITHMETIC_FUN_DECL(Min);
-  ARITHMETIC_FUN_DECL(CmpLTE);
-  ARITHMETIC_FUN_DECL(CmpLT);
   ARITHMETIC_FUN_DECL(CmpEQ);
+  ARITHMETIC_FUN_DECL(CmpNEQ);
+  ARITHMETIC_FUN_DECL(CmpLT);
+  ARITHMETIC_FUN_DECL(CmpLTE);
+  ARITHMETIC_FUN_DECL(And);
+  ARITHMETIC_FUN_DECL(Or);
+  ARITHMETIC_FUN_DECL(Xor);
   ARITHMETIC_FUN_DECL(Pow);
 #undef ARITHMETIC_FUN_DECL
 
@@ -921,6 +982,32 @@ public:
 #undef DECLARE_CMP_BROADCAST_NODE
 #undef BROADCAST_FUNC_COMMON_CODE
 
+  /// Create an element-wise GREATER THAN comparison between \p LHS and \p RHS
+  /// by creating a CmpLTNode with given \p name and swapped inputs.
+  CmpLTNode *createCmpGT(llvm::StringRef name, NodeValue LHS, NodeValue RHS);
+
+  /// Create an element-wise GREATER THAN or EQUAL comparison between \p LHS and
+  /// \p RHS by creating a CmpLTENode with given \p name and swapped inputs.
+  CmpLTENode *createCmpGTE(llvm::StringRef name, NodeValue LHS, NodeValue RHS);
+
+  /// Create a MulNode with given \p name which multiplies \p input with itself
+  /// to produce an equivalent Square node.
+  MulNode *createSquare(llvm::StringRef name, NodeValue input);
+
+  /// Create a MulNode with given \p name and output type \p outTy which
+  /// multiplies \p input with itself to produce an equivalent Square node.
+  MulNode *createSquare(llvm::StringRef name, TypeRef outTy, NodeValue input);
+
+  /// Create an equivalent LeakyRELU node with given \p name, \p input and slope
+  /// \p alpha by using a SplatNode and a PRELU node.
+  PReluNode *createLeakyRELU(llvm::StringRef name, NodeValue input,
+                             float alpha);
+
+  /// Create an equivalent LeakyRELU node with given \p name, \p outTy, \p input
+  /// and slope \p alpha by using a SplatNode and a PRELU node.
+  PReluNode *createLeakyRELU(llvm::StringRef name, TypeRef outTy,
+                             NodeValue input, float alpha);
+
   /// Create a node that produces an boolean output of the same shape as
   /// \p input in which each element indicates whether or not the corresponding
   /// element in \p input is NaN or not.
@@ -939,6 +1026,8 @@ public:
                            NodeValue LHS, NodeValue RHS);
 
   SplatNode *createSplat(llvm::StringRef name, TypeRef ty, float value);
+
+  TouchNode *createTouch(llvm::StringRef name, TypeRef ty);
 
   MatMulNode *createMatMul(llvm::StringRef name, NodeValue lhs, NodeValue rhs);
 
@@ -985,10 +1074,10 @@ public:
                           llvm::ArrayRef<unsigned_t> axes);
 
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, NodeValue batch,
-                                   NodeValue sample);
+                                   NodeValue slice);
 
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, TypeRef outTy,
-                                   NodeValue batch, NodeValue sample);
+                                   NodeValue batch, NodeValue slice);
 
   /// Create a node performing a Cumulative Sum operation, output type matches
   /// \p input type.
@@ -1282,6 +1371,12 @@ public:
   /// H/blockSize, W/blockSize, C * blockSize * blockSize].
   SpaceToDepthNode *createSpaceToDepth(llvm::StringRef name, NodeValue input,
                                        unsigned blockSize);
+
+  /// Given \p input tensor, \returns an upsampled tensor which has
+  /// doubled the size of dimensions N, N-1, N-2...N-numLeadingDims,
+  /// copying the nearest pixel value to the new locations.
+  ReshapeNode *createUpsample(llvm::StringRef name, NodeValue input,
+                              dim_t numLeadingDims);
 
   /// Given \p input tensor of [N,H,W,C], where N is the batch, C is the channel
   /// or depth, H is the height and W is the width, and \p scale tensor with
@@ -1869,11 +1964,15 @@ public:
 
   /// Dump a textual representation of the Function to std::string. If
   /// \p skipUsersForStorage then user counts for Storage will not be dumped.
-  std::string toString(bool skipUsersForStorage = false) const;
+  /// If \p skipName then the name of the Function will not be dumped.
+  std::string toString(bool skipUsersForStorage = false,
+                       bool skipName = false) const;
 
   /// Dump a textual representation of the Function into default output stream.
   /// If \p skipUsersForStorage then user counts for Storage will not be dumped.
-  void dump(llvm::raw_ostream &os, bool skipUsersForStorage = false) const;
+  /// If \p skipName then the name of the Function will not be dumped.
+  void dump(llvm::raw_ostream &os, bool skipUsersForStorage = false,
+            bool skipName = false) const;
 
   /// Dump a dotty graph that depicts the function into a file.
   /// \returns full path to the file.
@@ -1903,6 +2002,11 @@ public:
 
   /// \returns pointer to the class member for the nodes list.
   static NodesList Function::*getNodesMemberPtr() { return &Function::nodes_; }
+
+  /// Randomize all of the Constants in the function. If a Constant with users
+  /// in this Function also has users in other Functions then this will result
+  /// in a FATAL.
+  void randomizeConstants();
 };
 
 struct TrainingConfig;
@@ -1965,6 +2069,11 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module *mod);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function &F);
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function *F);
+
+/// \returns whether the Convolution node \p node is equivalent with a
+/// FullyConnected node. This happens for a 2D NHWC Convolution with 1x1 filter
+/// with strides 1, pads 0, group 1 and dilations 1.
+bool isConvolutionSameAsFullyConnected(const ConvolutionNode *node);
 
 } // namespace glow
 

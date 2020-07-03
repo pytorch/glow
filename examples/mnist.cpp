@@ -167,7 +167,7 @@ void validateModel(ExecutionEngine &EE, PlaceholderBindings &bindings,
             imageInputs, labelInputs, F->getName(),
             [&](const Tensor &sampleIn, const Tensor &sampleOut,
                 const Tensor &label, size_t sampleIndex) {
-              auto correct = label.getHandle<sdim_t>().at({0, 0});
+              auto correct = label.getHandle<sdim_t>().at({0});
               auto guess = sampleOut.getHandle().minMaxArg().second;
               rightAnswer += (guess == correct);
               if (sampleIndex < offset + minibatchSize) {
@@ -220,8 +220,8 @@ void testMNIST() {
              imageInputs, labelInputs, A, selected);
 
   trainingBindings.copyTrainableWeightsTo(inferBindings);
-  A = inferBindings.getPlaceholderByName("input");
-  E = inferBindings.getPlaceholderByName("return");
+  A = inferBindings.getPlaceholderByNameSlow("input");
+  E = inferBindings.getPlaceholderByNameSlow("return");
 
   validateModel(EEI_, inferBindings, F, minibatchSize, numIterations,
                 imageInputs, labelInputs, A, E, false /*transpose*/);

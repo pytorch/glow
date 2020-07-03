@@ -753,21 +753,39 @@ void BoundInterpreterFunction::fwdConvolution3DGradInst(
   llvm_unreachable("not yet implemented");
 }
 
-void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
+//===----------------------------------------------------------------------===//
+//                       Channelwise quantized Convolution
+//===----------------------------------------------------------------------===//
+template <typename ElemTy, typename AccumulatorTy, typename BiasElemTy>
+void BoundInterpreterFunction::fwdChannelwiseQuantizedConv2DInstImpl(
     const ChannelwiseQuantizedConvolutionInst *I) {
-  using AccumulatorTy = int32_t;
-
-  auto inW = getWeightHandle<int8_t>(I->getSrc());
-  auto outW = getWeightHandle<int8_t>(I->getDest());
-  auto filterW = getWeightHandle<int8_t>(I->getFilter());
-  auto biasW = getWeightHandle<int32_t>(I->getBias());
-  auto scalesW = getWeightHandle<float>(I->getScales());
-  auto offsetsW = getWeightHandle<int32_t>(I->getOffsets());
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto filterW = getWeightHandle<ElemTy>(I->getFilter());
+  auto biasW = getWeightHandle<BiasElemTy>(I->getBias());
+  auto filterScales = getWeightHandle<float>(I->getFilterScales());
+  auto filterOffsets = getWeightHandle<int32_t>(I->getFilterOffsets());
+  auto biasScales = getWeightHandle<float>(I->getBiasScales());
+  auto biasOffsets = getWeightHandle<int32_t>(I->getBiasOffsets());
 
   llvm::ArrayRef<unsigned_t> kernelSizes = I->getKernels();
   llvm::ArrayRef<unsigned_t> pads = I->getPads();
   llvm::ArrayRef<unsigned_t> strides = I->getStrides();
   dim_t group = I->getGroup();
+  dim_t dilation = I->getDilation();
+
+  ShapeNHWC odim(outW.dims());
+  ShapeNHWC idim(inW.dims());
+  ShapeHW kdim(kernelSizes);
+  ShapeHW sdim(strides);
+
+  assert(idim.c % group == 0 && "Input channels must be divisible by group.");
+  assert(odim.c % group == 0 && "Output channels must be divisible by group.");
+  dim_t inCperG = idim.c / group;
+  dim_t outCperG = odim.c / group;
+
+  PaddingTLBR pdim(pads);
+
   auto &inTy = inW.getType();
   auto &outTy = outW.getType();
 
@@ -777,113 +795,120 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
   int32_t inOffset = inTy.getOffset();
   int32_t outOffset = outTy.getOffset();
 
-  bool isConv3d = (inW.dims().size() == 5);
-  if (isConv3d) {
-    ShapeNTHWC odim(outW.dims());
-    ShapeNTHWC idim(inW.dims());
-    ShapeTHW kdim(kernelSizes);
-    ShapeTHW sdim(strides);
+  // For each input in the batch:
+  for (dim_t n = 0; n < idim.n; n++) {
+    // For each group of input channels:
+    for (dim_t g = 0; g < group; g++) {
+      // For each output channel in the group:
+      for (dim_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
 
-    assert(idim.c % group == 0 && "Input channels must be divisible by group.");
-    assert(odim.c % group == 0 &&
-           "Output channels must be divisible by group.");
-    dim_t inCperG = idim.c / group;
-    dim_t outCperG = odim.c / group;
+        // Get channel wise quantization params.
+        int32_t filterOffset = filterOffsets.at(d);
+        float filterScale = filterScales.at(d);
+        int32_t biasOffset = biasOffsets.at(d);
+        float biasScale = biasScales.at(d);
+        float matMulScale = inScale * filterScale;
 
-    PaddingNFTBLR pdim(pads);
+        // For each convolution 'jump' in the input tensor:
+        sdim_t x = -sdim_t(pdim.top);
+        for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          sdim_t y = -sdim_t(pdim.left);
+          for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
 
-    // For each input in the batch:
-    for (dim_t n = 0; n < idim.n; n++) {
-      // For each group of input channels:
-      for (dim_t g = 0; g < group; g++) {
+            // For each element in the convolution-filter:
+            AccumulatorTy sum = 0;
+            for (dim_t fx = 0; fx < kdim.height; fx++) {
+              for (dim_t fy = 0; fy < kdim.width; fy++) {
+                sdim_t ox = x + fx * dilation;
+                sdim_t oy = y + fy * dilation;
 
-        // For each output channel in the group:
-        for (dim_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
-
-          // get channelwise qparams params
-          int32_t filterOffset = offsetsW.at(d);
-          float filterScale = scalesW.at(d);
-          float matMulScale = inScale * filterScale;
-          // For each convolution 'jump' in the input tensor:
-          sdim_t t = -sdim_t(pdim.near);
-          for (dim_t at = 0; at < odim.t; t += sdim.temporal_frames, at++) {
-            sdim_t x = -sdim_t(pdim.top);
-            for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
-              sdim_t y = -sdim_t(pdim.left);
-              for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
-
-                // For each element in the convolution-filter:
-                AccumulatorTy sum = 0;
-                for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
-                  for (dim_t fx = 0; fx < kdim.height; fx++) {
-                    for (dim_t fy = 0; fy < kdim.width; fy++) {
-                      sdim_t ot = t + ft;
-                      sdim_t ox = x + fx;
-                      sdim_t oy = y + fy;
-
-                      // Ignore index access below zero (this is due to
-                      // padding).
-                      if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
-                          ox >= ssize_t(idim.h) || oy >= sdim_t(idim.w)) {
-                        continue;
-                      }
-                      for (dim_t fd = 0; fd < inCperG; fd++) {
-
-                        AccumulatorTy F = filterW.at({d, ft, fx, fy, fd});
-                        AccumulatorTy I = inW.at({n, (dim_t)ot, (dim_t)ox,
-                                                  (dim_t)oy, g * inCperG + fd});
-                        // We represent the element multiplication with offset
-                        // as (value - offset).
-                        sum += (F - filterOffset) * (I - inOffset);
-                      }
-                    }
-                  }
+                // Ignore index access below zero (this is due to padding).
+                if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
+                    oy >= sdim_t(idim.w)) {
+                  continue;
                 }
 
-                // Add the channelwise quantized bias.
-                // NOTE: The bias of ChannelwiseQuantizedConvolution should be
-                // quantized such that each element is scaled to match the
-                // matMulScale (biasScale_i = scales_i * inScale).
-                sum += biasW.at({d});
+                // Accumulate along the filter depth.
+                for (dim_t fd = 0; fd < inCperG; fd++) {
+                  AccumulatorTy F = filterW.at({d, fx, fy, fd});
+                  AccumulatorTy I =
+                      inW.at({n, (dim_t)ox, (dim_t)oy, g * inCperG + fd});
+                  // We represent the element multiplication with offset as
+                  // (value - offset).
+                  sum += (F - filterOffset) * (I - inOffset);
+                }
+              }
+            }
 
-                // Scale the result back to the expected destination scale.
-                outW.at({n, at, ax, ay, d}) =
-                    quantization::clip<AccumulatorTy, int8_t>(std::round(
-                        float(sum) * (matMulScale / outScale) + outOffset));
-              } // W
-            }   // H
-          }     // T
-        }       // C
-      }         // G
-    }           // N
-  } else {
+            // Scale the bias to match the scale of the matrix multiplication.
+            sum += std::round(float(biasW.at({d}) - biasOffset) *
+                              (biasScale / matMulScale));
 
-    ShapeNHWC odim(outW.dims());
-    ShapeNHWC idim(inW.dims());
-    ShapeHW kdim(kernelSizes);
-    ShapeHW sdim(strides);
+            // Scale the result back to the expected destination scale.
+            outW.at({n, ax, ay, d}) = quantization::clip<AccumulatorTy, ElemTy>(
+                std::round(float(sum) * (matMulScale / outScale) + outOffset));
+          } // W
+        }   // H
+      }     // C
+    }       // G
+  }         // N
+}
 
-    assert(idim.c % group == 0 && "Input channels must be divisible by group.");
-    assert(odim.c % group == 0 &&
-           "Output channels must be divisible by group.");
-    dim_t inCperG = idim.c / group;
-    dim_t outCperG = odim.c / group;
+template <typename ElemTy, typename AccumulatorTy, typename BiasElemTy>
+void BoundInterpreterFunction::fwdChannelwiseQuantizedConv3DInstImpl(
+    const ChannelwiseQuantizedConvolutionInst *I) {
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+  auto filterW = getWeightHandle<ElemTy>(I->getFilter());
+  auto biasW = getWeightHandle<BiasElemTy>(I->getBias());
+  auto filterScales = getWeightHandle<float>(I->getFilterScales());
+  auto filterOffsets = getWeightHandle<int32_t>(I->getFilterOffsets());
+  auto biasScales = getWeightHandle<float>(I->getBiasScales());
+  auto biasOffsets = getWeightHandle<int32_t>(I->getBiasOffsets());
 
-    PaddingTLBR pdim(pads);
+  llvm::ArrayRef<unsigned_t> kernelSizes = I->getKernels();
+  llvm::ArrayRef<unsigned_t> pads = I->getPads();
+  llvm::ArrayRef<unsigned_t> strides = I->getStrides();
+  dim_t group = I->getGroup();
 
-    // For each input in the batch:
-    for (dim_t n = 0; n < idim.n; n++) {
-      // For each group of input channels:
-      for (dim_t g = 0; g < group; g++) {
+  ShapeNTHWC odim(outW.dims());
+  ShapeNTHWC idim(inW.dims());
+  ShapeTHW kdim(kernelSizes);
+  ShapeTHW sdim(strides);
 
-        // For each output channel in the group:
-        for (dim_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
+  assert(idim.c % group == 0 && "Input channels must be divisible by group.");
+  assert(odim.c % group == 0 && "Output channels must be divisible by group.");
+  dim_t inCperG = idim.c / group;
+  dim_t outCperG = odim.c / group;
 
-          // get channelwise qparams params
-          int32_t filterOffset = offsetsW.at(d);
-          float filterScale = scalesW.at(d);
-          float matMulScale = inScale * filterScale;
-          // For each convolution 'jump' in the input tensor:
+  PaddingNFTBLR pdim(pads);
+
+  auto &inTy = inW.getType();
+  auto &outTy = outW.getType();
+
+  float inScale = inTy.getScale();
+  float outScale = outTy.getScale();
+
+  int32_t inOffset = inTy.getOffset();
+  int32_t outOffset = outTy.getOffset();
+
+  // For each input in the batch:
+  for (dim_t n = 0; n < idim.n; n++) {
+    // For each group of input channels:
+    for (dim_t g = 0; g < group; g++) {
+      // For each output channel in the group:
+      for (dim_t d = g * outCperG; d < (g + 1) * outCperG; d++) {
+
+        // Get channel wise quantization params.
+        int32_t filterOffset = filterOffsets.at(d);
+        float filterScale = filterScales.at(d);
+        int32_t biasOffset = biasOffsets.at(d);
+        float biasScale = biasScales.at(d);
+        float matMulScale = inScale * filterScale;
+
+        // For each convolution 'jump' in the input tensor:
+        sdim_t t = -sdim_t(pdim.near);
+        for (dim_t at = 0; at < odim.t; t += sdim.temporal_frames, at++) {
           sdim_t x = -sdim_t(pdim.top);
           for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
             sdim_t y = -sdim_t(pdim.left);
@@ -891,43 +916,61 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
 
               // For each element in the convolution-filter:
               AccumulatorTy sum = 0;
-              for (dim_t fx = 0; fx < kdim.height; fx++) {
-                for (dim_t fy = 0; fy < kdim.width; fy++) {
-                  sdim_t ox = x + fx;
-                  sdim_t oy = y + fy;
+              for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
+                for (dim_t fx = 0; fx < kdim.height; fx++) {
+                  for (dim_t fy = 0; fy < kdim.width; fy++) {
+                    sdim_t ot = t + ft;
+                    sdim_t ox = x + fx;
+                    sdim_t oy = y + fy;
 
-                  // Ignore index access below zero (this is due to padding).
-                  if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
-                      oy >= sdim_t(idim.w)) {
-                    continue;
-                  }
-                  for (dim_t fd = 0; fd < inCperG; fd++) {
+                    // Ignore index access below zero (this is due to
+                    // padding).
+                    if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
+                        ox >= ssize_t(idim.h) || oy >= sdim_t(idim.w)) {
+                      continue;
+                    }
 
-                    AccumulatorTy F = filterW.at({d, fx, fy, fd});
-                    AccumulatorTy I =
-                        inW.at({n, (dim_t)ox, (dim_t)oy, g * inCperG + fd});
-                    // We represent the element multiplication with offset as
-                    // (value - offset).
-                    sum += (F - filterOffset) * (I - inOffset);
+                    // Accumulate along the filter depth.
+                    for (dim_t fd = 0; fd < inCperG; fd++) {
+
+                      AccumulatorTy F = filterW.at({d, ft, fx, fy, fd});
+                      AccumulatorTy I = inW.at({n, (dim_t)ot, (dim_t)ox,
+                                                (dim_t)oy, g * inCperG + fd});
+                      // We represent the element multiplication with offset
+                      // as (value - offset).
+                      sum += (F - filterOffset) * (I - inOffset);
+                    }
                   }
                 }
               }
 
-              // Add the channelwise quantized bias.
-              // NOTE: The bias of ChannelwiseQuantizedConvolution should be
-              // quantized such that each element is scaled to match the
-              // matMulScale (biasScale_i = scales_i * inScale).
-              sum += biasW.at({d});
+              // Scale the bias to match the scale of the matrix multiplication.
+              sum += std::round(float(biasW.at({d}) - biasOffset) *
+                                (biasScale / matMulScale));
 
               // Scale the result back to the expected destination scale.
-              outW.at({n, ax, ay, d}) =
-                  quantization::clip<AccumulatorTy, int8_t>(std::round(
+              outW.at({n, at, ax, ay, d}) =
+                  quantization::clip<AccumulatorTy, ElemTy>(std::round(
                       float(sum) * (matMulScale / outScale) + outOffset));
             } // W
           }   // H
-        }     // C
-      }       // G
-    }         // N
+        }     // T
+      }       // C
+    }         // G
+  }           // N
+}
+
+void BoundInterpreterFunction::fwdChannelwiseQuantizedConvolutionInst(
+    const ChannelwiseQuantizedConvolutionInst *I) {
+  bool isConv3D = (I->getSrc()->dims().size() == 5);
+  if (isConv3D) {
+    dispatchQuantizedWithAccumulationAndBiasImpl(
+        fwdChannelwiseQuantizedConv3DInstImpl, I->getSrc()->getElementType(),
+        I->getBias()->getElementType(), I);
+  } else {
+    dispatchQuantizedWithAccumulationAndBiasImpl(
+        fwdChannelwiseQuantizedConv2DInstImpl, I->getSrc()->getElementType(),
+        I->getBias()->getElementType(), I);
   }
 }
 
@@ -1135,14 +1178,141 @@ void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
   }       // N
 }
 
-void BoundInterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
-  if (I->getSrc()->getType()->isQuantizedType()) {
-    fwdAvgPoolInstI8Impl(I);
-    return;
-  }
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdAvgPool3DInstFloatImpl(const AvgPoolInst *I) {
+  staticAssertFloatingPointType(ElemTy);
 
-  dispatchFloatingPointImpl(fwdAvgPoolInstFloatImpl,
-                            I->getSrc()->getElementType(), I);
+  ShapeNTHWC odim(I->getDest()->dims());
+  ShapeNTHWC idim(I->getSrc()->dims());
+
+  PaddingNFTBLR pdim(I->getPads());
+  ShapeTHW kdim(I->getKernels());
+  ShapeTHW sdim(I->getStrides());
+  // Implement the avg pooling operation as defined here:
+  // https://arxiv.org/abs/1312.4400
+  float filterArea = kdim.temporal_frames * kdim.height * kdim.width;
+
+  auto inW = getWeightHandle<ElemTy>(I->getSrc());
+  auto outW = getWeightHandle<ElemTy>(I->getDest());
+
+  // For each input in the batch:
+  for (dim_t n = 0; n < odim.n; n++) {
+    // For each layer in the output tensor:
+    for (dim_t z = 0; z < idim.c; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t t = -ssize_t(pdim.near);
+      for (dim_t at = 0; at < odim.t; t += sdim.temporal_frames, at++) {
+        ssize_t x = -ssize_t(pdim.top);
+        for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          ssize_t y = -ssize_t(pdim.left);
+          for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+            float sum = 0;
+
+            for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
+              for (dim_t fx = 0; fx < kdim.height; fx++) {
+                for (dim_t fy = 0; fy < kdim.width; fy++) {
+                  sdim_t ot = t + ft;
+                  sdim_t ox = x + fx;
+                  sdim_t oy = y + fy;
+
+                  // Ignore index access below zero (this is due to padding).
+                  if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
+                      ox >= ssize_t(idim.h) || oy >= ssize_t(idim.w)) {
+                    continue;
+                  }
+
+                  sum += float(inW.at({n, (dim_t)ot, (dim_t)ox, (dim_t)oy, z}));
+                }
+              }
+              outW.at({n, at, ax, ay, z}) = ElemTy(sum / filterArea);
+            }
+          } // W
+        }   // H
+      }     // T
+    }       // C
+  }         // N
+}
+
+void BoundInterpreterFunction::fwdAvgPool3DInstI8Impl(const AvgPoolInst *I) {
+  ShapeNTHWC odim(I->getDest()->dims());
+  ShapeNTHWC idim(I->getSrc()->dims());
+
+  PaddingNFTBLR pdim(I->getPads());
+  ShapeTHW kdim(I->getKernels());
+  ShapeTHW sdim(I->getStrides());
+  // Implement the avg pooling operation as defined here:
+  // https://arxiv.org/abs/1312.4400
+  float filterArea = kdim.temporal_frames * kdim.height * kdim.width;
+
+  auto inW = getWeightHandle<int8_t>(I->getSrc());
+  auto outW = getWeightHandle<int8_t>(I->getDest());
+  TensorQuantizationParams inQP{I->getSrc()->getType()->getScale(),
+                                I->getSrc()->getType()->getOffset()};
+  TensorQuantizationParams outQP{I->getDest()->getType()->getScale(),
+                                 I->getDest()->getType()->getOffset()};
+
+  // For each input in the batch:
+  for (dim_t n = 0; n < odim.n; n++) {
+    // For each layer in the output tensor:
+    for (dim_t z = 0; z < idim.c; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t t = -ssize_t(pdim.near);
+      for (dim_t at = 0; at < odim.t; t += sdim.temporal_frames, at++) {
+        ssize_t x = -ssize_t(pdim.top);
+        for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          ssize_t y = -ssize_t(pdim.left);
+          for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+            int32_t sum = 0;
+
+            for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
+              for (dim_t fx = 0; fx < kdim.height; fx++) {
+                for (dim_t fy = 0; fy < kdim.width; fy++) {
+                  sdim_t ot = t + ft;
+                  sdim_t ox = x + fx;
+                  sdim_t oy = y + fy;
+
+                  // Ignore index access below zero (this is due to padding).
+                  if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
+                      ox >= ssize_t(idim.h) || oy >= ssize_t(idim.w)) {
+                    continue;
+                  }
+
+                  sum += inW.at({n, (dim_t)ot, (dim_t)ox, (dim_t)oy, z}) -
+                         inQP.offset;
+                }
+              }
+            }
+            // Instead of dividing by filterArea, just change scale.
+            outW.at({n, at, ax, ay, z}) =
+                quantization::clip<int32_t, int8_t>(std::round(
+                    float(sum) * (inQP.scale / outQP.scale / filterArea) +
+                    outQP.offset));
+          } // W
+        }   // H
+      }     // T
+    }       // C
+  }         // N
+}
+
+void BoundInterpreterFunction::fwdAvgPoolInst(const AvgPoolInst *I) {
+  bool isConv3D = is3DData(ConvolutionLayout(I->getLayout()));
+  bool isQuantized = I->getSrc()->getType()->isQuantizedType();
+
+  if (isConv3D) {
+    if (isQuantized) {
+      fwdAvgPool3DInstI8Impl(I);
+    } else {
+      dispatchFloatingPointImpl(fwdAvgPool3DInstFloatImpl,
+                                I->getSrc()->getElementType(), I);
+    }
+  } else {
+    if (isQuantized) {
+      fwdAvgPoolInstI8Impl(I);
+    } else {
+      dispatchFloatingPointImpl(fwdAvgPoolInstFloatImpl,
+                                I->getSrc()->getElementType(), I);
+    }
+  }
 }
 
 template <typename ElemTy>
@@ -1338,7 +1508,7 @@ void BoundInterpreterFunction::fwdMaxPoolWithArgmaxGradInst(
   }       // N
 }
 
-void BoundInterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
+void BoundInterpreterFunction::fwdAvgPool2DGradInst(const AvgPoolGradInst *I) {
   auto inG = getWeightHandle(I->getSrcGrad());
   auto outW = getWeightHandle(I->getDest());
   auto outG = getWeightHandle(I->getDestGrad());
@@ -1384,6 +1554,70 @@ void BoundInterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
       }   // H
     }     // C
   }       // N
+}
+
+void BoundInterpreterFunction::fwdAvgPool3DGradInst(const AvgPoolGradInst *I) {
+  auto inG = getWeightHandle(I->getSrcGrad());
+  auto outW = getWeightHandle(I->getDest());
+  auto outG = getWeightHandle(I->getDestGrad());
+
+  ShapeNTHWC odim(outW.dims());
+  ShapeNTHWC idim(inG.dims());
+
+  PaddingNFTBLR pdim(I->getPads());
+  ShapeTHW kdim(I->getKernels());
+  ShapeTHW sdim(I->getStrides());
+
+  inG.clear();
+
+  float filterArea = kdim.temporal_frames * kdim.height * kdim.width;
+
+  // For each input in the batch:
+  for (dim_t n = 0; n < odim.n; n++) {
+
+    // For each layer in the output tensor:
+    for (dim_t z = 0; z < odim.c; z++) {
+      // For each convolution 'jump' in the input tensor:
+      ssize_t t = -ssize_t(pdim.near);
+      for (dim_t at = 0; at < odim.t; t += sdim.temporal_frames, at++) {
+        ssize_t x = -ssize_t(pdim.top);
+        for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
+          ssize_t y = -ssize_t(pdim.left);
+          for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+
+            float dy = outG.at({n, at, ax, ay, z}) / filterArea;
+
+            for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
+              for (dim_t fx = 0; fx < kdim.height; fx++) {
+                for (dim_t fy = 0; fy < kdim.width; fy++) {
+                  ssize_t ot = t + ft;
+                  ssize_t ox = x + fx;
+                  ssize_t oy = y + fy;
+
+                  // Ignore index access below zero (this is due to padding).
+                  if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
+                      ox >= ssize_t(idim.h) || oy >= ssize_t(idim.w)) {
+                    continue;
+                  }
+                  inG.at({n, (dim_t)ot, (dim_t)ox, (dim_t)oy, z}) += dy;
+                }
+              }
+            }
+          } // W
+        }   // H
+      }     // T
+    }       // C
+  }         // N
+}
+
+void BoundInterpreterFunction::fwdAvgPoolGradInst(const AvgPoolGradInst *I) {
+  bool isConv3D = is3DData(ConvolutionLayout(I->getLayout()));
+
+  if (isConv3D) {
+    fwdAvgPool3DGradInst(I);
+  } else {
+    fwdAvgPool2DGradInst(I);
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -2526,6 +2760,134 @@ void BoundInterpreterFunction::fwdElementMinInst(const ElementMinInst *I) {
                          I->getDest()->getElementType(), I);
 }
 
+//===----------------------------------------------------------------------===//
+//                              Logical operations
+//===----------------------------------------------------------------------===//
+void BoundInterpreterFunction::fwdElementNotInst(const ElementNotInst *I) {
+  auto inpW = getWeightHandle<bool>(I->getSrc());
+  auto outW = getWeightHandle<bool>(I->getDest());
+  for (size_t i = 0, e = outW.size(); i < e; ++i) {
+    outW.raw(i) = (!inpW.raw(i));
+  }
+}
+
+void BoundInterpreterFunction::fwdElementAndInst(const ElementAndInst *I) {
+  auto lhsW = getWeightHandle<bool>(I->getLHS());
+  auto rhsW = getWeightHandle<bool>(I->getRHS());
+  auto outW = getWeightHandle<bool>(I->getDest());
+  for (size_t i = 0, e = outW.size(); i < e; ++i) {
+    outW.raw(i) = (lhsW.raw(i) && rhsW.raw(i));
+  }
+}
+
+void BoundInterpreterFunction::fwdElementOrInst(const ElementOrInst *I) {
+  auto lhsW = getWeightHandle<bool>(I->getLHS());
+  auto rhsW = getWeightHandle<bool>(I->getRHS());
+  auto outW = getWeightHandle<bool>(I->getDest());
+  for (size_t i = 0, e = outW.size(); i < e; ++i) {
+    outW.raw(i) = (lhsW.raw(i) || rhsW.raw(i));
+  }
+}
+
+void BoundInterpreterFunction::fwdElementXorInst(const ElementXorInst *I) {
+  auto lhsW = getWeightHandle<bool>(I->getLHS());
+  auto rhsW = getWeightHandle<bool>(I->getRHS());
+  auto outW = getWeightHandle<bool>(I->getDest());
+  for (size_t i = 0, e = outW.size(); i < e; ++i) {
+    outW.raw(i) = (lhsW.raw(i) ^ rhsW.raw(i));
+  }
+}
+
+//===----------------------------------------------------------------------===//
+//                         Unary arithmetic operations
+//===----------------------------------------------------------------------===//
+template <typename ElemTy, typename InstKind>
+void BoundInterpreterFunction::fwdUnaryArithmeticImpl(
+    const InstKind *I, std::function<float(float)> func) {
+  Value *inpV = I->getSrc();
+  Value *outV = I->getDest();
+  auto inpTy = inpV->getType();
+  auto outTy = outV->getType();
+  auto inpH = getWeightHandle<ElemTy>(inpV);
+  auto outH = getWeightHandle<ElemTy>(outV);
+
+  if (inpTy->isQuantizedType()) {
+    float inpScale = inpTy->getScale();
+    int32_t inpOffset = inpTy->getOffset();
+    float outScale = outTy->getScale();
+    int32_t outOffset = outTy->getOffset();
+    for (size_t i = 0, e = outH.size(); i < e; ++i) {
+      float inpVal =
+          quantization::dequantize<ElemTy>(inpH.raw(i), {inpScale, inpOffset});
+      float outVal = func(inpVal);
+      outH.raw(i) =
+          quantization::quantize<ElemTy>(outVal, {outScale, outOffset});
+    }
+  } else {
+    for (size_t i = 0, e = outH.size(); i < e; ++i) {
+      float inpVal = static_cast<float>(inpH.raw(i));
+      float outVal = func(inpVal);
+      outH.raw(i) = static_cast<ElemTy>(outVal);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdElementAbsInst(const ElementAbsInst *I) {
+  auto func = [](float x) -> float { return std::abs(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementNegInst(const ElementNegInst *I) {
+  auto func = [](float x) -> float { return -x; };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementFloorInst(const ElementFloorInst *I) {
+  auto func = [](float x) -> float { return std::floor(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementCeilInst(const ElementCeilInst *I) {
+  auto func = [](float x) -> float { return std::ceil(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementRoundInst(const ElementRoundInst *I) {
+  // Rounding mode required by ONNX, Numpy, TensorFlow is round to even which
+  // rounds to nearest even integer those values with fractional part 0.5.
+  auto func = [](float x) -> float { return std::nearbyintf(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementSqrtInst(const ElementSqrtInst *I) {
+  auto func = [](float x) -> float { return std::sqrt(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementRsqrtInst(const ElementRsqrtInst *I) {
+  auto func = [](float x) -> float { return 1 / std::sqrt(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementReciprocalInst(
+    const ElementReciprocalInst *I) {
+  auto func = [](float x) -> float { return 1 / x; };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementSinInst(const ElementSinInst *I) {
+  auto func = [](float x) -> float { return std::sin(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+void BoundInterpreterFunction::fwdElementCosInst(const ElementCosInst *I) {
+  auto func = [](float x) -> float { return std::cos(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
+//===----------------------------------------------------------------------===//
+//                              Compare operations
+//===----------------------------------------------------------------------===//
 template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
           typename CmpTy, typename InstCmpKind>
 void BoundInterpreterFunction::fwdElementCmpHelperImpl(
@@ -2626,6 +2988,42 @@ void BoundInterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
     break;
   case ElemKind::Int64ITy:
     fwdElementCmpEQInstImpl<int64_t, int64_t, float>(I);
+    break;
+  default:
+    llvm_unreachable("Type is not supported");
+  }
+}
+
+template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
+          typename CmpTy>
+void BoundInterpreterFunction::fwdElementCmpNEQInstImpl(
+    const ElementCmpNEQInst *I) {
+  auto cmpHelper = [](CmpTy LHS, CmpTy RHS) -> bool { return !(LHS == RHS); };
+  fwdElementCmpHelperImpl<ElemTy, ElemOffsetTy, ElemScaleTy, CmpTy,
+                          ElementCmpNEQInst>(I, cmpHelper);
+}
+
+void BoundInterpreterFunction::fwdElementCmpNEQInst(
+    const ElementCmpNEQInst *I) {
+  auto *T = getTensor(I->getLHS());
+
+  if (T->getType().isQuantizedType()) {
+    fwdElementCmpNEQInstImpl<int8_t, int32_t, float, int32_t>(I);
+    return;
+  }
+
+  switch (T->getElementType()) {
+  case ElemKind::FloatTy:
+    fwdElementCmpNEQInstImpl<float, float, float>(I);
+    break;
+  case ElemKind::Float16Ty:
+    fwdElementCmpNEQInstImpl<float16_t, float16_t, float16_t>(I);
+    break;
+  case ElemKind::Int32ITy:
+    fwdElementCmpNEQInstImpl<int32_t, int32_t, float>(I);
+    break;
+  case ElemKind::Int64ITy:
+    fwdElementCmpNEQInstImpl<int64_t, int64_t, float>(I);
     break;
   default:
     llvm_unreachable("Type is not supported");
@@ -3003,6 +3401,7 @@ void BoundInterpreterFunction::fwdFullyConnectedInst(
                               I->getSrc()->getElementType(), I);
   }
 }
+
 //===----------------------------------------------------------------------===//
 //                       Row-wise quantized FC
 //===----------------------------------------------------------------------===//
@@ -4214,55 +4613,97 @@ static void fwdTopK(Tensor *outW, Tensor *indW, Tensor *inW, size_t k) {
   }
 }
 
-template <typename T>
-static void fwdArgMax(Tensor *argmaxW, Tensor *inW, size_t axis) {
-  auto argmaxH = argmaxW->getHandle<int64_t>();
-  auto inH = inW->getHandle<T>();
+template <typename inpType, typename outType>
+static void fwdArgMax(Tensor *inpT, Tensor *outT, size_t axis) {
 
-  auto idim = inW->dims();
+  // Get input/output handles with dimensions expanded to maximum.
+  ShapeVector inpDims = expandDimsToMax(inpT->dims());
+  ShapeVector outDims = inpDims;
+  outDims[axis] = 1;
+  auto eInpT = inpT->getUnowned(inpDims);
+  auto eOutT = outT->getUnowned(outDims);
+  auto inpH = eInpT.getHandle<inpType>();
+  auto outH = eOutT.getHandle<outType>();
 
-  dim_t a, b, c, d = 0;
+  static_assert(max_tensor_dimensions == 6,
+                "Loops below assume max_tensor_dimensions = 6.");
 
-  dim_t *dim[4];
+  for (dim_t idx0 = 0; idx0 < outDims[0]; idx0++) {
+    for (dim_t idx1 = 0; idx1 < outDims[1]; idx1++) {
+      for (dim_t idx2 = 0; idx2 < outDims[2]; idx2++) {
+        for (dim_t idx3 = 0; idx3 < outDims[3]; idx3++) {
+          for (dim_t idx4 = 0; idx4 < outDims[4]; idx4++) {
+            for (dim_t idx5 = 0; idx5 < outDims[5]; idx5++) {
 
-  assert((axis >= 0) && (axis <= 3) && "Axis values should be between 0 and 3");
+              // Initialize maximum value/index.
+              inpType maxVal = std::numeric_limits<inpType>::lowest();
+              outType maxIdx = 0;
 
-  dim[(axis + 1) % 4] = &a;
-  dim[(axis + 2) % 4] = &b;
-  dim[(axis + 3) % 4] = &c;
-  dim[axis] = &d;
+              // Iterate input axis dimension.
+              for (dim_t axisIdx = 0; axisIdx < inpDims[axis]; axisIdx++) {
+                std::vector<dim_t> inpIdx = {idx0, idx1, idx2,
+                                             idx3, idx4, idx5};
+                inpIdx[axis] = axisIdx;
+                inpType inpVal = inpH.at(inpIdx);
+                if (inpVal > maxVal) {
+                  maxVal = inpVal;
+                  maxIdx = axisIdx;
+                }
+              }
 
-  dim_t odim[4] = {idim[0], idim[1], idim[2], idim[3]};
-  odim[axis] = 1;
-
-  for (a = 0; a < idim[(axis + 1) % 4]; a++) {
-    for (b = 0; b < idim[(axis + 2) % 4]; b++) {
-      for (c = 0; c < idim[(axis + 3) % 4]; c++) {
-        T max = std::numeric_limits<T>::min();
-        if (axis == 0) {
-          max = inH.at({0, *dim[1], *dim[2], *dim[3]});
-        } else if (axis == 1) {
-          max = inH.at({*dim[0], 0, *dim[2], *dim[3]});
-        } else if (axis == 2) {
-          max = inH.at({*dim[0], *dim[1], 0, *dim[3]});
-        } else {
-          max = inH.at({*dim[0], *dim[1], *dim[2], 0});
-        }
-
-        dim_t maxi = 0;
-
-        for (d = 0; d < idim[axis]; d++) {
-          T elem = inH.at({*dim[0], *dim[1], *dim[2], *dim[3]});
-          if (elem > max) {
-            max = elem;
-            maxi = d;
+              // Store maximum index.
+              outH.at({idx0, idx1, idx2, idx3, idx4, idx5}) = maxIdx;
+            }
           }
         }
-        *dim[axis] = 0;
-        dim_t ind = (*dim[0]) * odim[1] * odim[2] * odim[3] +
-                    (*dim[1]) * odim[2] * odim[3] + (*dim[2]) * odim[3] +
-                    (*dim[3]);
-        argmaxH.raw(ind) = maxi;
+      }
+    }
+  }
+}
+
+template <typename inpType, typename outType>
+static void fwdArgMin(Tensor *inpT, Tensor *outT, size_t axis) {
+
+  // Get input/output handles with dimensions expanded to maximum.
+  ShapeVector inpDims = expandDimsToMax(inpT->dims());
+  ShapeVector outDims = inpDims;
+  outDims[axis] = 1;
+  auto eInpT = inpT->getUnowned(inpDims);
+  auto eOutT = outT->getUnowned(outDims);
+  auto inpH = eInpT.getHandle<inpType>();
+  auto outH = eOutT.getHandle<outType>();
+
+  static_assert(max_tensor_dimensions == 6,
+                "Loops below assume max_tensor_dimensions = 6.");
+
+  for (dim_t idx0 = 0; idx0 < outDims[0]; idx0++) {
+    for (dim_t idx1 = 0; idx1 < outDims[1]; idx1++) {
+      for (dim_t idx2 = 0; idx2 < outDims[2]; idx2++) {
+        for (dim_t idx3 = 0; idx3 < outDims[3]; idx3++) {
+          for (dim_t idx4 = 0; idx4 < outDims[4]; idx4++) {
+            for (dim_t idx5 = 0; idx5 < outDims[5]; idx5++) {
+
+              // Initialize minimum value/index.
+              inpType minVal = std::numeric_limits<inpType>::max();
+              outType minIdx = 0;
+
+              // Iterate input axis dimension.
+              for (dim_t axisIdx = 0; axisIdx < inpDims[axis]; axisIdx++) {
+                std::vector<dim_t> inpIdx = {idx0, idx1, idx2,
+                                             idx3, idx4, idx5};
+                inpIdx[axis] = axisIdx;
+                inpType inpVal = inpH.at(inpIdx);
+                if (inpVal < minVal) {
+                  minVal = inpVal;
+                  minIdx = axisIdx;
+                }
+              }
+
+              // Store minimum index.
+              outH.at({idx0, idx1, idx2, idx3, idx4, idx5}) = minIdx;
+            }
+          }
+        }
       }
     }
   }
@@ -4292,18 +4733,44 @@ void BoundInterpreterFunction::fwdTopKInst(const TopKInst *I) {
                                     indW->getElementType(), outW, indW, inW, k);
 }
 
-void BoundInterpreterFunction::fwdArgMaxInst(const ArgMaxInst *I) {
-  auto argmaxW = getTensor(I->getArgmax());
-  auto inW = getTensor(I->getInput());
-  size_t axis = I->getAxis();
-
-  if (inW->getType().isQuantizedType()) {
-    dispatchQuantizedImpl(fwdArgMax, inW->getElementType(), argmaxW, inW, axis);
-    return;
+#define DISPATCH_ARG_MIN_MAX(functionName, elemTy, elemTyIndex, ...)           \
+  switch (elemTy) {                                                            \
+  case ElemKind::FloatTy:                                                      \
+    if (elemTyIndex == ElemKind::Int64ITy) {                                   \
+      functionName<float, int64_t>(__VA_ARGS__);                               \
+    } else if (elemTyIndex == ElemKind::Int32ITy) {                            \
+      functionName<float, int32_t>(__VA_ARGS__);                               \
+    }                                                                          \
+    break;                                                                     \
+  case ElemKind::Int8QTy:                                                      \
+    if (elemTyIndex == ElemKind::Int64ITy) {                                   \
+      functionName<int8_t, int64_t>(__VA_ARGS__);                              \
+    } else if (elemTyIndex == ElemKind::Int32ITy) {                            \
+      functionName<int8_t, int32_t>(__VA_ARGS__);                              \
+    }                                                                          \
+    break;                                                                     \
+  default:                                                                     \
+    llvm_unreachable("Type is not supported");                                 \
   }
-  dispatchFloatingPointImpl(fwdArgMax, inW->getElementType(), argmaxW, inW,
-                            axis);
+
+void BoundInterpreterFunction::fwdArgMaxInst(const ArgMaxInst *I) {
+  auto inpT = getTensor(I->getSrc());
+  auto outT = getTensor(I->getDest());
+  size_t axis = I->getAxis();
+  auto inpElemType = inpT->getElementType();
+  auto outElemType = outT->getElementType();
+  DISPATCH_ARG_MIN_MAX(fwdArgMax, inpElemType, outElemType, inpT, outT, axis);
 }
+
+void BoundInterpreterFunction::fwdArgMinInst(const ArgMinInst *I) {
+  auto inpT = getTensor(I->getSrc());
+  auto outT = getTensor(I->getDest());
+  size_t axis = I->getAxis();
+  auto inpElemType = inpT->getElementType();
+  auto outElemType = outT->getElementType();
+  DISPATCH_ARG_MIN_MAX(fwdArgMin, inpElemType, outElemType, inpT, outT, axis);
+}
+#undef DISPATCH_ARG_MIN_MAX
 
 //===----------------------------------------------------------------------===//
 //                  Tensor allocation operations
@@ -4479,6 +4946,12 @@ void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
   CONVERT(int64_t, float16_t, ElemKind::Int64ITy, ElemKind::Float16Ty)
   CONVERT(int64_t, int32_t, ElemKind::Int64ITy, ElemKind::Int32ITy)
 #undef CONVERT
+
+  if (srcElType == ElemKind::UInt8FusedQTy &&
+      destElType == ElemKind::UInt8FusedFP16QTy) {
+    dest->convertToType(ElemKind::UInt8FusedFP16QTy);
+    return;
+  }
   llvm_unreachable("Type not supported");
 }
 

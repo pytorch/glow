@@ -170,6 +170,20 @@ Expected<std::string> getAttrFromDocString(const std::string &attr,
   return docStr.substr(begin, docStr.find(startChar, begin) - begin);
 }
 
+Expected<std::pair<bool, std::string>>
+getTrainableLayoutPairFromDocString(const std::string &docString,
+                                    bool useGlowCustomOps) {
+  std::string layout = ANY_LAYOUT;
+  std::string isTrainableStr = "0";
+  if (useGlowCustomOps) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        isTrainableStr, getAttrFromDocString(trainableSignifier, docString));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        layout, getAttrFromDocString(layoutSignifier, docString));
+  }
+  return std::make_pair(isTrainableStr != "0", layout);
+}
+
 Expected<std::pair<float, int32_t>>
 getQuantParamsFromDocString(const std::string &docStr) {
   std::string scaleStr;
@@ -300,6 +314,10 @@ template <> struct AttributeRetriever<false, ConvolutionLayout> {
       return ConvolutionLayout::NHWC;
     } else if (str == "NCHW") {
       return ConvolutionLayout::NCHW;
+    } else if (str == "NTHWC") {
+      return ConvolutionLayout::NTHWC;
+    } else if (str == "NCTHW") {
+      return ConvolutionLayout::NCTHW;
     } else {
       return MAKE_ERR("Invalid ConvolutionLayout");
     }
@@ -455,8 +473,8 @@ void glow::fillPlaceholders(const ONNX_NAMESPACE::GraphProto &inputGroup,
                             bool usingGlowCustomOps) {
   for (const auto &tensorProto : inputGroup.initializer()) {
     auto *tensor =
-        bindings->get(bindings->getPlaceholderByName(tensorProto.name()));
-    CHECK(tensor);
+        bindings->get(bindings->getPlaceholderByNameSlow(tensorProto.name()));
+    CHECK(tensor) << "Missing " << tensorProto.name();
     size_t fullSize = tensor->getSizeInBytes();
     const auto fullType = tensor->getType();
     auto error = loadTensor(tensorProto, tensor, usingGlowCustomOps);
@@ -632,8 +650,47 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
   return Error::success();
 }
 
-Error ONNXModelLoader::setTensorType(const ONNX_NAMESPACE::ValueInfoProto &in,
-                                     Tensor *T) {
+Expected<Type>
+ONNXModelLoader::getTensorType(const ONNX_NAMESPACE::TensorProto &in) {
+  std::vector<dim_t> dim;
+  for (auto d : in.dims()) {
+    dim.push_back(d);
+  }
+
+  switch (in.data_type()) {
+  case ONNX_NAMESPACE::TensorProto::FLOAT:
+    return Type(ElemKind::FloatTy, dim);
+
+  case ONNX_NAMESPACE::TensorProto::FLOAT16:
+    return Type(ElemKind::Float16Ty, dim);
+
+  case ONNX_NAMESPACE::TensorProto::INT64:
+    return Type(ElemKind::Int64ITy, dim);
+
+  case ONNX_NAMESPACE::TensorProto::UINT8:
+  case ONNX_NAMESPACE::TensorProto::INT8:
+  case ONNX_NAMESPACE::TensorProto::INT16:
+    return parseTypeFromDocString(in.doc_string(), dim, useGlowCustomOps_);
+
+  case ONNX_NAMESPACE::TensorProto::INT32:
+    if (in.has_doc_string()) {
+      return parseTypeFromDocString(in.doc_string(), dim, useGlowCustomOps_);
+    }
+    return Type(ElemKind::Int32ITy, dim);
+
+  case ONNX_NAMESPACE::TensorProto::BOOL:
+    return Type(ElemKind::BoolTy, dim);
+
+  default:
+    RETURN_ERR(strFormat("Unsupported tensor data type: %u",
+                         static_cast<unsigned>(in.data_type())),
+               ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+  }
+  llvm_unreachable("Unsupported tensor data type");
+}
+
+Expected<Type>
+ONNXModelLoader::getTensorType(const ONNX_NAMESPACE::ValueInfoProto &in) {
   auto type = in.type();
 
   std::vector<dim_t> dim;
@@ -665,10 +722,25 @@ Error ONNXModelLoader::setTensorType(const ONNX_NAMESPACE::ValueInfoProto &in,
   if (isQuantizedElemKind(kind)) {
     assert(useGlowCustomOps_ &&
            "Quantized loading not fully supported without custom Glow ops.");
-    T->reset(kind, dim, scale, offset);
-  } else {
-    T->reset(kind, dim);
+    return Type(kind, dim, scale, offset);
   }
+  return Type(kind, dim);
+}
+
+/// \returns whether there's an issue with pre-existing \p S with name \p name,
+/// \p ty, \p layout, and \p trainable (for Placeholders).
+static Error verifyPreexistingStorage(const Storage *S, const std::string &name,
+                                      const Type &ty, const std::string &layout,
+                                      const bool trainable = false) {
+  RETURN_ERR_IF_NOT(S, "Storage did not exist in Module: " + name);
+  RETURN_ERR_IF_NOT(S->getType()->isEqual(ty),
+                    "Incorrect type for existing Storage " + name);
+  if (const Placeholder *PH = llvm::dyn_cast<Placeholder>(S)) {
+    RETURN_ERR_IF_NOT(trainable == PH->isTraining(),
+                      "Incorrect trainability for existing Storage " + name);
+  }
+  RETURN_ERR_IF_NOT(layout == S->getLayout(),
+                    "Incorrect layout for existing Storage " + name);
   return Error::success();
 }
 
@@ -680,30 +752,37 @@ Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
       continue;
     }
 
+    Type ty;
+    ASSIGN_VALUE_OR_RETURN_ERR(ty, getTensorType(in));
+    std::pair<bool, std::string> trainableLayoutPair;
+    ASSIGN_VALUE_OR_RETURN_ERR(trainableLayoutPair,
+                               getTrainableLayoutPairFromDocString(
+                                   in.doc_string(), useGlowCustomOps_));
+
+    // If we already have the existing module then just get the input PH that
+    // already exists.
+    if (loadIntoExistingModule_) {
+      RETURN_ERR_IF_NOT(
+          loadInputsAsPlaceholdersForOnnx,
+          "Must load inputs as Placeholders when using existing Module.");
+      Placeholder *PH = mod_.getPlaceholderByNameSlow(in.name());
+      RETURN_IF_ERR(verifyPreexistingStorage(PH, in.name(), ty,
+                                             trainableLayoutPair.second,
+                                             trainableLayoutPair.first));
+      nodeValueByName_[in.name()] = PH->getOutput();
+      continue;
+    }
+
     if (loadInputsAsPlaceholdersForOnnx) {
-      Tensor T;
-      RETURN_IF_ERR(setTensorType(in, &T));
-
-      std::string isTrainable = "0";
-      std::string layout = ANY_LAYOUT;
-      if (useGlowCustomOps_) {
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            isTrainable,
-            getAttrFromDocString(trainableSignifier, in.doc_string()));
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            layout, getAttrFromDocString(layoutSignifier, in.doc_string()));
-      }
-
       Placeholder *placeholder;
       ASSIGN_VALUE_OR_RETURN_ERR(
           placeholder,
-          createAndRegisterPlaceholder(in.name(), &T.getType(),
-                                       staticInputs_.count(in.name()),
-                                       isTrainable != "0", layout));
+          createAndRegisterPlaceholder(
+              in.name(), mod_.uniqueType(ty), staticInputs_.count(in.name()),
+              trainableLayoutPair.first, trainableLayoutPair.second));
       inputVarsByName_.try_emplace(in.name(), placeholder);
     } else {
-      Tensor T;
-      RETURN_IF_ERR(setTensorType(in, &T));
+      Tensor T(ty);
       RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(T)));
     }
   }
@@ -749,6 +828,8 @@ Expected<ElemKind> ONNXModelLoader::convertTensorProtoDataType(
     return ElemKind::Int32ITy;
   case ONNX_NAMESPACE::TensorProto_DataType_INT64:
     return ElemKind::Int64ITy;
+  case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+    return ElemKind::BoolTy;
   default:;
   }
   RETURN_ERR("Non supported ONNX type");
@@ -856,6 +937,8 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
                        llvm::ArrayRef<unsigned_t> kdim,
                        llvm::ArrayRef<unsigned_t> sdim,
                        llvm::ArrayRef<unsigned_t> idim) {
+  // TODO: ONNX spec disallows using "pads" and "auto_pad" together. However,
+  // the implementation allows mixing them and onnxruntime gives pads priority.
   if (dict.count("pads")) {
     if (dict.at("pads")->ints_size() == 2) { // For maxPool1D
       return Pads({0, (unsigned_t)dict.at("pads")->ints(0), 0,
@@ -933,10 +1016,10 @@ static Expected<Pads> getConvTransposePadsfromOutput(
       // if odd number for pdim[i], use extra padding at the end.
       //   pads[start_i] = total_padding[i] - (total_padding[i]/2);
       //   pads[end_i] = (total_padding[i]/2).
-      top = pdim[0] / 2;
-      bottom = top + (pdim[0] & 0x1);
-      left = pdim[1] / 2;
-      right = left + (pdim[1] & 0x1);
+      top = pdim[0] - pdim[0] / 2;
+      bottom = pdim[0] / 2;
+      left = pdim[1] - pdim[1] / 2;
+      right = pdim[1] / 2;
       return Pads({top, left, bottom, right});
     }
   }
@@ -944,9 +1027,9 @@ static Expected<Pads> getConvTransposePadsfromOutput(
   //   pads[start_i] = total_padding[i]/2;
   //   pads[end_i] = total_padding[i] - (total_padding[i]/2)
   top = pdim[0] / 2;
-  bottom = top + (pdim[0] & 0x1);
+  bottom = pdim[0] - pdim[0] / 2;
   left = pdim[1] / 2;
-  right = left + (pdim[1] & 0x1);
+  right = pdim[1] - pdim[1] / 2;
   return Pads({top, left, bottom, right});
 }
 
@@ -1078,7 +1161,8 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
       // - 'starts' & 'ends' arrays must have the same size as the 'axes' array.
       // In case an axis is specified multiple times in 'axes', the later
       // parameters will simply overwrite the previous ones.
-      ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<ssize_t>(dict["axes"]));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axes, loadAxes<ssize_t>(dict["axes"], data.dims().size()));
     }
   }
   RETURN_ERR_IF_NOT(
@@ -1415,8 +1499,13 @@ Error ONNXModelLoader::loadChannelwiseQuantizedConvolution(
   std::vector<unsigned_t> pads;
   ASSIGN_VALUE_OR_RETURN_ERR(pads, getShape<unsigned_t>(dict["pads"]));
 
-  unsigned_t groups;
-  ASSIGN_VALUE_OR_RETURN_ERR(groups, loadInt(dict.at("group")));
+  unsigned_t group;
+  ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict.at("group")));
+
+  unsigned_t dilation = 1;
+  if (dict.count("dilation")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(dilation, loadInt(dict.at("dilation")));
+  }
 
   float outScale;
   ASSIGN_VALUE_OR_RETURN_ERR(outScale, loadFloat(dict.at("out_scale")));
@@ -1430,9 +1519,14 @@ Error ONNXModelLoader::loadChannelwiseQuantizedConvolution(
       {idim.n, outSz.first, outSz.second, biasValue.dims()[0]}};
   auto outTy = mod_.uniqueType(ElemKind::Int8QTy, outDims, outScale, outOffset);
 
+  // Quantize the filter automatically (only if it is float). The bias is NOT
+  // quantized automatically and is left at the disposal of each Backend to
+  // quantize it later using custom logic.
   auto *node = G_->createChannelwiseQuantizedConv(
-      opName, input, filterValue, biasValue, scalesValue, offsetsValue, outTy,
-      kernels, strides, pads, groups);
+      opName, input, filterValue, biasValue, scalesValue, offsetsValue,
+      /* biasScales */ nullptr, /* biasOffsets */ nullptr, outTy, kernels,
+      strides, pads, group, dilation, /* quantizeFilter */ true,
+      /* quantizeBias */ false);
 
   return addNodeAsOutput(op, node);
 }
@@ -1552,8 +1646,14 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
                       "Expected/calculated pads don't match");
   } else {
     if (dict.count("output_padding")) {
-      RETURN_ERR("output_padding not supported!",
-                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
+      std::vector<dim_t> outPad;
+      ASSIGN_VALUE_OR_RETURN_ERR(outPad,
+                                 getShape<dim_t>(dict["output_padding"]));
+      if (std::equal(outPad.begin() + 1, outPad.end(), outPad.begin()) &&
+          outPad[0] != 0) {
+        LOG(FATAL)
+            << "ConvTranspose argument 'output_padding' is not supported.";
+      }
     }
     ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict, kernels, strides, idimHW));
     outSz = calculateConvTransposeOutputDims(idim.h, idim.w, kernels, strides,
@@ -1733,7 +1833,8 @@ Error ONNXModelLoader::loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   size_t axis = 0;
   if (dict.count("axis")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        axis, loadAxis<size_t>(dict.at("axis"), in.dims().size()));
   }
   bool keepDims = true;
   if (dict.count("keepDims")) {
@@ -1893,6 +1994,7 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
       for (dim_t i = 0; i < sizesH.size(); ++i) {
         outDims.push_back(sizesH.at({i}));
       }
+      vectorReorder(outDims, {NHWC2NCHW});
     } else {
       RETURN_ERR_IF_NOT(op.input_size() == 3,
                         "'sizes' not valid with 'scales' input");
@@ -1983,7 +2085,8 @@ Error ONNXModelLoader::loadSqueeze(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   std::vector<dim_t> axes;
-  ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<dim_t>(dict["axes"]));
+  ASSIGN_VALUE_OR_RETURN_ERR(axes,
+                             loadAxes<dim_t>(dict["axes"], in.dims().size()));
   Node *node = G_->createSqueeze(opName, in, axes);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
@@ -1995,8 +2098,16 @@ Error ONNXModelLoader::loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
 
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  // Compute output rank.
+  std::vector<int> axesTemp;
+  ASSIGN_VALUE_OR_RETURN_ERR(axesTemp, getShape<int>(dict["axes"]));
+  int outputRank = in.dims().size() + axesTemp.size();
+
+  // Read again the axes and use the output rank to wrap negative axes.
   std::vector<dim_t> axes;
-  ASSIGN_VALUE_OR_RETURN_ERR(axes, getShape<dim_t>(dict["axes"]));
+  ASSIGN_VALUE_OR_RETURN_ERR(axes, loadAxes<dim_t>(dict["axes"], outputRank));
+
   Node *node = G_->createExpandDims(opName, in, axes);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
@@ -2050,7 +2161,9 @@ Error ONNXModelLoader::loadConcat(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   int axis;
-  ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      axis, loadAxis<int>(dict.at("axis"), inputs.back().dims().size()));
+
   Node *node = G_->createConcat(opName, inputs, axis);
 
   RETURN_IF_ERR(addNodeAsOutput(op, node));
@@ -2066,7 +2179,8 @@ Error ONNXModelLoader::loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
   if (in.getType()->dims().size() > 2) {
     size_t axis = 1;
     if (dict.count("axis")) {
-      ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          axis, loadAxis<size_t>(dict.at("axis"), in.dims().size()));
     }
     in = G_->createFlatten("fc.in", in, axis);
   }
@@ -2310,12 +2424,8 @@ Error ONNXModelLoader::loadReduceL2(const ONNX_NAMESPACE::NodeProto &op,
   // ReduceAdd.
   std::vector<unsigned_t> shapeAxes = {};
   if (dict.count("axes")) {
-    for (int32_t axisValue : dict.at("axes")->ints()) {
-      if (axisValue < 0) {
-        axisValue += in.dims().size();
-      }
-      shapeAxes.push_back((unsigned_t)axisValue);
-    }
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        shapeAxes, loadAxes<unsigned_t>(dict.at("axes"), in.dims().size()));
     std::sort(shapeAxes.begin(), shapeAxes.end());
     if (shapeAxes.size() > 1) {
       auto it = std::unique(shapeAxes.begin(), shapeAxes.end());
@@ -2486,6 +2596,13 @@ ONNXModelLoader::foldOperator(const ONNX_NAMESPACE::NodeProto &op) {
   llvm::SmallVector<NodeValue, 4> inputs;
   inputs.reserve(numInputs);
   for (unsigned i = 0; i < numInputs; i++) {
+    // If the name of the input is empty then consider it to be unspecified,
+    // which is valid for optional inputs, so simply skip. If it is necessary
+    // for loading the op, then when we later try to load the proper error will
+    // be propagated upward.
+    if (op.input(i).empty()) {
+      continue;
+    }
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(i)));
     inputs.push_back(in);
@@ -3093,7 +3210,7 @@ Error ONNXModelLoader::loadNonZero(const ONNX_NAMESPACE::NodeProto &op,
 
     // Strides for each dimensions, needed to calculate NonZero output.
     std::vector<dim_t> strides;
-    strides.reserve(dims.size());
+    strides.resize(dims.size());
     strides[dims.size() - 1] = 1;
     if (dims.size() > 1) {
       for (int i = dims.size() - 2; i >= 0; i--) {
@@ -3396,7 +3513,8 @@ Error ONNXModelLoader::loadFullyConnected(const ONNX_NAMESPACE::NodeProto &op,
 
   unsigned_t axis = 1;
   if (dict.count("axis")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        axis, loadAxis<unsigned_t>(dict.at("axis"), in.dims().size()));
   }
 
   Node *N =
@@ -3544,7 +3662,8 @@ Error ONNXModelLoader::loadInsertTensor(const ONNX_NAMESPACE::NodeProto &op,
 
   unsigned_t axis = 0;
   if (dict.count("axis")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        axis, loadAxis<unsigned_t>(dict.at("axis"), big.dims().size()));
   }
 
   Node *N = G_->createInsertTensor(loadOperatorName(op), big, small, start,
@@ -3590,7 +3709,8 @@ Error ONNXModelLoader::loadFlip(const ONNX_NAMESPACE::NodeProto &op,
 
   unsigned_t axis = 0;
   if (dict.count("axis")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(axis, loadInt(dict.at("axis")));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        axis, loadAxis<unsigned_t>(dict.at("axis"), input.dims().size()));
   }
 
   Node *N = G_->createFlip("flip", input, axis);
@@ -3772,6 +3892,12 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
         return Error::success();
       }
       return loadPerNodeOptions(loadedNode, *perNodeOpts_, dict);
+    }
+
+    // These are handled earlier when loading initializers and so can be safely
+    // ignored here.
+    if (typeName == constFoldSubgraphNodeName) {
+      return Error::success();
     }
 
     // Identity is the only official ONNX op used with useGlowCustomOps. Let it
@@ -3982,11 +4108,132 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
              ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_OPERATOR);
 }
 
+void ONNXModelLoader::deleteConstFoldFunctions() {
+  for (Function *constFoldF : constFoldFuns_) {
+    mod_.eraseFunction(constFoldF);
+  }
+}
+
+Expected<Constant *>
+ONNXModelLoader::runDeserializedConstFold(llvm::StringRef initializerName,
+                                          llvm::StringRef outputName) {
+  NodeValue NV;
+  ASSIGN_VALUE_OR_RETURN_ERR(NV, getNodeValueByName(outputName));
+
+  std::vector<Constant *> constResults = constantFold(NV.getNode());
+  RETURN_ERR_IF_NOT(constResults.size() > 0,
+                    strFormat("Constant folding did not occur for %s",
+                              NV.getNode()->getName().data()));
+  RETURN_ERR_IF_NOT(NV.getResNo() < constResults.size(),
+                    strFormat("Needed result %u from const folding results, "
+                              "but only got %lu results",
+                              NV.getResNo(), constResults.size()));
+  Constant *foldedC = constResults[NV.getResNo()];
+
+  // Now we have the final Constant we want and it exists in the module. Set
+  // its name to the actual initializer it came with.
+  RETURN_ERR_IF_NOT(
+      mod_.getConstantByName(initializerName) == nullptr,
+      strFormat("Already had a Constant by name %s", initializerName.data()));
+  foldedC->setName(initializerName);
+  RETURN_ERR_IF_NOT(
+      nodeValueByName_.count(initializerName) == 0,
+      strFormat("Should not have been a Constant by name %s registered yet",
+                initializerName.data()));
+  nodeValueByName_[initializerName] = foldedC->getOutput();
+
+  return foldedC;
+}
+
+Expected<Constant *> ONNXModelLoader::replaySerializedConstFold(
+    const ONNX_NAMESPACE::TensorProto &in, ONNX_NAMESPACE::GraphProto &net) {
+  // Check if ins has a constant folding node associated with it.
+  const char *constFoldNodeName = nullptr;
+  int resNo = -1;
+  for (const auto &keyVal : in.external_data()) {
+    if (keyVal.key() == "ConstFoldNodeName") {
+      constFoldNodeName = keyVal.value().data();
+      continue;
+    }
+    if (keyVal.key() == "ConstFoldResNo") {
+      ASSIGN_VALUE_OR_RETURN_ERR(resNo, getIntFromStr(keyVal.value()));
+      continue;
+    }
+  }
+  if (!constFoldNodeName) {
+    return nullptr;
+  }
+  RETURN_ERR_IF_NOT(resNo >= 0,
+                    "Require ConstFoldResNo for Glow__ConstFoldSubgraph");
+
+  // Look through the ops in the graph to find the Node we need by name.
+  ONNX_NAMESPACE::NodeProto *op = nullptr;
+  for (int i = 0; i < net.node_size(); i++) {
+    auto *curOp = net.mutable_node(i);
+    if (loadOperatorName(*curOp) == constFoldNodeName) {
+      op = curOp;
+      break;
+    }
+  }
+  RETURN_ERR_IF_NOT(
+      op, strFormat("Did not find Node by name %s", constFoldNodeName));
+  RETURN_ERR_IF_NOT(
+      op->op_type() == constFoldSubgraphNodeName,
+      strFormat("Node %s has type %s but expected Glow__ConstFoldSubgraph",
+                constFoldNodeName, op->op_type().data()));
+
+  // Now look through the Node's attributes to find the subgraph.
+  ONNX_NAMESPACE::GraphProto *subgraph = nullptr;
+  for (auto &arg : *op->mutable_attribute()) {
+    if (arg.name() == "ConstFoldSubgraph") {
+      subgraph = arg.mutable_g();
+      break;
+    }
+  }
+
+  RETURN_ERR_IF_NOT(subgraph, strFormat("Expected associated subgraph for %s",
+                                        constFoldNodeName));
+
+  // We have the constant folding subgraph proto and need to load it to run it.
+  const bool functionAlreadyLoaded = mod_.hasFunction(constFoldNodeName);
+  Function *constFoldF = functionAlreadyLoaded
+                             ? mod_.getFunction(constFoldNodeName)
+                             : mod_.createFunction(constFoldNodeName);
+  const auto insert = constFoldFuns_.insert(constFoldF);
+  RETURN_ERR_IF_NOT(!(functionAlreadyLoaded && insert.second),
+                    strFormat("Function %s should only be processed once",
+                              constFoldNodeName));
+
+  // Temporarily swap in state for the constant folding Function.
+  Function *origF = G_;
+  G_ = constFoldF;
+  llvm::StringMap<Function *> partNameToFunBackup;
+  std::swap(partNameToFun_, partNameToFunBackup);
+  // Make sure to restore original state of the loader when exiting this scope.
+  ScopeGuard restoreOrigStateGuard([&]() {
+    G_ = origF;
+    std::swap(partNameToFun_, partNameToFunBackup);
+  });
+
+  // Deserialize the Function if not already done.
+  if (!functionAlreadyLoaded) {
+    RETURN_IF_ERR(loadNetwork(*subgraph, /* loadingConstFoldSubgraph */ true));
+  }
+
+  // Now that we have the Function deserialized, actually run and return the
+  // resulting Constant that is foldled.
+  RETURN_ERR_IF_NOT(subgraph->output_size() > resNo,
+                    strFormat("ConstFoldResNo %d invalid output idx.", resNo));
+  return runDeserializedConstFold(in.name(), subgraph->output(resNo).name());
+}
+
 Error ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
   // Load the network initializers:
   for (const auto &in : net.initializer()) {
-    Tensor T;
-    RETURN_IF_ERR(loadTensor(in, &T, useGlowCustomOps_));
+    // Replay any constant folding that occurred from previous optimization if
+    // necessary. foldedC will be left as nullptr if no constant folding occurs.
+    Constant *foldedC;
+    ASSIGN_VALUE_OR_RETURN_ERR(foldedC, replaySerializedConstFold(in, net));
 
     std::string layout = ANY_LAYOUT;
     if (useGlowCustomOps_) {
@@ -3994,8 +4241,24 @@ Error ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
           layout, getAttrFromDocString(layoutSignifier, in.doc_string()));
     }
 
+    // If we already an existing module then expect to find Constants already
+    // existing for each initializer.
+    if (foldedC || loadIntoExistingModule_) {
+      Constant *C = foldedC ? foldedC : mod_.getConstantByName(in.name());
+      Type ty;
+      ASSIGN_VALUE_OR_RETURN_ERR(ty, getTensorType(in));
+      RETURN_IF_ERR(verifyPreexistingStorage(C, in.name(), ty, layout));
+      nodeValueByName_[in.name()] = C->getOutput();
+      continue;
+    }
+
+    // If we are loading into an existing module then we would expect this
+    // initializer doesn't have any data associated with it.
+    Tensor T;
+    RETURN_IF_ERR(loadTensor(in, &T, useGlowCustomOps_));
     RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(T), layout));
   }
+
   return Error::success();
 }
 
@@ -4019,32 +4282,39 @@ Error ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
     const std::string &saveNodeName =
         hasSpecifiedSaveName ? saveName.get() : outputName;
 
-    std::string isTrainable = "0";
-    std::string layout = ANY_LAYOUT;
-    if (useGlowCustomOps_) {
-      ASSIGN_VALUE_OR_RETURN_ERR(
-          isTrainable, getAttrFromDocString(trainableSignifier, docString));
-      ASSIGN_VALUE_OR_RETURN_ERR(
-          layout, getAttrFromDocString(layoutSignifier, docString));
-    }
+    std::pair<bool, std::string> trainableLayoutPair;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        trainableLayoutPair,
+        getTrainableLayoutPairFromDocString(docString, useGlowCustomOps_));
 
-    Placeholder *placeholder = mod_.createPlaceholder(
-        r.getType(), outputName, isTrainable != "0", layout);
+    Placeholder *savePH = nullptr;
+    if (loadIntoExistingModule_) {
+      savePH = mod_.getPlaceholderByNameSlow(outputName);
+      RETURN_IF_ERR(verifyPreexistingStorage(savePH, outputName, *r.getType(),
+                                             trainableLayoutPair.second,
+                                             trainableLayoutPair.first));
+    } else {
+      savePH = mod_.createPlaceholder(r.getType(), outputName,
+                                      trainableLayoutPair.first,
+                                      trainableLayoutPair.second);
+    }
     SaveNode *SN =
-        G_->createSave(saveNodeName, r, placeholder, hasSpecifiedSaveName);
+        G_->createSave(saveNodeName, r, savePH, hasSpecifiedSaveName);
     outputVarsByName_[outputName] = SN->getPlaceholder();
   }
 
   return Error::success();
 }
 
-Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
+Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net,
+                                   bool loadingConstFoldSubgraph) {
   /// Load the network operators:
   for (int i = 0; i < net.node_size(); i++) {
     auto &op = net.node(i);
 
     // Set up current partition to load into if relevant.
-    if (partNameToFun_.size()) {
+    if (partNameToFun_.size() && !loadingConstFoldSubgraph &&
+        op.op_type() != constFoldSubgraphNodeName) {
       const ONNX_NAMESPACE::AttributeProto *pNameAttr = nullptr;
       for (auto &arg : op.attribute()) {
         if (arg.name() == "partitionName") {
@@ -4066,9 +4336,10 @@ Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net) {
       auto tryFold = foldOperator(op);
       if (!tryFold) {
         // Error during constant folding; load the op normally below.
-        const std::string errStr = ERR_TO_STRING(tryFold.takeError());
-        LOG(INFO) << "Error while trying to ConstantFold "
-                  << loadOperatorName(op) << ": " << errStr;
+        const std::string errStr =
+            ERR_TO_STRING(tryFold.takeError(), /* warning */ true);
+        VLOG(1) << "Issue while trying to ConstantFold " << loadOperatorName(op)
+                << ": " << errStr;
       } else if (tryFold.get()) {
         // Folded successfully, so skip loading the op below.
         continue;
@@ -4169,13 +4440,15 @@ Error ONNXModelLoader::loadModel(ONNX_NAMESPACE::ModelProto &modelDef,
     RETURN_IF_ERR(loadInputs(graphDef, loadInputsAsPlaceholdersForOnnx));
   }
 
-  RETURN_IF_ERR(loadNetwork(graphDef));
+  RETURN_IF_ERR(loadNetwork(graphDef, /* loadingConstFoldSubgraph */ false));
 
   RETURN_IF_ERR(setOutputNodes(graphDef));
 
   RETURN_ERR_IF_NOT(G_->verify(B), "Function verification failed.");
 
   deleteUnusedConstants();
+
+  deleteConstFoldFunctions();
 
   return Error::success();
 }
@@ -4186,8 +4459,9 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  Error *errPtr, bool zipMode,
                                  BackendSpecificNodeInfo *perNodeOpts,
                                  bool disableConstFoldInLoader,
-                                 const Backend *B)
-    : CommonOperatorLoader(tensorNames, types, &F, errPtr),
+                                 bool loadIntoExistingModule, const Backend *B)
+    : CommonOperatorLoader(tensorNames, types, &F, errPtr,
+                           loadIntoExistingModule),
       perNodeOpts_(perNodeOpts) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
@@ -4249,9 +4523,16 @@ Error ONNXModelLoader::setupPartitions(ONNX_NAMESPACE::ModelProto &modelDef,
     RETURN_ERR_IF_NOT(pName, "Didn't find expected partition name");
 
     // Load the partition name and create a Function with the same name.
-    const std::string funName = pName;
-    PPC.partitionNames.emplace_back(funName);
-    Function *PF = mod_.createFunction(funName);
+    Function *PF = nullptr;
+    if (loadIntoExistingModule_) {
+      PF = mod_.getFunction(pName);
+      RETURN_ERR_IF_NOT(PF,
+                        strFormat("Didn't find existing Function %s", pName));
+      RETURN_ERR_IF_NOT(PF->getNodes().size() == 0,
+                        "Function must be empty to load into.");
+    } else {
+      PF = mod_.createFunction(pName);
+    }
     partNameToFun_[pName] = PF;
     PPC.funcs.push_back(PF);
 
@@ -4317,8 +4598,10 @@ ONNXModelLoader::ONNXModelLoader(
     llvm::ArrayRef<const char *> tensorNames, llvm::ArrayRef<TypeRef> types,
     Module &mod, llvm::StringRef funName, PrePartitionedConfig *PPC,
     Error *errPtr, bool zipMode, BackendSpecificNodeInfo *perNodeOpts,
-    bool disableConstFoldInLoader, const Backend *B)
-    : CommonOperatorLoader(tensorNames, types, mod, errPtr),
+    bool loadIntoExistingModule, bool disableConstFoldInLoader,
+    const Backend *B)
+    : CommonOperatorLoader(tensorNames, types, mod, errPtr,
+                           loadIntoExistingModule),
       perNodeOpts_(perNodeOpts) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
@@ -4335,6 +4618,7 @@ ONNXModelLoader::ONNXModelLoader(
 
     auto numPartitionsOrErr = getIntMetadataProp(modelDef, "numPartitions");
     if (!numPartitionsOrErr) {
+      ERR_TO_VOID(numPartitionsOrErr.takeError(), /*log*/ false);
       G_ = mod_.createFunction(funName);
     } else {
       RETURN_ERR_IF_NOT(PPC, "No PrePartitionConfig to load partitions into");

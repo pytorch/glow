@@ -236,6 +236,46 @@ void vectorReorder(std::vector<T> &v, std::vector<size_t> const &order) {
   }
 }
 
+/// Simple scope guard implementation.
+class ScopeGuard {
+  /// Function to call when the destructor is called.
+  std::function<void()> endFun_;
+
+protected:
+  /// Whether the guard has been dismissed.
+  bool dismissed_{false};
+
+public:
+  /// Ctor that takes the function to call in destructor.
+  ScopeGuard(std::function<void()> &&fun)
+      : endFun_(std::move(fun)), dismissed_(false) {}
+
+  /// Make not copyable.
+  ScopeGuard(const ScopeGuard &) = delete;
+
+  /// Make not assignable.
+  ScopeGuard &operator=(const ScopeGuard &) = delete;
+
+  /// Dtor that calls \ref endFun_ if \ref dismissed_.
+  ~ScopeGuard() {
+    if (!dismissed_) {
+      endFun_();
+    }
+  }
+
+  /// Disables the guard.
+  void dismiss() { dismissed_ = true; }
+
+  /// Runs the function for the guard and dismissed. If already dismissed then
+  /// this is a no-op.
+  void runAndDismiss() {
+    if (!dismissed_) {
+      endFun_();
+      dismiss();
+    }
+  };
+};
+
 } // namespace glow
 
 #endif // GLOW_SUPPORT_SUPPORT_H

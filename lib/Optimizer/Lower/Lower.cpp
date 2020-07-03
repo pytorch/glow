@@ -809,6 +809,45 @@ static void lowerBatchNormalizationGradNode(Function *F,
                        zeroSplat);
 }
 
+static void lowerConvolutionToFullyConnected(Function *F,
+                                             CompilationContext &cctx,
+                                             const ConvolutionNode &CN) {
+
+  LOG_SCOPE(F->getLogContext(), "lowerConvolutionToFullyConnected");
+
+  NodeValue output = CN.getResult();
+  NodeValue input = CN.getInput();
+  NodeValue filter = CN.getFilter();
+  NodeValue bias = CN.getBias();
+
+  // Reshape input to 2D.
+  auto inpDims = ShapeNHWC(input.getType()->dims());
+  std::vector<dim_t> inpDimsFC = {inpDims.n * inpDims.h * inpDims.w, inpDims.c};
+  input = F->createReshape(DECORATE_NODE_NAME(CN, "ReshapeInput"), input,
+                           inpDimsFC);
+
+  // Reshape filter to 2D and Transpose.
+  auto filterDims = ShapeNHWC(filter.getType()->dims());
+  std::vector<dim_t> weightsDimsFC = {filterDims.n, filterDims.c};
+  NodeValue weights = F->createReshape(DECORATE_NODE_NAME(CN, "ReshapeWeights"),
+                                       filter, weightsDimsFC);
+  weights = F->createTranspose(DECORATE_NODE_NAME(CN, "TransposeWeights"),
+                               weights, {1, 0});
+
+  // Create FullyConnected node with same output type but 2D shape.
+  auto outDims = ShapeNHWC(output.getType()->dims());
+  std::vector<dim_t> outDimsFC = {outDims.n * outDims.h * outDims.w, outDims.c};
+  auto outTyFC =
+      F->getParent()->uniqueTypeWithNewShape(output.getType(), outDimsFC);
+  NodeValue outputFC = F->createFullyConnected(
+      CN.getName().str(), input, weights, bias, outTyFC, ShapeNHWC::DimC);
+
+  // Reshape the 2D output back to its original shape.
+  outputFC = F->createReshape(DECORATE_NODE_NAME(CN, "ReshapeOutput"), outputFC,
+                              output.getType()->dims());
+  replaceAllUsesOfWith(cctx.loweredInfoMap, output, outputFC);
+}
+
 static void lowerGroupConvolutionNode(Function *F, CompilationContext &cctx,
                                       const ConvolutionNode &BNG) {
   // When Group parameter is more than 1, ConvolutionNode can be represented as
@@ -1323,6 +1362,57 @@ static void lowerConvolution3DNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, C3DN.getResult(), concatedOutput);
 }
 
+static void lowerSwishNode(Function *F, CompilationContext &cctx,
+                           const SwishNode &S) {
+  LOG_SCOPE(F->getLogContext(), "lowerSwishNode")
+
+  SigmoidNode *sig = F->createSigmoid(S.getName().str() + "_sig", S.getInput());
+  MulNode *mul = F->createMul(S.getName().str() + "_mul", sig, S.getInput());
+  replaceAllUsesOfWith(cctx.loweredInfoMap, S.getResult(), mul->getResult());
+}
+
+/// Create a series of nodes with \p name that implements an element-wise
+/// logit transform. For each element of the \p input x, this is
+/// defined as:
+///
+/// y = log(x / (1 - x))
+///
+/// where the \p input is clamped in (\p eps, 1 - \p eps), and
+/// the transform parameter \p eps is a positive value (< 0.5)
+/// (needed to avoid degenerate probabilities of 0 or 1,
+/// which would result in taking the logarithm of zero).
+/// Implemented using element-wise Clip, Sub, Splat, Div, and Log nodes.
+static void lowerLogitNode(Function *F, CompilationContext &cctx,
+                           const LogitNode &L) {
+  LOG_SCOPE(F->getLogContext(), "lowerLogitNode")
+
+  const NodeValue input = L.getInput();
+  const float eps = L.getEpsilon();
+  const std::string name = L.getName().str();
+
+  // Compute clamped x using clip(x, eps, 1 - eps).
+  auto epsComplement = 1.0f - eps;
+  auto *MaxN = F->createClip(name + ".clip", input, eps, epsComplement);
+
+  // Compute the logit transform of clamped x,
+  // log(numerator / denominator),
+  // where numerator = clamped x = MaxN,
+  // and denominator = 1 - clamped x = 1 - MaxN.
+
+  // Compute denominator = 1 - clamped x.
+  auto *onesSplat = F->createSplat(name + ".onesSplat", input.getType(), 1.0f);
+
+  auto *SN = F->createSub(name + ".sub", onesSplat, MaxN);
+
+  // Compute the quotient = numerator / denominator.
+  auto *DN = F->createDiv(name + ".div", MaxN, SN);
+
+  // Compute and return the logit transform (the final node).
+  auto *LN = F->createLog(name + ".log", DN);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, L.getResult(), LN->getResult());
+}
+
 bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
 #define CASE_LOWER(NODE_NAME_)                                                 \
   case Kinded::Kind::NODE_NAME_##NodeKind:                                     \
@@ -1361,10 +1451,16 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(BatchBoxCox);
     CASE_LOWER(Clip);
     CASE_LOWER(Convolution3D);
+    CASE_LOWER(Swish);
+    CASE_LOWER(Logit);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
     if (CN->getGroup() > 1 && CN->hasFusedActivation()) {
       lowerGroupConvolutionNode(F, cctx, *CN);
+      return true;
+    }
+    if (isConvolutionSameAsFullyConnected(CN)) {
+      lowerConvolutionToFullyConnected(F, cctx, *CN);
       return true;
     }
   }

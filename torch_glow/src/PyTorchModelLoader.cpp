@@ -25,8 +25,8 @@
 
 #include <ATen/ATen.h>
 #include <ATen/core/dispatch/Dispatcher.h>
-#include <ATen/native/c10_utils.h>
 #include <ATen/native/quantized/cpu/conv_packed_params.h>
+#include <ATen/native/quantized/cpu/packed_params.h>
 #include <torch/csrc/jit/ir/ir.h>
 
 namespace glow {
@@ -396,6 +396,18 @@ struct ConvInputs {
   };
 };
 
+struct Conv2DInputs {
+  enum {
+    input = 0, // NCHW
+    weights = 1,
+    bias = 2,
+    stride = 3,
+    padding = 4,
+    dilation = 5,
+    groups = 6,
+  };
+};
+
 /// Indexes of aten::mean inputs.
 struct MeanInputs {
   enum {
@@ -701,8 +713,8 @@ struct EmbeddingBagInputs {
   };
 };
 
-/// Indexes used for fb::embedding_bag_byte_rowwise_offsets and
-/// fb::embedding_bag_4bit_rowwise_offsets inputs.
+/// Indexes used for quantized::embedding_bag_byte_rowwise_offsets and
+/// quantized::embedding_bag_4bit_rowwise_offsets inputs.
 struct EmbeddingBagByteRowwiseOffsetsInputs {
   enum {
     weight,
@@ -755,6 +767,10 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadQuantizedConvUnpacked},
       {{"glow::unpacked_quantized_conv3d"},
        &PyTorchModelLoader::loadQuantizedConvUnpacked},
+      {{"glow::unpacked_quantized_conv3d_relu"},
+       &PyTorchModelLoader::loadQuantizedConvReluUnpacked},
+      {{"glow::unpacked_quantized_conv2d_relu"},
+       &PyTorchModelLoader::loadQuantizedConvReluUnpacked},
       {{"glow::unpacked_quantized_linear"},
        &PyTorchModelLoader::loadQuantizedLinearUnpacked},
       {{"quantized::linear"}, &PyTorchModelLoader::loadQuantizedLinear},
@@ -771,12 +787,16 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::adaptive_avg_pool2d"},
        &PyTorchModelLoader::loadAdaptiveAvgPool2d},
       {{"aten::reshape"}, &PyTorchModelLoader::loadReshape},
+      {{"aten::upsample_nearest3d"},
+       &PyTorchModelLoader::loadUpsampleNearest3D},
       {{"aten::view"}, &PyTorchModelLoader::loadView},
       {{"aten::_convolution"}, &PyTorchModelLoader::loadConvolution},
+      {{"aten::conv2d"}, &PyTorchModelLoader::loadConv2D},
       {{"aten::batch_norm"}, &PyTorchModelLoader::loadBatchNorm},
       {{"aten::layer_norm"}, &PyTorchModelLoader::loadLayerNorm},
       {{"aten::max_pool2d"}, &PyTorchModelLoader::loadMaxPool2d},
       {{"aten::avg_pool2d"}, &PyTorchModelLoader::loadAvgPool2d},
+      {{"aten::avg_pool3d"}, &PyTorchModelLoader::loadAvgPool3d},
       {{"aten::matmul"}, &PyTorchModelLoader::loadMatMul},
       {{"aten::mm"}, &PyTorchModelLoader::loadMM},
       {{"aten::bmm"}, &PyTorchModelLoader::loadBmm},
@@ -788,6 +808,10 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::topk"}, &PyTorchModelLoader::loadTopK},
       {{"prim::ConstantChunk"}, &PyTorchModelLoader::loadConstantChunk},
       {{"aten::embedding_bag"}, &PyTorchModelLoader::loadEmbeddingBag},
+      {{"quantized::embedding_bag_byte_rowwise_offsets"},
+       &PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets},
+      {{"quantized::embedding_bag_4bit_rowwise_offsets"},
+       &PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets},
       {{"fb::embedding_bag_byte_rowwise_offsets"},
        &PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets},
       {{"fb::embedding_bag_4bit_rowwise_offsets"},
@@ -994,7 +1018,7 @@ glow::NodeValue PyTorchModelLoader::rescaleUIntToInt(glow::NodeValue input) {
     auto dqInput = F_.createDequantize("dequantize", input, ElemKind::FloatTy);
     auto *outputTy = F_.getParent()->uniqueType(
         ElemKind::Int8QTy, inputTy->dims(), inputTy->getScale(),
-        inputTy->getOffset() - OFFSETSHIFT);
+        inputTy->getOffset() - UINT8_TO_INT8_SHIFT);
     auto *qOut = F_.createQuantize("quantize", dqInput, outputTy);
     return qOut->getResult();
   } else {
@@ -1008,7 +1032,7 @@ glow::NodeValue PyTorchModelLoader::rescaleIntToUint(glow::NodeValue input) {
     auto dqInput = F_.createDequantize("dequantize", input, ElemKind::FloatTy);
     auto *outputTy = F_.getParent()->uniqueType(
         ElemKind::UInt8QTy, inputTy->dims(), inputTy->getScale(),
-        inputTy->getOffset() + OFFSETSHIFT);
+        inputTy->getOffset() + UINT8_TO_INT8_SHIFT);
     auto *qOut = F_.createQuantize("quantize", dqInput, outputTy);
     return qOut->getResult();
   } else {
@@ -1163,8 +1187,9 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
     std::array<glow::dim_t, 5> outDims = {{input.dims()[0],
                                            outSz.temporal_frames, outSz.height,
                                            outSz.width, weight.dims()[0]}};
-    outTy = F_.getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims,
-                                       outScale, outOffset - OFFSETSHIFT);
+    outTy =
+        F_.getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims, outScale,
+                                   outOffset - UINT8_TO_INT8_SHIFT);
 
   } else {
     glow::ShapeNHWC inputShape(input.dims());
@@ -1175,17 +1200,18 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
         inputShape.h, inputShape.w, kernels, strides, pads, dilation);
     std::array<glow::dim_t, 4> outDims = {
         {input.dims()[0], outSz.first, outSz.second, weightShape.n}};
-    outTy = F_.getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims,
-                                       outScale, outOffset - OFFSETSHIFT);
+    outTy =
+        F_.getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims, outScale,
+                                   outOffset - UINT8_TO_INT8_SHIFT);
   }
 
   // create qconv
   glow::NodeValue output_not_transposed;
   if (isPerChannelQuantized) {
-    if (!isConv3d) {
+    if (isConv3d) {
       RETURN_ERR_IF_NOT(
-          dilation <= 1,
-          "Dilation not supported for group quantized convolution");
+          dilation == 1,
+          "Dilation not supported for channelwise quantized conv3d");
     }
 
     // extract qparams from ptWeightTensor.
@@ -1221,17 +1247,15 @@ PyTorchModelLoader::loadQuantizedConvImpl(const torch::jit::Node *ptNode,
         "channel_wised_offsets_of_qconv", std::move(wOffsetsTensor));
     wOffsets->ensureIsOwned();
 
-    if (isConv3d) {
-      auto qconv = F_.createChannelwiseQuantizedConv3D(
-          "qconv_channel_wised", input, weightConstant, biasConstant, wScales,
-          wOffsets, outTy, kernels, strides, pads, groups);
-      output_not_transposed = qconv->getResult();
-    } else {
-      auto qconv = F_.createChannelwiseQuantizedConv(
-          "qconv_channel_wised", input, weightConstant, biasConstant, wScales,
-          wOffsets, outTy, kernels, strides, pads, groups);
-      output_not_transposed = qconv->getResult();
-    }
+    // Quantize the filter automatically (only if it is float). The bias is NOT
+    // quantized automatically and is left at the disposal of each Backend to
+    // quantize it later using custom logic.
+    auto qconv = F_.createChannelwiseQuantizedConv(
+        "qconv_channel_wised", input, weightConstant, biasConstant, wScales,
+        wOffsets, /* biasScales */ nullptr, /* biasOffsets */ nullptr, outTy,
+        kernels, strides, pads, groups, dilation, /* quantizeFilter */ true,
+        /* quantizeBias */ false);
+    output_not_transposed = qconv->getResult();
   } else {
     if (isConv3d) {
       auto qconv = F_.createConv3D("qconv", input, weight, bias, outTy, kernels,
@@ -1297,7 +1321,7 @@ Error PyTorchModelLoader::loadQuantizedAdd(const torch::jit::Node *ptNode) {
   TypeRef inputType = lhs.getType();
   auto outDims = inputType->dims();
   auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
-                                          outOffset - OFFSETSHIFT);
+                                          outOffset - UINT8_TO_INT8_SHIFT);
 
   glow::AddNode *qadd = F_.createAdd("quantized_add", outTy, lhs, rhs);
   auto output = qadd->getResult();
@@ -1334,7 +1358,7 @@ Error PyTorchModelLoader::loadQuantizedAddRelu(const torch::jit::Node *ptNode) {
   TypeRef inputType = lhs.getType();
   auto outDims = inputType->dims();
   auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
-                                          outOffset - OFFSETSHIFT);
+                                          outOffset - UINT8_TO_INT8_SHIFT);
 
   glow::AddNode *qadd = F_.createAdd("quantized_add", outTy, lhs, rhs);
   glow::ReluNode *qrelu = F_.createRELU("quantized_relu", qadd);
@@ -1355,30 +1379,23 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[QuantizedLinearInputs::input]));
 
-  at::Tensor *ptTensor;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      ptTensor, iValToPTTensor(getGlowIValueForValue(
-                    inputs[QuantizedLinearInputs::packed_weights])));
+  CHECK(qparamsMap_.count(inputs[QuantizedLinearInputs::packed_weights]));
+  auto packed_params =
+      qparamsMap_[inputs[QuantizedLinearInputs::packed_weights]]
+          .toCustomClass<LinearPackedParamsBase>();
 
-  auto op =
-      c10::Dispatcher::singleton().findSchema({"quantized::linear_unpack", ""});
-  CHECK(op.has_value());
-  auto unpackedParams = callOp(*op, *ptTensor);
-  const at::Tensor ptWeightTensor = unpackedParams[0].toTensor().contiguous();
-  const c10::optional<at::Tensor> ptBiasTensorTmp =
-      unpackedParams[1].toOptional<at::Tensor>();
-
-  bool isRowwiseQuantized = ptWeightTensor.is_quantized() &&
-                            ptWeightTensor.qscheme() == at::kPerChannelAffine;
+  at::Tensor ptWeightTensor;
+  c10::optional<at::Tensor> ptBiasTensorTmp;
+  std::tie(ptWeightTensor, ptBiasTensorTmp) = packed_params->unpack();
 
   // unpacked weights
   auto weightTensor = ptTensorToGlowTensor(ptWeightTensor);
   glow::Constant *weightConstant = F_.getParent()->createConstant(
       "quantized_linear_weights", std::move(weightTensor));
   weightConstant->ensureIsOwned();
+  RETURN_ERR_IF_NOT(weightConstant->dims().size() == 2,
+                    "Expected 2d Linear weights");
   auto weight = weightConstant->getOutput();
-  weight = rescaleUIntToInt(weight);
-  RETURN_ERR_IF_NOT(weight.dims().size() == 2, "Expected 2d Linear weights");
 
   // unpacked bias
   glow::Tensor biasTensor;
@@ -1390,25 +1407,12 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
     biasTensor.zero();
   }
 
-  // Choose bias quantization params and quantize it.
   glow::Constant *biasConstant = F_.getParent()->createConstant(
       "quantized_linear_bias", std::move(biasTensor));
   biasConstant->ensureIsOwned();
   RETURN_ERR_IF_NOT(biasConstant, "quantized::linear bias must be constant");
-  const auto biasHandle = biasConstant->getPayload().getHandle<float>();
-  const auto biasMinMaxIdx = biasHandle.minMaxArg();
-
-  const auto biasQParams = chooseQuantizationParams(
-      {biasHandle.raw(biasMinMaxIdx.first),
-       biasHandle.raw(biasMinMaxIdx.second)},
-      glow::quantization::Schema::Asymmetric, glow::ElemKind::Int32QTy);
 
   auto bias = biasConstant->getOutput();
-
-  auto biasType =
-      F_.getParent()->uniqueType(glow::ElemKind::Int32QTy, bias.dims(),
-                                 biasQParams.scale, biasQParams.offset);
-  bias = F_.createQuantize("quantize_bias", bias, biasType);
 
   float outScale;
   ASSIGN_VALUE_OR_RETURN_ERR(outScale,
@@ -1420,9 +1424,13 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
                              iValToInt(getGlowIValueForValue(
                                  inputs[QuantizedLinearInputs::zero_point])));
 
-  auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy,
-                                          {input.dims()[0], weight.dims()[0]},
-                                          outScale, outZeroPoint - OFFSETSHIFT);
+  auto outTy = F_.getParent()->uniqueType(
+      ElemKind::Int8QTy, {input.dims()[0], weight.dims()[0]}, outScale,
+      outZeroPoint - UINT8_TO_INT8_SHIFT);
+
+  bool isRowwiseQuantized = ptWeightTensor.is_quantized() &&
+                            ptWeightTensor.qscheme() == at::kPerChannelAffine;
+
   if (isRowwiseQuantized) {
     // extract qparams from ptWeightTensor.
     // Notice since the memory of qparams may not be continous
@@ -1461,6 +1469,8 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
         outTy);
     return addValueMapping(outputs[0], rowwise_fc->getResult());
   } else {
+    weight = rescaleUIntToInt(weight);
+
     weight = F_.createTranspose("weight_transpose", weight, {1, 0});
     auto fc =
         F_.createFullyConnected("quantized_fc", input, weight, bias, outTy);
@@ -1503,9 +1513,9 @@ Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
       outZeroPoint, iValToInt(getGlowIValueForValue(
                         inputs[QuantizedUnpackedLinearInputs::zero_point])));
 
-  auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy,
-                                          {input.dims()[0], weight.dims()[1]},
-                                          outScale, outZeroPoint - OFFSETSHIFT);
+  auto outTy = F_.getParent()->uniqueType(
+      ElemKind::Int8QTy, {input.dims()[0], weight.dims()[1]}, outScale,
+      outZeroPoint - UINT8_TO_INT8_SHIFT);
 
   // Get bias or create a zero bias if no bias is found.
   glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
@@ -2019,6 +2029,60 @@ Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
       dtype);
 }
 
+Error PyTorchModelLoader::loadUpsampleNearest3D(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+  RETURN_ERR_IF_NOT(input.dims().size() == 5, "Expecting 5D input Tensor");
+
+  std::vector<int64_t> *outputSize;
+  ASSIGN_VALUE_OR_RETURN_ERR(outputSize,
+                             iValToIntList(getGlowIValueForValue(inputs[1])));
+  RETURN_ERR_IF_NOT((*outputSize).size() == 3, "Expecting 3D output size");
+
+  dim_t ia = input.dims()[0];
+  dim_t ib = input.dims()[1];
+  dim_t ix = input.dims()[2];
+  dim_t iy = input.dims()[3];
+  dim_t iz = input.dims()[4];
+  dim_t ox = (dim_t)(*outputSize)[0];
+  dim_t oy = (dim_t)(*outputSize)[1];
+  dim_t oz = (dim_t)(*outputSize)[2];
+
+  // Special case when output size is 2x input in all 3 dims
+  bool isUpsample2x = (ox == 2 * ix) && (oy == 2 * iy) && (oz == 2 * iz);
+  if (isUpsample2x) {
+    c10::ScalarType dtype;
+    RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+    return addValueMapping(
+        outputs[0], F_.createUpsample("upsample_nearest3d", input, 3), dtype);
+  } else {
+    // Otherwise revert to Glow ResizeNearest, which only can handle 4D tensors
+    std::vector<glow::SliceNode *> splitOutputs;
+    std::vector<glow::NodeValue> concatInputs;
+    F_.createSplit("upsample_nearest3d_split", input, ia, 0, {}, splitOutputs);
+    for (auto &splitOutput : splitOutputs) {
+      auto *reshape1 = F_.createReshape("upsample_nearest3d_reshape1",
+                                        splitOutput, {ib, ix, iy, iz});
+      auto resizeTy = F_.getParent()->uniqueTypeWithNewShape(input.getType(),
+                                                             {ib, ox, oy, oz});
+      auto *resize = F_.createResizeNearest("upsample_nearest3d_resize",
+                                            reshape1, resizeTy);
+      auto *reshape2 = F_.createReshape("upsample_nearest3d_reshape2", resize,
+                                        {1, ib, ox, oy, oz});
+      concatInputs.push_back(reshape2);
+    }
+    c10::ScalarType dtype;
+    RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+    return addValueMapping(
+        outputs[0],
+        F_.createConcat("upsample_nearest3d_concat", concatInputs, 0), dtype);
+  }
+}
+
 Error PyTorchModelLoader::loadView(const torch::jit::Node *ptNode) {
   // loadView is just like Reshape, except reshape should call contiguous
   // for non-contiguous data and view should fail
@@ -2249,6 +2313,80 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], output->getResult());
 }
 
+Error PyTorchModelLoader::loadConv2D(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
+
+  // Glow expects conv inputs to be in NHWC but PyTorch keeps them in NCHW so
+  // we transpose them.
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[Conv2DInputs::input]));
+
+  // Glow expects conv weights to be in CRSK but PyTorch keeps them in CKRS
+  // so we transpose them. C - output_depth, R - filter_height, S -
+  // filter_width, K - input_depth.
+  glow::NodeValue weights;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weights, getGlowNodeValueForValue(inputs[Conv2DInputs::weights]));
+
+  RETURN_ERR_IF_NOT(input.dims().size() == 4 &&
+                        input.dims().size() == weights.dims().size(),
+                    "Expect 4 dims in input and weights for conv2d");
+
+  input = F_.createTranspose("conv_input_transposed", input, NCHW2NHWC);
+  weights = F_.createTranspose("conv_weights_transposed", weights, NCHW2NHWC);
+
+  // If a bias was provided then use it otherwise create a 0 bias.
+  glow::dim_t biasDim = weights.dims()[0];
+  glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[Conv2DInputs::bias], "conv_bias",
+      glow::Type(ElemKind::FloatTy, {biasDim}), 0);
+
+  std::vector<glow::unsigned_t> strides;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      strides, castVector<glow::unsigned_t>(expandIntIValIfNeeded(
+                   getGlowIValueForValue(inputs[Conv2DInputs::stride]),
+                   input.dims().size() - 2)));
+
+  std::vector<glow::unsigned_t> pads;
+  glow::unsigned_t pad;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      pad, static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
+               getGlowIValueForValue(inputs[Conv2DInputs::padding]))));
+  pads = {pad, pad, pad, pad};
+
+  glow::unsigned_t dilation;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dilation, static_cast_expected<glow::unsigned_t>(contractIntIValIfNeeded(
+                    getGlowIValueForValue(inputs[Conv2DInputs::dilation]))));
+
+  glow::unsigned_t groups;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      groups, static_cast_expected<glow::unsigned_t>(iValToInt(
+                  getGlowIValueForValue(inputs[Conv2DInputs::groups]))));
+  std::vector<glow::unsigned_t> kernels;
+  glow::ShapeNHWC weightsShape(weights.dims());
+  kernels = {static_cast<glow::unsigned_t>(weightsShape.h),
+             static_cast<glow::unsigned_t>(weightsShape.w)};
+
+  glow::TypeRef outTy;
+  glow::ShapeNHWC inputShape(input.dims());
+  auto outSz = glow::calculateConvPoolOutputDims(
+      inputShape.h, inputShape.w, kernels, strides, pads, dilation);
+  std::array<glow::dim_t, 4> outDims = {
+      {input.dims()[0], outSz.first, outSz.second, weights.dims()[0]}};
+  outTy = F_.getParent()->uniqueType(glow::ElemKind::FloatTy, outDims);
+
+  glow::ConvolutionNode *conv =
+      F_.createConv("conv", input, weights, bias, outTy, kernels, strides, pads,
+                    groups, dilation);
+  glow::TransposeNode *output = F_.createTranspose(
+      "conv_output_transposed", conv->getResult(), NHWC2NCHW);
+  return addValueMapping(outputs[0], output->getResult());
+}
+
 Error PyTorchModelLoader::loadLayerNorm(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -2393,7 +2531,7 @@ Error PyTorchModelLoader::loadQuantize(const torch::jit::Node *ptNode) {
   c10::ScalarType dtype;
   if (outDtype == (int32_t)at::ScalarType::QUInt8) {
     outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
-                                       outOffset - OFFSETSHIFT);
+                                       outOffset - UINT8_TO_INT8_SHIFT);
     dtype = c10::ScalarType::QUInt8;
 
   } else if (outDtype == (int32_t)at::ScalarType::QInt8) {
@@ -2451,6 +2589,16 @@ Error PyTorchModelLoader::loadQuantizedConv(const torch::jit::Node *ptNode) {
 
 Error PyTorchModelLoader::loadQuantizedConvUnpacked(
     const torch::jit::Node *ptNode) {
+  return loadQuantizedConvUnpackedImpl(ptNode, /*isRelu*/ false);
+}
+
+Error PyTorchModelLoader::loadQuantizedConvReluUnpacked(
+    const torch::jit::Node *ptNode) {
+  return loadQuantizedConvUnpackedImpl(ptNode, /*isRelu*/ true);
+}
+
+Error PyTorchModelLoader::loadQuantizedConvUnpackedImpl(
+    const torch::jit::Node *ptNode, bool isRelu) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 9, outputs, 1));
@@ -2561,8 +2709,9 @@ Error PyTorchModelLoader::loadQuantizedConvUnpacked(
     std::array<glow::dim_t, 5> outDims = {{input.dims()[0],
                                            outSz.temporal_frames, outSz.height,
                                            outSz.width, weights.dims()[0]}};
-    outTy = F_.getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims,
-                                       outScale, outOffset - OFFSETSHIFT);
+    outTy =
+        F_.getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims, outScale,
+                                   outOffset - UINT8_TO_INT8_SHIFT);
   } else {
     glow::ShapeNHWC inputShape(input.dims());
     glow::ShapeNHWC weightShape(weights.dims());
@@ -2576,22 +2725,35 @@ Error PyTorchModelLoader::loadQuantizedConvUnpacked(
         inputShape.h, inputShape.w, kernels, strides, pads, dilation);
     std::array<glow::dim_t, 4> outDims = {
         {input.dims()[0], outSz.first, outSz.second, weightShape.n}};
-    outTy = F_.getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims,
-                                       outScale, outOffset - OFFSETSHIFT);
+    outTy =
+        F_.getParent()->uniqueType(glow::ElemKind::Int8QTy, outDims, outScale,
+                                   outOffset - UINT8_TO_INT8_SHIFT);
   }
 
-  glow::TransposeNode *output;
+  glow::NodeValue output_not_transposed;
   if (isConv3d) {
     glow::Convolution3DNode *qconv = F_.createConv3D(
         "qconv", input, weights, bias, outTy, kernels, strides, pads, groups);
-    output = F_.createTranspose("qconv_output_transposed", qconv->getResult(),
-                                NTHWC2NCTHW);
+    output_not_transposed = qconv->getResult();
   } else {
     glow::ConvolutionNode *qconv =
         F_.createConv("qconv", input, weights, bias, outTy, kernels, strides,
                       pads, groups, dilation);
-    output = F_.createTranspose("qconv_output_transposed", qconv->getResult(),
-                                NHWC2NCHW);
+    output_not_transposed = qconv->getResult();
+  }
+
+  if (isRelu) {
+    glow::ReluNode *qrelu = F_.createRELU("qconv_relu", output_not_transposed);
+    output_not_transposed = qrelu->getResult();
+  }
+
+  glow::TransposeNode *output;
+  if (isConv3d) {
+    output = F_.createTranspose("qconv_output_transposed",
+                                output_not_transposed, NTHWC2NCTHW);
+  } else {
+    output = F_.createTranspose("qconv_output_transposed",
+                                output_not_transposed, NHWC2NCHW);
   }
 
   c10::ScalarType dtype;
@@ -2658,7 +2820,9 @@ Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], output, dtype);
 }
 
-Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
+Expected<NodeValue>
+PyTorchModelLoader::loadAvgPoolImpl(const torch::jit::Node *ptNode,
+                                    int numDims) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
@@ -2666,27 +2830,44 @@ Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[AvgPoolInputs::input]));
-  input = F_.createTranspose("avgpool2d_input_transposed", input, NCHW2NHWC);
+  bool isConv3d = (numDims == 3);
+  std::string opName = isConv3d ? "avgpool3d" : "avgpool2d";
+
+  if (isConv3d) {
+    input =
+        F_.createTranspose(opName + "_input_transposed", input, NCTHW2NTHWC);
+  } else {
+    input = F_.createTranspose(opName + "_input_transposed", input, NCHW2NHWC);
+  }
 
   std::vector<glow::unsigned_t> kernels;
   ASSIGN_VALUE_OR_RETURN_ERR(
       kernels,
       castVector<glow::unsigned_t>(expandIntIValIfNeeded(
-          getGlowIValueForValue(inputs[AvgPoolInputs::kernel_size]), 2)));
+          getGlowIValueForValue(inputs[AvgPoolInputs::kernel_size]), numDims)));
 
   std::vector<glow::unsigned_t> padsPair;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      padsPair, castVector<glow::unsigned_t>(expandIntIValIfNeeded(
-                    getGlowIValueForValue(inputs[AvgPoolInputs::padding]), 2)));
-  std::vector<glow::unsigned_t> pads = {padsPair[0], padsPair[1], padsPair[0],
-                                        padsPair[1]};
+      padsPair,
+      castVector<glow::unsigned_t>(expandIntIValIfNeeded(
+          getGlowIValueForValue(inputs[AvgPoolInputs::padding]), numDims)));
+  RETURN_ERR_IF_NOT(padsPair.size() == numDims,
+                    "Number of pad values is incorrect");
+  std::vector<glow::unsigned_t> pads;
+  if (isConv3d) {
+    pads = {padsPair[0], padsPair[1], padsPair[2],
+            padsPair[0], padsPair[1], padsPair[2]};
+  } else {
+    pads = {padsPair[0], padsPair[1], padsPair[0], padsPair[1]};
+  }
 
   // Stride defaults to kernel_size.
   std::vector<glow::unsigned_t> strides;
   if (hasGlowIValueForValue(inputs[AvgPoolInputs::stride])) {
     ASSIGN_VALUE_OR_RETURN_ERR(
-        strides, castVector<glow::unsigned_t>(expandIntIValIfNeeded(
-                     getGlowIValueForValue(inputs[AvgPoolInputs::stride]), 2)));
+        strides,
+        castVector<glow::unsigned_t>(expandIntIValIfNeeded(
+            getGlowIValueForValue(inputs[AvgPoolInputs::stride]), numDims)));
   } else {
     strides = kernels;
   }
@@ -2705,13 +2886,41 @@ Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
                                  inputs[AvgPoolInputs::count_include_pad])));
   RETURN_ERR_IF_NOT(countIncludePad, "countIncludePad must be true.");
 
-  glow::AvgPoolNode *ap =
-      F_.createAvgPool("avgpool2d", input, kernels, strides, pads);
-  glow::NodeValue output = ap->getResult();
-  output = F_.createTranspose("avgpool2d_output_transposed", output, NHWC2NCHW);
+  glow::AvgPoolNode *ap = F_.createAvgPool(opName, input, kernels, strides,
+                                           pads, (isConv3d ? NTHWC : NHWC));
+  glow::NodeValue ap_output = ap->getResult();
+  const glow::TransposeNode *output;
+
+  if (isConv3d) {
+    output = F_.createTranspose(opName + "_output_transposed", ap_output,
+                                NTHWC2NCTHW);
+  } else {
+    output =
+        F_.createTranspose(opName + "_output_transposed", ap_output, NHWC2NCHW);
+  }
+
+  return Expected<NodeValue>(output->getResult());
+}
+
+Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  glow::NodeValue output;
+  ASSIGN_VALUE_OR_RETURN_ERR(output, loadAvgPoolImpl(ptNode, 2 /* numDims */));
 
   c10::ScalarType dtype;
-  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[AvgPoolInputs::input]));
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+  return addValueMapping(outputs[0], output, dtype);
+}
+
+Error PyTorchModelLoader::loadAvgPool3d(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  glow::NodeValue output;
+  ASSIGN_VALUE_OR_RETURN_ERR(output, loadAvgPoolImpl(ptNode, 3 /* numDims */));
+
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
   return addValueMapping(outputs[0], output, dtype);
 }
 
@@ -3627,7 +3836,6 @@ Error PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets(
 Error PyTorchModelLoader::loadAttributes(
     const torch::jit::Graph &graph,
     const at::ArrayRef<torch::jit::IValue> inputs) {
-
   // Map from the Value in the Graph of an ivalue::Object to the Object and a
   // string representing it's place in the module hierarchy.
   std::unordered_map<const torch::jit::Value *,
@@ -3791,9 +3999,9 @@ PyTorchModelLoader::PyTorchModelLoader(
           ASSIGN_VALUE_OR_RETURN_ERR(t, glowIVal.toTensor());
           auto oldType = t->getType();
           if (oldType.getElementType() == ElemKind::UInt8QTy) {
-            auto newType = glow::Type(ElemKind::Int8QTy, oldType.dims(),
-                                      oldType.getScale(),
-                                      oldType.getOffset() - OFFSETSHIFT);
+            auto newType = glow::Type(
+                ElemKind::Int8QTy, oldType.dims(), oldType.getScale(),
+                oldType.getOffset() - UINT8_TO_INT8_SHIFT);
             ph = F_.getParent()->createPlaceholder(&newType, "input",
                                                    /*isTrainable*/ false);
           } else {
@@ -3827,6 +4035,10 @@ PyTorchModelLoader::PyTorchModelLoader(
       c10::ScalarType outputScalarType;
       RETURN_IF_ERR(getCorrectTypeMapping(outputScalarType, output));
       outputCorrectType.push_back(outputScalarType);
+    }
+
+    if (settings.randomizeConstants) {
+      F_.randomizeConstants();
     }
 
     if (settings.dumpGlowDag) {

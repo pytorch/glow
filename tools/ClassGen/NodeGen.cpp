@@ -87,8 +87,8 @@ int main(int argc, char **argv) {
       .addInput("Bias")
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
-      .addMember(MemberType::VectorUnsigned, "Pads")
-      .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::VectorUnsigned, "Pads", /* addSetter */ true)
+      .addMember(MemberType::Unsigned, "Group", /* addSetter */ true)
       .addMember(MemberType::Unsigned, "Dilation")
       .addMember(MEMBER_TYPE_INFO(glow::ConvolutionLayout), "Layout")
       .addFusedActivation()
@@ -105,17 +105,23 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addInput("Filter")
       .addInput("Bias")
-      .addInput("Scales")
-      .addInput("Offsets")
+      .addInput("FilterScales")
+      .addInput("FilterOffsets")
+      .addInput("BiasScales")
+      .addInput("BiasOffsets")
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::Unsigned, "Dilation")
       .addResultFromCtorArg()
-      .setDocstring("Performs 2D Convolution using a given Input, Filter, and "
-                    "Bias tensors, as well as provided Kernels, Strides, Pads, "
-                    "and Group. Quantization parameters are provided by Scales "
-                    "and Offsets.");
+      .setDocstring(
+          "Performs 2D Convolution using a given Input, Filter, and "
+          "Bias tensors, as well as provided Kernels, Strides, Pads, "
+          "and Group. The filter channel wise quantization parameters "
+          "are provided by FilterScales and FilterOffsets while the "
+          "bias channel wise quantization parameters are provided by "
+          "BiasScales and BiasOffsets.");
 
   BB.newNode("ConvTranspose")
       .addInput("Input")
@@ -149,7 +155,7 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
-      .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::VectorUnsigned, "Pads", /* addSetter */ true)
       .addMember(MemberType::Enum, "Layout")
       .addResultFromCtorArg("Result")
       .addResultFromCtorArg("Argmax")
@@ -164,22 +170,30 @@ int main(int argc, char **argv) {
       .addInput("Input")
       .addMember(MemberType::Unsigned, "Axis")
       .addMember(MemberType::Boolean, "KeepDims")
-      .addResultFromCtorArg("Argmax")
-      .setDocstring("Finds index of a maximum element along Axis."
+      .addResultFromCtorArg()
+      .setDocstring("Finds index of a maximum element along Axis. "
+                    "If KeepDims is not true, the axis is removed from output");
+
+  BB.newNode("ArgMin")
+      .addInput("Input")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addMember(MemberType::Boolean, "KeepDims")
+      .addResultFromCtorArg()
+      .setDocstring("Finds index of a minimum element along Axis. "
                     "If KeepDims is not true, the axis is removed from output");
 
   BB.newNode("AvgPool")
       .addInput("Input")
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
-      .addMember(MemberType::VectorUnsigned, "Pads")
+      .addMember(MemberType::VectorUnsigned, "Pads", /* addSetter */ true)
       .addMember(MemberType::Enum, "Layout")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring(
           "Performs an Average Pool operation on the Input given "
           "provided Kernels, Strides, and Pads. Supported layouts are defined "
-          "in the ConvolutionLayout enum: NHWC and NCHW.");
+          "in the ConvolutionLayout enum: NHWC, NCHW, NTHWC and NCTHW.");
 
   BB.newNode("AdaptiveAvgPool")
       .addInput("Input")
@@ -367,32 +381,37 @@ int main(int argc, char **argv) {
       .dataParallel()
       .setDocstring("Performs Min on the LHS and RHS operands.");
 
-  BB.newNode("CmpLTE")
-      .addInput("LHS")
-      .addInput("RHS")
-      .addResultFromCtorArg()
-      .dataParallel()
-      .setDocstring("Performs CmpLTE on the LHS and RHS operands. Generates a "
-                    "mask that's consumed by the select instruction. The "
-                    "format of the result is target- and type-specific.");
-
   BB.newNode("CmpEQ")
       .addInput("LHS")
       .addInput("RHS")
       .addResultFromCtorArg()
       .dataParallel()
-      .setDocstring("Performs an element-wise equal comparison on the LHS and "
-                    "RHS operands. Inputs must be integer.");
+      .setDocstring("Performs an element-wise EQUAL comparison between the "
+                    "LHS and RHS operands.");
+
+  BB.newNode("CmpNEQ")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise NOT EQUAL comparison between "
+                    "the LHS and RHS operands.");
 
   BB.newNode("CmpLT")
       .addInput("LHS")
       .addInput("RHS")
       .addResultFromCtorArg()
       .dataParallel()
-      .setDocstring(
-          "Compares X and Y element wise sets Dest[i] true if LHS[i] < "
-          "RHS[i] otherwise false. Final result is a mask consumed by "
-          "Select, ONNX Where, operator.");
+      .setDocstring("Performs an element-wise LESS THAN comparison between "
+                    "the LHS and RHS operands.");
+
+  BB.newNode("CmpLTE")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise LESS THAN OR EQUAL comparison "
+                    "between the LHS and RHS operands.");
 
   BB.newNode("Pow")
       .addInput("LHS")
@@ -400,6 +419,100 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .dataParallel()
       .setDocstring("Performs elementwise pow(LHS, RHS).");
+
+  BB.newNode("And")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise logical AND between the LHS and "
+                    "RHS operands.");
+
+  BB.newNode("Or")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise logical OR between the LHS and "
+                    "RHS operands.");
+
+  BB.newNode("Xor")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise logical XOR between the LHS and "
+                    "RHS operands.");
+
+  BB.newNode("Not")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise logical NOT of the Input "
+                    "operand.");
+
+  BB.newNode("Neg")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise negation (sign flip) of the "
+                    "Input operand.");
+
+  BB.newNode("Abs")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise ABS(x) of the Input operand.");
+
+  BB.newNode("Floor")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise FLOOR(x) of the Input operand.");
+
+  BB.newNode("Ceil")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise CEIL(x) of the Input operand.");
+
+  BB.newNode("Round")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise ROUND(x) of the Input operand.");
+
+  BB.newNode("Sqrt")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise SQRT(x) of the Input operand.");
+
+  BB.newNode("Rsqrt")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise RSQRT(x) = 1 / SQRT(x) of the "
+                    "Input operand.");
+
+  BB.newNode("Reciprocal")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise RECIPROCAL(x) = 1 / x of the "
+                    "Input operand.");
+
+  BB.newNode("Sin")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise SIN(x) of the Input operand.");
+
+  BB.newNode("Cos")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise COS(x) of the Input operand.");
 
   // clang-format off
   BB.newNode("Log")
@@ -414,6 +527,13 @@ int main(int argc, char **argv) {
       .dataParallel()
       .setDocstring("Performs element-wise exponential to the Input.");
   // clang-format on
+
+  BB.newNode("Logit")
+      .addInput("Input")
+      .addMember(MemberType::Float, "Epsilon")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Computes elementwise: result = log(input / (1 - input)).");
 
   BB.newNode("Select")
       .addInput("Cond")
@@ -750,6 +870,13 @@ int main(int argc, char **argv) {
       .setDocstring("Applies Sigmoid, 1 / (1 + exp(-x)), to each element in "
                     "the Input tensor.");
 
+  BB.newNode("Swish")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Applies Swish, X * Sigmoid(X), to each element in "
+                    "the Input tensor.");
+
   BB.newNode("Tanh")
       .addInput("Input")
       .addResultFromCtorArg()
@@ -924,6 +1051,19 @@ int main(int argc, char **argv) {
       .setDocstring("Generate a tensor of a specific type filled with 'Value'."
                     "Splat always keep floating point value internally but can"
                     "quantize it based on the output type.");
+
+  // clang-format off
+  BB.newNode("Touch")
+    .addResultFromCtorArg()
+    .setDocstring(
+      "Generate a tensor of a specific type without initializing "
+      "it. This is useful when filling a big tensor entirely with "
+      "multiple small slices using InsertTensor nodes such that "
+      "the big tensor is not required to be initialized (filled) "
+      "with some value prior to insertion. This node is intended "
+      "to remove the overhead associated with the initialization "
+      "in situations where it is not required.");
+  // clang-format on
 
   BB.newNode("SGD")
       .addInput("Gradient")

@@ -148,9 +148,9 @@ static uint8_t *initActivations(const BundleConfig &config) {
 
 /// Invoke \p bundleEntry with the input \p inputName and output \p outputName.
 void testBundleEntry(const char *outputName, const char *inputName,
-                     void (*bundleEntry)(uint8_t *constantWeight,
-                                         uint8_t *mutableWeight,
-                                         uint8_t *activations)) {
+                     int (*bundleEntry)(uint8_t *constantWeight,
+                                        uint8_t *mutableWeight,
+                                        uint8_t *activations)) {
   // Allocate and initialize constant and mutable weights.
   uint8_t *constantWeightVarsAddr =
       initConstantWeights("testBundle.weights.bin", testBundle_config);

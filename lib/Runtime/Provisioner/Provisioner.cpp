@@ -60,8 +60,10 @@ auto sortMostMemory = [](const std::pair<DeviceIDTy, uint64_t> &a,
 } // namespace
 
 Provisioner::Provisioner(DeviceManagerMapTy &devices) {
+  unsigned deviceMapping{0};
   for (auto &device : devices) {
     devices_.push_back(device.second.get());
+    deviceMappings_.push_back(deviceMapping++);
     auto backendName = device.second->getBackendName();
     if (backends_.find(backendName) == backends_.end()) {
       std::unique_ptr<Backend> newBackend(createBackend(backendName));
@@ -218,7 +220,8 @@ Provisioner::generateDeviceAssignments(
   // Update nodes in logicalDevices with their assignments.
   for (auto &assignment : deviceAssignment) {
     for (auto &node : logicalDevices[assignment.first]) {
-      node->deviceRuntimeInfos[assignment.second] = DeviceRuntimeInfo();
+      node->deviceRuntimeInfos[deviceMappings_[assignment.second]] =
+          DeviceRuntimeInfo();
     }
   }
   return deviceAssignment;
@@ -556,13 +559,18 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     auto startTime = std::chrono::steady_clock::now();
     auto loader = cctx.deferredWeightLoader;
     // Load the first weight.
-    RETURN_IF_ERR(loader->loadNextWeight());
+    auto err = loader->loadNextWeight();
+    if (err) {
+      cleanupProvision(localActiveNames, addedNetworks);
+      return err;
+    }
     std::string weightName = loader->getName();
     // Load weights while there are weights to be loaded.
     while (weightName != "") {
       LOG(INFO) << "Loading " << weightName;
-      const auto PH = module.getPlaceholderByName(weightName);
+      const auto PH = module.getPlaceholderByNameSlow(weightName);
       if (!PH) {
+        cleanupProvision(localActiveNames, addedNetworks);
         return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
                         llvm::formatv("Error loading deferred weight. Name: "
                                       "{0} not found in module.",
@@ -609,7 +617,11 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         RETURN_IF_ERR(error);
       }
 
-      RETURN_IF_ERR(loader->loadNextWeight());
+      err = loader->loadNextWeight();
+      if (err) {
+        cleanupProvision(localActiveNames, addedNetworks);
+        return err;
+      }
       weightName = loader->getName();
       // Remove PH from map, this way we can know that we've added all static
       // PH's
@@ -656,15 +668,15 @@ Error Provisioner::removeFunction(llvm::StringRef name) {
   return Error::success();
 }
 
-Error Provisioner::evictFunction(llvm::StringRef name, DeviceIDTy device) {
+Error Provisioner::evictFunction(llvm::StringRef name, DeviceManager *device) {
   std::promise<void> evictPromise;
   Error evictErr = Error::empty();
   auto done = evictPromise.get_future();
-  devices_[device]->evictNetwork(
-      name, [&evictPromise, &evictErr](std::string, Error err) {
-        evictErr = std::move(err);
-        evictPromise.set_value();
-      });
+  device->evictNetwork(name,
+                       [&evictPromise, &evictErr](std::string, Error err) {
+                         evictErr = std::move(err);
+                         evictPromise.set_value();
+                       });
   done.get();
   return evictErr;
 }
@@ -686,7 +698,7 @@ void Provisioner::cleanupProvision(
     // Remove any partitions added to devices.
     for (auto &device : currentNetworkResidency) {
       for (auto &network : device.second) {
-        Error evictErr = evictFunction(network, device.first);
+        Error evictErr = evictFunction(network, devices_[device.first]);
         if (evictErr) {
           LOG(ERROR) << "Unable to evict network: " << network << "\n";
         }

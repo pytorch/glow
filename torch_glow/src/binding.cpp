@@ -17,19 +17,30 @@
 #include <pybind11/pybind11.h>
 
 #include "FuseKnownPatterns.h"
+#include "GlowCompileSpec.h"
 #include "GlowFuser.h"
 #include "PyTorchCommon.h"
 #include "Registration.h"
+#include "TorchGlowBackend.h"
 #include "TorchGlowTraining.h"
 #include <pybind11/pybind11.h>
 /// Required include files for a proper binding TorchGlowTrainingWrapper class.
 #include <pybind11/stl.h>
+#include <torch/csrc/jit/backends/backend.h>
 
 #include "glow/Graph/Graph.h"
 
 namespace py = pybind11;
 
 using namespace glow;
+
+namespace glow {
+torch::jit::backend<glow::TorchGlowBackend> &torchGlowBackend() {
+  static auto cls = torch::jit::backend<glow::TorchGlowBackend>("glow_backend");
+  return cls;
+}
+
+} // namespace glow
 
 /// The torch_glow pybind11 module.
 #ifdef TORCH_GLOW_MODULE_NAME
@@ -42,10 +53,25 @@ PYBIND11_MODULE(_torch_glow, m) {
   registerGlowFusionOpAndPass(
       []() { return getPyTorchLoaderSettings().fusionPassEnabled; });
 
+  /// Register GlowCompileSpec as PyTorch custom class
+  registerGlowCompileSpecCustomClass();
+
   /// Enable overriding signal handlers for torch_glow to make interruping long
   /// running processes possible. This should only be used when running
   /// torch_glow with Python.
   enableSignalHandlerOverrides();
+
+  /// Lowers and compiles a given torch.nn module following the given spec.
+  /// Returns a lowered module.
+  (void)torchGlowBackend();
+
+  /// Wrapping registered glow_backend call
+  m.def("to_glow", [](const torch::jit::Module &orig_module,
+                      const py::dict &method_compile_spec) {
+    auto callback =
+        py::module::import("torch").attr("_C").attr("_jit_to_glow_backend");
+    return callback(orig_module, method_compile_spec);
+  });
 
   /// Enable compiling PyTorch subgraphs to Glow Functions.
   m.def("enableFusionPass",
@@ -79,6 +105,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("disable_convert_to_fp16",
         []() { getPyTorchLoaderSettings().convertToFP16 = false; });
 
+  /// Enable converting fp32 fused ops to fp16.
+  m.def("enable_convert_fused_to_fp16",
+        []() { getPyTorchLoaderSettings().convertFusedToFP16 = true; });
+
+  /// Disable converting fp32 fused ops to fp16.
+  m.def("disable_convert_fused_to_fp16",
+        []() { getPyTorchLoaderSettings().convertFusedToFP16 = false; });
+
   /// Enable dumping the final Glow dag after compilation.
   m.def("enable_dump_final_glow_graph",
         []() { getPyTorchLoaderSettings().dumpFinalGlowGraph = true; });
@@ -107,6 +141,22 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Disable write Glow graph to onnx after model loading finishes.
   m.def("disable_write_to_onnx",
         []() { getPyTorchLoaderSettings().writeToOnnx = false; });
+
+  /// Enable randomizing Constants in loaded Functions.
+  m.def("enable_randomize_constants",
+        []() { getPyTorchLoaderSettings().randomizeConstants = true; });
+
+  /// Disable randomizing Constants in loaded Functions.
+  m.def("disable_randomize_constants",
+        []() { getPyTorchLoaderSettings().randomizeConstants = false; });
+
+  /// Enable check Glow vs jit correctness.
+  m.def("enable_jit_vs_glow_compare",
+        []() { getPyTorchLoaderSettings().jitVsGlowCompare = true; });
+
+  /// Disable check Glow vs jit correctness.
+  m.def("disable_jit_vs_glow_compare",
+        []() { getPyTorchLoaderSettings().jitVsGlowCompare = false; });
 
   /// Enable saturateHost mode in Glow runtime.
   m.def("enable_saturate_host",
@@ -186,6 +236,10 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Set the minimum fusion group size.
   m.def("setMinFusionGroupSize",
         [](size_t k) { getPyTorchLoaderSettings().minFusionGroupSize = k; });
+
+  /// Set the maximum fusion merge size
+  m.def("setMaxFusionMergeSize",
+        [](size_t k) { getPyTorchLoaderSettings().maxFusionMergeSize = k; });
 
   /// Call the Glow fuser and accept all node kinds but don't actually run the
   /// PyTorchModelLoader.

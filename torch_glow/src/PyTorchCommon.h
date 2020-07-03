@@ -19,7 +19,7 @@
 
 #include "glow/Base/Tensor.h"
 #include "glow/Base/Type.h"
-
+#include "glow/Importer/CommonOperatorLoader.h"
 #include "glow/Runtime/HostManager/HostManager.h"
 
 #include <torch/csrc/jit/ir/ir.h>
@@ -27,11 +27,6 @@
 DECLARE_bool(dumpFinalGlowGraph);
 
 namespace glow {
-
-/// For Glow: -128 <= orig_fp32/scale_1 + offset_1 <= 127
-/// For PyTorch: 0 <= orig_fp32/scale_2 + offset_2 <= 255
-/// Therefore, we can make scale_1 == scale_2, and offset_1 = offset2 - 128
-const int32_t OFFSETSHIFT = 128;
 
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling
@@ -61,6 +56,11 @@ struct PyTorchLoaderSettings {
   /// nodes. 0 indicates no minimum size.
   size_t minFusionGroupSize = 0;
 
+  /// The maximum total number of nodes which are allowed to merge when
+  /// fusing groups. The resulting group may be larger than this limit
+  /// however as additional nodes may be inserted during the merge.
+  size_t maxFusionMergeSize = 0;
+
   /// Index (inclusive) of the first node in the JIT graph to fuse. Ignored if
   /// negative.
   /// NOTE: this should only be used for debugging.
@@ -73,6 +73,9 @@ struct PyTorchLoaderSettings {
 
   /// Convert fp32 opts to fp16 ops during Glow compilation.
   bool convertToFP16 = false;
+
+  /// Convert fp32 fused opts to fp16 ops during Glow compilation.
+  bool convertFusedToFP16 = false;
 
   /// Dump Glow dot graph to file after Glow compilation is finished.
   bool dumpFinalGlowGraph = false;
@@ -94,12 +97,19 @@ struct PyTorchLoaderSettings {
   /// and from the function to file as ONNX graphs.
   bool writeToOnnx = false;
 
+  /// Whether or not to do a numerical comparions of Glow and jit outputs
+  bool jitVsGlowCompare = false;
+
   /// Name of a YAML file containing backend specific options.
   std::string backendOptionsFile;
 
   /// Whether not to set the saturateHost flag (use all available device) when
   /// adding networks to HostManager.
   bool saturateHost = false;
+
+  /// If true then randomize the Constants in the Function loaded by
+  /// PyTorchModelLoader.
+  bool randomizeConstants = false;
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.

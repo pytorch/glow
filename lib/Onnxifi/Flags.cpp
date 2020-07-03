@@ -1,3 +1,19 @@
+/**
+ * Copyright (c) Glow Contributors. See CONTRIBUTORS file.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 #include <gflags/gflags.h>
 
 namespace glow {
@@ -19,18 +35,22 @@ extern bool GlowClipFP16;
 extern bool GlowClipFP16SkipInputs;
 extern bool GlowSaturateHost;
 extern bool GlowSaveOnnxifiModel;
+extern bool GlowSaveOnnxifiDAG;
 extern bool GlowSaveOnnxifiIO;
+extern bool GlowDelayAndRecordConstantModification;
 extern bool GlowEnablePartialTensors;
 extern bool GlowUseCustomOpsForExport;
 extern bool GlowUseSparseNNPartitioningScheme;
 extern bool GlowSparseNNPartitioningAddSLSConcats;
+extern bool GlowSparseNNPartitioningBalancePerfModel;
 extern bool GlowDumpGraph;
+extern bool GlowUseDAGOptimizer;
 extern size_t GlowMaxActiveRequests;
 extern size_t GlowMaxQueueSize;
 extern size_t GlowExecutorThreads;
 
-#ifdef GLOW_WITH_NNPI
 // Defined in glow/lib/Backends/NNPI/NNPI.cpp
+#ifdef GLOW_WITH_NNPI
 extern bool GlowDumpNNPICompilerData;
 extern bool GlowUsePerPartitionIcetConfig;
 extern bool GlowDisableNNPITransforms;
@@ -43,14 +63,21 @@ extern int32_t GlowNNPINumParallelChunks;
 extern bool GlowEnableLoadBalancedPartitioning;
 extern bool GlowNNPILowerAllBatchMatMul;
 extern bool GlowNNPIAcceptUnarySLS;
+extern bool GlowNNPISpecializeAllOneSLS;
 
 namespace runtime {
 extern unsigned GlowInterpreterMemory;
 extern unsigned GlowCPUMemory;
 extern unsigned GlowHabanaMemory;
+#ifdef GLOW_WITH_NNPI
 extern unsigned GlowNNPIMemory;
+extern unsigned GlowNNPITimeout;
+extern unsigned GlowNNPIDeviceCheckPeriodSec;
+extern bool GlowNNPIDeviceCheck;
+#endif
 extern bool GlowEnableDRT;
 extern bool GlowEnableP2P;
+extern std::string GlowAvailableDevices;
 } // namespace runtime
 
 extern bool GlowDumpCompilationLog;
@@ -124,6 +151,15 @@ DEFINE_validator(glow_onnxifi_backend,
                    return true;
                  });
 
+DEFINE_string(
+    glow_available_devices, "",
+    "Comma separated list of devices which should be used, example 2,3,4");
+DEFINE_validator(glow_available_devices,
+                 [](const char * /* unused */, const std::string &value) {
+                   glow::runtime::GlowAvailableDevices = value;
+                   return true;
+                 });
+
 DEFINE_bool(glow_global_fp16, false,
             "Enable fp16 lowering for all ops on the net");
 DEFINE_validator(glow_global_fp16, [](const char * /* unused */, bool value) {
@@ -181,6 +217,15 @@ DEFINE_validator(glow_sparsenn_partitioning_add_sls_concats,
                    return true;
                  });
 
+DEFINE_bool(glow_sparsenn_partitioning_balance_perf_model, false,
+            "Balance SLS tables across cards using a perf model");
+DEFINE_validator(glow_sparsenn_partitioning_balance_perf_model,
+                 [](const char * /* flagname */, bool value) {
+                   glow::onnxifi::GlowSparseNNPartitioningBalancePerfModel =
+                       value;
+                   return true;
+                 });
+
 DEFINE_bool(glow_clip_fp16, false, "Force glow to clip fp16 values to min/max");
 DEFINE_validator(glow_clip_fp16, [](const char *flagname, bool value) {
   glow::onnxifi::GlowClipFP16 = value;
@@ -201,6 +246,24 @@ DEFINE_validator(glow_saturate_host, [](const char *flagname, bool value) {
   glow::onnxifi::GlowSaturateHost = value;
   return true;
 });
+
+DEFINE_bool(
+    glow_save_onnxifi_dag, false,
+    "Whether to serialize the DAG that has been optimized and partitioned.");
+DEFINE_validator(glow_save_onnxifi_dag, [](const char *flagname, bool value) {
+  glow::onnxifi::GlowSaveOnnxifiDAG = value;
+  return true;
+});
+
+DEFINE_bool(
+    glow_delay_and_record_constant_modification, false,
+    "Whether to delay and record constant modification for serialization.");
+DEFINE_validator(glow_delay_and_record_constant_modification,
+                 [](const char *flagname, bool value) {
+                   glow::onnxifi::GlowDelayAndRecordConstantModification =
+                       value;
+                   return true;
+                 });
 
 DEFINE_int32(glow_max_active_requests, 48,
              "Number of max active requests before host manager start queuing");
@@ -276,6 +339,13 @@ DEFINE_validator(glow_dump_graph, [](const char * /* unused */, bool value) {
   return true;
 });
 
+DEFINE_bool(glow_use_dag_optimizer, false, "Whether to call the DAG optimizer");
+DEFINE_validator(glow_use_dag_optimizer,
+                 [](const char * /* unused */, bool value) {
+                   glow::onnxifi::GlowUseDAGOptimizer = value;
+                   return true;
+                 });
+
 #ifdef GLOW_WITH_NNPI
 // Defined in glow/lib/Backends/NNPI/NNPI.cpp
 DEFINE_bool(glow_use_per_partition_icet_config, false,
@@ -290,6 +360,14 @@ DEFINE_bool(glow_dump_nnpi_compiler_data, false,
 DEFINE_validator(glow_dump_nnpi_compiler_data,
                  [](const char * /* unused */, bool value) {
                    glow::onnxifi::GlowDumpNNPICompilerData = value;
+                   return true;
+                 });
+
+DEFINE_bool(glow_nnpi_specialize_all_one_sls, false,
+            "Whether to import SLS ops with AllOne attribute to NNPI.");
+DEFINE_validator(glow_nnpi_specialize_all_one_sls,
+                 [](const char * /*unused*/, bool value) {
+                   glow::GlowNNPISpecializeAllOneSLS = value;
                    return true;
                  });
 
@@ -363,6 +441,31 @@ DEFINE_validator(glow_nnpi_memory, [](const char *flagname, int32_t value) {
   glow::runtime::GlowNNPIMemory = value;
   return true;
 });
+
+DEFINE_int32(glow_nnpi_timeout_ms, 0,
+             "Timeout threshold for inferecnce in milliseconds. Default 0 "
+             "means infinity");
+DEFINE_validator(glow_nnpi_timeout_ms,
+                 [](const char * /*unused*/, int32_t value) {
+                   glow::runtime::GlowNNPITimeout = value * 1000;
+                   return true;
+                 });
+
+DEFINE_bool(glow_nnpi_device_check, false,
+            "Whether to check NNPI device health or not");
+DEFINE_validator(glow_nnpi_device_check,
+                 [](const char * /*unused*/, bool value) {
+                   glow::runtime::GlowNNPIDeviceCheck = value;
+                   return true;
+                 });
+
+DEFINE_int32(glow_nnpi_device_check_period_s, 30,
+             "Period for NNPI device health check in seconds. Default to 32s.");
+DEFINE_validator(glow_nnpi_device_check_period_s,
+                 [](const char *flagname, int32_t value) {
+                   glow::runtime::GlowNNPIDeviceCheckPeriodSec = value;
+                   return true;
+                 });
 #endif
 
 DEFINE_bool(glow_log_partition, true, "Enable logging partition info");

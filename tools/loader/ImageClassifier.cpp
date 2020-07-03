@@ -269,12 +269,12 @@ int main(int argc, char **argv) {
     }
   }
 
-  glow::Executor core("ImageClassifier");
+  glow::Executor core("ImageClassifier", argc, argv);
   auto printResultCreator =
       []() -> std::unique_ptr<PostProcessOutputDataExtension> {
     return std::make_unique<ImageClassifierProcessResult>();
   };
   core.registerPostProcessOutputExtension(printResultCreator);
-  int numErrors = core.executeNetwork(argc, argv);
+  int numErrors = core.executeNetwork();
   return numErrors;
 }

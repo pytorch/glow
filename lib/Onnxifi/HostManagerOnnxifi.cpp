@@ -39,15 +39,19 @@ bool GlowFP16 = false;
 bool GlowFP16Placeholders = true;
 bool GlowFP16Constants = true;
 bool GlowDumpGraph = false;
+bool GlowUseDAGOptimizer = false;
 bool GlowFusedScaleOffsetFP16 = false;
 bool GlowForceSLSAccumFP16 = false;
 bool GlowClipFP16 = false;
 bool GlowClipFP16SkipInputs = true;
 bool GlowUseSparseNNPartitioningScheme = false;
 bool GlowSparseNNPartitioningAddSLSConcats = false;
+bool GlowSparseNNPartitioningBalancePerfModel = false;
 size_t GlowMaxActiveRequests = 48;
 size_t GlowMaxQueueSize = 100;
 size_t GlowExecutorThreads = 10;
+bool GlowSaveOnnxifiDAG = false;
+bool GlowDelayAndRecordConstantModification = false;
 
 static llvm::cl::opt<int32_t, true>
     GlowNumDevicesOpt("glow-num-devices",
@@ -100,6 +104,11 @@ static llvm::cl::opt<bool, true> GlowSparseNNPartitioningAddSLSConcatsOpt(
     llvm::cl::desc("Add extra concats inside of SLS partitions for more "
                    "efficient inter-partitition transfers"),
     llvm::cl::location(GlowSparseNNPartitioningAddSLSConcats));
+
+static llvm::cl::opt<bool, true> GlowSparseNNPartitioningBalancePerfModelOpt(
+    "glow_sparsenn_partitioning_balance_perf_model",
+    llvm::cl::desc("Balance SLS tables across cards using a perf model"),
+    llvm::cl::location(GlowSparseNNPartitioningBalancePerfModel));
 
 std::unique_ptr<runtime::HostManager>
 HostManagerBackend::createHostManager(llvm::StringRef backendName) {
@@ -205,6 +214,8 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
     cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
     cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
         GlowSparseNNPartitioningAddSLSConcats;
+    cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel =
+        GlowSparseNNPartitioningBalancePerfModel;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
         GlowSparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
@@ -216,6 +227,19 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
   }
   if (GlowDumpGraph) {
     cctx.dumpFinalGraph = true;
+  }
+  if (GlowUseDAGOptimizer) {
+    LOG(INFO) << "Will call the DAG optimizer.";
+    cctx.callDAGOptimizer = true;
+  }
+  if (GlowSaveOnnxifiDAG) {
+    LOG(INFO) << "Serializing DAG after optimization and partitioning.";
+    cctx.serializeCompiledDAG = true;
+  }
+  if (GlowDelayAndRecordConstantModification) {
+    LOG(INFO) << "Delaying constant modification until after optimizations, "
+                 "including recording constant folding for DAG serialization.";
+    cctx.optimizationOpts.delayAndRecordConstantModification = true;
   }
   cctx.saturateHost = GlowSaturateHost;
 

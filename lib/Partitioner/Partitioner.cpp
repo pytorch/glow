@@ -934,12 +934,14 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
 
   const std::vector<Function *> &funcs = config.funcs;
 
+  Backend *B = backends[0];
+  auto backendName = B->getBackendName();
+
   // Optimize all Functions if necessary.
   if (!optimized_) {
-    Backend *B = backends[0];
     for (Function *F : funcs) {
       RETURN_IF_ERR(::glow::optimizeFunction(
-          F, *B, cctx, &getDeviceInfoForBackend(B->getBackendName())));
+          F, *B, cctx, &getDeviceInfoForBackend(backendName)));
     }
   }
 
@@ -972,11 +974,26 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
   }
   RETURN_IF_ERR(logicalDevicesValidation(partitionMap, backendMap_));
 
-  // Copy in backend-specific options that were loaded.
-  DCHECK(funcs.size() == config.backendSpecificOpts.size());
+  // Copy in or validate all members of the PPC.
+  RETURN_ERR_IF_NOT(
+      funcs.size() == config.backendSpecificOpts.size(),
+      "Number of Functions must equal number of backendSpecificOpts");
+  RETURN_ERR_IF_NOT(funcs.size() == config.backendHints.size(),
+                    "Number of Functions must equal number of backendHints");
+  RETURN_ERR_IF_NOT(funcs.size() == config.replicationCounts.size(),
+                    "Number of Functions must equal");
+  RETURN_ERR_IF_NOT(
+      funcs.size() == config.backendNames.size() || config.backendNames.empty(),
+      "If there are backendNames specified, there must be one per Function");
   for (size_t i = 0, e = funcs.size(); i < e; i++) {
     Function *F = funcs[i];
     partitionMap.setBackendSpecificOpts(F, config.backendSpecificOpts[i]);
+    partitionMap.setBackendHints(F, config.backendHints[i]);
+    partitionMap.addReplicationCount(F, config.replicationCounts[i]);
+    if (!config.backendNames.empty()) {
+      RETURN_ERR_IF_NOT(backendName == config.backendNames[i],
+                        "Mismatch on backendName for partition");
+    }
   }
 
   // Do partition.
@@ -1000,19 +1017,32 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
 
 template <typename SLSType>
 void Partitioner::appendSLSTable(
-    Node &node, std::vector<Partitioner::SLSTableInfo> &slsTables) {
+    Node &node, std::vector<Partitioner::SLSTableInfo> &slsTables,
+    bool doPerfModelBalance) {
   auto *SLS0 = llvm::dyn_cast<SLSType>(&node);
   if (SLS0) {
     auto SLSDataDims = SLS0->getData().dims();
-    auto SLSIndexDims = SLS0->getIndices().dims();
-    size_t numElementsPerRowUpperBound =
-        std::max((size_t)SLSDataDims[1], (size_t)0);
-    size_t numIndices = SLSIndexDims[0];
+    uint64_t cost = 1;
     uint64_t numBytesInTable =
-        (uint64_t)SLSDataDims[0] * (uint64_t)SLSDataDims[1];
+        (uint64_t)SLS0->getData().getType()->getSizeInBytes();
+    float avgLength = SLS0->getAvgLength();
+
+    // If average length is available, then compute cost using perf model
+    if (doPerfModelBalance) {
+      avgLength = std::isnan(avgLength) ? 1.0f : avgLength;
+      uint64_t numBytesInRow = numBytesInTable / SLSDataDims[0];
+      float numBytesPerElement = (float)numBytesInRow / (float)(SLSDataDims[1]);
+      uint64_t algo1a = 32 * avgLength * ceil(((float)numBytesInRow) / 16.0);
+      uint64_t algo1b =
+          32 * avgLength *
+          ceil((((float)numBytesInRow) * numBytesPerElement + 4.0f) / 32.0f);
+      float algou = avgLength * 32.0f / 64.0f;
+      algou = (algou < 1.0f) ? algou : 1.0f;
+      uint64_t algo1 = (uint64_t)(algou * algo1b + (1.0f - algou) * algo1a);
+      cost = algo1;
+    }
     auto slsResult = SLS0->getResult();
-    slsTables.push_back({SLS0, numBytesInTable, numElementsPerRowUpperBound,
-                         numIndices, 0, slsResult});
+    slsTables.push_back({SLS0, numBytesInTable, 0, slsResult, cost});
   }
 }
 
@@ -1034,70 +1064,57 @@ static void cloneSplatWeightsIfNecessary(T *SLWS, Function *F) {
 void Partitioner::sparseNNInsertSplitConcat(
     Function *F, std::vector<SLSDeviceInfo> slsDevices,
     std::vector<SLSTableInfo> slsTables, PartitionConfig &partitionConfig) {
-  std::map<ConcatNode *, std::vector<NodeValue>> newConcatInputs;
-  std::map<ConcatNode *, std::vector<NodeValue>> oldConcatInputs;
-  for (size_t p = 0; p < slsDevices.size(); p++) {
 
-    // Pool SLS outputs which go directly to concats for this device
-    std::map<ConcatNode *, std::vector<NodeValue>> extraConcatInputs;
-    for (auto &table : slsTables) {
-      if (table.deviceId == p) {
-        if (table.slsClipResult.getNumUsers() != 1) {
-          continue;
-        }
-        auto slsClipUser =
-            (*(table.slsClipResult.getUsers().begin())).getUser();
-        if (ConcatNode *concatNode = llvm::dyn_cast<ConcatNode>(slsClipUser)) {
-          extraConcatInputs[concatNode].push_back(table.slsClipResult);
-        }
+  // Walk through SLS tables and check that all the results are able to concat
+  if (slsTables.size() == 0) {
+    return;
+  }
+  auto templateTable = slsTables[0];
+  auto templateDims = templateTable.slsClipResult.dims();
+  auto templateConcatDim = templateDims.size() - 1;
+  std::vector<std::vector<NodeValue>> concatInputs(slsDevices.size());
+
+  for (auto &table : slsTables) {
+    auto tableDims = table.slsClipResult.dims();
+    if (tableDims.size() != templateDims.size()) {
+      return;
+    }
+    for (dim_t otherDim = 0; otherDim < templateConcatDim; otherDim++) {
+      if (tableDims[otherDim] != templateDims[otherDim]) {
+        return;
       }
     }
-
-    // For each set of pooled SLS outputs, insert Concat->Split
-    for (auto &inpList : extraConcatInputs) {
-
-      // Create a new concat and assign it to SLS partition
-      ConcatNode *concatNode = inpList.first;
-      std::vector<NodeValue> concatInputs = inpList.second;
-      auto *deviceConcat = F->createConcat(concatNode->getName().str() +
-                                               "_dev" + std::to_string(p),
-                                           concatInputs, concatNode->getDim());
-      partitionConfig.nodeToPartition[deviceConcat->getName()] = p;
-
-      // Create a split
-      std::vector<dim_t> splits;
-      for (auto &inp : concatInputs) {
-        auto inpDims = inp.dims();
-        splits.push_back(inpDims[concatNode->getDim()]);
-        oldConcatInputs[concatNode].push_back(inp);
-      }
-      std::vector<SliceNode *> splitOutputs;
-      F->createSplit(concatNode->getName().str() + "_split_dev" +
-                         std::to_string(p),
-                     deviceConcat, splits.size(), concatNode->getDim(), splits,
-                     splitOutputs);
-      for (auto &splitOutput : splitOutputs) {
-        partitionConfig.nodeToPartition[splitOutput->getName()] =
-            partitionConfig.numOfPartitions - 1;
-        newConcatInputs[concatNode].push_back(splitOutput);
-      }
+    if (table.slsClipResult.getType()->getElementType() !=
+        templateTable.slsClipResult.getType()->getElementType()) {
+      return;
     }
+    concatInputs[table.deviceId].push_back(table.slsClipResult);
   }
 
-  // Create a new concat node and replace specified inputs with the
-  // new slice outputs
-  for (auto &concatNodeReplace : newConcatInputs) {
-    ConcatNode *concatNode = concatNodeReplace.first;
-    std::vector<NodeValue> newInputs = newConcatInputs[concatNode];
-    std::vector<NodeValue> oldInputs = oldConcatInputs[concatNode];
-    std::vector<NodeValue> combinedInputs;
-    for (auto concatInputIdx = 0; concatInputIdx < concatNode->getNumInputs();
-         concatInputIdx++) {
-      auto concatInput = concatNode->getNthInput(concatInputIdx);
-      auto it = find(oldInputs.begin(), oldInputs.end(), concatInput);
-      if (it != oldInputs.end()) {
-        auto idx = distance(oldInputs.begin(), it);
-        concatNode->setNthInput(concatInputIdx, newInputs[idx]);
+  // Insert concat and slice nodes and assign them to partitions
+  for (size_t p = 0; p < slsDevices.size(); p++) {
+    if (concatInputs[p].size() > 1) {
+
+      // Insert concat
+      auto *deviceConcat = F->createConcat("concat_dev_" + std::to_string(p),
+                                           concatInputs[p], templateConcatDim);
+      partitionConfig.nodeToPartition[deviceConcat->getName()] = p;
+
+      // Insert slices
+      std::vector<dim_t> splits(concatInputs[p].size());
+      for (dim_t i = 0; i < concatInputs[p].size(); i++) {
+        auto inputDim = concatInputs[p][i].dims();
+        splits[i] = inputDim[templateConcatDim];
+      }
+      std::vector<SliceNode *> splitOutputs;
+      F->createSplit("split_dev" + std::to_string(p), deviceConcat,
+                     splits.size(), templateConcatDim, splits, splitOutputs);
+      for (dim_t i = 0; i < concatInputs[p].size(); i++) {
+        assert(i < splitOutputs.size());
+        concatInputs[p][i].replaceAllUsesOfWith(splitOutputs[i]);
+        deviceConcat->setNthInput(i, concatInputs[p][i]);
+        partitionConfig.nodeToPartition[splitOutputs[i]->getName()] =
+            partitionConfig.numOfPartitions - 1;
       }
     }
   }
@@ -1141,9 +1158,14 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
                     "Did not find a partition with an SLS node");
   }
 
-  if (deviceInfo_.size() == 0) {
-    return MAKE_ERR(ErrorValue::ErrorCode::PARTITIONER_ERROR,
-                    "Not enough devices to partition");
+  if (deviceInfo_.size() <
+      cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards) {
+    return MAKE_ERR(
+        ErrorValue::ErrorCode::PARTITIONER_ERROR,
+        strFormat("Not enough devices to partition. Num Devices is %zu and Num "
+                  "SparseNN Cards Needed is %u",
+                  deviceInfo_.size(),
+                  cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards));
   }
 
   // Otherwise partition this function
@@ -1182,13 +1204,17 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   partitionConfig.funcName = std::string(F->getName());
   VLOG(1) << "Function: " << std::string(F->getName()) << std::endl;
   for (auto &node : F->getNodes()) {
+    bool doPerfModelBalance =
+        cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel;
     appendSLSTable<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
-        node, slsTables);
-    appendSLSTable<FusedRowwiseQuantizedSparseLengthsSumNode>(node, slsTables);
-    appendSLSTable<RowwiseQuantizedSparseLengthsWeightedSumNode>(node,
-                                                                 slsTables);
-    appendSLSTable<SparseLengthsSumNode>(node, slsTables);
-    appendSLSTable<SparseLengthsWeightedSumNode>(node, slsTables);
+        node, slsTables, doPerfModelBalance);
+    appendSLSTable<FusedRowwiseQuantizedSparseLengthsSumNode>(
+        node, slsTables, doPerfModelBalance);
+    appendSLSTable<RowwiseQuantizedSparseLengthsWeightedSumNode>(
+        node, slsTables, doPerfModelBalance);
+    appendSLSTable<SparseLengthsSumNode>(node, slsTables, doPerfModelBalance);
+    appendSLSTable<SparseLengthsWeightedSumNode>(node, slsTables,
+                                                 doPerfModelBalance);
   }
 
   // Now sort SLS tables by size decreasing
@@ -1200,11 +1226,9 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
 
   // Print SLS tables
   for (auto &table : slsTables) {
-    VLOG(1) << "(numBytesInTable, numElementsPerRowUpperBound, numIndices, "
-               "deviceId)"
-            << "\t" << table.numBytesInTable << "\t"
-            << table.numElementsPerRowUpperBound << "\t" << table.numIndices
-            << "\t" << table.deviceId << std::endl;
+    VLOG(1) << "(numBytesInTable, deviceID, cost)"
+            << "\t" << table.numBytesInTable << "\t" << table.deviceId << "\t"
+            << table.cost << std::endl;
   }
 
   // Create table of devices
@@ -1243,7 +1267,7 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
       if (slsDevices[d].memAvailableInBytes >= table.numBytesInTable) {
         deviceFound = true;
         slsDevices[d].memAvailableInBytes -= table.numBytesInTable;
-        slsDevices[d].currentCost += 1; // Cost is 1 per table
+        slsDevices[d].currentCost += (size_t)table.cost;
         table.deviceId = slsDevices[d].deviceId;
         break;
       }
@@ -1264,10 +1288,9 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
 
   // Print assignments
   for (auto &table : slsTables) {
-    VLOG(1) << "(numBytesInTable, numElementsPerRow, numIndices, deviceId)"
-            << "\t" << table.numBytesInTable << "\t"
-            << table.numElementsPerRowUpperBound << "\t" << table.numIndices
-            << "\t" << table.deviceId << std::endl;
+    VLOG(1) << "(numBytesInTable, deviceId, cost)"
+            << "\t" << table.numBytesInTable << "\t" << table.deviceId << "\t"
+            << table.cost << std::endl;
   }
 
   // Create manual partition
@@ -1371,12 +1394,14 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
     VLOG(1) << "\n";
   }
 
-  auto partitions = partitionFromConfig(partitionConfig, cctx);
+  DAGListTy partitions;
+  ASSIGN_VALUE_OR_RETURN_ERR(partitions,
+                             partitionFromConfig(partitionConfig, cctx));
   if (cctx.saturateHost) {
     saturateHost(cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards,
-                 std::move(partitions.get()));
+                 partitions);
   }
-  return partitions;
+  return std::move(partitions);
 }
 
 Expected<DAGListTy> Partitioner::partition(CompilationContext &cctx) {

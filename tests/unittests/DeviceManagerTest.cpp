@@ -147,7 +147,7 @@ TEST_P(DeviceManagerTest, Basic) {
   output1.getHandle().clear(std::max(std::tanh(0.5), 0.25));
 
   updateInputPlaceholders(*context->getPlaceholderBindings(),
-                          {module->getPlaceholderByName("main_input")},
+                          {module->getPlaceholderByNameSlow("main_input")},
                           {&input1});
 
   context = runFunction("main", std::move(context));
@@ -156,7 +156,7 @@ TEST_P(DeviceManagerTest, Basic) {
   // directly.
   context->getPlaceholderBindings()->ensureOnHost();
   Tensor *result1 = context->getPlaceholderBindings()->get(
-      module->getPlaceholderByName("main_output"));
+      module->getPlaceholderByNameSlow("main_output"));
   ASSERT_TRUE(result1);
   EXPECT_TRUE(result1->isEqual(output1));
 }
@@ -200,14 +200,14 @@ TEST_P(DeviceManagerTest, PartialTensorCopy) {
 
   Tensor input1(ElemKind::FloatTy, {1});
   auto size = input->getType()->getSizeInBytes() / 2;
-  Tensor *virtualPaddedInput =
-      new Tensor(input1.getUnsafePtr(), input->getType(), size);
+  Tensor virtualPaddedInput(input1.getUnsafePtr(), input->getType(), size);
 
   Tensor output1(ElemKind::FloatTy, {1});
   input1.getHandle().clear(0.5);
   output1.getHandle().clear(std::max(std::tanh(0.5), 0.25));
 
-  context->getPlaceholderBindings()->insert(input, virtualPaddedInput);
+  context->getPlaceholderBindings()->insert(input,
+                                            std::move(virtualPaddedInput));
   std::promise<std::unique_ptr<ExecutionContext>> runPromise;
   std::future<std::unique_ptr<ExecutionContext>> runFuture;
 
@@ -228,7 +228,7 @@ TEST_P(DeviceManagerTest, PartialTensorCopy) {
   context->getPlaceholderBindings()->ensureOnHost();
 
   Tensor *result1 = context->getPlaceholderBindings()->get(
-      module->getPlaceholderByName("main_output"));
+      module->getPlaceholderByNameSlow("main_output"));
 
   ASSERT_TRUE(result1);
   EXPECT_FLOAT_EQ(result1->getHandle().at({0}), std::max(std::tanh(0.5), 0.25));
@@ -343,10 +343,10 @@ TEST_P(DeviceManagerTest, MultiRun) {
   output2.getHandle().clear(std::max(std::tanh(3.0f), 0.25f));
 
   updateInputPlaceholders(*context1->getPlaceholderBindings(),
-                          {module->getPlaceholderByName("main_input")},
+                          {module->getPlaceholderByNameSlow("main_input")},
                           {&input1});
   updateInputPlaceholders(*context2->getPlaceholderBindings(),
-                          {module->getPlaceholderByName("main_input")},
+                          {module->getPlaceholderByNameSlow("main_input")},
                           {&input2});
 
   std::promise<std::unique_ptr<ExecutionContext>> runP1, runP2;
@@ -379,9 +379,9 @@ TEST_P(DeviceManagerTest, MultiRun) {
   context2->getPlaceholderBindings()->ensureOnHost();
 
   Tensor *result1 = context1->getPlaceholderBindings()->get(
-      module->getPlaceholderByName("main_output"));
+      module->getPlaceholderByNameSlow("main_output"));
   Tensor *result2 = context2->getPlaceholderBindings()->get(
-      module->getPlaceholderByName("main_output"));
+      module->getPlaceholderByNameSlow("main_output"));
   ASSERT_TRUE(result1);
   ASSERT_TRUE(result2);
   EXPECT_TRUE(result1->isEqual(output1));
@@ -400,7 +400,7 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   context1->getPlaceholderBindings()->allocate(module->getPlaceholders());
 
   Function *F = module->createFunction("func2");
-  auto *inP = module->getPlaceholderByName("func1_input");
+  auto *inP = module->getPlaceholderByNameSlow("func1_input");
   auto *outP =
       module->createPlaceholder(ElemKind::FloatTy, {1}, "func2_output", false);
   auto *p = F->createTanh("tanh2", inP);
@@ -442,10 +442,10 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   output2.getHandle().clear(std::max(std::tanh(0.5f), 0.25f));
 
   updateInputPlaceholders(*context1->getPlaceholderBindings(),
-                          {module->getPlaceholderByName("func1_input")},
+                          {module->getPlaceholderByNameSlow("func1_input")},
                           {&input});
   updateInputPlaceholders(*context2->getPlaceholderBindings(),
-                          {module->getPlaceholderByName("func1_input")},
+                          {module->getPlaceholderByNameSlow("func1_input")},
                           {&input});
 
   std::promise<std::unique_ptr<ExecutionContext>> runP1, runP2;
@@ -476,9 +476,9 @@ TEST_P(DeviceManagerTest, MultiFunction) {
   context2->getPlaceholderBindings()->ensureOnHost();
 
   Tensor *result1 = context1->getPlaceholderBindings()->get(
-      module->getPlaceholderByName("func1_output"));
+      module->getPlaceholderByNameSlow("func1_output"));
   Tensor *result2 = context2->getPlaceholderBindings()->get(
-      module->getPlaceholderByName("func2_output"));
+      module->getPlaceholderByNameSlow("func2_output"));
   ASSERT_TRUE(result1);
   ASSERT_TRUE(result2);
   EXPECT_TRUE(result1->isEqual(output1));
@@ -522,14 +522,14 @@ TEST_P(DeviceManagerTest, MultiModule) {
   output.getHandle().clear(std::max(std::tanh(0.5f), 0.25f));
 
   updateInputPlaceholders(*context1->getPlaceholderBindings(),
-                          {module1->getPlaceholderByName("func1_input")},
+                          {module1->getPlaceholderByNameSlow("func1_input")},
                           {&input});
 
   std::unique_ptr<ExecutionContext> context2 =
       glow::make_unique<ExecutionContext>();
   context2->getPlaceholderBindings()->allocate(module2->getPlaceholders());
   updateInputPlaceholders(*context2->getPlaceholderBindings(),
-                          {module2->getPlaceholderByName("func2_input")},
+                          {module2->getPlaceholderByNameSlow("func2_input")},
                           {&input});
 
   std::promise<std::unique_ptr<ExecutionContext>> runP1, runP2;
@@ -560,12 +560,12 @@ TEST_P(DeviceManagerTest, MultiModule) {
   context2->getPlaceholderBindings()->ensureOnHost();
 
   Tensor *result1 = context1->getPlaceholderBindings()->get(
-      module1->getPlaceholderByName("func1_output"));
+      module1->getPlaceholderByNameSlow("func1_output"));
   ASSERT_TRUE(result1);
   EXPECT_TRUE(result1->isEqual(output));
 
   Tensor *result2 = context2->getPlaceholderBindings()->get(
-      module2->getPlaceholderByName("func2_output"));
+      module2->getPlaceholderByNameSlow("func2_output"));
   ASSERT_TRUE(result2);
   EXPECT_TRUE(result2->isEqual(output));
 }
@@ -580,7 +580,7 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   context1->getPlaceholderBindings()->allocate(module->getPlaceholders());
 
   Function *F = module->createFunction("func2");
-  auto *inP = module->getPlaceholderByName("func1_input");
+  auto *inP = module->getPlaceholderByNameSlow("func1_input");
   auto *outP =
       module->createPlaceholder(ElemKind::FloatTy, {1}, "func2_output", false);
   auto *p = F->createTanh("tanh2", inP);
@@ -627,10 +627,10 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   output2.getHandle().clear(std::max(std::tanh(0.5f), 0.25f));
 
   updateInputPlaceholders(*context1->getPlaceholderBindings(),
-                          {module->getPlaceholderByName("func1_input")},
+                          {module->getPlaceholderByNameSlow("func1_input")},
                           {&input});
   updateInputPlaceholders(*context2->getPlaceholderBindings(),
-                          {module->getPlaceholderByName("func1_input")},
+                          {module->getPlaceholderByNameSlow("func1_input")},
                           {&input});
 
   std::promise<std::unique_ptr<ExecutionContext>> runP1, runP2;
@@ -661,12 +661,12 @@ TEST_P(DeviceManagerTest, ReuseModule) {
   context2->getPlaceholderBindings()->ensureOnHost();
 
   Tensor *result1 = context1->getPlaceholderBindings()->get(
-      module->getPlaceholderByName("func1_output"));
+      module->getPlaceholderByNameSlow("func1_output"));
   ASSERT_TRUE(result1);
   EXPECT_TRUE(result1->isEqual(output1));
 
   Tensor *result2 = context2->getPlaceholderBindings()->get(
-      module->getPlaceholderByName("func2_output"));
+      module->getPlaceholderByNameSlow("func2_output"));
   ASSERT_TRUE(result2);
   EXPECT_TRUE(result2->isEqual(output2));
 }
@@ -812,7 +812,7 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
   output1.getHandle().clear(std::max(std::tanh(0.5f), 0.25f));
 
   updateInputPlaceholders(*context1->getPlaceholderBindings(),
-                          {module->getPlaceholderByName("main_input")},
+                          {module->getPlaceholderByNameSlow("main_input")},
                           {&input1});
 
   std::promise<std::unique_ptr<ExecutionContext>> runPromise;
@@ -833,7 +833,7 @@ TEST(DeviceManagerTest, DummyDeviceManager) {
   ASSERT_TRUE(context2);
 
   Tensor *result = context2->getPlaceholderBindings()->get(
-      module->getPlaceholderByName("main_output"));
+      module->getPlaceholderByNameSlow("main_output"));
   ASSERT_TRUE(result);
   EXPECT_TRUE(result->isEqual(output1));
 
@@ -926,16 +926,16 @@ TEST_P(DeviceManagerTest, CanHandleDeviceResidentTensors) {
   output1.getHandle().clear(std::max(std::tanh(0.5), 0.25));
 
   updateInputPlaceholders(*context->getPlaceholderBindings(),
-                          {module->getPlaceholderByName("main_input")},
+                          {module->getPlaceholderByNameSlow("main_input")},
                           {&input1});
 
   mockDM.transferToDevice(*context->getPlaceholderBindings()->get(
-      module->getPlaceholderByName("main_input")));
+      module->getPlaceholderByNameSlow("main_input")));
 
   context = runFunction("main", std::move(context));
   ASSERT_TRUE(context);
   Tensor *result1 = context->getPlaceholderBindings()->get(
-      module->getPlaceholderByName("main_output"));
+      module->getPlaceholderByNameSlow("main_output"));
   ASSERT_TRUE(result1);
 }
 

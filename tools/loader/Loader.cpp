@@ -21,6 +21,7 @@
 #include "glow/IR/IR.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Importer/ONNXModelLoader.h"
+#include "glow/Importer/TFLiteModelLoader.h"
 #include "glow/Optimizer/GraphOptimizer/CompilationContext.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Quantization/Serialization.h"
@@ -39,14 +40,6 @@
 #include <sstream>
 
 using namespace glow;
-
-/// -enable-rowwise : Command line option to enable rowwise quantized
-/// fullyconnected in quantization producure.
-bool enableRowwiseOpt;
-static llvm::cl::opt<bool, true>
-    enableRowwiseF("enable-rowwise",
-                   llvm::cl::desc("Enable rowwise quantized fully connected."),
-                   llvm::cl::location(enableRowwiseOpt), llvm::cl::init(false));
 
 llvm::cl::OptionCategory loaderCat("Loader Options");
 
@@ -159,6 +152,17 @@ llvm::cl::opt<ElemKind> quantizationPrecisionBias(
         clEnumValN(ElemKind::Int8QTy, "Int8", "Use Int8 bias quantization"),
         clEnumValN(ElemKind::Int32QTy, "Int32", "Use Int32 bias quantization")),
     llvm::cl::init(ElemKind::Int32QTy), llvm::cl::cat(loaderCat));
+
+llvm::cl::opt<bool>
+    enableRowwiseOpt("enable-rowwise",
+                     llvm::cl::desc("Enable rowwise quantized FullyConnected."),
+                     llvm::cl::Optional, llvm::cl::init(false),
+                     llvm::cl::cat(loaderCat));
+
+llvm::cl::opt<bool> enableChannelwiseOpt(
+    "enable-channelwise",
+    llvm::cl::desc("Enable channelwise quantized Convolution."),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(loaderCat));
 
 llvm::cl::opt<std::string> loadProfileFileOpt(
     "load-profile",
@@ -431,6 +435,12 @@ std::unique_ptr<ProtobufLoader> Loader::loadModel() {
     protoLoader.reset(new Caffe2ModelLoader(
         getCaffe2NetDescFilename(), getCaffe2NetWeightFilename(), inputNameRefs,
         inputTypeRefs, *getFunction()));
+  } else if (!getTFLiteModelFilename().empty()) {
+    // For TensorFlowLite format the input placeholder names/types are not
+    // provided since are used directly from the model. We also set the protobuf
+    // loader to nullptr since the TensorFlowLite does not use it.
+    TFLiteModelLoader(getTFLiteModelFilename(), getFunction());
+    protoLoader = nullptr;
   } else {
     // For ONNX format the input placeholders names/types can be optionally
     // provided but is not mandatory. If not provided (the arrays are empty)
@@ -498,6 +508,11 @@ static bool commandLineIsInvalid() {
 }
 
 void glow::parseCommandLine(int argc, char **argv) {
+  llvm::cl::SetVersionPrinter([](llvm::raw_ostream &os) {
+#ifdef GLOW_BUILD_DATE
+    os << "Glow Tools version: " << GLOW_BUILD_DATE << "\n";
+#endif
+  });
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
   llvm::cl::ParseCommandLineOptions(
       argc, argv,
@@ -523,6 +538,7 @@ quantization::QuantizationConfiguration Loader::getQuantizationConfiguration() {
   quantConfig.calibration = quantizationCalibrationOpt;
   quantConfig.calibrateConstants = calibrateConstantsOpt;
   quantConfig.enableRowwise = enableRowwiseOpt;
+  quantConfig.enableChannelwise = enableChannelwiseOpt;
   quantConfig.assertAllNodesQuantized = assertAllNodesQuantizedOpt;
   if (!loadProfileFileOpt.empty()) {
     quantConfig.infos = deserializeProfilingInfosFromYaml(loadProfileFileOpt);
@@ -737,10 +753,10 @@ Loader &Loader::registerExtension(std::unique_ptr<LoaderExtension> extension) {
 void Loader::postModelLoad(PlaceholderBindings &bindings,
                            ProtobufLoader &protoLoader,
                            llvm::StringMap<Placeholder *> &placeholderMap,
-                           size_t compilationBatchSize) {
+                           TypeRef inputImageType) {
   for (auto &&ext : loaderExtensionList_) {
     ext->postModelLoad(*this, bindings, protoLoader, placeholderMap,
-                       compilationBatchSize);
+                       inputImageType);
   }
 }
 
@@ -764,7 +780,12 @@ Loader::Loader(llvm::ArrayRef<size_t> configDeviceIDs) {
       caffe2NetDescFilename_ = modelPathOpt[0] + "/predict_net.pb";
       caffe2NetWeightFilename_ = modelPathOpt[0] + "/init_net.pb";
     } else {
-      onnxModelFilename_ = modelPathOpt[0];
+      llvm::StringRef modelPath = modelPathOpt[0];
+      if (modelPath.endswith("tflite")) {
+        tfliteModelFilename_ = modelPath.str();
+      } else {
+        onnxModelFilename_ = modelPath.str();
+      }
     }
   } else {
     caffe2NetDescFilename_ = modelPathOpt[0];

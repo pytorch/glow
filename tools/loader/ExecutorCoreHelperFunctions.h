@@ -27,6 +27,7 @@ extern llvm::cl::opt<std::string> inputImageListFile;
 extern llvm::cl::opt<std::string> inputTensorListFile;
 extern llvm::cl::list<std::string> inputImageFilenames;
 extern llvm::cl::opt<unsigned> excludedFirstWarmupRuns;
+extern llvm::cl::opt<std::string> modelInputName;
 extern llvm::cl::opt<unsigned> warmup;
 extern llvm::cl::opt<std::string> tracePath;
 extern llvm::cl::opt<bool> convertInAndOutToFp16;

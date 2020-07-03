@@ -144,15 +144,15 @@ void CPULLVMIRGen::generateLLVMIRForDataParallelInstr(
                                    lhs->getType()->getOffset()};
       auto quantizedValue = quantization::quantize(V, TQP);
       auto *val = emitConst(builder, quantizedValue, lhs->getElementType());
-      auto *stackedOpCall =
-          createCall(builder, F, {loopCount, val, lhsPtr, pointerNull});
+      auto *stackedOpCall = createUncheckedCall(
+          builder, F, {loopCount, val, lhsPtr, pointerNull});
       auto *destAddr = builder.CreateGEP(builder.getInt8Ty(), destPtr,
                                          loopCount, "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);
     } else {
       auto *val = emitConst(builder, V, lhs->getElementType());
-      auto *stackedOpCall =
-          createCall(builder, F, {loopCount, val, lhsPtr, pointerNull});
+      auto *stackedOpCall = createUncheckedCall(
+          builder, F, {loopCount, val, lhsPtr, pointerNull});
       auto *destAddr = builder.CreateGEP(builder.getFloatTy(), destPtr,
                                          loopCount, "buffer.element.addr");
       builder.CreateStore(stackedOpCall, destAddr);

@@ -27,8 +27,39 @@
 namespace glow {
 namespace runtime {
 
+static bool isEmptyDeviceNetworkConfig(const NNPIDeviceNetworkConfig &cfg) {
+  if (cfg.disableECC != 0) {
+    return false;
+  }
+
+  if (cfg.pnpHints.ringFrequencyPrio != 0.f) {
+    return false;
+  }
+
+  const int numIceBO = sizeof(cfg.pnpHints.iceBOFrequencyPrio) /
+                       sizeof(cfg.pnpHints.iceBOFrequencyPrio[0]);
+  for (int i = 0; i < numIceBO; i++) {
+    if (cfg.pnpHints.iceBOFrequencyPrio[i] != 0.f) {
+      return false;
+    }
+  }
+
+  const int numIA = sizeof(cfg.pnpHints.IAFrequencyPrio) /
+                    sizeof(cfg.pnpHints.IAFrequencyPrio[0]);
+  for (unsigned i = 0; i < numIA; i++) {
+    if (cfg.pnpHints.IAFrequencyPrio[i] != 0.f) {
+      return false;
+    }
+  }
+
+  if (cfg.pnpHints.DDRBandwidth != 0.f) {
+    return false;
+  }
+  return true;
+}
+
 InferencePoolEnv::InferencePoolEnv()
-    : numWorkers_(0), deviceOptions_(nullptr), nnpiCompiledFunction_(nullptr),
+    : deviceOptions_(nullptr), nnpiCompiledFunction_(nullptr),
       staticPlaceholderMap_(nullptr) {}
 
 InferencePoolEnv::~InferencePoolEnv() {
@@ -41,9 +72,8 @@ InferencePoolEnv::~InferencePoolEnv() {
   }
 }
 
-Error InferencePoolEnv::init(unsigned numWorkers, NNPIAdapter adapter,
+Error InferencePoolEnv::init(NNPIAdapterContainer *adapter,
                              NNPIDeviceContext device,
-                             std::shared_ptr<NNPIDeviceTracing> deviceTracing,
                              CompiledFunction *compiledFunction,
                              StaticPlaceholderMap *staticPlaceholderMap,
                              std::shared_ptr<NNPIDeviceOptions> deviceOptions,
@@ -53,26 +83,39 @@ Error InferencePoolEnv::init(unsigned numWorkers, NNPIAdapter adapter,
   deviceId_ = deviceId;
   functionName_ = functionName;
   device_ = device;
-  adapter_ = adapter;
+  pAdapter_ = adapter;
   if (workersPool_) {
     return MAKE_ERR("InferencePool already initialized!");
   }
-  numWorkers_ = numWorkers;
+
+  nnpiCompiledFunction_ = static_cast<NNPICompiledFunction *>(compiledFunction);
+  size_t optionsNumWorkers =
+      nnpiCompiledFunction_->getCompilationOptions().numWorkers;
+  // Ice-ref not re-entrant for the same nnpiNetwork.
+  size_t numWorkers = deviceOptions_->inferOnDevice ? optionsNumWorkers : 1;
   workersPool_ = glow::make_unique<folly::CPUThreadPoolExecutor>(
-      numWorkers_, std::make_shared<folly::NamedThreadFactory>("NNPI-worker"));
-  deviceTracing_ = deviceTracing;
+      numWorkers, std::make_shared<folly::NamedThreadFactory>("NNPI-worker"));
   staticPlaceholderMap_ = staticPlaceholderMap;
 
-  inferenceContexts_.resize(numWorkers_);
-  freeContexts_.resize(numWorkers_);
-  if (inferenceContexts_.size() != numWorkers_) {
+  inferenceContexts_.resize(numWorkers);
+  freeContexts_.resize(numWorkers);
+  if (inferenceContexts_.size() != numWorkers) {
     return MAKE_ERR("InferencePool failed to create inference contexts");
   }
 
   // Create host network.
-  nnpiCompiledFunction_ = static_cast<NNPICompiledFunction *>(compiledFunction);
   NNPIHostNetwork hostNetwork(NNPI_INVALID_NNPIHANDLE);
   if (deviceOptions_->inferOnDevice) {
+    // Load IA extenstions.
+    for (auto &extensionPath : nnpiCompiledFunction_->getIAExtensionPaths()) {
+      NNPIExtension ext;
+      LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
+          nnpiExtensionCreate(extensionPath.c_str(), &ext),
+          "Failed to create NNPI IA Extension object");
+      LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
+          nnpiDeviceContextLoadExtension(device, ext),
+          "Failed to load NNPI IA Extension object");
+    }
     // Create NNPI host network (load compiled binary).
     auto filename = nnpiCompiledFunction_->getCompilationFilename();
     if (filename.empty()) // Create network from memory.
@@ -89,7 +132,8 @@ Error InferencePoolEnv::init(unsigned numWorkers, NNPIAdapter adapter,
       inputStream.seekCallback = NULL;
       DBG_MEM_USAGE("call nnpiHostNetworkCreateFromStream");
       LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
-          nnpiHostNetworkCreateFromStream(adapter, &inputStream, &hostNetwork),
+          nnpiHostNetworkCreateFromStream(pAdapter_->getHandle(), &inputStream,
+                                          &hostNetwork),
           "Failed to create NNPI host network");
       DBG_MEM_USAGE("done nnpiHostNetworkCreateFromStream");
       nnpiCompiledFunction_->unlockCompiledStream();
@@ -97,15 +141,38 @@ Error InferencePoolEnv::init(unsigned numWorkers, NNPIAdapter adapter,
     {
       filename += ".zip";
       LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
-          nnpiHostNetworkCreateFromFile(adapter, filename.c_str(),
-                                        &hostNetwork),
+          nnpiHostNetworkCreateFromFile(pAdapter_->getHandle(),
+                                        filename.c_str(), &hostNetwork),
           "Failed to create NNPI host network");
     }
 
     DBG_MEM_USAGE("call nnpiDeviceNetworkCreate");
+    NNPIDeviceNetworkConfig cfg =
+        nnpiCompiledFunction_->getDeviceNetworkConfig();
+    NNPIDeviceNetworkConfig *pCfg = nullptr;
+    if (!isEmptyDeviceNetworkConfig(cfg)) {
+      pCfg = &cfg;
+      LOG(INFO) << "DeviceNetwork PnP: "
+                << "\n";
+      LOG(INFO) << "  Ring: " << cfg.pnpHints.ringFrequencyPrio << "\n";
+      LOG(INFO) << "  ICEBO 0: " << cfg.pnpHints.iceBOFrequencyPrio[0] << "\n";
+      LOG(INFO) << "  ICEBO 1: " << cfg.pnpHints.iceBOFrequencyPrio[1] << "\n";
+      LOG(INFO) << "  ICEBO 2: " << cfg.pnpHints.iceBOFrequencyPrio[2] << "\n";
+      LOG(INFO) << "  ICEBO 3: " << cfg.pnpHints.iceBOFrequencyPrio[3] << "\n";
+      LOG(INFO) << "  ICEBO 4: " << cfg.pnpHints.iceBOFrequencyPrio[4] << "\n";
+      LOG(INFO) << "  ICEBO 5: " << cfg.pnpHints.iceBOFrequencyPrio[5] << "\n";
+      LOG(INFO) << "  IA 0: " << cfg.pnpHints.IAFrequencyPrio[0] << "\n";
+      LOG(INFO) << "  IA 1: " << cfg.pnpHints.IAFrequencyPrio[1] << "\n";
+      LOG(INFO) << "  DDR: " << cfg.pnpHints.DDRBandwidth << "\n";
+      LOG(INFO)
+          << "  Resource reservation: "
+          << nnpiCompiledFunction_->getCompilationOptions().reserveResources
+          << "\n";
+    }
+
     // Create NNPI device network (deploy to device).
     LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
-        nnpiDeviceNetworkCreate(device, hostNetwork, nullptr, &deviceNetwork_),
+        nnpiDeviceNetworkCreate(device, hostNetwork, pCfg, &deviceNetwork_),
         "Failed to create NNPI device network");
     DBG_MEM_USAGE("done nnpiDeviceNetworkCreate");
     if (nnpiCompiledFunction_->getCompilationOptions().reserveResources) {
@@ -184,8 +251,9 @@ Error InferencePoolEnv::init(unsigned numWorkers, NNPIAdapter adapter,
         nnpiCompiledFunction_->getCompiledNetworkHandle(),
         nnpiCompiledFunction_->getCompilationConfig(), deviceNetwork_, adapter,
         device, nnpiCompiledFunction_->getPartialInputs(),
-        nnpiCompiledFunction_->getStaticInputs(), deviceTracing_,
-        staticPlaceholderMap_, deviceOptions_, functionName_, deviceId_);
+        nnpiCompiledFunction_->getPaddedInputs(),
+        nnpiCompiledFunction_->getStaticInputs(), staticPlaceholderMap_,
+        deviceOptions_, functionName_, deviceId_);
     if (!success) {
       return MAKE_ERR("Failed to initialize inferece context");
     }
@@ -261,14 +329,14 @@ InferencePoolEnv::createDetachedInferenceContext(PlaceholderUsageMap &phUsage) {
 
   InferenceContext *infCtx = new InferenceContext();
 
-  if (!infCtx->init(inputDesc_, outputDesc_,
-                    nnpiCompiledFunction_->getCompiledNetworkHandle(),
-                    nnpiCompiledFunction_->getCompilationConfig(),
-                    deviceNetwork_, adapter_, device_,
-                    nnpiCompiledFunction_->getPartialInputs(),
-                    nnpiCompiledFunction_->getStaticInputs(), deviceTracing_,
-                    staticPlaceholderMap_, deviceOptions_, functionName_,
-                    deviceId_, &phUsage)) {
+  if (!infCtx->init(
+          inputDesc_, outputDesc_,
+          nnpiCompiledFunction_->getCompiledNetworkHandle(),
+          nnpiCompiledFunction_->getCompilationConfig(), deviceNetwork_,
+          pAdapter_, device_, nnpiCompiledFunction_->getPartialInputs(),
+          nnpiCompiledFunction_->getPaddedInputs(),
+          nnpiCompiledFunction_->getStaticInputs(), staticPlaceholderMap_,
+          deviceOptions_, functionName_, deviceId_, &phUsage)) {
     delete infCtx;
     ASSERT_WITH_MSG(infCtx, "Failed to initialize detached inference context");
     return nullptr;

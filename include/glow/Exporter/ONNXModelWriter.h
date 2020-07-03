@@ -19,6 +19,7 @@
 
 #include "glow/Exporter/CommonOperatorWriter.h"
 #include "glow/Graph/Graph.h"
+#include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Runtime/RuntimeTypes.h"
 
 #include "onnx/onnx_pb.h"
@@ -52,6 +53,10 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   ONNX_NAMESPACE::ModelProto modelProto_;
   // GraphProto that we are writing to.
   ONNX_TRAITS::GraphProto *graphProto_;
+  // Root GraphProto that we are writing to. Equal to \ref graphProto_ unless
+  // when writing a constant folding subgraph, when graphProto_ is temporarily
+  // changed.
+  ONNX_TRAITS::GraphProto *graphProtoRoot_;
   /// Current IR version of ONNX.
   const size_t irVersion_;
   /// Current version of ONNX standard.
@@ -62,15 +67,24 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   const bool zipMode_;
   /// Whether we use text mode or not
   const bool textMode_;
+  /// Whether to include Constant (initializer) data in the exported proto.
+  const bool includeConstantData_;
+  /// Extra metadata properties to add to the ONNX file
+  const llvm::StringMap<std::string> &extraMetadataProps_;
   /// Whether to use custom ONNX ops.
   const bool useGlowCustomOps_;
   /// Whether we are writing a DAG.
   const bool dagMode_;
+  /// A map containing a record of what constant folding took place, to record
+  /// in serialized DAGs.
+  const ConstantFoldingRecordMap &constFoldRecord_;
   /// A dedicated list of initializers in case the tensors get too big and don't
   /// fit into the model.
   std::list<TensorType> initializers_;
   /// Holds all Functions from a DAG that are being written when in dagMode_.
   llvm::SmallSet<Function *, 6> functionsFromDAG_;
+  /// Holds all constant folding Functions that have been processed.
+  llvm::SmallSet<Function *, 6> processedConstFoldFunctions_;
   /// Writes tensor shape from placeholder \p PH into protpbuf \p valueProto.
   void tensorShapeFromPlaceholder(const Placeholder *PH,
                                   ValueInfoType *valueProto);
@@ -103,6 +117,15 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   /// was an issue during iteration or writing.
   Error writeFunction();
 
+  /// Given a Constant \p C that was previously created during Constant folding,
+  /// Serializes the constant folding Function saved by \p SN, where the
+  /// Function is the parent of \p SN. The function is written to an attribute
+  /// in a Glow__ConstFoldSubgraph NodeProto. \returns if an Error occurs.
+  Error writeConstantFoldingSubgraph(const Constant *C, SaveNode *SN);
+
+  /// \returns whether currently writing a constant folding subgraph.
+  bool isWritingConstFoldSubgraph();
+
   /// Finalize the written function and write it out to \p filename. \returns if
   /// there is an error encountered.
   Error finalizeAndWriteProto(llvm::StringRef filename);
@@ -124,8 +147,11 @@ public:
   static typename TensorType::DataType convertType(const Type &glowType);
   /// Writes Glow tensor \p T to proto output \p out. Depending on
   /// \p useGlowCustomOps meta info will be annotated differently.
+  /// If \p includeData then the data from \p T will be included; otherwise only
+  /// the type info and name will be.
   static void writeTensor(const Tensor &T, TensorType *out,
-                          bool useGlowCustomOps = false);
+                          bool useGlowCustomOps = false,
+                          bool includeData = true);
 
   /// Creates an ONNX model writer to serialize \p F graph into file
   /// \p modelFilename, writing \p irVersion and \p opsetVersion.
@@ -136,11 +162,22 @@ public:
   /// file along with the model file and package them into a zip file. If
   /// \p useGlowCustomOps then it will use auto-generated export logic via
   /// NodeGen to export all Glow Nodes as is via custom ops, instead of trying
-  /// to abide by the official ONNX ops.
+  /// to abide by the official ONNX ops. If \p includeConstantData then data for
+  /// Constants will be serialized in the written model, otherwise it will be
+  /// skipped (but initializers will still exist, they will just have no data).
+  /// \p extraMetadataProps is a mapping of key value pairs which are added to
+  /// the metadata props portion of the ONNX.
+  /// \p constFoldRecord contains any records of constant folding that should be
+  /// included in the serialized model.
   ONNXModelWriter(const std::string &modelFilename, Function &F,
                   size_t irVersion, size_t opsetVersion,
                   Error *errPtr = nullptr, bool textMode = false,
-                  bool zipMode = false, bool useGlowCustomOps = false);
+                  bool zipMode = false, bool useGlowCustomOps = false,
+                  bool includeConstantData = true,
+                  const llvm::StringMap<std::string> &extraMetadataProps =
+                      llvm::StringMap<std::string>(),
+                  const ConstantFoldingRecordMap &constFoldRecord =
+                      ConstantFoldingRecordMap());
 
   /// Creates an ONNX model writer to serialize \p dagList into file
 
@@ -152,11 +189,20 @@ public:
   /// supports serialization with text format or binary format depending on
   /// \p textMode. If \p zipMode is true, it will save weights into individual
   /// TensorProto file along with the model file and package them into a zip
-  /// file.
+  /// file. If \p includeConstantData then data for Constants will be serialized
+  /// in the written model, otherwise it will be skipped (but initializers will
+  /// still exist, they will just have no data). \p extraMetadataProps is
+  /// a mapping of key value pairs which are added to the metadata props portion
+  /// of the ONNX. \p constFoldRecord contains any records of constant folding
+  /// that should be included in the serialized model.
   ONNXModelWriter(const std::string &modelFilename, runtime::DAGListTy &dagList,
                   size_t irVersion, size_t opsetVersion,
                   Error *errPtr = nullptr, bool textMode = false,
-                  bool zipMode = false);
+                  bool zipMode = false, bool includeConstantData = true,
+                  const llvm::StringMap<std::string> &extraMetadataProps =
+                      llvm::StringMap<std::string>(),
+                  const ConstantFoldingRecordMap &constFoldRecord =
+                      ConstantFoldingRecordMap());
 
 private:
   /// \returns error for the unexpected node kind.

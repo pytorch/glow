@@ -30,18 +30,19 @@
 using namespace glow;
 
 namespace {
-/// Given a Function \p F and input names \p inpuTensorNames and input types \p
+/// Given a Function \p F and input names \p inputTensorNames and input types \p
 /// inputTensorTypes, writes the function to file and reads it back using the
 /// ONNXModelWriter and ONNXModelReader respectively then \returns the
 /// reloaded function. \p useGlowCustomOps is used for determining the format
 /// for ONNXModelWriter to write with.
 Expected<Function *>
-saveAndReloadFunction(Function *F, llvm::ArrayRef<const char *> inpuTensorNames,
+saveAndReloadFunction(Module &reloadMod, Function *F,
+                      llvm::ArrayRef<const char *> inputTensorNames,
                       llvm::ArrayRef<TypeRef> inputTensorTypes,
                       size_t irVer = 5, size_t opsetVer = 10,
-                      bool zipMode = false, bool useGlowCustomOps = false) {
-  auto &mod = *F->getParent();
-
+                      bool zipMode = false, bool useGlowCustomOps = false,
+                      bool includeConstantData = true,
+                      ConstantFoldingRecordMap *constFoldRecord = nullptr) {
   llvm::SmallString<64> path;
   auto tempFileRes = llvm::sys::fs::createTemporaryFile(
       "exporter", zipMode ? "output.zip" : "output.onnxtxt", path);
@@ -50,12 +51,17 @@ saveAndReloadFunction(Function *F, llvm::ArrayRef<const char *> inpuTensorNames,
                     "Failed to create temp file to write into.");
 
   std::string outputFilename(path.c_str());
+  ScopeGuard cleanup([&]() { llvm::sys::fs::remove(outputFilename); });
 
   // Write model to file.
   {
     Error err = Error::empty();
-    ONNXModelWriter onnxWR(outputFilename, *F, irVer, opsetVer, &err, !zipMode,
-                           zipMode, useGlowCustomOps);
+
+    llvm::StringMap<std::string> extraMetadataProps;
+    ONNXModelWriter onnxWR(
+        outputFilename, *F, irVer, opsetVer, &err, !zipMode, zipMode,
+        useGlowCustomOps, includeConstantData, extraMetadataProps,
+        constFoldRecord ? *constFoldRecord : ConstantFoldingRecordMap());
 
     if (err) {
       llvm::sys::fs::remove(outputFilename);
@@ -64,12 +70,42 @@ saveAndReloadFunction(Function *F, llvm::ArrayRef<const char *> inpuTensorNames,
     RETURN_IF_ERR(std::move(err));
   }
 
+  Function *R = nullptr;
+  Module &origMod = *F->getParent();
+  if (!includeConstantData) {
+    R = reloadMod.getFunction(F->getName());
+    RETURN_ERR_IF_NOT(R, "Did not find Function to reload into.");
+    R->clear();
+    if (constFoldRecord) {
+      // Additionally remove the original Constants that we first folded, so
+      // that when we reload below we can recreate them.
+      std::unordered_set<Function *> funsToDelete;
+      for (auto &pair : *constFoldRecord) {
+        Function *origF = pair.second->getParent();
+        funsToDelete.insert(origF);
+        Constant *C = reloadMod.getConstantByName(pair.first->getName());
+        RETURN_ERR_IF_NOT(C, "Did not find constant that was initially folded");
+        reloadMod.eraseConstant(C);
+      }
+      for (Function *origF : funsToDelete) {
+        Function *reloadConstFoldF = reloadMod.getFunction(origF->getName());
+        RETURN_ERR_IF_NOT(reloadConstFoldF,
+                          "Did not find const folding function reloaded");
+        reloadMod.eraseFunction(reloadConstFoldF);
+        origMod.eraseFunction(origF);
+      }
+    }
+  } else {
+    R = reloadMod.createFunction("R");
+  }
+
   // Load model from file.
-  Function *R = mod.createFunction("R");
   {
     Error err = Error::empty();
-    ONNXModelLoader onnxLD(outputFilename, inpuTensorNames, inputTensorTypes,
-                           *R, &err, zipMode);
+    ONNXModelLoader onnxLD(outputFilename, inputTensorNames, inputTensorTypes,
+                           *R, &err, zipMode, /* perNodeOpts */ nullptr,
+                           /* disableConstFoldInLoader */ true,
+                           /* loadIntoExistingModule */ !includeConstantData);
 
     if (err) {
       llvm::errs() << "ONNXModelLoader failed to reload model: "
@@ -81,6 +117,22 @@ saveAndReloadFunction(Function *F, llvm::ArrayRef<const char *> inpuTensorNames,
 
   // Verify reloaded function is valid.
   RETURN_ERR_IF_NOT(R->verify(), "Reloaded function is not valid.");
+
+  // Verify that the Constants from the original Module have the same data as
+  // those in the reloaded module.
+  if (constFoldRecord) {
+    deleteUnusedConstants(reloadMod);
+    deleteUnusedConstants(origMod);
+    for (Constant *newC : reloadMod.getConstants()) {
+      Constant *origC = R->getParent()->getConstantByName(newC->getName());
+      RETURN_ERR_IF_NOT(origC,
+                        strFormat("Expected original Constant by name %s",
+                                  newC->getName().data()));
+      RETURN_ERR_IF_NOT(newC->getPayload().isBitwiseEqual(origC->getPayload()),
+                        strFormat("Mismatch on Constants of name %s",
+                                  newC->getName().data()));
+    }
+  }
 
   return R;
 }
@@ -112,8 +164,9 @@ void testLoadAndSaveONNXModel(const std::string &name, bool zipMode) {
     FAIL_TEST_IF_ERR(std::move(err));
   }
 
-  FAIL_TEST_IF_ERR(saveAndReloadFunction(F, {}, {}, irVer, opsetVer, zipMode,
-                                         useGlowCustomOps)
+  Module reloadMod;
+  FAIL_TEST_IF_ERR(saveAndReloadFunction(reloadMod, F, {}, {}, irVer, opsetVer,
+                                         zipMode, useGlowCustomOps)
                        .takeError());
 }
 
@@ -154,6 +207,67 @@ Expected<T *> getSingleNodeWithKind(Function *F, Kinded::Kind type) {
   return node;
 }
 } // namespace
+
+/// Use to test constant folding exporting and reloading tests, where some
+/// constant folding is recorded and serialized in the custom Glow ONNX model.
+class ConstFoldReloadTest : public ::testing::Test {
+public:
+  ConstFoldReloadTest() : EE_("Interpreter"), mod_(EE_.getModule()) {
+    F_ = mod_.createFunction("main");
+  }
+
+protected:
+  ExecutionEngine EE_;
+  Module &mod_;
+  Function *F_;
+  PlaceholderBindings bindings_;
+  CompilationContext cctx_;
+
+  /// Constant folds \ref F_ and then serializes it. Then deserializes it and
+  /// runs it and makes sure that running the original and the reloaded Function
+  /// are bitwise equal. Verifies that \p numExpectedConstsFolded constant
+  /// folding records are created during constant folding/recording.
+  void serializeAndReloadAndCompareResults(unsigned numExpectedConstsFolded) {
+    bindings_.allocate(mod_.getPlaceholders());
+
+    // Perform constant folding, recording what occurs so we can serialize it.
+    ConstantFoldingRecordMap record = constantFoldAndRecord(F_, cctx_);
+    EXPECT_EQ(record.size(), numExpectedConstsFolded);
+    runDCEPass(F_, cctx_);
+
+    // Clone the original module into a new module used for reloading the model.
+    ExecutionEngine reloadEE(EE_.getBackendName());
+    Module &reloadMod = reloadEE.getModule();
+    mod_.clone(&reloadMod);
+
+    // Save and reload F.
+    Function *reloadF_;
+    ASSIGN_VALUE_OR_FAIL_TEST(
+        reloadF_,
+        saveAndReloadFunction(reloadMod, F_, {}, {}, 7, 9,
+                              /* zipMode */ false,
+                              /* useGlowCustomOps */ true,
+                              /* includeConstantData */ false, &record));
+
+    // Verify that the Function and its Module are the same before and after.
+    EXPECT_EQ(reloadF_->toString(), F_->toString());
+    EXPECT_EQ(reloadMod.toString(), mod_.toString());
+
+    PlaceholderBindings reloadBindings =
+        bindings_.clone(reloadMod.getPlaceholders());
+
+    // Now run both to check they have bitwise equal results.
+    EE_.compile(cctx_);
+    EE_.run(bindings_);
+
+    CompilationContext reloadCctx;
+    reloadEE.compile(reloadCctx);
+    reloadEE.run(reloadBindings);
+
+    EXPECT_TRUE(
+        PlaceholderBindings::compare(&bindings_, &reloadBindings, 0.0f));
+  }
+};
 
 TEST(exporter, onnxModels) {
   std::string inputDirectory(GLOW_DATA_PATH "tests/models/onnxModels");
@@ -202,6 +316,15 @@ TEST(exporter, onnxModels) {
         name.find("simpleConvTransposeOutShape.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShapeDilation.onnxtxt") !=
             std::string::npos ||
+        name.find("simpleConvTransposeOutShapeSameLower.onnxtxt") !=
+            std::string::npos ||
+        name.find("simpleConvTransposeOutShapeSameUpper.onnxtxt") !=
+            std::string::npos ||
+        name.find("simpleConvTransposeAutoPadSameLower.onnxtxt") !=
+            std::string::npos ||
+        name.find("simpleConvTransposeAutoPadSameUpper.onnxtxt") !=
+            std::string::npos ||
+        name.find("convTransposeAsymmetric.onnxtxt") != std::string::npos ||
         name.find("NonZero.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposePads.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeAutoPadValid.onnxtxt") !=
@@ -274,6 +397,7 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
   unsigned_t outChannels = 12;
   unsigned_t filterSide = 3;
   unsigned_t groups = 4;
+  unsigned_t dilation = 1;
 
   Placeholder *input = mod.createPlaceholder(
       ElemKind::Int8QTy, {batchSize, inSide, inSide, inChannels}, 1.2, 3,
@@ -281,12 +405,14 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
 
   Constant *biasConstant =
       mod.createConstant(ElemKind::FloatTy, {outChannels}, "bias");
+  biasConstant->getPayloadMutable().getHandle<float>().randomize(-0.1, 0.1,
+                                                                 mod.getPRNG());
 
-  Constant *scalesConstant =
-      mod.createConstant(ElemKind::FloatTy, {outChannels}, "scales");
+  Constant *filterScalesConstant =
+      mod.createConstant(ElemKind::FloatTy, {outChannels}, "filter_scales");
 
-  Constant *offsetsConstant =
-      mod.createConstant(ElemKind::Int32ITy, {outChannels}, "offsets");
+  Constant *filterOffsetsConstant =
+      mod.createConstant(ElemKind::Int32ITy, {outChannels}, "filter_offsets");
 
   Constant *weightsConstant = mod.createConstant(
       ElemKind::Int8QTy,
@@ -304,8 +430,10 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
       {batchSize, outSize.first, outSize.second, outChannels}, 3.8, 4);
 
   auto *cqConv = F->createChannelwiseQuantizedConv(
-      "cqconv", input, weightsConstant, biasConstant, scalesConstant,
-      offsetsConstant, outTy, kernels, strides, pads, groups);
+      "cqconv", input, weightsConstant, biasConstant, filterScalesConstant,
+      filterOffsetsConstant, /* biasScales */ nullptr,
+      /* biasOffsets */ nullptr, outTy, kernels, strides, pads, groups,
+      dilation);
 
   auto *save = F->createSave("save_out", cqConv);
 
@@ -318,8 +446,9 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
 
   // Save and reload F.
   Function *R;
+  Module reloadMod;
   ASSIGN_VALUE_OR_FAIL_TEST(
-      R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
+      R, saveAndReloadFunction(reloadMod, F, {"input"}, {input->getType()}));
 
   ChannelwiseQuantizedConvolutionNode *cqConvReloaded;
   ASSIGN_VALUE_OR_FAIL_TEST(
@@ -327,22 +456,29 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
       getSingleNodeWithKind<ChannelwiseQuantizedConvolutionNode>(
           R, Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind));
 
-  EXPECT_EQ(cqConvReloaded->getInput().getType(), cqConv->getInput().getType());
-  EXPECT_EQ(cqConvReloaded->getResult().getType(),
-            cqConv->getResult().getType());
+  EXPECT_TRUE(cqConvReloaded->getInput().getType()->isEqual(
+      *cqConv->getInput().getType()));
+  EXPECT_TRUE(cqConvReloaded->getResult().getType()->isEqual(
+      *cqConv->getResult().getType()));
 
-  EXPECT_EQ(cqConvReloaded->getFilter().getType(),
-            cqConv->getFilter().getType());
-  EXPECT_EQ(cqConvReloaded->getBias().getType(), cqConv->getBias().getType());
-  EXPECT_EQ(cqConvReloaded->getScales().getType(),
-            cqConv->getScales().getType());
-  EXPECT_EQ(cqConvReloaded->getOffsets().getType(),
-            cqConv->getOffsets().getType());
+  EXPECT_TRUE(cqConvReloaded->getFilter().getType()->isEqual(
+      *cqConv->getFilter().getType()));
+  EXPECT_TRUE(cqConvReloaded->getBias().getType()->isEqual(
+      *cqConv->getBias().getType()));
+  EXPECT_TRUE(cqConvReloaded->getFilterScales().getType()->isEqual(
+      *cqConv->getFilterScales().getType()));
+  EXPECT_TRUE(cqConvReloaded->getFilterOffsets().getType()->isEqual(
+      *cqConv->getFilterOffsets().getType()));
+  EXPECT_TRUE(cqConvReloaded->getBiasScales().getType()->isEqual(
+      *cqConv->getBiasScales().getType()));
+  EXPECT_TRUE(cqConvReloaded->getBiasOffsets().getType()->isEqual(
+      *cqConv->getBiasOffsets().getType()));
 
   EXPECT_EQ(cqConvReloaded->getKernels(), cqConv->getKernels());
   EXPECT_EQ(cqConvReloaded->getStrides(), cqConv->getStrides());
   EXPECT_EQ(cqConvReloaded->getPads(), cqConv->getPads());
   EXPECT_EQ(cqConvReloaded->getGroup(), cqConv->getGroup());
+  EXPECT_EQ(cqConvReloaded->getDilation(), cqConv->getDilation());
 }
 
 TEST(exporter, QuantizedConvolution) {
@@ -397,8 +533,9 @@ TEST(exporter, QuantizedConvolution) {
 
   // Save and reload F.
   Function *R;
+  Module reloadMod;
   ASSIGN_VALUE_OR_FAIL_TEST(
-      R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
+      R, saveAndReloadFunction(reloadMod, F, {"input"}, {input->getType()}));
 
   // Verify reloaded function matches the original.
   ConvolutionNode *qConvReloaded;
@@ -406,11 +543,15 @@ TEST(exporter, QuantizedConvolution) {
                             getSingleNodeWithKind<ConvolutionNode>(
                                 R, Kinded::Kind::ConvolutionNodeKind));
 
-  EXPECT_EQ(qConvReloaded->getInput().getType(), qConv->getInput().getType());
-  EXPECT_EQ(qConvReloaded->getResult().getType(), qConv->getResult().getType());
+  EXPECT_TRUE(qConvReloaded->getInput().getType()->isEqual(
+      *qConv->getInput().getType()));
+  EXPECT_TRUE(qConvReloaded->getResult().getType()->isEqual(
+      *qConv->getResult().getType()));
 
-  EXPECT_EQ(qConvReloaded->getFilter().getType(), qConv->getFilter().getType());
-  EXPECT_EQ(qConvReloaded->getBias().getType(), qConv->getBias().getType());
+  EXPECT_TRUE(qConvReloaded->getFilter().getType()->isEqual(
+      *qConv->getFilter().getType()));
+  EXPECT_TRUE(
+      qConvReloaded->getBias().getType()->isEqual(*qConv->getBias().getType()));
 
   EXPECT_EQ(qConvReloaded->getKernels(), qConv->getKernels());
   EXPECT_EQ(qConvReloaded->getStrides(), qConv->getStrides());
@@ -451,8 +592,9 @@ TEST(exporter, QuantizedMaxPool) {
 
   // Save and reload F.
   Function *R;
+  Module reloadMod;
   ASSIGN_VALUE_OR_FAIL_TEST(
-      R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
+      R, saveAndReloadFunction(reloadMod, F, {"input"}, {input->getType()}));
 
   // Verify reloaded function matches the original.
   MaxPoolNode *maxPoolReloaded;
@@ -460,10 +602,10 @@ TEST(exporter, QuantizedMaxPool) {
       maxPoolReloaded,
       getSingleNodeWithKind<MaxPoolNode>(R, Kinded::Kind::MaxPoolNodeKind));
 
-  EXPECT_EQ(maxPoolReloaded->getInput().getType(),
-            maxPool->getInput().getType());
-  EXPECT_EQ(maxPoolReloaded->getResult().getType(),
-            maxPool->getResult().getType());
+  EXPECT_TRUE(maxPoolReloaded->getInput().getType()->isEqual(
+      *maxPool->getInput().getType()));
+  EXPECT_TRUE(maxPoolReloaded->getResult().getType()->isEqual(
+      *maxPool->getResult().getType()));
 
   EXPECT_EQ(maxPoolReloaded->getKernels(), maxPool->getKernels());
   EXPECT_EQ(maxPoolReloaded->getStrides(), maxPool->getStrides());
@@ -502,8 +644,9 @@ TEST(exporter, QuantizedAvgPool) {
 
   // Save and reload F.
   Function *R;
+  Module reloadMod;
   ASSIGN_VALUE_OR_FAIL_TEST(
-      R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
+      R, saveAndReloadFunction(reloadMod, F, {"input"}, {input->getType()}));
 
   // Verify reloaded function matches the original.
   AvgPoolNode *avgPoolReloaded;
@@ -511,10 +654,10 @@ TEST(exporter, QuantizedAvgPool) {
       avgPoolReloaded,
       getSingleNodeWithKind<AvgPoolNode>(R, Kinded::Kind::AvgPoolNodeKind));
 
-  EXPECT_EQ(avgPoolReloaded->getInput().getType(),
-            avgPool->getInput().getType());
-  EXPECT_EQ(avgPoolReloaded->getResult().getType(),
-            avgPool->getResult().getType());
+  EXPECT_TRUE(avgPoolReloaded->getInput().getType()->isEqual(
+      *avgPool->getInput().getType()));
+  EXPECT_TRUE(avgPoolReloaded->getResult().getType()->isEqual(
+      *avgPool->getResult().getType()));
 
   EXPECT_EQ(avgPoolReloaded->getKernels(), avgPool->getKernels());
   EXPECT_EQ(avgPoolReloaded->getStrides(), avgPool->getStrides());
@@ -552,8 +695,9 @@ TEST(exporter, QuantizedAdaptiveAvgPool) {
 
   // Save and reload F.
   Function *R;
+  Module reloadMod;
   ASSIGN_VALUE_OR_FAIL_TEST(
-      R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
+      R, saveAndReloadFunction(reloadMod, F, {"input"}, {input->getType()}));
 
   // Verify reloaded function matches the original.
   AdaptiveAvgPoolNode *adaptiveAvgPoolReloaded;
@@ -561,10 +705,10 @@ TEST(exporter, QuantizedAdaptiveAvgPool) {
                             getSingleNodeWithKind<AdaptiveAvgPoolNode>(
                                 R, Kinded::Kind::AdaptiveAvgPoolNodeKind));
 
-  EXPECT_EQ(adaptiveAvgPoolReloaded->getInput().getType(),
-            adaptiveAvgPool->getInput().getType());
-  EXPECT_EQ(adaptiveAvgPoolReloaded->getResult().getType(),
-            adaptiveAvgPool->getResult().getType());
+  EXPECT_TRUE(adaptiveAvgPoolReloaded->getInput().getType()->isEqual(
+      *adaptiveAvgPool->getInput().getType()));
+  EXPECT_TRUE(adaptiveAvgPoolReloaded->getResult().getType()->isEqual(
+      *adaptiveAvgPool->getResult().getType()));
 }
 
 TEST(exporter, RowwiseQuantizedFullyConnected) {
@@ -604,8 +748,9 @@ TEST(exporter, RowwiseQuantizedFullyConnected) {
 
   // Save and reload F.
   Function *R;
+  Module reloadMod;
   ASSIGN_VALUE_OR_FAIL_TEST(
-      R, saveAndReloadFunction(F, {"input"}, {input->getType()}));
+      R, saveAndReloadFunction(reloadMod, F, {"input"}, {input->getType()}));
 
   RowwiseQuantizedFullyConnectedNode *rwqFCReloaded;
   ASSIGN_VALUE_OR_FAIL_TEST(
@@ -613,13 +758,84 @@ TEST(exporter, RowwiseQuantizedFullyConnected) {
       getSingleNodeWithKind<RowwiseQuantizedFullyConnectedNode>(
           R, Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind));
 
-  EXPECT_EQ(rwqFCReloaded->getInput().getType(), rwqFC->getInput().getType());
-  EXPECT_EQ(rwqFCReloaded->getResult().getType(), rwqFC->getResult().getType());
+  EXPECT_TRUE(rwqFCReloaded->getInput().getType()->isEqual(
+      *rwqFC->getInput().getType()));
+  EXPECT_TRUE(rwqFCReloaded->getResult().getType()->isEqual(
+      *rwqFC->getResult().getType()));
 
-  EXPECT_EQ(rwqFCReloaded->getWeights().getType(),
-            rwqFC->getWeights().getType());
-  EXPECT_EQ(rwqFCReloaded->getBias().getType(), rwqFC->getBias().getType());
-  EXPECT_EQ(rwqFCReloaded->getScales().getType(), rwqFC->getScales().getType());
-  EXPECT_EQ(rwqFCReloaded->getOffsets().getType(),
-            rwqFC->getOffsets().getType());
+  EXPECT_TRUE(rwqFCReloaded->getWeights().getType()->isEqual(
+      *rwqFC->getWeights().getType()));
+  EXPECT_TRUE(
+      rwqFCReloaded->getBias().getType()->isEqual(*rwqFC->getBias().getType()));
+  EXPECT_TRUE(rwqFCReloaded->getScales().getType()->isEqual(
+      *rwqFC->getScales().getType()));
+  EXPECT_TRUE(rwqFCReloaded->getOffsets().getType()->isEqual(
+      *rwqFC->getOffsets().getType()));
+}
+
+TEST_F(ConstFoldReloadTest, exportGraphWithOneConstFoldingRecord) {
+  Placeholder *I =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {2, 100}, "input",
+                             /* isTrainable */ false);
+  Constant *W = mod_.createConstant(ElemKind::FloatTy, {10, 100}, "weight");
+  ClipNode *clipW = F_->createClip("clip", W, -5.f, 5.f);
+  ConvertToNode *convertW =
+      F_->createConvertTo("conv", clipW, ElemKind::Float16Ty);
+  TransposeNode *transposeW =
+      F_->createTranspose("transpose", convertW, {1, 0});
+  MatMulNode *MM = F_->createMatMul("matmul", I, transposeW);
+  F_->createSave("save", MM);
+
+  bindings_.allocate(I)->getHandle<float16_t>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  W->getPayloadMutable().getHandle<float>().randomize(-10, 10, mod_.getPRNG());
+
+  serializeAndReloadAndCompareResults(1);
+}
+
+TEST_F(ConstFoldReloadTest, exportGraphWithTwoConstFoldingRecords) {
+  Placeholder *I =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {2, 100}, "input",
+                             /* isTrainable */ false);
+  Constant *W = mod_.createConstant(ElemKind::FloatTy, {10, 100}, "weight");
+  ClipNode *clipW = F_->createClip("clip", W, -5.f, 5.f);
+  ConvertToNode *convertW =
+      F_->createConvertTo("conv", clipW, ElemKind::Float16Ty);
+  TransposeNode *transposeW =
+      F_->createTranspose("transpose", convertW, {1, 0});
+  MatMulNode *MM = F_->createMatMul("matmul", I, transposeW);
+  F_->createSave("save_mm", MM);
+
+  Constant *W2 = mod_.createConstant(ElemKind::Float16Ty, {2, 100}, "weight2");
+  TanhNode *tanhW = F_->createTanh("tanh", W2);
+  AddNode *add = F_->createAdd("add", tanhW, I);
+  F_->createSave("save_add", add);
+
+  bindings_.allocate(I)->getHandle<float16_t>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  W->getPayloadMutable().getHandle<float>().randomize(-10, 10, mod_.getPRNG());
+  W2->getPayloadMutable().getHandle<float16_t>().randomize(-10, 10,
+                                                           mod_.getPRNG());
+
+  serializeAndReloadAndCompareResults(2);
+}
+
+TEST_F(ConstFoldReloadTest, exportGraphWithTwoConstFoldingMultiOutputRecord) {
+  Constant *W = mod_.createConstant(ElemKind::FloatTy, {100}, "weight");
+  SigmoidNode *sigmoidW = F_->createSigmoid("sig", W);
+  ConvertToNode *convertW =
+      F_->createConvertTo("conv", sigmoidW, ElemKind::Float16Ty);
+  TopKNode *TK = F_->createTopK("topk", convertW, 5);
+  F_->createSave("save_indices", TK->getIndices());
+
+  Placeholder *I = mod_.createPlaceholder(ElemKind::Float16Ty, {5}, "input",
+                                          /* isTrainable */ false);
+  AddNode *add = F_->createAdd("add", I, TK->getValues());
+  F_->createSave("save_add", add);
+
+  bindings_.allocate(I)->getHandle<float16_t>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  W->getPayloadMutable().getHandle<float>().randomize(-10, 10, mod_.getPRNG());
+
+  serializeAndReloadAndCompareResults(2);
 }

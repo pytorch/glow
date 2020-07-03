@@ -290,7 +290,8 @@ struct HyphenNetwork {
     dim_t numSamples = inputs.dims()[0];
     EXPECT_LE(batchSize, numSamples);
     auto resultHandle =
-        bindings_.get(bindings_.getPlaceholderByName("result"))->getHandle<>();
+        bindings_.get(bindings_.getPlaceholderByNameSlow("result"))
+            ->getHandle<>();
     unsigned errors = 0;
 
     for (dim_t bi = 0; bi < numSamples; bi += batchSize) {

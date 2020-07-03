@@ -71,6 +71,12 @@ createDefaultGraphOptimizationPassPipeline() {
       // enables further optimizations.
       {FunctionPassID::OptimizeTransposeIntoReshape},
 
+      // Optimize arithmetic nodes based on algebraic identities.
+      {FunctionPassID::OptimizeArithmeticNodes},
+
+      // Fold some Arithmetic ops following a LayerNorm into LayerNorm.
+      {FunctionPassID::FoldLayerNormArithmetic},
+
       // Reshapes and transposes can prevent other optimizations from
       // triggering,
       // so try to optimize them out first.
@@ -162,6 +168,11 @@ createDefaultGraphOptimizationPassPipeline() {
        ConvergenceMode::UntilFixedPoint,
        {CompilationMode::Infer}},
 
+      // Try to remove unnecessary Split-Concat operations
+      {FunctionPassID::EliminateSliceConcat},
+
+      // Optimize select operations.
+      {FunctionPassID::OptimizeSelect},
       // Perform a round of Dead Code Elimination to cleanup the final pass.
       getDCEPassConfig(),
   };

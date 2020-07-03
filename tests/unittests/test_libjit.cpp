@@ -19,6 +19,7 @@
 /// The following variable needs to be defined in libjit, because codegen looks
 /// for it to determine the size of size_t on the target.
 size_t libjit_sizeTVar;
+int libjit_intVar;
 
 /// Simply write a global map to validate that static C++ constructors are
 /// correctly called.

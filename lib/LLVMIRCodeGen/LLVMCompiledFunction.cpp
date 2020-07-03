@@ -38,16 +38,16 @@ void LLVMCompiledFunction::loadPlaceholders(
 
   // Copy Placeholders into allocated memory.
   auto &symbolTable = runtimeBundle_.getSymbolTable();
-  for (auto PH : bindings->pairs()) {
+  for (auto &PH : bindings->pairs()) {
     auto it = symbolTable.find(PH.first->getName());
     if (it == symbolTable.end()) {
       continue;
     }
-    assert(!PH.second->isDeviceResident());
+    assert(!PH.second.isDeviceResident());
     auto symbolInfo = it->second;
-    auto payload = PH.second->getUnsafePtr();
+    auto payload = PH.second.getUnsafePtr();
     auto addr = symbolInfo.offset;
-    auto numBytes = PH.second->getUnpaddedSizeInBytes();
+    auto numBytes = PH.second.getUnpaddedSizeInBytes();
     // copy PH to allocated memory.
     memcpy(baseMutableWeightVarsAddress + addr, payload, numBytes);
   }
@@ -57,15 +57,15 @@ void LLVMCompiledFunction::updatePlaceholders(
     PlaceholderBindings *bindings, uint8_t *baseMutableWeightVarsAddress) {
   // Copy placeholders from device back into bindings.
   auto &symbolTable = runtimeBundle_.getSymbolTable();
-  for (auto PH : bindings->pairs()) {
+  for (auto &PH : bindings->pairs()) {
     auto it = symbolTable.find(PH.first->getName());
     if (it == symbolTable.end()) {
       continue;
     }
     auto symbolInfo = it->second;
     auto payload = baseMutableWeightVarsAddress + symbolInfo.offset;
-    auto numBytes = PH.second->getUnpaddedSizeInBytes();
-    auto addr = PH.second->getUnsafePtr();
+    auto numBytes = PH.second.getUnpaddedSizeInBytes();
+    auto addr = PH.second.getUnsafePtr();
     // copy PH from allocated memory.
     memcpy(addr, payload, numBytes);
   }

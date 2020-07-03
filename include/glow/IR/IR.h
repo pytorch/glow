@@ -177,6 +177,9 @@ public:
   /// operand \p srcIdx for writing the result of the operand at \p dstIdx.
   bool isInplaceOp(unsigned dstIdx, unsigned srcIdx) const { return false; }
 
+  /// \returns True if this instruction is not backend-specific.
+  bool isCanonical() const;
+
   /// \returns True if this instruction is data parallel.
   bool isDataParallel() const;
 

@@ -45,10 +45,17 @@ public:
   Error removeFunction(llvm::StringRef name);
 
   /// Evict function from device.
-  Error evictFunction(llvm::StringRef name, DeviceIDTy device);
+  Error evictFunction(llvm::StringRef name, DeviceManager *device);
 
   /// \returns a reference to the backend with name \p backendName.
   Backend &getBackend(llvm::StringRef backendName) const;
+
+  /// Update the list of available devices.
+  void updateAvailableDevices(const std::vector<DeviceManager *> &devices,
+                              const std::vector<DeviceIDTy> &mappings) {
+    devices_ = devices;
+    deviceMappings_ = mappings;
+  }
 
 private:
   /// Map of backends for all devices, one backend per device type.
@@ -68,6 +75,9 @@ private:
 
   /// List of available DeviceManagers added during initialization.
   std::vector<DeviceManager *> devices_;
+
+  /// Mapping from available devices to deviceID;
+  std::vector<DeviceIDTy> deviceMappings_;
 
   /// Helper function to cleanup a provision call. On \p failure free the
   /// compiledFunctions that were created, \p names , and remove networks

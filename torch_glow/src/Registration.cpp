@@ -40,24 +40,6 @@ namespace {
 /// Lock to protect the global graph runner map.
 std::shared_timed_mutex runnerMapMutex;
 
-size_t hashBlock(torch::jit::Block *block, size_t seed) {
-  size_t s = seed;
-  for (auto it = block->nodes().begin(); it != block->nodes().end(); ++it) {
-    auto *node = *it;
-    s = torch::hash_combine(s, torch::jit::HashNode{}(node));
-    if (!node->blocks().empty()) {
-      for (auto b : node->blocks()) {
-        s = hashBlock(b, s);
-      }
-    }
-  }
-  return s;
-}
-
-size_t hashGraph(std::shared_ptr<torch::jit::Graph> g) {
-  return hashBlock(g->block(), 0xcaffe2);
-}
-
 std::unordered_map<std::string, std::shared_ptr<CachingGraphRunner>> &
 getPreloadedRunnerMap() {
   static std::unordered_map<std::string, std::shared_ptr<CachingGraphRunner>>
@@ -121,7 +103,8 @@ void registerGlowOp(const c10::Symbol &symbol) {
         // 2. If not, see if a key based on fusion node symbol string has been
         // registered, which is usually done in AOT fashion
         // 3. If not, create a graphRunner with graph hash as a key
-        size_t key = hashGraph(node->g(at::attr::Subgraph));
+        size_t key =
+            reinterpret_cast<size_t>(node->g(at::attr::Subgraph)->block());
         std::string keyStr(sizeof(size_t), '\0');
         std::memcpy(&keyStr[0], &key, sizeof(key));
         std::shared_ptr<CachingGraphRunner> graphRunner =
@@ -141,7 +124,7 @@ void registerGlowOp(const c10::Symbol &symbol) {
           });
         }
 
-        return [graphRunner](torch::jit::Stack &stack) {
+        return [graphRunner](torch::jit::Stack *stack) {
           Error err = Error::empty();
           // Store old Python signal handlers and install standard signal
           // handlers, so that it is possible to kill/interrupt the process if
@@ -156,9 +139,9 @@ void registerGlowOp(const c10::Symbol &symbol) {
           }
 
           if (graphRunner->getSettings().preCompilePyTorchModule) {
-            err = graphRunner->runOnly(stack);
+            err = graphRunner->runOnly(*stack);
           } else {
-            err = graphRunner->run(stack);
+            err = graphRunner->run(*stack);
           }
 
           // Restore old signal handlers.
@@ -175,7 +158,6 @@ void registerGlowOp(const c10::Symbol &symbol) {
             // PyTorch framework expects an exception been thrown here.
             throw std::invalid_argument(ERR_TO_STRING(std::move(err)));
           }
-          return 0;
         };
       },
       at::AliasAnalysisKind::PURE_FUNCTION)});

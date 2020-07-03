@@ -341,6 +341,11 @@ private:
   Expected<NodeValue> loadQuantizedConvImpl(const torch::jit::Node *ptNode,
                                             const bool isRelu);
 
+  /// Common function to load both 2D and 3D AvgPool nodes
+  /// \returns error on failure.
+  Expected<NodeValue> loadAvgPoolImpl(const torch::jit::Node *ptNode,
+                                      int numDims);
+
   // Load a PyTorch aten::embedding_bag node.
   // \returns error on failure.
   Error loadEmbeddingBag(const torch::jit::Node *ptNode);
@@ -462,6 +467,10 @@ private:
   /// \returns error on failure.
   Error loadConvolution(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch conv2d node.
+  /// \returns error on failure.
+  Error loadConv2D(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch batch_norm node.
   /// \returns error on failure.
   Error loadBatchNorm(const torch::jit::Node *ptNode);
@@ -485,6 +494,11 @@ private:
   /// Load a glow::unpacked_quantized_conv node.
   // \return error on failure.
   Error loadQuantizedConvUnpacked(const torch::jit::Node *ptNode);
+
+  Error loadQuantizedConvReluUnpacked(const torch::jit::Node *ptNode);
+
+  Error loadQuantizedConvUnpackedImpl(const torch::jit::Node *ptNode,
+                                      bool isRelu = false);
 
   /// Load a PyTorch quantized::conv2d node.
   // \return error on failure.
@@ -521,6 +535,10 @@ private:
   /// Load a PyTorch avg_pool2d node.
   /// \returns error on failure.
   Error loadAvgPool2d(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch avg_pool3d node.
+  /// \returns error on failure.
+  Error loadAvgPool3d(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch adaptive_avg_pool2d node.
   /// \returns error on failure.
@@ -577,6 +595,10 @@ private:
   /// Load a PyTorch aten::reshape node.
   /// \returns error on failure.
   Error loadReshape(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::upsample_nearest3d node.
+  /// \returns error on failure.
+  Error loadUpsampleNearest3D(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch aten::view node.
   /// \returns error on failure.

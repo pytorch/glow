@@ -38,6 +38,9 @@ size_t CachingGraphRunner::computeGraphHash(
       const auto ptTensorType = c10::TensorType::create(input.toTensor());
       size_t tensorHash = std::hash<c10::TensorType>()(*ptTensorType);
       hash = torch::hash_combine(hash, tensorHash);
+    } else if (input.isBool()) {
+      size_t inputHash = std::hash<bool>()(input.toBool());
+      hash = torch::hash_combine(hash, inputHash);
     } else if (input.isInt()) {
       // just doing Int and IntList for now.
       size_t inputHash = std::hash<int64_t>()(input.toInt());
@@ -57,46 +60,46 @@ size_t CachingGraphRunner::computeGraphHash(
 
 void CachingGraphRunner::aggregateAndDumpTraces(TraceContext *traceContext,
                                                 bool flush) {
-  if (!traceContext && !flush) {
-    return;
-  }
-
   size_t numTracesPerDump = settings_.numTracesPerDump;
+  bool doDump = false;
+  std::string filename;
+  {
+    std::unique_lock<std::mutex> lock(tracesMutex_);
 
-  std::unique_lock<std::mutex> lock(tracesMutex_);
-
-  auto numTraces = ++numTraces_;
-
-  if (flush) {
-    if (mergedTraceContext_) {
-      size_t dumpNum = numTraces / numTracesPerDump;
-      std::string filename = strFormat("glow-trace-%zu.json", dumpNum);
-      if (traceContext) {
-        mergedTraceContext_->merge(traceContext);
-      }
-      mergedTraceContext_->dump(filename);
-      mergedTraceContext_ = nullptr;
+    if (traceContext) {
+      mergedTraceContext_->merge(traceContext);
+      numTraces_++;
+    } else if (mergedTraceContext_->getTraceEvents().empty()) {
+      return;
     }
-    return;
+    size_t numTraces = numTraces_;
+
+    // If numTracesPerDump <= 0, it means we don't merge unless there is a flush
+    if (flush || (numTracesPerDump > 0 && numTraces % numTracesPerDump == 0)) {
+      // Initial way of differentiating the dump files when there are multiple
+      // graph runners
+      // TODO(allwu): find a better way to generate trace file names
+      size_t hash = reinterpret_cast<size_t>(this);
+      size_t dumpNum = numTraceDumps_++;
+      filename =
+          strFormat("glow-trace-%04lx-%zu.json", hash % (1 << 16), dumpNum);
+      doDump = true;
+    }
   }
-
-  if (!mergedTraceContext_) {
-    mergedTraceContext_ = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
-  }
-
-  mergedTraceContext_->merge(traceContext);
-
-  if (numTraces % numTracesPerDump == 0) {
-    size_t dumpNum = (numTraces / numTracesPerDump) - 1;
-    std::string filename = strFormat("glow-trace-%zu.json", dumpNum);
+  if (doDump) {
     mergedTraceContext_->dump(filename);
-    mergedTraceContext_ = nullptr;
+    mergedTraceContext_ = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
   }
 }
 
 Expected<std::shared_ptr<CachingGraphRunner::PerGlowGraphInfo>>
 CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
                              TraceContext *traceContext) {
+  if (settings_.preCompilePyTorchModule) {
+    return MAKE_ERR(
+        "Calling JIT compilation when preCompilePyTorchModule is set");
+  }
+
   TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME, "torch_glow::loadImpl");
   const auto inputs = torch::jit::last(stack, graph_->inputs().size());
 
@@ -180,6 +183,43 @@ void CachingGraphRunner::runOnJit(torch::jit::Stack &stack) {
   getPyTorchLoaderSettings().fusionPassEnabled = temp;
 }
 
+struct TensorCompareResult {
+  double relErr;
+  double maxErr;
+  double maxRelErr;
+};
+
+template <typename Ty>
+TensorCompareResult compareTensors(glow::Tensor &RefT, glow::Tensor &CmpT) {
+  TensorCompareResult result = {INFINITY, INFINITY, INFINITY};
+  if (CmpT.getHandle<Ty>().size() != RefT.getHandle<Ty>().size()) {
+    LOG(ERROR) << "Dimension mismatch: "
+               << "\tReference dims: " << RefT.getHandle().getType().dims()
+               << "\tGlow dims: " << CmpT.getHandle().getType().dims()
+               << std::endl;
+    return result;
+  }
+  double totalErrSq = 0.0;
+  double totalMagSq = 0.0;
+  double maxErr = 0.0;
+  double maxRelErr = 0.0;
+  for (dim_t idx = 0; idx < RefT.getHandle().size(); idx++) {
+    double refVal = (double)RefT.getHandle<Ty>().raw(idx);
+    double cmpVal = (double)CmpT.getHandle<Ty>().raw(idx);
+    double diff = refVal - cmpVal;
+    double mag = refVal * refVal;
+    double eltRelErr = (fabs(refVal)) > 0.0 ? fabs(diff) / fabs(refVal) : 0.0;
+    totalErrSq += diff * diff;
+    totalMagSq += mag;
+    maxErr = (fabs(diff) > maxErr) ? fabs(diff) : maxErr;
+    maxRelErr = (eltRelErr > maxRelErr) ? eltRelErr : maxRelErr;
+  }
+  result.relErr = (totalMagSq > 0.0) ? std::sqrt(totalErrSq / totalMagSq) : 0.0;
+  result.maxErr = maxErr;
+  result.maxRelErr = maxRelErr;
+  return result;
+}
+
 Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
                                   torch::jit::Stack &stack,
                                   std::unique_ptr<ExecutionContext> &ctx) {
@@ -187,8 +227,14 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 
   // Run the subgraph using JIT for comparison with Glow.
   torch::jit::Stack copyStack;
-  if (settings_.writeToOnnx) {
-    copyStack = stack;
+  if (settings_.writeToOnnx || settings_.jitVsGlowCompare) {
+    for (auto &ival : stack) {
+      if (ival.isTensor()) {
+        copyStack.push_back(ival.deepcopy());
+      } else {
+        copyStack.push_back(ival);
+      }
+    }
     runOnJit(copyStack);
   }
 
@@ -263,29 +309,30 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
             ph, glow::Tensor((void *)zeroLengthSequence_.getUnsafePtr(), ty));
       } else {
         // For backends that does not support partial tensor, manually pad zeros
-        Tensor *inputTensor = tensorPool_.get(ty);
-        if (!inputTensor) {
+        auto inputTensorOpt = tensorPool_.get(ty);
+        if (!inputTensorOpt.hasValue()) {
           std::stringstream ss;
           ss << "Tensorpool tensor not found for input " << ptTensor.name();
           return MAKE_ERR(ss.str());
         }
         // We want fresh DeviceResidencyInfo for this fresh Tensor.
-        inputTensor->resetDeviceInfo();
+        Tensor inputTensor(std::move(inputTensorOpt.getValue()));
+        inputTensor.resetDeviceInfo();
         if (ptTensor.data_ptr()) {
-          memcpy(inputTensor->getUnsafePtr(), ptTensor.data_ptr(),
+          memcpy(inputTensor.getUnsafePtr(), ptTensor.data_ptr(),
                  ptTensor.nbytes());
           // Pad remaining space with zeroes.
-          memset(inputTensor->getUnsafePtr() + ptTensor.nbytes(), 0,
-                 inputTensor->getSizeInBytes() - ptTensor.nbytes());
+          memset(inputTensor.getUnsafePtr() + ptTensor.nbytes(), 0,
+                 inputTensor.getSizeInBytes() - ptTensor.nbytes());
         } else {
-          inputTensor->zero();
+          inputTensor.zero();
         }
-        bindings->insert(ph, inputTensor);
+        bindings->insert(ph, std::move(inputTensor));
       }
     } else if (input.isObject()) {
       // Objects are only used for loading attributes at compile time.
       continue;
-    } else if (!(input.isInt() || input.isIntList())) {
+    } else if (!(input.isBool() || input.isInt() || input.isIntList())) {
       return MAKE_ERR(
           "Only Int/IntList, Tensor and Object IValue inputs are accepted");
     }
@@ -301,7 +348,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       for (const auto &p : bindings->pairs()) {
         auto *onnxT = inputG.add_initializer();
         const auto ph = p.first;
-        const auto &t = *p.second;
+        const auto &t = p.second;
         onnxT->set_name(ph->getName());
         size_t unpaddedSize = t.getUnpaddedSizeInBytes();
         size_t tensorSize = t.getSizeInBytes();
@@ -389,8 +436,30 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
                                    /*useGlowCustomOps*/ true);
     }
 
-    auto var = torch::autograd::make_variable(ptTensor);
-    stack.push_back(at::IValue(var));
+    if (settings_.jitVsGlowCompare) {
+      glow::Tensor glowT = ptTensorToGlowTensor(ptTensor);
+      auto &jitOutput = torch::jit::peek(copyStack, i, outputs.size());
+      auto jitPtTensor = jitOutput.toTensor().contiguous();
+      glow::Tensor jitGlowT = ptTensorToGlowTensor(jitPtTensor);
+      auto tensorElemType = jitGlowT.getType().getElementType();
+      if (tensorElemType == glow::ElemKind::FloatTy) {
+        TensorCompareResult res = compareTensors<float_t>(jitGlowT, glowT);
+        LOG(INFO) << "Correctness check | Function: " << info.functionName
+                  << "\tTensor: "
+                  << std::string(info.outputPlaceholders[i]->getName())
+                  << "\tRelError: " << res.relErr << "\tMaxErr: " << res.maxErr
+                  << "\tMaxRelErr: " << res.maxRelErr << std::endl;
+      } else {
+        LOG(INFO) << "Correctness Check | Function: " << info.functionName
+                  << "\tTensor: "
+                  << std::string(info.outputPlaceholders[i]->getName())
+                  << "\tUnsupported type: "
+                  << std::string(glow::Type::getElementName(tensorElemType))
+                  << std::endl;
+      }
+    }
+
+    stack.push_back(at::IValue(std::move(ptTensor)));
   }
 
   if (settings_.writeToOnnx) {
@@ -462,7 +531,22 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
   }
 
   std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
-  return runImpl(*DCHECK_NOTNULL(info.get()), stack, ctx);
+  TraceContext *traceContext = nullptr;
+  if (getSettings().enableGlowTracing) {
+    ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
+    traceContext = ctx->getTraceContext();
+    traceContext->setThreadName("torch_glow");
+  }
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "torch_glow::runOnly");
+  auto err = runImpl(*DCHECK_NOTNULL(info.get()), stack, ctx);
+
+  // Reset the traceContext again in case it was changed during run.
+  traceContext = ctx->getTraceContext();
+
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "torch_glow::runOnly");
+
+  aggregateAndDumpTraces(traceContext);
+  return err;
 }
 
 Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
@@ -474,20 +558,38 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
     return MAKE_ERR("No graph found!");
   }
 
+  std::unique_ptr<TraceContext> traceContext;
+  if (getSettings().enableGlowTracing) {
+    traceContext = std::make_unique<TraceContext>(TraceLevel::STANDARD);
+    traceContext->setThreadName("torch_glow");
+  }
+  TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME,
+                    "torch_glow::warmCache");
+
+  // If this setting is missing we will not use pre compiled model at runtime,
+  // which will cause unexpected behaviors.
+  if (!settings_.preCompilePyTorchModule) {
+    return MAKE_ERR(
+        "Calling AOT compilation when preCompilePyTorchModule is not set");
+  }
+
   std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
   if (perGlowGraphInfoMap_.size() != 0) {
     return MAKE_ERR(strFormat("There is already a compiled graph!"));
   }
 
   auto info = std::make_shared<PerGlowGraphInfo>();
-  info->functionName = strFormat("PTFunction_precompiled");
+  static std::atomic<int32_t> aotNum{0};
+  info->functionName = strFormat("PTFunction_precompiled_%d", aotNum++);
 
   std::unique_ptr<Module> glowModule = llvm::make_unique<Module>();
   Function *f = glowModule->createFunction(info->functionName);
 
+  TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME, "loadJITGraph");
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
       *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
       outputCorrectType_, getPyTorchLoaderSettings(), {}, inputMeta));
+  TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME, "loadJITGraph");
 
   // Obtain maxSeqLength from inputMeta
   // This step can also be done with a user input, but the overhead of the
@@ -506,10 +608,22 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
 
   glow::CompilationContext cctx;
 
+  cctx.precisionConfig.convertToFP16 = settings_.convertToFP16;
+  cctx.precisionConfig.convertFusedToFP16 = settings_.convertFusedToFP16;
+  cctx.dumpFinalGraph = settings_.dumpFinalGlowGraph;
+
+  TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(glowModule), cctx));
+  TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");
+
   // Randomly picked one key. There should be only one element in the map
   // when model is precompiled.
   perGlowGraphInfoMap_[0] = info;
+
+  TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME,
+                  "torch_glow::warmCache");
+
+  aggregateAndDumpTraces(traceContext.get());
   return Error::success();
 }
 
@@ -523,9 +637,14 @@ CachingGraphRunner::CachingGraphRunner(
     PyTorchLoaderSettings settings)
     : graph_(graph), ptGraphExecutor_(graph, "forward"),
       hostManager_(hostManager), backend_(hostManager->getBackend(backendName)),
-      settings_(settings) {}
+      settings_(settings) {
+  mergedTraceContext_ = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
+}
 
 CachingGraphRunner::~CachingGraphRunner() {
+  // Dump trace for the last time if there are remaining
+  aggregateAndDumpTraces(nullptr, true);
+
   // Remove Glow functions saved in HostManager when being destroyed.
   std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
   for (auto &kv : perGlowGraphInfoMap_) {

@@ -82,6 +82,19 @@ protected:
   Function *unoptimizedF_;
 };
 
+/// Find and \returns a Save found in \p F by name \p saveName. \returns nullptr
+/// if not found.
+SaveNode *getSaveByName(Function *F, llvm::StringRef saveName) {
+  for (auto &N : F->getNodes()) {
+    if (SaveNode *SN = llvm::dyn_cast<SaveNode>(&N)) {
+      if (SN->getName() == saveName) {
+        return SN;
+      }
+    }
+  }
+  return nullptr;
+}
+
 /// Test that the backend correctly removed Clips that are in between FCs and
 /// activations, and therefore block fusion from occurring.
 TEST_F(NNPIOptPipelineTest, RemoveClipBlockingFCReluFusion) {
@@ -100,7 +113,7 @@ TEST_F(NNPIOptPipelineTest, RemoveClipBlockingFCReluFusion) {
   auto *clipFC = F_->createClipMinMaxFP16("clipFC", FC);
   auto *RN = F_->createRELU("relu", clipFC);
   auto *clipRelu = F_->createClipMinMaxFP16("clipRelu", RN);
-  F_->createSave("ret", clipRelu);
+  auto *save = F_->createSave("ret", clipRelu);
   const float float16Max = clipFC->getMax();
 
   EXPECT_EQ(F_->getNodes().size(), 5);
@@ -110,12 +123,7 @@ TEST_F(NNPIOptPipelineTest, RemoveClipBlockingFCReluFusion) {
   // (Clip -> Relu -> Clip) -> Clip
   EXPECT_EQ(optimizedF_->getNodes().size(), 3);
 
-  SaveNode *optSave = nullptr;
-  for (auto &N : optimizedF_->getNodes()) {
-    if ((optSave = llvm::dyn_cast<SaveNode>(&N))) {
-      break;
-    }
-  }
+  SaveNode *optSave = getSaveByName(optimizedF_, save->getName());
   ASSERT_TRUE(optSave);
 
   // Check that we got rid of the Clip between the FC and Relu.
@@ -152,7 +160,7 @@ TEST_F(NNPIOptPipelineTest, SplitParallelizationTestFCReluNNPI) {
 
   auto *FC = F_->createFullyConnected("fc", input, weights, bias);
   auto *RN = F_->createRELU("relu", FC);
-  F_->createSave("ret", RN);
+  auto *save = F_->createSave("ret", RN);
 
   cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
       std::to_string(8);
@@ -165,12 +173,7 @@ TEST_F(NNPIOptPipelineTest, SplitParallelizationTestFCReluNNPI) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 8);
 
-  SaveNode *optSave = nullptr;
-  for (auto &N : optimizedF_->getNodes()) {
-    if ((optSave = llvm::dyn_cast<SaveNode>(&N))) {
-      break;
-    }
-  }
+  SaveNode *optSave = getSaveByName(optimizedF_, save->getName());
   ASSERT_TRUE(optSave);
 
   bindings_.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
@@ -196,7 +199,7 @@ TEST_F(NNPIOptPipelineTest, SplitParallelizationTestFCReluClipNNPI) {
   auto *FC = F_->createFullyConnected("fc", input, weights, bias);
   auto *RN = F_->createRELU("relu", FC);
   auto *CLP = F_->createClip("clip", RN, 0.0f, 5.0f);
-  F_->createSave("ret", CLP);
+  auto *save = F_->createSave("ret", CLP);
 
   cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
       std::to_string(8);
@@ -212,12 +215,7 @@ TEST_F(NNPIOptPipelineTest, SplitParallelizationTestFCReluClipNNPI) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 8);
 
-  SaveNode *optSave = nullptr;
-  for (auto &N : optimizedF_->getNodes()) {
-    if ((optSave = llvm::dyn_cast<SaveNode>(&N))) {
-      break;
-    }
-  }
+  SaveNode *optSave = getSaveByName(optimizedF_, save->getName());
   ASSERT_TRUE(optSave);
 
   bindings_.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
@@ -241,7 +239,7 @@ TEST_F(NNPIOptPipelineTest, NoSplitTestFCReluNNPI) {
 
   auto *FC = F_->createFullyConnected("fc", input, weights, bias);
   auto *RN = F_->createRELU("relu", FC);
-  F_->createSave("ret", RN);
+  auto *save = F_->createSave("ret", RN);
 
   cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
       std::to_string(1);
@@ -253,12 +251,7 @@ TEST_F(NNPIOptPipelineTest, NoSplitTestFCReluNNPI) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 1);
 
-  SaveNode *optSave = nullptr;
-  for (auto &N : optimizedF_->getNodes()) {
-    if ((optSave = llvm::dyn_cast<SaveNode>(&N))) {
-      break;
-    }
-  }
+  SaveNode *optSave = getSaveByName(optimizedF_, save->getName());
   ASSERT_TRUE(optSave);
 
   bindings_.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
@@ -274,7 +267,7 @@ TEST_F(NNPIOptPipelineTest, SplitParallelizationTestTransposeNNPI) {
                                        "input", false);
 
   auto *TP = F_->createTranspose("tp", input, {0, 2, 1});
-  F_->createSave("ret", TP);
+  auto *save = F_->createSave("ret", TP);
 
   cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
       std::to_string(3);
@@ -284,12 +277,7 @@ TEST_F(NNPIOptPipelineTest, SplitParallelizationTestTransposeNNPI) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TransposeNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::TransposeNodeKind), 3);
 
-  SaveNode *optSave = nullptr;
-  for (auto &N : optimizedF_->getNodes()) {
-    if ((optSave = llvm::dyn_cast<SaveNode>(&N))) {
-      break;
-    }
-  }
+  SaveNode *optSave = getSaveByName(optimizedF_, save->getName());
   ASSERT_TRUE(optSave);
 
   bindings_.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
@@ -384,7 +372,8 @@ TEST_F(NNPIOptPipelineTest, SplitParallelizationTestTanhReluNNPI) {
 
 static void setupSplitParallelizationTestFCReluNNPI(
     Module &mod_, Function *F_, CompilationContext &cctx_,
-    PlaceholderBindings &bindings_, const std::string &parKind) {
+    PlaceholderBindings &bindings_, const std::string &parKind,
+    const bool addParallelizationHints, const bool addPlacementHints) {
   auto *input1 =
       mod_.createPlaceholder(ElemKind::Float16Ty, {512, 32}, "input1", false);
   auto *input2 =
@@ -398,7 +387,8 @@ static void setupSplitParallelizationTestFCReluNNPI(
   bias->getPayloadMutable().getHandle<float16_t>().randomize(-1.0, 1.0,
                                                              mod_.getPRNG());
 
-  auto *TN = F_->createTranspose("transpose", input1, {1, 0});
+  auto *CI = F_->createConcat("concat", {input1, input2}, 1);
+  auto *TN = F_->createTranspose("transpose", CI, {1, 0});
   auto *FC = F_->createFullyConnected("fc", TN, weights, bias);
   auto *RN = F_->createRELU("relu", FC);
   auto *SN = F_->createSigmoid("sigmoid", RN);
@@ -413,33 +403,47 @@ static void setupSplitParallelizationTestFCReluNNPI(
                                                                mod_.getPRNG());
 
   auto &nodeInfo = cctx_.backendOpts.backendSpecificNodeInfo[F_];
-  // Setup some parallelization.
-  nodeInfo[FC]["NNPI_numParallelChunks"].push_back("8");
-  nodeInfo[FC]["NNPI_parallelTransformKind"].push_back(parKind);
-  nodeInfo[RN]["NNPI_numParallelChunks"].push_back("8");
-  nodeInfo[RN]["NNPI_parallelTransformKind"].push_back(parKind);
-  // Add some extra edges.
-  nodeInfo[TN]["NNPI_extraEdges"].push_back(FC->getName().str() + "@3");
-  nodeInfo[TN]["NNPI_extraEdges"].push_back(FC->getName().str() + "@7");
-  nodeInfo[RN]["NNPI_extraEdges"].push_back(SN->getName().str());
-  nodeInfo[TN]["NNPI_extraEdges"].push_back(SN->getName().str());
-  nodeInfo[AN]["NNPI_extraEdges"].push_back(TN->getName().str());
-  // Assign some ops to cores.
-  nodeInfo[TN]["NNPI_coreAssignments"].push_back("3");
-  nodeInfo[FC]["NNPI_coreAssignments"].push_back("2");
-  nodeInfo[FC]["NNPI_coreAssignments"].push_back("0");
-  nodeInfo[FC]["NNPI_coreAssignments"].push_back("10");
-  nodeInfo[FC]["NNPI_coreAssignments"].push_back("5");
-  nodeInfo[FC]["NNPI_coreAssignments"].push_back("1");
-  nodeInfo[FC]["NNPI_coreAssignments"].push_back("7");
-  nodeInfo[FC]["NNPI_coreAssignments"].push_back("3");
-  nodeInfo[FC]["NNPI_coreAssignments"].push_back("0");
+  // Placement and parallelization cannot happen at the same time
+  ASSERT_FALSE(addParallelizationHints && addPlacementHints);
+
+  if (addParallelizationHints) {
+    // Setup some parallelization.
+    nodeInfo[FC]["NNPI_numParallelChunks"].push_back("8");
+    nodeInfo[FC]["NNPI_parallelTransformKind"].push_back(parKind);
+    nodeInfo[RN]["NNPI_numParallelChunks"].push_back("8");
+    nodeInfo[RN]["NNPI_parallelTransformKind"].push_back(parKind);
+  }
+
+  if (addPlacementHints) {
+    // Add some extra edges.
+    nodeInfo[AN]["NNPI_extraEdgesTargetName"].push_back(CI->getName().str());
+    nodeInfo[AN]["NNPI_extraEdgesTargetSuffix"].push_back("@copy_1");
+    nodeInfo[CI]["NNPI_extraEdgesTargetName"].push_back(TN->getName().str());
+    nodeInfo[CI]["NNPI_extraEdgesSourceSuffix"].push_back("@copy_1");
+    nodeInfo[CI]["NNPI_extraEdgesTargetName"].push_back(FC->getName().str());
+    nodeInfo[CI]["NNPI_extraEdgesSourceSuffix"].push_back("@copy_1");
+    nodeInfo[AN]["NNPI_extraEdgesTargetName"].push_back(CI->getName().str());
+    nodeInfo[AN]["NNPI_extraEdgesTargetSuffix"].push_back("@copy_1");
+    nodeInfo[TN]["NNPI_extraEdgesTargetName"].push_back(FC->getName().str());
+    nodeInfo[TN]["NNPI_extraEdgesTargetName"].push_back(SN->getName().str());
+    nodeInfo[FC]["NNPI_extraEdgesTargetName"].push_back(RN->getName().str());
+
+    // Assign some ops to cores.
+    nodeInfo[TN]["NNPI_coreAssignments"].push_back("3");
+    nodeInfo[FC]["NNPI_coreAssignments"].push_back("2");
+    nodeInfo[CI]["NNPI_coreAssignments"].push_back("1");
+    nodeInfo[CI]["NNPI_coreAssignmentsSuffix"].push_back("@copy_0");
+    nodeInfo[CI]["NNPI_coreAssignments"].push_back("3");
+    nodeInfo[CI]["NNPI_coreAssignmentsSuffix"].push_back("@copy_1");
+  }
 }
 
 /// Test model parallel splitting inside of NNPIPrivateTransforms.cpp for
 /// FC/RELU
 TEST_F(NNPIOptPipelineTestNodeOpts, ModelSplitParallelizationTestFCReluNNPI) {
-  setupSplitParallelizationTestFCReluNNPI(mod_, F_, cctx_, bindings_, "Model");
+  setupSplitParallelizationTestFCReluNNPI(mod_, F_, cctx_, bindings_, "Model",
+                                          /* addParallelizationHints */ true,
+                                          /* addPlacementHints */ false);
   cloneAndCompile();
 
   EXPECT_LT(unoptimizedF_->getNodes().size(), optimizedF_->getNodes().size());
@@ -449,14 +453,9 @@ TEST_F(NNPIOptPipelineTestNodeOpts, ModelSplitParallelizationTestFCReluNNPI) {
             8);
   EXPECT_EQ(countNodeKind(unoptimizedF_, Kinded::Kind::ReluNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 8);
-  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 2);
 
-  SaveNode *optSave = nullptr;
-  for (auto &N : optimizedF_->getNodes()) {
-    if ((optSave = llvm::dyn_cast<SaveNode>(&N))) {
-      break;
-    }
-  }
+  SaveNode *optSave = getSaveByName(optimizedF_, "ret_save");
   ASSERT_TRUE(optSave);
 
   // Data parallel split concats results on 1st dim.
@@ -471,7 +470,9 @@ TEST_F(NNPIOptPipelineTestNodeOpts, ModelSplitParallelizationTestFCReluNNPI) {
 
 /// Test data parallel splitting inside of NNPIPrivateTransforms.cpp for FC/RELU
 TEST_F(NNPIOptPipelineTestNodeOpts, DataSplitParallelizationTestFCReluNNPI) {
-  setupSplitParallelizationTestFCReluNNPI(mod_, F_, cctx_, bindings_, "Data");
+  setupSplitParallelizationTestFCReluNNPI(mod_, F_, cctx_, bindings_, "Data",
+                                          /* addParallelizationHints */ true,
+                                          /* addPlacementHints */ false);
   cloneAndCompile();
 
   EXPECT_LT(unoptimizedF_->getNodes().size(), optimizedF_->getNodes().size());
@@ -481,14 +482,9 @@ TEST_F(NNPIOptPipelineTestNodeOpts, DataSplitParallelizationTestFCReluNNPI) {
             8);
   EXPECT_EQ(countNodeKind(unoptimizedF_, Kinded::Kind::ReluNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 8);
-  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 2);
 
-  SaveNode *optSave = nullptr;
-  for (auto &N : optimizedF_->getNodes()) {
-    if ((optSave = llvm::dyn_cast<SaveNode>(&N))) {
-      break;
-    }
-  }
+  SaveNode *optSave = getSaveByName(optimizedF_, "ret_save");
   ASSERT_TRUE(optSave);
 
   // Data parallel split concats results on 0th dim.
@@ -497,6 +493,32 @@ TEST_F(NNPIOptPipelineTestNodeOpts, DataSplitParallelizationTestFCReluNNPI) {
   ConcatNode *CN = llvm::dyn_cast<ConcatNode>(SN->getInput());
   ASSERT_TRUE(CN);
   EXPECT_EQ(CN->getDim(), 0);
+
+  checkNumericalEquivalence(/* allowedError */ 0.f);
+}
+
+/// Test placement hints
+TEST_F(NNPIOptPipelineTestNodeOpts, PlacementTestFCReluNNPI) {
+  setupSplitParallelizationTestFCReluNNPI(mod_, F_, cctx_, bindings_, "Data",
+                                          /* addParallelizationHints */ false,
+                                          /* addPlacementHints */ true);
+  cloneAndCompile();
+
+  EXPECT_EQ(unoptimizedF_->getNodes().size(), optimizedF_->getNodes().size());
+  EXPECT_EQ(countNodeKind(unoptimizedF_, Kinded::Kind::FullyConnectedNodeKind),
+            1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::FullyConnectedNodeKind),
+            1);
+  EXPECT_EQ(countNodeKind(unoptimizedF_, Kinded::Kind::ReluNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
+
+  SaveNode *optSave = getSaveByName(optimizedF_, "ret_save");
+  ASSERT_TRUE(optSave);
+
+  // Data parallel split concats results on 0th dim.
+  SigmoidNode *SN = llvm::dyn_cast<SigmoidNode>(optSave->getInput());
+  ASSERT_TRUE(SN);
 
   checkNumericalEquivalence(/* allowedError */ 0.f);
 }
@@ -520,4 +542,38 @@ TEST_F(NNPIOptPipelineTest, NoParallelizationTestAddReluNNPI) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::AddNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 1);
+}
+
+/// Test FRWQ-SLS is not lowered when we rely on FP16 conversion in the
+/// optimization pipeline.
+TEST_F(NNPIOptPipelineTest, NoLowerSLSFP16) {
+  Tensor data(ElemKind::FloatTy, {3, 2});
+  data.getHandle() = {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f};
+
+  Placeholder *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {8}, "indices",
+                             /* isTrainable */ false);
+  Placeholder *lengths = mod_.createPlaceholder(
+      ElemKind::Int32ITy, {5}, "lengths", /* isTrainable */ false);
+
+  auto *R = F_->createFusedRowwiseQuantizedSparseLengthsSum(
+      "FRQSLWS", data, indices, lengths, ElemKind::UInt8FusedQTy);
+  auto *save = F_->createSave("save", R);
+
+  cctx_.precisionConfig.convertToFP16 = true;
+  cctx_.precisionConfig.convertFusedToFP16 = true;
+
+  cloneAndCompile();
+
+  SaveNode *optSave = getSaveByName(optimizedF_, save->getName());
+  ASSERT_TRUE(optSave);
+
+  // Expect one FP16 SLS after optimization (converted back to Float for Save).
+  auto *CN = llvm::dyn_cast<ConvertToNode>(optSave->getInput());
+  ASSERT_TRUE(CN);
+  auto *SLS =
+      llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(CN->getInput());
+  ASSERT_TRUE(SLS);
+  EXPECT_EQ(SLS->getResult().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(SLS->getData().getElementType(), ElemKind::UInt8FusedFP16QTy);
 }

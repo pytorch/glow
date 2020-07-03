@@ -28,6 +28,32 @@ TypeAToTypeBFunctionConverter::TypeAToTypeBFunctionConverter(
       srcKind_(fromKind), precConfig_(precConfig) {}
 
 bool TypeAToTypeBFunctionConverter::canConvert(const Node &node) const {
+  // For some ops, if we're converting to FP16 and the bias is FP32 and the
+  // input is quantized then don't convert to FP16.
+  if (srcKind_ == ElemKind::FloatTy && dstKind_ == ElemKind::Float16Ty) {
+#define QUANT_INPUT_FLOAT_BIAS_CASE(NODE_NAME_)                                \
+  case glow::Kinded::Kind::NODE_NAME_##NodeKind: {                             \
+    auto *N = llvm::cast<NODE_NAME_##Node>(&node);                             \
+    if (N->getBias().getType()->getElementType() == ElemKind::FloatTy &&       \
+        N->getInput().getType()->isQuantizedType()) {                          \
+      return false;                                                            \
+    }                                                                          \
+    break;                                                                     \
+  }
+
+    switch (node.getKind()) {
+      QUANT_INPUT_FLOAT_BIAS_CASE(FullyConnected);
+      QUANT_INPUT_FLOAT_BIAS_CASE(RowwiseQuantizedFullyConnected);
+      QUANT_INPUT_FLOAT_BIAS_CASE(Convolution);
+      QUANT_INPUT_FLOAT_BIAS_CASE(ConvTranspose);
+      QUANT_INPUT_FLOAT_BIAS_CASE(Convolution3D);
+      QUANT_INPUT_FLOAT_BIAS_CASE(ChannelwiseQuantizedConvolution);
+    default:
+      break;
+    }
+#undef QUANT_INPUT_FLOAT_BIAS_CASE
+  }
+
   const bool inSet = precConfig_.precisionModeKindSet.count(node.getKind());
   const bool allowConversion = precConfig_.useSetAsWhitelist ? inSet : !inSet;
 

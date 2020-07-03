@@ -64,7 +64,7 @@ public:
   /// Called once after ONNX or Caffe2 model loading.
   virtual void postModelLoad(Loader &, PlaceholderBindings &, ProtobufLoader &,
                              llvm::StringMap<Placeholder *> &,
-                             size_t compilationBatchSize) = 0;
+                             TypeRef inputImageType) = 0;
   /// Called once at the beginning of the mini-batch inference.
   virtual void inferInitMiniBatch(Loader &, PlaceholderBindings &,
                                   size_t minibatchIndex,
@@ -85,6 +85,8 @@ class Loader {
   std::string caffe2NetWeightFilename_;
   /// ONNX model file name.
   std::string onnxModelFilename_;
+  /// TensorFlowLite model file name.
+  std::string tfliteModelFilename_;
   /// Name of loaded function.
   std::string functionName_;
   /// Host Manager for running the model.
@@ -129,6 +131,9 @@ public:
 
   /// Getter for the ONNX model file name.
   llvm::StringRef getOnnxModelFilename() { return onnxModelFilename_; }
+
+  /// Getter for the TensorFlowLite model file name.
+  llvm::StringRef getTFLiteModelFilename() { return tfliteModelFilename_; }
 
   /// Getter for the model path.
   /// \pre (modelPathOpt.size() == 1)
@@ -178,8 +183,7 @@ public:
   Loader &registerExtension(std::unique_ptr<LoaderExtension> ext);
   /// Called once after ONNX or Caffe2 model loading.
   void postModelLoad(PlaceholderBindings &bindings, ProtobufLoader &protoLoader,
-                     llvm::StringMap<Placeholder *> &,
-                     size_t compilationBatchSize);
+                     llvm::StringMap<Placeholder *> &, TypeRef inputImageType);
   /// Called at the beginning of each mini-batch inference.
   void inferInitMiniBatch(PlaceholderBindings &bindings, size_t minibatchIndex,
                           size_t minibatchSize);

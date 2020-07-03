@@ -69,6 +69,35 @@ static bool shouldDeleteNode(Node *N) {
   return true;
 }
 
+ConstantModificationPreventer::ConstantModificationPreventer(Module &mod)
+    : ScopeGuard([&]() {
+        // Ensure we cleanup Placeholder-Constant swap if necessary.
+        auto &PHs = mod_.getPlaceholders();
+        for (auto &pair : tmpPHToConstMap_) {
+          Placeholder *tmpPH = pair.first;
+          Constant *C = pair.second;
+          tmpPH->getOutput().replaceAllUsesOfWith(C->getOutput());
+          mod_.erasePlaceholder(std::find(PHs.begin(), PHs.end(), tmpPH));
+        }
+      }),
+      mod_(mod) {
+  // By default dismiss until explicitly activated.
+  dismissed_ = true;
+}
+
+void ConstantModificationPreventer::activate() {
+  dismissed_ = false;
+  // Prevent Constant modification by temporarily replacing them with PHs.
+  for (Constant *C : mod_.getConstants()) {
+    Placeholder *tmpPH = mod_.createPlaceholder(
+        C->getType(), C->getName().str() + "_SWAP_CONST_FOLD",
+        /* isTrainable */ false, C->getLayout());
+    tmpPH->setStatic(true);
+    tmpPHToConstMap_[tmpPH] = C;
+    C->getOutput().replaceAllUsesOfWith(tmpPH->getOutput());
+  }
+}
+
 /// Helper that \returns whether all sibling Functions of \p F (other Functions
 /// inside its Module) are Loaded.
 static bool shouldDeleteConstants(Function *F) {
@@ -139,9 +168,7 @@ bool DCE::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
 
   auto &nodes = F->getNodes();
-  auto &consts = F->getParent()->getConstants();
 
-  std::vector<ConstList::iterator> erasedConsts{};
   std::vector<NodesList::iterator> erasedNodes{};
 
   bool changed = false;
@@ -172,11 +199,25 @@ bool DCE::run(Function *F, const CompilationContext &cctx) {
     }
   }
 
+  // Don't remove unused Constants since many may be temporarily unused during
+  // optimizations.
+  if (cctx.optimizationOpts.delayAndRecordConstantModification) {
+    return changed;
+  }
+
   if (!shouldDeleteConstants(F)) {
     return changed;
   }
 
   // Delete unused Constants.
+  deleteUnusedConstants(*F->getParent());
+
+  return changed;
+}
+
+void glow::deleteUnusedConstants(Module &mod) {
+  auto &consts = mod.getConstants();
+  std::vector<ConstList::iterator> erasedConsts{};
   for (auto it = consts.begin(), e = consts.end(); it != e;) {
     if (!shouldDeleteNode(*it)) {
       ++it;
@@ -188,11 +229,9 @@ bool DCE::run(Function *F, const CompilationContext &cctx) {
 
   while (!erasedConsts.empty()) {
     auto it = erasedConsts.back();
-    F->getParent()->eraseConstant(it);
+    mod.eraseConstant(it);
     erasedConsts.pop_back();
   }
-
-  return changed;
 }
 
 /// \returns true if the \p shuffle corresponds to an identity operation, false
@@ -451,31 +490,79 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
   // For each node:
   for (auto &N : nodes) {
     auto *node = &N;
-    // Sink Transpose below batch normalization nodes:
-    if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
-      auto *TR = dyn_cast<TransposeNode>(BN->getInput());
 
-      if (!TR) {
+    // Sink Reshape/Transpose below BatchNormalization.
+    if (auto *BN = dyn_cast<BatchNormalizationNode>(node)) {
+
+      // Sink Reshape below BatchNormalization.
+      if (auto *RS = dyn_cast<ReshapeNode>(BN->getInput())) {
+        auto inDims = RS->getInput().dims();
+        auto outDims = RS->getResult().dims();
+        unsigned_t newChannelIdx;
+
+        // Skip sinking if the input was less than 3 dimensions, because we need
+        // spatial dimensions in addition to batch and channel.
+        if (RS->getInput().dims().size() < 3) {
+          continue;
+        }
+
+        // Reshape should not change the BatchNorm ChannelIdx dimensions.
+        // Only NH[W]C and NCH[W] are allowed.
+        if (BN->getChannelIdx() == outDims.size() - 1) {
+          if (inDims[inDims.size() - 1] != outDims[outDims.size() - 1]) {
+            continue;
+          }
+          newChannelIdx = inDims.size() - 1;
+        } else if (BN->getChannelIdx() == 1) {
+          // Note: index '1' maps to C in NCH[W] layout.
+          if (inDims[1] != outDims[1]) {
+            continue;
+          }
+          newChannelIdx = 1;
+        } else {
+          continue;
+        }
+
+        // Reshape should not change the batch dimension.
+        if (inDims[0] != outDims[0]) {
+          continue;
+        }
+
+        if (!RS->hasOneUse()) {
+          continue;
+        }
+
+        auto *newBN = F->createBatchNormalization(
+            BN->getName(), RS->getInput(), BN->getBias(), BN->getScale(),
+            BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
+            BN->getMomentum());
+        RS->setNthInput(ReshapeNode::InputIdx, newBN);
+        BN->getResult().replaceAllUsesOfWith(RS);
+        changed = true;
         continue;
       }
 
-      // Figure out where we transposed the channel index for batch
-      // normalization.
-      unsigned_t idx = BN->getChannelIdx();
-      unsigned_t newChannelIdx = TR->getShuffle()[idx];
+      // Sink Transpose below batch normalization nodes:
+      if (auto *TR = dyn_cast<TransposeNode>(BN->getInput())) {
 
-      auto *NewBN = F->createBatchNormalization(
-          BN->getName(), TR->getInput(), BN->getBias(), BN->getScale(),
-          BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
-          BN->getMomentum());
-      NewBN->setPredicate(node->getPredicate());
-      auto *newTR = F->createTranspose(TR->getName(), NewBN, TR->getShuffle(),
-                                       TR->getLayout());
-      newTR->setPredicate(node->getPredicate());
+        // Figure out where we transposed the channel index for batch
+        // normalization.
+        unsigned_t idx = BN->getChannelIdx();
+        unsigned_t newChannelIdx = TR->getShuffle()[idx];
 
-      BN->getResult().replaceAllUsesOfWith(newTR);
-      changed = true;
-      continue;
+        auto *NewBN = F->createBatchNormalization(
+            BN->getName(), TR->getInput(), BN->getBias(), BN->getScale(),
+            BN->getMean(), BN->getVar(), newChannelIdx, BN->getEpsilon(),
+            BN->getMomentum());
+        NewBN->setPredicate(node->getPredicate());
+        auto *newTR = F->createTranspose(TR->getName(), NewBN, TR->getShuffle(),
+                                         TR->getLayout());
+        newTR->setPredicate(node->getPredicate());
+
+        BN->getResult().replaceAllUsesOfWith(newTR);
+        changed = true;
+        continue;
+      }
     }
 
     if (auto *RL = dyn_cast<ReluNode>(node)) {
@@ -1551,6 +1638,12 @@ bool normalizeWeights(Module *M, ConvolutionNode &CV,
     return false;
   }
 
+  // Perform normalization when Convolution layout is NHWC and BatchNorm
+  // ChannelIdx points to C.
+  if (BN.getChannelIdx() != 3) {
+    return false;
+  }
+
   // Set the new filter and bias on CV if necessary.
   if (filterC != CV.getFilter().getNode()) {
     CV.getParent()->getLogContext()->logNodeInputChange(
@@ -2231,6 +2324,13 @@ static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
         continue;
       }
 
+      // Preventing this from kicking in.
+      // Otherwise we will end up sequence of concats with more and more inputs,
+      // without really eliminating any.
+      if (CNI->getResult().getNumUsers() > 1) {
+        continue;
+      }
+
       merged = true;
       // Replace current input by its own inputs, i.e. merge them into the
       // parent concat node.
@@ -2350,6 +2450,105 @@ bool EliminateConcatSlice::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
   }
+  return changed;
+}
+
+/// Eliminate Slice-Concat patterns which are unnecessary. E.g.:
+///            --  NodeSrc ---                               -NodeSrc-
+///          /        |       |                            /          |
+///       SliceA   SliceB   SliceC     ----->           SliceAB       SliceC
+///           \       /      |                             |           |
+/// NodeE  -  ConcatABE       NodeD              NodeE - ConcatABE   NodeD
+bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  auto &nodes = F->getNodes();
+
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
+    Node &node = *it;
+    auto *CN = dyn_cast<ConcatNode>(&node);
+    if (!CN) {
+      continue;
+    }
+    // avoid 1) merging through operators other than Slices
+    // e.g. Slice(A)-Other-Slice(B), A and B are consecutive
+    // 2) merging Slices from different sources
+    // e.g. Slice(A1)-Slice(B1)-Slice(A2)-Slice(B2), A1 and A2, B1 and B2 are
+    // consecutive respectively
+    std::vector<std::vector<SliceNode *>> consecutiveSlices;
+    std::vector<SliceNode *> currConsecutiveSlices;
+    SliceNode *lastSN = nullptr;
+    for (auto &concatInput : CN->getInputs()) {
+      auto *SN = dyn_cast<SliceNode>(concatInput.getNode());
+      // slices with multiple users will not be considered
+      if (!SN || SN->getResult().getNumUsers() > 1) {
+        if (currConsecutiveSlices.size()) {
+          consecutiveSlices.emplace_back(currConsecutiveSlices);
+          currConsecutiveSlices.clear();
+        }
+        lastSN = nullptr;
+        continue;
+      }
+      // slices with different sources will not be considered
+      if (lastSN && (lastSN->getInput() != SN->getInput() ||
+                     !areSlicesConsecutive(lastSN, SN, CN->getDim()))) {
+        consecutiveSlices.emplace_back(currConsecutiveSlices);
+        currConsecutiveSlices.clear();
+      }
+      lastSN = SN;
+      currConsecutiveSlices.emplace_back(SN);
+    }
+    if (currConsecutiveSlices.size()) {
+      consecutiveSlices.emplace_back(currConsecutiveSlices);
+    }
+
+    // Mapping from old Slices to new Slices where the range of each old Slice
+    // is a subset of the corresponding new Slice
+    std::unordered_map<SliceNode *, SliceNode *> oldToNewSlices;
+    for (const auto &slices : consecutiveSlices) {
+      if (slices.size() <= 1) {
+        continue;
+      }
+      SliceNode *firstSlice = slices.front();
+      auto *srcNode = firstSlice->getInput().getNode();
+      std::vector<dim_t> endDims;
+      for (size_t i = 0, e2 = firstSlice->getResult().dims().size(); i < e2;
+           i++) {
+        endDims.emplace_back(slices.back()->getStart()[i] +
+                             slices.back()->getResult().dims()[i]);
+      }
+      auto *newSlice = F->createSlice(firstSlice->getName(), srcNode,
+                                      firstSlice->getStart(), endDims);
+      for (auto *slice : slices) {
+        oldToNewSlices[slice] = newSlice;
+      }
+      changed = true;
+    }
+    if (!oldToNewSlices.size()) {
+      continue;
+    }
+    // Replace the input Slices to CN with the merged Slices
+    std::vector<NodeValue> newConcatInputs;
+    const SliceNode *lastNewSlice = nullptr;
+    for (const auto &concatInput : CN->getInputs()) {
+      auto *SN = dyn_cast<SliceNode>(concatInput.getNode());
+      if (!SN || !oldToNewSlices.count(SN)) {
+        newConcatInputs.emplace_back(concatInput);
+      } else {
+        auto *newSlice = oldToNewSlices[SN];
+        if (newSlice != lastNewSlice) {
+          lastNewSlice = newSlice;
+          newConcatInputs.emplace_back(newSlice);
+        }
+      }
+    }
+    if (newConcatInputs.size() != CN->getInputs().size()) {
+      auto *newConcat =
+          F->createConcat(CN->getName(), newConcatInputs, CN->getDim());
+      CN->getResult().replaceAllUsesOfWith(newConcat);
+    }
+  }
+
   return changed;
 }
 
@@ -4327,6 +4526,109 @@ bool FoldElemKindConversionIntoOutputs::run(Function *F,
   return changed;
 }
 
+/// Broadcasts are implemented via a series of Tiles. This helper unwinds them
+/// -- it \returns an original Node starting from \p N that was broadcasted from
+/// the 0th dimension up until \p endDim. Strips off base Reshape as well if
+/// there was one used before tiling.
+static NodeValue unwindBroadcast(NodeValue N, unsigned_t endDim) {
+  while (TileNode *TN = dyn_cast<TileNode>(N)) {
+    // Check that the axis of the current Tile is inside of the expected
+    // provided endDim.
+    if (TN->getAxis() >= endDim) {
+      return nullptr;
+    }
+    // Applicable only if original dim is 1 in the Broadcast's Tile.
+    if (TN->getInput().dims()[TN->getAxis()] != 1) {
+      return nullptr;
+    }
+    N = TN->getInput();
+  }
+  if (ReshapeNode *RN = dyn_cast<ReshapeNode>(N)) {
+    return RN->getInput();
+  }
+  return N;
+}
+
+/// Looks for supported arithmetic ops following LayerNorm and folds them into
+/// the scale/bias of the LayerNorm if the scale/bias are single-use
+/// Splat/Constant, as we can then later on constant fold them in.
+bool FoldLayerNormArithmetic::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    if (!isa<MulNode>(&N) && !isa<AddNode>(&N)) {
+      continue;
+    }
+
+    // Currently only support floating point, as otherwise there will be
+    // quantization parameter mismatches.
+    if (!isFloatElemKind(N.getElementType(ArithmeticNode::ResultIdx))) {
+      continue;
+    }
+
+    // Check if the Mul/Add is consuming an LN.
+    LayerNormalizationNode *LN =
+        dyn_cast<LayerNormalizationNode>(N.getNthInput(ArithmeticNode::LHSIdx));
+    if (!LN) {
+      continue;
+    }
+
+    // Check if the RHS is a Splat or Constant. It may have been broadcasted to
+    // the correct shape.
+    NodeValue RHS = unwindBroadcast(N.getNthInput(ArithmeticNode::RHSIdx),
+                                    LN->getResult().dims().size() -
+                                        LN->getScale().dims().size());
+    if (!RHS.getNode() || !(isa<Constant>(RHS) || isa<SplatNode>(RHS))) {
+      continue;
+    }
+
+    // Make sure the RHS that we want to merge into the LN's Scale/Bias have the
+    // same number of elements, since we're about to reshape them to match.
+    if (RHS.getType()->size() != LN->getScale().getType()->size()) {
+      continue;
+    }
+
+    // RHS may have already been fused with a Reshape to get ready for
+    // Tiling. Reshape RHS back here if necessary.
+    if (RHS.dims() != LN->getScale().dims()) {
+      RHS = F->createReshape(RHS.getNode()->getName().str() + "_squeezed", RHS,
+                             LN->getScale().dims());
+    }
+
+    if (MulNode *MN = dyn_cast<MulNode>(&N)) {
+      // Merge the Mul into a new Scale and Bias, multiplying by the original
+      // Mul RHS that followed the LayerNorm.
+      MulNode *newScale =
+          F->createMul(LN->getScale().getNode()->getName().str() + "_fuse_" +
+                           MN->getName().data(),
+                       LN->getScale(), RHS);
+      MulNode *newBias = F->createMul(LN->getBias().getNode()->getName().str() +
+                                          "_fuse_" + MN->getName().data(),
+                                      LN->getBias(), RHS);
+      LN->getScale().replaceAllUsesOfWith(newScale->getResult(), F, newScale);
+      LN->getBias().replaceAllUsesOfWith(newBias->getResult(), F, newBias);
+      MN->getResult().replaceAllUsesOfWith(LN->getResult());
+      changed = true;
+      continue;
+    }
+
+    if (AddNode *AN = dyn_cast<AddNode>(&N)) {
+      // Merge the Add into a new Bias, adding the original Add RHS that
+      // followed the LayerNorm.
+      AddNode *newBias = F->createAdd(LN->getBias().getNode()->getName().str() +
+                                          "_fuse_" + AN->getName().data(),
+                                      LN->getBias(), RHS);
+      LN->getBias().replaceAllUsesOfWith(newBias->getResult(), F, newBias);
+      AN->getResult().replaceAllUsesOfWith(LN->getResult());
+      changed = true;
+      continue;
+    }
+  }
+
+  return changed;
+}
+
 /// Looks for an activation directly following \p N from \p F that the backend
 /// \p B supports for fusion.
 template <class T> bool fuseActivation(T *N, Function *F, const Backend *B) {
@@ -4449,6 +4751,41 @@ static void setFP16AccumSLS(Function *F,
       continue;
     }
   } while (nodeIt != stopIt);
+}
+
+/// Gets Constant or returns nullptr if input is not Constant.
+/// Skips QuantizeNode if present.
+static Constant *getConstant(const NodeValue &NV) {
+  Node *N = NV.getNode();
+  if (isa<QuantizeNode>(N)) {
+    N = N->getNthInput(QuantizeNode::InputIdx);
+  }
+  return dyn_cast<Constant>(N);
+}
+
+/// Simple optimization if select cond is constant and uniform, just pick
+/// appropriate input.
+bool OptimizeSelect::run(Function *F, const CompilationContext &cctx) {
+  bool changed = false;
+  for (auto &n : F->getNodes()) {
+    auto *selectN = llvm::dyn_cast<SelectNode>(&n);
+    if (!selectN) {
+      continue;
+    }
+
+    auto *constCond = getConstant(selectN->getCond());
+    bool val = false;
+    if (!constCond || !isUniformConstant<bool>(*constCond, val)) {
+      continue;
+    }
+    changed = true;
+    if (val) {
+      selectN->getResult().replaceAllUsesOfWith(selectN->getLHS());
+    } else {
+      selectN->getResult().replaceAllUsesOfWith(selectN->getRHS());
+    }
+  }
+  return changed;
 }
 
 /// This funciton uses TypeAToTypeBFunctionConverter to do a whole graph
@@ -4647,8 +4984,11 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
 
   // We already started using backend specific verification when the function
   // state became lowered. Do one more verification pass to make sure everything
-  // is in order and to bail if it is not.
-  if (!B.verify(*F, cctx.verboseCompile)) {
+  // is in order and to bail if it is not. Only do so if we are allowing
+  // constant modification, as otherwise we may have prevent a backend from
+  // supporting some Nodes. Expect the caller to verify later on in such cases.
+  if (!cctx.optimizationOpts.delayAndRecordConstantModification &&
+      !B.verify(*F, cctx.verboseCompile)) {
     return MAKE_ERR(
         ErrorValue::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
         "Unsupported node(s) found after optimizing Function " +

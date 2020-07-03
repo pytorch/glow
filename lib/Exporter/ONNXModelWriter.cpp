@@ -484,9 +484,9 @@ class ReverseGraphWalker {
     // Write constants first, even they should be placed at the end of the list,
     // we can visit them first, cause they will be written into ONNX
     // initializers, not nodes.
-    for (const auto *V : F.getParent()->getConstants()) {
-      reverseOrder_.push_back(V);
-      visited_.insert(V);
+    for (const auto *C : F.findConstants()) {
+      reverseOrder_.push_back(C);
+      visited_.insert(C);
     }
     // Start visiting all root nodes, i.e. nodes that do not have any users.
     for (auto &N : F.getNodes()) {
@@ -589,6 +589,67 @@ bool ONNXModelWriter::isIntermediatePHForDAG(const Placeholder *PH) {
   return isInputPH && isOutputPH;
 }
 
+/// Reverses the order of the nodes in \p nodes.
+static void
+reverseNodesOrder(RepeatedPtrField<ONNX_NAMESPACE::NodeProto> &nodes) {
+  for (size_t i = 0, n = nodes.size(); i < n / 2; ++i) {
+    nodes.SwapElements(i, n - i - 1);
+  }
+}
+
+bool ONNXModelWriter::isWritingConstFoldSubgraph() {
+  return graphProtoRoot_ != graphProto_;
+}
+
+Error ONNXModelWriter::writeConstantFoldingSubgraph(const Constant *C,
+                                                    SaveNode *SN) {
+  Function *constFoldFunction = SN->getParent();
+
+  // If we already wrote out this Function we can return early.
+  if (!processedConstFoldFunctions_.insert(constFoldFunction).second) {
+    return Error::success();
+  }
+
+  // Create new constant folding Node, which we add the subgraph to.
+  auto *constFoldNodeProto = graphProto_->add_node();
+  constFoldNodeProto->set_op_type(constFoldSubgraphNodeName);
+  const char *constFoldNodeName = constFoldFunction->getName().data();
+  constFoldNodeProto->set_name(constFoldNodeName);
+
+  // Now add the constant folding subgraph to the node.
+  auto *constFoldNodeSubgraph = constFoldNodeProto->add_attribute();
+  constFoldNodeSubgraph->set_name("ConstFoldSubgraph");
+  constFoldNodeSubgraph->set_type(ONNX_NAMESPACE::AttributeProto::GRAPH);
+
+  // Temporarily swap in the constant folding function and the graph proto from
+  // the constant folding subgraph node so we can write into it.
+  ONNX_TRAITS::GraphProto *origGraphProto = graphProto_;
+  graphProto_ = constFoldNodeSubgraph->mutable_g();
+  Function *origF = F_;
+  F_ = constFoldFunction;
+  // Make sure to restore original state of the writer when exiting this scope.
+  ScopeGuard restoreOrigStateGuard([&]() {
+    graphProto_ = origGraphProto;
+    F_ = origF;
+  });
+
+  // Now that we have setup the constant folding Function and proto to write
+  // into, write the function in.
+  RETURN_IF_ERR(writeFunction());
+
+  // Now set the output of the ConstFoldSubgraph node. Only output is the
+  // Constant it generates. Note that there are no inputs, as Constant inputs
+  // are self-contained to this graph as initializers.
+  constFoldNodeProto->add_output(C->getName().data());
+  addTypeAttributes(constFoldNodeProto, SN->getOutput(), SaveNode::OutputIdx,
+                    /* isInput */ false);
+
+  // Reverse the order of Nodes since we wrote them in reverse order.
+  reverseNodesOrder(*graphProto_->mutable_node());
+
+  return Error::success();
+}
+
 Error ONNXModelWriter::writeFunction() {
   // Use pre order graph traversal.
   // If node is constant with uses, turned into "input" and create a tensor
@@ -622,14 +683,41 @@ Error ONNXModelWriter::writeFunction() {
     } else if (kind == Kinded::Kind::ConstantKind) {
       // Write global initializer, output tensor bytes.
       const auto *C = llvm::cast<Constant>(N);
-      auto *tensorProto = addInitializer(*graphProto_);
+
+      // Check if this constant came from constant folding that we recorded and
+      // want to serialize in the model.
+      auto constFoldRecordIt = constFoldRecord_.find(C);
+      if (constFoldRecordIt != constFoldRecord_.end()) {
+        RETURN_IF_ERR(
+            writeConstantFoldingSubgraph(C, constFoldRecordIt->second));
+      }
+
+      // Note: Always add initializers to the root graph proto.
+      auto *tensorProto = addInitializer(*graphProtoRoot_);
+
+      // If we added a constant folding Node recording the constant folding that
+      // generated this initializer then point to it in the initializer.
+      if (constFoldRecordIt != constFoldRecord_.end()) {
+        SaveNode *SN = constFoldRecordIt->second;
+        // Point the original initializerProto to this Node so that it knows
+        // where to find the Function to replay the constant folding, along with
+        // the resNo needed from the Function.
+        auto *constFoldNodeNameProto = tensorProto->add_external_data();
+        constFoldNodeNameProto->set_key("ConstFoldNodeName");
+        constFoldNodeNameProto->set_value(SN->getParent()->getName().data());
+        auto *resNoProto = tensorProto->add_external_data();
+        resNoProto->set_key("ConstFoldResNo");
+        resNoProto->set_value(std::to_string(SN->getInput().getResNo()));
+      }
+
       // When using useGlowCustomOps we always use generateNodeOutputName for
       // all inputs and outputs.
       tensorProto->set_name(useGlowCustomOps_
                                 ? C->getOutput().generateNodeOutputName(
                                       /* stripResNoFor0thInput */ true)
                                 : C->getName().str());
-      writeTensor(C->getPayload(), tensorProto, useGlowCustomOps_);
+      writeTensor(C->getPayload(), tensorProto, useGlowCustomOps_,
+                  includeConstantData_);
       if (useGlowCustomOps_) {
         // Also include the layout in the initializer to be loaded later.
         addAttrToDocString(tensorProto, layoutSignifier, C->getLayout());
@@ -649,8 +737,13 @@ Error ONNXModelWriter::writeFunction() {
         proto->add_input(SN->getInput().generateNodeOutputName(
             /* stripResNoFor0thInput */ true));
         proto->add_output(PH->getName().data());
+        addTypeAttributes(proto, SN->getInput(), SaveNode::InputIdx,
+                          /* isInput */ true);
+        addTypeAttributes(proto, SN->getOutput(), SaveNode::OutputIdx,
+                          /* isInput */ false);
         // If dumping a DAG then add partition names to each op that's written.
-        if (dagMode_) {
+        // Also only do so when not writing a const fold subgraph.
+        if (dagMode_ && !isWritingConstFoldSubgraph()) {
           addValueAttribute(proto, "partitionName", F_->getName().str());
           // Skip writing Placeholders that are only intermediates -- these are
           // understood/recreated during reimporting based on an op's partition.
@@ -686,15 +779,14 @@ void ONNXModelWriter::setupNewProto() {
   opsetImportProto->set_version(opsetVersion_);
   graphProto_ = modelProto_.mutable_graph();
   graphProto_->set_name("glow");
+  graphProtoRoot_ = graphProto_;
 }
 
 Error ONNXModelWriter::finalizeAndWriteProto(llvm::StringRef name) {
   // Nodes have been added in a reverse order from SaveNode up to the inputs,
   // we need to rearrange all nodes in the reverse order before serialization.
   auto *nodes = graphProto_->mutable_node();
-  for (size_t i = 0, n = nodes->size(); i < n / 2; ++i) {
-    nodes->SwapElements(i, n - i - 1);
-  }
+  reverseNodesOrder(*nodes);
 
   // useGlowCustomOps uses Identities differently than the normal writer, so
   // we do not want to do this if so.
@@ -750,13 +842,18 @@ Error ONNXModelWriter::finalizeAndWriteProto(llvm::StringRef name) {
   }
 }
 
-ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
-                                 size_t irVersion, size_t opsetVersion,
-                                 Error *errPtr, bool textMode, bool zipMode,
-                                 bool useGlowCustomOps)
+ONNXModelWriter::ONNXModelWriter(
+    const std::string &modelFilename, Function &F, size_t irVersion,
+    size_t opsetVersion, Error *errPtr, bool textMode, bool zipMode,
+    bool useGlowCustomOps, bool includeConstantData,
+    const llvm::StringMap<std::string> &extraMetadataProps,
+    const ConstantFoldingRecordMap &constFoldRecord)
     : CommonOperatorWriter(modelFilename, &F, errPtr), irVersion_(irVersion),
       opsetVersion_(opsetVersion), zipMode_(zipMode), textMode_(textMode),
-      useGlowCustomOps_(useGlowCustomOps), dagMode_(false) {
+      includeConstantData_(includeConstantData),
+      extraMetadataProps_(extraMetadataProps),
+      useGlowCustomOps_(useGlowCustomOps), dagMode_(false),
+      constFoldRecord_(constFoldRecord) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -765,6 +862,9 @@ ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename, Function &F,
   // Lambda to setup the ONNXModelWriter and return any Errors that were raised.
   auto setup = [&]() -> Error {
     setupNewProto();
+    for (auto &prop : extraMetadataProps_) {
+      addMetadataProp(prop.getKey(), prop.second);
+    }
 
     RETURN_IF_ERR(writeFunction());
 
@@ -864,13 +964,17 @@ Error ONNXModelWriter::writePartitionAndMetadataProps(
   return Error::success();
 }
 
-ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename,
-                                 DAGListTy &dagList, size_t irVersion,
-                                 size_t opsetVersion, Error *errPtr,
-                                 bool textMode, bool zipMode)
+ONNXModelWriter::ONNXModelWriter(
+    const std::string &modelFilename, DAGListTy &dagList, size_t irVersion,
+    size_t opsetVersion, Error *errPtr, bool textMode, bool zipMode,
+    bool includeConstantData,
+    const llvm::StringMap<std::string> &extraMetadataProps,
+    const ConstantFoldingRecordMap &constFoldRecord)
     : CommonOperatorWriter(modelFilename, nullptr, errPtr),
       irVersion_(irVersion), opsetVersion_(opsetVersion), zipMode_(zipMode),
-      textMode_(textMode), useGlowCustomOps_(true), dagMode_(true) {
+      textMode_(textMode), includeConstantData_(includeConstantData),
+      extraMetadataProps_(extraMetadataProps), useGlowCustomOps_(true),
+      dagMode_(true), constFoldRecord_(constFoldRecord) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -879,6 +983,9 @@ ONNXModelWriter::ONNXModelWriter(const std::string &modelFilename,
   // Lambda to setup the ONNXModelWriter and return any Errors that were raised.
   auto setup = [&]() -> Error {
     setupNewProto();
+    for (auto &prop : extraMetadataProps_) {
+      addMetadataProp(prop.getKey(), prop.second);
+    }
 
     RETURN_ERR_IF_NOT(dagList.size() == 1, "Expect only one DAG.");
     const auto &dag = *dagList.begin();
@@ -953,7 +1060,7 @@ static void addQuantParamsToDocString(T *out, const Type &type) {
 }
 
 void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out,
-                                  bool useGlowCustomOps) {
+                                  bool useGlowCustomOps, bool includeData) {
   const auto &type = T.getType();
   out->set_data_type(convertType(type));
   const auto &dims = type.dims();
@@ -961,7 +1068,9 @@ void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out,
     out->add_dims(dims[b]);
   }
 
-  out->set_raw_data(T.getUnsafePtr(), type.getSizeInBytes());
+  if (includeData) {
+    out->set_raw_data(T.getUnsafePtr(), type.getSizeInBytes());
+  }
 
   if (useGlowCustomOps) {
     addAttrToDocString(out, elemKindSignifier, type.getElementName());
@@ -1424,6 +1533,28 @@ Error ONNXModelWriter::writeArgMax(const ArgMaxNode *node, GraphType &graph) {
   return Error::success();
 }
 
+Error ONNXModelWriter::writeArgMin(const ArgMinNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+
+  Tensor axis(ElemKind::Int64ITy, {1});
+  Tensor keepDims(ElemKind::BoolTy, {1});
+  auto axisH = axis.getHandle<int64_t>();
+  auto keepDimsH = keepDims.getHandle<int8_t>();
+  axisH.raw(0) = node->getAxis();
+  keepDimsH.raw(0) = node->getKeepDims();
+
+  auto *tensorProto = addInitializer(graph);
+  tensorProto->set_name("axis");
+  writeTensor(axis, tensorProto, useGlowCustomOps_);
+
+  tensorProto = addInitializer(graph);
+  tensorProto->set_name("keepDims");
+  writeTensor(keepDims, tensorProto, useGlowCustomOps_);
+  RETURN_IF_ERR(writeAllWithNode("ArgMin", node, graph, proto));
+
+  return Error::success();
+}
+
 Error ONNXModelWriter::writePRelu(const PReluNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   proto->set_name(node->getName());
@@ -1655,7 +1786,8 @@ void writePool(const T *node, const std::string &op,
   // The similar algorithm will be applied for Result. If Transpose NHWC2NCHW
   // node is found for Result user then remove it, otherwise create a "mirror"
   // Transpose, i.e. NCHW2NHWC.
-  assert(node->getLayout() == NHWC && "can only write NHWC Pools");
+  assert((node->getLayout() == NHWC || node->getLayout() == NTHWC) &&
+         "can only write NHWC (2D) or NTHWC (3D) Pool ops");
 
   auto *proto = graph.add_node();
 
@@ -1795,6 +1927,11 @@ Error ONNXModelWriter::writeSplat(const SplatNode *node, GraphType &graph) {
   return Error::success();
 }
 
+Error ONNXModelWriter::writeTouch(const TouchNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  return writeAllWithNode("Touch", node, graph, proto);
+}
+
 Error ONNXModelWriter::writeAdd(const AddNode *node, GraphType &graph) {
   return writeArithmetic("Add", node, graph, reportedNodes_);
 }
@@ -1819,6 +1956,20 @@ Error ONNXModelWriter::writeSub(const SubNode *node, GraphType &graph) {
   }
 
 // ONNX nodes with default exporting algorithm.
+DEF_ALL_WRITER_NODE(And)
+DEF_ALL_WRITER_NODE(Or)
+DEF_ALL_WRITER_NODE(Xor)
+DEF_ALL_WRITER_NODE(Not)
+DEF_ALL_WRITER_NODE(Abs)
+DEF_ALL_WRITER_NODE(Neg)
+DEF_ALL_WRITER_NODE(Floor)
+DEF_ALL_WRITER_NODE(Ceil)
+DEF_ALL_WRITER_NODE(Round)
+DEF_ALL_WRITER_NODE(Sqrt)
+DEF_ALL_WRITER_NODE(Rsqrt)
+DEF_ALL_WRITER_NODE(Reciprocal)
+DEF_ALL_WRITER_NODE(Sin)
+DEF_ALL_WRITER_NODE(Cos)
 DEF_ALL_WRITER_NODE(Min)
 DEF_ALL_WRITER_NODE(Max)
 DEF_ALL_WRITER_NODE(Log)
@@ -1827,6 +1978,7 @@ DEF_ALL_WRITER_NODE(Relu)
 DEF_ALL_WRITER_NODE(Tanh)
 DEF_ALL_WRITER_NODE(IsNaN)
 DEF_ALL_WRITER_NODE(Sigmoid)
+DEF_ALL_WRITER_NODE(Swish)
 DEF_ALL_WRITER_NODE(LengthsSum)
 DEF_ALL_WRITER_NODE(BatchOneHot)
 DEF_ALL_WRITER_NODE(LengthsToRanges)
@@ -1836,8 +1988,9 @@ DEF_ALL_WRITER_NODE(EmbeddingBag)
 
 // Glow nodes with default exporting algorithm.
 DEF_ALL_WRITER_NODE(CmpEQ)
-DEF_ALL_WRITER_NODE(CmpLTE)
+DEF_ALL_WRITER_NODE(CmpNEQ)
 DEF_ALL_WRITER_NODE(CmpLT)
+DEF_ALL_WRITER_NODE(CmpLTE)
 DEF_ALL_WRITER_NODE(BatchedAdd)
 DEF_ALL_WRITER_NODE(Dequantize)
 DEF_ALL_WRITER_NODE(Regression)
@@ -1847,6 +2000,7 @@ DEF_ALL_WRITER_NODE(EmbeddingBagByteRowwiseOffsets)
 DEF_ALL_WRITER_NODE(FusedRowwiseQuantizedSparseLengthsWeightedSum)
 DEF_ALL_WRITER_NODE(NonMaxSuppression)
 DEF_ALL_WRITER_NODE(ConvTranspose)
+DEF_ALL_WRITER_NODE(Logit)
 
 Error ONNXModelWriter::writeClip(const ClipNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
@@ -2089,7 +2243,7 @@ Error ONNXModelWriter::writeGlowCustomOperator(const Node *node,
   RETURN_ERR_IF_NOT(opProto, "Did not have valid opProto.");
 
   // If dumping a DAG then add partition names to each op that's written.
-  if (dagMode_) {
+  if (dagMode_ && !isWritingConstFoldSubgraph()) {
     addValueAttribute(opProto, "partitionName", F_->getName().str());
   }
 

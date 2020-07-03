@@ -17,6 +17,25 @@ target_link_libraries(image-classifier
                         Quantization
                         LLVMSupport)
 
+add_executable(object-detector
+               Loader.cpp
+               ObjectDetector.cpp
+               ExecutorCore.cpp
+               ExecutorCoreHelperFunctions.cpp)
+
+target_link_libraries(object-detector
+                      PRIVATE
+                      Backends
+                      Base
+                      Converter
+                      ExecutionEngine
+                      HostManager
+                      Graph
+                      Importer
+                      GraphOptimizer
+                      Quantization
+                      LLVMSupport)
+
 add_executable(text-translator
   Loader.cpp
   TextTranslator.cpp)

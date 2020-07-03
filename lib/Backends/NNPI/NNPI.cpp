@@ -15,6 +15,7 @@
 
 #include "NNPI.h"
 #include "DebugMacros.h"
+#include "Importer.h"
 #include "InferenceContext.h"
 #include "NNPICompiledFunction.h"
 #include "NNPIDeviceManager.h"
@@ -135,6 +136,12 @@ bool NNPIBackend::acceptForExecution(const NodeInfo &NI) const {
   }
 }
 
+/// \returns whether SLS indices type is valid for NNPI.
+static bool isSLSIndicesValid(TypeRef type) {
+  // Don't support more than 64k indices.
+  return type->dims().size() == 1 && type->dims()[0] < (1 << 16);
+}
+
 bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
   // General math fp32/fp16/i8.
@@ -198,7 +205,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     }
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy},
                                                   {ConvolutionNode::BiasIdx}) &&
-           (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int32QTy);
+           ((NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int32QTy) ||
+            (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::FloatTy));
 
   case Kinded::Kind::Convolution3DNodeKind:
     if (!NI.getInTy(Convolution3DNode::InputIdx)->isQuantizedType()) {
@@ -207,7 +215,9 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     }
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::Int8QTy}, {Convolution3DNode::BiasIdx}) &&
-           (NI.getInElemTy(Convolution3DNode::BiasIdx) == ElemKind::Int32QTy);
+           ((NI.getInElemTy(Convolution3DNode::BiasIdx) ==
+             ElemKind::Int32QTy) ||
+            (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::FloatTy));
   case Kinded::Kind::QuantizeNodeKind:
     return (NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::FloatTy ||
             NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::Float16Ty) &&
@@ -238,13 +248,15 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   }
 
   case Kinded::Kind::FullyConnectedNodeKind:
-    if (!NI.getInTy(ConvolutionNode::InputIdx)->isQuantizedType()) {
+    if (!NI.getInTy(FullyConnectedNode::InputIdx)->isQuantizedType()) {
       return NI.allInputsAndOutputsHaveSameElemKind(
           {ElemKind::FloatTy, ElemKind::Float16Ty});
     }
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::Int8QTy}, {FullyConnectedNode::BiasIdx}) &&
-           (NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::Int32QTy);
+           ((NI.getInElemTy(FullyConnectedNode::BiasIdx) ==
+             ElemKind::Int32QTy) ||
+            (NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::FloatTy));
 
   case Kinded::Kind::MaxPoolNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -309,8 +321,10 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
             ElemKind::FloatTy) &&
            (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::OffsetsIdx) ==
             ElemKind::Int32ITy) &&
-           (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
-            ElemKind::Int32QTy) &&
+           ((NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
+             ElemKind::Int32QTy) ||
+            (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
+             ElemKind::FloatTy)) &&
            (NI.getOutElemTy(RowwiseQuantizedFullyConnectedNode::ResultIdx) ==
             ElemKind::Int8QTy);
 
@@ -323,15 +337,19 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
              ElemKind::Int32QTy) ||
             (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
              ElemKind::FloatTy)) &&
-           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::ScalesIdx) ==
+           (NI.getInElemTy(
+                ChannelwiseQuantizedConvolutionNode::FilterScalesIdx) ==
             ElemKind::FloatTy) &&
-           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::OffsetsIdx) ==
+           (NI.getInElemTy(
+                ChannelwiseQuantizedConvolutionNode::FilterOffsetsIdx) ==
+
             ElemKind::Int32ITy) &&
            (NI.getOutElemTy(ChannelwiseQuantizedConvolutionNode::ResultIdx) ==
             ElemKind::Int8QTy);
 
   case Kinded::Kind::SparseLengthsSumNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    return isSLSIndicesValid(NI.getInTy(SparseLengthsSumNode::IndicesIdx)) &&
+           NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
                {SparseLengthsSumNode::IndicesIdx,
                 SparseLengthsSumNode::LengthsIdx}) &&
@@ -342,7 +360,9 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(SparseLengthsSumNode::LengthsIdx) ==
             ElemKind::Int32ITy);
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    return isSLSIndicesValid(
+               NI.getInTy(SparseLengthsWeightedSumNode::IndicesIdx)) &&
+           NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
                {SparseLengthsWeightedSumNode::IndicesIdx,
                 SparseLengthsWeightedSumNode::LengthsIdx}) &&
@@ -354,7 +374,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
             ElemKind::Int32ITy);
 
   case Kinded::Kind::EmbeddingBagNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    return isSLSIndicesValid(NI.getInTy(EmbeddingBagNode::IndicesIdx)) &&
+           NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
                {EmbeddingBagNode::IndicesIdx, EmbeddingBagNode::OffsetsIdx}) &&
            (NI.getInElemTy(EmbeddingBagNode::IndicesIdx) ==
@@ -369,8 +390,11 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
         NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx);
     auto resultK =
         NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx);
-    return (dataK == ElemKind::UInt8FusedQTy ||
-            dataK == ElemKind::UInt8FusedFP16QTy) &&
+    return isSLSIndicesValid(
+               NI.getInTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx)) &&
+           (dataK == ElemKind::UInt8FusedQTy ||
+            dataK == ElemKind::UInt8FusedFP16QTy ||
+            dataK == ElemKind::UInt4FusedFP16QTy) &&
            (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
            (indicesK == ElemKind::Int64ITy) && (offsetsK == ElemKind::Int64ITy);
   }
@@ -384,7 +408,9 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
         NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::IndicesIdx);
     auto resultK =
         NI.getOutElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::ResultIdx);
-    return (dataK == ElemKind::UInt8FusedQTy ||
+    return isSLSIndicesValid(NI.getInTy(
+               FusedRowwiseQuantizedSparseLengthsSumNode::IndicesIdx)) &&
+           (dataK == ElemKind::UInt8FusedQTy ||
             dataK == ElemKind::UInt8FusedFP16QTy ||
             dataK == ElemKind::UInt4FusedFP16QTy) &&
            (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
@@ -403,7 +429,10 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
         FusedRowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx);
     auto resultK = NI.getOutElemTy(
         FusedRowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx);
-    return (dataK == ElemKind::UInt8FusedQTy ||
+    return isSLSIndicesValid(
+               NI.getInTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                              IndicesIdx)) &&
+           (dataK == ElemKind::UInt8FusedQTy ||
             dataK == ElemKind::UInt8FusedFP16QTy ||
             dataK == ElemKind::UInt4FusedFP16QTy) &&
            (weightsK == ElemKind::FloatTy || weightsK == ElemKind::Float16Ty) &&
@@ -413,7 +442,9 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   }
 
   case Kinded::Kind::RowwiseQuantizedSparseLengthsWeightedSumNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    return isSLSIndicesValid(NI.getInTy(
+               RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx)) &&
+           NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy, ElemKind::Float16Ty},
                {RowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx,
                 RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx,
@@ -454,6 +485,7 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
            (NI.getInElemTy(BatchOneHotNode::LengthsIdx) == ElemKind::Int32ITy);
 
   case Kinded::Kind::NNPICustomDSPNodeKind:
+  case Kinded::Kind::NNPICustomIANodeKind:
     return true;
 
   case Kinded::Kind::SpaceToDepthNodeKind:
@@ -462,7 +494,12 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
          ElemKind::Int32ITy, ElemKind::Int64ITy});
 
   case Kinded::Kind::ArgMaxNodeKind:
-    return (NI.getOutElemTy(ArgMaxNode::ArgmaxIdx) == ElemKind::Int64ITy);
+    return (NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int64ITy);
+
+  case Kinded::Kind::LogitNodeKind: {
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty});
+  }
 
   default:
     llvm::outs() << "Unsupported op:\n" << NI.getDebugDesc() << "\n";
@@ -488,6 +525,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::ConvolutionNodeKind:
+  case Kinded::Kind::Convolution3DNodeKind:
   case Kinded::Kind::TileNodeKind:
   case Kinded::Kind::LogNodeKind:
   case Kinded::Kind::ReplaceNaNNodeKind:
@@ -500,17 +538,10 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:
   case Kinded::Kind::EmbeddingBagNodeKind:
   case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind:
-    return false;
-  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
-    const FusedRowwiseQuantizedSparseLengthsSumNode *SLSN =
-        llvm::cast<FusedRowwiseQuantizedSparseLengthsSumNode>(N);
-    if (SLSN->getResult().getElementType() == ElemKind::Float16Ty) {
-      return false; // Don't lower == keep without weights
-    } else {
-      return true;
-    }
-  }
   case Kinded::Kind::LayerNormalizationNodeKind:
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
+  case Kinded::Kind::PReluNodeKind:
+    return false;
   case Kinded::Kind::SparseLengthsSumNodeKind:
     // WA - lower until ICE-T implements it.
     if (NNPIBackend::backendOptions_.useIceT ||
@@ -518,13 +549,12 @@ bool NNPIBackend::shouldLower(const Node *N) const {
       return true;
     }
     return false;
-  case Kinded::Kind::PReluNodeKind: {
+  case Kinded::Kind::LogitNodeKind: {
     NodeInfo NI(*N);
     return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
   }
   default:
     return true;
-    break;
   }
   return true;
 }
@@ -658,12 +688,10 @@ static void setupBasicParallelizationConfigs(
   }
 }
 
-/// If we've done some paralleization specified in \p replacedMap then propagate
-/// any NodeInfo from original nodes to the newly created Nodes in
-/// \p backendSpecificNodeInfo. Additionally, validate that the parallelization
-/// matches with the specified previous NodeInfo. \returns whether any
-/// validation error is found.
-static Error propagateBackendSpecificNodeInfo(
+/// If we've done some paralleization specified in \p replacedMap then
+/// validate that the parallelization matches with the specified previous
+/// NodeInfo. \returns whether any validation error is found.
+static Error validateBackendSpecificNodeInfo(
     Function *F, const std::unordered_map<Node *, ConcatNode *> &replacedMap,
     BackendSpecificNodeInfo &backendSpecificNodeInfo) {
   // Build a map from replaced names of a Node to the ConcatNode that replaced
@@ -705,82 +733,56 @@ static Error propagateBackendSpecificNodeInfo(
     RETURN_ERR_IF_NOT(numParChunksVal == CN->getInputs().size(),
                       "Node not split the expected number of times.");
 
-    // Look for coreAssignments and propagate them into each Node.
-    auto coreAssignmentsIt = nodeInfo.find(coreAssignmentsKey);
-    if (coreAssignmentsIt != nodeInfo.end()) {
-      RETURN_ERR_IF_NOT(coreAssignmentsIt->second.size() ==
-                            CN->getInputs().size(),
-                        "Require same number of assignments as split factor");
-      for (size_t i = 0, e = CN->getInputs().size(); i < e; i++) {
-        Node *inputCN = CN->getInputs()[i].getNode();
-        auto &newCoreAssignments = currFunInfo[inputCN][coreAssignmentsKey];
-        RETURN_ERR_IF_NOT(newCoreAssignments.size() == 0,
-                          std::string(coreAssignmentsKey) +
-                              " should have been empty.");
-        newCoreAssignments.push_back(coreAssignmentsIt->second[i]);
-      }
-    }
-
-    // Look for NNPI_extraEdges and propagate them into each Node.
-    auto extraEdgesIt = nodeInfo.find(extraEdgesKey);
-    if (extraEdgesIt != nodeInfo.end()) {
-      for (const NodeValue &inputCNNV : CN->getInputs()) {
-        auto &newExtraEdges = currFunInfo[inputCNNV.getNode()][extraEdgesKey];
-        RETURN_ERR_IF_NOT(newExtraEdges.size() == 0,
-                          std::string(extraEdgesKey) +
-                              " should have been empty.");
-        for (const std::string &edge : extraEdgesIt->second) {
-          newExtraEdges.push_back(edge);
-        }
-      }
-    }
-
     // Now we can erase this Node's info from currFunInfo because it has been
     // replaced and will be DCE'd soon.
     currFunInfo.erase(curNodeInfoIt);
   }
 
-  // Now we need to look through all extraEdges and clean them up so they point
-  // to parallelized names of opts. They should be formatted like "nodeName@#",
-  // where '#' is an int representing which parallel chunk edge should be used.
-  for (auto &nodeInfoPair : currFunInfo) {
-    for (auto &keyOptsPair : nodeInfoPair.second) {
-      const llvm::StringRef &key = keyOptsPair.getKey();
-      std::vector<std::string> &opts = keyOptsPair.getValue();
-
-      // Look for any extraEdges options.
-      if (key != extraEdgesKey) {
-        continue;
-      }
-
-      for (std::string &edge : opts) {
-        // Only process edges that were expected to be split.
-        llvm::StringRef edgeRef(edge);
-        if (!edgeRef.contains('@')) {
-          continue;
-        }
-
-        auto splitPair = edgeRef.split('@');
-        RETURN_ERR_IF_NOT(splitPair.second != "",
-                          "Edge must have an integer value after @");
-
-        int splitNum;
-        ASSIGN_VALUE_OR_RETURN_ERR(splitNum, getIntFromStr(splitPair.second));
-
-        auto it = nameToReplacementMap.find(splitPair.first);
-        RETURN_ERR_IF_NOT(
-            it != nameToReplacementMap.end(),
-            "Must have a replacement Concat for a parallelized edge.");
-
-        const ConcatNode *replaceCN = it->second;
-        RETURN_ERR_IF_NOT(splitNum < replaceCN->getInputs().size(),
-                          "splitNum for edge exceeded size of the split.");
-
-        // Finally, replace the name of the old edge (containing '@') with the
-        // name of the new edge created during the parallelization pass.
-        edge = replaceCN->getInputs()[splitNum].getNode()->getName().str();
-      }
+  // No parallelization or placement hints should be present at this point
+  for (auto &node : F->getNodes()) {
+    auto curNodeInfoIt = currFunInfo.find(&node);
+    if (curNodeInfoIt == currFunInfo.end()) {
+      continue;
     }
+    auto &nodeInfo = curNodeInfoIt->second;
+
+    RETURN_ERR_IF_NOT(!nodeInfo.count(parallelTransformKindKey),
+                      strFormat("Node %s should not have a "
+                                "parallelTransformKind after parallelization",
+                                node.getName().str().c_str()));
+
+    RETURN_ERR_IF_NOT(
+        !nodeInfo.count(numParallelChunksKey),
+        strFormat(
+            "Node %s should not have a numParallelChunks after parallelization",
+            node.getName().str().c_str()));
+
+    RETURN_ERR_IF_NOT(
+        !nodeInfo.count(coreAssignmentsKey),
+        strFormat(
+            "Node %s should not have a coreAssignments prior to placement",
+            node.getName().str().c_str()));
+
+    RETURN_ERR_IF_NOT(!nodeInfo.count(coreAssignmentsSuffixKey),
+                      strFormat("Node %s should not have a "
+                                "coreAssignmentsSuffix prior to placement",
+                                node.getName().str().c_str()));
+
+    RETURN_ERR_IF_NOT(
+        !nodeInfo.count(extraEdgesTargetNameKey),
+        strFormat(
+            "Node %s should not have a extraEdgesTargetName prior to placement",
+            node.getName().str().c_str()));
+
+    RETURN_ERR_IF_NOT(!nodeInfo.count(extraEdgesTargetSuffixKey),
+                      strFormat("Node %s should not have a "
+                                "extraEdgesTargetSuffix prior to placement",
+                                node.getName().str().c_str()));
+
+    RETURN_ERR_IF_NOT(!nodeInfo.count(extraEdgesSourceSuffixKey),
+                      strFormat("Node %s should not have a "
+                                "extraEdgesSourceSuffix prior to placement",
+                                node.getName().str().c_str()));
   }
   return Error::success();
 }
@@ -915,9 +917,9 @@ static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts,
                     "Expected that numChunks and replacedMap have same size.");
 
   if (usePerNodeParallelizationSpec) {
-    // If parallelization was based on backend-specific node info then propagate
-    // it to new nodes that were added.
-    RETURN_IF_ERR(propagateBackendSpecificNodeInfo(
+    // If parallelization was based on backend-specific node info then
+    // validate the new nodes that were added.
+    RETURN_IF_ERR(validateBackendSpecificNodeInfo(
         F, replacedMap, opts.backendSpecificNodeInfo));
   }
 
@@ -1002,6 +1004,9 @@ NNPIBackend::getOptimizationPipeline() const {
   // Now that things have been sunk try to get rid of unnecessary concats.
   pipeline->pushBack(FunctionPassID::OptimizeConcatNodes);
 
+  // Now try to get rid of unnecessary splits right before concats.
+  pipeline->pushBack(FunctionPassID::EliminateSliceConcat);
+
   // Look for float Relus that we can fuse up into quantized FCs.
   pipeline->pushBack(FunctionPassID::OptimizeQuantFCFloatRelu);
 
@@ -1035,19 +1040,56 @@ NNPIBackend::getOptimizationPipeline() const {
 static bool lowerRequiredNodes(Function *F, CompilationContext &cctx) {
   bool changed = false;
   for (auto &N : F->getNodes()) {
-    BatchMatMulNode *BMMN = llvm::dyn_cast<BatchMatMulNode>(&N);
-    if (!BMMN) {
+    if (BatchMatMulNode *BMMN = llvm::dyn_cast<BatchMatMulNode>(&N)) {
+      if (!GlowNNPILowerAllBatchMatMul &&
+          !NodeInfo(*BMMN).allInputsAndOutputsHaveSameElemKind(
+              {ElemKind::FloatTy})) {
+        continue;
+      }
+
+      lowerNode(F, BMMN, cctx);
+      changed = true;
       continue;
     }
 
-    if (!GlowNNPILowerAllBatchMatMul &&
-        !NodeInfo(*BMMN).allInputsAndOutputsHaveSameElemKind(
-            {ElemKind::FloatTy})) {
+    if (FusedRowwiseQuantizedSparseLengthsSumNode *SLS =
+            llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(&N)) {
+      // Lower FRWQSLS only if not FP16.
+      if (SLS->getResult().getElementType() == ElemKind::Float16Ty) {
+        continue;
+      }
+
+      lowerNode(F, SLS, cctx);
+      changed = true;
       continue;
     }
 
-    lowerNode(F, BMMN, cctx);
-    changed = true;
+    if (PReluNode *PR = llvm::dyn_cast<PReluNode>(&N)) {
+      // Lower PRelu only if not FP16.
+      if (PR->getResult().getElementType() == ElemKind::Float16Ty) {
+        continue;
+      }
+
+      lowerNode(F, PR, cctx);
+      changed = true;
+      continue;
+    }
+
+    if (ConvertToNode *CT = llvm::dyn_cast<ConvertToNode>(&N)) {
+      // Handle bool->float conversion
+      if (((CT->getResult().getElementType() == ElemKind::FloatTy) ||
+           (CT->getResult().getElementType() == ElemKind::Float16Ty)) &&
+          CT->getInput().getElementType() == ElemKind::BoolTy) {
+        auto outputType = CT->getResult().getType();
+        auto ctName = CT->getName().str();
+        auto *s0 = F->createSplat(ctName + "_s0", outputType, 0.0f);
+        auto *s1 = F->createSplat(ctName + "_s1", outputType, 1.0f);
+        auto *sel = F->createSelect(ctName + "_sel", CT->getInput(), s1, s0);
+        CT->getResult().replaceAllUsesOfWith(sel);
+        changed = true;
+        continue;
+      }
+    }
   }
   return changed;
 }
@@ -1150,8 +1192,6 @@ traversePostOrder(const runtime::DAGNode *root,
 Error NNPIBackend::bindContexts(
     llvm::ArrayRef<runtime::ContextBinding> bindings,
     const runtime::DAGNode *root, bool enableP2P, bool enableDRT) {
-  LOG(INFO) << "enableP2P/DRT not yet implemented. enableDRT = " << enableDRT
-            << ", enableP2P = " << enableP2P << ".\n";
   if (backendOptions_.dumpRuntime) {
     DotWriter::clear();
     DotWriter::addSubGraph("Host", "Host");
@@ -1171,10 +1211,12 @@ Error NNPIBackend::bindContexts(
     nnpiDM->addPlaceholderUsageCount(cb.networkName, phUsage);
   }
 
-  for (const auto &usage : phUsage) {
+  for (auto &usage : phUsage) {
     LOG_IF_NOT_RETURN_LLVMERROR(
         usage.second.numWriters < 2,
         "Multiple writes to the same placeholder not suported");
+    usage.second.disableP2P = !enableP2P;
+    usage.second.disableDRT = !enableDRT;
   }
 
   for (auto *dagNode : postOrder) {
@@ -1193,6 +1235,14 @@ Error NNPIBackend::bindContexts(
       }
     }
     if (ctx && devMgr) {
+      // Update the tensors bound to placeholders.
+      auto *phBindings = ctx->getPlaceholderBindings();
+      for (auto &usage : phUsage) {
+        const auto &phName = usage.first;
+        auto *ph = phBindings->getPlaceholderByNameSlow(phName);
+        usage.second.tensor = phBindings->get(ph);
+      }
+
       runtime::NNPIDeviceManager *nnpiDM =
           dynamic_cast<runtime::NNPIDeviceManager *>(devMgr);
       LOG_IF_NOT_RETURN_LLVMERROR(nnpiDM, "Invalid device manager bound");
@@ -1207,4 +1257,261 @@ Error NNPIBackend::bindContexts(
   }
 
   return Error::success();
+}
+
+/// Partial update of the NNPITensorDesc. Some members are ignored as they're
+/// not used for estimation.
+static bool updateDescForEstimate(NNPITensorDesc &desc,
+                                  const glow::TypeRef ty) {
+  LOG_AND_RETURN_IF(ERROR, ty == nullptr, "Invalid type", false);
+
+  // Update dims and layout.
+  NNPIImporter::updateDescDimsFromGlow(ty->dims(), desc);
+
+  // Update Quantization.
+  switch (ty->getElementType()) {
+  case glow::ElemKind::FloatTy:
+    desc.quantParams.precision = NNPI_PRECISION_FLOAT32;
+    desc.quantParams.type = NNPI_QUANTIZATION_NONE;
+    break;
+  case glow::ElemKind::Float16Ty:
+    desc.quantParams.precision = NNPI_PRECISION_FLOAT16;
+    desc.quantParams.type = NNPI_QUANTIZATION_NONE;
+    break;
+  case glow::ElemKind::Int8QTy:
+    desc.quantParams.precision = NNPI_PRECISION_INT8;
+    desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP;
+    break;
+  case glow::ElemKind::UInt8QTy:
+    desc.quantParams.precision = NNPI_PRECISION_UINT8;
+    desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP;
+    break;
+  case glow::ElemKind::Int32ITy:
+    desc.quantParams.precision =
+        NNPI_PRECISION_INT32; // The backend will convert to Int32 when
+                              // compiling.
+    desc.quantParams.type = NNPI_QUANTIZATION_NONE;
+    break;
+  case glow::ElemKind::Int64ITy:
+    desc.quantParams.precision =
+        NNPI_PRECISION_INT32; // The backend will convert to Int32 when
+                              // compiling.
+    desc.quantParams.type = NNPI_QUANTIZATION_NONE;
+    break;
+  case glow::ElemKind::Int32QTy:
+    desc.quantParams.precision = NNPI_PRECISION_INT32;
+    desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP;
+    break;
+  case glow::ElemKind::UInt8FusedQTy:
+    desc.quantParams.precision = NNPI_PRECISION_UINT8;
+    desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP_PCQ_FUSED;
+    break;
+  case glow::ElemKind::UInt8FusedFP16QTy:
+    desc.quantParams.precision = NNPI_PRECISION_UINT8;
+    desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP_PCQ_FUSED_FP16;
+    break;
+  case glow::ElemKind::UInt4FusedFP16QTy:
+    desc.quantParams.precision = NNPI_PRECISION_UINT8;
+    desc.quantParams.type = NNPI_QUANTIZATION_GEMMLOWP_PCQ_4BIT_FUSED_FP16;
+    break;
+  case glow::ElemKind::BoolTy:
+    desc.quantParams.precision = NNPI_PRECISION_BOOLEAN;
+    desc.quantParams.type = NNPI_QUANTIZATION_NONE;
+    break;
+
+  default:
+    LOG_AND_RETURN_IF(ERROR, true, "Invalid type", false);
+    break;
+  }
+  memset(&desc.quantParams.params, 0,
+         sizeof(desc.quantParams.params)); // Actual values are not needed here.
+
+  desc.attributes.value = 0; // No attributes needed here.
+
+  return true;
+}
+
+/// Prepare the list of NNPITensorDesc for the estimate call.
+static bool updateDescListForEstimate(std::vector<NNPITensorDesc> &descs,
+                                      const std::vector<glow::TypeRef> types) {
+  if (descs.size() != types.size()) {
+    return false;
+  }
+  bool retVal = true;
+  for (size_t i = 0; i < descs.size(); i++) {
+    if (types.at(i) != nullptr) {
+      retVal &= updateDescForEstimate(descs.at(i), types.at(i));
+    }
+  }
+  return retVal;
+}
+
+double NNPIBackend::estimateEmbeddingNode(const glow::NodeInfo &NI,
+                                          bool fp32Accumulation,
+                                          glow::LengthsMode lengthsMode,
+                                          float averageLength) const {
+  if (!isOpSupported(NI)) {
+    // Op isn't supported.
+    return -1.0;
+  }
+  NNPI_LENGTH_TYPE lengthType = NNPI_LENGTH_VARIABLE;
+  LOG_AND_RETURN_IF(ERROR,
+                    NNPIImporter::convertLengthsModeToLengthType(
+                        lengthsMode, lengthType) != NNPI_NO_ERROR,
+                    "Failed to convert LengthsMode", -1.0);
+
+  enum DescIndex {
+    Input = 0,
+    Output = 1,
+    Weight = 2,
+    Index = 3,
+    Length = 4,
+
+    // Keep this last.
+    NumIndices = 5,
+  };
+  std::vector<NNPITensorDesc> descs(NumIndices);
+
+  bool validWeight = false;
+  bool useLengthAsOffset = false;
+  glow::TypeRef tr(nullptr);
+  switch (NI.getKind()) {
+
+  case Kinded::Kind::SparseLengthsSumNodeKind:
+    LOG_AND_RETURN_IF(ERROR,
+                      !updateDescListForEstimate(
+                          descs,
+                          {
+                              NI.getInTy(SparseLengthsSumNode::DataIdx),
+                              NI.getOutTy(SparseLengthsSumNode::ResultIdx),
+                              nullptr,
+                              NI.getInTy(SparseLengthsSumNode::IndicesIdx),
+                              NI.getInTy(SparseLengthsSumNode::LengthsIdx),
+                          }),
+                      "Failed to update NNPITensorDesc", -1.0);
+    break;
+
+  case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
+    validWeight = true;
+    LOG_AND_RETURN_IF(
+        ERROR,
+        !updateDescListForEstimate(
+            descs,
+            {
+                NI.getInTy(SparseLengthsWeightedSumNode::DataIdx),
+                NI.getOutTy(SparseLengthsWeightedSumNode::ResultIdx),
+                NI.getInTy(SparseLengthsWeightedSumNode::WeightsIdx),
+                NI.getInTy(SparseLengthsWeightedSumNode::IndicesIdx),
+                NI.getInTy(SparseLengthsWeightedSumNode::LengthsIdx),
+            }),
+        "Failed to update NNPITensorDesc", -1.0);
+    break;
+
+  case Kinded::Kind::RowwiseQuantizedSparseLengthsWeightedSumNodeKind:
+    validWeight = true;
+    LOG_AND_RETURN_IF(
+        ERROR,
+        !updateDescListForEstimate(
+            descs,
+            {
+                NI.getInTy(
+                    RowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx),
+                NI.getOutTy(
+                    RowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx),
+                NI.getInTy(
+                    RowwiseQuantizedSparseLengthsWeightedSumNode::WeightsIdx),
+                NI.getInTy(
+                    RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx),
+                NI.getInTy(
+                    RowwiseQuantizedSparseLengthsWeightedSumNode::LengthsIdx),
+            }),
+        "Failed to update NNPITensorDesc", -1.0);
+    break;
+
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
+    LOG_AND_RETURN_IF(
+        ERROR,
+        !updateDescListForEstimate(
+            descs,
+            {
+                NI.getInTy(FusedRowwiseQuantizedSparseLengthsSumNode::DataIdx),
+                NI.getOutTy(
+                    FusedRowwiseQuantizedSparseLengthsSumNode::ResultIdx),
+                nullptr,
+                NI.getInTy(
+                    FusedRowwiseQuantizedSparseLengthsSumNode::IndicesIdx),
+                NI.getInTy(
+                    FusedRowwiseQuantizedSparseLengthsSumNode::LengthsIdx),
+            }),
+        "Failed to update NNPITensorDesc", -1.0);
+    break;
+
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind:
+    validWeight = true;
+    LOG_AND_RETURN_IF(
+        ERROR,
+        !updateDescListForEstimate(
+            descs,
+            {
+                NI.getInTy(
+                    FusedRowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx),
+                NI.getOutTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                                ResultIdx),
+                NI.getInTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                               WeightsIdx),
+                NI.getInTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                               IndicesIdx),
+                NI.getInTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
+                               LengthsIdx),
+            }),
+        "Failed to update NNPITensorDesc", -1.0);
+    break;
+
+  case Kinded::Kind::EmbeddingBagNodeKind:
+    validWeight = true;
+    useLengthAsOffset = true;
+    LOG_AND_RETURN_IF(
+        ERROR,
+        !updateDescListForEstimate(descs,
+                                   {
+                                       NI.getInTy(EmbeddingBagNode::DataIdx),
+                                       NI.getOutTy(EmbeddingBagNode::ResultIdx),
+                                       NI.getInTy(EmbeddingBagNode::WeightsIdx),
+                                       NI.getInTy(EmbeddingBagNode::IndicesIdx),
+                                       NI.getInTy(EmbeddingBagNode::OffsetsIdx),
+                                   }),
+        "Failed to update NNPITensorDesc", -1.0);
+    break;
+
+  case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind:
+    validWeight = true;
+    useLengthAsOffset = true;
+    LOG_AND_RETURN_IF(
+        ERROR,
+        !updateDescListForEstimate(
+            descs,
+            {
+                NI.getInTy(EmbeddingBagByteRowwiseOffsetsNode::DataIdx),
+                NI.getOutTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx),
+                NI.getInTy(EmbeddingBagByteRowwiseOffsetsNode::WeightsIdx),
+                NI.getInTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx),
+                NI.getInTy(EmbeddingBagByteRowwiseOffsetsNode::OffsetsIdx),
+            }),
+        "Failed to update NNPITensorDesc", -1.0);
+    break;
+
+  default:
+    return -1.0;
+  }
+
+  double estimate = -1.0;
+  LOG_NNPI_IF_ERROR(nnpiEstimateSparseLengthsWeightedSumOp(
+                        &(descs.at(Input)), &(descs.at(Output)),
+                        validWeight ? &(descs.at(Weight)) : nullptr,
+                        &(descs.at(Index)), &(descs.at(Length)),
+                        fp32Accumulation, useLengthAsOffset, averageLength,
+                        lengthType, &estimate),
+                    "Failed to estimate SLS op.");
+
+  return estimate;
 }

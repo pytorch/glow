@@ -17,7 +17,6 @@
 #define GLOW_BACKENDS_NNPI_NNPIDEVICEMANAGER_H
 
 #include "InferencePool.h"
-#include "NNPIAdapterContainer.h"
 #include "NNPITracing.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Runtime/RuntimeTypes.h"
@@ -33,6 +32,7 @@
 
 namespace glow {
 class NNPICompiledFunction;
+class NNPIAdapterContainer;
 namespace runtime {
 
 class NNPIResource;
@@ -53,8 +53,6 @@ class NNPIDeviceManager : public DeviceManager {
   uint64_t usedMemoryBytes_{0};
   /// Static memory cost of the InterpreterFunction.
   const uint64_t functionCost_{1};
-  /// Number of worker threads allocated per loaded function.
-  unsigned numWorkersPerFunction_;
 
   /// Inference id counter.
   static std::atomic<RunIdentifierTy> runIdentifier_;
@@ -62,16 +60,14 @@ class NNPIDeviceManager : public DeviceManager {
   /// NNPI Device id.
   unsigned deviceId_;
   /// Inference objects kept per added network.
-  InferencePoolMap inferenceEnvs_;
+  InferencePoolMap inferencePools_;
 
-  /// NNPI Adapter handle.
-  NNPIAdapter adapter_;
+  /// NNPI Adapter container.
+  NNPIAdapterContainer *pAdapter_ = nullptr;
   /// NNPI Device Context handle.
   NNPIDeviceContext device_;
   /// Lock to synchronize function adding/removing to/from the device manager.
   std::mutex functionMapMutex_;
-  /// Device Tracing control.
-  std::shared_ptr<NNPIDeviceTracing> deviceTracing_;
   /// Static placeholders known by the device manager (the device manager
   /// doesn't own a ref on static resources, only networks added to the device
   /// manager).
@@ -82,8 +78,7 @@ class NNPIDeviceManager : public DeviceManager {
 public:
   explicit NNPIDeviceManager(const DeviceConfig &config,
                              std::shared_ptr<NNPIDeviceOptions> deviceOptions,
-                             NNPIAdapter adapter,
-                             unsigned numInferenceWorkers = 0);
+                             NNPIAdapterContainer *adapter);
   virtual ~NNPIDeviceManager();
 
   Error init() override;
@@ -108,6 +103,9 @@ public:
                     PlaceholderUsageMap &phUsage);
   void addPlaceholderUsageCount(std::string functionName,
                                 PlaceholderUsageMap &phUsage);
+
+  void *allocateDeviceIOBuffer(dim_t size) override;
+  void freeAllocatedDeviceIOBuffer(void *buffer) override;
 };
 
 class NNPIDeviceBindings : public DeviceBindings {

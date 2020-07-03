@@ -34,10 +34,19 @@ namespace runtime {
 struct DeviceInfo;
 }
 
+/// Use to keep a record what happened during constant folding -- key is the
+/// Constant created during constant folding, and associated value is the
+/// SaveNode from the constant folding partition that saved that Constant when
+/// it was run.
+using ConstantFoldingRecordMap = llvm::DenseMap<Constant *, SaveNode *>;
+
 /// Perform optimizations on the graph representation.
 void optimize(Function *F, CompilationContext &cctx);
 void optimize(Function *F, CompilationMode mode);
 void optimize(Function *F, CompilationContext &cctx, const Backend &B);
+
+/// Delete unused Constants from \p mod.
+void deleteUnusedConstants(Module &mod);
 
 /// Fold nodes that were expressed lowered in the input model.
 void fold(Function *F, CompilationContext &cctx, const Backend *B = nullptr);
@@ -94,12 +103,27 @@ void transformForPrecisionMode(const Backend &B, Function *F,
 /// was possible an empty vector will be returned.
 std::vector<Constant *> constantFold(Node *N);
 
+/// Perform constant folding for all Nodes in \p F given \p cctx. \returns a
+/// record of what Constants are created by what SaveNodes pointing to
+/// Placeholders that replace them. The Functions and output Placeholders
+/// created for running the constant folding subgraph are not deleted from the
+/// module for this API.
+ConstantFoldingRecordMap constantFoldAndRecord(Function *F,
+                                               const CompilationContext &cctx);
+
+/// Given \p record, remove the constant folding Functions and their associated
+/// output Placeholder from \p mod and \p bindings.
+void cleanupConstantFolding(Module &mod, const ConstantFoldingRecordMap &record,
+                            PlaceholderBindings *bindings = nullptr);
+
 /// Execute function \p F by the \p backend using the provided \p bindings and
-/// the compilation context \p cctx.
+/// the compilation context \p cctx. If \p enableQuantizeConstFolding then
+/// QuantizeNodes can be folded as part of a constant chain.
 /// \returns error if function is not a constant function.
 Error executeConstantFunction(Backend &backend, Function &F,
                               PlaceholderBindings &bindings,
-                              CompilationContext &cctx);
+                              CompilationContext &cctx,
+                              bool enableQuantizeConstFolding = false);
 
 /// Perform vertical split of FC weights in a given function.
 /// Optimization could facilitate parallel execution of FCs on multiple device
@@ -115,6 +139,42 @@ bool executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
 /// Represents what kind of parallelization transformation should be performed
 /// by \ref parallelizeOps().
 enum class ParallelTransformKind { None, Data, Model };
+
+/// A specialized ScopeGuard which prevents constant modification from occuring
+/// by swappiing in temporary Placeholders in place of Constants during the
+/// scope of the ConstantModificationPreventer. Automatically replaces the
+/// Constants back once the scope ends.
+class ConstantModificationPreventer : protected ScopeGuard {
+  /// Module which contains Constants we want to prevent modification of.
+  Module &mod_;
+
+  /// Map from temporary Placeholders to the Constants they replaced.
+  std::unordered_map<Placeholder *, Constant *> tmpPHToConstMap_;
+
+public:
+  /// Ctor.
+  ConstantModificationPreventer(Module &mod);
+
+  /// Make not copyable.
+  ConstantModificationPreventer(const ConstantModificationPreventer &) = delete;
+
+  /// Make not assignable.
+  ConstantModificationPreventer &
+  operator=(const ConstantModificationPreventer &) = delete;
+
+  /// \returns the mapping of tmp PH to Constants.
+  const std::unordered_map<Placeholder *, Constant *> &getMapping() const {
+    return tmpPHToConstMap_;
+  }
+
+  /// Activate the preventer. By default it is deactivated when constructed.
+  void activate();
+
+  /// Deactivate the preventer and cleanup. This just forwards to
+  /// ScopeGuard::runAndDismiss(), which would have otherwise occurred when
+  /// falling out of scope.
+  void deactivateAndCleanup() { runAndDismiss(); }
+};
 
 /// Perform data or model parallel transformation of supported Nodes in \p F.
 /// \p numOfChunksMap maps Nodes to how many chunks they should be split into;

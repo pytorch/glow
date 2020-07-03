@@ -179,6 +179,10 @@ private:
   void fwdAvgPoolInstI8Impl(const AvgPoolInst *I);
   template <typename ElemTy> void fwdAvgPoolInstFloatImpl(const AvgPoolInst *I);
 
+  void fwdAvgPool3DInstI8Impl(const AvgPoolInst *I);
+  template <typename ElemTy>
+  void fwdAvgPool3DInstFloatImpl(const AvgPoolInst *I);
+
   void fwdAdaptiveAvgPoolInstI8Impl(const AdaptiveAvgPoolInst *I);
   template <typename ElemTy>
   void fwdAdaptiveAvgPoolInstFloatImpl(const AdaptiveAvgPoolInst *I);
@@ -202,6 +206,16 @@ private:
                                                  Value *scalesV,
                                                  Value *offsetsV);
 
+  template <typename ElemTy, typename AccumulatorTy,
+            typename BiasElemTy = int32_t>
+  void fwdChannelwiseQuantizedConv2DInstImpl(
+      const ChannelwiseQuantizedConvolutionInst *I);
+
+  template <typename ElemTy, typename AccumulatorTy,
+            typename BiasElemTy = int32_t>
+  void fwdChannelwiseQuantizedConv3DInstImpl(
+      const ChannelwiseQuantizedConvolutionInst *I);
+
   void fwdElementAddInstI8Impl(const ElementAddInst *I);
   template <typename ElemTy>
   void fwdElementAddInstArithmeticImpl(const ElementAddInst *I);
@@ -216,6 +230,10 @@ private:
   template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
             typename CmpTy = ElemTy>
   void fwdElementCmpEQInstImpl(const ElementCmpEQInst *I);
+
+  template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
+            typename CmpTy = ElemTy>
+  void fwdElementCmpNEQInstImpl(const ElementCmpNEQInst *I);
 
   template <typename ElemTy>
   void fwdBatchOneHotImpl(const glow::BatchOneHotInst *I);
@@ -248,6 +266,10 @@ private:
 
   template <typename ElemTy>
   void fwdElementMinInstArithmeticImpl(const ElementMinInst *I);
+
+  template <typename ElemTy, typename InstKind>
+  void fwdUnaryArithmeticImpl(const InstKind *I,
+                              std::function<float(float)> func);
 
   template <typename ElemTy, typename ElemOffsetTy, typename ElemScaleTy,
             typename CmpTy = ElemTy>
@@ -359,6 +381,9 @@ private:
   template <typename ElemTy>
   void fwdBatchedPairwiseDotProductGradInstImpl(
       const glow::BatchedPairwiseDotProductGradInst *I);
+  void fwdAvgPool2DGradInst(const AvgPoolGradInst *I);
+  void fwdAvgPool3DGradInst(const AvgPoolGradInst *I);
+
   ///@}
 };
 

@@ -83,14 +83,14 @@ if(NOT NNPI_INFERENCE_API)
   message(FATAL_ERROR "nnpi_inference include files  not found at ${NNPI_INF_LIB_DIR}")
 endif()
 
-find_path(NNPI_MG_API nnpiml.h ${NNPI_MG_SEARCH_PATH})
+find_path(NNPI_MG_API nnpi_ice_caps.h ${NNPI_MG_SEARCH_PATH})
 if(NOT NNPI_MG_API)
-  message(FATAL_ERROR "nnpiml include files not found at ${NNPI_MG_API_DIR}")
+  message(FATAL_ERROR "nnpi_ice_caps include files not found at ${NNPI_MG_API_DIR}")
 endif()
 
-find_library(NNPI_MG_LIB nnpiml ${NNPI_MG_LIB_SEARCH_PATH})
+find_library(NNPI_MG_LIB nnpi_icecaps ${NNPI_MG_LIB_SEARCH_PATH})
 if(NOT NNPI_MG_LIB)
-  message(FATAL_ERROR "nnpiml library not found at ${NNPI_MG_LIB_SEARCH_PATH}")
+  message(FATAL_ERROR "nnpi_icecaps library not found at ${NNPI_MG_LIB_SEARCH_PATH}")
 endif()
 
 message(STATUS "[NNPI] NNPI_API_DIR                = ${NNPI_API_DIR}")

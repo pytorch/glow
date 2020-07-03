@@ -16,18 +16,23 @@
 
 #include "glow/Runtime/HostManager/HostManager.h"
 #include "glow/Backends/DeviceManager.h"
+#include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Partitioner/Partitioner.h"
 #include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
+#include "glow/Runtime/RequestData.h"
 #include "glow/Runtime/RuntimeTypes.h"
 #include "glow/Support/Support.h"
 
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormatVariadic.h"
 
 #include <glog/logging.h>
+
+#include "folly/String.h"
 
 #include <future>
 #include <queue>
@@ -50,8 +55,15 @@ namespace glow {
 namespace runtime {
 bool GlowEnableP2P = false;
 bool GlowEnableDRT = false;
+std::string GlowAvailableDevices = "";
 } // namespace runtime
 } // namespace glow
+
+#if FACEBOOK_INTERNAL
+Error optimizeDAG(DAGListTy &nodeList, const Provisioner &provisioner,
+                  Module &mod, const std::vector<DeviceInfo> &devices,
+                  CompilationContext &cctx);
+#endif /* FACEBOOK_INTERNAL */
 
 /// The device configs file used for Runtime.
 llvm::cl::opt<std::string> loadDeviceConfigsFileOpt(
@@ -73,6 +85,13 @@ llvm::cl::opt<bool, /* ExternalStorage */ true>
               llvm::cl::Optional,
               llvm::cl::location(glow::runtime::GlowEnableP2P),
               llvm::cl::cat(hostManagerCat));
+
+/// Set which devices are available to add a network to.
+llvm::cl::opt<std::string, true> GlowAvailableDevicesOpt(
+    "glow-available-devices",
+    llvm::cl::desc("Comma separated list of devices which "
+                   "should be used, example 2,3,4"),
+    llvm::cl::location(GlowAvailableDevices), llvm::cl::cat(hostManagerCat));
 
 HostManager::HostManager()
     : config_(), statsExporterRegistry_(StatsExporterRegistry::Stats()) {}
@@ -137,14 +156,41 @@ Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
         DeviceManager::createDeviceManager(*config));
 
     RETURN_IF_ERR(devices_[deviceCount]->init());
-
+    availableDevices_.push_back(deviceCount);
     deviceCount++;
   }
   provisioner_.reset(new Provisioner(devices_));
   executor_.reset(
       new ThreadPoolExecutor(devices_, config_.executorThreads, "HostManager"));
   exportMemoryCounters();
+  if (GlowAvailableDevices.length()) {
+    std::vector<unsigned> devices;
+    folly::split<char, std::string, unsigned>(',', GlowAvailableDevices,
+                                              devices, /* ignoreEmpty */ true);
+    std::vector<runtime::DeviceIDTy> convertedDevs(devices.begin(),
+                                                   devices.end());
+    setAvailableDevices(convertedDevs);
+  }
   return Error::success();
+}
+
+void HostManager::setAvailableDevices(const std::vector<DeviceIDTy> &devices) {
+  // Validate new device list.
+  availableDevices_.clear();
+  std::vector<DeviceIDTy> mapping;
+  std::vector<DeviceManager *> availableDevices;
+  // Grab a lock to prevent devices_ getting changed concurrently.
+  std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+  for (auto dev : devices) {
+    auto it = devices_.find(dev);
+    if (it != devices_.end()) {
+      availableDevices_.push_back(dev);
+      availableDevices.push_back(devices_[dev].get());
+      mapping.push_back(it->first);
+    }
+  }
+  // Update the provisioner.
+  provisioner_->updateAvailableDevices(availableDevices, mapping);
 }
 
 void HostManager::exportMemoryCounters() {
@@ -173,6 +219,25 @@ void HostManager::cleanupAddNetwork(llvm::ArrayRef<std::string> names) {
 
 Error HostManager::addNetwork(std::unique_ptr<Module> module,
                               CompilationContext &cctx) {
+  ScopeGuard debugDumpDAGGuard([&]() {
+    if (cctx.dumpFinalGraph) {
+      for (Function *F : module->getFunctions()) {
+        auto fname =
+            strFormat("final_graph_dbg_err_%s.dot", F->getName().data());
+        LOG(INFO) << "Dumping final graph due to error to " << fname;
+        F->dumpDAG(fname);
+      }
+    }
+  });
+
+  /// If specified in the cctx, this will prevent Constants from being modified
+  /// until the current scope ends or the preventer is dismissed. Does so by
+  /// swapping in temporary Placeholders instead of Constants.
+  ConstantModificationPreventer constModPreventer(*module);
+  if (cctx.optimizationOpts.delayAndRecordConstantModification) {
+    constModPreventer.activate();
+  }
+
   std::vector<std::string> names;
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
@@ -216,13 +281,13 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   std::vector<DeviceInfo> deviceInfo;
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
-    for (auto &device : devices_) {
-      DeviceInfo info = device.second->getDeviceInfo();
-      info.availableMemory = device.second->getAvailableMemory();
-      info.backendName = device.second->getBackendName();
+    for (auto &device : availableDevices_) {
+      DeviceInfo info = devices_[device]->getDeviceInfo();
+      info.availableMemory = devices_[device]->getAvailableMemory();
+      info.backendName = devices_[device]->getBackendName();
       info.nonSupportedNodes =
-          device.second->getParamByName("nonSupportedNodes");
-      info.supportedNodes = device.second->getParamByName("supportedNodes");
+          devices_[device]->getParamByName("nonSupportedNodes");
+      info.supportedNodes = devices_[device]->getParamByName("supportedNodes");
       deviceInfo.push_back(info);
     }
   }
@@ -285,6 +350,64 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     executor_.reset(new ThreadPoolExecutor(devices_, config_.executorThreads));
   }
 
+  // If we prevented constant modification then run constant folding with
+  // recording now. Record so that if we are going to serialize we can embed the
+  // constant folding subgraphs in the Glow ONNX model.
+  ConstantFoldingRecordMap record;
+  if (cctx.optimizationOpts.delayAndRecordConstantModification) {
+    constModPreventer.deactivateAndCleanup();
+
+    RETURN_ERR_IF_NOT(nodeList.size() == 1, "Expect only one DAG.");
+    const auto &dag = *nodeList.begin();
+    for (auto &dagNode : dag.nodes) {
+      Function *F = module->getFunction(dagNode->name);
+      RETURN_ERR_IF_NOT(
+          F, strFormat("Function %s not found", dagNode->name.data()));
+
+      ConstantFoldingRecordMap currRecord = constantFoldAndRecord(F, cctx);
+      record.insert(currRecord.begin(), currRecord.end());
+      runDCEPass(F, cctx);
+
+      // Verify the Function is valid after constant folding takes place.
+      Backend &B = provisioner_->getBackend(dagNode->backendName);
+      RETURN_ERR_IF_NOT(B.verify(*F, cctx.verboseCompile),
+                        "Unsupported node(s) found after optimizing Function " +
+                            F->getName().str() + " for backend " +
+                            B.getBackendName());
+    }
+  }
+
+#if FACEBOOK_INTERNAL
+  if (cctx.callDAGOptimizer) {
+    auto optDagErr =
+        optimizeDAG(nodeList, *provisioner_, *module, deviceInfo, cctx);
+    if (optDagErr) {
+      std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+      cleanupAddNetwork(names);
+      return optDagErr;
+    }
+  }
+#endif /* FACEBOOK_INTERNAL */
+
+  // If requested, serialize the resulting DAG that was just optimized and
+  // partitioned.
+  if (cctx.serializeCompiledDAG) {
+    std::string loc = nodeList.begin()->root->name + ".onnx";
+    LOG(INFO) << "Serializing DAG to " << loc;
+    {
+      Error writeErr = Error::empty();
+      ONNXModelWriter onnxWR(loc, nodeList, 7, 9, &writeErr,
+                             /* textMode */ false, /* zipMode */ false,
+                             /* includeConstantData */ false,
+                             /* extraMetadataProps */ {}, record);
+      RETURN_IF_ERR(writeErr);
+    }
+  }
+
+  // Now that we've serialized the model if requested, cleanup the temporary
+  // Functions and PHs used for constant folding.
+  cleanupConstantFolding(*module, record);
+
   auto err = provisioner_->provision(nodeList, *module, cctx);
   if (err) {
     {
@@ -293,6 +416,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     }
     return err;
   }
+  debugDumpDAGGuard.dismiss();
 
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
@@ -356,7 +480,8 @@ Error HostManager::removeNetwork(llvm::StringRef networkName) {
   executor_->freePool(networkIterator->second.dag.root.get());
   for (auto &node : nodes) {
     for (auto device : node->deviceRuntimeInfos) {
-      Error evictErr = provisioner_->evictFunction(node->name, device.first);
+      Error evictErr =
+          provisioner_->evictFunction(node->name, devices_[device.first].get());
       err.set(std::move(evictErr));
     }
     // Also remove compiledFunction from Provisioner.
@@ -472,12 +597,13 @@ void HostManager::dispatchNextRun() {
   assert(pRequest.hasValue());
   InferRequest request = std::move(pRequest.getValue());
   auto startTime = TraceEvent::now();
+  auto requestReceived = request.startTime;
   executor_->run(
       networks_[request.networkName].dag.root.get(), std::move(request.context),
       request.requestID,
-      [this, callback = request.callback, name = request.networkName,
-       startTime](RunIdentifierTy runID, Error err,
-                  std::unique_ptr<ExecutionContext> context) mutable {
+      [this, callback = request.callback, name = request.networkName, startTime,
+       requestReceived](RunIdentifierTy runID, Error err,
+                        std::unique_ptr<ExecutionContext> context) mutable {
         {
           std::shared_lock<std::shared_timed_mutex> netLock(networkLock_);
           auto it = networks_.find(name);
@@ -487,6 +613,14 @@ void HostManager::dispatchNextRun() {
         }
 
         updateExecutionStats(startTime, context, name, err);
+        // Update request runtime.
+        auto requestData = ::glow::runtime::RequestData::get();
+        if (requestData) {
+          uint64_t end = TraceEvent::now();
+          requestData->startTime = requestReceived;
+          requestData->stopTime = end;
+        }
+
         callback(runID, std::move(err), std::move(context));
         dispatchNextRun();
       });
@@ -501,6 +635,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
   TRACE_EVENT_SCOPE(context->getTraceContext(), TraceLevel::RUNTIME,
                     "HostManager::runNetwork");
   auto currentRun = totalRequestCount_++;
+  uint64_t requestReceived = TraceEvent::now();
 
   NetworkData *network = nullptr;
   {
@@ -512,6 +647,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
     }
 
     if (network == nullptr) {
+      TRACE_EVENT_SCOPE_END();
       callback(
           currentRun,
           MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_NOT_FOUND,
@@ -526,6 +662,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
       if (queueSize >= config_.maxQueueSize) {
         // The queue is full, return an error.
         network->refcount--;
+        TRACE_EVENT_SCOPE_END();
         callback(
             currentRun,
             MAKE_ERR(
@@ -540,9 +677,10 @@ HostManager::runNetwork(llvm::StringRef networkName,
     }
     // Setup the request
     InferRequest queuedRequest(networkName, std::move(context), callback,
-                               priority, currentRun);
+                               priority, currentRun, requestReceived);
     {
       std::unique_lock<std::shared_timed_mutex> lock(inferQueueLock_);
+      TRACE_EVENT_SCOPE_END();
       inferQueue_.push(std::move(queuedRequest));
     }
   }
@@ -550,7 +688,6 @@ HostManager::runNetwork(llvm::StringRef networkName,
   // If we haven't reached maxActiveRequests kick off next request.
   size_t activeRequestCount = activeRequestCount_++;
   if (activeRequestCount < config_.maxActiveRequests) {
-    TRACE_EVENT_SCOPE_END();
     dispatchNextRun();
     return currentRun;
   }
@@ -563,17 +700,21 @@ void HostManager::updateExecutionStats(
     uint64_t startTime, std::unique_ptr<ExecutionContext> &context,
     llvm::StringRef networkName, const Error &error) {
   auto duration = TraceEvent::now() - startTime;
-  statsExporterRegistry_->addTimeSeriesValue(
-      ("glow.execution_duration_e2e." + networkName).str(), duration);
-  statsExporterRegistry_->incrementCounter(
-      ("glow.requests_processed." + networkName).str());
-  if (error.peekErrorValue()) {
+  auto updateCountersFn = [&](llvm::StringRef s) {
+    statsExporterRegistry_->addTimeSeriesValue(
+        ("glow.execution_duration_e2e." + s).str(), duration);
     statsExporterRegistry_->incrementCounter(
-        ("glow.requests_failed." + networkName).str());
-  } else {
-    statsExporterRegistry_->incrementCounter(
-        ("glow.requests_succeeded." + networkName).str());
-  }
+        ("glow.requests_processed." + s).str());
+    if (error.peekErrorValue()) {
+      statsExporterRegistry_->incrementCounter(
+          ("glow.requests_failed." + s).str());
+    } else {
+      statsExporterRegistry_->incrementCounter(
+          ("glow.requests_succeeded." + s).str());
+    }
+  };
+  updateCountersFn(networkName);
+  updateCountersFn("global");
 }
 
 /// Helper to get the parameters in DeviceConfig from \p str. The \p str has

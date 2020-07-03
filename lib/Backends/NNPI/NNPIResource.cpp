@@ -15,6 +15,7 @@
 
 #include "NNPIResource.h"
 #include "InferenceContext.h"
+#include "NNPIAdapterContainer.h"
 #include "NNPIUtils.h"
 #include "nnpi_inference.h"
 #include <fstream>
@@ -102,7 +103,7 @@ findResourceForDevice(const ResourceUsers &users, NNPIDeviceContext device) {
 }
 
 NNPIResource::NNPIResource() {
-  adapter_ = NNPI_INVALID_NNPIHANDLE;
+  pAdapter_ = nullptr;
   device_ = NNPI_INVALID_NNPIHANDLE;
   memset(name_, 0, sizeof(name_));
   memset(&desc_, 0, sizeof(desc_));
@@ -110,11 +111,12 @@ NNPIResource::NNPIResource() {
   hostResource_ = NNPI_INVALID_NNPIHANDLE;
   hostPtr_ = nullptr;
   copyCommand_ = NNPI_INVALID_NNPIHANDLE;
-  partialSize_ = 0;
+  partialSize_ = -1;
   usage_ = ResourceUsage::None;
   deviceOptions_ = nullptr;
   cmdListIdx_ = UINT32_MAX;
   ownsDeviceResource_ = true;
+  ownsHostResource_ = false;
   p2pDevice_ = NNPI_INVALID_NNPIHANDLE;
   p2pDeviceResource_ = NNPI_INVALID_NNPIHANDLE;
 }
@@ -128,7 +130,7 @@ NNPIResource::~NNPIResource() {
     LOG_NNPI_INF_IF_ERROR(nnpiDeviceResourceDestroy(deviceResource_),
                           "Failed to destroy NNPI device resource");
   }
-  if (hostResource_ != NNPI_INVALID_NNPIHANDLE) {
+  if (ownsHostResource_ && (hostResource_ != NNPI_INVALID_NNPIHANDLE)) {
     LOG_NNPI_INF_IF_ERROR(nnpiHostResourceDestroy(hostResource_),
                           "Failed to destroy NNPI host resource");
   }
@@ -138,24 +140,32 @@ NNPIResource::~NNPIResource() {
 
 bool NNPIResource::init(const NNPIObjectName name,
                         std::shared_ptr<NNPIDeviceOptions> deviceOptions,
-                        NNPIAdapter adapter, NNPIDeviceContext device,
+                        NNPIAdapterContainer *adapter, NNPIDeviceContext device,
                         const NNPIResourceDesc *desc,
                         NNPIResource::ResourceUsage usage,
                         PlaceholderUsageMap *phUsage) {
   if (name == nullptr || desc == nullptr || deviceOptions == nullptr) {
     return false;
   }
-  if (deviceOptions->inferOnDevice && (adapter == NNPI_INVALID_NNPIHANDLE ||
-                                       device == NNPI_INVALID_NNPIHANDLE)) {
+  if (deviceOptions->inferOnDevice &&
+      (adapter->getHandle() == NNPI_INVALID_NNPIHANDLE ||
+       device == NNPI_INVALID_NNPIHANDLE)) {
     return false;
   }
 
   std::strncpy(name_, name, sizeof(NNPIObjectName));
   device_ = device;
-  adapter_ = adapter;
+  pAdapter_ = adapter;
   deviceOptions_ = deviceOptions;
   usage_ = usage;
   desc_ = *desc;
+
+  ResourceUsers *users = nullptr;
+  if (phUsage) {
+    users = &(phUsage->at(name_));
+    LOG_AND_RETURN_IF_NOT(ERROR, users, "Invalid resource users", false);
+  }
+
   if (!deviceOptions_->inferOnDevice) {
     // Handle stuff for ice ref (or compile only path).
     size_t resourceSize = CalcDescSize(&desc_);
@@ -170,7 +180,7 @@ bool NNPIResource::init(const NNPIObjectName name,
     return true;
   }
 
-  if (deviceOptions_->disableDRT) {
+  if (deviceOptions_->disableDRT || (users && users->disableDRT)) {
     switch (usage_) {
     case ResourceUsage::DRTInput:
       usage_ = ResourceUsage::InputResource;
@@ -181,7 +191,7 @@ bool NNPIResource::init(const NNPIObjectName name,
     default:; // Do nothing.
     }
   }
-  if (deviceOptions_->disableP2P) {
+  if (deviceOptions_->disableP2P || (users && users->disableP2P)) {
     switch (usage_) {
     case ResourceUsage::P2PInput:
       usage_ = ResourceUsage::InputResource;
@@ -196,26 +206,35 @@ bool NNPIResource::init(const NNPIObjectName name,
   // Create host resource (pinned and aligned allocation).
   NNPIResourceDesc hostResDesc =
       desc_; // Make a copy of the desc to overwrite attributes.
-  if (deviceOptions_->enabledCommandLists > 0) {
-    hostResDesc.hostAttrib.locklessExecution =
-        1; // Set host resource to lockless.
-  }
+  hostResDesc.hostAttrib.locklessExecution =
+      1; // Set host resource to lockless.
   switch (usage_) {
   case ResourceUsage::InputResource:
-  case ResourceUsage::OutputResource:
-    LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
-        nnpiHostResourceCreate(adapter_, &hostResDesc, &hostResource_),
-        "Failed to create NNPI host resource");
+  case ResourceUsage::OutputResource: {
+    hostPtr_ = users ? users->tensor->getUnsafePtr() : nullptr;
+    hostResource_ = hostPtr_ ? pAdapter_->getResourceForPtr(hostPtr_)
+                             : NNPI_INVALID_NNPIHANDLE;
+    if (hostResource_ != NNPI_INVALID_NNPIHANDLE) {
+      // Tensor bound to placeholder was already allocated as a host resource.
+      // No need to allocate another one.
+      ownsHostResource_ = false;
+    } else { // Allocate a private host resource for DMA.
+      LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
+          nnpiHostResourceCreate(pAdapter_->getHandle(), &hostResDesc,
+                                 &hostResource_),
+          "Failed to create NNPI host resource");
 
-    // Query host resource for address (not locking).
-    LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
-        nnpiHostResourceLock(hostResource_, NNPI_LOCKLESS_QUERY_ADDRESS,
-                             UINT32_MAX, &hostPtr_),
-        "Failed to lock host resource");
-    memset(hostPtr_, 0,
-           CalcDescSize(&desc_)); // Clear host resource to zero for compile
-                                  // only path (USE_ICE_T).
-    break;
+      // Query host resource for address (not locking).
+      LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
+          nnpiHostResourceLock(hostResource_, NNPI_LOCKLESS_QUERY_ADDRESS,
+                               UINT32_MAX, &hostPtr_),
+          "Failed to lock host resource");
+      memset(hostPtr_, 0,
+             CalcDescSize(&desc_)); // Clear host resource to zero for compile
+                                    // only path (USE_ICE_T).
+      ownsHostResource_ = true;
+    }
+  } break;
   case ResourceUsage::StaticInputResource:
   case ResourceUsage::P2PInput:
   case ResourceUsage::P2POutput:
@@ -230,11 +249,8 @@ bool NNPIResource::init(const NNPIObjectName name,
   // Create device resource.
   bool allocateDeviceResource = false;
 
-  ResourceUsers *users = nullptr;
   shared_ptr<NNPIResource> sharedResource = nullptr;
   if (phUsage) {
-    users = &(phUsage->at(name_));
-    LOG_AND_RETURN_IF_NOT(ERROR, users, "Invalid resource users", false);
     sharedResource = findResourceForDevice(*users, device_);
   }
 
@@ -353,15 +369,16 @@ bool NNPIResource::init(const NNPIObjectName name,
   return true;
 }
 
-NNPIInferenceErrorCode NNPIResource::preInference(Tensor *t,
-                                                  bool partialTensor) {
+NNPIInferenceErrorCode
+NNPIResource::preInference(Tensor *t, bool partialTensor,
+                           bool requiresLastElementPadding) {
   if (usage_ != ResourceUsage::InputResource) {
     // Nothing to do here yet.
     return NNPI_INF_NO_ERROR;
   }
 
   // Update the host resource from the tensor content.
-  updateHostResourceFromTensor(t, partialTensor);
+  updateHostResourceFromTensor(t, partialTensor, requiresLastElementPadding);
 
   if (deviceOptions_->dumpIOtoFiles) {
     size_t unpaddedSize = t->getUnpaddedSizeInBytes();
@@ -373,22 +390,6 @@ NNPIInferenceErrorCode NNPIResource::preInference(Tensor *t,
                unpaddedSize);
   }
 
-  if (deviceOptions_->inferOnDevice &&
-      (deviceOptions_->enabledCommandLists < 1)) {
-    // Queue copy command separately (not using command lists).
-    if (partialSize_) {
-      NNPICopyCommandConfig cfg;
-      memset(&cfg, 0, sizeof(NNPICopyCommandConfig));
-      cfg.size = partialSize_;
-      LOG_AND_RETURN_IF(ERROR, nnpiCopyCommandQueue(copyCommand_, &cfg),
-                        "Failed to queue input copy command.",
-                        NNPI_INF_UNKNOWN_ERROR);
-    } else {
-      LOG_AND_RETURN_IF(ERROR, nnpiCopyCommandQueue(copyCommand_, nullptr),
-                        "Failed to queue input copy command.",
-                        NNPI_INF_UNKNOWN_ERROR);
-    }
-  }
   return NNPI_INF_NO_ERROR;
 }
 
@@ -396,19 +397,6 @@ NNPIInferenceErrorCode NNPIResource::postInference(Tensor *t) {
   if (usage_ != ResourceUsage::OutputResource) {
     // Nothing to do here yet.
     return NNPI_INF_NO_ERROR;
-  }
-
-  if (deviceOptions_->inferOnDevice &&
-      (deviceOptions_->enabledCommandLists < 2)) {
-    // Lock and unlock to wait for inference completion.
-    LOG_AND_RETURN_IF(ERROR,
-                      nnpiHostResourceLock(hostResource_, NNPI_LOCK_FOR_READ,
-                                           UINT32_MAX, &hostPtr_),
-                      "Failed to lock host resource (output)",
-                      NNPI_INF_UNKNOWN_ERROR);
-    LOG_AND_RETURN_IF(ERROR, nnpiHostResourceUnlock(hostResource_),
-                      "Failed to unlock host resource (output)",
-                      NNPI_INF_UNKNOWN_ERROR);
   }
 
   char *tensorData = t->getUnsafePtr();
@@ -419,7 +407,8 @@ NNPIInferenceErrorCode NNPIResource::postInference(Tensor *t) {
     const size_t outputSize = unpaddedSize / t->getType().getElementSize();
     int64_t *i64Data = reinterpret_cast<int64_t *>(tensorData);
     int32_t *i32Data = reinterpret_cast<int32_t *>(hostPtr_);
-    for (size_t j = 0; j < outputSize; j++) {
+    // Convert from end to start for the case where (tensorData == hostPtr_).
+    for (int64_t j = (outputSize - 1); j >= 0; j--) {
       i64Data[j] = static_cast<int64_t>(i32Data[j]);
     }
   } else {
@@ -478,8 +467,10 @@ void NNPIResource::updateDeviceResourceFromTensor(
   LOG_AND_FAIL_CALLBACK_IF_NOT(
       t != nullptr, "Invalid tensor used to update static input", resultCB);
 
-  LOG_AND_FAIL_CALLBACK_IF_NOT(updateHostResourceFromTensor(t, false),
-                               "Invalid Static placeholder", resultCB);
+  LOG_AND_FAIL_CALLBACK_IF_NOT(
+      updateHostResourceFromTensor(t, /* partialTensor */ false,
+                                   /* requiresLastElementPadding */ false),
+      "Invalid Static placeholder", resultCB);
 
   if (deviceOptions_->inferOnDevice) {
     LOG_AND_CALLBACK_NNPI_INF_IF_ERROR(
@@ -491,7 +482,8 @@ void NNPIResource::updateDeviceResourceFromTensor(
   resultCB(Error::success());
 }
 
-bool NNPIResource::updateHostResourceFromTensor(Tensor *t, bool partialTensor) {
+bool NNPIResource::updateHostResourceFromTensor(
+    Tensor *t, bool partialTensor, bool requiresLastElementPadding) {
   // Prepare data on the host resource (for ice-ref use int32sTorage).
   char *tensorData = t->getUnsafePtr();
   const bool downcastInt64 = t->getElementType() == glow::ElemKind::Int64ITy;
@@ -538,15 +530,46 @@ bool NNPIResource::updateHostResourceFromTensor(Tensor *t, bool partialTensor) {
     memcpy(hostPtr_, tensorData, unpaddedSize);
   }
 
-  // Pad with zeros if needed.
+  // Pad with zeros or last element if needed.
   if (partialData && !partialTensor) {
-    memset(reinterpret_cast<uint8_t *>(hostPtr_) + unpaddedSize, 0,
-           paddedSize - unpaddedSize);
+    if (!requiresLastElementPadding) {
+      memset(reinterpret_cast<uint8_t *>(hostPtr_) + unpaddedSize, 0,
+             paddedSize - unpaddedSize);
+    } else {
+      // size of elements in hostPtr_
+      auto hostElementSize =
+          downcastInt64 ? sizeof(int32_t) : t->getType().getElementSize();
+      int numElements = unpaddedSize / hostElementSize;
+      int totalElements = paddedSize / hostElementSize;
+      if (hostElementSize == 1) {
+        std::fill(reinterpret_cast<uint8_t *>(hostPtr_) + numElements,
+                  reinterpret_cast<uint8_t *>(hostPtr_) + totalElements,
+                  reinterpret_cast<const uint8_t *>(hostPtr_)[numElements - 1]);
+      } else if (hostElementSize == 2) {
+        std::fill(
+            reinterpret_cast<uint16_t *>(hostPtr_) + numElements,
+            reinterpret_cast<uint16_t *>(hostPtr_) + totalElements,
+            reinterpret_cast<const uint16_t *>(hostPtr_)[numElements - 1]);
+      } else if (hostElementSize == 4) {
+        std::fill(
+            reinterpret_cast<uint32_t *>(hostPtr_) + numElements,
+            reinterpret_cast<uint32_t *>(hostPtr_) + totalElements,
+            reinterpret_cast<const uint32_t *>(hostPtr_)[numElements - 1]);
+      } else if (hostElementSize == 8) {
+        std::fill(
+            reinterpret_cast<uint64_t *>(hostPtr_) + numElements,
+            reinterpret_cast<uint64_t *>(hostPtr_) + totalElements,
+            reinterpret_cast<const uint64_t *>(hostPtr_)[numElements - 1]);
+      } else {
+        LOG(ERROR) << "Invalid Tensor type, padding is unsuccessful";
+      }
+    }
+    partialSize_ = -1;
+  } else if (partialData) {
+    partialSize_ = unpaddedSize;
+  } else {
+    partialSize_ = -1;
   }
-
-  // Update partial size.
-  partialSize_ = (partialData && partialTensor) ? unpaddedSize : 0;
-
   return true;
 }
 
@@ -555,7 +578,7 @@ std::string NNPIResource::dump() const {
   stream << "NNPIResource: \"" << name_ << '"';
   stream << ", DescSize: " << CalcDescSize(&desc_);
   stream << ", Usage: " << static_cast<int>(usage_);
-  stream << ", Adapter: " << adapter_;
+  stream << ", Adapter: " << pAdapter_;
   stream << ", Device: " << device_;
   stream << ", DeviceResource: " << deviceResource_;
   stream << ", HostResource: " << hostResource_;

@@ -68,18 +68,14 @@ void allocateActivations(const glow::IRFunction::InstListTy &instrs,
       // source of the tensorview.
       assert(!symbolTable.count(std::string(TV->getName())) &&
              "Allocation already made!");
-      size_t offsetLength = TV->getOffsets().empty() ? 0 : TV->getOffsets()[0];
-      auto *tvSource = TV->getSrc();
-      if (tvSource->dims().size() > 1) {
-        for (size_t i = 1; i < tvSource->dims().size(); ++i) {
-          offsetLength *= tvSource->dims()[i];
-        }
-      }
+      auto *tvSource = getOrigin(TV);
       assert(symbolTable.count(std::string(tvSource->getName())) &&
              "Source allocation not found!");
       runtime::RuntimeSymbolInfo symbol;
-      symbol.offset = symbolTable[std::string(tvSource->getName())].offset +
-                      (offsetLength * TV->getType()->getElementSize());
+      size_t originAddr = symbolTable[std::string(tvSource->getName())].offset;
+      size_t offset = calculateTensorViewOffset(TV);
+
+      symbol.offset = originAddr + offset;
       symbol.size = TV->getSizeInBytes();
       symbol.type = *TV->getType();
       symbol.input = false;
@@ -423,6 +419,11 @@ static bool allowsPartialInput(const Node *src, const Node *dst) {
     return src == SLS->getIndices() || src == SLS->getWeights();
   } else if (auto *SLS = llvm::dyn_cast<SparseLengthsSumNode>(dst)) {
     return src == SLS->getIndices();
+  } else if (auto *EBB = llvm::dyn_cast<EmbeddingBagNode>(dst)) {
+    return src == EBB->getIndices() || src == EBB->getWeights();
+  } else if (auto *EBB =
+                 llvm::dyn_cast<EmbeddingBagByteRowwiseOffsetsNode>(dst)) {
+    return src == EBB->getIndices() || src == EBB->getWeights();
   }
   return false;
 }
@@ -433,6 +434,32 @@ bool allowsPartialInput(const Placeholder *V, const Function *F) {
       continue;
     }
     if (!allowsPartialInput(*U.get(), U.getUser())) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// \returns true if \p dst requires last-element padding for \p src
+/// It is assumed that \p src cannot be partial input
+static bool requiresPadding(const Node *src, const Node *dst) {
+  if (auto *EBB = llvm::dyn_cast<EmbeddingBagNode>(dst)) {
+    return src == EBB->getOffsets();
+  } else if (auto *EBB =
+                 llvm::dyn_cast<EmbeddingBagByteRowwiseOffsetsNode>(dst)) {
+    return src == EBB->getOffsets();
+  }
+  return false;
+}
+
+bool requiresPadding(const Placeholder *V, const Function *F) {
+  // TODO: this function is largely duplicated with allowsPartialInput()
+  // we should consider merging the two
+  for (auto const &U : V->getUsers()) {
+    if (U.getUser()->getParent() != F) {
+      continue;
+    }
+    if (!requiresPadding(*U.get(), U.getUser())) {
       return false;
     }
   }

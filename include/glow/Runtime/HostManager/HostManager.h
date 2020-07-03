@@ -68,6 +68,9 @@ class HostManager final {
     /// The runtime generated ID for the run request.
     uint64_t requestID;
 
+    /// Timestamp for request creation.
+    uint64_t startTime;
+
     // Define greater than operator to allow sorting in priority_heap for queue
     // reqests. If priority is the same fall back to order of submission.
     bool operator>(const InferRequest &inferReq) const {
@@ -78,9 +81,10 @@ class HostManager final {
     }
     InferRequest(std::string networkName,
                  std::unique_ptr<ExecutionContext> context, ResultCBTy callback,
-                 uint64_t priority, uint64_t requestID)
+                 uint64_t priority, uint64_t requestID, uint64_t startTime = 0)
         : networkName{networkName}, context{std::move(context)},
-          callback{callback}, priority{priority}, requestID{requestID} {}
+          callback{callback}, priority{priority}, requestID{requestID},
+          startTime{startTime} {}
   };
 
   /// Count of current in-flight networks being run. Atomic to allow
@@ -117,6 +121,9 @@ class HostManager final {
   /// A map of DeviceManagers by deviceID. An ordered map is used here to allow
   /// a stable iteration order over devices.
   DeviceManagerMapTy devices_;
+
+  /// A vector of devices available for new networks to be added to.
+  std::vector<DeviceIDTy> availableDevices_;
 
   /// Executor class, this handles dispatching execution requests to the
   /// appropriate device managers for an inference request.
@@ -186,6 +193,9 @@ public:
   /// removes the network from any backends setup to execute it.
   /// \returns an Error indicating success or failure of the operation.
   Error removeNetwork(llvm::StringRef networkName);
+
+  /// Update the list of available devices.
+  void setAvailableDevices(const std::vector<DeviceIDTy> &devices);
 
   /// Returns true if \p networkName is already added to the host.
   bool networkAdded(llvm::StringRef networkName);

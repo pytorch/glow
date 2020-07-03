@@ -14,7 +14,7 @@ class TestQuantizedCut(unittest.TestCase):
         torch._C._jit_set_profiling_mode(False)
 
         def fun(a, b, c, d):
-            q = torch.nn.quantized.Quantize(scale=1.0 / 128, zero_point=0,
+            q = torch.nn.quantized.Quantize(scale=1.0 / 21, zero_point=0,
                                             dtype=torch.quint8)
             dq = torch.nn.quantized.DeQuantize()
             a = q(a)
@@ -22,13 +22,13 @@ class TestQuantizedCut(unittest.TestCase):
             c = q(c)
             d = q(d)
             adds = torch.ops.quantized.add(
-                a, b, scale=1.0 / 121, zero_point=5)
+                a, b, scale=1.0 / 17, zero_point=5)
             adds2 = torch.ops.quantized.add(
-                c, d, scale=1.0 / 122, zero_point=4)
+                c, d, scale=1.0 / 14, zero_point=4)
             res = torch.ops.quantized.add_relu(
-                adds, adds2, scale=1.0 / 120, zero_point=6)
+                adds, adds2, scale=1.0 / 18, zero_point=6)
             res = torch.ops.quantized.add(
-                res, res, scale=1.0 / 128, zero_point=7)
+                res, res, scale=1.0 / 13, zero_point=7)
             res = dq(res)
             return res
 

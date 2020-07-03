@@ -80,15 +80,17 @@ protected:
   llvm::StringMap<std::string> supportedOptions_;
 };
 
-/// Explicit forward decleration of template type.
+/// Explicit forward declaration of template type.
 template <> bool NNPIOptions::getStringAsType<bool>(std::string sVal);
-/// Explicit forward decleration of template type.
+/// Explicit forward declaration of template type.
 template <>
 std::string NNPIOptions::getStringAsType<std::string>(std::string sVal);
-/// Explicit forward decleration of template type.
+/// Explicit forward declaration of template type.
 template <> int NNPIOptions::getStringAsType<int>(std::string sVal);
-/// Explicit forward decleration of template type.
+/// Explicit forward declaration of template type.
 template <> unsigned NNPIOptions::getStringAsType<unsigned>(std::string sVal);
+/// Explicit forward declaration of template type.
+template <> float NNPIOptions::getStringAsType<float>(std::string sVal);
 
 #define DECLARE_NNPI_OPTION(VAR_NAME, VAR_TYPE, OPT_NAME, OPT_DESC, OPT_ENV,   \
                             OPT_DEFAULT)                                       \
@@ -177,6 +179,10 @@ public:
                       "Enable execution on device (if true, will also force "
                       "compilation for HW and ignore the UseIceT option).",
                       "USE_INF_API", "0");
+  /// Normalize layer names.
+  DECLARE_NNPI_OPTION(normalizeLayerNames, bool, "NormalizeLayerNames",
+                      "Normalize layer names.", "NNPI_NORMALIZE_LAYER_NAMES",
+                      "0");
   /// Setting this to true will log the status of all variables at backend
   /// creation.
   DECLARE_NNPI_OPTION(showVars, bool, "ShowVars",
@@ -251,10 +257,64 @@ public:
   DECLARE_NNPI_OPTION(disableConstFolding, bool, "DisableConstFolding",
                       "Disable constant folding during compilation.",
                       "NNPI_DISABLE_CONSTFOLD", "0");
+  /// Setting this variable will override the amount of worker threads allocated
+  /// for the network on the device (default:2).
+  DECLARE_NNPI_OPTION(numWorkers, int, "NumOfWorkers",
+                      "Override the amount of worker threads allocated for the "
+                      "network on the device.",
+                      "NNPI_NUM_WORKERS", "2");
+  /// Power & Performance hints. See more details at:
+  /// https://github.com/IntelAI/nnpi-sw/blob/master/include/nnpi_inference_types.h
+  DECLARE_NNPI_OPTION(ringPrio, float, "RingPrio",
+                      "Set the ring frequency priority.", "NNPI_RING_PRIO",
+                      "0.f");
+  DECLARE_NNPI_OPTION(iceBOPrio0, float, "IceBOPrio0",
+                      "Set ICE-BO 0 frequency priority.", "NNPI_ICEBO_PRIO0",
+                      "0.f");
+  DECLARE_NNPI_OPTION(iceBOPrio1, float, "IceBOPrio1",
+                      "Set ICE-BO 1 frequency priority.", "NNPI_ICEBO_PRIO1",
+                      "0.f");
+  DECLARE_NNPI_OPTION(iceBOPrio2, float, "IceBOPrio2",
+                      "Set ICE-BO 2 frequency priority.", "NNPI_ICEBO_PRIO2",
+                      "0.f");
+  DECLARE_NNPI_OPTION(iceBOPrio3, float, "IceBOPrio3",
+                      "Set ICE-BO 3 frequency priority.", "NNPI_ICEBO_PRIO3",
+                      "0.f");
+  DECLARE_NNPI_OPTION(iceBOPrio4, float, "IceBOPrio4",
+                      "Set ICE-BO 4 frequency priority.", "NNPI_ICEBO_PRIO4",
+                      "0.f");
+  DECLARE_NNPI_OPTION(iceBOPrio5, float, "IceBOPrio5",
+                      "Set ICE-BO 5 frequency priority.", "NNPI_ICEBO_PRIO5",
+                      "0.f");
+  DECLARE_NNPI_OPTION(iaPrio0, float, "IAPrio0", "Set IA 0 frequency priority.",
+                      "NNPI_IA_PRIO0", "0.f");
+  DECLARE_NNPI_OPTION(iaPrio1, float, "IAPrio1", "Set IA 1 frequency priority.",
+                      "NNPI_IA_PRIO1", "0.f");
+  DECLARE_NNPI_OPTION(ddrBandwidth, float, "DDRBandwidth",
+                      "Set an estimated DDR bandwidth in GB/s.", "NNPI_DDR_BW",
+                      "0.f");
+  /// Disable SLS offload to IA.
+  DECLARE_NNPI_OPTION(
+      disableSLSOffloadToIA, bool, "DisableSLSOffloadToIA",
+      "Disable SLS offloading to IA (SLS will execute on ICE where possible).",
+      "NNPI_DISABLE_SLS_OFFLOAD", "1");
+  /// Enable lightweight compilation.
+  DECLARE_NNPI_OPTION(lightCompilation, bool, "LightCompilation",
+                      "Enable light compilation (only for gathering metadata).",
+                      "NNPI_LIGHT_COMPILATION", "0");
+  /// Dump compiler DOT files.
+  DECLARE_NNPI_OPTION(dumpDotFiles, bool, "DumpDotFiles",
+                      "Dump Dot files of the network during compilation.",
+                      "NNPI_DUMP_DOT", "0");
+  /// Dump compilation info.
+  DECLARE_NNPI_OPTION(dumpCompilationInfo, bool, "dumpCompilationInfo",
+                      "Dump the compilation info in text form.",
+                      "NNPI_DUMP_COMP_INFO", "0");
 
   NNPICompilationOptions(const BackendSpecificOptions &parameters) {
     INIT_NNPI_OPTIONS(useIceT, parameters);
     INIT_NNPI_OPTIONS(inferOnDevice, parameters);
+    INIT_NNPI_OPTIONS(normalizeLayerNames, parameters);
     INIT_NNPI_OPTIONS(showVars, parameters);
     INIT_NNPI_OPTIONS(compiledFile, parameters);
     INIT_NNPI_OPTIONS(compileOutputPostfix, parameters);
@@ -266,7 +326,22 @@ public:
     INIT_NNPI_OPTIONS(debugCompileConfigFile, parameters);
     INIT_NNPI_OPTIONS(reserveResources, parameters);
     INIT_NNPI_OPTIONS(disableConstFolding, parameters);
+    INIT_NNPI_OPTIONS(numWorkers, parameters);
     setLogLevel(this->compilationLogLevel);
+    INIT_NNPI_OPTIONS(ringPrio, parameters);
+    INIT_NNPI_OPTIONS(iceBOPrio0, parameters);
+    INIT_NNPI_OPTIONS(iceBOPrio1, parameters);
+    INIT_NNPI_OPTIONS(iceBOPrio2, parameters);
+    INIT_NNPI_OPTIONS(iceBOPrio3, parameters);
+    INIT_NNPI_OPTIONS(iceBOPrio4, parameters);
+    INIT_NNPI_OPTIONS(iceBOPrio5, parameters);
+    INIT_NNPI_OPTIONS(iaPrio0, parameters);
+    INIT_NNPI_OPTIONS(iaPrio1, parameters);
+    INIT_NNPI_OPTIONS(ddrBandwidth, parameters);
+    INIT_NNPI_OPTIONS(disableSLSOffloadToIA, parameters);
+    INIT_NNPI_OPTIONS(lightCompilation, parameters);
+    INIT_NNPI_OPTIONS(dumpDotFiles, parameters);
+    INIT_NNPI_OPTIONS(dumpCompilationInfo, parameters);
   }
 
   virtual llvm::StringRef getOptionsName() const override {
@@ -308,32 +383,28 @@ public:
   DECLARE_NNPI_OPTION(deviceId, int, "DeviceID",
                       "Override the target device ID used to run (0,1,...).",
                       "NNPI_DEVICE_ID", "-1");
-  /// Setting this variable will override the amount of worker threads allocated
-  /// per network on the device (default:2).
-  DECLARE_NNPI_OPTION(numWorkers, int, "NumOfWorkers",
-                      "Override the amount of worker threads allocated per "
-                      "network on the device.",
-                      "NNPI_NUM_WORKERS", "-1");
-  /// Setting this variable will enabled device tracing (host2device,
-  /// device2host copy infer etc.).
+  /// Enable Hardware Trace.
+  DECLARE_NNPI_OPTION(hardwareTraces, bool, "HardwareTraces",
+                      "Enable hardware traces when device traces are started "
+                      "(default is disabled).",
+                      "NNPI_HW_TRACES", "0");
+  /// Max software trace capture size in MB.
   DECLARE_NNPI_OPTION(
-      enabledDeviceTracing, bool, "DeviceTracing",
-      "Enabled device tracing (host2device, device2host copy infer etc.).",
-      "NNPI_DEVICE_TRACING", "0");
+      softwareTracesMaxBuffer, uint32_t, "SoftwareTracesMaxBuffer",
+      "Set the max internal buffer size for device software traces."
+      "(use 0 for hard coded default).",
+      "NNPI_SW_TRACES_BUFFER_SIZE", "0");
+  /// Max hardware trace capture size in MB.
+  DECLARE_NNPI_OPTION(
+      hardwareTracesMaxBuffer, uint32_t, "HardwareTracesMaxBuffer",
+      "Set the max internal buffer size for device hardware traces."
+      "Enabled only when hardwareTraces=1 (use 0 for hard coded default).",
+      "NNPI_HW_TRACES_BUFFER_SIZE", "0");
   /// Override the max NNPI device memory.
   DECLARE_NNPI_OPTION(
       deviceMemory, unsigned, "DeviceMemory",
       "Override the amount of DRAM to allocate per NNPI device, in kilobytes.",
       "NNPI_DEVICE_MEMORY", "0");
-  /// Enable using command list instead of per command queuing.
-  DECLARE_NNPI_OPTION(
-      enabledCommandLists, int, "CommandLists",
-      "Enabled command lists. "
-      "\n  0 = disabled. "
-      "\n  1+ = enable command list to queue copy/infer. "
-      "\n  2+ = enable command list wait instead of locking host resources. "
-      "\n  3+ = enable copy command config (partial copies). ",
-      "NNPI_COMMAND_LISTS", "3");
   /// Dump IO to files.
   DECLARE_NNPI_OPTION(dumpIOtoFiles, bool, "DumpIOtoFiles",
                       "Dump Inputs/Outputs to files.", "NNPI_DUMP_IO", "0");
@@ -355,21 +426,29 @@ public:
   DECLARE_NNPI_OPTION(dumpRuntime, bool, "DumpRuntime",
                       "Dump runtime graph (bindContexts).", "NNPI_DUMP_RUNTIME",
                       "0");
+  /// Disable Device IO Buffers.
+  DECLARE_NNPI_OPTION(disableDeviceIOBuffer, bool, "DisableDeviceIOBuffer",
+                      "Disable IO buffers allocation by the NNPI stack.",
+                      "NNPI_DISABLE_IOBUFFER", "1");
+
+  /// Inference timeout threshold. Default UINT32_MAX means infinity.
+  unsigned inferTimeout{UINT32_MAX};
 
   NNPIDeviceOptions(const llvm::StringMap<std::string> &parameters) {
     INIT_NNPI_OPTIONS(useIceT, parameters);
     INIT_NNPI_OPTIONS(inferOnDevice, parameters);
     INIT_NNPI_OPTIONS(showVars, parameters);
     INIT_NNPI_OPTIONS(deviceId, parameters);
-    INIT_NNPI_OPTIONS(numWorkers, parameters);
-    INIT_NNPI_OPTIONS(enabledDeviceTracing, parameters);
+    INIT_NNPI_OPTIONS(hardwareTraces, parameters);
+    INIT_NNPI_OPTIONS(softwareTracesMaxBuffer, parameters);
+    INIT_NNPI_OPTIONS(hardwareTracesMaxBuffer, parameters);
     INIT_NNPI_OPTIONS(deviceMemory, parameters);
-    INIT_NNPI_OPTIONS(enabledCommandLists, parameters);
     INIT_NNPI_OPTIONS(dumpIOtoFiles, parameters);
     INIT_NNPI_OPTIONS(avxType, parameters);
     INIT_NNPI_OPTIONS(disableDRT, parameters);
     INIT_NNPI_OPTIONS(disableP2P, parameters);
     INIT_NNPI_OPTIONS(dumpRuntime, parameters);
+    INIT_NNPI_OPTIONS(disableDeviceIOBuffer, parameters);
 
     if (avxType == -1) {
       if (isStringFoundInCpuInfo("avx512f")) {

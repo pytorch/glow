@@ -395,6 +395,19 @@ GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSet &currNodes,
       }
     }
   }
+  // Calculate new outMemSize.
+  NodesSet newNodes = currNodes;
+  newNodes.insert(newNode);
+  uint64_t newSize = 0;
+  for (auto *node : newNodes) {
+    if (auto *SN = llvm::dyn_cast<SaveNode>(node)) {
+      // SaveNode is a special case since it has no users but always writes out.
+      newSize += SN->getOutput().getType()->getSizeInBytes();
+    } else {
+      newSize += getOutMemPerNode(newNodes, node);
+    }
+  }
+  ret.outMemSize = newSize;
 
   // The memory usage changes due to newNode's inputs:
   for (size_t i = 0, e = newNode->getNumInputs(); i < e; i++) {
@@ -430,40 +443,13 @@ GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSet &currNodes,
       continue;
     }
 
-    if (currNodes.count(N)) {
-      // This input is inside of currNodes. Let node1 belongs to currNodes and
-      // only newNode uses nodes1's output(i.e. node1 -> newNode, and if node1
-      // -> node2, node2 belongs to currNodes). Before newNode is added, the
-      // size of node1's output is added into outMemSize. But if newNode is
-      // added, node1's output size should be removed from outMemSize.
-      bool removable = true;
-      for (auto &U : nodeVal.getUsers()) {
-        if (U.getUser() != newNode && currNodes.find(const_cast<Node *>(
-                                          U.getUser())) == currNodes.end()) {
-          // This means nodeVal is used by some other node not in currNodes, so
-          // even newNode is added, the output size still need to be counted.
-          removable = false;
-          break;
-        }
-      }
-      if (removable) {
-        ret.outMemSize -= nodeVal.getType()->getSizeInBytes();
-      }
-    } else {
+    if (!currNodes.count(N)) {
       // In this case, this input is not a storage type node nor belongs
       // to this subgraph. Therefore, when creating paritions, we need to add
       // a PlaceHolder for the data from outside.
       ret.inMemSize += nodeVal.getType()->getSizeInBytes();
       usedNodeValue.insert(nodeVal);
     }
-  }
-
-  // The memory usage changes due to newNode's outputs.
-  if (auto *SN = llvm::dyn_cast<SaveNode>(newNode)) {
-    // For SaveNode, add the output size.
-    Storage *out = llvm::dyn_cast<Storage>(SN->getPlaceholder());
-    ret.outMemSize += out->getType()->getSizeInBytes();
-    return ret;
   }
 
   for (size_t i = 0, e = newNode->getNumResults(); i < e; i++) {
@@ -483,8 +469,6 @@ GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSet &currNodes,
     }
   }
 
-  // Add the memory usage caused by newNode.
-  ret.outMemSize += getOutMemPerNode(currNodes, newNode);
   return ret;
 }
 

@@ -40,15 +40,6 @@ using llvm::cast;
 using ArgumentDictionaryTy =
     std::unordered_map<std::string, const caffe2::Argument *>;
 
-/// For the quantized Caffe2 ops, the activations are quantized to uint_8.
-/// In Glow, the activations are quantized to int_8. Therefore, for the offset
-/// read from quantized caffe2 model, we need to subtract 128(i.e. INT8_MIN) to
-/// make the activations becomes int8_t.
-/// For Glow: -128 <= orig_fp32/scale_1 + offset_1 <= 127
-/// For Caffe2: 0 <= orig_fp32/scale_2 + offset_2 <= 255
-/// Therefore, we can make scale_1 == scale_2, and offset_1 = offset2 - 128
-const int32_t OFFSETSHIFT = 128;
-
 namespace glow {
 /// Template specialization of loadOperatorName for caffe2.
 template <>
@@ -160,7 +151,8 @@ createAndSetTensorType(const caffe2::QTensorProto &in) {
   if (in.data_type() == caffe2::TensorProto::INT8) {
     result.t->reset(ElemKind::Int8QTy, dim, scale, offset);
   } else if (in.data_type() == caffe2::TensorProto::UINT8) {
-    result.t->reset(ElemKind::Int8QTy, dim, scale, offset - OFFSETSHIFT);
+    result.t->reset(ElemKind::Int8QTy, dim, scale,
+                    offset - UINT8_TO_INT8_SHIFT);
   } else if (in.data_type() == caffe2::TensorProto::INT32) {
     result.t->reset(ElemKind::Int32QTy, dim, scale, offset);
   } else {
@@ -417,10 +409,6 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
   // Group quantization only applies if there is more than one group.
   quantizeGroupwise &= group > 1;
 
-  if (quantizeGroupwise && dilation > 1) {
-    RETURN_ERR("Dilation not supported for group quantized convolution");
-  }
-
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
@@ -487,8 +475,8 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
   ASSIGN_VALUE_OR_RETURN_ERR(scale, loadFloat(dict["Y_scale"]));
   int32_t offset;
   ASSIGN_VALUE_OR_RETURN_ERR(offset, loadInt(dict["Y_zero_point"]));
-  outTy =
-      mod_.uniqueType(ElemKind::Int8QTy, outDims, scale, offset - OFFSETSHIFT);
+  outTy = mod_.uniqueType(ElemKind::Int8QTy, outDims, scale,
+                          offset - UINT8_TO_INT8_SHIFT);
 
   Node *node;
 
@@ -500,9 +488,13 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
     ASSIGN_VALUE_OR_RETURN_ERR(wScales, getConstantByName(wScalesName));
     ASSIGN_VALUE_OR_RETURN_ERR(wOffsets, getConstantByName(wOffsetsName));
 
-    node = G_->createChannelwiseQuantizedConv(opName, finalIn, w, bias, wScales,
-                                              wOffsets, outTy, kernels, strides,
-                                              pads, group);
+    // Quantize the filter automatically (only if it is float). The bias is NOT
+    // quantized automatically and is left at the disposal of each Backend to
+    // quantize it later using custom logic.
+    node = G_->createChannelwiseQuantizedConv(
+        opName, finalIn, w, bias, wScales, wOffsets, /* biasScales */ nullptr,
+        /* biasOffsets */ nullptr, outTy, kernels, strides, pads, group,
+        dilation, /* quantizeFilter */ true, /* quantizeBias */ false);
   } else {
     // If the bias isn't quantized for a non group quantized conv, quantize it.
     const Tensor &biasTensor = bias->getPayload();
@@ -745,7 +737,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     int yZeroPoint;
     ASSIGN_VALUE_OR_RETURN_ERR(yZeroPoint, loadInt(dict["Y_zero_point"]));
     auto outTy = mod_.uniqueType(ElemKind::Int8QTy, outDims, yScale,
-                                 yZeroPoint - OFFSETSHIFT);
+                                 yZeroPoint - UINT8_TO_INT8_SHIFT);
     auto *add = G_->createAdd(opName + ".sum", outTy, in0, in1);
     auto *relu = G_->createRELU(opName + ".relu", add);
     RETURN_IF_ERR(addNodeAsOutput(op, relu));
@@ -766,7 +758,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     int yZeroPoint;
     ASSIGN_VALUE_OR_RETURN_ERR(yZeroPoint, loadInt(dict["Y_zero_point"]));
     auto outTy = mod_.uniqueType(ElemKind::Int8QTy, outDims, yScale,
-                                 yZeroPoint - OFFSETSHIFT);
+                                 yZeroPoint - UINT8_TO_INT8_SHIFT);
     auto *relu = G_->createRELU(opName, in, outTy);
     RETURN_IF_ERR(addNodeAsOutput(op, relu));
     return Error::success();
@@ -785,7 +777,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     int yZeroPoint;
     ASSIGN_VALUE_OR_RETURN_ERR(yZeroPoint, loadInt(dict["Y_zero_point"]));
     auto outTy = mod_.uniqueType(ElemKind::Int8QTy, outDims, yScale,
-                                 yZeroPoint - OFFSETSHIFT);
+                                 yZeroPoint - UINT8_TO_INT8_SHIFT);
     Node *N = G_->createQuantize(opName, in, outTy);
     RETURN_IF_ERR(addNodeAsOutput(op, N));
     return Error::success();
@@ -869,7 +861,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
         int yZeroPoint;
         ASSIGN_VALUE_OR_RETURN_ERR(yZeroPoint, loadInt(dict["Y_zero_point"]));
         auto outTy = mod_.uniqueType(ElemKind::Int8QTy, outDims, yScale,
-                                     yZeroPoint - OFFSETSHIFT);
+                                     yZeroPoint - UINT8_TO_INT8_SHIFT);
         node =
             G_->createAvgPool(opName, finalIn, outTy, kernels, strides, pads);
       }
@@ -1084,7 +1076,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(yZeroPoint, loadInt(dict["Y_zero_point"]));
       auto outTy = mod_.uniqueType(
           ElemKind::Int8QTy, {in.getType()->dims()[0], B->getType()->dims()[0]},
-          yScale, yZeroPoint - OFFSETSHIFT);
+          yScale, yZeroPoint - UINT8_TO_INT8_SHIFT);
       node = G_->createFullyConnected(opName, in, W, B, outTy, axis);
     } else if (typeName == "FbFCPacked") {
       auto fp16InputType =
@@ -1165,6 +1157,14 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     // Create the log:
     auto *R = G_->createLog(opName, in);
     RETURN_IF_ERR(addNodeAsOutput(op, R));
+    return Error::success();
+  }
+
+  if (typeName == "Swish") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    auto *S = G_->createSwish(opName, in);
+    RETURN_IF_ERR(addNodeAsOutput(op, S));
     return Error::success();
   }
 
@@ -1892,11 +1892,11 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
         // the weights is stored in uint8_t format due to that Caffe2 requires
         // the type of input and weights must be the same. Therefore, we need
         // to convert it to int8 by subtracting 128.
-        T.reset(ElemKind::Int8QTy, dim, scale, offset - OFFSETSHIFT);
+        T.reset(ElemKind::Int8QTy, dim, scale, offset - UINT8_TO_INT8_SHIFT);
         auto TH = T.getHandle<int8_t>();
         std::string str = dict["values"]->s();
         for (; i < str.size(); i++) {
-          TH.raw(i) = ((uint8_t)(str.c_str()[i]) - OFFSETSHIFT);
+          TH.raw(i) = ((uint8_t)(str.c_str()[i]) - UINT8_TO_INT8_SHIFT);
         }
       } else {
         T.reset(ElemKind::Int32QTy, dim, scale, offset);
@@ -2146,6 +2146,10 @@ Error Caffe2ModelLoader::initWithModule(caffe2::NetDef &networkDef,
       PPC->funcs.push_back(F);
       PPC->logicalIDs.emplace_back(funToIDs[F]);
       PPC->backendSpecificOpts.emplace_back(funToOpts[F]);
+      // Replication counts not currently loaded through C2, so default to 1.
+      PPC->replicationCounts.emplace_back(1);
+      // Backend hints not currently loaded through C2, so use default.
+      PPC->backendHints.emplace_back();
       RETURN_ERR_IF_NOT(F->verify(), "Function verification failed.");
     }
   }

@@ -17,6 +17,7 @@
 #include "DebugMacros.h"
 #include "Importer.h"
 #include "NNPI.h"
+#include "NNPIAdapterContainer.h"
 #include "NNPIDeviceManager.h"
 #include "glow/Runtime/RequestData.h"
 #include "llvm/Support/raw_ostream.h"
@@ -30,7 +31,7 @@ namespace runtime {
 InferenceContext::InferenceContext()
     : nnpiNetwork_(NNPI_INVALID_NNPIHANDLE), device_(NNPI_INVALID_NNPIHANDLE),
       inferCmd_(NNPI_INVALID_NNPIHANDLE), commandList_(NNPI_INVALID_NNPIHANDLE),
-      deviceTracing_(nullptr), deviceOptions_(nullptr) {}
+      deviceOptions_(nullptr) {}
 
 InferenceContext::~InferenceContext() {
   if (deviceOptions_ && deviceOptions_->inferOnDevice) {
@@ -48,11 +49,11 @@ bool InferenceContext::init(
     // For ICE-Ref path.
     NNPINetwork network, NNPICompilationConfig config,
     // For ICE-T path.
-    NNPIDeviceNetwork deviceNetwork, NNPIAdapter adapter,
+    NNPIDeviceNetwork deviceNetwork, NNPIAdapterContainer *adapter,
     NNPIDeviceContext device,
     const std::unordered_set<const Placeholder *> &partialInputs,
+    const std::unordered_set<const Placeholder *> &paddedInputs,
     const std::unordered_set<const Placeholder *> &staticInputs,
-    std::shared_ptr<NNPIDeviceTracing> deviceTracing,
     StaticPlaceholderMap *staticPlaceholderMap,
     std::shared_ptr<NNPIDeviceOptions> deviceOptions,
     const std::string &functionName, unsigned deviceId,
@@ -63,7 +64,7 @@ bool InferenceContext::init(
   device_ = device;
   compilationConfig_ = config;
   partialInputs_ = &partialInputs;
-  deviceTracing_ = deviceTracing;
+  paddedInputs_ = &paddedInputs;
   functionName_ = functionName;
 
   // Initialize trace context titles with device ID.
@@ -255,49 +256,47 @@ bool InferenceContext::init(
                              outputHandles, numOutputs, &inferCmd_),
       "Failed to create NNPI inference command");
 
-  if (deviceOptions_->enabledCommandLists > 0) {
-    // Collect copy commands for the list (some resources may not need copying).
-    std::vector<NNPICommandHandle> commands;
-    std::vector<NNPICopyCommand> inputCopyCmds, outputCopyCmds;
-    for (auto &res : inputResources_) {
-      auto copyCmd = res->getCopyCommand();
-      if (copyCmd) {
-        res->setCmdListIdx(static_cast<uint32_t>(commands.size()));
-        NNPICommandHandle cmd;
-        cmd.type = NNPI_COMMAND_TYPE_COPY;
-        cmd.copyCommand = copyCmd;
-        commands.push_back(cmd);
-      }
-    }
-    {
+  // Collect copy commands for the list (some resources may not need copying).
+  std::vector<NNPICommandHandle> commands;
+  std::vector<NNPICopyCommand> inputCopyCmds, outputCopyCmds;
+  for (auto &res : inputResources_) {
+    auto copyCmd = res->getCopyCommand();
+    if (copyCmd) {
+      res->setCmdListIdx(static_cast<uint32_t>(commands.size()));
       NNPICommandHandle cmd;
-      cmd.type = NNPI_COMMAND_TYPE_INFER;
-      cmd.inferCommand = inferCmd_;
+      cmd.type = NNPI_COMMAND_TYPE_COPY;
+      cmd.copyCommand = copyCmd;
       commands.push_back(cmd);
     }
-    for (auto &res : outputResources_) {
-      auto copyCmd = res->getCopyCommand();
-      if (copyCmd) {
-        res->setCmdListIdx(static_cast<uint32_t>(commands.size()));
-        NNPICommandHandle cmd;
-        cmd.type = NNPI_COMMAND_TYPE_COPY;
-        cmd.copyCommand = copyCmd;
-        commands.push_back(cmd);
-      }
-    }
-
-    // Create command list.
-    LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
-        nnpiCommandListCreate(&(commands[0]),
-                              static_cast<uint32_t>(commands.size()), nullptr,
-                              0, &commandList_),
-        "Failed to create NNPI command list");
-
-    // Preallocate enough configs to be used for partials later on.
-    cmdConfigs_.resize(commands.size());
-    // Preallocate enough errors to be used later durin inference.
-    cmdListErrors_.resize(commands.size());
   }
+  {
+    NNPICommandHandle cmd;
+    cmd.type = NNPI_COMMAND_TYPE_INFER;
+    cmd.inferCommand = inferCmd_;
+    commands.push_back(cmd);
+  }
+  for (auto &res : outputResources_) {
+    auto copyCmd = res->getCopyCommand();
+    if (copyCmd) {
+      res->setCmdListIdx(static_cast<uint32_t>(commands.size()));
+      NNPICommandHandle cmd;
+      cmd.type = NNPI_COMMAND_TYPE_COPY;
+      cmd.copyCommand = copyCmd;
+      commands.push_back(cmd);
+    }
+  }
+
+  // Create command list.
+  LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
+      nnpiCommandListCreate(&(commands[0]),
+                            static_cast<uint32_t>(commands.size()), nullptr, 0,
+                            &commandList_),
+      "Failed to create NNPI command list");
+
+  // Preallocate enough configs to be used for partials later on.
+  cmdConfigs_.resize(commands.size());
+  // Preallocate enough errors to be used later durin inference.
+  cmdListErrors_.resize(commands.size());
 
   if (deviceOptions_->dumpRuntime) {
     dumpRuntime();
@@ -309,6 +308,8 @@ bool InferenceContext::init(
 void InferenceContext::execute(RunIdentifierTy runId,
                                std::unique_ptr<ExecutionContext> ctx,
                                runtime::ResultCBTy resultCB) {
+  std::string traceBackendExecuteStr =
+      llvm::formatv("{0} {1:x}", traceBackendExecuteContextName_, ctx.get());
 
   std::map<std::string, std::string> attributes;
 
@@ -319,7 +320,7 @@ void InferenceContext::execute(RunIdentifierTy runId,
   }
 
   TRACE_EVENT_SCOPE_NAMED(ctx->getTraceContext(), TraceLevel::REQUEST,
-                          traceBackendExecuteContextName_, traceBlock);
+                          traceBackendExecuteStr, traceBlock);
   for (const auto &iter : attributes) {
     traceBlock.addArg(iter.first, iter.second);
   }
@@ -329,12 +330,12 @@ void InferenceContext::execute(RunIdentifierTy runId,
         llvm::formatv("Inf ctx - device: {0}: {1}", deviceId_, functionName_)
             .str());
   }
-  if (deviceTracing_) {
-    deviceTracing_->start(ctx->getTraceContext(), device_);
-  }
 
   // Pre inference input preparation.
   PlaceholderBindings &bindings = *ctx->getPlaceholderBindings();
+
+  // Size of Inputs/Outputs
+  uint64_t outputSize{0}, inputSize{0};
 
   // Initialize placeholder lists in the same orders as inputResources_ and
   // outputResources_.
@@ -343,7 +344,7 @@ void InferenceContext::execute(RunIdentifierTy runId,
       if (in->getUsage() == NNPIResource::ResourceUsage::StaticInputResource) {
         continue;
       }
-      auto *placeholder = bindings.getPlaceholderByName(in->getName());
+      auto *placeholder = bindings.getPlaceholderByNameSlow(in->getName());
       if (!placeholder) {
         netInputPlaceholders_.clear();
         LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, placeholder,
@@ -356,7 +357,7 @@ void InferenceContext::execute(RunIdentifierTy runId,
   }
   if (netOutputPlaceholders_.empty()) {
     for (const auto &out : outputResources_) {
-      auto *placeholder = bindings.getPlaceholderByName(out->getName());
+      auto *placeholder = bindings.getPlaceholderByNameSlow(out->getName());
       if (!placeholder) {
         netOutputPlaceholders_.clear();
         LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(ERROR, placeholder,
@@ -364,13 +365,6 @@ void InferenceContext::execute(RunIdentifierTy runId,
                                              runId, ctx, resultCB);
       }
       netOutputPlaceholders_.push_back(placeholder);
-    }
-  }
-
-  std::unordered_set<Tensor *> partialTensorInputs;
-  for (auto &pht : bindings.pairs()) {
-    if (partialInputs_->count(pht.first)) {
-      partialTensorInputs.insert(pht.second);
     }
   }
 
@@ -382,115 +376,115 @@ void InferenceContext::execute(RunIdentifierTy runId,
   unsigned idx = 0;
   for (const auto &in : inputResources_) {
     if (in->getUsage() != NNPIResource::ResourceUsage::StaticInputResource) {
-      auto *t = bindings.get(netInputPlaceholders_[idx++]);
+      auto *ph = netInputPlaceholders_[idx++];
+      auto *t = bindings.get(ph);
+      inputSize += t->getUnpaddedSizeInBytes();
       LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
           ERROR, t, "Can't find tensor for input", runId, ctx, resultCB);
       LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
           ERROR,
-          in->preInference(t, partialTensorInputs.count(t)) ==
-              NNPI_INF_NO_ERROR,
+          in->preInference(t, partialInputs_->count(ph),
+                           paddedInputs_->count(ph)) == NNPI_INF_NO_ERROR,
           "Failed pre-inference for input", runId, ctx, resultCB);
     }
     rawInputs.push_back(in->getHostPtr());
   }
-
+  auto requestData = ::glow::runtime::RequestData::get();
+  if (requestData) {
+    requestData->inputSize += inputSize;
+  }
+  std::string inferContext = traceInferenceContextName_;
   // Inference.
   if (deviceOptions_->inferOnDevice) {
-    if (deviceOptions_->enabledCommandLists < 1) {
-      // No command lists (schedule individual commands).
-      TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
-                      tracePreProcessContextName_);
-      TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::OPERATOR,
-                             traceInferenceContextName_, attributes);
-      // Queue inference.
+    // Prepare updates for partial copies.
+    uint32_t usedConfigs = 0;
+    for (auto &res : inputResources_) {
+      const auto partialSize = res->getPartialSize();
+      if (partialSize > -1) {
+        memset(&(cmdConfigs_[usedConfigs]), 0, sizeof(NNPICommandConfig));
+        cmdConfigs_[usedConfigs].index = res->getCmdListIdx();
+        cmdConfigs_[usedConfigs].type = NNPI_COMMAND_TYPE_COPY;
+        cmdConfigs_[usedConfigs].copyConfig.size = partialSize;
+        if (partialSize == 0) {
+          cmdConfigs_[usedConfigs].copyConfig.disableCopy = 1;
+        }
+        usedConfigs++;
+      }
+    }
+    inferContext = llvm::formatv("{0} {1:x}", inferContext, commandList_);
+    TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
+                    tracePreProcessContextName_);
+    TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::OPERATOR,
+                           inferContext, attributes);
+    // Queue Command list
+    int64_t issueTime = TraceEvent::now();
+    LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
+        nnpiCommandListQueue(commandList_, &(cmdConfigs_.at(0)), usedConfigs),
+        "Failed to queue command list.", runId, ctx, resultCB);
+
+    // Wait on completion and error handling.
+    uint32_t numErrors(0);
+    // First wait for the command list to complete.
+    NNPIInferenceErrorCode res = nnpiCommandListWait(
+        commandList_, deviceOptions_->inferTimeout, NULL, 0, &numErrors);
+    uint64_t completeTime = TraceEvent::now();
+    // Set batchDeviceTimestamps.
+    auto requestData = ::glow::runtime::RequestData::get();
+    if (requestData) {
+      auto duration = completeTime - issueTime;
+      requestData->deviceRuntime.fetch_add(duration);
+    }
+    if (res != NNPI_INF_NO_ERROR) {
+      LOG_NNPI_INF_IF_ERROR(res, "Failed to wait on command list");
+    } else if (numErrors > 0) {
+      LOG(ERROR) << "Errors returned from command list";
+
+      // Errors were generate so we allocate error objects to hold the data.
+      NNPICommandListError commandErrors[numErrors];
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+          ERROR, commandErrors, "Failed to allocate command error array", runId,
+          ctx, resultCB);
+      memset(commandErrors, 0, sizeof(NNPICommandListError) * numErrors);
+
+      // Then query all errors using another wait call (should return
+      // immediately).
+      NNPIInferenceErrorCode tmpRes =
+          nnpiCommandListWait(commandList_, deviceOptions_->inferTimeout,
+                              commandErrors, numErrors, &numErrors);
+      if (tmpRes != NNPI_INF_NO_ERROR) {
+        LOG_NNPI_INF_IF_ERROR(tmpRes,
+                              "Failed to wait on command list to get errors");
+      } else {
+        for (uint32_t i = 0; i < numErrors; i++) {
+          LOG(ERROR) << NNPI_INF_ERROR_MSG(commandErrors[i].err,
+                                           commandErrors[i].desc);
+        }
+      }
+    }
+    if (res != NNPI_INF_NO_ERROR || numErrors > 0) {
       LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
-          nnpiInferCommandQueue(inferCmd_, 0), "Failed to queue infer command.",
+          nnpiCommandListClearErrors(commandList_),
+          "Failed to clear command list errors", runId, ctx, resultCB);
+      LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
+          ERROR, false /* fail */, "Errors found in command list execution",
           runId, ctx, resultCB);
-
-      // Queue output copies
-      for (auto &res : outputResources_) {
-        auto cmd = res->getCopyCommand();
-        if (cmd) {
-          // todo: assert no partial output
-          LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
-              nnpiCopyCommandQueue(cmd, nullptr),
-              "Failed to queue output copy command.", runId, ctx, resultCB);
-        }
-      }
-    } else { // Use commands lists.
-      // Prepare updates for partial copies.
-      uint32_t usedConfigs = 0;
-      for (auto &res : inputResources_) {
-        const auto partialSize = res->getPartialSize();
-        if (partialSize > 0) {
-          cmdConfigs_[usedConfigs].index = res->getCmdListIdx();
-          cmdConfigs_[usedConfigs].type = NNPI_COMMAND_TYPE_COPY;
-          cmdConfigs_[usedConfigs].copyConfig.size = partialSize;
-          usedConfigs++;
-        }
-      }
-
-      TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
-                      tracePreProcessContextName_);
-      TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::OPERATOR,
-                             traceInferenceContextName_, attributes);
-      // Queue Command list
-      LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
-          nnpiCommandListQueue(commandList_, &(cmdConfigs_.at(0)), usedConfigs),
-          "Failed to queue command list.", runId, ctx, resultCB);
-
-      // Wait on completion and error handling.
-      uint32_t numErrors(0);
-      // First wait for the command list to complete.
-      NNPIInferenceErrorCode res =
-          nnpiCommandListWait(commandList_, UINT32_MAX, NULL, 0, &numErrors);
-      if (res != NNPI_INF_NO_ERROR) {
-        LOG_NNPI_INF_IF_ERROR(res, "Failed to wait on command list");
-      } else if (numErrors > 0) {
-        LOG(ERROR) << "Errors returned from command list";
-
-        // Errors were generate so we allocate error objects to hold the data.
-        NNPICommandListError commandErrors[numErrors];
-        LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
-            ERROR, commandErrors, "Failed to allocate command error array",
-            runId, ctx, resultCB);
-        memset(commandErrors, 0, sizeof(NNPICommandListError) * numErrors);
-
-        // Then query all errors using another wait call (should return
-        // immediately).
-        NNPIInferenceErrorCode tmpRes = nnpiCommandListWait(
-            commandList_, UINT32_MAX, commandErrors, numErrors, &numErrors);
-        if (tmpRes != NNPI_INF_NO_ERROR) {
-          LOG_NNPI_INF_IF_ERROR(tmpRes,
-                                "Failed to wait on command list to get errors");
-        } else {
-          for (uint32_t i = 0; i < numErrors; i++) {
-            LOG(ERROR) << NNPI_INF_ERROR_MSG(commandErrors[i].err,
-                                             commandErrors[i].desc);
-          }
-        }
-      }
-      if (res != NNPI_INF_NO_ERROR || numErrors > 0) {
-        LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
-            nnpiCommandListClearErrors(commandList_),
-            "Failed to clear command list errors", runId, ctx, resultCB);
-        LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
-            ERROR, false /* fail */, "Errors found in command list execution",
-            runId, ctx, resultCB);
-      }
+      LOG(FATAL) << "Non-recoverable inference error";
     }
   } else if (!deviceOptions_->useIceT) {
     // Infer on ice-ref.
+
+    // Ice-ref not re-entrant - To be removed once ICE-29869 is implemented
+    static std::mutex icerefMutex;
+    std::lock_guard<std::mutex> guard(icerefMutex);
 
     for (auto &out : outputResources_) {
       // Collect output ptrs for ICE-Ref
       rawOutputs.push_back(out->getHostPtr());
     }
-
     TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
-                    TRACING_PRE_PROCESS);
+                    tracePreProcessContextName_);
     TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::OPERATOR,
-                           TRACING_INFERENCE, attributes);
+                           inferContext, attributes);
     LOG_AND_CALLBACK_EXECUTE_NNPI_IF_ERROR(
         nnpiNetworkInferOnHost(nnpiNetwork_, &(rawInputs[0]), rawInputs.size(),
                                &(rawOutputs[0]), rawOutputs.size(),
@@ -501,26 +495,25 @@ void InferenceContext::execute(RunIdentifierTy runId,
     // Nothing else to do here.
   }
 
-  TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::OPERATOR,
-                  traceInferenceContextName_);
+  TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::OPERATOR, inferContext);
   TRACE_EVENT_BEGIN_ATTR(ctx->getTraceContext(), TraceLevel::COPY,
                          tracePostProcessContextName_, attributes);
-
   // Post inference output handling.
   for (unsigned i = 0, e = outputResources_.size(); i < e; ++i) {
     auto *t = bindings.get(netOutputPlaceholders_[i]);
+    outputSize += t->getSizeInBytes();
     LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
         ERROR, t, "Can't find tensor for output", runId, ctx, resultCB);
     LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
         ERROR, outputResources_[i]->postInference(t) == NNPI_INF_NO_ERROR,
         "Failed in output postInference", runId, ctx, resultCB);
   }
+  if (requestData) {
+    requestData->outputSize += outputSize;
+  }
 
   TRACE_EVENT_END(ctx->getTraceContext(), TraceLevel::COPY,
                   tracePostProcessContextName_);
-  if (deviceTracing_) {
-    deviceTracing_->stopAndUpdate(ctx->getTraceContext(), device_);
-  }
   TRACE_EVENT_SCOPE_END_NAMED(traceBlock); // we move context in the line below
 
   // Invoke CB.

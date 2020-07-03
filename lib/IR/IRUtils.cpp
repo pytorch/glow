@@ -25,6 +25,23 @@ using llvm::isa;
 
 bool glow::isTensorView(glow::Value *v) { return isa<TensorViewInst>(v); }
 
+size_t glow::calculateTensorViewOffset(const TensorViewInst *TVI) {
+  // Pop tensor views off repeatedly until we reach the origin, in case there
+  // are multiple stacked together, to calculate the total offset.
+  const TensorViewInst *currTVI = TVI;
+  size_t totalOffsetLength = 0;
+  do {
+    // Get the offset into the current base Tensor in bytes. Aggregate all
+    // offsets from stacked TVIs into totalOffsetLength.
+    totalOffsetLength +=
+        getFlattenedOffset(currTVI->getSrc()->getType()->strides(),
+                           currTVI->getOffsets()) *
+        currTVI->getType()->getElementSize();
+  } while ((currTVI = dyn_cast<TensorViewInst>(currTVI->getSrc())));
+
+  return totalOffsetLength;
+}
+
 Value *glow::getAllocationOrigin(Value *V) {
   while (true) {
     if (auto *AI = dyn_cast<AllocActivationInst>(V))

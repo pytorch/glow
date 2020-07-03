@@ -259,7 +259,10 @@ enum PaddingMode { CONSTANT = 0, REFLECT, EDGE };
 enum class LengthsMode { Variable, AllOne };
 
 /// Convolution Layouts.
-enum ConvolutionLayout { NHWC = 0, NCHW };
+enum ConvolutionLayout { NHWC = 0, NCHW, NTHWC, NCTHW };
+inline bool is3DData(ConvolutionLayout layout) {
+  return (layout == NTHWC || layout == NCTHW);
+}
 
 /// Activations fused into ConvolutionNode (not supported on all backends).
 enum FusedActivation { NONE = 0, RELU, TANH, SIGMOID };
@@ -364,6 +367,7 @@ constexpr char saveNameSignifier[] = "saveName";
 constexpr char qScaleSignifier[] = "qScale";
 constexpr char qOffsetSignifier[] = "qOffset";
 constexpr char shapeSignifier[] = "shape";
+constexpr char constFoldSubgraphNodeName[] = "Glow__ConstFoldSubgraph";
 
 /// \returns the string ID for a type attribute property for a specific \p ioNum
 /// and \p signifier and whether \p isInput. E.g. to retrieve result number 0's

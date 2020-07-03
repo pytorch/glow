@@ -1308,34 +1308,6 @@ static bool eliminateDeadStores(IRFunction &M) {
   return changed;
 }
 
-/// \returns true if the first dimension in \p offsets has a non-zero value.
-static bool isOnlyOffsetInFirstDim(llvm::ArrayRef<dim_t> offsets) {
-  if (offsets.size() > 1) {
-    for (size_t i = 1; i < offsets.size(); ++i) {
-      if (offsets[i] != 0) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
-/// \returns true if the dimensions of \p sourceDims, other than the first
-/// dimension, all equal the dimensions in \p destDims.
-static bool allButFirstDimsEqual(llvm::ArrayRef<dim_t> sourceDims,
-                                 llvm::ArrayRef<dim_t> destDims) {
-  assert(sourceDims.size() == destDims.size() &&
-         "Source and dest dims must have same number of dims.");
-  if (sourceDims.size() > 1) {
-    for (size_t i = 1; i < sourceDims.size(); ++i) {
-      if (sourceDims[i] != destDims[i]) {
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
 /// Replace InsertTensors that are only offset in the first dimension with
 /// writing directly into the destination using TensorViews with the same
 /// offsets. This is possible because this means the underlying memory is
@@ -1363,10 +1335,8 @@ bool optimizeInserts(IRFunction &M) {
       continue;
     }
 
-    // TVI with offsets currently only works for this optimization if the insert
-    // is only into the first dimension. This is because the tensor memory must
-    // be contiguous.
-    if (!isOnlyOffsetInFirstDim(ITI->getOffsets())) {
+    // TVI is used only when inserting a slice which is contiguous in memory.
+    if (!isSliceContiguous(ITI->getSrc()->dims(), ITI->getDest()->dims())) {
       continue;
     }
 
@@ -1385,14 +1355,6 @@ bool optimizeInserts(IRFunction &M) {
       continue;
     }
 
-    // Make sure that all but the first dimension of the inserttensor's source
-    // and dest are equal. This means that the writes to the destination of the
-    // insert are contiguous.
-    auto *insertDest = ITI->getDest();
-    if (!allButFirstDimsEqual(insertSourceAAI->dims(), insertDest->dims())) {
-      continue;
-    }
-
     // Find the original writer into insertSourceAAI.
     Instruction *origWriter = nullptr;
     for (const auto &U : ValueUses(insertSourceAAI)) {
@@ -1407,6 +1369,7 @@ bool optimizeInserts(IRFunction &M) {
 
     // Create a new TensorView of the original dest of the InsertTensor,
     // with the same offset as the InsertTensor.
+    auto *insertDest = ITI->getDest();
     auto *TVI =
         B.createTensorViewInst((ITI->getName() + ".tv.dest").str(), insertDest,
                                insertSourceAAI->getType(), ITI->getOffsets());
@@ -1449,10 +1412,8 @@ bool optimizeExtracts(IRFunction &M) {
       continue;
     }
 
-    // TVI with offsets currently only works for this optimization if the
-    // extract is only into the first dimension. This is because the tensor
-    // memory must be contiguous.
-    if (!isOnlyOffsetInFirstDim(ETI->getOffsets())) {
+    // TVI is used only when extracting a slice which is contiguous in memory.
+    if (!isSliceContiguous(ETI->getDest()->dims(), ETI->getSrc()->dims())) {
       continue;
     }
 
@@ -1469,12 +1430,6 @@ bool optimizeExtracts(IRFunction &M) {
     // pattern usually seen via IRGen'd SliceNodes.
     auto *extractDestAAI = dyn_cast<AllocActivationInst>(ETI->getDest());
     if (!extractDestAAI) {
-      continue;
-    }
-
-    // Make sure that all but the first dimension of the extract's source and
-    // dest are equal. This means that the accesses are contiguous.
-    if (!allButFirstDimsEqual(extractSrc->dims(), extractDestAAI->dims())) {
       continue;
     }
 

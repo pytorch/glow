@@ -30,9 +30,9 @@ graph {
     dims: 4
     data_type: 7
     int64_data: 2
-    int64_data: 4
-    int64_data: 4
     int64_data: 2
+    int64_data: 4
+    int64_data: 4
    name: "sizes"
   }
   initializer {

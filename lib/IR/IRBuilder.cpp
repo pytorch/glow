@@ -99,18 +99,7 @@ MaxPoolWithArgmaxInst *IRBuilder::createMaxPoolWithArgmaxOp(
 ArgMaxInst *IRBuilder::createArgMaxOp(llvm::StringRef name, Value *input,
                                       unsigned_t axis, bool keepDims,
                                       ElemKind outIndicesTy) {
-  auto idim = input->dims();
-
-  ShapeVector odim;
-  for (size_t i = 0, e = 4; i < e; i++) {
-    if (i == axis && !keepDims) {
-      continue;
-    } else {
-      odim.push_back(i == axis ? 1 : idim[i]);
-    }
-  }
-
-  // Allocate storage for flattened NCHW index of max element.
+  ShapeVector odim = reduceDims(input->dims(), {axis}, keepDims);
   Value *argmax =
       createAllocActivationInst(name.str() + ".argmax", outIndicesTy, odim);
   return createArgMaxInst(name, argmax, input, axis, keepDims);
@@ -194,14 +183,10 @@ TopKInst *IRBuilder::createTopKOp(llvm::StringRef name, Value *input, size_t k,
   outDims.back() = k;
   auto outTy = F_->getGraph()->getParent()->uniqueTypeWithNewShape(
       input->getType(), outDims);
-  // Allocate enough scratch space to hold N values and N indices.
-  auto *scratch = createAllocActivationInst(name.str() + ".scratch",
-                                            outIndicesTy, {inDims.back() * 2});
-  createSplatInst(name.str() + ".zero.scratch", scratch, 0);
   auto *values = createAllocActivationInst(name.str() + ".values", outTy);
   auto *indices =
       createAllocActivationInst(name.str() + ".indices", outIndicesTy, outDims);
-  return createTopKInst(name.str(), values, indices, input, scratch, k);
+  return createTopKInst(name.str(), values, indices, input, k);
 }
 
 Value *IRBuilder::createReturnOp(Value *input) {

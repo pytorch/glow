@@ -89,7 +89,7 @@ public:
           equalInputs = false;
           break;
         }
-        equalInputs &= p.second->isEqual(*CT, 0.0001, true);
+        equalInputs &= p.second.isEqual(*CT, 0.0001, true);
       }
 
       if (equalInputs) {
@@ -99,9 +99,10 @@ public:
         runId = registeredResult->runId;
         successResult = registeredResult->success;
 
-        for (auto p : registeredResult->resultContext->getPlaceholderBindings()
-                          ->pairs()) {
-          context->getPlaceholderBindings()->get(p.first)->assign(p.second);
+        for (const auto &p :
+             registeredResult->resultContext->getPlaceholderBindings()
+                 ->pairs()) {
+          context->getPlaceholderBindings()->get(p.first)->assign(&p.second);
         }
       }
     }
@@ -264,7 +265,7 @@ public:
         runIdsMatch && resultsMatch && (!runSuccess || bindingsMatch);
 
     testRun_ = true;
-
+    executor_->freePool(root_.get());
     return testPassed;
   }
 
@@ -468,7 +469,7 @@ public:
     }
 
     for (const auto &symbol : outputSymbols) {
-      auto *placeholder = bindings_->getPlaceholderByName(symbol);
+      auto *placeholder = bindings_->getPlaceholderByNameSlow(symbol);
       if (!placeholder) {
         assert(!"Placeholder for DAG output not found!");
       }
@@ -549,7 +550,7 @@ private:
   /// mapped for the test being created, reuse the existing value.
   void insertSymbolIntoPlaceholderBindings(llvm::StringRef name,
                                            PlaceholderBindings *bindings) {
-    auto ph = module_->getPlaceholderByName(name);
+    auto ph = module_->getPlaceholderByNameSlow(name);
 
     if (!ph) {
       // This is a new symbol. Create a Placeholder and an initialize and new

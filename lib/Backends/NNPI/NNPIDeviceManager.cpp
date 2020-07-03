@@ -17,6 +17,7 @@
 #include "Importer.h"
 #include "InferencePool.h"
 #include "NNPI.h"
+#include "NNPIAdapterContainer.h"
 #include "NNPICompiledFunction.h"
 #include "NNPITracing.h"
 #include "NNPIUtils.h"
@@ -27,30 +28,106 @@
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "folly/experimental/FunctionScheduler.h"
+
 #include "DebugMacros.h"
 #include "glow/Support/Error.h"
+
+#include <fstream>
 
 namespace glow {
 namespace runtime {
 
 unsigned GlowNNPIMemory = 0;
+unsigned GlowNNPITimeout = 0;
+unsigned GlowNNPIDeviceCheckPeriodSec = 30;
+bool GlowNNPIDeviceCheck = false;
 
 static llvm::cl::opt<unsigned, /* ExternalStorage */ true>
     GlowNNPIMemoryOpt("glow-nnpi-memory",
                       llvm::cl::desc("Override the amount of DRAM to allocate "
                                      "per NNPI device, in kilobytes"),
                       llvm::cl::location(GlowNNPIMemory));
+static llvm::cl::opt<unsigned, /* ExternalStorage */ true> GlowNNPITimeoutOpt(
+    "glow-nnpi-timeout",
+    llvm::cl::desc("Timeout threshold for inferecnce in microseconds. "
+                   "Default 0 means infinity"),
+    llvm::cl::location(GlowNNPITimeout));
+static llvm::cl::opt<unsigned, /* ExternalStorage */ true>
+    GlowNNPIDeviceCheckPeriodSecOpt(
+        "glow-nnpi-device-check-period",
+        llvm::cl::desc(
+            "Period for NNPI device health check in seconds. Default to 32s."),
+        llvm::cl::location(GlowNNPIDeviceCheckPeriodSec));
+static llvm::cl::opt<bool, /* ExternalStorage */ true> GlowNNPIDeviceCheckOpt(
+    "glow-nnpi-device-check",
+    llvm::cl::desc(
+        "Whether to check NNPI device health or not. Default to false."),
+    llvm::cl::location(GlowNNPIDeviceCheck));
+
+namespace {
+class NNPIDeviceChecker {
+private:
+  folly::FunctionScheduler fs_;
+
+public:
+  NNPIDeviceChecker() {
+    LOG(INFO) << "Starting NNPI Device Checker...";
+    fs_.addFunction(
+        []() {
+          for (int i = 0; i < 6; ++i) {
+            std::ifstream inFile;
+            std::string bootFailReason = "/sys/class/nnpi/nnpi" +
+                                         std::to_string(i) +
+                                         +"/boot_fail_reason";
+            inFile.open(bootFailReason);
+            if (!inFile.good() || inFile.eof()) {
+              continue;
+            }
+
+            std::string reason;
+            getline(inFile, reason);
+            inFile.close();
+            VLOG(1) << "Device " << i << ": " << reason;
+            if (reason.find("None") == std::string::npos) {
+              LOG(FATAL) << "Broken device " << i << ": " << reason;
+            }
+          }
+        },
+        std::chrono::seconds(GlowNNPIDeviceCheckPeriodSecOpt), "card");
+    fs_.start();
+  }
+
+  ~NNPIDeviceChecker() {
+    LOG(INFO) << "Shutting down NNPI Device Checker...";
+    fs_.shutdown();
+  }
+};
+
+std::once_flag deviceCheckFlag;
+} // namespace
+
+static void initNNPIDeviceChecker() {
+  static std::shared_ptr<NNPIDeviceChecker> c =
+      std::make_shared<NNPIDeviceChecker>();
+}
 
 DeviceManager *createNNPIDeviceManager(const DeviceConfig &config,
                                        NNPIAdapterContainer *adapter) {
+  if (GlowNNPIDeviceCheckOpt) {
+    std::call_once(deviceCheckFlag, []() { initNNPIDeviceChecker(); });
+  }
   std::shared_ptr<NNPIDeviceOptions> deviceOptions =
       std::make_shared<NNPIDeviceOptions>(config.parameters);
-  NNPIAdapter nnpiAdapter = adapter->get(deviceOptions->inferOnDevice);
-  if (deviceOptions->inferOnDevice && nnpiAdapter == NNPI_INVALID_NNPIHANDLE) {
+  if (deviceOptions->inferOnDevice &&
+      adapter->getHandle() == NNPI_INVALID_NNPIHANDLE) {
     LOG(ERROR) << "Adapter allocation failed";
     return nullptr;
   }
-  return new NNPIDeviceManager(config, deviceOptions, nnpiAdapter);
+  if (GlowNNPITimeoutOpt != 0) {
+    deviceOptions->inferTimeout = GlowNNPITimeout;
+  }
+  return new NNPIDeviceManager(config, deviceOptions, adapter);
 }
 
 // 1K bytes.
@@ -61,30 +138,16 @@ std::atomic<RunIdentifierTy> NNPIDeviceManager::runIdentifier_;
 
 NNPIDeviceManager::NNPIDeviceManager(
     const DeviceConfig &config,
-    std::shared_ptr<NNPIDeviceOptions> deviceOptions, NNPIAdapter adapter,
-    unsigned numInferenceWorkers)
-    : DeviceManager(config), numWorkersPerFunction_(numInferenceWorkers),
-      deviceId_(config_.deviceID), adapter_(adapter),
+    std::shared_ptr<NNPIDeviceOptions> deviceOptions,
+    NNPIAdapterContainer *adapter)
+    : DeviceManager(config), deviceId_(config_.deviceID), pAdapter_(adapter),
       device_(NNPI_INVALID_NNPIHANDLE), deviceOptions_(deviceOptions) {
-
   if (deviceOptions_->showVars) {
     LOG(INFO) << deviceOptions_->dumpStatus();
   }
   if (deviceOptions_->deviceId >= 0) {
     deviceId_ = static_cast<unsigned>(deviceOptions_->deviceId);
   }
-
-  if (!numWorkersPerFunction_) {
-    numWorkersPerFunction_ = 2;
-  }
-
-  if (deviceOptions_->numWorkers > 0) {
-    numWorkersPerFunction_ = deviceOptions_->numWorkers;
-  }
-
-  // Ice-ref not re-entrant for the same nnpiNetwork.
-  numWorkersPerFunction_ =
-      deviceOptions_->inferOnDevice ? numWorkersPerFunction_ : 1;
 }
 
 NNPIDeviceManager::~NNPIDeviceManager() {
@@ -132,11 +195,8 @@ Error NNPIDeviceManager::init() {
   if (deviceOptions_->inferOnDevice) {
     // Create NNPI device.
     LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
-        nnpiDeviceContextCreate(adapter_, deviceId_, &device_),
+        nnpiDeviceContextCreate(pAdapter_->getHandle(), deviceId_, &device_),
         "Failed to create NNPI Device");
-    if (deviceOptions_->enabledDeviceTracing) {
-      deviceTracing_ = NNPIDeviceTracing::getForDevice(deviceId_);
-    }
     NNPIDeviceInfo deviceInfo;
     LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
         nnpiDeviceGetInfo(deviceId_, &deviceInfo),
@@ -201,9 +261,9 @@ void NNPIDeviceManager::addNetwork(const Module *module,
   for (const auto &func : functions) {
     functions_.emplace(func.first, func.second);
     usedMemoryBytes_ += functionCost_; // TODO:: static moduleSize.
-    auto err = inferenceEnvs_[func.first].init(
-        numWorkersPerFunction_, adapter_, device_, deviceTracing_, func.second,
-        &staticPlaceholders_, deviceOptions_, func.first, deviceId_);
+    auto err = inferencePools_[func.first].init(
+        pAdapter_, device_, func.second, &staticPlaceholders_, deviceOptions_,
+        func.first, deviceId_);
     if (err) {
       functions_.erase(func.first);
       lock.unlock();
@@ -226,9 +286,9 @@ void NNPIDeviceManager::evictNetwork(std::string functionName,
 
   if (functions_.erase(functionName)) {
     usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize.
-    inferenceEnvs_.at(functionName)
+    inferencePools_.at(functionName)
         .stop(true); // First stop existing threads on this network.
-    inferenceEnvs_.erase(functionName);
+    inferencePools_.erase(functionName);
   } else {
     err =
         MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_NOT_FOUND,
@@ -263,12 +323,9 @@ NNPIDeviceManager::runFunction(std::string functionName,
                                runtime::ResultCBTy resultCB) {
   RunIdentifierTy runId = runIdentifier_++;
 
-  /// NNPI DeviceManager doesn't support Device Resident Tensors.
-  ctx->getPlaceholderBindings()->ensureOnHost();
-
   // Get thread env.
-  auto infEnv = inferenceEnvs_.find(functionName);
-  if (infEnv == inferenceEnvs_.end()) {
+  auto infEnv = inferencePools_.find(functionName);
+  if (infEnv == inferencePools_.end()) {
     resultCB(runId, MAKE_ERR("Function isn't ready on the device"),
              std::move(ctx));
     return runId;
@@ -278,7 +335,7 @@ NNPIDeviceManager::runFunction(std::string functionName,
 }
 
 Error NNPIDeviceManager::stop(bool block) {
-  for (auto &env : inferenceEnvs_) {
+  for (auto &env : inferencePools_) {
     env.second.stop(block);
   }
   return Error::success();
@@ -293,7 +350,13 @@ uint64_t NNPIDeviceManager::getAvailableMemory() const {
       LOG_NNPI_INF_IF_ERROR(res, "Failed to read available memory from device.")
       return 0;
     }
-    return static_cast<uint64_t>(devStatus.availableUnprotectedMemory) * KB;
+    const auto availableMem =
+        static_cast<uint64_t>(devStatus.availableUnprotectedMemory) * KB;
+    if (availableMem == 0) {
+      LOG(WARNING) << "NNPI Device " << deviceId_
+                   << " available memory: " << availableMem;
+    }
+    return availableMem;
   }
   auto freeMemory = getMaximumMemory();
   for (const auto &p : functions_) {
@@ -324,8 +387,11 @@ void NNPIDeviceManager::transferStaticPlaceholderToDevice(
 };
 
 Error NNPIDeviceManager::startDeviceTrace(TraceContext *traceContext) {
-  if (!NNPIDeviceTracing::getForDevice(deviceId_)->start(traceContext,
-                                                         device_)) {
+  if (!NNPIDeviceTracing::getForDevice(deviceId_)->start(
+          traceContext, device_, true /* Software traces are always enabled. */,
+          deviceOptions_->hardwareTraces,
+          deviceOptions_->softwareTracesMaxBuffer,
+          deviceOptions_->hardwareTracesMaxBuffer)) {
     return MAKE_ERR("Failed to start NNPI device trace.");
   }
   return Error::success();
@@ -349,9 +415,10 @@ Error NNPIDeviceManager::bindContext(std::string functionName,
   }
 
   // Create inference context.
-  ASSERT_WITH_MSG(inferenceEnvs_.count(functionName), "Invalid function name.");
+  ASSERT_WITH_MSG(inferencePools_.count(functionName),
+                  "Invalid function name.");
   std::shared_ptr<InferenceContext> infCtx(
-      inferenceEnvs_.at(functionName).createDetachedInferenceContext(phUsage));
+      inferencePools_.at(functionName).createDetachedInferenceContext(phUsage));
   ASSERT_WITH_MSG(infCtx, "Failed to create detached context");
 
   // Set the inference context into NNPIDeviceBinding and store in the ExCtx.
@@ -373,6 +440,22 @@ void NNPIDeviceManager::addPlaceholderUsageCount(std::string functionName,
       phUsage[outputName].numWriters++;
       phUsage[outputName].devices.insert(device_);
     }
+  }
+}
+
+void *NNPIDeviceManager::allocateDeviceIOBuffer(dim_t size) {
+  if (deviceOptions_->inferOnDevice && !deviceOptions_->disableDeviceIOBuffer) {
+    return pAdapter_->allocateHostResource(size);
+  } else {
+    return DeviceManager::allocateDeviceIOBuffer(size);
+  }
+}
+
+void NNPIDeviceManager::freeAllocatedDeviceIOBuffer(void *buffer) {
+  if (deviceOptions_->inferOnDevice && !deviceOptions_->disableDeviceIOBuffer) {
+    return pAdapter_->freeHostResource(buffer);
+  } else {
+    return DeviceManager::freeAllocatedDeviceIOBuffer(buffer);
   }
 }
 

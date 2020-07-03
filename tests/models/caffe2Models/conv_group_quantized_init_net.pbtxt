@@ -42,10 +42,12 @@ op {
   type: "GivenTensorFill"
   arg {
     name: "shape"
-    ints: 2
+    ints: 4
   }
   arg {
     name: "values"
+    floats: 6.0
+    floats: 6.0
     floats: 6.0
     floats: 6.0
   }
@@ -55,10 +57,12 @@ op {
   type: "GivenTensorIntFill"
   arg {
     name: "shape"
-    ints: 2
+    ints: 4
   }
   arg {
     name: "values"
+    ints: 5
+    ints: 5
     ints: 5
     ints: 5
   }

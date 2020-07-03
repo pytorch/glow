@@ -99,7 +99,8 @@ std::string Placeholder::getDebugDesc(bool skipUsers) const {
   db.addParam("name", quote(getName()))
       .addParam("layout", getLayout())
       .addParam("output", *getType())
-      .addParam("trainable", isTraining());
+      .addParam("trainable", isTraining())
+      .addParam("static", isStatic());
   if (!skipUsers) {
     db.addParam("users", getNumUsers());
   }
@@ -372,12 +373,62 @@ static bool verifyPool(NodeValue src, NodeValue dest,
   return isValid;
 }
 
+template <typename Shape>
+static bool
+verifyPool3D(NodeValue src, NodeValue dest, llvm::ArrayRef<unsigned_t> kernels,
+             llvm::ArrayRef<unsigned_t> strides,
+             llvm::ArrayRef<unsigned_t> pads, bool isAvgPool = true) {
+  const Node *parent = dest.getNode();
+  Shape idim(src.getType()->dims());
+  Shape odim(dest.getType()->dims());
+  PaddingTLNBRF pdim(pads);
+  ShapeTHW kdim(kernels);
+
+  bool isValid =
+      expectCompareTrue("buffer height too small for selected stride",
+                        idim.h + pdim.top + pdim.bottom, kdim.height, parent,
+                        CompareOperatorGreaterEqual<dim_t>());
+  isValid &= expectCompareTrue("buffer width too small for selected stride",
+                               idim.w + pdim.left + pdim.right, kdim.width,
+                               parent, CompareOperatorGreaterEqual<dim_t>());
+  isValid &=
+      expectCompareTrue("buffer temporal_frames are too small for "
+                        "selected stride",
+                        idim.t + pdim.near + pdim.far, kdim.temporal_frames,
+                        parent, CompareOperatorGreaterEqual<dim_t>());
+
+  auto outSz = calculate3DConvPoolOutputDims(idim.t, idim.h, idim.w, kernels,
+                                             strides, pads);
+  Shape exp(idim);
+  exp.t = outSz.temporal_frames;
+  exp.h = outSz.height;
+  exp.w = outSz.width;
+  isValid &=
+      expectCompareTrue("Unexpected output dimensions", exp, odim, parent);
+
+  // For quantized AvgPool, the scale and offset of its input and output could
+  // be different. But for quantized MaxPool, the scale and offset of its input
+  // and output should be the same.
+  isValid =
+      isValid && checkSameIsQuantized(src.getType(), dest.getType(), parent);
+  if (!isAvgPool) {
+    isValid = isValid && checkTypeIgnoreShape(src, dest, parent);
+  }
+
+  return isValid;
+}
+
 static bool verifyBatchNormalization(NodeValue src, NodeValue dest,
                                      NodeValue bias, NodeValue scale,
                                      NodeValue mean, NodeValue var,
                                      unsigned_t channel) {
   const Node *parent = dest.getNode();
   bool isValid = checkSameType(dest, src, parent);
+
+  isValid &= expectCompareTrue(
+      "Require some spatial dimensions in addition to batch and channel",
+      src.dims().size(), (size_t)2, parent,
+      CompareOperatorGreaterThan<size_t>());
 
   // Figure out how many channels are in the tensor.
   dim_t channels = src.dims()[channel];
@@ -395,19 +446,7 @@ static bool verifyBatchNormalization(NodeValue src, NodeValue dest,
   return isValid;
 }
 
-static bool verifySigmoid(NodeValue src, NodeValue dest) {
-  const Node *parent = dest.getNode();
-  bool isValid = checkSameIsQuantized(src.getType(), dest.getType(), parent);
-  if (src.getType()->isQuantizedType()) {
-    isValid &= checkType(src, dest.getElementType(), dest.getNode());
-    isValid &= checkSameShape(src, dest, parent);
-  } else {
-    isValid &= checkSameType(src, dest, parent);
-  }
-  return isValid;
-}
-
-static bool verifyTanh(NodeValue src, NodeValue dest) {
+static bool verifyActivation(NodeValue src, NodeValue dest) {
   const Node *parent = dest.getNode();
   bool isValid = checkSameIsQuantized(src.getType(), dest.getType(), parent);
   if (src.getType()->isQuantizedType()) {
@@ -562,36 +601,53 @@ bool ChannelwiseQuantizedConvolutionNode::verify() const {
   if (isConv3D) {
     isValid = verifyConvolution3D(getInput(), getResult(), getFilter(),
                                   getBias(), Kernels_, Strides_, Pads_, Group_);
+    isValid &= expectCompareTrue("For Conv3D dilation must be 1", Dilation_,
+                                 unsigned_t(1), this);
   } else {
     isValid = verifyConvolution<ShapeNHWC>(
         getInput(), getResult(), getFilter(), getBias(), Kernels_, Strides_,
-        Pads_, Group_,
-        /* dilation */ 1, /* checkBiasType */ false);
+        Pads_, Group_, Dilation_, /* checkBiasType */ false);
   }
 
-  isValid &=
-      checkType(getBias(), {ElemKind::Int32QTy, ElemKind::FloatTy}, this);
+  isValid &= checkType(getResult(), ElemKind::Int8QTy, this);
   isValid &= checkType(getInput(), ElemKind::Int8QTy, this);
+  isValid &= checkType(getFilter(), ElemKind::Int8QTy, this);
+  isValid &= checkType(
+      getBias(), {ElemKind::Int8QTy, ElemKind::Int32QTy, ElemKind::FloatTy},
+      this);
 
-  // check qparam types
-  isValid &= checkType(getOffsets(), ElemKind::Int32ITy, this);
-  isValid &= checkType(getScales(), ElemKind::FloatTy, this);
+  // Check qparam types.
+  isValid &= checkType(getFilterOffsets(), ElemKind::Int32ITy, this);
+  isValid &= checkType(getFilterScales(), ElemKind::FloatTy, this);
+  isValid &= checkType(getBiasOffsets(), ElemKind::Int32ITy, this);
+  isValid &= checkType(getBiasScales(), ElemKind::FloatTy, this);
 
-  // check qparam dimensions
-  isValid &= expectCompareTrue("Offsets must be a 1D vector",
-                               getOffsets().dims().size(), size_t(1), this);
-  isValid &= expectCompareTrue("Scales must be a 1D vector",
-                               getScales().dims().size(), size_t(1), this);
+  // Check qparam dimensions.
+  isValid &=
+      expectCompareTrue("Filter offsets must be a 1D vector",
+                        getFilterOffsets().dims().size(), size_t(1), this);
+  isValid &=
+      expectCompareTrue("Filter scales must be a 1D vector",
+                        getFilterScales().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Bias offsets must be a 1D vector",
+                               getBiasOffsets().dims().size(), size_t(1), this);
+  isValid &= expectCompareTrue("Bias scales must be a 1D vector",
+                               getBiasScales().dims().size(), size_t(1), this);
 
-  // check qparam sizes
+  // Check qparam sizes.
   isValid &= expectCompareTrue(
       "There must be one filter offset qparam per output channel",
-      getOffsets().dims()[0], dim_t(getResult().dims()[input_dims.size() - 1]),
-      this);
+      getFilterOffsets().dims()[0], dim_t(getResult().dims().back()), this);
   isValid &= expectCompareTrue(
       "There must be one filter scale qparam per output channel",
-      getScales().dims()[0], dim_t(getResult().dims()[input_dims.size() - 1]),
-      this);
+      getFilterScales().dims()[0], dim_t(getResult().dims().back()), this);
+  isValid &= expectCompareTrue(
+      "There must be one bias offset qparam per output channel",
+      getBiasOffsets().dims()[0], dim_t(getResult().dims().back()), this);
+  isValid &= expectCompareTrue(
+      "There must be one bias scale qparam per output channel",
+      getBiasScales().dims()[0], dim_t(getResult().dims().back()), this);
+
   return isValid;
 }
 
@@ -703,24 +759,36 @@ bool ConvertToNode::verify() const {
 }
 
 bool MaxPoolNode::verify() const {
-  if (getLayout() == NHWC) {
+  switch (getLayout()) {
+  case NHWC:
     return verifyPool<ShapeNHWC>(getInput(), getResult(), Kernels_, Strides_,
                                  Pads_,
                                  /* isAvgPool */ false);
-  } else {
+  case NCHW:
     return verifyPool<ShapeNCHW>(getInput(), getResult(), Kernels_, Strides_,
                                  Pads_,
                                  /* isAvgPool */ false);
+  default: // MaxPool3D is unsupported
+    return false;
   }
 }
 
 bool AvgPoolNode::verify() const {
-  if (getLayout() == NHWC) {
+  switch (getLayout()) {
+  case NHWC:
     return verifyPool<ShapeNHWC>(getInput(), getResult(), Kernels_, Strides_,
                                  Pads_);
-  } else {
+  case NCHW:
     return verifyPool<ShapeNCHW>(getInput(), getResult(), Kernels_, Strides_,
                                  Pads_);
+  case NTHWC:
+    return verifyPool3D<ShapeNTHWC>(getInput(), getResult(), Kernels_, Strides_,
+                                    Pads_);
+  case NCTHW:
+    return verifyPool3D<ShapeNCTHW>(getInput(), getResult(), Kernels_, Strides_,
+                                    Pads_);
+  default:
+    llvm_unreachable("Unsupported format");
   }
 }
 
@@ -809,17 +877,30 @@ bool AvgPoolGradNode::verify() const {
   isValid &= verifyOutputAndGradOutputTypes(
       getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
 
-  if (getLayout() == NHWC) {
-    isValid &= verifyPool<ShapeNHWC>(getGradOfInputNamedInput(),
-                                     getGradOfOriginalOutputNamedResult(),
-                                     Kernels_, Strides_, Pads_);
-  } else {
-    isValid &= verifyPool<ShapeNCHW>(getGradOfInputNamedInput(),
-                                     getGradOfOriginalOutputNamedResult(),
-                                     Kernels_, Strides_, Pads_);
+  switch (getLayout()) {
+  case NHWC:
+    return isValid &&
+           verifyPool<ShapeNHWC>(getGradOfInputNamedInput(),
+                                 getGradOfOriginalOutputNamedResult(), Kernels_,
+                                 Strides_, Pads_);
+  case NCHW:
+    return isValid &&
+           verifyPool<ShapeNCHW>(getGradOfInputNamedInput(),
+                                 getGradOfOriginalOutputNamedResult(), Kernels_,
+                                 Strides_, Pads_);
+  case NTHWC:
+    return isValid &&
+           verifyPool3D<ShapeNTHWC>(getGradOfInputNamedInput(),
+                                    getGradOfOriginalOutputNamedResult(),
+                                    Kernels_, Strides_, Pads_);
+  case NCTHW:
+    return isValid &&
+           verifyPool3D<ShapeNCTHW>(getGradOfInputNamedInput(),
+                                    getGradOfOriginalOutputNamedResult(),
+                                    Kernels_, Strides_, Pads_);
+  default:
+    llvm_unreachable("Unsupported format");
   }
-
-  return isValid;
 }
 
 bool MatMulNode::verify() const {
@@ -877,7 +958,7 @@ bool BatchMatMulNode::verify() const {
 }
 
 bool SigmoidNode::verify() const {
-  return verifySigmoid(getInput(), getResult());
+  return verifyActivation(getInput(), getResult());
 }
 
 bool SigmoidGradNode::verify() const {
@@ -885,20 +966,39 @@ bool SigmoidGradNode::verify() const {
                                               getGradOfInputNamedInput(), this);
   isValid &= verifyOutputAndGradOutputTypes(
       getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
-  isValid &= verifySigmoid(getGradOfInputNamedInput(),
-                           getGradOfOriginalOutputNamedResult());
+  isValid &= verifyActivation(getGradOfInputNamedInput(),
+                              getGradOfOriginalOutputNamedResult());
   return isValid;
 }
 
-bool TanhNode::verify() const { return verifyTanh(getInput(), getResult()); }
+bool SwishNode::verify() const {
+  return verifyActivation(getInput(), getResult());
+}
+
+bool TanhNode::verify() const {
+  return verifyActivation(getInput(), getResult());
+}
 
 bool TanhGradNode::verify() const {
   bool isValid = verifyInputAndGradInputTypes(getInput(),
                                               getGradOfInputNamedInput(), this);
   isValid &= verifyOutputAndGradOutputTypes(
       getOriginalOutputForResult(), getGradOfOriginalOutputNamedResult(), this);
-  isValid &= verifyTanh(getGradOfInputNamedInput(),
-                        getGradOfOriginalOutputNamedResult());
+  isValid &= verifyActivation(getGradOfInputNamedInput(),
+                              getGradOfOriginalOutputNamedResult());
+  return isValid;
+}
+
+bool LogitNode::verify() const {
+  const Node *parent = getResult().getNode();
+  bool isValid = checkSameType(getInput(), getResult(), parent);
+  isValid &= checkSameShape(getInput(), getResult(), parent);
+  isValid &= expectCompareTrue(
+      "Clamping parameter eps must be strictly positive", getEpsilon(), 0.0f,
+      this, CompareOperatorGreaterThan<float>());
+  isValid &=
+      expectCompareTrue("Clamping parameter eps must be less than 0.5",
+                        getEpsilon(), 0.5f, this, CompareOperatorLess<float>());
   return isValid;
 }
 
@@ -906,11 +1006,15 @@ bool ExpNode::verify() const {
   const Node *parent = getResult().getNode();
   bool isValid =
       checkSameIsQuantized(getInput().getType(), getResult().getType(), parent);
+
   if (getInput().getType()->isQuantizedType()) {
-    return false;
+    isValid &= checkType(getInput(), getResult().getElementType(),
+                         getResult().getNode());
+    isValid &= checkSameShape(getInput(), getResult(), parent);
+  } else {
+    isValid &= checkSameType(getInput(), getResult(), parent);
   }
-  isValid &= checkSameType(getInput(), getResult(), parent);
-  isValid &= checkSameShape(getInput(), getResult(), parent);
+
   return isValid;
 }
 
@@ -996,6 +1100,8 @@ bool ChannelShuffleNode::verify() const {
 }
 
 bool SplatNode::verify() const { return true; }
+
+bool TouchNode::verify() const { return true; }
 
 bool TraceEventNode::verify() const { return true; }
 
@@ -1189,6 +1295,46 @@ bool LocalResponseNormalizationGradNode::verify() const {
   return isValid;
 }
 
+#define VERIFY_UNARY_LOGICAL(NODE_NAME_)                                       \
+  bool NODE_NAME_##Node::verify() const {                                      \
+    bool isValid = checkSameShape(getInput(), getResult(), this);              \
+    isValid &= checkType(getInput(), ElemKind::BoolTy, this);                  \
+    isValid &= checkType(getResult(), ElemKind::BoolTy, this);                 \
+    return isValid;                                                            \
+  }
+VERIFY_UNARY_LOGICAL(Not)
+#undef VERIFY_UNARY_LOGICAL
+
+#define VERIFY_BINARY_LOGICAL(NODE_NAME_)                                      \
+  bool NODE_NAME_##Node::verify() const {                                      \
+    bool isValid = checkSameShape(getLHS(), getResult(), this);                \
+    isValid &= checkSameShape(getRHS(), getResult(), this);                    \
+    isValid &= checkType(getLHS(), ElemKind::BoolTy, this);                    \
+    isValid &= checkType(getRHS(), ElemKind::BoolTy, this);                    \
+    isValid &= checkType(getResult(), ElemKind::BoolTy, this);                 \
+    return isValid;                                                            \
+  }
+VERIFY_BINARY_LOGICAL(And)
+VERIFY_BINARY_LOGICAL(Or)
+VERIFY_BINARY_LOGICAL(Xor)
+#undef VERIFY_BINARY_LOGICAL
+
+#define VERIFY_UNARY_ARITHMETIC(NODE_NAME_)                                    \
+  bool NODE_NAME_##Node::verify() const {                                      \
+    return checkSameShape(getInput(), getResult(), this);                      \
+  }
+VERIFY_UNARY_ARITHMETIC(Abs);
+VERIFY_UNARY_ARITHMETIC(Neg);
+VERIFY_UNARY_ARITHMETIC(Floor);
+VERIFY_UNARY_ARITHMETIC(Ceil);
+VERIFY_UNARY_ARITHMETIC(Round);
+VERIFY_UNARY_ARITHMETIC(Sqrt);
+VERIFY_UNARY_ARITHMETIC(Rsqrt);
+VERIFY_UNARY_ARITHMETIC(Reciprocal);
+VERIFY_UNARY_ARITHMETIC(Sin);
+VERIFY_UNARY_ARITHMETIC(Cos);
+#undef VERIFY_UNARY_ARITHMETIC
+
 #define VERIFY_ARITHMETIC(NODE_NAME_)                                          \
   bool NODE_NAME_##Node::verify() const {                                      \
     return verifyArithmetic(getLHS(), getRHS(), getResult());                  \
@@ -1231,9 +1377,10 @@ VERIFY_ARITHMETIC(DivGrad);
     return isValid;                                                            \
   }
 
-VERIFY_CMP(CmpLTE)
-VERIFY_CMP(CmpLT)
 VERIFY_CMP(CmpEQ)
+VERIFY_CMP(CmpNEQ)
+VERIFY_CMP(CmpLT)
+VERIFY_CMP(CmpLTE)
 #undef VERIFY_CMP
 
 bool BatchedPairwiseDotProductNode::verify() const {
@@ -1579,7 +1726,15 @@ bool DequantizeNode::verify() const {
   isValid &=
       expectCompareTrue("Src must be quantized",
                         getInput().getType()->isQuantizedType(), true, this);
-  isValid &= checkSameShape(getResult(), getInput(), this);
+  if (getInput().getElementType() == ElemKind::UInt8FusedQTy) {
+    isValid &= expectCompareTrue("Fused tensors should be 2D",
+                                 getInput().dims().size(), size_t(2), this);
+    isValid &= expectCompareTrue(
+        "Expected space for per-row scale/offset", getInput().dims()[1],
+        (dim_t)(2 * sizeof(float)), this, CompareOperatorGreaterThan<dim_t>());
+  } else {
+    isValid &= checkSameShape(getResult(), getInput(), this);
+  }
   return isValid;
 }
 
@@ -1603,30 +1758,31 @@ bool TopKNode::verify() const {
 bool ArgMaxNode::verify() const {
   bool isValid = true;
 
-  // Check input type.
+  // Check output type.
   isValid &= checkType(
-      getArgmax(),
+      getResult(),
       llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}), this);
 
-  isValid &= expectCompareTrue("Input must be a 4D tensor",
-                               getInput().dims().size(), size_t(4), this);
+  // Check output shape.
+  ShapeVector expDstDims =
+      reduceDims(getInput().dims(), {getAxis()}, getKeepDims());
+  isValid &= expectCompareTrue("Invalid output dims", getResult().dims(),
+                               llvm::makeArrayRef(expDstDims), this);
+  return isValid;
+}
 
-  // Check expected output type.
-  bool keepdims = getKeepDims();
-  const unsigned_t axis = getAxis();
+bool ArgMinNode::verify() const {
+  bool isValid = true;
 
-  ShapeVector expDstDims;
-  auto srcDim = getInput().dims();
-  for (size_t i = 0; i < srcDim.size(); i++) {
-    if (i == axis) {
-      if (keepdims) {
-        expDstDims.push_back(1);
-      }
-    } else {
-      expDstDims.push_back(srcDim[i]);
-    }
-  }
-  isValid &= expectCompareTrue("Invalid output dims", getArgmax().dims(),
+  // Check output type.
+  isValid &= checkType(
+      getResult(),
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}), this);
+
+  // Check output shape.
+  ShapeVector expDstDims =
+      reduceDims(getInput().dims(), {getAxis()}, getKeepDims());
+  isValid &= expectCompareTrue("Invalid output dims", getResult().dims(),
                                llvm::makeArrayRef(expDstDims), this);
   return isValid;
 }
@@ -2164,6 +2320,14 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, ConvolutionLayout layout) {
   case ConvolutionLayout::NHWC:
     os << "NHWC";
     break;
+  case ConvolutionLayout::NCTHW:
+    os << "NCTHW";
+    break;
+  case ConvolutionLayout::NTHWC:
+    os << "NTHWC";
+    break;
+  default:
+    llvm_unreachable("Unknown format");
   }
   return os;
 }
