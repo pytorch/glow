@@ -3708,7 +3708,8 @@ Error ONNXModelLoader::loadClip(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
   float cmin = std::numeric_limits<float>::lowest();
-  if (opsetVersion_ > 10 && op.input_size() > 1) {
+  if (opsetVersion_ > 10 && op.input_size() > 1 && !op.input(1).empty()) {
+    // min value is optional and might not be supplied.
     Constant *minC = getConstantByNameOrNull(op.input(1));
     RETURN_ERR_IF_NOT(minC, "Expect constant for min value in Clip operator.");
     cmin = minC->getPayload().getHandle().raw(0);
@@ -3719,7 +3720,8 @@ Error ONNXModelLoader::loadClip(const ONNX_NAMESPACE::NodeProto &op,
   // Windows headers define `max` macro, so have to wrap the function name in
   // parenthesis to avoid compilation error.
   float cmax = (std::numeric_limits<float>::max)();
-  if (opsetVersion_ > 10 && op.input_size() > 2) {
+  if (opsetVersion_ > 10 && op.input_size() > 2 && !op.input(2).empty()) {
+    // max value is optional and might not be supplied.
     Constant *maxC = getConstantByNameOrNull(op.input(2));
     RETURN_ERR_IF_NOT(maxC, "Expect constant for max value in Clip operator.");
     cmax = maxC->getPayload().getHandle().raw(0);

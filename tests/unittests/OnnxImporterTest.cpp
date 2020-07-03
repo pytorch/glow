@@ -5498,6 +5498,40 @@ TEST(onnx, importNames) {
   }
 }
 
+TEST(onnx, importClipDefaultMin) {
+  // Test loading Clip in opset v11 format where min(default) and max(2) are
+  // passed as inputs.
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/clip_default.onnxtxt");
+  auto *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *output_0;
+
+  Tensor X(ElemKind::FloatTy, {1, 2, 2, 2});
+  X.getHandle() = {-3, -2, -1, 0, 1, 2, 3, 4};
+
+  {
+    ONNXModelLoader onnxLD(netFilename, {"X"}, {&X.getType()}, *F);
+    output_0 = EXIT_ON_ERR(onnxLD.getOutputByName("output0"));
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"X"}, {&X});
+  }
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  std::vector<dim_t> expectedDims = {1, 2, 2, 2};
+  std::vector<float> expectedValues = {-3, -2, -1, 0, 1, 2, 2, 2};
+  auto result = bindings.get(output_0)->getHandle();
+  EXPECT_EQ(result.dims().vec(), expectedDims);
+
+  for (size_t i = 0; i < 8; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
 TEST(onnx, importClipV11) {
   // Test loading Clip in opset v11 format where min(-2) and max(2) are passed
   // as inputs.
