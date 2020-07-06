@@ -71,23 +71,19 @@ where:
                    are located in the same directory.
 - `dataset-file` - The path to the dataset description file which contains on each line a data path and integer
                    label separated by space (" ") or comma (","). The integer labels start with 0 (0,1,...).
-                   An example might look like this:
-                   
-                   ```
-                   image0.png 0 
-                   
-                   image1.png 13
-                   
-                   .............
-                   
-                   ```
-                   Another example might look like this:
-                   
-                   ```
-                   image0.png,0, 
-                   image1.png,13,
-                   ..............
-                   ```
+  An example might look like this:
+  ```
+  image0.png 0 
+  image1.png 13
+  .............
+  ```
+  Another example might look like this:
+  
+  ```
+  image0.png,0, 
+  image1.png,13,
+  ..............
+  ```
 - `load-profile` - The path of the input profile obtained initially which is loaded and tuned.
 - `dump-tuned-profile` - The path where the final tuned profile is dumped.
 
