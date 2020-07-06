@@ -84,7 +84,7 @@ where:
                    ..............
                    ```
 - `load-profile` - The path of the input profile obtained initially which is loaded and tuned.
-- `dump-tuned-profile` - The path where the tuned profile is dumped.
+- `dump-tuned-profile` - The path where the final tuned profile is dumped.
 
 More information can be acquired by typing the following command:
 ```
