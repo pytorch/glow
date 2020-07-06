@@ -104,6 +104,10 @@ class Loader {
   LoweredInfoMap loweredMap_;
   /// List of Loader owned extension objects.
   std::vector<std::unique_ptr<LoaderExtension>> loaderExtensionList_;
+  /// A map from the original names of the model inputs to placeholders.
+  llvm::StringMap<Placeholder *> inputPlaceholderByName_;
+  /// A map from the original names of the model outputs to placeholders.
+  llvm::StringMap<Placeholder *> outputPlaceholderByName_;
 
 public:
   /// Getter for the hostManager, this can be useful for calling into the
@@ -149,7 +153,17 @@ public:
 
   /// Load a Caffe2 or ONNX model into this Loader object according to the
   /// Loader command line options.
-  std::unique_ptr<ProtobufLoader> loadModel();
+  void loadModel();
+
+  /// \returns a map between the model input names and the input placeholders.
+  const llvm::StringMap<Placeholder *> &getInputPlaceholderMap() const {
+    return inputPlaceholderByName_;
+  }
+
+  /// \returns a map between the model output names and the output placeholders.
+  const llvm::StringMap<Placeholder *> &getOutputPlaceholderMap() const {
+    return outputPlaceholderByName_;
+  }
 
   /// Get the compilation options (context) for a given quantization \p mode.
   /// The options are initialized by the Loader command line arguments.

@@ -213,11 +213,11 @@ int main(int argc, char **argv) {
   Loader loader;
 
   // Load the model.
-  auto protobufLoader = loader.loadModel();
+  loader.loadModel();
 
   // Get the model input placeholders in the same order as the input dataset
   // options.
-  auto inputVarsMapping = protobufLoader->getInputVarsMapping();
+  auto inputVarsMapping = loader.getInputPlaceholderMap();
   auto modelNumInputs = inputVarsMapping.size();
   checkCond(modelNumInputs == numInputDatasets,
             "Not all the model inputs where provided with the 'input-dataset' "

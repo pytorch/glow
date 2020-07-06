@@ -438,6 +438,7 @@ protected:
   CASE_SINGLE_MATCHING_INOUT_TYPE(LocalResponseNormalization, Input, Result):  \
   CASE_SINGLE_MATCHING_INOUT_TYPE(Slice, Input, Result):                       \
   CASE_SINGLE_MATCHING_INOUT_TYPE(Reshape, Input, Result):                     \
+  CASE_SINGLE_MATCHING_INOUT_TYPE(Transpose, Input, Result):                   \
   CASE_SINGLE_MATCHING_INOUT_TYPE(TopK, Input, Values):                        \
   CASE_SINGLE_MATCHING_INOUT_TYPE(Gather, Data, Result):                       \
   CASE_SINGLE_MATCHING_INOUT_TYPE(MaxPool, Input, Result)

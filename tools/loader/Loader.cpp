@@ -414,7 +414,7 @@ static void getModelInputs(std::vector<std::string> &inputNames,
   }
 }
 
-std::unique_ptr<ProtobufLoader> Loader::loadModel() {
+void Loader::loadModel() {
 
   // Get model input names and types.
   std::vector<std::string> inputNames;
@@ -428,30 +428,37 @@ std::unique_ptr<ProtobufLoader> Loader::loadModel() {
   }
 
   // Load the model based on the model format.
-  std::unique_ptr<ProtobufLoader> protoLoader;
   if (!getCaffe2NetDescFilename().empty()) {
     // For Caffe2 format the input placeholder names/types must be provided
     // explicitly (mandatory).
+    std::unique_ptr<ProtobufLoader> protoLoader;
     protoLoader.reset(new Caffe2ModelLoader(
         getCaffe2NetDescFilename(), getCaffe2NetWeightFilename(), inputNameRefs,
         inputTypeRefs, *getFunction()));
+    // Load the maps between original model names and the placeholders.
+    inputPlaceholderByName_ = protoLoader->getInputVarsMapping();
+    outputPlaceholderByName_ = protoLoader->getOutputVarsMapping();
   } else if (!getTFLiteModelFilename().empty()) {
     // For TensorFlowLite format the input placeholder names/types are not
-    // provided since are used directly from the model. We also set the protobuf
-    // loader to nullptr since the TensorFlowLite does not use it.
-    TFLiteModelLoader(getTFLiteModelFilename(), getFunction());
-    protoLoader = nullptr;
+    // provided since are used directly from the model.
+    auto tfliteLoader =
+        TFLiteModelLoader(getTFLiteModelFilename(), getFunction());
+    // Load the maps between original model names and the placeholders.
+    inputPlaceholderByName_ = tfliteLoader.getInputPlaceholderMap();
+    outputPlaceholderByName_ = tfliteLoader.getOutputPlaceholderMap();
   } else {
     // For ONNX format the input placeholders names/types can be optionally
     // provided but is not mandatory. If not provided (the arrays are empty)
     // they are derived automatically. One might want to provide explicitly
     // the input placeholder types in order to override the placeholder sizes
     // (one such example is the batch size).
+    std::unique_ptr<ProtobufLoader> protoLoader;
     protoLoader.reset(new ONNXModelLoader(getOnnxModelFilename(), inputNameRefs,
                                           inputTypeRefs, *getFunction()));
+    // Load the maps between original model names and the placeholders.
+    inputPlaceholderByName_ = protoLoader->getInputVarsMapping();
+    outputPlaceholderByName_ = protoLoader->getOutputVarsMapping();
   }
-
-  return protoLoader;
 }
 
 static bool commandLineIsInvalid() {
