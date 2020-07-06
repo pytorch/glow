@@ -577,3 +577,27 @@ TEST_F(NNPIOptPipelineTest, NoLowerSLSFP16) {
   EXPECT_EQ(SLS->getResult().getElementType(), ElemKind::Float16Ty);
   EXPECT_EQ(SLS->getData().getElementType(), ElemKind::UInt8FusedFP16QTy);
 }
+
+/// Test Logit is not lowered when we rely on FP16 conversion in the
+/// optimization pipeline.
+TEST_F(NNPIOptPipelineTest, NoLowerLogit) {
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
+  auto *tanh = F_->createLogit("logit", input, 1E-6f);
+  auto *save = F_->createSave("Save", tanh);
+
+  cctx_.precisionConfig.convertToFP16 = true;
+  cctx_.precisionConfig.convertFusedToFP16 = true;
+
+  cloneAndCompile();
+
+  SaveNode *optSave = getSaveByName(optimizedF_, save->getName());
+  ASSERT_TRUE(optSave);
+
+  // Expect one FP16 SLS after optimization (converted back to Float for Save).
+  auto *CN = llvm::dyn_cast<ConvertToNode>(optSave->getInput());
+  ASSERT_TRUE(CN);
+  auto *LN = llvm::dyn_cast<LogitNode>(CN->getInput());
+  ASSERT_TRUE(LN);
+  EXPECT_EQ(LN->getResult().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(LN->getInput().getElementType(), ElemKind::Float16Ty);
+}

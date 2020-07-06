@@ -543,6 +543,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::LayerNormalizationNodeKind:
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
   case Kinded::Kind::PReluNodeKind:
+  case Kinded::Kind::LogitNodeKind:
     return false;
   case Kinded::Kind::SparseLengthsSumNodeKind:
     // WA - lower until ICE-T implements it.
@@ -551,10 +552,6 @@ bool NNPIBackend::shouldLower(const Node *N) const {
       return true;
     }
     return false;
-  case Kinded::Kind::LogitNodeKind: {
-    NodeInfo NI(*N);
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
-  }
   default:
     return true;
   }
@@ -1042,42 +1039,36 @@ NNPIBackend::getOptimizationPipeline() const {
 static bool lowerRequiredNodes(Function *F, CompilationContext &cctx) {
   bool changed = false;
   for (auto &N : F->getNodes()) {
-    if (BatchMatMulNode *BMMN = llvm::dyn_cast<BatchMatMulNode>(&N)) {
+    NodeInfo NI(N);
+    switch (N.getKind()) {
+    case Kinded::Kind::BatchMatMulNodeKind:
       if (!GlowNNPILowerAllBatchMatMul &&
-          !NodeInfo(*BMMN).allInputsAndOutputsHaveSameElemKind(
-              {ElemKind::FloatTy})) {
+          !NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy})) {
         continue;
       }
+      changed |= lowerNode(F, &N, cctx);
+      continue;
 
-      lowerNode(F, BMMN, cctx);
-      changed = true;
+    case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
+      if (NI.getOutElemTy(
+              FusedRowwiseQuantizedSparseLengthsSumNode::ResultIdx) ==
+          ElemKind::Float16Ty) {
+        continue;
+      }
+      changed |= lowerNode(F, &N, cctx);
       continue;
     }
 
-    if (FusedRowwiseQuantizedSparseLengthsSumNode *SLS =
-            llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(&N)) {
-      // Lower FRWQSLS only if not FP16.
-      if (SLS->getResult().getElementType() == ElemKind::Float16Ty) {
+    case Kinded::Kind::PReluNodeKind:
+    case Kinded::Kind::LogitNodeKind:
+      if (NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty})) {
         continue;
       }
-
-      lowerNode(F, SLS, cctx);
-      changed = true;
+      changed |= lowerNode(F, &N, cctx);
       continue;
-    }
 
-    if (PReluNode *PR = llvm::dyn_cast<PReluNode>(&N)) {
-      // Lower PRelu only if not FP16.
-      if (PR->getResult().getElementType() == ElemKind::Float16Ty) {
-        continue;
-      }
-
-      lowerNode(F, PR, cctx);
-      changed = true;
-      continue;
-    }
-
-    if (ConvertToNode *CT = llvm::dyn_cast<ConvertToNode>(&N)) {
+    case Kinded::Kind::ConvertToNodeKind: {
+      ConvertToNode *CT = llvm::cast<ConvertToNode>(&N);
       // Handle bool->float conversion
       if (((CT->getResult().getElementType() == ElemKind::FloatTy) ||
            (CT->getResult().getElementType() == ElemKind::Float16Ty)) &&
@@ -1089,8 +1080,18 @@ static bool lowerRequiredNodes(Function *F, CompilationContext &cctx) {
         auto *sel = F->createSelect(ctName + "_sel", CT->getInput(), s1, s0);
         CT->getResult().replaceAllUsesOfWith(sel);
         changed = true;
-        continue;
       }
+      continue;
+    }
+
+    // Explicitly lower clips as they may be introduced during lowering other
+    // ops above, e.g. Logit.
+    case Kinded::Kind::ClipNodeKind:
+      changed |= lowerNode(F, &N, cctx);
+      continue;
+
+    default:
+      continue;
     }
   }
   return changed;
