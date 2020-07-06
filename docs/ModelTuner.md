@@ -94,9 +94,9 @@ model-tuner -help
 ### Extra command line options
 
 There are a couple of extra command line parameters which can be used to tweak the algorithm behavior:
-- *max-iter-per-node* - The maximum number of tuning iterations per node/tensor (default is 3).
-- *acc-drop-skip* - The accuracy drop for which the tuning of any node/tensor is skipped. The default value is 0.05 (5%).
-- *target-accuracy* - The tuning procedure is stopped when the accuracy has reached or surpassed the given
+- `max-iter-per-node` - The maximum number of tuning iterations per node/tensor (default is 3).
+- `acc-drop-skip` - The accuracy drop for which the tuning of any node/tensor is skipped. The default value is 0.05 (5%).
+- `target-accuracy` - The tuning procedure is stopped when the accuracy has reached or surpassed the given
                       value. A float value between 0.0 and 1.0 is expected. If not specified, the tuning will
                       run until completion.
 
