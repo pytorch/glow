@@ -2295,13 +2295,13 @@ TEST(Quantization, quantizeGraphPartiallyMultipleKinds) {
     ASSERT_TRUE(AN);
     EXPECT_TRUE(!TN->getResult().getType()->isQuantizedType());
 
-    // Verify that the LHS input to the AddNode is an unquantized variable.
-    auto varANLHS = llvm::dyn_cast<Constant>(AN->getLHS());
-    ASSERT_TRUE(varANLHS);
-    EXPECT_TRUE(!varANLHS->getType()->isQuantizedType());
+    // Verify that the RHS input to the AddNode is an unquantized variable.
+    auto varANRHS = llvm::dyn_cast<Constant>(AN->getRHS());
+    ASSERT_TRUE(varANRHS);
+    EXPECT_TRUE(!varANRHS->getType()->isQuantizedType());
 
-    // Verify that the RHS input to the AddNode is a dequantize node.
-    auto *DN = llvm::dyn_cast<DequantizeNode>(AN->getRHS());
+    // Verify that the LHS input to the AddNode is a dequantize node.
+    auto *DN = llvm::dyn_cast<DequantizeNode>(AN->getLHS());
     ASSERT_TRUE(DN);
 
     // Verify that the matmul is quantized.
