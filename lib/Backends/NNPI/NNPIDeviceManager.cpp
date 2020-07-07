@@ -28,20 +28,14 @@
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "folly/experimental/FunctionScheduler.h"
-
 #include "DebugMacros.h"
 #include "glow/Support/Error.h"
-
-#include <fstream>
 
 namespace glow {
 namespace runtime {
 
 unsigned GlowNNPIMemory = 0;
 unsigned GlowNNPITimeout = 0;
-unsigned GlowNNPIDeviceCheckPeriodSec = 30;
-bool GlowNNPIDeviceCheck = false;
 
 static llvm::cl::opt<unsigned, /* ExternalStorage */ true>
     GlowNNPIMemoryOpt("glow-nnpi-memory",
@@ -53,70 +47,9 @@ static llvm::cl::opt<unsigned, /* ExternalStorage */ true> GlowNNPITimeoutOpt(
     llvm::cl::desc("Timeout threshold for inferecnce in microseconds. "
                    "Default 0 means infinity"),
     llvm::cl::location(GlowNNPITimeout));
-static llvm::cl::opt<unsigned, /* ExternalStorage */ true>
-    GlowNNPIDeviceCheckPeriodSecOpt(
-        "glow-nnpi-device-check-period",
-        llvm::cl::desc(
-            "Period for NNPI device health check in seconds. Default to 32s."),
-        llvm::cl::location(GlowNNPIDeviceCheckPeriodSec));
-static llvm::cl::opt<bool, /* ExternalStorage */ true> GlowNNPIDeviceCheckOpt(
-    "glow-nnpi-device-check",
-    llvm::cl::desc(
-        "Whether to check NNPI device health or not. Default to false."),
-    llvm::cl::location(GlowNNPIDeviceCheck));
-
-namespace {
-class NNPIDeviceChecker {
-private:
-  folly::FunctionScheduler fs_;
-
-public:
-  NNPIDeviceChecker() {
-    LOG(INFO) << "Starting NNPI Device Checker...";
-    fs_.addFunction(
-        []() {
-          for (int i = 0; i < 6; ++i) {
-            std::ifstream inFile;
-            std::string bootFailReason = "/sys/class/nnpi/nnpi" +
-                                         std::to_string(i) +
-                                         +"/boot_fail_reason";
-            inFile.open(bootFailReason);
-            if (!inFile.good() || inFile.eof()) {
-              continue;
-            }
-
-            std::string reason;
-            getline(inFile, reason);
-            inFile.close();
-            VLOG(1) << "Device " << i << ": " << reason;
-            if (reason.find("None") == std::string::npos) {
-              LOG(FATAL) << "Broken device " << i << ": " << reason;
-            }
-          }
-        },
-        std::chrono::seconds(GlowNNPIDeviceCheckPeriodSecOpt), "card");
-    fs_.start();
-  }
-
-  ~NNPIDeviceChecker() {
-    LOG(INFO) << "Shutting down NNPI Device Checker...";
-    fs_.shutdown();
-  }
-};
-
-std::once_flag deviceCheckFlag;
-} // namespace
-
-static void initNNPIDeviceChecker() {
-  static std::shared_ptr<NNPIDeviceChecker> c =
-      std::make_shared<NNPIDeviceChecker>();
-}
 
 DeviceManager *createNNPIDeviceManager(const DeviceConfig &config,
                                        NNPIAdapterContainer *adapter) {
-  if (GlowNNPIDeviceCheckOpt) {
-    std::call_once(deviceCheckFlag, []() { initNNPIDeviceChecker(); });
-  }
   std::shared_ptr<NNPIDeviceOptions> deviceOptions =
       std::make_shared<NNPIDeviceOptions>(config.parameters);
   if (deviceOptions->inferOnDevice &&

@@ -20,6 +20,7 @@
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Partitioner/Partitioner.h"
+#include "glow/Runtime/DeviceHealthMonitor.h"
 #include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
 #include "glow/Runtime/RequestData.h"
@@ -145,6 +146,14 @@ Error HostManager::stopDeviceTrace() {
 }
 
 Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
+  static std::once_flag monitorFlag;
+  std::call_once(monitorFlag, []() {
+    auto monitors = DeviceHealthMonitorRegistry::Monitors();
+    if (monitors) {
+      monitors->start();
+    }
+  });
+
   DeviceIDTy deviceCount = 0;
 
   for (auto &config : configs) {
