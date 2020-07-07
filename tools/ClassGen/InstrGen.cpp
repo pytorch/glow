@@ -789,6 +789,20 @@ int main(int argc, char **argv) {
       .autoIRGen()
       .addGradientInstr({"Dest"}, {"Dest", "Src"});
 
+  BB.newInstr("Clip")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::Float, "Min")
+      .addMember(MemberType::Float, "Max")
+      .inplaceOperand({
+          "Dest",
+          "Src",
+      })
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen();
+
   BB.newInstr("Sigmoid")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)

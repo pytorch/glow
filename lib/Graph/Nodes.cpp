@@ -1106,9 +1106,16 @@ bool TouchNode::verify() const { return true; }
 bool TraceEventNode::verify() const { return true; }
 
 bool ClipNode::verify() const {
-  bool isValid = checkSameType(getInput(), getResult(), this);
-  isValid &= expectCompareTrue("Clip max must be greater than min", getMin(),
-                               getMax(), this, CompareOperatorLess<float>());
+  bool isValid =
+      expectCompareTrue("Clip max must be greater than min", getMin(), getMax(),
+                        this, CompareOperatorLess<float>());
+  if (getInput().getType()->isQuantizedType()) {
+    isValid &=
+        checkSameIsQuantized(getInput().getType(), getResult().getType(), this);
+    isValid &= checkSameShape(getInput(), getResult(), this);
+  } else {
+    isValid &= checkSameType(getInput(), getResult(), this);
+  }
   return isValid;
 }
 

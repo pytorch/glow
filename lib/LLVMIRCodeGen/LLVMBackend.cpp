@@ -63,6 +63,8 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int32ITy,
          ElemKind::Int64ITy});
 
+  case Kinded::Kind::ReluNodeKind:
+  case Kinded::Kind::ClipNodeKind:
   case Kinded::Kind::SubNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:

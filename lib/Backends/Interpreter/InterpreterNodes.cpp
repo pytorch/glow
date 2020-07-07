@@ -1628,6 +1628,10 @@ void BoundInterpreterFunction::fwdReluInst(const ReluInst *) {
   DCHECK(!"Found ReluInst but Relu is lowered on Interpreter");
 }
 
+void BoundInterpreterFunction::fwdClipInst(const ClipInst *) {
+  DCHECK(!"Found ClipInst but Clip is lowered on Interpreter");
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdSigmoidInstFloatImpl(const SigmoidInst *I) {
   staticAssertFloatingPointType(ElemTy);

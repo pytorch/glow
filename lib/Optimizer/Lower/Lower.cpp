@@ -1256,7 +1256,7 @@ static void lowerClipNode(Function *F, CompilationContext &cctx,
   auto *minClipped =
       F->createMax(name.str() + ".minClip", CN.getInput(), minSplat);
   auto *maxSplat = F->createSplat(name.str() + ".maxSplat", type, max);
-  auto result = F->createMin(name.str(), minClipped, maxSplat);
+  auto result = F->createMin(name.str(), type, minClipped, maxSplat);
   replaceAllUsesOfWith(cctx.loweredInfoMap, CN.getResult(), result);
 }
 
