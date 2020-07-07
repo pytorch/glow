@@ -72,8 +72,6 @@ extern unsigned GlowHabanaMemory;
 #ifdef GLOW_WITH_NNPI
 extern unsigned GlowNNPIMemory;
 extern unsigned GlowNNPITimeout;
-extern unsigned GlowNNPIDeviceCheckPeriodSec;
-extern bool GlowNNPIDeviceCheck;
 #endif
 extern bool GlowEnableDRT;
 extern bool GlowEnableP2P;
@@ -451,21 +449,6 @@ DEFINE_validator(glow_nnpi_timeout_ms,
                    return true;
                  });
 
-DEFINE_bool(glow_nnpi_device_check, false,
-            "Whether to check NNPI device health or not");
-DEFINE_validator(glow_nnpi_device_check,
-                 [](const char * /*unused*/, bool value) {
-                   glow::runtime::GlowNNPIDeviceCheck = value;
-                   return true;
-                 });
-
-DEFINE_int32(glow_nnpi_device_check_period_s, 30,
-             "Period for NNPI device health check in seconds. Default to 32s.");
-DEFINE_validator(glow_nnpi_device_check_period_s,
-                 [](const char *flagname, int32_t value) {
-                   glow::runtime::GlowNNPIDeviceCheckPeriodSec = value;
-                   return true;
-                 });
 #endif
 
 DEFINE_bool(glow_log_partition, true, "Enable logging partition info");
