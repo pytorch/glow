@@ -3774,6 +3774,41 @@ TEST_F(GraphOptz, sinkTransposeBelowChannelShuffleNodesAndEliminate) {
   EXPECT_EQ(CSN->getKernel(), 3);
 }
 
+/// Test BatchNorm sinking below Slice.
+TEST_F(GraphOptz, sinkBatchNormBelowSlice) {
+  auto *inputTy = mod_.uniqueType(ElemKind::FloatTy, {1, 10, 10, 3});
+  auto *slicedTy1 = mod_.uniqueType(ElemKind::FloatTy, {1, 8, 8, 3});
+  auto *slicedTy2 = mod_.uniqueType(ElemKind::FloatTy, {1, 6, 6, 1});
+
+  auto *input = mod_.createPlaceholder(inputTy, "input", false);
+  auto *BN = F_->createBatchNormalization(bindings_, "batchnorm", input, 3,
+                                          0.0001, 0.9);
+  auto *SN1 = F_->createSlice("slice1", BN, {0, 1, 1, 0}, slicedTy1);
+  auto *SN2 = F_->createSlice("slice2", SN1, {0, 1, 1, 1}, slicedTy2);
+  auto *save = F_->createSave("save", SN2);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
+  optimizedF_ = optimizeFunction(F_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 4);
+
+  // BatchNorm should have sunk below the first Slice, but not the second one,
+  // as it changes channel dimmension.
+  auto *newSave =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+  ASSERT_TRUE(newSave);
+  auto *newSN2 = llvm::dyn_cast<SliceNode>(newSave->getInput());
+  ASSERT_TRUE(newSN2);
+  auto *newBN = llvm::dyn_cast<BatchNormalizationNode>(newSN2->getInput());
+  ASSERT_TRUE(newBN);
+  ASSERT_EQ(newBN->getResult().dims(), slicedTy1->dims());
+  ASSERT_TRUE(llvm::isa<SliceNode>(newBN->getInput()));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
 /// Test that convertPlaceholdersToConstants works properly with quantized
 /// types.
 TEST_F(GraphOptz, QuantizedFC) {

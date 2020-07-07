@@ -969,6 +969,36 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
     }
   } // For all nodes in the graph.
 
+  // Transformations to sink nodes below Slice. Outlined into a separate loop to
+  // prevent Transpose/Slice sinking to affect them.
+  for (auto &N : nodes) {
+    auto *node = &N;
+    // Sink BatchNorm below Slice.
+    if (auto *SN = dyn_cast<SliceNode>(node)) {
+      auto *BN = dyn_cast<BatchNormalizationNode>(SN->getInput());
+      if (!BN || !BN->hasOneUse()) {
+        continue;
+      }
+
+      // Don't support sinking below Slice which affects depth.
+      if (SN->getInput().dims()[BN->getChannelIdx()] !=
+          SN->getResult().dims()[BN->getChannelIdx()]) {
+        continue;
+      }
+
+      auto newSNType = F->getParent()->uniqueTypeWithNewShape(
+          BN->getInput().getType(), SN->getResult().dims());
+      auto *newSN = F->createSlice(SN->getName(), BN->getInput(),
+                                   SN->getStart(), newSNType);
+      auto *newBN = F->createBatchNormalization(
+          BN->getName(), newSN, BN->getBias(), BN->getScale(), BN->getMean(),
+          BN->getVar(), BN->getChannelIdx(), BN->getEpsilon(),
+          BN->getMomentum());
+      SN->getResult().replaceAllUsesOfWith(newBN);
+      changed = true;
+    }
+  }
+
   return changed;
 }
 
