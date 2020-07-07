@@ -30,6 +30,7 @@ set(CPURunttimeCompilationOptions
       -I${CMAKE_SOURCE_DIR}/include
       -emit-llvm
       -O0
+      -fno-autolink
 
       # When building for a custom target, use this as an example of how to
       # set up cross-compilation correctly. Then, when building bundles,
