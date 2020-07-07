@@ -288,7 +288,6 @@ static bool isTiledAlongAxisImpl(const Tensor *tensor, size_t axis,
                                  size_t size) {
   assert(axis < tensor->dims().size() && "Axis parameter invalid!");
   assert(size <= tensor->dims()[axis] && "Size parameter invalid!");
-  assert((tensor->dims()[axis] % size) == 0 && "Size parameter invalid!");
   assert(size >= 1 && "Size parameter invalid!");
 
   // When the tile size matches the dimension size then we return true.
