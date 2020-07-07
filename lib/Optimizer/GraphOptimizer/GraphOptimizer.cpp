@@ -1986,63 +1986,154 @@ bool MergeBatchedAdd::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
-/// Optimize ReduceMean configuration with AvgPool if possible: last two axes
-/// in a 4D input must be reduced.
+/// Optimize ReduceMean configuration with AvgPool if possible: HW axes
+/// in a 4D input (N{HW}C or NC{HW}) must be reduced.
 bool OptimizeReduceMean::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
   auto &nodes = F->getNodes();
 
+  // Helper function(s)
+  static auto canOptReduceMeanWithAvgPool =
+      [](BatchedReduceMeanNode *rm) -> bool {
+    // Input shape must be 4D.
+    if (rm->getBatch().dims().size() != 4) {
+      return false;
+    }
+
+    // H,W axes must be reduced.
+    auto axes = rm->getAxes();
+    if (axes.size() != 2) {
+      return false;
+    }
+
+    return
+        // NHWC
+        (axes[0] == 2 && axes[1] == 1) || (axes[0] == 1 && axes[1] == 2) ||
+        // NCHW
+        (axes[0] == 3 && axes[1] == 2) || (axes[0] == 2 && axes[1] == 3);
+  };
+
+  // Pre-process ReduceMeans by removing Reshapes that prevent conversion to
+  // AvgPool.
+  for (auto &node : nodes) {
+    auto *rm = dyn_cast<BatchedReduceMeanNode>(&node);
+    if (!rm) {
+      continue;
+    }
+
+    // No need to look for Reshape if ReduceMean already ok
+    if (canOptReduceMeanWithAvgPool(rm)) {
+      continue;
+    }
+
+    auto *rshp = dyn_cast<ReshapeNode>(rm->getBatch());
+    if (!rshp) {
+      continue;
+    }
+
+    // Currently just handling Reshape of 4 dims to 3
+    auto rshpInDims = rshp->getInput().dims();
+    if (rshpInDims.size() != 4) {
+      continue;
+    }
+
+    auto rshpOutDims = rshp->getResult().dims();
+    if (rshpOutDims.size() != 3) {
+      continue;
+    }
+
+    auto axes = rm->getAxes();
+    if (axes.size() != 1) {
+      continue;
+    }
+
+    // Finally, look for NHWC -> N{HW}C or NCHW -> NC{HW}
+    unsigned_t newAxes[2];
+    if (axes[0] == 1) {
+      // NHWC -> N{HW}C
+      if (rshpInDims[0] != rshpOutDims[0] || rshpInDims[3] != rshpOutDims[2]) {
+        continue;
+      }
+      newAxes[0] = 1;
+      newAxes[1] = 2;
+    } else if (axes[0] == 2) {
+      // NCHW -> NC{HW}
+      if (rshpInDims[0] != rshpOutDims[0] || rshpInDims[1] != rshpOutDims[1]) {
+        continue;
+      }
+      newAxes[0] = 2;
+      newAxes[1] = 3;
+    } else {
+      continue;
+    }
+
+    auto rmRes = rm->getResult();
+    auto newRm = F->createBatchedReduceMean(rm->getName(), rmRes.getType(),
+                                            rshp->getInput(), newAxes);
+    rmRes.replaceAllUsesOfWith(newRm->getResult());
+    changed = true;
+  }
+
   // For each node:
   for (auto &node : nodes) {
     if (auto *RM = dyn_cast<BatchedReduceMeanNode>(&node)) {
 
-      // Input shape must be 4D.
-      if (RM->getBatch().dims().size() != 4) {
-        continue;
-      }
-
-      // Last two axes must be reduced.
-      auto axes = RM->getAxes();
-      if (axes.size() != 2 || std::count(axes.begin(), axes.end(), 2) != 1 ||
-          std::count(axes.begin(), axes.end(), 3) != 1) {
+      if (!canOptReduceMeanWithAvgPool(RM)) {
         continue;
       }
 
       // RM is already shaped to have the required output shape.
       NodeValue in = RM->getBatch();
+      auto axes = RM->getAxes();
+      ShapeVector shapeAxes(axes.begin(), axes.end());
 
-      std::vector<unsigned_t> kernels = {static_cast<unsigned_t>(in.dims()[2]),
-                                         static_cast<unsigned_t>(in.dims()[3])};
+      // Sort axes to facilitate 'shape.erase' below and to simplify logic.
+      std::sort(shapeAxes.rbegin(), shapeAxes.rend());
+
       std::vector<unsigned_t> strides = {1, 1};
       std::vector<unsigned_t> pads = {0, 0, 0, 0};
+      std::vector<unsigned_t> kernels = {
+          static_cast<unsigned_t>(in.dims()[shapeAxes[1]]),
+          static_cast<unsigned_t>(in.dims()[shapeAxes[0]])};
 
-      // TODO: Fix bad assumption? See issue 3499, for now workaround it.
       // In Glow, AvgPool expects NHWC.
-      auto *TR1 = F->createTranspose(
-          RM->getName().str() + ".transposeNCHW2NHWC", in, NCHW2NHWC, "NHWC");
-      auto *AP = F->createAvgPool(RM->getName().str() + ".avgPool", TR1,
-                                  kernels, strides, pads);
+      bool needsTranspose = shapeAxes[0] == 3 && shapeAxes[1] == 2; // NCHW?
+
+      // canOptReduceMeanWithAvgPool ensures that shapeAxes satisfies one of
+      // these conditions
+      assert((needsTranspose || shapeAxes[0] == 2 && shapeAxes[1] == 1) &&
+             "[OptimizeReduceMean] Unexpected shapeAxes"
+             " - Pre-processing checks should have prevented optimization of"
+             " this ReduceMean");
+
+      if (needsTranspose) {
+        in = F->createTranspose(RM->getName().str() + ".transposeNCHW2NHWC", in,
+                                NCHW2NHWC, "NHWC");
+      }
+
+      auto *AP = F->createAvgPool(RM->getName().str() + ".avgPool", in, kernels,
+                                  strides, pads);
       if (AP->getResult().getType()->isQuantizedType()) {
         auto TypeAP = F->getParent()->uniqueTypeWithNewQuantParams(
             AP->getResult().getType(), RM->getResult().getType());
         AP->getResult().setType(TypeAP);
       }
-      auto *TR2 = F->createTranspose(
-          RM->getName().str() + ".transposeNHWC2NCHW", AP, NHWC2NCHW, "NCHW");
+
+      Node *out = AP;
+      if (needsTranspose) {
+        out = F->createTranspose(RM->getName().str() + ".transposeNHWC2NCHW",
+                                 AP, NHWC2NCHW, "NCHW");
+      }
 
       // AvgPool keeps original shape. Add reshape to match expected output.
-      std::vector<dim_t> shape = TR2->getResult().dims();
+      std::vector<dim_t> shape = out->getNthResult(0).dims();
 
-      ShapeVector shapeAxes(axes.begin(), axes.end());
-
-      // Axes must be sorted for correct erase.
-      std::sort(shapeAxes.rbegin(), shapeAxes.rend());
       for (const auto &axis : shapeAxes) {
         shape.erase(shape.begin() + axis);
       }
 
-      auto *RN = F->createReshape(RM->getName().str() + ".reshape", TR2, shape);
+      auto *RN = F->createReshape(RM->getName().str() + ".reshape", out, shape);
 
       RM->getResult().replaceAllUsesOfWith(RN);
       changed = true;

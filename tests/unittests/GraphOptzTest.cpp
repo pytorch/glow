@@ -4361,8 +4361,8 @@ TEST_F(GraphOptz, QuantizedFC) {
   EXPECT_EQ(mod_.getPlaceholders().size(), 4);
 }
 
-/// Test batchedReduceMean optimization using AvgPool.
-TEST_F(GraphOptz, convertReduceMean2AvgPool) {
+/// Test batchedReduceMean(NHCW) optimization using AvgPool.
+TEST_F(GraphOptz, convertReduceMean2AvgPool1) {
   const dim_t dims[] = {2, 2, 2, 2};
 
   Node *A = mod_.createPlaceholder(ElemKind::FloatTy, dims, "input", false);
@@ -4388,6 +4388,132 @@ TEST_F(GraphOptz, convertReduceMean2AvgPool) {
   // Expecting AvgPool node before Transpose node.
   auto *APN = llvm::dyn_cast<AvgPoolNode>(TN->getInput());
   ASSERT_NE(APN, nullptr);
+}
+
+/// Test batchedReduceMean (NHWC) optimization using AvgPool.
+TEST_F(GraphOptz, convertReduceMean2AvgPool2) {
+  const dim_t dims[] = {2, 2, 2, 2};
+
+  Node *A = mod_.createPlaceholder(ElemKind::FloatTy, dims, "input", false);
+  Node *R = F_->createBatchedReduceMean("reduce.mean", A, {1, 2});
+
+  SaveNode *O = F_->createSave("ret", R);
+
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // Optimization adds one reshape node.
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  // Expecting reshape output rather than ReduceMean.
+  auto *RN = llvm::dyn_cast<ReshapeNode>(O->getInput());
+  ASSERT_NE(RN, nullptr);
+
+  // Expecting AvgPool node before Reshape node.
+  auto *APN = llvm::dyn_cast<AvgPoolNode>(RN->getInput());
+  ASSERT_NE(APN, nullptr);
+}
+
+/// Test Reshape->BatchedReduceMean (NCHW) optimization using AvgPool.
+TEST_F(GraphOptz, convertReshapeReduceMean2AvgPoolNCHW) {
+  const dim_t N = 2;
+  const dim_t C = 2;
+  const dim_t H = 5;
+  const dim_t W = 3;
+  const dim_t dims[] = {N, C, H, W};
+
+  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, dims, "input", false);
+  auto *RS = F_->createReshape("reshape", A, {N, C, H * W});
+  auto *RM = F_->createBatchedReduceMean("reduce.mean", RS, {2});
+
+  auto *O = F_->createSave("ret", RM);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  // Optimization adds 2 transpose nodes and one reshape node.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 5);
+
+  auto *optO = findFunctionNodeByName<SaveNode>(optimizedF_, O->getName());
+  ASSERT_NE(optO, nullptr);
+
+  // Expecting reshape output rather than ReduceMean.
+  auto *RN = llvm::dyn_cast<ReshapeNode>(optO->getInput());
+  ASSERT_NE(RN, nullptr);
+  EXPECT_EQ(RN->getResult().dims(), llvm::makeArrayRef({N, C}));
+
+  // Expecting Transpose node before Reshape node.
+  auto *TN = llvm::dyn_cast<TransposeNode>(RN->getInput());
+  ASSERT_NE(TN, nullptr);
+  EXPECT_EQ(TN->getResult().dims(),
+            llvm::makeArrayRef({N, C, (dim_t)1, (dim_t)1}));
+
+  // Expecting AvgPool node before Transpose node.
+  auto *APN = llvm::dyn_cast<AvgPoolNode>(TN->getInput());
+  ASSERT_NE(APN, nullptr);
+  EXPECT_EQ(APN->getResult().dims(),
+            llvm::makeArrayRef({N, (dim_t)1, (dim_t)1, C}));
+  EXPECT_EQ(APN->getKernels(),
+            llvm::makeArrayRef({(unsigned_t)H, (unsigned_t)W}));
+
+  // Expecting Transpose node feeding AvgPool node.
+  auto *ITN = llvm::dyn_cast<TransposeNode>(APN->getInput());
+  ASSERT_NE(ITN, nullptr);
+  EXPECT_EQ(ITN->getResult().dims(), llvm::makeArrayRef({N, H, W, C}));
+
+  // Expecting no change to Placeholder input
+  EXPECT_EQ(A, llvm::dyn_cast<Placeholder>(ITN->getInput()));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-10, 10, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+/// Test Reshape->BatchedReduceMean (NHWC) optimization using AvgPool.
+TEST_F(GraphOptz, convertReshapeReduceMean2AvgPoolNHWC) {
+  const dim_t N = 2;
+  const dim_t C = 2;
+  const dim_t H = 5;
+  const dim_t W = 3;
+  const dim_t dims[] = {N, H, W, C};
+
+  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, dims, "input", false);
+  auto *RS = F_->createReshape("reshape", A, {N, H * W, C});
+  auto *RM = F_->createBatchedReduceMean("reduce.mean", RS, {1});
+
+  auto *O = F_->createSave("ret", RM);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+
+  optimizedF_ = optimizeFunctionForTest(F_);
+
+  // Optimization adds one reshape node.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+
+  auto *optO = findFunctionNodeByName<SaveNode>(optimizedF_, O->getName());
+  ASSERT_NE(optO, nullptr);
+
+  // Expecting reshape output rather than ReduceMean.
+  auto *RN = llvm::dyn_cast<ReshapeNode>(optO->getInput());
+  ASSERT_NE(RN, nullptr);
+  EXPECT_EQ(RN->getResult().dims(), llvm::makeArrayRef({N, C}));
+
+  // Expecting AvgPool node before Reshape node.
+  auto *APN = llvm::dyn_cast<AvgPoolNode>(RN->getInput());
+  ASSERT_NE(APN, nullptr);
+  EXPECT_EQ(APN->getResult().dims(),
+            llvm::makeArrayRef({N, (dim_t)1, (dim_t)1, C}));
+  EXPECT_EQ(APN->getKernels(),
+            llvm::makeArrayRef({(unsigned_t)H, (unsigned_t)W}));
+
+  // Expecting no change to Placeholder input
+  EXPECT_EQ(A, llvm::dyn_cast<Placeholder>(APN->getInput()));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle().randomize(-10, 10, mod_.getPRNG());
+  checkNumericalEquivalence();
 }
 
 /// Test Broadcasted RHS BatchMatMul is converted correctly to a single MatMul.
