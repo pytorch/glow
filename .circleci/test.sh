@@ -70,7 +70,8 @@ case ${CIRCLE_JOB} in
         run_unit_tests check
         ;;
     FEATURE_COMPILATION)
-        run_unit_tests check
+        # FEATURE_COMPILATION is a compilation only CI job, thus tests
+        # are not requited.
         ;;
     DEBUG)
         run_unit_tests check
