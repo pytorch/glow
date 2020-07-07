@@ -381,14 +381,6 @@ int main(int argc, char **argv) {
       .dataParallel()
       .setDocstring("Performs Min on the LHS and RHS operands.");
 
-  BB.newNode("Clip")
-      .addInput("Input")
-      .addMember(MemberType::Float, "Min")
-      .addMember(MemberType::Float, "Max")
-      .addResultFromCtorArg()
-      .dataParallel()
-      .setDocstring("Clip range of inputs to lie in [Min, Max].");
-
   BB.newNode("CmpEQ")
       .addInput("LHS")
       .addInput("RHS")
@@ -853,6 +845,14 @@ int main(int argc, char **argv) {
       .addGradient()
       .setDocstring(
           "Applies ReLU, max(0, x), to each element in the Input tensor.");
+
+  BB.newNode("Clip")
+      .addInput("Input")
+      .addMember(MemberType::Float, "Min")
+      .addMember(MemberType::Float, "Max")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Clip range of inputs to lie in [Min, Max].");
 
   BB.newNode("PRelu")
       .addInput("Input")

@@ -7191,39 +7191,81 @@ TEST_P(OperatorTest, Split_Int8) {
   testSplit<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy);
 }
 
-TEST_P(OperatorTest, IntRelu) {
+/// Test Relu with Int8QTy.
+TEST_P(OperatorTest, Relu_Int8) {
   CHECK_IF_ENABLED();
 
-  const float inVal = 10;
-  const float scale = 1.0;
-  const float rescaleScale = 2.0;
-  const int32_t reluOffset = -128;
-  const int32_t offset = 5;
-  const dim_t size = 5;
+  std::vector<float> inputVals = {-2.0, -1.0, 0.0, 1.0, 2.0};
+  dim_t size = inputVals.size();
+  const float inputScale = 1.0;
+  const int32_t inputOffset = 5;
+  const float outputScale = 0.5;
+  const int32_t outputOffset = -128;
 
-  auto inTy = mod_.uniqueType(ElemKind::Int8QTy, {size}, scale, offset);
-  auto rescaleTy =
-      mod_.uniqueType(ElemKind::Int8QTy, {size}, rescaleScale, offset);
-  auto *in = mod_.createPlaceholder(inTy, "in", false);
-  bindings_.allocate(in)->getHandle<int8_t>().clear(
-      quantization::quantize(inVal, {scale, offset}));
-  auto *rescale = F_->createRescaleQuantized("rescale", in, rescaleTy);
-  auto *reluOutTy =
-      mod_.uniqueType(ElemKind::Int8QTy, {size}, rescaleScale, reluOffset);
-  auto *relu = F_->createRELU("relu", rescale, reluOutTy);
+  auto *inputTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {size}, inputScale, inputOffset);
+  auto *outputTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {size}, outputScale, outputOffset);
+  auto *input = mod_.createPlaceholder(inputTy, "input", false);
+  auto *relu = F_->createRELU("relu", input, outputTy);
   auto *dequantize =
       F_->createDequantize("dequantize", relu, ElemKind::FloatTy);
-
   auto *save = F_->createSave("save", dequantize);
   bindings_.allocate(mod_.getPlaceholders());
+
+  auto inputH = bindings_.get(input)->getHandle<int8_t>();
+  for (dim_t idx = 0; idx < size; idx++) {
+    inputH.raw(idx) =
+        quantization::quantize(inputVals[idx], {inputScale, inputOffset});
+  }
 
   EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
-  auto result = bindings_.get(save->getPlaceholder())->getHandle();
-  float expectedValue = std::max(0.0f, inVal);
-  for (dim_t i = 0; i < result.size(); i++) {
-    EXPECT_EQ(expectedValue, result.raw(i));
+  auto outputH = bindings_.get(save->getPlaceholder())->getHandle();
+  for (dim_t idx = 0; idx < size; idx++) {
+    float expectedValue = std::max(0.0f, inputVals[idx]);
+    EXPECT_EQ(expectedValue, outputH.raw(idx));
+  }
+}
+
+/// Test Clip with Int8QTy.
+TEST_P(OperatorTest, Clip_Int8) {
+  CHECK_IF_ENABLED();
+
+  std::vector<float> inputVals = {-3, -2, -1, 0, 1, 2, 3, 4};
+  float clipMin = -2.0;
+  float clipMax = 3.0;
+  dim_t size = inputVals.size();
+  const float inputScale = 1.0;
+  const int32_t inputOffset = 5;
+  const float outputScale = 0.5;
+  const int32_t outputOffset = -3;
+
+  auto *inputTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {size}, inputScale, inputOffset);
+  auto *outputTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {size}, outputScale, outputOffset);
+  auto *input = mod_.createPlaceholder(inputTy, "input", false);
+  auto *relu = F_->createClip("clip", input, outputTy, clipMin, clipMax);
+  auto *dequantize =
+      F_->createDequantize("dequantize", relu, ElemKind::FloatTy);
+  auto *save = F_->createSave("save", dequantize);
+  bindings_.allocate(mod_.getPlaceholders());
+
+  auto inputH = bindings_.get(input)->getHandle<int8_t>();
+  for (dim_t idx = 0; idx < size; idx++) {
+    inputH.raw(idx) =
+        quantization::quantize(inputVals[idx], {inputScale, inputOffset});
+  }
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto outputH = bindings_.get(save->getPlaceholder())->getHandle();
+  for (dim_t idx = 0; idx < size; idx++) {
+    float expectedValue = std::min(clipMax, std::max(clipMin, inputVals[idx]));
+    EXPECT_EQ(expectedValue, outputH.raw(idx));
   }
 }
 

@@ -1120,6 +1120,90 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
     ARITHMETIC_UNARY_OP_CASE(ElementCos, "element_cos");
 #undef ARITHMETIC_UNARY_OP_CASE
 
+  case Kinded::Kind::ReluInstKind: {
+    auto *RI = cast<ReluInst>(I);
+    auto *src = RI->getSrc();
+    auto *dest = RI->getDest();
+    auto *srcPtr = emitBufferAddress(builder, src, kernel, bufferToArgNum);
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto srcTy = src->getType();
+    auto destTy = dest->getType();
+
+    auto *F = getFunction("element_relu", dest->getElementType());
+    llvm::CallInst *stackedOpCall = nullptr;
+    if (dest->getElementType() == ElemKind::Int8QTy) {
+      auto *srcOffset =
+          emitConstI8(builder, static_cast<int8_t>(srcTy->getOffset()));
+      auto *destOffset =
+          emitConstI8(builder, static_cast<int8_t>(destTy->getOffset()));
+      auto destScaleParams = quantization::quantizeScaleOffset32To8(
+          srcTy->getScale() / destTy->getScale(), 0);
+      auto *destPre = emitConstI32(builder, destScaleParams.pre);
+      auto *destPost = emitConstI32(builder, destScaleParams.post);
+      auto *destScale = emitConstI32(builder, destScaleParams.scale);
+      stackedOpCall = createCall(builder, F,
+                                 {loopCount, srcPtr, srcOffset, destOffset,
+                                  destPre, destPost, destScale});
+    } else if (dest->getElementType() == ElemKind::FloatTy) {
+      stackedOpCall = createCall(builder, F, {loopCount, srcPtr});
+    } else {
+      LOG(FATAL) << "Type is not supported";
+    }
+    auto *elementTy = getElementType(builder, dest);
+    auto *destAddr =
+        builder.CreateGEP(elementTy, destPtr, loopCount, "buffer.element.addr");
+    builder.CreateStore(stackedOpCall, destAddr);
+    break;
+  }
+
+  case Kinded::Kind::ClipInstKind: {
+    auto *CI = cast<ClipInst>(I);
+    auto *src = CI->getSrc();
+    auto *dest = CI->getDest();
+    auto *srcPtr = emitBufferAddress(builder, src, kernel, bufferToArgNum);
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto srcTy = src->getType();
+    auto destTy = dest->getType();
+    float clipMinF = CI->getMin();
+    float clipMaxF = CI->getMax();
+
+    auto *F = getFunction("element_clip", dest->getElementType());
+    llvm::CallInst *stackedOpCall = nullptr;
+    if (dest->getElementType() == ElemKind::Int8QTy) {
+      TensorQuantizationParams srcTQP{src->getType()->getScale(),
+                                      src->getType()->getOffset()};
+      int8_t clipMinQ = quantization::quantize<int8_t>(clipMinF, srcTQP);
+      int8_t clipMaxQ = quantization::quantize<int8_t>(clipMaxF, srcTQP);
+      auto *clipMin = emitConstI8(builder, clipMinQ);
+      auto *clipMax = emitConstI8(builder, clipMaxQ);
+      auto *srcOffset =
+          emitConstI8(builder, static_cast<int8_t>(srcTy->getOffset()));
+      auto *destOffset =
+          emitConstI8(builder, static_cast<int8_t>(destTy->getOffset()));
+      auto destScaleParams = quantization::quantizeScaleOffset32To8(
+          srcTy->getScale() / destTy->getScale(), 0);
+      auto *destPre = emitConstI32(builder, destScaleParams.pre);
+      auto *destPost = emitConstI32(builder, destScaleParams.post);
+      auto *destScale = emitConstI32(builder, destScaleParams.scale);
+      stackedOpCall =
+          createCall(builder, F,
+                     {loopCount, srcPtr, clipMin, clipMax, srcOffset,
+                      destOffset, destPre, destPost, destScale});
+    } else if (dest->getElementType() == ElemKind::FloatTy) {
+      auto *clipMin = emitConstF32(builder, clipMinF);
+      auto *clipMax = emitConstF32(builder, clipMaxF);
+      stackedOpCall =
+          createCall(builder, F, {loopCount, srcPtr, clipMin, clipMax});
+    } else {
+      LOG(FATAL) << "Type is not supported";
+    }
+    auto *elementTy = getElementType(builder, dest);
+    auto *destAddr =
+        builder.CreateGEP(elementTy, destPtr, loopCount, "buffer.element.addr");
+    builder.CreateStore(stackedOpCall, destAddr);
+    break;
+  }
+
   case Kinded::Kind::ElementIsNaNInstKind: {
     auto *AN = cast<ElementIsNaNInst>(I);
     auto *src = AN->getSrc();
@@ -1285,8 +1369,8 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
   }
     ARITHMETIC_BINARY_OP_CASE(ElementAdd, "element_add");
     ARITHMETIC_BINARY_OP_CASE(ElementSub, "element_sub");
-    ARITHMETIC_BINARY_OP_CASE(ElementMax, "elementmax");
-    ARITHMETIC_BINARY_OP_CASE(ElementMin, "elementmin");
+    ARITHMETIC_BINARY_OP_CASE(ElementMax, "element_max");
+    ARITHMETIC_BINARY_OP_CASE(ElementMin, "element_min");
     ARITHMETIC_BINARY_OP_CASE(ElementPow, "element_pow");
 #undef ARITHMETIC_BINARY_OP_CASE
 

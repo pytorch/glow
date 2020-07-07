@@ -1481,9 +1481,9 @@ extern "C" {
 
 /// Define mini-kernels for all data parallel operations. They are invoked from
 /// the generated kernels for sequences of data parallel operations.
-DEFINE_DATA_PARALLEL_KERNEL(libjit_elementmax_kernel_f, float,
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_max_kernel_f, float,
                             MAX(LHS[idx], RHS[idx]))
-DEFINE_DATA_PARALLEL_KERNEL(libjit_elementmin_kernel_f, float,
+DEFINE_DATA_PARALLEL_KERNEL(libjit_element_min_kernel_f, float,
                             MIN(LHS[idx], RHS[idx]))
 DEFINE_DATA_PARALLEL_KERNEL(libjit_copy_kernel_f, float, LHS[idx])
 DEFINE_DATA_PARALLEL_KERNEL(libjit_copy_kernel_u, int64_t, LHS[idx])
@@ -1536,9 +1536,9 @@ DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_element_add_kernel_i8, int8_t,
                                       lhs + rhs)
 DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_element_sub_kernel_i8, int8_t,
                                       lhs - rhs)
-DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_elementmax_kernel_i8, int8_t,
+DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_element_max_kernel_i8, int8_t,
                                       MAX(lhs, rhs))
-DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_elementmin_kernel_i8, int8_t,
+DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED(libjit_element_min_kernel_i8, int8_t,
                                       MIN(lhs, rhs))
 DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED_M(libjit_element_mul_kernel_i8, lhs *rhs)
 DEFINE_DATA_PARALLEL_KERNEL_QUANTIZED_M(libjit_element_div_kernel_i8, lhs / rhs)
@@ -1690,6 +1690,35 @@ int8_t libjit_elementselect_kernel_i8(dim_t idx, const int8_t *cond,
                                               lhsPost, lhsScale, destOffset))
              : libjit_clip(libjit_scale_i32i8(RHS[idx] - rhsOffset, rhsPre,
                                               rhsPost, rhsScale, destOffset));
+}
+
+float libjit_element_relu_f(dim_t idx, const float *src) {
+  float srcVal = src[idx];
+  return MAX(srcVal, 0);
+}
+
+int8_t libjit_element_relu_i8(dim_t idx, const int8_t *src, int8_t srcOffset,
+                              int8_t destOffset, int32_t destPre,
+                              int32_t destPost, int32_t destScale) {
+  int32_t reluVal = MAX(src[idx], srcOffset);
+  int32_t scaledVal = libjit_scale_i32i8(reluVal - srcOffset, destPre, destPost,
+                                         destScale, destOffset);
+  return libjit_clip(scaledVal);
+}
+
+float libjit_element_clip_f(dim_t idx, const float *src, float min, float max) {
+  float srcVal = src[idx];
+  return MIN(MAX(srcVal, min), max);
+}
+
+int8_t libjit_element_clip_i8(dim_t idx, const int8_t *src, int8_t clipMin,
+                              int8_t clipMax, int8_t srcOffset,
+                              int8_t destOffset, int32_t destPre,
+                              int32_t destPost, int32_t destScale) {
+  int32_t clipVal = MIN(MAX(src[idx], clipMin), clipMax);
+  int32_t scaledVal = libjit_scale_i32i8(clipVal - srcOffset, destPre, destPost,
+                                         destScale, destOffset);
+  return libjit_clip(scaledVal);
 }
 
 // When the LIBJIT compile option "-ffast-math" is enabled the intermediate
