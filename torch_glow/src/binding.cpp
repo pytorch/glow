@@ -197,23 +197,24 @@ PYBIND11_MODULE(_torch_glow, m) {
   });
 
   /// Set the active HostManager to one that owns 1 of type \p backendName.
-  m.def("setGlowBackend", [](const std::string &glowBackendName) {
-    setHostManager(glowBackendName);
+  m.def("setGlowBackend", [](const std::string &backendName) {
+    getPyTorchLoaderSettings().backendName = backendName;
   });
 
-  /// Set the active HostManager to one that owns \p numDevices of type
-  /// \p backendName.
-  m.def("setGlowBackend",
-        [](const std::string &glowBackendName, size_t numDevices) {
-          setHostManager(glowBackendName, numDevices);
-        });
-
   /// \returns the name of the device backend used by the active HostManager.
-  m.def("getGlowBackendName", []() { return getBackendName(); });
+  m.def("getGlowBackendName",
+        []() { return getPyTorchLoaderSettings().backendName; });
+
+  /// Set the quantity of the device backends used by the active
+  /// HostManager.
+  m.def("setGlowBackendNumDevices", [](int32_t numDevices) {
+    return getPyTorchLoaderSettings().numDevices = numDevices;
+  });
 
   /// \returns the quantity of the device backends used by the active
   /// HostManager.
-  m.def("getGlowBackendNumDevices", []() { return getBackendNumDevices(); });
+  m.def("getGlowBackendNumDevices",
+        []() { return getPyTorchLoaderSettings().numDevices; });
 
   /// Inform host manager to load backend specific options from YAML file.
   m.def("loadBackendSpecificOptions", [](const std::string &yamlFile) {

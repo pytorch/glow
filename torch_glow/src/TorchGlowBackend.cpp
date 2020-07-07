@@ -16,7 +16,7 @@ namespace glow {
 
 static std::vector<glow::InputMeta>
 parseMethodCompileSpec(const GlowCompileSpec &method_spec) {
-  setHostManager(method_spec.getBackend());
+  glow::getPyTorchLoaderSettings().backendName = method_spec.getBackend();
   std::vector<glow::InputMeta> inputMeta;
   for (const auto &in : method_spec.inputs()) {
     std::vector<glow::dim_t> dims;
@@ -407,8 +407,7 @@ TorchGlowBackend::compile(c10::IValue processed,
     glow::getPyTorchLoaderSettings().preCompilePyTorchModule = true;
     std::unique_ptr<CachingGraphRunner> runner =
         std::make_unique<glow::CachingGraphRunner>(
-            g, glow::getHostManager(), getBackendName().c_str(),
-            glow::getPyTorchLoaderSettings());
+            g, glow::getHostManager(), glow::getPyTorchLoaderSettings());
 
     // Find and parse method_compile_spec
     c10::impl::GenericDict::iterator spec =

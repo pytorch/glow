@@ -50,6 +50,10 @@ public:
   /// \returns a reference to the backend with name \p backendName.
   Backend &getBackend(llvm::StringRef backendName) const;
 
+  /// \returns a reference to the Backend if only one Backend is found,
+  /// otherwise returns an Error.
+  Expected<Backend *> getBackend() const;
+
   /// Update the list of available devices.
   void updateAvailableDevices(const std::vector<DeviceManager *> &devices,
                               const std::vector<DeviceIDTy> &mappings) {

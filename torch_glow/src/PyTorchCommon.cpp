@@ -26,7 +26,7 @@
 
 DEFINE_string(torch_glow_backend, "Interpreter",
               "Glow backend used for torchifi");
-DEFINE_int32(torch_glow_num_devices, 1, "Number of devices for Glow backend");
+DEFINE_int32(torch_glow_num_devices, -1, "Number of devices for Glow backend");
 DEFINE_int32(torch_glow_min_fusion_group_size, 1,
              "Number of devices for Glow backend");
 DEFINE_bool(dumpGlowDag, false, "See PyTorchLoaderSettings");
@@ -57,62 +57,56 @@ static int setGraphExecutorToLegacy() {
 
 static const int USE_LEGACY_GE = setGraphExecutorToLegacy();
 
-/// GlowBackendState stores the currently active Glow HostManager that will
-/// be used to run the subgraphs lowered to Glow. It also contains information
-/// about the number and type of backend devices owned by the HostManager.
-struct GlowBackendState {
-  std::shared_ptr<runtime::HostManager> hostManager;
-  std::string backendName;
-  size_t numDevices = 0;
-};
-
-/// Meyers singleton for GlowBackendState.
-GlowBackendState *getGlowBackendState() {
-  static GlowBackendState state_;
-  return &state_;
-}
-
 } // namespace
 
-std::shared_ptr<runtime::HostManager> getHostManager() {
-  auto hostManager = getGlowBackendState()->hostManager;
-  // If no HostManager has been set, use Glow's Interpreter.
-  if (!hostManager) {
-    setHostManager(FLAGS_torch_glow_backend, FLAGS_torch_glow_num_devices);
-    hostManager = getGlowBackendState()->hostManager;
+std::shared_ptr<runtime::HostManager>
+getHostManager(const std::string &backendName, int32_t numDevices) {
+  static std::mutex m_;
+  std::unique_lock<std::mutex> lock(m_);
+  static std::unordered_map<std::string, std::weak_ptr<runtime::HostManager>>
+      map_;
+
+  std::shared_ptr<runtime::HostManager> hostManager;
+  auto it = map_.find(backendName);
+  if (it != map_.end()) {
+    hostManager = it->second.lock();
+  }
+
+  // If HostManager was found, check that it's valid, otherwise create a new
+  // HostManager
+  if (hostManager) {
+    if (numDevices != -1) {
+      CHECK_EQ(hostManager->numDevices(), numDevices)
+          << "Tried to create a new HostManager for backend \"" << backendName
+          << "\" but there is already an existing HostManager in use for that "
+             "Backend but with a different number of devices";
+    }
+  } else {
+    // If number of devices isn't specified then just use 1 device.
+    if (numDevices < 0) {
+      numDevices = 1;
+    }
+    std::vector<std::unique_ptr<runtime::DeviceConfig>> deviceConfigs;
+    for (int i = 0; i < numDevices; i++) {
+      auto config = std::make_unique<runtime::DeviceConfig>(backendName);
+      config->deviceID = i;
+      deviceConfigs.push_back(std::move(config));
+    }
+
+    glow::runtime::HostConfig hostConfig;
+    hostConfig.maxActiveRequests = FLAGS_maxActiveRequests;
+
+    hostManager = std::make_shared<runtime::HostManager>(
+        std::move(deviceConfigs), hostConfig);
+
+    map_[backendName] = hostManager;
   }
   return hostManager;
 }
 
-const std::string &getBackendName() {
-  return getGlowBackendState()->backendName;
-}
-
-size_t getBackendNumDevices() { return getGlowBackendState()->numDevices; }
-
-void setHostManager(const std::string &backendName, size_t numDevices) {
-  auto *state = getGlowBackendState();
-
-  // Don't create a new identical HostManager.
-  if (state->backendName == backendName && state->numDevices == numDevices) {
-    return;
-  }
-
-  state->backendName = backendName;
-  state->numDevices = numDevices;
-
-  std::vector<std::unique_ptr<runtime::DeviceConfig>> deviceConfigs;
-  for (int i = 0; i < numDevices; i++) {
-    auto config = llvm::make_unique<runtime::DeviceConfig>(backendName);
-    config->deviceID = i;
-    deviceConfigs.push_back(std::move(config));
-  }
-
-  glow::runtime::HostConfig hostConfig;
-  hostConfig.maxActiveRequests = FLAGS_maxActiveRequests;
-
-  state->hostManager = std::make_shared<runtime::HostManager>(
-      std::move(deviceConfigs), hostConfig);
+std::shared_ptr<runtime::HostManager> getHostManager() {
+  auto &settings = getPyTorchLoaderSettings();
+  return getHostManager(settings.backendName, settings.numDevices);
 }
 
 /// Given a Glow ElemKind \p ty, \returns a matching PyTorch ScalarType.
@@ -223,6 +217,8 @@ static PyTorchLoaderSettings getInitialSettings() {
   settings.replicationCount = FLAGS_replicationCount;
   settings.writeToOnnx = FLAGS_writeToOnnx;
   settings.randomizeConstants = FLAGS_randomizeConstants;
+  settings.backendName = FLAGS_torch_glow_backend;
+  settings.numDevices = FLAGS_torch_glow_num_devices;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);

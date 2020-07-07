@@ -134,7 +134,7 @@ class CachingGraphRunner {
 public:
   CachingGraphRunner(std::shared_ptr<torch::jit::Graph> graph,
                      std::shared_ptr<runtime::HostManager> hostManager,
-                     const char *backendName, PyTorchLoaderSettings settings);
+                     PyTorchLoaderSettings settings);
 
   ~CachingGraphRunner();
 

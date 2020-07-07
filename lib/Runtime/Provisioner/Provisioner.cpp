@@ -653,6 +653,14 @@ Backend &Provisioner::getBackend(llvm::StringRef backendName) const {
   return *backends_.at(backendName);
 }
 
+Expected<Backend *> Provisioner::getBackend() const {
+  RETURN_ERR_IF_NOT(
+      backends_.size() == 1,
+      strFormat("Expected exactly 1 backend to be found but instead found %zu",
+                backends_.size()));
+  return backends_.begin()->second.get();
+}
+
 Error Provisioner::removeFunction(llvm::StringRef name) {
   std::lock_guard<std::mutex> functionsLock(functionsLock_);
   auto it = activeFunctions_.find(name);
