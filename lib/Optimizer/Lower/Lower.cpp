@@ -201,10 +201,10 @@ static void lowerGemmNode(Function *F, CompilationContext &cctx,
   }
 
   // Check if C operand is used.
-  bool isUsedC = C.getNode();
+  bool isUsedC = C.getNode() && (beta != 0.f);
   if (isUsedC) {
     auto *splatC = llvm::dyn_cast<SplatNode>(C.getNode());
-    if (splatC && (splatC->getValue() == 0)) {
+    if (splatC && (splatC->getValue() == 0.f)) {
       isUsedC = false;
     }
   }

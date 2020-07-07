@@ -288,6 +288,7 @@ static bool isTiledAlongAxisImpl(const Tensor *tensor, size_t axis,
                                  size_t size) {
   assert(axis < tensor->dims().size() && "Axis parameter invalid!");
   assert(size <= tensor->dims()[axis] && "Size parameter invalid!");
+  assert((tensor->dims()[axis] % size) == 0 && "Size parameter invalid!");
   assert(size >= 1 && "Size parameter invalid!");
 
   // When the tile size matches the dimension size then we return true.
@@ -311,9 +312,11 @@ static bool isTiledAlongAxisImpl(const Tensor *tensor, size_t axis,
               std::vector<dim_t> idx = {idx0, idx1, idx2, idx3, idx4, idx5};
               std::vector<dim_t> idxWrapped = idx;
               idxWrapped[axis] = (idx[axis] % size);
-              double valIdx = tensorH.at(idx);
-              double valIdxWrapped = tensorH.at(idxWrapped);
-              if (valIdx != valIdxWrapped) {
+              double delta = tensorH.at(idx) - tensorH.at(idxWrapped);
+              // Since any comparison with NAN returns false, we use a negated
+              // condition so that this function correctly returns false when
+              // delta is NAN.
+              if (!(delta == 0.0)) {
                 return false;
               }
             }
