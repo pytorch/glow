@@ -2722,8 +2722,8 @@ bool TransposeConstants::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
     // Create a new Constant NC to hold the transposed result.
-    auto cTy = F->getParent()->uniqueTypeWithNewShape(C->getType(),
-                                                      TN->getResult().dims());
+    auto cTy = F->getParent()->uniqueTypeWithNewShape(
+        C->getType(), TN->getResult().getType());
     auto *NC =
         F->getParent()->createConstant(cTy, C->getName(), TN->getLayout());
     // Transpose the value of C into NC.
@@ -3092,7 +3092,7 @@ bool OptimizeReshape::run(Function *F, const CompilationContext &cctx) {
           CanonicalTensorLayout::getInstance().getNthResultLayoutRequirements(
               reshapeNode, ReshapeNode::ResultIndices::ResultIdx);
       auto cTy = F->getParent()->uniqueTypeWithNewShape(
-          C->getType(), reshapeNode->getResult().dims());
+          C->getType(), reshapeNode->getResult().getType());
       auto *newC = F->getParent()->createConstant(cTy, C->getName(), layout);
       // Create an unowned view of the original tensor with the correct shape,
       // and assign it to the new Constant.

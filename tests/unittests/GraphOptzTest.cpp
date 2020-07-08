@@ -5670,3 +5670,44 @@ TEST_F(GraphOptz, SelectConstCondOptimization) {
   EXPECT_FALSE(llvm::isa<SelectNode>(saveInput));
   EXPECT_TRUE((*saveInput).getHash() == LHS->getHash());
 }
+
+TEST_F(GraphOptz, transposeQuantizeConstantWithAlignment) {
+  // Define a type with custom alignments.
+  Type typeWithAlignments(ElemKind::FloatTy, {2, 3, 4, 5}, {1, 1, 32, 1});
+  Type quantTypeWithAlignments(ElemKind::Int8QTy, {2, 3, 4, 5}, {1, 1, 32, 1},
+                               1.0, 0);
+  Type transposedQuantTypeWithAlignments(ElemKind::Int8QTy, {2, 4, 5, 3},
+                                         {1, 1, 32, 1}, 1.0, 0);
+  auto modTyWithAlignments = mod_.uniqueType(typeWithAlignments);
+  auto modQuantTransposedTyWithAlignments =
+      mod_.uniqueType(transposedQuantTypeWithAlignments);
+  auto modQuantTyWithAlignments = mod_.uniqueType(quantTypeWithAlignments);
+  auto *I = mod_.createConstant(modTyWithAlignments, "input1");
+  auto *Q = F_->createQuantize("quantize", I, modQuantTyWithAlignments);
+  auto *T = F_->createTranspose("transpose", Q, NCHW2NHWC);
+  T->setType(TransposeNode::ResultIdx, modQuantTransposedTyWithAlignments);
+  SaveNode *S = F_->createSave("ret", T);
+
+  // Skip ConstantFolding as it would have the same result as this opt.
+  CompilationContext cctx;
+  cctx.optimizationOpts.enableConstantFolding = false;
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  ::glow::optimize(F_, cctx);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  // Constant and Quantize should have new shape.
+  auto *newQ = llvm::dyn_cast<QuantizeNode>(S->getInput());
+  ASSERT_TRUE(newQ);
+  EXPECT_TRUE(newQ->getResult().dims().equals({2, 4, 5, 3}));
+  auto *newC = llvm::dyn_cast<Constant>(newQ->getInput());
+  ASSERT_TRUE(newC);
+  EXPECT_TRUE(newC->getType()->dims().equals({2, 4, 5, 3}));
+
+  // Check that alignments are preserved by optimizations.
+  auto expectedNewTy = mod_.uniqueTypeWithNewShape(
+      modTyWithAlignments, modQuantTransposedTyWithAlignments);
+  EXPECT_TRUE(newQ->getInput().getType()->isEqual(expectedNewTy));
+
+  EXPECT_TRUE(F_->verify());
+}
