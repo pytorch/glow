@@ -61,9 +61,8 @@ class ProtobufLoader;
 
 class LoaderExtension {
 public:
-  /// Called once after ONNX or Caffe2 model loading.
-  virtual void postModelLoad(Loader &, PlaceholderBindings &, ProtobufLoader &,
-                             llvm::StringMap<Placeholder *> &,
+  /// Called once after model loading.
+  virtual void postModelLoad(Loader &, PlaceholderBindings &,
                              TypeRef inputImageType) = 0;
   /// Called once at the beginning of the mini-batch inference.
   virtual void inferInitMiniBatch(Loader &, PlaceholderBindings &,
@@ -151,16 +150,21 @@ public:
   /// Loader.
   static quantization::QuantizationConfiguration getQuantizationConfiguration();
 
-  /// Load a Caffe2 or ONNX model into this Loader object according to the
-  /// Loader command line options.
-  void loadModel();
+  /// Load a Caffe2, ONNX or TensorFlowLite model into this Loader object based
+  /// on the Loader command line options. If \p inputType is optionally given
+  /// then the model input is forced to have the given input type regardless of
+  /// the actual command line options (this requires for the model to have only
+  /// one input).
+  void loadModel(TypeRef inputType = nullptr);
 
   /// \returns a map between the model input names and the input placeholders.
+  /// The placeholder map is available once \ref loadModel() is called.
   const llvm::StringMap<Placeholder *> &getInputPlaceholderMap() const {
     return inputPlaceholderByName_;
   }
 
   /// \returns a map between the model output names and the output placeholders.
+  /// The placeholder map is available once \ref loadModel() is called.
   const llvm::StringMap<Placeholder *> &getOutputPlaceholderMap() const {
     return outputPlaceholderByName_;
   }
@@ -195,9 +199,8 @@ public:
 
   /// Register a loader extension.
   Loader &registerExtension(std::unique_ptr<LoaderExtension> ext);
-  /// Called once after ONNX or Caffe2 model loading.
-  void postModelLoad(PlaceholderBindings &bindings, ProtobufLoader &protoLoader,
-                     llvm::StringMap<Placeholder *> &, TypeRef inputImageType);
+  /// Called once after model loading.
+  void postModelLoad(PlaceholderBindings &bindings, TypeRef inputImageType);
   /// Called at the beginning of each mini-batch inference.
   void inferInitMiniBatch(PlaceholderBindings &bindings, size_t minibatchIndex,
                           size_t minibatchSize);

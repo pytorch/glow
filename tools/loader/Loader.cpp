@@ -88,6 +88,11 @@ llvm::cl::list<std::string> modelInputsOpt(
     llvm::cl::value_desc("name,[type,[scale,offset],shape]"),
     llvm::cl::cat(loaderCat));
 
+llvm::cl::alias modelInputName("model-input-name",
+                               llvm::cl::desc("Alias for -model-input"),
+                               llvm::cl::aliasopt(modelInputsOpt),
+                               llvm::cl::cat(loaderCat));
+
 llvm::cl::opt<bool>
     verbose("verbose",
             llvm::cl::desc("Specify whether to run with verbose output"),
@@ -414,7 +419,7 @@ static void getModelInputs(std::vector<std::string> &inputNames,
   }
 }
 
-void Loader::loadModel() {
+void Loader::loadModel(TypeRef inputType) {
 
   // Get model input names and types.
   std::vector<std::string> inputNames;
@@ -425,6 +430,13 @@ void Loader::loadModel() {
   for (size_t idx = 0, e = inputNames.size(); idx < e; idx++) {
     inputNameRefs.push_back(inputNames[idx].c_str());
     inputTypeRefs.push_back(&inputTypes[idx]);
+  }
+
+  // Use explicit input type if given.
+  if (inputType != nullptr) {
+    CHECK(inputNameRefs.size() == 1)
+        << "Model is expected to have only 1 input!";
+    inputTypeRefs = {inputType};
   }
 
   // Load the model based on the model format.
@@ -446,6 +458,22 @@ void Loader::loadModel() {
     // Load the maps between original model names and the placeholders.
     inputPlaceholderByName_ = tfliteLoader.getInputPlaceholderMap();
     outputPlaceholderByName_ = tfliteLoader.getOutputPlaceholderMap();
+    // Since TensorFlowLite loader currently does not have the capability to
+    // enforce the input type (for batching) we must validate that when the
+    // input type is explicitly given it actually matches the model input type.
+    if (inputType != nullptr) {
+      CHECK(inputPlaceholderByName_.size() == 1)
+          << "Model is expected to have only 1 input!";
+      Placeholder *inpPH = inputPlaceholderByName_.begin()->second;
+      auto modelBatchSize = inpPH->getType()->dims()[0];
+      auto inputBatchSize = inputType->dims()[0];
+      CHECK(inputBatchSize == modelBatchSize)
+          << "Mismatch between the model batch size (" << modelBatchSize
+          << ") and the dataset batch size (" << inputBatchSize << ")! "
+          << "If you are using the 'image-classifier' tool set the "
+          << "dataset batch size with the option '-minibatch=" << modelBatchSize
+          << "'!";
+    }
   } else {
     // For ONNX format the input placeholders names/types can be optionally
     // provided but is not mandatory. If not provided (the arrays are empty)
@@ -758,12 +786,9 @@ Loader &Loader::registerExtension(std::unique_ptr<LoaderExtension> extension) {
 }
 
 void Loader::postModelLoad(PlaceholderBindings &bindings,
-                           ProtobufLoader &protoLoader,
-                           llvm::StringMap<Placeholder *> &placeholderMap,
                            TypeRef inputImageType) {
   for (auto &&ext : loaderExtensionList_) {
-    ext->postModelLoad(*this, bindings, protoLoader, placeholderMap,
-                       inputImageType);
+    ext->postModelLoad(*this, bindings, inputImageType);
   }
 }
 
