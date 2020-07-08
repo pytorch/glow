@@ -259,6 +259,13 @@ public:
   /// Provisioner.
   Backend &getBackend(llvm::StringRef backendName) const;
 
+  /// \returns a reference to the Backend if only one Backend is found,
+  /// otherwise returns an Error.
+  Expected<Backend *> getBackend() const;
+
+  /// \returns the number of devices the HostManager owns.
+  size_t numDevices() const { return devices_.size(); }
+
   ~HostManager();
 };
 

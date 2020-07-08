@@ -73,6 +73,10 @@ jobs:
     environment:
       DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang8-ubuntu16.04:283"
     <<: *linux_default
+  FEATURE_COMPILATION:
+    environment:
+      DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang8-ubuntu16.04:283"
+    <<: *linux_default
   OPENCL:
     environment:
       DOCKER_IMAGE: "308535385114.dkr.ecr.us-east-1.amazonaws.com/caffe2/py2-clang8-ubuntu16.04:283"
@@ -102,6 +106,7 @@ workflows:
   build:
     jobs:
       - DEBUG
+      - FEATURE_COMPILATION
       - OPENCL
       - ASAN
       - 32B_DIM_T

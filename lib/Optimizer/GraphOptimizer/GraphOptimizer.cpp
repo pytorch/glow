@@ -248,14 +248,19 @@ static bool isIdentityShuffle(llvm::ArrayRef<unsigned> shuffle) {
 /// \returns True if the node \p N always evaluates to \p val.
 bool isSplatOfVal(Node *N, float val) {
   SplatNode *Z = dyn_cast<SplatNode>(N);
-  if (!Z) {
-    return false;
+  if (Z) {
+    return (Z->getValue() == val);
   }
-  return (Z->getValue() == val);
+  Constant *C = dyn_cast<Constant>(N);
+  if (C) {
+    float fval;
+    return isUniformConstant<float>(*C, fval) && (fval == val);
+  }
+  return false;
 }
 
 /// \returns True if the node returns a constant value.
-bool isConstant(Node *N) { return isa<SplatNode>(N); }
+bool isConstant(Node *N) { return isa<SplatNode>(N) || isa<Constant>(N); }
 
 /// \returns the new simplified NodeValue or the original node's first result.
 static NodeValue simplifyNode(Node *node, Function *F) {
@@ -968,6 +973,36 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
   } // For all nodes in the graph.
+
+  // Transformations to sink nodes below Slice. Outlined into a separate loop to
+  // prevent Transpose/Slice sinking to affect them.
+  for (auto &N : nodes) {
+    auto *node = &N;
+    // Sink BatchNorm below Slice.
+    if (auto *SN = dyn_cast<SliceNode>(node)) {
+      auto *BN = dyn_cast<BatchNormalizationNode>(SN->getInput());
+      if (!BN || !BN->hasOneUse()) {
+        continue;
+      }
+
+      // Don't support sinking below Slice which affects depth.
+      if (SN->getInput().dims()[BN->getChannelIdx()] !=
+          SN->getResult().dims()[BN->getChannelIdx()]) {
+        continue;
+      }
+
+      auto newSNType = F->getParent()->uniqueTypeWithNewShape(
+          BN->getInput().getType(), SN->getResult().dims());
+      auto *newSN = F->createSlice(SN->getName(), BN->getInput(),
+                                   SN->getStart(), newSNType);
+      auto *newBN = F->createBatchNormalization(
+          BN->getName(), newSN, BN->getBias(), BN->getScale(), BN->getMean(),
+          BN->getVar(), BN->getChannelIdx(), BN->getEpsilon(),
+          BN->getMomentum());
+      SN->getResult().replaceAllUsesOfWith(newBN);
+      changed = true;
+    }
+  }
 
   return changed;
 }
@@ -2681,19 +2716,30 @@ bool TransposeConstants::run(Function *F, const CompilationContext &cctx) {
     if (!TN) {
       continue;
     }
-    auto *C = dyn_cast<Constant>(TN->getInput());
-    if (!C) {
+    auto *Q = dyn_cast<QuantizeNode>(TN->getInput());
+    auto *C = dyn_cast<Constant>(Q ? Q->getInput() : TN->getInput());
+    if (!C || (Q && !Q->hasOneUse())) {
       continue;
     }
     // Create a new Constant NC to hold the transposed result.
-    auto *NC = F->getParent()->createConstant(TN->getResult().getType(),
-                                              C->getName(), TN->getLayout());
+    auto cTy = F->getParent()->uniqueTypeWithNewShape(C->getType(),
+                                                      TN->getResult().dims());
+    auto *NC =
+        F->getParent()->createConstant(cTy, C->getName(), TN->getLayout());
     // Transpose the value of C into NC.
     genericTranspose(&C->getPayload(), &NC->getPayloadMutable(),
                      TN->getShuffle());
     NC->getPayloadMutable().setType(NC->getType());
-    // Rewrite uses of TN to reference NC.
-    TN->getResult().replaceAllUsesOfWith(NC);
+    // Create a new transposed Quantize, if needed.
+    NodeValue NN(NC);
+    if (Q) {
+      auto qTy = F->getParent()->uniqueTypeWithNewShape(
+          Q->getResult().getType(), TN->getResult().dims());
+      auto *NQ = F->createQuantize(Q->getName(), NC, qTy);
+      NN = NodeValue(NQ);
+    }
+    // Rewrite uses of TN to reference NC or NQ.
+    TN->getResult().replaceAllUsesOfWith(NN);
     changed = true;
   }
   return changed;
@@ -3036,19 +3082,31 @@ bool OptimizeReshape::run(Function *F, const CompilationContext &cctx) {
       changed = true;
       continue;
     }
-    // Reshape(Constant) -> Constant'.
-    if (auto *C = dyn_cast<Constant>(inputNode)) {
-      // Create a new Constant with the type of the reshape.
+    // Reshape(Constant) -> Constant' or
+    // Reshape(Quantize(Constant)) -> Quantize'(Constant').
+    auto *Q = dyn_cast<QuantizeNode>(inputNode);
+    auto *C = dyn_cast<Constant>(Q ? Q->getInput() : inputNode);
+    if (C && (!Q || Q->hasOneUse())) {
+      // Create a new Constant with the dims of the reshape.
       auto layout =
           CanonicalTensorLayout::getInstance().getNthResultLayoutRequirements(
               reshapeNode, ReshapeNode::ResultIndices::ResultIdx);
-      auto *newC = F->getParent()->createConstant(
-          reshapeNode->getResult().getType(), C->getName(), layout);
+      auto cTy = F->getParent()->uniqueTypeWithNewShape(
+          C->getType(), reshapeNode->getResult().dims());
+      auto *newC = F->getParent()->createConstant(cTy, C->getName(), layout);
       // Create an unowned view of the original tensor with the correct shape,
       // and assign it to the new Constant.
       Tensor reshapedT = C->getPayload().getUnowned(reshapeNode->getDims());
       newC->assign(&reshapedT);
-      reshapeNode->getResult().replaceAllUsesOfWith(newC);
+      // Create a new Quantize with the dims of the reshape, if needed.
+      NodeValue newN(newC);
+      if (Q) {
+        auto qTy = F->getParent()->uniqueTypeWithNewShape(
+            Q->getResult().getType(), reshapeNode->getResult().dims());
+        auto *newQ = F->createQuantize(Q->getName(), newC, qTy);
+        newN = NodeValue(newQ);
+      }
+      reshapeNode->getResult().replaceAllUsesOfWith(newN);
       changed = true;
       continue;
     }

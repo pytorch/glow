@@ -20,6 +20,7 @@
 #include "NNPICompiledFunction.h"
 #include "NNPIDeviceManager.h"
 #include "NNPIUtils.h"
+#include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/Utils.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
@@ -519,12 +520,13 @@ bool NNPIBackend::shouldLower(const Node *N) const {
     }
     return false;
   }
+  case Kinded::Kind::ConvolutionNodeKind:
+    return isConvolutionSameAsFullyConnected(llvm::cast<ConvolutionNode>(N));
   case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::ConcatNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::ReluNodeKind:
-  case Kinded::Kind::ConvolutionNodeKind:
   case Kinded::Kind::Convolution3DNodeKind:
   case Kinded::Kind::TileNodeKind:
   case Kinded::Kind::LogNodeKind:

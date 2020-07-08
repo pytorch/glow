@@ -110,6 +110,12 @@ struct PyTorchLoaderSettings {
   /// If true then randomize the Constants in the Function loaded by
   /// PyTorchModelLoader.
   bool randomizeConstants = false;
+
+  /// Name of the Glow backend to use.
+  std::string backendName = "Interpreter";
+
+  /// Number of Glow devices to use.
+  int32_t numDevices = -1;
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
@@ -128,15 +134,15 @@ PyTorchLoaderSettings &getPyTorchLoaderSettings();
 /// \returns the HostManager singleton used to run all PyTorch graphs in Glow.
 std::shared_ptr<runtime::HostManager> getHostManager();
 
-/// Set the active HostManager to one that owns \p numDevices of type
-/// \p backendName.
-void setHostManager(const std::string &backendName, size_t numDevices = 1);
-
-/// \returns the name of the device backend used by the active HostManager.
-const std::string &getBackendName();
-
-/// \returns the quantity of the device backends used by the active HostManager.
-size_t getBackendNumDevices();
+/// \returns the HostManager singleton used to run all PyTorch graphs with for
+/// the Glow backend \p backendName. The HostManager will have \p numDevices
+/// devices. If a previous HostManager is actively being used with the same
+/// backend but a different number of devices then this is an error. If
+/// numDevices is -1 then the active HostManager for the given backend will be
+/// returned, if no active HostManager is found then a HostManager with 1 device
+/// will be returned.
+std::shared_ptr<runtime::HostManager>
+getHostManager(const std::string &backendName, int32_t numDevices = -1);
 
 /// \returns the PyTorch symbol to be used for the PyTorch node which represents
 /// the subgraph that Glow will compile and run.

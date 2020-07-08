@@ -837,6 +837,33 @@ TEST_F(GraphOptz, transposeConstant) {
   EXPECT_TRUE(optimizedA->getPayload().isEqual(transposedA));
 }
 
+/// Check that the Transpose is merged with Constant in a sequence
+/// Transpose(Quantize(Constant)).
+TEST_F(GraphOptz, transposeQuantizeConstant) {
+  auto *qTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 10, 20, 3}, 0.2, 0);
+  auto *input = F_->getParent()->createConstant(ElemKind::FloatTy,
+                                                {1, 10, 20, 3}, "input");
+  auto *Q = F_->createQuantize("quantize", input, qTy);
+  auto *T = F_->createTranspose("transpose", Q, NHWC2NCHW);
+  auto *S = F_->createSave("save", T);
+
+  // Skip ConstantFolding as it would have the same result as this opt.
+  CompilationContext cctx;
+  cctx.optimizationOpts.enableConstantFolding = false;
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  ::glow::optimize(F_, cctx);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  // Constant and Quantize should have new shape.
+  auto *newQ = llvm::dyn_cast<QuantizeNode>(S->getInput());
+  ASSERT_TRUE(newQ);
+  EXPECT_TRUE(newQ->getResult().dims().equals({1, 3, 10, 20}));
+  auto *newC = llvm::dyn_cast<Constant>(newQ->getInput());
+  ASSERT_TRUE(newC);
+  EXPECT_TRUE(newC->getType()->dims().equals({1, 3, 10, 20}));
+}
+
 /// Check that the removing of transposes still happens when
 /// predicates are involved.
 TEST_F(GraphOptz, transposeConstantWithPredicate) {
@@ -1375,9 +1402,9 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithConstantOperand) {
   // Check that the dimensions of the input and output of the add have been
   // updated to compensate the absence of transpose.
   EXPECT_EQ(add->getResult().dims(), llvm::makeArrayRef(origDims));
-  EXPECT_EQ(add->getRHS().dims(), llvm::makeArrayRef(origDims));
   EXPECT_EQ(add->getLHS().dims(), llvm::makeArrayRef(origDims));
-  EXPECT_EQ(add->getRHS().getNode(), P1);
+  EXPECT_EQ(add->getRHS().dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(add->getLHS().getNode(), P1);
 
   // Repeat checks for other subgraph.
   transpose = llvm::dyn_cast<TransposeNode>(S2->getInput());
@@ -1810,45 +1837,63 @@ TEST_F(GraphOptz, ClipOfSplatNode) {
   EXPECT_EQ(splat->getValue(), 5);
 }
 
-TEST_F(GraphOptz, ZeroArithmetic) {
+static void testZeroArithmetic(Module &mod, Function *F, Function *&optimizedF,
+                               PlaceholderBindings &bindings, bool isSplat) {
   // Tests the identities: [0 + X = X] [0 * X = 0] [0 / X = 0] [ X - 0 = X]
 
   auto *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input", true);
+      mod.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input", true);
 
   // This builds the expression: ((0 / I) + (0 + I) + (0 * I)) - 0
 
-  auto *zero = F_->createSplat("zero", input->getType(), 0.);
+  Node *zero = nullptr;
+  size_t expectedNumNodes = 8;
+  if (isSplat) {
+    zero = F->createSplat("zero", input->getType(), 0.);
+  } else {
+    auto *C = mod.createConstant(ElemKind::FloatTy, {4, 10}, "zero");
+    C->getHandle().clear(0.0);
+    zero = C;
+    expectedNumNodes = 7;
+  }
 
-  auto *div = F_->createDiv("div", zero, input); // -> zero
+  auto *div = F->createDiv("div", zero, input); // -> zero
 
-  auto *add = F_->createAdd("add", zero, input); // -> input
+  auto *add = F->createAdd("add", zero, input); // -> input
 
-  auto *mul = F_->createMul("mul", zero, input); // -> zero
+  auto *mul = F->createMul("mul", zero, input); // -> zero
 
-  auto *add3 = F_->createAdd("add", div, add);
+  auto *add3 = F->createAdd("add", div, add);
 
-  add3 = F_->createAdd("add", add3, mul);
+  add3 = F->createAdd("add", add3, mul);
 
-  auto *sub = F_->createSub("sub", add3, zero); // -> input
+  auto *sub = F->createSub("sub", add3, zero); // -> input
 
-  SaveNode *O = F_->createSave("ret", sub);
+  SaveNode *O = F->createSave("ret", sub);
 
   // The expression evaluates to "I".
 
-  EXPECT_EQ(F_->getNodes().size(), 8);
+  EXPECT_EQ(F->getNodes().size(), expectedNumNodes);
 
-  ::glow::optimize(F_, CompilationMode::Infer);
+  ::glow::optimize(F, CompilationMode::Infer);
 
-  EXPECT_EQ(F_->getNodes().size(), 1);
+  EXPECT_EQ(F->getNodes().size(), 1);
 
   EXPECT_EQ(O->getInput().getNode(), input);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF = optimizeFunction(F);
 
-  bindings_.allocate(mod_.getPlaceholders());
-  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  bindings.allocate(mod.getPlaceholders());
+  bindings.get(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+}
 
+TEST_F(GraphOptz, ZeroArithmeticSplat) {
+  testZeroArithmetic(mod_, F_, optimizedF_, bindings_, true);
+  checkNumericalEquivalence();
+}
+
+TEST_F(GraphOptz, ZeroArithmeticConst) {
+  testZeroArithmetic(mod_, F_, optimizedF_, bindings_, false);
   checkNumericalEquivalence();
 }
 
@@ -1922,34 +1967,54 @@ TEST_F(GraphOptz, ZeroArithmeticParentsMustBeSimplifiedFirst) {
 }
 
 /// Tests opts for the identities: [1 * X = X] [X / 1 = X]
-TEST_F(GraphOptz, ArithmeticIdentitiesOne) {
+static void testArithmeticIdentitiesOne(Module &mod, Function *F,
+                                        Function *&optimizedF,
+                                        PlaceholderBindings &bindings,
+                                        bool isSplat) {
   auto *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input", true);
+      mod.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input", true);
 
   // This builds the expression: (I / 1) * 1:
-  SplatNode *one = F_->createSplat("one", input->getType(), 1.);
-  DivNode *div = F_->createDiv("div", input, one);
-  MulNode *mul = F_->createMul("mul", div, one);
-  SaveNode *save = F_->createSave("ret", mul);
+  Node *one = nullptr;
+  size_t expectedNumNodes = 4;
+  if (isSplat) {
+    one = F->createSplat("one", input->getType(), 1.);
+  } else {
+    auto *C = mod.createConstant(ElemKind::FloatTy, {4, 10}, "zero");
+    C->getHandle().clear(1.0);
+    one = C;
+    expectedNumNodes = 3;
+  }
+  DivNode *div = F->createDiv("div", input, one);
+  MulNode *mul = F->createMul("mul", div, one);
+  SaveNode *save = F->createSave("ret", mul);
 
-  // Splat, Div, Mul, Save.
-  EXPECT_EQ(F_->getNodes().size(), 4);
+  // Splat(if isSplat true), Div, Mul, Save.
+  EXPECT_EQ(F->getNodes().size(), expectedNumNodes);
   // Save optimized function for future comparision
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF = optimizeFunction(F);
 
   // The expression evaluates to "I", so Save is only node left.
-  EXPECT_EQ(optimizedF_->getNodes().size(), 1);
+  EXPECT_EQ(optimizedF->getNodes().size(), 1);
   SaveNode *SN =
-      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(save->getName()));
-  ASSERT_TRUE(functionContainsNode(optimizedF_, SN));
+      llvm::dyn_cast<SaveNode>(optimizedF->getNodeByName(save->getName()));
+  ASSERT_TRUE(functionContainsNode(optimizedF, SN));
   ASSERT_NE(SN, nullptr);
 
   // Save node should just save the input.
   EXPECT_TRUE(SN->getInput().getNode() == input);
 
-  bindings_.allocate(mod_.getPlaceholders());
-  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  bindings.allocate(mod.getPlaceholders());
+  bindings.get(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
+}
 
+TEST_F(GraphOptz, ArithmeticIdentitiesOneSplat) {
+  testArithmeticIdentitiesOne(mod_, F_, optimizedF_, bindings_, true);
+  checkNumericalEquivalence();
+}
+
+TEST_F(GraphOptz, ArithmeticIdentitiesOneConst) {
+  testArithmeticIdentitiesOne(mod_, F_, optimizedF_, bindings_, false);
   checkNumericalEquivalence();
 }
 
@@ -3146,6 +3211,59 @@ TEST_F(GraphOptz, concatElimReverseOrder) {
   checkNumericalEquivalence(0.0f);
 }
 
+/// Check that we are able to eliminate concat nodes with redundant arithmetic
+/// ops in way.
+TEST_F(GraphOptz, concatArithElim) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input", true);
+  bindings_.allocate(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+
+  Type t(ElemKind::FloatTy, {1, 10, 10});
+  Node *one = F_->createSplat("one", &t, 1.0);
+  Node *zero = F_->createSplat("zero", &t, 0.0);
+
+  // Split the input to a bunch of small slices.
+  std::vector<NodeValue> inputs;
+  for (dim_t i = 0; i < 10; i++) {
+    auto *K = F_->createSlice("extract", input, {i, 0, 0}, {i + 1, 10, 10});
+    // Insert the nodes in reverse order to make sure that we can catch
+    // non-consecutive graph-order slices.
+    Node *N = K;
+    switch (i) {
+    case 0:
+      N = F_->createAdd("add0", K, zero);
+      break;
+    case 1:
+      N = F_->createSub("sub0", K, zero);
+      break;
+    case 2:
+      N = F_->createAdd("add_0", zero, K);
+      break;
+    case 3:
+      N = F_->createMul("mul1", K, one);
+      break;
+    case 4:
+      N = F_->createDiv("div1", K, one);
+      break;
+    case 5:
+      N = F_->createMul("mul_1", one, K);
+      break;
+    default:
+      break;
+    }
+    inputs.push_back(N);
+  }
+
+  auto *cc = F_->createConcat("merge", inputs, 0);
+  F_->createSave("save", cc);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 10);
+  optimizedF_ = optimizeFunction(F_);
+
+  // Check that the concat node is gone.
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 0);
+  checkNumericalEquivalence(0.0f);
+}
+
 /// Check that we are able to eliminate concat followed by slices on axis
 /// \p dim under certain conditions.
 static void testConcatSliceElim(Module &mod, Function *F, Function *&optimizedF,
@@ -3550,6 +3668,37 @@ TEST_F(GraphOptz, ReshapeConstantOneUse) {
   EXPECT_TRUE(V->getType()->dims().equals(reshape2));
 }
 
+/// Test that reshape node is merged into Constant in a sequence
+/// Reshape(Quantize(Constant)).
+TEST_F(GraphOptz, ReshapeQuantizeConstant) {
+  const dim_t shape[] = {10, 20};
+  const dim_t newShape[] = {200, 1};
+
+  auto *qTy = mod_.uniqueType(ElemKind::Int8QTy, shape, 0.2, 0);
+
+  auto *input =
+      F_->getParent()->createConstant(ElemKind::FloatTy, shape, "input");
+  auto *Q = F_->createQuantize("quantize", input, qTy);
+  auto *R = F_->createReshape("reshape", Q, newShape);
+  auto *S = F_->createSave("ret", R);
+
+  // Skip ConstantFolding as it would have the same result as this opt.
+  CompilationContext cctx;
+  cctx.optimizationOpts.enableConstantFolding = false;
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  ::glow::optimize(F_, cctx);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  // Constant and Quantize should have new shape.
+  auto *newQ = llvm::dyn_cast<QuantizeNode>(S->getInput());
+  ASSERT_TRUE(newQ);
+  EXPECT_TRUE(newQ->getResult().dims().equals(newShape));
+  auto *newC = llvm::dyn_cast<Constant>(newQ->getInput());
+  ASSERT_TRUE(newC);
+  EXPECT_TRUE(newC->getType()->dims().equals(newShape));
+}
+
 /// Test that Transpose is optimized into Reshape when it moves no data.
 TEST_F(GraphOptz, transposeIntoReshapeOptim) {
   auto *batch =
@@ -3772,6 +3921,41 @@ TEST_F(GraphOptz, sinkTransposeBelowChannelShuffleNodesAndEliminate) {
   // Ensure Group and Kernel are as expected.
   EXPECT_EQ(CSN->getGroup(), 4);
   EXPECT_EQ(CSN->getKernel(), 3);
+}
+
+/// Test BatchNorm sinking below Slice.
+TEST_F(GraphOptz, sinkBatchNormBelowSlice) {
+  auto *inputTy = mod_.uniqueType(ElemKind::FloatTy, {1, 10, 10, 3});
+  auto *slicedTy1 = mod_.uniqueType(ElemKind::FloatTy, {1, 8, 8, 3});
+  auto *slicedTy2 = mod_.uniqueType(ElemKind::FloatTy, {1, 6, 6, 1});
+
+  auto *input = mod_.createPlaceholder(inputTy, "input", false);
+  auto *BN = F_->createBatchNormalization(bindings_, "batchnorm", input, 3,
+                                          0.0001, 0.9);
+  auto *SN1 = F_->createSlice("slice1", BN, {0, 1, 1, 0}, slicedTy1);
+  auto *SN2 = F_->createSlice("slice2", SN1, {0, 1, 1, 1}, slicedTy2);
+  auto *save = F_->createSave("save", SN2);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
+  optimizedF_ = optimizeFunction(F_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 4);
+
+  // BatchNorm should have sunk below the first Slice, but not the second one,
+  // as it changes channel dimmension.
+  auto *newSave =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+  ASSERT_TRUE(newSave);
+  auto *newSN2 = llvm::dyn_cast<SliceNode>(newSave->getInput());
+  ASSERT_TRUE(newSN2);
+  auto *newBN = llvm::dyn_cast<BatchNormalizationNode>(newSN2->getInput());
+  ASSERT_TRUE(newBN);
+  ASSERT_EQ(newBN->getResult().dims(), slicedTy1->dims());
+  ASSERT_TRUE(llvm::isa<SliceNode>(newBN->getInput()));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
 }
 
 /// Test that convertPlaceholdersToConstants works properly with quantized

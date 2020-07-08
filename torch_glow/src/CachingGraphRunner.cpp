@@ -582,7 +582,7 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
   static std::atomic<int32_t> aotNum{0};
   info->functionName = strFormat("PTFunction_precompiled_%d", aotNum++);
 
-  std::unique_ptr<Module> glowModule = llvm::make_unique<Module>();
+  std::unique_ptr<Module> glowModule = std::make_unique<Module>();
   Function *f = glowModule->createFunction(info->functionName);
 
   TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME, "loadJITGraph");
@@ -633,11 +633,11 @@ const PyTorchLoaderSettings &CachingGraphRunner::getSettings() const {
 
 CachingGraphRunner::CachingGraphRunner(
     std::shared_ptr<torch::jit::Graph> graph,
-    std::shared_ptr<runtime::HostManager> hostManager, const char *backendName,
+    std::shared_ptr<runtime::HostManager> hostManager,
     PyTorchLoaderSettings settings)
     : graph_(graph), ptGraphExecutor_(graph, "forward"),
-      hostManager_(hostManager), backend_(hostManager->getBackend(backendName)),
-      settings_(settings) {
+      hostManager_(hostManager),
+      backend_(*EXIT_ON_ERR(hostManager->getBackend())), settings_(settings) {
   mergedTraceContext_ = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
 }
 
