@@ -514,8 +514,6 @@ struct Type final {
 
   /// Reshape existing type by taking shapes and strides of \p shapeType.
   static Type newShape(const Type &T, TypeRef shapeType) {
-    assert(T.getElementSize() == shapeType->getElementSize() &&
-           "Element size should be the same");
     Type ty;
     if (T.isQuantizedType()) {
       ty = Type(T.getElementType(), shapeType->dims(), T.getScale(),
