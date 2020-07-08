@@ -408,7 +408,8 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       ONNXModelWriter onnxWR(loc, nodeList, 7, 9, &writeErr,
                              /* textMode */ false, /* zipMode */ false,
                              /* includeConstantData */ false,
-                             /* extraMetadataProps */ {}, record);
+                             /* extraMetadataProps */ {}, record,
+                             cctx.backendOpts.backendSpecificNodeInfo);
       RETURN_IF_ERR(writeErr);
     }
   }

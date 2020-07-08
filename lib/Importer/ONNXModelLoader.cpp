@@ -3859,7 +3859,7 @@ static Error loadPerNodeOptions(const Node *loadedNode,
       // No '_' found, so continue.
       continue;
     }
-    if (splitPair.first != "NodeOpt") {
+    if (splitPair.first != nodeOptSignifier) {
       // Prefix is not "NodeOpt_", so continue.
       continue;
     }

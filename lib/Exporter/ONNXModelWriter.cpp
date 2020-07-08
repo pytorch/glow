@@ -62,6 +62,17 @@ template <> struct AttributeAssigner<false, false, llvm::StringRef> {
   }
 };
 
+// Specialization for vector of strings.
+template <> struct AttributeAssigner<false, false, std::vector<std::string>> {
+  static void assign(ONNX_NAMESPACE::AttributeProto *attr,
+                     const std::vector<std::string> &container) {
+    attr->set_type(ONNX_NAMESPACE::AttributeProto::STRINGS);
+    for (auto &str : container) {
+      attr->add_strings(str);
+    }
+  }
+};
+
 // Specialization for float type
 template <> struct AttributeAssigner<false, false, float> {
   static void assign(ONNX_NAMESPACE::AttributeProto *attr,
@@ -847,13 +858,15 @@ ONNXModelWriter::ONNXModelWriter(
     size_t opsetVersion, Error *errPtr, bool textMode, bool zipMode,
     bool useGlowCustomOps, bool includeConstantData,
     const llvm::StringMap<std::string> &extraMetadataProps,
-    const ConstantFoldingRecordMap &constFoldRecord)
+    const ConstantFoldingRecordMap &constFoldRecord,
+    const BackendSpecificNodeInfo &backendSpecificNodeInfo)
     : CommonOperatorWriter(modelFilename, &F, errPtr), irVersion_(irVersion),
       opsetVersion_(opsetVersion), zipMode_(zipMode), textMode_(textMode),
       includeConstantData_(includeConstantData),
       extraMetadataProps_(extraMetadataProps),
       useGlowCustomOps_(useGlowCustomOps), dagMode_(false),
-      constFoldRecord_(constFoldRecord) {
+      constFoldRecord_(constFoldRecord),
+      backendSpecificNodeInfo_(backendSpecificNodeInfo) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -969,12 +982,14 @@ ONNXModelWriter::ONNXModelWriter(
     size_t opsetVersion, Error *errPtr, bool textMode, bool zipMode,
     bool includeConstantData,
     const llvm::StringMap<std::string> &extraMetadataProps,
-    const ConstantFoldingRecordMap &constFoldRecord)
+    const ConstantFoldingRecordMap &constFoldRecord,
+    const BackendSpecificNodeInfo &backendSpecificNodeInfo)
     : CommonOperatorWriter(modelFilename, nullptr, errPtr),
       irVersion_(irVersion), opsetVersion_(opsetVersion), zipMode_(zipMode),
       textMode_(textMode), includeConstantData_(includeConstantData),
       extraMetadataProps_(extraMetadataProps), useGlowCustomOps_(true),
-      dagMode_(true), constFoldRecord_(constFoldRecord) {
+      dagMode_(true), constFoldRecord_(constFoldRecord),
+      backendSpecificNodeInfo_(backendSpecificNodeInfo) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -2245,6 +2260,21 @@ Error ONNXModelWriter::writeGlowCustomOperator(const Node *node,
   // If dumping a DAG then add partition names to each op that's written.
   if (dagMode_ && !isWritingConstFoldSubgraph()) {
     addValueAttribute(opProto, "partitionName", F_->getName().str());
+  }
+
+  // Check if there is backendSpecificNodeInfo for node, and if so include it.
+  auto itF = backendSpecificNodeInfo_.find(node->getParent());
+  if (itF != backendSpecificNodeInfo_.end()) {
+    auto itN = itF->second.find(node);
+    if (itN != itF->second.end()) {
+      // We found backend-specific node info, so add it to the opProto.
+      for (const auto &optValPair : itN->second) {
+        addValueAttribute(opProto,
+                          std::string(nodeOptSignifier) + "_" +
+                              optValPair.getKey().data(),
+                          optValPair.getValue());
+      }
+    }
   }
 
   return Error::success();
