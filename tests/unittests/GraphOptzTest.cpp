@@ -1402,9 +1402,9 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithConstantOperand) {
   // Check that the dimensions of the input and output of the add have been
   // updated to compensate the absence of transpose.
   EXPECT_EQ(add->getResult().dims(), llvm::makeArrayRef(origDims));
-  EXPECT_EQ(add->getLHS().dims(), llvm::makeArrayRef(origDims));
   EXPECT_EQ(add->getRHS().dims(), llvm::makeArrayRef(origDims));
-  EXPECT_EQ(add->getLHS().getNode(), P1);
+  EXPECT_EQ(add->getLHS().dims(), llvm::makeArrayRef(origDims));
+  EXPECT_EQ(add->getRHS().getNode(), P1);
 
   // Repeat checks for other subgraph.
   transpose = llvm::dyn_cast<TransposeNode>(S2->getInput());
@@ -1837,63 +1837,45 @@ TEST_F(GraphOptz, ClipOfSplatNode) {
   EXPECT_EQ(splat->getValue(), 5);
 }
 
-static void testZeroArithmetic(Module &mod, Function *F, Function *&optimizedF,
-                               PlaceholderBindings &bindings, bool isSplat) {
+TEST_F(GraphOptz, ZeroArithmetic) {
   // Tests the identities: [0 + X = X] [0 * X = 0] [0 / X = 0] [ X - 0 = X]
 
   auto *input =
-      mod.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input", true);
+      mod_.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input", true);
 
   // This builds the expression: ((0 / I) + (0 + I) + (0 * I)) - 0
 
-  Node *zero = nullptr;
-  size_t expectedNumNodes = 8;
-  if (isSplat) {
-    zero = F->createSplat("zero", input->getType(), 0.);
-  } else {
-    auto *C = mod.createConstant(ElemKind::FloatTy, {4, 10}, "zero");
-    C->getHandle().clear(0.0);
-    zero = C;
-    expectedNumNodes = 7;
-  }
+  auto *zero = F_->createSplat("zero", input->getType(), 0.);
 
-  auto *div = F->createDiv("div", zero, input); // -> zero
+  auto *div = F_->createDiv("div", zero, input); // -> zero
 
-  auto *add = F->createAdd("add", zero, input); // -> input
+  auto *add = F_->createAdd("add", zero, input); // -> input
 
-  auto *mul = F->createMul("mul", zero, input); // -> zero
+  auto *mul = F_->createMul("mul", zero, input); // -> zero
 
-  auto *add3 = F->createAdd("add", div, add);
+  auto *add3 = F_->createAdd("add", div, add);
 
-  add3 = F->createAdd("add", add3, mul);
+  add3 = F_->createAdd("add", add3, mul);
 
-  auto *sub = F->createSub("sub", add3, zero); // -> input
+  auto *sub = F_->createSub("sub", add3, zero); // -> input
 
-  SaveNode *O = F->createSave("ret", sub);
+  SaveNode *O = F_->createSave("ret", sub);
 
   // The expression evaluates to "I".
 
-  EXPECT_EQ(F->getNodes().size(), expectedNumNodes);
+  EXPECT_EQ(F_->getNodes().size(), 8);
 
-  ::glow::optimize(F, CompilationMode::Infer);
+  ::glow::optimize(F_, CompilationMode::Infer);
 
-  EXPECT_EQ(F->getNodes().size(), 1);
+  EXPECT_EQ(F_->getNodes().size(), 1);
 
   EXPECT_EQ(O->getInput().getNode(), input);
 
-  optimizedF = optimizeFunction(F);
+  optimizedF_ = optimizeFunction(F_);
 
-  bindings.allocate(mod.getPlaceholders());
-  bindings.get(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
-}
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
 
-TEST_F(GraphOptz, ZeroArithmeticSplat) {
-  testZeroArithmetic(mod_, F_, optimizedF_, bindings_, true);
-  checkNumericalEquivalence();
-}
-
-TEST_F(GraphOptz, ZeroArithmeticConst) {
-  testZeroArithmetic(mod_, F_, optimizedF_, bindings_, false);
   checkNumericalEquivalence();
 }
 
@@ -1967,54 +1949,34 @@ TEST_F(GraphOptz, ZeroArithmeticParentsMustBeSimplifiedFirst) {
 }
 
 /// Tests opts for the identities: [1 * X = X] [X / 1 = X]
-static void testArithmeticIdentitiesOne(Module &mod, Function *F,
-                                        Function *&optimizedF,
-                                        PlaceholderBindings &bindings,
-                                        bool isSplat) {
+TEST_F(GraphOptz, ArithmeticIdentitiesOne) {
   auto *input =
-      mod.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input", true);
+      mod_.createPlaceholder(ElemKind::FloatTy, {4, 10}, "input", true);
 
   // This builds the expression: (I / 1) * 1:
-  Node *one = nullptr;
-  size_t expectedNumNodes = 4;
-  if (isSplat) {
-    one = F->createSplat("one", input->getType(), 1.);
-  } else {
-    auto *C = mod.createConstant(ElemKind::FloatTy, {4, 10}, "zero");
-    C->getHandle().clear(1.0);
-    one = C;
-    expectedNumNodes = 3;
-  }
-  DivNode *div = F->createDiv("div", input, one);
-  MulNode *mul = F->createMul("mul", div, one);
-  SaveNode *save = F->createSave("ret", mul);
+  SplatNode *one = F_->createSplat("one", input->getType(), 1.);
+  DivNode *div = F_->createDiv("div", input, one);
+  MulNode *mul = F_->createMul("mul", div, one);
+  SaveNode *save = F_->createSave("ret", mul);
 
-  // Splat(if isSplat true), Div, Mul, Save.
-  EXPECT_EQ(F->getNodes().size(), expectedNumNodes);
+  // Splat, Div, Mul, Save.
+  EXPECT_EQ(F_->getNodes().size(), 4);
   // Save optimized function for future comparision
-  optimizedF = optimizeFunction(F);
+  optimizedF_ = optimizeFunction(F_);
 
   // The expression evaluates to "I", so Save is only node left.
-  EXPECT_EQ(optimizedF->getNodes().size(), 1);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 1);
   SaveNode *SN =
-      llvm::dyn_cast<SaveNode>(optimizedF->getNodeByName(save->getName()));
-  ASSERT_TRUE(functionContainsNode(optimizedF, SN));
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(save->getName()));
+  ASSERT_TRUE(functionContainsNode(optimizedF_, SN));
   ASSERT_NE(SN, nullptr);
 
   // Save node should just save the input.
   EXPECT_TRUE(SN->getInput().getNode() == input);
 
-  bindings.allocate(mod.getPlaceholders());
-  bindings.get(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
-}
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
 
-TEST_F(GraphOptz, ArithmeticIdentitiesOneSplat) {
-  testArithmeticIdentitiesOne(mod_, F_, optimizedF_, bindings_, true);
-  checkNumericalEquivalence();
-}
-
-TEST_F(GraphOptz, ArithmeticIdentitiesOneConst) {
-  testArithmeticIdentitiesOne(mod_, F_, optimizedF_, bindings_, false);
   checkNumericalEquivalence();
 }
 
