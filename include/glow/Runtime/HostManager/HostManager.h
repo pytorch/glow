@@ -197,6 +197,11 @@ public:
   /// Update the list of available devices.
   void setAvailableDevices(const std::vector<DeviceIDTy> &devices);
 
+  /// For a given \p network returns all partitions of that network and the
+  /// devices each partition is assigned to.
+  std::unordered_map<std::string, std::vector<DeviceIDTy>>
+  getDevicePartitionMapping(llvm::StringRef network);
+
   /// Returns true if \p networkName is already added to the host.
   bool networkAdded(llvm::StringRef networkName);
 
@@ -283,6 +288,19 @@ generateDeviceConfigs(unsigned int numDevices, llvm::StringRef backendName,
 bool loadDeviceConfigsFromFile(
     std::vector<std::unique_ptr<runtime::DeviceConfig>> &configs,
     size_t memSize);
+
+/// Registry singleton for aquiring a HostManager.
+class HostManagerRegistry final {
+public:
+  void registerHostManager(HostManager *hostManager);
+  HostManager *getHostManager();
+
+private:
+  HostManager *hostManager_{nullptr};
+};
+
+/// Global singleton.
+std::shared_ptr<HostManagerRegistry> ManagerRegistry();
 
 } // namespace runtime
 } // namespace glow

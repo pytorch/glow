@@ -869,4 +869,42 @@ TEST_P(HostManagerTest, testStaticAssignmentP2PandDRTConcurrent) {
   }
 }
 
+/// This tests that the HostMangaer registry works and is able to report what
+/// devices a network is loaded on.
+TEST_P(HostManagerTest, testHostManagerRegistry) {
+  CHECK_IF_ENABLED();
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
+
+  Function *F = module->createFunction("main");
+  auto *X = module->createPlaceholder(ElemKind::FloatTy, {3}, "X", false);
+  auto *pow = F->createPow("Pow1", X, 2.0);
+  F->createSave("save", pow);
+  module->getPlaceholderByNameSlow("save");
+
+  std::unique_ptr<Module> module2 = glow::make_unique<Module>();
+
+  Function *F2 = module2->createFunction("main2");
+  auto *X2 = module2->createPlaceholder(ElemKind::FloatTy, {3}, "X2", false);
+  auto *pow2 = F2->createPow("Pow2", X2, 2.0);
+  F2->createSave("save2", pow2);
+  module2->getPlaceholderByNameSlow("save2");
+
+  std::vector<std::unique_ptr<DeviceConfig>> configs =
+      generateConfigs(backendName_, 2);
+  std::unique_ptr<HostManager> hostManager =
+      glow::make_unique<HostManager>(std::move(configs), HostConfig());
+
+  CompilationContext cctx;
+  cctx.saturateHost = true;
+  ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module), cctx)));
+  cctx.saturateHost = false;
+  ASSERT_FALSE(ERR_TO_BOOL(hostManager->addNetwork(std::move(module2), cctx)));
+  glow::runtime::ManagerRegistry()->registerHostManager(hostManager.get());
+  auto testHM = glow::runtime::ManagerRegistry()->getHostManager();
+  auto loading = testHM->getDevicePartitionMapping("main");
+  auto loading2 = testHM->getDevicePartitionMapping("main2");
+  EXPECT_EQ(loading["main"].size(), 2);
+  EXPECT_EQ(loading2["main2"].size(), 1);
+}
+
 INSTANTIATE_BACKEND_TEST(HostManagerTest);

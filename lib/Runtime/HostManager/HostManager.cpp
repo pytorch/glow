@@ -180,6 +180,11 @@ Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
                                                    devices.end());
     setAvailableDevices(convertedDevs);
   }
+  // If no HostManager is registered yet, register this one.
+  if (!ManagerRegistry()->getHostManager()) {
+    ManagerRegistry()->registerHostManager(this);
+  }
+
   return Error::success();
 }
 
@@ -456,6 +461,23 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     cleanupAddNetwork(names);
   }
   return Error::success();
+}
+
+std::unordered_map<std::string, std::vector<DeviceIDTy>>
+HostManager::getDevicePartitionMapping(llvm::StringRef network) {
+  std::unordered_map<std::string, std::vector<DeviceIDTy>> mapping;
+  auto it = networks_.find(network);
+  if (it != networks_.end()) {
+    auto &nodeList = it->second.dag.nodes;
+    for (auto &node : nodeList) {
+      std::vector<DeviceIDTy> devices;
+      for (auto &dev : node->deviceRuntimeInfos) {
+        devices.push_back(dev.first);
+      }
+      mapping[node->name] = devices;
+    }
+  }
+  return mapping;
 }
 
 Error HostManager::removeNetwork(llvm::StringRef networkName) {
@@ -798,4 +820,15 @@ Backend &HostManager::getBackend(llvm::StringRef backendName) const {
 
 Expected<Backend *> HostManager::getBackend() const {
   return provisioner_->getBackend();
+}
+
+HostManager *HostManagerRegistry::getHostManager() { return hostManager_; }
+
+void HostManagerRegistry::registerHostManager(HostManager *hostManager) {
+  hostManager_ = hostManager;
+}
+
+std::shared_ptr<HostManagerRegistry> glow::runtime::ManagerRegistry() {
+  static auto hostManager = std::make_shared<HostManagerRegistry>();
+  return hostManager;
 }
