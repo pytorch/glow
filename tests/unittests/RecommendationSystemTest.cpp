@@ -38,6 +38,10 @@ using namespace glow;
 namespace {
 llvm::cl::OptionCategory recSysTestCat("RecSys Category");
 
+llvm::cl::opt<bool> enableStaticPlaceholderOpt(
+    "enable-static-placeholder", llvm::cl::desc("Enable Static Placeholder."),
+    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(recSysTestCat));
+
 llvm::cl::opt<unsigned> miniBatchOpt("mini-batch", llvm::cl::desc("Minibatch."),
                                      llvm::cl::Optional, llvm::cl::init(8),
                                      llvm::cl::cat(recSysTestCat));
@@ -224,6 +228,7 @@ protected:
   std::vector<dim_t> topMLPIntermediateDims;
   size_t lengthsMin;
   size_t lengthsMax;
+  bool enableStaticPlaceholder;
 
   // Used to configure correct precision settings:
   bool quantizeSLWSData{false};
@@ -282,6 +287,7 @@ protected:
     denseDim = denseDimOpt;
     lengthsMin = 90;
     lengthsMax = 111;
+    enableStaticPlaceholder = enableStaticPlaceholderOpt;
 
     if (!tableSizesOpt.empty()) {
       if (!tableCountsOpt.empty()) {
@@ -548,6 +554,8 @@ protected:
     auto internalTypeF = mod.uniqueType(ElemKind::FloatTy, {1});
 
     for (unsigned int i = 0; i < lengths.size(); i++) {
+      Storage *data;
+
       fillStableRandomIndex(
           bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011,
           lengthsMin, lengthsMax);
@@ -561,9 +569,16 @@ protected:
 
       // output is size {MB, embDim}
       if (quantizeSLWSData) {
-        Constant *data = createRandomFusedRowwiseQuantizedConstant(
-            mod, {embSizes[i], embDim}, "data" + std::to_string(i),
-            useFP16SLWS);
+        if (enableStaticPlaceholder) {
+          data = createFusedRowwiseQuantizedPlaceholder(
+              mod, {embSizes[i], embDim}, "data" + std::to_string(i),
+              useFP16SLWS);
+        } else {
+          data = createRandomFusedRowwiseQuantizedConstant(
+              mod, {embSizes[i], embDim}, "data" + std::to_string(i),
+              useFP16SLWS);
+        }
+
         embeddings[i] = F_->createFusedRowwiseQuantizedSparseLengthsSum(
             "RQSLWS" + std::to_string(i), data, indices, lengths[i],
             useFP16AccumSLWS);
@@ -575,9 +590,15 @@ protected:
               embeddings[i], ElemKind::FloatTy);
         }
       } else {
-        Constant *data =
-            createRandomizedConstant(mod, internalTypeF, {embSizes[i], embDim},
-                                     "data" + std::to_string(i));
+        if (enableStaticPlaceholder) {
+          data = mod.createPlaceholder(ElemKind::FloatTy, {embSizes[i], embDim},
+                                       "data" + std::to_string(i), false);
+        } else {
+          data = createRandomizedConstant(mod, internalTypeF,
+                                          {embSizes[i], embDim},
+                                          "data" + std::to_string(i));
+        }
+
         embeddings[i] = F_->createSparseLengthsSum("sls" + std::to_string(i),
                                                    data, indices, lengths[i]);
       }
@@ -592,6 +613,8 @@ protected:
       dim_t embeddingDim, std::vector<NodeValue> &embeddings,
       uint32_t weightsSize = 1000) {
     for (size_t i = 0; i < lengths.size(); i++) {
+      Storage *data;
+
       fillStableRandomIndex(
           bindings_.allocate(lengths[i])->getHandle<int32_t>(), 2011,
           lengthsMin, lengthsMax);
@@ -621,9 +644,16 @@ protected:
 
       // output is size {MB, embeddingDim_}
       if (quantizeSLWSData) {
-        Constant *data = createRandomFusedRowwiseQuantizedConstant(
-            mod, {tableSizes[i], embeddingDim}, "data" + std::to_string(i),
-            useFP16SLWS);
+        if (enableStaticPlaceholder) {
+          data = createFusedRowwiseQuantizedPlaceholder(
+              mod, {tableSizes[i], embeddingDim}, "data" + std::to_string(i),
+              useFP16SLWS);
+        } else {
+          data = createRandomFusedRowwiseQuantizedConstant(
+              mod, {tableSizes[i], embeddingDim}, "data" + std::to_string(i),
+              useFP16SLWS);
+        }
+
         embeddings[i] = F_->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
             "RQSLWS" + std::to_string(i), data, weights, indices, lengths[i],
             useFP16AccumSLWS);
@@ -635,10 +665,17 @@ protected:
               embeddings[i], ElemKind::FloatTy);
         }
       } else {
-        Constant *data = createRandomizedConstant(
-            mod,
-            mod.uniqueType(ElemKind::FloatTy, {tableSizes[i], embeddingDim}),
-            {tableSizes[i], embeddingDim}, "data" + std::to_string(i));
+        if (enableStaticPlaceholder) {
+          data = mod.createPlaceholder(ElemKind::FloatTy,
+                                       {tableSizes[i], embeddingDim},
+                                       "data" + std::to_string(i), false);
+        } else {
+          data = createRandomizedConstant(
+              mod,
+              mod.uniqueType(ElemKind::FloatTy, {tableSizes[i], embeddingDim}),
+              {tableSizes[i], embeddingDim}, "data" + std::to_string(i));
+        }
+
         embeddings[i] = F_->createSparseLengthsWeightedSum(
             "slws" + std::to_string(i), data, weights, indices, lengths[i]);
       }
