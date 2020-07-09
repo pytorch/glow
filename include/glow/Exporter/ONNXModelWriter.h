@@ -78,6 +78,8 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   /// A map containing a record of what constant folding took place, to record
   /// in serialized DAGs.
   const ConstantFoldingRecordMap &constFoldRecord_;
+  /// Backend-specific node info to include in the exported model.
+  const BackendSpecificNodeInfo &backendSpecificNodeInfo_;
   /// A dedicated list of initializers in case the tensors get too big and don't
   /// fit into the model.
   std::list<TensorType> initializers_;
@@ -169,6 +171,8 @@ public:
   /// the metadata props portion of the ONNX.
   /// \p constFoldRecord contains any records of constant folding that should be
   /// included in the serialized model.
+  /// \p backendSpecificNodeInfo contains attributes to add onto Nodes when
+  /// exporting if found.
   ONNXModelWriter(const std::string &modelFilename, Function &F,
                   size_t irVersion, size_t opsetVersion,
                   Error *errPtr = nullptr, bool textMode = false,
@@ -177,7 +181,8 @@ public:
                   const llvm::StringMap<std::string> &extraMetadataProps =
                       llvm::StringMap<std::string>(),
                   const ConstantFoldingRecordMap &constFoldRecord =
-                      ConstantFoldingRecordMap());
+                      ConstantFoldingRecordMap(),
+                  const BackendSpecificNodeInfo &backendSpecificNodeInfo = {});
 
   /// Creates an ONNX model writer to serialize \p dagList into file
 
@@ -195,6 +200,9 @@ public:
   /// a mapping of key value pairs which are added to the metadata props portion
   /// of the ONNX. \p constFoldRecord contains any records of constant folding
   /// that should be included in the serialized model.
+  /// \p backendSpecificNodeInfo contains attributes to add onto Nodes when
+  /// exporting if found.
+
   ONNXModelWriter(const std::string &modelFilename, runtime::DAGListTy &dagList,
                   size_t irVersion, size_t opsetVersion,
                   Error *errPtr = nullptr, bool textMode = false,
@@ -202,7 +210,8 @@ public:
                   const llvm::StringMap<std::string> &extraMetadataProps =
                       llvm::StringMap<std::string>(),
                   const ConstantFoldingRecordMap &constFoldRecord =
-                      ConstantFoldingRecordMap());
+                      ConstantFoldingRecordMap(),
+                  const BackendSpecificNodeInfo &backendSpecificNodeInfo = {});
 
 private:
   /// \returns error for the unexpected node kind.
