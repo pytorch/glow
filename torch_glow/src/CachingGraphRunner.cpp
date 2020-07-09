@@ -611,8 +611,11 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
   }
 
   auto info = std::make_shared<PerGlowGraphInfo>();
-  static std::atomic<int32_t> aotNum{0};
-  info->functionName = strFormat("PTFunction_precompiled_%d", aotNum++);
+
+  // Using the pointer to current graph runner should be enough to ensure
+  // one-to-one mapping from compiled graph to the network in host managers.
+  size_t hash = reinterpret_cast<size_t>(this);
+  info->functionName = strFormat("pt_function_%lu", hash);
 
   std::unique_ptr<Module> glowModule = std::make_unique<Module>();
   Function *f = glowModule->createFunction(info->functionName);
@@ -643,13 +646,12 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
   cctx.precisionConfig.convertToFP16 = settings_.convertToFP16;
   cctx.precisionConfig.convertFusedToFP16 = settings_.convertFusedToFP16;
   cctx.dumpFinalGraph = settings_.dumpFinalGlowGraph;
+  cctx.saturateHost = settings_.saturateHost;
 
   TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(glowModule), cctx));
-  TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");
 
-  // Randomly picked one key. There should be only one element in the map
-  // when model is precompiled.
+  // There should be only one element in the map when model is precompiled.
   perGlowGraphInfoMap_[0] = info;
 
   TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME,
