@@ -129,12 +129,12 @@ int NNPIDeviceTracing::getAffinityID(NNPITraceEntry &entry, std::string name,
   }
 
   // Add additional info to title.
-  if (entry.params["opcode"] != "NA") {
+  if (entry.params.count("opcode") > 0 && entry.params["opcode"] != "NA") {
     affinityNameStuct << " opcode " << entry.params["opcode"];
   }
   // Use the op name.
   affinityNameStuct << " " << name.substr(0, name.find(' '));
-  if (entry.params["state"] == "q") {
+  if (entry.params.count("state") && entry.params["state"] == "q") {
     affinityNameStuct << " Queue";
   }
 
@@ -157,7 +157,7 @@ bool NNPIDeviceTracing::addTrace(
     entryLog << paramEntry.first << ":" << paramEntry.second << " ,";
   }
   // Filter traces.
-  if (entry.params["state"] == "NA") {
+  if (entry.params.count("state") <= 0 || entry.params["state"] == "NA") {
     return false;
   }
   std::string name = getEntryName(entry);

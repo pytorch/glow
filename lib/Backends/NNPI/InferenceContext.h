@@ -45,7 +45,6 @@ private:
   NNPIInferCommand inferCmd_;
   NNPICommandList commandList_;
   std::vector<NNPICommandConfig> cmdConfigs_;
-  std::vector<NNPICommandListError> cmdListErrors_;
 
   /// Set of inputs that can be partial tensors.
   const std::unordered_set<const Placeholder *> *partialInputs_;
