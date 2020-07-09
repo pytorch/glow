@@ -166,6 +166,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("disable_saturate_host",
         []() { getPyTorchLoaderSettings().saturateHost = false; });
 
+  /// Enable shape inference engine.
+  m.def("enable_shape_inference_engine",
+        []() { getPyTorchLoaderSettings().runShapeInference = true; });
+
+  /// Disable shape inference engine.
+  m.def("disable_shape_inference_engine",
+        []() { getPyTorchLoaderSettings().runShapeInference = false; });
+
   /// Add all of the symbols in \p blacklist to the fusion blacklist so that
   /// nodes with these symbols will not be fused to Glow.
   m.def("setFusionBlacklist", [](const std::vector<std::string> &blacklist) {

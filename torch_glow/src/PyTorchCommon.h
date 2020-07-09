@@ -116,6 +116,9 @@ struct PyTorchLoaderSettings {
 
   /// Number of Glow devices to use.
   int32_t numDevices = -1;
+
+  // Whether to run shape inference of meta input
+  bool runShapeInference = false;
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
