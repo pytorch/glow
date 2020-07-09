@@ -43,6 +43,7 @@ DEFINE_bool(writeToOnnx, false, "See PyTorchLoaderSettings");
 DEFINE_int32(maxActiveRequests, 250,
              "Max number of active requests before HostManager starts queuing");
 DEFINE_bool(randomizeConstants, false, "See PyTorchLoaderSettings");
+DEFINE_bool(runShapeInference, false, "See PyTorchLoaderSettings");
 
 namespace glow {
 
@@ -219,6 +220,7 @@ static PyTorchLoaderSettings getInitialSettings() {
   settings.randomizeConstants = FLAGS_randomizeConstants;
   settings.backendName = FLAGS_torch_glow_backend;
   settings.numDevices = FLAGS_torch_glow_num_devices;
+  settings.runShapeInference = FLAGS_runShapeInference;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
