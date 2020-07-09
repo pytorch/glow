@@ -347,6 +347,7 @@ constexpr char nameSignifier[] = "name";
 constexpr char backendNameSignifier[] = "backendName";
 constexpr char executionUnitsSignifier[] = "BackendHint_executionUnits";
 constexpr char sizeSignifier[] = "size";
+constexpr char nodeOptSignifier[] = "NodeOpt";
 
 constexpr char numBackendSpecificOptsSignifier[] = "numBackendSpecificOpts";
 inline std::string getBackendSpecificOptKeySignifier(int idx) {
