@@ -415,6 +415,11 @@ void glow::genericTranspose(const Tensor *src, Tensor *dest,
     dest->reset(dest->getType());
   }
 
+  // fill with 0 for padding bytes.
+  if (src->actualSize() != dest->actualSize()) {
+    dest->zero();
+  }
+
   switch (src->getElementType()) {
   case ElemKind::FloatTy: {
     auto srcH = src->getHandle<float>();
