@@ -28,6 +28,8 @@ DECLARE_bool(dumpFinalGlowGraph);
 
 namespace glow {
 
+struct InputMeta;
+
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling
 /// getPyTorchLoaderSettings().
@@ -148,8 +150,9 @@ std::shared_ptr<runtime::HostManager>
 getHostManager(const std::string &backendName, int32_t numDevices = -1);
 
 /// \returns the PyTorch symbol to be used for the PyTorch node which represents
-/// the subgraph that Glow will compile and run.
-const c10::Symbol &getGlowSymbol();
+/// the subgraph that Glow will compile and run. \p g is the PyTorch graph to
+/// lower, and if specified, will be used to generate unique symbol
+c10::Symbol getGlowSymbol(std::shared_ptr<torch::jit::Graph> g = nullptr);
 
 /// Given a PyTorch TensorType \p ptType, \returns a matching Glow Type.
 glow::Type ptTypeToGlowType(const c10::TensorType &ptType);
@@ -166,6 +169,15 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor);
 /// Given a Glow Type \p glowType, \returns an empty PyTorch Tensor with a
 /// matching type.
 at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
+
+/// Load the \p InputMeta data contains Glow fusion node's input size and type
+/// info from \p raw_data stored in string format.
+std::shared_ptr<std::vector<glow::InputMeta>>
+loadInputMeta(const std::string &raw_data);
+
+/// Lower a pytorch \p module to glow before execution. \p inputMetaStr is the
+/// raw string containing the meta data of the glow fuser node input.
+void glowAOTFusion(torch::jit::Module &module, const std::string &inputMetaStr);
 
 /// Enable overriding signal handlers while exeucting torch_glow code. This
 /// should only be used in Python to enable easier debugging and not in
