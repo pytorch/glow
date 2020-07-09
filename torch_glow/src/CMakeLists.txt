@@ -76,17 +76,9 @@ target_link_libraries(_torch_glow
                         pybind11
                         torch_python)
 
-target_include_directories(PyTorchShapeInference PUBLIC
-                            ${PYTORCH_DIR}/include)
-
-target_include_directories(PyTorchModelLoader PUBLIC
-                            ${PYTORCH_DIR}/include)
-
-target_include_directories(PyTorchFileLoader PUBLIC
-                            ${PYTORCH_DIR}/include)
+include_directories(${PYTORCH_DIR}/include)
 
 target_include_directories(_torch_glow PUBLIC
-                            ${PYTORCH_DIR}/include
                             ${TORCH_GLOW}/src/training)
 
 add_subdirectory(training)
