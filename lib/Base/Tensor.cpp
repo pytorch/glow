@@ -284,15 +284,22 @@ static void transposeSelectImpl(const Handle<ElemTy> &src, Handle<ElemTy> &dest,
 }
 
 template <class ElemTy>
-static bool isTiledAlongAxisImpl(const Tensor *tensor, size_t axis,
-                                 size_t size) {
+static bool isTiledImpl(const Tensor *tensor, unsigned_t axis, dim_t size,
+                        bool fractional) {
   assert(axis < tensor->dims().size() && "Axis parameter invalid!");
   assert(size <= tensor->dims()[axis] && "Size parameter invalid!");
   assert(size >= 1 && "Size parameter invalid!");
 
   // When the tile size matches the dimension size then we return true.
+  // This is because a tensor can be considered a tiled version of itself.
   if (size == tensor->dims()[axis]) {
     return true;
+  }
+
+  // If fractional tiling verification is disabled and the dimension size
+  // is NOT divisible by the tile size then we return false.
+  if (!fractional && ((tensor->dims()[axis] % size) != 0)) {
+    return false;
   }
 
   static_assert(max_tensor_dimensions == 6,
@@ -779,37 +786,49 @@ void Tensor::copyRawToDevice(const Tensor *t) {
   DM->transferToDevice(*this, locationContext);
 }
 
-bool Tensor::isTiledAlongAxis(size_t axis, size_t size) const {
+bool Tensor::isTiled(unsigned_t axis, dim_t size, bool fractional) const {
   switch (getElementType()) {
   case ElemKind::FloatTy: {
-    return isTiledAlongAxisImpl<float>(this, axis, size);
+    return isTiledImpl<float>(this, axis, size, fractional);
   }
   case ElemKind::Float16Ty: {
-    return isTiledAlongAxisImpl<float16_t>(this, axis, size);
+    return isTiledImpl<float16_t>(this, axis, size, fractional);
   }
   case ElemKind::Int8QTy: {
-    return isTiledAlongAxisImpl<int8_t>(this, axis, size);
+    return isTiledImpl<int8_t>(this, axis, size, fractional);
   }
   case ElemKind::UInt8QTy: {
-    return isTiledAlongAxisImpl<uint8_t>(this, axis, size);
+    return isTiledImpl<uint8_t>(this, axis, size, fractional);
   }
   case ElemKind::Int16QTy: {
-    return isTiledAlongAxisImpl<int16_t>(this, axis, size);
+    return isTiledImpl<int16_t>(this, axis, size, fractional);
   }
   case ElemKind::Int32QTy: {
-    return isTiledAlongAxisImpl<int32_t>(this, axis, size);
+    return isTiledImpl<int32_t>(this, axis, size, fractional);
   }
   case ElemKind::Int32ITy: {
-    return isTiledAlongAxisImpl<int32_t>(this, axis, size);
+    return isTiledImpl<int32_t>(this, axis, size, fractional);
   }
   case ElemKind::Int64ITy: {
-    return isTiledAlongAxisImpl<int64_t>(this, axis, size);
+    return isTiledImpl<int64_t>(this, axis, size, fractional);
   }
   case ElemKind::BoolTy: {
-    return isTiledAlongAxisImpl<bool>(this, axis, size);
+    return isTiledImpl<bool>(this, axis, size, fractional);
   }
-  default: { llvm_unreachable("isTiledAlongAxis: Precision not supported!"); }
+  default: { llvm_unreachable("isTiled: Precision not supported!"); }
   }
+}
+
+bool Tensor::isTiled(llvm::ArrayRef<unsigned_t> axes,
+                     llvm::ArrayRef<dim_t> sizes, bool fractional) const {
+  assert(axes.size() == sizes.size() &&
+         "Mismatch between axes and sizes length!");
+  for (size_t idx = 0, end = axes.size(); idx < end; ++idx) {
+    if (!isTiled(axes[idx], sizes[idx], fractional)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool isSliceContiguous(llvm::ArrayRef<dim_t> sliceShape,

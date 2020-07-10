@@ -1015,8 +1015,21 @@ GemmNode *Function::createGemm(llvm::StringRef name, NodeValue A, NodeValue B,
 GemmNode *Function::createGemm(llvm::StringRef name, TypeRef outTy, NodeValue A,
                                NodeValue B, NodeValue C, float alpha,
                                float beta, bool transposeA, bool transposeB) {
+  // If C operand is not given then we create a 1D splat with 0.
   if (!C.getNode()) {
-    C = createSplat(name.str() + ".SplatC", outTy, 0.0f);
+    TypeRef splatTy =
+        getParent()->uniqueTypeWithNewShape(outTy, {outTy->dims()[1]});
+    C = createSplat(name.str() + ".SplatC", splatTy, 0.0f);
+  }
+  // If C operand is a 2D constant we check if it is a broadcasted version of
+  // a 1D tensor. If yes then we slice and reshape the C operand to 1D.
+  if (auto *constC = llvm::dyn_cast<Constant>(C.getNode())) {
+    if ((constC->dims().size() == 2) && (constC->getPayload().isTiled(0))) {
+      // Slice and reshape to 1D.
+      dim_t lengthC = constC->dims()[1];
+      C = createSlice(name.str() + ".SliceC", C, {0, 0}, {1, lengthC});
+      C = createReshape(name.str() + ".ReshapeC", C, {lengthC});
+    }
   }
   TypeRef OT = getParent()->uniqueType(*outTy);
   return addNode(

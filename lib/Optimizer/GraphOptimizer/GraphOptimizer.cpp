@@ -2076,7 +2076,7 @@ bool FoldMatMulAddIntoFullyConnected::run(Function *F,
       if (!biasC) {
         continue;
       }
-      if (!biasC->getPayload().isTiledAlongAxis(0)) {
+      if (!biasC->getPayload().isTiled(0)) {
         continue;
       }
       // Slice batched 2D bias and reshape to 1D.
