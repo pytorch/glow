@@ -36,7 +36,7 @@ using namespace glow;
 
 namespace glow {
 torch::jit::backend<glow::TorchGlowBackend> &torchGlowBackend() {
-  static auto cls = torch::jit::backend<glow::TorchGlowBackend>("glow_backend");
+  static auto cls = torch::jit::backend<glow::TorchGlowBackend>("glow");
   return cls;
 }
 
@@ -69,8 +69,8 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("to_glow", [](const torch::jit::Module &orig_module,
                       const py::dict &method_compile_spec) {
     auto callback =
-        py::module::import("torch").attr("_C").attr("_jit_to_glow_backend");
-    return callback(orig_module, method_compile_spec);
+        py::module::import("torch").attr("_C").attr("_jit_to_backend");
+    return callback("glow", orig_module, method_compile_spec);
   });
 
   /// Enable compiling PyTorch subgraphs to Glow Functions.
