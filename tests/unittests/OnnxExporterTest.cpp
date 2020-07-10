@@ -243,14 +243,35 @@ protected:
   /// Constant folds \ref F_ and then serializes it. Then deserializes it and
   /// runs it and makes sure that running the original and the reloaded Function
   /// are bitwise equal. Verifies that \p numExpectedConstsFolded constant
-  /// folding records are created during constant folding/recording.
-  void serializeAndReloadAndCompareResults(unsigned numExpectedConstsFolded) {
+  /// folding records are created during constant folding/recording. Any Nodes
+  /// listed in \p nodesToPar will be Model parallelized in two.
+  void serializeAndReloadAndCompareResults(
+      unsigned numExpectedConstsFolded,
+      const std::unordered_set<Node *> &nodesToPar = {}) {
     bindings_.allocate(mod_.getPlaceholders());
 
     // Perform constant folding, recording what occurs so we can serialize it.
     ConstantFoldingRecordMap record = constantFoldAndRecord(F_, cctx_);
     EXPECT_EQ(record.size(), numExpectedConstsFolded);
     runDCEPass(F_, cctx_);
+
+    if (nodesToPar.size()) {
+      llvm::DenseMap<Node *, size_t> numChunks;
+      llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+      for (Node *N : nodesToPar) {
+        numChunks[N] = 2;
+        parOpts[N] = ParallelTransformKind::Model;
+      }
+
+      std::unordered_map<Node *, ConcatNode *> replacedMap;
+      ASSIGN_VALUE_OR_FAIL_TEST(replacedMap,
+                                ::glow::parallelizeOps(F_, numChunks, parOpts));
+      EXPECT_EQ(replacedMap.size(), parOpts.size());
+
+      ConstantFoldingRecordMap parRecord = constantFoldAndRecord(F_, cctx_);
+      record.insert(parRecord.begin(), parRecord.end());
+      runDCEPass(F_, cctx_);
+    }
 
     // Clone the original module into a new module used for reloading the model.
     ExecutionEngine reloadEE(EE_.getBackendName());
@@ -929,4 +950,34 @@ TEST_F(ConstFoldReloadTest, exportWithPlacementHints) {
   nodeInfo[CI]["Interpreter_Hint5"].push_back("@1");
 
   serializeAndReloadAndCompareResults(0);
+}
+
+TEST_F(ConstFoldReloadTest, exportParallelizedGraphWithTwoConstFoldingRecords) {
+  Placeholder *I =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {2, 100}, "input",
+                             /* isTrainable */ false);
+  Constant *W = mod_.createConstant(ElemKind::FloatTy, {10, 100}, "weights");
+  Constant *B = mod_.createConstant(ElemKind::Float16Ty, {10}, "bias");
+
+  ClipNode *clipW = F_->createClip("clip", W, -5.f, 5.f);
+  ConvertToNode *convertW =
+      F_->createConvertTo("conv", clipW, ElemKind::Float16Ty);
+  TransposeNode *transposeW =
+      F_->createTranspose("transpose", convertW, {1, 0});
+  FullyConnectedNode *FC = F_->createFullyConnected("fc", I, transposeW, B);
+  F_->createSave("save", FC);
+
+  Constant *W2 = mod_.createConstant(ElemKind::Float16Ty, {2, 100}, "weight2");
+  TanhNode *tanhW = F_->createTanh("tanh", W2);
+  AddNode *add = F_->createAdd("add", tanhW, I);
+  F_->createSave("save_add", add);
+
+  bindings_.allocate(I)->getHandle<float16_t>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  W->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  B->getHandle<float16_t>().randomize(0.0, 0.5, mod_.getPRNG());
+  W2->getPayloadMutable().getHandle<float16_t>().randomize(-10, 10,
+                                                           mod_.getPRNG());
+
+  serializeAndReloadAndCompareResults(2, {FC});
 }
