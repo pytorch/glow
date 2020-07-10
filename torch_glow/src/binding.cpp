@@ -130,6 +130,11 @@ PYBIND11_MODULE(_torch_glow, m) {
     getPyTorchLoaderSettings().numTracesPerDump = numTracesPerDump;
   });
 
+  /// Set the number of replications on each device.
+  m.def("set_replication_count", [](size_t replicationCount) {
+    getPyTorchLoaderSettings().replicationCount = replicationCount;
+  });
+
   /// Disable tracing in Glow runtime.
   m.def("disable_glow_tracing",
         []() { getPyTorchLoaderSettings().enableGlowTracing = false; });
