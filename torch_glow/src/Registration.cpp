@@ -51,7 +51,7 @@ getPreloadedRunnerMap() {
 std::unique_ptr<CachingGraphRunner>
 getGraphRunnerForKey(const std::string &key) {
   auto &preloadedRunners = getPreloadedRunnerMap();
-  std::shared_lock<std::shared_timed_mutex> rlock(runnerMapMutex);
+  std::unique_lock<std::shared_timed_mutex> wlock(runnerMapMutex);
   auto it = preloadedRunners.find(key);
   if (it == preloadedRunners.end()) {
     return nullptr;
