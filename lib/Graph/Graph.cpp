@@ -4918,16 +4918,29 @@ Constant *Module::getConstantByName(llvm::StringRef name) const {
   return nullptr;
 }
 
-void Function::randomizeConstants() {
+void Function::randomizeConstants(
+    const std::map<Kinded::Kind, std::set<unsigned>> &ignoredConstants) {
   for (Constant *c : getParent()->getConstants()) {
     bool usedHere = false;
     bool usedElsewhere = false;
+    bool ignored = false;
 
     for (auto &user : c->getUsers()) {
-      if (user.getUser()->getParent() == this) {
+      auto *nodeUser = user.getUser();
+      if (nodeUser->getParent() == this) {
         usedHere = true;
       } else {
         usedElsewhere = true;
+      }
+
+      auto kind = nodeUser->getKind();
+      if (ignoredConstants.count(kind)) {
+        for (auto idx : ignoredConstants.at(kind)) {
+          if (nodeUser->getNthInput(idx).getNode() == c) {
+            ignored = true;
+            break;
+          }
+        }
       }
     }
 
@@ -4938,6 +4951,10 @@ void Function::randomizeConstants() {
     if (usedElsewhere) {
       LOG(FATAL) << "Can't randomize Constant \"" << c->getName().str()
                  << "\" because it is used by another function";
+    }
+
+    if (ignored) {
+      continue;
     }
 
     auto &payload = c->getPayloadMutable();
