@@ -621,8 +621,9 @@ Error ONNXModelWriter::writeConstantFoldingSubgraph(const Constant *C,
     return Error::success();
   }
 
-  // Create new constant folding Node, which we add the subgraph to.
-  auto *constFoldNodeProto = graphProto_->add_node();
+  // Create new constant folding Node, which we add the subgraph to. Always add
+  // to the root as these are all loaded before loading any ops.
+  auto *constFoldNodeProto = graphProtoRoot_->add_node();
   constFoldNodeProto->set_op_type(constFoldSubgraphNodeName);
   const char *constFoldNodeName = constFoldFunction->getName().data();
   constFoldNodeProto->set_name(constFoldNodeName);
@@ -696,7 +697,8 @@ Error ONNXModelWriter::writeFunction() {
       const auto *C = llvm::cast<Constant>(N);
 
       // Check if this constant came from constant folding that we recorded and
-      // want to serialize in the model.
+      // want to serialize in the model. If so then we process it before the
+      // Constant itself so that it will be loaded first.
       auto constFoldRecordIt = constFoldRecord_.find(C);
       if (constFoldRecordIt != constFoldRecord_.end()) {
         RETURN_IF_ERR(
