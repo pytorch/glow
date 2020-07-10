@@ -228,6 +228,8 @@ void Partitioner::saturateHost(unsigned logicalDeviceCount,
   // Add additional logical devices to each node.
   for (auto &network : partitions) {
     for (auto &node : network.nodes) {
+      // Set instanceCount.
+      node->instanceCount = duplications;
       // Build list of new logical devices to add to node.
       std::vector<unsigned> newDevices;
       for (auto logical : node->logicalDevices) {

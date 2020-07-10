@@ -46,6 +46,7 @@ extern bool GlowSparseNNPartitioningBalancePerfModel;
 extern bool GlowDumpGraph;
 extern bool GlowUseDAGOptimizer;
 extern size_t GlowMaxActiveRequests;
+extern size_t GlowMaxActiveRequestsPerInstance;
 extern size_t GlowMaxQueueSize;
 extern size_t GlowExecutorThreads;
 
@@ -268,6 +269,14 @@ DEFINE_int32(glow_max_active_requests, 48,
 DEFINE_validator(glow_max_active_requests,
                  [](const char *flagname, int32_t value) {
                    glow::onnxifi::GlowMaxActiveRequests = value;
+                   return true;
+                 });
+
+DEFINE_int32(glow_max_active_requests_per_instance, 6,
+             "Number of max active requests per instance of a network.");
+DEFINE_validator(glow_max_active_requests_per_instance,
+                 [](const char * /* unused */, int32_t value) {
+                   glow::onnxifi::GlowMaxActiveRequestsPerInstance = value;
                    return true;
                  });
 

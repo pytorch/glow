@@ -105,9 +105,18 @@ struct DAGNode {
 
   /// Map of deviceID to alternating state.
   std::map<DeviceIDTy, unsigned> alternateFunction;
-  /// Count of duplications for network.
+
+  /// Count of duplications for network, this is the number of replications of
+  /// the network on a single card.
   unsigned replicationCount{1};
+
+  /// Lock to protect against race conditions when getting the next duplicated
+  /// network name.
   std::mutex nameLock;
+
+  /// Count of instances of this network created by saturateHost. This will be
+  /// copies across cards.
+  unsigned instanceCount{1};
 
   /// Backend name for this network.
   std::string backendName;
@@ -253,7 +262,7 @@ struct DeviceConfig {
 /// and Executor.
 struct HostConfig {
   /// Number of outstanding or concurrent networks before queueing.
-  size_t maxActiveRequests{12};
+  size_t maxActiveRequests{48};
   /// Number of requests to queue up before refusing further requests.
   size_t maxQueueSize{100};
   /// Number of threads to allocate to the Executor.
