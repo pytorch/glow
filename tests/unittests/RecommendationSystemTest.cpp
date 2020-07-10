@@ -152,8 +152,6 @@ public:
   void setTypeInfo(std::map<std::string, Type> info) override {}
 
   std::string getName() override {
-    for (auto na : names_) {
-    }
     if (position_ >= int(names_.size())) {
       return "";
     }
@@ -613,7 +611,7 @@ protected:
                                                 mod.getPRNG());
 
           loader.addWeight(&tensor);
-          loader.addName("data");
+          loader.addName("data" + std::to_string(i));
 
           bindings_.allocate(ph);
           updateInputPlaceholders(bindings_, {ph}, {&tensor});
@@ -704,7 +702,7 @@ protected:
                                                 mod.getPRNG());
 
           loader.addWeight(&tensor);
-          loader.addName("data");
+          loader.addName("data" + std::to_string(i));
 
           bindings_.allocate(ph);
           updateInputPlaceholders(bindings_, {ph}, {&tensor});
