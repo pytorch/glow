@@ -2005,8 +2005,10 @@ public:
 
   /// Randomize all of the Constants in the function. If a Constant with users
   /// in this Function also has users in other Functions then this will result
-  /// in a FATAL.
-  void randomizeConstants();
+  /// in a FATAL. \p ignoredConstants is a map Kinds of nodes to the input
+  /// indices for that node that should be ignored (not randomized).
+  void randomizeConstants(
+      const std::map<Kinded::Kind, std::set<unsigned>> &ignoredConstants = {});
 };
 
 struct TrainingConfig;

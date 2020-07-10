@@ -4037,8 +4037,19 @@ PyTorchModelLoader::PyTorchModelLoader(
       outputCorrectType.push_back(outputScalarType);
     }
 
+    // When randomizing constants in graphs, don't randomize offsets for
+    // rowwise/channelwise ops.
+    static std::map<Kinded::Kind, std::set<unsigned>>
+        randomizeConstantsIgnoreSet = {
+            {Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind,
+             {ChannelwiseQuantizedConvolutionNode::InputIndices::
+                  FilterOffsetsIdx}},
+            {Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind,
+             {RowwiseQuantizedFullyConnectedNode::InputIndices::OffsetsIdx}},
+        };
+
     if (settings.randomizeConstants) {
-      F_.randomizeConstants();
+      F_.randomizeConstants(randomizeConstantsIgnoreSet);
     }
 
     if (settings.dumpGlowDag) {
