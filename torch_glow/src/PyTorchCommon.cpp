@@ -429,8 +429,8 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr) {
     MAKE_ERR("Cannot create a Glow fusion subgraph");
   }
 
-  // create the graph runner and warm its cache, this graph runner will be picked
-  // up during operator registration
+  // create the graph runner and warm its cache, this graph runner will be
+  // picked up during operator registration
   auto runner = glow::setGraphRunnerForKey(symbol.toQualString(), [subgraph] {
     return std::make_unique<glow::CachingGraphRunner>(
         subgraph, glow::getHostManager(), glow::getPyTorchLoaderSettings());
