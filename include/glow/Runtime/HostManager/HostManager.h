@@ -107,7 +107,7 @@ class HostManager final {
   std::shared_timed_mutex inferQueueLock_;
 
   /// Configuration parameters for this Runtime Host.
-  const HostConfig config_{};
+  HostConfig config_{};
 
   std::unique_ptr<TraceContext> hostTraceContext_;
 

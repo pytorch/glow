@@ -35,6 +35,7 @@
 
 #include "folly/String.h"
 
+#include <algorithm>
 #include <future>
 #include <queue>
 #include <shared_mutex>
@@ -328,7 +329,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   }
   Partitioner partitioner(module.get(), deviceInfo, skipOptimizations);
   if (cctx.enableP2P || cctx.enableDRT) {
-    partitioner.setContextCount(config_.maxActiveRequests);
+    partitioner.setContextCount(cctx.maxActiveRequestsPerInstance);
   } else {
     partitioner.setContextCount(2);
   }
@@ -435,6 +436,29 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
 
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+    /// Calculate networkMaxActive requests. Then update
+    /// config_.maxActiveRequests This will be maxActiveRequestsPerInstance *
+    /// instanceCount * minReplications or config_.maxActiveRequests whichever
+    /// is smaller.
+
+    // Find the minimum on device replication.
+    unsigned minReplications{1};
+    for (auto &node : nodeList) {
+      for (auto &dag : node.nodes) {
+        minReplications = std::min(dag->replicationCount, minReplications);
+      }
+    }
+    unsigned product{0};
+    if (nodeList.size() && nodeList[0].nodes.size()) {
+      product = nodeList[0].nodes[0]->instanceCount *
+                cctx.maxActiveRequestsPerInstance * minReplications;
+    } else {
+      return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
+                      "NodeList is empty.");
+    }
+    unsigned maxActiveRequests = config_.maxActiveRequests;
+    config_.maxActiveRequests = std::min(product, maxActiveRequests);
+
     // Create pool of cachedExecutionStates.
     for (auto &node : nodeList) {
       // Note: currently getNextNetworkExecutionState assumes that pool size is

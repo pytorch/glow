@@ -48,6 +48,7 @@ bool GlowUseSparseNNPartitioningScheme = false;
 bool GlowSparseNNPartitioningAddSLSConcats = false;
 bool GlowSparseNNPartitioningBalancePerfModel = false;
 size_t GlowMaxActiveRequests = 48;
+size_t GlowMaxActiveRequestsPerInstance = 6;
 size_t GlowMaxQueueSize = 100;
 size_t GlowExecutorThreads = 10;
 bool GlowSaveOnnxifiDAG = false;
@@ -151,6 +152,7 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
   CompilationContext cctx;
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
   cctx.prepartitionedConfig = PPC;
+  cctx.maxActiveRequestsPerInstance = GlowMaxActiveRequestsPerInstance;
 
   if (deferredBlobReader) {
     // Initialize loader and set field in cctx.
