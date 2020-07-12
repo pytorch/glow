@@ -197,6 +197,19 @@ public:
 
   virtual size_t getTraceEventDataSize() const { return 0; }
 
+  /// Called outside/after the end of the optimization pipeline and before code
+  /// generation, giving the backend another opportunity to transform the graph
+  /// before IRGen. The backend may insert backend and device-specific
+  /// nodes. This is generally used to process backend-specific node info, as we
+  /// skip the optimization pipeline in such cases in order to preserve the Node
+  /// -> NodeInfo mapping. This is only called if not using the DAG optimizer.
+  /// The backend is responsible for cleaning up after itself. \returns an
+  /// Expected True if the graph was modified.
+  virtual Expected<bool>
+  transformPostOptPipeline(Function *F, CompilationContext &cctx) const {
+    return false;
+  }
+
   /// Create device manager corresponding to the backend based on the
   /// deviceConfig.
   virtual runtime::DeviceManager *
