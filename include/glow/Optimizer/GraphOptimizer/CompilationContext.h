@@ -136,6 +136,15 @@ struct OptimizationOptions {
   /// partitioning scheme
   unsigned int sparseNNPartitioningSchemeNumCoresOther{1};
 
+  /// The algorithm used for Placement tagging in DAG Optimizer
+  std::string DAGOptimizerPlacementTaggingAlgorithm;
+
+  /// The algorithm used for Parallelization tagging in DAG Optimizer
+  std::string DAGOptimizerParallelizationTaggingAlgorithm;
+
+  /// The number of parallel chunks used in DAG Optimizer parallelization
+  int32_t DAGOptimizerNumParallelChunks;
+
   /// If true does int64 to int32 type demotion if backend supports for specific
   /// nodes.
   bool enableTypeDemotion{true};
