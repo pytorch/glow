@@ -132,6 +132,10 @@ class ONNXModelLoader
   Error loadNonZero(const ONNX_NAMESPACE::NodeProto &op,
                     const ArgumentDictionaryTy &dict);
 
+  /// Load ONNX Floor operator.
+  Error loadFloor(const ONNX_NAMESPACE::NodeProto &op,
+                  const ArgumentDictionaryTy &dict);
+
   /// Load Constant ONNX operator.
   Error loadConstant(const ONNX_NAMESPACE::NodeProto &op,
                      ArgumentDictionaryTy &dict);

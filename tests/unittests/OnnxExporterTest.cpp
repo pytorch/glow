@@ -350,6 +350,7 @@ TEST(exporter, onnxModels) {
         name.find("castToInt64.onnxtxt") != std::string::npos ||
         name.find("castToInt32.onnxtxt") != std::string::npos ||
         name.find("simpleConvBiasFail.onnxtxt") != std::string::npos ||
+        name.find("floor.onnxtxt") != std::string::npos ||
         name.find("Where.onnxtxt") != std::string::npos ||
         name.find("constantOfShapeInt64Fail.onnxtxt") != std::string::npos ||
         name.find("ArgMaxDefault.onnxtxt") != std::string::npos ||
