@@ -29,7 +29,7 @@ def run_model(m, input, randomize):
     sim.setSameAs(input)
     spec.addInputs([sim])
 
-    glow_m = torch_glow.to_glow(traced_m._c, {"forward": spec})
+    glow_m = torch_glow.to_glow(traced_m, {"forward": spec})
     return glow_m.forward(input)
 
 
