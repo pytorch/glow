@@ -48,6 +48,9 @@ public:
   bool supportsStaticPlaceholders() const override { return true; }
   std::unique_ptr<FunctionPassPipeline>
   getOptimizationPipeline() const override;
+  Expected<bool>
+  transformPostOptPipeline(Function *F,
+                           CompilationContext &cctx) const override;
 
   runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig) override;

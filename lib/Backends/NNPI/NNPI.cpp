@@ -845,26 +845,23 @@ static Error setupPerNodeParallelizationConfigs(
   return Error::success();
 }
 
-/// Parallelize \p F. If \p usePerNodeParallelizationSpec then this
-/// parallelization is done based on the spec found in backendSpecificNodeInfo
-/// in \p opts. Else perform basic parallelization according to either
-/// GlowNNPINumParallelChunks, or if not specified then NNPINumParallelChunks
-/// found in backendOpts.backendSpecificOpts from \p opts. \returns whether \p F
-/// was modified.
-static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts,
-                                          bool usePerNodeParallelizationSpec) {
+/// Parallelize \p F. If this Function has backendSpecificNodeInfo in \p opts
+/// then this parallelization is done based on that. Else perform basic
+/// parallelization according to either GlowNNPINumParallelChunks, or if not
+/// specified then NNPINumParallelChunks found in
+/// backendOpts.backendSpecificOpts from \p opts. \returns whether \p F was
+/// modified.
+static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts) {
   // Split FC layers in model/data parallel fashion
   llvm::DenseMap<Node *, size_t> numChunks;
   llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
 
   int32_t defaultNumParallelChunks = 1;
-  if (usePerNodeParallelizationSpec) {
-    // If we don't have any info for this function then return early.
-    if (opts.backendSpecificNodeInfo.find(F) ==
-        opts.backendSpecificNodeInfo.end()) {
-      return false;
-    }
 
+  const bool usePerNodeParallelizationSpec =
+      opts.backendSpecificNodeInfo.find(F) !=
+      opts.backendSpecificNodeInfo.end();
+  if (usePerNodeParallelizationSpec) {
     // Only parallelize based on what is explicitly specified.
     RETURN_IF_ERR(setupPerNodeParallelizationConfigs(
         F, numChunks, parOpts, opts.backendSpecificNodeInfo));
@@ -920,33 +917,9 @@ static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts,
 
 Expected<std::unique_ptr<CompiledFunction>>
 NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
-  BackendOptions newOpts = opts;
-
-  // Perform parallelization based on any node options found in opts.
-  bool parallelized;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      parallelized, parallelizeFunction(
-                        F, newOpts, /* usePerNodeParallelizationSpec */ true));
-  if (parallelized) {
-    // If we parallelized then we want to run very specific optimizations to
-    // clean up the now-parallelized graph while preserving the Nodes in the
-    // Function so we don't mess up the placement info map. Specifically, we
-    // eliminate Concat-Slice patterns which are created during parallelization.
-    // This does not create any new nodes (it only removes Concat-Slice
-    // patterns, replacing uses of Concat with the input of Slice). Then we DCE
-    // away the now-dead Concats/Slices.
-    FunctionPassManager FPM("FinalizeFPM",
-                            {
-                                FunctionPassID::EliminateConcatSlice,
-                                FunctionPassID::FoldSlicesIntoConstants,
-                                getDCEPassConfig(),
-                            });
-    FPM.run(F, CompilationContext());
-  }
-
   std::unique_ptr<NNPICompiledFunction> compiledFunc =
       glow::make_unique<NNPICompiledFunction>(F);
-  auto compileHasError = compiledFunc->compile(F, newOpts);
+  auto compileHasError = compiledFunc->compile(F, opts);
   if (compileHasError) {
     return std::move(compileHasError);
   }
@@ -1144,6 +1117,24 @@ static bool removeClipsBlockingFusion(Function *F) {
   return changed;
 }
 
+Expected<bool>
+NNPIBackend::transformPostOptPipeline(Function *F,
+                                      CompilationContext &cctx) const {
+  bool parallelized;
+  ASSIGN_VALUE_OR_RETURN_ERR(parallelized,
+                             parallelizeFunction(F, cctx.backendOpts));
+  if (parallelized) {
+    // Use the normal NNPI-specific optimization pipeline, but without sinking
+    // conversions, because we just parallelized and so don't want to undo any
+    // parallelization we performed on quantizes/dequantizes.
+    auto P = getOptimizationPipeline();
+    P->removeAllInstancesOfPass(FunctionPassID::SinkConversions);
+    FunctionPassManager("NNPI_transformPostOptPipeline", std::move(P), this)
+        .run(F, cctx);
+  }
+  return parallelized;
+}
+
 Expected<bool> NNPIBackend::transformPostLowering(
     Function *F, CompilationContext &cctx,
     const glow::runtime::DeviceInfo *devInfo) const {
@@ -1155,12 +1146,6 @@ Expected<bool> NNPIBackend::transformPostLowering(
 
   bool changed = removeClipsBlockingFusion(F);
   changed |= lowerRequiredNodes(F, cctx);
-  bool parallelized;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      parallelized,
-      parallelizeFunction(F, cctx.backendOpts,
-                          /* usePerNodeParallelizationSpec */ false));
-  changed |= parallelized;
 
 #if FACEBOOK_INTERNAL
   if (glow::onnxifi::GlowDisableNNPIPrivateTransforms) {
