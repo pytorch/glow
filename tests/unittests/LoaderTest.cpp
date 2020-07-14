@@ -51,7 +51,6 @@ public:
   static size_t index_;
   static Loader *loader_;
   static PlaceholderBindings *bindings_;
-  static ProtobufLoader *protobufLoader_;
   static bool destructed_;
 
   testLoaderExtension() {
@@ -59,14 +58,11 @@ public:
     index_ = 0;
     loader_ = nullptr;
     bindings_ = nullptr;
-    protobufLoader_ = nullptr;
     destructed_ = false;
   }
 
   /// Called once after ONNX or Caffe2 model loading.
   virtual void postModelLoad(Loader &loader, PlaceholderBindings &bindings,
-                             ProtobufLoader &protobufLoader,
-                             llvm::StringMap<Placeholder *> &outputMap,
                              TypeRef inputImageType) {
 
     size_t compilationBatchSize = inputImageType->dims()[0];
@@ -76,7 +72,6 @@ public:
     // To check params are correctly set.
     loader_ = &loader;
     bindings_ = &bindings;
-    protobufLoader_ = &protobufLoader;
     EXPECT_EQ(BATCH_SIZE, compilationBatchSize);
   }
   /// Called once at the beginning of the mini-batch inference.
@@ -118,8 +113,7 @@ public:
   }
 
   /// Called once after ONNX or Caffe2 model loading.
-  virtual void postModelLoad(Loader &, PlaceholderBindings &, ProtobufLoader &,
-                             llvm::StringMap<Placeholder *> &, TypeRef) {
+  virtual void postModelLoad(Loader &, PlaceholderBindings &, TypeRef) {
     stage_ = 1;
   }
   /// Called once at the beginning of the mini-batch inference.
@@ -141,7 +135,6 @@ int testLoaderExtension::stage_;
 size_t testLoaderExtension::index_;
 Loader *testLoaderExtension::loader_;
 PlaceholderBindings *testLoaderExtension::bindings_;
-ProtobufLoader *testLoaderExtension::protobufLoader_;
 bool testLoaderExtension::destructed_;
 int secondTestLoaderExtension::stage_;
 bool secondTestLoaderExtension::destructed_;
@@ -188,11 +181,10 @@ TEST_F(LoaderTest, LoaderExtension) {
 
     // Get bindings and call post model load extensions.
     ASSERT_EQ(testLoaderExtension::stage_, 0);
-    loader.postModelLoad(bindings, caffe2LD, outputMap, &inputData.getType());
+    loader.postModelLoad(bindings, &inputData.getType());
     ASSERT_EQ(testLoaderExtension::stage_, 1);
     ASSERT_EQ(testLoaderExtension::loader_, &loader);
     ASSERT_EQ(testLoaderExtension::bindings_, &bindings);
-    ASSERT_EQ(testLoaderExtension::protobufLoader_, &caffe2LD);
     ASSERT_EQ(secondTestLoaderExtension::stage_, 1);
 
     // Allocate tensors to back all inputs and outputs.
@@ -216,7 +208,6 @@ TEST_F(LoaderTest, LoaderExtension) {
       ASSERT_EQ(testLoaderExtension::index_, miniBatchIndex);
       ASSERT_EQ(testLoaderExtension::loader_, &loader);
       ASSERT_EQ(testLoaderExtension::bindings_, &bindings);
-      ASSERT_EQ(testLoaderExtension::protobufLoader_, &caffe2LD);
       ASSERT_EQ(secondTestLoaderExtension::stage_, 2);
 
       // Perform the inference execution for a minibatch.
@@ -228,7 +219,6 @@ TEST_F(LoaderTest, LoaderExtension) {
       ASSERT_EQ(testLoaderExtension::index_, miniBatchIndex);
       ASSERT_EQ(testLoaderExtension::loader_, &loader);
       ASSERT_EQ(testLoaderExtension::bindings_, &bindings);
-      ASSERT_EQ(testLoaderExtension::protobufLoader_, &caffe2LD);
       ASSERT_EQ(secondTestLoaderExtension::stage_, 3);
     }
 

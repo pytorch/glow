@@ -701,16 +701,21 @@ Error TFLiteModelLoader::loadInputPlaceholders() {
     // Create input placeholder. If the input type is quantized and a float
     // input is requested then we create a float placeholder and a Quantize
     // node, otherwise we create directly the quantized placeholder.
+    Placeholder *inpPH;
     NodeValue inpNV;
     if (tfliteFloatInputsOpt && type.isQuantizedType()) {
       TypeRef floatType = mod_.uniqueType(ElemKind::FloatTy, type.dims());
-      inpNV = mod_.createPlaceholder(floatType, name, /*isTrainable*/ false,
+      inpPH = mod_.createPlaceholder(floatType, name, /*isTrainable*/ false,
                                      ANY_LAYOUT);
-      inpNV = F_->createQuantize(name + ".Quantize", inpNV, &type);
+      inpNV = F_->createQuantize(name + ".Quantize", inpPH, &type);
     } else {
-      inpNV = mod_.createPlaceholder(&type, name, /*isTrainable*/ false,
+      inpPH = mod_.createPlaceholder(&type, name, /*isTrainable*/ false,
                                      ANY_LAYOUT);
+      inpNV = inpPH;
     }
+    // Register placeholder by model input name.
+    inputPlaceholderByName_.try_emplace(name, inpPH);
+    // Set input node value.
     RETURN_IF_ERR(setNodeValueByIndex(inpIdx, inpNV));
   }
   return Error::success();
@@ -785,7 +790,9 @@ Error TFLiteModelLoader::saveOutputPlaceholders() {
       outNodeValue = F_->createDequantize(name + ".Dequantize", outNodeValue,
                                           ElemKind::FloatTy);
     }
-    F_->createSave(name, outNodeValue);
+    auto *saveNode = F_->createSave(name, outNodeValue);
+    // Register placeholder by model output name.
+    outputPlaceholderByName_.try_emplace(name, saveNode->getPlaceholder());
   }
   return Error::success();
 }

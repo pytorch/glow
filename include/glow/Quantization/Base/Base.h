@@ -208,6 +208,9 @@ struct QuantizationConfiguration {
   QuantizationConfiguration(llvm::ArrayRef<NodeProfilingInfo> i) : infos(i) {}
 };
 
+/// \returns the tensor average value based on the profiling info \p profParams.
+float getTensorAverageValue(const TensorProfilingParams &profParams);
+
 /// \returns the value \p in as clipped to the range of \p DestTy.
 template <class SrcTy, class DestTy> DestTy clip(SrcTy in) {
   static_assert(sizeof(SrcTy) >= sizeof(DestTy), "Invalid types");

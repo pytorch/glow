@@ -24,6 +24,23 @@
 namespace glow {
 namespace quantization {
 
+float getTensorAverageValue(const TensorProfilingParams &profParams) {
+  size_t numBins = profParams.histogram.size();
+  assert(numBins > 0 && "Histogram is empty!");
+  float histDelta = (profParams.max - profParams.min) / (float)(numBins);
+  float histOff = profParams.min + histDelta / 2.0;
+  float histAvg = 0.0;
+  float histSum = 0.0;
+  for (size_t idx = 0; idx < numBins; ++idx) {
+    float histBinCenter = histOff + histDelta * (float)idx;
+    float histBinCount = profParams.histogram[idx];
+    histAvg += histBinCenter * histBinCount;
+    histSum += histBinCount;
+  }
+  histAvg /= histSum;
+  return histAvg;
+}
+
 template <class eTy = int8_t>
 static void quantizeTensorUtil(Tensor *dest, const Tensor &src) {
   auto destH = dest->getHandle<eTy>();
