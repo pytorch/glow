@@ -266,7 +266,7 @@ llvm::cl::opt<unsigned> glowMaxActiveRequests(
 llvm::cl::opt<unsigned> glowMaxActiveRequestsPerInstance(
     "glow_max_active_requests_per_instance",
     llvm::cl::desc("Number of active requests per network instance."),
-    llvm::cl::Optional, llvm::cl::init(6), llvm::cl::cat(reproTestCat));
+    llvm::cl::Optional, llvm::cl::init(48), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<unsigned> glowMaxQueueSize(
     "glow_max_queue_size",

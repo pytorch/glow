@@ -275,7 +275,7 @@ DEFINE_validator(glow_max_active_requests,
                    return true;
                  });
 
-DEFINE_int32(glow_max_active_requests_per_instance, 6,
+DEFINE_int32(glow_max_active_requests_per_instance, 48,
              "Number of max active requests per instance of a network.");
 DEFINE_validator(glow_max_active_requests_per_instance,
                  [](const char * /* unused */, int32_t value) {

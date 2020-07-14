@@ -176,7 +176,7 @@ struct CompilationContext {
   bool saturateHost{false};
 
   /// Number of max active requests per instance of this network.
-  unsigned maxActiveRequestsPerInstance{6};
+  unsigned maxActiveRequestsPerInstance{48};
 
   /// Used during Quantization and Profiling.
   LoweredInfoMap *loweredInfoMap{nullptr};
