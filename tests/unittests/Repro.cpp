@@ -207,8 +207,35 @@ llvm::cl::opt<int32_t> sparseNNPartitioningSchemeNumCoresOther(
 
 llvm::cl::opt<int32_t> glowNNPINumParallelChunks(
     "glow_nnpi_num_parallel_chunks",
-    llvm::cl::desc("Number of parallel splits to apply to certain ops"),
+    llvm::cl::desc("Number of parallel splits to apply to certain ops in glow"),
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<bool> glowUseDagOptimizer(
+    "glow_use_dag_optimizer", llvm::cl::desc("Use the DAG optimizer in Glow"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<int32_t> glowDAGOptimizerNumParallelChunks(
+    "glow_dag_optimizer_num_parallel_chunks",
+    llvm::cl::desc(
+        "Number of parallel splits to apply to certain ops in dag_optimizer"),
+    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<std::string> glowDAGOptimizerParallelizationTaggingAlgorithm(
+    "glow_dag_optimizer_parallelization_tagging_algorithm",
+    llvm::cl::desc("Algorithm for tagging parallelization in DAGOptimizer"),
+    llvm::cl::Optional, llvm::cl::init(std::string("None")),
+    llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<std::string> glowDAGOptimizerPlacementTaggingAlgorithm(
+    "glow_dag_optimizer_placement_tagging_algorithm",
+    llvm::cl::desc("Algorithm for tagging placement in DAGOptimizer"),
+    llvm::cl::Optional, llvm::cl::init(std::string("None")),
+    llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<bool> glowDelayAndRecordConstantModification(
+    "glow_delay_and_record_constant_modification",
+    llvm::cl::desc("Delay and record constant modification"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
 llvm::cl::opt<bool> glowDumpTrace("glow_dump_debug_traces",
                                   llvm::cl::desc("Dump glow trace"),
@@ -522,6 +549,20 @@ int run() {
   if (glowNNPINumParallelChunks > 1) {
     cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
         std::to_string(glowNNPINumParallelChunks);
+  }
+
+  if (glowUseDagOptimizer) {
+    cctx.callDAGOptimizer = true;
+    cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
+        glowDAGOptimizerNumParallelChunks;
+    cctx.optimizationOpts.DAGOptimizerParallelizationTaggingAlgorithm =
+        glowDAGOptimizerParallelizationTaggingAlgorithm;
+    cctx.optimizationOpts.DAGOptimizerPlacementTaggingAlgorithm =
+        glowDAGOptimizerPlacementTaggingAlgorithm;
+  }
+
+  if (glowDelayAndRecordConstantModification) {
+    cctx.optimizationOpts.delayAndRecordConstantModification = true;
   }
 
   // Load deferred weights if applicable
