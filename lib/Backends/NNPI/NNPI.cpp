@@ -621,24 +621,68 @@ static void setupBasicParallelizationConfigs(
     if (auto *TP = llvm::dyn_cast<TransposeNode>(node)) {
       parOpts[TP] = ParallelTransformKind::Data;
       numChunks[TP] = numParallelChunks;
+      continue;
     }
 
     // Split Quantize layers in data parallel fashion
     if (auto *QN = llvm::dyn_cast<QuantizeNode>(node)) {
       parOpts[QN] = ParallelTransformKind::Data;
       numChunks[QN] = numParallelChunks;
+      continue;
     }
 
     // Split Dequantize layers in data parallel fashion
     if (auto *DQN = llvm::dyn_cast<DequantizeNode>(node)) {
       parOpts[DQN] = ParallelTransformKind::Data;
       numChunks[DQN] = numParallelChunks;
+      continue;
+    }
+
+    // Split Tile layers in data parallel fashion
+    if (auto *TN = llvm::dyn_cast<TileNode>(node)) {
+      if (TN->getAxis() == 0) {
+        if (TN->getInput().dims().size() < 2) {
+          continue;
+        }
+        size_t N = TN->getInput().dims()[1];
+        if (N < 1024) {
+          continue;
+        }
+        parOpts[TN] = ParallelTransformKind::Model;
+        numChunks[TN] = numParallelChunks;
+      } else if (TN->getAxis() == 1) {
+        if (TN->getInput().dims().size() < 2) {
+          continue;
+        }
+        size_t M = TN->getInput().dims()[0];
+        if (M < 1024) {
+          continue;
+        }
+        parOpts[TN] = ParallelTransformKind::Data;
+        numChunks[TN] = numParallelChunks;
+      }
+      continue;
+    }
+
+    // Split LayerNorm layers in data parallel fashion
+    if (auto *LN = llvm::dyn_cast<LayerNormalizationNode>(node)) {
+      if (LN->getInput().dims().size() < 2) {
+        continue;
+      }
+      size_t N = LN->getInput().dims()[1];
+      if (N < 1024) {
+        continue;
+      }
+      parOpts[LN] = ParallelTransformKind::Data;
+      numChunks[LN] = numParallelChunks;
+      continue;
     }
 
     // Split BMM layers in data parallel fashion
     if (auto *BMM = llvm::dyn_cast<BatchMatMulNode>(node)) {
       parOpts[BMM] = ParallelTransformKind::Data;
       numChunks[BMM] = numParallelChunks;
+      continue;
     }
 
     // Split Tanh layers in data parallel fashion
@@ -652,6 +696,7 @@ static void setupBasicParallelizationConfigs(
       }
       parOpts[TH] = ParallelTransformKind::Data;
       numChunks[TH] = numParallelChunks;
+      continue;
     }
 
     // Split Mul layers in data parallel fashion
@@ -665,6 +710,7 @@ static void setupBasicParallelizationConfigs(
       }
       parOpts[M] = ParallelTransformKind::Data;
       numChunks[M] = numParallelChunks;
+      continue;
     }
 
     // Clip parallelization.
@@ -676,6 +722,7 @@ static void setupBasicParallelizationConfigs(
         parOpts[C] = parOpts[inputNode];
         numChunks[C] = numChunks[inputNode];
       }
+      continue;
     }
   }
 }
