@@ -431,6 +431,11 @@ Constant *createRandomFusedRowwiseQuantizedConstant(Module &mod,
                                                     llvm::StringRef name,
                                                     bool useFusedFP16 = false);
 
+Placeholder *createFusedRowwiseQuantizedPlaceholder(Module &mod,
+                                                    llvm::ArrayRef<dim_t> dims,
+                                                    llvm::StringRef name,
+                                                    bool useFusedFP16 = false);
+
 /// Returns a new Constant, of the provided \p type and \p dims initialized
 /// with random data. If using floating point, then it is initialized via
 /// Xavier with filterSize equal to twice the number of elements in \p dims.
