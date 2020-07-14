@@ -1547,3 +1547,68 @@ double NNPIBackend::estimateEmbeddingNode(const glow::NodeInfo &NI,
 
   return estimate;
 }
+
+Expected<double> NNPIBackend::estimateNodeCost(const glow::Node *node) const {
+  double returnCost = -1.0;
+  switch (node->getKind()) {
+  case Kinded::Kind::SparseLengthsSumNodeKind: {
+    const SparseLengthsSumNode *SLS = llvm::cast<SparseLengthsSumNode>(node);
+    returnCost =
+        estimateEmbeddingNode(glow::NodeInfo(*SLS), false,
+                              SLS->getLengthsMode(), SLS->getAvgLength());
+    break;
+  }
+  case Kinded::Kind::SparseLengthsWeightedSumNodeKind: {
+    const SparseLengthsWeightedSumNode *SLWS =
+        llvm::cast<SparseLengthsWeightedSumNode>(node);
+    returnCost =
+        estimateEmbeddingNode(glow::NodeInfo(*SLWS), false,
+                              SLWS->getLengthsMode(), SLWS->getAvgLength());
+    break;
+  }
+  case Kinded::Kind::RowwiseQuantizedSparseLengthsWeightedSumNodeKind: {
+    const RowwiseQuantizedSparseLengthsWeightedSumNode *RQSLWS =
+        llvm::cast<RowwiseQuantizedSparseLengthsWeightedSumNode>(node);
+    returnCost =
+        estimateEmbeddingNode(glow::NodeInfo(*RQSLWS), false,
+                              RQSLWS->getLengthsMode(), RQSLWS->getAvgLength());
+    break;
+  }
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
+    const FusedRowwiseQuantizedSparseLengthsSumNode *FRQSLS =
+        llvm::cast<FusedRowwiseQuantizedSparseLengthsSumNode>(node);
+    returnCost =
+        estimateEmbeddingNode(glow::NodeInfo(*FRQSLS), false,
+                              FRQSLS->getLengthsMode(), FRQSLS->getAvgLength());
+    break;
+  }
+  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind: {
+    const FusedRowwiseQuantizedSparseLengthsWeightedSumNode *FRQSLWS =
+        llvm::cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(node);
+    returnCost = estimateEmbeddingNode(glow::NodeInfo(*FRQSLWS), false,
+                                       FRQSLWS->getLengthsMode(),
+                                       FRQSLWS->getAvgLength());
+    break;
+  }
+  case Kinded::Kind::EmbeddingBagNodeKind: {
+    const EmbeddingBagNode *EB = llvm::cast<EmbeddingBagNode>(node);
+    returnCost = estimateEmbeddingNode(
+        glow::NodeInfo(*EB), false, EB->getLengthsMode(), EB->getAvgLength());
+    break;
+  }
+  case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind: {
+    const EmbeddingBagByteRowwiseOffsetsNode *EBBRO =
+        llvm::cast<EmbeddingBagByteRowwiseOffsetsNode>(node);
+    returnCost =
+        estimateEmbeddingNode(glow::NodeInfo(*EBBRO), false,
+                              EBBRO->getLengthsMode(), EBBRO->getAvgLength());
+    break;
+  }
+  default:
+    break;
+  }
+  RETURN_ERR_IF_NOT(returnCost >= 0.0,
+                    strFormat("Estimate not supported for Node kind %s",
+                              Kinded::getKindName(node->getKind())));
+  return returnCost;
+}

@@ -675,6 +675,10 @@ public:
     return false;
   }
 
+  Expected<double> estimateNodeCost(const Node * /*node */) const override {
+    return 2.0;
+  }
+
   runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
     return nullptr;
