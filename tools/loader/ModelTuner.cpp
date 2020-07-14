@@ -91,50 +91,58 @@ llvm::cl::opt<float> accDropSkipOpt(
     llvm::cl::cat(modelTunerCat));
 } // namespace
 
-/// Get maximum confidence class for the Softmax output.
-/// Softmax output should have at least two dimensions: [batchSize, numLabels].
-/// For this function we expect the batch size to be 1.
+/// Get maximum confidence class (index and value) for the model output.
 static std::pair<unsigned, float> getOutputClass(Tensor *T) {
-  assert(T->dims().size() == 2 && "Softmax output should have 2 dimensions");
-  assert(T->dims()[0] == 1 && "Softmax batch size must equal to 1");
+  CHECK(T->getElementType() == ElemKind::FloatTy)
+      << "Model output is expected to be float!";
   auto TH = T->getHandle<float>();
-  float maxVal = TH.at({0, 0});
+  float maxVal = TH.raw(0);
   unsigned maxIdx = 0;
   for (unsigned idx = 1; idx < TH.size(); ++idx) {
-    if (TH.at({0, idx}) > maxVal) {
-      maxVal = TH.at({0, idx});
+    if (TH.raw(idx) > maxVal) {
+      maxVal = TH.raw(idx);
       maxIdx = idx;
     }
   }
   return std::make_pair(maxIdx, maxVal);
 }
 
-/// Function to quantize the model with the given profiling infos and
-/// compute the accuracy on the given data set.
-float quantizeAndGetAccuracy(std::vector<NodeProfilingInfo> &pInfos,
-                             LabeledDataSet &dataset) {
+/// Function to run the model using the given \p dataset and compute the
+/// accuracy. If \p quantize flag is given then the model is additionally
+/// quantized using the profiling information \p pInfos.
+float runModelAndGetAccuracy(LabeledDataSet &dataset, bool quantize,
+                             std::vector<NodeProfilingInfo> &pInfos) {
 
   // Initialize the loader object.
   Loader loader;
 
   // Load the model.
-  auto protobufLoader = loader.loadModel();
+  loader.loadModel();
 
   // Allocate tensors for all placeholders.
   PlaceholderBindings bindings;
   bindings.allocate(loader.getModule()->getPlaceholders());
 
   // Get input/output placeholders.
-  Placeholder *input = EXIT_ON_ERR(protobufLoader->getSingleInput());
-  Placeholder *output = EXIT_ON_ERR(protobufLoader->getSingleOutput());
+  auto inpPHMap = loader.getInputPlaceholderMap();
+  auto outPHMap = loader.getOutputPlaceholderMap();
+  CHECK(inpPHMap.size() == 1) << "Model is expected to have only 1 input!";
+  CHECK(outPHMap.size() == 1) << "Model is expected to have only 1 output!";
+  Placeholder *input = inpPHMap.begin()->second;
+  Placeholder *output = outPHMap.begin()->second;
 
-  // Get compilation options for quantization.
-  CompilationContext cctx =
-      loader.getCompilationContext(QuantizationMode::Quantize);
+  // Get compilation options.
+  CompilationContext cctx;
+  if (quantize) {
+    // Get compilation options for quantization.
+    cctx = loader.getCompilationContext(QuantizationMode::Quantize);
+    // Force the given profiling infos.
+    cctx.precisionConfig.quantConfig.infos = pInfos;
+  } else {
+    // Get compilation options for running the model as-is.
+    cctx = loader.getCompilationContext(QuantizationMode::None);
+  }
   cctx.bindings = &bindings;
-
-  // Force the given profiling infos.
-  cctx.precisionConfig.quantConfig.infos = pInfos;
 
   // Compile the function.
   loader.compile(cctx);
@@ -162,51 +170,72 @@ float quantizeAndGetAccuracy(std::vector<NodeProfilingInfo> &pInfos,
   return ((float)correct) / dataset.size();
 }
 
-/// Function to tune a given node for the given function with the given dataset.
-float tuneQuantizationForNode(std::vector<NodeProfilingInfo> &pInfos,
-                              LabeledDataSet &dataset, unsigned qIdx,
-                              float bestAcc) {
+/// Function to tune a given tensor for the given function with the given
+/// dataset.
+float tuneQuantizationForTensor(std::vector<NodeProfilingInfo> &pInfos,
+                                LabeledDataSet &dataset, unsigned qIdx,
+                                float bestAcc) {
 
   // Tuning parameters.
   unsigned maxIterPerNode = maxIterPerNodeOpt;
   float accDropSkip = accDropSkipOpt;
 
-  // Backup profiling parameters for this node.
+  // Backup profiling parameters for this tensor.
   auto bestTPP = pInfos[qIdx].tensorProfilingParams_;
+
+  // Get tensor average value.
+  float tensorAvgVal = quantization::getTensorAverageValue(bestTPP);
 
   // Get quantization configuration.
   auto quantConfig = Loader::getQuantizationConfiguration();
 
-  // Run the tune iterations for this node.
+  // Run the tune iterations for this tensor.
   for (unsigned iterIdx = 0; iterIdx < maxIterPerNode; ++iterIdx) {
 
-    // Only symmetrical schema are supported. For asymmetrical schema
-    // we need to shrink the range around the average.
-    CHECK(quantConfig.schema == quantization::Symmetric ||
-          quantConfig.schema == quantization::SymmetricWithPower2Scale)
-        << "Only Symmetric and SymmetricWithPower2Scale schema are supported!";
+    // Get current min/max range.
+    float rangeMin = pInfos[qIdx].tensorProfilingParams_.min;
+    float rangeMax = pInfos[qIdx].tensorProfilingParams_.max;
 
-    // Get current range with symmetrization.
-    float rangeAbsMin = std::abs(pInfos[qIdx].tensorProfilingParams_.min);
-    float rangeAbsMax = std::abs(pInfos[qIdx].tensorProfilingParams_.max);
-    float rangeAbs = rangeAbsMax > rangeAbsMin ? rangeAbsMax : rangeAbsMin;
+    // Skip tuning for this tensor if range is empty.
+    if (rangeMin == rangeMax) {
+      llvm::outs() << "  Tuning skipped for this tensor: not required\n";
+      break;
+    }
 
-    // Test the quantization range by repeatedly shrinking with a factor of 2.
-    float testMin = -rangeAbs / 2.0f;
-    float testMax = +rangeAbs / 2.0f;
+    // Get testing min/max range by repeatedly shrinking with a factor of 2.
+    float testMin, testMax;
+    if (quantConfig.schema == quantization::Asymmetric) {
+      // Shrink tensor min/max range around average value.
+      testMin = tensorAvgVal - (tensorAvgVal - rangeMin) / 2.0;
+      testMax = tensorAvgVal + (rangeMax - tensorAvgVal) / 2.0;
+    } else if (quantConfig.schema == quantization::Symmetric ||
+               quantConfig.schema == quantization::SymmetricWithUnsigned ||
+               quantConfig.schema == quantization::SymmetricWithPower2Scale) {
+      // Shrink tensor min/max range around 0.
+      float rangeAbsMin = std::abs(rangeMin);
+      float rangeAbsMax = std::abs(rangeMax);
+      float rangeAbs = rangeAbsMax > rangeAbsMin ? rangeAbsMax : rangeAbsMin;
+      testMin = -rangeAbs / 2.0f;
+      testMax = +rangeAbs / 2.0f;
+    } else {
+      llvm_unreachable("Quantization schema not supported!");
+    }
+
+    // Set the testing range.
     pInfos[qIdx].tensorProfilingParams_.min = testMin;
     pInfos[qIdx].tensorProfilingParams_.max = testMax;
     llvm::outs() << strFormat("  [%d/%d] Testing range = [%.4f, %.4f]\n",
                               iterIdx + 1, maxIterPerNode, testMin, testMax);
 
     // Quantize model and compute accuracy for current params.
-    float currAcc = quantizeAndGetAccuracy(pInfos, dataset);
+    float currAcc = runModelAndGetAccuracy(dataset, true, pInfos);
     llvm::outs() << strFormat("  Accuracy = %.4f %%\n", currAcc * 100);
 
     // If we obtain EXACTLY the same accuracy then the profiling parameters
-    // of this node have no side effects (most probably are not used).
+    // of this tensor have no side effects (most probably are not used).
     if (currAcc == bestAcc) {
-      llvm::outs() << "  Tunning stopped for this node value (no effect)\n";
+      llvm::outs()
+          << "  Tuning stopped for this tensor: accuracy not improved\n";
       break;
     }
 
@@ -217,15 +246,16 @@ float tuneQuantizationForNode(std::vector<NodeProfilingInfo> &pInfos,
     }
 
     // If the current accuracy drops below the best accuracy with a given delta
-    // then skip the tuning for the current node.
+    // then skip the tuning for the current tensor.
     bool lastIter = (iterIdx == (maxIterPerNode - 1));
     if (!lastIter && (currAcc < (bestAcc - accDropSkip))) {
-      llvm::outs() << "  Tunning stopped for this node\n";
+      llvm::outs() << "  Tuning stopped for this tensor: accuracy dropped more "
+                      "than \"acc-drop-skip\"\n";
       break;
     }
   }
 
-  // Save best profiling parameters for this node.
+  // Save best profiling parameters for this tensor.
   pInfos[qIdx].tensorProfilingParams_ = bestTPP;
   llvm::outs() << strFormat("Best accuracy : %.4f %%\n", bestAcc * 100);
   return bestAcc;
@@ -242,7 +272,7 @@ int main(int argc, char **argv) {
   CHECK(quantConfig.infos.size())
       << "Input profile not found. Use the -load-profile option!";
   auto pInfosTune = quantConfig.infos;
-  int nodeQNum = pInfosTune.size();
+  int tensorQNum = pInfosTune.size();
 
   // Read tuning dataset.
   LabeledDataSet datasetTune =
@@ -253,15 +283,20 @@ int main(int argc, char **argv) {
 
   // Compute initial accuracy.
   llvm::outs() << strFormat("\nComputing initial accuracy ... \n");
-  float accVal = quantizeAndGetAccuracy(pInfosTune, datasetTune);
-  llvm::outs() << strFormat("Initial accuracy: %.4f %%\n", accVal * 100);
-  llvm::outs() << strFormat("Number of nodes: %d\n", nodeQNum);
-  llvm::outs() << strFormat("Target accuracy: %.4f %%\n\n",
+  float accValF = runModelAndGetAccuracy(datasetTune, false, pInfosTune);
+  float accValQ = runModelAndGetAccuracy(datasetTune, true, pInfosTune);
+  llvm::outs() << strFormat("Initial accuracy: %.4f %% (FLOAT)\n",
+                            accValF * 100);
+  llvm::outs() << strFormat("Initial accuracy: %.4f %% (QUANTIZED)\n",
+                            accValQ * 100);
+  llvm::outs() << strFormat("Target  accuracy: %.4f %% (QUANTIZED)\n",
                             targetAccuracyOpt * 100);
+  llvm::outs() << strFormat("Number of tensors: %d\n\n", tensorQNum);
 
-  // Perform tuning for all tunable nodes.
+  // Perform tuning for all tunable tensors.
+  float accVal = accValQ;
   auto startTime = getTimeStamp();
-  for (int nodeQIdx = 0; nodeQIdx < nodeQNum; ++nodeQIdx) {
+  for (int tensorQIdx = 0; tensorQIdx < tensorQNum; ++tensorQIdx) {
 
     // Stop tuning if target accuracy is achieved.
     if (accVal > targetAccuracyOpt) {
@@ -269,15 +304,16 @@ int main(int argc, char **argv) {
       break;
     }
 
-    // Tune the quantization for this node.
-    auto nodeName = pInfosTune[nodeQIdx].nodeOutputName_.data();
-    llvm::outs() << strFormat("[%d/%d] Tuning node value \"%s\"\n",
-                              nodeQIdx + 1, nodeQNum, nodeName);
-    accVal = tuneQuantizationForNode(pInfosTune, datasetTune, nodeQIdx, accVal);
+    // Tune the quantization for this tensor.
+    auto tensorName = pInfosTune[tensorQIdx].nodeOutputName_.data();
+    llvm::outs() << strFormat("[%d/%d] Tuning quantization for tensor \"%s\"\n",
+                              tensorQIdx + 1, tensorQNum, tensorName);
+    accVal =
+        tuneQuantizationForTensor(pInfosTune, datasetTune, tensorQIdx, accVal);
 
     // Display estimated remaining time and stats.
-    unsigned iterSec = getDurationSec(startTime) / (nodeQIdx + 1);
-    unsigned remSec = iterSec * (nodeQNum - nodeQIdx - 1);
+    unsigned iterSec = getDurationSec(startTime) / (tensorQIdx + 1);
+    unsigned remSec = iterSec * (tensorQNum - tensorQIdx - 1);
     unsigned remMin = (remSec / 60) % 60;
     unsigned remHrs = (remSec / 60) / 60;
     llvm::outs() << strFormat("Iteration time: %d seconds\n", iterSec);
@@ -286,7 +322,8 @@ int main(int argc, char **argv) {
   }
 
   // Print final accuracy.
-  llvm::outs() << strFormat("\nFinal accuracy: %.4f %%\n\n", accVal * 100);
+  llvm::outs() << strFormat("\nFinal accuracy: %.4f %% (QUANTIZED)\n\n",
+                            accVal * 100);
 
   // Print total time.
   unsigned totSec, totMin, totHrs;

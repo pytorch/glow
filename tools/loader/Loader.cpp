@@ -88,6 +88,11 @@ llvm::cl::list<std::string> modelInputsOpt(
     llvm::cl::value_desc("name,[type,[scale,offset],shape]"),
     llvm::cl::cat(loaderCat));
 
+llvm::cl::alias modelInputName("model-input-name",
+                               llvm::cl::desc("Alias for -model-input"),
+                               llvm::cl::aliasopt(modelInputsOpt),
+                               llvm::cl::cat(loaderCat));
+
 llvm::cl::opt<bool>
     verbose("verbose",
             llvm::cl::desc("Specify whether to run with verbose output"),
@@ -414,7 +419,7 @@ static void getModelInputs(std::vector<std::string> &inputNames,
   }
 }
 
-std::unique_ptr<ProtobufLoader> Loader::loadModel() {
+void Loader::loadModel(TypeRef inputType) {
 
   // Get model input names and types.
   std::vector<std::string> inputNames;
@@ -427,31 +432,61 @@ std::unique_ptr<ProtobufLoader> Loader::loadModel() {
     inputTypeRefs.push_back(&inputTypes[idx]);
   }
 
+  // Use explicit input type if given.
+  if (inputType != nullptr) {
+    CHECK(inputNameRefs.size() == 1)
+        << "Model is expected to have only 1 input!";
+    inputTypeRefs = {inputType};
+  }
+
   // Load the model based on the model format.
-  std::unique_ptr<ProtobufLoader> protoLoader;
   if (!getCaffe2NetDescFilename().empty()) {
     // For Caffe2 format the input placeholder names/types must be provided
     // explicitly (mandatory).
+    std::unique_ptr<ProtobufLoader> protoLoader;
     protoLoader.reset(new Caffe2ModelLoader(
         getCaffe2NetDescFilename(), getCaffe2NetWeightFilename(), inputNameRefs,
         inputTypeRefs, *getFunction()));
+    // Load the maps between original model names and the placeholders.
+    inputPlaceholderByName_ = protoLoader->getInputVarsMapping();
+    outputPlaceholderByName_ = protoLoader->getOutputVarsMapping();
   } else if (!getTFLiteModelFilename().empty()) {
     // For TensorFlowLite format the input placeholder names/types are not
-    // provided since are used directly from the model. We also set the protobuf
-    // loader to nullptr since the TensorFlowLite does not use it.
-    TFLiteModelLoader(getTFLiteModelFilename(), getFunction());
-    protoLoader = nullptr;
+    // provided since are used directly from the model.
+    auto tfliteLoader =
+        TFLiteModelLoader(getTFLiteModelFilename(), getFunction());
+    // Load the maps between original model names and the placeholders.
+    inputPlaceholderByName_ = tfliteLoader.getInputPlaceholderMap();
+    outputPlaceholderByName_ = tfliteLoader.getOutputPlaceholderMap();
+    // Since TensorFlowLite loader currently does not have the capability to
+    // enforce the input type (for batching) we must validate that when the
+    // input type is explicitly given it actually matches the model input type.
+    if (inputType != nullptr) {
+      CHECK(inputPlaceholderByName_.size() == 1)
+          << "Model is expected to have only 1 input!";
+      Placeholder *inpPH = inputPlaceholderByName_.begin()->second;
+      auto modelBatchSize = inpPH->getType()->dims()[0];
+      auto inputBatchSize = inputType->dims()[0];
+      CHECK(inputBatchSize == modelBatchSize)
+          << "Mismatch between the model batch size (" << modelBatchSize
+          << ") and the dataset batch size (" << inputBatchSize << ")! "
+          << "If you are using the 'image-classifier' tool set the "
+          << "dataset batch size with the option '-minibatch=" << modelBatchSize
+          << "'!";
+    }
   } else {
     // For ONNX format the input placeholders names/types can be optionally
     // provided but is not mandatory. If not provided (the arrays are empty)
     // they are derived automatically. One might want to provide explicitly
     // the input placeholder types in order to override the placeholder sizes
     // (one such example is the batch size).
+    std::unique_ptr<ProtobufLoader> protoLoader;
     protoLoader.reset(new ONNXModelLoader(getOnnxModelFilename(), inputNameRefs,
                                           inputTypeRefs, *getFunction()));
+    // Load the maps between original model names and the placeholders.
+    inputPlaceholderByName_ = protoLoader->getInputVarsMapping();
+    outputPlaceholderByName_ = protoLoader->getOutputVarsMapping();
   }
-
-  return protoLoader;
 }
 
 static bool commandLineIsInvalid() {
@@ -751,12 +786,9 @@ Loader &Loader::registerExtension(std::unique_ptr<LoaderExtension> extension) {
 }
 
 void Loader::postModelLoad(PlaceholderBindings &bindings,
-                           ProtobufLoader &protoLoader,
-                           llvm::StringMap<Placeholder *> &placeholderMap,
                            TypeRef inputImageType) {
   for (auto &&ext : loaderExtensionList_) {
-    ext->postModelLoad(*this, bindings, protoLoader, placeholderMap,
-                       inputImageType);
+    ext->postModelLoad(*this, bindings, inputImageType);
   }
 }
 

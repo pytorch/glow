@@ -103,12 +103,6 @@ llvm::cl::opt<unsigned> poolSize(
     llvm::cl::desc("Size of context pool for the benchmark; default:10"),
     llvm::cl::Optional, llvm::cl::init(10), llvm::cl::cat(executorCat));
 
-llvm::cl::opt<std::string> modelInputName(
-    "model-input-name",
-    llvm::cl::desc("The name of the variable for the model's input image."),
-    llvm::cl::value_desc("string_name"), llvm::cl::Required,
-    llvm::cl::cat(executorCat));
-
 llvm::cl::opt<bool> convertInAndOutToFp16(
     "convert-inout-to-fp16",
     llvm::cl::desc(
@@ -220,38 +214,17 @@ bool getNextMiniBatch(std::vector<std::string> &imageList,
   return true;
 }
 
-/// Creates and \returns the ProtobufLoader given \p loader and the
-/// \p inputImageType. Note that this must come after loading images for
-/// inference so that \p inputImageType is known.
-static std::unique_ptr<ProtobufLoader>
-createProtobufLoader(Loader &loader, TypeRef inputImageType) {
-  // The image name that the model expects must be passed on the command line.
-  const char *inputName = modelInputName.c_str();
-
-  // Create the model based on the input model format.
-  std::unique_ptr<ProtobufLoader> LD;
-  bool c2Model = !loader.getCaffe2NetDescFilename().empty();
-  if (c2Model) {
-    LD.reset(new Caffe2ModelLoader(
-        loader.getCaffe2NetDescFilename(), loader.getCaffe2NetWeightFilename(),
-        {inputName}, {inputImageType}, *loader.getFunction()));
-  } else {
-    LD.reset(new ONNXModelLoader(loader.getOnnxModelFilename(), {inputName},
-                                 {inputImageType}, *loader.getFunction()));
-  }
-
-  return LD;
-}
-
 /// Given \p loader, the \p bindings, and \p inputImageType, build the graph
 /// from the provided protobuf file found via \p loader. Then compiles and
 /// \returns a pair of pointers to the input Placeholder and output Nodes Map.
 std::pair<Placeholder *, llvm::StringMap<Placeholder *>>
 buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
                                   const glow::Type &inputImageType) {
-  auto LD = createProtobufLoader(loader, &inputImageType);
-  llvm::StringMap<Placeholder *> outMap = LD->getOutputVarsMapping();
-  loader.postModelLoad(bindings, *LD.get(), outMap, &inputImageType);
+  // Load model.
+  loader.loadModel(&inputImageType);
+
+  // Post model loader transformation.
+  loader.postModelLoad(bindings, &inputImageType);
 
   // Allocate tensors to back all inputs and outputs.
   bindings.allocate(loader.getModule()->getPlaceholders());
@@ -275,11 +248,13 @@ buildAndCompileAndGetInAndOutPair(Loader &loader, PlaceholderBindings &bindings,
   cctx.backendOpts.autoInstrument = autoInstrument;
   loader.compile(cctx);
 
-  // The image name that the model expects must be passed on the command line.
-  const char *inputName = modelInputName.c_str();
-  Placeholder *inputImagePH =
-      llvm::cast<Placeholder>(EXIT_ON_ERR(LD->getNodeValueByName(inputName)));
+  // Get input/output placeholder maps.
+  llvm::StringMap<Placeholder *> inpMap = loader.getInputPlaceholderMap();
+  llvm::StringMap<Placeholder *> outMap = loader.getOutputPlaceholderMap();
 
+  // Get input placeholder (assumed unique).
+  CHECK(inpMap.size() == 1) << "Model is expected to have only 1 input!";
+  Placeholder *inputImagePH = inpMap.begin()->second;
   return std::make_pair(inputImagePH, outMap);
 }
 
