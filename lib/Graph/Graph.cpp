@@ -4960,45 +4960,54 @@ void Function::randomizeConstants(
     auto &payload = c->getPayloadMutable();
 
     switch (c->getElementType()) {
-    case ElemKind::FloatTy:
-      payload.getHandle<float>().randomize(std::numeric_limits<float>::lowest(),
-                                           std::numeric_limits<float>::max(),
-                                           getPRNG());
+    case ElemKind::FloatTy: {
+      auto H = payload.getHandle<float>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
       break;
-    case ElemKind::Float16Ty:
-      payload.getHandle<float16_t>().randomize(-65504.0f, 65504.0f, getPRNG());
+    }
+    case ElemKind::Float16Ty: {
+      auto H = payload.getHandle<float16_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
       break;
-    case ElemKind::Int8QTy:
-      payload.getHandle<int8_t>().randomize(
-          std::numeric_limits<int8_t>::lowest(),
-          std::numeric_limits<int8_t>::max(), getPRNG());
+    }
+    case ElemKind::Int8QTy: {
+      auto H = payload.getHandle<int8_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
       break;
-    case ElemKind::UInt8QTy:
-      payload.getHandle<uint8_t>().randomize(
-          std::numeric_limits<uint8_t>::lowest(),
-          std::numeric_limits<uint8_t>::max(), getPRNG());
+    }
+    case ElemKind::UInt8QTy: {
+      auto H = payload.getHandle<uint8_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
       break;
-    case ElemKind::Int16QTy:
-      payload.getHandle<int16_t>().randomize(
-          std::numeric_limits<int16_t>::lowest(),
-          std::numeric_limits<int16_t>::max(), getPRNG());
+    }
+    case ElemKind::Int16QTy: {
+      auto H = payload.getHandle<int16_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
       break;
-    case ElemKind::Int32QTy:
-      payload.getHandle<int32_t>().randomize(
-          std::numeric_limits<int32_t>::lowest(),
-          std::numeric_limits<int32_t>::max(), getPRNG());
+    }
+    case ElemKind::Int32QTy: {
+      auto H = payload.getHandle<int32_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
       break;
-    case ElemKind::Int32ITy:
-      payload.getHandle<int32_t>().randomize(
-          std::numeric_limits<int32_t>::lowest(),
-          std::numeric_limits<int32_t>::max(), getPRNG());
+    }
+    case ElemKind::Int32ITy: {
+      auto H = payload.getHandle<int32_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
       break;
-    case ElemKind::Int64ITy:
-      // Use int32_t due to randomize() range
-      payload.getHandle<int32_t>().randomize(
-          std::numeric_limits<int32_t>::lowest(),
-          std::numeric_limits<int32_t>::max(), getPRNG());
+    }
+    case ElemKind::Int64ITy: {
+      auto H = payload.getHandle<int64_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
       break;
+    }
     case ElemKind::UInt8FusedQTy:
       payload.getHandle<uint8_t>().randomize(
           std::numeric_limits<uint8_t>::lowest(),

@@ -2107,40 +2107,41 @@ TEST(Graph, testRandomizeConstants) {
 
   // Create tensors to be used in Constants
   Tensor floatT(ElemKind::FloatTy, {10});
-  floatT = {3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0};
+  floatT = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0};
 
   Tensor halfT(ElemKind::Float16Ty, {10});
-  halfT = {3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0};
+  halfT = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0};
 
   Tensor int8QT(ElemKind::Int8QTy, {10}, 1.0, 0);
-  int8QT = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+  int8QT = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 
   Tensor uint8QT(ElemKind::UInt8QTy, {10}, 1.0, 0);
-  uint8QT = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+  uint8QT = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 
   Tensor int16QT(ElemKind::Int16QTy, {10}, 1.0, 0);
-  int16QT = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+  int16QT = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 
   Tensor int32QT(ElemKind::Int32QTy, {10}, 1.0, 0);
-  int32QT = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+  int32QT = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 
   Tensor int32IT(ElemKind::Int32ITy, {10});
-  int32IT = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+  int32IT = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 
   Tensor int64IT(ElemKind::Int64ITy, {10});
-  int64IT = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+  int64IT = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 
   Tensor uint8FusedQT(ElemKind::UInt8FusedQTy, {10}, 1.0, 0);
-  uint8FusedQT = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+  uint8FusedQT = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 
   Tensor uint8FusedFP16QT(ElemKind::UInt8FusedFP16QTy, {10}, 1.0, 0);
-  uint8FusedFP16QT = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+  uint8FusedFP16QT = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 
   Tensor uint4FusedFP16QT(ElemKind::UInt4FusedFP16QTy, {10}, 1.0, 0);
-  uint4FusedFP16QT = {3, 3, 3, 3, 3, 3, 3, 3, 3, 3};
+  uint4FusedFP16QT = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 
   Tensor boolT(ElemKind::BoolTy, {10});
-  boolT = {true, true, true, true, true, true, true, true, true, true, true};
+  boolT = {false, true, false, true, false, true,
+           false, true, false, true, false};
 
   // Create Constants and use them in F
   auto *floatC = MD.createConstant("floatC", floatT);
