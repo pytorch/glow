@@ -5292,7 +5292,7 @@ bool Function::verify(const Backend *backend) const {
   }
   std::unordered_map<std::string, const Node *> nameToNode;
 
-  for (auto *V : getParent()->getConstants()) {
+  for (auto *V : findConstants()) {
     isValid &= insertAndReport(nameToNode, *V, *this);
     isValid &= expectCompareTrue("Constant and its payload must have same type",
                                  *V->getType(), V->getPayload().getType(), V);

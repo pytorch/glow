@@ -386,10 +386,10 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
 
       // Verify the Function is valid after constant folding takes place.
       Backend &B = provisioner_->getBackend(dagNode->backendName);
-      RETURN_ERR_IF_NOT(B.verify(*F, cctx.verboseCompile),
-                        "Unsupported node(s) found after optimizing Function " +
-                            F->getName().str() + " for backend " +
-                            B.getBackendName());
+      RETURN_ERR_IF_NOT(
+          B.verify(*F, cctx.verboseCompile),
+          "Unsupported node(s) found after delayed constant folding Function " +
+              F->getName().str() + " for backend " + B.getBackendName());
     }
   }
 

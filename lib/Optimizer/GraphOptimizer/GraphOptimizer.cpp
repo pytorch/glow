@@ -4632,7 +4632,7 @@ bool FoldLayerNormArithmetic::run(Function *F, const CompilationContext &cctx) {
     NodeValue RHS = unwindBroadcast(N.getNthInput(ArithmeticNode::RHSIdx),
                                     LN->getResult().dims().size() -
                                         LN->getScale().dims().size());
-    if (!RHS.getNode() || !(isa<Constant>(RHS) || isa<SplatNode>(RHS))) {
+    if (!RHS.getNode()) {
       continue;
     }
 
