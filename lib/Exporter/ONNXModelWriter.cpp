@@ -2103,6 +2103,26 @@ Error ONNXModelWriter::writeRescaleQuantized(const RescaleQuantizedNode *node,
   return writeAllWithNode("RescaleQuantized", node, graph, proto);
 }
 
+Error ONNXModelWriter::writeGemm(const GemmNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  proto->set_name(node->getName());
+  proto->set_op_type("Gemm");
+
+  proto->add_input(node->getA().getNode()->getName());
+  proto->add_input(node->getB().getNode()->getName());
+  if (node->getC().getNode()) {
+    proto->add_input(node->getC().getNode()->getName());
+  }
+
+  addValueAttribute(proto, "alpha", node->getAlpha());
+  addValueAttribute(proto, "beta", node->getBeta());
+  addValueAttribute(proto, "transA", node->getTransposeA());
+  addValueAttribute(proto, "transB", node->getTransposeB());
+
+  outputsToProto(node, graph, proto);
+  return Error::success();
+}
+
 Error ONNXModelWriter::writeFullyConnected(const FullyConnectedNode *node,
                                            GraphType &graph) {
   auto *proto = graph.add_node();

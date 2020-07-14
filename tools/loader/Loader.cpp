@@ -576,8 +576,10 @@ quantization::QuantizationConfiguration Loader::getQuantizationConfiguration() {
   quantConfig.enableChannelwise = enableChannelwiseOpt;
   quantConfig.assertAllNodesQuantized = assertAllNodesQuantizedOpt;
   if (!loadProfileFileOpt.empty()) {
-    quantConfig.infos = deserializeProfilingInfosFromYaml(loadProfileFileOpt);
+    deserializeProfilingInfosFromYaml(
+        loadProfileFileOpt, quantConfig.graphPreLowerHash, quantConfig.infos);
   }
+  quantConfig.checkGraphPreLowerHash = true;
   return quantConfig;
 }
 
@@ -706,6 +708,8 @@ void Loader::compile(CompilationContext &cctx) {
       function->dumpDAG(filename.c_str());
     }
   }
+  // Store compilation info in the Loader.
+  compilationInfo_ = cctx.info;
 }
 
 void Loader::runInference(PlaceholderBindings &bindings, size_t batchSize) {
@@ -777,7 +781,8 @@ void Loader::generateAndSerializeProfilingInfos(PlaceholderBindings &bindings) {
     PI.insert(PI.end(), tmp.begin(), tmp.end());
   }
   std::sort(PI.begin(), PI.end(), comparePI);
-  serializeProfilingInfosToYaml(dumpProfileFileOpt, PI);
+  serializeProfilingInfosToYaml(dumpProfileFileOpt,
+                                compilationInfo_.graphPreLowerHash, PI);
 }
 
 Loader &Loader::registerExtension(std::unique_ptr<LoaderExtension> extension) {

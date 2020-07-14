@@ -2214,38 +2214,37 @@ Error ONNXModelLoader::loadFCTransposed(const ONNX_NAMESPACE::NodeProto &op,
 Error ONNXModelLoader::loadGemm(const ONNX_NAMESPACE::NodeProto &op,
                                 ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
-
   NodeValue A;
   ASSIGN_VALUE_OR_RETURN_ERR(A, getNodeValueByName(op.input(0)));
   NodeValue B;
   ASSIGN_VALUE_OR_RETURN_ERR(B, getNodeValueByName(op.input(1)));
-  NodeValue C;
-  ASSIGN_VALUE_OR_RETURN_ERR(C, getNodeValueByName(op.input(2)));
+  NodeValue C = nullptr;
+  if (op.input_size() > 2 && !op.input(2).empty()) {
+    ASSIGN_VALUE_OR_RETURN_ERR(C, getNodeValueByName(op.input(2)));
+  }
 
-  bool broadcastC;
-  ASSIGN_VALUE_OR_RETURN_ERR(broadcastC, getBroadcast(dict));
+  float alpha = 1.0;
+  if (dict.count("alpha")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(alpha, loadFloat(dict.at("alpha")));
+  }
+
+  float beta = 1.0;
+  if (dict.count("beta")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(beta, loadFloat(dict.at("beta")));
+  }
+
   bool transA = false;
   if (dict.count("transA")) {
     ASSIGN_VALUE_OR_RETURN_ERR(transA, loadInt(dict.at("transA")));
   }
+
   bool transB = false;
   if (dict.count("transB")) {
     ASSIGN_VALUE_OR_RETURN_ERR(transB, loadInt(dict.at("transB")));
   }
-  // TODO: support alpha * A * B + beta * C
 
-  if (transA)
-    A = G_->createTranspose(opName, A, {1, 0});
-  if (transB)
-    B = G_->createTranspose(opName, B, {1, 0});
+  Node *node = G_->createGemm(opName, A, B, C, alpha, beta, transA, transB);
 
-  MatMulNode *mul = G_->createMatMul(opName, A, B);
-  if (broadcastC) {
-    int axis = mul->getResult().dims().size() - C.dims().size();
-    C = G_->createBroadcast(opName, C, mul->getResult().dims(), axis);
-  }
-
-  Node *node = G_->createAdd(opName, mul, C);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
 }

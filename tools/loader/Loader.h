@@ -107,6 +107,8 @@ class Loader {
   llvm::StringMap<Placeholder *> inputPlaceholderByName_;
   /// A map from the original names of the model outputs to placeholders.
   llvm::StringMap<Placeholder *> outputPlaceholderByName_;
+  /// Info produced after calling the \ref compile function.
+  CompilationInfo compilationInfo_;
 
 public:
   /// Getter for the hostManager, this can be useful for calling into the

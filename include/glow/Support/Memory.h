@@ -35,8 +35,9 @@ inline void *alignedAlloc(size_t size, size_t align) {
       << "Alignment is not a multiple of the machine word size.";
   void *ptr;
   int res = glow_aligned_malloc(&ptr, align, size);
-  CHECK_EQ(res, 0) << "posix_memalign failed";
-  CHECK_EQ((size_t)ptr % align, 0) << "Alignment failed";
+  CHECK_EQ(res, 0) << "Memory allocation: posix_memalign failed with code "
+                   << res << "! Possibly out of heap memory!";
+  CHECK_EQ((size_t)ptr % align, 0) << "Memory allocation: Alignment failed!";
   return ptr;
 }
 

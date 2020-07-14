@@ -2081,34 +2081,45 @@ bool FoldMatMulAddIntoFullyConnected::run(Function *F,
     auto *matMulNode_LHS = dyn_cast<MatMulNode>(addNode->getLHS());
     auto *matMulNode_RHS = dyn_cast<MatMulNode>(addNode->getRHS());
     auto *matMulNode = matMulNode_LHS ? matMulNode_LHS : matMulNode_RHS;
-    NodeValue biasNode = matMulNode_LHS ? addNode->getRHS() : addNode->getLHS();
+    NodeValue bias = matMulNode_LHS ? addNode->getRHS() : addNode->getLHS();
     if (!matMulNode) {
       continue;
     }
 
-    // The corresponding length of the FullyConnected Bias operand.
-    auto fcBiasLen = matMulNode->getRHS().dims()[1];
-
-    // TODO: If Bias is a constant 2D tensor (e.g. [2,10]) we should also
-    // verify if the Bias is broadcasted from a 1D tensor (e.g. [10]) in
-    // order to instantiate a batched FullyConnected using the Bias slice.
-
-    // Verify the bias size.
-    if (biasNode.getType()->size() != fcBiasLen) {
+    // Folding is allowed only if MatMul has one use.
+    if (!matMulNode->getResult().hasOneUse()) {
       continue;
     }
 
-    // Reshape the bias to 1D (if needed).
-    if (biasNode.dims().size() > 1) {
-      biasNode =
-          F->createReshape(biasNode.getNode()->getName().str() + ".reshape",
-                           biasNode, {biasNode.getType()->size()});
+    // The corresponding batch/length of the FullyConnected Bias operand.
+    assert(bias.dims().size() == 2 && "Bias should be 2D!");
+    auto biasBatch = bias.dims()[0];
+    auto biasLength = bias.dims()[1];
+    if (biasBatch == 1) {
+      // If bias is not batched then reshape to 1D.
+      bias = F->createReshape(bias.getNode()->getName().str() + ".reshape",
+                              bias, {bias.getType()->size()});
+    } else {
+      // If bias is batched then we must verify that the bias data
+      // is same for all batches. For this the bias must be a Constant.
+      auto *biasC = llvm::dyn_cast<Constant>(bias.getNode());
+      if (!biasC) {
+        continue;
+      }
+      if (!biasC->getPayload().isTiled(0)) {
+        continue;
+      }
+      // Slice batched 2D bias and reshape to 1D.
+      bias = F->createSlice(bias.getNode()->getName().str() + ".slice", bias,
+                            {0, 0}, {1, biasLength});
+      bias = F->createReshape(bias.getNode()->getName().str() + ".reshape",
+                              bias, {biasLength});
     }
 
     // Create a new FullyConnected node.
     auto *newFC = F->createFullyConnected(
-        matMulNode->getName(), matMulNode->getLHS(), matMulNode->getRHS(),
-        biasNode, addNode->getResult().getType());
+        matMulNode->getName(), matMulNode->getLHS(), matMulNode->getRHS(), bias,
+        addNode->getResult().getType());
     addNode->getResult().replaceAllUsesOfWith(newFC);
     changed = true;
   }
@@ -4941,6 +4952,21 @@ Error glow::optimizeFunctionBeforeLowering(Function *F,
   return Error::success();
 }
 
+/// Error message to print when there is a graph hash checking error.
+static const char *graphPreLowerHashCheckErrMsg =
+    R"RAW(Graph check error: graph hash mismatch! Potential causes:
+1. The profile YAML file was produced with an older version of the Glow tools
+   while the quantization of the model is performed with a newer version.
+2. The profile YAML file was produced for a different model than the model used
+   for quantization.
+3. The profile YAML file was produced for the same model but for a different
+   batch size. If the profile was generated using the 'image-classifier' Glow
+   tool you can select the batch size of the model during profiling using the
+   'minibatch' option. During quantization you can choose the batch size of the
+   model by choosing for each input placeholder the tensor size using the
+   'model-input' option.
+)RAW";
+
 // NOTE: When updating this function, please also update the documentation in
 // docs/GraphOptimizationPipeline.md
 Error glow::optimizeFunction(Function *F, const Backend &B,
@@ -4965,8 +4991,24 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
 
   RETURN_IF_ERR(optimizeFunctionBeforeLowering(F, cctx));
 
-  // Lower the graph into a sequence of low-level linear algebra operations.
+  // Graph hash check:
+  // - During PROFILING store the hash of the graph at this point of the
+  //   optimization pipeline. The hash will be exported in the YAML profile.
+  // - During QUANTIZATION the hash imported from the YAML profile is used to
+  //   verify the hash of the graph. This is helpful to catch mismatches between
+  //   the graph used during profiling/quantization.
   const PrecisionConfiguration &precConfig = cctx.precisionConfig;
+  if (precConfig.quantMode == QuantizationMode::Profile) {
+    cctx.info.graphPreLowerHash = F->getHash();
+  } else if (precConfig.quantMode == QuantizationMode::Quantize) {
+    const auto &quantConfig = cctx.precisionConfig.quantConfig;
+    if (quantConfig.checkGraphPreLowerHash) {
+      RETURN_ERR_IF_NOT(F->getHash() == quantConfig.graphPreLowerHash,
+                        graphPreLowerHashCheckErrMsg);
+    }
+  }
+
+  // Lower the graph into a sequence of low-level linear algebra operations.
   if (precConfig.quantMode == QuantizationMode::Profile) {
     // When profiling, pass a nullptr for the backend, signaling that all nodes
     // should be lowered. loweredInfoMap logs what is lowered from what for
