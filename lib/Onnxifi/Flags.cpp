@@ -43,6 +43,7 @@ extern bool GlowUseCustomOpsForExport;
 extern bool GlowUseSparseNNPartitioningScheme;
 extern bool GlowSparseNNPartitioningAddSLSConcats;
 extern bool GlowSparseNNPartitioningBalancePerfModel;
+extern bool GlowSparseNNPartitioningPairLNWithSLS;
 extern bool GlowDumpGraph;
 extern bool GlowUseDAGOptimizer;
 extern std::string GlowDAGOptimizerPlacementTaggingAlgorithm;
@@ -225,6 +226,15 @@ DEFINE_validator(glow_sparsenn_partitioning_balance_perf_model,
                  [](const char * /* flagname */, bool value) {
                    glow::onnxifi::GlowSparseNNPartitioningBalancePerfModel =
                        value;
+                   return true;
+                 });
+
+DEFINE_bool(glow_sparsenn_partitioning_pair_ln_with_sls, false,
+            "Put layer normalization nodes immediately following SLS into SLS "
+            "Partitions");
+DEFINE_validator(glow_sparsenn_partitioning_pair_ln_with_sls,
+                 [](const char * /* flagname */, bool value) {
+                   glow::onnxifi::GlowSparseNNPartitioningPairLNWithSLS = value;
                    return true;
                  });
 
