@@ -8,7 +8,7 @@ import unittest
 class Model(torch.nn.Module):
     def __init__(self):
         super(Model, self).__init__()
-        self.linear = torch.nn.Linear(5, 5)
+        self.linear = torch.nn.Linear(5, 10)
 
     def forward(self, x):
         return self.linear(x)
@@ -39,12 +39,7 @@ class TestRandomizeWeights(unittest.TestCase):
         input = torch.randn(5)
         normal1 = run_model(m, input, False)
         normal2 = run_model(m, input, False)
-        rand1 = run_model(m, input, True)
-        rand2 = run_model(m, input, True)
+        rand = run_model(m, input, True)
 
         assert(torch.allclose(normal1, normal2))
-        assert(not torch.allclose(normal1, rand1))
-        assert(not torch.allclose(normal1, rand2))
-        assert(not torch.allclose(normal2, rand1))
-        assert(not torch.allclose(normal2, rand2))
-        assert(not torch.allclose(rand1, rand2))
+        assert(not torch.allclose(normal1, rand))
