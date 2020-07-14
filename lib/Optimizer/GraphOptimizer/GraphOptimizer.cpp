@@ -5144,7 +5144,9 @@ parallelizeAndReplaceNode(Function *F, Node *curNode, dim_t numOfChunksNode,
   RETURN_ERR_IF_NOT(
       batchSize >= numOfChunksNode,
       "Invalid parallelization; batchSize " + std::to_string(batchSize) +
-          "must be >= numOfChunksNode " + std::to_string(numOfChunksNode));
+          " must be >= numOfChunksNode " + std::to_string(numOfChunksNode) +
+          " for node " + curNode->getName().str() + " with kind " +
+          curNode->getKindName());
 
   std::vector<NodeValue> newNodes(numOfChunksNode);
   for (dim_t i = 0; i < numOfChunksNode; ++i) {
@@ -5320,6 +5322,27 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                                           ClipNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::TileNodeKind: {
+        TileNode *TN = llvm::dyn_cast<TileNode>(curNode);
+        RETURN_ERR_IF_NOT(
+            TN->getAxis() != 0,
+            "Tile node cannot be split on axis 0 which is being replicated");
+        splitDims[TileNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          TileNode::InputIdx,
+                                          TileNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::LayerNormalizationNodeKind: {
+        splitDims[LayerNormalizationNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          LayerNormalizationNode::InputIdx,
+                                          LayerNormalizationNode::ResultIdx,
+                                          splitDims, 0));
+        break;
+      }
       case Kinded::Kind::QuantizeNodeKind: {
         splitDims[QuantizeNode::InputIdx] = 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
@@ -5384,6 +5407,43 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           ClipNode::InputIdx,
                                           ClipNode::ResultIdx, splitDims, 1));
+        break;
+      }
+      case Kinded::Kind::TileNodeKind: {
+        if (curNode->getNthInput(TileNode::InputIdx).dims().size() < 2) {
+          break;
+        }
+        TileNode *TN = llvm::dyn_cast<TileNode>(curNode);
+        RETURN_ERR_IF_NOT(
+            TN->getAxis() != 1,
+            "Tile node cannot be split on axis 1 which is being replicated");
+        splitDims[TileNode::InputIdx] = 1;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          TileNode::InputIdx,
+                                          TileNode::ResultIdx, splitDims, 1));
+        break;
+      }
+      case Kinded::Kind::QuantizeNodeKind: {
+        if (curNode->getNthInput(QuantizeNode::InputIdx).dims().size() < 2) {
+          break;
+        }
+        splitDims[QuantizeNode::InputIdx] = 1;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, QuantizeNode::InputIdx,
+                    QuantizeNode::ResultIdx, splitDims, 1));
+        break;
+      }
+      case Kinded::Kind::DequantizeNodeKind: {
+        if (curNode->getNthInput(DequantizeNode::InputIdx).dims().size() < 2) {
+          break;
+        }
+        splitDims[DequantizeNode::InputIdx] = 1;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, DequantizeNode::InputIdx,
+                    DequantizeNode::ResultIdx, splitDims, 1));
         break;
       }
       default:
