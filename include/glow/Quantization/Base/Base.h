@@ -170,6 +170,14 @@ struct QuantizationConfiguration {
   /// Placeholders and Constants.
   std::vector<NodeProfilingInfo> infos{};
 
+  /// The hash of the graph obtained during profiling in the pre lowering stage.
+  /// This hash is used to verify during quantization that the graph being
+  /// compiled matches the graph used for obtaining the profiling information.
+  llvm::hash_code graphPreLowerHash{0};
+
+  /// Whether to check the graph hash during quantization.
+  bool checkGraphPreLowerHash{false};
+
   /// Precision to use when quantizing a Function.
   ElemKind precision{ElemKind::Int8QTy};
 

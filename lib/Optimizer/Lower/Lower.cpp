@@ -159,6 +159,76 @@ static void lowerRegressionGradNode(Function *F, CompilationContext &cctx,
                        expG);
 }
 
+static void lowerGemmNode(Function *F, CompilationContext &cctx,
+                          const GemmNode &GN) {
+
+  LOG_SCOPE(F->getLogContext(), "lowerGemm")
+
+  NodeValue A = GN.getA();
+  NodeValue B = GN.getB();
+  NodeValue C = GN.getC();
+  NodeValue Y = GN.getResult();
+  float alpha = GN.getAlpha();
+  float beta = GN.getBeta();
+
+  // Transpose A (if required).
+  if (GN.getTransposeA()) {
+    A = F->createTranspose(DECORATE_NODE_NAME(GN, "TransposeA"), A, {1, 0});
+  }
+
+  // Transpose B (if required).
+  if (GN.getTransposeB()) {
+    B = F->createTranspose(DECORATE_NODE_NAME(GN, "TransposeB"), B, {1, 0});
+  }
+
+  // If Gemm is same as FullyConnected then lower to a FullyConnected node.
+  if (isGemmSameAsFullyConnected(&GN)) {
+    NodeValue newY =
+        F->createFullyConnected(GN.getName().str(), A, B, C, Y.getType());
+    replaceAllUsesOfWith(cctx.loweredInfoMap, GN.getResult(), newY);
+    return;
+  }
+
+  // Create MatMul for A * B.
+  NodeValue newY =
+      F->createMatMul(DECORATE_NODE_NAME(GN, "MatMul"), Y.getType(), A, B);
+
+  // Multiply with alpha (if required).
+  if (alpha != 1.0) {
+    auto *alphaSplat = F->createSplat(DECORATE_NODE_NAME(GN, "AlphaSplat"),
+                                      Y.getType(), alpha);
+    newY = F->createMul(DECORATE_NODE_NAME(GN, "AlphaMul"), alphaSplat, newY);
+  }
+
+  // Check if C operand is used.
+  bool isUsedC = C.getNode() && (beta != 0.f);
+  if (isUsedC) {
+    auto *splatC = llvm::dyn_cast<SplatNode>(C.getNode());
+    if (splatC && (splatC->getValue() == 0.f)) {
+      isUsedC = false;
+    }
+  }
+
+  // Add C (if used).
+  if (isUsedC) {
+    // Multiply with beta (if required).
+    if (beta != 1.0) {
+      auto *betaSplat = F->createSplat(DECORATE_NODE_NAME(GN, "BetaSplat"),
+                                       C.getType(), beta);
+      C = F->createMul(DECORATE_NODE_NAME(GN, "BetaMul"), betaSplat, C);
+    }
+    // Add C.
+    if (C.dims().size() == 1) {
+      newY = F->createBatchedAdd(DECORATE_NODE_NAME(GN, "AddC"), Y.getType(),
+                                 newY, C);
+    } else {
+      newY = F->createAdd(DECORATE_NODE_NAME(GN, "AddC"), Y.getType(), newY, C);
+    }
+  }
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, GN.getResult(), newY);
+}
+
 static void lowerFullyConnectedNode(Function *F, CompilationContext &cctx,
                                     const FullyConnectedNode &FC) {
   LOG_SCOPE(F->getLogContext(), "lowerFullyConnectedNode")
@@ -1426,6 +1496,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(MulGrad);
     CASE_LOWER(SubGrad);
     CASE_LOWER(DivGrad);
+    CASE_LOWER(Gemm);
     CASE_LOWER(FullyConnected);
     CASE_LOWER(FullyConnectedGrad);
     CASE_LOWER(Relu);

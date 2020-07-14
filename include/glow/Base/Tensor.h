@@ -672,6 +672,33 @@ public:
     llvm_unreachable("unreachable");
   }
 
+  /// \returns whether this Tensor is tiled (repeated) along \p axis for the
+  /// given tile size \p size. Some examples:
+  /// - A Tensor with size [2, 3] equal to [[1,2,3],[1,2,3]] is tiled along
+  ///   axis 0 for a tile size equal to 1.
+  /// - A Tensor with size [2, 4] equal to [[1, 2, 1, 2],[3, 4, 3, 4]] is tiled
+  ///   along axis 1 for a tile size equal to 2.
+  /// When the tile size matches the dimensions size this function returns TRUE.
+  /// If the \p fractional flag is optionally given that this function will also
+  /// perform fractional tiling verification (default is FALSE). Some examples:
+  /// - For a Tensor with size [5] equal to [1,2,3,1,2], axis 0 and tile size 3,
+  ///   this function returns TRUE if \p fractional is TRUE and returns FALSE if
+  ///   \p fractional is FALSE.
+  bool isTiled(unsigned_t axis, dim_t size = 1, bool fractional = false) const;
+
+  /// \returns whether this Tensor is tiled (repeated) along \p axes for the
+  /// given tile sizes \p sizes. Some examples:
+  /// - A Tensor with size [2, 4] equal to [[1,2,1,2],[1,2,1,2]] is tiled along
+  ///   axes {0,1} for the tile sizes {1,2}.
+  /// When the tile sizes match the dimension sizes this function returns TRUE.
+  /// If the \p fractional flag is optionally given that this function will also
+  /// perform fractional tiling verification (default is FALSE). Some examples:
+  /// - For a Tensor with size [5] equal to [1,2,3,1,2], axes {0} and sizes {3},
+  ///   this function returns TRUE if \p fractional is TRUE and returns FALSE if
+  ///   \p fractional is FALSE.
+  bool isTiled(llvm::ArrayRef<unsigned_t> axes, llvm::ArrayRef<dim_t> sizes,
+               bool fractional = false) const;
+
   /// Update the content and type of the tensor from the tensor \p t.
   void assign(const Tensor *t) {
     assert(!isDeviceResident() && "Tensor must reside on host to access data.");

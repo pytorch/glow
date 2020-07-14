@@ -2166,6 +2166,69 @@ bool SigmoidCrossEntropyWithLogitsNode::verify() const {
   return isValid;
 }
 
+bool GemmNode::verify() const {
+  NodeValue A = getA();
+  NodeValue B = getB();
+  NodeValue C = getC();
+  NodeValue Y = getResult();
+  bool transA = getTransposeA();
+  bool transB = getTransposeB();
+
+  // Check types.
+  bool isValid = checkType(B, A.getElementType(), this);
+  if (C.getNode()) {
+    isValid &= checkType(C, A.getElementType(), this);
+  }
+  isValid &= checkType(Y, A.getElementType(), this);
+
+  // Check shapes.
+  isValid &=
+      expectCompareTrue("Input A must be 2D", A.dims().size(), size_t(2), this);
+  isValid &=
+      expectCompareTrue("Input B must be 2D", B.dims().size(), size_t(2), this);
+  if (C.getNode()) {
+    isValid &=
+        expectCompareTrue("Input C must be 1D or 2D", C.dims().size(),
+                          size_t(2), this, CompareOperatorLessEqual<size_t>());
+  }
+  isValid &=
+      expectCompareTrue("Output must be 2D", Y.dims().size(), size_t(2), this);
+  std::vector<dim_t> dimsA = A.dims();
+  std::vector<dim_t> dimsB = B.dims();
+  if (transA) {
+    dimsA[0] = A.dims()[1];
+    dimsA[1] = A.dims()[0];
+  }
+  if (transB) {
+    dimsB[0] = B.dims()[1];
+    dimsB[1] = B.dims()[0];
+  }
+  isValid &= expectCompareTrue("Input A (transposed) dimension 0 size invalid",
+                               dimsA[0], Y.dims()[0], this,
+                               CompareOperatorEqual<dim_t>());
+  isValid &= expectCompareTrue("Input A (transposed) dimension 1 size invalid",
+                               dimsA[1], dimsB[0], this,
+                               CompareOperatorEqual<dim_t>());
+  isValid &= expectCompareTrue("Input B (transposed) dimension 1 size invalid",
+                               dimsB[1], Y.dims()[1], this,
+                               CompareOperatorEqual<dim_t>());
+  if (C.getNode()) {
+    if (C.dims().size() == 1) {
+      isValid &=
+          expectCompareTrue("Input C size invalid", C.dims()[0], Y.dims()[1],
+                            this, CompareOperatorEqual<dim_t>());
+    } else {
+      isValid &=
+          expectCompareTrue("Input C dimension 0 size invalid", C.dims()[0],
+                            Y.dims()[0], this, CompareOperatorEqual<dim_t>());
+      isValid &=
+          expectCompareTrue("Input C dimension 1 size invalid", C.dims()[1],
+                            Y.dims()[1], this, CompareOperatorEqual<dim_t>());
+    }
+  }
+  return isValid;
+}
+
 bool FullyConnectedNode::verify() const {
   return verifyFullyConnected(getInput(), getWeights(), getBias(), getResult());
 }

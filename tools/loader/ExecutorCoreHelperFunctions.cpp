@@ -71,9 +71,8 @@ llvm::cl::opt<unsigned> miniBatch(
         "mini-batches. The input model is compiled for an input tensor batch "
         "size equal to the specified mini-batch size and mini-batches of "
         "images are inferred separately. The number of input images must be a "
-        "multiple of the mini-batch size. By default, splitting the input "
-        "image list into mini-batches is deactivated."),
-    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(executorCat));
+        "multiple of the mini-batch size. By default, mini-batch is set to 1."),
+    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(executorCat));
 
 llvm::cl::opt<unsigned> miniBatchThreads(
     "minibatch-threads",

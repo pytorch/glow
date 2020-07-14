@@ -1002,6 +1002,40 @@ AdaptiveAvgPoolNode *Function::createAdaptiveAvgPool(llvm::StringRef name,
   return addNode(new AdaptiveAvgPoolNode(name, outTy, input));
 }
 
+GemmNode *Function::createGemm(llvm::StringRef name, NodeValue A, NodeValue B,
+                               NodeValue C, float alpha, float beta,
+                               bool transposeA, bool transposeB) {
+  std::vector<dim_t> outDims(2);
+  outDims[0] = transposeA ? A.dims()[1] : A.dims()[0];
+  outDims[1] = transposeB ? B.dims()[0] : B.dims()[1];
+  TypeRef outTy = getParent()->uniqueTypeWithNewShape(A.getType(), outDims);
+  return createGemm(name, outTy, A, B, C, alpha, beta, transposeA, transposeB);
+}
+
+GemmNode *Function::createGemm(llvm::StringRef name, TypeRef outTy, NodeValue A,
+                               NodeValue B, NodeValue C, float alpha,
+                               float beta, bool transposeA, bool transposeB) {
+  // If C operand is not given then we create a 1D splat with 0.
+  if (!C.getNode()) {
+    TypeRef splatTy =
+        getParent()->uniqueTypeWithNewShape(outTy, {outTy->dims()[1]});
+    C = createSplat(name.str() + ".SplatC", splatTy, 0.0f);
+  }
+  // If C operand is a 2D constant we check if it is a broadcasted version of
+  // a 1D tensor. If yes then we slice and reshape the C operand to 1D.
+  if (auto *constC = llvm::dyn_cast<Constant>(C.getNode())) {
+    if ((constC->dims().size() == 2) && (constC->getPayload().isTiled(0))) {
+      // Slice and reshape to 1D.
+      dim_t lengthC = constC->dims()[1];
+      C = createSlice(name.str() + ".SliceC", C, {0, 0}, {1, lengthC});
+      C = createReshape(name.str() + ".ReshapeC", C, {lengthC});
+    }
+  }
+  TypeRef OT = getParent()->uniqueType(*outTy);
+  return addNode(
+      new GemmNode(name, OT, A, B, C, alpha, beta, transposeA, transposeB));
+}
+
 FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
                                                    NodeValue input, Storage *W,
                                                    Storage *B,
@@ -4757,6 +4791,12 @@ std::string Function::toString(bool skipUsersForStorage, bool skipName) const {
   return os.str();
 }
 
+llvm::hash_code Function::getHash() const {
+  // Omit function name when generating the hash.
+  return llvm::hash_value(toString(/* skipUsersForStorage */ false,
+                                   /* skipName */ true));
+}
+
 void Function::dump(llvm::raw_ostream &os, bool skipUsersForStorage,
                     bool skipName) const {
   os << "Graph structure";
@@ -5554,6 +5594,12 @@ bool isConvolutionSameAsFullyConnected(const ConvolutionNode *node) {
   isSame &= (group == 1);
   isSame &= (dilation == 1);
   return isSame;
+}
+
+bool isGemmSameAsFullyConnected(const GemmNode *node) {
+  NodeValue inpC = node->getC();
+  return (node->getAlpha() == 1.0) && (node->getBeta() == 1.0) &&
+         (inpC.getNode()) && (inpC.dims().size() == 1);
 }
 
 } // namespace glow

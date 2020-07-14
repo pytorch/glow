@@ -153,6 +153,14 @@ struct OptimizationOptions {
   bool enableQuantParamChanges{false};
 };
 
+/// Meta information produced during the compilation. Whereas the compile
+/// options should be interpreted as input variables for the compilation, the
+/// below structure is output information produced by the compilation process.
+struct CompilationInfo {
+  /// The hash of the graph before the lowering stage.
+  llvm::hash_code graphPreLowerHash{0};
+};
+
 /// Context for compilation.
 struct CompilationContext {
   /// Used during Profiling.
@@ -189,6 +197,9 @@ struct CompilationContext {
 
   /// Configuration for different precision modes.
   PrecisionConfiguration precisionConfig;
+
+  /// Information produced during compilation.
+  CompilationInfo info;
 
   /// How to annotate the compilation log filename.
   std::string compilationLogPrefix{"glow"};

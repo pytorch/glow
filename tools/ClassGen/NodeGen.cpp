@@ -202,6 +202,20 @@ int main(int argc, char **argv) {
       .setDocstring(
           "Performs an Adaptive Average Pool operation on the Input given");
 
+  BB.newNode("Gemm")
+      .addInput("A")
+      .addInput("B")
+      .addInput("C")
+      .addMember(MemberType::Float, "Alpha")
+      .addMember(MemberType::Float, "Beta")
+      .addMember(MemberType::Boolean, "TransposeA")
+      .addMember(MemberType::Boolean, "TransposeB")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Computes Y = Alpha * A * B + Beta * C where Alpha, Beta are scalars "
+          "and A, B, C are matrices. If TransposeA or TransposeB is used then "
+          "A or B is additionally transposed.");
+
   BB.newNode("FullyConnected")
       .addInput("Input")
       .addInput("Weights")

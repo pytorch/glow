@@ -51,8 +51,8 @@ You can find the sample images used in the examples above in the following direc
 
 ## Compile a bundle for a floating-point model
 
-The **model-compiler** front-end tool is the main Glow tool used to compile ONNX, Caffe2 and
-TensorFlowLite models into bundles. The tool is generic in the sense that it can compile
+The **model-compiler** front-end tool is the main Glow tool used to compile **ONNX**, **Caffe2** and
+**TensorFlowLite** models into bundles. The tool is generic in the sense that it can compile
 models with any number of inputs or outputs, without being limited to a particular
 application.
 
@@ -72,15 +72,15 @@ model-compiler -backend=CPU -model=<model-path> -emit-bundle=<bundle-dir>
 - The option `emit-bundle` specifies the output **directory** where all the bundle
   artifacts will be generated. If the directory does not exist, it will be created.
 
-There is a small difference when using this tool with ONNX/TFLite versus Caffe2 models:
-- For **ONNX or TensorFlowLite models** the tool can infer automatically the inputs of the model
+There is a small difference when using this tool with ONNX/TensorFlowLite versus Caffe2 models:
+- For **ONNX** or **TensorFlowLite** models the tool can infer automatically the inputs of the model
 since the description of the input tensors is part of the model. Therefore the tool
 will be used in the form shown above:
   ```
   model-compiler -backend=CPU -model=<onnx-model-path> -emit-bundle=<bundle-dir>
   model-compiler -backend=CPU -model=<tflite-model-path> -emit-bundle=<bundle-dir>
   ```
-- For **Caffe2 models** the user must also explicitly provide the description
+- For **Caffe2** models the user must also explicitly provide the description
 of the input tensors which are not part of model. The option `model-input` will be used
 to specify the name, type and shape for each model input. The model input names can be
 deduced by inspecting the model with [Netron](https://lutzroeder.github.io/netron/).
@@ -156,7 +156,7 @@ model-profiler -model=<model-path> -dump-profile=profile.yaml \
     ............................................
 ```
 
-- The command above is for ONNX models. For Caffe2 models the user must also provide the
+- The command above is for ONNX or TensorFlowLite models. For Caffe2 models the user must also provide the
 information about the model inputs by using the option `model-input` similar to the
 **model-compiler** tool.
 - The option `dump-profile` specifies the file name used to dump the profile in YAML format.
@@ -267,12 +267,15 @@ image-classifier <images> <image-opts> -model=<model-path> -model-input-name=<na
 
 - The image paths are specified one after the other, separated by space. Only images in **PNG**
 format are supported (RGB or grayscale).
-- `model` specifies the path for the Caffe2 or ONNX model.
+- `model` specifies the path for the Caffe2, ONNX or TensorFlowLite model.
 - `model-input-name` specifies the name of the model input.
 - The option `dump-profile` specifies the file name used to dump the profile in YAML format.
 
 Extra options are available to specify how the images are pre-processed before they are fed
 to the model during inference:
+- The option `minibatch` can be used to specify the batch size of the model used to perform
+  the inference during profiling. The default value is 1. Note that the number of images
+  provided during profiling must be divisible by `minibatch`.
 - The option `image-mode` can be used to specify how the images are normalized:
   - `neg1to1` for the range [-1, 1].
   - `0to1` for the range [0, 1].
@@ -331,6 +334,18 @@ the model inputs and outputs. In the examples above, the data type for the model
 (image tensor) and the model output remains **float** even though the intermediate
 operators and tensors use **int8** data type. If you want to convert also the model
 input and output placeholders you can use the option `convert-placeholders`.
+
+Note that in order for the model quantization to take place properly, the batch size of the model
+used during profiling (e.g. using the `minibatch` option for the `image-classifier`) must
+be the same as the batch size of the model during quantization (e.g. using the `model-input`
+option for the `model-compiler`). Here is the generic example for quantizing the **LeNetMnist** model:
+```
+image-classifier -minibatch=<N> ...
+model-compiler -model-input=data,float,[<N>,1,28,28] ...
+```
+In the above example, if different batch sizes `N` are used during profiling/quantization then
+the `model-compiler` will throw an error which signals that different graphs were used during profiling
+and quantization.
 
 When compiling a quantized bundle you can choose to disable the quantization of some
 of the graph operators which might be more susceptible to quantization by using
@@ -743,7 +758,7 @@ has:
 
 ### Convert models
 
-The Glow compiler currently has support only for Caffe2 and ONNX model formats. Since a lot of popular
+The Glow compiler currently has support only for Caffe2, ONNX and TensorFlowLite model formats. Since a lot of popular
 models are available in other formats, for example TensorFlow, it is useful to have tools to convert
 models between different formats. The most used tools for format conversion are:
 - [MMdnn](https://github.com/Microsoft/MMdnn)

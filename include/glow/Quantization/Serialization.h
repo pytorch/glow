@@ -23,22 +23,17 @@
 
 namespace glow {
 
-/// Serialize \p profilingInfos into the file named \p fileName.
+/// Serialize into the file named \p fileName the hash \p graphPreLowerHash
+/// of the graph pre lowering and the profiling information \p profilingInfos.
 void serializeProfilingInfosToYaml(
-    llvm::StringRef fileName, llvm::ArrayRef<NodeProfilingInfo> profilingInfos);
+    llvm::StringRef fileName, llvm::hash_code graphPreLowerHash,
+    std::vector<NodeProfilingInfo> &profilingInfos);
 
-/// Deserialize profiling infos from the file \p fileName.
-std::vector<NodeProfilingInfo>
-deserializeProfilingInfosFromYaml(llvm::StringRef fileName);
-
-/// Serialize \p quantizationInfos into the file named \p fileName.
-void serializeQuantizationInfosToYaml(
-    llvm::StringRef fileName,
-    llvm::ArrayRef<NodeQuantizationInfo> quantizationInfos);
-
-/// Deserialize quantization infos from the file \p fileName.
-std::vector<NodeQuantizationInfo>
-deserializeQuantizationInfosFromYaml(llvm::StringRef fileName);
+/// Deserialize from the file named \p fileName the hash \p graphPreLowerHash
+/// of the graph pre lowering and the profiling information \p profilingInfos.
+void deserializeProfilingInfosFromYaml(
+    llvm::StringRef fileName, llvm::hash_code &graphPreLowerHash,
+    std::vector<NodeProfilingInfo> &profilingInfos);
 
 } // namespace glow
 

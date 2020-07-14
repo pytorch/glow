@@ -282,6 +282,57 @@ static void transposeSelectImpl(const Handle<ElemTy> &src, Handle<ElemTy> &dest,
     transposeGenericImpl(src, dest, srcCoor, destCoor, shuffle);
   }
 }
+
+template <class ElemTy>
+static bool isTiledImpl(const Tensor *tensor, unsigned_t axis, dim_t size,
+                        bool fractional) {
+  assert(axis < tensor->dims().size() && "Axis parameter invalid!");
+  assert(size <= tensor->dims()[axis] && "Size parameter invalid!");
+  assert(size >= 1 && "Size parameter invalid!");
+
+  // When the tile size matches the dimension size then we return true.
+  // This is because a tensor can be considered a tiled version of itself.
+  if (size == tensor->dims()[axis]) {
+    return true;
+  }
+
+  // If fractional tiling verification is disabled and the dimension size
+  // is NOT divisible by the tile size then we return false.
+  if (!fractional && ((tensor->dims()[axis] % size) != 0)) {
+    return false;
+  }
+
+  static_assert(max_tensor_dimensions == 6,
+                "Implementation assumes max_tensor_dimensions = 6.");
+
+  // Get tensor view with maximum number of dimensions.
+  auto dimsMax = expandDimsToMax(tensor->dims());
+  Tensor tensorMax = tensor->getUnowned(dimsMax);
+  auto tensorH = tensorMax.getHandle<ElemTy>();
+  for (dim_t idx0 = 0; idx0 < dimsMax[0]; ++idx0) {
+    for (dim_t idx1 = 0; idx1 < dimsMax[1]; ++idx1) {
+      for (dim_t idx2 = 0; idx2 < dimsMax[2]; ++idx2) {
+        for (dim_t idx3 = 0; idx3 < dimsMax[3]; ++idx3) {
+          for (dim_t idx4 = 0; idx4 < dimsMax[4]; ++idx4) {
+            for (dim_t idx5 = 0; idx5 < dimsMax[5]; ++idx5) {
+              std::vector<dim_t> idx = {idx0, idx1, idx2, idx3, idx4, idx5};
+              std::vector<dim_t> idxWrapped = idx;
+              idxWrapped[axis] = (idx[axis] % size);
+              double delta = tensorH.at(idx) - tensorH.at(idxWrapped);
+              // Since any comparison with NAN returns false, we use a negated
+              // condition so that this function correctly returns false when
+              // delta is NAN.
+              if (!(delta == 0.0)) {
+                return false;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return true;
+}
 } // namespace
 
 void glow::dumpAsciiImpl(const Tensor *T, llvm::raw_ostream &os) {
@@ -738,6 +789,51 @@ void Tensor::copyRawToDevice(const Tensor *t) {
   clearDeviceResidency();
   copyRawFrom(t);
   DM->transferToDevice(*this, locationContext);
+}
+
+bool Tensor::isTiled(unsigned_t axis, dim_t size, bool fractional) const {
+  switch (getElementType()) {
+  case ElemKind::FloatTy: {
+    return isTiledImpl<float>(this, axis, size, fractional);
+  }
+  case ElemKind::Float16Ty: {
+    return isTiledImpl<float16_t>(this, axis, size, fractional);
+  }
+  case ElemKind::Int8QTy: {
+    return isTiledImpl<int8_t>(this, axis, size, fractional);
+  }
+  case ElemKind::UInt8QTy: {
+    return isTiledImpl<uint8_t>(this, axis, size, fractional);
+  }
+  case ElemKind::Int16QTy: {
+    return isTiledImpl<int16_t>(this, axis, size, fractional);
+  }
+  case ElemKind::Int32QTy: {
+    return isTiledImpl<int32_t>(this, axis, size, fractional);
+  }
+  case ElemKind::Int32ITy: {
+    return isTiledImpl<int32_t>(this, axis, size, fractional);
+  }
+  case ElemKind::Int64ITy: {
+    return isTiledImpl<int64_t>(this, axis, size, fractional);
+  }
+  case ElemKind::BoolTy: {
+    return isTiledImpl<bool>(this, axis, size, fractional);
+  }
+  default: { llvm_unreachable("isTiled: Precision not supported!"); }
+  }
+}
+
+bool Tensor::isTiled(llvm::ArrayRef<unsigned_t> axes,
+                     llvm::ArrayRef<dim_t> sizes, bool fractional) const {
+  assert(axes.size() == sizes.size() &&
+         "Mismatch between axes and sizes length!");
+  for (size_t idx = 0, end = axes.size(); idx < end; ++idx) {
+    if (!isTiled(axes[idx], sizes[idx], fractional)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool isSliceContiguous(llvm::ArrayRef<dim_t> sliceShape,

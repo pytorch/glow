@@ -332,7 +332,8 @@ int main(int argc, char **argv) {
                             totMin);
 
   // Serialize the tuned output profile.
-  serializeProfilingInfosToYaml(dumpTunedProfileFileOpt, pInfosTune);
+  serializeProfilingInfosToYaml(dumpTunedProfileFileOpt,
+                                quantConfig.graphPreLowerHash, pInfosTune);
 
   return 0;
 }
