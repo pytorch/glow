@@ -50,6 +50,7 @@ bool GlowClipFP16SkipInputs = true;
 bool GlowUseSparseNNPartitioningScheme = false;
 bool GlowSparseNNPartitioningAddSLSConcats = false;
 bool GlowSparseNNPartitioningBalancePerfModel = false;
+bool GlowSparseNNPartitioningPairLNWithSLS = false;
 size_t GlowMaxActiveRequests = 48;
 size_t GlowMaxActiveRequestsPerInstance = 48;
 size_t GlowMaxQueueSize = 100;
@@ -113,6 +114,12 @@ static llvm::cl::opt<bool, true> GlowSparseNNPartitioningBalancePerfModelOpt(
     "glow_sparsenn_partitioning_balance_perf_model",
     llvm::cl::desc("Balance SLS tables across cards using a perf model"),
     llvm::cl::location(GlowSparseNNPartitioningBalancePerfModel));
+
+static llvm::cl::opt<bool, true> GlowSparseNNPartitioningPairLNWithSLSOpt(
+    "glow_sparsenn_partitioning_pair_ln_with_sls",
+    llvm::cl::desc("Place layer normalization nodes immediately following SLS "
+                   "into SLS partition"),
+    llvm::cl::location(GlowSparseNNPartitioningPairLNWithSLS));
 
 std::unique_ptr<runtime::HostManager>
 HostManagerBackend::createHostManager(llvm::StringRef backendName) {
@@ -221,6 +228,8 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
         GlowSparseNNPartitioningAddSLSConcats;
     cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel =
         GlowSparseNNPartitioningBalancePerfModel;
+    cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS =
+        GlowSparseNNPartitioningPairLNWithSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
         GlowSparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =

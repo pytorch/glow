@@ -120,6 +120,10 @@ struct OptimizationOptions {
   /// cards using a performance model
   bool sparseNNPartitioningBalancePerfModel{false};
 
+  /// If true, SparseNN partiitoning scheme will move Layer Normalization
+  /// nodes immediately following SLS into SLS partitions
+  bool sparseNNPartitioningPairLNWithSLS{false};
+
   /// The number of cards over which to split SLS tables when using SparseNN
   /// partitioning scheme
   unsigned int sparseNNPartitioningSchemeNumCards{1};
