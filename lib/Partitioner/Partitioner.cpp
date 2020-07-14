@@ -1034,33 +1034,24 @@ struct SLSDeviceInfo {
 /// Helper function for SparseNN Partitioning scheme. Checks for each
 /// kind of SLS table and appends their metadata to the vector.
 template <typename SLSType>
-void appendSLSTable(Node &node, std::vector<SLSTableInfo> &slsTables,
-                    bool doPerfModelBalance) {
+Error appendSLSTable(Node &node, std::vector<SLSTableInfo> &slsTables,
+                     bool doPerfModelBalance, Backend *backend) {
   auto *SLS0 = llvm::dyn_cast<SLSType>(&node);
   if (SLS0) {
-    auto SLSDataDims = SLS0->getData().dims();
     uint64_t cost = 1;
     uint64_t numBytesInTable =
         (uint64_t)SLS0->getData().getType()->getSizeInBytes();
-    float avgLength = SLS0->getAvgLength();
 
     // If average length is available, then compute cost using perf model
     if (doPerfModelBalance) {
-      avgLength = std::isnan(avgLength) ? 1.0f : avgLength;
-      uint64_t numBytesInRow = numBytesInTable / SLSDataDims[0];
-      float numBytesPerElement = (float)numBytesInRow / (float)(SLSDataDims[1]);
-      uint64_t algo1a = 32 * avgLength * ceil(((float)numBytesInRow) / 16.0);
-      uint64_t algo1b =
-          32 * avgLength *
-          ceil((((float)numBytesInRow) * numBytesPerElement + 4.0f) / 32.0f);
-      float algou = avgLength * 32.0f / 64.0f;
-      algou = (algou < 1.0f) ? algou : 1.0f;
-      uint64_t algo1 = (uint64_t)(algou * algo1b + (1.0f - algou) * algo1a);
-      cost = algo1;
+      double cost_d;
+      ASSIGN_VALUE_OR_RETURN_ERR(cost_d, backend->estimateNodeCost(SLS0));
+      cost = (uint64_t)cost_d;
     }
     auto slsResult = SLS0->getResult();
     slsTables.push_back({SLS0, numBytesInTable, 0, slsResult, cost});
   }
+  return Error::success();
 }
 
 // Check if the weights input for \p SLWS is a SplatNode with more than one
@@ -1260,15 +1251,17 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
   for (auto &node : F->getNodes()) {
     bool doPerfModelBalance =
         cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel;
-    appendSLSTable<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
-        node, slsTables, doPerfModelBalance);
-    appendSLSTable<FusedRowwiseQuantizedSparseLengthsSumNode>(
-        node, slsTables, doPerfModelBalance);
-    appendSLSTable<RowwiseQuantizedSparseLengthsWeightedSumNode>(
-        node, slsTables, doPerfModelBalance);
-    appendSLSTable<SparseLengthsSumNode>(node, slsTables, doPerfModelBalance);
-    appendSLSTable<SparseLengthsWeightedSumNode>(node, slsTables,
-                                                 doPerfModelBalance);
+    RETURN_IF_ERR(
+        appendSLSTable<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
+            node, slsTables, doPerfModelBalance, backends[0]));
+    RETURN_IF_ERR(appendSLSTable<FusedRowwiseQuantizedSparseLengthsSumNode>(
+        node, slsTables, doPerfModelBalance, backends[0]));
+    RETURN_IF_ERR(appendSLSTable<RowwiseQuantizedSparseLengthsWeightedSumNode>(
+        node, slsTables, doPerfModelBalance, backends[0]));
+    RETURN_IF_ERR(appendSLSTable<SparseLengthsSumNode>(
+        node, slsTables, doPerfModelBalance, backends[0]));
+    RETURN_IF_ERR(appendSLSTable<SparseLengthsWeightedSumNode>(
+        node, slsTables, doPerfModelBalance, backends[0]));
   }
 
   // Now sort SLS tables by size decreasing
