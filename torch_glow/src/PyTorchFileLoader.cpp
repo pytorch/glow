@@ -116,17 +116,16 @@ struct RegisterCustomFusionPass {
     torch::jit::RegisterOperators op({torch::jit::Operator(
         getFusionSymbol(),
         [](const torch::jit::Node *node) -> torch::jit::Operation {
-          return [node](torch::jit::Stack &stack) {
+          return [node](torch::jit::Stack *stack) {
             // Get JIT Graph.
             auto graph = node->g(at::attr::Subgraph);
             auto err = loadJitGraphToGlowFunction(
-                stack, *graph, *localFusionInfo.function,
+                *stack, *graph, *localFusionInfo.function,
                 *localFusionInfo.inputPlaceholders,
                 *localFusionInfo.outputPlaceholders, *localFusionInfo.settings);
             if (static_cast<bool>(err)) {
               throw std::invalid_argument(ERR_TO_STRING(std::move(err)));
             }
-            return 0;
           };
         },
         at::AliasAnalysisKind::PURE_FUNCTION)});

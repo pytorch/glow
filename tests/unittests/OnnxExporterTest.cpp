@@ -35,14 +35,15 @@ namespace {
 /// ONNXModelWriter and ONNXModelReader respectively then \returns the
 /// reloaded function. \p useGlowCustomOps is used for determining the format
 /// for ONNXModelWriter to write with.
-Expected<Function *>
-saveAndReloadFunction(Module &reloadMod, Function *F,
-                      llvm::ArrayRef<const char *> inputTensorNames,
-                      llvm::ArrayRef<TypeRef> inputTensorTypes,
-                      size_t irVer = 5, size_t opsetVer = 10,
-                      bool zipMode = false, bool useGlowCustomOps = false,
-                      bool includeConstantData = true,
-                      ConstantFoldingRecordMap *constFoldRecord = nullptr) {
+Expected<Function *> saveAndReloadFunction(
+    Module &reloadMod, Function *F,
+    llvm::ArrayRef<const char *> inputTensorNames,
+    llvm::ArrayRef<TypeRef> inputTensorTypes, size_t irVer = 5,
+    size_t opsetVer = 10, bool zipMode = false, bool useGlowCustomOps = false,
+    bool includeConstantData = true,
+    ConstantFoldingRecordMap *constFoldRecord = nullptr,
+    CompilationContext *reloadCctx = nullptr,
+    const BackendSpecificNodeInfo &backendSpecificNodeInfo = {}) {
   llvm::SmallString<64> path;
   auto tempFileRes = llvm::sys::fs::createTemporaryFile(
       "exporter", zipMode ? "output.zip" : "output.onnxtxt", path);
@@ -56,17 +57,12 @@ saveAndReloadFunction(Module &reloadMod, Function *F,
   // Write model to file.
   {
     Error err = Error::empty();
-
     llvm::StringMap<std::string> extraMetadataProps;
     ONNXModelWriter onnxWR(
         outputFilename, *F, irVer, opsetVer, &err, !zipMode, zipMode,
         useGlowCustomOps, includeConstantData, extraMetadataProps,
-        constFoldRecord ? *constFoldRecord : ConstantFoldingRecordMap());
-
-    if (err) {
-      llvm::sys::fs::remove(outputFilename);
-    }
-
+        constFoldRecord ? *constFoldRecord : ConstantFoldingRecordMap(),
+        backendSpecificNodeInfo);
     RETURN_IF_ERR(std::move(err));
   }
 
@@ -102,10 +98,11 @@ saveAndReloadFunction(Module &reloadMod, Function *F,
   // Load model from file.
   {
     Error err = Error::empty();
-    ONNXModelLoader onnxLD(outputFilename, inputTensorNames, inputTensorTypes,
-                           *R, &err, zipMode, /* perNodeOpts */ nullptr,
-                           /* disableConstFoldInLoader */ true,
-                           /* loadIntoExistingModule */ !includeConstantData);
+    ONNXModelLoader onnxLD(
+        outputFilename, inputTensorNames, inputTensorTypes, *R, &err, zipMode,
+        reloadCctx ? &reloadCctx->backendOpts.backendSpecificNodeInfo : nullptr,
+        /* disableConstFoldInLoader */ true,
+        /* loadIntoExistingModule */ !includeConstantData);
 
     if (err) {
       llvm::errs() << "ONNXModelLoader failed to reload model: "
@@ -206,6 +203,26 @@ Expected<T *> getSingleNodeWithKind(Function *F, Kinded::Kind type) {
 
   return node;
 }
+
+/// Helper that \returns whether two StringMaps \p LHS and \p RHS are equal.
+template <typename T>
+static bool isStrMapEqual(const llvm::StringMap<T> &LHS,
+                          const llvm::StringMap<T> &RHS) {
+  if (LHS.size() != RHS.size()) {
+    return false;
+  }
+  for (const auto &keyValue : LHS) {
+    auto findInRHS = RHS.find(keyValue.getKey());
+    if (findInRHS == RHS.end()) {
+      return false;
+    }
+    if (keyValue.getValue() != findInRHS->getValue()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 } // namespace
 
 /// Use to test constant folding exporting and reloading tests, where some
@@ -226,8 +243,11 @@ protected:
   /// Constant folds \ref F_ and then serializes it. Then deserializes it and
   /// runs it and makes sure that running the original and the reloaded Function
   /// are bitwise equal. Verifies that \p numExpectedConstsFolded constant
-  /// folding records are created during constant folding/recording.
-  void serializeAndReloadAndCompareResults(unsigned numExpectedConstsFolded) {
+  /// folding records are created during constant folding/recording. Any Nodes
+  /// listed in \p nodesToPar will be Model parallelized in two.
+  void serializeAndReloadAndCompareResults(
+      unsigned numExpectedConstsFolded,
+      const std::unordered_set<Node *> &nodesToPar = {}) {
     bindings_.allocate(mod_.getPlaceholders());
 
     // Perform constant folding, recording what occurs so we can serialize it.
@@ -235,22 +255,42 @@ protected:
     EXPECT_EQ(record.size(), numExpectedConstsFolded);
     runDCEPass(F_, cctx_);
 
+    if (nodesToPar.size()) {
+      llvm::DenseMap<Node *, size_t> numChunks;
+      llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+      for (Node *N : nodesToPar) {
+        numChunks[N] = 2;
+        parOpts[N] = ParallelTransformKind::Model;
+      }
+
+      std::unordered_map<Node *, ConcatNode *> replacedMap;
+      ASSIGN_VALUE_OR_FAIL_TEST(replacedMap,
+                                ::glow::parallelizeOps(F_, numChunks, parOpts));
+      EXPECT_EQ(replacedMap.size(), parOpts.size());
+
+      ConstantFoldingRecordMap parRecord = constantFoldAndRecord(F_, cctx_);
+      record.insert(parRecord.begin(), parRecord.end());
+      runDCEPass(F_, cctx_);
+    }
+
     // Clone the original module into a new module used for reloading the model.
     ExecutionEngine reloadEE(EE_.getBackendName());
     Module &reloadMod = reloadEE.getModule();
     mod_.clone(&reloadMod);
 
     // Save and reload F.
-    Function *reloadF_;
+    Function *reloadF;
+    CompilationContext reloadCctx;
     ASSIGN_VALUE_OR_FAIL_TEST(
-        reloadF_,
-        saveAndReloadFunction(reloadMod, F_, {}, {}, 7, 9,
-                              /* zipMode */ false,
-                              /* useGlowCustomOps */ true,
-                              /* includeConstantData */ false, &record));
+        reloadF, saveAndReloadFunction(
+                     reloadMod, F_, {}, {}, 7, 9,
+                     /* zipMode */ false,
+                     /* useGlowCustomOps */ true,
+                     /* includeConstantData */ false, &record, &reloadCctx,
+                     cctx_.backendOpts.backendSpecificNodeInfo));
 
     // Verify that the Function and its Module are the same before and after.
-    EXPECT_EQ(reloadF_->toString(), F_->toString());
+    EXPECT_EQ(reloadF->toString(), F_->toString());
     EXPECT_EQ(reloadMod.toString(), mod_.toString());
 
     PlaceholderBindings reloadBindings =
@@ -260,12 +300,30 @@ protected:
     EE_.compile(cctx_);
     EE_.run(bindings_);
 
-    CompilationContext reloadCctx;
     reloadEE.compile(reloadCctx);
     reloadEE.run(reloadBindings);
 
     EXPECT_TRUE(
         PlaceholderBindings::compare(&bindings_, &reloadBindings, 0.0f));
+
+    // Verify that backend-specific node info was serialized correctly.
+    EXPECT_EQ(cctx_.backendOpts.backendSpecificNodeInfo.count(F_),
+              reloadCctx.backendOpts.backendSpecificNodeInfo.count(reloadF));
+
+    if (cctx_.backendOpts.backendSpecificNodeInfo.count(F_)) {
+      auto &origNodeMap = cctx_.backendOpts.backendSpecificNodeInfo[F_];
+      auto &reloadNodeMap =
+          reloadCctx.backendOpts.backendSpecificNodeInfo[reloadF];
+
+      for (const Node &origN : F_->getNodes()) {
+        auto reloadNodeIt = std::find_if(
+            reloadF->getNodes().begin(), reloadF->getNodes().end(),
+            [&](const Node &N) { return N.getName() == origN.getName(); });
+        ASSERT_NE(reloadNodeIt, reloadF->getNodes().end());
+        EXPECT_TRUE(
+            isStrMapEqual(reloadNodeMap[&*reloadNodeIt], origNodeMap[&origN]));
+      }
+    }
   }
 };
 
@@ -316,6 +374,15 @@ TEST(exporter, onnxModels) {
         name.find("simpleConvTransposeOutShape.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShapeDilation.onnxtxt") !=
             std::string::npos ||
+        name.find("simpleConvTransposeOutShapeSameLower.onnxtxt") !=
+            std::string::npos ||
+        name.find("simpleConvTransposeOutShapeSameUpper.onnxtxt") !=
+            std::string::npos ||
+        name.find("simpleConvTransposeAutoPadSameLower.onnxtxt") !=
+            std::string::npos ||
+        name.find("simpleConvTransposeAutoPadSameUpper.onnxtxt") !=
+            std::string::npos ||
+        name.find("convTransposeAsymmetric.onnxtxt") != std::string::npos ||
         name.find("NonZero.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposePads.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeAutoPadValid.onnxtxt") !=
@@ -829,4 +896,88 @@ TEST_F(ConstFoldReloadTest, exportGraphWithTwoConstFoldingMultiOutputRecord) {
   W->getPayloadMutable().getHandle<float>().randomize(-10, 10, mod_.getPRNG());
 
   serializeAndReloadAndCompareResults(2);
+}
+
+/// Verify that exporting and reloading with placement hints retains the hints.
+TEST_F(ConstFoldReloadTest, exportWithPlacementHints) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {16, 32}, "input1", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {16, 32}, "input2", false);
+  auto *weights =
+      F_->getParent()->createConstant(ElemKind::Float16Ty, {16, 16}, "weights");
+  auto *bias =
+      F_->getParent()->createConstant(ElemKind::Float16Ty, {16}, "bias");
+  weights->getPayloadMutable().getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                                mod_.getPRNG());
+  bias->getPayloadMutable().getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                             mod_.getPRNG());
+
+  auto *CI = F_->createConcat("concat", {input1, input2}, 1);
+  auto *TN = F_->createTranspose("transpose", CI, {1, 0});
+  auto *FC = F_->createFullyConnected("fc", TN, weights, bias);
+  auto *THN = F_->createTanh("tanh", FC);
+  auto *SN = F_->createSigmoid("sigmoid", THN);
+  F_->createSave("ret", SN);
+
+  auto *AN = F_->createAdd("add", input1, input2);
+  F_->createSave("add_save", AN);
+
+  bindings_.allocate(input1)->getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                               mod_.getPRNG());
+  bindings_.allocate(input2)->getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                               mod_.getPRNG());
+
+  auto &nodeInfo = cctx_.backendOpts.backendSpecificNodeInfo[F_];
+
+  nodeInfo[AN]["Interpreter_Hint1"].push_back(CI->getName().str());
+  nodeInfo[AN]["Interpreter_Hint2"].push_back("@1");
+  nodeInfo[CI]["Interpreter_Hint1"].push_back(TN->getName().str());
+  nodeInfo[CI]["Interpreter_Hint3"].push_back("@1");
+  nodeInfo[CI]["Interpreter_Hint1"].push_back(FC->getName().str());
+  nodeInfo[CI]["Interpreter_Hint3"].push_back("@1");
+  nodeInfo[AN]["Interpreter_Hint1"].push_back(CI->getName().str());
+  nodeInfo[AN]["Interpreter_Hint2"].push_back("@1");
+  nodeInfo[TN]["Interpreter_Hint1"].push_back(FC->getName().str());
+  nodeInfo[TN]["Interpreter_Hint1"].push_back(SN->getName().str());
+  nodeInfo[FC]["Interpreter_Hint1"].push_back(THN->getName().str());
+
+  nodeInfo[TN]["Interpreter_Hint4"].push_back("3");
+  nodeInfo[FC]["Interpreter_Hint4"].push_back("2");
+  nodeInfo[CI]["Interpreter_Hint4"].push_back("1");
+  nodeInfo[CI]["Interpreter_Hint5"].push_back("@0");
+  nodeInfo[CI]["Interpreter_Hint4"].push_back("3");
+  nodeInfo[CI]["Interpreter_Hint5"].push_back("@1");
+
+  serializeAndReloadAndCompareResults(0);
+}
+
+TEST_F(ConstFoldReloadTest, exportParallelizedGraphWithTwoConstFoldingRecords) {
+  Placeholder *I =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {2, 100}, "input",
+                             /* isTrainable */ false);
+  Constant *W = mod_.createConstant(ElemKind::FloatTy, {10, 100}, "weights");
+  Constant *B = mod_.createConstant(ElemKind::Float16Ty, {10}, "bias");
+
+  ClipNode *clipW = F_->createClip("clip", W, -5.f, 5.f);
+  ConvertToNode *convertW =
+      F_->createConvertTo("conv", clipW, ElemKind::Float16Ty);
+  TransposeNode *transposeW =
+      F_->createTranspose("transpose", convertW, {1, 0});
+  FullyConnectedNode *FC = F_->createFullyConnected("fc", I, transposeW, B);
+  F_->createSave("save", FC);
+
+  Constant *W2 = mod_.createConstant(ElemKind::Float16Ty, {2, 100}, "weight2");
+  TanhNode *tanhW = F_->createTanh("tanh", W2);
+  AddNode *add = F_->createAdd("add", tanhW, I);
+  F_->createSave("save_add", add);
+
+  bindings_.allocate(I)->getHandle<float16_t>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  W->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  B->getHandle<float16_t>().randomize(0.0, 0.5, mod_.getPRNG());
+  W2->getPayloadMutable().getHandle<float16_t>().randomize(-10, 10,
+                                                           mod_.getPRNG());
+
+  serializeAndReloadAndCompareResults(2, {FC});
 }

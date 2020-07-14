@@ -14,11 +14,16 @@
  * limitations under the License.
  */
 
+#include <fstream>
+#include <string>
+
 #include "PyTorchCommon.h"
 
 #include "GlowFuser.h"
 #include "PyTorchModelLoader.h"
+#include "Registration.h"
 
+#include "torch/csrc/jit/passes/canonicalize_graph_fuser_ops.h"
 #include <torch/csrc/jit/passes/pass_manager.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
 #include <torch/csrc/jit/runtime/graph_executor.h>
@@ -26,9 +31,9 @@
 
 DEFINE_string(torch_glow_backend, "Interpreter",
               "Glow backend used for torchifi");
-DEFINE_int32(torch_glow_num_devices, 1, "Number of devices for Glow backend");
+DEFINE_int32(torch_glow_num_devices, -1, "Number of devices for Glow backend");
 DEFINE_int32(torch_glow_min_fusion_group_size, 1,
-             "Number of devices for Glow backend");
+             "Minimum number of nodes in the glow fusion group");
 DEFINE_bool(dumpGlowDag, false, "See PyTorchLoaderSettings");
 DEFINE_bool(jitVsGlowCompare, false, "Enable per-group error check");
 DEFINE_bool(dumpFinalGlowGraph, false, "See PyTorchLoaderSettings");
@@ -42,6 +47,8 @@ DEFINE_int32(replicationCount, 1, "Number of replications on each device");
 DEFINE_bool(writeToOnnx, false, "See PyTorchLoaderSettings");
 DEFINE_int32(maxActiveRequests, 250,
              "Max number of active requests before HostManager starts queuing");
+DEFINE_bool(randomizeConstants, false, "See PyTorchLoaderSettings");
+DEFINE_bool(runShapeInference, false, "See PyTorchLoaderSettings");
 
 namespace glow {
 
@@ -56,62 +63,56 @@ static int setGraphExecutorToLegacy() {
 
 static const int USE_LEGACY_GE = setGraphExecutorToLegacy();
 
-/// GlowBackendState stores the currently active Glow HostManager that will
-/// be used to run the subgraphs lowered to Glow. It also contains information
-/// about the number and type of backend devices owned by the HostManager.
-struct GlowBackendState {
-  std::shared_ptr<runtime::HostManager> hostManager;
-  std::string backendName;
-  size_t numDevices = 0;
-};
-
-/// Meyers singleton for GlowBackendState.
-GlowBackendState *getGlowBackendState() {
-  static GlowBackendState state_;
-  return &state_;
-}
-
 } // namespace
 
-std::shared_ptr<runtime::HostManager> getHostManager() {
-  auto hostManager = getGlowBackendState()->hostManager;
-  // If no HostManager has been set, use Glow's Interpreter.
-  if (!hostManager) {
-    setHostManager(FLAGS_torch_glow_backend, FLAGS_torch_glow_num_devices);
-    hostManager = getGlowBackendState()->hostManager;
+std::shared_ptr<runtime::HostManager>
+getHostManager(const std::string &backendName, int32_t numDevices) {
+  static std::mutex m_;
+  std::unique_lock<std::mutex> lock(m_);
+  static std::unordered_map<std::string, std::weak_ptr<runtime::HostManager>>
+      map_;
+
+  std::shared_ptr<runtime::HostManager> hostManager;
+  auto it = map_.find(backendName);
+  if (it != map_.end()) {
+    hostManager = it->second.lock();
+  }
+
+  // If HostManager was found, check that it's valid, otherwise create a new
+  // HostManager
+  if (hostManager) {
+    if (numDevices != -1) {
+      CHECK_EQ(hostManager->numDevices(), numDevices)
+          << "Tried to create a new HostManager for backend \"" << backendName
+          << "\" but there is already an existing HostManager in use for that "
+             "Backend but with a different number of devices";
+    }
+  } else {
+    // If number of devices isn't specified then just use 1 device.
+    if (numDevices < 0) {
+      numDevices = 1;
+    }
+    std::vector<std::unique_ptr<runtime::DeviceConfig>> deviceConfigs;
+    for (int i = 0; i < numDevices; i++) {
+      auto config = std::make_unique<runtime::DeviceConfig>(backendName);
+      config->deviceID = i;
+      deviceConfigs.push_back(std::move(config));
+    }
+
+    glow::runtime::HostConfig hostConfig;
+    hostConfig.maxActiveRequests = FLAGS_maxActiveRequests;
+
+    hostManager = std::make_shared<runtime::HostManager>(
+        std::move(deviceConfigs), hostConfig);
+
+    map_[backendName] = hostManager;
   }
   return hostManager;
 }
 
-const std::string &getBackendName() {
-  return getGlowBackendState()->backendName;
-}
-
-size_t getBackendNumDevices() { return getGlowBackendState()->numDevices; }
-
-void setHostManager(const std::string &backendName, size_t numDevices) {
-  auto *state = getGlowBackendState();
-
-  // Don't create a new identical HostManager.
-  if (state->backendName == backendName && state->numDevices == numDevices) {
-    return;
-  }
-
-  state->backendName = backendName;
-  state->numDevices = numDevices;
-
-  std::vector<std::unique_ptr<runtime::DeviceConfig>> deviceConfigs;
-  for (int i = 0; i < numDevices; i++) {
-    auto config = llvm::make_unique<runtime::DeviceConfig>(backendName);
-    config->deviceID = i;
-    deviceConfigs.push_back(std::move(config));
-  }
-
-  glow::runtime::HostConfig hostConfig;
-  hostConfig.maxActiveRequests = FLAGS_maxActiveRequests;
-
-  state->hostManager = std::make_shared<runtime::HostManager>(
-      std::move(deviceConfigs), hostConfig);
+std::shared_ptr<runtime::HostManager> getHostManager() {
+  auto &settings = getPyTorchLoaderSettings();
+  return getHostManager(settings.backendName, settings.numDevices);
 }
 
 /// Given a Glow ElemKind \p ty, \returns a matching PyTorch ScalarType.
@@ -221,6 +222,10 @@ static PyTorchLoaderSettings getInitialSettings() {
   settings.convertFusedToFP16 = FLAGS_convertFusedToFP16;
   settings.replicationCount = FLAGS_replicationCount;
   settings.writeToOnnx = FLAGS_writeToOnnx;
+  settings.randomizeConstants = FLAGS_randomizeConstants;
+  settings.backendName = FLAGS_torch_glow_backend;
+  settings.numDevices = FLAGS_torch_glow_num_devices;
+  settings.runShapeInference = FLAGS_runShapeInference;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
@@ -238,10 +243,13 @@ PyTorchLoaderSettings &getPyTorchLoaderSettings() {
   return settings;
 }
 
-const c10::Symbol &getGlowSymbol() {
-  static c10::Symbol glowSymbol =
-      at::Symbol::fromQualString("glow::FusionGroup");
-  return glowSymbol;
+c10::Symbol getGlowSymbol(std::shared_ptr<torch::jit::Graph> g) {
+  if (g) {
+    return at::Symbol::fromQualString(strFormat(
+        "glow::FusionGroup_%lu", reinterpret_cast<uint64_t>(g.get())));
+  } else {
+    return at::Symbol::fromQualString("glow::FusionGroup");
+  }
 }
 
 glow::Type ptTypeToGlowType(const c10::TensorType &ptType) {
@@ -362,6 +370,80 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
   } else {
     auto glowType = ptTypeToGlowType(*c10::TensorType::create(ptTensor));
     return glow::Tensor(ptTensor.data_ptr(), &glowType);
+  }
+}
+
+std::shared_ptr<std::vector<glow::InputMeta>>
+loadInputMeta(const std::string &raw_data) {
+  if (raw_data.empty()) {
+    return nullptr;
+  }
+  auto inputMeta = std::make_shared<std::vector<glow::InputMeta>>();
+  std::stringstream ss_raw(raw_data);
+
+  std::string line;
+  while (std::getline(ss_raw, line)) {
+    std::vector<size_t> dims;
+    std::stringstream ss(line);
+    ss.ignore();
+    for (int i; ss >> i;) {
+      dims.push_back(i);
+      if (ss.peek() == ',' || ss.peek() == '[' || ss.peek() == ']') {
+        ss.ignore();
+      }
+    }
+    std::getline(ss_raw, line);
+    c10::ScalarType t = static_cast<c10::ScalarType>(std::stoi(line));
+    inputMeta->emplace_back(t, std::move(dims));
+  }
+  return inputMeta;
+}
+
+void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr) {
+  glow::PyTorchLoaderSettings &glowLoaderSettings =
+      glow::getPyTorchLoaderSettings();
+  glowLoaderSettings.preCompilePyTorchModule = true;
+
+  // We assume the model is flattened and only one graph will be lowered. In the
+  // future we may need to support multiple graphs.
+  auto graph = model.get_method("forward").function().graph();
+
+  // fuse ListUnpack and Chunk into ConstantChunk. Put it here to work around
+  // some JIT serialization/deserialization problem.
+  torch::jit::CanonicalizeOps(graph);
+
+  c10::Symbol symbol = glow::getGlowSymbol(graph);
+  glow::registerGlowOp(symbol);
+  glow::glowCustomFuse(graph, symbol);
+
+  // this is the fuser subgraph to lower
+  std::shared_ptr<torch::jit::Graph> subgraph;
+  for (auto *node : graph->nodes()) {
+    if (node->kind().toQualString() == symbol.toQualString()) {
+      assert(node->hasAttribute(torch::jit::attr::Subgraph));
+      subgraph = node->g(torch::jit::attr::Subgraph);
+      break;
+    }
+  }
+  if (!subgraph) {
+    MAKE_ERR("Cannot create a Glow fusion subgraph");
+  }
+
+  // create the graph runner and warm its cache, this graph runner will be
+  // picked up during operator registration
+  auto runner = glow::setGraphRunnerForKey(symbol.toQualString(), [subgraph] {
+    return std::make_unique<glow::CachingGraphRunner>(
+        subgraph, glow::getHostManager(), glow::getPyTorchLoaderSettings());
+  });
+
+  auto inputMeta = glow::loadInputMeta(inputMetaStr);
+
+  auto e = runner->warmCache(*inputMeta);
+  if (e) {
+    // If the graph is already compiled previously, warmCache() will report
+    // an error but it is fine with our execution. So here we extract the
+    // error only.
+    ERR_TO_STRING(std::move(e));
   }
 }
 

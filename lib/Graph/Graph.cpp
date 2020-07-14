@@ -1792,6 +1792,11 @@ ExpNode *Function::createExp(llvm::StringRef name, NodeValue input) {
   return addNode(new ExpNode(name, input.getType(), input));
 }
 
+ExpNode *Function::createExp(llvm::StringRef name, TypeRef outTy,
+                             NodeValue input) {
+  return addNode(new ExpNode(name, outTy, input));
+}
+
 LogitNode *Function::createLogit(llvm::StringRef name, NodeValue input,
                                  float eps) {
   return addNode(new LogitNode(name, input.getType(), input, eps));
@@ -4953,6 +4958,120 @@ Constant *Module::getConstantByName(llvm::StringRef name) const {
   return nullptr;
 }
 
+void Function::randomizeConstants(
+    const std::map<Kinded::Kind, std::set<unsigned>> &ignoredConstants) {
+  for (Constant *c : getParent()->getConstants()) {
+    bool usedHere = false;
+    bool usedElsewhere = false;
+    bool ignored = false;
+
+    for (auto &user : c->getUsers()) {
+      auto *nodeUser = user.getUser();
+      if (nodeUser->getParent() == this) {
+        usedHere = true;
+      } else {
+        usedElsewhere = true;
+      }
+
+      auto kind = nodeUser->getKind();
+      if (ignoredConstants.count(kind)) {
+        for (auto idx : ignoredConstants.at(kind)) {
+          if (nodeUser->getNthInput(idx).getNode() == c) {
+            ignored = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!usedHere) {
+      continue;
+    }
+
+    if (usedElsewhere) {
+      LOG(FATAL) << "Can't randomize Constant \"" << c->getName().str()
+                 << "\" because it is used by another function";
+    }
+
+    if (ignored) {
+      continue;
+    }
+
+    auto &payload = c->getPayloadMutable();
+
+    switch (c->getElementType()) {
+    case ElemKind::FloatTy: {
+      auto H = payload.getHandle<float>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
+      break;
+    }
+    case ElemKind::Float16Ty: {
+      auto H = payload.getHandle<float16_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
+      break;
+    }
+    case ElemKind::Int8QTy: {
+      auto H = payload.getHandle<int8_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
+      break;
+    }
+    case ElemKind::UInt8QTy: {
+      auto H = payload.getHandle<uint8_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
+      break;
+    }
+    case ElemKind::Int16QTy: {
+      auto H = payload.getHandle<int16_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
+      break;
+    }
+    case ElemKind::Int32QTy: {
+      auto H = payload.getHandle<int32_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
+      break;
+    }
+    case ElemKind::Int32ITy: {
+      auto H = payload.getHandle<int32_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
+      break;
+    }
+    case ElemKind::Int64ITy: {
+      auto H = payload.getHandle<int64_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
+      break;
+    }
+    case ElemKind::UInt8FusedQTy:
+      payload.getHandle<uint8_t>().randomize(
+          std::numeric_limits<uint8_t>::lowest(),
+          std::numeric_limits<uint8_t>::max(), getPRNG());
+      break;
+    case ElemKind::UInt8FusedFP16QTy:
+      payload.getHandle<uint8_t>().randomize(
+          std::numeric_limits<uint8_t>::lowest(),
+          std::numeric_limits<uint8_t>::max(), getPRNG());
+      break;
+    case ElemKind::UInt4FusedFP16QTy:
+      payload.getHandle<uint8_t>().randomize(
+          std::numeric_limits<uint8_t>::lowest(),
+          std::numeric_limits<uint8_t>::max(), getPRNG());
+      break;
+    case ElemKind::BoolTy:
+      payload.getHandle<bool>().randomize(false, true, getPRNG());
+      break;
+    default:
+      LOG(FATAL) << "Unsupported ElemKind";
+    }
+  }
+}
+
 Placeholder *Module::getPlaceholderByNameSlow(llvm::StringRef name) const {
   for (auto *P : getPlaceholders()) {
     if (P->getName() == name) {
@@ -5222,7 +5341,7 @@ bool Function::verify(const Backend *backend) const {
   }
   std::unordered_map<std::string, const Node *> nameToNode;
 
-  for (auto *V : getParent()->getConstants()) {
+  for (auto *V : findConstants()) {
     isValid &= insertAndReport(nameToNode, *V, *this);
     isValid &= expectCompareTrue("Constant and its payload must have same type",
                                  *V->getType(), V->getPayload().getType(), V);

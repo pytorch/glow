@@ -107,7 +107,7 @@ class HostManager final {
   std::shared_timed_mutex inferQueueLock_;
 
   /// Configuration parameters for this Runtime Host.
-  const HostConfig config_{};
+  HostConfig config_{};
 
   std::unique_ptr<TraceContext> hostTraceContext_;
 
@@ -121,6 +121,9 @@ class HostManager final {
   /// A map of DeviceManagers by deviceID. An ordered map is used here to allow
   /// a stable iteration order over devices.
   DeviceManagerMapTy devices_;
+
+  /// A vector of devices available for new networks to be added to.
+  std::vector<DeviceIDTy> availableDevices_;
 
   /// Executor class, this handles dispatching execution requests to the
   /// appropriate device managers for an inference request.
@@ -191,6 +194,14 @@ public:
   /// \returns an Error indicating success or failure of the operation.
   Error removeNetwork(llvm::StringRef networkName);
 
+  /// Update the list of available devices.
+  void setAvailableDevices(const std::vector<DeviceIDTy> &devices);
+
+  /// For a given \p network returns all partitions of that network and the
+  /// devices each partition is assigned to.
+  std::unordered_map<std::string, std::vector<DeviceIDTy>>
+  getDevicePartitionMapping(llvm::StringRef network);
+
   /// Returns true if \p networkName is already added to the host.
   bool networkAdded(llvm::StringRef networkName);
 
@@ -253,6 +264,13 @@ public:
   /// Provisioner.
   Backend &getBackend(llvm::StringRef backendName) const;
 
+  /// \returns a reference to the Backend if only one Backend is found,
+  /// otherwise returns an Error.
+  Expected<Backend *> getBackend() const;
+
+  /// \returns the number of devices the HostManager owns.
+  size_t numDevices() const { return devices_.size(); }
+
   ~HostManager();
 };
 
@@ -270,6 +288,19 @@ generateDeviceConfigs(unsigned int numDevices, llvm::StringRef backendName,
 bool loadDeviceConfigsFromFile(
     std::vector<std::unique_ptr<runtime::DeviceConfig>> &configs,
     size_t memSize);
+
+/// Registry singleton for aquiring a HostManager.
+class HostManagerRegistry final {
+public:
+  void registerHostManager(HostManager *hostManager);
+  HostManager *getHostManager();
+
+private:
+  HostManager *hostManager_{nullptr};
+};
+
+/// Global singleton.
+std::shared_ptr<HostManagerRegistry> ManagerRegistry();
 
 } // namespace runtime
 } // namespace glow

@@ -176,6 +176,33 @@ TEST(Quantization, ProfilingSerializeEmpty) {
 }
 #endif
 
+TEST(Quantization, tensorAverageValue) {
+  {
+    float min = -10.0;
+    float max = 10.0;
+    std::vector<float> hist = {64, 64};
+    TensorProfilingParams profParams(min, max, hist);
+    float avgVal = quantization::getTensorAverageValue(profParams);
+    EXPECT_FLOAT_EQ(avgVal, 0.0);
+  }
+  {
+    float min = -10.0;
+    float max = 10.0;
+    std::vector<float> hist = {0, 64};
+    TensorProfilingParams profParams(min, max, hist);
+    float avgVal = quantization::getTensorAverageValue(profParams);
+    EXPECT_FLOAT_EQ(avgVal, 5.0);
+  }
+  {
+    float min = 0.0;
+    float max = 10.0;
+    std::vector<float> hist = {64, 0};
+    TensorProfilingParams profParams(min, max, hist);
+    float avgVal = quantization::getTensorAverageValue(profParams);
+    EXPECT_FLOAT_EQ(avgVal, 2.5);
+  }
+}
+
 template <typename From, typename To> static To clip(From in) {
   static_assert(sizeof(From) >= sizeof(To),
                 "Clip should reduce the variable size");

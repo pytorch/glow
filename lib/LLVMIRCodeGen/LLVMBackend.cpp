@@ -63,6 +63,8 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
         {ElemKind::FloatTy, ElemKind::Int8QTy, ElemKind::Int32ITy,
          ElemKind::Int64ITy});
 
+  case Kinded::Kind::ReluNodeKind:
+  case Kinded::Kind::ClipNodeKind:
   case Kinded::Kind::SubNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
@@ -512,7 +514,10 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
             (NI.getOutElemTy(ConvertToNode::ResultIdx) ==
              ElemKind::Int32ITy)) ||
            ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::Int32ITy) &&
-            (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::Int64ITy));
+            (NI.getOutElemTy(ConvertToNode::ResultIdx) ==
+             ElemKind::Int64ITy)) ||
+           ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::FloatTy) &&
+            (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::BoolTy));
 
   default:
     return false;

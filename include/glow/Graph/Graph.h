@@ -727,9 +727,13 @@ public:
   /// Result type will be implicitly set based on the \p input type.
   TanhNode *createTanh(llvm::StringRef name, NodeValue input);
 
-  /// Create an Exp  node with \p name, which calculates element-wise
+  /// Create an Exp node with \p name, which calculates element-wise
   /// exponential of \p input.
   ExpNode *createExp(llvm::StringRef name, NodeValue input);
+
+  /// Create an Exp node with \p name with output type \p outTy, which
+  /// calculates element-wise exponential of \p input.
+  ExpNode *createExp(llvm::StringRef name, TypeRef outTy, NodeValue input);
 
   /// Create a Log node with \p name, which calculates element-wise natural log
   /// of \p input, with output type \p outTy.
@@ -2022,6 +2026,13 @@ public:
 
   /// \returns pointer to the class member for the nodes list.
   static NodesList Function::*getNodesMemberPtr() { return &Function::nodes_; }
+
+  /// Randomize all of the Constants in the function. If a Constant with users
+  /// in this Function also has users in other Functions then this will result
+  /// in a FATAL. \p ignoredConstants is a map Kinds of nodes to the input
+  /// indices for that node that should be ignored (not randomized).
+  void randomizeConstants(
+      const std::map<Kinded::Kind, std::set<unsigned>> &ignoredConstants = {});
 };
 
 struct TrainingConfig;

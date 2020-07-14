@@ -1394,7 +1394,7 @@ public:
   template <typename T = ElemTy>
   typename std::enable_if<std::is_floating_point<T>::value>::type
   randomize(float low, float high, PseudoRNG &PRNG) {
-    assert(low < high && "invalid range");
+    assert(low <= high && "invalid range");
     std::uniform_real_distribution<ElemTy> dist(low, high);
     for (auto &elem : *this) {
       elem = dist(PRNG);
@@ -1406,7 +1406,7 @@ public:
   template <typename T = ElemTy>
   typename std::enable_if<std::is_integral<T>::value>::type
   randomize(int low, int high, PseudoRNG &PRNG) {
-    assert(low < high && "invalid range");
+    assert(low <= high && "invalid range");
     assert(low >= std::numeric_limits<ElemTy>::lowest() &&
            high <= std::numeric_limits<ElemTy>::max() &&
            "Cannot initialize outside range of representable values.");
@@ -1443,7 +1443,7 @@ public:
   typename std::enable_if<!std::is_floating_point<T>::value &&
                           !std::is_integral<T>::value>::type
   randomize(float low, float high, PseudoRNG &PRNG) {
-    assert(low < high && "invalid range");
+    assert(low <= high && "invalid range");
     std::uniform_real_distribution<float> dist(low, high);
     for (auto &elem : *this) {
       elem = dist(PRNG);

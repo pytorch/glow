@@ -45,7 +45,11 @@ extern bool GlowSparseNNPartitioningAddSLSConcats;
 extern bool GlowSparseNNPartitioningBalancePerfModel;
 extern bool GlowDumpGraph;
 extern bool GlowUseDAGOptimizer;
+extern std::string GlowDAGOptimizerPlacementTaggingAlgorithm;
+extern std::string GlowDAGOptimizerParallelizationTaggingAlgorithm;
+extern int32_t GlowDAGOptimizerNumParallelChunks;
 extern size_t GlowMaxActiveRequests;
+extern size_t GlowMaxActiveRequestsPerInstance;
 extern size_t GlowMaxQueueSize;
 extern size_t GlowExecutorThreads;
 
@@ -72,11 +76,10 @@ extern unsigned GlowHabanaMemory;
 #ifdef GLOW_WITH_NNPI
 extern unsigned GlowNNPIMemory;
 extern unsigned GlowNNPITimeout;
-extern unsigned GlowNNPIDeviceCheckPeriodSec;
-extern bool GlowNNPIDeviceCheck;
 #endif
 extern bool GlowEnableDRT;
 extern bool GlowEnableP2P;
+extern std::string GlowAvailableDevices;
 } // namespace runtime
 
 extern bool GlowDumpCompilationLog;
@@ -147,6 +150,15 @@ DEFINE_string(glow_onnxifi_backend, "", "Glow backend used for ONNXIFI");
 DEFINE_validator(glow_onnxifi_backend,
                  [](const char *flagname, const std::string &value) {
                    glow::onnxifi::GlowOnnxifiBackend = value;
+                   return true;
+                 });
+
+DEFINE_string(
+    glow_available_devices, "",
+    "Comma separated list of devices which should be used, example 2,3,4");
+DEFINE_validator(glow_available_devices,
+                 [](const char * /* unused */, const std::string &value) {
+                   glow::runtime::GlowAvailableDevices = value;
                    return true;
                  });
 
@@ -263,6 +275,14 @@ DEFINE_validator(glow_max_active_requests,
                    return true;
                  });
 
+DEFINE_int32(glow_max_active_requests_per_instance, 6,
+             "Number of max active requests per instance of a network.");
+DEFINE_validator(glow_max_active_requests_per_instance,
+                 [](const char * /* unused */, int32_t value) {
+                   glow::onnxifi::GlowMaxActiveRequestsPerInstance = value;
+                   return true;
+                 });
+
 DEFINE_int32(
     glow_max_queue_size, 100,
     "Max number of pending requeusts in glow's host manager queue before "
@@ -335,6 +355,33 @@ DEFINE_validator(glow_use_dag_optimizer,
                    glow::onnxifi::GlowUseDAGOptimizer = value;
                    return true;
                  });
+
+DEFINE_int32(glow_dag_optimizer_num_parallel_chunks, 1,
+             "Number of parallel chunks for DAGOptimizer parallelization");
+DEFINE_validator(glow_dag_optimizer_num_parallel_chunks,
+                 [](const char * /* flagname */, int32_t value) {
+                   glow::onnxifi::GlowDAGOptimizerNumParallelChunks = value;
+                   return true;
+                 });
+
+DEFINE_string(glow_dag_optimizer_placement_tagging_algorithm, "None",
+              "Name of placement tagging algorithm to run in DAGOptimizer");
+DEFINE_validator(glow_dag_optimizer_placement_tagging_algorithm,
+                 [](const char * /* flagname */, const std::string &value) {
+                   glow::onnxifi::GlowDAGOptimizerPlacementTaggingAlgorithm =
+                       value;
+                   return true;
+                 });
+
+DEFINE_string(
+    glow_dag_optimizer_parallelization_tagging_algorithm, "None",
+    "Name of parallelization tagging algorithm to run in DAGOptimizer");
+DEFINE_validator(
+    glow_dag_optimizer_parallelization_tagging_algorithm,
+    [](const char * /* flagname */, const std::string &value) {
+      glow::onnxifi::GlowDAGOptimizerParallelizationTaggingAlgorithm = value;
+      return true;
+    });
 
 #ifdef GLOW_WITH_NNPI
 // Defined in glow/lib/Backends/NNPI/NNPI.cpp
@@ -441,21 +488,6 @@ DEFINE_validator(glow_nnpi_timeout_ms,
                    return true;
                  });
 
-DEFINE_bool(glow_nnpi_device_check, false,
-            "Whether to check NNPI device health or not");
-DEFINE_validator(glow_nnpi_device_check,
-                 [](const char * /*unused*/, bool value) {
-                   glow::runtime::GlowNNPIDeviceCheck = value;
-                   return true;
-                 });
-
-DEFINE_int32(glow_nnpi_device_check_period_s, 30,
-             "Period for NNPI device health check in seconds. Default to 32s.");
-DEFINE_validator(glow_nnpi_device_check_period_s,
-                 [](const char *flagname, int32_t value) {
-                   glow::runtime::GlowNNPIDeviceCheckPeriodSec = value;
-                   return true;
-                 });
 #endif
 
 DEFINE_bool(glow_log_partition, true, "Enable logging partition info");

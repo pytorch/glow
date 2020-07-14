@@ -11,6 +11,16 @@ message(STATUS "Using pytorch dir ${PYTORCH_DIR}")
 
 link_directories(${PYTORCH_DIR}/lib)
 
+add_library(PyTorchShapeInference
+                     ShapeInferenceEngine.cpp)
+target_compile_options(PyTorchShapeInference
+                      PRIVATE
+                        -frtti -fexceptions -DC10_USE_GLOG)
+target_link_libraries(PyTorchShapeInference
+                      PRIVATE
+                        torch_cpu
+                        c10)
+
 add_library(PyTorchModelLoader
                      CachingGraphRunner.cpp
                      CustomPyTorchOpLoader.cpp
@@ -40,7 +50,8 @@ target_link_libraries(PyTorchModelLoader
                         Importer
                         GraphOptimizer
                         Quantization
-                        Runtime)
+                        Runtime
+                        PyTorchShapeInference)
 
 add_library(PyTorchFileLoader
                      PyTorchFileLoader.cpp)
@@ -65,14 +76,9 @@ target_link_libraries(_torch_glow
                         pybind11
                         torch_python)
 
-target_include_directories(PyTorchModelLoader PUBLIC
-                            ${PYTORCH_DIR}/include)
-
-target_include_directories(PyTorchFileLoader PUBLIC
-                            ${PYTORCH_DIR}/include)
+include_directories(${PYTORCH_DIR}/include)
 
 target_include_directories(_torch_glow PUBLIC
-                            ${PYTORCH_DIR}/include
                             ${TORCH_GLOW}/src/training)
 
 add_subdirectory(training)

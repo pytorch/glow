@@ -36,7 +36,7 @@ using namespace glow;
 
 namespace glow {
 torch::jit::backend<glow::TorchGlowBackend> &torchGlowBackend() {
-  static auto cls = torch::jit::backend<glow::TorchGlowBackend>("glow_backend");
+  static auto cls = torch::jit::backend<glow::TorchGlowBackend>("glow");
   return cls;
 }
 
@@ -64,14 +64,6 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Lowers and compiles a given torch.nn module following the given spec.
   /// Returns a lowered module.
   (void)torchGlowBackend();
-
-  /// Wrapping registered glow_backend call
-  m.def("to_glow", [](const torch::jit::Module &orig_module,
-                      const py::dict &method_compile_spec) {
-    auto callback =
-        py::module::import("torch").attr("_C").attr("_jit_to_glow_backend");
-    return callback(orig_module, method_compile_spec);
-  });
 
   /// Enable compiling PyTorch subgraphs to Glow Functions.
   m.def("enableFusionPass",
@@ -130,6 +122,11 @@ PYBIND11_MODULE(_torch_glow, m) {
     getPyTorchLoaderSettings().numTracesPerDump = numTracesPerDump;
   });
 
+  /// Set the number of replications on each device.
+  m.def("set_replication_count", [](size_t replicationCount) {
+    getPyTorchLoaderSettings().replicationCount = replicationCount;
+  });
+
   /// Disable tracing in Glow runtime.
   m.def("disable_glow_tracing",
         []() { getPyTorchLoaderSettings().enableGlowTracing = false; });
@@ -141,6 +138,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Disable write Glow graph to onnx after model loading finishes.
   m.def("disable_write_to_onnx",
         []() { getPyTorchLoaderSettings().writeToOnnx = false; });
+
+  /// Enable randomizing Constants in loaded Functions.
+  m.def("enable_randomize_constants",
+        []() { getPyTorchLoaderSettings().randomizeConstants = true; });
+
+  /// Disable randomizing Constants in loaded Functions.
+  m.def("disable_randomize_constants",
+        []() { getPyTorchLoaderSettings().randomizeConstants = false; });
 
   /// Enable check Glow vs jit correctness.
   m.def("enable_jit_vs_glow_compare",
@@ -157,6 +162,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Disable saturateHost mode in Glow runtime.
   m.def("disable_saturate_host",
         []() { getPyTorchLoaderSettings().saturateHost = false; });
+
+  /// Enable shape inference engine.
+  m.def("enable_shape_inference_engine",
+        []() { getPyTorchLoaderSettings().runShapeInference = true; });
+
+  /// Disable shape inference engine.
+  m.def("disable_shape_inference_engine",
+        []() { getPyTorchLoaderSettings().runShapeInference = false; });
 
   /// Add all of the symbols in \p blacklist to the fusion blacklist so that
   /// nodes with these symbols will not be fused to Glow.
@@ -189,23 +202,24 @@ PYBIND11_MODULE(_torch_glow, m) {
   });
 
   /// Set the active HostManager to one that owns 1 of type \p backendName.
-  m.def("setGlowBackend", [](const std::string &glowBackendName) {
-    setHostManager(glowBackendName);
+  m.def("setGlowBackend", [](const std::string &backendName) {
+    getPyTorchLoaderSettings().backendName = backendName;
   });
 
-  /// Set the active HostManager to one that owns \p numDevices of type
-  /// \p backendName.
-  m.def("setGlowBackend",
-        [](const std::string &glowBackendName, size_t numDevices) {
-          setHostManager(glowBackendName, numDevices);
-        });
-
   /// \returns the name of the device backend used by the active HostManager.
-  m.def("getGlowBackendName", []() { return getBackendName(); });
+  m.def("getGlowBackendName",
+        []() { return getPyTorchLoaderSettings().backendName; });
+
+  /// Set the quantity of the device backends used by the active
+  /// HostManager.
+  m.def("setGlowBackendNumDevices", [](int32_t numDevices) {
+    return getPyTorchLoaderSettings().numDevices = numDevices;
+  });
 
   /// \returns the quantity of the device backends used by the active
   /// HostManager.
-  m.def("getGlowBackendNumDevices", []() { return getBackendNumDevices(); });
+  m.def("getGlowBackendNumDevices",
+        []() { return getPyTorchLoaderSettings().numDevices; });
 
   /// Inform host manager to load backend specific options from YAML file.
   m.def("loadBackendSpecificOptions", [](const std::string &yamlFile) {

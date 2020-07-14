@@ -71,6 +71,12 @@ createDefaultGraphOptimizationPassPipeline() {
       // enables further optimizations.
       {FunctionPassID::OptimizeTransposeIntoReshape},
 
+      // Optimize arithmetic nodes based on algebraic identities.
+      {FunctionPassID::OptimizeArithmeticNodes},
+
+      // Fold some Arithmetic ops following a LayerNorm into LayerNorm.
+      {FunctionPassID::FoldLayerNormArithmetic},
+
       // Reshapes and transposes can prevent other optimizations from
       // triggering,
       // so try to optimize them out first.
@@ -109,17 +115,17 @@ createDefaultGraphOptimizationPassPipeline() {
       // Perform Common Subexpression Elimination.
       {FunctionPassID::CSE},
 
-      // Optimize Concat nodes.
-      {FunctionPassID::OptimizeConcatNodes},
-
-      // Eliminate Concat-Slice patterns which are unnecessary.
-      {FunctionPassID::EliminateConcatSlice},
-
       // Optimize arithmetic nodes based on algebraic identities.
       {FunctionPassID::OptimizeArithmeticNodes},
 
       // Optimize Splat nodes.
       {FunctionPassID::OptimizeSplat},
+
+      // Optimize Concat nodes.
+      {FunctionPassID::OptimizeConcatNodes},
+
+      // Eliminate Concat-Slice patterns which are unnecessary.
+      {FunctionPassID::EliminateConcatSlice},
 
       // Merge Transpose into MatMul/FC.
       {FunctionPassID::MergeTransposeIntoMatMulOrFC},
@@ -165,6 +171,8 @@ createDefaultGraphOptimizationPassPipeline() {
       // Try to remove unnecessary Split-Concat operations
       {FunctionPassID::EliminateSliceConcat},
 
+      // Optimize select operations.
+      {FunctionPassID::OptimizeSelect},
       // Perform a round of Dead Code Elimination to cleanup the final pass.
       getDCEPassConfig(),
   };

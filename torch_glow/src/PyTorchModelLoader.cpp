@@ -713,8 +713,8 @@ struct EmbeddingBagInputs {
   };
 };
 
-/// Indexes used for fb::embedding_bag_byte_rowwise_offsets and
-/// fb::embedding_bag_4bit_rowwise_offsets inputs.
+/// Indexes used for quantized::embedding_bag_byte_rowwise_offsets and
+/// quantized::embedding_bag_4bit_rowwise_offsets inputs.
 struct EmbeddingBagByteRowwiseOffsetsInputs {
   enum {
     weight,
@@ -808,6 +808,10 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::topk"}, &PyTorchModelLoader::loadTopK},
       {{"prim::ConstantChunk"}, &PyTorchModelLoader::loadConstantChunk},
       {{"aten::embedding_bag"}, &PyTorchModelLoader::loadEmbeddingBag},
+      {{"quantized::embedding_bag_byte_rowwise_offsets"},
+       &PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets},
+      {{"quantized::embedding_bag_4bit_rowwise_offsets"},
+       &PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets},
       {{"fb::embedding_bag_byte_rowwise_offsets"},
        &PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets},
       {{"fb::embedding_bag_4bit_rowwise_offsets"},
@@ -4031,6 +4035,24 @@ PyTorchModelLoader::PyTorchModelLoader(
       c10::ScalarType outputScalarType;
       RETURN_IF_ERR(getCorrectTypeMapping(outputScalarType, output));
       outputCorrectType.push_back(outputScalarType);
+    }
+
+    // When randomizing constants in graphs, don't randomize scales/offsets for
+    // rowwise/channelwise ops.
+    static std::map<Kinded::Kind, std::set<unsigned>>
+        randomizeConstantsIgnoreSet = {
+            {Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind,
+             {ChannelwiseQuantizedConvolutionNode::InputIndices::
+                  FilterOffsetsIdx,
+              ChannelwiseQuantizedConvolutionNode::InputIndices::
+                  FilterScalesIdx}},
+            {Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind,
+             {RowwiseQuantizedFullyConnectedNode::InputIndices::OffsetsIdx,
+              RowwiseQuantizedFullyConnectedNode::InputIndices::ScalesIdx}},
+        };
+
+    if (settings.randomizeConstants) {
+      F_.randomizeConstants(randomizeConstantsIgnoreSet);
     }
 
     if (settings.dumpGlowDag) {

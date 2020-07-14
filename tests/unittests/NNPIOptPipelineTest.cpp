@@ -577,3 +577,109 @@ TEST_F(NNPIOptPipelineTest, NoLowerSLSFP16) {
   EXPECT_EQ(SLS->getResult().getElementType(), ElemKind::Float16Ty);
   EXPECT_EQ(SLS->getData().getElementType(), ElemKind::UInt8FusedFP16QTy);
 }
+
+/// Test Logit is not lowered when we rely on FP16 conversion in the
+/// optimization pipeline.
+TEST_F(NNPIOptPipelineTest, NoLowerLogit) {
+  auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
+  auto *tanh = F_->createLogit("logit", input, 1E-6f);
+  auto *save = F_->createSave("Save", tanh);
+
+  cctx_.precisionConfig.convertToFP16 = true;
+  cctx_.precisionConfig.convertFusedToFP16 = true;
+
+  cloneAndCompile();
+
+  SaveNode *optSave = getSaveByName(optimizedF_, save->getName());
+  ASSERT_TRUE(optSave);
+
+  // Expect one FP16 SLS after optimization (converted back to Float for Save).
+  auto *CN = llvm::dyn_cast<ConvertToNode>(optSave->getInput());
+  ASSERT_TRUE(CN);
+  auto *LN = llvm::dyn_cast<LogitNode>(CN->getInput());
+  ASSERT_TRUE(LN);
+  EXPECT_EQ(LN->getResult().getElementType(), ElemKind::Float16Ty);
+  EXPECT_EQ(LN->getInput().getElementType(), ElemKind::Float16Ty);
+}
+
+// Tile->LayerNorm
+TEST_F(NNPIOptPipelineTest, DataParallelLNClip) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 1024}, "input", false);
+
+  auto *tiled = F_->createTile("tile", input, 32, 0);
+  Tensor scaleT(ElemKind::Float16Ty, {1024});
+  scaleT.getHandle<float16_t>().randomize(0.0f, 1.0f, mod_.getPRNG());
+  Constant *scaleC = mod_.createConstant("scale", std::move(scaleT));
+  SplatNode *biasS = F_->createSplat("bias", scaleC->getType(), 1.5f);
+  auto *ln =
+      F_->createLayerNormalization("layernorm", tiled, scaleC, biasS, 1e-4);
+  auto *clipped = F_->createClip("clip", ln, -128.0f, 128.0f);
+  F_->createSave("ret", clipped);
+
+  // Set 8, but Add won't be parallelized, and so Relu shouldn't be either.
+  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+      std::to_string(8);
+  cloneAndCompile();
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TileNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::TileNodeKind), 8);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::LayerNormalizationNodeKind), 1);
+  EXPECT_EQ(
+      countNodeKind(optimizedF_, Kinded::Kind::LayerNormalizationNodeKind), 8);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 8);
+}
+
+// Quantize -> FC -> DQ
+TEST_F(NNPIOptPipelineTest, QuantizeFCDequantize) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {32, 1024}, "input", false);
+  auto *weights = F_->getParent()->createConstant(
+      ElemKind::Int8QTy, {1024, 1024}, 0.2, 0, "weights");
+  auto *bias = F_->getParent()->createConstant(ElemKind::Int32QTy, {1024}, 0.2,
+                                               0, "bias");
+
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {32, 1024}, 0.2, 0);
+  auto *quantized = F_->createQuantize("quantize", input, outTy);
+  auto *FC = F_->createFullyConnected("fc", quantized, weights, bias);
+  auto *dequantized =
+      F_->createDequantize("dequantize", FC, ElemKind::Float16Ty);
+  F_->createSave("ret", dequantized);
+
+  // Set 8, but Add won't be parallelized, and so Relu shouldn't be either.
+  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+      std::to_string(8);
+  cloneAndCompile();
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::QuantizeNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::QuantizeNodeKind), 8);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::DequantizeNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::DequantizeNodeKind), 8);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::FullyConnectedNodeKind),
+            8);
+}
+
+// BMM->clip
+TEST_F(NNPIOptPipelineTest, BMMClip) {
+  auto *input0 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {32, 32, 32}, "input", false);
+
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {32, 32, 32}, "input", false);
+
+  auto *BMM = F_->createBatchMatMul("bmm", input0, input1);
+  auto *clipped = F_->createClip("clip", BMM, -128.0f, 128.0f);
+  F_->createSave("ret", clipped);
+
+  // Set 8, but Add won't be parallelized, and so Relu shouldn't be either.
+  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+      std::to_string(8);
+  cloneAndCompile();
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 8);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchMatMulNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::BatchMatMulNodeKind), 8);
+}

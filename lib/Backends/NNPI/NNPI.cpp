@@ -20,6 +20,7 @@
 #include "NNPICompiledFunction.h"
 #include "NNPIDeviceManager.h"
 #include "NNPIUtils.h"
+#include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/Utils.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
@@ -511,20 +512,14 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
 
 bool NNPIBackend::shouldLower(const Node *N) const {
   switch (N->getKind()) {
-  case Kinded::Kind::ClipNodeKind: {
-    const ClipNode *CN = llvm::cast<ClipNode>(N);
-    if (CN->getResult().getElementType() != ElemKind::Float16Ty &&
-        CN->getResult().getElementType() != ElemKind::Int8QTy) {
-      return true;
-    }
-    return false;
-  }
+  case Kinded::Kind::ConvolutionNodeKind:
+    return isConvolutionSameAsFullyConnected(llvm::cast<ConvolutionNode>(N));
+  case Kinded::Kind::ClipNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::ConcatNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::ReluNodeKind:
-  case Kinded::Kind::ConvolutionNodeKind:
   case Kinded::Kind::Convolution3DNodeKind:
   case Kinded::Kind::TileNodeKind:
   case Kinded::Kind::LogNodeKind:
@@ -541,6 +536,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::LayerNormalizationNodeKind:
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
   case Kinded::Kind::PReluNodeKind:
+  case Kinded::Kind::LogitNodeKind:
     return false;
   case Kinded::Kind::SparseLengthsSumNodeKind:
     // WA - lower until ICE-T implements it.
@@ -549,10 +545,6 @@ bool NNPIBackend::shouldLower(const Node *N) const {
       return true;
     }
     return false;
-  case Kinded::Kind::LogitNodeKind: {
-    NodeInfo NI(*N);
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
-  }
   default:
     return true;
   }
@@ -629,24 +621,68 @@ static void setupBasicParallelizationConfigs(
     if (auto *TP = llvm::dyn_cast<TransposeNode>(node)) {
       parOpts[TP] = ParallelTransformKind::Data;
       numChunks[TP] = numParallelChunks;
+      continue;
     }
 
     // Split Quantize layers in data parallel fashion
     if (auto *QN = llvm::dyn_cast<QuantizeNode>(node)) {
       parOpts[QN] = ParallelTransformKind::Data;
       numChunks[QN] = numParallelChunks;
+      continue;
     }
 
     // Split Dequantize layers in data parallel fashion
     if (auto *DQN = llvm::dyn_cast<DequantizeNode>(node)) {
       parOpts[DQN] = ParallelTransformKind::Data;
       numChunks[DQN] = numParallelChunks;
+      continue;
+    }
+
+    // Split Tile layers in data parallel fashion
+    if (auto *TN = llvm::dyn_cast<TileNode>(node)) {
+      if (TN->getAxis() == 0) {
+        if (TN->getInput().dims().size() < 2) {
+          continue;
+        }
+        size_t N = TN->getInput().dims()[1];
+        if (N < 1024) {
+          continue;
+        }
+        parOpts[TN] = ParallelTransformKind::Model;
+        numChunks[TN] = numParallelChunks;
+      } else if (TN->getAxis() == 1) {
+        if (TN->getInput().dims().size() < 2) {
+          continue;
+        }
+        size_t M = TN->getInput().dims()[0];
+        if (M < 1024) {
+          continue;
+        }
+        parOpts[TN] = ParallelTransformKind::Data;
+        numChunks[TN] = numParallelChunks;
+      }
+      continue;
+    }
+
+    // Split LayerNorm layers in data parallel fashion
+    if (auto *LN = llvm::dyn_cast<LayerNormalizationNode>(node)) {
+      if (LN->getInput().dims().size() < 2) {
+        continue;
+      }
+      size_t N = LN->getInput().dims()[1];
+      if (N < 1024) {
+        continue;
+      }
+      parOpts[LN] = ParallelTransformKind::Data;
+      numChunks[LN] = numParallelChunks;
+      continue;
     }
 
     // Split BMM layers in data parallel fashion
     if (auto *BMM = llvm::dyn_cast<BatchMatMulNode>(node)) {
       parOpts[BMM] = ParallelTransformKind::Data;
       numChunks[BMM] = numParallelChunks;
+      continue;
     }
 
     // Split Tanh layers in data parallel fashion
@@ -660,6 +696,7 @@ static void setupBasicParallelizationConfigs(
       }
       parOpts[TH] = ParallelTransformKind::Data;
       numChunks[TH] = numParallelChunks;
+      continue;
     }
 
     // Split Mul layers in data parallel fashion
@@ -673,6 +710,7 @@ static void setupBasicParallelizationConfigs(
       }
       parOpts[M] = ParallelTransformKind::Data;
       numChunks[M] = numParallelChunks;
+      continue;
     }
 
     // Clip parallelization.
@@ -684,6 +722,7 @@ static void setupBasicParallelizationConfigs(
         parOpts[C] = parOpts[inputNode];
         numChunks[C] = numChunks[inputNode];
       }
+      continue;
     }
   }
 }
@@ -853,26 +892,23 @@ static Error setupPerNodeParallelizationConfigs(
   return Error::success();
 }
 
-/// Parallelize \p F. If \p usePerNodeParallelizationSpec then this
-/// parallelization is done based on the spec found in backendSpecificNodeInfo
-/// in \p opts. Else perform basic parallelization according to either
-/// GlowNNPINumParallelChunks, or if not specified then NNPINumParallelChunks
-/// found in backendOpts.backendSpecificOpts from \p opts. \returns whether \p F
-/// was modified.
-static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts,
-                                          bool usePerNodeParallelizationSpec) {
+/// Parallelize \p F. If this Function has backendSpecificNodeInfo in \p opts
+/// then this parallelization is done based on that. Else perform basic
+/// parallelization according to either GlowNNPINumParallelChunks, or if not
+/// specified then NNPINumParallelChunks found in
+/// backendOpts.backendSpecificOpts from \p opts. \returns whether \p F was
+/// modified.
+static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts) {
   // Split FC layers in model/data parallel fashion
   llvm::DenseMap<Node *, size_t> numChunks;
   llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
 
   int32_t defaultNumParallelChunks = 1;
-  if (usePerNodeParallelizationSpec) {
-    // If we don't have any info for this function then return early.
-    if (opts.backendSpecificNodeInfo.find(F) ==
-        opts.backendSpecificNodeInfo.end()) {
-      return false;
-    }
 
+  const bool usePerNodeParallelizationSpec =
+      opts.backendSpecificNodeInfo.find(F) !=
+      opts.backendSpecificNodeInfo.end();
+  if (usePerNodeParallelizationSpec) {
     // Only parallelize based on what is explicitly specified.
     RETURN_IF_ERR(setupPerNodeParallelizationConfigs(
         F, numChunks, parOpts, opts.backendSpecificNodeInfo));
@@ -928,33 +964,9 @@ static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts,
 
 Expected<std::unique_ptr<CompiledFunction>>
 NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
-  BackendOptions newOpts = opts;
-
-  // Perform parallelization based on any node options found in opts.
-  bool parallelized;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      parallelized, parallelizeFunction(
-                        F, newOpts, /* usePerNodeParallelizationSpec */ true));
-  if (parallelized) {
-    // If we parallelized then we want to run very specific optimizations to
-    // clean up the now-parallelized graph while preserving the Nodes in the
-    // Function so we don't mess up the placement info map. Specifically, we
-    // eliminate Concat-Slice patterns which are created during parallelization.
-    // This does not create any new nodes (it only removes Concat-Slice
-    // patterns, replacing uses of Concat with the input of Slice). Then we DCE
-    // away the now-dead Concats/Slices.
-    FunctionPassManager FPM("FinalizeFPM",
-                            {
-                                FunctionPassID::EliminateConcatSlice,
-                                FunctionPassID::FoldSlicesIntoConstants,
-                                getDCEPassConfig(),
-                            });
-    FPM.run(F, CompilationContext());
-  }
-
   std::unique_ptr<NNPICompiledFunction> compiledFunc =
       glow::make_unique<NNPICompiledFunction>(F);
-  auto compileHasError = compiledFunc->compile(F, newOpts);
+  auto compileHasError = compiledFunc->compile(F, opts);
   if (compileHasError) {
     return std::move(compileHasError);
   }
@@ -1040,42 +1052,36 @@ NNPIBackend::getOptimizationPipeline() const {
 static bool lowerRequiredNodes(Function *F, CompilationContext &cctx) {
   bool changed = false;
   for (auto &N : F->getNodes()) {
-    if (BatchMatMulNode *BMMN = llvm::dyn_cast<BatchMatMulNode>(&N)) {
+    NodeInfo NI(N);
+    switch (N.getKind()) {
+    case Kinded::Kind::BatchMatMulNodeKind:
       if (!GlowNNPILowerAllBatchMatMul &&
-          !NodeInfo(*BMMN).allInputsAndOutputsHaveSameElemKind(
-              {ElemKind::FloatTy})) {
+          !NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy})) {
         continue;
       }
+      changed |= lowerNode(F, &N, cctx);
+      continue;
 
-      lowerNode(F, BMMN, cctx);
-      changed = true;
+    case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
+      if (NI.getOutElemTy(
+              FusedRowwiseQuantizedSparseLengthsSumNode::ResultIdx) ==
+          ElemKind::Float16Ty) {
+        continue;
+      }
+      changed |= lowerNode(F, &N, cctx);
       continue;
     }
 
-    if (FusedRowwiseQuantizedSparseLengthsSumNode *SLS =
-            llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(&N)) {
-      // Lower FRWQSLS only if not FP16.
-      if (SLS->getResult().getElementType() == ElemKind::Float16Ty) {
+    case Kinded::Kind::PReluNodeKind:
+    case Kinded::Kind::LogitNodeKind:
+      if (NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty})) {
         continue;
       }
-
-      lowerNode(F, SLS, cctx);
-      changed = true;
+      changed |= lowerNode(F, &N, cctx);
       continue;
-    }
 
-    if (PReluNode *PR = llvm::dyn_cast<PReluNode>(&N)) {
-      // Lower PRelu only if not FP16.
-      if (PR->getResult().getElementType() == ElemKind::Float16Ty) {
-        continue;
-      }
-
-      lowerNode(F, PR, cctx);
-      changed = true;
-      continue;
-    }
-
-    if (ConvertToNode *CT = llvm::dyn_cast<ConvertToNode>(&N)) {
+    case Kinded::Kind::ConvertToNodeKind: {
+      ConvertToNode *CT = llvm::cast<ConvertToNode>(&N);
       // Handle bool->float conversion
       if (((CT->getResult().getElementType() == ElemKind::FloatTy) ||
            (CT->getResult().getElementType() == ElemKind::Float16Ty)) &&
@@ -1087,8 +1093,22 @@ static bool lowerRequiredNodes(Function *F, CompilationContext &cctx) {
         auto *sel = F->createSelect(ctName + "_sel", CT->getInput(), s1, s0);
         CT->getResult().replaceAllUsesOfWith(sel);
         changed = true;
+      }
+      continue;
+    }
+
+    // Explicitly lower clips as they may be introduced during lowering other
+    // ops above, e.g. Logit.
+    case Kinded::Kind::ClipNodeKind:
+      if (NI.allInputsAndOutputsHaveSameElemKind(
+              {ElemKind::Float16Ty, ElemKind::Int8QTy})) {
         continue;
       }
+      changed |= lowerNode(F, &N, cctx);
+      continue;
+
+    default:
+      continue;
     }
   }
   return changed;
@@ -1144,6 +1164,24 @@ static bool removeClipsBlockingFusion(Function *F) {
   return changed;
 }
 
+Expected<bool>
+NNPIBackend::transformPostOptPipeline(Function *F,
+                                      CompilationContext &cctx) const {
+  bool parallelized;
+  ASSIGN_VALUE_OR_RETURN_ERR(parallelized,
+                             parallelizeFunction(F, cctx.backendOpts));
+  if (parallelized) {
+    // Use the normal NNPI-specific optimization pipeline, but without sinking
+    // conversions, because we just parallelized and so don't want to undo any
+    // parallelization we performed on quantizes/dequantizes.
+    auto P = getOptimizationPipeline();
+    P->removeAllInstancesOfPass(FunctionPassID::SinkConversions);
+    FunctionPassManager("NNPI_transformPostOptPipeline", std::move(P), this)
+        .run(F, cctx);
+  }
+  return parallelized;
+}
+
 Expected<bool> NNPIBackend::transformPostLowering(
     Function *F, CompilationContext &cctx,
     const glow::runtime::DeviceInfo *devInfo) const {
@@ -1155,12 +1193,6 @@ Expected<bool> NNPIBackend::transformPostLowering(
 
   bool changed = removeClipsBlockingFusion(F);
   changed |= lowerRequiredNodes(F, cctx);
-  bool parallelized;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      parallelized,
-      parallelizeFunction(F, cctx.backendOpts,
-                          /* usePerNodeParallelizationSpec */ false));
-  changed |= parallelized;
 
 #if FACEBOOK_INTERNAL
   if (glow::onnxifi::GlowDisableNNPIPrivateTransforms) {
