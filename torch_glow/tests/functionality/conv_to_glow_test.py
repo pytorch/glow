@@ -55,7 +55,7 @@ def run_to_glow(m, x):
     inputs = [sim]
     spec.addInputs(inputs)
 
-    lowered_module = torch_glow.to_glow(traced_m._c, {"forward": spec})
+    lowered_module = torch_glow.to_glow(traced_m, {"forward": spec})
     return lowered_module
 
 
