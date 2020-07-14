@@ -76,13 +76,17 @@ public:
                              bool enableDRT) override;
 
   /// Estimate performance cost for a given Node \p N.
-  /// Returns a unitless value to be used when comparing to other estimates
+  /// \returns a unitless value to be used when comparing to other estimates.
   /// or -1 if no estimate could be generated.
   /// SparseLength and EmbeddingBag type nodes are supported.
   double
   estimateEmbeddingNode(const glow::NodeInfo &NI, bool fp32Accumulation = false,
                         glow::LengthsMode lengthsMode = LengthsMode::Variable,
                         float averageLength = NAN) const;
+
+  /// \returns a unitless value to be used when comparing Nodes or
+  /// error if no estimate can be generated.
+  Expected<double> estimateNodeCost(const glow::Node *node) const override;
   /// @}
 
 private:

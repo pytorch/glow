@@ -210,6 +210,12 @@ public:
     return false;
   }
 
+  /// \returns an estimate of the node cost in unitless terms, or an error
+  /// if the cost of the node is unknown
+  virtual Expected<double> estimateNodeCost(const Node *node) const {
+    return MAKE_ERR("Backend does not support estimateNodeCost");
+  }
+
   /// Create device manager corresponding to the backend based on the
   /// deviceConfig.
   virtual runtime::DeviceManager *
