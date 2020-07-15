@@ -2329,6 +2329,60 @@ TEST_F(OnnxImporterTest, gather) {
   EXPECT_TRUE(gather->getResult().dims().equals({2, 4, 2}));
 }
 
+/// Test loading ScatterND from an ONNX model.
+// Simplified test
+TEST_F(OnnxImporterTest, scatterND) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/scatterND.onnxtxt");
+  auto *F = mod.createFunction("main");
+  Placeholder *output;
+  Tensor data(ElemKind::FloatTy, {8});
+  Tensor indices(ElemKind::Int64ITy, {4, 1});
+  Tensor updates(ElemKind::FloatTy, {4});
+
+  ONNXModelLoader onnxLD(
+      netFilename, {"data", "indices", "updates"},
+      {&data.getType(), &indices.getType(), &updates.getType()}, *F);
+  output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+  // Verify structure: PH/PH/PH -> ScatterND -> Save -> PH.
+  ASSERT_EQ(mod.getPlaceholders().size(), 4);
+  ASSERT_EQ(F->getNodes().size(), 2);
+  auto *save = getSaveNodeFromDest(output);
+  auto *scatter = llvm::dyn_cast<ScatterDataNode>(save->getInput().getNode());
+  ASSERT_TRUE(scatter);
+  EXPECT_TRUE(scatter->getResult().dims().equals({8}));
+}
+
+/// Test loading ScatterND from an ONNX model.
+// multi-dim test
+TEST_F(OnnxImporterTest, mscatterND) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/mscatterND.onnxtxt");
+  auto *F = mod.createFunction("main");
+  Placeholder *output;
+  Tensor data(ElemKind::FloatTy, {4, 4, 4});
+  Tensor indices(ElemKind::Int64ITy, {2, 1});
+  Tensor updates(ElemKind::FloatTy, {2, 4, 4});
+
+  ONNXModelLoader onnxLD(
+      netFilename, {"data", "indices", "updates"},
+      {&data.getType(), &indices.getType(), &updates.getType()}, *F);
+  output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+  // Verify structure: PH/PH/PH -> ScatterND -> Save -> PH.
+  ASSERT_EQ(mod.getPlaceholders().size(), 4);
+  ASSERT_EQ(F->getNodes().size(), 2);
+  auto *save = getSaveNodeFromDest(output);
+  auto *scatter = llvm::dyn_cast<ScatterDataNode>(save->getInput().getNode());
+  ASSERT_TRUE(scatter);
+  EXPECT_TRUE(scatter->getResult().dims().equals({4, 4, 4}));
+}
+
 /// Test loading GatherRanges from an ONNX model.
 TEST_F(OnnxImporterTest, gatherRanges) {
   ExecutionEngine EE;
