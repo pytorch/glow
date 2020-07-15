@@ -1253,6 +1253,22 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadTrigonometricOps(const std::string typeName,
+                                            const ONNX_NAMESPACE::NodeProto &op,
+                                            ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  Node *N;
+  if (typeName == "Sin") {
+    N = G_->createSin(opName, in);
+  } else {
+    N = G_->createCos(opName, in);
+  }
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadConv1D(const ONNX_NAMESPACE::NodeProto &op,
                                   ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -3937,6 +3953,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Slice") {
     return loadSlice(op, dict);
+  }
+  if (typeName == "Sin" || typeName == "Cos") {
+    return loadTrigonometricOps(typeName, op, dict);
   }
   if (typeName == "Conv") {
     // If the Conv operator has quantized inputs, use
