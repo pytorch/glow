@@ -3766,6 +3766,55 @@ Error ONNXModelLoader::loadAudioSpectrogram(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadROIAlign(const ONNX_NAMESPACE::NodeProto &op,
+                                    ArgumentDictionaryTy &dict) {
+  NodeValue featureMap;
+  ASSIGN_VALUE_OR_RETURN_ERR(featureMap, getNodeValueByName(op.input(0)));
+  NodeValue boxes;
+  ASSIGN_VALUE_OR_RETURN_ERR(boxes, getNodeValueByName(op.input(1)));
+  NodeValue batchIndices;
+  ASSIGN_VALUE_OR_RETURN_ERR(batchIndices, getNodeValueByName(op.input(2)));
+
+  std::string mode = "avg";
+  if (dict.count("mode")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(mode, loadStr(dict.at("mode")));
+    RETURN_ERR_IF_NOT(mode == "avg" || mode == "max",
+                      "Unsupported mode. Only average pooling and max pooling "
+                      "are supported.");
+  }
+
+  uint32_t outputHeight = 1;
+  if (dict.count("output_height")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(outputHeight, loadInt(dict.at("output_height")));
+  }
+
+  uint32_t outputWidth = 1;
+  if (dict.count("output_width")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(outputWidth, loadInt(dict.at("output_width")));
+  }
+
+  uint32_t samplingRatio = 0;
+  if (dict.count("sampling_ratio")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(samplingRatio,
+                               loadInt(dict.at("sampling_ratio")));
+  }
+
+  float spatialScale = 1.0;
+  if (dict.count("spatial_scale")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(spatialScale,
+                               loadFloat(dict.at("spatial_scale")));
+  }
+
+  const std::string &opName = loadOperatorName(op);
+  featureMap = G_->createTranspose(opName, featureMap, NCHW2NHWC);
+  Node *N = G_->createROIAlign(loadOperatorName(op), featureMap, boxes,
+                               batchIndices, mode, outputHeight, outputWidth,
+                               samplingRatio, spatialScale, 0.5, false);
+  N = G_->createTranspose(opName, N, NHWC2NCHW);
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadMFCC(const ONNX_NAMESPACE::NodeProto &op,
                                 ArgumentDictionaryTy &dict) {
   NodeValue spectrogram;
@@ -4103,6 +4152,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "AudioSpectrogram") {
     return loadAudioSpectrogram(op, dict);
+  }
+  if (typeName == "RoiAlign") {
+    return loadROIAlign(op, dict);
   }
   if (typeName == "MFCC") {
     return loadMFCC(op, dict);

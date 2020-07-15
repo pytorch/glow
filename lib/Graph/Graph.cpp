@@ -4796,6 +4796,23 @@ MFCCNode *Function::createMFCC(llvm::StringRef name, NodeValue spectrogram,
                               numCoefficients));
 }
 
+ROIAlignNode *
+Function::createROIAlign(llvm::StringRef name, NodeValue featureMap,
+                         NodeValue boxes, NodeValue batchIndices,
+                         std::string mode, uint32_t outputHeight,
+                         uint32_t outputWidth, uint32_t samplingRatio,
+                         float spatialScale, float offset, bool normalized) {
+  auto featureMapDims = featureMap.dims();
+  auto boxesDims = boxes.dims();
+  std::vector<dim_t> outDim = {boxesDims[0], outputHeight, outputWidth,
+                               featureMapDims[3]};
+  auto outTy =
+      getParent()->uniqueTypeWithNewShape(featureMap.getType(), outDim);
+  return addNode(new ROIAlignNode(
+      name, outTy, featureMap, boxes, batchIndices, mode, outputHeight,
+      outputHeight, samplingRatio, spatialScale, offset, normalized));
+}
+
 //===----------------------------------------------------------------------===//
 //                   Graph dumping and printing
 //===----------------------------------------------------------------------===//

@@ -1974,6 +1974,21 @@ public:
                        float upperFrequency, int64_t filterBankCount,
                        int64_t numCoefficients);
 
+  /// Peformas the ROIAlign operation given the \p featureMap and the \p boxes.
+  /// ROIAlign is similar to crop and resize followed by pooling. The
+  /// co-ordinates to extract the crops are specified in \p boxes. Each cropped
+  /// image has to be resized to have the shape specified by \p outputHeight and
+  /// \p outputWidth. The \p samplingRatio specifies the number of samples to
+  /// take from each bin (along both the dimensions) for the purpose of pooling.
+  /// This node is inspired from onnx
+  /// (https://github.com/onnx/onnx/blob/master/docs/Operators.md#RoiAlign).
+  ROIAlignNode *createROIAlign(llvm::StringRef name, NodeValue featureMap,
+                               NodeValue boxes, NodeValue batchIndices,
+                               std::string mode, uint32_t outputHeight,
+                               uint32_t outputWidth, uint32_t samplingRatio,
+                               float spatialScale, float offset,
+                               bool normalized);
+
   /// Erase the node \p N from the Function.
   void eraseNode(Node *N);
 
