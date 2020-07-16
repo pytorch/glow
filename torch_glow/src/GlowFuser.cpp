@@ -334,12 +334,12 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
   verifyFusions(graph, kind);
 }
 
+} // namespace
+
 void registDefaultGlowFusionSymbolOnce() {
   static std::once_flag onceFlag;
   std::call_once(onceFlag, []() { registerGlowOp(getGlowSymbol()); });
 }
-
-} // namespace
 
 void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph) {
   registDefaultGlowFusionSymbolOnce();

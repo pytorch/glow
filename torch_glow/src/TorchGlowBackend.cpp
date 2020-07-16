@@ -1,6 +1,7 @@
 // Copyright 2004-present Facebook. All Rights Reserved.
 #include "TorchGlowBackend.h"
 #include "GlowCompileSpec.h"
+#include "GlowFuser.h"
 #include "Registration.h"
 #include <ATen/native/quantized/cpu/conv_packed_params.h>
 #include <ATen/native/quantized/cpu/packed_params.h>
@@ -394,44 +395,54 @@ TorchGlowBackend::compile(c10::IValue processed,
   auto module = processed.toModule();
   auto handles = c10::Dict<std::string, int64_t>();
 
-  // Compile each method
   int64_t key = 0;
+  // Compile each method
   for (const auto &method : module.get_methods()) {
-    auto g = method.function().graph();
-    // Remove "self" input
-    CHECK(g->block()->inputs()[0]->uses().empty())
-        << "self must have no uses in order to lower to Glow.";
-    g->block()->eraseInput(0);
+    if (getPyTorchLoaderSettings().enableDebugFuser) {
+      auto graph = method.function().graph();
+      // Run fusion flow using JIT graph runner
+      std::unique_ptr<JITGraphRunner> runner = std::make_unique<JITGraphRunner>(
+          processed, graph, getPyTorchLoaderSettings());
+      handleToRunnerMap_.emplace(key,
+                                 std::make_pair(nullptr, std::move(runner)));
+    } else {
+      auto g = method.function().graph();
+      // Remove "self" input
+      CHECK(g->block()->inputs()[0]->uses().empty())
+          << "self must have no uses in order to lower to Glow.";
+      g->block()->eraseInput(0);
 
-    // Create a corresponding runner and store {handle, runner} pair.
-    glow::getPyTorchLoaderSettings().preCompilePyTorchModule = true;
-    std::unique_ptr<CachingGraphRunner> runner =
-        std::make_unique<glow::CachingGraphRunner>(
-            g, glow::getHostManager(), glow::getPyTorchLoaderSettings());
+      // Create a corresponding runner and store {handle, runner} pair.
+      glow::getPyTorchLoaderSettings().preCompilePyTorchModule = true;
+      std::unique_ptr<CachingGraphRunner> runner =
+          std::make_unique<glow::CachingGraphRunner>(
+              g, glow::getHostManager(), glow::getPyTorchLoaderSettings());
 
-    // Find and parse method_compile_spec
-    c10::impl::GenericDict::iterator spec =
-        method_compile_spec.find(method.name());
-    CHECK(spec != method_compile_spec.end())
-        << "Could not find corresponding method_compile_spec for method: "
-        << method.name();
-    c10::IValue methodSpec = spec->value();
-    c10::intrusive_ptr<GlowCompileSpec> gcs;
-    try {
-      gcs = methodSpec.toCustomClass<GlowCompileSpec>();
-    } catch (const std::exception &e) {
-      throw std::invalid_argument(
-          "method_compile_spec does not match GlowCompileSpec type.");
+      // Find and parse method_compile_spec
+      c10::impl::GenericDict::iterator spec =
+          method_compile_spec.find(method.name());
+      CHECK(spec != method_compile_spec.end())
+          << "Could not find corresponding method_compile_spec for method: "
+          << method.name();
+      c10::IValue methodSpec = spec->value();
+      c10::intrusive_ptr<GlowCompileSpec> gcs;
+      try {
+        gcs = methodSpec.toCustomClass<GlowCompileSpec>();
+      } catch (const std::exception &e) {
+        throw std::invalid_argument(
+            "method_compile_spec does not match GlowCompileSpec type.");
+      }
+      std::vector<glow::InputMeta> inputMeta = parseMethodCompileSpec(*gcs);
+
+      // Compile
+      auto e = runner->warmCache(inputMeta);
+      CHECK(!(bool)e) << ERR_TO_STRING(std::move(e));
+
+      // Bakcend is created on each to_backend call --> use simple consecutive
+      // keys for methods.
+      handleToRunnerMap_.emplace(key,
+                                 std::make_pair(std::move(runner), nullptr));
     }
-    std::vector<glow::InputMeta> inputMeta = parseMethodCompileSpec(*gcs);
-
-    // Compile
-    auto e = runner->warmCache(inputMeta);
-    CHECK(!(bool)e) << ERR_TO_STRING(std::move(e));
-
-    // Bakcend is created on each to_backend call --> use simple consecutive
-    // keys for methods.
-    handleToRunnerMap_.emplace(key, std::move(runner));
     handles.insert(method.name(), key++);
   }
   return c10::impl::toGenericDict(handles);
@@ -440,13 +451,18 @@ TorchGlowBackend::compile(c10::IValue processed,
 c10::impl::GenericList
 TorchGlowBackend::execute(c10::IValue handle, c10::impl::GenericList inputs) {
   torch::jit::Stack stack;
-  for (const auto &i : inputs) {
-    torch::jit::push(stack, i);
-  }
+
   auto it = handleToRunnerMap_.find(handle.toInt());
   Error err = glow::ErrorEmpty();
   if (it != handleToRunnerMap_.end()) {
-    err = it->second->runOnly(stack);
+    if (getPyTorchLoaderSettings().enableDebugFuser && it->second.second) {
+      stack = it->second.second->onExecute(inputs);
+    } else if (it->second.first) {
+      for (const auto &i : inputs) {
+        torch::jit::push(stack, i);
+      }
+      err = it->second.first->runOnly(stack);
+    }
   } else {
     throw std::out_of_range("Could not find runner for handle " +
                             std::to_string(handle.toInt()));
@@ -464,4 +480,64 @@ TorchGlowBackend::execute(c10::IValue handle, c10::impl::GenericList inputs) {
   return c10::impl::toList(output_list);
 }
 
+JITGraphRunner::JITGraphRunner(c10::IValue module,
+                               std::shared_ptr<torch::jit::Graph> graph,
+                               PyTorchLoaderSettings &settings)
+    : module_(module), graph_(graph), ptGraphExecutor_(graph, "forward"),
+      settings_(settings) {
+  glow::registDefaultGlowFusionSymbolOnce();
+  std::cout << "Running Glow Fusion Pass" << std::endl;
+  std::unordered_set<torch::jit::NodeKind> supportedKinds;
+  std::unordered_set<torch::jit::NodeKind> unsupportedKinds;
+  for (auto node : graph_->nodes()) {
+    auto nk = node->kind();
+    if (supportedKinds.count(nk) == 0) {
+      if (PyTorchModelLoader::isNodeSupported(node)) {
+        supportedKinds.emplace(nk);
+      } else if (unsupportedKinds.count(nk) == 0) {
+        unsupportedKinds.emplace(nk);
+      }
+    }
+  }
+  if (unsupportedKinds.size() == 0) {
+    std::cout << "No unsupported nodes detected." << std::endl;
+  } else {
+    std::cout << "Unsupported Nodes:" << std::endl;
+    for (auto nk : unsupportedKinds) {
+      std::cout << nk.toQualString() << std::endl;
+    }
+  }
+  std::cout << "Supported Nodes:" << std::endl;
+  for (auto nk : supportedKinds) {
+    std::cout << nk.toQualString() << std::endl;
+  }
+
+  glowCustomFuse(graph_, settings_);
+
+  // Print graph after fusion
+  std::cout << "Graph after Glow fusion pass:\n"
+            << "(" << countFusionNodes() << " fusion nodes)" << std::endl
+            << *graph_ << std::endl;
+}
+
+torch::jit::Stack JITGraphRunner::onExecute(c10::impl::GenericList inputs) {
+  assert(getPyTorchLoaderSettings().fusionPassEnabled == false);
+  torch::jit::Stack stack;
+  torch::jit::push(stack, module_);
+  for (const auto &i : inputs) {
+    torch::jit::push(stack, i);
+  }
+  ptGraphExecutor_.run(stack);
+  return stack;
+}
+
+int JITGraphRunner::countFusionNodes() {
+  int count = 0;
+  for (auto node : graph_->nodes()) {
+    if (node->kind() == getGlowSymbol()) {
+      count++;
+    }
+  }
+  return count;
+}
 } // namespace glow
