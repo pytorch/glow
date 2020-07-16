@@ -5573,7 +5573,8 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function *F) {
   return os;
 }
 
-bool isConvolutionSameAsFullyConnected(const ConvolutionNode *node) {
+bool isConvolutionSameAsFullyConnected(const ConvolutionNode *node,
+                                       bool enforceInput1x1) {
   bool isConv2D = (node->getInput().getType()->dims().size() == 4);
   if (!(isConv2D && node->getLayout() == ConvolutionLayout::NHWC &&
         !node->hasFusedActivation())) {
@@ -5593,6 +5594,10 @@ bool isConvolutionSameAsFullyConnected(const ConvolutionNode *node) {
             (pads.right == 0);
   isSame &= (group == 1);
   isSame &= (dilation == 1);
+  if (enforceInput1x1) {
+    auto inputDims = ShapeNHWC(node->getInput().getType()->dims());
+    isSame &= (inputDims.h == 1) && (inputDims.w == 1);
+  }
   return isSame;
 }
 
