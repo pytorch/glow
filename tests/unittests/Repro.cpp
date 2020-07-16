@@ -326,12 +326,44 @@ llvm::cl::opt<unsigned> replicationCountOpt(
     "replication_count", llvm::cl::desc("Set the network replication count"),
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
 
+/// Used to sink unused opts by llvm::cl into. All flags in here are verified to
+/// be valid gflags, or else the program aborts.
+llvm::cl::list<std::string>
+    sinkUnusedOpts("glow_sink_unused", llvm::cl::desc("Sink unused opts."),
+                   llvm::cl::Optional, llvm::cl::ReallyHidden, llvm::cl::Sink,
+                   llvm::cl::ZeroOrMore, llvm::cl::cat(reproTestCat));
+
 void parseCommandLine(int argc, char **argv) {
   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
+
+  // Verify there's no unexpected overlap in flags by llvm/gflags.
+  const auto &llvmOpts = llvm::cl::getRegisteredOptions();
+  for (const auto &opt : llvmOpts) {
+    static const llvm::StringSet<> allowedInBoth = {"help", "version"};
+    if (allowedInBoth.count(opt.getKey())) {
+      continue;
+    }
+    gflags::CommandLineFlagInfo dummy;
+    CHECK(!gflags::GetCommandLineFlagInfo(opt.getKey().data(), &dummy))
+        << "Error: Repeated flag used by both llvm and gflags: "
+        << opt.getKey().data();
+  }
+
+  // Tell gflags to ignore unknown flags, allowing them to be parsed by llvm.
+  gflags::AllowCommandLineReparsing();
+  gflags::ParseCommandLineFlags(&argc, &argv, /* remove_flags */ false);
   llvm::cl::ParseCommandLineOptions(
       argc, argv,
       " The Glow compiler\n\n"
       "Glow is a compiler for neural network accelerators.\n");
+
+  // Now check that all of the LLVM-ignored flags were valid gflags.
+  for (const std::string &optStr : sinkUnusedOpts) {
+    llvm::StringRef optName = llvm::StringRef(optStr).rsplit("=").first;
+    optName.consume_front("-");
+    optName.consume_front("-");
+    gflags::GetCommandLineFlagInfoOrDie(optName.str().data());
+  }
 
   if (top1Threshold > 0.0 && topKCompare == 0) {
     topKCompare = 1;
