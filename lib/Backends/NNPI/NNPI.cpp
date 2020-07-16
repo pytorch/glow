@@ -513,7 +513,8 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
 bool NNPIBackend::shouldLower(const Node *N) const {
   switch (N->getKind()) {
   case Kinded::Kind::ConvolutionNodeKind:
-    return isConvolutionSameAsFullyConnected(llvm::cast<ConvolutionNode>(N));
+    return isConvolutionSameAsFullyConnected(llvm::cast<ConvolutionNode>(N),
+                                             /* enforceInput1x1*/ true);
   case Kinded::Kind::ClipNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::ConcatNodeKind:

@@ -2099,7 +2099,8 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function *F);
 /// \returns whether the Convolution node \p node is equivalent with a
 /// FullyConnected node. This happens for a 2D NHWC Convolution with 1x1 filter
 /// with strides 1, pads 0, group 1 and dilations 1.
-bool isConvolutionSameAsFullyConnected(const ConvolutionNode *node);
+bool isConvolutionSameAsFullyConnected(const ConvolutionNode *node,
+                                       bool enfoceInput1x1 = false);
 
 /// \returns whether the Gemm node \p node is equivalent with a FullyConnected
 /// node. This happens when alpha and beta are 1.0 and the C operand is 1D.
