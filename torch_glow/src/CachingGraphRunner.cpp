@@ -650,6 +650,7 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
 
   TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(glowModule), cctx));
+  TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");
 
   // There should be only one element in the map when model is precompiled.
   perGlowGraphInfoMap_[0] = info;
