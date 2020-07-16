@@ -260,6 +260,14 @@ PYBIND11_MODULE(_torch_glow, m) {
     return glowCustomFuseDebug(graph, acceptableKinds);
   });
 
+  /// Enable running fusion pass in to_glow as a debug flow
+  m.def("enable_debug_fuser",
+        []() { getPyTorchLoaderSettings().enableDebugFuser = true; });
+
+  /// Disable running fusion pass in to_glow as a debug flow
+  m.def("disable_debug_fuser",
+        []() { getPyTorchLoaderSettings().enableDebugFuser = false; });
+
   /// Binding wrapper class for TorchGlowTraining and its settings.
   py::class_<TorchGlowTrainingWrapper>(m, "TorchGlowTrainingWrapper")
       .def(py::init())
