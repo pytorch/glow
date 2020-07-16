@@ -430,6 +430,15 @@ public:
   DECLARE_NNPI_OPTION(disableDeviceIOBuffer, bool, "DisableDeviceIOBuffer",
                       "Disable IO buffers allocation by the NNPI stack.",
                       "NNPI_DISABLE_IOBUFFER", "1");
+  /// Disable Infer/Copy commands (for overhead measurements).
+  DECLARE_NNPI_OPTION(
+      disableCommands, int, "DisableCommands",
+      "Disable Inference for overhead measurements."
+      "\n 0 = Both copy and infer commands work."
+      "\n 1 = Copy commands work, infer commands disabled."
+      "\n 2 = Both copy and infer commands are disabled."
+      "\n 3 = All commands and pre/post processing are disabled.",
+      "NNPI_DISABLE_COMMANDS", "0");
 
   /// Inference timeout threshold. Default UINT32_MAX means infinity.
   unsigned inferTimeout{UINT32_MAX};
@@ -449,6 +458,7 @@ public:
     INIT_NNPI_OPTIONS(disableP2P, parameters);
     INIT_NNPI_OPTIONS(dumpRuntime, parameters);
     INIT_NNPI_OPTIONS(disableDeviceIOBuffer, parameters);
+    INIT_NNPI_OPTIONS(disableCommands, parameters);
 
     if (avxType == -1) {
       if (isStringFoundInCpuInfo("avx512f")) {
