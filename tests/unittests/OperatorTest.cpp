@@ -6110,6 +6110,57 @@ TEST_P(OperatorTest, IntRelu) {
   }
 }
 
+TEST_P(OperatorTest, IntAddBroadcast) {
+  CHECK_IF_ENABLED();
+
+  const float in1scale = 0.1;
+  const float in2scale = 0.2;
+  const float addScale = 2.0;
+  const int32_t in1Offset = 5;
+  const int32_t in2Offset = 10;
+  const int32_t addOffset = 15;
+  const dim_t N = 2;
+  const dim_t C = 3;
+  const dim_t H = 4;
+  const dim_t W = 5;
+
+  auto in1Ty =
+      mod_.uniqueType(ElemKind::Int8QTy, {N, C, H, W}, in1scale, in1Offset);
+  auto in2Ty = mod_.uniqueType(ElemKind::Int8QTy, {W}, in2scale, in2Offset);
+  auto outTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {N, C, H, W}, addScale, addOffset);
+
+  auto *in1 = mod_.createPlaceholder(in1Ty, "in1", false);
+  auto *in2 = mod_.createPlaceholder(in2Ty, "in2", false);
+
+  bindings_.allocate(in1)->getHandle<int8_t>().randomize(-10, 10,
+                                                         mod_.getPRNG());
+  bindings_.allocate(in2)->getHandle<int8_t>().randomize(-10, 10,
+                                                         mod_.getPRNG());
+  constexpr int axis = -1;
+  auto *addbroadcast = F_->createNodeWithBroadcastOutTy<AddNode>(
+      "addbroadcast", axis, outTy, in1, in2);
+
+  auto *save = F_->createSave("save", addbroadcast);
+  bindings_.allocate(mod_.getPlaceholders());
+
+  auto Qin1H = bindings_.get(in1)->getHandle<int8_t>();
+  auto Qin2H = bindings_.get(in2)->getHandle<int8_t>();
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(save->getPlaceholder())->getHandle<int8_t>();
+
+  for (dim_t i = 0; i < result.size(); i++) {
+    float a = in1Ty->getScale() * (Qin1H.raw(i) - in1Ty->getOffset());
+    float b =
+        in2Ty->getScale() * (Qin2H.raw(i % in2Ty->size()) - in2Ty->getOffset());
+    float add = a + b / outTy->getScale() + outTy->getOffset();
+    EXPECT_NEAR(std::round(add), result.raw(i), 1.0);
+  }
+}
+
 /// Verify quantized splats work correctly (add 0 to it to ensure constant
 /// folding doesn't make this test meaningless).
 TEST_P(OperatorTest, IntSplat) {
