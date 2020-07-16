@@ -121,6 +121,10 @@ struct PyTorchLoaderSettings {
 
   // Whether to run shape inference of meta input
   bool runShapeInference = false;
+
+  /// Run Fusion flow within to_glow compile function
+  /// TODO: move to GlowCompileSpec
+  bool enableDebugFuser = false;
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.

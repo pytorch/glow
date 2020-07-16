@@ -36,6 +36,10 @@ void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph,
 /// fusion group nodes.
 void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph);
 
+/// Registers Glow's default symbol on the first call to this function.
+/// Later calls are NOP.
+void registDefaultGlowFusionSymbolOnce();
+
 /// Fuse nodes in \p graph that have a kind in \p acceptableKinds into a
 /// subgraph in Glow fusion group nodes.
 void glowCustomFuseDebug(std::shared_ptr<torch::jit::Graph> graph,
