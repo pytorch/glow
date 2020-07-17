@@ -62,7 +62,8 @@ public:
 
   /// Start recording events.
   bool start(TraceContext *traceContext, NNPIDeviceContext deviceContext,
-             bool swTraces, bool hwTraces);
+             bool swTraces, bool hwTraces, uint32_t softwareBufferSizeMB,
+             uint32_t hardwareBufferSizeMB);
   /// Stop recording, read and update trace context.
   bool stopAndUpdate(TraceContext *traceContext,
                      NNPIDeviceContext deviceContext);

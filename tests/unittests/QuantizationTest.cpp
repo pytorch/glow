@@ -134,15 +134,17 @@ TEST(Quantization, optimizeKLTest) {
   EXPECT_EQ(rangeEmpty.second, 1.0f);
 }
 
-void testProfilingInfosSerialization(
-    const std::vector<NodeProfilingInfo> &expected) {
+void testProfilingInfosSerialization(std::vector<NodeProfilingInfo> &expected) {
   llvm::SmallVector<char, 10> resultPath;
   llvm::sys::fs::createTemporaryFile("prefix", "suffix", resultPath);
   std::string filePath(resultPath.begin(), resultPath.end());
-  serializeProfilingInfosToYaml(filePath, expected);
-  std::vector<NodeProfilingInfo> deserialized =
-      deserializeProfilingInfosFromYaml(filePath);
+  llvm::hash_code hash = 13;
+  serializeProfilingInfosToYaml(filePath, hash, expected);
+  std::vector<NodeProfilingInfo> deserialized;
+  llvm::hash_code hashDeserialized;
+  deserializeProfilingInfosFromYaml(filePath, hashDeserialized, deserialized);
   llvm::sys::fs::remove(filePath);
+  EXPECT_EQ(static_cast<size_t>(hash), static_cast<size_t>(hashDeserialized));
   EXPECT_EQ(expected, deserialized);
 }
 
@@ -170,50 +172,36 @@ TEST(Quantization, ProfilingSerializePower2Range) {
 #if LLVM_VERSION_MAJOR < 8
 TEST(Quantization, ProfilingSerializeEmpty) {
   std::vector<NodeProfilingInfo> expected;
-
   testProfilingInfosSerialization(expected);
 }
 #endif
 
-void testQuantizationInfosSerialization(
-    const std::vector<NodeQuantizationInfo> &expected) {
-  llvm::SmallVector<char, 10> resultPath;
-  llvm::sys::fs::createTemporaryFile("prefix", "suffix", resultPath);
-  std::string filePath(resultPath.begin(), resultPath.end());
-
-  serializeQuantizationInfosToYaml(filePath, expected);
-  std::vector<NodeQuantizationInfo> deserialized =
-      deserializeQuantizationInfosFromYaml(filePath);
-  llvm::sys::fs::remove(filePath);
-  EXPECT_EQ(expected, deserialized);
+TEST(Quantization, tensorAverageValue) {
+  {
+    float min = -10.0;
+    float max = 10.0;
+    std::vector<float> hist = {64, 64};
+    TensorProfilingParams profParams(min, max, hist);
+    float avgVal = quantization::getTensorAverageValue(profParams);
+    EXPECT_FLOAT_EQ(avgVal, 0.0);
+  }
+  {
+    float min = -10.0;
+    float max = 10.0;
+    std::vector<float> hist = {0, 64};
+    TensorProfilingParams profParams(min, max, hist);
+    float avgVal = quantization::getTensorAverageValue(profParams);
+    EXPECT_FLOAT_EQ(avgVal, 5.0);
+  }
+  {
+    float min = 0.0;
+    float max = 10.0;
+    std::vector<float> hist = {64, 0};
+    TensorProfilingParams profParams(min, max, hist);
+    float avgVal = quantization::getTensorAverageValue(profParams);
+    EXPECT_FLOAT_EQ(avgVal, 2.5);
+  }
 }
-
-TEST(Quantization, QuantizationSerialize) {
-  std::vector<NodeQuantizationInfo> expected{{"first", {1, 10}},
-                                             {"second", {-1, 3}},
-                                             {"third", {-10, 30}},
-                                             {"fourth", {0.1, -10}},
-                                             {"fifth", {0.123, -30}}};
-  testQuantizationInfosSerialization(expected);
-}
-
-TEST(Quantization, QuantizationSerializePower2Scale) {
-  std::vector<NodeQuantizationInfo> expected{
-      {"pwr_neg_0", {1.0000000000f, 0}}, {"pwr_neg_1", {0.5000000000f, 0}},
-      {"pwr_neg_2", {0.2500000000f, 0}}, {"pwr_neg_3", {0.1250000000f, 0}},
-      {"pwr_neg_4", {0.0625000000f, 0}}, {"pwr_neg_5", {0.0312500000f, 0}},
-      {"pwr_neg_6", {0.0156250000f, 0}}, {"pwr_neg_7", {0.0078125000f, 0}},
-      {"pwr_neg_8", {0.0039062500f, 0}}, {"pwr_neg_9", {0.0019531250f, 0}}};
-  testQuantizationInfosSerialization(expected);
-}
-
-#if LLVM_VERSION_MAJOR < 8
-TEST(Quantization, QuantizationSerializeEmpty) {
-  std::vector<NodeQuantizationInfo> expected;
-
-  testQuantizationInfosSerialization(expected);
-}
-#endif
 
 template <typename From, typename To> static To clip(From in) {
   static_assert(sizeof(From) >= sizeof(To),

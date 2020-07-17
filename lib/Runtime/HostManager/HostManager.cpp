@@ -20,6 +20,7 @@
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Partitioner/Partitioner.h"
+#include "glow/Runtime/DeviceHealthMonitor.h"
 #include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
 #include "glow/Runtime/RequestData.h"
@@ -32,6 +33,9 @@
 
 #include <glog/logging.h>
 
+#include "folly/String.h"
+
+#include <algorithm>
 #include <future>
 #include <queue>
 #include <shared_mutex>
@@ -53,13 +57,15 @@ namespace glow {
 namespace runtime {
 bool GlowEnableP2P = false;
 bool GlowEnableDRT = false;
+std::string GlowAvailableDevices = "";
 } // namespace runtime
 } // namespace glow
 
 #if FACEBOOK_INTERNAL
 Error optimizeDAG(DAGListTy &nodeList, const Provisioner &provisioner,
                   Module &mod, const std::vector<DeviceInfo> &devices,
-                  CompilationContext &cctx);
+                  CompilationContext &cctx,
+                  ConstantFoldingRecordMap &constFoldRecord);
 #endif /* FACEBOOK_INTERNAL */
 
 /// The device configs file used for Runtime.
@@ -82,6 +88,13 @@ llvm::cl::opt<bool, /* ExternalStorage */ true>
               llvm::cl::Optional,
               llvm::cl::location(glow::runtime::GlowEnableP2P),
               llvm::cl::cat(hostManagerCat));
+
+/// Set which devices are available to add a network to.
+llvm::cl::opt<std::string, true> GlowAvailableDevicesOpt(
+    "glow-available-devices",
+    llvm::cl::desc("Comma separated list of devices which "
+                   "should be used, example 2,3,4"),
+    llvm::cl::location(GlowAvailableDevices), llvm::cl::cat(hostManagerCat));
 
 HostManager::HostManager()
     : config_(), statsExporterRegistry_(StatsExporterRegistry::Stats()) {}
@@ -135,6 +148,14 @@ Error HostManager::stopDeviceTrace() {
 }
 
 Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
+  static std::once_flag monitorFlag;
+  std::call_once(monitorFlag, []() {
+    auto monitors = DeviceHealthMonitorRegistry::Monitors();
+    if (monitors) {
+      monitors->start();
+    }
+  });
+
   DeviceIDTy deviceCount = 0;
 
   for (auto &config : configs) {
@@ -146,14 +167,46 @@ Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
         DeviceManager::createDeviceManager(*config));
 
     RETURN_IF_ERR(devices_[deviceCount]->init());
-
+    availableDevices_.push_back(deviceCount);
     deviceCount++;
   }
   provisioner_.reset(new Provisioner(devices_));
   executor_.reset(
       new ThreadPoolExecutor(devices_, config_.executorThreads, "HostManager"));
   exportMemoryCounters();
+  if (GlowAvailableDevices.length()) {
+    std::vector<unsigned> devices;
+    folly::split<char, std::string, unsigned>(',', GlowAvailableDevices,
+                                              devices, /* ignoreEmpty */ true);
+    std::vector<runtime::DeviceIDTy> convertedDevs(devices.begin(),
+                                                   devices.end());
+    setAvailableDevices(convertedDevs);
+  }
+  // If no HostManager is registered yet, register this one.
+  if (!ManagerRegistry()->getHostManager()) {
+    ManagerRegistry()->registerHostManager(this);
+  }
+
   return Error::success();
+}
+
+void HostManager::setAvailableDevices(const std::vector<DeviceIDTy> &devices) {
+  // Validate new device list.
+  availableDevices_.clear();
+  std::vector<DeviceIDTy> mapping;
+  std::vector<DeviceManager *> availableDevices;
+  // Grab a lock to prevent devices_ getting changed concurrently.
+  std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+  for (auto dev : devices) {
+    auto it = devices_.find(dev);
+    if (it != devices_.end()) {
+      availableDevices_.push_back(dev);
+      availableDevices.push_back(devices_[dev].get());
+      mapping.push_back(it->first);
+    }
+  }
+  // Update the provisioner.
+  provisioner_->updateAvailableDevices(availableDevices, mapping);
 }
 
 void HostManager::exportMemoryCounters() {
@@ -244,13 +297,13 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   std::vector<DeviceInfo> deviceInfo;
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
-    for (auto &device : devices_) {
-      DeviceInfo info = device.second->getDeviceInfo();
-      info.availableMemory = device.second->getAvailableMemory();
-      info.backendName = device.second->getBackendName();
+    for (auto &device : availableDevices_) {
+      DeviceInfo info = devices_[device]->getDeviceInfo();
+      info.availableMemory = devices_[device]->getAvailableMemory();
+      info.backendName = devices_[device]->getBackendName();
       info.nonSupportedNodes =
-          device.second->getParamByName("nonSupportedNodes");
-      info.supportedNodes = device.second->getParamByName("supportedNodes");
+          devices_[device]->getParamByName("nonSupportedNodes");
+      info.supportedNodes = devices_[device]->getParamByName("supportedNodes");
       deviceInfo.push_back(info);
     }
   }
@@ -261,9 +314,17 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   const bool skipOptimizations =
       cctx.backendOpts.backendSpecificNodeInfo.size() > 0;
 
+  // Flag to check whether we are in profiling mode.
+  bool profilingMode =
+      (cctx.precisionConfig.quantMode == QuantizationMode::Profile);
+
   // Perform a round of target-independent graph optimizations. This helps the
   // partitioner to do its job more efficiently.
-  if (!skipOptimizations) {
+  // When profiling we skip the optimization since in order for the quantization
+  // to be done properly same optimizations must be performed until the lowering
+  // stage for both the profiling and quantization path. Since the quantization
+  // for Ahead Of Time mode lacks this optimization we must disable it also.
+  if (!skipOptimizations && !profilingMode) {
     for (Function *F : module->getFunctions()) {
       auto err = optimizeFunctionBeforeLowering(F, cctx);
       if (err) {
@@ -277,7 +338,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   }
   Partitioner partitioner(module.get(), deviceInfo, skipOptimizations);
   if (cctx.enableP2P || cctx.enableDRT) {
-    partitioner.setContextCount(config_.maxActiveRequests);
+    partitioner.setContextCount(cctx.maxActiveRequestsPerInstance);
   } else {
     partitioner.setContextCount(2);
   }
@@ -333,24 +394,46 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
 
       // Verify the Function is valid after constant folding takes place.
       Backend &B = provisioner_->getBackend(dagNode->backendName);
-      RETURN_ERR_IF_NOT(B.verify(*F, cctx.verboseCompile),
-                        "Unsupported node(s) found after optimizing Function " +
-                            F->getName().str() + " for backend " +
-                            B.getBackendName());
+      RETURN_ERR_IF_NOT(
+          B.verify(*F, cctx.verboseCompile),
+          "Unsupported node(s) found after delayed constant folding Function " +
+              F->getName().str() + " for backend " + B.getBackendName());
     }
   }
 
-#if FACEBOOK_INTERNAL
   if (cctx.callDAGOptimizer) {
+#if FACEBOOK_INTERNAL
     auto optDagErr =
-        optimizeDAG(nodeList, *provisioner_, *module, deviceInfo, cctx);
+        optimizeDAG(nodeList, *provisioner_, *module, deviceInfo, cctx, record);
     if (optDagErr) {
       std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
       cleanupAddNetwork(names);
       return optDagErr;
     }
-  }
 #endif /* FACEBOOK_INTERNAL */
+  } else {
+    // If not using the DAG optimizer, iterate over the DAGs and call
+    // transformPostOptPipeline() on the Functions.
+    for (const auto &dag : nodeList) {
+      for (auto &dagNode : dag.nodes) {
+        Function *F = module->getFunction(dagNode->name);
+        RETURN_ERR_IF_NOT(
+            F, strFormat("Function %s not found", dagNode->name.data()));
+
+        if (cctx.optimizationOpts.onlyLowerFuns.count(F)) {
+          continue;
+        }
+
+        Backend &B = provisioner_->getBackend(dagNode->backendName);
+        RETURN_IF_EXPECTED_IS_ERR(B.transformPostOptPipeline(F, cctx));
+
+        RETURN_ERR_IF_NOT(
+            B.verify(*F, cctx.verboseCompile),
+            "Unsupported node(s) found after transformPostOptPipeline() " +
+                F->getName().str() + " for backend " + B.getBackendName());
+      }
+    }
+  }
 
   // If requested, serialize the resulting DAG that was just optimized and
   // partitioned.
@@ -362,7 +445,8 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       ONNXModelWriter onnxWR(loc, nodeList, 7, 9, &writeErr,
                              /* textMode */ false, /* zipMode */ false,
                              /* includeConstantData */ false,
-                             /* extraMetadataProps */ {}, record);
+                             /* extraMetadataProps */ {}, record,
+                             cctx.backendOpts.backendSpecificNodeInfo);
       RETURN_IF_ERR(writeErr);
     }
   }
@@ -383,6 +467,29 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
 
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+    /// Calculate networkMaxActive requests. Then update
+    /// config_.maxActiveRequests This will be maxActiveRequestsPerInstance *
+    /// instanceCount * minReplications or config_.maxActiveRequests whichever
+    /// is smaller.
+
+    // Find the minimum on device replication.
+    unsigned minReplications{1};
+    for (auto &node : nodeList) {
+      for (auto &dag : node.nodes) {
+        minReplications = std::min(dag->replicationCount, minReplications);
+      }
+    }
+    unsigned product{0};
+    if (nodeList.size() && nodeList[0].nodes.size()) {
+      product = nodeList[0].nodes[0]->instanceCount *
+                cctx.maxActiveRequestsPerInstance * minReplications;
+    } else {
+      return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
+                      "NodeList is empty.");
+    }
+    unsigned maxActiveRequests = config_.maxActiveRequests;
+    config_.maxActiveRequests = std::min(product, maxActiveRequests);
+
     // Create pool of cachedExecutionStates.
     for (auto &node : nodeList) {
       // Note: currently getNextNetworkExecutionState assumes that pool size is
@@ -409,6 +516,23 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     cleanupAddNetwork(names);
   }
   return Error::success();
+}
+
+std::unordered_map<std::string, std::vector<DeviceIDTy>>
+HostManager::getDevicePartitionMapping(llvm::StringRef network) {
+  std::unordered_map<std::string, std::vector<DeviceIDTy>> mapping;
+  auto it = networks_.find(network);
+  if (it != networks_.end()) {
+    auto &nodeList = it->second.dag.nodes;
+    for (auto &node : nodeList) {
+      std::vector<DeviceIDTy> devices;
+      for (auto &dev : node->deviceRuntimeInfos) {
+        devices.push_back(dev.first);
+      }
+      mapping[node->name] = devices;
+    }
+  }
+  return mapping;
 }
 
 Error HostManager::removeNetwork(llvm::StringRef networkName) {
@@ -443,7 +567,8 @@ Error HostManager::removeNetwork(llvm::StringRef networkName) {
   executor_->freePool(networkIterator->second.dag.root.get());
   for (auto &node : nodes) {
     for (auto device : node->deviceRuntimeInfos) {
-      Error evictErr = provisioner_->evictFunction(node->name, device.first);
+      Error evictErr =
+          provisioner_->evictFunction(node->name, devices_[device.first].get());
       err.set(std::move(evictErr));
     }
     // Also remove compiledFunction from Provisioner.
@@ -746,4 +871,19 @@ bool runtime::loadDeviceConfigsFromFile(
 
 Backend &HostManager::getBackend(llvm::StringRef backendName) const {
   return provisioner_->getBackend(backendName);
+}
+
+Expected<Backend *> HostManager::getBackend() const {
+  return provisioner_->getBackend();
+}
+
+HostManager *HostManagerRegistry::getHostManager() { return hostManager_; }
+
+void HostManagerRegistry::registerHostManager(HostManager *hostManager) {
+  hostManager_ = hostManager;
+}
+
+std::shared_ptr<HostManagerRegistry> glow::runtime::ManagerRegistry() {
+  static auto hostManager = std::make_shared<HostManagerRegistry>();
+  return hostManager;
 }

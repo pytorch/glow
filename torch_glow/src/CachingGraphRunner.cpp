@@ -23,6 +23,8 @@
 #include <torch/csrc/jit/runtime/argument_spec.h>
 #include <torch/csrc/utils/hash.h>
 
+#include "ShapeInferenceEngine.h"
+
 namespace glow {
 // TODO: this should also return the list of TensorTypes used to compute the
 // hash to check for equality. Will make a nicer wrapper for this in the future.
@@ -220,6 +222,17 @@ TensorCompareResult compareTensors(glow::Tensor &RefT, glow::Tensor &CmpT) {
   return result;
 }
 
+/// This function slice the input Tensor according to the expected shape in the
+/// zero dimension.
+/// TODO: Multi-dimension slicing will be supported later.
+at::Tensor sliceTensor(at::Tensor &t, std::vector<int64_t> &shape) {
+  CHECK_GT(shape.size(), 0);
+  if (shape.size() == 0) {
+    return t;
+  }
+  return at::native::slice(t, 0, 0, shape[0]);
+}
+
 Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
                                   torch::jit::Stack &stack,
                                   std::unique_ptr<ExecutionContext> &ctx) {
@@ -401,6 +414,20 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "runNetwork");
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "setOutputs");
 
+  std::vector<std::vector<int64_t>> outputShape = {};
+  if (settings_.runShapeInference) {
+    TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "runShapeInference");
+
+    ShapeInferenceEngine shapeG(*graph_, inputs);
+    RETURN_IF_ERR(shapeG.run());
+    outputShape = shapeG.getGraphOutputShape();
+    if (outputs.size() != outputShape.size()) {
+      return MAKE_ERR("Fail to infer shape for outputs");
+    }
+
+    TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "runShapeInference");
+  }
+
   torch::jit::drop(stack, numInputs);
 
   ONNX_NAMESPACE::GraphProto outputG;
@@ -436,6 +463,12 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
                                    /*useGlowCustomOps*/ true);
     }
 
+    if (settings_.runShapeInference) {
+      if (i < outputShape.size()) {
+        ptTensor = sliceTensor(ptTensor, outputShape[i]);
+      }
+    }
+
     if (settings_.jitVsGlowCompare) {
       glow::Tensor glowT = ptTensorToGlowTensor(ptTensor);
       auto &jitOutput = torch::jit::peek(copyStack, i, outputs.size());
@@ -458,9 +491,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
                   << std::endl;
       }
     }
-
-    auto var = torch::autograd::make_variable(ptTensor);
-    stack.push_back(at::IValue(var));
+    stack.push_back(at::IValue(std::move(ptTensor)));
   }
 
   if (settings_.writeToOnnx) {
@@ -580,10 +611,13 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
   }
 
   auto info = std::make_shared<PerGlowGraphInfo>();
-  static std::atomic<int32_t> aotNum{0};
-  info->functionName = strFormat("PTFunction_precompiled_%d", aotNum++);
 
-  std::unique_ptr<Module> glowModule = llvm::make_unique<Module>();
+  // Using the pointer to current graph runner should be enough to ensure
+  // one-to-one mapping from compiled graph to the network in host managers.
+  size_t hash = reinterpret_cast<size_t>(this);
+  info->functionName = strFormat("pt_function_%lu", hash);
+
+  std::unique_ptr<Module> glowModule = std::make_unique<Module>();
   Function *f = glowModule->createFunction(info->functionName);
 
   TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME, "loadJITGraph");
@@ -612,13 +646,13 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
   cctx.precisionConfig.convertToFP16 = settings_.convertToFP16;
   cctx.precisionConfig.convertFusedToFP16 = settings_.convertFusedToFP16;
   cctx.dumpFinalGraph = settings_.dumpFinalGlowGraph;
+  cctx.saturateHost = settings_.saturateHost;
 
   TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(glowModule), cctx));
   TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");
 
-  // Randomly picked one key. There should be only one element in the map
-  // when model is precompiled.
+  // There should be only one element in the map when model is precompiled.
   perGlowGraphInfoMap_[0] = info;
 
   TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME,
@@ -634,11 +668,11 @@ const PyTorchLoaderSettings &CachingGraphRunner::getSettings() const {
 
 CachingGraphRunner::CachingGraphRunner(
     std::shared_ptr<torch::jit::Graph> graph,
-    std::shared_ptr<runtime::HostManager> hostManager, const char *backendName,
+    std::shared_ptr<runtime::HostManager> hostManager,
     PyTorchLoaderSettings settings)
     : graph_(graph), ptGraphExecutor_(graph, "forward"),
-      hostManager_(hostManager), backend_(hostManager->getBackend(backendName)),
-      settings_(settings) {
+      hostManager_(hostManager),
+      backend_(*EXIT_ON_ERR(hostManager->getBackend())), settings_(settings) {
   mergedTraceContext_ = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
 }
 

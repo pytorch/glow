@@ -90,7 +90,7 @@ fi
 
 # Since we are using llvm-7 in these two branches, we cannot use pip install cmake
 if [ "${CIRCLE_JOB}" != "PYTORCH" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
-	sudo pip install cmake
+	sudo pip install cmake==3.17.3
 else
 	sudo apt-get install cmake
 fi
@@ -160,6 +160,8 @@ elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
 elif [[ "$CIRCLE_JOB" == "OPENCL" ]]; then
     install_pocl
     CMAKE_ARGS+=("-DGLOW_WITH_OPENCL=ON")
+elif [[ "$CIRCLE_JOB" == "FEATURE_COMPILATION" ]]; then
+    CMAKE_ARGS+=("-DGLOW_USE_PNG_IF_REQUIRED=OFF")
 elif [[ "$CIRCLE_JOB" == "32B_DIM_T" ]]; then
     install_pocl
     CMAKE_ARGS+=("-DTENSOR_DIMS_32_BITS=ON -DGLOW_WITH_OPENCL=ON")

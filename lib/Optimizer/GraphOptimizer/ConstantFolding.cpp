@@ -289,6 +289,9 @@ bool constantFoldNodeImpl(Backend &backend, Node *N,
   // Do not print out compilation errors encountered, as constant folding is a
   // best effort; simply silently give up and continue with compilation.
   cctx.verboseCompile = false;
+  // Signal to the graph optimizer that it should not be deleting unused
+  // Constants in the module.
+  cctx.optimizationOpts.delayAndRecordConstantModification = true;
   return evaluateConstantOperation(backend, cctx, N, constResults, record);
 }
 

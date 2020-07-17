@@ -66,6 +66,11 @@ struct PassManagerOptions {
 /// all pass managers, but provides a number of hooks that can be overridden by
 /// concrete pass manager to customize the behavior.
 class PassManagerBase : public Named {
+
+private:
+  /// The index of pass iteration
+  int iterationCount_ = 0;
+
 protected:
   /// The index of the current pass being executed in the pipeline.
   size_t passIdx_ = 0;

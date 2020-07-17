@@ -159,6 +159,76 @@ static void lowerRegressionGradNode(Function *F, CompilationContext &cctx,
                        expG);
 }
 
+static void lowerGemmNode(Function *F, CompilationContext &cctx,
+                          const GemmNode &GN) {
+
+  LOG_SCOPE(F->getLogContext(), "lowerGemm")
+
+  NodeValue A = GN.getA();
+  NodeValue B = GN.getB();
+  NodeValue C = GN.getC();
+  NodeValue Y = GN.getResult();
+  float alpha = GN.getAlpha();
+  float beta = GN.getBeta();
+
+  // Transpose A (if required).
+  if (GN.getTransposeA()) {
+    A = F->createTranspose(DECORATE_NODE_NAME(GN, "TransposeA"), A, {1, 0});
+  }
+
+  // Transpose B (if required).
+  if (GN.getTransposeB()) {
+    B = F->createTranspose(DECORATE_NODE_NAME(GN, "TransposeB"), B, {1, 0});
+  }
+
+  // If Gemm is same as FullyConnected then lower to a FullyConnected node.
+  if (isGemmSameAsFullyConnected(&GN)) {
+    NodeValue newY =
+        F->createFullyConnected(GN.getName().str(), A, B, C, Y.getType());
+    replaceAllUsesOfWith(cctx.loweredInfoMap, GN.getResult(), newY);
+    return;
+  }
+
+  // Create MatMul for A * B.
+  NodeValue newY =
+      F->createMatMul(DECORATE_NODE_NAME(GN, "MatMul"), Y.getType(), A, B);
+
+  // Multiply with alpha (if required).
+  if (alpha != 1.0) {
+    auto *alphaSplat = F->createSplat(DECORATE_NODE_NAME(GN, "AlphaSplat"),
+                                      Y.getType(), alpha);
+    newY = F->createMul(DECORATE_NODE_NAME(GN, "AlphaMul"), alphaSplat, newY);
+  }
+
+  // Check if C operand is used.
+  bool isUsedC = C.getNode() && (beta != 0.f);
+  if (isUsedC) {
+    auto *splatC = llvm::dyn_cast<SplatNode>(C.getNode());
+    if (splatC && (splatC->getValue() == 0.f)) {
+      isUsedC = false;
+    }
+  }
+
+  // Add C (if used).
+  if (isUsedC) {
+    // Multiply with beta (if required).
+    if (beta != 1.0) {
+      auto *betaSplat = F->createSplat(DECORATE_NODE_NAME(GN, "BetaSplat"),
+                                       C.getType(), beta);
+      C = F->createMul(DECORATE_NODE_NAME(GN, "BetaMul"), betaSplat, C);
+    }
+    // Add C.
+    if (C.dims().size() == 1) {
+      newY = F->createBatchedAdd(DECORATE_NODE_NAME(GN, "AddC"), Y.getType(),
+                                 newY, C);
+    } else {
+      newY = F->createAdd(DECORATE_NODE_NAME(GN, "AddC"), Y.getType(), newY, C);
+    }
+  }
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, GN.getResult(), newY);
+}
+
 static void lowerFullyConnectedNode(Function *F, CompilationContext &cctx,
                                     const FullyConnectedNode &FC) {
   LOG_SCOPE(F->getLogContext(), "lowerFullyConnectedNode")
@@ -809,6 +879,45 @@ static void lowerBatchNormalizationGradNode(Function *F,
                        zeroSplat);
 }
 
+static void lowerConvolutionToFullyConnected(Function *F,
+                                             CompilationContext &cctx,
+                                             const ConvolutionNode &CN) {
+
+  LOG_SCOPE(F->getLogContext(), "lowerConvolutionToFullyConnected");
+
+  NodeValue output = CN.getResult();
+  NodeValue input = CN.getInput();
+  NodeValue filter = CN.getFilter();
+  NodeValue bias = CN.getBias();
+
+  // Reshape input to 2D.
+  auto inpDims = ShapeNHWC(input.getType()->dims());
+  std::vector<dim_t> inpDimsFC = {inpDims.n * inpDims.h * inpDims.w, inpDims.c};
+  input = F->createReshape(DECORATE_NODE_NAME(CN, "ReshapeInput"), input,
+                           inpDimsFC);
+
+  // Reshape filter to 2D and Transpose.
+  auto filterDims = ShapeNHWC(filter.getType()->dims());
+  std::vector<dim_t> weightsDimsFC = {filterDims.n, filterDims.c};
+  NodeValue weights = F->createReshape(DECORATE_NODE_NAME(CN, "ReshapeWeights"),
+                                       filter, weightsDimsFC);
+  weights = F->createTranspose(DECORATE_NODE_NAME(CN, "TransposeWeights"),
+                               weights, {1, 0});
+
+  // Create FullyConnected node with same output type but 2D shape.
+  auto outDims = ShapeNHWC(output.getType()->dims());
+  std::vector<dim_t> outDimsFC = {outDims.n * outDims.h * outDims.w, outDims.c};
+  auto outTyFC =
+      F->getParent()->uniqueTypeWithNewShape(output.getType(), outDimsFC);
+  NodeValue outputFC = F->createFullyConnected(
+      CN.getName().str(), input, weights, bias, outTyFC, ShapeNHWC::DimC);
+
+  // Reshape the 2D output back to its original shape.
+  outputFC = F->createReshape(DECORATE_NODE_NAME(CN, "ReshapeOutput"), outputFC,
+                              output.getType()->dims());
+  replaceAllUsesOfWith(cctx.loweredInfoMap, output, outputFC);
+}
+
 static void lowerGroupConvolutionNode(Function *F, CompilationContext &cctx,
                                       const ConvolutionNode &BNG) {
   // When Group parameter is more than 1, ConvolutionNode can be represented as
@@ -1217,7 +1326,7 @@ static void lowerClipNode(Function *F, CompilationContext &cctx,
   auto *minClipped =
       F->createMax(name.str() + ".minClip", CN.getInput(), minSplat);
   auto *maxSplat = F->createSplat(name.str() + ".maxSplat", type, max);
-  auto result = F->createMin(name.str(), minClipped, maxSplat);
+  auto result = F->createMin(name.str(), type, minClipped, maxSplat);
   replaceAllUsesOfWith(cctx.loweredInfoMap, CN.getResult(), result);
 }
 
@@ -1387,6 +1496,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(MulGrad);
     CASE_LOWER(SubGrad);
     CASE_LOWER(DivGrad);
+    CASE_LOWER(Gemm);
     CASE_LOWER(FullyConnected);
     CASE_LOWER(FullyConnectedGrad);
     CASE_LOWER(Relu);
@@ -1418,6 +1528,10 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
     if (CN->getGroup() > 1 && CN->hasFusedActivation()) {
       lowerGroupConvolutionNode(F, cctx, *CN);
+      return true;
+    }
+    if (isConvolutionSameAsFullyConnected(CN)) {
+      lowerConvolutionToFullyConnected(F, cctx, *CN);
       return true;
     }
   }

@@ -598,6 +598,27 @@ public:
   AdaptiveAvgPoolNode *createAdaptiveAvgPool(llvm::StringRef name,
                                              NodeValue input, TypeRef outTy);
 
+  /// Creates and \returns a General Matrix Multiplication (Gemm) node with
+  /// given \p name which computes Y = alpha * A * B + beta * C. The operands
+  /// \p A and \p B are 2D matrices, the \p C operand is an optional 1D or 2D
+  /// matrix (broadcastable to the size of Y) and \p alpha and \p beta are float
+  /// scalars. The \p C operand is optional, if nullptr is given then it is not
+  /// used. If \p transposeA or \p transposeB is true then \p A or \p B is
+  /// additionally transposed prior to matrix multiplication.
+  /// If the output shape of Y is [M,N] then:
+  /// - The shape of \p A must be [M,K] or [K,M] (if transposed).
+  /// - The shape of \p B must be [K,N] or [N,K] (if transposed).
+  /// - The shape of \p C must be [N] (if 1D) or [M,N] (if 2D).
+  GemmNode *createGemm(llvm::StringRef name, NodeValue A, NodeValue B,
+                       NodeValue C = nullptr, float alpha = 1.0,
+                       float beta = 1.0, bool transposeA = false,
+                       bool transposeB = false);
+
+  GemmNode *createGemm(llvm::StringRef name, TypeRef outTy, NodeValue A,
+                       NodeValue B, NodeValue C = nullptr, float alpha = 1.0,
+                       float beta = 1.0, bool transposeA = false,
+                       bool transposeB = false);
+
   /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
   /// \p W, bias \p B. If \p input is not 2 dimensional then it is flattened
   /// along \p axis. Note, output type and outputDepth are inferred based on
@@ -706,9 +727,13 @@ public:
   /// Result type will be implicitly set based on the \p input type.
   TanhNode *createTanh(llvm::StringRef name, NodeValue input);
 
-  /// Create an Exp  node with \p name, which calculates element-wise
+  /// Create an Exp node with \p name, which calculates element-wise
   /// exponential of \p input.
   ExpNode *createExp(llvm::StringRef name, NodeValue input);
+
+  /// Create an Exp node with \p name with output type \p outTy, which
+  /// calculates element-wise exponential of \p input.
+  ExpNode *createExp(llvm::StringRef name, TypeRef outTy, NodeValue input);
 
   /// Create a Log node with \p name, which calculates element-wise natural log
   /// of \p input, with output type \p outTy.
@@ -1964,6 +1989,9 @@ public:
   std::string toString(bool skipUsersForStorage = false,
                        bool skipName = false) const;
 
+  /// \returns a hash code of the function.
+  llvm::hash_code getHash() const;
+
   /// Dump a textual representation of the Function into default output stream.
   /// If \p skipUsersForStorage then user counts for Storage will not be dumped.
   /// If \p skipName then the name of the Function will not be dumped.
@@ -1998,6 +2026,13 @@ public:
 
   /// \returns pointer to the class member for the nodes list.
   static NodesList Function::*getNodesMemberPtr() { return &Function::nodes_; }
+
+  /// Randomize all of the Constants in the function. If a Constant with users
+  /// in this Function also has users in other Functions then this will result
+  /// in a FATAL. \p ignoredConstants is a map Kinds of nodes to the input
+  /// indices for that node that should be ignored (not randomized).
+  void randomizeConstants(
+      const std::map<Kinded::Kind, std::set<unsigned>> &ignoredConstants = {});
 };
 
 struct TrainingConfig;
@@ -2060,6 +2095,16 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module *mod);
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function &F);
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function *F);
+
+/// \returns whether the Convolution node \p node is equivalent with a
+/// FullyConnected node. This happens for a 2D NHWC Convolution with 1x1 filter
+/// with strides 1, pads 0, group 1 and dilations 1.
+bool isConvolutionSameAsFullyConnected(const ConvolutionNode *node,
+                                       bool enfoceInput1x1 = false);
+
+/// \returns whether the Gemm node \p node is equivalent with a FullyConnected
+/// node. This happens when alpha and beta are 1.0 and the C operand is 1D.
+bool isGemmSameAsFullyConnected(const GemmNode *node);
 
 } // namespace glow
 

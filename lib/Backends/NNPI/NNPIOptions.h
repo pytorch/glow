@@ -179,6 +179,10 @@ public:
                       "Enable execution on device (if true, will also force "
                       "compilation for HW and ignore the UseIceT option).",
                       "USE_INF_API", "0");
+  /// Normalize layer names.
+  DECLARE_NNPI_OPTION(normalizeLayerNames, bool, "NormalizeLayerNames",
+                      "Normalize layer names.", "NNPI_NORMALIZE_LAYER_NAMES",
+                      "0");
   /// Setting this to true will log the status of all variables at backend
   /// creation.
   DECLARE_NNPI_OPTION(showVars, bool, "ShowVars",
@@ -289,10 +293,11 @@ public:
   DECLARE_NNPI_OPTION(ddrBandwidth, float, "DDRBandwidth",
                       "Set an estimated DDR bandwidth in GB/s.", "NNPI_DDR_BW",
                       "0.f");
-  /// Disable SLS on IA.
-  DECLARE_NNPI_OPTION(disableSLSOnIA, bool, "DisableSLSOnIA",
-                      "Disable SLS exectuion on IA (SLS will execute on ICE).",
-                      "NNPI_DISABLE_SLS_ON_IA", "1");
+  /// Disable SLS offload to IA.
+  DECLARE_NNPI_OPTION(
+      disableSLSOffloadToIA, bool, "DisableSLSOffloadToIA",
+      "Disable SLS offloading to IA (SLS will execute on ICE where possible).",
+      "NNPI_DISABLE_SLS_OFFLOAD", "1");
   /// Enable lightweight compilation.
   DECLARE_NNPI_OPTION(lightCompilation, bool, "LightCompilation",
                       "Enable light compilation (only for gathering metadata).",
@@ -309,6 +314,7 @@ public:
   NNPICompilationOptions(const BackendSpecificOptions &parameters) {
     INIT_NNPI_OPTIONS(useIceT, parameters);
     INIT_NNPI_OPTIONS(inferOnDevice, parameters);
+    INIT_NNPI_OPTIONS(normalizeLayerNames, parameters);
     INIT_NNPI_OPTIONS(showVars, parameters);
     INIT_NNPI_OPTIONS(compiledFile, parameters);
     INIT_NNPI_OPTIONS(compileOutputPostfix, parameters);
@@ -332,7 +338,7 @@ public:
     INIT_NNPI_OPTIONS(iaPrio0, parameters);
     INIT_NNPI_OPTIONS(iaPrio1, parameters);
     INIT_NNPI_OPTIONS(ddrBandwidth, parameters);
-    INIT_NNPI_OPTIONS(disableSLSOnIA, parameters);
+    INIT_NNPI_OPTIONS(disableSLSOffloadToIA, parameters);
     INIT_NNPI_OPTIONS(lightCompilation, parameters);
     INIT_NNPI_OPTIONS(dumpDotFiles, parameters);
     INIT_NNPI_OPTIONS(dumpCompilationInfo, parameters);
@@ -378,10 +384,22 @@ public:
                       "Override the target device ID used to run (0,1,...).",
                       "NNPI_DEVICE_ID", "-1");
   /// Enable Hardware Trace.
-  DECLARE_NNPI_OPTION(hardwareTraces, bool, "hardwareTraces",
+  DECLARE_NNPI_OPTION(hardwareTraces, bool, "HardwareTraces",
                       "Enable hardware traces when device traces are started "
                       "(default is disabled).",
                       "NNPI_HW_TRACES", "0");
+  /// Max software trace capture size in MB.
+  DECLARE_NNPI_OPTION(
+      softwareTracesMaxBuffer, uint32_t, "SoftwareTracesMaxBuffer",
+      "Set the max internal buffer size for device software traces."
+      "(use 0 for hard coded default).",
+      "NNPI_SW_TRACES_BUFFER_SIZE", "0");
+  /// Max hardware trace capture size in MB.
+  DECLARE_NNPI_OPTION(
+      hardwareTracesMaxBuffer, uint32_t, "HardwareTracesMaxBuffer",
+      "Set the max internal buffer size for device hardware traces."
+      "Enabled only when hardwareTraces=1 (use 0 for hard coded default).",
+      "NNPI_HW_TRACES_BUFFER_SIZE", "0");
   /// Override the max NNPI device memory.
   DECLARE_NNPI_OPTION(
       deviceMemory, unsigned, "DeviceMemory",
@@ -412,6 +430,18 @@ public:
   DECLARE_NNPI_OPTION(disableDeviceIOBuffer, bool, "DisableDeviceIOBuffer",
                       "Disable IO buffers allocation by the NNPI stack.",
                       "NNPI_DISABLE_IOBUFFER", "1");
+  /// Disable Infer/Copy commands (for overhead measurements).
+  DECLARE_NNPI_OPTION(
+      disableCommands, int, "DisableCommands",
+      "Disable Inference for overhead measurements."
+      "\n 0 = Both copy and infer commands work."
+      "\n 1 = Copy commands work, infer commands disabled."
+      "\n 2 = Both copy and infer commands are disabled."
+      "\n 3 = All commands and pre/post processing are disabled.",
+      "NNPI_DISABLE_COMMANDS", "0");
+
+  /// Inference timeout threshold. Default UINT32_MAX means infinity.
+  unsigned inferTimeout{UINT32_MAX};
 
   NNPIDeviceOptions(const llvm::StringMap<std::string> &parameters) {
     INIT_NNPI_OPTIONS(useIceT, parameters);
@@ -419,6 +449,8 @@ public:
     INIT_NNPI_OPTIONS(showVars, parameters);
     INIT_NNPI_OPTIONS(deviceId, parameters);
     INIT_NNPI_OPTIONS(hardwareTraces, parameters);
+    INIT_NNPI_OPTIONS(softwareTracesMaxBuffer, parameters);
+    INIT_NNPI_OPTIONS(hardwareTracesMaxBuffer, parameters);
     INIT_NNPI_OPTIONS(deviceMemory, parameters);
     INIT_NNPI_OPTIONS(dumpIOtoFiles, parameters);
     INIT_NNPI_OPTIONS(avxType, parameters);
@@ -426,6 +458,7 @@ public:
     INIT_NNPI_OPTIONS(disableP2P, parameters);
     INIT_NNPI_OPTIONS(dumpRuntime, parameters);
     INIT_NNPI_OPTIONS(disableDeviceIOBuffer, parameters);
+    INIT_NNPI_OPTIONS(disableCommands, parameters);
 
     if (avxType == -1) {
       if (isStringFoundInCpuInfo("avx512f")) {

@@ -28,7 +28,10 @@
 #include <unordered_map>
 #include <vector>
 
-#define MAX_TRACE_BUFFER_SIZE (1024 * 1024 * 100)
+/// Set default Hardware buffer size to 3GB.
+#define MAX_HW_TRACE_BUFFER_SIZE_MB (1024 * 3)
+/// Set default Software buffer size to 400MB.
+#define MAX_SW_TRACE_BUFFER_SIZE_MB (400)
 
 static inline uint64_t secondsToMicroseconds(double seconds) {
   return (uint64_t)(seconds * 1e6f);
@@ -61,8 +64,11 @@ NNPITraceContext::NNPITraceContext(unsigned devID)
 NNPITraceContext::~NNPITraceContext() { destroyInternalContext(); }
 
 bool NNPITraceContext::startCapture(NNPIDeviceContext deviceContext,
-                                    bool swTracess, bool hwTraces) {
-  if (!createInternalContext(swTracess, hwTraces)) {
+                                    bool swTraces, bool hwTraces,
+                                    uint32_t softwareBufferSizeMB,
+                                    uint32_t hardwareBufferSizeMB) {
+  if (!createInternalContext(swTraces, hwTraces, softwareBufferSizeMB,
+                             hardwareBufferSizeMB)) {
     LOG(WARNING) << "nnpi_trace: Failed to create trace device context.";
     return false;
   }
@@ -155,7 +161,11 @@ bool NNPITraceContext::readTraceOutput() {
     traceEntry.params["context_id"] = std::to_string(entry.context_id);
     traceEntry.params["network_id"] = std::to_string(entry.network_id);
     traceEntry.params["infer_id"] = std::to_string(entry.infer_id);
-    traceEntry.params["ice_id"] = std::to_string(entry.ice_id);
+    if (entry.ice_id >= 0 && entry.ice_id < 12) {
+      // Valid ICE ID.
+      traceEntry.params["ice_id"] = std::to_string(entry.ice_id);
+    }
+
     traceEntry.params["core_id"] = std::to_string(entry.core_id);
     traceEntry.params["network_name"] = entry.network_name;
     traceEntry.params["kernel_name"] = entry.kernel_name;
@@ -186,9 +196,7 @@ bool NNPITraceContext::readTraceOutput() {
     }
     traceEntry.params["state"] = entry.state;
     entries_.push_back(traceEntry);
-    if (entry.event_name == "user_data" &&
-        traceEntry.params.count("user_data") > 0 &&
-        traceEntry.params.count("key") > 0) {
+    if (entry.event_name == "user_data") {
       if (!started && traceEntry.params["key"] == "BG") {
         glowStart = std::stol(traceEntry.params["user_data"]);
         deviceStart = entry.engine_timestamp;
@@ -250,7 +258,9 @@ bool NNPITraceContext::destroyInternalContext() {
   return true;
 }
 
-bool NNPITraceContext::createInternalContext(bool swTraces, bool hwTraces) {
+bool NNPITraceContext::createInternalContext(bool swTraces, bool hwTraces,
+                                             uint32_t softwareBufferSizeMB,
+                                             uint32_t hardwareBufferSizeMB) {
   if (capsSession_ != 0) {
     return false;
   }
@@ -262,13 +272,19 @@ bool NNPITraceContext::createInternalContext(bool swTraces, bool hwTraces) {
   }
   devMask_ = 1UL << devID_;
   if (swTraces) {
+    uint64_t maxBufferSize = softwareBufferSizeMB > 0
+                                 ? softwareBufferSizeMB
+                                 : MAX_SW_TRACE_BUFFER_SIZE_MB;
     size_t swEventsCount = sizeof(swEventTypes) / sizeof(swEventTypes[0]);
     size_t idx = 0;
+
     IceCapsSwTraceConfig traceConfigs[1 + swEventsCount];
     traceConfigs[idx].traceOptions.config_type =
         eIceCapsSwTraceConfigType::ICE_CAPS_SWTRACE_OPTIONS;
     traceConfigs[idx].traceOptions.device_mask = devMask_;
-    traceConfigs[idx].traceOptions.max_bytes = MAX_TRACE_BUFFER_SIZE;
+    // Software traces engine max_bytes is in bytes while maxBufferSize is in
+    // megabytes.
+    traceConfigs[idx].traceOptions.max_bytes = maxBufferSize * 1024 * 1024;
     idx++;
     for (size_t i = 0; i < swEventsCount; i++) {
       traceConfigs[idx].traceEvent.config_type =
@@ -291,11 +307,15 @@ bool NNPITraceContext::createInternalContext(bool swTraces, bool hwTraces) {
     }
   }
   if (hwTraces) {
+    uint64_t maxBufferSize = hardwareBufferSizeMB > 0
+                                 ? hardwareBufferSizeMB
+                                 : MAX_HW_TRACE_BUFFER_SIZE_MB;
     IceCapsHwTraceConfig traceConfigs[2];
     traceConfigs[0].traceOptions.config_type =
         eIceCapsHwTraceConfigType::ICE_CAPS_HWTRACE_OPTIONS;
     traceConfigs[0].traceOptions.device_mask = devMask_;
-    traceConfigs[0].traceOptions.max_trace_size = MAX_TRACE_BUFFER_SIZE;
+    // Hardware traces engine max_trace_size is in megabytes.
+    traceConfigs[0].traceOptions.max_trace_size = maxBufferSize;
     traceConfigs[1].iceFilter.config_type =
         eIceCapsHwTraceConfigType::ICE_CAPS_HWTRACE_FILTER;
     traceConfigs[1].iceFilter.ice_mask = 0xFFF; // All ICEs.

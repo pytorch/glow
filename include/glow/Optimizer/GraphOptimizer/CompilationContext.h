@@ -120,6 +120,10 @@ struct OptimizationOptions {
   /// cards using a performance model
   bool sparseNNPartitioningBalancePerfModel{false};
 
+  /// If true, SparseNN partiitoning scheme will move Layer Normalization
+  /// nodes immediately following SLS into SLS partitions
+  bool sparseNNPartitioningPairLNWithSLS{false};
+
   /// The number of cards over which to split SLS tables when using SparseNN
   /// partitioning scheme
   unsigned int sparseNNPartitioningSchemeNumCards{1};
@@ -136,12 +140,29 @@ struct OptimizationOptions {
   /// partitioning scheme
   unsigned int sparseNNPartitioningSchemeNumCoresOther{1};
 
+  /// The algorithm used for Placement tagging in DAG Optimizer
+  std::string DAGOptimizerPlacementTaggingAlgorithm;
+
+  /// The algorithm used for Parallelization tagging in DAG Optimizer
+  std::string DAGOptimizerParallelizationTaggingAlgorithm;
+
+  /// The number of parallel chunks used in DAG Optimizer parallelization
+  int32_t DAGOptimizerNumParallelChunks;
+
   /// If true does int64 to int32 type demotion if backend supports for specific
   /// nodes.
   bool enableTypeDemotion{true};
 
   /// If true, optimizations are allowed to change quantization scale/offset.
   bool enableQuantParamChanges{false};
+};
+
+/// Meta information produced during the compilation. Whereas the compile
+/// options should be interpreted as input variables for the compilation, the
+/// below structure is output information produced by the compilation process.
+struct CompilationInfo {
+  /// The hash of the graph before the lowering stage.
+  llvm::hash_code graphPreLowerHash{0};
 };
 
 /// Context for compilation.
@@ -157,6 +178,9 @@ struct CompilationContext {
 
   /// If true the HostManager will try to use all available devices on the host.
   bool saturateHost{false};
+
+  /// Number of max active requests per instance of this network.
+  unsigned maxActiveRequestsPerInstance{48};
 
   /// Used during Quantization and Profiling.
   LoweredInfoMap *loweredInfoMap{nullptr};
@@ -177,6 +201,9 @@ struct CompilationContext {
 
   /// Configuration for different precision modes.
   PrecisionConfiguration precisionConfig;
+
+  /// Information produced during compilation.
+  CompilationInfo info;
 
   /// How to annotate the compilation log filename.
   std::string compilationLogPrefix{"glow"};

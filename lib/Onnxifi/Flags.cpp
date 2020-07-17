@@ -43,14 +43,19 @@ extern bool GlowUseCustomOpsForExport;
 extern bool GlowUseSparseNNPartitioningScheme;
 extern bool GlowSparseNNPartitioningAddSLSConcats;
 extern bool GlowSparseNNPartitioningBalancePerfModel;
+extern bool GlowSparseNNPartitioningPairLNWithSLS;
 extern bool GlowDumpGraph;
 extern bool GlowUseDAGOptimizer;
+extern std::string GlowDAGOptimizerPlacementTaggingAlgorithm;
+extern std::string GlowDAGOptimizerParallelizationTaggingAlgorithm;
+extern int32_t GlowDAGOptimizerNumParallelChunks;
 extern size_t GlowMaxActiveRequests;
+extern size_t GlowMaxActiveRequestsPerInstance;
 extern size_t GlowMaxQueueSize;
 extern size_t GlowExecutorThreads;
 
-#ifdef GLOW_WITH_NNPI
 // Defined in glow/lib/Backends/NNPI/NNPI.cpp
+#ifdef GLOW_WITH_NNPI
 extern bool GlowDumpNNPICompilerData;
 extern bool GlowUsePerPartitionIcetConfig;
 extern bool GlowDisableNNPITransforms;
@@ -69,9 +74,13 @@ namespace runtime {
 extern unsigned GlowInterpreterMemory;
 extern unsigned GlowCPUMemory;
 extern unsigned GlowHabanaMemory;
+#ifdef GLOW_WITH_NNPI
 extern unsigned GlowNNPIMemory;
+extern unsigned GlowNNPITimeout;
+#endif
 extern bool GlowEnableDRT;
 extern bool GlowEnableP2P;
+extern std::string GlowAvailableDevices;
 } // namespace runtime
 
 extern bool GlowDumpCompilationLog;
@@ -145,6 +154,15 @@ DEFINE_validator(glow_onnxifi_backend,
                    return true;
                  });
 
+DEFINE_string(
+    glow_available_devices, "",
+    "Comma separated list of devices which should be used, example 2,3,4");
+DEFINE_validator(glow_available_devices,
+                 [](const char * /* unused */, const std::string &value) {
+                   glow::runtime::GlowAvailableDevices = value;
+                   return true;
+                 });
+
 DEFINE_bool(glow_global_fp16, false,
             "Enable fp16 lowering for all ops on the net");
 DEFINE_validator(glow_global_fp16, [](const char * /* unused */, bool value) {
@@ -211,6 +229,15 @@ DEFINE_validator(glow_sparsenn_partitioning_balance_perf_model,
                    return true;
                  });
 
+DEFINE_bool(glow_sparsenn_partitioning_pair_ln_with_sls, false,
+            "Put layer normalization nodes immediately following SLS into SLS "
+            "Partitions");
+DEFINE_validator(glow_sparsenn_partitioning_pair_ln_with_sls,
+                 [](const char * /* flagname */, bool value) {
+                   glow::onnxifi::GlowSparseNNPartitioningPairLNWithSLS = value;
+                   return true;
+                 });
+
 DEFINE_bool(glow_clip_fp16, false, "Force glow to clip fp16 values to min/max");
 DEFINE_validator(glow_clip_fp16, [](const char *flagname, bool value) {
   glow::onnxifi::GlowClipFP16 = value;
@@ -255,6 +282,14 @@ DEFINE_int32(glow_max_active_requests, 48,
 DEFINE_validator(glow_max_active_requests,
                  [](const char *flagname, int32_t value) {
                    glow::onnxifi::GlowMaxActiveRequests = value;
+                   return true;
+                 });
+
+DEFINE_int32(glow_max_active_requests_per_instance, 48,
+             "Number of max active requests per instance of a network.");
+DEFINE_validator(glow_max_active_requests_per_instance,
+                 [](const char * /* unused */, int32_t value) {
+                   glow::onnxifi::GlowMaxActiveRequestsPerInstance = value;
                    return true;
                  });
 
@@ -330,6 +365,33 @@ DEFINE_validator(glow_use_dag_optimizer,
                    glow::onnxifi::GlowUseDAGOptimizer = value;
                    return true;
                  });
+
+DEFINE_int32(glow_dag_optimizer_num_parallel_chunks, 1,
+             "Number of parallel chunks for DAGOptimizer parallelization");
+DEFINE_validator(glow_dag_optimizer_num_parallel_chunks,
+                 [](const char * /* flagname */, int32_t value) {
+                   glow::onnxifi::GlowDAGOptimizerNumParallelChunks = value;
+                   return true;
+                 });
+
+DEFINE_string(glow_dag_optimizer_placement_tagging_algorithm, "None",
+              "Name of placement tagging algorithm to run in DAGOptimizer");
+DEFINE_validator(glow_dag_optimizer_placement_tagging_algorithm,
+                 [](const char * /* flagname */, const std::string &value) {
+                   glow::onnxifi::GlowDAGOptimizerPlacementTaggingAlgorithm =
+                       value;
+                   return true;
+                 });
+
+DEFINE_string(
+    glow_dag_optimizer_parallelization_tagging_algorithm, "None",
+    "Name of parallelization tagging algorithm to run in DAGOptimizer");
+DEFINE_validator(
+    glow_dag_optimizer_parallelization_tagging_algorithm,
+    [](const char * /* flagname */, const std::string &value) {
+      glow::onnxifi::GlowDAGOptimizerParallelizationTaggingAlgorithm = value;
+      return true;
+    });
 
 #ifdef GLOW_WITH_NNPI
 // Defined in glow/lib/Backends/NNPI/NNPI.cpp
@@ -426,6 +488,16 @@ DEFINE_validator(glow_nnpi_memory, [](const char *flagname, int32_t value) {
   glow::runtime::GlowNNPIMemory = value;
   return true;
 });
+
+DEFINE_int32(glow_nnpi_timeout_ms, 0,
+             "Timeout threshold for inferecnce in milliseconds. Default 0 "
+             "means infinity");
+DEFINE_validator(glow_nnpi_timeout_ms,
+                 [](const char * /*unused*/, int32_t value) {
+                   glow::runtime::GlowNNPITimeout = value * 1000;
+                   return true;
+                 });
+
 #endif
 
 DEFINE_bool(glow_log_partition, true, "Enable logging partition info");

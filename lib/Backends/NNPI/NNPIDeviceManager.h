@@ -60,7 +60,7 @@ class NNPIDeviceManager : public DeviceManager {
   /// NNPI Device id.
   unsigned deviceId_;
   /// Inference objects kept per added network.
-  InferencePoolMap inferenceEnvs_;
+  InferencePoolMap inferencePools_;
 
   /// NNPI Adapter container.
   NNPIAdapterContainer *pAdapter_ = nullptr;

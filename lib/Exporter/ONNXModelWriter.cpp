@@ -62,6 +62,17 @@ template <> struct AttributeAssigner<false, false, llvm::StringRef> {
   }
 };
 
+// Specialization for vector of strings.
+template <> struct AttributeAssigner<false, false, std::vector<std::string>> {
+  static void assign(ONNX_NAMESPACE::AttributeProto *attr,
+                     const std::vector<std::string> &container) {
+    attr->set_type(ONNX_NAMESPACE::AttributeProto::STRINGS);
+    for (auto &str : container) {
+      attr->add_strings(str);
+    }
+  }
+};
+
 // Specialization for float type
 template <> struct AttributeAssigner<false, false, float> {
   static void assign(ONNX_NAMESPACE::AttributeProto *attr,
@@ -610,8 +621,9 @@ Error ONNXModelWriter::writeConstantFoldingSubgraph(const Constant *C,
     return Error::success();
   }
 
-  // Create new constant folding Node, which we add the subgraph to.
-  auto *constFoldNodeProto = graphProto_->add_node();
+  // Create new constant folding Node, which we add the subgraph to. Always add
+  // to the root as these are all loaded before loading any ops.
+  auto *constFoldNodeProto = graphProtoRoot_->add_node();
   constFoldNodeProto->set_op_type(constFoldSubgraphNodeName);
   const char *constFoldNodeName = constFoldFunction->getName().data();
   constFoldNodeProto->set_name(constFoldNodeName);
@@ -685,7 +697,8 @@ Error ONNXModelWriter::writeFunction() {
       const auto *C = llvm::cast<Constant>(N);
 
       // Check if this constant came from constant folding that we recorded and
-      // want to serialize in the model.
+      // want to serialize in the model. If so then we process it before the
+      // Constant itself so that it will be loaded first.
       auto constFoldRecordIt = constFoldRecord_.find(C);
       if (constFoldRecordIt != constFoldRecord_.end()) {
         RETURN_IF_ERR(
@@ -847,13 +860,15 @@ ONNXModelWriter::ONNXModelWriter(
     size_t opsetVersion, Error *errPtr, bool textMode, bool zipMode,
     bool useGlowCustomOps, bool includeConstantData,
     const llvm::StringMap<std::string> &extraMetadataProps,
-    const ConstantFoldingRecordMap &constFoldRecord)
+    const ConstantFoldingRecordMap &constFoldRecord,
+    const BackendSpecificNodeInfo &backendSpecificNodeInfo)
     : CommonOperatorWriter(modelFilename, &F, errPtr), irVersion_(irVersion),
       opsetVersion_(opsetVersion), zipMode_(zipMode), textMode_(textMode),
       includeConstantData_(includeConstantData),
       extraMetadataProps_(extraMetadataProps),
       useGlowCustomOps_(useGlowCustomOps), dagMode_(false),
-      constFoldRecord_(constFoldRecord) {
+      constFoldRecord_(constFoldRecord),
+      backendSpecificNodeInfo_(backendSpecificNodeInfo) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -969,12 +984,14 @@ ONNXModelWriter::ONNXModelWriter(
     size_t opsetVersion, Error *errPtr, bool textMode, bool zipMode,
     bool includeConstantData,
     const llvm::StringMap<std::string> &extraMetadataProps,
-    const ConstantFoldingRecordMap &constFoldRecord)
+    const ConstantFoldingRecordMap &constFoldRecord,
+    const BackendSpecificNodeInfo &backendSpecificNodeInfo)
     : CommonOperatorWriter(modelFilename, nullptr, errPtr),
       irVersion_(irVersion), opsetVersion_(opsetVersion), zipMode_(zipMode),
       textMode_(textMode), includeConstantData_(includeConstantData),
       extraMetadataProps_(extraMetadataProps), useGlowCustomOps_(true),
-      dagMode_(true), constFoldRecord_(constFoldRecord) {
+      dagMode_(true), constFoldRecord_(constFoldRecord),
+      backendSpecificNodeInfo_(backendSpecificNodeInfo) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -2086,6 +2103,26 @@ Error ONNXModelWriter::writeRescaleQuantized(const RescaleQuantizedNode *node,
   return writeAllWithNode("RescaleQuantized", node, graph, proto);
 }
 
+Error ONNXModelWriter::writeGemm(const GemmNode *node, GraphType &graph) {
+  auto *proto = graph.add_node();
+  proto->set_name(node->getName());
+  proto->set_op_type("Gemm");
+
+  proto->add_input(node->getA().getNode()->getName());
+  proto->add_input(node->getB().getNode()->getName());
+  if (node->getC().getNode()) {
+    proto->add_input(node->getC().getNode()->getName());
+  }
+
+  addValueAttribute(proto, "alpha", node->getAlpha());
+  addValueAttribute(proto, "beta", node->getBeta());
+  addValueAttribute(proto, "transA", node->getTransposeA());
+  addValueAttribute(proto, "transB", node->getTransposeB());
+
+  outputsToProto(node, graph, proto);
+  return Error::success();
+}
+
 Error ONNXModelWriter::writeFullyConnected(const FullyConnectedNode *node,
                                            GraphType &graph) {
   auto *proto = graph.add_node();
@@ -2245,6 +2282,21 @@ Error ONNXModelWriter::writeGlowCustomOperator(const Node *node,
   // If dumping a DAG then add partition names to each op that's written.
   if (dagMode_ && !isWritingConstFoldSubgraph()) {
     addValueAttribute(opProto, "partitionName", F_->getName().str());
+  }
+
+  // Check if there is backendSpecificNodeInfo for node, and if so include it.
+  auto itF = backendSpecificNodeInfo_.find(node->getParent());
+  if (itF != backendSpecificNodeInfo_.end()) {
+    auto itN = itF->second.find(node);
+    if (itN != itF->second.end()) {
+      // We found backend-specific node info, so add it to the opProto.
+      for (const auto &optValPair : itN->second) {
+        addValueAttribute(opProto,
+                          std::string(nodeOptSignifier) + "_" +
+                              optValPair.getKey().data(),
+                          optValPair.getValue());
+      }
+    }
   }
 
   return Error::success();

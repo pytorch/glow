@@ -46,6 +46,12 @@ class TFLiteModelLoader {
   /// The Glow module containing the function(s) we are constructing.
   Module &mod_;
 
+  /// A map from names of the model inputs to placeholders.
+  llvm::StringMap<Placeholder *> inputPlaceholderByName_;
+
+  /// A map from names of the model outputs to placeholders.
+  llvm::StringMap<Placeholder *> outputPlaceholderByName_;
+
   /// Vector with node values ordered by their corresponding tensor positions
   /// in the original model. This vector contains only the node values (tensors)
   /// registered in the original model since only those are needed for chaining
@@ -275,6 +281,16 @@ public:
 
   /// \returns the TensorFlowLite model description.
   std::string getModelDescription() const { return modelDescription_; };
+
+  /// \returns a map between the model input names and the input placeholders.
+  const llvm::StringMap<Placeholder *> &getInputPlaceholderMap() const {
+    return inputPlaceholderByName_;
+  }
+
+  /// \returns a map between the model output names and the output placeholders.
+  const llvm::StringMap<Placeholder *> &getOutputPlaceholderMap() const {
+    return outputPlaceholderByName_;
+  }
 
   /// Loads the TensorFlowLite model from the file \p modelFilename into the
   /// function \p F.

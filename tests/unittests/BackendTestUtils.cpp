@@ -1385,4 +1385,18 @@ Constant *createRandomFusedRowwiseQuantizedConstant(Module &mod,
   return c;
 }
 
+Placeholder *createFusedRowwiseQuantizedPlaceholder(Module &mod,
+                                                    llvm::ArrayRef<dim_t> dims,
+                                                    llvm::StringRef name,
+                                                    bool useFusedFP16) {
+  auto T = useFusedFP16 ? ElemKind::UInt8FusedFP16QTy : ElemKind::UInt8FusedQTy;
+  const dim_t sizeScaleOffset =
+      useFusedFP16 ? sizeof(float16_t) : sizeof(float);
+  constexpr float scale = 1.0f / 1275;
+  constexpr float offset = -0.1;
+  Placeholder *ph = mod.createPlaceholder(
+      T, {dims[0], dims[1] + 2 * sizeScaleOffset}, scale, offset, name, false);
+
+  return ph;
+}
 } // namespace glow

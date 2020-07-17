@@ -124,33 +124,6 @@ class Partitioner final : public PartitionerBase {
                      std::vector<std::unique_ptr<Backend>> &backendsHolder,
                      std::vector<Backend *> &backends);
 
-  struct SLSTableInfo {
-    Node *node;
-    uint64_t numBytesInTable;
-    unsigned int deviceId;
-    NodeValue slsClipResult;
-    uint64_t cost;
-  };
-
-  struct SLSDeviceInfo {
-    unsigned int deviceId;
-    uint64_t memAvailableInBytes;
-    size_t currentCost;
-  };
-
-  /// Helper function for SparseNN Partitioning scheme. Checks for each
-  /// kind of SLS table and appends their metadata to the vector.
-  template <typename SLSType>
-  void appendSLSTable(Node &node, std::vector<SLSTableInfo> &slsTables,
-                      bool doPerfModelBalance);
-
-  /// Helper function for SparseNN partitioning. Inserts concats into SLS
-  /// partition and corresponding slices into non-SLS partitions
-  void sparseNNInsertSplitConcat(Function *F,
-                                 std::vector<SLSDeviceInfo> slsDevices,
-                                 std::vector<SLSTableInfo> slsTables,
-                                 PartitionConfig &partitionConfig);
-
   /// Returns info for the default device of the backend. If multiple devices,
   /// returns the first one.
   const DeviceInfo &getDeviceInfoForBackend(llvm::StringRef backendName);

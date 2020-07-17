@@ -22,6 +22,7 @@
 #include "glow/IR/IR.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPassPipeline.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
+#include "glow/Optimizer/Lower/Lower.h"
 
 #include "gtest/gtest.h"
 
@@ -834,6 +835,33 @@ TEST_F(GraphOptz, transposeConstant) {
   ASSERT_NE(optimizedA, nullptr);
   // Check that A has been properly transposed.
   EXPECT_TRUE(optimizedA->getPayload().isEqual(transposedA));
+}
+
+/// Check that the Transpose is merged with Constant in a sequence
+/// Transpose(Quantize(Constant)).
+TEST_F(GraphOptz, transposeQuantizeConstant) {
+  auto *qTy = mod_.uniqueType(ElemKind::Int8QTy, {1, 10, 20, 3}, 0.2, 0);
+  auto *input = F_->getParent()->createConstant(ElemKind::FloatTy,
+                                                {1, 10, 20, 3}, "input");
+  auto *Q = F_->createQuantize("quantize", input, qTy);
+  auto *T = F_->createTranspose("transpose", Q, NHWC2NCHW);
+  auto *S = F_->createSave("save", T);
+
+  // Skip ConstantFolding as it would have the same result as this opt.
+  CompilationContext cctx;
+  cctx.optimizationOpts.enableConstantFolding = false;
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  ::glow::optimize(F_, cctx);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  // Constant and Quantize should have new shape.
+  auto *newQ = llvm::dyn_cast<QuantizeNode>(S->getInput());
+  ASSERT_TRUE(newQ);
+  EXPECT_TRUE(newQ->getResult().dims().equals({1, 3, 10, 20}));
+  auto *newC = llvm::dyn_cast<Constant>(newQ->getInput());
+  ASSERT_TRUE(newC);
+  EXPECT_TRUE(newC->getType()->dims().equals({1, 3, 10, 20}));
 }
 
 /// Check that the removing of transposes still happens when
@@ -2999,45 +3027,44 @@ TEST_F(GraphOptz, mergeBANodes) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedAddNodeKind), 1);
 }
 
-/// Check that TileNodes that tile something only once are eliminated.
-TEST_F(GraphOptz, eliminateNoopTile) {
-  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {3, 1, 2}, "A",
-                                   /*isTrainable=*/false);
-  auto *tile = F_->createTile("tile", A, /*tiles=*/1,
-                              /*axis=*/1);
-  auto *relu = F_->createRELU("relu", tile);
-  F_->createSave("save", relu);
+/// Check that EliminateNoop optimization pass removes nodes which don't do
+/// anything useful.
+TEST_F(GraphOptz, eliminateNoop) {
+  std::vector<dim_t> shape = {1, 2, 2, 3};
+  Placeholder *input1 = mod_.createPlaceholder(ElemKind::Int8QTy, shape, 0.004,
+                                               0, "input", false);
+  Placeholder *input2 = mod_.createPlaceholder(ElemKind::Int8QTy, shape, 0.004,
+                                               0, "input", false);
+  auto *cond = mod_.createConstant(ElemKind::BoolTy, shape, "input1");
+  cond->getHandle<bool>() = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TileNodeKind), 1);
+  auto *select = F_->createSelect("select", cond, input1, input2);
+  auto *slice = F_->createSlice("slice", select, {0, 0, 0, 0}, shape);
+  auto *tile = F_->createTile("tile", slice, 1, 1);
+  auto *pad = F_->createPad("pad", tile, tile->getResult().getType(), 0,
+                            {0, 0, 0, 0, 0, 0, 0, 0}, 0);
+  auto *avgPool = F_->createAvgPool("avgpool", pad, 1, 1, 0);
+  auto *maxPool = F_->createMaxPool("maxpool", avgPool, 1, 1, 0);
 
-  optimizedF_ = optimizeFunction(F_);
+  F_->createSave("save", maxPool->getResult());
 
-  // Check that the Tile node is eliminated.
-  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::TileNodeKind), 0);
-
-  bindings_.allocate(mod_.getPlaceholders());
-  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
-
-  checkNumericalEquivalence();
-}
-
-/// Check that noop SliceNodes are correctly eliminated.
-TEST_F(GraphOptz, eliminateNoopSlice) {
-  Placeholder *input = mod_.createPlaceholder(
-      ElemKind::Int8QTy, {2, 32}, 0.004, 0, "input", /* isTrainable */ false);
-  auto *slice = F_->createSlice("tile", input, {0, 0}, {2, 32});
-  F_->createSave("save", slice);
-
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SelectNodeKind), 1);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TileNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::PadNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::AvgPoolNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MaxPoolNodeKind), 1);
 
   optimizedF_ = optimizeFunction(F_);
 
-  // Check that the Slice node is eliminated.
-  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SliceNodeKind), 0);
+  // Check that all nodes except for Save are eliminated.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 1);
 
   bindings_.allocate(mod_.getPlaceholders());
-  bindings_.get(input)->getHandle<int8_t>().randomize(-1.0, 1.0,
-                                                      mod_.getPRNG());
+  bindings_.get(input1)->getHandle<int8_t>().randomize(-1.0, 1.0,
+                                                       mod_.getPRNG());
+  bindings_.get(input2)->getHandle<int8_t>().randomize(-1.0, 1.0,
+                                                       mod_.getPRNG());
 
   checkNumericalEquivalence();
 }
@@ -3142,6 +3169,59 @@ TEST_F(GraphOptz, concatElim) {
 // Check that when the order of the Slices is reversed no optimization kicks in.
 TEST_F(GraphOptz, concatElimReverseOrder) {
   testConcatElim(mod_, F_, optimizedF_, bindings_, /* reverseOrder */ true);
+  checkNumericalEquivalence(0.0f);
+}
+
+/// Check that we are able to eliminate concat nodes with redundant arithmetic
+/// ops in way.
+TEST_F(GraphOptz, concatArithElim) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {10, 10, 10}, "input", true);
+  bindings_.allocate(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+
+  Type t(ElemKind::FloatTy, {1, 10, 10});
+  Node *one = F_->createSplat("one", &t, 1.0);
+  Node *zero = F_->createSplat("zero", &t, 0.0);
+
+  // Split the input to a bunch of small slices.
+  std::vector<NodeValue> inputs;
+  for (dim_t i = 0; i < 10; i++) {
+    auto *K = F_->createSlice("extract", input, {i, 0, 0}, {i + 1, 10, 10});
+    // Insert the nodes in reverse order to make sure that we can catch
+    // non-consecutive graph-order slices.
+    Node *N = K;
+    switch (i) {
+    case 0:
+      N = F_->createAdd("add0", K, zero);
+      break;
+    case 1:
+      N = F_->createSub("sub0", K, zero);
+      break;
+    case 2:
+      N = F_->createAdd("add_0", zero, K);
+      break;
+    case 3:
+      N = F_->createMul("mul1", K, one);
+      break;
+    case 4:
+      N = F_->createDiv("div1", K, one);
+      break;
+    case 5:
+      N = F_->createMul("mul_1", one, K);
+      break;
+    default:
+      break;
+    }
+    inputs.push_back(N);
+  }
+
+  auto *cc = F_->createConcat("merge", inputs, 0);
+  F_->createSave("save", cc);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 10);
+  optimizedF_ = optimizeFunction(F_);
+
+  // Check that the concat node is gone.
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 0);
   checkNumericalEquivalence(0.0f);
 }
 
@@ -3300,6 +3380,30 @@ TEST_F(GraphOptz, concatReshapes) {
   // The input of newRN should be a ConcatNode now.
   auto *newCN = llvm::dyn_cast<ConcatNode>(newRN->getInput());
   ASSERT_TRUE(newCN);
+}
+
+// Making sure we do not try to to optimize concat2(dim1, concat1(dim2, X, Y),
+// Z)
+// -> concat(dim1, X, Y, Z) when concat1 has multiple users.
+TEST_F(GraphOptz, ConcatSimplificationNegative) {
+  const dim_t dim1[] = {1, 4, 4, 4};
+  const dim_t dim2[] = {1, 4, 4, 8};
+  auto *in1 = mod_.createPlaceholder(ElemKind::FloatTy, dim1, "in1", false);
+  auto *in2 = mod_.createPlaceholder(ElemKind::FloatTy, dim1, "in2", false);
+  auto *in3 = mod_.createPlaceholder(ElemKind::FloatTy, dim2, "in3", false);
+
+  auto *cnc1 = F_->createConcat("cnc1", {in1, in2}, 3);
+  auto *add1 = F_->createAdd("add1", in3, cnc1);
+  auto *cnc2 = F_->createConcat("cnc2", {add1, cnc1}, 3);
+  F_->createSave("ret", cnc2);
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  ::glow::optimize(F_, CompilationMode::Infer);
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  for (auto &n : F_->getNodes()) {
+    if (auto *tcnc = llvm::dyn_cast<ConcatNode>(&n)) {
+      EXPECT_EQ(tcnc->getNumInputs(), 2);
+    }
+  }
 }
 
 /// Check that Variable CSE works correctly, combining small Variables that
@@ -3525,6 +3629,37 @@ TEST_F(GraphOptz, ReshapeConstantOneUse) {
   EXPECT_TRUE(V->getType()->dims().equals(reshape2));
 }
 
+/// Test that reshape node is merged into Constant in a sequence
+/// Reshape(Quantize(Constant)).
+TEST_F(GraphOptz, ReshapeQuantizeConstant) {
+  const dim_t shape[] = {10, 20};
+  const dim_t newShape[] = {200, 1};
+
+  auto *qTy = mod_.uniqueType(ElemKind::Int8QTy, shape, 0.2, 0);
+
+  auto *input =
+      F_->getParent()->createConstant(ElemKind::FloatTy, shape, "input");
+  auto *Q = F_->createQuantize("quantize", input, qTy);
+  auto *R = F_->createReshape("reshape", Q, newShape);
+  auto *S = F_->createSave("ret", R);
+
+  // Skip ConstantFolding as it would have the same result as this opt.
+  CompilationContext cctx;
+  cctx.optimizationOpts.enableConstantFolding = false;
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  ::glow::optimize(F_, cctx);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  // Constant and Quantize should have new shape.
+  auto *newQ = llvm::dyn_cast<QuantizeNode>(S->getInput());
+  ASSERT_TRUE(newQ);
+  EXPECT_TRUE(newQ->getResult().dims().equals(newShape));
+  auto *newC = llvm::dyn_cast<Constant>(newQ->getInput());
+  ASSERT_TRUE(newC);
+  EXPECT_TRUE(newC->getType()->dims().equals(newShape));
+}
+
 /// Test that Transpose is optimized into Reshape when it moves no data.
 TEST_F(GraphOptz, transposeIntoReshapeOptim) {
   auto *batch =
@@ -3747,6 +3882,41 @@ TEST_F(GraphOptz, sinkTransposeBelowChannelShuffleNodesAndEliminate) {
   // Ensure Group and Kernel are as expected.
   EXPECT_EQ(CSN->getGroup(), 4);
   EXPECT_EQ(CSN->getKernel(), 3);
+}
+
+/// Test BatchNorm sinking below Slice.
+TEST_F(GraphOptz, sinkBatchNormBelowSlice) {
+  auto *inputTy = mod_.uniqueType(ElemKind::FloatTy, {1, 10, 10, 3});
+  auto *slicedTy1 = mod_.uniqueType(ElemKind::FloatTy, {1, 8, 8, 3});
+  auto *slicedTy2 = mod_.uniqueType(ElemKind::FloatTy, {1, 6, 6, 1});
+
+  auto *input = mod_.createPlaceholder(inputTy, "input", false);
+  auto *BN = F_->createBatchNormalization(bindings_, "batchnorm", input, 3,
+                                          0.0001, 0.9);
+  auto *SN1 = F_->createSlice("slice1", BN, {0, 1, 1, 0}, slicedTy1);
+  auto *SN2 = F_->createSlice("slice2", SN1, {0, 1, 1, 1}, slicedTy2);
+  auto *save = F_->createSave("save", SN2);
+
+  EXPECT_EQ(F_->getNodes().size(), 4);
+  ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
+  optimizedF_ = optimizeFunction(F_);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 4);
+
+  // BatchNorm should have sunk below the first Slice, but not the second one,
+  // as it changes channel dimmension.
+  auto *newSave =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+  ASSERT_TRUE(newSave);
+  auto *newSN2 = llvm::dyn_cast<SliceNode>(newSave->getInput());
+  ASSERT_TRUE(newSN2);
+  auto *newBN = llvm::dyn_cast<BatchNormalizationNode>(newSN2->getInput());
+  ASSERT_TRUE(newBN);
+  ASSERT_EQ(newBN->getResult().dims(), slicedTy1->dims());
+  ASSERT_TRUE(llvm::isa<SliceNode>(newBN->getInput()));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
 }
 
 /// Test that convertPlaceholdersToConstants works properly with quantized
@@ -4579,6 +4749,36 @@ TEST_F(GraphOptz, FoldMatMulAddIntoFullyConnected) {
   EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ReshapeNodeKind));
 }
 
+/// Test that batched MatMul + Add is folded into batched FullyConnected.
+/// This optimization takes place only if the Bias is constant and the
+/// bias data repeats for all the batches.
+TEST_F(GraphOptz, FoldMatMulAddIntoFullyConnectedBatched) {
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 3}, "input", false);
+  auto *weights =
+      mod_.createPlaceholder(ElemKind::FloatTy, {3, 5}, "weights", false);
+  auto *bias = mod_.createConstant(ElemKind::FloatTy, {2, 5}, "bias");
+  auto biasH = bias->getPayloadMutable().getHandle<float>();
+  biasH = {1, 2, 3, 4, 5, 1, 2, 3, 4, 5};
+
+  MatMulNode *matmul = F_->createMatMul("matmul", input, weights);
+  AddNode *add = F_->createAdd("add", matmul, bias);
+  F_->createSave("save", add);
+  EXPECT_EQ(3, F_->getNodes().size());
+
+  // The folding should replace the MatMul + Add into a FullyConnected and a
+  // Reshape to 1D for the Bias.
+  CompilationContext cctx;
+  ::glow::fold(F_, cctx);
+  EXPECT_EQ(4, F_->getNodes().size());
+  EXPECT_EQ(0, countNodeKind(F_, Kinded::Kind::AddNodeKind));
+  EXPECT_EQ(0, countNodeKind(F_, Kinded::Kind::MatMulNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::SliceNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::ReshapeNodeKind));
+}
+
 /// Test that FoldSlicesIntoConstants pass works as expected.
 TEST_F(GraphOptz, FoldSlicesIntoConstantsTest) {
   Constant *C = mod_.createConstant(ElemKind::FloatTy, {3, 4}, "C");
@@ -5296,4 +5496,190 @@ TEST_F(GraphOptz, constantFoldPreventedNoop) {
   bindings_.allocate(ph1)->getHandle<float>().randomize(-10.0, 10.0,
                                                         mod_.getPRNG());
   checkNumericalEquivalence();
+}
+
+/// Test that a Conv2D is correctly lowered to FC for single batch.
+TEST_F(GraphOptz, lowerConv2DToFCSingleBatch) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 3, 4},
+                                              "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+
+  Constant *filter =
+      mod_.createConstant(ElemKind::FloatTy, {8, 1, 1, 4}, "filter");
+  filter->getPayloadMutable().getHandle<float>().randomize(-10, 10,
+                                                           mod_.getPRNG());
+
+  Constant *bias = mod_.createConstant(ElemKind::FloatTy, {8}, "bias");
+  bias->getPayloadMutable().getHandle<float>().randomize(-10, 10,
+                                                         mod_.getPRNG());
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 2, 3, 8});
+  auto *conv = F_->createConv("conv", input, filter, bias, outTy, {1, 1},
+                              {1, 1}, {0, 0, 0, 0}, 1, 1);
+  SaveNode *save = F_->createSave("save", conv);
+  bindings_.allocate(save->getPlaceholder());
+
+  // Backup function in optimizedF_.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Lower Convolution.
+  EXPECT_TRUE(isConvolutionSameAsFullyConnected(conv));
+  EXPECT_TRUE(glow::lowerNode(F_, conv, cctx_));
+  runDCEPass(F_, cctx_);
+  EXPECT_EQ(0, countNodeKind(F_, Kinded::Kind::ConvolutionNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind));
+
+  // Now compile/run/compare F_ and optimizedF_.
+  checkNumericalEquivalence(1e-6);
+}
+
+/// Test that a Conv2D is correctly lowered to FC for multi batch.
+TEST_F(GraphOptz, lowerConv2DToFCMultiBatch) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 3, 4},
+                                              "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+
+  Constant *filter =
+      mod_.createConstant(ElemKind::FloatTy, {8, 1, 1, 4}, "filter");
+  filter->getPayloadMutable().getHandle<float>().randomize(-10, 10,
+                                                           mod_.getPRNG());
+
+  Constant *bias = mod_.createConstant(ElemKind::FloatTy, {8}, "bias");
+  bias->getPayloadMutable().getHandle<float>().randomize(-10, 10,
+                                                         mod_.getPRNG());
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {2, 2, 3, 8});
+  auto *conv = F_->createConv("conv", input, filter, bias, outTy, {1, 1},
+                              {1, 1}, {0, 0, 0, 0}, 1, 1);
+  SaveNode *save = F_->createSave("save", conv);
+  bindings_.allocate(save->getPlaceholder());
+
+  // Backup function in optimizedF_.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Lower Convolution.
+  EXPECT_TRUE(isConvolutionSameAsFullyConnected(conv));
+  EXPECT_TRUE(glow::lowerNode(F_, conv, cctx_));
+  runDCEPass(F_, cctx_);
+  EXPECT_EQ(0, countNodeKind(F_, Kinded::Kind::ConvolutionNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind));
+
+  // Now compile/run/compare F_ and optimizedF_.
+  checkNumericalEquivalence(1e-6);
+}
+
+/// Test that Mul and Add can be folded into LayerNorm.
+TEST_F(GraphOptz, foldMulAddIntoLayerNorm) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 4, 10, 20}, "in", false);
+
+  Tensor scaleT(ElemKind::FloatTy, {10, 20});
+  scaleT.getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
+  Constant *scaleC = mod_.createConstant("scale", std::move(scaleT));
+  SplatNode *biasS = F_->createSplat("bias", scaleC->getType(), 1.5f);
+
+  auto *LN = F_->createLayerNormalization("LN", input, scaleC, biasS, 1e-5);
+
+  SplatNode *splat = F_->createSplat("splat", scaleC->getType(), 0.5f);
+  MulNode *MN =
+      F_->createNodeWithBroadcast<MulNode>("mul", /* axis */ -1, LN, splat);
+
+  Tensor addT(ElemKind::FloatTy, {1, 1, 10, 20});
+  addT.getHandle().randomize(-1.0f, 1.0f, mod_.getPRNG());
+  Constant *addC = mod_.createConstant("addC", std::move(addT));
+  AddNode *AN =
+      F_->createNodeWithBroadcast<AddNode>("add", /* axis */ -1, MN, addC);
+  F_->createSave("save", AN);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Because Mul and Add are folded in, they should not exist anymore, nor
+  // should tiles that expand them to match the output of LN.
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MulNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::AddNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::TileNodeKind));
+
+  // Now compile/run/compare F_ and optimizedF_.
+  bindings_.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
+  checkNumericalEquivalence(1e-6);
+}
+
+/// Test that Mul and Add can be folded into LayerNorm when the leading dims are
+/// all one.
+TEST_F(GraphOptz, foldMulAddIntoLayerNormNoBatch) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 10, 20}, "in", false);
+
+  Tensor scaleT(ElemKind::FloatTy, {10, 20});
+  scaleT.getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
+  Constant *scaleC = mod_.createConstant("scale", std::move(scaleT));
+  SplatNode *biasS = F_->createSplat("bias", scaleC->getType(), 1.5f);
+
+  auto *LN = F_->createLayerNormalization("LN", input, scaleC, biasS, 1e-5);
+
+  SplatNode *splat = F_->createSplat("splat", scaleC->getType(), 0.5f);
+  MulNode *MN =
+      F_->createNodeWithBroadcast<MulNode>("mul", /* axis */ -1, LN, splat);
+
+  Tensor addT(ElemKind::FloatTy, {1, 1, 10, 20});
+  addT.getHandle().randomize(-1.0f, 1.0f, mod_.getPRNG());
+  Constant *addC = mod_.createConstant("addC", std::move(addT));
+  AddNode *AN =
+      F_->createNodeWithBroadcast<AddNode>("add", /* axis */ -1, MN, addC);
+  F_->createSave("save", AN);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Because Mul and Add are folded in, they should not exist anymore, nor
+  // should tiles that expand them to match the output of LN.
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MulNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::AddNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::TileNodeKind));
+
+  // Now compile/run/compare F_ and optimizedF_.
+  bindings_.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
+  checkNumericalEquivalence(1e-6);
+}
+
+TEST_F(GraphOptz, transposeQuantizeConstantWithAlignment) {
+  // Define a type with custom alignments.
+  Type typeWithAlignments(ElemKind::FloatTy, {2, 3, 4, 5}, {1, 1, 32, 1});
+  Type quantTypeWithAlignments(ElemKind::Int8QTy, {2, 3, 4, 5}, {1, 1, 32, 1},
+                               1.0, 0);
+  Type transposedQuantTypeWithAlignments(ElemKind::Int8QTy, {2, 4, 5, 3},
+                                         {1, 1, 32, 1}, 1.0, 0);
+  auto modTyWithAlignments = mod_.uniqueType(typeWithAlignments);
+  auto modQuantTransposedTyWithAlignments =
+      mod_.uniqueType(transposedQuantTypeWithAlignments);
+  auto modQuantTyWithAlignments = mod_.uniqueType(quantTypeWithAlignments);
+  auto *I = mod_.createConstant(modTyWithAlignments, "input1");
+  auto *Q = F_->createQuantize("quantize", I, modQuantTyWithAlignments);
+  auto *T = F_->createTranspose("transpose", Q, NCHW2NHWC);
+  T->setType(TransposeNode::ResultIdx, modQuantTransposedTyWithAlignments);
+  SaveNode *S = F_->createSave("ret", T);
+
+  // Skip ConstantFolding as it would have the same result as this opt.
+  CompilationContext cctx;
+  cctx.optimizationOpts.enableConstantFolding = false;
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  ::glow::optimize(F_, cctx);
+  EXPECT_EQ(F_->getNodes().size(), 2);
+
+  // Constant and Quantize should have new shape.
+  auto *newQ = llvm::dyn_cast<QuantizeNode>(S->getInput());
+  ASSERT_TRUE(newQ);
+  EXPECT_TRUE(newQ->getResult().dims().equals({2, 4, 5, 3}));
+  auto *newC = llvm::dyn_cast<Constant>(newQ->getInput());
+  ASSERT_TRUE(newC);
+  EXPECT_TRUE(newC->getType()->dims().equals({2, 4, 5, 3}));
+
+  // Check that alignments are preserved by optimizations.
+  auto expectedNewTy = mod_.uniqueTypeWithNewShape(
+      modTyWithAlignments, modQuantTransposedTyWithAlignments);
+  EXPECT_TRUE(newQ->getInput().getType()->isEqual(expectedNewTy));
+
+  EXPECT_TRUE(F_->verify());
 }

@@ -45,8 +45,7 @@ using llvm::isa;
 
 /// Header file string template.
 static const char *headerFileTemplate =
-    R"RAW(// Bundle API header file
-// Auto-generated file. Do not edit!
+    R"RAW(%s
 #ifndef _GLOW_BUNDLE_%s_H
 #define _GLOW_BUNDLE_%s_H
 
@@ -90,10 +89,15 @@ static void printHeader(llvm::StringRef headerFileName,
   llvm::raw_fd_ostream headerFile(headerFileName, EC,
                                   llvm::sys::fs::OpenFlags::F_Text);
   CHECK(!EC) << "Could not open header file!";
-  headerFile << strFormat(headerFileTemplate, bundleName.upper().data(),
-                          bundleName.upper().data(), commonDefines.data(),
-                          modelInfo.data(), modelApi.data(),
-                          headerExtra.data());
+  std::string header;
+  header += "// Bundle API auto-generated header file. Do not edit!\n";
+#ifdef GLOW_BUILD_DATE
+  header += "// Glow Tools version: " + std::string(GLOW_BUILD_DATE) + "\n";
+#endif
+  headerFile << strFormat(headerFileTemplate, header.c_str(),
+                          bundleName.upper().data(), bundleName.upper().data(),
+                          commonDefines.data(), modelInfo.data(),
+                          modelApi.data(), headerExtra.data());
   headerFile.close();
 }
 

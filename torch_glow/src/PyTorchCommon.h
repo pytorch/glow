@@ -28,6 +28,8 @@ DECLARE_bool(dumpFinalGlowGraph);
 
 namespace glow {
 
+struct InputMeta;
+
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling
 /// getPyTorchLoaderSettings().
@@ -106,6 +108,23 @@ struct PyTorchLoaderSettings {
   /// Whether not to set the saturateHost flag (use all available device) when
   /// adding networks to HostManager.
   bool saturateHost = false;
+
+  /// If true then randomize the Constants in the Function loaded by
+  /// PyTorchModelLoader.
+  bool randomizeConstants = false;
+
+  /// Name of the Glow backend to use.
+  std::string backendName = "Interpreter";
+
+  /// Number of Glow devices to use.
+  int32_t numDevices = -1;
+
+  // Whether to run shape inference of meta input
+  bool runShapeInference = false;
+
+  /// Run Fusion flow within to_glow compile function
+  /// TODO: move to GlowCompileSpec
+  bool enableDebugFuser = false;
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
@@ -124,19 +143,20 @@ PyTorchLoaderSettings &getPyTorchLoaderSettings();
 /// \returns the HostManager singleton used to run all PyTorch graphs in Glow.
 std::shared_ptr<runtime::HostManager> getHostManager();
 
-/// Set the active HostManager to one that owns \p numDevices of type
-/// \p backendName.
-void setHostManager(const std::string &backendName, size_t numDevices = 1);
-
-/// \returns the name of the device backend used by the active HostManager.
-const std::string &getBackendName();
-
-/// \returns the quantity of the device backends used by the active HostManager.
-size_t getBackendNumDevices();
+/// \returns the HostManager singleton used to run all PyTorch graphs with for
+/// the Glow backend \p backendName. The HostManager will have \p numDevices
+/// devices. If a previous HostManager is actively being used with the same
+/// backend but a different number of devices then this is an error. If
+/// numDevices is -1 then the active HostManager for the given backend will be
+/// returned, if no active HostManager is found then a HostManager with 1 device
+/// will be returned.
+std::shared_ptr<runtime::HostManager>
+getHostManager(const std::string &backendName, int32_t numDevices = -1);
 
 /// \returns the PyTorch symbol to be used for the PyTorch node which represents
-/// the subgraph that Glow will compile and run.
-const c10::Symbol &getGlowSymbol();
+/// the subgraph that Glow will compile and run. \p g is the PyTorch graph to
+/// lower, and if specified, will be used to generate unique symbol
+c10::Symbol getGlowSymbol(std::shared_ptr<torch::jit::Graph> g = nullptr);
 
 /// Given a PyTorch TensorType \p ptType, \returns a matching Glow Type.
 glow::Type ptTypeToGlowType(const c10::TensorType &ptType);
@@ -153,6 +173,15 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor);
 /// Given a Glow Type \p glowType, \returns an empty PyTorch Tensor with a
 /// matching type.
 at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
+
+/// Load the \p InputMeta data contains Glow fusion node's input size and type
+/// info from \p raw_data stored in string format.
+std::shared_ptr<std::vector<glow::InputMeta>>
+loadInputMeta(const std::string &raw_data);
+
+/// Lower a pytorch \p module to glow before execution. \p inputMetaStr is the
+/// raw string containing the meta data of the glow fuser node input.
+void glowAOTFusion(torch::jit::Module &module, const std::string &inputMetaStr);
 
 /// Enable overriding signal handlers while exeucting torch_glow code. This
 /// should only be used in Python to enable easier debugging and not in

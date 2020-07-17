@@ -40,65 +40,44 @@ namespace {
 /// Lock to protect the global graph runner map.
 std::shared_timed_mutex runnerMapMutex;
 
-size_t hashBlock(torch::jit::Block *block, size_t seed) {
-  size_t s = seed;
-  for (auto it = block->nodes().begin(); it != block->nodes().end(); ++it) {
-    auto *node = *it;
-    s = torch::hash_combine(s, torch::jit::HashNode{}(node));
-    if (!node->blocks().empty()) {
-      for (auto b : node->blocks()) {
-        s = hashBlock(b, s);
-      }
-    }
-  }
-  return s;
-}
-
-size_t hashGraph(std::shared_ptr<torch::jit::Graph> g) {
-  return hashBlock(g->block(), 0xcaffe2);
-}
-
-std::unordered_map<std::string, std::shared_ptr<CachingGraphRunner>> &
+std::unordered_map<std::string, std::unique_ptr<CachingGraphRunner>> &
 getPreloadedRunnerMap() {
-  static std::unordered_map<std::string, std::shared_ptr<CachingGraphRunner>>
+  static std::unordered_map<std::string, std::unique_ptr<CachingGraphRunner>>
       preloadedGraphRunners_;
   return preloadedGraphRunners_;
 }
 } // namespace
 
-size_t getGraphRunnerMapSize() {
-  const auto &m = getPreloadedRunnerMap();
-  std::shared_lock<std::shared_timed_mutex> rlock(runnerMapMutex);
-  return m.size();
-}
-
-std::shared_ptr<CachingGraphRunner>
+std::unique_ptr<CachingGraphRunner>
 getGraphRunnerForKey(const std::string &key) {
   auto &preloadedRunners = getPreloadedRunnerMap();
-  std::shared_lock<std::shared_timed_mutex> rlock(runnerMapMutex);
+  std::unique_lock<std::shared_timed_mutex> wlock(runnerMapMutex);
   auto it = preloadedRunners.find(key);
   if (it == preloadedRunners.end()) {
     return nullptr;
   } else {
-    return it->second;
+    auto res = std::move(it->second);
+    preloadedRunners.erase(it);
+    return res;
   }
 }
 
-std::shared_ptr<CachingGraphRunner>
+CachingGraphRunner *
 setGraphRunnerForKey(const std::string &key,
-                     std::function<std::shared_ptr<CachingGraphRunner>(void)>
+                     std::function<std::unique_ptr<CachingGraphRunner>(void)>
                          graphRunnerBuilder) {
   auto &preloadedRunners = getPreloadedRunnerMap();
   std::unique_lock<std::shared_timed_mutex> wlock(runnerMapMutex);
   const auto it = preloadedRunners.find(key);
   if (it != preloadedRunners.end()) {
-    return it->second;
+    return it->second.get();
   }
 
   auto runner = graphRunnerBuilder();
-  auto ret = preloadedRunners.emplace(key, runner);
+  auto *runnerRaw = runner.get();
+  auto ret = preloadedRunners.emplace(key, std::move(runner));
   CHECK(ret.second);
-  return runner;
+  return runnerRaw;
 }
 
 bool removeGraphRunnerForKey(const std::string &key) {
@@ -117,15 +96,10 @@ void registerGlowOp(const c10::Symbol &symbol) {
       symbol,
       [](const torch::jit::Node *node) -> torch::jit::Operation {
         // How to find a graphRunner:
-        // 1. See if a key based on graph hash has been registered
-        // 2. If not, see if a key based on fusion node symbol string has been
+        // 1. See if a key based on fusion node symbol string has been
         // registered, which is usually done in AOT fashion
-        // 3. If not, create a graphRunner with graph hash as a key
-        size_t key = hashGraph(node->g(at::attr::Subgraph));
-        std::string keyStr(sizeof(size_t), '\0');
-        std::memcpy(&keyStr[0], &key, sizeof(key));
-        std::shared_ptr<CachingGraphRunner> graphRunner =
-            getGraphRunnerForKey(keyStr);
+        // 2. If not, create a graphRunner with graph hash as a key
+        std::shared_ptr<CachingGraphRunner> graphRunner;
 
         if (!graphRunner) {
           graphRunner = getGraphRunnerForKey(node->kind().toQualString());
@@ -134,14 +108,13 @@ void registerGlowOp(const c10::Symbol &symbol) {
         // If no preloaded graph runner was created for this node, create a new
         // empty one.
         if (!graphRunner) {
-          graphRunner = setGraphRunnerForKey(keyStr, [node]() {
-            return std::make_shared<CachingGraphRunner>(
-                node->g(at::attr::Subgraph), getHostManager(),
-                getBackendName().c_str(), getPyTorchLoaderSettings());
-          });
+          graphRunner = std::make_unique<CachingGraphRunner>(
+              node->g(at::attr::Subgraph), getHostManager(),
+              getPyTorchLoaderSettings());
         }
 
-        return [graphRunner](torch::jit::Stack &stack) {
+        return [graphRunner =
+                    std::move(graphRunner)](torch::jit::Stack *stack) {
           Error err = Error::empty();
           // Store old Python signal handlers and install standard signal
           // handlers, so that it is possible to kill/interrupt the process if
@@ -156,9 +129,9 @@ void registerGlowOp(const c10::Symbol &symbol) {
           }
 
           if (graphRunner->getSettings().preCompilePyTorchModule) {
-            err = graphRunner->runOnly(stack);
+            err = graphRunner->runOnly(*stack);
           } else {
-            err = graphRunner->run(stack);
+            err = graphRunner->run(*stack);
           }
 
           // Restore old signal handlers.
@@ -175,7 +148,6 @@ void registerGlowOp(const c10::Symbol &symbol) {
             // PyTorch framework expects an exception been thrown here.
             throw std::invalid_argument(ERR_TO_STRING(std::move(err)));
           }
-          return 0;
         };
       },
       at::AliasAnalysisKind::PURE_FUNCTION)});

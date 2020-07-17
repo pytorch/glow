@@ -40,6 +40,9 @@ bool GlowFP16Placeholders = true;
 bool GlowFP16Constants = true;
 bool GlowDumpGraph = false;
 bool GlowUseDAGOptimizer = false;
+std::string GlowDAGOptimizerPlacementTaggingAlgorithm = "None";
+std::string GlowDAGOptimizerParallelizationTaggingAlgorithm = "None";
+int32_t GlowDAGOptimizerNumParallelChunks = 1;
 bool GlowFusedScaleOffsetFP16 = false;
 bool GlowForceSLSAccumFP16 = false;
 bool GlowClipFP16 = false;
@@ -47,7 +50,9 @@ bool GlowClipFP16SkipInputs = true;
 bool GlowUseSparseNNPartitioningScheme = false;
 bool GlowSparseNNPartitioningAddSLSConcats = false;
 bool GlowSparseNNPartitioningBalancePerfModel = false;
+bool GlowSparseNNPartitioningPairLNWithSLS = false;
 size_t GlowMaxActiveRequests = 48;
+size_t GlowMaxActiveRequestsPerInstance = 48;
 size_t GlowMaxQueueSize = 100;
 size_t GlowExecutorThreads = 10;
 bool GlowSaveOnnxifiDAG = false;
@@ -110,6 +115,12 @@ static llvm::cl::opt<bool, true> GlowSparseNNPartitioningBalancePerfModelOpt(
     llvm::cl::desc("Balance SLS tables across cards using a perf model"),
     llvm::cl::location(GlowSparseNNPartitioningBalancePerfModel));
 
+static llvm::cl::opt<bool, true> GlowSparseNNPartitioningPairLNWithSLSOpt(
+    "glow_sparsenn_partitioning_pair_ln_with_sls",
+    llvm::cl::desc("Place layer normalization nodes immediately following SLS "
+                   "into SLS partition"),
+    llvm::cl::location(GlowSparseNNPartitioningPairLNWithSLS));
+
 std::unique_ptr<runtime::HostManager>
 HostManagerBackend::createHostManager(llvm::StringRef backendName) {
   std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
@@ -151,6 +162,7 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
   CompilationContext cctx;
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
   cctx.prepartitionedConfig = PPC;
+  cctx.maxActiveRequestsPerInstance = GlowMaxActiveRequestsPerInstance;
 
   if (deferredBlobReader) {
     // Initialize loader and set field in cctx.
@@ -216,6 +228,8 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
         GlowSparseNNPartitioningAddSLSConcats;
     cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel =
         GlowSparseNNPartitioningBalancePerfModel;
+    cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS =
+        GlowSparseNNPartitioningPairLNWithSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
         GlowSparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
@@ -231,6 +245,12 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
   if (GlowUseDAGOptimizer) {
     LOG(INFO) << "Will call the DAG optimizer.";
     cctx.callDAGOptimizer = true;
+    cctx.optimizationOpts.DAGOptimizerPlacementTaggingAlgorithm =
+        GlowDAGOptimizerPlacementTaggingAlgorithm;
+    cctx.optimizationOpts.DAGOptimizerParallelizationTaggingAlgorithm =
+        GlowDAGOptimizerParallelizationTaggingAlgorithm;
+    cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
+        GlowDAGOptimizerNumParallelChunks;
   }
   if (GlowSaveOnnxifiDAG) {
     LOG(INFO) << "Serializing DAG after optimization and partitioning.";

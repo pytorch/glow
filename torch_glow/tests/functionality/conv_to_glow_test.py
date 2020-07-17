@@ -51,11 +51,11 @@ def run_to_glow(m, x):
     spec = torch.classes.glow.GlowCompileSpec()
     spec.setBackend("Interpreter")
     sim = torch.classes.glow.SpecInputMeta()
-    sim.setSpec("float", x.size())
+    sim.set(x.size(), torch.float32)
     inputs = [sim]
     spec.addInputs(inputs)
 
-    lowered_module = torch_glow.to_glow(traced_m._c, {"forward": spec})
+    lowered_module = torch_glow.to_glow(traced_m, {"forward": spec})
     return lowered_module
 
 

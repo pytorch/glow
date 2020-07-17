@@ -35,12 +35,18 @@ namespace glow {
 namespace runtime {
 
 unsigned GlowNNPIMemory = 0;
+unsigned GlowNNPITimeout = 0;
 
 static llvm::cl::opt<unsigned, /* ExternalStorage */ true>
     GlowNNPIMemoryOpt("glow-nnpi-memory",
                       llvm::cl::desc("Override the amount of DRAM to allocate "
                                      "per NNPI device, in kilobytes"),
                       llvm::cl::location(GlowNNPIMemory));
+static llvm::cl::opt<unsigned, /* ExternalStorage */ true> GlowNNPITimeoutOpt(
+    "glow-nnpi-timeout",
+    llvm::cl::desc("Timeout threshold for inferecnce in microseconds. "
+                   "Default 0 means infinity"),
+    llvm::cl::location(GlowNNPITimeout));
 
 DeviceManager *createNNPIDeviceManager(const DeviceConfig &config,
                                        NNPIAdapterContainer *adapter) {
@@ -50,6 +56,9 @@ DeviceManager *createNNPIDeviceManager(const DeviceConfig &config,
       adapter->getHandle() == NNPI_INVALID_NNPIHANDLE) {
     LOG(ERROR) << "Adapter allocation failed";
     return nullptr;
+  }
+  if (GlowNNPITimeoutOpt != 0) {
+    deviceOptions->inferTimeout = GlowNNPITimeout;
   }
   return new NNPIDeviceManager(config, deviceOptions, adapter);
 }
@@ -185,7 +194,7 @@ void NNPIDeviceManager::addNetwork(const Module *module,
   for (const auto &func : functions) {
     functions_.emplace(func.first, func.second);
     usedMemoryBytes_ += functionCost_; // TODO:: static moduleSize.
-    auto err = inferenceEnvs_[func.first].init(
+    auto err = inferencePools_[func.first].init(
         pAdapter_, device_, func.second, &staticPlaceholders_, deviceOptions_,
         func.first, deviceId_);
     if (err) {
@@ -210,9 +219,9 @@ void NNPIDeviceManager::evictNetwork(std::string functionName,
 
   if (functions_.erase(functionName)) {
     usedMemoryBytes_ -= functionCost_; // TODO: static moduleSize.
-    inferenceEnvs_.at(functionName)
+    inferencePools_.at(functionName)
         .stop(true); // First stop existing threads on this network.
-    inferenceEnvs_.erase(functionName);
+    inferencePools_.erase(functionName);
   } else {
     err =
         MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_NOT_FOUND,
@@ -247,12 +256,9 @@ NNPIDeviceManager::runFunction(std::string functionName,
                                runtime::ResultCBTy resultCB) {
   RunIdentifierTy runId = runIdentifier_++;
 
-  /// NNPI DeviceManager doesn't support Device Resident Tensors.
-  ctx->getPlaceholderBindings()->ensureOnHost();
-
   // Get thread env.
-  auto infEnv = inferenceEnvs_.find(functionName);
-  if (infEnv == inferenceEnvs_.end()) {
+  auto infEnv = inferencePools_.find(functionName);
+  if (infEnv == inferencePools_.end()) {
     resultCB(runId, MAKE_ERR("Function isn't ready on the device"),
              std::move(ctx));
     return runId;
@@ -262,7 +268,7 @@ NNPIDeviceManager::runFunction(std::string functionName,
 }
 
 Error NNPIDeviceManager::stop(bool block) {
-  for (auto &env : inferenceEnvs_) {
+  for (auto &env : inferencePools_) {
     env.second.stop(block);
   }
   return Error::success();
@@ -316,7 +322,9 @@ void NNPIDeviceManager::transferStaticPlaceholderToDevice(
 Error NNPIDeviceManager::startDeviceTrace(TraceContext *traceContext) {
   if (!NNPIDeviceTracing::getForDevice(deviceId_)->start(
           traceContext, device_, true /* Software traces are always enabled. */,
-          deviceOptions_->hardwareTraces)) {
+          deviceOptions_->hardwareTraces,
+          deviceOptions_->softwareTracesMaxBuffer,
+          deviceOptions_->hardwareTracesMaxBuffer)) {
     return MAKE_ERR("Failed to start NNPI device trace.");
   }
   return Error::success();
@@ -340,9 +348,10 @@ Error NNPIDeviceManager::bindContext(std::string functionName,
   }
 
   // Create inference context.
-  ASSERT_WITH_MSG(inferenceEnvs_.count(functionName), "Invalid function name.");
+  ASSERT_WITH_MSG(inferencePools_.count(functionName),
+                  "Invalid function name.");
   std::shared_ptr<InferenceContext> infCtx(
-      inferenceEnvs_.at(functionName).createDetachedInferenceContext(phUsage));
+      inferencePools_.at(functionName).createDetachedInferenceContext(phUsage));
   ASSERT_WITH_MSG(infCtx, "Failed to create detached context");
 
   // Set the inference context into NNPIDeviceBinding and store in the ExCtx.

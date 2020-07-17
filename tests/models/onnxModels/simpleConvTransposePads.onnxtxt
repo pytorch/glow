@@ -6,7 +6,7 @@ graph {
     input: "W"
     input: "B"
     output: "y"
-    name: "convTranspose1"
+    name: "convTranspose"
     op_type: "ConvTranspose"
     attribute {
       name: "kernel_shape"
@@ -16,10 +16,10 @@ graph {
     }
     attribute {
       name: "pads"
+      ints: 0
       ints: 1
       ints: 1
-      ints: 1
-      ints: 1
+      ints: 0
       type: INTS
     }
     attribute {
@@ -129,10 +129,10 @@ graph {
             dim_value: 1
           }
           dim {
-            dim_value: 4
+            dim_value: 3
           }
           dim {
-            dim_value: 4
+            dim_value: 3
           }
         }
       }

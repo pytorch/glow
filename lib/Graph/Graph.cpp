@@ -1002,6 +1002,40 @@ AdaptiveAvgPoolNode *Function::createAdaptiveAvgPool(llvm::StringRef name,
   return addNode(new AdaptiveAvgPoolNode(name, outTy, input));
 }
 
+GemmNode *Function::createGemm(llvm::StringRef name, NodeValue A, NodeValue B,
+                               NodeValue C, float alpha, float beta,
+                               bool transposeA, bool transposeB) {
+  std::vector<dim_t> outDims(2);
+  outDims[0] = transposeA ? A.dims()[1] : A.dims()[0];
+  outDims[1] = transposeB ? B.dims()[0] : B.dims()[1];
+  TypeRef outTy = getParent()->uniqueTypeWithNewShape(A.getType(), outDims);
+  return createGemm(name, outTy, A, B, C, alpha, beta, transposeA, transposeB);
+}
+
+GemmNode *Function::createGemm(llvm::StringRef name, TypeRef outTy, NodeValue A,
+                               NodeValue B, NodeValue C, float alpha,
+                               float beta, bool transposeA, bool transposeB) {
+  // If C operand is not given then we create a 1D splat with 0.
+  if (!C.getNode()) {
+    TypeRef splatTy =
+        getParent()->uniqueTypeWithNewShape(outTy, {outTy->dims()[1]});
+    C = createSplat(name.str() + ".SplatC", splatTy, 0.0f);
+  }
+  // If C operand is a 2D constant we check if it is a broadcasted version of
+  // a 1D tensor. If yes then we slice and reshape the C operand to 1D.
+  if (auto *constC = llvm::dyn_cast<Constant>(C.getNode())) {
+    if ((constC->dims().size() == 2) && (constC->getPayload().isTiled(0))) {
+      // Slice and reshape to 1D.
+      dim_t lengthC = constC->dims()[1];
+      C = createSlice(name.str() + ".SliceC", C, {0, 0}, {1, lengthC});
+      C = createReshape(name.str() + ".ReshapeC", C, {lengthC});
+    }
+  }
+  TypeRef OT = getParent()->uniqueType(*outTy);
+  return addNode(
+      new GemmNode(name, OT, A, B, C, alpha, beta, transposeA, transposeB));
+}
+
 FullyConnectedNode *Function::createFullyConnected(llvm::StringRef name,
                                                    NodeValue input, Storage *W,
                                                    Storage *B,
@@ -1756,6 +1790,11 @@ LogNode *Function::createLog(llvm::StringRef name, NodeValue input,
 
 ExpNode *Function::createExp(llvm::StringRef name, NodeValue input) {
   return addNode(new ExpNode(name, input.getType(), input));
+}
+
+ExpNode *Function::createExp(llvm::StringRef name, TypeRef outTy,
+                             NodeValue input) {
+  return addNode(new ExpNode(name, outTy, input));
 }
 
 LogitNode *Function::createLogit(llvm::StringRef name, NodeValue input,
@@ -4752,6 +4791,12 @@ std::string Function::toString(bool skipUsersForStorage, bool skipName) const {
   return os.str();
 }
 
+llvm::hash_code Function::getHash() const {
+  // Omit function name when generating the hash.
+  return llvm::hash_value(toString(/* skipUsersForStorage */ false,
+                                   /* skipName */ true));
+}
+
 void Function::dump(llvm::raw_ostream &os, bool skipUsersForStorage,
                     bool skipName) const {
   os << "Graph structure";
@@ -4911,6 +4956,120 @@ Constant *Module::getConstantByName(llvm::StringRef name) const {
       return V;
   }
   return nullptr;
+}
+
+void Function::randomizeConstants(
+    const std::map<Kinded::Kind, std::set<unsigned>> &ignoredConstants) {
+  for (Constant *c : getParent()->getConstants()) {
+    bool usedHere = false;
+    bool usedElsewhere = false;
+    bool ignored = false;
+
+    for (auto &user : c->getUsers()) {
+      auto *nodeUser = user.getUser();
+      if (nodeUser->getParent() == this) {
+        usedHere = true;
+      } else {
+        usedElsewhere = true;
+      }
+
+      auto kind = nodeUser->getKind();
+      if (ignoredConstants.count(kind)) {
+        for (auto idx : ignoredConstants.at(kind)) {
+          if (nodeUser->getNthInput(idx).getNode() == c) {
+            ignored = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!usedHere) {
+      continue;
+    }
+
+    if (usedElsewhere) {
+      LOG(FATAL) << "Can't randomize Constant \"" << c->getName().str()
+                 << "\" because it is used by another function";
+    }
+
+    if (ignored) {
+      continue;
+    }
+
+    auto &payload = c->getPayloadMutable();
+
+    switch (c->getElementType()) {
+    case ElemKind::FloatTy: {
+      auto H = payload.getHandle<float>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
+      break;
+    }
+    case ElemKind::Float16Ty: {
+      auto H = payload.getHandle<float16_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
+      break;
+    }
+    case ElemKind::Int8QTy: {
+      auto H = payload.getHandle<int8_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
+      break;
+    }
+    case ElemKind::UInt8QTy: {
+      auto H = payload.getHandle<uint8_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
+      break;
+    }
+    case ElemKind::Int16QTy: {
+      auto H = payload.getHandle<int16_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
+      break;
+    }
+    case ElemKind::Int32QTy: {
+      auto H = payload.getHandle<int32_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
+      break;
+    }
+    case ElemKind::Int32ITy: {
+      auto H = payload.getHandle<int32_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
+      break;
+    }
+    case ElemKind::Int64ITy: {
+      auto H = payload.getHandle<int64_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
+      break;
+    }
+    case ElemKind::UInt8FusedQTy:
+      payload.getHandle<uint8_t>().randomize(
+          std::numeric_limits<uint8_t>::lowest(),
+          std::numeric_limits<uint8_t>::max(), getPRNG());
+      break;
+    case ElemKind::UInt8FusedFP16QTy:
+      payload.getHandle<uint8_t>().randomize(
+          std::numeric_limits<uint8_t>::lowest(),
+          std::numeric_limits<uint8_t>::max(), getPRNG());
+      break;
+    case ElemKind::UInt4FusedFP16QTy:
+      payload.getHandle<uint8_t>().randomize(
+          std::numeric_limits<uint8_t>::lowest(),
+          std::numeric_limits<uint8_t>::max(), getPRNG());
+      break;
+    case ElemKind::BoolTy:
+      payload.getHandle<bool>().randomize(false, true, getPRNG());
+      break;
+    default:
+      LOG(FATAL) << "Unsupported ElemKind";
+    }
+  }
 }
 
 Placeholder *Module::getPlaceholderByNameSlow(llvm::StringRef name) const {
@@ -5182,7 +5341,7 @@ bool Function::verify(const Backend *backend) const {
   }
   std::unordered_map<std::string, const Node *> nameToNode;
 
-  for (auto *V : getParent()->getConstants()) {
+  for (auto *V : findConstants()) {
     isValid &= insertAndReport(nameToNode, *V, *this);
     isValid &= expectCompareTrue("Constant and its payload must have same type",
                                  *V->getType(), V->getPayload().getType(), V);
@@ -5413,4 +5572,39 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Function *F) {
   F->dump(os);
   return os;
 }
+
+bool isConvolutionSameAsFullyConnected(const ConvolutionNode *node,
+                                       bool enforceInput1x1) {
+  bool isConv2D = (node->getInput().getType()->dims().size() == 4);
+  if (!(isConv2D && node->getLayout() == ConvolutionLayout::NHWC &&
+        !node->hasFusedActivation())) {
+    return false;
+  }
+  auto filterDims = ShapeNHWC(node->getFilter().getType()->dims());
+  ShapeHW kernels = ShapeHW(node->getKernels());
+  ShapeHW strides = ShapeHW(node->getStrides());
+  PaddingTLBR pads = PaddingTLBR(node->getPads());
+  auto group = node->getGroup();
+  auto dilation = node->getDilation();
+
+  bool isSame = (filterDims.h == 1) && (filterDims.w == 1);
+  isSame &= (kernels.height == 1) && (kernels.width == 1);
+  isSame &= (strides.height == 1) && (strides.width == 1);
+  isSame &= (pads.top == 0) && (pads.left == 0) && (pads.bottom == 0) &&
+            (pads.right == 0);
+  isSame &= (group == 1);
+  isSame &= (dilation == 1);
+  if (enforceInput1x1) {
+    auto inputDims = ShapeNHWC(node->getInput().getType()->dims());
+    isSame &= (inputDims.h == 1) && (inputDims.w == 1);
+  }
+  return isSame;
+}
+
+bool isGemmSameAsFullyConnected(const GemmNode *node) {
+  NodeValue inpC = node->getC();
+  return (node->getAlpha() == 1.0) && (node->getBeta() == 1.0) &&
+         (inpC.getNode()) && (inpC.dims().size() == 1);
+}
+
 } // namespace glow

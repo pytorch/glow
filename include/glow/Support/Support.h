@@ -276,6 +276,12 @@ public:
   };
 };
 
+/// Helper function to return true if every element in array \p a is \p x.
+template <typename ElemTy>
+static bool isUniformArray(llvm::ArrayRef<ElemTy> a, ElemTy x) {
+  return std::all_of(a.begin(), a.end(), [x](ElemTy e) { return e == x; });
+}
+
 } // namespace glow
 
 #endif // GLOW_SUPPORT_SUPPORT_H
