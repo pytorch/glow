@@ -33,6 +33,7 @@
 #ifdef WIN32
 #include <corecrt_math_defines.h>
 #endif
+#include <float.h>
 #include <fstream>
 #include <unordered_set>
 
@@ -2721,6 +2722,13 @@ ClipNode *Function::createClipMinMaxFP16(llvm::StringRef name,
   return createClip(name, input, float16Min, float16Max);
 }
 
+ClipNode *Function::createClipMinMaxBFloat16(llvm::StringRef name,
+                                             NodeValue input) {
+  constexpr float float16Min = FLT_MIN;
+  constexpr float float16Max = FLT_MAX;
+  return createClip(name, input, float16Min, float16Max);
+}
+
 //===----------------------------------------------------------------------===//
 //                   Placeholder-builder methods.
 //===----------------------------------------------------------------------===//
@@ -2784,8 +2792,7 @@ ConvolutionNode *Function::createConv(
       {outChannels, kdim.height, kdim.width, idim.c / group}};
   size_t fanIn = kdim.height * kdim.width * idim.c;
   ElemKind inputTy = input.getType()->getElementType();
-  assert((inputTy == ElemKind::FloatTy || inputTy == ElemKind::Float16Ty) &&
-         "Convolution on non-floating point type?");
+  assert(isFloatElemKind(inputTy) && "Convolution on non-floating point type?");
   auto *filter =
       getParent()->createPlaceholder(inputTy, filterDim, "filter", true);
   bindings.allocate(filter)->init(glow::Tensor::InitKind::Xavier, fanIn,
@@ -2843,7 +2850,7 @@ Convolution3DNode *Function::createConv3D(PlaceholderBindings &bindings,
 
   dim_t fanIn = kdim.temporal_frames * kdim.height * kdim.width * idim.c;
   ElemKind inputTy = input.getType()->getElementType();
-  assert((inputTy == ElemKind::FloatTy || inputTy == ElemKind::Float16Ty) &&
+  assert(isFloatElemKind(inputTy) &&
          "Convolution3D on non-floating point type?");
   auto *filter =
       getParent()->createPlaceholder(inputTy, filterDim, "filter", true);
@@ -5008,6 +5015,12 @@ void Function::randomizeConstants(
     }
     case ElemKind::Float16Ty: {
       auto H = payload.getHandle<float16_t>();
+      auto minMaxArg = H.minMaxArg();
+      H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
+      break;
+    }
+    case ElemKind::BFloat16Ty: {
+      auto H = payload.getHandle<bfloat16_t>();
       auto minMaxArg = H.minMaxArg();
       H.randomize(H.raw(minMaxArg.first), H.raw(minMaxArg.second), getPRNG());
       break;

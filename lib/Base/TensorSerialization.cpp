@@ -196,6 +196,8 @@ void glow::dumpTensorToTextFile(Tensor &tensor, llvm::StringRef filename,
     return dumpTensorToTextFileImpl<float>(tensor, filename, fs);
   case ElemKind::Float16Ty:
     return dumpTensorToTextFileImpl<float16_t>(tensor, filename, fs);
+  case ElemKind::BFloat16Ty:
+    return dumpTensorToTextFileImpl<bfloat16_t>(tensor, filename, fs);
   case ElemKind::Int8QTy:
     return dumpTensorToTextFileImpl<int8_t>(tensor, filename, fs);
   case ElemKind::UInt8QTy:
@@ -244,6 +246,8 @@ void glow::loadTensorFromTextFile(Tensor &tensor, llvm::StringRef filename,
     return loadTensorFromTextFileImpl<float>(tensor, filename, fs);
   case ElemKind::Float16Ty:
     return loadTensorFromTextFileImpl<float16_t>(tensor, filename, fs);
+  case ElemKind::BFloat16Ty:
+    return loadTensorFromTextFileImpl<bfloat16_t>(tensor, filename, fs);
   case ElemKind::Int8QTy:
     return loadTensorFromTextFileImpl<int8_t>(tensor, filename, fs);
   case ElemKind::UInt8QTy:

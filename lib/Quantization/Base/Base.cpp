@@ -56,7 +56,15 @@ static void quantizeTensorUtil(Tensor *dest, const Tensor &src) {
     break;
   }
   case ElemKind::Float16Ty: {
-    auto srcHandle = src.getHandle<float16>();
+    auto srcHandle = src.getHandle<float16_t>();
+    for (size_t i = 0, e = destH.size(); i < e; ++i) {
+      destH.raw(i) = quantization::quantize<eTy>(
+          static_cast<float>(srcHandle.raw(i)), TQP);
+    }
+    break;
+  }
+  case ElemKind::BFloat16Ty: {
+    auto srcHandle = src.getHandle<bfloat16_t>();
     for (size_t i = 0, e = destH.size(); i < e; ++i) {
       destH.raw(i) = quantization::quantize<eTy>(
           static_cast<float>(srcHandle.raw(i)), TQP);
@@ -101,7 +109,15 @@ static void dequantizeTensorUtil(Tensor *dest, const Tensor &src) {
     break;
   }
   case ElemKind::Float16Ty: {
-    auto destH = dest->getHandle<float16>();
+    auto destH = dest->getHandle<float16_t>();
+    for (size_t i = 0, e = destH.size(); i < e; ++i) {
+      destH.raw(i) = quantization::dequantize<eTy>(
+          static_cast<eTy>(srcHandle.raw(i)), TQP);
+    }
+    break;
+  }
+  case ElemKind::BFloat16Ty: {
+    auto destH = dest->getHandle<bfloat16_t>();
     for (size_t i = 0, e = destH.size(); i < e; ++i) {
       destH.raw(i) = quantization::dequantize<eTy>(
           static_cast<eTy>(srcHandle.raw(i)), TQP);
@@ -131,8 +147,7 @@ static void dequantizeFusedRowwiseTensorUtil(Tensor &dest, const Tensor &src) {
 }
 
 Tensor dequantizeTensor(const Tensor &tensor, ElemKind floatKind) {
-  assert(((floatKind == ElemKind::FloatTy) ||
-          (floatKind == ElemKind::Float16Ty)) &&
+  assert(isFloatElemKind(floatKind) &&
          "Non supported output floating point type");
   auto Ty = tensor.getType().getElementType();
 

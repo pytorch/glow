@@ -1048,6 +1048,8 @@ ONNXModelWriter::convertType(const Type &glowType) {
     return TensorType::FLOAT;
   case ElemKind::Float16Ty:
     return TensorType::FLOAT16;
+  case ElemKind::BFloat16Ty:
+    return TensorType::BFLOAT16;
   case ElemKind::Int8QTy:
     return TensorType::INT8;
   case ElemKind::UInt8FusedQTy:

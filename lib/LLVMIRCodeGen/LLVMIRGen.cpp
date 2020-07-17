@@ -229,6 +229,8 @@ llvm::Type *LLVMIRGen::getElementType(llvm::IRBuilder<> &builder,
     return builder.getFloatTy();
   case ElemKind::Float16Ty:
     llvm_unreachable("Not implemented");
+  case ElemKind::BFloat16Ty:
+    llvm_unreachable("Not implemented");
   case ElemKind::Int8QTy:
     return builder.getInt8Ty();
   case ElemKind::UInt8QTy:
@@ -343,6 +345,9 @@ llvm::Value *LLVMIRGen::emitValueAddress(llvm::IRBuilder<> &builder,
     T = llvm::Type::getFloatPtrTy(getLLVMContext());
     break;
   case ElemKind::Float16Ty:
+    T = llvm::Type::getInt16PtrTy(getLLVMContext());
+    break;
+  case ElemKind::BFloat16Ty:
     T = llvm::Type::getInt16PtrTy(getLLVMContext());
     break;
   case ElemKind::Int8QTy:
@@ -531,6 +536,8 @@ llvm::Value *LLVMIRGen::emitConst(llvm::IRBuilder<> &builder, float val,
     return llvm::ConstantFP::get(llvm::Type::getFloatTy(getLLVMContext()), val);
   case ElemKind::Float16Ty:
     llvm_unreachable("Not implemented");
+  case ElemKind::BFloat16Ty:
+    llvm_unreachable("Not implemented");
   case ElemKind::Int64ITy:
     return builder.getInt64(static_cast<int64_t>(val));
   case ElemKind::Int8QTy:
@@ -576,6 +583,8 @@ static std::string createName(const std::string &name, ElemKind elemTy) {
     return name + "_f";
   case ElemKind::Float16Ty:
     return name + "_fp16";
+  case ElemKind::BFloat16Ty:
+    return name + "_bfloat16";
   case ElemKind::Int8QTy:
     return name + "_i8";
   case ElemKind::Int16QTy:

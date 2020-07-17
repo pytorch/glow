@@ -54,6 +54,9 @@ convertFusedRowwiseQuantizedInputs(Function *F,
       // needed for FP16 scale/offset instead of FP32.
       const auto &shape = input.dims();
       assert(shape.size() == 2 && "UInt8FusedQTy must be 2D.");
+      assert(precConfig.float16Format ==
+                 PrecisionConfiguration::Float16Format::FP16 &&
+             "Only fused FP16 scale/offset is supported");
       const dim_t newCols = shape[1] - 2 * (sizeof(float) - sizeof(float16_t));
       auto OT = mod.uniqueType(ElemKind::UInt8FusedFP16QTy, {shape[0], newCols},
                                1.0, 0); // Dummy scale/offset.
@@ -69,9 +72,11 @@ void glow::convertFunctionToFloat16(Function *F,
   DCHECK(precConfig.convertToFP16 || precConfig.convertFusedToFP16)
       << "Expected to convert at least one of FloatTy or UInt8FusedQTy.";
 
-  // Convert FloatTy to Float16Ty.
-  TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy,
-                                          ElemKind::Float16Ty, precConfig);
+  // Convert FloatTy to Float16Ty or BFloat16Ty.
+  ElemKind destTy =
+      PrecisionConfiguration::getElementType(precConfig.float16Format);
+  TypeAToTypeBFunctionConverter converter(*F, ElemKind::FloatTy, destTy,
+                                          precConfig);
   if (precConfig.convertToFP16) {
     converter.convert();
 

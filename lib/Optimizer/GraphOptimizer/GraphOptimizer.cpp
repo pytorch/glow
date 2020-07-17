@@ -1658,7 +1658,10 @@ bool normalizeWeights(Module *M, ConvolutionNode &CV,
                       BatchNormalizationNode &BN) {
   static_assert(
       std::is_floating_point<ElemTy>::value ||
-          std::is_same<float16_t, typename std::remove_cv<ElemTy>::type>::value,
+          std::is_same<float16_t,
+                       typename std::remove_cv<ElemTy>::type>::value ||
+          std::is_same<bfloat16_t,
+                       typename std::remove_cv<ElemTy>::type>::value,
       "This implementation is for floating-point values only");
 
   Constant *filterC = getUniquelyUsedConstant(M, *CV.getFilter().getNode());
@@ -1791,6 +1794,9 @@ bool OptimizeBatchNorm::run(Function *F, const CompilationContext &cctx) {
         break;
       case ElemKind::Float16Ty:
         normalizationHappened = normalizeWeights<float16_t>(M, *CV, *BN);
+        break;
+      case ElemKind::BFloat16Ty:
+        normalizationHappened = normalizeWeights<bfloat16_t>(M, *CV, *BN);
         break;
       default:
         llvm_unreachable("Type not supported");
@@ -2645,6 +2651,7 @@ bool FoldSlicesIntoConstants::run(Function *F, const CompilationContext &cctx) {
 
     TYPED_INSERT(float, ElemKind::FloatTy);
     TYPED_INSERT(float16_t, ElemKind::Float16Ty);
+    TYPED_INSERT(bfloat16_t, ElemKind::BFloat16Ty);
     TYPED_INSERT(int8_t, ElemKind::Int8QTy);
     TYPED_INSERT(int16_t, ElemKind::Int16QTy);
     TYPED_INSERT(int32_t, ElemKind::Int32QTy);
@@ -3236,10 +3243,13 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
   switch (tensor.getElementType()) {
   case ElemKind::FloatTy:
   case ElemKind::Float16Ty:
+  case ElemKind::BFloat16Ty:
     switch (dstTy->getElementType()) {
     case ElemKind::FloatTy:
-    case ElemKind::Float16Ty: {
-      // Plain conversion: {FloatTy, Float16Ty} -> {FloatTy, Float16Ty}.
+    case ElemKind::Float16Ty:
+    case ElemKind::BFloat16Ty: {
+      // Plain conversion:
+      // {FloatTy, Float16Ty, BFloat16Ty} -> {FloatTy, Float16Ty, BFloat16Ty}.
       Constant &constantToBeModified = modifyConstantTyAndGet();
       constantToBeModified.getPayloadMutable().convertToType(
           dstTy->getElementType());
@@ -3248,7 +3258,7 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
     case ElemKind::Int32QTy:
     case ElemKind::Int16QTy:
     case ElemKind::Int8QTy: {
-      // Quantization: {FloatTy, Float16Ty} -> Quantized type.
+      // Quantization: {FloatTy, Float16Ty, BFloat16Ty} -> Quantized type.
       Constant &constantToBeModified = modifyConstantTyAndGet();
       TensorQuantizationParams params{dstTy->getScale(), dstTy->getOffset()};
       Tensor &tensorToBeModified = constantToBeModified.getPayloadMutable();
@@ -3270,8 +3280,8 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
       return constantToBeModified.getOutput();
     }
     default:
-      // Quantization: {FloatTy, Float16Ty} -> Int[16|32]QTy.
-      // Plain conversion: {FloatTy, Float16Ty} -> Int64ITy.
+      // Quantization: {FloatTy, Float16Ty, BFloat16Ty} -> Int[16|32]QTy.
+      // Plain conversion: {FloatTy, Float16Ty, BFloat16Ty} -> Int64ITy.
       return NodeValue();
     }
   case ElemKind::UInt8FusedQTy: {
@@ -3309,10 +3319,10 @@ static NodeValue convertConstant(Module &mod, Constant &constant,
     // For now we don't see other quantize, dequantize, or rescale nodes
     // directly attached to constants.
     // Thus don't add code that will never be executed.
-    // Dequantization: Int[8|16|32]QTy -> {FloatTy, Float16Ty, Int64I}.
-    // Rescale: Int[8|16|32]QTy -> Int[8|16|32]QTy.
-    // Plain conversion: Int64ITy -> {FloatTy, Float16Ty}.
-    // Quantization: Int64ITy -> Int[8|16|32]QTy.
+    // Dequantization: Int[8|16|32]QTy -> {FloatTy, Float16Ty, BFloat16Ty,
+    // Int64I}. Rescale: Int[8|16|32]QTy -> Int[8|16|32]QTy. Plain conversion:
+    // Int64ITy -> {FloatTy, Float16Ty, BFloat16Ty}. Quantization: Int64ITy ->
+    // Int[8|16|32]QTy.
     return NodeValue();
   }
 }
@@ -3336,6 +3346,9 @@ static size_t numSignificantBits(ElemKind kind) {
   case ElemKind::Float16Ty:
     // Custom type with layout 0 00000 0000000000.
     return 10;
+  case ElemKind::BFloat16Ty:
+    // bfloat16 has 8 significant bits.
+    return 8;
   case ElemKind::Int16QTy:
     return std::numeric_limits<int16_t>::digits;
   case ElemKind::FloatTy:

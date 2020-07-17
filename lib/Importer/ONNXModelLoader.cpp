@@ -119,6 +119,9 @@ Error onnxTensorDataTypeToElemKind(int32_t onnxType, ElemKind *elemTy) {
   } else if (onnxType == ONNX_NAMESPACE::TensorProto::FLOAT16) {
     *elemTy = ElemKind::Float16Ty;
     return Error::success();
+  } else if (onnxType == ONNX_NAMESPACE::TensorProto::BFLOAT16) {
+    *elemTy = ElemKind::BFloat16Ty;
+    return Error::success();
   } else if (onnxType == ONNX_NAMESPACE::TensorProto::INT64) {
     *elemTy = ElemKind::Int64ITy;
     return Error::success();
@@ -553,6 +556,15 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
       RETURN_ERR("Unsupported Tensor format.",
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
+  } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::BFLOAT16) {
+    T->reset(ElemKind::BFloat16Ty, dim);
+    if (in.has_raw_data()) {
+      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+      inStream.read(T->getUnsafePtr(), T->size() * (sizeof(float) / 2));
+    } else {
+      RETURN_ERR("Unsupported Tensor format.",
+                 ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
+    }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
     T->reset(ElemKind::Int64ITy, dim);
 
@@ -663,6 +675,9 @@ ONNXModelLoader::getTensorType(const ONNX_NAMESPACE::TensorProto &in) {
 
   case ONNX_NAMESPACE::TensorProto::FLOAT16:
     return Type(ElemKind::Float16Ty, dim);
+
+  case ONNX_NAMESPACE::TensorProto::BFLOAT16:
+    return Type(ElemKind::BFloat16Ty, dim);
 
   case ONNX_NAMESPACE::TensorProto::INT64:
     return Type(ElemKind::Int64ITy, dim);
@@ -824,6 +839,8 @@ Expected<ElemKind> ONNXModelLoader::convertTensorProtoDataType(
     return ElemKind::FloatTy;
   case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
     return ElemKind::Float16Ty;
+  case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+    return ElemKind::BFloat16Ty;
   case ONNX_NAMESPACE::TensorProto_DataType_INT32:
     return ElemKind::Int32ITy;
   case ONNX_NAMESPACE::TensorProto_DataType_INT64:
@@ -2277,8 +2294,7 @@ Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
   ElemKind inputType = input.getType()->getElementType();
 
   // Only supports float types.
-  RETURN_ERR_IF_NOT((inputType == ElemKind::FloatTy) ||
-                        (inputType == ElemKind::Float16Ty),
+  RETURN_ERR_IF_NOT(isFloatElemKind(inputType),
                     "Unsupported Type for LeakyRelu");
 
   // ONNX spec says default is 0.01, but doesn't explicitly say it's optional.

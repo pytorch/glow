@@ -395,6 +395,135 @@ TEST(Graph, float16BatchNorm) {
       }));
 }
 
+/// Check that we can create convolution with bfloat16.
+TEST(Graph, bfloat16Conv) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  PlaceholderBindings bindings;
+  Node *K = MD.createConstant(ElemKind::BFloat16Ty, {4, 320, 200, 3}, "input");
+
+  auto *conv = F->createConv(bindings, "Conv", K, 16, 3, 2, 3, 1);
+  F->createSave("Save", conv);
+  EXPECT_TRUE(conv->verify());
+  EXPECT_EQ(conv->getResult().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(conv->getFilter().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(conv->getBias().getElementType(), ElemKind::BFloat16Ty);
+
+  auto backend = MockBackend();
+  CompilationContext cctx;
+  lower(F, cctx, &backend);
+
+  IRFunction M(F);
+
+  M.generateIR(backend);
+  EXPECT_GT(M.getInstrs().size(), 0);
+  auto convIt = std::find_if(M.getInstrs().begin(), M.getInstrs().end(),
+                             [](const Instruction &inst) -> bool {
+                               return llvm::isa<ConvolutionInst>(inst);
+                             });
+  ASSERT_TRUE(convIt != M.getInstrs().end());
+  const auto *convInst = llvm::cast<ConvolutionInst>(&*convIt);
+  EXPECT_EQ(convInst->getSrc()->getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(convInst->getFilter()->getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(convInst->getBias()->getElementType(), ElemKind::BFloat16Ty);
+}
+
+/// Check that we can create conv3D with bfloat16.
+TEST(Graph, bfloat16Conv3DLower) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  PlaceholderBindings bindings;
+  Node *K =
+      MD.createConstant(ElemKind::BFloat16Ty, {4, 320, 200, 200, 3}, "input");
+
+  auto *conv = F->createConv3D(bindings, "Conv3D", K, 16, 3, 2, 3, 1);
+  F->createSave("Save", conv);
+  EXPECT_TRUE(conv->verify());
+  EXPECT_EQ(conv->getResult().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(conv->getFilter().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(conv->getBias().getElementType(), ElemKind::BFloat16Ty);
+
+  auto backend = MockBackend();
+  CompilationContext cctx;
+  lower(F, cctx, &backend);
+
+  IRFunction M(F);
+
+  M.generateIR(backend);
+  EXPECT_GT(M.getInstrs().size(), 0);
+  auto convIt = std::find_if(M.getInstrs().begin(), M.getInstrs().end(),
+                             [](const Instruction &inst) -> bool {
+                               return llvm::isa<Convolution3DInst>(inst);
+                             });
+  ASSERT_TRUE(convIt == M.getInstrs().end());
+}
+
+/// Check that we can create conv3D with bfloat16.
+TEST(Graph, bfloat16Conv3DNoLower) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  PlaceholderBindings bindings;
+  Node *K =
+      MD.createConstant(ElemKind::BFloat16Ty, {4, 320, 200, 200, 3}, "input");
+
+  auto *conv = F->createConv3D(bindings, "Conv3D", K, 16, 3, 2, 3, 1);
+  F->createSave("Save", conv);
+  EXPECT_TRUE(conv->verify());
+  EXPECT_EQ(conv->getResult().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(conv->getFilter().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(conv->getBias().getElementType(), ElemKind::BFloat16Ty);
+
+  auto backend = MockBackendNoLowerConv3D();
+  CompilationContext cctx;
+  lower(F, cctx, &backend);
+
+  IRFunction M(F);
+
+  M.generateIR(backend);
+  EXPECT_GT(M.getInstrs().size(), 0);
+  auto convIt = std::find_if(M.getInstrs().begin(), M.getInstrs().end(),
+                             [](const Instruction &inst) -> bool {
+                               return llvm::isa<Convolution3DInst>(inst);
+                             });
+  ASSERT_TRUE(convIt != M.getInstrs().end());
+  const auto *convInst = llvm::cast<Convolution3DInst>(&*convIt);
+  EXPECT_EQ(convInst->getSrc()->getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(convInst->getFilter()->getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(convInst->getBias()->getElementType(), ElemKind::BFloat16Ty);
+}
+
+/// Check that we can create batchNorm with float16.
+TEST(Graph, bfloat16BatchNorm) {
+  Module MD;
+  Function *F = MD.createFunction("F");
+  PlaceholderBindings bindings;
+  auto *input = MD.createPlaceholder(ElemKind::BFloat16Ty, {1, 10, 20, 3},
+                                     "input", false);
+  BatchNormalizationNode *BN =
+      F->createBatchNormalization(bindings, "batch", input, 3, 0.0001, 0.9);
+
+  EXPECT_TRUE(BN->verify());
+  EXPECT_EQ(BN->getResult().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(BN->getScale().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(BN->getBias().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(BN->getMean().getElementType(), ElemKind::BFloat16Ty);
+  EXPECT_EQ(BN->getVar().getElementType(), ElemKind::BFloat16Ty);
+
+  auto backend = MockBackend();
+  CompilationContext cctx;
+  lower(F, cctx, &backend);
+
+  EXPECT_TRUE(std::all_of(
+      F->getNodes().begin(), F->getNodes().end(), [](const Node &node) -> bool {
+        for (unsigned idx = 0, end = node.getNumResults(); idx != end; ++idx) {
+          if (node.getType(idx)->getElementType() != ElemKind::BFloat16Ty) {
+            return false;
+          }
+        }
+        return true;
+      }));
+}
+
 /// Test that our use lists are correctly reflecting the state of the IR
 /// and in particular that it is not polluted by temporary variable.
 TEST(Graph, useList) {
@@ -2123,6 +2252,9 @@ TEST(Graph, testRandomizeConstants) {
   Tensor halfT(ElemKind::Float16Ty, {10});
   initTensor<float16_t>(halfT);
 
+  Tensor bfloat16T(ElemKind::BFloat16Ty, {10});
+  initTensor<bfloat16_t>(bfloat16T);
+
   Tensor int8QT(ElemKind::Int8QTy, {10}, 1.0, 0);
   initTensor<int8_t>(int8QT);
 
@@ -2159,6 +2291,9 @@ TEST(Graph, testRandomizeConstants) {
 
   auto *halfC = MD.createConstant("halfC", halfT);
   F->createAdd("add", halfC, halfC);
+
+  auto *bfloat16C = MD.createConstant("bloat16C", bfloat16T);
+  F->createAdd("add", bfloat16C, bfloat16C);
 
   auto *int8QC = MD.createConstant("int8QC", int8QT);
   F->createAdd("add", int8QC, int8QC);
@@ -2198,6 +2333,7 @@ TEST(Graph, testRandomizeConstants) {
   // Check that no Constant is the same as what it started as
   EXPECT_FALSE(floatT.isEqual(floatC->getPayload()));
   EXPECT_FALSE(halfT.isEqual(halfC->getPayload()));
+  EXPECT_FALSE(bfloat16T.isEqual(bfloat16C->getPayload()));
   EXPECT_FALSE(int8QT.isEqual(int8QC->getPayload()));
   EXPECT_FALSE(uint8QT.isEqual(uint8QC->getPayload()));
   EXPECT_FALSE(int16QT.isEqual(int16QC->getPayload()));
