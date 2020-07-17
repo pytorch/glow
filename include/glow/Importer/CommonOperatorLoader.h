@@ -1092,10 +1092,6 @@ protected:
       int axis;
       ASSIGN_VALUE_OR_RETURN_ERR(
           axis, loadAxis<int>(dict.find("axis")->second, data.dims().size()));
-      if (axis != 0 && axis != 1) {
-        RETURN_ERR("Axis must be 0 or 1.");
-      }
-
       batchDims = axis;
     }
 
