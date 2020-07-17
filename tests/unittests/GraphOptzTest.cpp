@@ -3027,45 +3027,44 @@ TEST_F(GraphOptz, mergeBANodes) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedAddNodeKind), 1);
 }
 
-/// Check that TileNodes that tile something only once are eliminated.
-TEST_F(GraphOptz, eliminateNoopTile) {
-  auto *A = mod_.createPlaceholder(ElemKind::FloatTy, {3, 1, 2}, "A",
-                                   /*isTrainable=*/false);
-  auto *tile = F_->createTile("tile", A, /*tiles=*/1,
-                              /*axis=*/1);
-  auto *relu = F_->createRELU("relu", tile);
-  F_->createSave("save", relu);
+/// Check that EliminateNoop optimization pass removes nodes which don't do
+/// anything useful.
+TEST_F(GraphOptz, eliminateNoop) {
+  std::vector<dim_t> shape = {1, 2, 2, 3};
+  Placeholder *input1 = mod_.createPlaceholder(ElemKind::Int8QTy, shape, 0.004,
+                                               0, "input", false);
+  Placeholder *input2 = mod_.createPlaceholder(ElemKind::Int8QTy, shape, 0.004,
+                                               0, "input", false);
+  auto *cond = mod_.createConstant(ElemKind::BoolTy, shape, "input1");
+  cond->getHandle<bool>() = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TileNodeKind), 1);
+  auto *select = F_->createSelect("select", cond, input1, input2);
+  auto *slice = F_->createSlice("slice", select, {0, 0, 0, 0}, shape);
+  auto *tile = F_->createTile("tile", slice, 1, 1);
+  auto *pad = F_->createPad("pad", tile, tile->getResult().getType(), 0,
+                            {0, 0, 0, 0, 0, 0, 0, 0}, 0);
+  auto *avgPool = F_->createAvgPool("avgpool", pad, 1, 1, 0);
+  auto *maxPool = F_->createMaxPool("maxpool", avgPool, 1, 1, 0);
 
-  optimizedF_ = optimizeFunction(F_);
+  F_->createSave("save", maxPool->getResult());
 
-  // Check that the Tile node is eliminated.
-  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::TileNodeKind), 0);
-
-  bindings_.allocate(mod_.getPlaceholders());
-  bindings_.get(A)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
-
-  checkNumericalEquivalence();
-}
-
-/// Check that noop SliceNodes are correctly eliminated.
-TEST_F(GraphOptz, eliminateNoopSlice) {
-  Placeholder *input = mod_.createPlaceholder(
-      ElemKind::Int8QTy, {2, 32}, 0.004, 0, "input", /* isTrainable */ false);
-  auto *slice = F_->createSlice("tile", input, {0, 0}, {2, 32});
-  F_->createSave("save", slice);
-
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SelectNodeKind), 1);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TileNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::PadNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::AvgPoolNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MaxPoolNodeKind), 1);
 
   optimizedF_ = optimizeFunction(F_);
 
-  // Check that the Slice node is eliminated.
-  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SliceNodeKind), 0);
+  // Check that all nodes except for Save are eliminated.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 1);
 
   bindings_.allocate(mod_.getPlaceholders());
-  bindings_.get(input)->getHandle<int8_t>().randomize(-1.0, 1.0,
-                                                      mod_.getPRNG());
+  bindings_.get(input1)->getHandle<int8_t>().randomize(-1.0, 1.0,
+                                                       mod_.getPRNG());
+  bindings_.get(input2)->getHandle<int8_t>().randomize(-1.0, 1.0,
+                                                       mod_.getPRNG());
 
   checkNumericalEquivalence();
 }
@@ -5642,25 +5641,6 @@ TEST_F(GraphOptz, foldMulAddIntoLayerNormNoBatch) {
   // Now compile/run/compare F_ and optimizedF_.
   bindings_.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
   checkNumericalEquivalence(1e-6);
-}
-
-/// Tests select optimization with uniform constant condition.
-TEST_F(GraphOptz, SelectConstCondOptimization) {
-  llvm::SmallVector<dim_t, 4> dims = {1, 1, 4, 2};
-  auto *condConst =
-      mod_.createConstant(ElemKind::BoolTy, dims, "condition_const");
-  condConst->getHandle<bool>().clear(true);
-  auto *RHS =
-      mod_.createPlaceholder(ElemKind::FloatTy, dims, "rhs_input", false);
-  auto *LHS =
-      mod_.createPlaceholder(ElemKind::FloatTy, dims, "lhs_input", false);
-
-  auto *select = F_->createSelect("select", condConst, LHS, RHS);
-  auto *save = F_->createSave("save", select);
-  ::glow::optimize(F_, CompilationMode::Infer);
-  auto saveInput = save->getInput();
-  EXPECT_FALSE(llvm::isa<SelectNode>(saveInput));
-  EXPECT_TRUE((*saveInput).getHash() == LHS->getHash());
 }
 
 TEST_F(GraphOptz, transposeQuantizeConstantWithAlignment) {
