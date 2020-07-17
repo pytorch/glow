@@ -90,7 +90,7 @@ fi
 
 # Since we are using llvm-7 in these two branches, we cannot use pip install cmake
 if [ "${CIRCLE_JOB}" != "PYTORCH" ] && [ "${CIRCLE_JOB}" != "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
-	sudo pip install cmake
+	sudo pip install cmake==3.17.3
 else
 	sudo apt-get install cmake
 fi
