@@ -3,7 +3,8 @@ add_library(Base
               TensorSerialization.cpp
               Type.cpp
               IO.cpp
-              TaggedList.cpp)
+              TaggedList.cpp
+              NumpyReader.cpp)
 
 target_link_libraries(Base
                       PUBLIC
