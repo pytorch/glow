@@ -341,6 +341,8 @@ void glow::dumpAsciiImpl(const Tensor *T, llvm::raw_ostream &os) {
     return dumpAsciiGenericImpl(T->getHandle<float>(), os);
   case ElemKind::Float16Ty:
     return dumpAsciiGenericImpl(T->getHandle<float16_t>(), os);
+  case ElemKind::BFloat16Ty:
+    return dumpAsciiGenericImpl(T->getHandle<bfloat16_t>(), os);
   case ElemKind::Int8QTy:
     return dumpAsciiGenericImpl(T->getHandle<int8_t>(), os);
   case ElemKind::UInt8QTy:
@@ -373,6 +375,8 @@ void glow::dumpImpl(const Tensor *T, llvm::raw_ostream &os,
     return dumpGenericImpl(T->getHandle<float>(), os, maxNumElem);
   case ElemKind::Float16Ty:
     return dumpGenericImpl(T->getHandle<float16_t>(), os, maxNumElem);
+  case ElemKind::BFloat16Ty:
+    return dumpGenericImpl(T->getHandle<bfloat16_t>(), os, maxNumElem);
   case ElemKind::Int8QTy:
     return dumpGenericImpl(T->getHandle<int8_t>(), os, maxNumElem);
   case ElemKind::UInt8QTy:
@@ -484,6 +488,12 @@ void glow::genericTranspose(const Tensor *src, Tensor *dest,
     transposeSelectImpl(srcH, destH, shuffle);
     return;
   }
+  case ElemKind::BFloat16Ty: {
+    auto srcH = src->getHandle<bfloat16_t>();
+    auto destH = dest->getHandle<bfloat16_t>();
+    transposeSelectImpl(srcH, destH, shuffle);
+    return;
+  }
   case ElemKind::Int8QTy: {
     auto srcH = src->getHandle<int8_t>();
     auto destH = dest->getHandle<int8_t>();
@@ -582,6 +592,10 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
       getHandle<float16_t>().clear(float16_t(val));
       break;
     }
+    case ElemKind::BFloat16Ty: {
+      getHandle<bfloat16_t>().clear(bfloat16_t(val));
+      break;
+    }
     case ElemKind::Int8QTy: {
       getHandle<int8_t>().clear(val);
       break;
@@ -646,6 +660,10 @@ void Tensor::init(InitKind init, float val, PseudoRNG &PRNG) {
       getHandle<float16_t>().initXavier(val, PRNG);
       break;
     }
+    case ElemKind::BFloat16Ty: {
+      getHandle<bfloat16_t>().initXavier(val, PRNG);
+      break;
+    }
     default: {
       llvm_unreachable("Undefined to Xavier-initialize non-Float Tensors.");
     }
@@ -664,9 +682,11 @@ Tensor Tensor::getCopyConvertedToType(ElemKind newKind) const {
   assert(!isDeviceResident() && "Tensor must reside on host to access data.");
   const ElemKind origKind = getElementType();
   DCHECK((origKind == ElemKind::FloatTy && newKind == ElemKind::Float16Ty) ||
+         (origKind == ElemKind::FloatTy && newKind == ElemKind::BFloat16Ty) ||
          (origKind == ElemKind::FloatTy && newKind == ElemKind::Int32ITy) ||
          (origKind == ElemKind::FloatTy && newKind == ElemKind::Int64ITy) ||
          (origKind == ElemKind::Float16Ty && newKind == ElemKind::FloatTy) ||
+         (origKind == ElemKind::BFloat16Ty && newKind == ElemKind::FloatTy) ||
          (origKind == ElemKind::Int64ITy && newKind == ElemKind::Int32ITy) ||
          (origKind == ElemKind::Int64ITy && newKind == ElemKind::FloatTy) ||
          (origKind == ElemKind::Int32ITy && newKind == ElemKind::Int64ITy) ||
@@ -682,6 +702,9 @@ Tensor Tensor::getCopyConvertedToType(ElemKind newKind) const {
     case ElemKind::Float16Ty:
       tmp.copyWithCast<float16_t, float>(this);
       break;
+    case ElemKind::BFloat16Ty:
+      tmp.copyWithCast<bfloat16_t, float>(this);
+      break;
 
     case ElemKind::FloatTy:
       if (getElementType() == ElemKind::Int32ITy) {
@@ -690,6 +713,8 @@ Tensor Tensor::getCopyConvertedToType(ElemKind newKind) const {
         tmp.copyWithCast<float, int64_t>(this);
       } else if (getElementType() == ElemKind::Float16Ty) {
         tmp.copyWithCast<float, float16_t>(this);
+      } else if (getElementType() == ElemKind::BFloat16Ty) {
+        tmp.copyWithCast<float, bfloat16_t>(this);
       } else if (getElementType() == ElemKind::FloatTy) {
         tmp.copyRawFrom(this);
       } else {

@@ -229,6 +229,15 @@ llvm::cl::opt<bool>
                   llvm::cl::desc("Run all floating-point computation in fp16."),
                   llvm::cl::init(false), llvm::cl::cat(loaderCat));
 
+llvm::cl::opt<PrecisionConfiguration::Float16Format> fp16Format(
+    "fp16-format", llvm::cl::desc("fp16 format to use."),
+    llvm::cl::values(clEnumValN(PrecisionConfiguration::Float16Format::FP16,
+                                "fp16", "Use fp16"),
+                     clEnumValN(PrecisionConfiguration::Float16Format::BFloat16,
+                                "bfloat16", "Use bfloat16")),
+    llvm::cl::init(PrecisionConfiguration::Float16Format::FP16),
+    llvm::cl::cat(loaderCat));
+
 llvm::cl::opt<bool> convertPlaceholdersOpt(
     "convert-placeholders",
     llvm::cl::desc("Convert model placeholders by merging ConvertTo, Quantize "
@@ -359,6 +368,8 @@ static void getModelInputs(std::vector<std::string> &inputNames,
       kind = ElemKind::FloatTy;
     } else if (type.equals("float16")) {
       kind = ElemKind::Float16Ty;
+    } else if (type.equals("bfloat16")) {
+      kind = ElemKind::BFloat16Ty;
     } else if (type.equals("int8q")) {
       kind = ElemKind::Int8QTy;
     } else if (type.equals("int16q")) {
@@ -590,6 +601,7 @@ CompilationContext Loader::getCompilationContext(QuantizationMode mode) {
   cctx.loweredInfoMap = &loweredMap_;
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
   precConfig.convertToFP16 = convertToFP16;
+  precConfig.float16Format = fp16Format;
 
   // Specific configurations.
   precConfig.quantMode = mode;

@@ -118,8 +118,9 @@ setupInterpAndBackendConfigs(
     ElemKind interpElemKind, ElemKind backendElemKind,
     quantization::Schema schema, bool convertToRowwiseQuantization,
     CreateAndInitFunction createAndInitFunction, ElemKind biasElemKind,
-    bool forceFP16AccumSLS, unsigned count,
-    bool convertToChannelwiseQuantization, bool skipQuantizeFCBias) {
+    bool forceFP16AccumSLS, PrecisionConfiguration::Float16Format float16Format,
+    unsigned count, bool convertToChannelwiseQuantization,
+    bool skipQuantizeFCBias) {
   CompilationContext cctxI{&iBindings, &ILIM};
   CompilationContext cctxB{&bBindings, &BLIM};
   PrecisionConfiguration &precConfigI = cctxI.precisionConfig;
@@ -269,6 +270,7 @@ void compareAgainstInterpreter(
     ElemKind interpElemKind, ElemKind backendElemKind, float allowedError,
     unsigned count, bool convertToRowwiseQuantization,
     quantization::Schema schema, ElemKind biasElemKind, bool forceFP16AccumSLS,
+    PrecisionConfiguration::Float16Format float16Format,
     bool convertToChannelwiseQuantization, bool skipQuantizeFCBias) {
   // Note: deviceMemory = 0 is a signal to use the defaultMemory.
   ExecutionEngine IEE{"Interpreter", /* deviceMemory */ 0,
@@ -297,8 +299,8 @@ void compareAgainstInterpreter(
   auto configs = setupInterpAndBackendConfigs(
       IF, IEE, iBindings, ILIM, bBindings, BLIM, interpElemKind,
       backendElemKind, schema, convertToRowwiseQuantization,
-      createAndInitFunction, biasElemKind, forceFP16AccumSLS, count,
-      convertToChannelwiseQuantization, skipQuantizeFCBias);
+      createAndInitFunction, biasElemKind, forceFP16AccumSLS, float16Format,
+      count, convertToChannelwiseQuantization, skipQuantizeFCBias);
   CompilationContext &cctxI = configs.first;
   CompilationContext &cctxB = configs.second;
 
@@ -1336,6 +1338,11 @@ Constant *createRandomizedConstant(Module &mod, TypeRef type,
   case ElemKind::Float16Ty: {
     c->getHandle<float16_t>().initXavier(c->getType()->size() * 2,
                                          mod.getPRNG());
+    break;
+  }
+  case ElemKind::BFloat16Ty: {
+    c->getHandle<bfloat16_t>().initXavier(c->getType()->size() * 2,
+                                          mod.getPRNG());
     break;
   }
   case ElemKind::Int32QTy: {

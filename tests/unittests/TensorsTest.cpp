@@ -130,6 +130,18 @@ TEST(Tensor, randomizeFloat16) {
   }
 }
 
+TEST(Tensor, randomizeBFloat16) {
+  PseudoRNG PRNG;
+  Tensor T(ElemKind::BFloat16Ty, {10, 10});
+  auto H = T.getHandle<bfloat16_t>();
+  H.randomize(-50, 50, PRNG);
+
+  // Check that all of the numbers fall in the range -50 to 50.
+  for (auto elem : H) {
+    EXPECT_NEAR(elem, 0, 50);
+  }
+}
+
 TEST(Tensor, clone) {
   Tensor T = {1.2f, 12.1f, 51.0f, 1515.2f};
   auto H = T.getHandle<>();
@@ -477,6 +489,25 @@ TEST(Tensor, copyWithCast) {
   AH.randomize(-2.0, 2.0, PRNG);
 
   B.copyWithCast<float, float16_t>(&A);
+
+  EXPECT_EQ(A.size(), B.size());
+  for (size_t idx = 0, end = A.size(); idx != end; ++idx) {
+    EXPECT_NEAR(AH.raw(idx), BH.raw(idx), 0.0001);
+  }
+}
+
+/// Check that we can copy tensors across different types.
+TEST(Tensor, copyWithCastBFloat16) {
+  PseudoRNG PRNG;
+  Tensor A(ElemKind::BFloat16Ty, {10, 5, 3});
+  Tensor B(ElemKind::FloatTy, {10, 5, 3});
+
+  auto AH = A.getHandle<bfloat16_t>();
+  auto BH = B.getHandle<>();
+
+  AH.randomize(-2.0, 2.0, PRNG);
+
+  B.copyWithCast<float, bfloat16_t>(&A);
 
   EXPECT_EQ(A.size(), B.size());
   for (size_t idx = 0, end = A.size(); idx != end; ++idx) {
