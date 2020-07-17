@@ -58,6 +58,10 @@ namespace glow {
 std::unique_ptr<FunctionPassPipeline>
 createDefaultGraphOptimizationPassPipeline() {
   std::initializer_list<FunctionPassConfig> configs{
+      // Eliminate nodes which do not do anything. Do it as early as
+      // possible to prevent such nodes from affecting other optimizations.
+      {FunctionPassID::EliminateNoop},
+
       // Sink transpose operations in an attempt to cancel them out.
       // Perform code sinking until a fixed-point is reached.
       // On big functions, the number of iterations until the fixpoint
@@ -81,14 +85,6 @@ createDefaultGraphOptimizationPassPipeline() {
       // triggering,
       // so try to optimize them out first.
       {FunctionPassID::OptimizeReshape},
-
-      // Eliminate no-op tiles, possibly unlocking more optimization
-      // opportunities.
-      {FunctionPassID::EliminateNoopTile},
-
-      // Eliminate no-op slices, possibly unlocking more optimization
-      // opportunities.
-      {FunctionPassID::EliminateNoopSlice},
 
       {FunctionPassID::TransposeConstants,
        ConvergenceMode::OnePass,
@@ -171,8 +167,6 @@ createDefaultGraphOptimizationPassPipeline() {
       // Try to remove unnecessary Split-Concat operations
       {FunctionPassID::EliminateSliceConcat},
 
-      // Optimize select operations.
-      {FunctionPassID::OptimizeSelect},
       // Perform a round of Dead Code Elimination to cleanup the final pass.
       getDCEPassConfig(),
   };

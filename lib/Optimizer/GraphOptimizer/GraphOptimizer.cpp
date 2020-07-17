@@ -3010,41 +3010,70 @@ bool OptimizeTransposeIntoReshape::run(Function *F,
   return changed;
 }
 
-bool EliminateNoopTile::run(Function *F, const CompilationContext &cctx) {
-  LOG_SCOPE(F->getLogContext(), getName());
-  bool changed = false;
-
-  for (auto &node : F->getNodes()) {
-    if (auto *tileNode = dyn_cast<TileNode>(&node)) {
-      // If the TileNode tiles only once, eliminate it.
-      if (tileNode->getCount() == 1) {
-        tileNode->getResult().replaceAllUsesOfWith(tileNode->getInput());
-        changed = true;
-      }
-    }
+/// Gets Constant or returns nullptr if input is not Constant.
+/// Skips QuantizeNode if present.
+static Constant *getConstant(const NodeValue &NV) {
+  Node *N = NV.getNode();
+  if (isa<QuantizeNode>(N)) {
+    N = N->getNthInput(QuantizeNode::InputIdx);
   }
-
-  return changed;
+  return dyn_cast<Constant>(N);
 }
 
-/// Eliminate noop Slice(Node) -> Node.
-bool EliminateNoopSlice::run(Function *F, const CompilationContext &cctx) {
+/// Eliminate nodes which don't do anything useful.
+bool EliminateNoop::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   bool changed = false;
 
+  auto isNoop = [](const Node &node, NodeValue &input,
+                   NodeValue &output) -> bool {
+    // Auto-select input/output, if there is just one. For other cases it
+    // will be handled on per-operator basis below.
+    if (node.getNumInputs() == 1) {
+      input = node.getNthInput(0);
+    }
+    if (node.getNumResults() == 1) {
+      output = node.getNthResult(0);
+    }
+
+    // For some nodes it's enough just to compare input and output types to
+    // determine if they are noop.
+    if (isa<PadNode>(&node) || isa<SliceNode>(&node) || isa<TileNode>(&node)) {
+      return input.getType() == output.getType();
+    }
+
+    // Operator-specific analysis.
+    if (auto *APN = dyn_cast<AvgPoolNode>(&node)) {
+      input = APN->getInput();
+      return isUniformArray(APN->getKernels(), 1u) &&
+             isUniformArray(APN->getStrides(), 1u) &&
+             isUniformArray(APN->getPads(), 0u);
+    } else if (auto *MPN = dyn_cast<MaxPoolNode>(&node)) {
+      input = MPN->getInput();
+      output = MPN->getResult();
+      return isUniformArray(MPN->getKernels(), 1u) &&
+             isUniformArray(MPN->getStrides(), 1u) &&
+             isUniformArray(MPN->getPads(), 0u);
+    } else if (auto *SN = dyn_cast<SelectNode>(&node)) {
+      auto *cond = getConstant(SN->getCond());
+      bool val = false;
+      if (cond && isUniformConstant<bool>(*cond, val)) {
+        input = val ? SN->getLHS() : SN->getRHS();
+        return true;
+      }
+    }
+
+    return false;
+  };
+
   for (auto &node : F->getNodes()) {
-    SliceNode *sliceNode = dyn_cast<SliceNode>(&node);
-    if (!sliceNode) {
-      continue;
+    NodeValue input, output;
+    if (isNoop(node, input, output)) {
+      assert(input != NodeValue() && output != NodeValue() &&
+             "Sanity check that input and output are set");
+      output.replaceAllUsesOfWith(input);
+      changed = true;
     }
-
-    // If input and result have different types then this is not a noop.
-    if (sliceNode->getInput().getType() != sliceNode->getResult().getType()) {
-      continue;
-    }
-
-    sliceNode->getResult().replaceAllUsesOfWith(sliceNode->getInput());
-    changed = true;
   }
 
   return changed;
@@ -4815,41 +4844,6 @@ static void setFP16AccumSLS(Function *F,
       continue;
     }
   } while (nodeIt != stopIt);
-}
-
-/// Gets Constant or returns nullptr if input is not Constant.
-/// Skips QuantizeNode if present.
-static Constant *getConstant(const NodeValue &NV) {
-  Node *N = NV.getNode();
-  if (isa<QuantizeNode>(N)) {
-    N = N->getNthInput(QuantizeNode::InputIdx);
-  }
-  return dyn_cast<Constant>(N);
-}
-
-/// Simple optimization if select cond is constant and uniform, just pick
-/// appropriate input.
-bool OptimizeSelect::run(Function *F, const CompilationContext &cctx) {
-  bool changed = false;
-  for (auto &n : F->getNodes()) {
-    auto *selectN = llvm::dyn_cast<SelectNode>(&n);
-    if (!selectN) {
-      continue;
-    }
-
-    auto *constCond = getConstant(selectN->getCond());
-    bool val = false;
-    if (!constCond || !isUniformConstant<bool>(*constCond, val)) {
-      continue;
-    }
-    changed = true;
-    if (val) {
-      selectN->getResult().replaceAllUsesOfWith(selectN->getLHS());
-    } else {
-      selectN->getResult().replaceAllUsesOfWith(selectN->getRHS());
-    }
-  }
-  return changed;
 }
 
 /// This funciton uses TypeAToTypeBFunctionConverter to do a whole graph
