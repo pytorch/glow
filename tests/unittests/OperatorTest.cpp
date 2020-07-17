@@ -304,6 +304,28 @@ TEST_P(OperatorTest, less_float16Cases) {
   }
 }
 
+TEST_P(OperatorTest, less_bfloat16Cases) {
+  CHECK_IF_ENABLED();
+
+  bfloat16 xValues[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+
+  bfloat16 yValues[] = {5.0f, 4.0f, 3.0f, 2.0f, 1.0f};
+
+  dim_t xDims[] = {5};
+  dim_t yDims[] = {5};
+
+  Handle<bool> saveH =
+      lessHelper<bfloat16>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                           xValues, yValues, xDims, yDims);
+
+  bool refResults[] = {true, true, false, false, false};
+
+  int counter = 0;
+  for (dim_t i = 0; i < saveH.dims()[0]; ++i) {
+    EXPECT_FLOAT_EQ(refResults[counter++], saveH.at({i}));
+  }
+}
+
 TEST_P(OperatorTest, less_int64Cases) {
   CHECK_IF_ENABLED();
 
@@ -1588,6 +1610,12 @@ TEST_P(OperatorTest, ResizeNearest_Float16) {
   testResizeNearest<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
+/// Verify that the ResizeNearest operator works correctly for BFloat16.
+TEST_P(OperatorTest, ResizeNearest_BFloat16) {
+  CHECK_IF_ENABLED();
+  testResizeNearest<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
+}
+
 /// Verify that the ResizeNearest operator works correctly for Int8Q.
 TEST_P(OperatorTest, ResizeNearest_Int8) {
   CHECK_IF_ENABLED();
@@ -1616,6 +1644,13 @@ TEST_P(OperatorTest, ResizeNearest_Float16_outTy) {
   testResizeNearest<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
                                true);
 }
+
+TEST_P(OperatorTest, ResizeNearest_BFloat16_outTy) {
+  CHECK_IF_ENABLED();
+  testResizeNearest<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                                true);
+}
+
 TEST_P(OperatorTest, ResizeNearest_Int8_outTy) {
   CHECK_IF_ENABLED();
   testResizeNearest<int8_t>(bindings_, mod_, F_, EE_, ElemKind::Int8QTy, true);
@@ -1689,7 +1724,8 @@ static void testResizeBilinear(glow::PlaceholderBindings &bindings,
 // allowed error for EXPECT_NEAR. If not specified uses default.
 #define EXPECT_EQF(a, b, ...)                                                  \
   if ((std::is_same<DataType, float>::value) ||                                \
-      (std::is_same<DataType, float16_t>::value)) {                            \
+      (std::is_same<DataType, float16_t>::value) ||                            \
+      (std::is_same<DataType, bfloat16_t>::value)) {                           \
     EXPECT_FLOAT_EQ(a, b);                                                     \
   } else {                                                                     \
     EXPECT_EQ(a, b);                                                           \
@@ -1729,6 +1765,13 @@ TEST_P(OperatorTest, ResizeBilinear_Float16) {
   testResizeBilinear<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
+/// Verify that the ResizeNearest operator works correctly for BFloat16.
+TEST_P(OperatorTest, ResizeBilinear_BFloat16) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<bfloat16_t>(bindings_, mod_, F_, EE_,
+                                 ElemKind::BFloat16Ty);
+}
+
 /// Verify that the ResizeNearest operator works correctly for Int8Q.
 TEST_P(OperatorTest, ResizeBilinear_Int8) {
   CHECK_IF_ENABLED();
@@ -1755,6 +1798,11 @@ TEST_P(OperatorTest, ResizeBilinear_Float16_outTy) {
   CHECK_IF_ENABLED();
   testResizeBilinear<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
                                 true);
+}
+TEST_P(OperatorTest, ResizeBilinear_BFloat16_outTy) {
+  CHECK_IF_ENABLED();
+  testResizeBilinear<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                                 true);
 }
 TEST_P(OperatorTest, ResizeBilinear_Int8_outTy) {
   CHECK_IF_ENABLED();
@@ -1859,6 +1907,12 @@ TEST_P(OperatorTest, replaceNaN_Float16) {
   testReplaceNaN<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
+/// Test that ReplaceNaN is correctly supported in BFloat16Ty.
+TEST_P(OperatorTest, replaceNaN_BFloat16) {
+  CHECK_IF_ENABLED();
+  testReplaceNaN<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
+}
+
 TEST_P(OperatorTest, log) {
   CHECK_IF_ENABLED();
 
@@ -1958,6 +2012,12 @@ TEST_P(OperatorTest, Logit_Float16) {
   testLogit<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.002);
 }
 
+/// Test the Logit operator using Float16Ty.
+TEST_P(OperatorTest, Logit_BFloat16) {
+  CHECK_IF_ENABLED();
+  testLogit<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty, 0.05);
+}
+
 /// Helper to test CmpEQ using \p DTy.
 template <typename DataType>
 static void testCmpEQ(glow::PlaceholderBindings &bindings, glow::Module &mod,
@@ -2022,6 +2082,36 @@ TEST_P(OperatorTest, FP16Add) {
   auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
   auto handleA = bindings_.get(inputA)->getHandle<float16_t>();
   auto handleB = bindings_.get(inputB)->getHandle<float16_t>();
+  ASSERT_EQ(result.size(), handleA.size());
+  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
+    EXPECT_EQ(result.raw(idx), handleA.raw(idx) + handleB.raw(idx));
+  }
+}
+
+/// Check that the add operator works properly with FP16.
+TEST_P(OperatorTest, BFloat16Add) {
+  CHECK_IF_ENABLED();
+
+  PseudoRNG PRNG;
+
+  auto *inputA =
+      mod_.createPlaceholder(ElemKind::BFloat16Ty, {1, 3, 3, 1}, "A", false);
+  bindings_.allocate(inputA)->getHandle<bfloat16_t>().randomize(-3.0, 3.0,
+                                                                PRNG);
+  auto *inputB =
+      mod_.createPlaceholder(ElemKind::BFloat16Ty, {1, 3, 3, 1}, "B", false);
+  bindings_.allocate(inputB)->getHandle<bfloat16_t>().randomize(-3.0, 3.0,
+                                                                PRNG);
+  auto *Pool = F_->createAdd("pool", inputA, inputB);
+  auto *S = F_->createSave("save", Pool);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<bfloat16_t>();
+  auto handleA = bindings_.get(inputA)->getHandle<bfloat16_t>();
+  auto handleB = bindings_.get(inputB)->getHandle<bfloat16_t>();
   ASSERT_EQ(result.size(), handleA.size());
   for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
     EXPECT_EQ(result.raw(idx), handleA.raw(idx) + handleB.raw(idx));
@@ -2127,6 +2217,31 @@ TEST_P(OperatorTest, FP16Matmul) {
   EE_.run(bindings_);
 
   auto H = saveTensor->getHandle<float16_t>();
+  EXPECT_NEAR(H.at({0, 0}), 27, 0.001);
+  EXPECT_NEAR(H.at({1, 0}), 61, 0.001);
+  EXPECT_NEAR(H.at({2, 0}), 95, 0.001);
+}
+
+/// Check that the matmul operator behaves correctly with FP16.
+TEST_P(OperatorTest, BFloat16Matmul) {
+  CHECK_IF_ENABLED();
+
+  auto *lhs =
+      mod_.createPlaceholder(ElemKind::BFloat16Ty, {3, 2}, "lhs", false);
+  auto *rhs =
+      mod_.createPlaceholder(ElemKind::BFloat16Ty, {2, 1}, "rhs", false);
+  bindings_.allocate(lhs)->getHandle<bfloat16_t>() = {1, 2, 3, 4, 5, 6};
+  bindings_.allocate(rhs)->getHandle<bfloat16_t>() = {7, 10};
+
+  auto *R = F_->createMatMul("MM", lhs, rhs);
+
+  auto *save = F_->createSave("save", R);
+  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto H = saveTensor->getHandle<bfloat16_t>();
   EXPECT_NEAR(H.at({0, 0}), 27, 0.001);
   EXPECT_NEAR(H.at({1, 0}), 61, 0.001);
   EXPECT_NEAR(H.at({2, 0}), 95, 0.001);
@@ -2240,6 +2355,13 @@ TEST_P(OperatorStatelessTest, ParallelBatchMatMul_Float16) {
       ElemKind::Float16Ty, 0.0005f, parCloneCountOpt);
 }
 
+TEST_P(OperatorStatelessTest, ParallelBatchMatMul_BFloat16) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(
+      getBackendName(), createAndInitParallelBatchMatMulTest, ElemKind::FloatTy,
+      ElemKind::BFloat16Ty, 0.0005f, parCloneCountOpt);
+}
+
 TEST_P(OperatorStatelessTest, ParallelBatchMatMul_Int8) {
   CHECK_IF_ENABLED();
   compareAgainstInterpreter(
@@ -2281,6 +2403,13 @@ TEST_P(OperatorTest, batchedReduceAdd_Float16) {
   CHECK_IF_ENABLED();
   testBatchedReduceAdd<float16_t>(bindings_, mod_, F_, EE_,
                                   ElemKind::Float16Ty);
+}
+
+/// Test that BatchedReduceAdd is correctly supported in Float16Ty.
+TEST_P(OperatorTest, batchedReduceAdd_BFloat16) {
+  CHECK_IF_ENABLED();
+  testBatchedReduceAdd<bfloat16_t>(bindings_, mod_, F_, EE_,
+                                   ElemKind::BFloat16Ty);
 }
 
 /// Test that BatchedReduceAdd works correctly reducing the outermost axis.
@@ -2532,6 +2661,13 @@ TEST_P(OperatorTest, batchedReduceZeroDimResult_Float16) {
                                             ElemKind::Float16Ty);
 }
 
+/// Test reduction down to a zero-dim tensor on BFloat16Ty.
+TEST_P(OperatorTest, batchedReduceZeroDimResult_BFloat16) {
+  CHECK_IF_ENABLED();
+  testBatchedReduceZeroDimResult<bfloat16_t>(bindings_, mod_, F_, EE_,
+                                             ElemKind::BFloat16Ty);
+}
+
 /// Test reduction down to a zero-dim tensor on Int8QTy.
 TEST_P(OperatorTest, batchedReduceZeroDimResult_Int8) {
   CHECK_IF_ENABLED();
@@ -2586,6 +2722,13 @@ TEST_P(OperatorTest, batchedReduceAddWithAxis_Float16) {
   CHECK_IF_ENABLED();
   testBatchedReduceAddWithAxis<float16_t>(bindings_, mod_, F_, EE_,
                                           ElemKind::Float16Ty);
+}
+
+/// Test that batchedReduceAddWithAxis is correctly supported in BFloat16Ty.
+TEST_P(OperatorTest, batchedReduceAddWithAxis_BFloat16) {
+  CHECK_IF_ENABLED();
+  testBatchedReduceAddWithAxis<bfloat16_t>(bindings_, mod_, F_, EE_,
+                                           ElemKind::BFloat16Ty);
 }
 
 /// Test that batchedReduceAddWithAxis is correctly supported in Int8QTy.
@@ -3099,6 +3242,12 @@ TEST_P(OperatorTest, ReluSimple_Float16) {
   testReluSimple<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
+/// Verify that the RELU operator works correctly for Float16.
+TEST_P(OperatorTest, ReluSimple_BFloat16) {
+  CHECK_IF_ENABLED();
+  testReluSimple<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
+}
+
 /// Helper to test PReluSimple using \p DTy.
 template <typename DataType>
 static void testPReluSimple(glow::PlaceholderBindings &bindings,
@@ -3141,6 +3290,13 @@ TEST_P(OperatorTest, PReluSimple_Float16) {
   CHECK_IF_ENABLED();
   testPReluSimple<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
                              1E-16);
+}
+
+/// Verify that the PRELU operator works correctly for BFloat16.
+TEST_P(OperatorTest, PReluSimple_BFloat16) {
+  CHECK_IF_ENABLED();
+  testPReluSimple<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                              1E-16);
 }
 
 TEST_P(OperatorTest, TopK) {
@@ -3795,11 +3951,25 @@ TEST_P(OperatorTest, GatherDataFloat16IdxInt32) {
       bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int32ITy);
 }
 
+/// Test that Gather works with BFloat16 data and Int32 indices.
+TEST_P(OperatorTest, GatherDataBFloat16IdxInt32) {
+  CHECK_IF_ENABLED();
+  gatherFloatInputTest<bfloat16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty, ElemKind::Int32ITy);
+}
+
 /// Test that Gather works with Float16 data and Int64 indices.
 TEST_P(OperatorTest, GatherDataFloat16IdxInt64) {
   CHECK_IF_ENABLED();
   gatherFloatInputTest<float16_t, int64_t>(
       bindings_, mod_, F_, EE_, ElemKind::Float16Ty, ElemKind::Int64ITy);
+}
+
+/// Test that Gather works with BFloat16 data and Int64 indices.
+TEST_P(OperatorTest, GatherDataBFloat16IdxInt64) {
+  CHECK_IF_ENABLED();
+  gatherFloatInputTest<bfloat16_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty, ElemKind::Int64ITy);
 }
 
 /// Helper for testing Gather with different \p ITy / \p IndexType.
@@ -3960,12 +4130,26 @@ TEST_P(OperatorTest, GatherRangesDataFloat16IdxInt32) {
                                        ElemKind::Float16Ty, ElemKind::Int32ITy);
 }
 
+/// Test GatherRanges with BFloat16 data and Int32 indices.
+TEST_P(OperatorTest, GatherRangesDataBFloat16IdxInt32) {
+  CHECK_IF_ENABLED();
+  gatherRangesTest<bfloat16_t, int32_t>(
+      bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty, ElemKind::Int32ITy);
+}
+
 #if DIM_T_BITWIDTH >= 64
 /// Test GatherRanges with Float16 data and Int64 indices.
 TEST_P(OperatorTest, GatherRangesDataFloat16IdxInt64) {
   CHECK_IF_ENABLED();
   gatherRangesTest<float16_t, int64_t>(bindings_, mod_, F_, EE_,
                                        ElemKind::Float16Ty, ElemKind::Int64ITy);
+}
+
+/// Test GatherRanges with BFloat16 data and Int64 indices.
+TEST_P(OperatorTest, GatherRangesDataBFloat16IdxInt64) {
+  CHECK_IF_ENABLED();
+  gatherRangesTest<bfloat16_t, int64_t>(
+      bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty, ElemKind::Int64ITy);
 }
 #endif
 
@@ -4022,6 +4206,26 @@ TEST_P(OperatorTest, FP16Transpose2Dims) {
   EE_.run(bindings_);
 
   Tensor dest(ElemKind::Float16Ty, {13, 20});
+  bindings_.get(A)->transpose(&dest, {1, 0});
+  EXPECT_TRUE(bindings_.get(result->getPlaceholder())->isEqual(dest));
+}
+
+/// Check that transpose is supported for BFloat16.
+TEST_P(OperatorTest, BFloat16Transpose2Dims) {
+  CHECK_IF_ENABLED();
+
+  auto *A = mod_.createPlaceholder(ElemKind::BFloat16Ty, {20, 13}, "A", false);
+  bindings_.allocate(A)->getHandle<bfloat16_t>().randomize(-3.0, 3.0,
+                                                           mod_.getPRNG());
+
+  auto *tr = F_->createTranspose("tr", A, {1, 0});
+  auto *result = F_->createSave("saveTranspose", tr);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor dest(ElemKind::BFloat16Ty, {13, 20});
   bindings_.get(A)->transpose(&dest, {1, 0});
   EXPECT_TRUE(bindings_.get(result->getPlaceholder())->isEqual(dest));
 }
@@ -4107,6 +4311,13 @@ TEST_P(OperatorTest, Transpose3Dims_Float) {
 TEST_P(OperatorTest, Transpose3Dims_Float16) {
   CHECK_IF_ENABLED();
   testTranspose3Dims<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Test Transpose3Dims with BFloat16.
+TEST_P(OperatorTest, Transpose3Dims_BFloat16) {
+  CHECK_IF_ENABLED();
+  testTranspose3Dims<bfloat16_t>(bindings_, mod_, F_, EE_,
+                                 ElemKind::BFloat16Ty);
 }
 
 /// Test Transpose3Dims with Int8.
@@ -4911,13 +5122,29 @@ COMPARE_ARITH_FLOAT_VS_INT8(Min)
         getBackendName(), createAndInitBasic##_OP_NAME_##Test,                 \
         ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f, parCloneCountOpt);      \
   }
+
+#define COMPARE_ARITH_FLOAT_VS_BFLOAT16(_OP_NAME_)                             \
+  TEST_P(OperatorStatelessTest, Basic##_OP_NAME_##NetFloatVsBFloat16) {        \
+    CHECK_IF_ENABLED();                                                        \
+    compareAgainstInterpreter(                                                 \
+        getBackendName(), createAndInitBasic##_OP_NAME_##Test,                 \
+        ElemKind::FloatTy, ElemKind::BFloat16Ty, 0.01f, parCloneCountOpt);     \
+  }
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Add)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Sub)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Mul)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Div)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Max)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Min)
+
+COMPARE_ARITH_FLOAT_VS_BFLOAT16(Add)
+COMPARE_ARITH_FLOAT_VS_BFLOAT16(Sub)
+COMPARE_ARITH_FLOAT_VS_BFLOAT16(Mul)
+COMPARE_ARITH_FLOAT_VS_BFLOAT16(Div)
+COMPARE_ARITH_FLOAT_VS_BFLOAT16(Max)
+COMPARE_ARITH_FLOAT_VS_BFLOAT16(Min)
 #undef COMPARE_ARITH_FLOAT_VS_FLOAT16
+#undef COMPARE_ARITH_FLOAT_VS_BFLOAT16
 
 #define ARITH_FUN_IMPL(_OP_NAME_, _REFERENCE_FUNCTION_, _PARENTHESES_)         \
   template <typename DataType>                                                 \
@@ -4962,7 +5189,8 @@ COMPARE_ARITH_FLOAT_VS_FLOAT16(Min)
   ARITH_FUNC_TEST_TYPED(_OP_NAME_, int32_t, ElemKind::Int32ITy)                \
   ARITH_FUNC_TEST_TYPED(_OP_NAME_, int64_t, ElemKind::Int64ITy)                \
   ARITH_FUNC_TEST_TYPED(_OP_NAME_, float, ElemKind::FloatTy)                   \
-  ARITH_FUNC_TEST_TYPED(_OP_NAME_, float16_t, ElemKind::Float16Ty)
+  ARITH_FUNC_TEST_TYPED(_OP_NAME_, float16_t, ElemKind::Float16Ty)             \
+  ARITH_FUNC_TEST_TYPED(_OP_NAME_, bfloat16_t, ElemKind::BFloat16Ty)
 
 ARITH_FUNC_TEST(Add, std::plus, ())
 ARITH_FUNC_TEST(Sub, std::minus, ())
@@ -5148,6 +5376,45 @@ TEST_P(OperatorTest, convTest_Float16) {
   }
 }
 
+TEST_P(OperatorTest, convTest_BFloat16) {
+  CHECK_IF_ENABLED();
+  auto *input = mod_.createPlaceholder(ElemKind::BFloat16Ty, {1, 3, 3, 1},
+                                       "input", false);
+  auto IH = bindings_.allocate(input)->getHandle<bfloat16_t>();
+  IH = {1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9};
+
+  auto filter = mod_.createPlaceholder(ElemKind::BFloat16Ty, {1, 3, 3, 1},
+                                       "filter", false);
+  auto FH = bindings_.allocate(filter)->getHandle<bfloat16_t>();
+  FH = {0.25, 0.5, 0.25, 1, 1, 1, 0.25, 0.5, 0.25};
+
+  auto *zeroBias =
+      mod_.createPlaceholder(ElemKind::BFloat16Ty, {1}, "bias", false);
+  bindings_.allocate(zeroBias)->zero();
+
+  auto outTy = mod_.uniqueType(ElemKind::BFloat16Ty, {1, 3, 3, 1});
+
+  ConvolutionNode *CN =
+      F_->createConv("Conv", input, filter, zeroBias, outTy, 3, 1, 1, 1);
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<bfloat16_t>();
+
+  Tensor expected(outTy);
+  auto expectedH = expected.getHandle<bfloat16_t>();
+  expectedH = {3.375, 5.102, 3.676, 5.051, 7.5, 5.449, 4.574, 6.898, 4.875};
+
+  for (dim_t x = 0; x < 3; x++) {
+    for (dim_t y = 0; y < 3; y++) {
+      EXPECT_NEAR(result.at({0, x, y, 0}), expectedH.at({0, x, y, 0}), 0.05);
+    }
+  }
+}
+
 template <size_t convDepth>
 static FunctionTensorPair
 createAndInitConvDepthTest(glow::PlaceholderBindings &bindings,
@@ -5205,10 +5472,24 @@ TEST_P(OperatorStatelessTest, FP16ConvolutionDepth10) {
                             parCloneCountOpt);
 }
 
+TEST_P(OperatorStatelessTest, BFloat16ConvolutionDepth10) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(getBackendName(), createAndInitConvDepthTest<10>,
+                            ElemKind::FloatTy, ElemKind::BFloat16Ty, 0.015f,
+                            parCloneCountOpt);
+}
+
 TEST_P(OperatorStatelessTest, FP16ConvolutionDepth8) {
   CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitConvDepthTest<8>,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.015f,
+                            parCloneCountOpt);
+}
+
+TEST_P(OperatorStatelessTest, BFloat16ConvolutionDepth8) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(getBackendName(), createAndInitConvDepthTest<8>,
+                            ElemKind::FloatTy, ElemKind::BFloat16Ty, 0.015f,
                             parCloneCountOpt);
 }
 
@@ -5347,6 +5628,14 @@ TEST_P(OperatorStatelessTest, FC_Float16) {
                             parCloneCountOpt);
 }
 
+/// Test FC with BFloat16.
+TEST_P(OperatorStatelessTest, FC_BFloat16) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(getBackendName(), createAndInitBasicFCTest,
+                            ElemKind::FloatTy, ElemKind::BFloat16Ty, 0.02f,
+                            parCloneCountOpt);
+}
+
 /// Test Int8 FullyConnected with Int8 bias.
 TEST_P(OperatorStatelessTest, FullyConnected_Int8_BiasInt8) {
   ENABLED_BACKENDS("Interpreter", "CPU");
@@ -5428,6 +5717,36 @@ TEST_P(OperatorTest, FP16Max) {
   auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
   auto handleA = bindings_.get(inputA)->getHandle<float16_t>();
   auto handleB = bindings_.get(inputB)->getHandle<float16_t>();
+  ASSERT_EQ(result.size(), handleA.size());
+  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
+    EXPECT_EQ(result.raw(idx), std::max(handleA.raw(idx), handleB.raw(idx)));
+  }
+}
+
+/// Check that the max operator works properly with FP16.
+TEST_P(OperatorTest, BFloat16Max) {
+  CHECK_IF_ENABLED();
+
+  PseudoRNG PRNG;
+
+  auto *inputA =
+      mod_.createPlaceholder(ElemKind::BFloat16Ty, {1, 3, 3, 1}, "A", false);
+  bindings_.allocate(inputA)->getHandle<bfloat16_t>().randomize(-3.0, 3.0,
+                                                                PRNG);
+  auto *inputB =
+      mod_.createPlaceholder(ElemKind::BFloat16Ty, {1, 3, 3, 1}, "B", false);
+  bindings_.allocate(inputB)->getHandle<bfloat16_t>().randomize(-3.0, 3.0,
+                                                                PRNG);
+  auto *Max = F_->createMax("max", inputA, inputB);
+  auto *S = F_->createSave("save", Max);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<bfloat16_t>();
+  auto handleA = bindings_.get(inputA)->getHandle<bfloat16_t>();
+  auto handleB = bindings_.get(inputB)->getHandle<bfloat16_t>();
   ASSERT_EQ(result.size(), handleA.size());
   for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
     EXPECT_EQ(result.raw(idx), std::max(handleA.raw(idx), handleB.raw(idx)));
@@ -5931,6 +6250,12 @@ TEST_P(OperatorTest, concatVectors_Float16) {
   testConcatVectors<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
+/// Test concatenating vectors that are Float16Ty.
+TEST_P(OperatorTest, concatVectors_BFloat16) {
+  CHECK_IF_ENABLED();
+  testConcatVectors<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
+}
+
 /// Helper to test ConcatVectorsRepeated using \p DTy.
 template <typename DataType>
 static void testConcatVectorsRepeated(glow::PlaceholderBindings &bindings,
@@ -6033,6 +6358,15 @@ TEST_P(OperatorTest, concatVectorsRepeated_Float16) {
                                        ElemKind::Float16Ty);
 }
 
+/// Check that concatenating two tensors repeatedly is correct. This is
+/// intended to verify that IRGen to InsertTensor instructions with axis/count
+/// works correctly. Testing BFloat16Ty data.
+TEST_P(OperatorTest, concatVectorsRepeated_BFloat16) {
+  CHECK_IF_ENABLED();
+  testConcatVectorsRepeated<bfloat16_t>(bindings_, mod_, F_, EE_,
+                                        ElemKind::BFloat16Ty);
+}
+
 /// Helper to test SliceVectors using \p DTy.
 template <typename DataType>
 static void testSliceVectors(glow::PlaceholderBindings &bindings,
@@ -6109,6 +6443,12 @@ TEST_P(OperatorTest, sliceVectors_Float) {
 TEST_P(OperatorTest, sliceVectors_Float16) {
   CHECK_IF_ENABLED();
   testSliceVectors<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Test slicing with BFloat16Ty.
+TEST_P(OperatorTest, sliceVectors_BFloat16) {
+  CHECK_IF_ENABLED();
+  testSliceVectors<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
 }
 
 /// Test slicing with Int8QTy.
@@ -6204,6 +6544,13 @@ TEST_P(OperatorTest, sliceConcatVectors_Float16) {
   CHECK_IF_ENABLED();
   testSliceConcatVectors<float16_t>(bindings_, mod_, F_, EE_,
                                     ElemKind::Float16Ty);
+}
+
+/// Test a combination of slicing and concating, in BFloat16Ty.
+TEST_P(OperatorTest, sliceConcatVectors_BFloat16) {
+  CHECK_IF_ENABLED();
+  testSliceConcatVectors<bfloat16_t>(bindings_, mod_, F_, EE_,
+                                     ElemKind::BFloat16Ty);
 }
 
 TEST_P(OperatorTest, Tile) {
@@ -7121,6 +7468,13 @@ TEST_P(OperatorTest, ExpandDims_Float16) {
 }
 
 /// Check that the expand dims operator works, which is implemented with a
+/// reshape, in BFloat16Ty.
+TEST_P(OperatorTest, ExpandDims_BFloat16) {
+  CHECK_IF_ENABLED();
+  testExpandDims<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
+}
+
+/// Check that the expand dims operator works, which is implemented with a
 /// reshape, in Int8QTy.
 TEST_P(OperatorTest, ExpandDims_Int8) {
   CHECK_IF_ENABLED();
@@ -7183,6 +7537,12 @@ TEST_P(OperatorTest, Split_Float) {
 TEST_P(OperatorTest, Split_Float16) {
   CHECK_IF_ENABLED();
   testSplit<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Test that Split is correctly supported in BFloat16Ty.
+TEST_P(OperatorTest, Split_BFloat16) {
+  CHECK_IF_ENABLED();
+  testSplit<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
 }
 
 /// Test that Split is correctly supported in Int8QTy.
@@ -7321,6 +7681,32 @@ TEST_P(OperatorTest, Fp16Splat) {
 
   for (dim_t i = 0; i < resultH.size(); i++) {
     EXPECT_EQ(float16_t(splatValue), resultH.raw(i));
+  }
+}
+
+/// Verify bfloat16 splats work correctly (add 0 to it to ensure constant
+/// folding doesn't make this test meaningless).
+TEST_P(OperatorTest, BFloat16Splat) {
+  CHECK_IF_ENABLED();
+
+  const float splatValue = 10;
+  const dim_t size = 3;
+
+  auto *in = mod_.createPlaceholder(ElemKind::BFloat16Ty, {size}, "in", false);
+  auto splatTy = mod_.uniqueType(ElemKind::BFloat16Ty, {size});
+  auto *splat = F_->createSplat("splat", splatTy, splatValue);
+  auto *add = F_->createAdd("add", in, splat);
+  auto *save = F_->createSave("save", add);
+
+  bindings_.allocate(in)->zero();
+  auto resultH =
+      bindings_.allocate(save->getPlaceholder())->getHandle<bfloat16_t>();
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  for (dim_t i = 0; i < resultH.size(); i++) {
+    EXPECT_EQ(bfloat16_t(splatValue), resultH.raw(i));
   }
 }
 
@@ -7857,6 +8243,7 @@ TEST_P(OperatorStatelessTest, ChannelwiseQuantizedConv2D_Int8_BiasInt8) {
       /* convertToRowwiseQuantization */ false,
       quantization::Schema::Asymmetric, ElemKind::Int8QTy,
       /* forceFP16AccumSLS */ false,
+      PrecisionConfiguration::Float16Format::None,
       /* convertToChannelwiseQuantization */ true);
 }
 
@@ -7869,6 +8256,7 @@ TEST_P(OperatorStatelessTest, ChannelwiseQuantizedConv2D_Int8_BiasInt32) {
       /* convertToRowwiseQuantization */ false,
       quantization::Schema::Asymmetric, ElemKind::Int32QTy,
       /* forceFP16AccumSLS */ false,
+      PrecisionConfiguration::Float16Format::None,
       /* convertToChannelwiseQuantization */ true);
 }
 
@@ -8573,6 +8961,26 @@ TEST_P(OperatorTest, FP16AvgPool) {
   EXPECT_TRUE(out.isEqual(*result));
 }
 
+TEST_P(OperatorTest, BFloat16AvgPool) {
+  CHECK_IF_ENABLED();
+
+  auto *input = mod_.createPlaceholder(ElemKind::BFloat16Ty, {1, 3, 3, 1},
+                                       "input", false);
+  bindings_.allocate(input)->getHandle<bfloat16_t>() = {0., 1., 2., 3., 4.,
+                                                        5., 6., 7., 8.};
+  auto *Pool = F_->createAvgPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
+  auto *S = F_->createSave("save", Pool);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto *result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::BFloat16Ty, {1, 2, 2, 1});
+  out.getHandle<bfloat16_t>() = {2., 3., 5., 6.};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
 /// Verify that the AvgPool operator works correctly.
 TEST_P(OperatorTest, AvgPool) {
   CHECK_IF_ENABLED();
@@ -8640,6 +9048,35 @@ TEST_P(OperatorTest, FP16AvgPool3D) {
   auto *result = bindings_.get(S->getPlaceholder());
   Tensor out(ElemKind::Float16Ty, {1, 1, 2, 2, 2});
   out.getHandle<float16_t>() = {2., 3., 5., 6., 2., 3., 5., 6.};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
+TEST_P(OperatorTest, BFloat16AvgPool3D) {
+  CHECK_IF_ENABLED();
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::BFloat16Ty, {1, 1, 3, 3, 3}, // NCTHW
+                             "input", false);
+  bindings_.allocate(input)->getHandle<bfloat16_t>() = {
+      0., 1., 2., 3., 4., 5., 6., 7., 8., 0., 1., 2., 3., 4.,
+      5., 6., 7., 8., 0., 1., 2., 3., 4., 5., 6., 7., 8.};
+  auto *inputNTHWC =
+      F_->createTranspose("avgpool3d_input_NCTHW2NTHWC", input, NCTHW2NTHWC);
+  auto *Pool = F_->createAvgPool("pool", inputNTHWC, {2, 2, 2}, // kernel
+                                 {1, 1, 1},                     // stride
+                                 {0, 0, 0, 0, 0, 0},            // padding
+                                 NTHWC);
+  auto *outputNCTHW =
+      F_->createTranspose("avgpool3d_output_NTHWC2NCTHW", Pool, NTHWC2NCTHW);
+  auto *S = F_->createSave("save", outputNCTHW);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto *result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::BFloat16Ty, {1, 1, 2, 2, 2});
+  out.getHandle<bfloat16_t>() = {2., 3., 5., 6., 2., 3., 5., 6.};
   EXPECT_TRUE(out.isEqual(*result));
 }
 
@@ -8717,6 +9154,28 @@ TEST_P(OperatorTest, FP16AdaptiveAvgPool) {
   auto *result = bindings_.get(S->getPlaceholder());
   Tensor out(ElemKind::Float16Ty, {1, 3, 3, 1});
   out.getHandle<float16_t>() = {2.5, 3.5, 4.5, 6.5, 7.5, 8.5, 10.5, 11.5, 12.5};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
+/// Verify that the AdaptiveAvgPool operator works correctly with bfloat16.
+TEST_P(OperatorTest, BFloat16AdaptiveAvgPool) {
+  CHECK_IF_ENABLED();
+  auto *input = mod_.createPlaceholder(ElemKind::BFloat16Ty, {1, 4, 4, 1},
+                                       "input", false);
+  bindings_.allocate(input)->getHandle<bfloat16_t>() = {
+      0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10., 11., 12., 13., 14., 15.};
+  auto outTy = mod_.uniqueType(ElemKind::BFloat16Ty, {1, 3, 3, 1});
+  auto *pool = F_->createAdaptiveAvgPool("pool", input, outTy);
+  auto *S = F_->createSave("save", pool);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto *result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::BFloat16Ty, {1, 3, 3, 1});
+  out.getHandle<bfloat16_t>() = {2.5, 3.5,  4.5,  6.5, 7.5,
+                                 8.5, 10.5, 11.5, 12.5};
   EXPECT_TRUE(out.isEqual(*result));
 }
 
@@ -8803,6 +9262,26 @@ TEST_P(OperatorTest, FP16MaxPool) {
   EXPECT_TRUE(out.isEqual(*result));
 }
 
+TEST_P(OperatorTest, BFloat16MaxPool) {
+  CHECK_IF_ENABLED();
+
+  auto *input = mod_.createPlaceholder(ElemKind::BFloat16Ty, {1, 3, 3, 1},
+                                       "input", false);
+  bindings_.allocate(input)->getHandle<bfloat16_t>() = {0., 1., 2., 3., 4.,
+                                                        5., 6., 7., 8.};
+  auto *pool = F_->createMaxPool("pool", input, {2, 2}, {1, 1}, {0, 0, 0, 0});
+  auto *S = F_->createSave("save", pool->getResult());
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::BFloat16Ty, {1, 2, 2, 1});
+  out.getHandle<bfloat16_t>() = {4., 5., 7., 8.};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
 TEST_P(OperatorTest, Int8MaxPool) {
   CHECK_IF_ENABLED();
 
@@ -8852,6 +9331,14 @@ static float16_t refSigmoidFp16(float x) {
   return (float16_t)res;
 }
 
+/// Reference ideal sigmoid implementation. Computes an fp32 sigmoid
+/// and casts the result to BFloat16.
+static bfloat16_t refSigmoidBFloat16(float x) {
+  float res = 1 / (1 + exp(-x));
+
+  return (bfloat16_t)res;
+}
+
 /// Test to verify that the sigmoid implementation is equal to the
 /// Mirrored LUT implementation
 /// Does a sweep of -15,15 and prints the outputs of the NNPI implementation
@@ -8879,6 +9366,8 @@ static void testSigmoidFp16Sweep(glow::PlaceholderBindings &bindings,
   CompilationContext cctx;
   cctx.precisionConfig.convertToFP16 = true;
   cctx.precisionConfig.convertFusedToFP16 = true;
+  cctx.precisionConfig.float16Format =
+      PrecisionConfiguration::Float16Format::FP16;
 
   EE.compile(cctx);
   EE.run(bindings);
@@ -8912,10 +9401,78 @@ static void testSigmoidFp16Sweep(glow::PlaceholderBindings &bindings,
   EXPECT_EQ(numDiffs, 0);
 }
 
+/// Test to verify that the sigmoid implementation is equal to the
+/// Mirrored LUT implementation
+/// Does a sweep of -15,15 and prints the outputs of the NNPI implementation
+/// compared to the LUT one, the ideal sigmoid in bfloat16 is also provided as
+/// a visual sanity check, but nothing is enforced against that last one.
+static void testSigmoidBFloat16Sweep(glow::PlaceholderBindings &bindings,
+                                     glow::Module &mod, glow::Function *F,
+                                     glow::ExecutionEngine &EE) {
+  constexpr dim_t N = 100;
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {N}, "input", false);
+  auto inputH = bindings.allocate(input)->getHandle();
+
+  constexpr float rangeStart = -20;
+  constexpr float rangeEnd = 20;
+  constexpr float delta = (rangeEnd - rangeStart) / N;
+
+  for (dim_t i = 0; i < N; i++) {
+    inputH.raw(i) = rangeStart + i * delta;
+  }
+
+  auto *sigmoid = F->createSigmoid("Sigmoid", input);
+  auto *save = F->createSave("Save", sigmoid);
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+
+  CompilationContext cctx;
+  cctx.precisionConfig.convertToFP16 = true;
+  cctx.precisionConfig.convertFusedToFP16 = true;
+  cctx.precisionConfig.float16Format =
+      PrecisionConfiguration::Float16Format::BFloat16;
+
+  EE.compile(cctx);
+  EE.run(bindings);
+
+  auto resultH = resultTensor->getHandle();
+  int numDiffs = 0;
+
+  for (dim_t i = 0; i < N; i++) {
+    float inputV = inputH.at({i});
+    float refIdeal = refSigmoidBFloat16(inputV);
+    float output = resultH.at({i});
+    float absDiff = fabs(output - refIdeal);
+    float relDiff = fabs(absDiff / (refIdeal + 1e-8));
+
+    bool failed = false;
+    // Relative error should be 2^-11 but we are relaxing this constraint
+    // due to linear interpolation.
+    // Absolute error can remain 1e-5 for now
+    if (absDiff > 1e-3 && relDiff > 2e-2) {
+      numDiffs++;
+      failed = true;
+    }
+
+    llvm::outs() << "Sigmoid " << i << " " << inputV << " Backend:" << output
+                 << " ref_ideal:" << refIdeal << " relDiff:" << relDiff
+                 << " absDiff:" << absDiff << " failed:" << failed << "\n";
+  }
+  llvm::outs() << "Number of diffs: " << numDiffs << "\n";
+  llvm::outs().flush();
+
+  EXPECT_EQ(numDiffs, 0);
+}
+
 TEST_P(OperatorTest, SigmoidSweep_Float16) {
   CHECK_IF_ENABLED();
 
   testSigmoidFp16Sweep(bindings_, mod_, F_, EE_);
+}
+
+TEST_P(OperatorTest, SigmoidSweep_BFloat16) {
+  CHECK_IF_ENABLED();
+
+  testSigmoidBFloat16Sweep(bindings_, mod_, F_, EE_);
 }
 
 /// Reference ideal tanh implementation. Computes an fp32 tanh
@@ -8926,6 +9483,16 @@ static float16_t refTanHFp16(float x) {
     res = 0.0;
   }
   return (float16_t)res;
+}
+
+/// Reference ideal tanh implementation. Computes an fp32 tanh
+/// and casts the result to BFloat16, no denorms
+static bfloat16_t refTanHBFloat16(float x) {
+  float res = (exp(2 * x) - 1) / (exp(2 * x) + 1);
+  if (fabs(res) < 6e-5) {
+    res = 0.0;
+  }
+  return (bfloat16_t)res;
 }
 
 /// Test to verify that the tanh implementation is close to the ideal one
@@ -8953,6 +9520,8 @@ static void testTanHFp16Sweep(glow::PlaceholderBindings &bindings,
   CompilationContext cctx;
   cctx.precisionConfig.convertToFP16 = true;
   cctx.precisionConfig.convertFusedToFP16 = true;
+  cctx.precisionConfig.float16Format =
+      PrecisionConfiguration::Float16Format::FP16;
 
   EE.compile(cctx);
   EE.run(bindings);
@@ -8978,10 +9547,68 @@ static void testTanHFp16Sweep(glow::PlaceholderBindings &bindings,
   EXPECT_EQ(count, 0);
 }
 
+/// Test to verify that the tanh implementation is close to the ideal one
+/// Does a sweep of -15,15 and prints the outputs of the NNPI implementation
+/// compared to the ideal tanh in fp16.
+static void testTanHBFloat16Sweep(glow::PlaceholderBindings &bindings,
+                                  glow::Module &mod, glow::Function *F,
+                                  glow::ExecutionEngine &EE) {
+  constexpr dim_t N = 100;
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {N}, "input", false);
+  auto inputH = bindings.allocate(input)->getHandle();
+
+  constexpr float rangeStart = -15;
+  constexpr float rangeEnd = 15;
+  constexpr float delta = (rangeEnd - rangeStart) / N;
+
+  for (dim_t i = 0; i < N; i++) {
+    inputH.raw(i) = rangeStart + i * delta;
+  }
+
+  auto *sigmoid = F->createTanh("TanH", input);
+  auto *save = F->createSave("Save", sigmoid);
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+
+  CompilationContext cctx;
+  cctx.precisionConfig.convertToFP16 = true;
+  cctx.precisionConfig.convertFusedToFP16 = true;
+  cctx.precisionConfig.float16Format =
+      PrecisionConfiguration::Float16Format::BFloat16;
+
+  EE.compile(cctx);
+  EE.run(bindings);
+
+  auto resultH = resultTensor->getHandle();
+  int count = 0;
+
+  for (dim_t i = 0; i < N; i++) {
+    float inputV = inputH.at({i});
+    float refIdeal = refTanHBFloat16(inputV);
+    float output = resultH.at({i});
+    float diff = fabs(output - refIdeal);
+
+    if (diff > 1e-2) {
+      count++;
+    }
+
+    llvm::outs() << "TanH " << i << " " << inputV << " Backend:" << output
+                 << " ref_ideal:" << refIdeal << " diff:" << diff << "\n";
+  }
+  llvm::outs().flush();
+
+  EXPECT_EQ(count, 0);
+}
+
 TEST_P(OperatorTest, TanHSweep_Float16) {
   CHECK_IF_ENABLED();
 
   testTanHFp16Sweep(bindings_, mod_, F_, EE_);
+}
+
+TEST_P(OperatorTest, TanHSweep_BFloat16) {
+  CHECK_IF_ENABLED();
+
+  testTanHBFloat16Sweep(bindings_, mod_, F_, EE_);
 }
 
 template <typename DataType>
@@ -9095,6 +9722,13 @@ TEST_P(OperatorStatelessTest, Tanh_Float16) {
                             parCloneCountOpt);
 }
 
+TEST_P(OperatorStatelessTest, Tanh_BFloat16) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(getBackendName(), createAndInitBasicTanhTest,
+                            ElemKind::FloatTy, ElemKind::BFloat16Ty, 0.001f,
+                            parCloneCountOpt);
+}
+
 /// Verify that the Tanh operator works correctly.
 TEST_P(OperatorTest, Tanh) {
   CHECK_IF_ENABLED();
@@ -9123,6 +9757,13 @@ TEST_P(OperatorStatelessTest, Exp_Float16) {
   CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitBasicExpTest,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.005f,
+                            parCloneCountOpt);
+}
+
+TEST_P(OperatorStatelessTest, Exp_BFloat16) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(getBackendName(), createAndInitBasicExpTest,
+                            ElemKind::FloatTy, ElemKind::BFloat16Ty, 0.005f,
                             parCloneCountOpt);
 }
 
@@ -9758,6 +10399,35 @@ TEST_P(OperatorTest, FP16BatchAdd) {
   }
 }
 
+/// Check that the batch add operator works properly for BFloat16.
+TEST_P(OperatorTest, BFloat16BatchAdd) {
+  CHECK_IF_ENABLED();
+
+  PseudoRNG PRNG;
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::BFloat16Ty, {13, 3, 3}, "A", false);
+  bindings_.allocate(input)->getHandle<bfloat16_t>().randomize(-3.0, 3.0, PRNG);
+  auto *slice =
+      mod_.createPlaceholder(ElemKind::BFloat16Ty, {3, 3}, "slice", false);
+  bindings_.allocate(slice)->getHandle<bfloat16_t>().randomize(-3.0, 3.0, PRNG);
+  auto *batchAdd = F_->createBatchedAdd("batchAdd", input, slice);
+  auto *S = F_->createSave("save", batchAdd);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<bfloat16_t>();
+  auto handleInput = bindings_.get(input)->getHandle<bfloat16_t>();
+  auto handleSlice = bindings_.get(slice)->getHandle<bfloat16_t>();
+  ASSERT_EQ(result.size(), handleInput.size());
+  for (size_t idx = 0, end = result.size(); idx != end; ++idx) {
+    EXPECT_EQ(result.raw(idx),
+              handleInput.raw(idx) + handleSlice.raw(idx % handleSlice.size()));
+  }
+}
+
 TEST_P(OperatorTest, BroadcastAdd2x) {
   CHECK_IF_ENABLED();
 
@@ -9784,7 +10454,7 @@ TEST_P(OperatorTest, BroadcastAdd2x) {
 template <typename DataType>
 static void testSigmoid(glow::PlaceholderBindings &bindings, glow::Module &mod,
                         glow::Function *F, glow::ExecutionEngine &EE,
-                        ElemKind DTy) {
+                        ElemKind DTy, float allowedError = 0.001f) {
   constexpr dim_t size = 10;
   auto *input = mod.createPlaceholder(DTy, {size}, "input", false);
   bindings.allocate(input)->getHandle<DataType>().randomize(-10.0, 10.0,
@@ -9802,7 +10472,7 @@ static void testSigmoid(glow::PlaceholderBindings &bindings, glow::Module &mod,
 
   for (dim_t i = 0; i < size; i++) {
     float val = 1 / (1 + std::exp(-(float)inH.at({i})));
-    EXPECT_NEAR(RH.at({i}), val, 0.001);
+    EXPECT_NEAR(RH.at({i}), val, allowedError);
   }
 }
 
@@ -9818,11 +10488,18 @@ TEST_P(OperatorTest, Sigmoid_Float16) {
   testSigmoid<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
+/// Verify that the Sigmoid operator works correctly with BFloat16Ty.
+TEST_P(OperatorTest, Sigmoid_BFloat16) {
+  CHECK_IF_ENABLED();
+  testSigmoid<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                          0.01f);
+}
+
 /// Helper to test Swish using \p DTy.
 template <typename DataType>
 static void testSwish(glow::PlaceholderBindings &bindings, glow::Module &mod,
                       glow::Function *F, glow::ExecutionEngine &EE,
-                      ElemKind DTy) {
+                      ElemKind DTy, float allowedError = 0.002f) {
   constexpr dim_t size = 10;
   auto *input = mod.createPlaceholder(DTy, {size}, "input", false);
   bindings.allocate(input)->getHandle<DataType>().randomize(-5.0, 5.0,
@@ -9841,7 +10518,7 @@ static void testSwish(glow::PlaceholderBindings &bindings, glow::Module &mod,
   for (dim_t i = 0; i < size; i++) {
     float x = (float)inH.at({i});
     float val = x / (1 + std::exp(-x));
-    EXPECT_NEAR(RH.at({i}), val, 0.002);
+    EXPECT_NEAR(RH.at({i}), val, allowedError);
   }
 }
 
@@ -9855,6 +10532,12 @@ TEST_P(OperatorTest, Swish_Float) {
 TEST_P(OperatorTest, Swish_Float16) {
   CHECK_IF_ENABLED();
   testSwish<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Verify that the Swish operator works correctly with BFloat16Ty.
+TEST_P(OperatorTest, Swish_BFloat16) {
+  CHECK_IF_ENABLED();
+  testSwish<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty, 0.2f);
 }
 
 TEST_P(OperatorTest, IntLookupTable) {
@@ -9944,6 +10627,12 @@ TEST_P(OperatorTest, testBatchAdd_Float) {
 TEST_P(OperatorTest, testBatchAdd_Float16) {
   CHECK_IF_ENABLED();
   testBatchAdd<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Check that the sequence of extract-batchedadd-concat works.
+TEST_P(OperatorTest, testBatchAdd_BFloat16) {
+  CHECK_IF_ENABLED();
+  testBatchAdd<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
 }
 
 static void quantizedBatchAdd(ExecutionEngine &EE, Function *F,
@@ -10061,6 +10750,22 @@ TEST_P(OperatorTest, CumSum_Float16) {
   EXPECT_TRUE(expected.isEqual(*result));
 }
 
+TEST_P(OperatorTest, CumSum_BFloat16) {
+  CHECK_IF_ENABLED();
+  /*
+    DATA  = [1, 2, 3, 4]
+    OUTPUT = [1, 3, 6, 10]
+  */
+
+  Tensor *result =
+      testCumSum<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                             /*exclusive*/ false, /*reverse*/ false);
+  Tensor expected(result->getType());
+  expected.getHandle<bfloat16_t>() = {1, 3, 6, 10};
+
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
 TEST_P(OperatorTest, CumSum_Int32) {
   CHECK_IF_ENABLED();
   /*
@@ -10121,6 +10826,22 @@ TEST_P(OperatorTest, CumSum_Reverse) {
                             /*exclusive*/ false, /*reverse*/ true);
   Tensor expected(result->getType());
   expected.getHandle<float16_t>() = {10, 9, 7, 4};
+
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
+TEST_P(OperatorTest, CumSum_Reverse_BFloat16) {
+  CHECK_IF_ENABLED();
+  /*
+    DATA  = [1, 2, 3, 4]
+    OUTPUT = [10, 9, 7, 4]
+  */
+
+  Tensor *result =
+      testCumSum<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                             /*exclusive*/ false, /*reverse*/ true);
+  Tensor expected(result->getType());
+  expected.getHandle<bfloat16_t>() = {10, 9, 7, 4};
 
   EXPECT_TRUE(expected.isEqual(*result));
 }
@@ -10280,11 +11001,25 @@ TEST_P(OperatorTest, SparseLengthsSum_Float16) {
                               ElemKind::Int64ITy, 0.002);
 }
 
+/// Test that SLS is correctly supported in BFloat16Ty with int64 indices.
+TEST_P(OperatorTest, SparseLengthsSum_BFloat16) {
+  CHECK_IF_ENABLED();
+  testSLS<bfloat16_t, int64_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                               ElemKind::Int64ITy, 0.05);
+}
+
 /// Test that SLS is correctly supported in Float16Ty with int32 indices.
 TEST_P(OperatorTest, SparseLengthsSum_Float16_Int32) {
   CHECK_IF_ENABLED();
   testSLS<float16_t, int32_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
-                              ElemKind::Int32ITy, 0.002);
+                              ElemKind::Int32ITy, 0.05);
+}
+
+/// Test that SLS is correctly supported in BFloat16Ty with int32 indices.
+TEST_P(OperatorTest, SparseLengthsSum_BFloat16_Int32) {
+  CHECK_IF_ENABLED();
+  testSLS<bfloat16_t, int32_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                               ElemKind::Int32ITy, 0.05);
 }
 
 TEST_P(OperatorTest, SparseLengthsSumI8) {
@@ -10421,11 +11156,25 @@ TEST_P(OperatorTest, SparseLengthsWeightedSum_1D_Float16) {
                       /* ndims */ 1);
 }
 
+/// Test that SLWS is correctly supported in BFloat16Ty in 1D.
+TEST_P(OperatorTest, SparseLengthsWeightedSum_1D_BFloat16) {
+  CHECK_IF_ENABLED();
+  testSLWS<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty, 0.0001,
+                       /* ndims */ 1);
+}
+
 /// Test that SLWS is correctly supported in Float16Ty in 2D.
 TEST_P(OperatorTest, SparseLengthsWeightedSum_2D_Float16) {
   CHECK_IF_ENABLED();
   testSLWS<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 0.0001,
                       /* ndims */ 2);
+}
+
+/// Test that SLWS is correctly supported in BFloat16Ty in 2D.
+TEST_P(OperatorTest, SparseLengthsWeightedSum_2D_BFloat16) {
+  CHECK_IF_ENABLED();
+  testSLWS<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty, 0.0001,
+                       /* ndims */ 2);
 }
 
 TEST_P(OperatorTest, SparseLengthsWeightedSumI8) {
@@ -10670,12 +11419,28 @@ TEST_P(OperatorTest, EmbeddingBag_1D_Float16) {
                               /* ndims */ 1, /* hasEndOffset */ false);
 }
 
+/// Test that EB is correctly supported in BFloat16Ty in 1D.
+TEST_P(OperatorTest, EmbeddingBag_1D_BFloat16) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBag<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                               0.0001,
+                               /* ndims */ 1, /* hasEndOffset */ false);
+}
+
 /// Test that EB is correctly supported in Float16Ty in 1D with an end offset.
 TEST_P(OperatorTest, EmbeddingBag_1D_Float16_End_Offset) {
   CHECK_IF_ENABLED();
   testEmbeddingBag<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
                               0.0001,
                               /* ndims */ 1, /* hasEndOffset */ true);
+}
+
+/// Test that EB is correctly supported in BFloat16Ty in 1D with an end offset.
+TEST_P(OperatorTest, EmbeddingBag_1D_BFloat16_End_Offset) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBag<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                               0.0001,
+                               /* ndims */ 1, /* hasEndOffset */ true);
 }
 
 /// Test that EB is correctly supported in Float16Ty in 2D.
@@ -10686,12 +11451,28 @@ TEST_P(OperatorTest, EmbeddingBag_2D_Float16) {
                               /* ndims */ 2, /* hasEndOffset */ false);
 }
 
+/// Test that EB is correctly supported in BFloat16Ty in 2D.
+TEST_P(OperatorTest, EmbeddingBag_2D_BFloat16) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBag<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                               0.0001,
+                               /* ndims */ 2, /* hasEndOffset */ false);
+}
+
 /// Test that EB is correctly supported in Float16Ty in 2D with an end offset.
 TEST_P(OperatorTest, EmbeddingBag_2D_Float16_End_Offset) {
   CHECK_IF_ENABLED();
   testEmbeddingBag<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty,
                               0.0001,
                               /* ndims */ 2, /* hasEndOffset */ true);
+}
+
+/// Test that EB is correctly supported in BFloat16Ty in 2D with an end offset.
+TEST_P(OperatorTest, EmbeddingBag_2D_BFloat16_End_Offset) {
+  CHECK_IF_ENABLED();
+  testEmbeddingBag<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                               0.0001,
+                               /* ndims */ 2, /* hasEndOffset */ true);
 }
 
 /// Test that EB is correctly supported in FloatTy in 1D with an end offset and
@@ -11582,6 +12363,9 @@ static void testRowwiseQuantizedSparseLengthsSum_ConvertedFloat16(
   cctx.precisionConfig.convertToFP16 = true;
   cctx.precisionConfig.convertFusedToFP16 = convertFusedToFP16;
   cctx.precisionConfig.forceFP16AccumSLS = useFP16AccumSLS;
+  cctx.precisionConfig.float16Format =
+      PrecisionConfiguration::Float16Format::FP16;
+
   EE.compile(cctx);
   EE.run(bindings);
 
@@ -11671,6 +12455,9 @@ TEST_P(
   CompilationContext cctx;
   cctx.precisionConfig.convertToFP16 = true;
   cctx.precisionConfig.convertFusedToFP16 = true;
+  cctx.precisionConfig.float16Format =
+      PrecisionConfiguration::Float16Format::FP16;
+
   EE_.compile(cctx);
   EE_.run(bindings_);
 
@@ -11744,6 +12531,9 @@ TEST_P(
   CompilationContext cctx;
   cctx.precisionConfig.convertToFP16 = true;
   cctx.precisionConfig.convertFusedToFP16 = true;
+  cctx.precisionConfig.float16Format =
+      PrecisionConfiguration::Float16Format::FP16;
+
   EE_.compile(cctx);
   EE_.run(bindings_);
 
@@ -12478,6 +13268,28 @@ TEST_P(OperatorTest, FP16Reshape) {
   }
 }
 
+TEST_P(OperatorTest, BFloat16Reshape) {
+  CHECK_IF_ENABLED();
+
+  auto *A = mod_.createPlaceholder(ElemKind::BFloat16Ty, {20, 13}, "A", false);
+  auto inputHandle = bindings_.allocate(A)->getHandle<bfloat16_t>();
+  inputHandle.randomize(-3.0, 3.0, mod_.getPRNG());
+
+  auto *tr = F_->createReshape("tr", A, {13, 20, 1});
+  auto *result = F_->createSave("saveTranspose", tr);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto outputHandle =
+      bindings_.get(result->getPlaceholder())->getHandle<bfloat16_t>();
+  ASSERT_EQ(outputHandle.size(), inputHandle.size());
+  for (size_t idx = 0, end = inputHandle.size(); idx != end; ++idx) {
+    EXPECT_EQ(inputHandle.raw(idx), outputHandle.raw(idx));
+  }
+}
+
 /// Verify that the Reshape operator works correctly.
 TEST_P(OperatorTest, Reshape) {
   CHECK_IF_ENABLED();
@@ -12659,6 +13471,13 @@ TEST_P(OperatorTest, sliceReshape_Float16) {
 }
 
 /// Stack many slices/reshapes together. Some of these may be turned into
+/// tensor views stacked onto each other. Test in BFloat16Ty.
+TEST_P(OperatorTest, sliceReshape_BFloat16) {
+  CHECK_IF_ENABLED();
+  testSliceReshape<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
+}
+
+/// Stack many slices/reshapes together. Some of these may be turned into
 /// tensor views stacked onto each other. Test in Int8QTy.
 TEST_P(OperatorTest, sliceReshape_Int8) {
   CHECK_IF_ENABLED();
@@ -12782,6 +13601,13 @@ TEST_P(OperatorTest, Flatten_FloatTy) {
 TEST_P(OperatorTest, Flatten_Float16Ty) {
   CHECK_IF_ENABLED();
   testFlatten<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Check that the flatten operator produces 2D tensors of the right
+/// dimensions, using BFloat16Ty.
+TEST_P(OperatorTest, Flatten_BFloat16Ty) {
+  CHECK_IF_ENABLED();
+  testFlatten<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
 }
 
 /// Check that the flatten operator produces 2D tensors of the right
@@ -13158,7 +13984,7 @@ TEST_P(OperatorStatelessTest,
       ElemKind::Int8QTy, 0.07f, parCloneCountOpt,
       /* convertToRowwiseQuantization */ true, quantization::Schema::Symmetric,
       /*biasElemKind*/ ElemKind::Int32QTy,
-      /*forceFP16AccumSLS*/ false,
+      /*forceFP16AccumSLS*/ false, PrecisionConfiguration::Float16Format::None,
       /*convertToChannelwiseQuantization*/ false,
       /*skipQuantizeFCBias*/ true);
 }
@@ -13171,7 +13997,7 @@ TEST_P(OperatorStatelessTest,
       ElemKind::Int8QTy, 0.06f, parCloneCountOpt,
       /* convertToRowwiseQuantization */ true, quantization::Schema::Asymmetric,
       /*biasElemKind*/ ElemKind::Int32QTy,
-      /*forceFP16AccumSLS*/ false,
+      /*forceFP16AccumSLS*/ false, PrecisionConfiguration::Float16Format::None,
       /*convertToChannelwiseQuantization*/ false,
       /*skipQuantizeFCBias*/ true);
 }
@@ -13331,6 +14157,30 @@ TEST_P(OperatorTest, FP16SoftMax) {
   EXPECT_TRUE(out.isEqual(*result, 0.001));
 }
 
+/// Check that the softmax operator works properly with BFloat16.
+/// See the test that check the SoftMax operator for more details.
+TEST_P(OperatorTest, BFloat16SoftMax) {
+  CHECK_IF_ENABLED();
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::BFloat16Ty, {1, 6}, "input", false);
+  bindings_.allocate(input)->getHandle<bfloat16_t>() = {1., 3., 2.5,
+                                                        5., 4., 2.};
+  auto *selected =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {1, 1}, "expected", false);
+  auto *Pool = F_->createSoftMax("pool", input, selected);
+  auto *S = F_->createSave("save", Pool);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::BFloat16Ty, {1, 6});
+  out.getHandle<bfloat16_t>() = {0.011f, 0.082f, 0.05f, 0.605f, 0.222f, 0.03f};
+  EXPECT_TRUE(out.isEqual(*result, 0.001));
+}
+
 /// Verify that Quantize, Rescale, Dequantize work correctly together.
 static void quantizeSimpleTest(glow::PlaceholderBindings &bindings_,
                                glow::Module &mod_, glow::Function *F_,
@@ -13474,6 +14324,12 @@ TEST_P(OperatorTest, BatchOneHotDataFloat) {
 TEST_P(OperatorTest, BatchOneHotDataFloat16) {
   CHECK_IF_ENABLED();
   batchOneHotTest<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Test BatchOneHot with BFloat16 data and Int32 Lengths
+TEST_P(OperatorTest, BatchOneHotDataBFloat16) {
+  CHECK_IF_ENABLED();
+  batchOneHotTest<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
 }
 
 /// Test BatchOneHot with Int64 data and Int32 Lengths.
@@ -13669,6 +14525,12 @@ TEST_P(OperatorTest, dotProduct1D_Float16) {
   testDotProduct1D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
+/// Test a DotProduct operator with 1D inputs, using Float16Ty.
+TEST_P(OperatorTest, dotProduct1D_BFloat16) {
+  CHECK_IF_ENABLED();
+  testDotProduct1D<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
+}
+
 /// Test a DotProduct operator with 1D inputs, using Int8Ty.
 TEST_P(OperatorTest, dotProduct1D_Int8) {
   CHECK_IF_ENABLED();
@@ -13854,6 +14716,12 @@ TEST_P(OperatorTest, dotProduct2D_Float16) {
   testDotProduct2D<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
 }
 
+// Test a DotProduct operator with 2D inputs, using BFloat16Ty.
+TEST_P(OperatorTest, dotProduct2D_BFloat16) {
+  CHECK_IF_ENABLED();
+  testDotProduct2D<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
+}
+
 // Test a DotProduct operator with 2D inputs, using Int8QTy.
 TEST_P(OperatorTest, dotProduct2D_Int8) {
   CHECK_IF_ENABLED();
@@ -13954,6 +14822,23 @@ TEST_P(OperatorTest, BatchBoxCox_Small_Float16) {
                              0.003f, 1.0f, 1.001f);
 }
 
+/// Test that the BatchBoxCox operator works as expected in BFloat16Ty.
+TEST_P(OperatorTest, BatchBoxCox_Large_BFloat16) {
+  CHECK_IF_ENABLED();
+  testBatchBoxCox<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                              0.32f, 5.0f);
+}
+TEST_P(OperatorTest, BatchBoxCox_Medium_BFloat16) {
+  CHECK_IF_ENABLED();
+  testBatchBoxCox<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                              0.16f, 3.0f);
+}
+TEST_P(OperatorTest, BatchBoxCox_Small_BFloat16) {
+  CHECK_IF_ENABLED();
+  testBatchBoxCox<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                              0.03f, 1.0f, 1.001f);
+}
+
 /// Test that Arithmetic ops work.
 #define TEST_ARITH_OP_FLOAT(OP_NAME_, OP_)                                     \
   TEST_P(OperatorTest, OP_NAME_##ArithFloatTest) {                             \
@@ -14045,23 +14930,33 @@ static void testConvertTo(glow::PlaceholderBindings &bindings_,
   }
 TEST_CONVERT_TO(float, float, FloatTy, FloatTy)
 TEST_CONVERT_TO(float, float16_t, FloatTy, Float16Ty)
+TEST_CONVERT_TO(float, bfloat16_t, FloatTy, BFloat16Ty)
 TEST_CONVERT_TO(float, int32_t, FloatTy, Int32ITy)
 TEST_CONVERT_TO(float, int64_t, FloatTy, Int64ITy)
 TEST_CONVERT_TO(float, bool, FloatTy, BoolTy)
 TEST_CONVERT_TO(float16_t, float, Float16Ty, FloatTy)
 TEST_CONVERT_TO(float16_t, float16_t, Float16Ty, Float16Ty)
+TEST_CONVERT_TO(float16_t, bfloat16_t, Float16Ty, BFloat16Ty)
 TEST_CONVERT_TO(float16_t, int32_t, Float16Ty, Int32ITy)
 TEST_CONVERT_TO(float16_t, int64_t, Float16Ty, Int64ITy)
+TEST_CONVERT_TO(bfloat16_t, float, BFloat16Ty, FloatTy)
+TEST_CONVERT_TO(bfloat16_t, float16_t, BFloat16Ty, Float16Ty)
+TEST_CONVERT_TO(bfloat16_t, bfloat16_t, BFloat16Ty, BFloat16Ty)
+TEST_CONVERT_TO(bfloat16_t, int32_t, BFloat16Ty, Int32ITy)
+TEST_CONVERT_TO(bfloat16_t, int64_t, BFloat16Ty, Int64ITy)
 TEST_CONVERT_TO(int32_t, float, Int32ITy, FloatTy)
 TEST_CONVERT_TO(int32_t, float16_t, Int32ITy, Float16Ty)
+TEST_CONVERT_TO(int32_t, bfloat16_t, Int32ITy, BFloat16Ty)
 TEST_CONVERT_TO(int32_t, int32_t, Int32ITy, Int32ITy)
 TEST_CONVERT_TO(int32_t, int64_t, Int32ITy, Int64ITy)
 TEST_CONVERT_TO(int64_t, float, Int64ITy, FloatTy)
 TEST_CONVERT_TO(int64_t, float16_t, Int64ITy, Float16Ty)
+TEST_CONVERT_TO(int64_t, bfloat16_t, Int64ITy, BFloat16Ty)
 TEST_CONVERT_TO(int64_t, int32_t, Int64ITy, Int32ITy)
 TEST_CONVERT_TO(int64_t, int64_t, Int64ITy, Int64ITy)
 TEST_CONVERT_TO(bool, float, BoolTy, FloatTy)
 TEST_CONVERT_TO(bool, float16_t, BoolTy, Float16Ty)
+TEST_CONVERT_TO(bool, bfloat16_t, BoolTy, BFloat16Ty)
 
 #undef TEST_CONVERT_TO
 
@@ -14112,22 +15007,39 @@ static void testConvertToAndBack(glow::PlaceholderBindings &bindings_,
   }
 TEST_CAST_2WAYS(float, float, FloatTy, FloatTy, /* castIsNoOp */ true)
 TEST_CAST_2WAYS(float, float16_t, FloatTy, Float16Ty, /* castIsNoOp */ false)
+// FIXME: Should this test succeed?
+TEST_CAST_2WAYS(float, bfloat16_t, FloatTy, BFloat16Ty, /* castIsNoOp */ false)
 TEST_CAST_2WAYS(float, int32_t, FloatTy, Int32ITy, /* castIsNoOp */ false)
 TEST_CAST_2WAYS(float, int64_t, FloatTy, Int64ITy, /* castIsNoOp */ false)
 TEST_CAST_2WAYS(float16_t, float, Float16Ty, FloatTy, /* castIsNoOp */ true)
 TEST_CAST_2WAYS(float16_t, float16_t, Float16Ty, Float16Ty,
                 /* castIsNoOp */ true)
+TEST_CAST_2WAYS(float16_t, bfloat16_t, Float16Ty, BFloat16Ty,
+                /* castIsNoOp */ false)
 TEST_CAST_2WAYS(float16_t, int32_t, Float16Ty, Int32ITy,
                 /* castIsNoOp */ false)
 TEST_CAST_2WAYS(float16_t, int64_t, Float16Ty, Int64ITy,
                 /* castIsNoOp */ false)
+TEST_CAST_2WAYS(bfloat16_t, float, BFloat16Ty, FloatTy, /* castIsNoOp */ true)
+TEST_CAST_2WAYS(bfloat16_t, float16_t, BFloat16Ty, Float16Ty,
+                /* castIsNoOp */ true)
+TEST_CAST_2WAYS(bfloat16_t, bfloat16_t, BFloat16Ty, BFloat16Ty,
+                /* castIsNoOp */ true)
+TEST_CAST_2WAYS(bfloat16_t, int32_t, BFloat16Ty, Int32ITy,
+                /* castIsNoOp */ false)
+TEST_CAST_2WAYS(bfloat16_t, int64_t, BFloat16Ty, Int64ITy,
+                /* castIsNoOp */ false)
 TEST_CAST_2WAYS(int32_t, float, Int32ITy, FloatTy, /* castIsNoOp */ false)
 TEST_CAST_2WAYS(int32_t, float16_t, Int32ITy, Float16Ty,
+                /* castIsNoOp */ false)
+TEST_CAST_2WAYS(int32_t, bfloat16_t, Int32ITy, BFloat16Ty,
                 /* castIsNoOp */ false)
 TEST_CAST_2WAYS(int32_t, int32_t, Int32ITy, Int32ITy, /* castIsNoOp */ true)
 TEST_CAST_2WAYS(int32_t, int64_t, Int32ITy, Int64ITy, /* castIsNoOp */ true)
 TEST_CAST_2WAYS(int64_t, float, Int64ITy, FloatTy, /* castIsNoOp */ false)
 TEST_CAST_2WAYS(int64_t, float16_t, Int64ITy, Float16Ty,
+                /* castIsNoOp */ false)
+TEST_CAST_2WAYS(int64_t, bfloat16_t, Int64ITy, BFloat16Ty,
                 /* castIsNoOp */ false)
 TEST_CAST_2WAYS(int64_t, int32_t, Int64ITy, Int32ITy, /* castIsNoOp */ false)
 TEST_CAST_2WAYS(int64_t, int64_t, Int64ITy, Int64ITy, /* castIsNoOp */ true)
@@ -14476,6 +15388,14 @@ TEST_P(OperatorStatelessTest, LayerNorm_Float16) {
   CHECK_IF_ENABLED();
   compareAgainstInterpreter(getBackendName(), createAndInitLayerNormTest,
                             ElemKind::FloatTy, ElemKind::Float16Ty, 0.01f,
+                            parCloneCountOpt);
+}
+
+/// Test LayerNorm with BFloat16Ty.
+TEST_P(OperatorStatelessTest, LayerNorm_BFloat16) {
+  CHECK_IF_ENABLED();
+  compareAgainstInterpreter(getBackendName(), createAndInitLayerNormTest,
+                            ElemKind::FloatTy, ElemKind::BFloat16Ty, 0.01f,
                             parCloneCountOpt);
 }
 

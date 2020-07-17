@@ -43,6 +43,14 @@ struct PrecisionConfiguration {
   /// Configuration for Quantization.
   quantization::QuantizationConfiguration quantConfig;
 
+  /// Enum for what kind of float16 format should be used.
+  enum class Float16Format {
+    None,     /// No float16 format should be used.
+    FP16,     /// FP16 format for float16 should be used.
+    BFloat16, /// FP16 format for float16 should be used.
+  } float16Format{
+      Float16Format::FP16}; /// If convertToFp16, float16 format to be used.
+
   /// Whether to convert the FloatTy to Float16Ty in the Function.
   bool convertToFP16{false};
 
@@ -76,6 +84,18 @@ struct PrecisionConfiguration {
   /// Whether to use the precisionModeKindSet as a whitelist instead of the
   /// default blacklist. Currently only supported for convertToFP16.
   bool useSetAsWhitelist{false};
+
+  /// Converts a float16 \p format into an ElemKind.
+  static ElemKind getElementType(Float16Format format) {
+    switch (format) {
+    case Float16Format::FP16:
+      return ElemKind::Float16Ty;
+    case Float16Format::BFloat16:
+      return ElemKind::BFloat16Ty;
+    default:
+      llvm_unreachable("Unknown float16 format");
+    }
+  }
 };
 
 using QuantizationMode = PrecisionConfiguration::QuantizationMode;

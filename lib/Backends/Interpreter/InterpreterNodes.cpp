@@ -43,6 +43,9 @@ using namespace glow;
   case ElemKind::Float16Ty:                                                    \
     functionName<float16_t>(__VA_ARGS__);                                      \
     break;                                                                     \
+  case ElemKind::BFloat16Ty:                                                   \
+    functionName<bfloat16_t>(__VA_ARGS__);                                     \
+    break;                                                                     \
   case ElemKind::Int8QTy:                                                      \
     functionName<int8_t>(__VA_ARGS__);                                         \
     break;                                                                     \
@@ -73,6 +76,9 @@ using namespace glow;
   case ElemKind::Float16Ty:                                                    \
     functionName<float16_t>(__VA_ARGS__);                                      \
     break;                                                                     \
+  case ElemKind::BFloat16Ty:                                                   \
+    functionName<bfloat16_t>(__VA_ARGS__);                                     \
+    break;                                                                     \
   default:                                                                     \
     llvm_unreachable("Type is not supported");                                 \
   }
@@ -92,6 +98,13 @@ using namespace glow;
       functionName<float16, int64_t>(__VA_ARGS__);                             \
     } else if (elemTyIndex == ElemKind::Int32ITy) {                            \
       functionName<float16, int32_t>(__VA_ARGS__);                             \
+    }                                                                          \
+    break;                                                                     \
+  case ElemKind::BFloat16Ty:                                                   \
+    if (elemTyIndex == ElemKind::Int64ITy) {                                   \
+      functionName<bfloat16, int64_t>(__VA_ARGS__);                            \
+    } else if (elemTyIndex == ElemKind::Int32ITy) {                            \
+      functionName<bfloat16, int32_t>(__VA_ARGS__);                            \
     }                                                                          \
     break;                                                                     \
   default:                                                                     \
@@ -117,6 +130,9 @@ using namespace glow;
     break;                                                                     \
   case ElemKind::Float16Ty:                                                    \
     functionName<float16_t>(__VA_ARGS__);                                      \
+    break;                                                                     \
+  case ElemKind::BFloat16Ty:                                                   \
+    functionName<bfloat16_t>(__VA_ARGS__);                                     \
     break;                                                                     \
   case ElemKind::Int32ITy:                                                     \
     functionName<int32_t>(__VA_ARGS__);                                        \
@@ -176,6 +192,8 @@ using namespace glow;
   static_assert(                                                               \
       std::is_floating_point<ElemTy>::value ||                                 \
           std::is_same<float16_t,                                              \
+                       typename std::remove_cv<ElemTy>::type>::value ||        \
+          std::is_same<bfloat16_t,                                             \
                        typename std::remove_cv<ElemTy>::type>::value,          \
       "This implementation is for floating-point values only")
 
@@ -183,6 +201,8 @@ using namespace glow;
   static_assert(                                                               \
       std::is_arithmetic<ElemTy>::value ||                                     \
           std::is_same<float16_t,                                              \
+                       typename std::remove_cv<ElemTy>::type>::value ||        \
+          std::is_same<bfloat16_t,                                             \
                        typename std::remove_cv<ElemTy>::type>::value,          \
       "This implementation is for arithmetic values only")
 
@@ -1815,6 +1835,10 @@ void BoundInterpreterFunction::fwdSplatInst(const glow::SplatInst *I) {
     return T->getHandle<float16_t>().clear(I->getValue());
   }
 
+  if (k == ElemKind::BFloat16Ty) {
+    return T->getHandle<bfloat16_t>().clear(I->getValue());
+  }
+
   if (k == ElemKind::BoolTy) {
     return T->getHandle<bool>().clear(static_cast<bool>(I->getValue()));
   }
@@ -1855,6 +1879,7 @@ void BoundInterpreterFunction::fwdInsertTensorInst(
   TYPED_INSERT(int32_t, ElemKind::Int32ITy);
   TYPED_INSERT(float, ElemKind::FloatTy);
   TYPED_INSERT(float16_t, ElemKind::Float16Ty);
+  TYPED_INSERT(bfloat16_t, ElemKind::BFloat16Ty);
   TYPED_INSERT(int8_t, ElemKind::Int8QTy);
   TYPED_INSERT(bool, ElemKind::BoolTy);
 #undef TYPED_INSERT
@@ -1877,6 +1902,7 @@ void BoundInterpreterFunction::fwdExtractTensorInst(
   TYPED_INSERT(int64_t, ElemKind::Int64ITy);
   TYPED_INSERT(float, ElemKind::FloatTy);
   TYPED_INSERT(float16_t, ElemKind::Float16Ty);
+  TYPED_INSERT(bfloat16_t, ElemKind::BFloat16Ty);
   TYPED_INSERT(int8_t, ElemKind::Int8QTy);
   TYPED_INSERT(int32_t, ElemKind::Int32QTy);
   TYPED_INSERT(int32_t, ElemKind::Int32ITy);
@@ -2664,6 +2690,10 @@ void BoundInterpreterFunction::fwdElementDivInst(const ElementDivInst *I) {
     DIV_LOOP(float16_t);
     return;
   }
+  case ElemKind::BFloat16Ty: {
+    DIV_LOOP(bfloat16_t);
+    return;
+  }
   default:
     llvm_unreachable("Unsupported type for Div.");
   }
@@ -2948,6 +2978,9 @@ void BoundInterpreterFunction::fwdElementCmpLTEInst(
   case ElemKind::Float16Ty:
     fwdElementCmpLTEInstImpl<float16_t, float16_t, float16_t>(I);
     break;
+  case ElemKind::BFloat16Ty:
+    fwdElementCmpLTEInstImpl<bfloat16_t, bfloat16_t, bfloat16_t>(I);
+    break;
   case ElemKind::Int32ITy:
     fwdElementCmpLTEInstImpl<int32_t, int32_t, float>(I);
     break;
@@ -2982,6 +3015,9 @@ void BoundInterpreterFunction::fwdElementCmpEQInst(const ElementCmpEQInst *I) {
     break;
   case ElemKind::Float16Ty:
     fwdElementCmpEQInstImpl<float16_t, float16_t, float16_t>(I);
+    break;
+  case ElemKind::BFloat16Ty:
+    fwdElementCmpEQInstImpl<bfloat16_t, bfloat16_t, bfloat16_t>(I);
     break;
   case ElemKind::Int32ITy:
     fwdElementCmpEQInstImpl<int32_t, int32_t, float>(I);
@@ -3019,6 +3055,9 @@ void BoundInterpreterFunction::fwdElementCmpNEQInst(
   case ElemKind::Float16Ty:
     fwdElementCmpNEQInstImpl<float16_t, float16_t, float16_t>(I);
     break;
+  case ElemKind::BFloat16Ty:
+    fwdElementCmpNEQInstImpl<bfloat16_t, bfloat16_t, bfloat16_t>(I);
+    break;
   case ElemKind::Int32ITy:
     fwdElementCmpNEQInstImpl<int32_t, int32_t, float>(I);
     break;
@@ -3052,6 +3091,9 @@ void BoundInterpreterFunction::fwdElementCmpLTInst(ElementCmpLTInst const *I) {
     break;
   case ElemKind::Float16Ty:
     fwdElementCmpLTInstImpl<float16_t, float16_t, float16_t>(I);
+    break;
+  case ElemKind::BFloat16Ty:
+    fwdElementCmpLTInstImpl<bfloat16_t, bfloat16_t, bfloat16_t>(I);
     break;
   case ElemKind::Int32ITy:
     fwdElementCmpLTInstImpl<int32_t, int32_t, float>(I);
@@ -4932,18 +4974,27 @@ void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
     return;                                                                    \
   }
   CONVERT(float, float16_t, ElemKind::FloatTy, ElemKind::Float16Ty)
+  CONVERT(float, bfloat16_t, ElemKind::FloatTy, ElemKind::BFloat16Ty)
   CONVERT(float, bool, ElemKind::FloatTy, ElemKind::BoolTy)
   CONVERT(float, int32_t, ElemKind::FloatTy, ElemKind::Int32ITy)
   CONVERT(float, int64_t, ElemKind::FloatTy, ElemKind::Int64ITy)
   CONVERT(float16_t, float, ElemKind::Float16Ty, ElemKind::FloatTy)
+  CONVERT(float16_t, bfloat16_t, ElemKind::Float16Ty, ElemKind::BFloat16Ty)
   CONVERT(float16_t, int32_t, ElemKind::Float16Ty, ElemKind::Int32ITy)
   CONVERT(float16_t, int64_t, ElemKind::Float16Ty, ElemKind::Int64ITy)
+  CONVERT(bfloat16_t, float, ElemKind::BFloat16Ty, ElemKind::FloatTy)
+  CONVERT(bfloat16_t, float16_t, ElemKind::BFloat16Ty, ElemKind::Float16Ty)
+  CONVERT(bfloat16_t, int32_t, ElemKind::BFloat16Ty, ElemKind::Int32ITy)
+  CONVERT(bfloat16_t, int64_t, ElemKind::BFloat16Ty, ElemKind::Int64ITy)
   CONVERT(bool, float, ElemKind::BoolTy, ElemKind::FloatTy)
+  CONVERT(bool, bfloat16_t, ElemKind::BoolTy, ElemKind::BFloat16Ty)
   CONVERT(int32_t, float, ElemKind::Int32ITy, ElemKind::FloatTy)
   CONVERT(int32_t, float16_t, ElemKind::Int32ITy, ElemKind::Float16Ty)
+  CONVERT(int32_t, bfloat16_t, ElemKind::Int32ITy, ElemKind::BFloat16Ty)
   CONVERT(int32_t, int64_t, ElemKind::Int32ITy, ElemKind::Int64ITy)
   CONVERT(int64_t, float, ElemKind::Int64ITy, ElemKind::FloatTy)
   CONVERT(int64_t, float16_t, ElemKind::Int64ITy, ElemKind::Float16Ty)
+  CONVERT(int64_t, bfloat16_t, ElemKind::Int64ITy, ElemKind::BFloat16Ty)
   CONVERT(int64_t, int32_t, ElemKind::Int64ITy, ElemKind::Int32ITy)
 #undef CONVERT
 
