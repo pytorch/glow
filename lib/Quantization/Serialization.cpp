@@ -117,9 +117,13 @@ void serializeProfilingInfosToYaml(
   yout << profilingInfos;
 }
 
-void deserializeProfilingInfosFromYaml(
+bool deserializeProfilingInfosFromYaml(
     llvm::StringRef fileName, llvm::hash_code &graphPreLowerHash,
     std::vector<NodeProfilingInfo> &profilingInfos) {
+
+  if (!llvm::sys::fs::exists(fileName)) {
+    return false;
+  }
 
   // Open YAML input stream.
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> text =
@@ -139,6 +143,7 @@ void deserializeProfilingInfosFromYaml(
   // Read profiling info.
   yin >> profilingInfos;
   CHECK(!yin.error()) << "Error reading YAML file '" << fileName.str() << "'!";
+  return true;
 }
 
 } // namespace glow

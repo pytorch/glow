@@ -83,9 +83,12 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
 
   // If quantizing, load quantization infos and setup the schema.
   if (quantizationMode_ == QuantizationMode::Quantize) {
-    deserializeProfilingInfosFromYaml(getProfileFile(modelHash_),
-                                      precConfig.quantConfig.graphPreLowerHash,
-                                      precConfig.quantConfig.infos);
+    auto fileExists = deserializeProfilingInfosFromYaml(
+        getProfileFile(modelHash_), precConfig.quantConfig.graphPreLowerHash,
+        precConfig.quantConfig.infos);
+    if (!fileExists) {
+      return ONNXIFI_STATUS_UNIDENTIFIED_NAME;
+    }
     precConfig.quantConfig.schema = quantization::Schema::Symmetric;
   }
 
