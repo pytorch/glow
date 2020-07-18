@@ -642,6 +642,8 @@ public:
       return isEqualImpl<float>(other, allowedError, verbose);
     case ElemKind::Float16Ty:
       return isEqualImpl<float16_t>(other, allowedError, verbose);
+    case ElemKind::BFloat16Ty:
+      return isEqualImpl<bfloat16_t>(other, allowedError, verbose);
     case ElemKind::Int8QTy:
       return isEqualImpl<int8_t>(other, allowedError, verbose);
     case ElemKind::UInt8QTy:
@@ -796,7 +798,9 @@ public:
   /// \returns a copy of the Tensor but converted to \p newKind. Currently
   /// supports conversion for:
   /// - FloatTy to Float16Ty
+  /// - FloatTy to BFloat16Ty
   /// - Float16Ty to FloatTy
+  /// - BFloat16Ty to FloatTy
   /// - UInt8FusedQTy to UInt8FusedFP16QTy
   Tensor getCopyConvertedToType(ElemKind newKind) const;
 
@@ -1379,8 +1383,7 @@ public:
   /// row of \p input equals to norm of corresponding row of \p result.
   void initXavier(size_t filterSize, PseudoRNG &PRNG) {
     assert(filterSize > 0 && "invalid filter size");
-    assert((getElementType() == ElemKind::FloatTy ||
-            getElementType() == ElemKind::Float16Ty) &&
+    assert(getType().isFPType() &&
            "Only support floating point Xavier initialization.");
     double scale = std::sqrt(3.0 / double(filterSize));
     std::uniform_real_distribution<> dist(-scale, scale);

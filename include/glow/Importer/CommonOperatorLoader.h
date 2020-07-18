@@ -104,6 +104,8 @@ class CommonOperatorLoader : public ProtobufLoader {
         result.type = Type(ElemKind::FloatTy, dims);
       } else if (in.dataType == ONNXIFI_DATATYPE_FLOAT16) {
         result.type = Type(ElemKind::Float16Ty, dims);
+      } else if (in.dataType == ONNXIFI_DATATYPE_BFLOAT16) {
+        result.type = Type(ElemKind::BFloat16Ty, dims);
       } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
         result.type = Type(ElemKind::Int32ITy, dims);
       } else if (in.dataType == ONNXIFI_DATATYPE_INT64) {

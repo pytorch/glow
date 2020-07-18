@@ -2859,6 +2859,7 @@ __attribute__((noinline)) void libjit_dump_tensor_console(uint8_t *tensor,
   enum class ElemKind : unsigned char {
     FloatTy,       // 32-bit float type (float)
     Float16Ty,     // 16-bit float type (half, fp16)
+    BFloat16Ty,    // 16-bit float type (bfloat16)
     Int8QTy,       // 8-bit quantized type (int8_t)
     UInt8QTy,      // unsigned 8-bit quantized type (uint8_t)
     Int16QTy,      // 16-bit quantized type (int16_t)

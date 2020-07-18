@@ -1503,6 +1503,11 @@ public:
   /// type.
   ClipNode *createClipMinMaxFP16(llvm::StringRef name, NodeValue input);
 
+  /// Creates and \returns a ClipNode to the min/max range of BFloat16 with \p
+  /// name of \p input. Result type will be implicitly set based on the \p input
+  /// type.
+  ClipNode *createClipMinMaxBFloat16(llvm::StringRef name, NodeValue input);
+
   /// @name The builder functions below are identical to the builder functions
   /// above except that they create nodes that use Placeholder instead of
   /// Variables. The methods create and initialize the tensors in the

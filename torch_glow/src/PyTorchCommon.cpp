@@ -122,6 +122,8 @@ c10::ScalarType elemKindToScalarType(glow::ElemKind ty) {
     return at::kFloat;
   case ElemKind::Float16Ty:
     return at::kHalf;
+  case ElemKind::BFloat16Ty:
+    return at::kBFloat16;
   case ElemKind::Int32ITy:
     return at::kInt;
   case ElemKind::Int64ITy:

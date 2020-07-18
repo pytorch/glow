@@ -18,6 +18,7 @@
 
 #include "DimType.h"
 
+#include "glow/Support/BFloat16.h"
 #include "glow/Support/Compiler.h"
 #include "glow/Support/Float16.h"
 #include "glow/Support/Memory.h"
@@ -56,6 +57,9 @@ using unsigned_t = uint32_t;
 
 using float16_t = float16;
 static_assert(sizeof(float16_t) == 2, "Half precision should be 16-bit");
+
+using bfloat16_t = bfloat16;
+static_assert(sizeof(bfloat16_t) == 2, "bfloat16 should be 16-bit");
 
 using ShapeVector = llvm::SmallVector<dim_t, max_tensor_dimensions>;
 
@@ -381,6 +385,8 @@ enum class ElemKind : unsigned char {
   FloatTy,
   // 16-bit float type (half, fp16)
   Float16Ty,
+  // 16-bit float type (bfloat16)
+  BFloat16Ty,
   // 8-bit quantized type (int8_t)
   Int8QTy,
   // unsigned 8-bit quantized type (uint8_t)
@@ -414,7 +420,8 @@ inline bool isQuantizedElemKind(ElemKind e) {
 
 /// \returns whether \p e is a float ElemKind.
 inline bool isFloatElemKind(ElemKind e) {
-  return e == ElemKind::FloatTy || e == ElemKind::Float16Ty;
+  return e == ElemKind::FloatTy || e == ElemKind::Float16Ty ||
+         e == ElemKind::BFloat16Ty;
 }
 
 /// \returns whether \p e is a fused quantized ElemKind.
@@ -673,6 +680,8 @@ struct Type final {
       return std::is_same<ElemTy, float>::value;
     case ElemKind::Float16Ty:
       return std::is_same<ElemTy, float16_t>::value;
+    case ElemKind::BFloat16Ty:
+      return std::is_same<ElemTy, bfloat16_t>::value;
     case ElemKind::Int8QTy:
       return std::is_same<ElemTy, int8_t>::value;
     case ElemKind::UInt8QTy:
@@ -702,10 +711,7 @@ struct Type final {
 
   /// \returns true if the type of this Tensor is one of the floating point
   /// types.
-  bool isFPType() const {
-    return getElementType() == ElemKind::FloatTy ||
-           getElementType() == ElemKind::Float16Ty;
-  }
+  bool isFPType() const { return isFloatElemKind(getElementType()); }
 
   /// \return the size of the type element.
   unsigned getElementSize() const { return getElementSize(elementType_); }
@@ -736,6 +742,8 @@ struct Type final {
       return sizeof(float);
     case ElemKind::Float16Ty:
       return sizeof(float16_t);
+    case ElemKind::BFloat16Ty:
+      return sizeof(bfloat16_t);
     case ElemKind::Int8QTy:
       return sizeof(int8_t);
     case ElemKind::UInt8QTy:
@@ -768,9 +776,9 @@ struct Type final {
   /// \return the textual name of the element \p Ty.
   static llvm::StringRef getElementName(ElemKind Ty) {
     static const char *names[] = {
-        "float",    "float16",      "i8",           "ui8",
-        "i16",      "i32",          "index32",      "index64",
-        "ui8fused", "ui8fusedfp16", "ui4fusedfp16", "bool",
+        "float",        "float16",      "bfloat16", "i8",      "ui8",
+        "i16",          "i32",          "index32",  "index64", "ui8fused",
+        "ui8fusedfp16", "ui4fusedfp16", "bool",
     };
     return names[(int)Ty];
   }
@@ -783,6 +791,8 @@ struct Type final {
       return ElemKind::FloatTy;
     } else if (str == Type::getElementName(ElemKind::Float16Ty)) {
       return ElemKind::Float16Ty;
+    } else if (str == Type::getElementName(ElemKind::BFloat16Ty)) {
+      return ElemKind::BFloat16Ty;
     } else if (str == Type::getElementName(ElemKind::Int8QTy)) {
       return ElemKind::Int8QTy;
     } else if (str == Type::getElementName(ElemKind::UInt8QTy)) {

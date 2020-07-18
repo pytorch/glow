@@ -2297,7 +2297,9 @@ bool BatchBoxCoxNode::verify() const {
   bool isValid = checkSameType(lambda1, lambda2, this);
   isValid &= checkSameType(data, result, this);
   isValid &= checkType(data, lambda1.getElementType(), this);
-  isValid &= checkType(data, {ElemKind::FloatTy, ElemKind::Float16Ty}, this);
+  isValid &= checkType(
+      data, {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty},
+      this);
   isValid &= expectCompareTrue("Input must be a 2D tensor", data.dims().size(),
                                size_t(2), this);
   isValid &= expectCompareTrue("Lambda1 must be a 1D vector",

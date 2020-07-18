@@ -26,6 +26,10 @@ struct PrecisionConfiguration;
 void convertFunctionToFloat16(Function *F,
                               const PrecisionConfiguration &precConfig);
 
+/// Converts all inputs and outputs of a function \p F from Float to BFloat16,
+/// and from UInt8FusedQTy to UInt8FusedBFloat16QTy, based on \p precConfig.
+void convertFunctionToBFloat16(Function *F,
+                               const PrecisionConfiguration &precConfig);
 } // namespace glow
 
 #endif /* GLOW_CONVERTER_FLOAT16CONVERTER_H */
