@@ -688,6 +688,21 @@ TEST_F(OnnxImporterTest, importExp) {
                           [](float a) { return std::exp(a); });
 }
 
+TEST(onnx, importNeg) {
+  testEltwiseUnaryOpFloat("neg.onnxtxt", {1, 2, 4, 3}, "data", 0.000,
+                          [](float a) { return -a; });
+}
+
+TEST(onnx, importCeil) {
+  testEltwiseUnaryOpFloat("ceil.onnxtxt", {1, 2, 4, 3}, "data", 0.000,
+                          [](float a) { return std::ceil(a); });
+}
+
+TEST(onnx, importFloor) {
+  testEltwiseUnaryOpFloat("floor.onnxtxt", {1, 2, 4, 3}, "data", 0.000,
+                          [](float a) { return std::floor(a); });
+}
+
 static void testImportPRelu(std::string filename,
                             llvm::ArrayRef<dim_t> inputShape,
                             std::vector<float> expectedSlope) {
@@ -4413,4 +4428,32 @@ TEST_F(OnnxImporterTest, importGemmTransB) {
                           "tests/models/onnxModels/gemmTransB.onnxtxt");
   importGemm(netFilename, /* hasC */ true, /* batchedC */ false,
              /* transA */ false, /* transB */ true);
+}
+
+TEST(onnx, importNames) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string NetFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/legalizeNames.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+  Type input_type(ElemKind::FloatTy, {1, 2, 4, 3});
+  ONNXModelLoader onnxLD(NetFilename, {"data"}, {&input_type}, *F);
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  auto PH = mod.getPlaceholderByNameSlow("data");
+  auto *inTensor = bindings.allocate(PH);
+  inTensor->getHandle().randomize(-10.0, 10.0, mod.getPRNG());
+  // Compile&run the graph, and check the output
+  EE.compile(CompilationMode::Infer);
+  vector<std::string> origNames = {"a__1",  "a__1", "a__3__3", "a__2",
+                                   "a__1_", "a__b", "a"};
+  auto *currNode = (Node *)getSaveNodeFromDest(graphOutputVar);
+  for (int i = 0; i < origNames.size(); i++) {
+    auto *prevNode = currNode->getNthInput(0).getNode();
+    // Make sure original names are retained in the legalized names.
+    EXPECT_EQ(prevNode->getName().find(origNames[i]), 0);
+    currNode = prevNode;
+  }
 }

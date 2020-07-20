@@ -694,6 +694,7 @@ Error Caffe2ModelLoader::loadConvTranspose(const caffe2::OperatorDef &op,
 Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   ArgumentDictionaryTy dict = loadArgumentMap(op);
   const std::string &typeName = op.type();
+  mod_.registerOriginalName(op.name());
 
   // Check if operator is supported in parent class, CommonOperatorLoader.
   bool loadCommonOperatorSuccess;

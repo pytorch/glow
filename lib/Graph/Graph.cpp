@@ -555,7 +555,8 @@ Placeholder *Module::createPlaceholder(TypeRef T, llvm::StringRef name,
                                        const std::string &layout) {
   auto FT = uniqueType(*T);
   auto *ph = new Placeholder(name, FT, isTrainable, layout);
-  ph->setName(uniqueName(ph->getName(), usedNodeNames_, usedStorageNames_));
+  ph->setName(uniqueName(ph->getName(), usedNodeNames_, usedStorageNames_,
+                         originalNames_));
   placeholders_.push_back(ph);
   logStorageCreation(functions_, ph);
   return ph;
@@ -622,7 +623,8 @@ std::string Module::getPrefix(llvm::StringRef name) {
 
 llvm::StringRef Module::uniqueName(llvm::StringRef name,
                                    const llvm::StringSet<> &stringTable,
-                                   llvm::StringSet<> &updateTable) {
+                                   llvm::StringSet<> &updateTable,
+                                   const llvm::StringSet<> &originalNames) {
   std::string legalName = legalizeName(name);
   if (stringTable.find(legalName) == stringTable.end()) {
     auto it = updateTable.insert(legalName);
@@ -630,8 +632,10 @@ llvm::StringRef Module::uniqueName(llvm::StringRef name,
       return it.first->first();
     }
   }
-
-  std::string prefix = Module::getPrefix(legalName);
+  // Retain the trailing "__[0-9]+" if it is in the original name.
+  std::string prefix = (originalNames.find(legalName) == originalNames.end())
+                           ? Module::getPrefix(legalName)
+                           : legalName;
   for (unsigned i = 1; i < 10000; i++) {
     auto suffix = std::to_string(i);
     std::string fullName = prefix + "__" + suffix;
@@ -648,7 +652,8 @@ llvm::StringRef Module::uniqueName(llvm::StringRef name,
 }
 
 Constant *Module::addConstant(Constant *V) {
-  V->setName(uniqueName(V->getName(), usedNodeNames_, usedStorageNames_));
+  V->setName(uniqueName(V->getName(), usedNodeNames_, usedStorageNames_,
+                        originalNames_));
   // Replace the Constant's output type with the equivalent unique type for
   // this Module to maintain the invariant that each type in the Module is
   // unique.
