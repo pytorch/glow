@@ -13,8 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#ifndef GLOW_BACKENDS_CPU_LIBJIT_LIBJIT_DIM_T_H
-#define GLOW_BACKENDS_CPU_LIBJIT_LIBJIT_DIM_T_H
+#ifndef GLOW_LLVMIRCODEGEN_LIBJIT_LIBJIT_DIM_T_H
+#define GLOW_LLVMIRCODEGEN_LIBJIT_LIBJIT_DIM_T_H
 
 /// \file libjit_dim_t.h
 /// This file is directly copied from glow/Base/DimType.h to simplify the build
@@ -47,4 +47,4 @@ using sdim_t = int64_t;
 constexpr unsigned DIM_T_BITWIDTH = sizeof(dim_t) * 8;
 constexpr unsigned SDIM_T_BITWIDTH = sizeof(sdim_t) * 8;
 
-#endif // GLOW_BACKENDS_CPU_LIBJIT_LIBJIT_DIM_T_H
+#endif // GLOW_LLVMIRCODEGEN_LIBJIT_LIBJIT_DIM_T_H
