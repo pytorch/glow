@@ -542,4 +542,5 @@ std::set<std::string> glow::backendTestBlacklist = {
     "ArithAdd_bfloat16_t/0",
     "Exp_BFloat16/0",
     "Tanh_Float16/0",
+    "TestFP32Accumulator/0",
 };

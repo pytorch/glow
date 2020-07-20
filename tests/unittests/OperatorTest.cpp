@@ -5588,6 +5588,46 @@ TEST_P(OperatorTest, FCWithFlatten) {
   }
 }
 
+TEST_P(OperatorTest, TestFP32Accumulator) {
+  CHECK_IF_ENABLED();
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3}, "input", false);
+  Constant *weights =
+      mod_.createConstant(ElemKind::Float16Ty, {3, 2}, "weights");
+  Constant *bias = mod_.createConstant(ElemKind::Float16Ty, {2}, "bias");
+
+  /* 9.7e-4 is smaller than what the mantissa can represent
+    when the initial value is 1, but 2 * 9.7e-4 is exactly
+    the smallest number that can be represented after 1
+    In Fp16 accumulation, we will be losing the update leading to 1,
+    in fp32, we get a value slightly larger than 1.
+  */
+  bindings_.allocate(input)->getHandle<float16_t>() = {1.0f, 9.7e-4, 9.7e-4f};
+  weights->getPayloadMutable().getHandle<float16_t>() = {1.0f, 1.0f, 0.5f,
+                                                         1.0f, 0.5f, 1.0f};
+  bias->getPayloadMutable().getHandle<float16_t>() = {0.0f, 0.0f};
+
+  auto *FC = F_->createFullyConnected("fc", input, weights, bias);
+  auto *S = F_->createSave("save", FC);
+  bindings_.allocate(S->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+  std::vector<dim_t> expectedDimensions = {1, 2};
+
+  EXPECT_TRUE(result.dims().vec() == expectedDimensions);
+  float finalResult = result.raw(0);
+  if (finalResult == 1.0) {
+    llvm::outs() << "fp16 accumulator\n";
+  } else if (fabs(finalResult - 1.00098) < 1e-3) {
+    llvm::outs() << "fp32 accumulator\n";
+  } else {
+    // Unhandled case
+    FAIL() << "unknown " << finalResult;
+  }
+  llvm::outs().flush();
+}
+
 static FunctionTensorPair
 createAndInitBasicFCTest(glow::PlaceholderBindings &bindings,
                          glow::ExecutionEngine &EE) {
