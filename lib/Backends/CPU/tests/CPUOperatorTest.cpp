@@ -338,4 +338,5 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Cos_Int8QTy/0",
     "rowwiseQuantizedFCTestAsymmetric_Int8_BiasFloat32/0",
     "rowwiseQuantizedFCTestSymmetric_Int8_BiasFloat32/0",
+    "TestFP32Accumulator/0",
 };
