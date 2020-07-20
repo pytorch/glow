@@ -395,7 +395,6 @@ void BoundInterpreterFunction::fwdConvTransposeInstFloatImpl(
 
   assert(idim.c % group == 0 && "Input channels must be divisible by group.");
   assert(odim.c % group == 0 && "Output channels must be divisible by group.");
-  assert(group == 1 && "Group must be 1.");
 
   dim_t inCperG = idim.c / group;
   dim_t outCperG = odim.c / group;

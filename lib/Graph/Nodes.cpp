@@ -299,8 +299,8 @@ static bool verifyConvTranspose(NodeValue src, NodeValue dest, NodeValue filter,
   isValid &= expectCompareTrue("Invalid output dimension CT", odim.c % group,
                                dim_t(0), parent);
 
-  const dim_t filterDims[] = {odim.c, kdim.height, kdim.width,
-                              idim.c / (dim_t)group};
+  const dim_t filterDims[] = {odim.c / (dim_t)group, kdim.height, kdim.width,
+                              idim.c};
   isValid &=
       expectCompareTrue("Invalid filter dimensions", filter.getType()->dims(),
                         llvm::makeArrayRef(filterDims), parent);

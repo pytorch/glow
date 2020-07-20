@@ -719,11 +719,10 @@ static void assertConvTransposeDims(NodeValue input, NodeValue filter,
   ShapeNHWC filterDims(filter.dims());
   (void)filterDims;
 
-  assert(filterDims.n % group == 0 && filterDims.h == kdim.height &&
-         filterDims.w == kdim.width && filterDims.c == idim.c / group &&
-         "Invalid filter dims");
+  assert(filterDims.h == kdim.height && filterDims.w == kdim.width &&
+         filterDims.c == idim.c && "Invalid filter dims");
 
-  assert(bias.getType()->size() == filterDims.n && "Invalid bias size");
+  assert(bias.getType()->size() == filterDims.n * group && "Invalid bias size");
 }
 
 /// Check that the dimensions that are passed in when the convolution is
