@@ -285,32 +285,22 @@ protected:
     return Error::success();
   }
 
-  Error loadSigmoid(const OpType &op, ArgumentDictionaryTy &dict) {
-    const std::string &opName = loadOperatorName(op);
-    NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto *S = G_->createSigmoid(opName, in);
-    RETURN_IF_ERR(addNodeAsOutput(op, S));
-    return Error::success();
+#define LOAD_UNARY_OP(OPNAME)                                                  \
+  Error load##OPNAME(const OpType &op, ArgumentDictionaryTy &dict) {           \
+    const std::string &opName = loadOperatorName(op);                          \
+    NodeValue in;                                                              \
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));           \
+    auto *T = G_->create##OPNAME(opName, in);                                  \
+    RETURN_IF_ERR(addNodeAsOutput(op, T));                                     \
+    return Error::success();                                                   \
   }
 
-  Error loadTanh(const OpType &op, ArgumentDictionaryTy &dict) {
-    const std::string &opName = loadOperatorName(op);
-    NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto *T = G_->createTanh(opName, in);
-    RETURN_IF_ERR(addNodeAsOutput(op, T));
-    return Error::success();
-  }
-
-  Error loadExp(const OpType &op, ArgumentDictionaryTy &dict) {
-    const std::string &opName = loadOperatorName(op);
-    NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-    auto *E = G_->createExp(opName, in);
-    RETURN_IF_ERR(addNodeAsOutput(op, E));
-    return Error::success();
-  }
+  LOAD_UNARY_OP(Sigmoid)
+  LOAD_UNARY_OP(Tanh)
+  LOAD_UNARY_OP(Exp)
+  LOAD_UNARY_OP(Neg)
+  LOAD_UNARY_OP(Floor)
+  LOAD_UNARY_OP(Ceil)
 
   Error loadShape(const OpType &op, ArgumentDictionaryTy &dict) {
     NodeValue in;
@@ -1189,6 +1179,18 @@ protected:
     }
     if (typeName == "Exp") {
       RETURN_IF_ERR(loadExp(op, dict));
+      return true;
+    }
+    if (typeName == "Neg") {
+      RETURN_IF_ERR(loadNeg(op, dict));
+      return true;
+    }
+    if (typeName == "Ceil") {
+      RETURN_IF_ERR(loadCeil(op, dict));
+      return true;
+    }
+    if (typeName == "Floor") {
+      RETURN_IF_ERR(loadFloor(op, dict));
       return true;
     }
     if (typeName == "Shape") {

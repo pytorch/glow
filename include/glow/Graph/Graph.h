@@ -71,6 +71,9 @@ class Module final {
   /// Stores a list of node names that were used by Functions of this module at
   /// some point.
   llvm::StringSet<> usedNodeNames_{};
+  /// Stores a list of node names that were present in the original model and
+  /// are good to be retained.
+  llvm::StringSet<> originalNames_{};
   /// A list of constants that the Module owns.
   ConstList constants_;
   /// A list of placeholder nodes that the Module owns.
@@ -101,13 +104,25 @@ public:
   /// inserted into \p updateTable.
   static llvm::StringRef uniqueName(llvm::StringRef name,
                                     const llvm::StringSet<> &stringTable,
-                                    llvm::StringSet<> &updateTable);
+                                    llvm::StringSet<> &updateTable,
+                                    const llvm::StringSet<> &originalNames);
 
-  /// Registers a name as used by some Node in this module.
+  /// Registers a \p name as used by some Node in this module.
   void registerNodeName(llvm::StringRef name) {
     // Don't care if it's already in the set.
     usedNodeNames_.insert(name);
   }
+
+  /// Registers a \p name from the original model, good to be retained.
+  void registerOriginalName(llvm::StringRef name) {
+    // Don't care if it's already in the set.
+    if (name.size()) {
+      originalNames_.insert(name);
+    }
+  }
+
+  /// \returns the pointer to list of original node names, good to be retained;
+  const llvm::StringSet<> *getOriginalNames() const { return &originalNames_; }
 
   /// Registers a name as used by a Storage node (Constant or Placeholder) in
   /// this module.
@@ -376,7 +391,7 @@ public:
   /// Inserts the node \p N to the list of nodes, and returns the inserted node.
   template <class NodeTy> NodeTy *addNode(NodeTy *N) {
     N->setName(Module::uniqueName(N->getName(), parent_->usedStorageNames_,
-                                  uniqueNodeNames_));
+                                  uniqueNodeNames_, parent_->originalNames_));
     parent_->registerNodeName(N->getName());
     nodes_.push_back(N);
 
@@ -391,7 +406,7 @@ public:
   void takeOwnershipOfNode(Node *N) {
     N->getParent()->getNodes().remove(N);
     N->setName(Module::uniqueName(N->getName(), parent_->usedStorageNames_,
-                                  uniqueNodeNames_));
+                                  uniqueNodeNames_, parent_->originalNames_));
     parent_->registerNodeName(N->getName());
     nodes_.push_back(N);
   }
