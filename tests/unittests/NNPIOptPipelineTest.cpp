@@ -683,3 +683,54 @@ TEST_F(NNPIOptPipelineTest, BMMClip) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchMatMulNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::BatchMatMulNodeKind), 8);
 }
+
+static void setupConcatTest(Function *F, Module &mod,
+                            PlaceholderBindings &bindings, size_t numInputs,
+                            unsigned_t dim) {
+  std::vector<NodeValue> inputs;
+  for (size_t i = 0; i < numInputs; i++) {
+    auto *input = mod.createPlaceholder(ElemKind::Float16Ty, {32, 32, 32},
+                                        "input", false);
+    inputs.push_back(input);
+    bindings.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                               mod.getPRNG());
+  }
+  auto *CN = F->createConcat("merge", inputs, dim);
+  F->createSave("save", CN);
+}
+
+/// Verify we can parallelize Concats that are concatenated on dimension 1.
+TEST_F(NNPIOptPipelineTest, ConcatSplitDim0) {
+  setupConcatTest(F_, mod_, bindings_, /* numInputs */ 5, /* dim */ 0);
+  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+      std::to_string(3);
+  cloneAndCompile();
+
+  // Expect 3 concats after. A 5-input Concat split into 3 have two 2-input
+  // Concats and one 1-input Concat (which is optimized after parallelization
+  // into routing the input to the result). So we expect 2 Concats plus a
+  // Placeholder finally concatenated into a single Concat to merge them all
+  // back together.
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 3);
+
+  checkNumericalEquivalence(/* allowedError */ 0.f);
+}
+
+/// Verify we can parallelize Concats that are concatenated on dimension 1.
+TEST_F(NNPIOptPipelineTest, ConcatSplitDim1) {
+  setupConcatTest(F_, mod_, bindings_, /* numInputs */ 5, /* dim */ 1);
+  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+      std::to_string(3);
+  cloneAndCompile();
+
+  // Expect 3 concats after. A 5-input Concat split into 3 have two 2-input
+  // Concats and one 1-input Concat (which is optimized after parallelization
+  // into routing the input to the result). So we expect 2 Concats plus a
+  // Placeholder finally concatenated into a single Concat to merge them all
+  // back together.
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 3);
+
+  checkNumericalEquivalence(/* allowedError */ 0.f);
+}
