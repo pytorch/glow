@@ -1383,6 +1383,16 @@ VERIFY_CMP(CmpLT)
 VERIFY_CMP(CmpLTE)
 #undef VERIFY_CMP
 
+//            Trigonometric Ops
+#define VERIFY_TRIGONOMERTRIC_OPS(NODE_NAME_)                                  \
+  bool NODE_NAME_##Node::verify() const {                                      \
+    return checkSameShape(getInput(), getResult(), this);                      \
+  }
+VERIFY_TRIGONOMERTRIC_OPS(Acos);
+VERIFY_TRIGONOMERTRIC_OPS(Asin);
+VERIFY_TRIGONOMERTRIC_OPS(Atan);
+#undef VERIFY_UNARY_ARITHMETIC
+
 bool BatchedPairwiseDotProductNode::verify() const {
   auto inputs = getInputs();
 

@@ -300,6 +300,9 @@ private:
   template <typename ElemTy>
   void fwdElementSelectInstFloatImpl(const ElementSelectInst *I);
 
+  template <typename ElemTy, typename InstKind>
+  void fwdUnaryTrigonometricImpl(const InstKind *I,
+                                 std::function<float(float)> func);
   template <typename ElemTy>
   void fwdBatchedReduceAddInstFloatImpl(Value *batch, Value *dest,
                                         unsigned_t axis,

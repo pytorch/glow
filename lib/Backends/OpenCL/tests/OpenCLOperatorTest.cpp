@@ -543,4 +543,10 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Exp_BFloat16/0",
     "Tanh_Float16/0",
     "TestFP32Accumulator/0",
+    "Asin_FloatTy/0",
+    "Acos_FloatTy/0",
+    "Atan_FloatTy/0",
+    "Asin_Int8QTy/0",
+    "Acos_Int8QTy/0",
+    "Atan_Int8QTy/0",
 };

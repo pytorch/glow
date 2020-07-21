@@ -3247,6 +3247,55 @@ void BoundInterpreterFunction::fwdModuloInst(glow::ModuloInst const *I) {
   dispatchIndexTypeImpl(fwdModuloInstImpl, I->getSrc()->getElementType(), I);
 }
 
+///=============== Trigonometric Operators===============
+template <typename ElemTy, typename InstKind>
+void BoundInterpreterFunction::fwdUnaryTrigonometricImpl(
+    const InstKind *I, std::function<float(float)> func) {
+  Value *inpV = I->getSrc();
+  Value *outV = I->getDest();
+  auto inpTy = inpV->getType();
+  auto outTy = outV->getType();
+  auto inpH = getWeightHandle<ElemTy>(inpV);
+  auto outH = getWeightHandle<ElemTy>(outV);
+
+  if (inpTy->isQuantizedType()) {
+    float inpScale = inpTy->getScale();
+    int32_t inpOffset = inpTy->getOffset();
+    float outScale = outTy->getScale();
+    int32_t outOffset = outTy->getOffset();
+    for (size_t i = 0, e = outH.size(); i < e; ++i) {
+      float inpVal =
+          quantization::dequantize<ElemTy>(inpH.raw(i), {inpScale, inpOffset});
+      float outVal = func(inpVal);
+      outH.raw(i) =
+          quantization::quantize<ElemTy>(outVal, {outScale, outOffset});
+    }
+  } else {
+    for (size_t i = 0, e = outH.size(); i < e; ++i) {
+      float inpVal = static_cast<float>(inpH.raw(i));
+      float outVal = func(inpVal);
+      outH.raw(i) = static_cast<ElemTy>(outVal);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdElementAcosInst(const ElementAcosInst *I) {
+  auto func = [](float x) -> float { return std::acos(x); };
+  dispatchImpl(fwdUnaryTrigonometricImpl, I->getSrc()->getElementType(), I,
+               func);
+}
+
+void BoundInterpreterFunction::fwdElementAsinInst(const ElementAsinInst *I) {
+  auto func = [](float x) -> float { return std::asin(x); };
+  dispatchImpl(fwdUnaryTrigonometricImpl, I->getSrc()->getElementType(), I,
+               func);
+}
+
+void BoundInterpreterFunction::fwdElementAtanInst(const ElementAtanInst *I) {
+  auto func = [](float x) -> float { return std::atan(x); };
+  dispatchImpl(fwdUnaryTrigonometricImpl, I->getSrc()->getElementType(), I,
+               func);
+}
 //===----------------------------------------------------------------------===//
 //                       Mat Mul
 //===----------------------------------------------------------------------===//

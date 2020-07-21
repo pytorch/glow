@@ -954,6 +954,15 @@ public:
   ARITHMETIC_FUN_DECL(Pow);
 #undef ARITHMETIC_FUN_DECL
 
+#define TRIGONOMETRIC_FUN_DECL(NODE_NAME_)                                     \
+  NODE_NAME_##Node *create##NODE_NAME_(llvm::StringRef name, NodeValue input); \
+  NODE_NAME_##Node *create##NODE_NAME_(llvm::StringRef name, TypeRef Ty,       \
+                                       NodeValue input);
+  TRIGONOMETRIC_FUN_DECL(Acos)
+  TRIGONOMETRIC_FUN_DECL(Asin)
+  TRIGONOMETRIC_FUN_DECL(Atan)
+#undef TRIGONOMETRIC_FUN_DECL
+
   std::vector<NodeValue>
   broadcastInputs(int axis, const llvm::ArrayRef<NodeValue> inputs);
 
