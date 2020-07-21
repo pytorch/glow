@@ -242,6 +242,7 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
       inPhPtr = inPhIt->getValue();
     }
 
+    const bool quantizedInput = inPhPtr->getType()->isQuantizedType();
     std::vector<dim_t> inOnnxTensorDims(inOnnxTensor.dimensions);
     size_t inOnnxTensorSize = 1;
     for (unsigned j = 0; j < inOnnxTensor.dimensions; ++j) {
@@ -278,47 +279,84 @@ onnxStatus Graph::adjustInputs(uint32_t inputsCount,
                  << inPhPtr->getType()->getElementName().data();
       return ONNXIFI_STATUS_INVALID_DATATYPE;
     }
+    bool processed = true;
     size_t onnxBytes = inOnnxTensorSize * elementSize;
-    if (inPhPtr->dims().equals(inOnnxTensorDims)) {
-      externalIOBindings.emplace_back(
-          std::piecewise_construct, std::forward_as_tuple(inPhPtr),
-          std::forward_as_tuple(inOnnxBuffer, inPhPtr->getType()));
-    } else if (GlowEnablePartialTensors &&
-               backendPtr_->getBackend().supportsPartialTensors()) {
-      // We have a partial input buffer.  Create a padded unowned tensor that
-      // remembers the actual size of the input.
-      externalIOBindings.emplace_back(
-          std::piecewise_construct, std::forward_as_tuple(inPhPtr),
-          std::forward_as_tuple(inOnnxBuffer, inPhPtr->getType(), onnxBytes));
-    } else if (!inOnnxBuffer && inPhPtr->getType()->size() <=
-                                    zeroLengthSequence_.getType().size()) {
-      externalIOBindings.emplace_back(
-          std::piecewise_construct, std::forward_as_tuple(inPhPtr),
-          std::forward_as_tuple((void *)(zeroLengthSequence_.getUnsafePtr()),
-                                inPhPtr->getType()));
-    } else {
-      llvm::Optional<Tensor> inputTensorOpt =
-          tensorPool_.get(inPhPtr->getType());
-      if (!inputTensorOpt.hasValue()) {
-        DLOG(FATAL) << "Tensorpool tensor not found for input "
-                    << inOnnxTensor.name;
-        return ONNXIFI_STATUS_INTERNAL_ERROR;
-      }
-      // We want fresh DeviceResidencyInfo for this fresh Tensor.
-      externalIOBindings.emplace_back(inPhPtr,
-                                      std::move(inputTensorOpt.getValue()));
-      Tensor &inputTensor = externalIOBindings.back().second;
-      inputTensor.resetDeviceInfo();
-      // Copy the input from onnxTensorDescriptor unless it has a NULL buffer
-      // pointer (which is a valid case if the tensor is empty).
-      if (inOnnxBuffer) {
-        memcpy(inputTensor.getUnsafePtr(), inOnnxBuffer, onnxBytes);
-        // Pad remaining space with zeroes.
-        memset(inputTensor.getUnsafePtr() + onnxBytes, 0,
-               inputTensor.getSizeInBytes() - onnxBytes);
+    if (!quantizedInput) {
+      if (inPhPtr->dims().equals(inOnnxTensorDims)) {
+        externalIOBindings.emplace_back(
+            std::piecewise_construct, std::forward_as_tuple(inPhPtr),
+            std::forward_as_tuple(inOnnxBuffer, inPhPtr->getType()));
+      } else if (GlowEnablePartialTensors &&
+                 backendPtr_->getBackend().supportsPartialTensors()) {
+        // We have a partial input buffer.  Create a padded unowned tensor that
+        // remembers the actual size of the input.
+        externalIOBindings.emplace_back(
+            std::piecewise_construct, std::forward_as_tuple(inPhPtr),
+            std::forward_as_tuple(inOnnxBuffer, inPhPtr->getType(), onnxBytes));
+      } else if (!inOnnxBuffer && inPhPtr->getType()->size() <=
+                                      zeroLengthSequence_.getType().size()) {
+        externalIOBindings.emplace_back(
+            std::piecewise_construct, std::forward_as_tuple(inPhPtr),
+            std::forward_as_tuple((void *)(zeroLengthSequence_.getUnsafePtr()),
+                                  inPhPtr->getType()));
       } else {
-        inputTensor.zero();
+        processed = false;
       }
+    } else {
+      processed = false;
+    }
+
+    if (processed) {
+      continue;
+    }
+
+    llvm::Optional<Tensor> inputTensorOpt = tensorPool_.get(inPhPtr->getType());
+    if (!inputTensorOpt.hasValue()) {
+      DLOG(FATAL) << "Tensorpool tensor not found for input "
+                  << inOnnxTensor.name;
+      return ONNXIFI_STATUS_INTERNAL_ERROR;
+    }
+    // We want fresh DeviceResidencyInfo for this fresh Tensor.
+    externalIOBindings.emplace_back(inPhPtr,
+                                    std::move(inputTensorOpt.getValue()));
+    Tensor &inputTensor = externalIOBindings.back().second;
+    inputTensor.resetDeviceInfo();
+
+    if (quantizedInput) {
+      // Right now we only support quantized input with one set of
+      // quantization parameters
+      bool supported = true;
+      if (inOnnxTensor.quantizationParams == 1) {
+        if (inOnnxTensor.dataType == ONNXIFI_DATATYPE_UINT8) {
+          inputTensor.zero();
+          if (inOnnxBuffer) {
+            auto TH = inputTensor.getHandle<int8_t>();
+            uint8_t *data = (uint8_t *)(inOnnxBuffer);
+            for (size_t k = 0; k < onnxBytes; ++k) {
+              TH.raw(k) = (int8_t)(data[k] - UINT8_TO_INT8_SHIFT);
+            }
+          }
+          continue;
+        } else if (inOnnxTensor.dataType != ONNXIFI_DATATYPE_INT8) {
+          supported = false;
+        }
+      } else {
+        supported = false;
+      }
+      if (!supported) {
+        return ONNXIFI_STATUS_INVALID_DATATYPE;
+      }
+    }
+
+    // Copy the input from onnxTensorDescriptor unless it has a NULL buffer
+    // pointer (which is a valid case if the tensor is empty).
+    if (inOnnxBuffer) {
+      memcpy(inputTensor.getUnsafePtr(), inOnnxBuffer, onnxBytes);
+      // Pad remaining space with zeroes.
+      memset(inputTensor.getUnsafePtr() + onnxBytes, 0,
+             inputTensor.getSizeInBytes() - onnxBytes);
+    } else {
+      inputTensor.zero();
     }
   }
   return ONNXIFI_STATUS_SUCCESS;
