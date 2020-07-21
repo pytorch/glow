@@ -983,6 +983,18 @@ public:
   DECLARE_BROADCAST_NODE(Add, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Sub, /* NUM_INPUTS */ 2)
 
+#define DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(NODE_NAME, NUM_INPUTS,            \
+                                             OUTTYPEREF)                       \
+  template <class T, class... Args>                                            \
+  typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
+  createNodeWithBroadcastOutTy(const std::string &name, int axis,              \
+                               TypeRef OUTTYPEREF, Args &&... inputArgs) {     \
+    BROADCAST_FUNC_COMMON_CODE(NUM_INPUTS)                                     \
+    return create##NODE_NAME(name, OUTTYPEREF, inputs[0], inputs[1]);          \
+  }
+
+  DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Add, /* NUM_INPUTS */ 2, outTy)
+
 #define DECLARE_CMP_BROADCAST_NODE(NODE_NAME)                                  \
   template <class T, class... Args>                                            \
   typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
@@ -1015,6 +1027,7 @@ public:
 
 #undef BROADCAST_FUNC_COMMON_CODE
 #undef DECLARE_BROADCAST_NODE
+#undef DECLARE_BROADCAST_NODE_WITH_OUT_TYPE
 #undef DECLARE_CMP_BROADCAST_NODE
 #undef BROADCAST_FUNC_COMMON_CODE
 
