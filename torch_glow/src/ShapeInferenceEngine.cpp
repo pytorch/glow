@@ -91,6 +91,23 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
                                constantChunk(inputMetas, chunks, dim));
     break;
   }
+  case c10::prim::ListConstruct: {
+    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
+                               listConstruct(inputMetas));
+    break;
+  }
+  case c10::aten::slice: {
+    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], slice(inputMetas));
+    break;
+  }
+  case c10::aten::reshape: {
+    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], reshape(inputMetas));
+    break;
+  }
+  case c10::aten::permute: {
+    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], permute(inputMetas));
+    break;
+  }
   default: {
     return MAKE_ERR(
         strFormat("Node's operator %s is not supported", kind.toQualString()));
@@ -109,6 +126,10 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       shapeMap_[node->output()].shape = {1};
       shapeMap_[node->output()].intValue = std::move(outputShapesOrValues[0]);
     }
+  } else if (kind == c10::prim::ListConstruct) {
+    shapeMap_[node->output()].shape = {
+        static_cast<long>(outputShapesOrValues[0].size()), 1};
+    shapeMap_[node->output()].intValue = std::move(outputShapesOrValues[0]);
   } else {
     for (int i = 0; i < node->outputs().size(); i++) {
       shapeMap_[node->output(i)].shape = std::move(outputShapesOrValues[i]);
@@ -426,5 +447,153 @@ ShapeInferenceEngine::fusedConcat(const MetaStack &varibableMetas,
     }
   }
   return shape;
+}
+
+/**
+ * aten::slice(Tensor self, int dim, int start, int end, int step)
+ * varibableMetas: 0: self, 1: dim, 2: start, 3: end, 4: step.
+ */
+Expected<std::vector<int64_t>>
+ShapeInferenceEngine::slice(const MetaStack &varibableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      varibableMetas.size() == 5,
+      strFormat("Expected 5 inputs, got %zu.", varibableMetas.size()));
+
+  for (int i = 1; i < 5; i++) {
+    RETURN_ERR_IF_NOT(varibableMetas[i].shape.size() == 1,
+                      "Expected int in Slice.");
+  }
+
+  int64_t dim = varibableMetas[1].intValue[0];
+  int64_t start = varibableMetas[2].intValue[0];
+  int64_t end = varibableMetas[3].intValue[0];
+  int64_t step = varibableMetas[4].intValue[0];
+  int64_t inDims = varibableMetas[0].shape[dim];
+
+  std::vector<int64_t> shape = varibableMetas[0].shape;
+
+  /// Check if the start or end dim out of the input dimension
+  if (start >= inDims || end <= -inDims) {
+    shape[dim] = 0;
+    return shape;
+  }
+
+  /// Convert start dim into positive
+  if (start <= -inDims) {
+    start = 0;
+  } else if (start > -inDims && start < 0) {
+    start += inDims;
+  }
+
+  /// Convert end dim into positive
+  if (end > inDims) {
+    end = inDims;
+  } else if (end > -inDims && end < 0) {
+    end += inDims;
+  }
+
+  if (start >= end) {
+    shape[dim] = 0;
+    return shape;
+  }
+
+  shape[dim] = (end - start) / step;
+  if ((end - start) % step) {
+    shape[dim] += 1;
+  }
+  return shape;
+}
+
+/**
+ * aten::reshape(Tensor self, int[] shape) -> Tensor
+ * varibableMetas: 0: self, 1: shape
+ */
+Expected<std::vector<int64_t>>
+ShapeInferenceEngine::reshape(const MetaStack &varibableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      varibableMetas.size() == 2,
+      strFormat("Expected two inputs shapes, got %zu.", varibableMetas.size()));
+
+  int64_t s0 = 1;
+  int64_t s1 = 1;
+
+  /// Flag for multiple negative index
+  int64_t negIndex = -1;
+  for (auto i : varibableMetas[0].shape) {
+    s0 *= i;
+  }
+
+  for (int i = 0; i < varibableMetas[1].intValue.size(); i++) {
+    s1 *= varibableMetas[1].intValue[i];
+    if (varibableMetas[1].intValue[i] == -1) {
+      if (negIndex == -1) {
+        negIndex = i;
+      } else {
+        return MAKE_ERR("Multiple -1 dimension found in reshape");
+      }
+    }
+  }
+
+  RETURN_ERR_IF_NOT(s0 % s1 == 0, "Reshape size is invalid for input size.");
+
+  std::vector<int64_t> shape = varibableMetas[1].intValue;
+
+  if (negIndex != -1) {
+    shape[negIndex] = -s0 / s1;
+  }
+  return shape;
+}
+
+/**
+ * aten::permute(Tensor self, int[] shape) -> Tensor
+ * varibableMetas: 0: self, 1: shape
+ */
+Expected<std::vector<int64_t>>
+ShapeInferenceEngine::permute(const MetaStack &varibableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      varibableMetas.size() == 2,
+      strFormat("Expected two inputs shapes, got %zu.", varibableMetas.size()));
+
+  int64_t inDims = varibableMetas[0].shape.size();
+
+  RETURN_ERR_IF_NOT(inDims == varibableMetas[1].intValue.size(),
+                    "Shuffle for permute must has the same number of "
+                    "dimensions as the input tensor.");
+
+  std::vector<int64_t> shape;
+
+  for (int64_t dim : varibableMetas[1].intValue) {
+    RETURN_ERR_IF_NOT(dim >= 0,
+                      "Negative shuffle dimensions not supported by Glow yet.");
+    RETURN_ERR_IF_NOT(
+        dim < inDims,
+        "All shuffle dimensions must be less than the rank of the input.");
+    shape.emplace_back(varibableMetas[0].shape[dim]);
+  }
+  return shape;
+}
+
+/**
+ * prim::ListContruct(Scalar or Bool self, Scalar or Bool v1, Scalar or Bool v2,
+ * ...) -> Scalar[] or Bool[]
+ * varibableMetas: 0: self, 1: v1, 2: v2, ...
+ */
+Expected<std::vector<int64_t>>
+ShapeInferenceEngine::listConstruct(const MetaStack &varibableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      varibableMetas.size() >= 1,
+      strFormat("Expected at least 1 inputs, got %zu.", varibableMetas.size()));
+
+  std::vector<int64_t> intValueList;
+  for (auto ele : varibableMetas) {
+    RETURN_ERR_IF_NOT(ele.shape.size() == 1,
+                      "Expected int type input in listConstruct.");
+    intValueList.emplace_back(ele.intValue[0]);
+  }
+  return intValueList;
 }
 } // namespace glow
