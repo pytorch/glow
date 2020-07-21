@@ -1098,6 +1098,13 @@ public:
                                                NodeValue batch,
                                                llvm::ArrayRef<unsigned_t> axes);
 
+  /// Create a node, performing BatchedReduceMax operation. Output type is
+  /// based on the input \p batch type with dimensions specified with \p axes
+  /// removed.
+  BatchedReduceMaxNode *createBatchedReduceMax(llvm::StringRef name,
+                                               NodeValue batch,
+                                               llvm::ArrayRef<unsigned_t> axes);
+
   /// Create a node, performing BatchedReduceMean operation. Output type
   /// matches input \p outTy type.
   BatchedReduceMeanNode *

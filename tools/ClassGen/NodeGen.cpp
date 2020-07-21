@@ -603,6 +603,13 @@ int main(int argc, char **argv) {
       .setDocstring("Performs Reduce Min operation on the Input given "
                     "Axes.");
 
+  BB.newNode("BatchedReduceMax")
+      .addInput("Batch")
+      .addMember(MemberType::VectorUnsigned, "Axes")
+      .addResultFromCtorArg()
+      .setDocstring("Performs Reduce Max operation on the Input given "
+                    "Axes.");
+
   BB.newNode("ChannelShuffle")
       .addInput("Input")
       .addMember(MemberType::Unsigned, "Group")

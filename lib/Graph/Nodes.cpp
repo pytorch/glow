@@ -1427,15 +1427,6 @@ bool BatchedAddNode::verify() const {
   return isValid;
 }
 
-bool BatchedReduceAddNode::verify() const {
-  bool isValid = checkType(getResult(), getBatch().getElementType(), this);
-
-  isValid &=
-      expectCompareTrue("Invalid shape", getBatch().dims().size(), size_t(0),
-                        this, CompareOperatorGreaterThan<size_t>());
-  return isValid;
-}
-
 bool CumSumNode::verify() const {
   return checkSameType(getResult(), getInput(), this);
 }
@@ -1445,23 +1436,22 @@ bool LengthsSumNode::verify() const {
                            getLengths().dims().size(), size_t(1), this);
 }
 
-bool BatchedReduceMeanNode::verify() const {
-  bool isValid = checkType(getResult(), getBatch().getElementType(), this);
+// Define verification for Reduction operations.
+#define DEFINE_BATCHED_REDUCTION_VERIFICATION(name)                            \
+  bool name##Node::verify() const {                                            \
+    bool isValid = checkType(getResult(), getBatch().getElementType(), this);  \
+    isValid &= expectCompareTrue("Invalid shape", getBatch().dims().size(),    \
+                                 size_t(0), this,                              \
+                                 CompareOperatorGreaterThan<size_t>());        \
+    return isValid;                                                            \
+  }
 
-  isValid &=
-      expectCompareTrue("Invalid shape", getBatch().dims().size(), size_t(0),
-                        this, CompareOperatorGreaterThan<size_t>());
-  return isValid;
-}
+DEFINE_BATCHED_REDUCTION_VERIFICATION(BatchedReduceAdd)
+DEFINE_BATCHED_REDUCTION_VERIFICATION(BatchedReduceMean)
+DEFINE_BATCHED_REDUCTION_VERIFICATION(BatchedReduceMin)
+DEFINE_BATCHED_REDUCTION_VERIFICATION(BatchedReduceMax)
 
-bool BatchedReduceMinNode::verify() const {
-  bool isValid = checkType(getResult(), getBatch().getElementType(), this);
-
-  isValid &=
-      expectCompareTrue("Invalid shape", getBatch().dims().size(), size_t(0),
-                        this, CompareOperatorGreaterThan<size_t>());
-  return isValid;
-}
+#undef DEFINE_BATCHED_REDUCTION_VERIFICATION
 
 bool SparseLengthsSumNode::verify() const {
   return verifySparseLengthsSum(getResult(), getData(), getIndices(),

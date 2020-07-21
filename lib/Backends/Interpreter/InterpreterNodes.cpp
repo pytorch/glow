@@ -3696,67 +3696,87 @@ void BoundInterpreterFunction::fwdBatchedReduceAddInst(
                             eBatchDims, eDestDims);
 }
 
-template <typename ElemTy>
-void BoundInterpreterFunction::fwdBatchedReduceMinInstImpl(
-    Value *batch, Value *dest, const ShapeVector &eBatchDims,
-    const ShapeVector &eDestDims, ElemTy max) {
-  static_assert(max_tensor_dimensions == 6,
-                "Loops below assume max_tensor_dimensions = 6.");
-  // Get unowned handles of the batch and dest with these new expanded dims.
-  auto eBatch = getTensor(batch)->getUnowned(eBatchDims);
-  auto eDest = getTensor(dest)->getUnowned(eDestDims);
-  auto eBatchH = eBatch.getHandle<ElemTy>();
-  auto eDestH = eDest.getHandle<ElemTy>();
-  eDestH.clear(max);
-
-  unsigned int axes[max_tensor_dimensions];
-  for (dim_t i = 0; i < max_tensor_dimensions; i++) {
-    axes[i] = (eDestDims[i] > 1);
+/// Macro to define ReduceMin/Max kernel implementation.
+#define DEFINE_REDUCEMINMAX_INST_IMPL(func, compare)                           \
+  template <typename ElemTy>                                                   \
+  void BoundInterpreterFunction::fwdBatched##func##InstImpl(                   \
+      Value *batch, Value *dest, const ShapeVector &eBatchDims,                \
+      const ShapeVector &eDestDims, ElemTy init) {                             \
+    static_assert(max_tensor_dimensions == 6,                                  \
+                  "Loops below assume max_tensor_dimensions = 6.");            \
+    /* Get unowned handles of the batch and dest with these new expanded       \
+     * dims.*/                                                                 \
+    auto eBatch = getTensor(batch)->getUnowned(eBatchDims);                    \
+    auto eDest = getTensor(dest)->getUnowned(eDestDims);                       \
+    auto eBatchH = eBatch.getHandle<ElemTy>();                                 \
+    auto eDestH = eDest.getHandle<ElemTy>();                                   \
+    eDestH.clear(init);                                                        \
+                                                                               \
+    unsigned int axes[max_tensor_dimensions];                                  \
+    for (dim_t i = 0; i < max_tensor_dimensions; i++) {                        \
+      axes[i] = (eDestDims[i] > 1);                                            \
+    }                                                                          \
+                                                                               \
+    /* We can use this loop for all shapes. Use the same indices for both the  \
+     * batch and dest, except for setting the axis index in the dest to 0.*/   \
+    for (dim_t x = 0, dx = 0; x < eBatchDims[0]; x++, dx += axes[0]) {         \
+      for (dim_t y = 0, dy = 0; y < eBatchDims[1]; y++, dy += axes[1]) {       \
+        for (dim_t z = 0, dz = 0; z < eBatchDims[2]; z++, dz += axes[2]) {     \
+          for (dim_t w = 0, dw = 0; w < eBatchDims[3]; w++, dw += axes[3]) {   \
+            for (dim_t q = 0, dq = 0; q < eBatchDims[4]; q++, dq += axes[4]) { \
+              for (dim_t r = 0, dr = 0; r < eBatchDims[5];                     \
+                   r++, dr += axes[5]) {                                       \
+                dim_t destIndices[] = {dx, dy, dz, dw, dq, dr};                \
+                dim_t srcIndices[] = {x, y, z, w, q, r};                       \
+                eDestH.at(destIndices) =                                       \
+                    compare(eDestH.at(destIndices), eBatchH.at(srcIndices));   \
+              }                                                                \
+            }                                                                  \
+          }                                                                    \
+        }                                                                      \
+      }                                                                        \
+    }                                                                          \
   }
 
-  // We can use this loop for all shapes. Use the same indices for both the
-  // batch and dest, except for setting the axis index in the dest to 0.
-  for (dim_t x = 0, dx = 0; x < eBatchDims[0]; x++, dx += axes[0]) {
-    for (dim_t y = 0, dy = 0; y < eBatchDims[1]; y++, dy += axes[1]) {
-      for (dim_t z = 0, dz = 0; z < eBatchDims[2]; z++, dz += axes[2]) {
-        for (dim_t w = 0, dw = 0; w < eBatchDims[3]; w++, dw += axes[3]) {
-          for (dim_t q = 0, dq = 0; q < eBatchDims[4]; q++, dq += axes[4]) {
-            for (dim_t r = 0, dr = 0; r < eBatchDims[5]; r++, dr += axes[5]) {
-              dim_t destIndices[] = {dx, dy, dz, dw, dq, dr};
-              dim_t srcIndices[] = {x, y, z, w, q, r};
-              eDestH.at(destIndices) =
-                  eDestH.at(destIndices) < eBatchH.at(srcIndices)
-                      ? eDestH.at(destIndices)
-                      : eBatchH.at(srcIndices);
-            }
-          }
-        }
-      }
-    }
-  }
-}
+/// Define fwdBatchedReduceMaxInstImpl.
+DEFINE_REDUCEMINMAX_INST_IMPL(ReduceMax, std::max)
 
-void BoundInterpreterFunction::fwdBatchedReduceMinInst(
-    const glow::BatchedReduceMinInst *I) {
+/// Define fwdBatchedReduceMinInstImpl.
+DEFINE_REDUCEMINMAX_INST_IMPL(ReduceMin, std::min)
 
-  auto *batch = I->getBatch();
-  auto *dest = I->getDest();
-  const auto axes = I->getAxes();
+#undef DEFINE_REDUCEMINMAX_INST_IMPL
 
-  // Initialize both expanded batch and dest dims to the expanded batch
-  // dims. This allows us below to iterate over the tensor regardless of its
-  // shape using max_tensor_dimensions loops below.
-  ShapeVector eBatchDims = expandDimsToMax(batch->dims());
-  ShapeVector eDestDims = eBatchDims;
-  // Set the destination axes dimensions (the one we are reducing) to 1.
-  for (dim_t i = 0; i < axes.size(); i++) {
-    eDestDims[axes[i]] = 1;
+/// Macro to define ReduceMin/Max instruction.
+#define DEFINE_REDUCEMINMAX_INST(func, init)                                   \
+  void BoundInterpreterFunction::fwdBatched##func##Inst(                       \
+      const glow::Batched##func##Inst *I) {                                    \
+                                                                               \
+    auto *batch = I->getBatch();                                               \
+    auto *dest = I->getDest();                                                 \
+    const auto axes = I->getAxes();                                            \
+                                                                               \
+    /* Initialize both expanded batch and dest dims to the expanded batch      \
+     dims. This allows us below to iterate over the tensor regardless of its   \
+     shape using max_tensor_dimensions loops below.*/                          \
+    ShapeVector eBatchDims = expandDimsToMax(batch->dims());                   \
+    ShapeVector eDestDims = eBatchDims;                                        \
+    /* Set the destination axes dimensions (the one we are reducing) to 1.*/   \
+    for (dim_t i = 0; i < axes.size(); i++) {                                  \
+      eDestDims[axes[i]] = 1;                                                  \
+    }                                                                          \
+                                                                               \
+    dispatchArithmeticImpl(fwdBatched##func##InstImpl,                         \
+                           batch->getElementType(), batch, dest, eBatchDims,   \
+                           eDestDims, init);                                   \
   }
 
-  dispatchArithmeticImpl(fwdBatchedReduceMinInstImpl, batch->getElementType(),
-                         batch, dest, eBatchDims, eDestDims,
-                         std::numeric_limits<int32_t>::max());
-}
+// Define fwdBatchedMinInst
+DEFINE_REDUCEMINMAX_INST(ReduceMin, std::numeric_limits<int32_t>::max())
+
+// Define fwdBatchedMaxInst
+DEFINE_REDUCEMINMAX_INST(ReduceMax, std::numeric_limits<int32_t>::min())
+
+#undef DEFINE_REDUCEMINMAX_INST
 
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdCumSumInstImpl(Value *input, Value *dest,

@@ -195,6 +195,8 @@ struct BlacklistInitializer {
             {"BatchNorm_Float/0", TestBlacklist::AnyDeviceHWEngine},
             {"batchedReduceMin_Int32/0", TestBlacklist::AnyDeviceHWEngine},
             {"batchedReduceMin_Int64/0", TestBlacklist::AnyDeviceHWEngine},
+            {"batchedReduceMax_Int32/0", TestBlacklist::AnyDeviceHWEngine},
+            {"batchedReduceMax_Int64/0", TestBlacklist::AnyDeviceHWEngine},
             {"Bucketize/0", TestBlacklist::AnyDeviceHWEngine},
             {"CmpEQ_Int32/0", TestBlacklist::AnyDeviceHWEngine},
             {"CmpEQ_Int64/0", TestBlacklist::AnyDeviceHWEngine},

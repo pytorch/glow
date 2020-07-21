@@ -312,6 +312,11 @@ private:
                                    const ShapeVector &eDestDims, ElemTy max);
 
   template <typename ElemTy>
+  void fwdBatchedReduceMaxInstImpl(Value *batch, Value *dest,
+                                   const ShapeVector &eBatchDims,
+                                   const ShapeVector &eDestDims, ElemTy min);
+
+  template <typename ElemTy>
   void fwdCumSumInstImpl(Value *input, Value *dest, bool exclusive,
                          bool reverse);
 

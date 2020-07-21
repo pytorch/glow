@@ -1374,6 +1374,15 @@ Error ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
   return Error::success();
 }
 
+Error ONNXModelWriter::writeBatchedReduceMax(const BatchedReduceMaxNode *node,
+                                             GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Find dictionary entries.
+  addValueAttribute(proto, "axes", node->getAxes());
+
+  return writeAllWithNode("ReduceMax", node, graph, proto);
+}
+
 Error ONNXModelWriter::writeBatchedReduceMin(const BatchedReduceMinNode *node,
                                              GraphType &graph) {
   auto *proto = graph.add_node();
