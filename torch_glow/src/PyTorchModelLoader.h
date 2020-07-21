@@ -429,6 +429,10 @@ private:
   /// \returns error on failure.
   Error loadMax(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch floor node.
+  /// \returns error on failure.
+  Error loadFloor(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch relu node.
   /// \returns error on failure.
   Error loadRelu(const torch::jit::Node *ptNode);
