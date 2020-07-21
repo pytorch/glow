@@ -35,12 +35,23 @@ class CachingGraphRunner {
   /// Information that is stored per-Glow graph for running it using
   /// HostManager.
   struct PerGlowGraphInfo {
+
+    PerGlowGraphInfo() = delete;
+    PerGlowGraphInfo(const std::string func, const PyTorchLoaderSettings &set)
+        : functionName(func), settings(set) {}
+
+    PerGlowGraphInfo(const PerGlowGraphInfo &) = delete;
+    PerGlowGraphInfo &operator=(const PerGlowGraphInfo &) = delete;
+
     /// Input and output placeholders to the Glow function.
     std::vector<glow::Placeholder *> inputPlaceholders;
     std::vector<glow::Placeholder *> outputPlaceholders;
 
     /// Name of the Glow function maintained by HostManager for this subgraph.
     std::string functionName;
+
+    /// PyTorchLoaderSettings used to compile this function
+    PyTorchLoaderSettings settings;
   };
 
   /// The PyTorch JIT Graph that this CachingGraphRunner caches Glow functions
@@ -147,8 +158,12 @@ public:
   /// The Glow Function should've already been created. Returns an error if not.
   Error runOnly(torch::jit::Stack &stack);
 
-  // Warm up the cache by compiling a Glow function for the inputs in \p stack.
-  Error warmCache(const std::vector<InputMeta> &inputMeta);
+  /// Warm up the cache by compiling a Glow function and storing its info in
+  /// perGlowGraphInfoMap_ with the hash computed using \p inputMeta. \p
+  /// inputMeta is used to pass Glow shapes and types (Only tensors are valid
+  /// inputs). \p settings enable different settings for each compilation.
+  Error warmCache(const std::vector<InputMeta> &inputMeta,
+                  const PyTorchLoaderSettings &settings);
 
   const PyTorchLoaderSettings &getSettings() const;
 };

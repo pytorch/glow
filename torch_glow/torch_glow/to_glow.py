@@ -23,9 +23,14 @@ def to_glow(model, method_compile_spec):
         A copy of the model that has been lowered to Glow and will run on
         Glow backend devices
     """
-
-    if not isinstance(method_compile_spec, collections.Mapping):
+    if isinstance(method_compile_spec, collections.Mapping):
+        for k, v in method_compile_spec.items():
+            if not isinstance(v, list):
+                method_compile_spec[k] = [v]
+    elif isinstance(method_compile_spec, list):
         method_compile_spec = {"forward", method_compile_spec}
+    else:
+        method_compile_spec = {"forward", [method_compile_spec]}
 
     return torch._C._jit_to_backend("glow", model._c, method_compile_spec)
 
