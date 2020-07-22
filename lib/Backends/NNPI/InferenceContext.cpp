@@ -443,14 +443,20 @@ void InferenceContext::execute(RunIdentifierTy runId,
         requestDataRun->deviceRuntime.fetch_add(duration);
       }
       if (res != NNPI_INF_NO_ERROR) {
-        LOG_NNPI_INF_IF_ERROR(res, "Failed to wait on command list");
+        std::stringstream ss;
+        ss << "Nonrecoverable card error: ";
+        ss << NNPI_INF_ERROR_MSG(res, "Failed to wait on command list");
+        FATAL_CALLBACK_IF_NOT(false /* fatal */, ss.str(), runId, ctx,
+                              resultCB);
       } else if (numErrors > 0) {
         LOG(ERROR) << "Errors returned from command list";
 
         // Errors were generate so we allocate error objects to hold the data.
         NNPICommandListError commandErrors[numErrors];
-        LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
-            ERROR, commandErrors, "Failed to allocate command error array",
+        FATAL_CALLBACK_IF_NOT(
+            commandErrors,
+            "Nonrecoverable card error happened but we failed "
+            "to allocate command error array to get more details",
             runId, ctx, resultCB);
         memset(commandErrors, 0, sizeof(NNPICommandListError) * numErrors);
 
@@ -460,23 +466,30 @@ void InferenceContext::execute(RunIdentifierTy runId,
             nnpiCommandListWait(commandList_, deviceOptions_->inferTimeout,
                                 commandErrors, numErrors, &numErrors);
         if (tmpRes != NNPI_INF_NO_ERROR) {
-          LOG_NNPI_INF_IF_ERROR(tmpRes,
-                                "Failed to wait on command list to get errors");
+          FATAL_CALLBACK_IF_NOT(false /* fatal */,
+                                "Nonrecoverable card error happened but we "
+                                "failed to wait on command list to get errors",
+                                runId, ctx, resultCB);
         } else {
+          std::stringstream ss;
+          ss << "Nonrecoverable card error: ";
           for (uint32_t i = 0; i < numErrors; i++) {
-            LOG(ERROR) << NNPI_INF_ERROR_MSG(commandErrors[i].err,
-                                             commandErrors[i].desc);
+            ss << NNPI_INF_ERROR_MSG(commandErrors[i].err,
+                                     commandErrors[i].desc)
+               << "; ";
           }
+          FATAL_CALLBACK_IF_NOT(false /* fatal */, ss.str(), runId, ctx,
+                                resultCB);
         }
       }
       if (res != NNPI_INF_NO_ERROR || numErrors > 0) {
-        LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
-            nnpiCommandListClearErrors(commandList_),
-            "Failed to clear command list errors", runId, ctx, resultCB);
-        LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(
-            ERROR, false /* fail */, "Errors found in command list execution",
-            runId, ctx, resultCB);
-        LOG(FATAL) << "Non-recoverable inference error";
+        FATAL_CALLBACK_IF_NOT(nnpiCommandListClearErrors(commandList_),
+                              "Unknown nonrecoverable card error happend and "
+                              "we failed to clear command list errors",
+                              runId, ctx, resultCB);
+        FATAL_CALLBACK_IF_NOT(false /* fail */,
+                              "Unknown nonrecoverable card error happen", runId,
+                              ctx, resultCB);
       }
     }
   } else if (!deviceOptions_->useIceT) {
