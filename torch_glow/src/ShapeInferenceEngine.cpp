@@ -91,6 +91,23 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
                                constantChunk(inputMetas, chunks, dim));
     break;
   }
+  case c10::prim::ListConstruct: {
+    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
+                               listConstruct(inputMetas));
+    break;
+  }
+  case c10::aten::slice: {
+    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], slice(inputMetas));
+    break;
+  }
+  case c10::aten::reshape: {
+    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], reshape(inputMetas));
+    break;
+  }
+  case c10::aten::permute: {
+    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], permute(inputMetas));
+    break;
+  }
   default: {
     return MAKE_ERR(
         strFormat("Node's operator %s is not supported", kind.toQualString()));
@@ -102,6 +119,9 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
   /// If the output is TensorType, store the \p outputShapesOrValues
   /// into VariableMeta.shape;
   /// Else store the \p outputShapesOrValues into VariableMeta.intValue.
+  /// For \p prim::ListConstruct, the output is a intList.
+  /// Store the shape of \p outputShapesOrValues into VariableMeta.shape
+  /// store the value of \p outputShapesOrValues into VariableMeta.intValue
   if (kind == c10::prim::Constant) {
     if (node->output()->type()->isSubtypeOf(at::TensorType::get())) {
       shapeMap_[node->output()].shape = std::move(outputShapesOrValues[0]);
@@ -109,6 +129,10 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       shapeMap_[node->output()].shape = {1};
       shapeMap_[node->output()].intValue = std::move(outputShapesOrValues[0]);
     }
+  } else if (kind == c10::prim::ListConstruct) {
+    shapeMap_[node->output()].shape = {
+        static_cast<long>(outputShapesOrValues[0].size()), 1};
+    shapeMap_[node->output()].intValue = std::move(outputShapesOrValues[0]);
   } else {
     for (int i = 0; i < node->outputs().size(); i++) {
       shapeMap_[node->output(i)].shape = std::move(outputShapesOrValues[i]);
@@ -222,17 +246,17 @@ ShapeInferenceEngine::primConstant(const torch::jit::Node *node) {
  * aten::add(Tensor self, Tensor or Scalar other, Scalar alpha=1) -> Tensor
  * aten::pow(Tensor self, Tensor or Scalar other, Scalar alpha=1) -> Tensor
  * aten::mul(Tensor self, Tensor or Scalar other, Scalar alpha=1) -> Tensor
- * varibableMetas: 0: self, 1: other
+ * variableMetas: 0: self, 1: other
  */
 Expected<std::vector<int64_t>>
-ShapeInferenceEngine::binaryOp(const MetaStack &varibableMetas) {
+ShapeInferenceEngine::binaryOp(const MetaStack &variableMetas) {
 
-  if (varibableMetas.size() != 2 && varibableMetas.size() != 3) {
+  if (variableMetas.size() != 2 && variableMetas.size() != 3) {
     return MAKE_ERR("Expected two or three inputs shapes of this operation.");
   }
 
-  const std::vector<int64_t> &t0 = varibableMetas[0].shape;
-  const std::vector<int64_t> &t1 = varibableMetas[1].shape;
+  const std::vector<int64_t> &t0 = variableMetas[0].shape;
+  const std::vector<int64_t> &t1 = variableMetas[1].shape;
 
   auto d0 = t0.size();
   auto d1 = t1.size();
@@ -267,16 +291,16 @@ ShapeInferenceEngine::binaryOp(const MetaStack &varibableMetas) {
 
 /**
  * aten::mm(Tensor self, Tensor mat2) -> Tensor
- * varibableMetas: 0: self, 1: mat2
+ * variableMetas: 0: self, 1: mat2
  */
 Expected<std::vector<int64_t>>
-ShapeInferenceEngine::mm(const MetaStack &varibableMetas) {
+ShapeInferenceEngine::mm(const MetaStack &variableMetas) {
 
-  RETURN_ERR_IF_NOT(varibableMetas.size() == 2,
+  RETURN_ERR_IF_NOT(variableMetas.size() == 2,
                     "Expected two inputs shapes of this operation.");
 
-  const std::vector<int64_t> &t0 = varibableMetas[0].shape;
-  const std::vector<int64_t> &t1 = varibableMetas[1].shape;
+  const std::vector<int64_t> &t0 = variableMetas[0].shape;
+  const std::vector<int64_t> &t1 = variableMetas[1].shape;
 
   if (!(t1.size() == 2 && t0.size() == 2)) {
     return MAKE_ERR("Expected 2-dimensional tensor.");
@@ -295,17 +319,17 @@ ShapeInferenceEngine::mm(const MetaStack &varibableMetas) {
 
 /**
  * aten::bmm(Tensor self, Tensor mat2) -> Tensor
- * varibableMetas: 0: self, 1: mat2
+ * variableMetas: 0: self, 1: mat2
  */
 Expected<std::vector<int64_t>>
-ShapeInferenceEngine::bmm(const MetaStack &varibableMetas) {
+ShapeInferenceEngine::bmm(const MetaStack &variableMetas) {
 
-  if (varibableMetas.size() != 2) {
+  if (variableMetas.size() != 2) {
     return MAKE_ERR("Expected two inputs shapes of this operation.");
   }
 
-  const std::vector<int64_t> &t0 = varibableMetas[0].shape;
-  const std::vector<int64_t> &t1 = varibableMetas[1].shape;
+  const std::vector<int64_t> &t0 = variableMetas[0].shape;
+  const std::vector<int64_t> &t1 = variableMetas[1].shape;
 
   if (!(t0.size() == 3 && t1.size() == 3)) {
     return MAKE_ERR("Expected 3-dimensional tensor.");
@@ -327,23 +351,23 @@ ShapeInferenceEngine::bmm(const MetaStack &varibableMetas) {
 /**
  * aten::addmm(Tensor self, Tensor mat1, Tensor mat2, *, Scalar beta=1, Scalar
    alpha=1) -> Tensor
- * varibableMetas: 0: self, 1: mat1, 2: mat2
+ * variableMetas: 0: self, 1: mat1, 2: mat2
  */
 Expected<std::vector<int64_t>>
-ShapeInferenceEngine::addmm(const MetaStack &varibableMetas) {
+ShapeInferenceEngine::addmm(const MetaStack &variableMetas) {
 
-  RETURN_ERR_IF_NOT(varibableMetas.size() >= 3,
+  RETURN_ERR_IF_NOT(variableMetas.size() >= 3,
                     strFormat("Expected at least three inputs shapes, got %zu.",
-                              varibableMetas.size()));
+                              variableMetas.size()));
 
-  const VariableMeta &t0 = varibableMetas[0];
-  const VariableMeta &t1 = varibableMetas[1];
-  const VariableMeta &t2 = varibableMetas[2];
+  const VariableMeta &t0 = variableMetas[0];
+  const VariableMeta &t1 = variableMetas[1];
+  const VariableMeta &t2 = variableMetas[2];
   VariableMeta t;
 
   // For Scalar type, the shape.size() is 1
-  if (varibableMetas[2].shape.size() == 1) {
-    t = varibableMetas[1];
+  if (variableMetas[2].shape.size() == 1) {
+    t = variableMetas[1];
   } else {
     const MetaStack &mm_shape = {t1, t2};
     ASSIGN_VALUE_OR_RETURN_ERR(t.shape, mm(mm_shape));
@@ -354,31 +378,31 @@ ShapeInferenceEngine::addmm(const MetaStack &varibableMetas) {
 
 /**
  * prim::ConstantChunk[int chunks, int dim](Tensor self) -> Tensors
- * varibableMetas: 0: self
+ * variableMetas: 0: self
  */
 Expected<std::vector<std::vector<int64_t>>>
-ShapeInferenceEngine::constantChunk(const MetaStack &varibableMetas,
+ShapeInferenceEngine::constantChunk(const MetaStack &variableMetas,
                                     int64_t chunks, int64_t dim) {
 
   RETURN_ERR_IF_NOT(
-      varibableMetas.size() == 1,
-      strFormat("Expected one input, got %zu.", varibableMetas.size()));
+      variableMetas.size() == 1,
+      strFormat("Expected one input, got %zu.", variableMetas.size()));
 
   /// Convert dim into positive
   if (dim < 0) {
-    dim += varibableMetas[0].shape.size();
+    dim += variableMetas[0].shape.size();
   }
-  RETURN_ERR_IF_NOT(dim < varibableMetas[0].shape.size() && dim >= 0,
+  RETURN_ERR_IF_NOT(dim < variableMetas[0].shape.size() && dim >= 0,
                     "Dim value is out of range.");
 
   /// For constant chunk, the size of the last chunk one may smaller than the
   /// others
-  int64_t c = (varibableMetas[0].shape[dim] + chunks - 1) / chunks;
-  int64_t r = varibableMetas[0].shape[dim] - c * (chunks - 1);
+  int64_t c = (variableMetas[0].shape[dim] + chunks - 1) / chunks;
+  int64_t r = variableMetas[0].shape[dim] - c * (chunks - 1);
 
   std::vector<std::vector<int64_t>> outShapes;
   for (int i = 0; i < chunks; i++) {
-    std::vector<int64_t> shape = varibableMetas[0].shape;
+    std::vector<int64_t> shape = variableMetas[0].shape;
     shape[dim] = (i == chunks - 1) ? r : c;
     outShapes.emplace_back(shape);
   }
@@ -388,43 +412,190 @@ ShapeInferenceEngine::constantChunk(const MetaStack &varibableMetas,
 
 /**
  * prim::FusedConcat[int dim](Tensor self, Tensor mat1, Tensor mat2, ...) ->
- * Tensor varibableMetas: 0: self, 1: mat1, 2: mat2, ...
+ * Tensor variableMetas: 0: self, 1: mat1, 2: mat2, ...
  */
 Expected<std::vector<int64_t>>
-ShapeInferenceEngine::fusedConcat(const MetaStack &varibableMetas,
-                                  int64_t dim) {
+ShapeInferenceEngine::fusedConcat(const MetaStack &variableMetas, int64_t dim) {
 
   RETURN_ERR_IF_NOT(
-      varibableMetas.size() >= 1,
-      strFormat("Expected at least 1 inputs, got %zu.", varibableMetas.size()));
+      variableMetas.size() >= 1,
+      strFormat("Expected at least 1 inputs, got %zu.", variableMetas.size()));
 
-  if (varibableMetas.size() == 1) {
-    return varibableMetas[0].shape;
+  if (variableMetas.size() == 1) {
+    return variableMetas[0].shape;
   }
 
-  std::vector<int64_t> shape = varibableMetas[0].shape;
+  std::vector<int64_t> shape = variableMetas[0].shape;
   /// Convert negtive dimension to positive, then check the dim range.
-  int64_t inDims = varibableMetas[0].shape.size();
+  int64_t inDims = variableMetas[0].shape.size();
   if (dim < 0) {
     dim += inDims;
   }
   RETURN_ERR_IF_NOT(dim < inDims && dim >= 0, "Dim value is out of range.");
 
   /// Handle multiple inputs cases
-  for (int i = 1; i < varibableMetas.size(); ++i) {
-    RETURN_ERR_IF_NOT(inDims == varibableMetas[i].shape.size(),
+  for (int i = 1; i < variableMetas.size(); ++i) {
+    RETURN_ERR_IF_NOT(inDims == variableMetas[i].shape.size(),
                       "All inputs must have the same number of dimensions.");
     for (int j = 0; j < inDims; j++) {
       if (j == dim) {
-        shape[dim] += varibableMetas[i].shape[dim];
+        shape[dim] += variableMetas[i].shape[dim];
       } else {
         RETURN_ERR_IF_NOT(
-            shape[j] == varibableMetas[i].shape[j],
+            shape[j] == variableMetas[i].shape[j],
             strFormat("Sizes of tensors must match except in dimension %zu.",
                       dim));
       }
     }
   }
   return shape;
+}
+
+/**
+ * aten::slice(Tensor self, int dim, int start, int end, int step)
+ * variableMetas: 0: self, 1: dim, 2: start, 3: end, 4: step.
+ */
+Expected<std::vector<int64_t>>
+ShapeInferenceEngine::slice(const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 5,
+      strFormat("Expected 5 inputs, got %zu.", variableMetas.size()));
+
+  for (int i = 1; i < 5; i++) {
+    RETURN_ERR_IF_NOT(variableMetas[i].shape.size() == 1,
+                      "Expected int in Slice.");
+  }
+
+  int64_t dim = variableMetas[1].intValue[0];
+  int64_t start = variableMetas[2].intValue[0];
+  int64_t end = variableMetas[3].intValue[0];
+  int64_t step = variableMetas[4].intValue[0];
+  int64_t inDims = variableMetas[0].shape[dim];
+
+  std::vector<int64_t> shape = variableMetas[0].shape;
+
+  /// Check if the start or end dim out of the input dimension
+  if (start >= inDims || end <= -inDims) {
+    shape[dim] = 0;
+    return shape;
+  }
+
+  /// Convert start dim into positive
+  if (start <= -inDims) {
+    start = 0;
+  } else if (start > -inDims && start < 0) {
+    start += inDims;
+  }
+
+  /// Convert end dim into positive
+  if (end > inDims) {
+    end = inDims;
+  } else if (end > -inDims && end < 0) {
+    end += inDims;
+  }
+
+  if (start >= end) {
+    shape[dim] = 0;
+    return shape;
+  }
+
+  shape[dim] = (end - start) / step;
+  if ((end - start) % step) {
+    shape[dim] += 1;
+  }
+  return shape;
+}
+
+/**
+ * aten::reshape(Tensor self, int[] shape) -> Tensor
+ * variableMetas: 0: self, 1: shape
+ */
+Expected<std::vector<int64_t>>
+ShapeInferenceEngine::reshape(const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2,
+      strFormat("Expected two inputs shapes, got %zu.", variableMetas.size()));
+
+  int64_t s0 = 1;
+  int64_t s1 = 1;
+
+  /// Flag for multiple negative index
+  int64_t negIndex = -1;
+  for (auto i : variableMetas[0].shape) {
+    s0 *= i;
+  }
+
+  for (int i = 0; i < variableMetas[1].intValue.size(); i++) {
+    s1 *= variableMetas[1].intValue[i];
+    if (variableMetas[1].intValue[i] == -1) {
+      if (negIndex == -1) {
+        negIndex = i;
+      } else {
+        return MAKE_ERR("Unable to infer undetermined dimension");
+      }
+    }
+  }
+
+  RETURN_ERR_IF_NOT(s0 % s1 == 0, "Reshape size is invalid for input size.");
+
+  std::vector<int64_t> shape = variableMetas[1].intValue;
+
+  if (negIndex != -1) {
+    shape[negIndex] = -s0 / s1;
+  }
+  return shape;
+}
+
+/**
+ * aten::permute(Tensor self, int[] shape) -> Tensor
+ * variableMetas: 0: self, 1: shape
+ */
+Expected<std::vector<int64_t>>
+ShapeInferenceEngine::permute(const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2,
+      strFormat("Expected two inputs shapes, got %zu.", variableMetas.size()));
+
+  int64_t inDims = variableMetas[0].shape.size();
+
+  RETURN_ERR_IF_NOT(inDims == variableMetas[1].intValue.size(),
+                    "Shuffle for permute must has the same number of "
+                    "dimensions as the input tensor.");
+
+  std::vector<int64_t> shape;
+
+  for (int64_t dim : variableMetas[1].intValue) {
+    RETURN_ERR_IF_NOT(dim >= 0,
+                      "Negative shuffle dimensions not supported by Glow yet.");
+    RETURN_ERR_IF_NOT(
+        dim < inDims,
+        "All shuffle dimensions must be less than the rank of the input.");
+    shape.emplace_back(variableMetas[0].shape[dim]);
+  }
+  return shape;
+}
+
+/**
+ * prim::ListContruct(Scalar or Bool self, Scalar or Bool v1, Scalar or Bool v2,
+ * ...) -> Scalar[] or Bool[]
+ * variableMetas: 0: self, 1: v1, 2: v2, ...
+ */
+Expected<std::vector<int64_t>>
+ShapeInferenceEngine::listConstruct(const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() >= 1,
+      strFormat("Expected at least 1 inputs, got %zu.", variableMetas.size()));
+
+  std::vector<int64_t> intValueList;
+  for (auto ele : variableMetas) {
+    RETURN_ERR_IF_NOT(ele.shape.size() == 1,
+                      "Expected int type input in listConstruct.");
+    intValueList.emplace_back(ele.intValue[0]);
+  }
+  return intValueList;
 }
 } // namespace glow
