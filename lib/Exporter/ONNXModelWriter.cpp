@@ -1652,19 +1652,52 @@ Error ONNXModelWriter::writeBucketize(const BucketizeNode *node,
 Error ONNXModelWriter::writeResizeNearest(const ResizeNearestNode *node,
                                           GraphType &graph) {
   auto *proto = graph.add_node();
-  // Add dictionary entries.
-  addValueAttribute(proto, "Scale", node->getScale());
+  // Converting arrayRef scale to a constant node
+  auto scale = node->getScale();
+  Tensor scaletensor(ElemKind::FloatTy, {(dim_t)scale.size()});
+  auto handlescale = scaletensor.getHandle<float>();
+  for (size_t b = 0, e = scale.size(); b < e; ++b) {
+    handlescale.raw(b) = scale[b];
+  }
 
-  return writeAllWithNode(node->getName(), node, graph, proto);
+  auto *tensorProto = addInitializer(graph);
+  tensorProto->set_name(node->getName().str() + "_scale");
+  writeTensor(scaletensor, tensorProto, useGlowCustomOps_);
+
+  // Add dictionary entries.
+  addValueAttribute(proto, "coordinate_transformation_mode",
+                    std::string("asymmetric"));
+  addValueAttribute(proto, "mode", std::string("nearest"));
+  addValueAttribute(proto, "nearest_mode", std::string("floor"));
+
+  RETURN_IF_ERR(writeAllWithNode("Resize", node, graph, proto));
+  proto->add_input(node->getName().str() + "_scale");
+  return Error::success();
 }
 
 Error ONNXModelWriter::writeResizeBilinear(const ResizeBilinearNode *node,
                                            GraphType &graph) {
   auto *proto = graph.add_node();
-  // Add dictionary entries.
-  addValueAttribute(proto, "Scale", node->getScale());
+  // Converting arrayRef scale to a constant node
+  auto scale = node->getScale();
+  Tensor scaletensor(ElemKind::FloatTy, {(dim_t)scale.size()});
+  auto handlescale = scaletensor.getHandle<float>();
+  for (size_t b = 0, e = scale.size(); b < e; ++b) {
+    handlescale.raw(b) = scale[b];
+  }
 
-  return writeAllWithNode(node->getName(), node, graph, proto);
+  auto *tensorProto = addInitializer(graph);
+  tensorProto->set_name(node->getName().str() + "_scale");
+  writeTensor(scaletensor, tensorProto, useGlowCustomOps_);
+
+  // Add dictionary entries.
+  addValueAttribute(proto, "coordinate_transformation_mode",
+                    std::string("asymmetric"));
+  addValueAttribute(proto, "mode", std::string("linear"));
+
+  RETURN_IF_ERR(writeAllWithNode("Resize", node, graph, proto));
+  proto->add_input(node->getName().str() + "_scale");
+  return Error::success();
 }
 
 Error ONNXModelWriter::writeSoftMax(const SoftMaxNode *node, GraphType &graph) {
