@@ -13,9 +13,9 @@ class TestMaskedFill(unittest.TestCase):
             return torch.masked_fill(a + a, mask, 42.0)
 
         x = torch.randn([3])
-        mask = torch.tensor([True, False, True], dtype=torch.bool)
+        m = torch.tensor([True, False, True], dtype=torch.bool)
 
-        jitVsGlow(masked_fill, x, mask, expected_fused_ops={"aten::masked_fill"})
+        jitVsGlow(masked_fill, x, m, expected_fused_ops={"aten::masked_fill"})
 
     def test_masked_fill_broadcasted(self):
         """Test of the PyTorch aten::masked_fill op on Glow with a
@@ -25,9 +25,9 @@ class TestMaskedFill(unittest.TestCase):
             return torch.masked_fill(a + a, mask, 42.0)
 
         x = torch.randn([4, 1, 3])
-        mask = torch.tensor([True, False, True], dtype=torch.bool)
+        m = torch.tensor([True, False, True], dtype=torch.bool)
 
-        jitVsGlow(masked_fill, x, mask, expected_fused_ops={"aten::masked_fill"})
+        jitVsGlow(masked_fill, x, m, expected_fused_ops={"aten::masked_fill"})
 
     def test_masked_fill_inplace(self):
         """Test of the PyTorch aten::masked_fill_ op on Glow"""
@@ -38,6 +38,6 @@ class TestMaskedFill(unittest.TestCase):
             return b
 
         x = torch.randn([3])
-        mask = torch.tensor([True, False, True], dtype=torch.bool)
+        m = torch.tensor([True, False, True], dtype=torch.bool)
 
-        jitVsGlow(masked_fill, x, mask, expected_fused_ops={"aten::masked_fill_"})
+        jitVsGlow(masked_fill, x, m, expected_fused_ops={"aten::masked_fill_"})
