@@ -845,7 +845,8 @@ bool Tensor::isTiled(unsigned_t axis, dim_t size, bool fractional) const {
   case ElemKind::BoolTy: {
     return isTiledImpl<bool>(this, axis, size, fractional);
   }
-  default: { llvm_unreachable("isTiled: Precision not supported!"); }
+  default:
+    llvm_unreachable("isTiled: Precision not supported!");
   }
 }
 

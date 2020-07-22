@@ -28,6 +28,7 @@ print_usage() {
 }
 
 fix_format() {
+  $CLANG_COMMAND -version
   find lib tests/unittests/ tools/ include examples torch_glow inference_engines externalbackends \
     -name \*.h -print0 \
     -o -name \*.hpp -print0 \
