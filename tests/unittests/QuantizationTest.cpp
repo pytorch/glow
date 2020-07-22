@@ -142,10 +142,21 @@ void testProfilingInfosSerialization(std::vector<NodeProfilingInfo> &expected) {
   serializeProfilingInfosToYaml(filePath, hash, expected);
   std::vector<NodeProfilingInfo> deserialized;
   llvm::hash_code hashDeserialized;
-  deserializeProfilingInfosFromYaml(filePath, hashDeserialized, deserialized);
+  auto fileExists = deserializeProfilingInfosFromYaml(
+      filePath, hashDeserialized, deserialized);
   llvm::sys::fs::remove(filePath);
+  EXPECT_TRUE(fileExists);
   EXPECT_EQ(static_cast<size_t>(hash), static_cast<size_t>(hashDeserialized));
   EXPECT_EQ(expected, deserialized);
+}
+
+TEST(Quantization, DeserializeNonExistingFile) {
+  std::string fakeFilePath = "/fake";
+  std::vector<NodeProfilingInfo> deserialized;
+  llvm::hash_code hashDeserialized;
+  auto fileExists = deserializeProfilingInfosFromYaml(
+      fakeFilePath, hashDeserialized, deserialized);
+  EXPECT_FALSE(fileExists);
 }
 
 TEST(Quantization, ProfilingSerialize) {

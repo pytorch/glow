@@ -31,7 +31,7 @@ void serializeProfilingInfosToYaml(
 
 /// Deserialize from the file named \p fileName the hash \p graphPreLowerHash
 /// of the graph pre lowering and the profiling information \p profilingInfos.
-void deserializeProfilingInfosFromYaml(
+bool deserializeProfilingInfosFromYaml(
     llvm::StringRef fileName, llvm::hash_code &graphPreLowerHash,
     std::vector<NodeProfilingInfo> &profilingInfos);
 
