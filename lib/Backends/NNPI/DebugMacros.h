@@ -210,6 +210,18 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
     }                                                                          \
   }
 
+#define FATAL_CALLBACK_IF_NOT(exp, msg, runId, ctx, callback)                  \
+  {                                                                            \
+    bool exp_res = (exp);                                                      \
+    if (!exp_res) {                                                            \
+      callback(                                                                \
+          runId,                                                               \
+          MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_DEVICE_NONRECOVERABLE, msg), \
+          std::move(ctx));                                                     \
+      return;                                                                  \
+    }                                                                          \
+  }
+
 #define LOG_AND_FAIL_EXECUTE_CALLBACK_IF_NOT(loglevel, exp, msg, runId, ctx,   \
                                              callback)                         \
   {                                                                            \

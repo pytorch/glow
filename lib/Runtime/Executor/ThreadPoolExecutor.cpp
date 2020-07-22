@@ -251,6 +251,10 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
         executeDAGNode(executionState, child);
       }
     }
+  } else if (err && err.peekErrorValue() &&
+             err.peekErrorValue()->isFatalError()) {
+    LOG(FATAL) << "Non-recoverable device error: "
+               << err.peekErrorValue()->logToString();
   }
   // Return intermediateContext to executionState.
   executionState->returnUniqueNodeContextPtr(node, std::move(ctx));
