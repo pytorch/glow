@@ -3172,6 +3172,187 @@ TEST_F(OnnxImporterTest, importEqual) {
   EXPECT_EQ(CMPEQ->getResult().dims()[2], 1);
 }
 
+static void importLogical(const std::string &netFilename,
+                          llvm::ArrayRef<bool> LHS, llvm::ArrayRef<bool> RHS,
+                          llvm::ArrayRef<dim_t> LHSShape,
+                          llvm::ArrayRef<dim_t> RHSShape,
+                          llvm::ArrayRef<dim_t> outputShape,
+                          llvm::ArrayRef<bool> expectedValues) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  // Load the .onnxtxt model.
+  Type LHSType(ElemKind::BoolTy, LHSShape);
+  Type RHSType(ElemKind::BoolTy, RHSShape);
+  ONNXModelLoader onnxLD(netFilename, {"LHS", "RHS"}, {&LHSType, &RHSType}, *F);
+
+  // Get placeholder bindings
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  auto *LHSPH = mod.getPlaceholderByNameSlow("LHS");
+  auto *LHSTensor = bindings.allocate(LHSPH);
+  LHSTensor->getHandle<bool>() = LHS;
+  auto *RHSPH = mod.getPlaceholderByNameSlow("RHS");
+  auto *RHSTensor = bindings.allocate(RHSPH);
+  RHSTensor->getHandle<bool>() = RHS;
+
+  // Compile and run graph
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+  auto result = bindings.get(graphOutputVar)->getHandle<bool>();
+
+  // Validate results
+  ASSERT_TRUE(result.dims() == (llvm::ArrayRef<dim_t>)outputShape);
+  for (size_t i = 0; i < result.getType().size(); i++) {
+    EXPECT_EQ(result.raw(i), (bool)expectedValues[i]);
+  }
+}
+
+/// Test "and" operation of dimensions 4
+TEST_F(OnnxImporterTest, importLogicAnd) {
+  llvm::SmallVector<bool, 12> LHS = {true,  true,  false, false, true, true,
+                                     false, false, false, false, true, true};
+  llvm::SmallVector<bool, 12> RHS = {true,  true, false, true, false, true,
+                                     false, true, true,  true, true,  true};
+  std::vector<dim_t> LHSShape = {1, 2, 3, 2};
+  std::vector<dim_t> RHSShape = {1, 2, 3, 2};
+  std::vector<dim_t> outputShape = {1, 2, 3, 2};
+  llvm::SmallVector<bool, 12> expectedValues = {true,  true,  false, false,
+                                                false, true,  false, false,
+                                                false, false, true,  true};
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/logicalAnd.onnxtxt");
+  importLogical(netFilename, LHS, RHS, LHSShape, RHSShape, outputShape,
+                expectedValues);
+}
+
+/// Test "broadcast and" of dimensions 4 and 2
+TEST_F(OnnxImporterTest, importLogicBcastAnd) {
+  llvm::SmallVector<bool, 12> LHS = {true,  true,  false, false, true, true,
+                                     false, false, false, false, true, true};
+  llvm::SmallVector<bool, 6> RHS = {false, true, true, true, true, false};
+  std::vector<dim_t> LHSShape = {1, 2, 3, 2};
+  std::vector<dim_t> RHSShape = {3, 2};
+  std::vector<dim_t> outputShape = {1, 2, 3, 2};
+  llvm::SmallVector<bool, 12> expectedValues = {false, true,  false, false,
+                                                true,  false, false, false,
+                                                false, false, true,  false};
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/logicalAndBcast.onnxtxt");
+  importLogical(netFilename, LHS, RHS, LHSShape, RHSShape, outputShape,
+                expectedValues);
+}
+
+/// Test "or" operation of dimensions 4
+TEST_F(OnnxImporterTest, importLogicOr) {
+  llvm::SmallVector<bool, 12> LHS = {true,  true,  false, false, true, true,
+                                     false, false, false, false, true, true};
+  llvm::SmallVector<bool, 12> RHS = {true,  true, false, true, false, true,
+                                     false, true, true,  true, true,  true};
+  std::vector<dim_t> LHSShape = {1, 2, 3, 2};
+  std::vector<dim_t> RHSShape = {1, 2, 3, 2};
+  std::vector<dim_t> outputShape = {1, 2, 3, 2};
+  llvm::SmallVector<bool, 12> expectedValues = {
+      true, true, false, true, true, true, false, true, true, true, true, true};
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/logicalOr.onnxtxt");
+  importLogical(netFilename, LHS, RHS, LHSShape, RHSShape, outputShape,
+                expectedValues);
+}
+
+/// Test "broadcast or" of dimensions 4 and 2
+TEST_F(OnnxImporterTest, importLogicBcastOr) {
+  llvm::SmallVector<bool, 12> LHS = {true,  true,  false, false, true, true,
+                                     false, false, false, false, true, true};
+  llvm::SmallVector<bool, 6> RHS = {false, true, true, true, true, false};
+  std::vector<dim_t> LHSShape = {1, 2, 3, 2};
+  std::vector<dim_t> RHSShape = {3, 2};
+  std::vector<dim_t> outputShape = {1, 2, 3, 2};
+  llvm::SmallVector<bool, 12> expectedValues = {
+      true, true, true, true, true, true, false, true, true, true, true, true};
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/logicalOrBcast.onnxtxt");
+  importLogical(netFilename, LHS, RHS, LHSShape, RHSShape, outputShape,
+                expectedValues);
+}
+
+/// Test "xor" operation of dimensions 4
+TEST_F(OnnxImporterTest, importLogicXor) {
+  llvm::SmallVector<bool, 12> LHS = {true,  true,  false, false, true, true,
+                                     false, false, false, false, true, true};
+  llvm::SmallVector<bool, 12> RHS = {true,  true, false, true, false, true,
+                                     false, true, true,  true, true,  true};
+  std::vector<dim_t> LHSShape = {1, 2, 3, 2};
+  std::vector<dim_t> RHSShape = {1, 2, 3, 2};
+  std::vector<dim_t> outputShape = {1, 2, 3, 2};
+  llvm::SmallVector<bool, 12> expectedValues = {false, false, false, true,
+                                                true,  false, false, true,
+                                                true,  true,  false, false};
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/logicalXor.onnxtxt");
+  importLogical(netFilename, LHS, RHS, LHSShape, RHSShape, outputShape,
+                expectedValues);
+}
+
+/// Test "broadcast xor" of dimensions 4 and 2
+TEST_F(OnnxImporterTest, importLogicBcastXor) {
+  llvm::SmallVector<bool, 12> LHS = {true,  true,  false, false, true, true,
+                                     false, false, false, false, true, true};
+  llvm::SmallVector<bool, 6> RHS = {false, true, true, true, true, false};
+  std::vector<dim_t> LHSShape = {1, 2, 3, 2};
+  std::vector<dim_t> RHSShape = {3, 2};
+  std::vector<dim_t> outputShape = {1, 2, 3, 2};
+  llvm::SmallVector<bool, 12> expectedValues = {true,  false, true,  true,
+                                                false, true,  false, true,
+                                                true,  true,  false, true};
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/logicalXorBcast.onnxtxt");
+  importLogical(netFilename, LHS, RHS, LHSShape, RHSShape, outputShape,
+                expectedValues);
+}
+
+/// Test not operation
+TEST_F(OnnxImporterTest, importNot) {
+  llvm::SmallVector<bool, 12> X = {true,  true,  false, false, true, true,
+                                   false, false, false, false, true, true};
+  std::vector<dim_t> XShape = {1, 2, 3, 2};
+  std::vector<dim_t> YShape = {1, 2, 3, 2};
+  llvm::SmallVector<bool, 12> expectedValues = {false, false, true,  true,
+                                                false, false, true,  true,
+                                                true,  true,  false, false};
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/logicalNot.onnxtxt");
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+
+  // Load the .onnxtxt model.
+  Type XType(ElemKind::BoolTy, XShape);
+  ONNXModelLoader onnxLD(netFilename, {"X"}, {&XType}, *F);
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  auto *XPH = mod.getPlaceholderByNameSlow("X");
+  auto *XTensor = bindings.allocate(XPH);
+  XTensor->getHandle<bool>() = X;
+
+  // Compile and run the graph
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+
+  // Validate results
+  auto result = bindings.get(graphOutputVar)->getHandle<bool>();
+  ASSERT_TRUE(result.dims() == (llvm::ArrayRef<dim_t>)YShape);
+  for (size_t i = 0; i < result.getType().size(); i++) {
+    EXPECT_EQ(result.raw(i), (bool)expectedValues[i]);
+  }
+}
+
 /// Test loading NonZero from a ONNX model.
 static void testNonZero(llvm::StringRef name,
                         const std::vector<dim_t> &expectedDims,

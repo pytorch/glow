@@ -384,6 +384,14 @@ TEST(exporter, onnxModels) {
             std::string::npos ||
         name.find("convTransposeAsymmetric.onnxtxt") != std::string::npos ||
         name.find("NonZero.onnxtxt") != std::string::npos ||
+        name.find("logicalAnd.onnxtxt") != std::string::npos ||
+        name.find("logicalAndBcast.onnxtxt") != std::string::npos ||
+        name.find("logicalOrBcast.onnxtxt") != std::string::npos ||
+        name.find("logicalOr.onnxtxt") != std::string::npos ||
+        name.find("logicalXorBcast.onnxtxt") != std::string::npos ||
+        name.find("logicalXor.onnxtxt") != std::string::npos ||
+        name.find("logicalNot.onnxtxt") != std::string::npos ||
+
         name.find("simpleConvTransposePads.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeAutoPadValid.onnxtxt") !=
             std::string::npos ||

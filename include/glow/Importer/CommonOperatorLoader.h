@@ -1153,6 +1153,36 @@ protected:
     return Error::success();
   }
 
+  Error loadLogicalOps(llvm::StringRef typeName, const OpType &op) {
+    std::string opName = loadOperatorName(op);
+    NodeValue xNV;
+    ASSIGN_VALUE_OR_RETURN_ERR(xNV, getNodeValueByName(op.input(0)));
+    NodeValue yNV;
+    ASSIGN_VALUE_OR_RETURN_ERR(yNV, getNodeValueByName(op.input(1)));
+    constexpr int axis = -1;
+    Node *N = nullptr;
+    if (typeName == "And") {
+      N = G_->createNodeWithBroadcast<AndNode>(opName, axis, xNV, yNV);
+    } else if (typeName == "Or") {
+      N = G_->createNodeWithBroadcast<OrNode>(opName, axis, xNV, yNV);
+    } else if (typeName == "Xor") {
+      N = G_->createNodeWithBroadcast<XorNode>(opName, axis, xNV, yNV);
+    } else {
+      RETURN_ERR("Unsupported Logical Operator");
+    }
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
+    return Error::success();
+  }
+
+  Error loadNotOp(llvm::StringRef typeName, const OpType &op) {
+    std::string opName = loadOperatorName(op);
+    NodeValue xNV;
+    ASSIGN_VALUE_OR_RETURN_ERR(xNV, getNodeValueByName(op.input(0)));
+    Node *N = G_->createNot(opName, xNV);
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
+    return Error::success();
+  }
+
   using ProtobufLoader::ProtobufLoader;
 
   /// If operator type is supported, returns Expected<true> and creates new
@@ -1330,6 +1360,15 @@ protected:
       RETURN_IF_ERR(loadLess(op, dict));
       return true;
     }
+    if (typeName == "And" || typeName == "Or" || typeName == "Xor") {
+      RETURN_IF_ERR(loadLogicalOps(typeName, op));
+      return true;
+    }
+    if (typeName == "Not") {
+      RETURN_IF_ERR(loadNotOp(typeName, op));
+      return true;
+    }
+
     return false;
   }
 
