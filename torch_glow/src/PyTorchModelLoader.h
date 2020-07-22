@@ -584,6 +584,10 @@ private:
   /// \returns error on failure.
   Error loadFlatten(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::masked_fill node.
+  /// \returns error on failure.
+  Error loadMaskedFill(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch topK node.
   /// \returns error on failure.
   Error loadTopK(const torch::jit::Node *ptNode);
