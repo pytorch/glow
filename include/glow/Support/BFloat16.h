@@ -8,9 +8,8 @@
 namespace glow {
 
 /// Soft bfloat16.
-///
 /// This implementation uses single-precision floating point.
-class __attribute__((packed, aligned(2))) bfloat16 {
+class alignas(2) bfloat16 {
   uint16_t storage_;
 
 public:
