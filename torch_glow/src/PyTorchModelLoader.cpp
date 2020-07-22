@@ -642,6 +642,15 @@ struct FlattenInputs {
   };
 };
 
+/// Indexes of aten::masked_fill inputs.
+struct MaskedFillInputs {
+  enum {
+    input = 0,
+    mask = 1,
+    value = 2,
+  };
+};
+
 /// Indexes of aten::topk inputs.
 struct TopKInputs {
   enum {
@@ -803,6 +812,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::bmm"}, &PyTorchModelLoader::loadBmm},
       {{"aten::addmm"}, &PyTorchModelLoader::loadAddMM},
       {{"aten::flatten"}, &PyTorchModelLoader::loadFlatten},
+      {{"aten::masked_fill", "aten::masked_fill_"},
+       &PyTorchModelLoader::loadMaskedFill},
       {{"aten::prelu"}, &PyTorchModelLoader::loadPRelu},
       {{"aten::slice"}, &PyTorchModelLoader::loadSlice},
       {{"aten::softmax"}, &PyTorchModelLoader::loadSoftMax},
@@ -3520,6 +3531,48 @@ Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(in, getGlowNodeValueForValue(inputs[0]));
 
   return addValueMapping(outputs[0], in);
+}
+
+Error PyTorchModelLoader::loadMaskedFill(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      in, getGlowNodeValueForValue(inputs[MaskedFillInputs::input]));
+
+  glow::NodeValue mask;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      mask, getGlowNodeValueForValue(inputs[MaskedFillInputs::mask]));
+
+  size_t inSize = in.dims().size();
+  size_t maskSize = mask.dims().size();
+
+  RETURN_ERR_IF_NOT(
+      inSize >= maskSize,
+      strFormat("masked_fill must have inputs at least as large as mask got "
+                "input of size %zu and mask of size %zu",
+                inSize, maskSize));
+
+  size_t maskBroadcastAxis = inSize - maskSize;
+  if (maskBroadcastAxis > 0) {
+    mask = F_.createBroadcast("broadcast", mask, in.dims(), maskBroadcastAxis)
+               ->getNthResult(0);
+  }
+
+  float value;
+  ASSIGN_VALUE_OR_RETURN_ERR(value, iValToDouble(getGlowIValueForValue(
+                                        inputs[MaskedFillInputs::value])));
+
+  auto valueSplat =
+      F_.createSplat("masked_fill_value",
+                     F_.getParent()->uniqueType(ElemKind::FloatTy, in.dims()),
+                     value)
+          ->getResult();
+
+  auto out = F_.createSelect("masked_fill", mask, valueSplat, in);
+  return addValueMapping(outputs[0], out);
 }
 
 Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
