@@ -666,10 +666,10 @@ static bool acceptsAnyInputLayout(const glow::Node *node) {
   case Kinded::Kind::SliceNodeKind:
   case Kinded::Kind::TileNodeKind:
   case Kinded::Kind::InsertTensorNodeKind:
-  case Kinded::Kind::SGDNodeKind: {
+  case Kinded::Kind::SGDNodeKind:
     return true;
-  }
-  default: { return false; }
+  default:
+    return false;
   }
 }
 
