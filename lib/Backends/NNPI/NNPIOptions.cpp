@@ -18,6 +18,7 @@
 #include "nnpi_transformer.h"
 #include "nnpi_transformer_types.h"
 #include <cstdio>
+#include <fstream>
 #include <glog/logging.h>
 #include <sstream>
 
@@ -96,6 +97,29 @@ llvm::StringMap<std::string> NNPIOptions::getSupportedOptions() {
   return supportedOptions_;
 }
 
+unsigned NNPIOptions::getFirstDeviceSteppingVersion() {
+  std::ifstream inFile;
+  constexpr char stepLoc[] = "/sys/class/nnpi/nnpi0/card_stepping";
+  inFile.open(stepLoc);
+  if (!inFile.good() || inFile.eof()) {
+    LOG(INFO) << "Could not find device stepping at " << stepLoc;
+    return 0;
+  }
+
+  // Only value in the file should be a single int for which step we're using.
+  std::string stepping;
+  getline(inFile, stepping);
+  inFile.close();
+
+  int devVer = NNPIOptions::getStringAsType<int>(stepping);
+  if (devVer < 0) {
+    // Not a valid stepping (must be a string with non negative integer).
+    return 0;
+  }
+  // Stepping is off by one vs. deviceVersion.
+  return devVer + 1;
+}
+
 void NNPICompilationOptions::setLogLevel(int logLevel) {
   // We have only one log level for NNPI compilation. Setting it will change
   // the level for all compilation instances.
@@ -138,4 +162,11 @@ void NNPICompilationOptions::setLogLevel(int logLevel) {
   logStream.writeCallback = messagesWriteHandler;
   nnpiSetLogStream(&logStream);
   logStreamSet = true;
+}
+
+void NNPICompilationOptions::trySetDeviceVersion() {
+  int deviceVer = NNPIOptions::getFirstDeviceSteppingVersion();
+  if (deviceVer > 0) {
+    this->deviceVersion.setVal(deviceVer);
+  }
 }

@@ -148,7 +148,6 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   // General math fp32/fp16/i8.
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::SubNodeKind:
-  case Kinded::Kind::MulNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
   case Kinded::Kind::PowNodeKind:
@@ -168,11 +167,14 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
-
+  case Kinded::Kind::ModuloNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
+  case Kinded::Kind::MulNodeKind:
   case Kinded::Kind::LayerNormalizationNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
-
+  case Kinded::Kind::SwishNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
   case Kinded::Kind::BatchNormalizationNodeKind:
   case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:
@@ -541,11 +543,20 @@ bool NNPIBackend::shouldLower(const Node *N) const {
     return false;
   case Kinded::Kind::SparseLengthsSumNodeKind:
     // WA - lower until ICE-T implements it.
-    if (NNPIBackend::backendOptions_.useIceT ||
-        NNPIBackend::backendOptions_.inferOnDevice) {
-      return true;
+    {
+      const SparseLengthsSumNode *SLS = llvm::cast<SparseLengthsSumNode>(N);
+      if ((NNPIBackend::backendOptions_.useIceT ||
+           NNPIBackend::backendOptions_.inferOnDevice) &&
+          ((SLS->getResult().getElementType() == ElemKind::FloatTy) ||
+           (SLS->getResult().getElementType() == ElemKind::Int8QTy))) {
+        return true;
+      }
     }
     return false;
+  case Kinded::Kind::SwishNodeKind: {
+    NodeInfo NI(*N);
+    return !NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
+  }
   default:
     return true;
   }
