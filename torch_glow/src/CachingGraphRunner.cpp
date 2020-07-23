@@ -582,13 +582,24 @@ Error CachingGraphRunner::run(torch::jit::Stack &stack) {
 }
 
 Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
-  size_t hash = hashTensorStack(stack, graph_->inputs().size(), this);
-  std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
-  auto it = perGlowGraphInfoMap_.find(hash);
-  if (it == perGlowGraphInfoMap_.end()) {
-    return MAKE_ERR(strFormat("No compiled graph found for hash: %lu", hash));
+  std::shared_ptr<PerGlowGraphInfo> info;
+  if (useMaxSizeCompilation_) {
+    std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
+    if (perGlowGraphInfoMap_.size() != 1) {
+      return MAKE_ERR(strFormat(
+          "There should be one and only one compiled graph, but got %lu",
+          perGlowGraphInfoMap_.size()));
+    }
+    info = perGlowGraphInfoMap_.begin()->second;
+  } else {
+    size_t hash = hashTensorStack(stack, graph_->inputs().size(), this);
+    std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
+    auto it = perGlowGraphInfoMap_.find(hash);
+    if (it == perGlowGraphInfoMap_.end()) {
+      return MAKE_ERR(strFormat("No compiled graph found for hash: %lu", hash));
+    }
+    info = it->second;
   }
-  std::shared_ptr<PerGlowGraphInfo> info = it->second;
 
   std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
   TraceContext *traceContext = nullptr;
@@ -610,7 +621,8 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
 }
 
 Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
-                                    const PyTorchLoaderSettings &settings) {
+                                    const PyTorchLoaderSettings &settings,
+                                    bool useMaxSizeCompilation) {
   if (!hostManager_) {
     return MAKE_ERR("Host manager is null!");
   }
@@ -641,8 +653,14 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
   // 2) HostManager mapping a functionName to a Glow function.
   // The input-based hash is combined with the pointer to this runner to
   // produce a unique mapping for HostManager.
-  torch::jit::Stack fakeStack = createFakeStackFromInputMeta(inputMeta);
-  size_t hash = hashTensorStack(fakeStack, inputMeta.size(), this);
+  size_t hash;
+  if (useMaxSizeCompilation) {
+    useMaxSizeCompilation_ = true;
+    hash = reinterpret_cast<size_t>(this);
+  } else {
+    torch::jit::Stack fakeStack = createFakeStackFromInputMeta(inputMeta);
+    hash = hashTensorStack(fakeStack, inputMeta.size(), this);
+  }
   {
     std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
     if (perGlowGraphInfoMap_.find(hash) != perGlowGraphInfoMap_.end()) {
@@ -650,7 +668,6 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
           strFormat("There is already a compiled graph for hash: %lu", hash));
     }
   }
-
   auto info = std::make_shared<PerGlowGraphInfo>(
       strFormat("pt_function_%lu", hash), settings);
 
