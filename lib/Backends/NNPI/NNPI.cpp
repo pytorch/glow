@@ -665,6 +665,19 @@ static void setupBasicParallelizationConfigs(
       continue;
     }
 
+    // Split Concat layers.
+    if (auto *CN = llvm::dyn_cast<ConcatNode>(node)) {
+      if (CN->getDim() == 0) {
+        parOpts[CN] = ParallelTransformKind::Data;
+      } else if (CN->getDim() == 1) {
+        parOpts[CN] = ParallelTransformKind::Model;
+      } else {
+        continue;
+      }
+      numChunks[CN] = numParallelChunks;
+      continue;
+    }
+
     // Split LayerNorm layers in data parallel fashion
     if (auto *LN = llvm::dyn_cast<LayerNormalizationNode>(node)) {
       if (LN->getInput().dims().size() < 2) {
@@ -1177,8 +1190,15 @@ NNPIBackend::transformPostOptPipeline(Function *F,
     // parallelization we performed on quantizes/dequantizes.
     auto P = getOptimizationPipeline();
     P->removeAllInstancesOfPass(FunctionPassID::SinkConversions);
+
+    // Do not re-merge ConcatNodes, as we may be parallelizing them.
+    const bool restoreMerge = cctx.optimizationOpts.skipConcatMerging;
+    cctx.optimizationOpts.skipConcatMerging = true;
+
     FunctionPassManager("NNPI_transformPostOptPipeline", std::move(P), this)
         .run(F, cctx);
+
+    cctx.optimizationOpts.skipConcatMerging = restoreMerge;
   }
   return parallelized;
 }

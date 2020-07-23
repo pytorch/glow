@@ -175,6 +175,9 @@ struct OptimizationOptions {
 
   /// If true, optimizations are allowed to change quantization scale/offset.
   bool enableQuantParamChanges{false};
+
+  /// If true, ConcatNodes will not be merged during the optimizer.
+  bool skipConcatMerging{false};
 };
 
 /// Meta information produced during the compilation. Whereas the compile
