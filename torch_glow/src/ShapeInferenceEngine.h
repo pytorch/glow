@@ -65,6 +65,10 @@ private:
   /// Store shapes of all the outputs in a graph.
   std::vector<std::vector<int64_t>> outputShape_;
 
+  /// Offset flag for aten::embedding_bag and embedding_bag_byte_rowwise_offsets
+  /// In Glow, \p hasEndOffset_ always true
+  static bool const hasEndOffset_ = true;
+
   /// Print shapeMap_ as format:
   /// %5: [2 4]
   void printShapeMap();
@@ -108,8 +112,6 @@ private:
   static Expected<std::vector<int64_t>> reshape(const MetaStack &variableMetas);
   // Shape inference for aten::slice
   static Expected<std::vector<int64_t>> slice(const MetaStack &variableMetas);
-
-  /// TODO: To be extended
   // Shape inference for aten::transpose
   static Expected<std::vector<int64_t>>
   transpose(const MetaStack &variableMetas);
