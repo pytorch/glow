@@ -131,6 +131,73 @@ TEST_P(TensorLayoutTest, convertTo) {
   EXPECT_TRUE(verifyLayouts(*F_, CanonicalTensorLayout::getInstance()));
 }
 
+static void buildFunctionWithCustomTensorLayouts(PlaceholderBindings &bindings,
+                                                 Module &mod, Function *F) {
+  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {2, 2, 3, 3}, "input",
+                                      false, "NCHW");
+  auto IH = bindings.allocate(input)->getHandle();
+  IH = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+
+  MaxPoolNode *maxPool = F->createMaxPool("maxpool", input, 1, 1, 0);
+  auto outTy = mod.uniqueType(
+      ElemKind::Int8QTy, maxPool->getNthResult(0).getType()->dims(), 1.0f, 0);
+  Node *Q = F->createQuantize("quantize", maxPool->getNthResult(0), outTy);
+  SaveNode *S = F->createSave("save", Q);
+  bindings.allocate(S->getPlaceholder());
+}
+
+/// Define a custom tensor layout. It gelegates all of the work to
+/// TensorLayoutCommonm, but redefines the logic for MaxPool and demands that it
+/// uses NCHW.
+class CustomTensorLayout final
+    : public TensorLayoutCommon,
+      public TensorLayoutSingleton<CustomTensorLayout> {
+public:
+  CustomTensorLayout(token_) {}
+  CustomTensorLayout(TensorLayoutCommon *ctxTensorLayout)
+      : TensorLayoutCommon(ctxTensorLayout) {}
+
+  std::string getDefaultNDLayout(unsigned dims) const override {
+    return CanonicalTensorLayout::getInstance().getDefaultNDLayout(dims);
+  }
+
+  std::string getNthInputLayoutRequirements(const Node *node,
+                                            size_t n) override {
+    // The custom layout uses NCHW for MaxPool nodes.
+    if (llvm::isa<MaxPoolNode>(node) && n == 0) {
+      return "NCHW";
+    }
+    return CanonicalTensorLayout(this).getNthInputLayoutRequirements(node, n);
+  }
+
+  std::string getNthResultLayoutRequirements(const Node *node,
+                                             size_t n) override {
+    // The custom layout uses NCHW for MaxPool nodes.
+    if (llvm::isa<MaxPoolNode>(node) && n == 0) {
+      return "NCHW";
+    }
+    return CanonicalTensorLayout(this).getNthResultLayoutRequirements(node, n);
+  }
+
+  bool acceptsAnyLayout(const Node *node) const { return true; }
+};
+
+// Check that proper TensorLayouts are used by getNthResultLayoutRequirements
+// and getNthInputLayoutRequirements during tensor layout verification.
+TEST_P(TensorLayoutTest, multiLayerWithCustomTensorLayouts) {
+  CHECK_IF_ENABLED();
+
+  buildFunctionWithCustomTensorLayouts(bindings_, mod_, F_);
+
+  // The test should fail with standard TensorLayout checks, because MaxPool
+  // uses NCHW.
+  EXPECT_FALSE(verifyLayouts(*F_, CanonicalTensorLayout::getInstance(), false));
+  // The test should pass with CustomTensorLayout checks, because MaxPool is
+  // expected to use NCHW.
+  EXPECT_TRUE(verifyLayouts(*F_, CustomTensorLayout::getInstance(), false));
+}
+
 // Check TensorLayoutDescription's parser with simple input.
 TEST_P(TensorLayoutTest, parseTestSimple) {
   CHECK_IF_ENABLED();
