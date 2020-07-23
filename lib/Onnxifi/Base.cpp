@@ -126,8 +126,10 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   }
 
   // Perform the normal optimization pipeline, returning an internal error if we
-  // encounter an issue during optimization.
+  // encounter an issue during optimization. Skip backend support checking
+  // because we check it next below via acceptForExecution().
   CompilationContext cctx;
+  cctx.optimizationOpts.skipBackendSupportCheck = true;
   auto optErr = glow::optimizeFunction(function, *glowBackend_, cctx);
   if (optErr) {
     LOG(ERROR) << "Error during glow::optimizeFunction():\n" +
