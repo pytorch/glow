@@ -17,6 +17,7 @@
 #include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/ExecutionContext/ExecutionContext.h"
+#include "glow/Runtime/ErrorReporter.h"
 
 #include <queue>
 #include <unordered_set>
@@ -253,9 +254,14 @@ void ThreadPoolExecutor::handleDeviceManagerResult(
     }
   } else if (err && err.peekErrorValue() &&
              err.peekErrorValue()->isFatalError()) {
-    LOG(FATAL) << "Non-recoverable device error: "
-               << err.peekErrorValue()->logToString();
+    std::string msg = err.peekErrorValue()->logToString();
+    auto reporters = ErrorReporterRegistry::ErrorReporters();
+    if (reporters) {
+      reporters->report(msg);
+    }
+    LOG(FATAL) << "Non-recoverable device error: " << msg;
   }
+
   // Return intermediateContext to executionState.
   executionState->returnUniqueNodeContextPtr(node, std::move(ctx));
 
