@@ -5087,11 +5087,19 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
 
   // We already started using backend specific verification when the function
   // state became lowered. Do one more verification pass to make sure everything
-  // is in order and to bail if it is not. Only do so if we are allowing
-  // constant modification, as otherwise we may have prevent a backend from
-  // supporting some Nodes. Expect the caller to verify later on in such cases.
-  if (!cctx.optimizationOpts.delayAndRecordConstantModification &&
-      !B.verify(*F, cctx.verboseCompile)) {
+  // is in order and to bail if it is not.
+  if (cctx.optimizationOpts.delayAndRecordConstantModification ||
+      cctx.optimizationOpts.skipBackendSupportCheck) {
+    // Only do verification without checking the backend's support if requested,
+    // or if we are disallowing constant modification (since this flag may have
+    // prevented a backend from supporting some Nodes, and may be supported
+    // after constant folding finishes). Expect the caller to verify that Nodes
+    // are supported by the backend later on in such cases.
+    RETURN_ERR_IF_NOT(F->verify(&B),
+                      "Verification after optimization failed for Function " +
+                          F->getName().str() + " and Backend " +
+                          B.getBackendName());
+  } else if (!B.verify(*F, cctx.verboseCompile)) {
     return MAKE_ERR(
         ErrorValue::ErrorCode::COMPILE_UNSUPPORTED_NODE_AFTER_OPTIMIZE,
         "Unsupported node(s) found after optimizing Function " +
