@@ -2351,13 +2351,14 @@ static NodeValue tryToOptimizeConcatOfRehapes(Function *F, ConcatNode *CN) {
 
 /// Simplify concat node.
 /// \returns a new simplified Concat node or nullptr.
-static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN) {
+static NodeValue simplifyConcatNode(Function *F, ConcatNode *CN,
+                                    const CompilationContext &cctx) {
   /// concat(dim1, concat(dim2, X, Y), Z) -> concat(dim1, X, Y, Z),
   /// but only if dim1 == dim2
 
   LOG_SCOPE(F->getLogContext(), "simplifyConcatNode")
 
-  {
+  if (!cctx.optimizationOpts.skipConcatMerging) {
     auto inputs = CN->getInputs();
     // Check if any of the inputs are ConcatNode.
     llvm::SmallVector<NodeValue, 16> newInputs;
@@ -2611,7 +2612,7 @@ bool OptimizeConcatNodes::run(Function *F, const CompilationContext &cctx) {
     if (!CN) {
       continue;
     }
-    NodeValue newCN = simplifyConcatNode(F, CN);
+    NodeValue newCN = simplifyConcatNode(F, CN, cctx);
     if (newCN.getNode()) {
       CN->getResult().replaceAllUsesOfWith(newCN);
       changed = true;
@@ -5261,6 +5262,39 @@ parallelizeAndReplaceNode(Function *F, Node *curNode, dim_t numOfChunksNode,
   return concat;
 }
 
+/// Specialized helper for parallelizing ConcatNode \p CN from \p F into
+/// \p numOfChunks.
+static Expected<ConcatNode *>
+parallelizeAndReplaceConcat(Function *F, ConcatNode *CN, dim_t numOfChunks) {
+  auto in = CN->getInputs();
+
+  const dim_t inputSize = in.size();
+  const dim_t elemPerChunk = inputSize / numOfChunks;
+  const dim_t remain = inputSize % numOfChunks;
+
+  RETURN_ERR_IF_NOT(
+      elemPerChunk > 0,
+      "When parallelizing a Concat, inputSize must be larger than numOfChunks");
+
+  auto startIt = in.begin();
+  std::vector<NodeValue> finalConcatInputs;
+  for (dim_t i = 0; i < numOfChunks; ++i) {
+    const dim_t sliceStart = i * elemPerChunk + std::min(i, remain);
+    const dim_t sliceEnd = sliceStart + elemPerChunk + ((i < remain) ? 1 : 0);
+
+    // Slice out the original Concat chunk's inputs, create a new Concat with
+    // the slice, and then add the new Concat to the final Concat's inputs.
+    std::vector<NodeValue> newInputs(startIt + sliceStart, startIt + sliceEnd);
+    ConcatNode *concatSlice = F->createConcat(CN->getName().str() + "_slice",
+                                              newInputs, CN->getDim());
+    finalConcatInputs.push_back(concatSlice);
+  }
+  ConcatNode *finalConcat = F->createConcat(CN->getName().str() + "_merge",
+                                            finalConcatInputs, CN->getDim());
+  CN->getResult().replaceAllUsesOfWith(finalConcat);
+  return finalConcat;
+}
+
 Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
     Function *F, const llvm::DenseMap<Node *, size_t> &numOfChunksMap,
     const llvm::DenseMap<Node *, ParallelTransformKind> &parOpts,
@@ -5383,6 +5417,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                                           TileNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::ConcatNodeKind: {
+        ConcatNode *concat = llvm::cast<ConcatNode>(curNode);
+        RETURN_ERR_IF_NOT(concat->getDim() == 0,
+                          "Expected to Data parallelize for concat on dim 0");
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceConcat(F, concat, curNumOfChunks));
+        break;
+      }
       case Kinded::Kind::LayerNormalizationNodeKind: {
         splitDims[LayerNormalizationNode::InputIdx] = 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
@@ -5471,6 +5513,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           TileNode::InputIdx,
                                           TileNode::ResultIdx, splitDims, 1));
+        break;
+      }
+      case Kinded::Kind::ConcatNodeKind: {
+        ConcatNode *concat = llvm::cast<ConcatNode>(curNode);
+        RETURN_ERR_IF_NOT(concat->getDim() == 1,
+                          "Expected to Model parallelize for concat on dim 1");
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceConcat(F, concat, curNumOfChunks));
         break;
       }
       case Kinded::Kind::QuantizeNodeKind: {
