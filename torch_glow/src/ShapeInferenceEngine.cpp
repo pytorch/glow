@@ -34,7 +34,7 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
 
   /// Get op symbol
   const auto kind = node->kind();
-
+  const std::string symbol = kind.toQualString();
   /// Extract shapes of inputs from shape mapping
   MetaStack inputMetas;
 
@@ -46,72 +46,78 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
   getNodeInputShape(node, inputMetas);
 
   // Get output shape or int value of the ops without actual computation
-  switch (kind) {
-  case c10::prim::Constant: {
-    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], primConstant(node));
-    break;
-  }
-  case c10::aten::tanh:
-  case c10::aten::relu:
-  case c10::aten::sigmoid: {
-    RETURN_ERR_IF_NOT(inputMetas.size() == 1,
-                      "Expected 1 input shape for operators.");
-    outputShapesOrValues[0] = inputMetas[0].shape;
-    break;
-  }
-  case c10::aten::sub:
-  case c10::aten::pow:
-  case c10::aten::mul:
-  case c10::aten::add: {
-    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], binaryOp(inputMetas));
-    break;
-  }
-  case c10::aten::mm: {
-    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], mm(inputMetas));
-    break;
-  }
-  case c10::aten::addmm: {
-    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], addmm(inputMetas));
-    break;
-  }
-  case c10::aten::bmm: {
-    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], bmm(inputMetas));
-    break;
-  }
-  case c10::prim::FusedConcat: {
+  if (symbol == "glow::fused_stack") {
     int64_t dim = node->i(at::attr::dim);
     ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
-                               fusedConcat(inputMetas, dim));
-    break;
-  }
-  case c10::prim::ConstantChunk: {
-    int64_t chunks = node->i(at::attr::chunks);
-    int64_t dim = node->i(at::attr::dim);
-    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues,
-                               constantChunk(inputMetas, chunks, dim));
-    break;
-  }
-  case c10::prim::ListConstruct: {
-    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
-                               listConstruct(inputMetas));
-    break;
-  }
-  case c10::aten::slice: {
-    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], slice(inputMetas));
-    break;
-  }
-  case c10::aten::reshape: {
-    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], reshape(inputMetas));
-    break;
-  }
-  case c10::aten::permute: {
-    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], permute(inputMetas));
-    break;
-  }
-  default: {
-    return MAKE_ERR(
-        strFormat("Node's operator %s is not supported", kind.toQualString()));
-  }
+                               fusedStack(inputMetas, dim));
+  } else {
+    switch (kind) {
+    case c10::prim::Constant: {
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], primConstant(node));
+      break;
+    }
+    case c10::aten::tanh:
+    case c10::aten::relu:
+    case c10::aten::sigmoid: {
+      RETURN_ERR_IF_NOT(inputMetas.size() == 1,
+                        "Expected 1 input shape for operators.");
+      outputShapesOrValues[0] = inputMetas[0].shape;
+      break;
+    }
+    case c10::aten::sub:
+    case c10::aten::pow:
+    case c10::aten::mul:
+    case c10::aten::add: {
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], binaryOp(inputMetas));
+      break;
+    }
+    case c10::aten::mm: {
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], mm(inputMetas));
+      break;
+    }
+    case c10::aten::addmm: {
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], addmm(inputMetas));
+      break;
+    }
+    case c10::aten::bmm: {
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], bmm(inputMetas));
+      break;
+    }
+    case c10::prim::FusedConcat: {
+      int64_t dim = node->i(at::attr::dim);
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
+                                 fusedConcat(inputMetas, dim));
+      break;
+    }
+    case c10::prim::ConstantChunk: {
+      int64_t chunks = node->i(at::attr::chunks);
+      int64_t dim = node->i(at::attr::dim);
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues,
+                                 constantChunk(inputMetas, chunks, dim));
+      break;
+    }
+    case c10::prim::ListConstruct: {
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
+                                 listConstruct(inputMetas));
+      break;
+    }
+    case c10::aten::slice: {
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], slice(inputMetas));
+      break;
+    }
+    case c10::aten::reshape: {
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], reshape(inputMetas));
+      break;
+    }
+    case c10::aten::permute: {
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], permute(inputMetas));
+      break;
+    }
+    default: {
+      return MAKE_ERR(strFormat("Node's operator %s is not supported",
+                                kind.toQualString()));
+    }
+    }
   }
 
   /// Put output into map
@@ -597,5 +603,39 @@ ShapeInferenceEngine::listConstruct(const MetaStack &variableMetas) {
     intValueList.emplace_back(ele.intValue[0]);
   }
   return intValueList;
+}
+
+/**
+ * glow::fused_stack[dim=1](Tensor self, Tensor mat1, Tensor mat2, ...)
+ * variableMetas: 0: self, 1: mat1, 2: mat2, ...
+ */
+Expected<std::vector<int64_t>>
+ShapeInferenceEngine::fusedStack(const MetaStack &variableMetas, int64_t dim) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() >= 1,
+      strFormat("Expected at least 1 inputs, got %zu.", variableMetas.size()));
+
+  if (variableMetas.size() == 1) {
+    return variableMetas[0].shape;
+  }
+  int64_t inDims = variableMetas[0].shape.size();
+  /// glow::fused_stack will add one more dim
+  if (dim < 0) {
+    dim += inDims + 1;
+  }
+  RETURN_ERR_IF_NOT(
+      dim < inDims + 1 && dim >= 0,
+      "Dim must be less than the rank of inputs plus the added dimension");
+
+  std::vector<int64_t> shape = variableMetas[0].shape;
+
+  for (auto eleShape : variableMetas) {
+    RETURN_ERR_IF_NOT(eleShape.shape == shape,
+                      "All inputs must have same shape");
+  }
+
+  shape.insert(shape.begin() + dim, variableMetas.size());
+  return shape;
 }
 } // namespace glow
