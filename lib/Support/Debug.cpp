@@ -41,9 +41,11 @@ namespace glow {
 /// Exported boolean set by -debug-glow option.
 bool DebugFlag = false;
 
+#ifndef NDEBUG
 bool isCurrentDebugType(const char *type) {
   return std::find(DebugGlowOnly.begin(), DebugGlowOnly.end(), type) !=
          DebugGlowOnly.end();
 }
+#endif
 
 } // namespace glow
