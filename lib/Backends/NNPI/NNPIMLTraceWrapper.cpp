@@ -52,7 +52,6 @@ static eIceCapsSwTraceEvent swEventTypes[] = {
     eIceCapsSwTraceEvent::ICE_CAPS_SW_EVENT_COPY,
     eIceCapsSwTraceEvent::ICE_CAPS_SW_EVENT_CPYLIST_CREATE,
     eIceCapsSwTraceEvent::ICE_CAPS_SW_EVENT_ICE_DRV,
-    eIceCapsSwTraceEvent::ICE_CAPS_SW_EVENT_INFR_SUBRES,
     eIceCapsSwTraceEvent::ICE_CAPS_SW_EVENT_INFR_CREATE,
     eIceCapsSwTraceEvent::ICE_CAPS_SW_EVENT_INFR_REQ,
     eIceCapsSwTraceEvent::ICE_CAPS_SW_EVENT_RUNTIME,
@@ -148,8 +147,16 @@ bool NNPITraceContext::readTraceOutput() {
     }
 
     // Set parameters.
-    traceEntry.params["name"] = entry.event_name;
-    traceEntry.params["state"] = entry.state;
+    if (entry.event_name) {
+      traceEntry.params["name"] = std::string(entry.event_name);
+    } else {
+      traceEntry.params["name"] = "NA";
+    }
+    std::string state = "NA";
+    if (entry.state) {
+      state = std::string(entry.state);
+    }
+
     traceEntry.hostTime = entry.timestamp;
     traceEntry.engineTime = entry.engine_timestamp;
     traceEntry.params["engine"] =
@@ -167,9 +174,15 @@ bool NNPITraceContext::readTraceOutput() {
     }
 
     traceEntry.params["core_id"] = std::to_string(entry.core_id);
-    traceEntry.params["network_name"] = entry.network_name;
-    traceEntry.params["kernel_name"] = entry.kernel_name;
-    traceEntry.params["opcode"] = entry.opcode;
+    if (entry.network_name) {
+      traceEntry.params["network_name"] = std::string(entry.network_name);
+    }
+    if (entry.kernel_name) {
+      traceEntry.params["kernel_name"] = std::string(entry.kernel_name);
+    }
+    if (entry.opcode) {
+      traceEntry.params["opcode"] = std::string(entry.opcode);
+    }
 
     std::stringstream params;
     for (size_t p = 0; p < entry.params_count; p++) {
@@ -181,22 +194,21 @@ bool NNPITraceContext::readTraceOutput() {
                      << mlStatus;
         break;
       }
-      traceEntry.params[param.name] = param.value;
+      traceEntry.params[param.name] = std::string(param.value);
       params << param.name << ":" << param.value << ", ";
     }
 
-    if (entry.state == "created" || entry.state == "queued" ||
-        entry.state == "req" || entry.state == "add") {
-      entry.state = "q";
-    } else if (entry.state == "executed" || entry.state == "cbs" ||
-               entry.state == "start") {
-      entry.state = "s";
-    } else if (entry.state == "completed" || entry.state == "cbc") {
-      entry.state = "c";
+    if (state == "created" || state == "queued" || state == "req" ||
+        state == "add") {
+      state = "q";
+    } else if (state == "executed" || state == "cbs" || state == "start") {
+      state = "s";
+    } else if (state == "completed" || state == "cbc") {
+      state = "c";
     }
-    traceEntry.params["state"] = entry.state;
+    traceEntry.params["state"] = state;
     entries_.push_back(traceEntry);
-    if (entry.event_name == "user_data") {
+    if (traceEntry.params["name"] == "user_data") {
       if (!started && traceEntry.params["key"] == "BG") {
         glowStart = std::stol(traceEntry.params["user_data"]);
         deviceStart = entry.engine_timestamp;

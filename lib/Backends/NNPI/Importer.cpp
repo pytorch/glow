@@ -1022,6 +1022,23 @@ public:
   }
 };
 
+class SwishNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowSwish = llvm::dyn_cast<SwishNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowSwish, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors({nodeValueName(glowSwish->getInput())},
+                            {nodeValueName(glowSwish->getResult())});
+
+    return nnpiNetworkAddSwishOp(importer.getNetwork(),
+                                 glowSwish->getName().begin(),
+                                 nodeValueName(glowSwish->getInput()).c_str(),
+                                 nodeValueName(glowSwish->getResult()).c_str());
+  }
+};
+
 class TanhNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -1332,8 +1349,7 @@ public:
         nodeValueName(glowSLS->getResult()).c_str(), NULL,
         nodeValueName(glowSLS->getIndices()).c_str(),
         nodeValueName(glowSLS->getLengths()).c_str(), false, false,
-        glowSLS->getAvgLength(), lengthType,
-        /* force to IA */ false);
+        glowSLS->getAvgLength(), lengthType);
   }
 };
 
@@ -1366,8 +1382,7 @@ public:
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
         nodeValueName(glowSLWS->getLengths()).c_str(), false, false,
-        glowSLWS->getAvgLength(), lengthType,
-        /* force to IA */ false);
+        glowSLWS->getAvgLength(), lengthType);
   }
 };
 
@@ -1406,8 +1421,7 @@ public:
         nodeValueName(glowEmbeddingBag->getWeights()).c_str(),
         nodeValueName(glowEmbeddingBag->getIndices()).c_str(),
         nodeValueName(glowEmbeddingBag->getOffsets()).c_str(), false, true,
-        glowEmbeddingBag->getAvgLength(), lengthType,
-        /* force to IA */ false);
+        glowEmbeddingBag->getAvgLength(), lengthType);
   }
 };
 
@@ -1450,8 +1464,7 @@ public:
         nodeValueName(glowEBBRO->getWeights()).c_str(),
         nodeValueName(glowEBBRO->getIndices()).c_str(),
         nodeValueName(glowEBBRO->getOffsets()).c_str(), usFp32Accum, true,
-        glowEBBRO->getAvgLength(), lengthType,
-        /* force to IA */ false);
+        glowEBBRO->getAvgLength(), lengthType);
   }
 };
 
@@ -1777,8 +1790,7 @@ public:
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
         nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, false,
-        glowSLWS->getAvgLength(), lengthType,
-        /* force to IA */ false);
+        glowSLWS->getAvgLength(), lengthType);
   }
 };
 
@@ -1814,8 +1826,7 @@ public:
         nodeValueName(glowSLWS->getResult()).c_str(), NULL,
         nodeValueName(glowSLWS->getIndices()).c_str(),
         nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, false,
-        glowSLWS->getAvgLength(), lengthType,
-        /* force to IA */ false);
+        glowSLWS->getAvgLength(), lengthType);
   }
 };
 
@@ -1853,8 +1864,7 @@ public:
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
         nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, false,
-        glowSLWS->getAvgLength(), lengthType,
-        /* force to IA */ false);
+        glowSLWS->getAvgLength(), lengthType);
   }
 };
 
@@ -2087,6 +2097,28 @@ public:
         nodeValueName(glowLogit->getResult()).c_str(), glowLogit->getEpsilon());
   }
 };
+
+class ModuloNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowModulo = llvm::dyn_cast<ModuloNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowModulo, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors({nodeValueName(glowModulo->getInput())},
+                            {nodeValueName(glowModulo->getResult())});
+    auto divisor = glowModulo->getDivisor();
+    LOG_AND_RETURN_IF(ERROR, ((divisor < INT_MIN) || (divisor > INT_MAX)),
+                      "Divisor out of int32 range!", NNPI_INVALID_PARAM);
+
+    return nnpiNetworkAddModuloOp(
+        importer.getNetwork(), glowModulo->getName().begin(),
+        nodeValueName(glowModulo->getInput()).c_str(),
+        nodeValueName(glowModulo->getResult()).c_str(), (int32_t)divisor,
+        glowModulo->getSignFollowDivisor() ? 1 : 0);
+  }
+};
+
 //////////////////////////////////////////////////////////////////////////
 namespace {
 std::unordered_map<
@@ -2188,6 +2220,8 @@ std::unordered_map<
     {"EmbeddingBagByteRowwiseOffsets",
      glow::make_unique<EmbeddingBagByteRowwiseOffsetsNodeImporter>()},
     {"Logit", glow::make_unique<LogitNodeImporter>()},
+    {"Modulo", glow::make_unique<ModuloNodeImporter>()},
+    {"Swish", glow::make_unique<SwishNodeImporter>()},
 };
 }
 

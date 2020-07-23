@@ -22,7 +22,6 @@
 
 #include "glow/Backend/BackendUtils.h"
 
-#include <fstream>
 #include <sstream>
 
 #include "llvm/ADT/StringSet.h"
@@ -37,31 +36,6 @@ extern bool GlowUsePerPartitionIcetConfig;
 } // namespace onnxifi
 } // namespace glow
 
-/// Looks for device stepping and sets it if possible in \p compilationOptions.
-static void trySetDeviceVersion(NNPICompilationOptions &compilationOptions) {
-  std::ifstream inFile;
-  constexpr char stepLoc[] = "/sys/class/nnpi/nnpi0/card_stepping";
-  inFile.open(stepLoc);
-  if (!inFile.good() || inFile.eof()) {
-    LOG(INFO) << strFormat("Could not find device steppping at %s\n", stepLoc);
-    return;
-  }
-
-  // Only value in the file should be a single int for which step we're using.
-  std::string stepping;
-  getline(inFile, stepping);
-  inFile.close();
-
-  auto devVerOrErr = getIntFromStr(stepping);
-  if (ERR_TO_BOOL(devVerOrErr.takeError(), /* log */ false)) {
-    LOG(INFO) << strFormat("Invalid value for stepping at %s: '%s'\n", stepLoc,
-                           stepping.data());
-    return;
-  }
-  // Stepping is off by one vs. deviceVersion.
-  compilationOptions.deviceVersion.setVal(*devVerOrErr + 1);
-}
-
 /// Update device network config from the compilation config
 static NNPIDeviceNetworkConfig parseDeviceNetworkConfig(
     const glow::NNPICompilationOptions &compilationOptions) {
@@ -74,8 +48,6 @@ static NNPIDeviceNetworkConfig parseDeviceNetworkConfig(
   cfg.pnpHints.iceBOFrequencyPrio[3] = compilationOptions.iceBOPrio3;
   cfg.pnpHints.iceBOFrequencyPrio[4] = compilationOptions.iceBOPrio4;
   cfg.pnpHints.iceBOFrequencyPrio[5] = compilationOptions.iceBOPrio5;
-  cfg.pnpHints.IAFrequencyPrio[0] = compilationOptions.iaPrio0;
-  cfg.pnpHints.IAFrequencyPrio[1] = compilationOptions.iaPrio1;
   cfg.pnpHints.DDRBandwidth = compilationOptions.ddrBandwidth;
   return cfg;
 }
@@ -94,7 +66,7 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   // Handle device version.
   if (compilationOptions.inferOnDevice &&
       compilationOptions.deviceVersion == -1) {
-    trySetDeviceVersion(compilationOptions);
+    compilationOptions.trySetDeviceVersion();
   }
 
   if (compilationOptions.deviceVersion > 0) {
