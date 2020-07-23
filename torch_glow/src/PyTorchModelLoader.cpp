@@ -3584,28 +3584,51 @@ Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       in, getGlowNodeValueForValue(inputs[FlattenInputs::input]));
 
+  auto inDims = in.dims();
+
   int64_t startDimRaw;
   ASSIGN_VALUE_OR_RETURN_ERR(
       startDimRaw,
       iValToInt(getGlowIValueForValue(inputs[FlattenInputs::start_dim])));
   int64_t startDim;
   ASSIGN_VALUE_OR_RETURN_ERR(startDim,
-                             getPositiveIndex(startDimRaw, in.dims().size()));
+                             getPositiveIndex(startDimRaw, inDims.size()));
 
   int64_t endDimRaw;
   ASSIGN_VALUE_OR_RETURN_ERR(endDimRaw, iValToInt(getGlowIValueForValue(
                                             inputs[FlattenInputs::end_dim])));
-
   int64_t endDim;
   ASSIGN_VALUE_OR_RETURN_ERR(endDim,
-                             getPositiveIndex(endDimRaw, in.dims().size()));
+                             getPositiveIndex(endDimRaw, inDims.size()));
 
-  auto xDim = glow::flattenCdr(in.dims(), startDim);
-  auto *glowNode = F_.createReshape("flatten", in, {xDim.first, xDim.second});
+  RETURN_ERR_IF_NOT(
+      startDim <= endDim,
+      strFormat("start_dim (%d) must be less than or equal to end_dim (%d)",
+                int(startDimRaw), int(endDimRaw)));
+
+  std::vector<dim_t> outDims;
+
+  for (auto i = 0; i < startDim; ++i) {
+    outDims.push_back(inDims[i]);
+  }
+
+  // Note that the range from startDim to endDim is inclusive
+  dim_t flattenedDims = 1;
+  for (auto i = startDim; i <= endDim; ++i) {
+    flattenedDims *= inDims[i];
+  }
+
+  outDims.push_back(flattenedDims);
+
+  for (auto i = endDim + 1; i < inDims.size(); ++i) {
+    outDims.push_back(inDims[i]);
+  }
+
+  auto res = F_.createReshape("flatten", in, outDims)->getResult();
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[FlattenInputs::input]));
-  return addValueMapping(outputs[0], glowNode->getResult(), dtype);
+  return addValueMapping(outputs[0], res, dtype);
 }
 
 Error PyTorchModelLoader::loadTopK(const torch::jit::Node *ptNode) {
