@@ -440,7 +440,8 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr) {
 
   auto inputMeta = glow::loadInputMeta(inputMetaStr);
 
-  auto e = runner->warmCache(*inputMeta, runner->getSettings());
+  auto e = runner->warmCache(*inputMeta, runner->getSettings(),
+                             /*useMaxSizeCompilation*/ true);
   if (e) {
     // If the graph is already compiled previously, warmCache() will report
     // an error but it is fine with our execution. So here we extract the
