@@ -50,6 +50,9 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
     int64_t dim = node->i(at::attr::dim);
     ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
                                fusedStack(inputMetas, dim));
+  } else if (symbol == "fb::embedding_bag_byte_rowwise_offsets") {
+    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
+                               embeddingBagByteRowwiseOffsets(inputMetas));
   } else {
     switch (kind) {
     case c10::prim::Constant: {
@@ -113,6 +116,11 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], permute(inputMetas));
       break;
     }
+    case c10::aten::embedding_bag: {
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
+                                 embeddingBag(inputMetas));
+      break;
+    }
     default: {
       return MAKE_ERR(strFormat("Node's operator %s is not supported",
                                 kind.toQualString()));
@@ -128,6 +136,10 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
   /// For \p prim::ListConstruct, the output is a intList.
   /// Store the shape of \p outputShapesOrValues into VariableMeta.shape
   /// store the value of \p outputShapesOrValues into VariableMeta.intValue
+  /// For \p aten::embedding_bag, since the output is a std::tuple<Tensor,
+  /// Tensor, Tensor, Tensor>(ret, offset2bag, bag_size, bag_size), and for now,
+  /// only the ret tensor shape needed, the embeddingBag() only generate the ret
+  /// shape.
   if (kind == c10::prim::Constant) {
     if (node->output()->type()->isSubtypeOf(at::TensorType::get())) {
       shapeMap_[node->output()].shape = std::move(outputShapesOrValues[0]);
@@ -139,6 +151,8 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
     shapeMap_[node->output()].shape = {
         static_cast<long>(outputShapesOrValues[0].size()), 1};
     shapeMap_[node->output()].intValue = std::move(outputShapesOrValues[0]);
+  } else if (kind == c10::aten::embedding_bag) {
+    shapeMap_[node->output(0)].shape = std::move(outputShapesOrValues[0]);
   } else {
     for (int i = 0; i < node->outputs().size(); i++) {
       shapeMap_[node->output(i)].shape = std::move(outputShapesOrValues[i]);
@@ -636,6 +650,71 @@ ShapeInferenceEngine::fusedStack(const MetaStack &variableMetas, int64_t dim) {
   }
 
   shape.insert(shape.begin() + dim, variableMetas.size());
+  return shape;
+}
+
+/**
+ * aten::_embedding_bag(Tensor weight,
+ *                      Tensor indices,
+ *                      Tensor offsets,
+ *                      bool scale_grad_by_freq=False,
+ *                      int mode=0,
+ *                      bool sparse=False,
+ *                      Tensor? per_sample_weights=None,
+ *                      bool include_last_offset=False)
+ *                      -> (Tensor, Tensor, Tensor, Tensor)
+ */
+/// Since the first output tensor is the result, and we only need the shape of
+/// result Return the shape of the first tensor only
+/// In glow, the include_last_offset is always True.
+Expected<std::vector<int64_t>>
+ShapeInferenceEngine::embeddingBag(const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 8,
+      strFormat("Expected 8 inputs, got %zu.", variableMetas.size()));
+
+  std::vector<int64_t> shape;
+
+  if (variableMetas[1].shape.size() == 1) {
+    RETURN_ERR_IF_NOT(variableMetas[2].shape.size() == 1,
+                      strFormat("Expected 1D offset, got %zu.",
+                                variableMetas[2].shape.size()));
+    shape = {variableMetas[2].shape[0] - static_cast<int>(hasEndOffset_),
+             variableMetas[0].shape[1]};
+  } else if (variableMetas[1].shape.size() == 2) {
+    shape = {variableMetas[1].shape[0], variableMetas[0].shape[1]};
+  } else {
+    return MAKE_ERR("Only support 1D and 2D Input in Embedding bag.");
+  }
+  return shape;
+}
+
+/**
+ * fb::embedding_bag_byte_rowwise_offsets(Tensor weight,
+ *                                        Tensor indices,
+ *                                        Tensor offsets,
+ *                                        bool scale_grad_by_freq=False,
+ *                                        int mode=0,
+ *                                        bool sparse=False,
+ *                                        Tensor? per_sample_weights=None,
+ *                                        bool include_last_offset=True)
+ *                                        -> Tensor;
+ */
+/// In glow, the include_last_offset is always True.
+Expected<std::vector<int64_t>>
+ShapeInferenceEngine::embeddingBagByteRowwiseOffsets(
+    const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 8,
+      strFormat("Expected 8 inputs, got %zu.", variableMetas.size()));
+
+  /// variableMetas[0].shape[1] - 8 is to account for scale and bias
+  /// 4-byte scale, 4-byte zero_offset
+  std::vector<int64_t> shape = {variableMetas[2].shape[0] -
+                                    static_cast<int>(hasEndOffset_),
+                                variableMetas[0].shape[1] - 8};
   return shape;
 }
 } // namespace glow
