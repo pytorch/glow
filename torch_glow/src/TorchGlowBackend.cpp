@@ -439,7 +439,8 @@ TorchGlowBackend::compile(c10::IValue processed,
             *c10::IValue(elem).toCustomClass<GlowCompileSpec>());
 
         // Compile
-        auto e = runner->warmCache(inputMeta, runner->getSettings());
+        auto e = runner->warmCache(inputMeta, runner->getSettings(),
+                                   /*useMaxSizeCompilation*/ false);
         CHECK(!(bool)e) << ERR_TO_STRING(std::move(e));
       }
 
