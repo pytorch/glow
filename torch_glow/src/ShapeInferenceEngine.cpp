@@ -1,5 +1,6 @@
 // Copyright 2004-present Facebook. All Rights Reserved.
 
+#include <ATen/WrapDimUtils.h>
 #include <iostream>
 #include <string>
 #include <torch/script.h>
@@ -84,6 +85,15 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
     }
     case c10::aten::bmm: {
       ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], bmm(inputMetas));
+      break;
+    }
+    case c10::aten::transpose: {
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
+                                 transpose(inputMetas));
+      break;
+    }
+    case c10::aten::flatten: {
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], flatten(inputMetas));
       break;
     }
     case c10::prim::FusedConcat: {
@@ -394,6 +404,82 @@ ShapeInferenceEngine::addmm(const MetaStack &variableMetas) {
   }
 
   return binaryOp({t0, std::move(t)});
+}
+
+/**
+ * aten::transpose(Tensor self, int dim0, int dim1) => Tensor
+ * variableMetas: 0: self, 1: dim0, 2: dim1
+ * refer to https://pytorch.org/docs/master/generated/torch.transpose
+ **/
+Expected<std::vector<int64_t>>
+ShapeInferenceEngine::transpose(const MetaStack &variableMetas) {
+  if (variableMetas.size() != 3) {
+    return MAKE_ERR(
+        strFormat("Expect 3 inputs, get %zu", variableMetas.size()));
+  }
+  RETURN_ERR_IF_NOT(variableMetas[1].shape.size() == 1,
+                    "Expect 1 int dimension");
+  RETURN_ERR_IF_NOT(variableMetas[2].shape.size() == 1,
+                    "Expect 1 int dimension");
+
+  const VariableMeta &t = variableMetas[0];
+  int64_t shapeSize = t.shape.size();
+  int64_t dim0 = variableMetas[1].intValue[0];
+  int64_t dim1 = variableMetas[2].intValue[0];
+
+  // convert to positive dimension
+  dim0 = at::maybe_wrap_dim(dim0, shapeSize);
+  dim1 = at::maybe_wrap_dim(dim1, shapeSize);
+
+  std::vector<int64_t> shape = t.shape;
+  std::swap(shape[dim0], shape[dim1]);
+
+  return shape;
+}
+
+/**
+ * aten::flatten(Tensor self, int start_dim, int end_dim) => Tensor
+ * variableMetas: 0: self, 1: start_dim, 2: end_dim
+ * refer to: https://pytorch.org/docs/master/generated/torch.flatten
+ **/
+Expected<std::vector<int64_t>>
+ShapeInferenceEngine::flatten(const MetaStack &variableMetas) {
+  if (variableMetas.size() != 3) {
+    return MAKE_ERR(
+        strFormat("Expect 3 inputs, get %zu", variableMetas.size()));
+  }
+  RETURN_ERR_IF_NOT(variableMetas[1].shape.size() == 1,
+                    "Expect 1 int dimension");
+  RETURN_ERR_IF_NOT(variableMetas[2].shape.size() == 1,
+                    "Expect 1 int dimension");
+
+  const VariableMeta &t = variableMetas[0];
+  int64_t shapeSize = t.shape.size();
+  int64_t startDim = variableMetas[1].intValue[0];
+  int64_t endDim = variableMetas[2].intValue[0];
+
+  // convert to positive dimension
+  startDim = at::maybe_wrap_dim(startDim, shapeSize);
+  endDim = at::maybe_wrap_dim(endDim, shapeSize);
+
+  if (startDim > endDim) {
+    return MAKE_ERR("start dimension should not be larger than end dimension");
+  }
+
+  std::vector<int64_t> shape;
+  for (int i = 0; i < startDim; i++) {
+    shape.push_back(t.shape[i]);
+  }
+  int64_t flattenDim = 1;
+  for (int i = startDim; i <= endDim; i++) {
+    flattenDim *= t.shape[i];
+  }
+  shape.push_back(flattenDim);
+  for (int i = endDim + 1; i < shapeSize; i++) {
+    shape.push_back(t.shape[i]);
+  }
+
+  return shape;
 }
 
 /**
