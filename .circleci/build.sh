@@ -58,12 +58,7 @@ install_fmt() {
 GLOW_DEPS="libpng-dev libgoogle-glog-dev libboost-all-dev libdouble-conversion-dev libgflags-dev libjemalloc-dev libpthread-stubs0-dev libevent-dev libssl-dev"
 
 if [ "${CIRCLE_JOB}" == "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
-    sudo -E apt-add-repository -y "ppa:ubuntu-toolchain-r/test"
-    curl -sSL "https://build.travis-ci.org/files/gpg/llvm-toolchain-trusty-7.asc" | sudo -E apt-key add -
-    echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty-7 main" | sudo tee -a /etc/apt/sources.list >/dev/null
-    sudo -E apt-add-repository -y "ppa:deadsnakes/ppa"
     sudo apt-get update
-    sudo apt-get install python3.6 python3.6-venv
 elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
     # Install Glow dependencies
     sudo apt-get update
