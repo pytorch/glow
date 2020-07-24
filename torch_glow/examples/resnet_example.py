@@ -11,7 +11,7 @@ import argparse
 
 
 def load_image(image_path):
-    image = Image.open(image_path).convert("RGB")
+    image = Image.open(image_path).convert('RGB')
     transformed_image = transform_image(image)
     return torch.reshape(transformed_image, (1, 3, 224, 224))
 
