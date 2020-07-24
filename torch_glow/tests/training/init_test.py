@@ -21,7 +21,10 @@ def test_init():
     y = torch.randint(0, 1, (1, 1000))
 
     assert trainer.init(
-        os.environ['TOP_DIR'] + "/tests/models/pytorchModels/resnet18.pt",
-        [x], "Interpreter", True)
+        os.environ["TOP_DIR"] + "/tests/models/pytorchModels/resnet18.pt",
+        [x],
+        "Interpreter",
+        True,
+    )
 
     assert trainer.train(x, y)

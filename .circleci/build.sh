@@ -146,6 +146,7 @@ elif [[ "$CIRCLE_JOB" == "COVERAGE" ]]; then
           ../
 elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_AND_PEP8_FORMAT" ]]; then
     sudo apt-get install -y clang-format-7
+    pip install black
 elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     # Build PyTorch
     cd /tmp

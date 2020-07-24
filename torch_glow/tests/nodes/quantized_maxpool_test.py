@@ -46,11 +46,6 @@ class TestQuantizedMaxPool(unittest.TestCase):
         jitVsGlow(
             test_f,
             inputs,
-            expected_fused_ops={
-                "aten::max_pool2d",
-                "aten::dequantize",
-            },
-            black_list=[
-                "aten::quantize_per_tensor",
-            ]
+            expected_fused_ops={"aten::max_pool2d", "aten::dequantize",},
+            black_list=["aten::quantize_per_tensor",],
         )

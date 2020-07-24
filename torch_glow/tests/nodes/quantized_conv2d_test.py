@@ -113,13 +113,8 @@ class TestQuantizedConv2d(unittest.TestCase):
         jitVsGlow(
             model,
             x,
-            expected_fused_ops={
-                "quantized::conv2d",
-            },
-            black_list=[
-                "aten::quantize_per_tensor",
-                "aten::dequantize",
-            ]
+            expected_fused_ops={"quantized::conv2d",},
+            black_list=["aten::quantize_per_tensor", "aten::dequantize",],
         )
 
     def test_quantized_conv2d_packed_channelwise(self):

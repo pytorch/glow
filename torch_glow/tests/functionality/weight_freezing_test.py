@@ -32,4 +32,4 @@ class TestWeightFreezing(unittest.TestCase):
 
         out2 = conv2d_freeze(inputs, filters)
 
-        assert(torch.allclose(out1, out2))
+        assert torch.allclose(out1, out2)

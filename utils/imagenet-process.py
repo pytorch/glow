@@ -24,12 +24,12 @@ import glob
 import os
 import argparse
 
-parser = argparse.ArgumentParser(
-    description="imagenet preprocessor")
+parser = argparse.ArgumentParser(description="imagenet preprocessor")
 parser.add_argument("input", metavar="input", help="glob to input images")
-parser.add_argument("output", metavar="output", default="./",
-                    help="directory to put output images")
-parser.add_argument("--normalize", action='store_true')
+parser.add_argument(
+    "output", metavar="output", default="./", help="directory to put output images"
+)
+parser.add_argument("--normalize", action="store_true")
 
 args = parser.parse_args()
 
@@ -47,18 +47,20 @@ for ifn in glob.glob(args.input):
 
     im = PIL.Image.open(ifn)
     im.convert("RGB")
-    resize = torchvision.transforms.Compose([
-        torchvision.transforms.Resize(256),
-        torchvision.transforms.CenterCrop(224),
-    ])
+    resize = torchvision.transforms.Compose(
+        [torchvision.transforms.Resize(256), torchvision.transforms.CenterCrop(224),]
+    )
     processed_im = resize(im)
 
     if args.normalize:
-        normalize = torchvision.transforms.Compose([
-            torchvision.transforms.ToTensor(),
-            torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                             std=[0.229, 0.224, 0.225]),
-        ])
+        normalize = torchvision.transforms.Compose(
+            [
+                torchvision.transforms.ToTensor(),
+                torchvision.transforms.Normalize(
+                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+                ),
+            ]
+        )
         processed_im = normalize(processed_im)
 
     processed_im = processed_im.unsqueeze(0)

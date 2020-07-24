@@ -19,8 +19,7 @@ class TestConv2d(unittest.TestCase):
         inputs = torch.randn(1, 4, 5, 5)
         filters = torch.randn(8, 4, 3, 3)
 
-        jitVsGlow(test_f, inputs, filters,
-                  expected_fused_ops={"aten::_convolution"})
+        jitVsGlow(test_f, inputs, filters, expected_fused_ops={"aten::_convolution"})
 
     def test_conv2d_with_bias(self):
         """Test of the PyTorch conv2d Node with a provided bias tensor."""
@@ -33,8 +32,9 @@ class TestConv2d(unittest.TestCase):
         filters = torch.randn(8, 4, 3, 3)
         bias = torch.randn(8)
 
-        jitVsGlow(test_f, inputs, filters, bias,
-                  expected_fused_ops={"aten::_convolution"})
+        jitVsGlow(
+            test_f, inputs, filters, bias, expected_fused_ops={"aten::_convolution"}
+        )
 
     @unittest.skip(reason="not ready")
     def test_conv2d_param_sweep(self):
@@ -64,15 +64,12 @@ class TestConv2d(unittest.TestCase):
         for setting in settings:
 
             def test_f(inputs, filters):
-                conv = F.conv2d(
-                    inputs,
-                    filters,
-                    padding=setting.p,
-                    groups=setting.g)
+                conv = F.conv2d(inputs, filters, padding=setting.p, groups=setting.g)
                 return F.relu(conv)
 
             inputs = torch.randn(2, 4, setting.h, setting.w)
             filters = torch.randn(8, 4 / setting.g, 3, 3)
 
-            jitVsGlow(test_f, inputs, filters,
-                      expected_fused_ops={"aten::_convolution"})
+            jitVsGlow(
+                test_f, inputs, filters, expected_fused_ops={"aten::_convolution"}
+            )

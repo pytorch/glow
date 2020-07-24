@@ -17,7 +17,4 @@ class TestFloor(unittest.TestCase):
 
         x = torch.randn(3, 4, 5)
         y = torch.randn(3, 4, 5)
-        jitVsGlow(test_f,
-                  x,
-                  y,
-                  expected_fused_ops={"aten::floor"})
+        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::floor"})

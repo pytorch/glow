@@ -38,7 +38,8 @@ fix_format() {
     -o -name \*.cl -print0 \
   | xargs -0 -P8 -n1 $CLANG_COMMAND -i;
 
-  autopep8 -i -r -j -1 --exclude="*.eggs" --indent-size=4 torch_glow utils
+  #autopep8 -i -r -j -1 --exclude="*.eggs" --indent-size=4 torch_glow utils
+  black torch_glow utils
 }
 
 check_format() {

@@ -17,5 +17,4 @@ class TestPrelu(unittest.TestCase):
         inputs = torch.randn(1, 4, 5, 5)
         weight = torch.tensor([0.25])
 
-        jitVsGlow(prelu_basic, inputs, weight,
-                  expected_fused_ops={"aten::prelu"})
+        jitVsGlow(prelu_basic, inputs, weight, expected_fused_ops={"aten::prelu"})

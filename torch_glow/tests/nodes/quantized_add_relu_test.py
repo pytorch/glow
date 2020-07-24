@@ -11,12 +11,10 @@ class TestQuantizedAddRelu(unittest.TestCase):
         """Basic test of the PyTorch quantized::add Node_relu on Glow with zero offset."""
 
         def test_f(a, b):
-            q = torch.nn.quantized.Quantize(
-                scale=0.3, zero_point=0, dtype=torch.quint8)
+            q = torch.nn.quantized.Quantize(scale=0.3, zero_point=0, dtype=torch.quint8)
             dq = torch.nn.quantized.DeQuantize()
             return dq(
-                torch.ops.quantized.add_relu(
-                    q(a), q(b), scale=0.05, zero_point=0)
+                torch.ops.quantized.add_relu(q(a), q(b), scale=0.05, zero_point=0)
             )
 
         x = torch.tensor([1, 2, 3, 4], dtype=torch.float32)
@@ -88,11 +86,6 @@ class TestQuantizedAddRelu(unittest.TestCase):
             test_f,
             x,
             y,
-            expected_fused_ops={
-                "quantized::add_relu",
-            },
-            black_list=[
-                "aten::quantize_per_tensor",
-                "aten::dequantize",
-            ],
+            expected_fused_ops={"quantized::add_relu",},
+            black_list=["aten::quantize_per_tensor", "aten::dequantize",],
         )

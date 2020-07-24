@@ -67,8 +67,7 @@ def dce(init_net, predict_net):
                 live_predict_net_ops.append(op)
 
     # Delete all unused ops in predict_net.
-    num_predict_net_ops_eliminated = len(
-        predict_net.op) - len(live_predict_net_ops)
+    num_predict_net_ops_eliminated = len(predict_net.op) - len(live_predict_net_ops)
     del predict_net.op[:]
     predict_net.op.extend(live_predict_net_ops)
 

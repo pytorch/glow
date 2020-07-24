@@ -25,8 +25,8 @@ import PIL.Image as Image
 import torchvision
 
 parser = argparse.ArgumentParser(
-    description="Glow image-classifier Driver for "
-    "TopK ImageNet Calculation")
+    description="Glow image-classifier Driver for " "TopK ImageNet Calculation"
+)
 
 parser.add_argument(
     "--validation-images-dir",
@@ -37,29 +37,46 @@ parser.add_argument(
     "such that when sorted their index corresponds to their "
     "label. For example, if the validation_images_dir contains "
     "{'abc/', 'def/', 'ghi/'}, then this should correspond to "
-    "labels {0, 1, 2} respectively.")
+    "labels {0, 1, 2} respectively.",
+)
 
-parser.add_argument("--batch-size", default=1, type=int, metavar="N",
-                    help="Batch size for use with the model. The total number "
-                    "of images in the validation_images_dir should be "
-                    "divisible by the batch size.")
+parser.add_argument(
+    "--batch-size",
+    default=1,
+    type=int,
+    metavar="N",
+    help="Batch size for use with the model. The total number "
+    "of images in the validation_images_dir should be "
+    "divisible by the batch size.",
+)
 
-parser.add_argument("--only-resize-and-save", default=False,
-                    action="store_true", help="Use to pre-process images "
-                    "to 224x224. Saves the images to "
-                    "the validation_images_dir/processed/")
+parser.add_argument(
+    "--only-resize-and-save",
+    default=False,
+    action="store_true",
+    help="Use to pre-process images "
+    "to 224x224. Saves the images to "
+    "the validation_images_dir/processed/",
+)
 
-parser.add_argument("--resize-input-images", default=False,
-                    action="store_true", help="Resize and center-crop images "
-                    "at runtime to 224x224.")
+parser.add_argument(
+    "--resize-input-images",
+    default=False,
+    action="store_true",
+    help="Resize and center-crop images " "at runtime to 224x224.",
+)
 
-parser.add_argument("--verbose", default=False,
-                    action="store_true", help="Verbose printing.")
+parser.add_argument(
+    "--verbose", default=False, action="store_true", help="Verbose printing."
+)
 
-parser.add_argument("--image-classifier-cmd", default="",
-                    help="Command to use for running the image-classifier, "
-                    "including the binary and all of its command lime "
-                    "parameters.")
+parser.add_argument(
+    "--image-classifier-cmd",
+    default="",
+    help="Command to use for running the image-classifier, "
+    "including the binary and all of its command lime "
+    "parameters.",
+)
 
 # Opens and returns an image located at @param path using the PIL loader.
 
@@ -71,11 +88,13 @@ def pil_loader(path):
         img = Image.open(img)
         return img.convert("RGB")
 
+
 # Opens and returns an image located at @param path using the accimage loader.
 
 
 def accimage_loader(path):
     import accimage
+
     try:
         return accimage.Image(path)
     except IOError:
@@ -123,6 +142,7 @@ def get_img_paths_and_labels(validation_images_dir):
         curr_label_idx = curr_label_idx + 1
     return img_paths, img_labels
 
+
 # Given an image located at @param img_path, transform the image
 # and save it to the path @param path_to_new_img.
 
@@ -132,13 +152,13 @@ def resize_and_save_image(img_path, path_to_new_img):
     img = default_image_loader(img_path)
 
     # Use to Resize and CenterCrop the images to 224x224.
-    transform_resize = torchvision.transforms.Compose([
-        torchvision.transforms.Resize(256),
-        torchvision.transforms.CenterCrop(224),
-    ])
+    transform_resize = torchvision.transforms.Compose(
+        [torchvision.transforms.Resize(256), torchvision.transforms.CenterCrop(224),]
+    )
 
     resized_img = transform_resize(img)
     resized_img.save(path_to_new_img, format="png")
+
 
 # Used to pre-process an input set of images. Takes a string of a directory
 # @param validation_images_dir and saves the cropped subset of the images in a
@@ -146,10 +166,8 @@ def resize_and_save_image(img_path, path_to_new_img):
 
 
 def save_centered_cropped_dataset(validation_images_dir):
-    processed_validation_images_dir = os.path.join(validation_images_dir,
-                                                   "processed")
-    print "Saving centered cropped input images: %s" % (
-          processed_validation_images_dir)
+    processed_validation_images_dir = os.path.join(validation_images_dir, "processed")
+    print "Saving centered cropped input images: %s" % (processed_validation_images_dir)
 
     img_subdirs = get_sorted_img_subdirs(validation_images_dir)
 
@@ -163,7 +181,8 @@ def save_centered_cropped_dataset(validation_images_dir):
     for img_subdir in img_subdirs:
         orig_img_subdir_path = os.path.join(validation_images_dir, img_subdir)
         processed_img_subdir_path = os.path.join(
-            processed_validation_images_dir, img_subdir)
+            processed_validation_images_dir, img_subdir
+        )
 
         # Create a new subdirectory for the next label.
         try:
@@ -173,12 +192,13 @@ def save_centered_cropped_dataset(validation_images_dir):
 
         # Transform and save all images in this label subdirectory.
         for orig_img_filename in os.listdir(orig_img_subdir_path):
-            orig_img_path = os.path.join(
-                orig_img_subdir_path, orig_img_filename)
+            orig_img_path = os.path.join(orig_img_subdir_path, orig_img_filename)
             if os.path.isfile(orig_img_path):
-                processed_img_path = os.path.join(processed_img_subdir_path,
-                                                  orig_img_filename)
+                processed_img_path = os.path.join(
+                    processed_img_subdir_path, orig_img_filename
+                )
                 resize_and_save_image(orig_img_path, processed_img_path)
+
 
 # @returns a list of strings (of length equal to the @param batch_size) which
 # are paths to images to do inference on. @param img_paths is the set of all
@@ -189,8 +209,9 @@ def save_centered_cropped_dataset(validation_images_dir):
 # @param batch_size temporary images will ever exist in @param tmp_dir_name.
 
 
-def get_curr_img_paths(img_paths, img_index, batch_size, tmp_dir_name,
-                       resize_input_images):
+def get_curr_img_paths(
+    img_paths, img_index, batch_size, tmp_dir_name, resize_input_images
+):
     curr_img_paths = []
     for batch_idx in xrange(batch_size):
         img_path = img_paths[img_index + batch_idx]
@@ -199,14 +220,16 @@ def get_curr_img_paths(img_paths, img_index, batch_size, tmp_dir_name,
         if resize_input_images:
             # Save the new image to the tmp directory. Note that these names are
             # reused every call to get_curr_img_paths().
-            path_to_tmp_img = os.path.join(tmp_dir_name, "tmp" +
-                                           str(batch_idx) + ".png")
+            path_to_tmp_img = os.path.join(
+                tmp_dir_name, "tmp" + str(batch_idx) + ".png"
+            )
             resize_and_save_image(img_path, path_to_tmp_img)
             img_path = path_to_tmp_img
 
         curr_img_paths.append(img_path)
 
     return curr_img_paths
+
 
 # Verifies that the @param image_classifier_cmd is well formatted via
 # assertions.
@@ -217,12 +240,16 @@ def verify_spawn_cmd(image_classifier_cmd):
     if "image-classifier" in split_cmd[0]:
         assert "-" in split_cmd, "Streaming mode must be used."
         assert "-topk=5" in split_cmd, "-topk=5 must be used."
-        assert any("-model-input-name=" in s for s in split_cmd), (
-            "image-classifier requires -model-input-name to be specified.")
-        assert any("-m=" in s for s in split_cmd), (
-            "image-classifier requires -m to be specified")
-        assert any("-image-mode=" in s for s in split_cmd), (
-            "image-classifier requires -image-mode to be specified")
+        assert any(
+            "-model-input-name=" in s for s in split_cmd
+        ), "image-classifier requires -model-input-name to be specified."
+        assert any(
+            "-m=" in s for s in split_cmd
+        ), "image-classifier requires -m to be specified"
+        assert any(
+            "-image-mode=" in s for s in split_cmd
+        ), "image-classifier requires -image-mode to be specified"
+
 
 # Prints the Top-1 and Top-5 accuracy given @param total_image_count, @param
 # top1_count, and @param top5_count.
@@ -234,13 +261,19 @@ def print_topk_accuracy(total_image_count, top1_count, top5_count):
     print "\tTop-1 accuracy: " + "{0:.4f}".format(top1_accuracy)
     print "\tTop-5 accuracy: " + "{0:.4f}".format(top5_accuracy)
 
+
 # Calculates and prints top-1 and top-5 accuracy for images located in
 # subdirectories at @param validation_images_dir, given the command line
 # parameters passed in to @param args.
 
 
-def calculate_top_k(validation_images_dir, image_classifier_cmd, batch_size,
-                    resize_input_images, verbose):
+def calculate_top_k(
+    validation_images_dir,
+    image_classifier_cmd,
+    batch_size,
+    resize_input_images,
+    verbose,
+):
     print "Calculating Top-1 and Top-5 accuracy..."
 
     verify_spawn_cmd(image_classifier_cmd)
@@ -249,8 +282,9 @@ def calculate_top_k(validation_images_dir, image_classifier_cmd, batch_size,
 
     total_image_count = len(img_paths)
 
-    assert total_image_count % batch_size == 0, (
-        "Total number of images must be divisible by batch size")
+    assert (
+        total_image_count % batch_size == 0
+    ), "Total number of images must be divisible by batch size"
 
     if verbose:
         print "Running image classifier with: " + image_classifier_cmd
@@ -262,8 +296,9 @@ def calculate_top_k(validation_images_dir, image_classifier_cmd, batch_size,
         path_to_tmp_log = os.path.join(tmp_dir_name, "log.txt")
         fout = file(path_to_tmp_log, "w")
 
-        classifier_proc = pexpect.spawn(image_classifier_cmd, logfile=fout,
-                                        timeout=None)
+        classifier_proc = pexpect.spawn(
+            image_classifier_cmd, logfile=fout, timeout=None
+        )
 
         if verbose:
             print "Temp log located at: " + path_to_tmp_log
@@ -274,16 +309,17 @@ def calculate_top_k(validation_images_dir, image_classifier_cmd, batch_size,
 
         # Process the images in batches as specified on the command line.
         for img_index in xrange(0, total_image_count, batch_size):
-            curr_img_paths = get_curr_img_paths(img_paths, img_index,
-                                                batch_size, tmp_dir_name,
-                                                resize_input_images)
+            curr_img_paths = get_curr_img_paths(
+                img_paths, img_index, batch_size, tmp_dir_name, resize_input_images
+            )
 
             # Expect prompt from the image-classifier for the next image path.
             classifier_proc.expect(prompt)
 
             appended_paths = " ".join(curr_img_paths)
-            assert len(appended_paths) <= 1024, (
-                "Line length is too long (max 1024): %r" % len(appended_paths))
+            assert (
+                len(appended_paths) <= 1024
+            ), "Line length is too long (max 1024): %r" % len(appended_paths)
 
             # Send the paths to the image-classifier.
             classifier_proc.sendline(appended_paths)
@@ -312,11 +348,11 @@ def calculate_top_k(validation_images_dir, image_classifier_cmd, batch_size,
             curr_completed_count = img_index + batch_size
             if curr_completed_count % 100 == 0:
                 print "Finished image index %d out of %d" % (
-                    (curr_completed_count, total_image_count))
+                    (curr_completed_count, total_image_count)
+                )
                 if verbose:
                     print "  Current Top-1/5 accuracy:"
-                    print_topk_accuracy(curr_completed_count, top1_count,
-                                        top5_count)
+                    print_topk_accuracy(curr_completed_count, top1_count, top5_count)
                 else:
                     print ""
 
@@ -327,7 +363,8 @@ def calculate_top_k(validation_images_dir, image_classifier_cmd, batch_size,
         shutil.rmtree(tmp_dir_name)
 
     print "\nCompleted running; Final Top-1/5 accuracy across %d images:" % (
-        total_image_count)
+        total_image_count
+    )
     print_topk_accuracy(total_image_count, top1_count, top5_count)
 
 
@@ -342,15 +379,21 @@ def main():
     # correspond to labels {0, 1, 2} respectively.
     validation_images_dir = os.path.join(args.validation_images_dir)
     assert os.path.exists(validation_images_dir), (
-        "Validation directory does not exist: " + validation_images_dir)
+        "Validation directory does not exist: " + validation_images_dir
+    )
 
     # This is used solely to pre-process the input image set.
     if args.only_resize_and_save:
         save_centered_cropped_dataset(validation_images_dir)
         return
 
-    calculate_top_k(validation_images_dir, args.image_classifier_cmd,
-                    args.batch_size, args.resize_input_images, args.verbose)
+    calculate_top_k(
+        validation_images_dir,
+        args.image_classifier_cmd,
+        args.batch_size,
+        args.resize_input_images,
+        args.verbose,
+    )
 
 
 if __name__ == "__main__":

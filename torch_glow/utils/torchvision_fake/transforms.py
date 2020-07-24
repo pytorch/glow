@@ -4,6 +4,7 @@ import torch
 import numpy as np
 import numbers
 from PIL import Image
+
 try:
     import accimage
 except ImportError:
@@ -37,15 +38,9 @@ def resize(img, size, interpolation=Image.BILINEAR):
         PIL Image: Resized image.
     """
     if not _is_pil_image(img):
-        raise TypeError('img should be PIL Image. Got {}'.format(type(img)))
-    if not (
-        isinstance(
-            size,
-            int) or (
-            isinstance(
-                size,
-                Iterable) and len(size) == 2)):
-        raise TypeError('Got inappropriate size arg: {}'.format(size))
+        raise TypeError("img should be PIL Image. Got {}".format(type(img)))
+    if not (isinstance(size, int) or (isinstance(size, Iterable) and len(size) == 2)):
+        raise TypeError("Got inappropriate size arg: {}".format(size))
 
     if isinstance(size, int):
         w, h = img.size
@@ -68,14 +63,14 @@ def center_crop(img, output_size):
         output_size = (int(output_size), int(output_size))
     w, h = img.size
     th, tw = output_size
-    i = int(round((h - th) / 2.))
-    j = int(round((w - tw) / 2.))
+    i = int(round((h - th) / 2.0))
+    j = int(round((w - tw) / 2.0))
     return crop(img, i, j, th, tw)
 
 
 def crop(img, i, j, h, w):
     if not _is_pil_image(img):
-        raise TypeError('img should be PIL Image. Got {}'.format(type(img)))
+        raise TypeError("img should be PIL Image. Got {}".format(type(img)))
 
     return img.crop((j, i, j + w, i + h))
 
@@ -88,14 +83,13 @@ def to_tensor(pic):
     Returns:
         Tensor: Converted image.
     """
-    if not(_is_pil_image(pic) or _is_numpy(pic)):
-        raise TypeError(
-            'pic should be PIL Image or ndarray. Got {}'.format(
-                type(pic)))
+    if not (_is_pil_image(pic) or _is_numpy(pic)):
+        raise TypeError("pic should be PIL Image or ndarray. Got {}".format(type(pic)))
 
     if _is_numpy(pic) and not _is_numpy_image(pic):
         raise ValueError(
-            'pic should be 2/3 dimensional. Got {} dimensions.'.format(pic.ndim))
+            "pic should be 2/3 dimensional. Got {} dimensions.".format(pic.ndim)
+        )
 
     if isinstance(pic, np.ndarray):
         # handle numpy array
@@ -110,26 +104,25 @@ def to_tensor(pic):
             return img
 
     if accimage is not None and isinstance(pic, accimage.Image):
-        nppic = np.zeros(
-            [pic.channels, pic.height, pic.width], dtype=np.float32)
+        nppic = np.zeros([pic.channels, pic.height, pic.width], dtype=np.float32)
         pic.copyto(nppic)
         return torch.from_numpy(nppic)
 
     # handle PIL Image
-    if pic.mode == 'I':
+    if pic.mode == "I":
         img = torch.from_numpy(np.array(pic, np.int32, copy=False))
-    elif pic.mode == 'I;16':
+    elif pic.mode == "I;16":
         img = torch.from_numpy(np.array(pic, np.int16, copy=False))
-    elif pic.mode == 'F':
+    elif pic.mode == "F":
         img = torch.from_numpy(np.array(pic, np.float32, copy=False))
-    elif pic.mode == '1':
+    elif pic.mode == "1":
         img = 255 * torch.from_numpy(np.array(pic, np.uint8, copy=False))
     else:
         img = torch.ByteTensor(torch.ByteStorage.from_buffer(pic.tobytes()))
     # PIL image mode: L, LA, P, I, F, RGB, YCbCr, RGBA, CMYK
-    if pic.mode == 'YCbCr':
+    if pic.mode == "YCbCr":
         nchannel = 3
-    elif pic.mode == 'I;16':
+    elif pic.mode == "I;16":
         nchannel = 1
     else:
         nchannel = len(pic.mode)
@@ -157,7 +150,7 @@ def normalize(tensor, mean, std, inplace=False):
         Tensor: Normalized Tensor image.
     """
     if not _is_tensor_image(tensor):
-        raise TypeError('tensor is not a torch image.')
+        raise TypeError("tensor is not a torch image.")
 
     if not inplace:
         tensor = tensor.clone()
