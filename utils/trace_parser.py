@@ -95,7 +95,11 @@ def loadEvents(filename, runtimeEvents, fixedEvent, skip):
                     optype = line["args"]["kind"]
 
             # If we're looking for a single event, skip others.
-            if fixedEvent and not re.match(fixedEvent, name) and not re.match(fixedEvent, optype):
+            if (
+                fixedEvent
+                and not re.match(fixedEvent, name)
+                and not re.match(fixedEvent, optype)
+            ):
                 continue
 
             # if we're not including runtime events, skip them.
@@ -162,38 +166,47 @@ def dumpAccumulate(events, keyfunc, traceTime):
 
     layers = []
     for (name, times) in nameMap.items():
-        layers.append((name, len(times), numpy.mean(times),
-                       numpy.std(times), numpy.sum(times)))
+        layers.append(
+            (name, len(times), numpy.mean(times), numpy.std(times), numpy.sum(times))
+        )
 
     # Iterate sorted by total time.
-    for (name, num, mean, stddev, total) in sorted(layers,
-                                                   key=itemgetter(4), reverse=True):
+    for (name, num, mean, stddev, total) in sorted(
+        layers, key=itemgetter(4), reverse=True
+    ):
         mean = formatUs(mean)
         stddev = formatUs(stddev)
         pc = (total / traceTime) * 100
         total = formatUs(total)
         print(
-            f"{name} {num} events, mean: {mean}, stddev: {stddev}, total: {total} ({pc:.2f}%)")
+            f"{name} {num} events, mean: {mean}, stddev: {stddev}, total: {total} ({pc:.2f}%)"
+        )
     print()
     print()
 
 
 def main():
-    parser = argparse.ArgumentParser(description='process trace json')
-    parser.add_argument('filename', type=str,
-                        help='filename for trace file to load')
-    parser.add_argument("--layers", action='store_true',
-                        help="aggregate and display by layer names")
-    parser.add_argument("--kinds", action='store_true',
-                        help="aggregate and display by op kind")
-    parser.add_argument("--runtime", action='store_true',
-                        help="include runtime events")
-    parser.add_argument("--summarize", action='store_true',
-                        help="print a summary of the trace")
-    parser.add_argument("--event", type=str, default="",
-                        help="restrict events matching this regex")
-    parser.add_argument("--skip", type=int, default=0,
-                        help="skip a number of events matching conditions")
+    parser = argparse.ArgumentParser(description="process trace json")
+    parser.add_argument("filename", type=str, help="filename for trace file to load")
+    parser.add_argument(
+        "--layers", action="store_true", help="aggregate and display by layer names"
+    )
+    parser.add_argument(
+        "--kinds", action="store_true", help="aggregate and display by op kind"
+    )
+    parser.add_argument("--runtime", action="store_true", help="include runtime events")
+    parser.add_argument(
+        "--summarize", action="store_true", help="print a summary of the trace"
+    )
+    parser.add_argument(
+        "--event", type=str, default="", help="restrict events matching this regex"
+    )
+    parser.add_argument(
+        "--skip",
+        type=int,
+        default=0,
+        help="skip a number of events matching conditions",
+    )
 
     args = parser.parse_args()
     events = loadEvents(args.filename, args.runtime, args.event, args.skip)
@@ -211,15 +224,13 @@ def main():
         coveredTime += ev.end - ev.start
 
     if args.layers:
-        dumpAccumulate(events, lambda ev: f"{ev.name} ({ev.optype})",
-                       coveredTime)
+        dumpAccumulate(events, lambda ev: f"{ev.name} ({ev.optype})", coveredTime)
 
     if args.kinds:
         dumpAccumulate(events, lambda ev: ev.optype, coveredTime)
 
     if args.event:
-        dumpAccumulate(events, lambda ev: f"{ev.name} ({ev.optype})",
-                       coveredTime)
+        dumpAccumulate(events, lambda ev: f"{ev.name} ({ev.optype})", coveredTime)
 
     if args.summarize:
         print("Total time of trace:", formatUs(totalTime))

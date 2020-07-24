@@ -50,7 +50,9 @@ def test_fuse_necessary_getattrs_only():
 
     # don't fuse aten::_convolutions
     torch_glow.glowCustomFuseDebug_(
-        jit_m_graph, ["prim::Constant", "prim::GetAttr", "aten::t", "aten::matmul", "aten::add_"])
+        jit_m_graph,
+        ["prim::Constant", "prim::GetAttr", "aten::t", "aten::matmul", "aten::add_"],
+    )
 
     print(jit_m_graph)
 

@@ -113,8 +113,7 @@ class Node:
 
         self.inputs_.append(nodeVal)
 
-    def replace_input(self, oldNodeVal: NodeValue,
-                      newNodeVal: NodeValue) -> None:
+    def replace_input(self, oldNodeVal: NodeValue, newNodeVal: NodeValue) -> None:
         """Replace one operand with another one.
 
         Args:
@@ -397,9 +396,7 @@ def init_db(sqliteFile: str) -> sqlite3.Connection:
     return conn
 
 
-def process(
-    log: Dict, dumpPhases: List[str], conn: sqlite3.Connection
-) -> None:
+def process(log: Dict, dumpPhases: List[str], conn: sqlite3.Connection) -> None:
     """Process all the log lines.
 
     Extract their information and reconstruct the node graph. And dump DAGs at given compilation phases.
@@ -503,9 +500,7 @@ def process(
 
         # change the input of changedNode
         changedNode.replace_input(
-            NodeValue(
-                prevNode, prevResNo), NodeValue(
-                newNode, newResNo)
+            NodeValue(prevNode, prevResNo), NodeValue(newNode, newResNo)
         )
         prevNode.remove_user(changedNode)
         newNode.add_user(changedNode)
@@ -515,12 +510,7 @@ def process(
             if prevNode.has_no_uses():
                 replacedNodes = find_all_replaced_nodes(prevNode)
                 store_transformation_into_DB(
-                    transID,
-                    changedNode,
-                    addedNodes,
-                    replacedNodes,
-                    cursor,
-                    scopeName,
+                    transID, changedNode, addedNodes, replacedNodes, cursor, scopeName,
                 )
 
                 transID += 1
@@ -540,10 +530,7 @@ def process(
         SCOPE_STACK.append(scopeName)
 
         # Start recording transformations.
-        if (
-            scopeName in stopRecordTranformationNames
-            and len(SCOPE_STACK) == 2
-        ):
+        if scopeName in stopRecordTranformationNames and len(SCOPE_STACK) == 2:
             recordTransformation = True
 
         # Update scope entrance in database
@@ -553,9 +540,7 @@ def process(
               ?,
               ?
               )""",
-            (scopeID,
-             "ENTER " + scopeName,
-             "ENTER " + scopeName),
+            (scopeID, "ENTER " + scopeName, "ENTER " + scopeName),
         )
 
         for ev in phase:
@@ -569,10 +554,7 @@ def process(
                 name, scope = list(ev.items())[0]
                 process_scope(name, scope)
                 # Stop recording transformations.
-                if (
-                    scopeName in stopRecordTranformationNames
-                    and len(SCOPE_STACK) == 1
-                ):
+                if scopeName in stopRecordTranformationNames and len(SCOPE_STACK) == 1:
                     recordTransformation = False
 
                 # Update scope exit in database

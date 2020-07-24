@@ -58,9 +58,6 @@ install_fmt() {
 GLOW_DEPS="libpng-dev libgoogle-glog-dev libboost-all-dev libdouble-conversion-dev libgflags-dev libjemalloc-dev libpthread-stubs0-dev libevent-dev libssl-dev"
 
 if [ "${CIRCLE_JOB}" == "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
-    sudo -E apt-add-repository -y "ppa:ubuntu-toolchain-r/test"
-    curl -sSL "https://build.travis-ci.org/files/gpg/llvm-toolchain-trusty-7.asc" | sudo -E apt-key add -
-    echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty-7 main" | sudo tee -a /etc/apt/sources.list >/dev/null
     sudo apt-get update
 elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
     # Install Glow dependencies
@@ -96,7 +93,7 @@ else
 fi
 
 # Install ninja, (newest version of) autopep8 through pip
-sudo pip install ninja autopep8
+sudo pip install ninja 
 hash cmake ninja
 
 # Build glow
@@ -146,6 +143,11 @@ elif [[ "$CIRCLE_JOB" == "COVERAGE" ]]; then
           ../
 elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_AND_PEP8_FORMAT" ]]; then
     sudo apt-get install -y clang-format-7
+    cd /tmp
+    python3.6 -m virtualenv venv
+    source venv/bin/activate
+    pip install black
+    cd ${GLOW_DIR}
 elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     # Build PyTorch
     cd /tmp

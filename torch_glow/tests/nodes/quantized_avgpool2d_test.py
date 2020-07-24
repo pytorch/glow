@@ -46,11 +46,6 @@ class TestQuantizedAvgPool(unittest.TestCase):
         jitVsGlow(
             test_f,
             inputs,
-            expected_fused_ops={
-                "aten::avg_pool2d",
-            },
-            black_list=[
-                "aten::quantize_per_tensor",
-                "aten::dequantize",
-            ]
+            expected_fused_ops={"aten::avg_pool2d",},
+            black_list=["aten::quantize_per_tensor", "aten::dequantize",],
         )

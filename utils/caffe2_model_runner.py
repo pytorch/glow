@@ -27,11 +27,7 @@ def fix_tensor_fills(init_net_file):
             op.type = "GivenTensorInt64Fill"
         elif any("lengths" in x for x in op.output):
             op.type = "GivenTensorIntFill"
-    open(
-        init_net_file +
-        "txt",
-        "w").write(
-        text_format.MessageToString(init_net))
+    open(init_net_file + "txt", "w").write(text_format.MessageToString(init_net))
     open(init_net_file, "wb").write(init_net.SerializeToString())
 
 

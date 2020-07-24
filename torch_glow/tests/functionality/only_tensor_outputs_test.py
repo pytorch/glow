@@ -29,7 +29,8 @@ class TestOnlyTensorOutputs(unittest.TestCase):
         # supported, if it produces a non-tensor output to the fusion group it
         # would not be fused.
         torch_glow.glowCustomFuseDebug_(
-            jit_f_graph, ["prim::Constant", "aten::add", "aten::size", "aten::reshape"])
+            jit_f_graph, ["prim::Constant", "aten::add", "aten::size", "aten::reshape"]
+        )
 
         fusion_nodes = 0
         aten_sizes = 0
@@ -39,5 +40,7 @@ class TestOnlyTensorOutputs(unittest.TestCase):
             if node.kind() == "aten::size":
                 aten_sizes += 1
 
-        assert fusion_nodes == 2, "Expected two fusion nodes to be split up with aten::size between them"
+        assert (
+            fusion_nodes == 2
+        ), "Expected two fusion nodes to be split up with aten::size between them"
         assert aten_sizes == 1, "Expected aten::size not to be fused"

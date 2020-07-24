@@ -8,9 +8,9 @@ import unittest
 
 
 class TestLoadBackendSpecificOptions(unittest.TestCase):
-
     def test_backend_specific_options(self):
         """Test loading backend specific options from YAML file."""
+
         def test_f(a, b):
             return a.add(b)
 
@@ -19,7 +19,7 @@ class TestLoadBackendSpecificOptions(unittest.TestCase):
 
         # Create YAML file with backend options
         with tempfile.NamedTemporaryFile() as options_fd:
-            options_fd.write(b'interpreter-memory: 4194304\n')
+            options_fd.write(b"interpreter-memory: 4194304\n")
             options_fd.flush()
 
             # Run Glow
