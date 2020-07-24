@@ -61,6 +61,7 @@ if [ "${CIRCLE_JOB}" == "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
     sudo -E apt-add-repository -y "ppa:ubuntu-toolchain-r/test"
     curl -sSL "https://build.travis-ci.org/files/gpg/llvm-toolchain-trusty-7.asc" | sudo -E apt-key add -
     echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty-7 main" | sudo tee -a /etc/apt/sources.list >/dev/null
+    sudo -E apt-add-repository -y "ppa:deadsnakes/ppa"
     sudo apt-get update
     lsb_release -a
     python3 -V
