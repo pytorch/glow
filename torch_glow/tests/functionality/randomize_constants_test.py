@@ -41,5 +41,5 @@ class TestRandomizeWeights(unittest.TestCase):
         normal2 = run_model(m, input, False)
         rand = run_model(m, input, True)
 
-        assert(torch.allclose(normal1, normal2))
-        assert(not torch.allclose(normal1, rand))
+        assert torch.allclose(normal1, normal2)
+        assert not torch.allclose(normal1, rand)

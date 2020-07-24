@@ -16,8 +16,7 @@ class TestAdaptiveAvgPool2d(unittest.TestCase):
 
         inputs = torch.randn(3, 6, 14, 14)
 
-        jitVsGlow(test_f, inputs, expected_fused_ops={
-                  "aten::adaptive_avg_pool2d"})
+        jitVsGlow(test_f, inputs, expected_fused_ops={"aten::adaptive_avg_pool2d"})
 
     def test_adaptive_avg_pool2d_nonsquare_inputs(self):
         """Test of PyTorch adaptive_avg_pool2d Node with non-square inputs."""
@@ -27,8 +26,7 @@ class TestAdaptiveAvgPool2d(unittest.TestCase):
 
         inputs = torch.randn(3, 6, 13, 14)
 
-        jitVsGlow(test_f, inputs, expected_fused_ops={
-                  "aten::adaptive_avg_pool2d"})
+        jitVsGlow(test_f, inputs, expected_fused_ops={"aten::adaptive_avg_pool2d"})
 
     def test_adaptive_avg_pool2d_nonsquare_outputs(self):
         """Test of PyTorch adaptive_avg_pool2d Node with non-square outputs."""
@@ -38,5 +36,4 @@ class TestAdaptiveAvgPool2d(unittest.TestCase):
 
         inputs = torch.randn(3, 6, 14, 14)
 
-        jitVsGlow(test_f, inputs, expected_fused_ops={
-                  "aten::adaptive_avg_pool2d"})
+        jitVsGlow(test_f, inputs, expected_fused_ops={"aten::adaptive_avg_pool2d"})

@@ -35,9 +35,7 @@ try:
 except ImportError:
     from urllib import urlretrieve
 
-Dataset = collections.namedtuple(
-    "TargetItem",
-    "filename, url, handler, dest_path")
+Dataset = collections.namedtuple("TargetItem", "filename, url, handler, dest_path")
 
 
 # Load a file using pickle module, and parameters vary based on different
@@ -175,7 +173,8 @@ def download_caffe2_models(outDir, models):
             for filename in ["dst_dictionary.txt", "src_dictionary.txt"]:
                 path = os.path.join(outDir, "en2gr")
                 url = "http://fb-glow-assets.s3.amazonaws.com/models/en2gr/{}".format(
-                    filename)
+                    filename
+                )
                 download(path, filename, url)
     return
 
@@ -191,26 +190,30 @@ def download_onnx_models(outDir, models):
             "shufflenet",
         ]:
             url = "https://s3.amazonaws.com/download.onnx/models/opset_6/{}.tar.gz".format(
-                modelname)
+                modelname
+            )
             filename = "{}.tar.gz".format(modelname)
             download(outDir, filename, url)
             untar(os.path.join(outDir, filename), outDir)
         elif modelname in ["inception_v1", "inception_v2", "bvlc_alexnet"]:
             url = "https://s3.amazonaws.com/download.onnx/models/opset_8/{}.tar.gz".format(
-                modelname)
+                modelname
+            )
             filename = "{}.tar.gz".format(modelname)
             download(outDir, filename, url)
             untar(os.path.join(outDir, filename), outDir)
         elif modelname in ["lenet_mnist"]:
             url = "http://fb-glow-assets.s3.amazonaws.com/models/{}.tar.gz".format(
-                modelname)
+                modelname
+            )
             filename = "{}.tar.gz".format(modelname)
             download(outDir, filename, url)
             untar(os.path.join(outDir, filename), outDir)
 
         elif modelname in ["googlenet_v1_slim", "googlenet_v4_slim", "resnet50_tf"]:
             url = "http://fb-glow-assets.s3.amazonaws.com/models/{}.onnx".format(
-                modelname)
+                modelname
+            )
             filename = "{}.onnx".format(modelname)
             path = os.path.join(outDir, modelname)
             download(path, filename, url)
@@ -218,12 +221,7 @@ def download_onnx_models(outDir, models):
             url = "https://onnxzoo.blob.core.windows.net/models/opset_8/emotion_ferplus/emotion_ferplus.tar.gz"
             filename = "emotion_ferplus.tar.gz"
             download(outDir, filename, url)
-            untar(
-                os.path.join(
-                    outDir,
-                    filename),
-                outDir,
-                "emotion_ferplus/model.onnx")
+            untar(os.path.join(outDir, filename), outDir, "emotion_ferplus/model.onnx")
         elif modelname == "bvlc_reference_rcnn_ilsvrc13":
             url = "https://s3.amazonaws.com/download.onnx/models/opset_8/bvlc_reference_rcnn_ilsvrc13.tar.gz"
             filename = "bvlc_reference_rcnn_ilsvrc13.tar.gz"
@@ -240,11 +238,7 @@ def parse():
     parser = argparse.ArgumentParser(description="Download datasets for Glow")
     parser.add_argument("-d", "--datasets", nargs="+", choices=DATASET_NAMES)
     parser.add_argument("-D", "--all-datasets", action="store_true")
-    parser.add_argument(
-        "-c",
-        "--caffe2-models",
-        nargs="+",
-        choices=CAFFE2_MODELS)
+    parser.add_argument("-c", "--caffe2-models", nargs="+", choices=CAFFE2_MODELS)
     parser.add_argument("-C", "--all-caffe2-models", action="store_true")
     parser.add_argument("-o", "--onnx-models", nargs="+", choices=ONNX_MODELS)
     parser.add_argument("-O", "--all-onnx-models", action="store_true")

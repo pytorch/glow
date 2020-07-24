@@ -46,11 +46,6 @@ class TestQuantizedRelu(unittest.TestCase):
         jitVsGlow(
             test_f,
             x,
-            expected_fused_ops={
-                "aten::quantize_per_tensor",
-                "aten::relu",
-            },
-            black_list=[
-                "aten::dequantize",
-            ]
+            expected_fused_ops={"aten::quantize_per_tensor", "aten::relu",},
+            black_list=["aten::dequantize",],
         )
