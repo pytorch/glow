@@ -62,6 +62,8 @@ if [ "${CIRCLE_JOB}" == "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
     curl -sSL "https://build.travis-ci.org/files/gpg/llvm-toolchain-trusty-7.asc" | sudo -E apt-key add -
     echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty-7 main" | sudo tee -a /etc/apt/sources.list >/dev/null
     sudo apt-get update
+    lsb_release –a
+    sudo apt-get install python3.6
 elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
     # Install Glow dependencies
     sudo apt-get update
