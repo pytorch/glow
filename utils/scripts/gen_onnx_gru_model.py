@@ -12,14 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import onnx
-from onnx import helper
-from onnx import TensorProto
 import numpy as np
-
+import onnx
 import torch
 import torch.nn
 import torch.onnx
+from onnx import TensorProto, helper
+
 
 # GRU enums
 GRU_DIR_FORWARD = "forward"

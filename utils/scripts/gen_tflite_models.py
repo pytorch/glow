@@ -26,14 +26,15 @@
 #     Numpy 1.16.2
 #     shutil, os, other dependencies
 
+import os
+import shutil
+
+import numpy as np
 import tensorflow as tf
 import tensorflow.keras.backend as keras_backend
 import tensorflow.keras.layers as layers
-from tensorflow.python.tools import freeze_graph
 from tensorflow.keras.models import Model
-import numpy as np
-import shutil
-import os
+from tensorflow.python.tools import freeze_graph
 
 
 # ----------------------------------------------------------------------------------------------------------------------

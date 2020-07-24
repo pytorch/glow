@@ -14,12 +14,13 @@
 # limitations under the License.
 
 import argparse
-import re
-from typing import List, Dict, Tuple
-import typing
-import sqlite3
-import os
 import json
+import os
+import re
+import sqlite3
+import typing
+from typing import Dict, List, Tuple
+
 
 # Maintaining all nodes
 NODES_MAP: Dict[str, "Node"] = {}
@@ -510,7 +511,7 @@ def process(log: Dict, dumpPhases: List[str], conn: sqlite3.Connection) -> None:
             if prevNode.has_no_uses():
                 replacedNodes = find_all_replaced_nodes(prevNode)
                 store_transformation_into_DB(
-                    transID, changedNode, addedNodes, replacedNodes, cursor, scopeName,
+                    transID, changedNode, addedNodes, replacedNodes, cursor, scopeName
                 )
 
                 transID += 1

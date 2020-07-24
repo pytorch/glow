@@ -18,14 +18,14 @@
 # It currently allows to train either LeNet or an MLP on MNIST. We can then load
 # the pre-trained protobuf file into Glow to run.
 
-import numpy as np
 import os
 import shutil
-import caffe2.python.predictor.predictor_exporter as pe
 
+import caffe2.python.predictor.predictor_exporter as pe
+import numpy as np
+from caffe2.python import brew, core, model_helper, optimizer, workspace
 from caffe2.python.predictor import mobile_exporter
 
-from caffe2.python import brew, core, model_helper, optimizer, workspace
 
 # If you would like to see some really detailed initializations,
 # you can change --caffe2_log_level=0 to --caffe2_log_level=-1

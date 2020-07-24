@@ -1,9 +1,9 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-
-from tests.utils import jitVsGlow
 import unittest
+
+import torch
+from tests.utils import jitVsGlow
 
 
 class TestQuantizedMaxPool(unittest.TestCase):
@@ -46,6 +46,6 @@ class TestQuantizedMaxPool(unittest.TestCase):
         jitVsGlow(
             test_f,
             inputs,
-            expected_fused_ops={"aten::max_pool2d", "aten::dequantize",},
-            black_list=["aten::quantize_per_tensor",],
+            expected_fused_ops={"aten::max_pool2d", "aten::dequantize"},
+            black_list=["aten::quantize_per_tensor"],
         )

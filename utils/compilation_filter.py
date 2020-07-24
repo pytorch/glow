@@ -14,9 +14,10 @@
 # limitations under the License.
 
 import argparse
-import sqlite3
 import os
-from typing import List, Dict
+import sqlite3
+from typing import Dict, List
+
 
 # A list of all filtered transformations.
 TRANS_LIST: List["Transformation"] = []

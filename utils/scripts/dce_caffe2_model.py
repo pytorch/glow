@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import argparse
+
 from caffe2.proto import caffe2_pb2
 from google.protobuf import text_format
-import argparse
 
 
 def read_model_from_file(path):

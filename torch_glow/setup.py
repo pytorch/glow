@@ -1,22 +1,23 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-from distutils.spawn import find_executable
-from distutils import sysconfig, log
-import setuptools
-import setuptools.command.build_py
-import setuptools.command.develop
-import setuptools.command.build_ext
-
-from collections import namedtuple
-from contextlib import contextmanager
+import argparse
 import glob
+import multiprocessing
 import os
 import shlex
 import subprocess
 import sys
-import argparse
+from collections import namedtuple
+from contextlib import contextmanager
+from distutils import log, sysconfig
+from distutils.spawn import find_executable
 from textwrap import dedent
-import multiprocessing
+
+import setuptools
+import setuptools.command.build_ext
+import setuptools.command.build_py
+import setuptools.command.develop
+
 
 try:
     import torch
@@ -186,11 +187,7 @@ class build_ext(setuptools.command.build_ext.build_ext):
             self.copy_file(src, dst)
 
 
-cmdclass = {
-    "cmake_build": cmake_build,
-    "develop": develop,
-    "build_ext": build_ext,
-}
+cmdclass = {"cmake_build": cmake_build, "develop": develop, "build_ext": build_ext}
 
 # ################################################################################
 # # Extensions

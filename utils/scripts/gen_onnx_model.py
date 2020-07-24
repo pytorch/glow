@@ -17,10 +17,10 @@
 # ./tests/unittests/onnxImporterTest.cpp
 # Run $>python gen_onnx_model.py to get the ONNX model.
 
-import onnx
-from onnx import helper
-from onnx import AttributeProto, TensorProto, GraphProto
 import numpy as np
+import onnx
+from onnx import AttributeProto, GraphProto, TensorProto, helper
+
 
 # The protobuf definition can be found here:
 # https://github.com/onnx/onnx/blob/master/onnx/onnx.proto

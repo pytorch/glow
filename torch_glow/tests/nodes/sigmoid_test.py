@@ -1,7 +1,8 @@
+# isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
 import torch_glow
+import torch
 
 from tests.utils import jitVsGlow
 import unittest

@@ -1,17 +1,17 @@
+# isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
-
-import torch
-import torch_glow
-from PIL import Image
-
-import utils.torchvision_fake.transforms as torchvisionTransforms
-import utils.torchvision_fake.resnet as resnet
 
 import argparse
 
+import torch_glow
+import torch
+import utils.torchvision_fake.resnet as resnet
+import utils.torchvision_fake.transforms as torchvisionTransforms
+from PIL import Image
+
 
 def load_image(image_path):
-    image = Image.open(image_path).convert('RGB')
+    image = Image.open(image_path).convert("RGB")
     transformed_image = transform_image(image)
     return torch.reshape(transformed_image, (1, 3, 224, 224))
 
