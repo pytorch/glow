@@ -1,11 +1,11 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-import torch.nn.functional as F
+import unittest
 from collections import namedtuple
 
+import torch
+import torch.nn.functional as F
 from tests.utils import jitVsGlow
-import unittest
 
 
 class TestConv3d(unittest.TestCase):

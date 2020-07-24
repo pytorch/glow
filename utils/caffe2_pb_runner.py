@@ -14,13 +14,15 @@
 
 # Load a pre-trained Caffe2 image classifier and run it on an image.
 
-from caffe2.python import workspace
 import argparse
 import collections
-import numpy as np
 import os
-import skimage.io
 import time
+
+import numpy as np
+import skimage.io
+from caffe2.python import workspace
+
 
 print("Required modules imported.")
 

@@ -13,16 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import argparse
+import os
 import shutil
 import sys
 import tempfile
 
-import argparse
-import os
 import pexpect
-
 import PIL.Image as Image
 import torchvision
+
 
 parser = argparse.ArgumentParser(
     description="Glow image-classifier Driver for " "TopK ImageNet Calculation"
@@ -153,7 +153,7 @@ def resize_and_save_image(img_path, path_to_new_img):
 
     # Use to Resize and CenterCrop the images to 224x224.
     transform_resize = torchvision.transforms.Compose(
-        [torchvision.transforms.Resize(256), torchvision.transforms.CenterCrop(224),]
+        [torchvision.transforms.Resize(256), torchvision.transforms.CenterCrop(224)]
     )
 
     resized_img = transform_resize(img)

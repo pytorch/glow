@@ -14,15 +14,17 @@
 # limitations under the License.
 
 
+import argparse
+import glob
+import os
+
 # imagenet-process : Runs preprocessing of standard imagenet images
 #                    to work with a pretrained model (e.g. resnet)
 #                    through glow
 # usage: python3 imagenet-process images/*.JPEG processed/
 import PIL.Image
 import torchvision
-import glob
-import os
-import argparse
+
 
 parser = argparse.ArgumentParser(description="imagenet preprocessor")
 parser.add_argument("input", metavar="input", help="glob to input images")
@@ -48,7 +50,7 @@ for ifn in glob.glob(args.input):
     im = PIL.Image.open(ifn)
     im.convert("RGB")
     resize = torchvision.transforms.Compose(
-        [torchvision.transforms.Resize(256), torchvision.transforms.CenterCrop(224),]
+        [torchvision.transforms.Resize(256), torchvision.transforms.CenterCrop(224)]
     )
     processed_im = resize(im)
 

@@ -1,9 +1,11 @@
+# isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-import torch_glow
-
 import sys
+
+import torch_glow
+import torch
+
 
 GLOW_NODE_NAME = "glow::FusionGroup"
 SUBGRAPH_ATTR = "Subgraph"

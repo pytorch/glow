@@ -1,8 +1,10 @@
+# isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
+
+import unittest
 
 import torch_glow
 import torch
-import unittest
 
 
 class Model(torch.nn.Module):

@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import onnx
-from onnx import helper
-from onnx import TensorProto
 import numpy as np
+import onnx
 import tensorflow as tf
+from onnx import TensorProto, helper
 from tensorflow.python.ops import gen_audio_ops as audio_ops
 
 

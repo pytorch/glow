@@ -1,10 +1,11 @@
+# isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
+
+import unittest
 
 import torch
 import torch.nn.functional as F
-
 import torch_glow
-import unittest
 
 
 class TestWeightFreezing(unittest.TestCase):

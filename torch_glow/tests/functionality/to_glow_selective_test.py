@@ -1,8 +1,10 @@
+# isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
+
+import unittest
 
 import torch_glow
 import torch
-import unittest
 
 
 class Qux(torch.nn.Module):
@@ -80,7 +82,7 @@ class TestSelectiveToGlow(unittest.TestCase):
         spec.addInputs([sim, sim])
 
         glow_mod = torch_glow.to_glow_selective(
-            model, {"foo.bar": (spec, (a, b)), "qux": (spec, (a, b)),},
+            model, {"foo.bar": (spec, (a, b)), "qux": (spec, (a, b))}
         )
 
         glow_mod = torch.jit.trace(glow_mod, (a, b))
