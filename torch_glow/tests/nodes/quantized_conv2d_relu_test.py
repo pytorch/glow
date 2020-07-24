@@ -1,10 +1,10 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-
-from tests.utils import jitVsGlow
-from collections import OrderedDict
 import unittest
+from collections import OrderedDict
+
+import torch
+from tests.utils import jitVsGlow
 
 
 class TestQuantizedConv2dRelu(unittest.TestCase):
@@ -108,6 +108,6 @@ class TestQuantizedConv2dRelu(unittest.TestCase):
             jitVsGlow(
                 model,
                 x,
-                expected_fused_ops={"quantized::conv2d_relu",},
-                black_list=["aten::quantize_per_tensor", "aten::dequantize",],
+                expected_fused_ops={"quantized::conv2d_relu"},
+                black_list=["aten::quantize_per_tensor", "aten::dequantize"],
             )

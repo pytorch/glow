@@ -1,9 +1,12 @@
+# isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-import torch_glow
-from tests.utils import graph_contains_str
 import unittest
+
+import torch_glow
+import torch
+from tests.utils import graph_contains_str
+
 
 graph_str = """
 graph(%input : Tensor, %weight : Tensor, %bias : Tensor):

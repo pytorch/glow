@@ -15,10 +15,11 @@
 
 import argparse
 import json
-import numpy
 import re
 from collections import defaultdict
 from operator import attrgetter, itemgetter
+
+import numpy
 
 
 def formatUs(time):

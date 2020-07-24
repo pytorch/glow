@@ -1,7 +1,9 @@
+# isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch_glow
 import unittest
+
+import torch_glow
 
 
 class TestSetGlowBackend(unittest.TestCase):

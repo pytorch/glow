@@ -1,10 +1,11 @@
+# isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-import torch_glow
 import os
 
 import pytest
+import torch_glow
+import torch
 
 
 @pytest.mark.skip(reason="Need something like EraseNumberTypes to re-enable")

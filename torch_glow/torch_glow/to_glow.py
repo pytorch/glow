@@ -1,6 +1,8 @@
-import torch
-import copy
 import collections
+import copy
+
+import torch
+
 
 __all__ = ["to_glow", "to_glow_selective"]
 

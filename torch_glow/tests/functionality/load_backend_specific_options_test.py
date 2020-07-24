@@ -1,10 +1,11 @@
+# isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
-
-import torch
-import torch_glow
 
 import tempfile
 import unittest
+
+import torch_glow
+import torch
 
 
 class TestLoadBackendSpecificOptions(unittest.TestCase):

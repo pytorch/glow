@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import argparse
+
 from caffe2.proto import caffe2_pb2
 from caffe2.python import workspace
 from google.protobuf import text_format
-import argparse
 
 
 def fix_tensor_fills(init_net_file):

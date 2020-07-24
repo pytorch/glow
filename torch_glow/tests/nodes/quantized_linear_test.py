@@ -1,9 +1,9 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-
-from tests.utils import jitVsGlow
 import unittest
+
+import torch
+from tests.utils import jitVsGlow
 
 
 class TestQuantizedLinear(unittest.TestCase):
@@ -60,8 +60,8 @@ class TestQuantizedLinear(unittest.TestCase):
         jitVsGlow(
             model,
             x,
-            expected_fused_ops={"aten::quantize_per_tensor", "quantized::linear",},
-            black_list=["aten::dequantize",],
+            expected_fused_ops={"aten::quantize_per_tensor", "quantized::linear"},
+            black_list=["aten::dequantize"],
         )
 
     @unittest.skip(reason="random input could cause flaky")

@@ -14,11 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import matplotlib.pyplot as plt
 import argparse
+import os
+
+import matplotlib.pyplot as plt
 import numpy as np
 import yaml
-import os
+
 
 # Command line options.
 parser = argparse.ArgumentParser(
