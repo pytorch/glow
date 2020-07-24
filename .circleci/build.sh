@@ -96,7 +96,7 @@ else
 fi
 
 # Install ninja, (newest version of) autopep8 through pip
-sudo pip install ninja autopep8
+sudo pip install ninja 
 hash cmake ninja
 
 # Build glow
@@ -146,7 +146,8 @@ elif [[ "$CIRCLE_JOB" == "COVERAGE" ]]; then
           ../
 elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_AND_PEP8_FORMAT" ]]; then
     sudo apt-get install -y clang-format-7
-    pip install black
+    sudo pip install --upgrade pip
+    sudo pip install black
 elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     # Build PyTorch
     cd /tmp
