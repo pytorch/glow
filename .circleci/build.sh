@@ -63,9 +63,7 @@ if [ "${CIRCLE_JOB}" == "CHECK_CLANG_AND_PEP8_FORMAT" ]; then
     echo "deb http://apt.llvm.org/trusty/ llvm-toolchain-trusty-7 main" | sudo tee -a /etc/apt/sources.list >/dev/null
     sudo -E apt-add-repository -y "ppa:deadsnakes/ppa"
     sudo apt-get update
-    lsb_release -a
-    python3 -V
-    sudo apt-get install python3.6
+    sudo apt-get install python3.6 python3.6-venv
 elif [ "${CIRCLE_JOB}" == "PYTORCH" ]; then
     # Install Glow dependencies
     sudo apt-get update
@@ -157,6 +155,7 @@ elif [[ "$CIRCLE_JOB" == "CHECK_CLANG_AND_PEP8_FORMAT" ]]; then
     cd ${GLOW_DIR}
 elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     # Build PyTorch
+    which python3.6
     cd /tmp
     python3.6 -m virtualenv venv
     source venv/bin/activate
