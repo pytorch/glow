@@ -143,6 +143,9 @@ int main(int argc, char *argv[]) {
   printf("Usage: AddBench n(Int) numLayers(Int) numReps(Int) "
          "numAsyncLaunches(Int) numAddChains(Int) backendStr(String) "
          "dtypeStr(\"Float16\"|\"Float32\") dev_id(Int)\n");
+  printf("Standard Glow command-line options may be passed via the GLOW_OPTS "
+         "environment variable\n");
+  llvm::cl::ParseEnvironmentOptions(argv[0], "GLOW_OPTS", "");
   assert(argc == 8 || argc == 9);
   size_t n = atoi(argv[1]);
   size_t numLayers = atoi(argv[2]);

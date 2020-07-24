@@ -424,6 +424,9 @@ int main(int argc, char *argv[]) {
       "Usage: BERTLayerBench maxSequenceLength batchSize hiddenSize numHeads "
       "numCores "
       "numReps numAsyncLaunches backendStr dtypeStr useInt8FCs\n");
+  printf("Standard Glow command-line options may be passed via the GLOW_OPTS "
+         "environment variable\n");
+  llvm::cl::ParseEnvironmentOptions(argv[0], "GLOW_OPTS", "");
   assert(argc == 11);
   size_t maxSequenceLength = atoi(argv[1]);
   size_t batchSize = atoi(argv[2]);
