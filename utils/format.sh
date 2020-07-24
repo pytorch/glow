@@ -38,7 +38,7 @@ fix_format() {
     -o -name \*.cl -print0 \
   | xargs -0 -P8 -n1 $CLANG_COMMAND -i;
 
-  black -S torch_glow utils
+  python -m black -S torch_glow utils
 }
 
 check_format() {
