@@ -642,6 +642,22 @@ struct FlattenInputs {
   };
 };
 
+/// Indexes of aten::squeeze inputs.
+struct SqueezeInputs {
+  enum {
+    input = 0,
+    dim = 1,
+  };
+};
+
+/// Indexes of aten::unsqueeze inputs.
+struct UnsqueezeInputs {
+  enum {
+    input = 0,
+    dim = 1,
+  };
+};
+
 /// Indexes of aten::masked_fill inputs.
 struct MaskedFillInputs {
   enum {
@@ -812,6 +828,9 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::bmm"}, &PyTorchModelLoader::loadBmm},
       {{"aten::addmm"}, &PyTorchModelLoader::loadAddMM},
       {{"aten::flatten"}, &PyTorchModelLoader::loadFlatten},
+      {{"aten::squeeze", "aten::squeeze_"}, &PyTorchModelLoader::loadSqueeze},
+      {{"aten::unsqueeze", "aten::unsqueeze_"},
+       &PyTorchModelLoader::loadUnsqueeze},
       {{"aten::masked_fill", "aten::masked_fill_"},
        &PyTorchModelLoader::loadMaskedFill},
       {{"aten::prelu"}, &PyTorchModelLoader::loadPRelu},
@@ -3628,6 +3647,72 @@ Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[FlattenInputs::input]));
+  return addValueMapping(outputs[0], res, dtype);
+}
+
+Error PyTorchModelLoader::loadSqueeze(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
+
+  glow::NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      in, getGlowNodeValueForValue(inputs[SqueezeInputs::input]));
+
+  auto inDims = in.dims();
+
+  // Load dim parameter if provided
+  int64_t dim = 0;
+  bool dimProvided = false;
+  if (inputs.size() == 2) {
+    dimProvided = true;
+    int64_t dimRaw;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        dimRaw, iValToInt(getGlowIValueForValue(inputs[SqueezeInputs::dim])));
+    ASSIGN_VALUE_OR_RETURN_ERR(dim, getPositiveIndex(dimRaw, inDims.size()));
+  }
+
+  std::vector<dim_t> outDims;
+
+  for (auto i = 0; i < inDims.size(); ++i) {
+    auto inDim = inDims[i];
+    if (inDim != 1 || (dimProvided && i != dim)) {
+      outDims.push_back(inDim);
+    }
+  }
+
+  auto res = F_.createReshape("squeeze", in, outDims)->getResult();
+
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[SqueezeInputs::input]));
+  return addValueMapping(outputs[0], res, dtype);
+}
+
+Error PyTorchModelLoader::loadUnsqueeze(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      in, getGlowNodeValueForValue(inputs[UnsqueezeInputs::input]));
+
+  auto inDims = in.dims();
+
+  int64_t dimRaw;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dimRaw, iValToInt(getGlowIValueForValue(inputs[UnsqueezeInputs::dim])));
+  int64_t dim;
+  ASSIGN_VALUE_OR_RETURN_ERR(dim, getPositiveIndex(dimRaw, inDims.size() + 1));
+
+  std::vector<dim_t> outDims(inDims.begin(), inDims.end());
+
+  outDims.insert(outDims.begin() + dim, 1);
+
+  auto res = F_.createReshape("unsqueeze", in, outDims)->getResult();
+
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[UnsqueezeInputs::input]));
   return addValueMapping(outputs[0], res, dtype);
 }
 
