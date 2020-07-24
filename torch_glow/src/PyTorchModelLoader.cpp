@@ -725,6 +725,17 @@ struct GlowFusedLinearInputs {
   };
 };
 
+/// Indexes of aten::to inputs.
+struct ToInputs {
+  enum {
+    input = 0,
+    dtype = 1,
+    non_block = 2,     // Not used
+    copy = 3,          // Not used
+    memory_format = 4, // Not used
+  };
+};
+
 /// Indexes of aten::embedding_bag inputs.
 struct EmbeddingBagInputs {
   enum {
@@ -837,6 +848,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::slice"}, &PyTorchModelLoader::loadSlice},
       {{"aten::softmax"}, &PyTorchModelLoader::loadSoftMax},
       {{"aten::topk"}, &PyTorchModelLoader::loadTopK},
+      {{"aten::to"}, &PyTorchModelLoader::loadTo},
       {{"prim::ConstantChunk"}, &PyTorchModelLoader::loadConstantChunk},
       {{"aten::embedding_bag"}, &PyTorchModelLoader::loadEmbeddingBag},
       {{"quantized::embedding_bag_byte_rowwise_offsets"},
@@ -3545,11 +3557,29 @@ Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
 
-  // TODO: use ConvertTo
-  glow::NodeValue in;
-  ASSIGN_VALUE_OR_RETURN_ERR(in, getGlowNodeValueForValue(inputs[0]));
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input,
+                             getGlowNodeValueForValue(inputs[ToInputs::input]));
 
-  return addValueMapping(outputs[0], in);
+  int32_t dtype;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dtype, iValToInt(getGlowIValueForValue(inputs[ToInputs::dtype])));
+
+  auto inputType = input.getType();
+  auto glowElemKind = scalarTypeToElemKind(static_cast<c10::ScalarType>(dtype));
+  if (glowElemKind == inputType->getElementType()) {
+    return addValueMapping(outputs[0], input);
+  }
+  if (isQuantizedElemKind(glowElemKind) ||
+      isQuantizedElemKind(inputType->getElementType())) {
+    // We currently dont support aten::to to quantized tensors
+    // Unless input dtype == output dtype
+    RETURN_ERR("Detected quantized type for aten::to node.");
+  }
+  auto outType = F_.getParent()->uniqueType(glowElemKind, inputType->dims());
+  glow::ConvertToNode *toNode = F_.createConvertTo("to", input, outType);
+
+  return addValueMapping(outputs[0], toNode->getResult());
 }
 
 Error PyTorchModelLoader::loadMaskedFill(const torch::jit::Node *ptNode) {
