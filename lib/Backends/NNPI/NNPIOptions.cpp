@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <fstream>
 #include <glog/logging.h>
+#include <iostream>
 #include <sstream>
 
 using namespace glow;
@@ -102,7 +103,7 @@ unsigned NNPIOptions::getFirstDeviceSteppingVersion() {
   constexpr char stepLoc[] = "/sys/class/nnpi/nnpi0/card_stepping";
   inFile.open(stepLoc);
   if (!inFile.good() || inFile.eof()) {
-    LOG(INFO) << "Could not find device stepping at " << stepLoc;
+    std::cerr << "Could not find device stepping at " << stepLoc << std::endl;
     return 0;
   }
 
