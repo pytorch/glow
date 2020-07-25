@@ -4050,7 +4050,7 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "CumSum") {
     return loadCumSum(op, dict);
   }
-  if (typeName == "ScatterAssign") {
+  if ((typeName == "ScatterAssign") || (typeName == "ScatterND")) {
     return loadScatterAssign(op, dict);
   }
   if (typeName == "IntLookupTable") {
