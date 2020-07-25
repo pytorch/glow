@@ -1942,7 +1942,7 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
   std::vector<float> scales;
   std::vector<dim_t> outDims;
 
-  int32_t scalesIdx = (this->opsetVersion_ == 11) ? 2 : 1;
+  int32_t scalesIdx = (this->opsetVersion_ >= 11) ? 2 : 1;
   scalesC = getConstantByNameOrNull(op.input(scalesIdx));
   RETURN_ERR_IF_NOT(scalesC, "Scales Tensor is not Constant.");
   if (scalesC->getElementType() != ElemKind::FloatTy) {
@@ -1955,7 +1955,7 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
   // nearest_mode = floor
   // coordinate_transformation_mode = asymmetric
   // mode = nearest, (bi)linear
-  if (this->opsetVersion_ == 11) {
+  if (this->opsetVersion_ >= 11) {
     int32_t excludeOutside = 0;
     // attribute: exclude_outside.
     if (dict.count("exclude_outside")) {
