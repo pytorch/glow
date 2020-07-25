@@ -703,6 +703,41 @@ TEST(onnx, importFloor) {
                           [](float a) { return std::floor(a); });
 }
 
+// Tests log node for random positive values.
+static void testImportLog(std::string fileName,
+                          llvm::ArrayRef<dim_t> inputShape,
+                          std::string input_name, float delta,
+                          const std::function<float(float)> &op) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string NetFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + fileName;
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+  Type input_type(ElemKind::FloatTy, inputShape);
+  ONNXModelLoader onnxLD(NetFilename, {input_name.c_str()}, {&input_type}, *F);
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  auto PH = mod.getPlaceholderByNameSlow(input_name);
+  auto *inTensor = bindings.allocate(PH);
+  inTensor->getHandle().randomize(0, 500.0, mod.getPRNG());
+  // Compile&run the graph, and check the output
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+  auto result = bindings.get(graphOutputVar)->getHandle();
+  auto inHandle = inTensor->getHandle();
+  ASSERT_TRUE(result.dims() == inputShape);
+  for (size_t i = 0; i < result.getType().size(); i++) {
+    EXPECT_NEAR(result.raw(i), op(inHandle.raw(i)), delta);
+  }
+}
+
+TEST_F(OnnxImporterTest, importLog) {
+  testImportLog("log.onnxtxt", {1, 2, 3, 2}, "data", 0.002,
+                [](float a) { return std::log(a); });
+}
+
 static void testImportPRelu(std::string filename,
                             llvm::ArrayRef<dim_t> inputShape,
                             std::vector<float> expectedSlope) {
