@@ -22,21 +22,29 @@
 #include <vector>
 
 #include "glow/Support/Error.h"
+#include <torch/script.h>
 
 /// Given actual inputs and the glow graph, this class is responsible for
 /// slicing the upperbounded outputs from Glow back to the actual output size
 /// expected by PyTorch.
 namespace glow {
 
-using ShapeStack = std::vector<std::vector<int64_t>>;
+struct VariableMeta {
+  /// Store shape info of Tensor, Scalar, and IntList
+  std::vector<int64_t> shape;
+  /// Store Int and IntList value
+  std::vector<int64_t> intValue;
+};
+
+using MetaStack = std::vector<VariableMeta>;
 
 class ShapeInferenceEngine {
 public:
   ShapeInferenceEngine(const torch::jit::Graph &graph,
                        const at::ArrayRef<torch::jit::IValue> &inputs);
 
-  /// Get shapes of outputs of the given graph.
-  ShapeStack getGraphOutputShape();
+  /// Get all VariableMeta for outputs of the given graph.
+  std::vector<std::vector<int64_t>> &getGraphOutputShape();
 
   /// This run the shape inference engine for the given \p graph and \p inputs.
   /// \returns error of failure.
@@ -49,45 +57,75 @@ private:
   /// Actual inputs of the given \p graph.
   const at::ArrayRef<torch::jit::IValue> &inputs_;
 
-  /// This is a mapping which uses torch::jit::Value as a key, Shape as a
-  /// value. It is used for tracking the shape of each input or output in a
-  /// graph.
-  std::unordered_map<const torch::jit::Value *, std::vector<int64_t>> shapeMap_;
+  /// This is a mapping which uses torch::jit::Value as a key, VariableMeta as a
+  /// value. It is used for tracking the shape for tensors and values for
+  /// integers in a graph.
+  std::unordered_map<const torch::jit::Value *, VariableMeta> shapeMap_;
 
   /// Store shapes of all the outputs in a graph.
-  ShapeStack outputShapeMeta_;
+  std::vector<std::vector<int64_t>> outputShape_;
 
-  /// Print shapeMap_.
+  /// Offset flag for aten::embedding_bag and embedding_bag_byte_rowwise_offsets
+  /// In Glow, \p hasEndOffset_ always true
+  static bool const hasEndOffset_ = true;
+
+  /// Print shapeMap_ as format:
+  /// %5: [2 4]
   void printShapeMap();
 
   /// Put shape info of actual graph inputs into \p shapeMap_.
-  void getGraphIntputShape();
+  Error getGraphIntputShape();
 
   /// Extract shape info of graph outputs from \p shapeMap_.
   void generateGraphOutputShape();
 
   /// Extract shape info of node inputs from \p shapeMap_.
-  void getNodeInputShape(const torch::jit::Node *node, ShapeStack &inputShape);
-
-  // This function could only cover the operation which produces one output
-  // case.
-  // TODO: Since a node may have multiple outputs, this func will support
-  // multiple outputs in the next diff
-  std::vector<int64_t> &getNodeOutputShape(const torch::jit::Node *node);
+  void getNodeInputShape(const torch::jit::Node *node, MetaStack &inputMetas);
 
   /// Infer shapes of node outputs
   Error shapeOnNode(const torch::jit::Node *node);
 
-  // TODO: Support more Ops
   // Shape inference for prim::Constant
   static Expected<std::vector<int64_t>>
   primConstant(const torch::jit::Node *node);
-  // Shape inference for aten::add
-  static Expected<std::vector<int64_t>> add(const ShapeStack &shapeMeta);
+  // Shape inference for aten::add, aten::mul, aten::pow
+  static Expected<std::vector<int64_t>>
+  binaryOp(const MetaStack &variableMetas);
   // Shape inference for aten::mm
-  static Expected<std::vector<int64_t>> mm(const ShapeStack &shapeMeta);
+  static Expected<std::vector<int64_t>> mm(const MetaStack &variableMetas);
   // Shape inference for aten::bmm
-  static Expected<std::vector<int64_t>> bmm(const ShapeStack &shapeMeta);
+  static Expected<std::vector<int64_t>> bmm(const MetaStack &variableMetas);
+  // Shape inference for aten::addmm
+  static Expected<std::vector<int64_t>> addmm(const MetaStack &variableMetas);
+  // Shape inference for prim::ConstantChunk
+  static Expected<std::vector<std::vector<int64_t>>>
+  constantChunk(const MetaStack &variableMetas, int64_t chunks, int64_t dim);
+  // Shape inference for prim::FusedConcat
+  static Expected<std::vector<int64_t>>
+  fusedConcat(const MetaStack &variableMetas, int64_t dim);
+  // Shape inference for prim::ListConstruct
+  static Expected<std::vector<int64_t>>
+  listConstruct(const MetaStack &variableMetas);
+  // Shape inference for aten::permute
+  static Expected<std::vector<int64_t>> permute(const MetaStack &variableMetas);
+  // Shape inference for aten::reshape
+  static Expected<std::vector<int64_t>> reshape(const MetaStack &variableMetas);
+  // Shape inference for aten::slice
+  static Expected<std::vector<int64_t>> slice(const MetaStack &variableMetas);
+  // Shape inference for aten::transpose
+  static Expected<std::vector<int64_t>>
+  transpose(const MetaStack &variableMetas);
+  // Shape inference for aten::flatten
+  static Expected<std::vector<int64_t>> flatten(const MetaStack &variableMetas);
+  // Shape inference for glow::fused_stack
+  static Expected<std::vector<int64_t>>
+  fusedStack(const MetaStack &variableMetas, int64_t dim);
+  // Shape inference for fb::embedding_bag_byte_rowwise_offsets
+  static Expected<std::vector<int64_t>>
+  embeddingBagByteRowwiseOffsets(const MetaStack &variableMetas);
+  // Shape inference for aten::embedding_bag
+  static Expected<std::vector<int64_t>>
+  embeddingBag(const MetaStack &variableMetas);
 };
 
 } // namespace glow

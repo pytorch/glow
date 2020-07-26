@@ -429,6 +429,10 @@ private:
   /// \returns error on failure.
   Error loadMax(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch floor node.
+  /// \returns error on failure.
+  Error loadFloor(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch relu node.
   /// \returns error on failure.
   Error loadRelu(const torch::jit::Node *ptNode);
@@ -579,6 +583,18 @@ private:
   /// Load a PyTorch flatten node.
   /// \returns error on failure.
   Error loadFlatten(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::squeeze node.
+  /// \returns error on failure.
+  Error loadSqueeze(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::unsqueeze node.
+  /// \returns error on failure.
+  Error loadUnsqueeze(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::masked_fill node.
+  /// \returns error on failure.
+  Error loadMaskedFill(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch topK node.
   /// \returns error on failure.

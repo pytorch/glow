@@ -412,7 +412,9 @@ NNPIInferenceErrorCode NNPIResource::postInference(Tensor *t) {
       i64Data[j] = static_cast<int64_t>(i32Data[j]);
     }
   } else {
-    std::memcpy(tensorData, hostPtr_, unpaddedSize);
+    if (tensorData != hostPtr_) {
+      std::memcpy(tensorData, hostPtr_, unpaddedSize);
+    }
   }
 
   if (deviceOptions_->dumpIOtoFiles) {
@@ -527,7 +529,9 @@ bool NNPIResource::updateHostResourceFromTensor(
     }
   } else if (unpaddedSize) { // Only copy if there is data. Required because
                              // tensorData cannot be null for memcpy.
-    memcpy(hostPtr_, tensorData, unpaddedSize);
+    if (tensorData != hostPtr_) {
+      std::memcpy(hostPtr_, tensorData, unpaddedSize);
+    }
   }
 
   // Pad with zeros or last element if needed.

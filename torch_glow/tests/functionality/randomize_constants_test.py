@@ -1,8 +1,10 @@
+# isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
+
+import unittest
 
 import torch_glow
 import torch
-import unittest
 
 
 class Model(torch.nn.Module):
@@ -41,5 +43,5 @@ class TestRandomizeWeights(unittest.TestCase):
         normal2 = run_model(m, input, False)
         rand = run_model(m, input, True)
 
-        assert(torch.allclose(normal1, normal2))
-        assert(not torch.allclose(normal1, rand))
+        assert torch.allclose(normal1, normal2)
+        assert not torch.allclose(normal1, rand)

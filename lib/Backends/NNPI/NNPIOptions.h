@@ -17,7 +17,6 @@
 #define GLOW_NNPI_ENV_VARIABLES_H
 
 #include "NNPIUtils.h"
-#include "nnpi_transformer_types.h"
 
 #include "glow/Backends/BackendOptions.h"
 
@@ -56,6 +55,10 @@ public:
   static std::string getFromEnv(std::string envName, std::string defVal);
 
   template <typename T> static T getStringAsType(std::string sVal);
+
+  /// Get the device version stepping for first installed device.
+  /// \returns 1 for A0, 2 for B0, 3 for C0 etc. or 0 if not found.
+  static unsigned getFirstDeviceSteppingVersion();
 
   virtual std::string dumpStatus();
   virtual llvm::StringMap<std::string> getSupportedOptions();
@@ -286,10 +289,6 @@ public:
   DECLARE_NNPI_OPTION(iceBOPrio5, float, "IceBOPrio5",
                       "Set ICE-BO 5 frequency priority.", "NNPI_ICEBO_PRIO5",
                       "0.f");
-  DECLARE_NNPI_OPTION(iaPrio0, float, "IAPrio0", "Set IA 0 frequency priority.",
-                      "NNPI_IA_PRIO0", "0.f");
-  DECLARE_NNPI_OPTION(iaPrio1, float, "IAPrio1", "Set IA 1 frequency priority.",
-                      "NNPI_IA_PRIO1", "0.f");
   DECLARE_NNPI_OPTION(ddrBandwidth, float, "DDRBandwidth",
                       "Set an estimated DDR bandwidth in GB/s.", "NNPI_DDR_BW",
                       "0.f");
@@ -335,8 +334,6 @@ public:
     INIT_NNPI_OPTIONS(iceBOPrio3, parameters);
     INIT_NNPI_OPTIONS(iceBOPrio4, parameters);
     INIT_NNPI_OPTIONS(iceBOPrio5, parameters);
-    INIT_NNPI_OPTIONS(iaPrio0, parameters);
-    INIT_NNPI_OPTIONS(iaPrio1, parameters);
     INIT_NNPI_OPTIONS(ddrBandwidth, parameters);
     INIT_NNPI_OPTIONS(disableSLSOffloadToIA, parameters);
     INIT_NNPI_OPTIONS(lightCompilation, parameters);
@@ -347,6 +344,9 @@ public:
   virtual llvm::StringRef getOptionsName() const override {
     return "Compilation Options";
   };
+
+  /// Looks for device stepping and sets it if possible in deviceVersion.
+  void trySetDeviceVersion();
 
 protected:
   /// There is only on logger for NNPI compilation. Setting it's properties can

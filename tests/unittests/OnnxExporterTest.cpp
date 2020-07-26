@@ -373,6 +373,9 @@ TEST(exporter, onnxModels) {
         name.find("Asin.onnxtxt") != std::string::npos ||
         name.find("Acos.onnxtxt") != std::string::npos ||
         name.find("Atan.onnxtxt") != std::string::npos ||
+        name.find("log.onnxtxt") != std::string::npos ||
+        name.find("scatterND.onnxtxt") != std::string::npos ||
+        name.find("mscatterND.onnxtxt") != std::string::npos ||
         name.find("simpleConvTranspose.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShape.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShapeDilation.onnxtxt") !=

@@ -35,12 +35,23 @@ class CachingGraphRunner {
   /// Information that is stored per-Glow graph for running it using
   /// HostManager.
   struct PerGlowGraphInfo {
+
+    PerGlowGraphInfo() = delete;
+    PerGlowGraphInfo(const std::string func, const PyTorchLoaderSettings &set)
+        : functionName(func), settings(set) {}
+
+    PerGlowGraphInfo(const PerGlowGraphInfo &) = delete;
+    PerGlowGraphInfo &operator=(const PerGlowGraphInfo &) = delete;
+
     /// Input and output placeholders to the Glow function.
     std::vector<glow::Placeholder *> inputPlaceholders;
     std::vector<glow::Placeholder *> outputPlaceholders;
 
     /// Name of the Glow function maintained by HostManager for this subgraph.
     std::string functionName;
+
+    /// PyTorchLoaderSettings used to compile this function
+    PyTorchLoaderSettings settings;
   };
 
   /// The PyTorch JIT Graph that this CachingGraphRunner caches Glow functions
@@ -63,6 +74,11 @@ class CachingGraphRunner {
   /// function that will run inputs matching that hash.
   std::unordered_map<size_t, std::shared_ptr<PerGlowGraphInfo>>
       perGlowGraphInfoMap_;
+
+  /// In AOT flow, compile a single Glow function and use it for all input
+  /// sizes. The PyTorch tensor inputs in this case should be smaller that the
+  /// compiled inputs, and they'll be padded with zeros by Glow.
+  bool useMaxSizeCompilation_ = true;
 
   /// Indicate which type will propagate to output.
   /// It is supposely to be the correct PyTorch ScalarType
@@ -147,8 +163,15 @@ public:
   /// The Glow Function should've already been created. Returns an error if not.
   Error runOnly(torch::jit::Stack &stack);
 
-  // Warm up the cache by compiling a Glow function for the inputs in \p stack.
-  Error warmCache(const std::vector<InputMeta> &inputMeta);
+  /// Warm up the cache by compiling a Glow function and storing its info in
+  /// perGlowGraphInfoMap_ with the hash computed using \p inputMeta. \p
+  /// inputMeta is used to pass Glow shapes and types (Only tensors are valid
+  /// inputs). \p settings enable different settings for each compilation.
+  /// If \p useMaxSizeCompilation , compile only a single Glow graph with an
+  /// upper-bound on the input sizes (smaller inputs will be padded by Glow.)
+  Error warmCache(const std::vector<InputMeta> &inputMeta,
+                  const PyTorchLoaderSettings &settings,
+                  bool useMaxSizeCompilation = true);
 
   const PyTorchLoaderSettings &getSettings() const;
 };

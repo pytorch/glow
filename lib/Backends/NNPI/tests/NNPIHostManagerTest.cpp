@@ -29,7 +29,7 @@ struct BlacklistInitializer {
           TestBlacklist::AnyDeviceAnyEngine},
          {"testStaticAssignmentP2PandDRT/0", TestBlacklist::AnyDeviceAnyEngine},
          {"testStaticAssignmentP2POnly/0", TestBlacklist::AnyDeviceAnyEngine},
-         {"ConcurrentAddRemoveUnique/0", TestBlacklist::AnyDeviceAnyEngine}};
+         {"ConcurrentAddRemoveUnique/0", TestBlacklist::AnyDeviceSWEngine}};
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);
   }

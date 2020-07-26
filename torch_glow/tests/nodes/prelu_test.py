@@ -1,10 +1,10 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import unittest
+
 import torch
 import torch.nn.functional as F
-
 from tests.utils import jitVsGlow
-import unittest
 
 
 class TestPrelu(unittest.TestCase):
@@ -17,5 +17,4 @@ class TestPrelu(unittest.TestCase):
         inputs = torch.randn(1, 4, 5, 5)
         weight = torch.tensor([0.25])
 
-        jitVsGlow(prelu_basic, inputs, weight,
-                  expected_fused_ops={"aten::prelu"})
+        jitVsGlow(prelu_basic, inputs, weight, expected_fused_ops={"aten::prelu"})

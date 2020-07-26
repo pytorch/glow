@@ -116,6 +116,11 @@ struct OptimizationOptions {
   /// Folding will be run.
   bool delayAndRecordConstantModification{false};
 
+  /// If true, then there will be no error checking for backend support during
+  /// the optimization pipeline. Expected that the caller will check if desired
+  /// later on.
+  bool skipBackendSupportCheck{false};
+
   /// If true, this will merge ConvertTo and Quantize nodes into inputs and
   /// outputs of the Function. This means modifying the types of Placeholders
   /// and SaveNodes if they have a corresponding ElemKind conversion (ConvertTo,
@@ -175,6 +180,9 @@ struct OptimizationOptions {
 
   /// If true, optimizations are allowed to change quantization scale/offset.
   bool enableQuantParamChanges{false};
+
+  /// If true, ConcatNodes will not be merged during the optimizer.
+  bool skipConcatMerging{false};
 };
 
 /// Meta information produced during the compilation. Whereas the compile

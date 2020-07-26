@@ -10713,7 +10713,7 @@ TEST_P(OperatorTest, Sigmoid_BFloat16) {
 template <typename DataType>
 static void testSwish(glow::PlaceholderBindings &bindings, glow::Module &mod,
                       glow::Function *F, glow::ExecutionEngine &EE,
-                      ElemKind DTy, float allowedError = 0.002f) {
+                      ElemKind DTy, float allowedError = 0.006f) {
   constexpr dim_t size = 10;
   auto *input = mod.createPlaceholder(DTy, {size}, "input", false);
   bindings.allocate(input)->getHandle<DataType>().randomize(-5.0, 5.0,

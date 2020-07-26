@@ -1,6 +1,8 @@
-import torch
-import copy
 import collections
+import copy
+
+import torch
+
 
 __all__ = ["to_glow", "to_glow_selective"]
 
@@ -23,9 +25,14 @@ def to_glow(model, method_compile_spec):
         A copy of the model that has been lowered to Glow and will run on
         Glow backend devices
     """
-
-    if not isinstance(method_compile_spec, collections.Mapping):
+    if isinstance(method_compile_spec, collections.Mapping):
+        for k, v in method_compile_spec.items():
+            if not isinstance(v, list):
+                method_compile_spec[k] = [v]
+    elif isinstance(method_compile_spec, list):
         method_compile_spec = {"forward", method_compile_spec}
+    else:
+        method_compile_spec = {"forward", [method_compile_spec]}
 
     return torch._C._jit_to_backend("glow", model._c, method_compile_spec)
 
@@ -37,8 +44,9 @@ def check_module_names(module_names):
         for path2 in module_names:
             if path1 == path2:
                 continue
-            assert path1 not in path2, \
-                f"Can't to_glow a module nested inside another to_glow module, \
+            assert (
+                path1 not in path2
+            ), f"Can't to_glow a module nested inside another to_glow module, \
                     found {path2} inside of {path1}"
 
 
@@ -90,17 +98,20 @@ def to_glow_selective(model, specs_and_examples, inplace=False):
         model = copy.deepcopy(model)
     for path, per_module_info in specs_and_examples.items():
         if isinstance(per_module_info, collections.Mapping):
-            assert len(per_module_info) == 1 and "forward" in per_module_info, \
-                "Only forward method is supported by to_glow_selective for now"
+            assert (
+                len(per_module_info) == 1 and "forward" in per_module_info
+            ), "Only forward method is supported by to_glow_selective for now"
             (spec, example_inputs) = per_module_info["forward"]
         elif isinstance(per_module_info, tuple):
             (spec, example_inputs) = per_module_info
         else:
-            raise ValueError("""For each submodule, to_glow_selective expects \
+            raise ValueError(
+                """For each submodule, to_glow_selective expects \
                              either a dictionary of method name -> \
                              (GlowCompileSpec, example_inputs) or just
                              (GlowCompileSpec, example_inputs) and 'forward' \
-                             method is assumed""")
+                             method is assumed"""
+            )
         submod = get_submodule(model, path)
         submod = torch.jit.trace(submod, example_inputs)
         submod = to_glow(submod, {"forward": spec})

@@ -123,6 +123,10 @@ private:
   void reconstructSerialized();
 };
 
+/// A type to map layout names to layout descriptions.
+using LayoutNameToLayoutDescriptionTy =
+    std::unordered_map<std::string, std::unique_ptr<TensorLayoutDescription>>;
+
 /// Interface for finding out layout requirements.
 class TensorLayoutCommon {
 public:
@@ -136,6 +140,21 @@ public:
   virtual std::string getNthResultLayoutRequirements(const Node *node,
                                                      size_t n);
 
+  /// \returns layout requirements of the Nth input \p n of a Node \p node.
+  /// Delegates to \p getNthInputLayoutRequirementsImpl from \p ctxTensorLayout_
+  /// if it is non-nullptr, or to \p getNthInputLayoutRequirements from the
+  /// current TensorLayoutCommon otherwise.
+  virtual std::string getNthInputLayoutRequirementsImpl(const Node *node,
+                                                        size_t n);
+
+  /// \returns layout requirements of the Nth result \p n of a Node \p node.
+  /// Delegates to \p getNthResultLayoutRequirementsImpl from \p
+  /// ctxTensorLayout_ if it is non-nullptr, or to \p
+  /// getNthResultLayoutRequirements from the current TensorLayoutCommon
+  /// otherwise.
+  virtual std::string getNthResultLayoutRequirementsImpl(const Node *node,
+                                                         size_t n);
+
   /// \returns true if type \p ty satisfies the \p destLayout layout. If \p
   /// srcLayout is provided, it is taken into account as well.
   virtual bool isSatisfiedBy(TypeRef ty,
@@ -145,11 +164,16 @@ public:
   /// \return layouts for all tensor dimensions.
   virtual llvm::ArrayRef<TensorLayoutDescription> getLayoutsForDims() const;
 
+  /// \returns mapping from layout names to layout descriptions.
+  virtual LayoutNameToLayoutDescriptionTy &
+  getLayoutNameToLayoutDescription() const;
+
   /// \returns true if layout equirement verification is enabled.
   bool isEnabled() const { return enabled_; }
 
 protected:
   TensorLayoutCommon();
+  TensorLayoutCommon(TensorLayoutCommon *ctxTensorLayout);
   TensorLayoutCommon(TensorLayoutCommon &&) = delete;
   TensorLayoutCommon &operator=(const TensorLayoutCommon &) = delete;
   TensorLayoutCommon &operator=(TensorLayoutCommon &&) = delete;
@@ -159,8 +183,10 @@ protected:
   bool enabled_;
 
 private:
-  std::unordered_map<std::string, TensorLayoutDescription *>
-      layoutNameToLayoutDescription_;
+  /// TensorLayout to be used for recursive calls.
+  TensorLayoutCommon *ctxTensorLayout_{nullptr};
+  /// Mapping from layout names to layout descriptions.
+  static LayoutNameToLayoutDescriptionTy layoutNameToLayoutDescription_;
 };
 
 class CanonicalTensorLayout final
@@ -168,6 +194,8 @@ class CanonicalTensorLayout final
       public TensorLayoutSingleton<CanonicalTensorLayout> {
 public:
   CanonicalTensorLayout(token_) {}
+  CanonicalTensorLayout(TensorLayoutCommon *ctxTensorLayout)
+      : TensorLayoutCommon(ctxTensorLayout) {}
 
   /// \return the default n-D layout for Glow.
   std::string getDefaultNDLayout(unsigned dims) const override;

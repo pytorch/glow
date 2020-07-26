@@ -1,10 +1,11 @@
+# isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
+
+import unittest
 
 import torch
 import torch.nn.functional as F
-
 import torch_glow
-import unittest
 
 
 class TestWeightFreezing(unittest.TestCase):
@@ -32,4 +33,4 @@ class TestWeightFreezing(unittest.TestCase):
 
         out2 = conv2d_freeze(inputs, filters)
 
-        assert(torch.allclose(out1, out2))
+        assert torch.allclose(out1, out2)

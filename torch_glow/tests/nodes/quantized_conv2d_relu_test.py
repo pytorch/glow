@@ -1,10 +1,10 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-
-from tests.utils import jitVsGlow
-from collections import OrderedDict
 import unittest
+from collections import OrderedDict
+
+import torch
+from tests.utils import jitVsGlow
 
 
 class TestQuantizedConv2dRelu(unittest.TestCase):
@@ -22,24 +22,29 @@ class TestQuantizedConv2dRelu(unittest.TestCase):
 
             # Due to the off-by-one error, we cannot let the weights, bias & input
             # to be totally random.
-            conv.weight.set_(torch.arange(36/groups, dtype=torch.float).reshape([3,
-                                                                                 3//groups, 2,
-                                                                                 2])
-                             / 3)
+            conv.weight.set_(
+                torch.arange(36 / groups, dtype=torch.float).reshape(
+                    [3, 3 // groups, 2, 2]
+                )
+                / 3
+            )
             conv.bias.data.fill_(2)
 
             model = torch.nn.Sequential(
                 OrderedDict(
-                    [("quantize", q), ("conv1", conv),
-                     ("relu1", relu), ("dequantize", dq)]
+                    [
+                        ("quantize", q),
+                        ("conv1", conv),
+                        ("relu1", relu),
+                        ("dequantize", dq),
+                    ]
                 )
             )
             model.eval()
             model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
 
             # Fuse conv and relu to conv_relu
-            model = torch.quantization.fuse_modules(
-                model, [["conv1", "relu1"]])
+            model = torch.quantization.fuse_modules(model, [["conv1", "relu1"]])
 
             torch.quantization.prepare(model, inplace=True)
             torch.quantization.convert(model, inplace=True)
@@ -76,24 +81,26 @@ class TestQuantizedConv2dRelu(unittest.TestCase):
 
             # Due to the off-by-one error, we cannot let the weights, bias & input
             # to be totally random.
-            conv.weight.set_(torch.arange(36, dtype=torch.float).reshape([3,
-                                                                          3, 2,
-                                                                          2])
-                             / 3)
+            conv.weight.set_(
+                torch.arange(36, dtype=torch.float).reshape([3, 3, 2, 2]) / 3
+            )
             conv.bias.data.fill_(2)
 
             model = torch.nn.Sequential(
                 OrderedDict(
-                    [("quantize", q), ("conv1", conv),
-                     ("relu1", relu), ("dequantize", dq)]
+                    [
+                        ("quantize", q),
+                        ("conv1", conv),
+                        ("relu1", relu),
+                        ("dequantize", dq),
+                    ]
                 )
             )
             model.eval()
             model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
 
             # Fuse conv and relu to conv_relu
-            model = torch.quantization.fuse_modules(
-                model, [["conv1", "relu1"]])
+            model = torch.quantization.fuse_modules(model, [["conv1", "relu1"]])
 
             torch.quantization.prepare(model, inplace=True)
             torch.quantization.convert(model, inplace=True)
@@ -101,11 +108,6 @@ class TestQuantizedConv2dRelu(unittest.TestCase):
             jitVsGlow(
                 model,
                 x,
-                expected_fused_ops={
-                    "quantized::conv2d_relu",
-                },
-                black_list=[
-                    "aten::quantize_per_tensor",
-                    "aten::dequantize",
-                ]
+                expected_fused_ops={"quantized::conv2d_relu"},
+                black_list=["aten::quantize_per_tensor", "aten::dequantize"],
             )
