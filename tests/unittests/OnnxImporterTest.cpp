@@ -703,6 +703,11 @@ TEST(onnx, importFloor) {
                           [](float a) { return std::floor(a); });
 }
 
+TEST_F(OnnxImporterTest, importAbs) {
+  testEltwiseUnaryOpFloat("abs.onnxtxt", {1, 2, 3, 2}, "input", 0.002,
+                          [](float a) { return std::abs(a); });
+}
+
 // Tests log node for random positive values.
 static void testImportLog(std::string fileName,
                           llvm::ArrayRef<dim_t> inputShape,
