@@ -400,6 +400,12 @@ public:
       "Set the max internal buffer size for device hardware traces."
       "Enabled only when hardwareTraces=1 (use 0 for hard coded default).",
       "NNPI_HW_TRACES_BUFFER_SIZE", "0");
+  /// Path to dump raw trace events from NNP-I.
+  DECLARE_NNPI_OPTION(
+      rawTracesDumpPath, std::string, "RawTracesDumpPath",
+      "Set a path (including a file name) to dump raw device events into a "
+      "file. If empty, raw events are not dumped.",
+      "NNPI_DEVICE_TRACES_DUMP_PATH", "");
   /// Override the max NNPI device memory.
   DECLARE_NNPI_OPTION(
       deviceMemory, unsigned, "DeviceMemory",
@@ -451,6 +457,7 @@ public:
     INIT_NNPI_OPTIONS(hardwareTraces, parameters);
     INIT_NNPI_OPTIONS(softwareTracesMaxBuffer, parameters);
     INIT_NNPI_OPTIONS(hardwareTracesMaxBuffer, parameters);
+    INIT_NNPI_OPTIONS(rawTracesDumpPath, parameters);
     INIT_NNPI_OPTIONS(deviceMemory, parameters);
     INIT_NNPI_OPTIONS(dumpIOtoFiles, parameters);
     INIT_NNPI_OPTIONS(avxType, parameters);
