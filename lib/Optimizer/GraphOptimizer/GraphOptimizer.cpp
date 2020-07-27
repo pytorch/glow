@@ -5388,6 +5388,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                                           TanhNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::SwishNodeKind: {
+        splitDims[SwishNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          SwishNode::InputIdx,
+                                          SwishNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::TransposeNodeKind: {
         splitDims[TransposeNode::InputIdx] = 0;
         unsigned_t resultDim = cast<TransposeNode>(curNode)->getShuffle()[0];

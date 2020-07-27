@@ -683,3 +683,36 @@ TEST_F(NNPIOptPipelineTest, BMMClip) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchMatMulNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::BatchMatMulNodeKind), 8);
 }
+
+// Swish
+TEST_F(NNPIOptPipelineTest, Swish) {
+  auto *input0 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {32, 2048}, "input", false);
+
+  auto *S = F_->createSwish("swish", input0);
+  F_->createSave("ret", S);
+
+  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+      std::to_string(8);
+  cloneAndCompile();
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SwishNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SwishNodeKind), 8);
+}
+
+// Swish with a small batch. When we try to parallelize beyond the size
+// of the batch, it should fall back to fully split the batch dim
+TEST_F(NNPIOptPipelineTest, SwishSmallBatch) {
+  auto *input0 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {4, 2048}, "input", false);
+
+  auto *S = F_->createSwish("swish", input0);
+  F_->createSave("ret", S);
+
+  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+      std::to_string(8);
+  cloneAndCompile();
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SwishNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SwishNodeKind), 4);
+}
