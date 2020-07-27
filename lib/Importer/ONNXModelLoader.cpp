@@ -3814,6 +3814,16 @@ Error ONNXModelLoader::loadMFCC(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadSign(const ONNX_NAMESPACE::NodeProto &op,
+                                const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  Node *node = G_->createSign(opName, in);
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
+  return Error::success();
+}
+
 Expected<TypeRef>
 ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
                                         ArgumentDictionaryTy &dict) {
@@ -4118,6 +4128,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "NonZero") {
     return loadNonZero(op, dict);
+  }
+  if (typeName == "Sign") {
+    return loadSign(op, dict);
   }
 
   RETURN_ERR("Failed to load operator " + typeName + " .",

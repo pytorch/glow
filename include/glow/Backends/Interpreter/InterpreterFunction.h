@@ -298,6 +298,9 @@ private:
   void fwdElementExpInstFloatImpl(const ElementExpInst *I);
 
   template <typename ElemTy>
+  void fwdElementSignInstFloatImpl(const ElementSignInst *I);
+
+  template <typename ElemTy>
   void fwdElementSelectInstFloatImpl(const ElementSelectInst *I);
 
   template <typename ElemTy>

@@ -484,6 +484,12 @@ int main(int argc, char **argv) {
       .dataParallel()
       .setDocstring("Performs an element-wise FLOOR(x) of the Input operand.");
 
+  BB.newNode("Sign")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise Sign(x) of the Input operand");
+
   BB.newNode("Ceil")
       .addInput("Input")
       .addResultFromCtorArg()

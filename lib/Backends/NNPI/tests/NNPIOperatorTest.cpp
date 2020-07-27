@@ -343,6 +343,8 @@ struct BlacklistInitializer {
              TestBlacklist::AnyDeviceAnyEngine},
             {"Floor_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
             {"Floor_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"Sign_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"Sign_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
             {"Neg_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
             {"Neg_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
             {"Not/0", TestBlacklist::AnyDeviceAnyEngine},

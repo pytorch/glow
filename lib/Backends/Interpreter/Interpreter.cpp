@@ -198,6 +198,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::AbsNodeKind:
   case Kinded::Kind::NegNodeKind:
   case Kinded::Kind::FloorNodeKind:
+  case Kinded::Kind::SignNodeKind:
   case Kinded::Kind::CeilNodeKind:
   case Kinded::Kind::RoundNodeKind:
   case Kinded::Kind::SqrtNodeKind:
