@@ -583,13 +583,15 @@ static void setupBasicParallelizationConfigs(
       size_t K = FC->getWeights().dims()[1];
       if (K >= 512) {
         parOpts[FC] = ParallelTransformKind::Model;
-        numChunks[FC] = numParallelChunks;
+        numChunks[FC] =
+            std::min((size_t)numParallelChunks, FC->getResult().dims()[1]);
         continue;
       }
       size_t M = FC->getInput().dims()[0];
       if (M >= 256) {
         parOpts[FC] = ParallelTransformKind::Data;
-        numChunks[FC] = numParallelChunks;
+        numChunks[FC] =
+            std::min((size_t)numParallelChunks, FC->getResult().dims()[0]);
         continue;
       }
     }
@@ -606,7 +608,8 @@ static void setupBasicParallelizationConfigs(
         if (numChunks.find(inputNode) != numChunks.end() &&
             parOpts.find(inputNode) != parOpts.end()) {
           parOpts[R] = ParallelTransformKind::Data;
-          numChunks[R] = numParallelChunks;
+          numChunks[R] =
+              std::min((size_t)numParallelChunks, R->getResult().dims()[0]);
         }
         continue;
       }
@@ -618,13 +621,15 @@ static void setupBasicParallelizationConfigs(
       size_t K = R->getInput().dims()[1];
       if (K >= 512) {
         parOpts[R] = ParallelTransformKind::Model;
-        numChunks[R] = numParallelChunks;
+        numChunks[R] =
+            std::min((size_t)numParallelChunks, R->getResult().dims()[1]);
         continue;
       }
       size_t M = R->getInput().dims()[0];
       if (M >= 256) {
         parOpts[R] = ParallelTransformKind::Data;
-        numChunks[R] = numParallelChunks;
+        numChunks[R] =
+            std::min((size_t)numParallelChunks, R->getResult().dims()[0]);
         continue;
       }
     }
@@ -632,21 +637,24 @@ static void setupBasicParallelizationConfigs(
     // Split transpose layers in data parallel fashion
     if (auto *TP = llvm::dyn_cast<TransposeNode>(node)) {
       parOpts[TP] = ParallelTransformKind::Data;
-      numChunks[TP] = numParallelChunks;
+      numChunks[TP] =
+          std::min((size_t)numParallelChunks, TP->getResult().dims()[0]);
       continue;
     }
 
     // Split Quantize layers in data parallel fashion
     if (auto *QN = llvm::dyn_cast<QuantizeNode>(node)) {
       parOpts[QN] = ParallelTransformKind::Data;
-      numChunks[QN] = numParallelChunks;
+      numChunks[QN] =
+          std::min((size_t)numParallelChunks, QN->getResult().dims()[0]);
       continue;
     }
 
     // Split Dequantize layers in data parallel fashion
     if (auto *DQN = llvm::dyn_cast<DequantizeNode>(node)) {
       parOpts[DQN] = ParallelTransformKind::Data;
-      numChunks[DQN] = numParallelChunks;
+      numChunks[DQN] =
+          std::min((size_t)numParallelChunks, DQN->getResult().dims()[0]);
       continue;
     }
 
@@ -661,7 +669,8 @@ static void setupBasicParallelizationConfigs(
           continue;
         }
         parOpts[TN] = ParallelTransformKind::Model;
-        numChunks[TN] = numParallelChunks;
+        numChunks[TN] =
+            std::min((size_t)numParallelChunks, TN->getResult().dims()[1]);
       } else if (TN->getAxis() == 1) {
         if (TN->getInput().dims().size() < 2) {
           continue;
@@ -671,7 +680,8 @@ static void setupBasicParallelizationConfigs(
           continue;
         }
         parOpts[TN] = ParallelTransformKind::Data;
-        numChunks[TN] = numParallelChunks;
+        numChunks[TN] =
+            std::min((size_t)numParallelChunks, TN->getResult().dims()[0]);
       }
       continue;
     }
@@ -686,14 +696,16 @@ static void setupBasicParallelizationConfigs(
         continue;
       }
       parOpts[LN] = ParallelTransformKind::Data;
-      numChunks[LN] = numParallelChunks;
+      numChunks[LN] =
+          std::min((size_t)numParallelChunks, LN->getResult().dims()[0]);
       continue;
     }
 
     // Split BMM layers in data parallel fashion
     if (auto *BMM = llvm::dyn_cast<BatchMatMulNode>(node)) {
       parOpts[BMM] = ParallelTransformKind::Data;
-      numChunks[BMM] = numParallelChunks;
+      numChunks[BMM] =
+          std::min((size_t)numParallelChunks, BMM->getResult().dims()[0]);
       continue;
     }
 
@@ -707,7 +719,23 @@ static void setupBasicParallelizationConfigs(
         continue;
       }
       parOpts[TH] = ParallelTransformKind::Data;
-      numChunks[TH] = numParallelChunks;
+      numChunks[TH] =
+          std::min((size_t)numParallelChunks, TH->getResult().dims()[0]);
+      continue;
+    }
+
+    // Split Swish layers in data parallel fashion
+    if (auto *SW = llvm::dyn_cast<SwishNode>(node)) {
+      if (SW->getInput().dims().size() < 2) {
+        continue;
+      }
+      size_t N = SW->getInput().dims()[1];
+      if (N < 512) {
+        continue;
+      }
+      parOpts[SW] = ParallelTransformKind::Data;
+      numChunks[SW] =
+          std::min((size_t)numParallelChunks, SW->getResult().dims()[0]);
       continue;
     }
 
@@ -721,7 +749,8 @@ static void setupBasicParallelizationConfigs(
         continue;
       }
       parOpts[M] = ParallelTransformKind::Data;
-      numChunks[M] = numParallelChunks;
+      numChunks[M] =
+          std::min((size_t)numParallelChunks, M->getResult().dims()[0]);
       continue;
     }
 
