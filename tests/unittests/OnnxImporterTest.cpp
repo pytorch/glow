@@ -783,6 +783,8 @@ TEST_F(OnnxImporterTest, importAcos) {
 TEST_F(OnnxImporterTest, importAtan) {
   testEltwiseTrigonometricOpFloat("Atan.onnxtxt", {1, 3, 4, 5}, "input", 0.002,
                                   [](float a) { return std::atan(a); });
+}
+
 TEST_F(OnnxImporterTest, importLog) {
   testImportLog("log.onnxtxt", {1, 2, 3, 2}, "data", 0.002,
                 [](float a) { return std::log(a); });
