@@ -608,6 +608,10 @@ private:
   /// \returns error on failure.
   Error loadListConstruct(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch prim::NumToTensor node.
+  /// \returns error on failure.
+  Error loadNumToTensor(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch aten::reshape node.
   /// \returns error on failure.
   Error loadReshape(const torch::jit::Node *ptNode);
