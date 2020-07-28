@@ -49,6 +49,8 @@ DEFINE_int32(maxActiveRequests, 250,
              "Max number of active requests before HostManager starts queuing");
 DEFINE_bool(randomizeConstants, false, "See PyTorchLoaderSettings");
 DEFINE_bool(runShapeInference, false, "See PyTorchLoaderSettings");
+DEFINE_int32(fusionStartIndex, -1, "See PyTorchLoaderSettings");
+DEFINE_int32(fusionEndIndex, -1, "See PyTorchLoaderSettings");
 
 namespace glow {
 
@@ -228,6 +230,8 @@ static PyTorchLoaderSettings getInitialSettings() {
   settings.backendName = FLAGS_torch_glow_backend;
   settings.numDevices = FLAGS_torch_glow_num_devices;
   settings.runShapeInference = FLAGS_runShapeInference;
+  settings.fusionStartIndex = FLAGS_fusionStartIndex;
+  settings.fusionEndIndex = FLAGS_fusionEndIndex;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);

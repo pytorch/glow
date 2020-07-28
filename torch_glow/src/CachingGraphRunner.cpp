@@ -207,13 +207,16 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
   return ret.first->second;
 }
 
-void CachingGraphRunner::runOnJit(torch::jit::Stack &stack) {
+int64_t CachingGraphRunner::runOnJit(torch::jit::Stack &stack) {
   static std::mutex runJitLock;
   std::lock_guard<std::mutex> guard(runJitLock);
   bool temp = getPyTorchLoaderSettings().fusionPassEnabled;
   getPyTorchLoaderSettings().fusionPassEnabled = false;
+  int64_t startTime = TraceEvent::now();
   ptGraphExecutor_.run(stack);
+  int64_t runTime = TraceEvent::now() - startTime;
   getPyTorchLoaderSettings().fusionPassEnabled = temp;
+  return runTime;
 }
 
 struct TensorCompareResult {
@@ -269,6 +272,8 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
                                   std::unique_ptr<ExecutionContext> &ctx) {
   size_t runId = numRuns_++;
 
+  int64_t jitRunningTime = 0;
+
   // Run the subgraph using JIT for comparison with Glow.
   torch::jit::Stack copyStack;
   if (settings_.writeToOnnx || settings_.jitVsGlowCompare) {
@@ -279,7 +284,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
         copyStack.push_back(ival);
       }
     }
-    runOnJit(copyStack);
+    jitRunningTime = runOnJit(copyStack);
   }
 
   TraceContext *traceContext = ctx->getTraceContext();
@@ -437,7 +442,9 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "setupOutput");
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "runNetwork");
 
+  int64_t glowRunStartTime = TraceEvent::now();
   auto err = hostManager_->runNetworkBlocking(info.functionName, ctx);
+  int64_t glowRuningnTime = TraceEvent::now() - glowRunStartTime;
 
   // Reset the traceContext again in case it was changed during run.
   traceContext = ctx->getTraceContext();
@@ -523,6 +530,12 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       }
     }
     stack.push_back(at::IValue(std::move(ptTensor)));
+  }
+
+  if (settings_.jitVsGlowCompare) {
+    LOG(INFO) << "Perf comparison | Function: " << info.functionName
+              << "\tGlow run time: " << glowRuningnTime
+              << " us\tCPU run time: " << jitRunningTime << " us" << std::endl;
   }
 
   if (settings_.writeToOnnx) {
