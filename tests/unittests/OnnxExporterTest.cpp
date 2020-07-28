@@ -401,6 +401,8 @@ TEST(exporter, onnxModels) {
         name.find("logicalXor.onnxtxt") != std::string::npos ||
         name.find("logicalNot.onnxtxt") != std::string::npos ||
 
+        name.find("equal13.onnxtxt") != std::string::npos ||
+        name.find("greater.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposePads.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeAutoPadValid.onnxtxt") !=
             std::string::npos ||

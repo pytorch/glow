@@ -3608,7 +3608,6 @@ static void importUnary(const std::string &netFilename,
                         llvm::ArrayRef<dim_t> inputShape,
                         llvm::ArrayRef<dim_t> outputShape,
                         llvm::ArrayRef<float> expectedValues) {
-
   float delta = 1e-08;
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
@@ -3640,6 +3639,67 @@ TEST(onnx, importSign) {
   std::string netFilename(GLOW_DATA_PATH
                           "tests/models/onnxModels/sign.onnxtxt");
   importUnary(netFilename, input, inputShape, outputShape, expectedValues);
+}
+
+static void importCompare(const std::string &netFilename,
+                          llvm::ArrayRef<float> LHS, llvm::ArrayRef<float> RHS,
+                          llvm::ArrayRef<dim_t> LHSShape,
+                          llvm::ArrayRef<dim_t> RHSShape,
+                          llvm::ArrayRef<dim_t> outputShape,
+                          llvm::ArrayRef<float> expectedValues) {
+  float delta = 1e-08;
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+  // Load the .onnxtxt model.
+  Type LHSType(ElemKind::FloatTy, LHSShape);
+  Type RHSType(ElemKind::FloatTy, RHSShape);
+  ONNXModelLoader onnxLD(netFilename, {"LHS", "RHS"}, {&LHSType, &RHSType}, *F);
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  auto LHSPH = mod.getPlaceholderByNameSlow("LHS");
+  auto *LHSTensor = bindings.allocate(LHSPH);
+  LHSTensor->getHandle() = LHS;
+  auto RHSPH = mod.getPlaceholderByNameSlow("RHS");
+  auto *RHSTensor = bindings.allocate(RHSPH);
+  RHSTensor->getHandle() = RHS;
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+  auto result = bindings.get(graphOutputVar)->getHandle<bool>();
+  ASSERT_TRUE(result.dims() == (llvm::ArrayRef<dim_t>)outputShape);
+  for (size_t i = 0; i < result.getType().size(); i++) {
+    EXPECT_NEAR(result.raw(i), (bool)expectedValues[i], delta);
+  }
+}
+
+/// Test loading Onnx Equal op (of opset 13) from an ONNX model.
+TEST(onnx, importEqual13) {
+  std::vector<float> LHS = {1, -1, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2};
+  std::vector<float> RHS = {1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 2, 2};
+  std::vector<dim_t> LHSShape = {1, 2, 3, 2};
+  std::vector<dim_t> RHSShape = {1, 2, 3, 2};
+  std::vector<dim_t> outputShape = {1, 2, 3, 2};
+  std::vector<float> expectedValues = {1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1};
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/equal13.onnxtxt");
+  importCompare(netFilename, LHS, RHS, LHSShape, RHSShape, outputShape,
+                expectedValues);
+}
+
+/// Test loading Greater op from an ONNX model.
+TEST(onnx, importGreater) {
+  std::vector<float> LHS = {1, 2, 2, 2, 1, 2, 1, 2, 1, 3, 1, 2};
+  std::vector<float> RHS = {1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2};
+  std::vector<dim_t> LHSShape = {1, 2, 3, 2};
+  std::vector<dim_t> RHSShape = {1, 2, 3, 2};
+  std::vector<dim_t> outputShape = {1, 2, 3, 2};
+  std::vector<float> expectedValues = {0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0};
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/greater.onnxtxt");
+  importCompare(netFilename, LHS, RHS, LHSShape, RHSShape, outputShape,
+                expectedValues);
 }
 
 /// Test loading RNN from a ONNX model. The ONNX model already computes

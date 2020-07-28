@@ -1138,22 +1138,26 @@ protected:
     return Error::success();
   }
 
-  // Loads Less operator. Internally it's a cmpLT Node.
-  Error loadLess(const OpType &op, ArgumentDictionaryTy &dict) {
-    // Input Type.
+  // Loads compare (Equal, Less and Greater) operators.
+  Error loadCmpOps(llvm::StringRef typeName, const OpType &op) {
+    std::string opName = loadOperatorName(op);
     NodeValue xNV;
     ASSIGN_VALUE_OR_RETURN_ERR(xNV, getNodeValueByName(op.input(0)));
     NodeValue yNV;
     ASSIGN_VALUE_OR_RETURN_ERR(yNV, getNodeValueByName(op.input(1)));
-
-    std::string opName = loadOperatorName(op);
-
-    auto *xNode = xNV.getNode();
-    auto *yNode = yNV.getNode();
-
-    Node *N = G_->createNodeWithBroadcast<CmpLTNode>(opName, /* axis */ -1,
-                                                     xNode, yNode);
-
+    auto *LHS = xNV.getNode();
+    auto *RHS = yNV.getNode();
+    const int axis = -1;
+    Node *N = nullptr;
+    if (typeName == "Equal") {
+      N = G_->createNodeWithBroadcast<CmpEQNode>(opName, axis, LHS, RHS);
+    } else if (typeName == "Less") {
+      N = G_->createNodeWithBroadcast<CmpLTNode>(opName, axis, LHS, RHS);
+    } else if (typeName == "Greater") {
+      N = G_->createNodeWithBroadcast<CmpLTNode>(opName, axis, RHS, LHS);
+    } else {
+      RETURN_ERR("Unsupported Comparison typeName");
+    }
     RETURN_IF_ERR(addNodeAsOutput(op, N));
     return Error::success();
   }
@@ -1381,8 +1385,8 @@ protected:
       RETURN_IF_ERR(loadGatherRanges(typeName, op, dict));
       return true;
     }
-    if (typeName == "Less") {
-      RETURN_IF_ERR(loadLess(op, dict));
+    if (typeName == "Equal" || typeName == "Less" || typeName == "Greater") {
+      RETURN_IF_ERR(loadCmpOps(typeName, op));
       return true;
     }
     if (typeName == "And" || typeName == "Or" || typeName == "Xor") {
