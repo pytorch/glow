@@ -97,6 +97,8 @@ private:
   static Expected<std::vector<int64_t>> bmm(const MetaStack &variableMetas);
   // Shape inference for aten::addmm
   static Expected<std::vector<int64_t>> addmm(const MetaStack &variableMetas);
+  // Shape inference for aten::t
+  static Expected<std::vector<int64_t>> t(const MetaStack &variableMetas);
   // Shape inference for prim::ConstantChunk
   static Expected<std::vector<std::vector<int64_t>>>
   constantChunk(const MetaStack &variableMetas, int64_t chunks, int64_t dim);
