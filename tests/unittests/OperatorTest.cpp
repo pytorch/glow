@@ -13308,6 +13308,29 @@ TEST_P(OperatorTest, FP16Reshape) {
   }
 }
 
+TEST_P(OperatorTest, BoolReshape) {
+  CHECK_IF_ENABLED();
+
+  auto *A = mod_.createPlaceholder(ElemKind::BoolTy, {4, 3}, "A", false);
+  bindings_.allocate(A)->getHandle<bool>() = {false, true,  false, true,
+                                              true,  false, false, false,
+                                              true,  true,  true,  true};
+  auto *tr = F_->createReshape("tr", A, {3, 4, 1});
+  auto *result = F_->createSave("saveTranspose", tr);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto outputHandle =
+      bindings_.get(result->getPlaceholder())->getHandle<bool>();
+  auto inputBoolHandle = bindings_.get(A)->getHandle<bool>();
+  ASSERT_EQ(outputHandle.size(), inputBoolHandle.size());
+  for (size_t idx = 0, end = inputBoolHandle.size(); idx != end; ++idx) {
+    EXPECT_EQ(inputBoolHandle.raw(idx), outputHandle.raw(idx));
+  }
+}
+
 TEST_P(OperatorTest, BFloat16Reshape) {
   CHECK_IF_ENABLED();
 

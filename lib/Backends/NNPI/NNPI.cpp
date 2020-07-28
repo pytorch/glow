@@ -1138,6 +1138,31 @@ static bool lowerRequiredNodes(Function *F, CompilationContext &cctx) {
       continue;
     }
 
+    case Kinded::Kind::ReshapeNodeKind: {
+      ReshapeNode *RS = llvm::cast<ReshapeNode>(&N);
+      // Handle bool reshape by converting to Float16, reshaping, and
+      // comparing >0
+      if ((RS->getResult().getElementType() == ElemKind::BoolTy) &&
+          (RS->getInput().getElementType() == ElemKind::BoolTy)) {
+        auto rsName = RS->getName().str();
+        auto *inputType = RS->getInput().getType();
+        auto *outputType = RS->getResult().getType();
+        auto *fp16Type =
+            F->getParent()->uniqueType(ElemKind::Float16Ty, inputType->dims());
+        auto *s0 = F->createSplat(rsName + "_s0", fp16Type, 0.0f);
+        auto *s1 = F->createSplat(rsName + "_s1", fp16Type, 1.0f);
+        auto *sel = F->createSelect(rsName + "_sel", RS->getInput(), s1, s0);
+        auto *fp16ResType =
+            F->getParent()->uniqueType(ElemKind::Float16Ty, outputType->dims());
+        auto *res = F->createReshape(rsName + "_res", sel, fp16ResType->dims());
+        auto *c0 = F->createSplat(rsName + "_c0", fp16ResType, 0.0f);
+        auto *bres = F->createCmpGT(rsName + "_cmpGT", res, c0);
+        RS->getResult().replaceAllUsesOfWith(bres);
+        changed = true;
+      }
+      continue;
+    }
+
     // Explicitly lower clips as they may be introduced during lowering other
     // ops above, e.g. Logit.
     case Kinded::Kind::ClipNodeKind:
