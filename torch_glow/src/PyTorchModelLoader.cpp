@@ -3605,10 +3605,9 @@ Error PyTorchModelLoader::loadMaskedFill(const torch::jit::Node *ptNode) {
                 inSize, maskSize));
 
   size_t maskBroadcastAxis = inSize - maskSize;
-  if (maskBroadcastAxis > 0) {
-    mask = F_.createBroadcast("broadcast", mask, in.dims(), maskBroadcastAxis)
-               ->getNthResult(0);
-  }
+  mask = F_.createBroadcast("masked_fill.broadcast", mask, in.dims(),
+                            maskBroadcastAxis)
+             ->getNthResult(0);
 
   float value;
   ASSIGN_VALUE_OR_RETURN_ERR(value, iValToDouble(getGlowIValueForValue(
