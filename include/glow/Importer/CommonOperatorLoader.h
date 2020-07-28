@@ -301,6 +301,7 @@ protected:
   LOAD_UNARY_OP(Neg)
   LOAD_UNARY_OP(Floor)
   LOAD_UNARY_OP(Ceil)
+  LOAD_UNARY_OP(Log)
 
   Error loadShape(const OpType &op, ArgumentDictionaryTy &dict) {
     NodeValue in;
@@ -1179,6 +1180,10 @@ protected:
     }
     if (typeName == "Exp") {
       RETURN_IF_ERR(loadExp(op, dict));
+      return true;
+    }
+    if (typeName == "Log") {
+      RETURN_IF_ERR(loadLog(op, dict));
       return true;
     }
     if (typeName == "Neg") {

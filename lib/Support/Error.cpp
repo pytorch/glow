@@ -85,6 +85,8 @@ std::string GlowErrorValue::errorCodeToString(const ErrorCode &ec) {
     return "RUNTIME_REQUEST_REFUSED";
   case ErrorCode::RUNTIME_DEVICE_NOT_FOUND:
     return "RUNTIME_DEVICE_NOT_FOUND";
+  case ErrorCode::RUNTIME_DEVICE_NONRECOVERABLE:
+    return "RUNTIME_DEVICE_NONRECOVERABLE";
   case ErrorCode::RUNTIME_NET_BUSY:
     return "RUNTIME_NET_BUSY";
   case ErrorCode::DEVICE_FEATURE_NOT_SUPPORTED:

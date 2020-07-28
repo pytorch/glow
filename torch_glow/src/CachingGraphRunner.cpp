@@ -26,6 +26,45 @@
 #include "ShapeInferenceEngine.h"
 
 namespace glow {
+
+namespace {
+
+// Hashing a stack of tensors using their types.
+size_t hashTensorStack(const torch::jit::Stack &stack, size_t numInputs,
+                       const CachingGraphRunner *const runnerPtr) {
+  const auto inputs = torch::jit::last(stack, numInputs);
+  // Start off hash with pointer to this CachingGraphRunner to avoid collisions
+  // with Glow functions created by other CachingGraphRunners.
+  size_t hash = reinterpret_cast<size_t>(runnerPtr);
+  for (auto &input : inputs) {
+    CHECK(input.isTensor()) << "Found non-tensor input. Glow AOT compiled "
+                               "graph accepts tensor inputs only.";
+    // hash on input Tensor type
+    const auto ptTensorType = c10::TensorType::create(input.toTensor());
+    size_t tensorHash = std::hash<c10::TensorType>()(*ptTensorType);
+    hash = torch::hash_combine(hash, tensorHash);
+  }
+  return hash;
+}
+
+// Use inputMeta to create a fake stack of empty tensors. Helper function to
+// enable calling hashTensorStack from warmCache.
+torch::jit::Stack
+createFakeStackFromInputMeta(const std::vector<InputMeta> &inputMeta) {
+  torch::jit::Stack stack;
+  for (auto &meta : inputMeta) {
+    std::vector<int64_t> dims;
+    dims.reserve(meta.dims.size());
+    for (auto d : meta.dims) {
+      dims.push_back(d);
+    }
+    stack.push_back(
+        c10::IValue(at::empty(dims, at::TensorOptions().dtype(meta.type))));
+  }
+  return stack;
+}
+} // namespace
+
 // TODO: this should also return the list of TensorTypes used to compute the
 // hash to check for equality. Will make a nicer wrapper for this in the future.
 size_t CachingGraphRunner::computeGraphHash(
@@ -111,21 +150,13 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
 
   // If we already have a Glow function compiled for this graph with and the
   // given inputs then use that.
-  {
-    std::shared_lock<std::shared_timed_mutex> rlock(graphInfoMapMutex);
-    auto it = perGlowGraphInfoMap_.find(hash);
-    if (it != perGlowGraphInfoMap_.end()) {
-      return it->second;
-    }
-  }
-
   std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
   auto it = perGlowGraphInfoMap_.find(hash);
   if (it != perGlowGraphInfoMap_.end()) {
     return it->second;
   }
-  auto info = std::make_shared<PerGlowGraphInfo>();
-  info->functionName = strFormat("pt_function_%lu", hash);
+  auto info = std::make_shared<PerGlowGraphInfo>(
+      strFormat("pt_function_%lu", hash), getSettings());
 
   std::unique_ptr<Module> module = glow::make_unique<Module>();
   Function *f = module->createFunction(info->functionName);
@@ -552,14 +583,22 @@ Error CachingGraphRunner::run(torch::jit::Stack &stack) {
 
 Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
   std::shared_ptr<PerGlowGraphInfo> info;
-  {
-    std::shared_lock<std::shared_timed_mutex> rlock(graphInfoMapMutex);
+  if (useMaxSizeCompilation_) {
+    std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
     if (perGlowGraphInfoMap_.size() != 1) {
       return MAKE_ERR(strFormat(
           "There should be one and only one compiled graph, but got %lu",
           perGlowGraphInfoMap_.size()));
     }
-    info = perGlowGraphInfoMap_.at(0);
+    info = perGlowGraphInfoMap_.begin()->second;
+  } else {
+    size_t hash = hashTensorStack(stack, graph_->inputs().size(), this);
+    std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
+    auto it = perGlowGraphInfoMap_.find(hash);
+    if (it == perGlowGraphInfoMap_.end()) {
+      return MAKE_ERR(strFormat("No compiled graph found for hash: %lu", hash));
+    }
+    info = it->second;
   }
 
   std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
@@ -581,7 +620,9 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
   return err;
 }
 
-Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
+Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
+                                    const PyTorchLoaderSettings &settings,
+                                    bool useMaxSizeCompilation) {
   if (!hostManager_) {
     return MAKE_ERR("Host manager is null!");
   }
@@ -591,7 +632,7 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
   }
 
   std::unique_ptr<TraceContext> traceContext;
-  if (getSettings().enableGlowTracing) {
+  if (settings.enableGlowTracing) {
     traceContext = std::make_unique<TraceContext>(TraceLevel::STANDARD);
     traceContext->setThreadName("torch_glow");
   }
@@ -600,22 +641,35 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
 
   // If this setting is missing we will not use pre compiled model at runtime,
   // which will cause unexpected behaviors.
-  if (!settings_.preCompilePyTorchModule) {
+  if (!settings.preCompilePyTorchModule) {
     return MAKE_ERR(
         "Calling AOT compilation when preCompilePyTorchModule is not set");
   }
 
-  std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
-  if (perGlowGraphInfoMap_.size() != 0) {
-    return MAKE_ERR(strFormat("There is already a compiled graph!"));
+  // hash should be unique in the following mappings:
+  // 1) perGlowGraphInfoMap_ - a specifc instance of a runner corresponds to
+  //    a single graph (i.e. Glow fusion group) that may have multiple
+  //    Glow functions to serve different input shapes.
+  // 2) HostManager mapping a functionName to a Glow function.
+  // The input-based hash is combined with the pointer to this runner to
+  // produce a unique mapping for HostManager.
+  size_t hash;
+  if (useMaxSizeCompilation) {
+    useMaxSizeCompilation_ = true;
+    hash = reinterpret_cast<size_t>(this);
+  } else {
+    torch::jit::Stack fakeStack = createFakeStackFromInputMeta(inputMeta);
+    hash = hashTensorStack(fakeStack, inputMeta.size(), this);
   }
-
-  auto info = std::make_shared<PerGlowGraphInfo>();
-
-  // Using the pointer to current graph runner should be enough to ensure
-  // one-to-one mapping from compiled graph to the network in host managers.
-  size_t hash = reinterpret_cast<size_t>(this);
-  info->functionName = strFormat("pt_function_%lu", hash);
+  {
+    std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
+    if (perGlowGraphInfoMap_.find(hash) != perGlowGraphInfoMap_.end()) {
+      return MAKE_ERR(
+          strFormat("There is already a compiled graph for hash: %lu", hash));
+    }
+  }
+  auto info = std::make_shared<PerGlowGraphInfo>(
+      strFormat("pt_function_%lu", hash), settings);
 
   std::unique_ptr<Module> glowModule = std::make_unique<Module>();
   Function *f = glowModule->createFunction(info->functionName);
@@ -623,7 +677,7 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
   TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME, "loadJITGraph");
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
       *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
-      outputCorrectType_, getPyTorchLoaderSettings(), {}, inputMeta));
+      outputCorrectType_, info->settings, {}, inputMeta));
   TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME, "loadJITGraph");
 
   // Obtain maxSeqLength from inputMeta
@@ -643,17 +697,17 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta) {
 
   glow::CompilationContext cctx;
 
-  cctx.precisionConfig.convertToFP16 = settings_.convertToFP16;
-  cctx.precisionConfig.convertFusedToFP16 = settings_.convertFusedToFP16;
-  cctx.dumpFinalGraph = settings_.dumpFinalGlowGraph;
-  cctx.saturateHost = settings_.saturateHost;
+  cctx.precisionConfig.convertToFP16 = settings.convertToFP16;
+  cctx.precisionConfig.convertFusedToFP16 = settings.convertFusedToFP16;
+  cctx.dumpFinalGraph = settings.dumpFinalGlowGraph;
+  cctx.saturateHost = settings.saturateHost;
 
   TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(glowModule), cctx));
   TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");
 
   // There should be only one element in the map when model is precompiled.
-  perGlowGraphInfoMap_[0] = info;
+  perGlowGraphInfoMap_.emplace(hash, info);
 
   TRACE_EVENT_END(traceContext.get(), TraceLevel::RUNTIME,
                   "torch_glow::warmCache");

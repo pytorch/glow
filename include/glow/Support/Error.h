@@ -253,7 +253,7 @@ class GlowErrorValue final {
 public:
   /// An enumeration of error codes representing various possible errors that
   /// could occur.
-  /// NOTE: when updating this enum, also update ErrorCodeToString function
+  /// NOTE: when updating this enum, also update errorCodeToString function
   /// below.
   enum class ErrorCode {
     // An unknown error ocurred. This is the default value.
@@ -282,6 +282,8 @@ public:
     RUNTIME_REQUEST_REFUSED,
     // Runtime error, device wasn't found.
     RUNTIME_DEVICE_NOT_FOUND,
+    // Non-recoverable device error
+    RUNTIME_DEVICE_NONRECOVERABLE,
     // Runtime error, network busy to perform any operation on it.
     RUNTIME_NET_BUSY,
     // Device error, not supported.
@@ -329,6 +331,11 @@ public:
   /// "Warning", this is useful for when Errors are used in non-exceptional
   /// conditions.
   std::string logToString(bool warning = false) const;
+
+  /// Return the error code.
+  bool isFatalError() const {
+    return ec_ == ErrorCode::RUNTIME_DEVICE_NONRECOVERABLE;
+  }
 
   GlowErrorValue(std::string message, ErrorCode ec)
       : message_(message), ec_(ec) {}

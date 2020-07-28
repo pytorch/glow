@@ -12,6 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include "../NNPIOptions.h"
 #include <cstring>
 #include <iostream>
 #include <map>
@@ -40,6 +41,8 @@ const uint32_t AnyDeviceHWEngine =
 const uint32_t AnyDeviceSWEngine =
     AnyDeviceAnyEngine ^ NNPI_EXECUTION_ENGINE_HW;
 const uint32_t A0AnyEngine = NNPI_DEVICE_VERSION_1 | NNPI_EXECUTION_ENGINE_ANY;
+const uint32_t A0B0DeviceAnyEngine =
+    NNPI_DEVICE_VERSION_1 | NNPI_DEVICE_VERSION_2 | NNPI_EXECUTION_ENGINE_ANY;
 
 static uint32_t getCurrentDeviceVersion() {
   static const std::map<std::string, NNPI_DEVICE_VERSION> devices = {
@@ -51,15 +54,19 @@ static uint32_t getCurrentDeviceVersion() {
   if (nnpiDeviceVersion && devices.count(nnpiDeviceVersion)) {
     return devices.at(nnpiDeviceVersion);
   }
+  int defaultDevVer = glow::NNPIOptions::getFirstDeviceSteppingVersion();
+  if (defaultDevVer >= NNPI_DEVICE_VERSION_1) {
+    return defaultDevVer;
+  }
   return NNPI_DEVICE_VERSION_1;
 }
 
 static uint32_t getCurrentEngine() {
   auto useInfAPI = getenv("USE_INF_API");
-  if (useInfAPI && !strcmp(useInfAPI, "1")) {
-    return NNPI_EXECUTION_ENGINE_HW;
+  if (useInfAPI && !strcmp(useInfAPI, "0")) {
+    return NNPI_EXECUTION_ENGINE_SW;
   }
-  return NNPI_EXECUTION_ENGINE_SW;
+  return NNPI_EXECUTION_ENGINE_HW;
 }
 
 typedef std::pair<std::string, uint32_t> TestSetup;

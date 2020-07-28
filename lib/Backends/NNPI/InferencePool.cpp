@@ -44,14 +44,6 @@ static bool isEmptyDeviceNetworkConfig(const NNPIDeviceNetworkConfig &cfg) {
     }
   }
 
-  const int numIA = sizeof(cfg.pnpHints.IAFrequencyPrio) /
-                    sizeof(cfg.pnpHints.IAFrequencyPrio[0]);
-  for (unsigned i = 0; i < numIA; i++) {
-    if (cfg.pnpHints.IAFrequencyPrio[i] != 0.f) {
-      return false;
-    }
-  }
-
   if (cfg.pnpHints.DDRBandwidth != 0.f) {
     return false;
   }
@@ -161,8 +153,6 @@ Error InferencePoolEnv::init(NNPIAdapterContainer *adapter,
       LOG(INFO) << "  ICEBO 3: " << cfg.pnpHints.iceBOFrequencyPrio[3] << "\n";
       LOG(INFO) << "  ICEBO 4: " << cfg.pnpHints.iceBOFrequencyPrio[4] << "\n";
       LOG(INFO) << "  ICEBO 5: " << cfg.pnpHints.iceBOFrequencyPrio[5] << "\n";
-      LOG(INFO) << "  IA 0: " << cfg.pnpHints.IAFrequencyPrio[0] << "\n";
-      LOG(INFO) << "  IA 1: " << cfg.pnpHints.IAFrequencyPrio[1] << "\n";
       LOG(INFO) << "  DDR: " << cfg.pnpHints.DDRBandwidth << "\n";
       LOG(INFO)
           << "  Resource reservation: "

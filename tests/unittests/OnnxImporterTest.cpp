@@ -713,6 +713,41 @@ TEST_F(OnnxImporterTest, importCos) {
                           [](float a) { return std::cos(a); });
 }
 
+// Tests log node for random positive values.
+static void testImportLog(std::string fileName,
+                          llvm::ArrayRef<dim_t> inputShape,
+                          std::string input_name, float delta,
+                          const std::function<float(float)> &op) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::string NetFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + fileName;
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+  Type input_type(ElemKind::FloatTy, inputShape);
+  ONNXModelLoader onnxLD(NetFilename, {input_name.c_str()}, {&input_type}, *F);
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  auto PH = mod.getPlaceholderByNameSlow(input_name);
+  auto *inTensor = bindings.allocate(PH);
+  inTensor->getHandle().randomize(0, 500.0, mod.getPRNG());
+  // Compile&run the graph, and check the output
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+  auto result = bindings.get(graphOutputVar)->getHandle();
+  auto inHandle = inTensor->getHandle();
+  ASSERT_TRUE(result.dims() == inputShape);
+  for (size_t i = 0; i < result.getType().size(); i++) {
+    EXPECT_NEAR(result.raw(i), op(inHandle.raw(i)), delta);
+  }
+}
+
+TEST_F(OnnxImporterTest, importLog) {
+  testImportLog("log.onnxtxt", {1, 2, 3, 2}, "data", 0.002,
+                [](float a) { return std::log(a); });
+}
+
 static void testImportPRelu(std::string filename,
                             llvm::ArrayRef<dim_t> inputShape,
                             std::vector<float> expectedSlope) {
@@ -2352,6 +2387,60 @@ TEST_F(OnnxImporterTest, gather) {
   auto *gather = llvm::dyn_cast<GatherNode>(save->getInput().getNode());
   ASSERT_TRUE(gather);
   EXPECT_TRUE(gather->getResult().dims().equals({2, 4, 2}));
+}
+
+/// Test loading ScatterND from an ONNX model.
+// Simplified test
+TEST_F(OnnxImporterTest, scatterND) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/scatterND.onnxtxt");
+  auto *F = mod.createFunction("main");
+  Placeholder *output;
+  Tensor data(ElemKind::FloatTy, {8});
+  Tensor indices(ElemKind::Int64ITy, {4, 1});
+  Tensor updates(ElemKind::FloatTy, {4});
+
+  ONNXModelLoader onnxLD(
+      netFilename, {"data", "indices", "updates"},
+      {&data.getType(), &indices.getType(), &updates.getType()}, *F);
+  output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+  // Verify structure: PH/PH/PH -> ScatterND -> Save -> PH.
+  ASSERT_EQ(mod.getPlaceholders().size(), 4);
+  ASSERT_EQ(F->getNodes().size(), 2);
+  auto *save = getSaveNodeFromDest(output);
+  auto *scatter = llvm::dyn_cast<ScatterDataNode>(save->getInput().getNode());
+  ASSERT_TRUE(scatter);
+  EXPECT_TRUE(scatter->getResult().dims().equals({8}));
+}
+
+/// Test loading ScatterND from an ONNX model.
+// multi-dim test
+TEST_F(OnnxImporterTest, mscatterND) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/mscatterND.onnxtxt");
+  auto *F = mod.createFunction("main");
+  Placeholder *output;
+  Tensor data(ElemKind::FloatTy, {4, 4, 4});
+  Tensor indices(ElemKind::Int64ITy, {2, 1});
+  Tensor updates(ElemKind::FloatTy, {2, 4, 4});
+
+  ONNXModelLoader onnxLD(
+      netFilename, {"data", "indices", "updates"},
+      {&data.getType(), &indices.getType(), &updates.getType()}, *F);
+  output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+  // Verify structure: PH/PH/PH -> ScatterND -> Save -> PH.
+  ASSERT_EQ(mod.getPlaceholders().size(), 4);
+  ASSERT_EQ(F->getNodes().size(), 2);
+  auto *save = getSaveNodeFromDest(output);
+  auto *scatter = llvm::dyn_cast<ScatterDataNode>(save->getInput().getNode());
+  ASSERT_TRUE(scatter);
+  EXPECT_TRUE(scatter->getResult().dims().equals({4, 4, 4}));
 }
 
 /// Test loading GatherRanges from an ONNX model.

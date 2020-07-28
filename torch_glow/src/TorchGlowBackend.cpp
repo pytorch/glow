@@ -425,18 +425,24 @@ TorchGlowBackend::compile(c10::IValue processed,
           << "Could not find corresponding method_compile_spec for method: "
           << method.name();
       c10::IValue methodSpec = spec->value();
-      c10::intrusive_ptr<GlowCompileSpec> gcs;
+      c10::impl::GenericList gcs(c10::AnyType::get());
       try {
-        gcs = methodSpec.toCustomClass<GlowCompileSpec>();
+        gcs = methodSpec.toList();
       } catch (const std::exception &e) {
         throw std::invalid_argument(
             "method_compile_spec does not match GlowCompileSpec type.");
       }
-      std::vector<glow::InputMeta> inputMeta = parseMethodCompileSpec(*gcs);
 
-      // Compile
-      auto e = runner->warmCache(inputMeta);
-      CHECK(!(bool)e) << ERR_TO_STRING(std::move(e));
+      // iterate list elements: get settings for each elem and compile
+      for (const auto &elem : gcs) {
+        std::vector<glow::InputMeta> inputMeta = parseMethodCompileSpec(
+            *c10::IValue(elem).toCustomClass<GlowCompileSpec>());
+
+        // Compile
+        auto e = runner->warmCache(inputMeta, runner->getSettings(),
+                                   /*useMaxSizeCompilation*/ false);
+        CHECK(!(bool)e) << ERR_TO_STRING(std::move(e));
+      }
 
       // Bakcend is created on each to_backend call --> use simple consecutive
       // keys for methods.

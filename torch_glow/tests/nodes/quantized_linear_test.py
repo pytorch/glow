@@ -1,17 +1,16 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-
-from tests.utils import jitVsGlow
 import unittest
+
+import torch
+from tests.utils import jitVsGlow
 
 
 class TestQuantizedLinear(unittest.TestCase):
     def test_quantized_linear_packed(self):
         """Basic test of the PyTorch quantized::linear Node on Glow."""
 
-        q = torch.nn.quantized.Quantize(
-            scale=1 / 25, zero_point=17, dtype=torch.quint8)
+        q = torch.nn.quantized.Quantize(scale=1 / 25, zero_point=17, dtype=torch.quint8)
         dq = torch.nn.quantized.DeQuantize()
 
         linear = torch.nn.Linear(5, 5)
@@ -41,8 +40,7 @@ class TestQuantizedLinear(unittest.TestCase):
     def test_quantized_linear_packed_dq_cut(self):
         """Basic test of the PyTorch quantized::linear Node on Glow, with dequantize excluded. """
 
-        q = torch.nn.quantized.Quantize(
-            scale=1 / 25, zero_point=17, dtype=torch.quint8)
+        q = torch.nn.quantized.Quantize(scale=1 / 25, zero_point=17, dtype=torch.quint8)
         dq = torch.nn.quantized.DeQuantize()
 
         linear = torch.nn.Linear(5, 5)
@@ -62,13 +60,8 @@ class TestQuantizedLinear(unittest.TestCase):
         jitVsGlow(
             model,
             x,
-            expected_fused_ops={
-                "aten::quantize_per_tensor",
-                "quantized::linear",
-            },
-            black_list=[
-                "aten::dequantize",
-            ]
+            expected_fused_ops={"aten::quantize_per_tensor", "quantized::linear"},
+            black_list=["aten::dequantize"],
         )
 
     @unittest.skip(reason="random input could cause flaky")
@@ -120,10 +113,16 @@ class TestQuantizedLinear(unittest.TestCase):
         x = torch.reshape(x, [5, 6])
 
         model = torch.quantization.QuantWrapper(linear)
-        model.qconfig = torch.quantization.get_default_qconfig('fbgemm')
+        model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
         torch.quantization.prepare(model, inplace=True)
         torch.quantization.convert(model, inplace=True)
 
-        jitVsGlow(model, x, expected_fused_ops={"aten::quantize_per_tensor",
-                                                "quantized::linear",
-                                                "aten::dequantize"})
+        jitVsGlow(
+            model,
+            x,
+            expected_fused_ops={
+                "aten::quantize_per_tensor",
+                "quantized::linear",
+                "aten::dequantize",
+            },
+        )

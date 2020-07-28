@@ -1,10 +1,11 @@
+# isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-import torch_glow
 import os
 
 import pytest
+import torch_glow
+import torch
 
 
 @pytest.mark.skip(reason="Need something like EraseNumberTypes to re-enable")
@@ -21,7 +22,10 @@ def test_init():
     y = torch.randint(0, 1, (1, 1000))
 
     assert trainer.init(
-        os.environ['TOP_DIR'] + "/tests/models/pytorchModels/resnet18.pt",
-        [x], "Interpreter", True)
+        os.environ["TOP_DIR"] + "/tests/models/pytorchModels/resnet18.pt",
+        [x],
+        "Interpreter",
+        True,
+    )
 
     assert trainer.train(x, y)
