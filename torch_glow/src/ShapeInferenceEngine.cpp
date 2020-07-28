@@ -87,6 +87,10 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], bmm(inputMetas));
       break;
     }
+    case c10::aten::t: {
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], t(inputMetas));
+      break;
+    }
     case c10::aten::transpose: {
       ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
                                  transpose(inputMetas));
@@ -404,6 +408,34 @@ ShapeInferenceEngine::addmm(const MetaStack &variableMetas) {
   }
 
   return binaryOp({t0, std::move(t)});
+}
+
+/**
+ * aten::t(Tensor self) -> Tensor
+ * refer to https://pytorch.org/docs/master/generated/torch.t
+ */
+Expected<std::vector<int64_t>>
+ShapeInferenceEngine::t(const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 1,
+      strFormat("Expected one input, got %zu.", variableMetas.size()));
+
+  const std::vector<int64_t> &t0 = variableMetas[0].shape;
+
+  auto d0 = t0.size();
+
+  /// 0-D or 1-D tensor: Same shape
+  if (d0 == 1) {
+    return t0;
+    /// 2-D tensor: Transpose
+  } else if (d0 == 2) {
+    std::vector<int64_t> shape{t0[1], t0[0]};
+    return shape;
+    /// >2-D tensor: Invalid input
+  } else {
+    return MAKE_ERR(strFormat("Expected tensor <= 2-D, got %zu-D.", d0));
+  }
 }
 
 /**
