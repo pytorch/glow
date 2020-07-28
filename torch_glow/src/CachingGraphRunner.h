@@ -131,8 +131,8 @@ class CachingGraphRunner {
                 std::unique_ptr<ExecutionContext> &ctx);
 
   /// Run the graph_ on \p stack on using ptGraphExecutor_. This is for
-  /// debugging purposes only.
-  void runOnJit(torch::jit::Stack &stack);
+  /// debugging purposes only. \returns how long running took in usecs.
+  int64_t runOnJit(torch::jit::Stack &stack);
 
   /// Given a \p stack of inputs, computes the hash for the inputs on the stack.
   size_t computeGraphHash(const c10::ArrayRef<c10::IValue> inputs) const;
