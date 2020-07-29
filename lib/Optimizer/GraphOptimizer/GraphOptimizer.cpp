@@ -1354,7 +1354,8 @@ static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned_t dim) {
 /// regions along some dimension. The dimension is stored in \p dim.
 /// For example, Slice((0, 0)..(1, 10)) Slice((1, 0)..(2, 10)) are consecutive
 /// along dim=0.
-static bool findConsecutiveSliceDim(SliceNode *A, SliceNode *B, unsigned_t* dim){
+static bool findConsecutiveSliceDim(SliceNode *A, SliceNode *B,
+                                    unsigned_t *dim) {
   // The slices must extract from the same input.
   if (A->getInput().getNode() != B->getInput().getNode()) {
     return false;
@@ -2555,7 +2556,8 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
     // If the slices' dimension is different from the concat, the nodes
     // can be replaced with a single slice+reshape.
     std::vector<std::pair<unsigned_t /* dimension of slicing */,
-                          std::vector<SliceNode *>>> consecutiveSlices;
+                          std::vector<SliceNode *>>>
+        consecutiveSlices;
     std::vector<SliceNode *> currConsecutiveSlices;
     SliceNode *lastSN = nullptr;
     unsigned_t lastDim = -1;
@@ -2602,8 +2604,7 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
       if (slices.size() <= 1) {
         continue;
       }
-      if (slicesDim != CN->getDim() &&
-          slicesDim != CN->getDim() + 1 &&
+      if (slicesDim != CN->getDim() && slicesDim != CN->getDim() + 1 &&
           slicesDim != CN->getDim() - 1) {
         // Optimizations are possible only if:
         // 1) slices consecutive dimension is the same as concat dimension, or
@@ -2632,14 +2633,13 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
 
       // Create a reshape node based on consecutive slice dimension and
       // concat dimension.
-      if (slicesDim == CN->getDim() + 1 ||
-          slicesDim == CN->getDim() - 1) {
+      if (slicesDim == CN->getDim() + 1 || slicesDim == CN->getDim() - 1) {
         auto outputDimVec = newSlice->getResult().dims().vec();
         outputDimVec[CN->getDim()] *= outputDimVec[slicesDim];
         outputDimVec[slicesDim] = 1;
         auto outputDims = llvm::makeArrayRef(outputDimVec);
         auto *newReshape = F->createReshape(
-          newSlice->getName().str() + "_Reshape", newSlice, outputDims);
+            newSlice->getName().str() + "_Reshape", newSlice, outputDims);
         newSlicesToReshape[newSlice] = newReshape;
       }
 

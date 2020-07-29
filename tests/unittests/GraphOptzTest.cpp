@@ -5472,7 +5472,7 @@ TEST_F(GraphOptz, EliminateSliceConcatWithReshapeTest) {
   EXPECT_EQ(optimizedF_->getNodes().size(), 4);
 
   bindings_.allocate(src)->getHandle<float>().randomize(-10.0, 10.0,
-                                                         mod_.getPRNG());
+                                                        mod_.getPRNG());
   checkNumericalEquivalence();
 }
 
