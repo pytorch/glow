@@ -101,45 +101,6 @@ static Node *replaceQuantizedTanhWithLookupTable(Function &F,
   return rescaleOutputNode;
 }
 
-/// Support quantized Sigmoid \p SN inside \p F by replacing it with an
-/// IntLookupTable. \returns final node in the chain implementing the quantized
-/// Sigmoid via the IntLookupTable.
-static Node *replaceQuantizedSigmoidWithLookupTable(Function &F,
-                                                    const SigmoidNode &SN) {
-  // Quantized sigmoid operator expects input to be in a certain floating
-  // point range. This operator works based on the precomputed table and has
-  // to process input in a range of [-6.0, 6.0]. Sigmoid asymptotically
-  // approaches 0 at -inf and 1 at +inf. It has values of 0.00247262 and
-  // 0.997527 at -6.0 and 6.0 correspondingly. The output quantization
-  // parameters are chosen to represent the floating point range of [0, 1.0].
-  auto inputQuantizationParams =
-      glow::quantization::chooseQuantizationParams({-6.0, 6.0});
-  auto sigmoidInTy = F.getParent()->uniqueType(
-      ElemKind::Int8QTy, SN.getResult().dims(), inputQuantizationParams.scale,
-      inputQuantizationParams.offset);
-
-  // Make sure input is clipped in [-6.0, 6.0] floating point range.
-  auto *rescaleInputNode =
-      F.createRescaleQuantized(SN.getName(), SN.getInput(), sigmoidInTy);
-
-  // Make sure output is clipped in [0.0, 1.0] floating point range.
-  auto outputQuantizationParams =
-      glow::quantization::chooseQuantizationParams({0.0, 1.0});
-  auto resultOutTy = F.getParent()->uniqueType(
-      ElemKind::Int8QTy, rescaleInputNode->getResult().dims(),
-      outputQuantizationParams.scale, outputQuantizationParams.offset);
-
-  // Note: The actual lookup table is created inside this call.
-  auto *quantizedNode =
-      F.createIntSigmoid(SN.getName(), rescaleInputNode, resultOutTy);
-
-  auto *rescaleOutputNode = F.createRescaleQuantized(
-      SN.getName(), quantizedNode, SN.getResult().getType());
-
-  SN.getResult().replaceAllUsesOfWith(rescaleOutputNode);
-  return rescaleOutputNode;
-}
-
 /// \returns whether BatchedAddNode \p baN was originally lowered from a
 /// FullyConnectedNode based on the given \p loweredMap.
 static bool isBAFromLoweredFC(const BatchedAddNode *baN,
@@ -939,6 +900,42 @@ public:
 
 namespace glow {
 namespace quantization {
+
+NodeValue replaceQuantizedSigmoidWithLookupTable(Function &F,
+                                                 const SigmoidNode &SN) {
+  // Quantized sigmoid operator expects input to be in a certain floating
+  // point range. This operator works based on the precomputed table and has
+  // to process input in a range of [-6.0, 6.0]. Sigmoid asymptotically
+  // approaches 0 at -inf and 1 at +inf. It has values of 0.00247262 and
+  // 0.997527 at -6.0 and 6.0 correspondingly. The output quantization
+  // parameters are chosen to represent the floating point range of [0, 1.0].
+  auto inputQuantizationParams =
+      glow::quantization::chooseQuantizationParams({-6.0, 6.0});
+  auto sigmoidInTy = F.getParent()->uniqueType(
+      ElemKind::Int8QTy, SN.getResult().dims(), inputQuantizationParams.scale,
+      inputQuantizationParams.offset);
+
+  // Make sure input is clipped in [-6.0, 6.0] floating point range.
+  auto *rescaleInputNode =
+      F.createRescaleQuantized(SN.getName(), SN.getInput(), sigmoidInTy);
+
+  // Make sure output is clipped in [0.0, 1.0] floating point range.
+  auto outputQuantizationParams =
+      glow::quantization::chooseQuantizationParams({0.0, 1.0});
+  auto resultOutTy = F.getParent()->uniqueType(
+      ElemKind::Int8QTy, rescaleInputNode->getResult().dims(),
+      outputQuantizationParams.scale, outputQuantizationParams.offset);
+
+  // Note: The actual lookup table is created inside this call.
+  auto *quantizedNode =
+      F.createIntSigmoid(SN.getName(), rescaleInputNode, resultOutTy);
+
+  auto *rescaleOutputNode = F.createRescaleQuantized(
+      SN.getName(), quantizedNode, SN.getResult().getType());
+
+  SN.getResult().replaceAllUsesOfWith(rescaleOutputNode);
+  return rescaleOutputNode->getResult();
+}
 
 /// Helper which, given the output name \p currName of some node, looks for
 /// corresponding names in \p loweredMap which represent any names that this

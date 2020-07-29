@@ -731,8 +731,10 @@ public:
   SigmoidNode *createSigmoid(llvm::StringRef name, NodeValue input);
 
   /// Create a Swish node with the given \p name and \p input.
-  /// Result type will be implicitly set based on the \p input type.
-  SwishNode *createSwish(llvm::StringRef name, NodeValue input);
+  /// If \p OT is nullptr, then result type will be implicitly set based on the
+  /// \p input type.
+  SwishNode *createSwish(llvm::StringRef name, NodeValue input,
+                         TypeRef OT = nullptr);
 
   /// Create a Tanh node with the given \p name, \p input and
   /// output type \p outTy.
@@ -1456,6 +1458,11 @@ public:
   /// part of the \p outTy.
   QuantizeNode *createQuantize(llvm::StringRef name, NodeValue input,
                                TypeRef outTy);
+
+  /// Create quantization node which transforms floating point tensor to a
+  /// quantized one of kind \p q with given \p scale and \p offset.
+  QuantizeNode *createQuantize(llvm::StringRef name, NodeValue input,
+                               ElemKind q, float scale, int32_t offset);
 
   /// Create dequantization node which transforms quantized tensor to a
   /// floating point one with given Scale and Offset. Scale and Offset params
