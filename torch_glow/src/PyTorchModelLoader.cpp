@@ -773,6 +773,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::type_as"}, &PyTorchModelLoader::loadTypeAs},
       {{"aten::contiguous"}, &PyTorchModelLoader::loadContiguous},
       {{"prim::Constant"}, &PyTorchModelLoader::loadConstant},
+      {{"prim::NumToTensor"}, &PyTorchModelLoader::loadNumToTensor},
       {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul},
       {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv},
       {{"aten::add", "aten::add_"}, &PyTorchModelLoader::loadAdd},
@@ -2022,6 +2023,36 @@ Error PyTorchModelLoader::loadFusedStack(const torch::jit::Node *ptNode) {
       F_.createReshape("stack_reshape", concat, reshapeDims)->getResult();
 
   return addValueMapping(outputs[0], reshape);
+}
+
+Error PyTorchModelLoader::loadNumToTensor(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::GlowIValue *glowIValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(glowIValue, getGlowIValueForValue(inputs[0]));
+  glow::Tensor t;
+
+  if (glowIValue->isInt()) {
+    int64_t input;
+    ASSIGN_VALUE_OR_RETURN_ERR(input, glowIValue->toInt());
+    t = glow::Tensor(glow::ElemKind::Int64ITy, {1});
+    t.init(glow::Tensor::InitKind::Broadcast, input, F_.getParent()->getPRNG());
+  } else if (glowIValue->isDouble()) {
+    double input;
+    ASSIGN_VALUE_OR_RETURN_ERR(input, glowIValue->toDouble());
+    t = glow::Tensor(glow::ElemKind::FloatTy, {1});
+    t.init(glow::Tensor::InitKind::Broadcast, input, F_.getParent()->getPRNG());
+  } else {
+    // Not a number
+    RETURN_ERR(strFormat(
+        "Expected integer/double GlowIValue type in NumToTensor, but get: %s",
+        glowIValue->getTagString()));
+  }
+  auto output =
+      F_.getParent()->createConstant("NumToTensor_output", std::move(t));
+  return addValueMapping(outputs[0], output);
 }
 
 Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
