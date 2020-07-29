@@ -4860,6 +4860,37 @@ static void setFP16AccumSLS(Function *F,
   } while (nodeIt != stopIt);
 }
 
+/// Look for Dequantize -> Swish -> Quantize, replace it with a quantized Swish.
+bool QuantizeSwish::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    auto *SN = dyn_cast<SwishNode>(&N);
+    if (!SN || SN->getNumUsers() != 1) {
+      continue;
+    }
+
+    QuantizeNode *QN =
+        dyn_cast<QuantizeNode>((*SN->getUsers().begin()).getUser());
+    if (!QN) {
+      continue;
+    }
+
+    DequantizeNode *DN = dyn_cast<DequantizeNode>(SN->getInput());
+    if (!DN) {
+      continue;
+    }
+
+    SwishNode *newSN =
+        F->createSwish(SN->getName().str() + "_int", DN->getInput(),
+                       QN->getResult().getType());
+    QN->getResult().replaceAllUsesOfWith(newSN);
+    changed = true;
+  }
+  return changed;
+}
+
 /// This funciton uses TypeAToTypeBFunctionConverter to do a whole graph
 /// demotion of Index type from INT64 to INT32.
 static void transformIndexTypeDemotion(const Backend &B, Function *F,
