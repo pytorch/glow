@@ -173,14 +173,13 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::LayerNormalizationNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
-  case Kinded::Kind::SwishNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
   case Kinded::Kind::BatchNormalizationNodeKind:
   case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
 
+  case Kinded::Kind::SwishNodeKind:
   case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::PReluNodeKind:
   case Kinded::Kind::ClipNodeKind:
@@ -521,6 +520,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::ConcatNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
+  case Kinded::Kind::SwishNodeKind:
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::Convolution3DNodeKind:
@@ -540,23 +540,8 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
   case Kinded::Kind::PReluNodeKind:
   case Kinded::Kind::LogitNodeKind:
-    return false;
   case Kinded::Kind::SparseLengthsSumNodeKind:
-    // WA - lower until ICE-T implements it.
-    {
-      const SparseLengthsSumNode *SLS = llvm::cast<SparseLengthsSumNode>(N);
-      if ((NNPIBackend::backendOptions_.useIceT ||
-           NNPIBackend::backendOptions_.inferOnDevice) &&
-          ((SLS->getResult().getElementType() == ElemKind::FloatTy) ||
-           (SLS->getResult().getElementType() == ElemKind::Int8QTy))) {
-        return true;
-      }
-    }
     return false;
-  case Kinded::Kind::SwishNodeKind: {
-    NodeInfo NI(*N);
-    return !NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
-  }
   default:
     return true;
   }
@@ -1088,9 +1073,8 @@ NNPIBackend::getOptimizationPipeline() const {
   return pipeline;
 }
 
-/// Helper to lower nodes which need further lowering. \returns whether \p F was
-/// modified.
-static bool lowerRequiredNodes(Function *F, CompilationContext &cctx) {
+bool NNPIBackend::lowerRequiredNodes(Function *F,
+                                     CompilationContext &cctx) const {
   bool changed = false;
   for (auto &N : F->getNodes()) {
     NodeInfo NI(N);
@@ -1166,12 +1150,24 @@ static bool lowerRequiredNodes(Function *F, CompilationContext &cctx) {
     // Explicitly lower clips as they may be introduced during lowering other
     // ops above, e.g. Logit.
     case Kinded::Kind::ClipNodeKind:
+    case Kinded::Kind::SwishNodeKind:
       if (NI.allInputsAndOutputsHaveSameElemKind(
               {ElemKind::Float16Ty, ElemKind::Int8QTy})) {
         continue;
       }
       changed |= lowerNode(F, &N, cctx);
       continue;
+
+    case Kinded::Kind::SparseLengthsSumNodeKind: {
+      const ElemKind k = NI.getOutElemTy(SparseLengthsSumNode::ResultIdx);
+      // WA - lower until ICE-T implements it.
+      if ((NNPIBackend::backendOptions_.useIceT ||
+           NNPIBackend::backendOptions_.inferOnDevice) &&
+          (k == ElemKind::FloatTy || k == ElemKind::Int8QTy)) {
+        changed |= lowerNode(F, &N, cctx);
+      }
+      continue;
+    }
 
     default:
       continue;

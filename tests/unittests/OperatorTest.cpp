@@ -10580,6 +10580,27 @@ TEST_P(OperatorTest, Swish_BFloat16) {
   testSwish<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty, 0.2f);
 }
 
+/// Verify that the Swish operator works correctly with Int8QTy.
+TEST_P(OperatorStatelessTest, Swish_Int8) {
+  CHECK_IF_ENABLED();
+
+  compareAgainstInterpreter(
+      getBackendName(),
+      [](PlaceholderBindings &bindings, ExecutionEngine &EE) {
+        Module &mod = EE.getModule();
+        Function *F = mod.createFunction("main");
+        Placeholder *input =
+            mod.createPlaceholder(ElemKind::FloatTy, {500}, "input", false);
+        bindings.allocate(input)->getHandle<float>().randomize(-5.0, 5.0,
+                                                               mod.getPRNG());
+        SwishNode *swish = F->createSwish("swish", input);
+        SaveNode *save = F->createSave("Save", swish);
+        Tensor *saveTensor = bindings.allocate(save->getPlaceholder());
+        return std::make_pair(F, saveTensor);
+      },
+      ElemKind::FloatTy, ElemKind::Int8QTy, 0.035, parCloneCountOpt);
+}
+
 TEST_P(OperatorTest, IntLookupTable) {
   CHECK_IF_ENABLED();
 
