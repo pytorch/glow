@@ -1011,6 +1011,9 @@ NNPIBackend::getOptimizationPipeline() const {
   // not want to undo that by sinking Nodes back together.
   pipeline->removeAllInstancesOfPass(FunctionPassID::SinkCode);
 
+  // Quantize Swish when wrapped inS Quantize/Dequantize.
+  pipeline->pushBack(FunctionPassID::QuantizeSwish);
+
   // Raise Clips above Shape Nodes (e.g. Reshape) to try to ensure fusion
   // occurs. Note that we do this last as it may counteract some earlier
   // optimizations that push Clips down to try to eliminate them.

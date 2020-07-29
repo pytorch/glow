@@ -5683,3 +5683,45 @@ TEST_F(GraphOptz, transposeQuantizeConstantWithAlignment) {
 
   EXPECT_TRUE(F_->verify());
 }
+
+TEST_F(GraphOptz, DequantSwishQuantOpt) {
+  const dim_t origDims[] = {1, 5, 10, 15};
+  Placeholder *A = mod_.createPlaceholder(ElemKind::Int8QTy, origDims, 0.039, 0,
+                                          "input", false);
+  DequantizeNode *DN = F_->createDequantize("deq", A, ElemKind::Float16Ty);
+  SwishNode *swish = F_->createSwish("swish", DN);
+  QuantizeNode *QN =
+      F_->createQuantize("quant", swish, ElemKind::Int8QTy, 0.0204, -114);
+  DequantizeNode *finalDN =
+      F_->createDequantize("deq_final", QN, ElemKind::Float16Ty);
+  F_->createSave("ret", finalDN);
+
+  optimizedF_ =
+      optimizeFunction(F_, {FunctionPassID::QuantizeSwish, getDCEPassConfig()});
+
+  // Swish, Dequant, Save
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+
+  SaveNode *save = nullptr;
+  for (auto &N : optimizedF_->getNodes()) {
+    if (N.getKind() == Kinded::Kind::SaveNodeKind) {
+      save = llvm::dyn_cast<SaveNode>(&N);
+      break;
+    }
+  }
+  ASSERT_TRUE(save);
+
+  DequantizeNode *dequantizeOpt =
+      llvm::dyn_cast<DequantizeNode>(save->getInput());
+  ASSERT_TRUE(dequantizeOpt);
+
+  SwishNode *swishOpt = llvm::dyn_cast<SwishNode>(dequantizeOpt->getInput());
+  ASSERT_TRUE(swishOpt);
+  EXPECT_EQ(swishOpt->getInput(), A->getOutput());
+  EXPECT_EQ(swishOpt->getResult().getType(), QN->getResult().getType());
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(A)->getHandle<int8_t>().randomize(-128, 127, mod_.getPRNG());
+
+  checkNumericalEquivalence(0.025f);
+}

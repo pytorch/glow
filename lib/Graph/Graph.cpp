@@ -1200,8 +1200,12 @@ SigmoidNode *Function::createSigmoid(llvm::StringRef name, NodeValue input) {
   return createSigmoid(name, input.getType(), input);
 }
 
-SwishNode *Function::createSwish(llvm::StringRef name, NodeValue input) {
-  return addNode(new SwishNode(name, input.getType(), input));
+SwishNode *Function::createSwish(llvm::StringRef name, NodeValue input,
+                                 TypeRef OT) {
+  if (!OT) {
+    OT = getParent()->uniqueType(*input.getType());
+  }
+  return addNode(new SwishNode(name, OT, input));
 }
 
 TanhNode *Function::createTanh(llvm::StringRef name, TypeRef outTy,
@@ -2618,6 +2622,13 @@ QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
 
   return addNode(
       new QuantizeNode(name, getParent()->uniqueType(*outTy), input));
+}
+
+QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
+                                       ElemKind q, float scale,
+                                       int32_t offset) {
+  TypeRef OT = getParent()->uniqueType(q, input.dims(), scale, offset);
+  return createQuantize(name, input, OT);
 }
 
 DequantizeNode *Function::createDequantize(llvm::StringRef name,
