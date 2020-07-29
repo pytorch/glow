@@ -52,6 +52,11 @@ public:
   transformPostOptPipeline(Function *F,
                            CompilationContext &cctx) const override;
 
+  /// Helper to lower nodes which need further lowering. This is useful for when
+  /// we need to lower Nodes based on precision, as we do lowering pre-precision
+  /// transformation. \returns whether \p F was modified.
+  bool lowerRequiredNodes(Function *F, CompilationContext &cctx) const;
+
   runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig) override;
 
