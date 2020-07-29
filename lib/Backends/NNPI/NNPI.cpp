@@ -650,7 +650,7 @@ static void setupBasicParallelizationConfigs(
           continue;
         }
         size_t N = TN->getInput().dims()[1];
-        if (N < 1024) {
+        if (N < 256) {
           continue;
         }
         parOpts[TN] = ParallelTransformKind::Model;
@@ -661,7 +661,7 @@ static void setupBasicParallelizationConfigs(
           continue;
         }
         size_t M = TN->getInput().dims()[0];
-        if (M < 1024) {
+        if (M < 256) {
           continue;
         }
         parOpts[TN] = ParallelTransformKind::Data;
@@ -699,14 +699,53 @@ static void setupBasicParallelizationConfigs(
       if (TH->getInput().dims().size() < 2) {
         continue;
       }
-      size_t N = TH->getInput().dims()[1];
-      if (N < 4096) {
+      if (TH->getInput().dims().size() == 2) {
+        size_t N = TH->getInput().dims()[1];
+        if (N < 1792) {
+          continue;
+        }
+        parOpts[TH] = ParallelTransformKind::Data;
+        numChunks[TH] =
+            std::min((size_t)numParallelChunks, TH->getResult().dims()[0]);
+        continue;
+      } else if (TH->getInput().dims().size() == 3) {
+        size_t N = TH->getInput().dims()[1];
+        size_t K = TH->getInput().dims()[2];
+        if (N * K < 2048) {
+          continue;
+        }
+        parOpts[TH] = ParallelTransformKind::Data;
+        numChunks[TH] =
+            std::min((size_t)numParallelChunks, TH->getResult().dims()[0]);
         continue;
       }
-      parOpts[TH] = ParallelTransformKind::Data;
-      numChunks[TH] =
-          std::min((size_t)numParallelChunks, TH->getResult().dims()[0]);
-      continue;
+    }
+
+    // Split Add layers in data parallel fashion
+    if (auto *AD = llvm::dyn_cast<AddNode>(node)) {
+      if (AD->getLHS().dims().size() < 2) {
+        continue;
+      }
+      if (AD->getLHS().dims().size() == 2) {
+        size_t N = AD->getLHS().dims()[1];
+        if (N < 1792) {
+          continue;
+        }
+        parOpts[AD] = ParallelTransformKind::Data;
+        numChunks[AD] =
+            std::min((size_t)numParallelChunks, AD->getResult().dims()[0]);
+        continue;
+      } else if (AD->getLHS().dims().size() == 3) {
+        size_t N = AD->getLHS().dims()[1];
+        size_t K = AD->getLHS().dims()[2];
+        if (N * K < 2048) {
+          continue;
+        }
+        parOpts[AD] = ParallelTransformKind::Data;
+        numChunks[AD] =
+            std::min((size_t)numParallelChunks, AD->getResult().dims()[0]);
+        continue;
+      }
     }
 
     // Split Swish layers in data parallel fashion
@@ -730,12 +769,27 @@ static void setupBasicParallelizationConfigs(
         continue;
       }
       size_t N = M->getLHS().dims()[1];
-      if (N < 4096) {
+      if (N < 512) {
         continue;
       }
       parOpts[M] = ParallelTransformKind::Data;
       numChunks[M] =
           std::min((size_t)numParallelChunks, M->getResult().dims()[0]);
+      continue;
+    }
+
+    // Split Sigmoid layers in data parallel fashion
+    if (auto *S = llvm::dyn_cast<SigmoidNode>(node)) {
+      if (S->getInput().dims().size() < 2) {
+        continue;
+      }
+      size_t N = S->getInput().dims()[1];
+      if (N < 512) {
+        continue;
+      }
+      parOpts[S] = ParallelTransformKind::Data;
+      numChunks[S] =
+          std::min((size_t)numParallelChunks, S->getResult().dims()[0]);
       continue;
     }
 
