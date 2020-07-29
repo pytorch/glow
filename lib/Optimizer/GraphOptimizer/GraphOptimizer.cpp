@@ -1350,6 +1350,32 @@ static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned_t dim) {
   return true;
 }
 
+/// \returns True if the two slices \p A and \p B access consecutive spacial
+/// regions along some dimension. The dimension is stored in \p dim.
+/// For example, Slice((0, 0)..(1, 10)) Slice((1, 0)..(2, 10)) are consecutive
+/// along dim=0.
+static bool findConsecutiveSliceDim(SliceNode *A, SliceNode *B, unsigned_t* dim){
+  // The slices must extract from the same input.
+  if (A->getInput().getNode() != B->getInput().getNode()) {
+    return false;
+  }
+
+  // The result element type must be identical.
+  if (A->getResult().getType()->getElementType() !=
+      B->getResult().getType()->getElementType()) {
+    return false;
+  }
+
+  for (size_t i = 0, e = A->getStart().size(); i < e; i++) {
+    if (areSlicesConsecutive(A, B, i)) {
+      *dim = i;
+      return true;
+    }
+  }
+
+  return false;
+}
+
 bool ConvertBroadcastedBatchMatMul::run(Function *F,
                                         const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
@@ -2523,43 +2549,75 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
     // 2) merging Slices from different sources
     // e.g. Slice(A1)-Slice(B1)-Slice(A2)-Slice(B2), A1 and A2, B1 and B2 are
     // consecutive respectively
-    std::vector<std::vector<SliceNode *>> consecutiveSlices;
+    //
+    // Store consecutive slices along *any* dimension. If the consecutive
+    // slices' dimension is the same as the concat, the concat can be removed.
+    // If the slices' dimension is different from the concat, the nodes
+    // can be replaced with a single slice+reshape.
+    std::vector<std::pair<unsigned_t /* dimension of slicing */,
+                          std::vector<SliceNode *>>> consecutiveSlices;
     std::vector<SliceNode *> currConsecutiveSlices;
     SliceNode *lastSN = nullptr;
+    unsigned_t lastDim = -1;
     for (auto &concatInput : CN->getInputs()) {
       auto *SN = dyn_cast<SliceNode>(concatInput.getNode());
       // slices with multiple users will not be considered
       if (!SN || SN->getResult().getNumUsers() > 1) {
         if (currConsecutiveSlices.size()) {
-          consecutiveSlices.emplace_back(currConsecutiveSlices);
+          consecutiveSlices.emplace_back(lastDim, currConsecutiveSlices);
           currConsecutiveSlices.clear();
         }
+        lastDim = -1;
         lastSN = nullptr;
         continue;
       }
       // slices with different sources will not be considered
+      unsigned_t dim = -1;
       if (lastSN && (lastSN->getInput() != SN->getInput() ||
-                     !areSlicesConsecutive(lastSN, SN, CN->getDim()))) {
-        consecutiveSlices.emplace_back(currConsecutiveSlices);
+                     !findConsecutiveSliceDim(lastSN, SN, &dim))) {
+        consecutiveSlices.emplace_back(lastDim, currConsecutiveSlices);
         currConsecutiveSlices.clear();
       }
+      lastDim = dim;
       lastSN = SN;
       currConsecutiveSlices.emplace_back(SN);
     }
     if (currConsecutiveSlices.size()) {
-      consecutiveSlices.emplace_back(currConsecutiveSlices);
+      consecutiveSlices.emplace_back(lastDim, currConsecutiveSlices);
     }
 
     // Mapping from old Slices to new Slices where the range of each old Slice
     // is a subset of the corresponding new Slice
     std::unordered_map<SliceNode *, SliceNode *> oldToNewSlices;
-    for (const auto &slices : consecutiveSlices) {
+
+    // Mapping from new fused slices to reshape nodes that maybe be needed in
+    // case the fused slices need to be reshaped before concat. This happens
+    // when consecutive slices dimension differs from concat dimension by 1.
+    std::unordered_map<SliceNode *, ReshapeNode *> newSlicesToReshape;
+
+    for (const auto &slicePairs : consecutiveSlices) {
+      auto slicesDim = slicePairs.first;
+      auto slices = slicePairs.second;
+
       if (slices.size() <= 1) {
         continue;
       }
+      if (slicesDim != CN->getDim() &&
+          slicesDim != CN->getDim() + 1 &&
+          slicesDim != CN->getDim() - 1) {
+        // Optimizations are possible only if:
+        // 1) slices consecutive dimension is the same as concat dimension, or
+        // 2) slices consecutive dimension is adjact to the concat dimension.
+        //
+        // In the former case, we replace it with a single slice. In the latter
+        // case, we replace it with a single slice and reshape.
+        continue;
+      }
+
       SliceNode *firstSlice = slices.front();
       auto *srcNode = firstSlice->getInput().getNode();
       std::vector<dim_t> endDims;
+
       for (size_t i = 0, e2 = firstSlice->getResult().dims().size(); i < e2;
            i++) {
         endDims.emplace_back(slices.back()->getStart()[i] +
@@ -2567,15 +2625,31 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
       }
       auto *newSlice = F->createSlice(firstSlice->getName(), srcNode,
                                       firstSlice->getStart(), endDims);
+
       for (auto *slice : slices) {
         oldToNewSlices[slice] = newSlice;
       }
+
+      // Create a reshape node based on consecutive slice dimension and
+      // concat dimension.
+      if (slicesDim == CN->getDim() + 1 ||
+          slicesDim == CN->getDim() - 1) {
+        auto outputDimVec = newSlice->getResult().dims().vec();
+        outputDimVec[CN->getDim()] *= outputDimVec[slicesDim];
+        outputDimVec[slicesDim] = 1;
+        auto outputDims = llvm::makeArrayRef(outputDimVec);
+        auto *newReshape = F->createReshape(
+          newSlice->getName().str() + "_Reshape", newSlice, outputDims);
+        newSlicesToReshape[newSlice] = newReshape;
+      }
+
       changed = true;
     }
     if (!oldToNewSlices.size()) {
       continue;
     }
-    // Replace the input Slices to CN with the merged Slices
+    // Replace the input Slices to CN with the merged Slices, along with
+    // reshape if it exists.
     std::vector<NodeValue> newConcatInputs;
     const SliceNode *lastNewSlice = nullptr;
     for (const auto &concatInput : CN->getInputs()) {
@@ -2586,7 +2660,12 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
         auto *newSlice = oldToNewSlices[SN];
         if (newSlice != lastNewSlice) {
           lastNewSlice = newSlice;
-          newConcatInputs.emplace_back(newSlice);
+          if (!newSlicesToReshape.count(newSlice)) {
+            newConcatInputs.emplace_back(newSlice);
+          } else {
+            auto *reshapeNode = newSlicesToReshape[newSlice];
+            newConcatInputs.emplace_back(reshapeNode);
+          }
         }
       }
     }
