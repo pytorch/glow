@@ -2588,14 +2588,10 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
       consecutiveSlices.emplace_back(lastDim, currConsecutiveSlices);
     }
 
-    // Mapping from old Slices to new Slices where the range of each old Slice
-    // is a subset of the corresponding new Slice
-    std::unordered_map<SliceNode *, SliceNode *> oldToNewSlices;
-
-    // Mapping from new fused slices to reshape nodes that maybe be needed in
-    // case the fused slices need to be reshaped before concat. This happens
-    // when consecutive slices dimension differs from concat dimension by 1.
-    std::unordered_map<SliceNode *, ReshapeNode *> newSlicesToReshape;
+    // Mapping from old Slices to new Nodes where a Node can either be
+    // i) a merged Slice
+    // ii) a merged Slice + Reshape
+    std::unordered_map<SliceNode *, Node *> oldSlicesToNewNodes;
 
     for (const auto &slicePairs : consecutiveSlices) {
       auto slicesDim = slicePairs.first;
@@ -2624,12 +2620,9 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
         endDims.emplace_back(slices.back()->getStart()[i] +
                              slices.back()->getResult().dims()[i]);
       }
+      Node *newNode = nullptr;
       auto *newSlice = F->createSlice(firstSlice->getName(), srcNode,
                                       firstSlice->getStart(), endDims);
-
-      for (auto *slice : slices) {
-        oldToNewSlices[slice] = newSlice;
-      }
 
       // Create a reshape node based on consecutive slice dimension and
       // concat dimension.
@@ -2638,34 +2631,33 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
         outputDimVec[CN->getDim()] *= outputDimVec[slicesDim];
         outputDimVec[slicesDim] = 1;
         auto outputDims = llvm::makeArrayRef(outputDimVec);
-        auto *newReshape = F->createReshape(
-            newSlice->getName().str() + "_Reshape", newSlice, outputDims);
-        newSlicesToReshape[newSlice] = newReshape;
+        newNode = F->createReshape(newSlice->getName().str() + "_Reshape",
+                                   newSlice, outputDims);
+      } else {
+        newNode = newSlice;
+      }
+
+      for (auto *slice : slices) {
+        oldSlicesToNewNodes[slice] = newNode;
       }
 
       changed = true;
     }
-    if (!oldToNewSlices.size()) {
+    if (!oldSlicesToNewNodes.size()) {
       continue;
     }
-    // Replace the input Slices to CN with the merged Slices, along with
-    // reshape if it exists.
+    // Replace the input Slices to CN with the merged Nodes.
     std::vector<NodeValue> newConcatInputs;
-    const SliceNode *lastNewSlice = nullptr;
+    const Node *lastNewNode = nullptr;
     for (const auto &concatInput : CN->getInputs()) {
       auto *SN = dyn_cast<SliceNode>(concatInput.getNode());
-      if (!SN || !oldToNewSlices.count(SN)) {
+      if (!SN || !oldSlicesToNewNodes.count(SN)) {
         newConcatInputs.emplace_back(concatInput);
       } else {
-        auto *newSlice = oldToNewSlices[SN];
-        if (newSlice != lastNewSlice) {
-          lastNewSlice = newSlice;
-          if (!newSlicesToReshape.count(newSlice)) {
-            newConcatInputs.emplace_back(newSlice);
-          } else {
-            auto *reshapeNode = newSlicesToReshape[newSlice];
-            newConcatInputs.emplace_back(reshapeNode);
-          }
+        auto *newNode = oldSlicesToNewNodes[SN];
+        if (newNode != lastNewNode) {
+          lastNewNode = newNode;
+          newConcatInputs.emplace_back(newNode);
         }
       }
     }
