@@ -54,6 +54,22 @@ protected:
   }
 };
 
+/// Test that when we rely on the optimization pipeline to do lowering based on
+/// precision that the resulting ops are using the precision we expect. Note
+/// that this test is not intended to run, just to compile to examine the output
+/// Function, and thus \ref checkNumericalEquivalence() will fail if called.
+class NNPIOptPipelineTestLowering : public GraphOptz {
+public:
+  NNPIOptPipelineTestLowering() : GraphOptz("NNPI") {}
+
+protected:
+  /// Disabled for this harness.
+  void checkNumericalEquivalence(float allowedError = 0.0001) override {
+    FAIL() << "checkNumericalEquivalence not supported for tests using "
+              "NNPIOptPipelineTestLowering";
+  }
+};
+
 /// Note: This differs from NNPIOptPipelineTest only in that cloneAndCompile()
 /// will clone into unoptimizedF_ instead of optimizedF_. This means that we can
 /// correctly specify per-node opts in backendSpecificNodeInfo based on the
@@ -546,7 +562,7 @@ TEST_F(NNPIOptPipelineTest, NoParallelizationTestAddReluNNPI) {
 
 /// Test FRWQ-SLS is not lowered when we rely on FP16 conversion in the
 /// optimization pipeline.
-TEST_F(NNPIOptPipelineTest, NoLowerSLSFP16) {
+TEST_F(NNPIOptPipelineTestLowering, NoLowerSLSFP16) {
   Tensor data(ElemKind::FloatTy, {3, 2});
   data.getHandle() = {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f};
 
@@ -563,13 +579,10 @@ TEST_F(NNPIOptPipelineTest, NoLowerSLSFP16) {
   cctx_.precisionConfig.convertToFP16 = true;
   cctx_.precisionConfig.convertFusedToFP16 = true;
 
-  cloneAndCompile();
-
-  SaveNode *optSave = getSaveByName(optimizedF_, save->getName());
-  ASSERT_TRUE(optSave);
+  EE_.compile(cctx_);
 
   // Expect one FP16 SLS after optimization (converted back to Float for Save).
-  auto *CN = llvm::dyn_cast<ConvertToNode>(optSave->getInput());
+  auto *CN = llvm::dyn_cast<ConvertToNode>(save->getInput());
   ASSERT_TRUE(CN);
   auto *SLS =
       llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(CN->getInput());
@@ -580,7 +593,7 @@ TEST_F(NNPIOptPipelineTest, NoLowerSLSFP16) {
 
 /// Test Logit is not lowered when we rely on FP16 conversion in the
 /// optimization pipeline.
-TEST_F(NNPIOptPipelineTest, NoLowerLogit) {
+TEST_F(NNPIOptPipelineTestLowering, NoLowerLogit) {
   auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
   auto *tanh = F_->createLogit("logit", input, 1E-6f);
   auto *save = F_->createSave("Save", tanh);
@@ -588,13 +601,10 @@ TEST_F(NNPIOptPipelineTest, NoLowerLogit) {
   cctx_.precisionConfig.convertToFP16 = true;
   cctx_.precisionConfig.convertFusedToFP16 = true;
 
-  cloneAndCompile();
-
-  SaveNode *optSave = getSaveByName(optimizedF_, save->getName());
-  ASSERT_TRUE(optSave);
+  EE_.compile(cctx_);
 
   // Expect one FP16 SLS after optimization (converted back to Float for Save).
-  auto *CN = llvm::dyn_cast<ConvertToNode>(optSave->getInput());
+  auto *CN = llvm::dyn_cast<ConvertToNode>(save->getInput());
   ASSERT_TRUE(CN);
   auto *LN = llvm::dyn_cast<LogitNode>(CN->getInput());
   ASSERT_TRUE(LN);
