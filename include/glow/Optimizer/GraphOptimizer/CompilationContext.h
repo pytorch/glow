@@ -179,7 +179,7 @@ struct OptimizationOptions {
   bool enableTypeDemotion{true};
 
   /// If true, optimizations are allowed to change quantization scale/offset.
-  bool enableQuantParamChanges{false};
+  bool enableQuantParamChanges{true};
 
   /// If true, ConcatNodes will not be merged during the optimizer.
   bool skipConcatMerging{false};
