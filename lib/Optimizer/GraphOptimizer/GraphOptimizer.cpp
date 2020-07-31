@@ -3608,6 +3608,12 @@ bool OptimizeQuantFCFloatRelu::run(Function *F,
                                    const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
 
+  // This opt implies there to be changes to quantization, because we create an
+  // int relu that was previously float.
+  if (!cctx.optimizationOpts.enableQuantParamChanges) {
+    return false;
+  }
+
   bool changed = false;
   for (auto &node : F->getNodes()) {
     auto *relu = llvm::dyn_cast<ReluNode>(&node);
@@ -3860,7 +3866,8 @@ static bool combineDownRescaleToArithmeticNode(Function &F, T *AN) {
 
 /// Sink Rescale nodes down when possible.
 /// \returns if anything was changed in the given function.
-static bool sinkRescaleQuantizedNode(Function *F) {
+static bool sinkRescaleQuantizedNode(Function *F,
+                                     const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "sinkRescaleQuantizedNode");
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -3925,7 +3932,10 @@ static bool sinkRescaleQuantizedNode(Function *F) {
     }
 
     if (auto *PN = dyn_cast<AvgPoolNode>(&node)) {
-      changed |= sinkDownRescaleToPoolingNode<AvgPoolNode>(*F, PN);
+      // AvgPool input and output scale/bias may differ.
+      if (!cctx.optimizationOpts.enableQuantParamChanges) {
+        changed |= sinkDownRescaleToPoolingNode<AvgPoolNode>(*F, PN);
+      }
       continue;
     }
 
@@ -4104,6 +4114,13 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
     }
 
     if (auto *RS = dyn_cast<RescaleQuantizedNode>(node)) {
+      // All cases below tend to change the output scale/bias of a Node. This
+      // may change the numerics of the op (even the range is narrower and so it
+      // should be more accurate).
+      if (!cctx.optimizationOpts.enableQuantParamChanges) {
+        continue;
+      }
+
       if (RS->getInput().getType() == RS->getResult().getType()) {
         // If rescale does not change the type, then simply drop it.
         changed = true;
@@ -4135,6 +4152,7 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
       case Kinded::Kind::MinNodeKind:
       case Kinded::Kind::MatMulNodeKind:
       case Kinded::Kind::ConvolutionNodeKind:
+      case Kinded::Kind::FullyConnectedNodeKind:
       case Kinded::Kind::SparseLengthsWeightedSumNodeKind: {
         changed = true;
         Node *newNode =
@@ -4173,7 +4191,7 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
 
   // If nothing has changed then sink rescale quantization nodes.
   if (!changed) {
-    changed = sinkRescaleQuantizedNode(F);
+    changed = sinkRescaleQuantizedNode(F, cctx);
   }
   return changed;
 }

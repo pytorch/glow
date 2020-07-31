@@ -33,6 +33,7 @@ extern bool GlowFusedScaleOffsetFP16;
 extern bool GlowForceSLSAccumFP16;
 extern bool GlowClipFP16;
 extern bool GlowClipFP16SkipInputs;
+extern bool GlowEnableQuantParamChanges;
 extern bool GlowSaturateHost;
 extern bool GlowSaveOnnxifiModel;
 extern bool GlowSaveOnnxifiDAG;
@@ -200,6 +201,14 @@ DEFINE_bool(
 DEFINE_validator(glow_global_force_sls_fp16_accum,
                  [](const char * /* unused */, bool value) {
                    glow::onnxifi::GlowForceSLSAccumFP16 = value;
+                   return true;
+                 });
+
+DEFINE_bool(glow_enable_quant_param_changes, true,
+            "Enable quantization param changes during optimizations");
+DEFINE_validator(glow_enable_quant_param_changes,
+                 [](const char * /* unused */, bool value) {
+                   glow::onnxifi::GlowEnableQuantParamChanges = value;
                    return true;
                  });
 
