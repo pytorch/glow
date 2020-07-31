@@ -1432,6 +1432,12 @@ public:
   GatherNode *createGather(llvm::StringRef name, NodeValue data,
                            NodeValue indices, unsigned_t batchDims = 0);
 
+  /// Given \p data tensor of rank r >= 1, \p indices tensor of rank q >= 1,
+  /// and batch_dims integer b, this operator gathers slices of data
+  /// into an output tensor of rank q + r - indices_shape[-1] - 1 - b.
+  GatherNDNode *createGatherND(llvm::StringRef name, NodeValue data,
+                               NodeValue indices);
+
   /// Create a node, performing GatherRanges operation:
   /// Gathers entries of \p data in groups specified by the "examples" in
   /// \p ranges. Each example in \p ranges contains a list of pairs of

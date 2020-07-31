@@ -1789,6 +1789,13 @@ Error ONNXModelWriter::writeGather(const GatherNode *node, GraphType &graph) {
   }
 }
 
+Error ONNXModelWriter::writeGatherND(const GatherNDNode *node,
+                                     GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Add dictionary entries.
+  return writeAllWithNode("GatherND", node, graph, proto);
+}
+
 Error ONNXModelWriter::writeMatMul(const MatMulNode *node, GraphType &graph) {
   return writeMatMulKind(node, graph, "MatMul");
 }
