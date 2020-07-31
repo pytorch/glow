@@ -1118,6 +1118,7 @@ static void helperSetter(Constant *constT, std::vector<datatype> &vec) {
 Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
                                  ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
+  const std::string sliceName = "Slice " + opName;
   NodeValue data;
   ASSIGN_VALUE_OR_RETURN_ERR(data, getNodeValueByName(op.input(0)));
   auto dims = data.dims();
@@ -1131,15 +1132,16 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
     Constant *startsC = getConstantByNameOrNull(op.input(1));
     Constant *endsC = getConstantByNameOrNull(op.input(2));
 
-    RETURN_ERR_IF_NOT(startsC, "Starts Tensor is not Constant.");
-    RETURN_ERR_IF_NOT(endsC, "Ends Tensor is not Constant.");
+    RETURN_ERR_IF_NOT(startsC, sliceName + " : Starts Tensor is not Constant.");
+    RETURN_ERR_IF_NOT(endsC, sliceName + " : Ends Tensor is not Constant.");
 
     if (startsC->getElementType() == ElemKind::Int64ITy) {
       helperSetter<int64_t>(startsC, starts);
     } else if (startsC->getElementType() == ElemKind::Int32ITy) {
       helperSetter<int32_t>(startsC, starts);
     } else {
-      RETURN_ERR_IF_NOT(false, "Starts Tensor has unsupported type.");
+      RETURN_ERR_IF_NOT(false,
+                        sliceName + " : Starts Tensor has unsupported type.");
     }
 
     if (endsC->getElementType() == ElemKind::Int64ITy) {
@@ -1147,24 +1149,26 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
     } else if (endsC->getElementType() == ElemKind::Int32ITy) {
       helperSetter<int32_t>(endsC, ends);
     } else {
-      RETURN_ERR_IF_NOT(false, "Ends Tensor has unsupported type.");
+      RETURN_ERR_IF_NOT(false,
+                        sliceName + " : Ends Tensor has unsupported type.");
     }
 
     if (op.input_size() > 3) {
       Constant *axesC = getConstantByNameOrNull(op.input(3));
 
-      RETURN_ERR_IF_NOT(startsC, "Axes Tensor is not Constant.");
+      RETURN_ERR_IF_NOT(startsC, sliceName + " : Axes Tensor is not Constant.");
 
       if (axesC->getElementType() == ElemKind::Int64ITy) {
         helperSetter<int64_t>(axesC, axes);
       } else if (axesC->getElementType() == ElemKind::Int32ITy) {
         helperSetter<int32_t>(axesC, axes);
       } else {
-        RETURN_ERR_IF_NOT(false, "Axes Tensor has unsupported type.");
+        RETURN_ERR_IF_NOT(false,
+                          sliceName + " : Axes Tensor has unsupported type.");
       }
 
       RETURN_ERR_IF_NOT(op.input_size() == 5,
-                        "Steps is not currently supported.");
+                        sliceName + " : Steps is not currently supported.");
     }
   } else {
     // Attributes 'starts' and 'ends' are mandatory and must be consistent.
@@ -1184,7 +1188,7 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
   }
   RETURN_ERR_IF_NOT(
       (starts.size() == ends.size()),
-      "Slice: 'starts' and 'ends' arrays must have the same size.");
+      sliceName + " : 'starts' and 'ends' arrays must have the same size.");
 
   if (axes.empty()) {
     for (size_t i = 0; i < numDims; i++) {
@@ -1205,15 +1209,18 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
 
   // Determine the coordinates of the sub-tensor to extract.
   RETURN_ERR_IF_NOT(axes.size() == starts.size(),
-                    "'axes' and 'starts' must be the same size.");
+                    sliceName +
+                        " : 'axes' and 'starts' must be the same size.");
   RETURN_ERR_IF_NOT(starts.size() == ends.size(),
-                    "'starts' and 'ends' must be the same size.");
+                    sliceName +
+                        " : 'starts' and 'ends' must be the same size.");
   for (size_t i = 0; i < axes.size(); i++) {
     ssize_t newStart = starts[i];
     ssize_t newEnd = ends[i];
     ssize_t axisId = axes[i];
-    RETURN_ERR_IF_NOT((axisId >= 0) && (axisId < ssize_t(numDims)),
-                      "Axes indexes must be within the input tensor range.");
+    RETURN_ERR_IF_NOT(
+        (axisId >= 0) && (axisId < ssize_t(numDims)),
+        sliceName + " : Axes indexes must be within the input tensor range.");
 
     // ONNX: "If the value passed to start or end is larger than the n (the
     // number of elements in this dimension), it represents n".
@@ -1234,12 +1241,14 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
     if (newStart < 0) {
       newStart = ssize_t(dims[axisId]) + newStart;
       RETURN_ERR_IF_NOT(newStart >= 0,
-                        "Slice: final start index should never be negative.");
+                        sliceName +
+                            " : final start index should never be negative.");
     }
     if (newEnd < 0) {
       newEnd = ssize_t(dims[axisId]) + newEnd;
       RETURN_ERR_IF_NOT(newEnd >= 0,
-                        "Slice: final end index should never be negative.");
+                        sliceName +
+                            " : final end index should never be negative.");
     }
 
     newStarts[axisId] = size_t(newStart);
@@ -1341,6 +1350,7 @@ Error ONNXModelLoader::loadConv1D(const ONNX_NAMESPACE::NodeProto &op,
 Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
                                 ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
+  const std::string convName = "Conv " + opName;
 
   // Load the inputs
   NodeValue in;
@@ -1369,10 +1379,11 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
     ASSIGN_VALUE_OR_RETURN_ERR(dilations,
                                getShape<unsigned_t>(dict["dilations"]));
     RETURN_ERR_IF_NOT(dilations.size() == 2,
-                      "Conv: dilations must be specified for 2 axes.");
+                      convName + " : dilations must be specified for 2 axes.");
     RETURN_ERR_IF_NOT(dilations[1] == dilations[0],
-                      "Conv: different dilation values along different axes "
-                      "are not supported currently. values must be same.");
+                      convName +
+                          " : different dilation values along different axes "
+                          "are not supported currently. values must be same.");
     dilation = dilations[0];
   }
 
@@ -1551,6 +1562,7 @@ Error ONNXModelLoader::loadChannelwiseQuantizedConvolution(
 Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
                                          ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
+  const std::string convTransposeName = "convTranspose " + opName;
   // Load the attributes
   std::vector<unsigned_t> strides(2, 1);
   if (dict.count("strides")) {
@@ -1567,11 +1579,12 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
     ASSIGN_VALUE_OR_RETURN_ERR(dilations,
                                getShape<unsigned_t>(dict["dilations"]));
     RETURN_ERR_IF_NOT(dilations.size() == 2,
-                      "ConvTranspose: dilations must be specified for 2 axes.");
-    RETURN_ERR_IF_NOT(
-        dilations[1] == dilations[0],
-        "ConvTranspose: different dilation values along different axes "
-        "are not supported currently. values must be same.");
+                      convTransposeName +
+                          " : dilations must be specified for 2 axes.");
+    RETURN_ERR_IF_NOT(dilations[1] == dilations[0],
+                      convTransposeName +
+                          " : different dilation values along different axes "
+                          "are not supported currently. values must be same.");
     dilation = dilations[0];
   }
 
@@ -1604,11 +1617,12 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
     std::vector<unsigned_t> kernelShapeAttribute;
     ASSIGN_VALUE_OR_RETURN_ERR(kernelShapeAttribute,
                                getShape<unsigned_t>(dict["kernel_shape"]));
-    RETURN_ERR_IF_NOT(
-        (kernels[0] == kernelShapeAttribute[0] &&
-         kernels[1] == kernelShapeAttribute[1]),
-        "The 'kernel_shape' attribute is not consistent with the actual "
-        "convolution kernel shape.");
+    RETURN_ERR_IF_NOT((kernels[0] == kernelShapeAttribute[0] &&
+                       kernels[1] == kernelShapeAttribute[1]),
+                      convTransposeName +
+                          " : The 'kernel_shape' attribute is not "
+                          "consistent with the actual "
+                          "convolution kernel shape.");
     (void)kernelShapeAttribute; // Avoids compilation warning in release mode.
   }
 
@@ -1658,9 +1672,11 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
     std::pair<dim_t, dim_t> outSzTest = calculateConvTransposeOutputDims(
         idim.h, idim.w, kernels, strides, pads, dilation);
     RETURN_ERR_IF_NOT((outShape[0] == outSzTest.first),
-                      "Expected/calculated pads don't match");
+                      convTransposeName +
+                          " : Expected/calculated pads don't match");
     RETURN_ERR_IF_NOT((outShape[1] == outSzTest.second),
-                      "Expected/calculated pads don't match");
+                      convTransposeName +
+                          " : Expected/calculated pads don't match");
   } else {
     if (dict.count("output_padding")) {
       std::vector<dim_t> outPad;
@@ -1694,6 +1710,7 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
                                 ArgumentDictionaryTy &dict,
                                 llvm::StringRef typeName) {
   const std::string &opName = loadOperatorName(op);
+  const std::string poolName = "Pool " + opName;
 
   // Load the inputs:
   NodeValue in;
@@ -1715,7 +1732,8 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
   if (inDim == 3) {
     in = G_->createExpandDims(opName, in, 2);
     if (kerDim != 1) {
-      RETURN_ERR("Glow handles 1D pooling with kernel dimenstion size 1",
+      RETURN_ERR(poolName +
+                     " : Glow handles 1D pooling with kernel dimenstion size 1",
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
     } else {
       if (dict.count("strides")) {
@@ -1735,7 +1753,7 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
 
   if (in.dims().size() != 4 || kernels.size() != 2) {
     // Glow only handles 2D pooling currently.
-    RETURN_ERR("Glow only handles 2D pooling currently.",
+    RETURN_ERR(poolName + " : Glow only handles 2D pooling currently.",
                ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
   }
 
@@ -1808,7 +1826,8 @@ Error ONNXModelLoader::loadTensorwiseQuantizedPool(
 
   if (in.dims().size() != 4 || kernels.size() != 2) {
     // Glow only handles 2D pooling currently.
-    RETURN_ERR("Glow only handles 2D pooling currently.",
+    RETURN_ERR("TensorwiseQuantizedPool " + opName +
+                   " : Glow only handles 2D pooling currently.",
                ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
   }
 
@@ -1870,6 +1889,7 @@ Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
       "Upsample operator is supported for opset version between 7 and 9");
 
   const std::string &opName = loadOperatorName(op);
+  const std::string upSampleName = "Upsample " + opName;
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
@@ -1881,7 +1901,7 @@ Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
 
   /// Only Nearest Mode is supported
   RETURN_ERR_IF_NOT(mode.compare("nearest") == 0,
-                    "Upsample Operator has nearest mode support only");
+                    upSampleName + " Operator has nearest mode support only");
 
   /// Scale is always float as per onnx documentation
   std::vector<float> scales;
@@ -1892,7 +1912,7 @@ Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
       /// and if not present then onnx.checker.check_model file check to fail
       ASSIGN_VALUE_OR_RETURN_ERR(scales, getFloats(dict["scales"]));
     } else {
-      RETURN_ERR("Scales field is not present.");
+      RETURN_ERR(upSampleName + " : Scales field is not present.");
     }
   }
 
@@ -1900,7 +1920,7 @@ Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
     Constant *scale;
     ASSIGN_VALUE_OR_RETURN_ERR(scale, getConstantByName(op.input(1)));
     if (scale->getElementType() != ElemKind::FloatTy) {
-      RETURN_ERR("Scales Tensor should have float type.");
+      RETURN_ERR(upSampleName + " : Scales Tensor should have float type.");
     }
     auto constH = scale->getPayload().getHandle<float>();
     for (dim_t i = 0; i < constH.size(); ++i) {
@@ -1909,11 +1929,13 @@ Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   /// NCHW2NHWC. scales tensor format is NHWC.
-  RETURN_ERR_IF_NOT(scales.size() == 4, "Scales dimension should be 4");
+  RETURN_ERR_IF_NOT(scales.size() == 4,
+                    upSampleName + " : Scales dimension should be 4");
 
   for (auto &val : scales) {
-    RETURN_ERR_IF_NOT(val >= 1,
-                      "Scales value can only be greater than or equal to 1");
+    RETURN_ERR_IF_NOT(
+        val >= 1, upSampleName +
+                      " : Scales value can only be greater than or equal to 1");
   }
 
   vectorReorder(scales, {NHWC2NCHW});
@@ -1928,6 +1950,7 @@ Error ONNXModelLoader::loadUpsample(const ONNX_NAMESPACE::NodeProto &op,
 Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
                                   const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
+  const std::string resizeName = "Resize " + opName;
 
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
@@ -1944,9 +1967,9 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
 
   int32_t scalesIdx = (this->opsetVersion_ >= 11) ? 2 : 1;
   scalesC = getConstantByNameOrNull(op.input(scalesIdx));
-  RETURN_ERR_IF_NOT(scalesC, "Scales Tensor is not Constant.");
+  RETURN_ERR_IF_NOT(scalesC, resizeName + " : Scales Tensor is not Constant.");
   if (scalesC->getElementType() != ElemKind::FloatTy) {
-    RETURN_ERR("Scales Tensor should have float type.");
+    RETURN_ERR(resizeName + " :Scales Tensor should have float type.");
   }
 
   // For ONNX Resize v11, support attributes that are compatible with v10:
@@ -1963,22 +1986,25 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
                                  loadInt(dict.at("exclude_outside")));
     }
     RETURN_ERR_IF_NOT(excludeOutside == 0,
-                      "ONNX Resize exclude outside not supported.");
+                      resizeName +
+                          " : ONNX Resize exclude outside not supported.");
     // attribute: extrapolation_value.
     float extrapolationValue = 0.0;
     if (dict.count("extrapolation_value")) {
       ASSIGN_VALUE_OR_RETURN_ERR(extrapolationValue,
                                  loadFloat(dict.at("extrapolation_value")));
     }
-    RETURN_ERR_IF_NOT(extrapolationValue == 0.0,
-                      "ONNX Resize extrapolation value 0 supported only.");
+    RETURN_ERR_IF_NOT(
+        extrapolationValue == 0.0,
+        resizeName + " : ONNX Resize extrapolation value 0 supported only.");
     // attribute: nearest_mode.
     std::string nearestMode = "round_prefer_floor";
     if (dict.count("nearest_mode")) {
       ASSIGN_VALUE_OR_RETURN_ERR(nearestMode, loadStr(dict.at("nearest_mode")));
     }
     if (modeStr == "nearest" && nearestMode != "floor") {
-      RETURN_ERR("ONNX Resize 'floor' nearest mode supported only.");
+      RETURN_ERR(resizeName +
+                 " : ONNX Resize 'floor' nearest mode supported only.");
     }
     // attribute: coordinate_transformation_mode.
     std::string coordTransformMode = "half_pixel";
@@ -1987,26 +2013,29 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
           coordTransformMode,
           loadStr(dict.at("coordinate_transformation_mode")));
     }
-    RETURN_ERR_IF_NOT(coordTransformMode == "asymmetric",
-                      "ONNX Resize 'asymmetric' coordinate transformation "
-                      "mode supported only.");
+    RETURN_ERR_IF_NOT(
+        coordTransformMode == "asymmetric",
+        resizeName + " : ONNX Resize 'asymmetric' coordinate transformation "
+                     "mode supported only.");
 
     // If no scales tensor, sizes tensor should be valid.
     if (scalesC->getPayload().getHandle().size() == 0) {
       Constant *sizesC;
       ASSIGN_VALUE_OR_RETURN_ERR(sizesC, getConstantByName(op.input(3)));
-      RETURN_ERR_IF_NOT(sizesC, "Sizes Tensor is not Constant.");
+      RETURN_ERR_IF_NOT(sizesC,
+                        resizeName + " : Sizes Tensor is not Constant.");
 
       // Must be 1D tensor of int64_t.
       RETURN_ERR_IF_NOT(sizesC->dims().size() == 1,
-                        "Input must be a 1D vector.");
+                        resizeName + " : Input must be a 1D vector.");
       RETURN_ERR_IF_NOT(sizesC->getType()->getElementType() ==
                             ElemKind::Int64ITy,
-                        "Input element type must be Int64ITy.");
+                        resizeName + " : Input element type must be Int64ITy.");
 
       auto sizesH = sizesC->getPayload().getHandle<int64_t>();
-      RETURN_ERR_IF_NOT(in.dims().size() == sizesH.size(),
-                        "Data input and sizes input must match in size.");
+      RETURN_ERR_IF_NOT(
+          in.dims().size() == sizesH.size(),
+          resizeName + " : Data input and sizes input must match in size.");
       // Now fill the output tensor
       for (dim_t i = 0; i < sizesH.size(); ++i) {
         outDims.push_back(sizesH.at({i}));
@@ -2014,7 +2043,8 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
       vectorReorder(outDims, {NHWC2NCHW});
     } else {
       RETURN_ERR_IF_NOT(op.input_size() == 3,
-                        "'sizes' not valid with 'scales' input");
+                        resizeName +
+                            " : 'sizes' not valid with 'scales' input");
     }
   } // v11 processing.
 
@@ -2030,10 +2060,12 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
     }
 
     /// NCHW2NHWC. scales tensor format is NHWC.
-    RETURN_ERR_IF_NOT(scales.size() == 4, "Scales dimension should be 4");
+    RETURN_ERR_IF_NOT(scales.size() == 4,
+                      resizeName + " : Scales dimension should be 4");
 
     for (auto &val : scales) {
-      RETURN_ERR_IF_NOT(val > 0, "Scale value must be greater than zero.");
+      RETURN_ERR_IF_NOT(
+          val > 0, resizeName + " : Scale value must be greater than zero.");
     }
 
     vectorReorder(scales, {NHWC2NCHW});
@@ -2043,7 +2075,8 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
     } else if (modeStr == "bilinear" || modeStr == "linear") {
       RN = G_->createResizeBilinear(opName, intr, scales);
     } else {
-      RETURN_ERR("Resize: Supporting nearest or bilinear interpolation only.",
+      RETURN_ERR(resizeName +
+                     " : Supporting nearest or bilinear interpolation only.",
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
     }
   } else if (outDims.size()) {
@@ -2054,11 +2087,12 @@ Error ONNXModelLoader::loadResize(const ONNX_NAMESPACE::NodeProto &op,
     } else if (modeStr == "bilinear" || modeStr == "linear") {
       RN = G_->createResizeBilinear(opName, intr, outTy);
     } else {
-      RETURN_ERR("Resize: Supporting nearest or (bi)linear interpolation only.",
+      RETURN_ERR(resizeName +
+                     " : Supporting nearest or (bi)linear interpolation only.",
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
     }
   } else {
-    RETURN_ERR("Resize: Neither scales or sizes are set.",
+    RETURN_ERR(resizeName + " : Neither scales or sizes are set.",
                ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
   }
 
@@ -2295,7 +2329,7 @@ Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
 
   // Only supports float types.
   RETURN_ERR_IF_NOT(isFloatElemKind(inputType),
-                    "Unsupported Type for LeakyRelu");
+                    "LeakyRelu : Unsupported Type for LeakyRelu");
 
   // ONNX spec says default is 0.01, but doesn't explicitly say it's optional.
   // like for others. The default example just omits alpha.
@@ -2318,6 +2352,7 @@ Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
 Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
                                ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
+  const std::string padName = "Pad " + opName;
 
   // Input
   NodeValue input;
@@ -2351,14 +2386,15 @@ Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(pads, getShape<int>(dict["pads"]));
   RETURN_ERR_IF_NOT(
       (pads.size() == 2 * numDims),
-      "Pad: the 'pads' array must contain 2 values per dimensions");
+      padName + " : the 'pads' array must contain 2 values per dimensions");
 
   // Compute the output type.
   std::vector<dim_t> outDims(numDims);
   for (unsigned_t i = 0; i < numDims; i++) {
     auto new_dim = inputDims[i] + pads[i] + pads[i + numDims];
-    RETURN_ERR_IF_NOT(new_dim > 0,
-                      "The padding can't remove all elements of a dimension");
+    RETURN_ERR_IF_NOT(
+        new_dim > 0,
+        padName + " : The padding can't remove all elements of a dimension");
     outDims[i] = new_dim;
   }
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
@@ -2373,6 +2409,7 @@ Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
 Error ONNXModelLoader::loadCast(const ONNX_NAMESPACE::NodeProto &op,
                                 ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
+  const std::string castName = "Cast " + opName;
 
   // Input type
   NodeValue input;
@@ -2381,12 +2418,12 @@ Error ONNXModelLoader::loadCast(const ONNX_NAMESPACE::NodeProto &op,
 
   // Target type.
   ElemKind targetKind;
-  RETURN_ERR_IF_NOT(dict.count("to"), "Cast: missing 'to' attribute");
+  RETURN_ERR_IF_NOT(dict.count("to"), castName + " : missing 'to' attribute");
   int toONNXTypeValue;
   ASSIGN_VALUE_OR_RETURN_ERR(toONNXTypeValue, loadInt(dict.at("to")));
   RETURN_ERR_IF_NOT(
       ONNX_NAMESPACE::TensorProto_DataType_IsValid(toONNXTypeValue),
-      "Cast: invalid target type",
+      castName + " : invalid target type",
       ErrorValue::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
   ASSIGN_VALUE_OR_RETURN_ERR(
       targetKind, convertTensorProtoDataType(
@@ -2395,7 +2432,7 @@ Error ONNXModelLoader::loadCast(const ONNX_NAMESPACE::NodeProto &op,
   // Only support non quantized types.
   RETURN_ERR_IF_NOT((!isQuantizedElemKind(inputKind)) &&
                         (!isQuantizedElemKind(targetKind)),
-                    "Unsupported Cast");
+                    castName + " : Unsupported Cast");
 
   // Create the IR node.
   Node *N = G_->createConvertTo(opName, input, targetKind);
@@ -2432,6 +2469,7 @@ Error ONNXModelLoader::loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
 Error ONNXModelLoader::loadReduceL2(const ONNX_NAMESPACE::NodeProto &op,
                                     const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
+  const std::string reduceL2 = "ReduceL2 " + opName;
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   in = G_->createMul(opName, in, in);
@@ -2445,7 +2483,7 @@ Error ONNXModelLoader::loadReduceL2(const ONNX_NAMESPACE::NodeProto &op,
     if (shapeAxes.size() > 1) {
       auto it = std::unique(shapeAxes.begin(), shapeAxes.end());
       if (it != shapeAxes.end())
-        RETURN_ERR("Axes values are not unique",
+        RETURN_ERR(reduceL2 + " : Axes values are not unique",
                    ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
     }
   } else {
@@ -2483,7 +2521,8 @@ Error ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
     RETURN_IF_ERR(loadTensor(dict.at("value")->t(), &T, useGlowCustomOps_));
     if (!isSplat) {
       // Validate tensor only for ConstantOfShape operator.
-      RETURN_ERR_IF_NOT(T.dims().size() == 1, "Value must be a 1D vector.");
+      RETURN_ERR_IF_NOT(T.dims().size() == 1,
+                        "ConstantOfShape: Value must be a 1D vector.");
       RETURN_ERR_IF_NOT(
           T.getType().getElementType() == ElemKind::FloatTy ||
               T.getType().getElementType() == ElemKind::Int64ITy ||
@@ -2498,9 +2537,10 @@ Error ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
     Constant *in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getConstantByName(op.input(0)));
     // Must be 1D tensor of int64_t.
-    RETURN_ERR_IF_NOT(in->dims().size() == 1, "Input must be a 1D vector.");
+    RETURN_ERR_IF_NOT(in->dims().size() == 1,
+                      "ConstantOfShape: Input must be a 1D vector.");
     RETURN_ERR_IF_NOT(in->getType()->getElementType() == ElemKind::Int64ITy,
-                      "Input element type must be Int64ITy.");
+                      "ConstantOfShape: Input element type must be Int64ITy.");
     // Convert 1D tensor of int64_t into llvm::ArrayRef<dim_t>.
     auto TH = in->getPayload().getHandle<int64_t>();
     auto begin = &TH.raw(0);
@@ -2541,19 +2581,21 @@ Error ONNXModelLoader::loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
 Error ONNXModelLoader::loadTile(const ONNX_NAMESPACE::NodeProto &op,
                                 ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
+  const std::string tileName = "Tile " + opName;
   NodeValue in, repeats;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   ASSIGN_VALUE_OR_RETURN_ERR(repeats, getNodeValueByName(op.input(1)));
   if (!llvm::isa<Constant>(repeats)) {
-    RETURN_ERR("Only constant Repeats is supported!");
+    RETURN_ERR(tileName + " : Only constant Repeats is supported!");
   }
 
   if (repeats.dims().size() != 1) {
-    RETURN_ERR("Repeats must be a single-dimensional tensor!");
+    RETURN_ERR(tileName + " : Repeats must be a single-dimensional tensor!");
   }
 
   if (repeats.dims()[0] != in.dims().size()) {
-    RETURN_ERR("Repeats should have one value for each dimension of input!");
+    RETURN_ERR(tileName +
+               " : Repeats should have one value for each dimension of input!");
   }
   auto rh = llvm::cast<Constant>(repeats)->getPayload().getHandle<int64_t>();
   Node *N = in;
@@ -2572,6 +2614,7 @@ Error ONNXModelLoader::loadTile(const ONNX_NAMESPACE::NodeProto &op,
 Error ONNXModelLoader::loadExpand(const ONNX_NAMESPACE::NodeProto &op,
                                   const ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
+  const std::string expandName = "Expand " + opName;
   NodeValue in;
   Constant *repeats;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
@@ -2592,7 +2635,7 @@ Error ONNXModelLoader::loadExpand(const ONNX_NAMESPACE::NodeProto &op,
     // Two corresponding dimension must have the same value,
     // or one of them is equal to 1.
     if (in.dims()[i] != 1 && tiles[i] != in.dims()[i] && tiles[i] != 1) {
-      RETURN_ERR("Invalid repeat value");
+      RETURN_ERR(expandName + " : Invalid repeat value");
     }
     if (tiles[i] != in.dims()[i] && tiles[i] != 1) {
       std::string name = opName + "_" + std::to_string(i);
@@ -2756,6 +2799,7 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
                                ArgumentDictionaryTy &dict) {
 
   const std::string &opName = loadOperatorName(op);
+  const std::string rnnName = " ONNX RNN " + opName;
 
   // ------------------------- Attributes -------------------------------------
   // Get direction (Optional)(Default:forward).
@@ -2775,18 +2819,18 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
 
   // Activation clipping not supported (Optional)(Default: 0 for no clipping).
   RETURN_ERR_IF_NOT(!dict.count("clip"),
-                    "ONNX RNN 'clip' attribute not supported!");
+                    rnnName + "'clip' attribute not supported!");
 
   // Get hidden size (Required).
   dim_t hiddenSize;
   RETURN_ERR_IF_NOT(dict.count("hidden_size"),
-                    "ONNX RNN 'hidden_size' attribute is required!");
+                    rnnName + "'hidden_size' attribute is required!");
   ASSIGN_VALUE_OR_RETURN_ERR(hiddenSize, loadInt(dict.at("hidden_size")));
 
   // --------------------------- Inputs ---------------------------------------
   const int numInputs = op.input_size();
   RETURN_ERR_IF_NOT((3 <= numInputs) && (numInputs <= 6),
-                    "ONNX RNN should have minimum 3 and maximum 6 inputs!");
+                    rnnName + " should have minimum 3 and maximum 6 inputs!");
 
   // Input0: X (Required).
   NodeValue X;
@@ -2809,7 +2853,7 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
   // Input4: sequence_lens (Optional).
   if (numInputs > 4) {
     RETURN_ERR_IF_NOT(op.input(4).empty(),
-                      "ONNX RNN 'sequence_lens' attribute not supported!");
+                      rnnName + " 'sequence_lens' attribute not supported!");
   }
 
   // Input5: initial_h (Optional).
@@ -2831,7 +2875,7 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
 
   // Derived parameters.
   RETURN_ERR_IF_NOT(X.dims().size() == 3,
-                    "ONNX RNN input 'X' should have 3 dimensions!");
+                    rnnName + " input 'X' should have 3 dimensions!");
   dim_t batchSize = X.dims()[1];
 
   // Create Y_h (hidden state) output placeholder.
@@ -2862,7 +2906,7 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
   } else if (numOutputs == 2) {
     RETURN_IF_ERR(assignNodeOutputs(op, {Y, Y_h}));
   } else {
-    RETURN_ERR("ONNX RNN should have minimum 1 and maximum 2 outputs!");
+    RETURN_ERR(rnnName + " should have minimum 1 and maximum 2 outputs!");
   }
   return Error::success();
 }
@@ -2874,6 +2918,7 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
                                ArgumentDictionaryTy &dict) {
 
   const std::string &opName = loadOperatorName(op);
+  const std::string gruName = "ONNX GRU " + opName;
 
   // ------------------------- Attributes -------------------------------------
   // Get direction (Optional)(Default:forward).
@@ -2894,12 +2939,12 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
 
   // Activation clipping not supported (Optional)(Default: 0 for no clipping).
   RETURN_ERR_IF_NOT(!dict.count("clip"),
-                    "ONNX GRU 'clip' attribute not supported!");
+                    gruName + " 'clip' attribute not supported!");
 
   // Get hidden size (Required).
   dim_t hiddenSize;
   RETURN_ERR_IF_NOT(dict.count("hidden_size"),
-                    "ONNX GRU 'hidden_size' attribute is required!");
+                    gruName + " 'hidden_size' attribute is required!");
   ASSIGN_VALUE_OR_RETURN_ERR(hiddenSize, loadInt(dict.at("hidden_size")));
 
   // Get linear_before_reset (Optional)(Default:0).
@@ -2912,7 +2957,7 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
   // --------------------------- Inputs ---------------------------------------
   const int numInputs = op.input_size();
   RETURN_ERR_IF_NOT((3 <= numInputs) && (numInputs <= 6),
-                    "ONNX GRU should have minimum 3 and maximum 6 inputs!");
+                    gruName + " should have minimum 3 and maximum 6 inputs!");
 
   // Input0: X (Required).
   NodeValue X;
@@ -2935,7 +2980,7 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
   // Input4: sequence_lens (Optional).
   if (numInputs > 4) {
     RETURN_ERR_IF_NOT(op.input(4).empty(),
-                      "ONNX GRU 'sequence_lens' attribute not supported!");
+                      gruName + " 'sequence_lens' attribute not supported!");
   }
 
   // Input5: initial_h (Optional).
@@ -2957,7 +3002,7 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
 
   // Derived parameters.
   RETURN_ERR_IF_NOT(X.dims().size() == 3,
-                    "ONNX GRU input 'X' should have 3 dimensions!");
+                    gruName + " input 'X' should have 3 dimensions!");
   dim_t batchSize = X.dims()[1];
 
   // Create Y_h (hidden state) output placeholder.
@@ -2988,7 +3033,7 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
   } else if (numOutputs == 2) {
     RETURN_IF_ERR(assignNodeOutputs(op, {Y, Y_h}));
   } else {
-    RETURN_ERR("ONNX GRU should have minimum 1 and maximum 2 outputs!");
+    RETURN_ERR(gruName + " should have minimum 1 and maximum 2 outputs!");
   }
   return Error::success();
 }
@@ -3000,6 +3045,7 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
                                 ArgumentDictionaryTy &dict) {
 
   const std::string &opName = loadOperatorName(op);
+  const std::string lstmName = "ONNX LSTM " + opName;
 
   // ------------------------- Attributes -------------------------------------
   // Get direction (Optional)(Default:forward).
@@ -3022,12 +3068,12 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
 
   // Activation clipping not supported (Optional)(Default: 0 for no clipping).
   RETURN_ERR_IF_NOT(!dict.count("clip"),
-                    "ONNX LSTM 'clip' attribute not supported!");
+                    lstmName + " 'clip' attribute not supported!");
 
   // Get hidden size (Required).
   dim_t hiddenSize;
   RETURN_ERR_IF_NOT(dict.count("hidden_size"),
-                    "ONNX LSTM 'hidden_size' attribute is required!");
+                    lstmName + " 'hidden_size' attribute is required!");
   ASSIGN_VALUE_OR_RETURN_ERR(hiddenSize, loadInt(dict.at("hidden_size")));
 
   // Get input forget (Optional)(Default:0).
@@ -3039,7 +3085,7 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   // --------------------------- Inputs ---------------------------------------
   const int numInputs = op.input_size();
   RETURN_ERR_IF_NOT((3 <= numInputs) && (numInputs <= 8),
-                    "ONNX LSTM should have minimum 3 and maximum 8 inputs!");
+                    lstmName + " should have minimum 3 and maximum 8 inputs!");
 
   // Input0: X (Required).
   NodeValue X;
@@ -3062,7 +3108,7 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   // Input4: sequence_lens (Optional).
   if (numInputs > 4) {
     RETURN_ERR_IF_NOT(op.input(4).empty(),
-                      "ONNX LSTM 'sequence_lens' attribute not supported!");
+                      lstmName + " 'sequence_lens' attribute not supported!");
   }
 
   // Input5: initial_h (Optional).
@@ -3096,7 +3142,7 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
 
   // Derived parameters.
   RETURN_ERR_IF_NOT(X.dims().size() == 3,
-                    "ONNX LSTM input 'X' should have 3 dimensions!");
+                    lstmName + " input 'X' should have 3 dimensions!");
   dim_t batchSize = X.dims()[1];
 
   // Create Y_h (hidden state) output placeholder.
@@ -3140,7 +3186,7 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   } else if (numOutputs == 3) {
     RETURN_IF_ERR(assignNodeOutputs(op, {Y, Y_h, Y_c}));
   } else {
-    RETURN_ERR("ONNX LSTM should have minimum 1 and maximum 3 outputs!");
+    RETURN_ERR(lstmName + " should have minimum 1 and maximum 3 outputs!");
   }
   return Error::success();
 }
@@ -3196,7 +3242,7 @@ Error ONNXModelLoader::loadNonZero(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
 
   Constant *C = getConstantByNameOrNull(op.input(0));
-  RETURN_ERR_IF_NOT(C, "Only constant shape is supported!");
+  RETURN_ERR_IF_NOT(C, "NonZero: Only constant shape is supported!");
 
   // output tensor.
   Tensor outT;
@@ -3256,7 +3302,7 @@ Error ONNXModelLoader::loadNonZero(const ONNX_NAMESPACE::NodeProto &op,
   } else if (C->getElementType() == ElemKind::Int32ITy) {
     RETURN_IF_ERR(foldNonZero((int32_t)0));
   } else {
-    RETURN_ERR("Unsupported input type for NonZero operator.");
+    RETURN_ERR("NonZero: Unsupported input type for NonZero operator.");
   }
 
   Constant *outC = G_->getParent()->createConstant("nonZero", std::move(outT));
@@ -3359,7 +3405,7 @@ Error ONNXModelLoader::loadCumSum(const ONNX_NAMESPACE::NodeProto &op,
         RETURN_ERR_IF_NOT(AC->getHandle<int32_t>().at(0) == 0,
                           "CumSum only supports axis == 0");
       } else {
-        RETURN_ERR("Axis must be Constant");
+        RETURN_ERR("CumSum Axis must be Constant");
       }
 
       // Axis default is 0, which is fine.
@@ -3620,7 +3666,7 @@ Error ONNXModelLoader::loadNonMaxSuppression(
       maxOutputBoxesPerClass =
           maxOutputBoxesPerClassC->getPayload().getHandle<int32_t>().raw(0);
     } else {
-      RETURN_ERR("Unsupported type for maxoutputboxesperclass.");
+      RETURN_ERR("NMS: Unsupported type for maxoutputboxesperclass.");
     }
   } else {
     RETURN_ERR("NMS: maxOutputBoxesPerClass is not a contant tensor.");
@@ -4355,7 +4401,7 @@ Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net,
         const std::string errStr =
             ERR_TO_STRING(tryFold.takeError(), /* warning */ true);
         VLOG(1) << "Issue while trying to ConstantFold " << loadOperatorName(op)
-                << ": " << errStr;
+                << " : " << errStr;
       } else if (tryFold.get()) {
         // Folded successfully, so skip loading the op below.
         continue;
