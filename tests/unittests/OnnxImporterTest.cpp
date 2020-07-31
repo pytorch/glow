@@ -769,7 +769,6 @@ testEltwiseTrigonometricOpFloat(std::string fileName,
   }
 }
 
-
 TEST_F(OnnxImporterTest, importAsin) {
   testEltwiseTrigonometricOpFloat("Asin.onnxtxt", {1, 3, 4, 5}, "input", 0.002,
                                   [](float a) { return std::asin(a); });
