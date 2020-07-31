@@ -8899,6 +8899,48 @@ TEST_P(OperatorTest, NonCubicPaddingConv3D) {
   EXPECT_TRUE(result.isEqual(result1));
 }
 
+/// 2D Batch Normalization in Float16
+TEST_P(OperatorTest, FP16BatchNorm2D) {
+  CHECK_IF_ENABLED();
+
+  auto constFunc = [=](unsigned_t sz, std::string name,
+                       std::vector<float> vals) {
+    auto t = Tensor(ElemKind::Float16Ty, {sz});
+    for (dim_t i = 0; i < sz; i++) {
+      t.getHandle<float16_t>().raw(i) = vals[i];
+    }
+    auto *c = mod_.createConstant(name, std::move(t));
+    return c;
+  };
+
+  // input
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 1, 3, 3}, "input", false);
+  bindings_.allocate(input)->getHandle<float16_t>() = {1., 1., 1., 1., 1.,
+                                                       1., 1., 1., 1.};
+  auto *bias = constFunc(1, "batchnorm_bias", {0.0});
+  auto *scale = constFunc(1, "batchnorm_weights", {1.0});
+  auto *mean = constFunc(1, "running_mean", {0.0});
+  auto *variance = constFunc(1, "running_var", {1.0});
+  unsigned_t channelIdx = 1;
+  float epsilon = 0.0;
+  float momentum = 1.0;
+
+  auto *op = F_->createBatchNormalization("fp16_batch_norm2d", input, bias,
+                                          scale, mean, variance, channelIdx,
+                                          epsilon, momentum);
+  auto *S = F_->createSave("save", op);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto *result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::Float16Ty, {1, 1, 3, 3});
+  out.getHandle<float16_t>() = {1., 1., 1., 1., 1., 1., 1., 1., 1.};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
 /// Check non-square padding for AveragePool. The first pool op has non-square
 /// padding, while the second one has zero padding. The second pool op's input
 /// is the same as the first one's after-padding input. All other parameters
