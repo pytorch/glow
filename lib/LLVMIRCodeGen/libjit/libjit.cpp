@@ -621,10 +621,10 @@ static void libjit_flip_generic(const T *inW, T *outW, const dim_t *dims,
   }
 }
 
-template <typename inpT, typename outT>
+template <typename inpT, typename outT, typename T>
 static void libjit_arg_max_generic(const inpT *inpW, outT *outW,
                                    const dim_t *dims, size_t numDims,
-                                   size_t axis) {
+                                   size_t axis, T min) {
 
   // Product of outer dimensions excluding the axis dimension.
   dim_t outerLen = 1;
@@ -646,7 +646,7 @@ static void libjit_arg_max_generic(const inpT *inpW, outT *outW,
   outT *outPtr = outW;
   for (dim_t outerIdx = 0; outerIdx < outerLen; ++outerIdx) {
     for (dim_t innerIdx = 0; innerIdx < innerLen; ++innerIdx) {
-      inpT maxVal = std::numeric_limits<inpT>::lowest();
+      inpT maxVal = min;
       outT maxIdx = 0;
       for (dim_t axisIdx = 0; axisIdx < axisLen; ++axisIdx) {
         inpT inpVal = *inpPtr;
@@ -2355,23 +2355,27 @@ void libjit_max_pool_argmax_f_i32(const float *inW, float *outW,
 
 void libjit_arg_max_i8_u(const int8_t *inW, int64_t *outW, const dim_t *inWdims,
                          size_t inWNumDims, size_t axis) {
-  libjit_arg_max_generic(inW, outW, inWdims, inWNumDims, axis);
+  libjit_arg_max_generic(inW, outW, inWdims, inWNumDims, axis,
+                         std::numeric_limits<int8_t>::min());
 }
 
 void libjit_arg_max_i8_i32(const int8_t *inW, int32_t *outW,
                            const dim_t *inWdims, size_t inWNumDims,
                            size_t axis) {
-  libjit_arg_max_generic(inW, outW, inWdims, inWNumDims, axis);
+  libjit_arg_max_generic(inW, outW, inWdims, inWNumDims, axis,
+                         std::numeric_limits<int8_t>::min());
 }
 
 void libjit_arg_max_f_u(const float *inW, int64_t *outW, const dim_t *inWdims,
                         size_t inWNumDims, size_t axis) {
-  libjit_arg_max_generic(inW, outW, inWdims, inWNumDims, axis);
+  libjit_arg_max_generic(inW, outW, inWdims, inWNumDims, axis,
+                         -std::numeric_limits<float>::infinity());
 }
 
 void libjit_arg_max_f_i32(const float *inW, int32_t *outW, const dim_t *inWdims,
                           size_t inWNumDims, size_t axis) {
-  libjit_arg_max_generic(inW, outW, inWdims, inWNumDims, axis);
+  libjit_arg_max_generic(inW, outW, inWdims, inWNumDims, axis,
+                         -std::numeric_limits<float>::infinity());
 }
 
 void libjit_arg_min_i8_u(const int8_t *inW, int64_t *outW, const dim_t *inWdims,
