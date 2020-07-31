@@ -33,7 +33,17 @@ struct InputMeta;
 /// Various settings to be used by code that loads PyTorch models. There should
 /// only be one of these and it should be obtained by calling
 /// getPyTorchLoaderSettings().
-struct PyTorchLoaderSettings {
+struct PyTorchLoaderSettings : public torch::jit::CustomClassHolder {
+public:
+  PyTorchLoaderSettings();
+  PyTorchLoaderSettings(torch::Dict<std::string, std::string> dict);
+  ~PyTorchLoaderSettings() {}
+
+  void initSettings();
+  std::string toString() const;
+
+  torch::Dict<std::string, std::string> serializeToDict() const;
+
   /// This should be used with CachingGraphRunner::warmCache. When this flag is
   /// enabled, it assumes the glow graph is compiled ahead of time instead of
   /// at PyTorch JIT runtime. And the registered glow operator will run
@@ -80,9 +90,13 @@ struct PyTorchLoaderSettings {
 
   /// Convert fp32 opts to fp16 ops during Glow compilation.
   bool convertToFP16 = false;
+  bool get_convert_to_fp16() { return convertToFP16; }
+  void set_convert_to_fp16(bool val) { convertToFP16 = val; }
 
   /// Convert fp32 fused opts to fp16 ops during Glow compilation.
   bool convertFusedToFP16 = false;
+  bool get_convert_fused_to_fp16() { return convertFusedToFP16; }
+  void set_convert_fused_to_fp16(bool val) { convertFusedToFP16 = val; }
 
   /// Dump Glow dot graph to file after Glow compilation is finished.
   bool dumpFinalGlowGraph = false;
@@ -95,6 +109,10 @@ struct PyTorchLoaderSettings {
 
   /// Replication count of a graph on a device.
   size_t replicationCount = 1;
+  int64_t get_replication_count() {
+    return static_cast<int64_t>(replicationCount);
+  }
+  void set_replication_count(int64_t val) { replicationCount = val; }
 
   /// Backend-specific options to be put into the CompilationContext and passed
   /// to the Glow backend.
@@ -113,13 +131,19 @@ struct PyTorchLoaderSettings {
   /// Whether not to set the saturateHost flag (use all available device) when
   /// adding networks to HostManager.
   bool saturateHost = false;
+  bool get_saturate_host() { return saturateHost; }
+  void set_saturate_host(bool val) { saturateHost = val; }
 
   /// If true then randomize the Constants in the Function loaded by
   /// PyTorchModelLoader.
   bool randomizeConstants = false;
+  bool get_randomize_constants() { return randomizeConstants; }
+  void set_randomize_constants(bool val) { randomizeConstants = val; }
 
   /// Name of the Glow backend to use.
   std::string backendName = "Interpreter";
+  std::string get_backend_name() { return backendName; }
+  void set_backend_name(std::string name) { backendName = name; }
 
   /// Number of Glow devices to use.
   int32_t numDevices = -1;

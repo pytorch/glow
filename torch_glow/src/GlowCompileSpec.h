@@ -3,6 +3,7 @@
 #ifndef GLOW_TORCH_GLOW_SRC_GLOW_COMPILE_SPEC_H
 #define GLOW_TORCH_GLOW_SRC_GLOW_COMPILE_SPEC_H
 
+#include "PyTorchCommon.h"
 #include <ATen/core/ivalue.h>
 
 namespace glow {
@@ -28,7 +29,7 @@ public:
 
   void set(std::vector<int64_t> dims,
            c10::ScalarType type = c10::ScalarType::Float);
-  void setSameAs(const at::Tensor &t);
+  void set_same_as(const at::Tensor &t);
 
   SpecInputMetaSerializationType serializeToTuple() const;
   // Element type
@@ -45,24 +46,28 @@ class GlowCompileSpec : public torch::jit::CustomClassHolder {
 
 public:
   GlowCompileSpec() {}
-  GlowCompileSpec(const std::string &backendName,
-                  std::vector<SpecInputMeta> inputs)
-      : backendName_(backendName), inputs_(inputs) {}
+  GlowCompileSpec(std::vector<SpecInputMeta> inputs,
+                  PyTorchLoaderSettings settings)
+      : inputs_(inputs), settings_(settings) {}
   ~GlowCompileSpec() {}
 
-  const std::string &getBackend() const { return backendName_; }
-  void setBackend(const std::string &backendName) {
-    backendName_ = backendName;
-  }
   void addInputTensor(std::vector<int64_t> dims, c10::ScalarType type);
   void addInputFromTensor(at::Tensor);
   void addInput(c10::intrusive_ptr<SpecInputMeta> input);
   void addInputs(std::vector<c10::intrusive_ptr<SpecInputMeta>> inputs);
   std::vector<SpecInputMeta> inputs() const { return inputs_; }
 
+  torch::Dict<std::string, std::string> serialized_settings() const {
+    return settings_.serializeToDict();
+  }
+  PyTorchLoaderSettings settings() const { return settings_; }
+  void set_settings(c10::intrusive_ptr<PyTorchLoaderSettings> settings) {
+    settings_ = *settings;
+  }
+
 private:
-  std::string backendName_ = "";
   std::vector<SpecInputMeta> inputs_;
+  PyTorchLoaderSettings settings_;
 };
 
 } // namespace glow

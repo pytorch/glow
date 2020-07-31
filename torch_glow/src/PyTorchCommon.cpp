@@ -214,48 +214,193 @@ static std::vector<std::string> splitString(const std::string &s,
   return substrings;
 }
 
-static PyTorchLoaderSettings getInitialSettings() {
-  PyTorchLoaderSettings settings;
-  settings.minFusionGroupSize = FLAGS_torch_glow_min_fusion_group_size;
-  settings.dumpGlowDag = FLAGS_dumpGlowDag;
-  settings.jitVsGlowCompare = FLAGS_jitVsGlowCompare;
-  settings.dumpFinalGlowGraph = FLAGS_dumpFinalGlowGraph;
-  settings.enableGlowTracing = FLAGS_enableGlowTracing;
-  settings.numTracesPerDump = FLAGS_numTracesPerDump;
-  settings.saturateHost = FLAGS_saturateHost;
-  settings.convertToFP16 = FLAGS_convertToFP16;
-  settings.convertFusedToFP16 = FLAGS_convertFusedToFP16;
-  settings.replicationCount = FLAGS_replicationCount;
-  settings.writeToOnnx = FLAGS_writeToOnnx;
-  settings.randomizeConstants = FLAGS_randomizeConstants;
-  settings.backendName = FLAGS_torch_glow_backend;
-  settings.numDevices = FLAGS_torch_glow_num_devices;
-  settings.runShapeInference = FLAGS_runShapeInference;
-  settings.fusionStartIndex = FLAGS_fusionStartIndex;
-  settings.fusionEndIndex = FLAGS_fusionEndIndex;
+void PyTorchLoaderSettings::initSettings() {
+  minFusionGroupSize = FLAGS_torch_glow_min_fusion_group_size;
+  dumpGlowDag = FLAGS_dumpGlowDag;
+  jitVsGlowCompare = FLAGS_jitVsGlowCompare;
+  dumpFinalGlowGraph = FLAGS_dumpFinalGlowGraph;
+  enableGlowTracing = FLAGS_enableGlowTracing;
+  numTracesPerDump = FLAGS_numTracesPerDump;
+  saturateHost = FLAGS_saturateHost;
+  convertToFP16 = FLAGS_convertToFP16;
+  convertFusedToFP16 = FLAGS_convertFusedToFP16;
+  replicationCount = FLAGS_replicationCount;
+  writeToOnnx = FLAGS_writeToOnnx;
+  randomizeConstants = FLAGS_randomizeConstants;
+  backendName = FLAGS_torch_glow_backend;
+  numDevices = FLAGS_torch_glow_num_devices;
+  runShapeInference = FLAGS_runShapeInference;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
     for (const auto &kindString : kindStrings) {
-      settings.opBlacklist.insert(
-          torch::jit::Symbol::fromQualString(kindString));
+      opBlacklist.insert(torch::jit::Symbol::fromQualString(kindString));
     }
   }
+}
 
-  if (!FLAGS_opOverrideAllowlist.empty()) {
-    auto kindStrings = splitString(FLAGS_opOverrideAllowlist);
-    for (const auto &kindString : kindStrings) {
-      settings.opOverrideAllowlist.insert(
-          torch::jit::Symbol::fromQualString(kindString));
-    }
+PyTorchLoaderSettings::PyTorchLoaderSettings() { initSettings(); }
+
+namespace {
+Expected<bool> strToBool(const std::string &str) {
+  static std::unordered_set<std::string> trueVals = {"True", "true", "1"};
+  static std::unordered_set<std::string> falseVals = {"False", "false", "0"};
+  if (trueVals.count(str) > 0) {
+    return true;
   }
+  if (falseVals.count(str) > 0) {
+    return false;
+  }
+  return MAKE_ERR(strFormat("Invalid truth value: %s", str.c_str()));
+}
+} // namespace
 
+PyTorchLoaderSettings &getPyTorchLoaderSettings() {
+  static PyTorchLoaderSettings settings;
   return settings;
 }
 
-PyTorchLoaderSettings &getPyTorchLoaderSettings() {
-  static PyTorchLoaderSettings settings = getInitialSettings();
-  return settings;
+#define TRY_LOAD_BOOL_FROM_DICT(KEY_, DICT_)                                   \
+  if (DICT_.contains(#KEY_)) {                                                 \
+    auto res = strToBool(DICT_.at(#KEY_));                                     \
+    if (res) {                                                                 \
+      KEY_ = res.get();                                                        \
+    } else {                                                                   \
+      auto err = res.takeError();                                              \
+      LOG(FATAL) << "could not find bool value for key: " << #KEY_ << ". "     \
+                 << ERR_TO_STRING(std::move(err)) << std::endl;                \
+    }                                                                          \
+  }
+
+#define TRY_LOAD_INT_FROM_DICT(KEY_, DICT_)                                    \
+  if (DICT_.contains(#KEY_)) {                                                 \
+    KEY_ = std::stoi((DICT_.at(#KEY_)));                                       \
+  }
+
+#define TRY_LOAD_STR_FROM_DICT(KEY_, DICT_)                                    \
+  if (DICT_.contains(#KEY_)) {                                                 \
+    KEY_ = DICT_.at(#KEY_);                                                    \
+  }
+
+PyTorchLoaderSettings::PyTorchLoaderSettings(
+    torch::Dict<std::string, std::string> dict) {
+  initSettings();
+  TRY_LOAD_BOOL_FROM_DICT(convertToFP16, dict);
+  TRY_LOAD_BOOL_FROM_DICT(convertFusedToFP16, dict);
+  TRY_LOAD_BOOL_FROM_DICT(saturateHost, dict);
+  TRY_LOAD_BOOL_FROM_DICT(randomizeConstants, dict);
+  TRY_LOAD_STR_FROM_DICT(backendOptionsFile, dict);
+  TRY_LOAD_INT_FROM_DICT(replicationCount, dict);
+  TRY_LOAD_BOOL_FROM_DICT(preCompilePyTorchModule, dict);
+  TRY_LOAD_BOOL_FROM_DICT(fusionPassEnabled, dict);
+  TRY_LOAD_BOOL_FROM_DICT(weightFreezingEnabled, dict);
+  TRY_LOAD_BOOL_FROM_DICT(dumpGlowDag, dict);
+  TRY_LOAD_INT_FROM_DICT(minFusionGroupSize, dict);
+  TRY_LOAD_INT_FROM_DICT(maxFusionMergeSize, dict);
+  TRY_LOAD_INT_FROM_DICT(fusionStartIndex, dict);
+  TRY_LOAD_INT_FROM_DICT(fusionEndIndex, dict);
+  TRY_LOAD_BOOL_FROM_DICT(dumpFinalGlowGraph, dict);
+  TRY_LOAD_BOOL_FROM_DICT(enableGlowTracing, dict);
+  TRY_LOAD_INT_FROM_DICT(numTracesPerDump, dict);
+  TRY_LOAD_BOOL_FROM_DICT(writeToOnnx, dict);
+  TRY_LOAD_BOOL_FROM_DICT(jitVsGlowCompare, dict);
+  TRY_LOAD_BOOL_FROM_DICT(randomizeConstants, dict);
+  TRY_LOAD_STR_FROM_DICT(backendName, dict);
+  TRY_LOAD_INT_FROM_DICT(numDevices, dict);
+  TRY_LOAD_BOOL_FROM_DICT(runShapeInference, dict);
+  TRY_LOAD_BOOL_FROM_DICT(enableDebugFuser, dict);
+  if (dict.contains("opBlacklist")) {
+    std::string commaSepOpsList = dict.at("opBlacklist");
+    if (!commaSepOpsList.empty()) {
+      auto kindStrings = splitString(commaSepOpsList);
+      for (const auto &kindString : kindStrings) {
+        opBlacklist.insert(torch::jit::Symbol::fromQualString(kindString));
+      }
+    }
+  }
+  if (dict.contains("backendSpecificOpts")) {
+    std::string commaSepOptsList = dict.at("backendSpecificOpts");
+    if (!commaSepOptsList.empty()) {
+      auto optsStrings = splitString(commaSepOptsList);
+      CHECK(optsStrings.size() % 2 == 0)
+          << "Found " << optsStrings.size()
+          << " elements. backendSpecificOpts must have equal number of keys "
+             "and values.";
+      for (auto it = optsStrings.begin(); it != optsStrings.end(); it++) {
+        std::string key = *it;
+        it++;
+        std::string val = *it;
+        backendSpecificOpts[key] = val;
+      }
+    }
+  }
+}
+
+#define INSERT_BOOL_TO_DICT(KEY_, DICT_)                                       \
+  DICT_.insert(#KEY_, KEY_ ? "true" : "false");
+
+#define INSERT_STR_TO_DICT(KEY_, DICT_) DICT_.insert(#KEY_, KEY_);
+
+#define INSERT_INT_TO_DICT(KEY_, DICT_)                                        \
+  DICT_.insert(#KEY_, std::to_string(KEY_));
+
+torch::Dict<std::string, std::string>
+PyTorchLoaderSettings::serializeToDict() const {
+  torch::Dict<std::string, std::string> dict;
+  INSERT_BOOL_TO_DICT(convertToFP16, dict);
+  INSERT_BOOL_TO_DICT(convertFusedToFP16, dict);
+  INSERT_BOOL_TO_DICT(saturateHost, dict);
+  INSERT_BOOL_TO_DICT(randomizeConstants, dict);
+  INSERT_STR_TO_DICT(backendOptionsFile, dict);
+  INSERT_INT_TO_DICT(replicationCount, dict);
+  INSERT_BOOL_TO_DICT(preCompilePyTorchModule, dict);
+  INSERT_BOOL_TO_DICT(fusionPassEnabled, dict);
+  INSERT_BOOL_TO_DICT(weightFreezingEnabled, dict);
+  INSERT_BOOL_TO_DICT(dumpGlowDag, dict);
+  INSERT_INT_TO_DICT(minFusionGroupSize, dict);
+  INSERT_INT_TO_DICT(maxFusionMergeSize, dict);
+  INSERT_INT_TO_DICT(fusionStartIndex, dict);
+  INSERT_INT_TO_DICT(fusionEndIndex, dict);
+  INSERT_BOOL_TO_DICT(dumpFinalGlowGraph, dict);
+  INSERT_BOOL_TO_DICT(enableGlowTracing, dict);
+  INSERT_INT_TO_DICT(numTracesPerDump, dict);
+  INSERT_BOOL_TO_DICT(writeToOnnx, dict);
+  INSERT_BOOL_TO_DICT(jitVsGlowCompare, dict);
+  INSERT_BOOL_TO_DICT(randomizeConstants, dict);
+  INSERT_STR_TO_DICT(backendName, dict);
+  INSERT_INT_TO_DICT(numDevices, dict);
+  INSERT_BOOL_TO_DICT(runShapeInference, dict);
+  INSERT_BOOL_TO_DICT(enableDebugFuser, dict);
+  if (opBlacklist.size() > 0) {
+    std::stringstream commaSepOpsList;
+    for (const auto &op : opBlacklist) {
+      commaSepOpsList << op.toQualString() << ",";
+    }
+    dict.insert("opBlacklist", commaSepOpsList.str());
+  }
+  if (backendSpecificOpts.size() > 0) {
+    std::stringstream commaSepOptsList;
+    for (const auto &opt : backendSpecificOpts) {
+      commaSepOptsList << opt.first << "," << opt.second << ",";
+    }
+    dict.insert("backendSpecificOpts", commaSepOptsList.str());
+  }
+  return dict;
+}
+
+std::string PyTorchLoaderSettings::toString() const {
+  auto dict = serializeToDict();
+  std::stringstream s;
+  for (const auto &item : dict) {
+    s << item.key() << " : " << item.value() << std::endl;
+  }
+  return s.str();
+}
+
+const c10::Symbol &getGlowSymbol() {
+  static c10::Symbol glowSymbol =
+      at::Symbol::fromQualString("glow::FusionGroup");
+  return glowSymbol;
 }
 
 c10::Symbol getGlowSymbol(std::shared_ptr<torch::jit::Graph> g) {

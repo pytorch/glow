@@ -1,7 +1,7 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch_glow
+from torch_glow import InputMeta, CompilationOptions, GlowCompileSpec
 import torch
 import unittest
 
@@ -11,17 +11,11 @@ class TestGlowCompileSpec(unittest.TestCase):
         """Test glow compile spec basics."""
 
         dims = [2, 2]
-        gcs = torch.classes.glow.GlowCompileSpec()
-        gcs.setBackend("Interpreter")
+        input_meta = InputMeta()
+        input_meta.set(dims, torch.float32)
+        inputs = [input_meta, input_meta]
 
-        # Test SpecInputMeta setters
-        sim = torch.classes.glow.SpecInputMeta()
-        sim.set(dims, torch.float32)
-        t = torch.tensor(dims)
-        sim.setSameAs(t)
-
-        # Test adding input methods
-        gcs.addInputTensor(dims, torch.float32)
-        gcs.addInput(sim)
-        inputs = [sim, sim]
-        gcs.addInputs(inputs)
+        options = CompilationOptions()
+        options.backend = "Interpreter"
+        spec = GlowCompileSpec()
+        spec.set(inputs, options)
