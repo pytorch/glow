@@ -2,6 +2,7 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import torch_glow
+from torch_glow import InputMeta, CompilationOptions, GlowCompileSpec
 import torch
 import unittest
 
@@ -49,12 +50,13 @@ def run_to_glow(m, x):
     """Trace the model m with input x and call to_glow"""
     traced_m = torch.jit.trace(m, (x))
 
-    spec = torch.classes.glow.GlowCompileSpec()
-    spec.setBackend("Interpreter")
-    sim = torch.classes.glow.SpecInputMeta()
-    sim.set(x.size(), torch.float32)
-    inputs = [sim]
-    spec.addInputs(inputs)
+    input_meta = InputMeta()
+    input_meta.set(x.size(), torch.float32)
+    inputs = [input_meta]
+    options = CompilationOptions()
+    options.backend = "Interpreter"
+    spec = GlowCompileSpec()
+    spec.set(inputs, options)
 
     lowered_module = torch_glow.to_glow(traced_m, {"forward": spec})
     return lowered_module
