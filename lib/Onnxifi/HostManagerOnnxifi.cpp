@@ -38,6 +38,7 @@ bool GlowSaturateHost = false;
 bool GlowFP16 = false;
 bool GlowFP16Placeholders = true;
 bool GlowFP16Constants = true;
+bool GlowEnableQuantParamChanges = true;
 bool GlowDumpGraph = false;
 bool GlowUseDAGOptimizer = false;
 std::string GlowDAGOptimizerPlacementTaggingAlgorithm = "None";
@@ -218,6 +219,10 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
   if (GlowForceSLSAccumFP16) {
     precConfig.forceFP16AccumSLS = GlowForceSLSAccumFP16;
     LOG(INFO) << "Forcing all SLS/SLWS ops to use FP16 accumulation enabled";
+  }
+  if (!GlowEnableQuantParamChanges) {
+    cctx.optimizationOpts.enableQuantParamChanges = false;
+    LOG(INFO) << "Disabling quantization param changes during optimizations";
   }
   if (GlowDumpCompilationLog) {
     cctx.compilationLogPrefix = "glow-onnxifi";
