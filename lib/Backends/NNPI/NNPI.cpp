@@ -173,7 +173,20 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::LayerNormalizationNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
-  case Kinded::Kind::BatchNormalizationNodeKind:
+
+  case Kinded::Kind::BatchNormalizationNodeKind: {
+    auto elemType = NI.getInElemTy(BatchNormalizationNode::InputIdx);
+    bool isSup =
+        (elemType == ElemKind::Int8QTy || elemType == ElemKind::FloatTy ||
+         elemType == ElemKind::Float16Ty);
+
+    isSup = isSup && NI.allInputsAndOutputsHaveSameElemKind(
+                         {ElemKind::FloatTy, ElemKind::Float16Ty},
+                         {BatchNormalizationNode::InputIdx});
+
+    return isSup;
+  }
+
   case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
@@ -220,6 +233,7 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
            ((NI.getInElemTy(Convolution3DNode::BiasIdx) ==
              ElemKind::Int32QTy) ||
             (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::FloatTy));
+
   case Kinded::Kind::QuantizeNodeKind:
     return (NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::FloatTy ||
             NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::Float16Ty) &&

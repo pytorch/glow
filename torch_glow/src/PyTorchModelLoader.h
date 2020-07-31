@@ -346,6 +346,11 @@ private:
   Expected<NodeValue> loadAvgPoolImpl(const torch::jit::Node *ptNode,
                                       int numDims);
 
+  /// Load a PyTorch quantized batch_norm2d or batch_norm3d node.
+  /// \returns error on failure.
+  Expected<NodeValue> loadQuantizedBatchNormImpl(const torch::jit::Node *ptNode,
+                                                 int numDims);
+
   // Load a PyTorch aten::embedding_bag node.
   // \returns error on failure.
   Error loadEmbeddingBag(const torch::jit::Node *ptNode);
@@ -478,6 +483,14 @@ private:
   /// Load a PyTorch batch_norm node.
   /// \returns error on failure.
   Error loadBatchNorm(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch batch_norm2d node.
+  /// \returns error on failure.
+  Error loadQuantizedBatchNorm2d(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch batch_norm3d node.
+  /// \returns error on failure.
+  Error loadQuantizedBatchNorm3d(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch aten::layer_norm node.
   /// \returns error on failure.

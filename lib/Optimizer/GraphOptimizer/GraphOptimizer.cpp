@@ -500,9 +500,13 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
         auto outDims = RS->getResult().dims();
         unsigned_t newChannelIdx;
 
-        // Skip sinking if the input was less than 3 dimensions, because we need
-        // spatial dimensions in addition to batch and channel.
-        if (RS->getInput().dims().size() < 3) {
+        // Skip sinking if: 1) the input was less than 3 dimensions,
+        // because we need spatial dimensions in addition to batch
+        // and channel or 2) if it is 3D data because the reshapes
+        // are deliberately introduced to phrase 3D BatchNormalization
+        // as a 2D one.
+        if (RS->getInput().dims().size() < 3 ||
+            RS->getInput().dims().size() == 5) {
           continue;
         }
 

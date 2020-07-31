@@ -433,6 +433,20 @@ struct BatchNormInputs {
   };
 };
 
+/// Indices of quantized::batch_norm2d and quantized::batch_norm3d inputs.
+struct QuantizedBatchNormInputs {
+  enum {
+    input = 0, // NCHW
+    weights = 1,
+    bias = 2,
+    running_mean = 3,
+    running_var = 4,
+    eps = 5,
+    output_scale = 6,
+    output_zero_point = 7,
+  };
+};
+
 /// Indexes of aten::layer_norm inputs.
 struct LayerNormInputs {
   enum {
@@ -831,6 +845,10 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::_convolution"}, &PyTorchModelLoader::loadConvolution},
       {{"aten::conv2d"}, &PyTorchModelLoader::loadConv2D},
       {{"aten::batch_norm"}, &PyTorchModelLoader::loadBatchNorm},
+      {{"quantized::batch_norm2d"},
+       &PyTorchModelLoader::loadQuantizedBatchNorm2d},
+      {{"quantized::batch_norm3d"},
+       &PyTorchModelLoader::loadQuantizedBatchNorm3d},
       {{"aten::layer_norm"}, &PyTorchModelLoader::loadLayerNorm},
       {{"aten::max_pool2d"}, &PyTorchModelLoader::loadMaxPool2d},
       {{"aten::avg_pool2d"}, &PyTorchModelLoader::loadAvgPool2d},
@@ -2516,6 +2534,13 @@ Error PyTorchModelLoader::loadLayerNorm(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[BatchNormInputs::input]));
+
+  bool is3D = (input.dims().size() == 5);
+  int numDims = is3D ? 3 : 2;
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 9, outputs, 1));
 
   bool training;
@@ -2523,49 +2548,199 @@ Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
                                            inputs[BatchNormInputs::training])));
   RETURN_ERR_IF_NOT(training == false, "Don't support BatchNorm training yet.");
 
-  glow::NodeValue input;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      input, getGlowNodeValueForValue(inputs[BatchNormInputs::input]));
   RETURN_ERR_IF_NOT(
-      input.dims().size() == 4,
-      glow::strFormat("Number input dimensions must be equal to 4, got %lu",
-                      input.dims().size()));
+      input.dims().size() == numDims + 2,
+      glow::strFormat("Number input dimensions must be equal to %d, got %lu",
+                      numDims + 2, input.dims().size()));
 
   size_t numChannels = input.dims()[1];
-
   glow::NodeValue weights = loadNodeValueOrCreateBroadcastedConstant(
-      inputs[BatchNormInputs::weights], "batchnorm_weights",
-      glow::Type(ElemKind::FloatTy, {numChannels}), 1.0);
+      inputs[BatchNormInputs::weights], "weight",
+      glow::Type(ElemKind::Float16Ty, {numChannels}), 1.0);
+  glow::Constant *weightsC = llvm::dyn_cast<glow::Constant>(weights.getNode());
 
   glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
-      inputs[BatchNormInputs::bias], "batchnorm_bias",
-      glow::Type(ElemKind::FloatTy, {numChannels}), 0.0);
+      inputs[BatchNormInputs::bias], "bias",
+      glow::Type(ElemKind::Float16Ty, {numChannels}), 0.0);
+  glow::Constant *biasC = llvm::dyn_cast<glow::Constant>(bias.getNode());
 
   glow::NodeValue mean;
   ASSIGN_VALUE_OR_RETURN_ERR(
       mean, getGlowNodeValueForValue(inputs[BatchNormInputs::running_mean]));
+  glow::Constant *meanC = llvm::dyn_cast<glow::Constant>(mean.getNode());
 
   glow::NodeValue var;
   ASSIGN_VALUE_OR_RETURN_ERR(
       var, getGlowNodeValueForValue(inputs[BatchNormInputs::running_var]));
-
-  float momentum;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      momentum, to32Bit(iValToDouble(
-                    getGlowIValueForValue(inputs[BatchNormInputs::momentum]))));
+  glow::Constant *varC = llvm::dyn_cast<glow::Constant>(var.getNode());
 
   float epsilon;
   ASSIGN_VALUE_OR_RETURN_ERR(
       epsilon, to32Bit(iValToDouble(
                    getGlowIValueForValue(inputs[BatchNormInputs::eps]))));
 
+  float momentum;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      momentum, to32Bit(iValToDouble(
+                    getGlowIValueForValue(inputs[BatchNormInputs::momentum]))));
+
   // Input is in NCHW.
   glow::unsigned_t channelIdx = 1;
 
-  glow::BatchNormalizationNode *bn =
-      F_.createBatchNormalization("batchnorm", input, bias, weights, mean, var,
-                                  channelIdx, epsilon, momentum);
-  return addValueMapping(outputs[0], bn->getResult());
+  glow::NodeValue output;
+  if (is3D) {
+    glow::ReshapeNode *twoD =
+        F_.createReshape("bn_NCTHW2NCHW", input,
+                         {input.dims()[0], input.dims()[1],
+                          input.dims()[2] * input.dims()[3], input.dims()[4]});
+
+    glow::BatchNormalizationNode *bn =
+        F_.createBatchNormalization("bn", twoD, biasC, weightsC, meanC, varC,
+                                    channelIdx, epsilon, momentum);
+
+    glow::ReshapeNode *threeD =
+        F_.createReshape("bn_NCHW2NCTHW", bn, input.dims());
+
+    output = threeD->getResult();
+  } else {
+    glow::BatchNormalizationNode *bn =
+        F_.createBatchNormalization("batchnorm", input, biasC, weightsC, meanC,
+                                    varC, channelIdx, epsilon, momentum);
+    output = bn->getResult();
+  }
+
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+  return addValueMapping(outputs[0], output, dtype);
+}
+
+Expected<NodeValue>
+PyTorchModelLoader::loadQuantizedBatchNormImpl(const torch::jit::Node *ptNode,
+                                               int numDims) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[QuantizedBatchNormInputs::input]));
+
+  bool is3D = (numDims == 3);
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 8, outputs, 1));
+
+  RETURN_ERR_IF_NOT(
+      input.dims().size() == numDims + 2,
+      glow::strFormat("Number input dimensions must be equal to %d, got %lu",
+                      numDims + 2, input.dims().size()));
+
+  size_t numChannels = input.dims()[1];
+
+  glow::NodeValue weights = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[QuantizedBatchNormInputs::weights], "weight",
+      glow::Type(ElemKind::Float16Ty, {numChannels}), 1.0);
+  glow::Constant *weightsC = llvm::dyn_cast<glow::Constant>(weights.getNode());
+
+  glow::NodeValue bias = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[QuantizedBatchNormInputs::bias], "bias",
+      glow::Type(ElemKind::Float16Ty, {numChannels}), 0.0);
+  glow::Constant *biasC = llvm::dyn_cast<glow::Constant>(bias.getNode());
+
+  glow::NodeValue mean;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      mean,
+      getGlowNodeValueForValue(inputs[QuantizedBatchNormInputs::running_mean]));
+  glow::Constant *meanC = llvm::dyn_cast<glow::Constant>(mean.getNode());
+
+  glow::NodeValue var;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      var,
+      getGlowNodeValueForValue(inputs[QuantizedBatchNormInputs::running_var]));
+  glow::Constant *varC = llvm::dyn_cast<glow::Constant>(var.getNode());
+
+  float epsilon;
+  ASSIGN_VALUE_OR_RETURN_ERR(epsilon,
+                             to32Bit(iValToDouble(getGlowIValueForValue(
+                                 inputs[QuantizedBatchNormInputs::eps]))));
+
+  float momentum = 0.1;
+  float output_scale;
+  int32_t output_zero_point;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      output_scale, to32Bit(iValToDouble(getGlowIValueForValue(
+                        inputs[QuantizedBatchNormInputs::output_scale]))));
+
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      output_zero_point,
+      iValToInt(getGlowIValueForValue(
+          inputs[QuantizedBatchNormInputs::output_zero_point])));
+
+  // Input is in NCHW.
+  glow::unsigned_t channelIdx = 1;
+
+  if (is3D) {
+    std::array<dim_t, 4> twoDDims = {input.dims()[0], input.dims()[1],
+                                     input.dims()[2] * input.dims()[3],
+                                     input.dims()[4]};
+
+    glow::ReshapeNode *input_reshape =
+        F_.createReshape("bn3d_quant_NCTHW2NCHW", input, twoDDims);
+
+    glow::DequantizeNode *dq = F_.createDequantize(
+        "bn3d_quant_dequantize", input_reshape, ElemKind::Float16Ty);
+
+    glow::BatchNormalizationNode *bn =
+        F_.createBatchNormalization("bn3d_quant", dq, biasC, weightsC, meanC,
+                                    varC, channelIdx, epsilon, momentum);
+
+    glow::ReshapeNode *output_reshape =
+        F_.createReshape("bn3d_quant_NCHW2NCTHW", bn, input.dims());
+
+    const auto outType = F_.getParent()->uniqueType(
+        glow::ElemKind::Int8QTy, input.dims(), output_scale, output_zero_point);
+    glow::QuantizeNode *q =
+        F_.createQuantize("bn3d_quant_quantize", output_reshape, outType);
+
+    return Expected<NodeValue>(q->getResult());
+
+  } else {
+
+    glow::DequantizeNode *dq = F_.createDequantize("bn2d_quant_dequantize",
+                                                   input, ElemKind::Float16Ty);
+
+    glow::BatchNormalizationNode *bn =
+        F_.createBatchNormalization("bn2d_quant", dq, biasC, weightsC, meanC,
+                                    varC, channelIdx, epsilon, momentum);
+
+    const auto outType = F_.getParent()->uniqueType(
+        glow::ElemKind::Int8QTy, input.dims(), output_scale, output_zero_point);
+    glow::QuantizeNode *q =
+        F_.createQuantize("bn2d_quant_quantize", bn, outType);
+
+    return Expected<NodeValue>(q->getResult());
+  }
+}
+
+Error PyTorchModelLoader::loadQuantizedBatchNorm2d(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  glow::NodeValue output;
+  ASSIGN_VALUE_OR_RETURN_ERR(output, loadQuantizedBatchNormImpl(ptNode, 2));
+
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+  return addValueMapping(outputs[0], output, dtype);
+}
+
+Error PyTorchModelLoader::loadQuantizedBatchNorm3d(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  glow::NodeValue output;
+  ASSIGN_VALUE_OR_RETURN_ERR(output, loadQuantizedBatchNormImpl(ptNode, 3));
+
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+  return addValueMapping(outputs[0], output, dtype);
 }
 
 Error PyTorchModelLoader::loadDropout(const torch::jit::Node *ptNode) {
