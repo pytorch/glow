@@ -16,8 +16,7 @@
 namespace glow {
 
 static std::vector<glow::InputMeta>
-parseMethodCompileSpec(const GlowCompileSpec &method_spec) {
-  glow::getPyTorchLoaderSettings().backendName = method_spec.getBackend();
+getInputMetas(const GlowCompileSpec &method_spec) {
   std::vector<glow::InputMeta> inputMeta;
   for (const auto &in : method_spec.inputs()) {
     std::vector<glow::dim_t> dims;
@@ -435,11 +434,14 @@ TorchGlowBackend::compile(c10::IValue processed,
 
       // iterate list elements: get settings for each elem and compile
       for (const auto &elem : gcs) {
-        std::vector<glow::InputMeta> inputMeta = parseMethodCompileSpec(
-            *c10::IValue(elem).toCustomClass<GlowCompileSpec>());
+        GlowCompileSpec &spec =
+            *c10::IValue(elem).toCustomClass<GlowCompileSpec>();
+        std::vector<glow::InputMeta> inputMeta = getInputMetas(spec);
+        PyTorchLoaderSettings settings = spec.settings();
+        settings.preCompilePyTorchModule = true;
 
         // Compile
-        auto e = runner->warmCache(inputMeta, runner->getSettings(),
+        auto e = runner->warmCache(inputMeta, settings,
                                    /*useMaxSizeCompilation*/ false);
         CHECK(!(bool)e) << ERR_TO_STRING(std::move(e));
       }

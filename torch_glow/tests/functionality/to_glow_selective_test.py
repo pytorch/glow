@@ -4,6 +4,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import unittest
 
 import torch_glow
+from torch_glow import InputMeta, CompilationOptions, GlowCompileSpec
 import torch
 
 
@@ -75,11 +76,14 @@ class TestSelectiveToGlow(unittest.TestCase):
         b = torch.zeros(4) + 7
         torch_res = model(a, b)
 
-        spec = torch.classes.glow.GlowCompileSpec()
-        spec.setBackend("Interpreter")
-        sim = torch.classes.glow.SpecInputMeta()
-        sim.setSameAs(a)
-        spec.addInputs([sim, sim])
+        input_meta = InputMeta()
+        input_meta.set_same_as(a)
+        inputs = [input_meta, input_meta]
+
+        options = CompilationOptions()
+        options.backend = "Interpreter"
+        spec = GlowCompileSpec()
+        spec.set(inputs, options)
 
         glow_mod = torch_glow.to_glow_selective(
             model, {"foo.bar": (spec, (a, b)), "qux": (spec, (a, b))}
