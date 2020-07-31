@@ -43,6 +43,7 @@ DEFINE_bool(saturateHost, false, "See PyTorchLoaderSettings");
 DEFINE_bool(convertToFP16, false, "See PyTorchLoaderSettings");
 DEFINE_bool(convertFusedToFP16, false, "See PyTorchLoaderSettings");
 DEFINE_string(opBlacklist, "", "See PyTorchLoaderSettings");
+DEFINE_string(opOverrideAllowlist, "", "See PyTorchLoaderSettings");
 DEFINE_int32(replicationCount, 1, "Number of replications on each device");
 DEFINE_bool(writeToOnnx, false, "See PyTorchLoaderSettings");
 DEFINE_int32(maxActiveRequests, 250,
@@ -237,6 +238,14 @@ static PyTorchLoaderSettings getInitialSettings() {
     auto kindStrings = splitString(FLAGS_opBlacklist);
     for (const auto &kindString : kindStrings) {
       settings.opBlacklist.insert(
+          torch::jit::Symbol::fromQualString(kindString));
+    }
+  }
+
+  if (!FLAGS_opOverrideAllowlist.empty()) {
+    auto kindStrings = splitString(FLAGS_opOverrideAllowlist);
+    for (const auto &kindString : kindStrings) {
+      settings.opOverrideAllowlist.insert(
           torch::jit::Symbol::fromQualString(kindString));
     }
   }
