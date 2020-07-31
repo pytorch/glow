@@ -277,6 +277,12 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
 
   size_t i = 0;
   for (const torch::jit::Node *node : graph->nodes()) {
+    // if a node is in super allowlist, it is always allowed
+    if (settings.opOverrideAllowlist.count(node->kind())) {
+      i++;
+      continue;
+    }
+
     if (settings.fusionStartIndex >= 0 && i < settings.fusionStartIndex) {
       blacklistedNodes[node] = NodeBlacklistReason::Index;
     }
