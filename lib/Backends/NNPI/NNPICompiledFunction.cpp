@@ -628,30 +628,77 @@ std::string NNPICompilationInfo::dump(const std::string &functionName) const {
   return stream.str();
 }
 
-const std::string NNPICompiledFunction::toJSON() const {
+static const std::string tensorToJSON(const NNPICompiledTensor &tensor) {
   std::stringstream fs;
   fs << "{" << std::endl;
-  fs << "  \"ops\": [ " << std::endl;
-  for (auto it = compilationInfo_.ops.begin(); it != compilationInfo_.ops.end();
-       it++) {
-    if (it != compilationInfo_.ops.begin()) {
+  fs << "\"type\" : \"" << tensor.type << "\"," << std::endl;
+  fs << "\"size\" : " << std::endl;
+  fs << "[" << std::endl;
+  for (auto it = tensor.shape.begin(); it != tensor.shape.end(); it++) {
+    if (it != tensor.shape.begin()) {
       fs << "," << std::endl;
-      ;
     }
-    fs << " \"" << it->second.name << "\"";
-    ;
+    fs << *it << std::endl;
   }
-  fs << "  ]," << std::endl;
-  fs << "  \"edges\": [ " << std::endl;
-  for (auto it = compilationInfo_.opDependencies.begin();
-       it != compilationInfo_.opDependencies.end(); it++) {
-    if (it != compilationInfo_.opDependencies.begin()) {
+  fs << "]" << std::endl;
+  fs << "}" << std::endl;
+  return fs.str();
+}
+
+static const std::string
+tensorListToJSON(const std::vector<NNPICompiledTensor> &tensors,
+                 const std::string &label) {
+  std::stringstream fs;
+  fs << "  \"" << label << "\": [ " << std::endl;
+  for (auto it = tensors.begin(); it != tensors.end(); it++) {
+    if (it != tensors.begin()) {
       fs << "," << std::endl;
-      ;
+    }
+    fs << tensorToJSON(*it);
+  }
+  fs << "]" << std::endl;
+  return fs.str();
+}
+
+static const std::string
+opsToJSON(const std::map<std::string, NNPICompiledOp> &ops) {
+  std::stringstream fs;
+  fs << "  \"ops\": { " << std::endl;
+  for (auto it = ops.begin(); it != ops.end(); it++) {
+    if (it != ops.begin()) {
+      fs << "," << std::endl;
+    }
+    fs << " \"" << it->second.name << "\": " << std::endl;
+    fs << "{" << std::endl;
+    fs << tensorListToJSON(it->second.inputs, "inputs");
+    fs << "," << std::endl;
+    fs << tensorListToJSON(it->second.outputs, "outputs");
+    fs << "}" << std::endl;
+  }
+  fs << "  }" << std::endl;
+  return fs.str();
+}
+
+static const std::string
+edgesToJSON(const std::vector<std::pair<std::string, std::string>> &edges) {
+  std::stringstream fs;
+  fs << "  \"edges\": [ " << std::endl;
+  for (auto it = edges.begin(); it != edges.end(); it++) {
+    if (it != edges.begin()) {
+      fs << "," << std::endl;
     }
     fs << " \"" << it->first << "\",\"" << it->second << "\"";
   }
   fs << "  ]" << std::endl;
+  return fs.str();
+}
+
+const std::string NNPICompiledFunction::toJSON() const {
+  std::stringstream fs;
+  fs << "{" << std::endl;
+  fs << opsToJSON(compilationInfo_.ops) << std::endl;
+  fs << "," << std::endl;
+  fs << edgesToJSON(compilationInfo_.opDependencies) << std::endl;
   fs << "}" << std::endl;
   return fs.str();
 }
