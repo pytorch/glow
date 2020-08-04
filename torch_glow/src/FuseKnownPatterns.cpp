@@ -35,9 +35,11 @@ void registerDummyOperator(const char *opName) {
   torch::jit::RegisterOperators op({torch::jit::Operator(
       at::Symbol::fromQualString(opName),
       [](const torch::jit::Node *node) -> torch::jit::Operation {
-        LOG(FATAL) << "Operator \"" << (*node)
-                   << "\" has no implementation and is meant only as a "
-                      "placeholder while fusing ops to run with Glow";
+        return [node](torch::jit::Stack *stack) {
+          LOG(FATAL) << "Operator \"" << (*node)
+                     << "\" has no implementation and is meant only as a "
+                        "placeholder while fusing ops to run with Glow";
+        };
       },
       at::AliasAnalysisKind::PURE_FUNCTION)});
 }
