@@ -304,6 +304,10 @@ class ONNXModelLoader
   Error loadCmpLTE(const ONNX_NAMESPACE::NodeProto &op,
                    ArgumentDictionaryTy &dict);
 
+  /// Load Mean ONNX operator
+  Error loadMean(const ONNX_NAMESPACE::NodeProto &op,
+                 ArgumentDictionaryTy &dict);
+
   /// Load Glow Select operator.
   Error loadSelect(const ONNX_NAMESPACE::NodeProto &op,
                    ArgumentDictionaryTy &dict);

@@ -3013,6 +3013,75 @@ TEST_F(OnnxImporterTest, importMaxPoolWithArgmax) {
   }
 }
 
+TEST_F(OnnxImporterTest, importMean) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/Mean.onnxtxt");
+  auto *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *resultPH;
+  Tensor T0(ElemKind::FloatTy, {2, 3, 2});
+  Tensor T1(ElemKind::FloatTy, {2, 3, 2});
+  Tensor T2(ElemKind::FloatTy, {2, 3, 2});
+  T0.getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+  T1.getHandle() = {11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0};
+  T2.getHandle() = {2.5, 1, 2.5, 1, 2.5, 1, 2.5, 1, 2.5, 1, 0, 1};
+  {
+    ONNXModelLoader onnxLD(netFilename, {"T0", "T1", "T2"},
+                           {&T0.getType(), &T1.getType(), &T2.getType()}, *F);
+    resultPH = EXIT_ON_ERR(onnxLD.getOutputByName("Y"));
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"T0", "T1", "T2"},
+                                  {&T0, &T1, &T2});
+  }
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  auto result = bindings.get(resultPH)->getHandle();
+  std::vector<dim_t> expectedDims = {2, 3, 2};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  std::vector<float> expectedResult = {4.5, 4, 4.5, 4, 4.5,      4,
+                                       4.5, 4, 4.5, 4, 11.0 / 3, 4};
+  for (size_t i = 0; i < expectedResult.size(); i++) {
+    EXPECT_EQ(result.raw(i), expectedResult[i]);
+  }
+}
+
+TEST_F(OnnxImporterTest, importMeanBroadcast) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/Mean_broadcast.onnxtxt");
+  auto *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *resultPH;
+  Tensor T0(ElemKind::FloatTy, {1, 2, 1});
+  Tensor T1(ElemKind::FloatTy, {3});
+  Tensor T2(ElemKind::FloatTy, {1, 2, 3});
+  T0.getHandle() = {0, 1};
+  T1.getHandle() = {11, 10, 9};
+  T2.getHandle() = {5, 4, 3, 2, 1, 0};
+
+  {
+    ONNXModelLoader onnxLD(netFilename, {"T0", "T1", "T2"},
+                           {&T0.getType(), &T1.getType(), &T2.getType()}, *F);
+    resultPH = EXIT_ON_ERR(onnxLD.getOutputByName("Y"));
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"T0", "T1", "T2"},
+                                  {&T0, &T1, &T2});
+  }
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  auto result = bindings.get(resultPH)->getHandle();
+  std::vector<dim_t> expectedDims = {1, 2, 3};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  std::vector<float> expectedResult = {16.0 / 3, 14.0 / 3, 4.0,
+                                       14.0 / 3, 4.0,      10.0 / 3};
+  for (size_t i = 0; i < expectedResult.size(); i++) {
+    EXPECT_EQ(result.raw(i), expectedResult[i]);
+  }
+}
+
 TEST_F(OnnxImporterTest, importWhere) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
