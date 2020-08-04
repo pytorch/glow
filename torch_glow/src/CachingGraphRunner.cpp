@@ -99,6 +99,26 @@ size_t CachingGraphRunner::computeGraphHash(
   return hash;
 }
 
+// Hashing input tensors using their shapes.
+size_t CachingGraphRunner::hashTensorShape(
+    const c10::ArrayRef<c10::IValue> &inputs) const {
+
+  assert(perGlowGraphInfoMap_.size() == 1);
+  // Start off hash with pointer to this CachingGraphRunner to avoid collisions
+  // with Glow functions created by other CachingGraphRunners.
+  size_t hash = reinterpret_cast<size_t>(this);
+  for (auto &input : inputs) {
+    CHECK(input.isTensor()) << "Found non-tensor input. Glow AOT compiled "
+                               "graph accepts tensor inputs only.";
+    // hash on input tensor shape
+    for (auto dimSize : input.toTensor().sizes()) {
+      size_t tensorHash = std::hash<int64_t>()(dimSize);
+      hash = torch::hash_combine(hash, tensorHash);
+    }
+  }
+  return hash;
+}
+
 void CachingGraphRunner::aggregateAndDumpTraces(TraceContext *traceContext,
                                                 bool flush) {
   size_t numTracesPerDump = settings_.numTracesPerDump;
@@ -205,6 +225,38 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
   CHECK(ret.second);
 
   return ret.first->second;
+}
+
+Expected<std::vector<std::vector<int64_t>> *>
+CachingGraphRunner::loadShape(const c10::ArrayRef<c10::IValue> &inputs,
+                              TraceContext *traceContext) {
+
+  TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME, "torch_glow::loadShape");
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "computeShapeHash");
+  size_t hash = hashTensorShape(inputs);
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "computeShapeHash");
+
+  // If we already have a shape info for this graph output with and the
+  // given inputs then use that.
+  auto it = perGlowGraphShapeMap_.find(hash);
+  if (it != perGlowGraphShapeMap_.end()) {
+    return &(it->second);
+  }
+
+  // If we don't have a shape info for this graph output with and the
+  // given inputs then run shape inference, then push into the map.
+  std::vector<std::vector<int64_t>> outputShape;
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "runShapeInference");
+
+  ShapeInferenceEngine shapeG(*graph_, inputs);
+  RETURN_IF_ERR(shapeG.run());
+  outputShape = shapeG.getGraphOutputShape();
+
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "runShapeInference");
+
+  auto ret = perGlowGraphShapeMap_.emplace(hash, outputShape);
+  CHECK(ret.second);
+  return &(ret.first->second);
 }
 
 int64_t CachingGraphRunner::runOnJit(torch::jit::Stack &stack) {
@@ -452,18 +504,14 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "runNetwork");
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "setOutputs");
 
-  std::vector<std::vector<int64_t>> outputShape = {};
+  std::vector<std::vector<int64_t>> *ptrOutputShape;
   if (settings_.runShapeInference) {
-    TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "runShapeInference");
-
-    ShapeInferenceEngine shapeG(*graph_, inputs);
-    RETURN_IF_ERR(shapeG.run());
-    outputShape = shapeG.getGraphOutputShape();
-    if (outputs.size() != outputShape.size()) {
+    /// load shape. If already existed, extracted directly, if not, run shape
+    /// inference
+    ASSIGN_VALUE_OR_RETURN_ERR(ptrOutputShape, loadShape(inputs, traceContext));
+    if (outputs.size() != (*ptrOutputShape).size()) {
       return MAKE_ERR("Fail to infer shape for outputs");
     }
-
-    TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "runShapeInference");
   }
 
   torch::jit::drop(stack, numInputs);
@@ -502,8 +550,8 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     }
 
     if (settings_.runShapeInference) {
-      if (i < outputShape.size()) {
-        ptTensor = sliceTensor(ptTensor, outputShape[i]);
+      if (i < (*ptrOutputShape).size()) {
+        ptTensor = sliceTensor(ptTensor, (*ptrOutputShape)[i]);
       }
     }
 
