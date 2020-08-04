@@ -27,8 +27,14 @@ void ShapeInferenceEngine::getNodeInputShape(const torch::jit::Node *node,
   }
 }
 
-std::vector<std::vector<int64_t>> &ShapeInferenceEngine::getGraphOutputShape() {
+const std::vector<std::vector<int64_t>> &
+ShapeInferenceEngine::getGraphOutputShape() {
   return outputShape_;
+}
+
+const std::unordered_map<const torch::jit::Value *, VariableMeta> &
+ShapeInferenceEngine::getVariableMap() {
+  return shapeMap_;
 }
 
 Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {

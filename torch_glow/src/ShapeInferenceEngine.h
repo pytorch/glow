@@ -44,7 +44,12 @@ public:
                        const at::ArrayRef<torch::jit::IValue> &inputs);
 
   /// Get all VariableMeta for outputs of the given graph.
-  std::vector<std::vector<int64_t>> &getGraphOutputShape();
+  const std::vector<std::vector<int64_t>> &getGraphOutputShape();
+
+  /// Get the Variable Map which uses const torch::jit::Value * as a key,
+  /// VariableMeta as a value.
+  const std::unordered_map<const torch::jit::Value *, VariableMeta> &
+  getVariableMap();
 
   /// This run the shape inference engine for the given \p graph and \p inputs.
   /// \returns error of failure.
