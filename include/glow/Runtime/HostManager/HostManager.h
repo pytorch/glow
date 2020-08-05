@@ -125,6 +125,9 @@ class HostManager final {
   /// A vector of devices available for new networks to be added to.
   std::vector<DeviceIDTy> availableDevices_;
 
+  /// A single threaded threadpool used by init() when initializing devices.
+  ThreadPool threadPool_{1};
+
   /// Executor class, this handles dispatching execution requests to the
   /// appropriate device managers for an inference request.
   std::unique_ptr<Executor> executor_;
