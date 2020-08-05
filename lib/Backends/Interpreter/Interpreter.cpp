@@ -650,6 +650,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return NI.getInElemTy(MFCCNode::SpectrogramIdx) == ElemKind::FloatTy &&
            NI.getOutElemTy(MFCCNode::CoefficientsIdx) == ElemKind::FloatTy;
 
+  case Kinded::Kind::ROIAlignNodeKind:
+    return NI.getInElemTy(ROIAlignNode::FeatureMapIdx) == ElemKind::FloatTy &&
+           NI.getInElemTy(ROIAlignNode::BoxesIdx) == ElemKind::FloatTy &&
+           NI.getInElemTy(ROIAlignNode::BatchIndicesIdx) ==
+               ElemKind::Int64ITy &&
+           NI.getOutElemTy(ROIAlignNode::ResultIdx) == ElemKind::FloatTy;
+
   case Kinded::Kind::SoftMaxGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy}, {SoftMaxGradNode::SelectedIdx},

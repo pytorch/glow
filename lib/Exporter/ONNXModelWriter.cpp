@@ -1232,6 +1232,17 @@ Error ONNXModelWriter::writeMFCC(const MFCCNode *node, GraphType &graph) {
   return writeAllWithNode("MFCC", node, graph, proto);
 }
 
+Error ONNXModelWriter::writeROIAlign(const ROIAlignNode *node,
+                                     GraphType &graph) {
+  auto *proto = graph.add_node();
+  addValueAttribute(proto, "mode", node->getMode());
+  addValueAttribute(proto, "output_height", node->getOutputHeight());
+  addValueAttribute(proto, "output_width", node->getOutputWidth());
+  addValueAttribute(proto, "sampling_ratio", node->getSamplingRatio());
+  addValueAttribute(proto, "spatial_scale", node->getSpatialScale());
+  return writeAllWithNode("ROIAlign", node, graph, proto);
+}
+
 Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
                                         GraphType &graph) {
   // Loading convolution creates a sandwich with Transpose nodes for Input,

@@ -5558,3 +5558,144 @@ void BoundInterpreterFunction::fwdMFCCInst(glow::MFCCInst const *I) {
     llvm_unreachable("Type is not supported.");
   }
 }
+
+struct BinGrid {
+  uint32_t Y0;
+  uint32_t Y1;
+  uint32_t X0;
+  uint32_t X1;
+  float yDiff;
+  float xDiff;
+};
+
+// Function to calculate the xy coordinates of the resized image (grid)
+// Ref: https://arxiv.org/pdf/1703.06870.pdf and OnnxRuntime implementation
+static void getROIAlignInterpolationCoordinates(
+    unsigned inputHeight, unsigned inputWidth, unsigned outputHeight,
+    unsigned outputWidth, const std::vector<float> &box,
+    unsigned samplingRatioH, unsigned samplingRatioW, float offset,
+    std::vector<BinGrid> &binGrids) {
+  float y0 = box[0];
+  float x0 = box[1];
+  uint64_t binCount = 0;
+  // H & W of the each bin in the final output
+  const float binH = (box[2] - box[0]) / outputHeight;
+  const float binW = (box[3] - box[1]) / outputWidth;
+  const float roiBinSizeH = binH / samplingRatioH;
+  const float roiBinSizeW = binW / samplingRatioW;
+  for (uint32_t H = 0; H < outputHeight; H++) {
+    for (uint32_t W = 0; W < outputWidth; W++) {
+      for (uint32_t h = 0; h < samplingRatioH; h++) {
+        // initial y coordinate  with offset
+        const float inY = y0 + (H * binH) + ((h + offset) * roiBinSizeH);
+        const uint32_t topYIndex = std::floor(inY);
+        const uint32_t bottomYIndex =
+            (inY <= inputHeight - 1) ? std::ceil(inY) : (inputHeight - 1);
+        const float yLerp = inY - topYIndex;
+        for (uint32_t w = 0; w < samplingRatioW; w++) {
+          // initial x coordinate  with offset
+          const float inX = x0 + (W * binW) + ((w + offset) * roiBinSizeW);
+          const uint32_t leftXIndex = std::floor(inX);
+          const uint32_t rightXIndex =
+              (inX <= inputWidth - 1) ? std::ceil(inX) : (inputWidth - 1);
+          const float xLerp = inX - leftXIndex;
+          binGrids[binCount++] = BinGrid{topYIndex,   bottomYIndex, leftXIndex,
+                                         rightXIndex, yLerp,        xLerp};
+        } // end of w
+      }   // end of h
+    }     // end of W
+  }       // end of H
+}
+
+// Implementation of ROIAlign as described in
+// https://arxiv.org/pdf/1703.06870.pdf ROIAlign is similar to crop_and_resize +
+// pooling with minor modifications in the crop_and_resize.
+void BoundInterpreterFunction::fwdROIAlignInstFloatImpl(
+    glow::ROIAlignInst const *I) {
+  auto featureMap = I->getFeatureMap();
+  auto boxes = I->getBoxes();
+  auto batchIndices = I->getBatchIndices();
+  auto result = I->getResult();
+  std::string mode = I->getMode();
+  unsigned outputHeight = I->getOutputHeight();
+  unsigned outputWidth = I->getOutputHeight();
+  unsigned samplingRatio = I->getSamplingRatio();
+  float offset = I->getOffset();
+  bool normalized = I->getNormalized();
+  auto boxesH = getTensor(boxes)->getHandle<float>();
+  auto featureMapH = getTensor(featureMap)->getHandle<float>();
+  auto batchIndicesH = getTensor(batchIndices)->getHandle<int64_t>();
+  auto resultH = getTensor(result)->getHandle<float>();
+  getTensor(result)->zero();
+  const unsigned imageHeight = featureMap->dims()[1];
+  const unsigned imageWidth = featureMap->dims()[2];
+  const unsigned numBoxes = result->dims()[0];
+  const unsigned depth = result->dims()[3];
+  float normConstantH = normalized ? (imageHeight - 1) : 1;
+  float normConstantW = normalized ? (imageWidth - 1) : 1;
+  for (uint32_t b = 0; b < numBoxes; b++) {
+    const std::vector<float> box = {
+        boxesH.at({b, 0}) * normConstantH, boxesH.at({b, 1}) * normConstantW,
+        boxesH.at({b, 2}) * normConstantH, boxesH.at({b, 3}) * normConstantW};
+    unsigned samplingRatioH = (samplingRatio > 0)
+                                  ? samplingRatio
+                                  : std::ceil((box[2] - box[0]) / outputHeight);
+    unsigned samplingRatioW = (samplingRatio > 0)
+                                  ? samplingRatio
+                                  : std::ceil((box[3] - box[1]) / outputWidth);
+    std::vector<BinGrid> binGrids(samplingRatioH * samplingRatioW *
+                                  outputHeight * outputWidth);
+    // get the xy coordinates in the resized image(grid)
+    getROIAlignInterpolationCoordinates(imageHeight, imageWidth, outputHeight,
+                                        outputWidth, box, samplingRatioH,
+                                        samplingRatioW, offset, binGrids);
+    const uint32_t batchIndex = batchIndicesH.at({
+        b,
+    });
+    uint64_t binCount = 0;
+    for (uint32_t H = 0; H < outputHeight; ++H) {
+      for (uint32_t W = 0; W < outputWidth; ++W) {
+        for (uint32_t d = 0; d < depth; ++d) {
+          std::vector<float> pixels;
+          for (uint32_t h = 0; h < samplingRatioH; ++h) {
+            for (uint32_t w = 0; w < samplingRatioW; ++w) {
+              BinGrid bG = binGrids[binCount++];
+              // The four pixels of  the i/p image surrounding the point of
+              // interest (POI) in the resized image
+              const float topLeft =
+                  featureMapH.at({batchIndex, bG.Y0, bG.X0, d});
+              const float topRight =
+                  featureMapH.at({batchIndex, bG.Y0, bG.X1, d});
+              const float bottomLeft =
+                  featureMapH.at({batchIndex, bG.Y1, bG.X0, d});
+              const float bottomRight =
+                  featureMapH.at({batchIndex, bG.Y1, bG.X1, d});
+              // bilinear interpolation = interpolation along {top_horizontal +
+              // bottom_horizontal + vertical} lines or bilinear interpolation =
+              // interpolation along {left_vertical + right_vertical +
+              // horizontal} lines interpolation along top_horizontal line
+              const float top = topLeft + ((topRight - topLeft) * bG.xDiff);
+              // interpolation along bottom_horizontal line
+              const float bottom =
+                  bottomLeft + ((bottomRight - bottomLeft) * bG.xDiff);
+              // interpolation along vertical line
+              pixels.push_back(top + ((bottom - top) * bG.yDiff));
+            } // end of w
+          }   // end of h
+          // {Average or Max} pooling
+          resultH.at({b, H, W, d}) =
+              (mode == "avg")
+                  ? std::accumulate(pixels.begin(), pixels.end(), 0.0) /
+                        pixels.size()
+                  : *std::max_element(pixels.begin(), pixels.end());
+          binCount = binCount - (samplingRatioH * samplingRatioW);
+        } // end of d
+        binCount = binCount + (samplingRatioH * samplingRatioW);
+      } // end of W
+    }   // end of H
+  }     // end of b
+}
+
+void BoundInterpreterFunction::fwdROIAlignInst(glow::ROIAlignInst const *I) {
+  fwdROIAlignInstFloatImpl(I);
+}

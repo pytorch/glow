@@ -1074,6 +1074,24 @@ int main(int argc, char **argv) {
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//
+  //                Region of Interest (ROI)
+  //===--------------------------------------------------------------------===//
+  BB.newInstr("ROIAlign")
+      .addOperand("Result", OperandKind::Out)
+      .addOperand("FeatureMap", OperandKind::In)
+      .addOperand("Boxes", OperandKind::In)
+      .addOperand("BatchIndices", OperandKind::In)
+      .addMember(MemberType::String, "Mode")
+      .addMember(MemberType::Unsigned, "OutputHeight")
+      .addMember(MemberType::Unsigned, "OutputWidth")
+      .addMember(MemberType::Unsigned, "SamplingRatio")
+      .addMember(MemberType::Float, "SpatialScale")
+      .addMember(MemberType::Float, "Offset")
+      .addMember(MemberType::Boolean, "Normalized")
+      .autoVerify(VerifyKind::SameElementType, {"FeatureMap", "Boxes"})
+      .autoIRGen();
+
+  //===--------------------------------------------------------------------===//
   //                Backend-Specific Instructions
   //===--------------------------------------------------------------------===//
 

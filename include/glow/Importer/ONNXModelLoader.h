@@ -385,6 +385,10 @@ class ONNXModelLoader
   Error loadMFCC(const ONNX_NAMESPACE::NodeProto &op,
                  ArgumentDictionaryTy &dict);
 
+  // Load ROIAlign ONNX operator
+  Error loadROIAlign(const ONNX_NAMESPACE::NodeProto &op,
+                     ArgumentDictionaryTy &dict);
+
 protected:
   /// Loads operators from \p net. If \p loadingConstFoldSubgraph then the
   /// current Function \ref G_ is assumed to be the one to load into.

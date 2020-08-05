@@ -2097,6 +2097,31 @@ bool MFCCNode::verify() const {
   return isValid;
 }
 
+bool ROIAlignNode::verify() const {
+  auto featureMap = getFeatureMap();
+  auto boxes = getBoxes();
+  auto batchIndices = getBatchIndices();
+  auto result = getResult();
+  auto featureMapDims = featureMap.dims();
+  auto boxesDims = boxes.dims();
+  auto batchIndicesDims = batchIndices.dims();
+  auto outputDims = result.dims();
+
+  bool isValid = checkTypeIgnoreShape(featureMap, result, this);
+  isValid &= checkTypeIgnoreShape(boxes, result, this);
+  isValid &= checkType(batchIndices, ElemKind::Int64ITy, this);
+  isValid &= checkType(featureMap, ElemKind::FloatTy, this);
+  isValid &= expectCompareTrue("FeatureMap must be a 4D tensor",
+                               featureMapDims.size(), size_t(4), this);
+  isValid &= expectCompareTrue("Boxes must be a 2D tensor", boxesDims.size(),
+                               size_t(2), this);
+  isValid &= expectCompareTrue("BatchIndices must be a 1D tensor",
+                               batchIndicesDims.size(), size_t(1), this);
+  isValid &= expectCompareTrue("Output must be a 4D tensor", outputDims.size(),
+                               size_t(4), this);
+  return isValid;
+}
+
 bool SaveNode::verify() const {
   return checkSameType(getInput(), getOutput(), this);
 }

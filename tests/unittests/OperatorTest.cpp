@@ -1257,6 +1257,46 @@ TEST_MFCC(2, 257, 1e-5)
 TEST_MFCC(3, 513, 1e-5)
 TEST_MFCC(3, 1025, 1e-5)
 
+TEST_P(OperatorTest, ROIAlign) {
+  CHECK_IF_ENABLED();
+
+  auto *X1 = mod_.createPlaceholder(ElemKind::FloatTy, {2, 5, 5, 2},
+                                    "featureMap", false);
+  bindings_.allocate(X1)->getHandle<float>() = {
+      1.,  0.,  1.,  1.,  1.,  2.,  1.,  3.,  1.,  4.,  1.,  5.,  1.,  6.,  1.,
+      7.,  1.,  8.,  1.,  9.,  1.,  10., 1.,  11., 1.,  12., 1.,  13., 1.,  14.,
+      1.,  15., 1.,  16., 1.,  17., 1.,  18., 1.,  19., 1.,  20., 1.,  21., 1.,
+      22., 1.,  23., 1.,  24., 0.,  1.,  1.,  1.,  2.,  1.,  3.,  1.,  4.,  1.,
+      5.,  1.,  6.,  1.,  7.,  1.,  8.,  1.,  9.,  1.,  10., 1.,  11., 1.,  12.,
+      1.,  13., 1.,  14., 1.,  15., 1.,  16., 1.,  17., 1.,  18., 1.,  19., 1.,
+      20., 1.,  21., 1.,  22., 1.,  23., 1.,  24., 1.};
+
+  auto *X2 = mod_.createPlaceholder(ElemKind::FloatTy, {2, 4}, "boxes", false);
+  bindings_.allocate(X2)->getHandle<float>() = {0.25, 0.25, 0.75, 0.75,
+                                                0.25, 0.25, 0.75, 0.75};
+
+  auto *X3 =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "batchIndices", false);
+  bindings_.allocate(X3)->getHandle<int64_t>() = {1, 0};
+
+  auto *LN =
+      F_->createROIAlign("ROIAlign", X1, X2, X3, "avg", 2, 2, 2, 1, 0.5, true);
+  auto *save = F_->createSave("save", LN);
+  auto *savePlaceholder = save->getPlaceholder();
+  bindings_.allocate(savePlaceholder);
+
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  auto saveH = bindings_.get(savePlaceholder)->getHandle();
+  std::vector<float> expectedValues = {9, 1, 10, 1,  14, 1,  15, 1,
+                                       1, 9, 1,  10, 1,  14, 1,  15.};
+  for (dim_t i = 0; i < expectedValues.size(); i++) {
+    EXPECT_NEAR(saveH.raw(i), expectedValues[i], 1E-5);
+  }
+}
+
 // Helper to test SpaceToDepth using \p DTy.
 template <typename DataType>
 static void testSpaceToDepthBlock3(glow::PlaceholderBindings &bindings,
