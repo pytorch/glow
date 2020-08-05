@@ -46,6 +46,7 @@ DEFINE_string(opBlacklist, "", "See PyTorchLoaderSettings");
 DEFINE_string(opOverrideAllowlist, "", "See PyTorchLoaderSettings");
 DEFINE_int32(replicationCount, 1, "Number of replications on each device");
 DEFINE_bool(writeToOnnx, false, "See PyTorchLoaderSettings");
+DEFINE_bool(onnxZipMode, false, "See PyTorchLoaderSettings");
 DEFINE_int32(maxActiveRequests, 250,
              "Max number of active requests before HostManager starts queuing");
 DEFINE_bool(randomizeConstants, false, "See PyTorchLoaderSettings");
@@ -227,6 +228,7 @@ void PyTorchLoaderSettings::initSettings() {
   convertFusedToFP16 = FLAGS_convertFusedToFP16;
   replicationCount = FLAGS_replicationCount;
   writeToOnnx = FLAGS_writeToOnnx;
+  onnxZipMode = FLAGS_onnxZipMode;
   randomizeConstants = FLAGS_randomizeConstants;
   backendName = FLAGS_torch_glow_backend;
   numDevices = FLAGS_torch_glow_num_devices;
@@ -307,6 +309,7 @@ PyTorchLoaderSettings::PyTorchLoaderSettings(
   TRY_LOAD_BOOL_FROM_DICT(enableGlowTracing, dict);
   TRY_LOAD_INT_FROM_DICT(numTracesPerDump, dict);
   TRY_LOAD_BOOL_FROM_DICT(writeToOnnx, dict);
+  TRY_LOAD_BOOL_FROM_DICT(onnxZipMode, dict);
   TRY_LOAD_BOOL_FROM_DICT(jitVsGlowCompare, dict);
   TRY_LOAD_BOOL_FROM_DICT(randomizeConstants, dict);
   TRY_LOAD_STR_FROM_DICT(backendName, dict);
@@ -369,6 +372,7 @@ PyTorchLoaderSettings::serializeToDict() const {
   INSERT_BOOL_TO_DICT(enableGlowTracing, dict);
   INSERT_INT_TO_DICT(numTracesPerDump, dict);
   INSERT_BOOL_TO_DICT(writeToOnnx, dict);
+  INSERT_BOOL_TO_DICT(onnxZipMode, dict);
   INSERT_BOOL_TO_DICT(jitVsGlowCompare, dict);
   INSERT_BOOL_TO_DICT(randomizeConstants, dict);
   INSERT_STR_TO_DICT(backendName, dict);

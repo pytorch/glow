@@ -122,6 +122,9 @@ public:
   /// and from the function to file as ONNX graphs.
   bool writeToOnnx = false;
 
+  /// Whether or not to use zip mode when writing graphs to ONNX files
+  bool onnxZipMode = false;
+
   /// Whether or not to do a numerical comparions of Glow and jit outputs
   bool jitVsGlowCompare = false;
 
