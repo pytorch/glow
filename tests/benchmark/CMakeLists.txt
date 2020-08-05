@@ -150,6 +150,17 @@ target_link_libraries(BERTProxyLayerBench
                         HostManager
                         CPURuntimeNative)
 
+add_executable(ResNetBench
+               ResNetBench.cpp)
+target_link_libraries(ResNetBench
+                      PRIVATE
+                        Backends
+                        ExecutionEngine
+                        Graph
+                        GraphOptimizer
+                        HostManager
+                        CPURuntimeNative)
+
 add_executable(RuntimeBench
                RuntimeBench.cpp)
 target_include_directories(RuntimeBench
