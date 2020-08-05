@@ -1260,6 +1260,30 @@ int main(int argc, char **argv) {
                     "valid indices. It pads the rest with global MIN box.");
 
   //===--------------------------------------------------------------------===//
+  //                Region of Interest nodes
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("ROIAlign")
+      .addInput("FeatureMap")
+      .addInput("Boxes")
+      .addInput("BatchIndices")
+      .addMember(MemberType::String, "Mode")
+      .addMember(MemberType::Unsigned, "OutputHeight")
+      .addMember(MemberType::Unsigned, "OutputWidth")
+      .addMember(MemberType::Unsigned, "SamplingRatio")
+      .addMember(MemberType::Float, "SpatialScale")
+      .addMember(MemberType::Float, "Offset")
+      .addMember(MemberType::Boolean, "Normalized")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Given FeatureMap tensor of [N,H,W,C], Boxes tensor of [K,4],"
+          "and BatchIndices tensor of [K,], where N is the batch, C is the "
+          "channel,"
+          "H is the height, W is the width, K is the number of boxes,"
+          "Performs region of interest (ROI) align operator and generates"
+          "an Output tensor with shape [K, OutputHeight, OutputWidth, C]");
+
+  //===--------------------------------------------------------------------===//
   //                Backend-Specific Nodes
   //===--------------------------------------------------------------------===//
 
