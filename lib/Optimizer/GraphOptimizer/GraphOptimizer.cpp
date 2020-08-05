@@ -4886,6 +4886,10 @@ static void setFP16AccumSLS(Function *F,
 bool QuantizeSwish::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
 
+  if (!cctx.optimizationOpts.enableQuantParamChanges) {
+    return false;
+  }
+
   bool changed = false;
   for (auto &N : F->getNodes()) {
     auto *SN = dyn_cast<SwishNode>(&N);
