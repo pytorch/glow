@@ -4505,7 +4505,7 @@ PyTorchModelLoader::PyTorchModelLoader(
     }
 
     if (settings.writeToOnnx) {
-      RETURN_IF_ERR(dumpOnnxModel(F, /* zipMode */ false));
+      RETURN_IF_ERR(dumpOnnxModel(F, settings.onnxZipMode));
     }
 
     return Error::success();

@@ -139,6 +139,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("disable_write_to_onnx",
         []() { getPyTorchLoaderSettings().writeToOnnx = false; });
 
+  /// Enable zip mode when writing ONNX model to file
+  m.def("enable_onnx_zip_mode",
+        []() { getPyTorchLoaderSettings().onnxZipMode = true; });
+
+  /// Disable zip mode when writing ONNX model to file
+  m.def("disable_onnx_zip_mode",
+        []() { getPyTorchLoaderSettings().onnxZipMode = false; });
+
   /// Enable randomizing Constants in loaded Functions.
   m.def("enable_randomize_constants",
         []() { getPyTorchLoaderSettings().randomizeConstants = true; });
