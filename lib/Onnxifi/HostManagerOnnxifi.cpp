@@ -366,22 +366,22 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
              std::unique_ptr<ExecutionContext> ctx) mutable {
         TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::RUNTIME,
                           "Onnxifi::callback");
-        // If an Error occurred then log it in ERR_TO_BOOL and signal the output
-        // event.
-        if (ERR_TO_BOOL(std::move(err))) {
+
+        if (err) {
+          outputEvent->setMessage(ERR_TO_STRING(std::move(err)));
           outputEvent->signal(ONNXIFI_STATUS_INTERNAL_ERROR);
           return;
         }
 
-        // End the current trace event before we convert TraceEvents to the ONNX
-        // format.
+        // End the current trace event before we convert TraceEvents to the
+        // ONNX format.
         TRACE_EVENT_SCOPE_END();
 
         auto *traceContext = ctx->getTraceContext();
         if (traceContext) {
           // We want to log the async start event with the original caller's
-          // threadId. This way, chrome UI will put the async event next to the
-          // caller thread.
+          // threadId. This way, chrome UI will put the async event next to
+          // the caller thread.
           traceContext->logTraceEvent("glow e2e", TraceLevel::RUNTIME,
                                       TraceEvent::BeginType, startTime,
                                       attributes, threadId, runId);
