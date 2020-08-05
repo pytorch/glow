@@ -52,6 +52,7 @@ DEFINE_bool(randomizeConstants, false, "See PyTorchLoaderSettings");
 DEFINE_bool(runShapeInference, false, "See PyTorchLoaderSettings");
 DEFINE_int32(fusionStartIndex, -1, "See PyTorchLoaderSettings");
 DEFINE_int32(fusionEndIndex, -1, "See PyTorchLoaderSettings");
+DEFINE_bool(setIncludeLastOffsets, true, "See PyTorchLoaderSettings");
 
 namespace glow {
 
@@ -230,6 +231,9 @@ void PyTorchLoaderSettings::initSettings() {
   backendName = FLAGS_torch_glow_backend;
   numDevices = FLAGS_torch_glow_num_devices;
   runShapeInference = FLAGS_runShapeInference;
+  fusionStartIndex = FLAGS_fusionStartIndex;
+  fusionEndIndex = FLAGS_fusionEndIndex;
+  setIncludeLastOffsets = FLAGS_setIncludeLastOffsets;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
@@ -604,7 +608,7 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr) {
     // If the graph is already compiled previously, warmCache() will report
     // an error but it is fine with our execution. So here we extract the
     // error only.
-    ERR_TO_STRING(std::move(e));
+    LOG(ERROR) << ERR_TO_STRING(std::move(e));
   }
 }
 

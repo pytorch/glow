@@ -753,27 +753,43 @@ struct ToInputs {
 /// Indexes of aten::embedding_bag inputs.
 struct EmbeddingBagInputs {
   enum {
-    weight,
+    weight = 0,
     indices,
     offsets,
     scale_grad_by_freq,
     mode,
     sparse,
     per_sample_weights,
+    include_last_offset,
   };
 };
 
-/// Indexes used for quantized::embedding_bag_byte_rowwise_offsets and
-/// quantized::embedding_bag_4bit_rowwise_offsets inputs.
+/// Indexes used for quantized::embedding_bag_byte_rowwise_offsets inputs.
 struct EmbeddingBagByteRowwiseOffsetsInputs {
   enum {
-    weight,
+    weight = 0,
     indices,
     offsets,
     scale_grad_by_freq,
     mode,
     sparse,
     per_sample_weights,
+    include_last_offset,
+  };
+};
+
+/// Indexes used for quantized::embedding_bag_4bit_rowwise_offsets inputs.
+struct EmbeddingBag4BitRowwiseOffsetsInputs {
+  enum {
+    weight = 0,
+    indices,
+    offsets,
+    scale_grad_by_freq,
+    mode,
+    sparse,
+    per_sample_weights,
+    compressed_indices_mapping,
+    include_last_offset,
   };
 };
 
@@ -4142,8 +4158,15 @@ Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(sparse, iValToBool(getGlowIValueForValue(
                                          inputs[EmbeddingBagInputs::sparse])));
 
+  bool includeLastOffset;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      includeLastOffset, iValToBool(getGlowIValueForValue(
+                             inputs[EmbeddingBagInputs::include_last_offset])));
+  RETURN_ERR_IF_NOT(includeLastOffset,
+                    "Currently only support include_last_offset='True'");
+
   auto *EB = F_.createEmbeddingBag("EmbeddingBag", weight, perSampleWeights,
-                                   indices, offsets, true);
+                                   indices, offsets, includeLastOffset);
 
   return addValueMapping(outputs[0], EB->getResult());
 }
@@ -4190,6 +4213,17 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsetsHelper(
 
   RETURN_ERR_IF_NOT(sparse == false, "Currently only support sparse='false'");
 
+  bool includeLastOffset;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      includeLastOffset,
+      iValToBool(getGlowIValueForValue(
+          inputs[is4Bit
+                     ? EmbeddingBag4BitRowwiseOffsetsInputs::include_last_offset
+                     : EmbeddingBagByteRowwiseOffsetsInputs::
+                           include_last_offset])));
+  RETURN_ERR_IF_NOT(includeLastOffset,
+                    "Currently only support include_last_offset='True'");
+
   // If no indices are provided, replace the op with a zero Constant.
   if (indices.dims()[0] == 0) {
     // Assuming hasEndOffset = true, so the output.dims[0] should be
@@ -4229,7 +4263,7 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsetsHelper(
       (is4Bit ? "EmbeddingBag4BitRowwiseOffsets"
               : "EmbeddingBagByteRowwiseOffsets"),
       weightConstant->getOutput(), perSampleWeights, indices, offsets, false,
-      true /* hasEndOffset */);
+      includeLastOffset);
 
   return addValueMapping(outputs[0], EB->getResult());
 }
