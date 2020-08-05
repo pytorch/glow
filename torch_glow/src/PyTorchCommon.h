@@ -154,6 +154,11 @@ public:
   /// Run Fusion flow within to_glow compile function
   /// TODO: move to GlowCompileSpec
   bool enableDebugFuser = false;
+
+  /// Whether to enforce module conversion to set include_last_offset for all
+  /// embedding-bag-like operators. This is default to true since it is
+  /// currently a requirement if we want to support partial inputs
+  bool setIncludeLastOffsets = true;
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
