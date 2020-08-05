@@ -985,3 +985,37 @@ TEST_F(ConstFoldReloadTest, exportParallelizedGraphWithTwoConstFoldingRecords) {
 
   serializeAndReloadAndCompareResults(2, {FC});
 }
+
+TEST(exporter, VeryLongChain) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("F");
+
+  Placeholder *input =
+      mod.createPlaceholder(ElemKind::Float16Ty, {1, 6}, "input", false);
+
+  Node *cur = input;
+  SaveNode *save0;
+  for (dim_t iter = 0; iter < 3000; iter++) {
+    auto *mul = F->createMul("mul", cur, cur);
+    auto *clip = F->createClip("clip", mul, 0.0, 128.0);
+    if (iter == 0) {
+      save0 = F->createSave("save_out0", clip);
+    }
+    cur = (Node *)clip;
+  }
+  auto *save = F->createSave("save_out", cur);
+
+  Placeholder *output = save->getPlaceholder();
+
+  ASSERT_TRUE(F->verify());
+
+  PlaceholderBindings bindings;
+  bindings.allocate({input, output});
+
+  // Save and reload F.
+  Function *R;
+  Module reloadMod;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      R, saveAndReloadFunction(reloadMod, F, {"input"}, {input->getType()}));
+}

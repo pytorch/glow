@@ -20,6 +20,7 @@
 #include "glow/Support/ZipUtils.h"
 
 #include <float.h>
+#include <stack>
 
 #include "miniz.h"
 
@@ -502,54 +503,67 @@ class ReverseGraphWalker {
     // Start visiting all root nodes, i.e. nodes that do not have any users.
     for (auto &N : F.getNodes()) {
       if (N.getNumUsers() == 0) {
-        visitRecursively(&N);
+        visitIteratively(&N);
       }
     }
   }
 
-  void visitRecursively(const Node *N) {
-    // Check is node has been visited already.
-    if (visited_.count(N)) {
-      return;
-    }
+  void visitIteratively(const Node *rootNode) {
+    std::stack<const Node *> st;
+    st.push(rootNode);
+    while (st.size()) {
+      auto *N = st.top();
+      st.pop();
 
-    if (N->getKind() == Kinded::Kind::PlaceholderKind) {
-      // For Placeholder don't visit uses.
-      visited_.insert(N);
-      reverseOrder_.push_back(N);
-      return;
-    }
-
-    // First visit all users, if any.
-    for (const auto &use : N->getUsers()) {
-      const auto *UN = use.getUser();
-      // Check vacancy.
-      if (visited_.count(UN)) {
+      // Check is node has been visited already.
+      if (visited_.count(N)) {
         continue;
       }
 
-      visitRecursively(UN);
-
-      if (!visited_.count(UN)) {
-        visited_.insert(UN);
-        reverseOrder_.push_back(UN);
+      if (N->getKind() == Kinded::Kind::PlaceholderKind) {
+        // For Placeholder don't visit uses.
+        visited_.insert(N);
+        reverseOrder_.push_back(N);
+        continue;
       }
-    }
 
-    // Visit current node, if it's still vacant.
-    if (!visited_.count(N)) {
-      visited_.insert(N);
-      reverseOrder_.push_back(N);
-    }
+      // First visit all users, if any.
+      bool continueEarly = false;
+      for (const auto &use : N->getUsers()) {
+        const auto *UN = use.getUser();
+        // Check vacancy.
+        if (visited_.count(UN)) {
+          continue;
+        }
+        st.push(UN);
+        continueEarly = true;
+      }
+      if (continueEarly) {
+        continue;
+      }
 
-    // And then visit inputs of the current node.
-    for (unsigned b = 0, e = N->getNumInputs(); b < e; ++b) {
-      visitRecursively(N->getNthInput(b).getNode());
-    }
+      // Visit current node, if it's still vacant.
+      if (!visited_.count(N)) {
+        visited_.insert(N);
+        reverseOrder_.push_back(N);
+      }
 
-    // Additionally visit the predicate input if it exists.
-    if (N->hasPredicate()) {
-      visitRecursively(N->getPredicate().getNode());
+      // And then visit inputs of the current node.
+      for (unsigned b = 0, e = N->getNumInputs(); b < e; ++b) {
+        auto *UN = N->getNthInput(b).getNode();
+        if (visited_.count(UN)) {
+          continue;
+        }
+        st.push(UN);
+      }
+
+      // Additionally visit the predicate input if it exists.
+      if (N->hasPredicate()) {
+        auto *UN = N->getPredicate().getNode();
+        if (!visited_.count(UN)) {
+          st.push(UN);
+        }
+      }
     }
   }
 
