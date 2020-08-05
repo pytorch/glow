@@ -34,6 +34,7 @@
 #include <glog/logging.h>
 
 #include "folly/String.h"
+#include "folly/executors/CPUThreadPoolExecutor.h"
 
 #include <algorithm>
 #include <future>
@@ -57,6 +58,7 @@ namespace glow {
 namespace runtime {
 bool GlowEnableP2P = false;
 bool GlowEnableDRT = false;
+unsigned GlowDeviceInitTimeoutMs = 5000;
 std::string GlowAvailableDevices = "";
 } // namespace runtime
 } // namespace glow
@@ -88,6 +90,15 @@ llvm::cl::opt<bool, /* ExternalStorage */ true>
               llvm::cl::Optional,
               llvm::cl::location(glow::runtime::GlowEnableP2P),
               llvm::cl::cat(hostManagerCat));
+
+/// The value that should be used for device initialization timeout, default:
+/// 5000 milliseconds.
+llvm::cl::opt<unsigned, /* ExternalStorage */ true> deviceInitTimeout(
+    "glow_device_init_timeout_ms",
+    llvm::cl::desc("Set device init timout in milliseconds"),
+    llvm::cl::Optional,
+    llvm::cl::location(glow::runtime::GlowDeviceInitTimeoutMs),
+    llvm::cl::cat(hostManagerCat));
 
 /// Set which devices are available to add a network to.
 llvm::cl::opt<std::string, true> GlowAvailableDevicesOpt(
@@ -157,16 +168,30 @@ Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
   });
 
   DeviceIDTy deviceCount = 0;
-
   for (auto &config : configs) {
     if (!config->hasName()) {
-      config->name = "config" + std::to_string(deviceCount);
+      config->name = "device_" + std::to_string(deviceCount);
     }
 
     devices_[deviceCount] = std::unique_ptr<DeviceManager>(
         DeviceManager::createDeviceManager(*config));
 
-    RETURN_IF_ERR(devices_[deviceCount]->init());
+    std::promise<Error> devPromise;
+    auto devFuture = devPromise.get_future();
+    auto *dev = devices_[deviceCount].get();
+    threadPool_.submit([&devPromise, dev] {
+      auto err = dev->init();
+      devPromise.set_value(std::move(err));
+    });
+    if (devFuture.wait_for(std::chrono::milliseconds(
+            GlowDeviceInitTimeoutMs)) != std::future_status::timeout) {
+      RETURN_IF_ERR(devFuture.get());
+    } else {
+      // Device initialization is taking longer than expected, return an error.
+      return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
+                      "Timout encountered when initializing device: " +
+                          std::string(config->name));
+    }
     availableDevices_.push_back(deviceCount);
     deviceCount++;
   }

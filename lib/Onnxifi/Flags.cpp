@@ -81,6 +81,7 @@ extern unsigned GlowNNPITimeout;
 #endif
 extern bool GlowEnableDRT;
 extern bool GlowEnableP2P;
+extern unsigned GlowDeviceInitTimeoutMs;
 extern std::string GlowAvailableDevices;
 } // namespace runtime
 
@@ -526,6 +527,15 @@ DEFINE_validator(glow_enable_drt, [](const char * /*unused*/, bool value) {
   glow::runtime::GlowEnableDRT = value;
   return true;
 });
+
+DEFINE_int32(glow_device_init_timeout_ms, 5000,
+             "Timeout threshold for device initialization in milliseconds. "
+             "Default 5000");
+DEFINE_validator(glow_device_init_timeout_ms,
+                 [](const char * /*unused*/, int32_t value) {
+                   glow::runtime::GlowDeviceInitTimeoutMs = value;
+                   return true;
+                 });
 
 DEFINE_bool(glow_dump_partition, false,
             "Enable dumping the graph of each partition");
