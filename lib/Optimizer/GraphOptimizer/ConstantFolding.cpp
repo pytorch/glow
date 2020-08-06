@@ -312,6 +312,7 @@ bool constantFoldNodeImpl(
   // Copy over the splats to materialize from the original cctx.
   cctx.optimizationOpts.materializeSplatsUsedBySet =
       origCctx.optimizationOpts.materializeSplatsUsedBySet;
+  assert(!ERR_TO_BOOL(cctx.verify()) && "cctx for const folding must be valid");
   return evaluateConstantOperation(backend, cctx, N, constResults, record);
 }
 
@@ -381,7 +382,7 @@ static bool constantFoldFun(Function *F, const CompilationContext &cctx,
     // Compute the constant value of the node.
     std::vector<Constant *> constResults;
     if (!constantFoldNodeImpl(*backend, N, constResults, record, cctx)) {
-      return false;
+      continue;
     }
     // Replace all results of the original operation by the computed
     // compile-time results of this operation.
