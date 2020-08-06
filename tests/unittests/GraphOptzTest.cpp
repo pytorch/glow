@@ -4394,6 +4394,35 @@ TEST_F(GraphOptz, constantFoldWithRecordSingleChainMultiOutput) {
   checkNumericalEquivalence(0.f);
 }
 
+/// Test that the constant folding record Function includes all ops,
+/// i.e. they're not optimized away during optimizations when the constant
+/// folding function is optimized.
+TEST_F(GraphOptz, constantFoldOnlyLower) {
+  Constant *W = mod_.createConstant(ElemKind::FloatTy, {10, 100}, "weight");
+  ConvertToNode *convertW = F_->createConvertTo("conv", W, ElemKind::Float16Ty);
+  SaveNode *save = F_->createSave("save", convertW);
+  Placeholder *O = save->getPlaceholder();
+  bindings_.allocate(O);
+
+  ASSERT_TRUE(F_->verify());
+
+  W->getPayloadMutable().getHandle<float>().randomize(-10, 10, mod_.getPRNG());
+
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  ConstantFoldingRecordMap record = constantFoldAndRecord(optimizedF_, cctx_);
+
+  ASSERT_EQ(record.size(), 1);
+  SaveNode *SN = record.begin()->second;
+  Function *constFoldF = SN->getParent();
+
+  // Expect to find a Save and the ConvertTo still, i.e. it shouldn't have been
+  // folded into the Constant as part of the OptimizeConversions pass.
+  EXPECT_EQ(2, constFoldF->getNodes().size());
+  EXPECT_EQ(1, countNodeKind(constFoldF, Kinded::Kind::ConvertToNodeKind));
+  EXPECT_EQ(1, countNodeKind(constFoldF, Kinded::Kind::SaveNodeKind));
+}
+
 TEST_F(GraphOptz, constantFoldWholeFunction) {
   auto *const1 = mod_.createConstant(ElemKind::FloatTy, {2, 2}, "const1");
   auto *const2 = mod_.createConstant(ElemKind::FloatTy, {2, 2}, "const2");
