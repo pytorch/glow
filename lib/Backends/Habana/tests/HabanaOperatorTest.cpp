@@ -119,6 +119,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "ConvertFrom_Int64ITy_To_Int32ITy_AndBack/0",
     "ConvertFrom_BoolTy_To_FloatTy/0",
     "ConvertFrom_BoolTy_To_Float16Ty/0",
+    "ConvertFusedToFusedFP16/0",
     "convTest/0",
     "convTest_Float16/0",
     "CumSum_Float/0",
