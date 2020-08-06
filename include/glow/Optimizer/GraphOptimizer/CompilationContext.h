@@ -109,6 +109,11 @@ struct OptimizationOptions {
   /// If true, perform compile-time computation of constant operations.
   bool enableConstantFolding{true};
 
+  /// For all Splats in the Function being optimized, if they are used by any
+  /// Nodes listed in this set, then they will be materialized into Constants
+  /// during Constant Folding.
+  KindSet materializeSplatsUsedBySet;
+
   /// If true, before any Function optimization, all the Constants will be
   /// temporarily replaced by Placeholders, preventing the Constants from being
   /// modified during the normal optimization pipeline. The original Constants
