@@ -1327,6 +1327,15 @@ Expected<bool> NNPIBackend::transformPostLowering(
     const glow::runtime::DeviceInfo *devInfo) const {
   LOG_SCOPE(F->getLogContext(), "NNPIBackend::transformPostLowering");
 
+  // Signal to ConstantFolding to materialize those Splats which we require to
+  // be Constants when importing later on.
+  auto &kindSet = cctx.optimizationOpts.materializeSplatsUsedBySet;
+  kindSet.insert(Kinded::Kind::ConvolutionNodeKind);
+  kindSet.insert(Kinded::Kind::Convolution3DNodeKind);
+  kindSet.insert(Kinded::Kind::FullyConnectedNodeKind);
+  kindSet.insert(Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind);
+  kindSet.insert(Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind);
+
   if (glow::onnxifi::GlowDisableNNPITransforms) {
     return false;
   }
