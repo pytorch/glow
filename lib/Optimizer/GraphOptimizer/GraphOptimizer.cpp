@@ -93,10 +93,13 @@ void ConstantModificationPreventer::activate() {
   dismissed_ = false;
   // Prevent Constant modification by temporarily replacing them with PHs.
   for (Constant *C : mod_.getConstants()) {
+    // Note: These temp Placeholders are more like static Placeholders, but we
+    // don't want to set them as static here because optimizations may kick in
+    // to modify the type of the static Placeholder (see
+    // cctx.optimizationOpts.foldStaticPlaceholderConversions).
     Placeholder *tmpPH = mod_.createPlaceholder(
         C->getType(), C->getName().str() + "_SWAP_CONST_FOLD",
         /* isTrainable */ false, C->getLayout());
-    tmpPH->setStatic(true);
     tmpPHToConstMap_[tmpPH] = C;
     C->getOutput().replaceAllUsesOfWith(tmpPH->getOutput());
   }

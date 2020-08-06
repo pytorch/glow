@@ -26,6 +26,7 @@
 
 #include "google/protobuf/io/coded_stream.h"
 #include "google/protobuf/io/zero_copy_stream_impl.h"
+#include "google/protobuf/text_format.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -544,7 +545,7 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
       std::istringstream inStream(in.raw_data(), std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(float));
     } else {
-      RETURN_ERR("Unsupported Tensor format.",
+      RETURN_ERR("Unsupported Tensor format for FLOAT, name: " + in.name(),
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::FLOAT16) {
@@ -553,7 +554,7 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
       std::istringstream inStream(in.raw_data(), std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * (sizeof(float) / 2));
     } else {
-      RETURN_ERR("Unsupported Tensor format.",
+      RETURN_ERR("Unsupported Tensor format for FLOAT16, name: " + in.name(),
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::BFLOAT16) {
@@ -562,7 +563,7 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
       std::istringstream inStream(in.raw_data(), std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * (sizeof(float) / 2));
     } else {
-      RETURN_ERR("Unsupported Tensor format.",
+      RETURN_ERR("Unsupported Tensor format for BFLOAT16, name: " + in.name(),
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT64) {
@@ -578,7 +579,7 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
       std::istringstream inStream(in.raw_data(), std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(int64_t));
     } else {
-      RETURN_ERR("Unsupported Tensor format.",
+      RETURN_ERR("Unsupported Tensor format for INT64, name: " + in.name(),
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT8) {
@@ -591,7 +592,7 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
       std::istringstream inStream(in.raw_data(), std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(int8_t));
     } else {
-      RETURN_ERR("Unsupported Tensor format.",
+      RETURN_ERR("Unsupported Tensor format for INT8, name: " + in.name(),
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT16) {
@@ -604,7 +605,7 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
       std::istringstream inStream(in.raw_data(), std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(int16_t));
     } else {
-      RETURN_ERR("Unsupported Tensor format.",
+      RETURN_ERR("Unsupported Tensor format for INT16, name: " + in.name(),
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::INT32) {
@@ -629,7 +630,7 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
       std::istringstream inStream(in.raw_data(), std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(int32_t));
     } else {
-      RETURN_ERR("Unsupported Tensor format.",
+      RETURN_ERR("Unsupported Tensor format for INT32, name: " + in.name(),
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::UINT8) {
@@ -642,7 +643,7 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
       std::istringstream inStream(in.raw_data(), std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(uint8_t));
     } else {
-      RETURN_ERR("Unsupported Tensor format.",
+      RETURN_ERR("Unsupported Tensor format for UINT8, name: " + in.name(),
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::BOOL) {
@@ -651,7 +652,7 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
       std::istringstream inStream(in.raw_data(), std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(bool));
     } else {
-      RETURN_ERR("Unsupported Tensor format.",
+      RETURN_ERR("Unsupported Tensor format for BOOL, name: " + in.name(),
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
     }
   } else {
@@ -749,7 +750,8 @@ static Error verifyPreexistingStorage(const Storage *S, const std::string &name,
                                       const bool trainable = false) {
   RETURN_ERR_IF_NOT(S, "Storage did not exist in Module: " + name);
   RETURN_ERR_IF_NOT(S->getType()->isEqual(ty),
-                    "Incorrect type for existing Storage " + name);
+                    "Incorrect type for existing  " + S->getDebugDesc() + " " +
+                        "Expected type " + ty.toString());
   if (const Placeholder *PH = llvm::dyn_cast<Placeholder>(S)) {
     RETURN_ERR_IF_NOT(trainable == PH->isTraining(),
                       "Incorrect trainability for existing Storage " + name);
@@ -774,20 +776,28 @@ Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
                                getTrainableLayoutPairFromDocString(
                                    in.doc_string(), useGlowCustomOps_));
 
-    // If we already have the existing module then just get the input PH that
-    // already exists.
+    // If we already have the existing module then we may already have the input
+    // Placeholder. If so, verify it has the correct type.
     if (loadIntoExistingModule_) {
       RETURN_ERR_IF_NOT(
           loadInputsAsPlaceholdersForOnnx,
           "Must load inputs as Placeholders when using existing Module.");
-      Placeholder *PH = mod_.getPlaceholderByNameSlow(in.name());
-      RETURN_IF_ERR(verifyPreexistingStorage(PH, in.name(), ty,
-                                             trainableLayoutPair.second,
-                                             trainableLayoutPair.first));
-      nodeValueByName_[in.name()] = PH->getOutput();
-      continue;
+      if (Placeholder *PH = mod_.getPlaceholderByNameSlow(in.name())) {
+        // Set Fused types of Placeholders if they were expected to be
+        // fused. Necessary because Caffe2/ONNX protos do not have fused types
+        // explicitly, so will be loaded initially as int8.
+        if (ty.isFusedQuantizedType()) {
+          RETURN_IF_ERR(setFusedTy(PH, mod_.uniqueType(ty)));
+        }
+        RETURN_IF_ERR(verifyPreexistingStorage(PH, in.name(), ty,
+                                               trainableLayoutPair.second,
+                                               trainableLayoutPair.first));
+        nodeValueByName_[in.name()] = PH->getOutput();
+        continue;
+      }
     }
 
+    // We must not have the input created yet, so do so.
     if (loadInputsAsPlaceholdersForOnnx) {
       Placeholder *placeholder;
       ASSIGN_VALUE_OR_RETURN_ERR(
@@ -881,6 +891,7 @@ ONNXModelLoader::loadProto(google::protobuf::io::ZeroCopyInputStream &iStream) {
   bool parseNet = MP.ParseFromCodedStream(&codedStream);
   RETURN_ERR_IF_NOT(parseNet, "Failed to parse ModelProto",
                     ErrorValue::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
+
   return MP;
 }
 
@@ -4198,12 +4209,14 @@ ONNXModelLoader::runDeserializedConstFold(llvm::StringRef initializerName,
                               NV.getResNo(), constResults.size()));
   Constant *foldedC = constResults[NV.getResNo()];
 
-  // Now we have the final Constant we want and it exists in the module. Set
-  // its name to the actual initializer it came with.
-  RETURN_ERR_IF_NOT(
-      mod_.getConstantByName(initializerName) == nullptr,
-      strFormat("Already had a Constant by name %s", initializerName.data()));
-  foldedC->setName(initializerName);
+  // Now we have the final Constant we want and it exists in the module. Set its
+  // name to the actual initializer it came with if not already named that.
+  if (foldedC->getName() != initializerName) {
+    RETURN_ERR_IF_NOT(
+        mod_.getConstantByName(initializerName) == nullptr,
+        strFormat("Already had a Constant by name %s", initializerName.data()));
+    foldedC->setName(initializerName);
+  }
   RETURN_ERR_IF_NOT(
       nodeValueByName_.count(initializerName) == 0,
       strFormat("Should not have been a Constant by name %s registered yet",
@@ -4315,6 +4328,16 @@ Error ONNXModelLoader::loadInitializers(ONNX_NAMESPACE::GraphProto &net) {
       Constant *C = foldedC ? foldedC : mod_.getConstantByName(in.name());
       Type ty;
       ASSIGN_VALUE_OR_RETURN_ERR(ty, getTensorType(in));
+
+      // If the expected type is fused, and we are processing an initializer
+      // with payload that already exists in the Module, then set the type to
+      // fused here. This is because Caffe2 and ONNX (non-Glow-custom) protos do
+      // not support fused ElemKinds, so we should explicitly set them as we do
+      // during Caffe2ModelLoading.
+      if (!foldedC && loadIntoExistingModule_ && ty.isFusedQuantizedType()) {
+        RETURN_IF_ERR(setFusedTy(C, mod_.uniqueType(ty)));
+      }
+
       RETURN_IF_ERR(verifyPreexistingStorage(C, in.name(), ty, layout));
       nodeValueByName_[in.name()] = C->getOutput();
       continue;
@@ -4355,16 +4378,19 @@ Error ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
         trainableLayoutPair,
         getTrainableLayoutPairFromDocString(docString, useGlowCustomOps_));
 
-    Placeholder *savePH = nullptr;
-    if (loadIntoExistingModule_) {
-      savePH = mod_.getPlaceholderByNameSlow(outputName);
-      RETURN_IF_ERR(verifyPreexistingStorage(savePH, outputName, *r.getType(),
-                                             trainableLayoutPair.second,
-                                             trainableLayoutPair.first));
-    } else {
+    // If loadIntoExistingModule_ then it's reasonable for there to be a savePH
+    // already. If not then there shouldn't be one.
+    Placeholder *savePH = mod_.getPlaceholderByNameSlow(outputName);
+    if (!savePH) {
       savePH = mod_.createPlaceholder(r.getType(), outputName,
                                       trainableLayoutPair.first,
                                       trainableLayoutPair.second);
+    } else {
+      RETURN_ERR_IF_NOT(loadIntoExistingModule_,
+                        "Found pre-existing PH by name " + outputName);
+      RETURN_IF_ERR(verifyPreexistingStorage(savePH, outputName, *r.getType(),
+                                             trainableLayoutPair.second,
+                                             trainableLayoutPair.first));
     }
     SaveNode *SN =
         G_->createSave(saveNodeName, r, savePH, hasSpecifiedSaveName);
@@ -4592,10 +4618,8 @@ Error ONNXModelLoader::setupPartitions(ONNX_NAMESPACE::ModelProto &modelDef,
 
     // Load the partition name and create a Function with the same name.
     Function *PF = nullptr;
-    if (loadIntoExistingModule_) {
+    if (loadIntoExistingModule_ && mod_.hasFunction(pName)) {
       PF = mod_.getFunction(pName);
-      RETURN_ERR_IF_NOT(PF,
-                        strFormat("Didn't find existing Function %s", pName));
       RETURN_ERR_IF_NOT(PF->getNodes().size() == 0,
                         "Function must be empty to load into.");
     } else {
@@ -4710,8 +4734,10 @@ ONNXModelLoader::ONNXModelLoader(
 ONNXModelLoader::ONNXModelLoader(
     const void *model, uint32_t modelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
-    bool loadInputsAsPlaceholdersForOnnx, Error *errPtr, bool constFoldInLoader)
-    : CommonOperatorLoader({}, {}, &F, errPtr) {
+    bool loadInputsAsPlaceholdersForOnnx, Error *errPtr, bool constFoldInLoader,
+    BackendSpecificNodeInfo *perNodeOpts)
+    : CommonOperatorLoader({}, {}, &F, errPtr, true),
+      perNodeOpts_(perNodeOpts) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
@@ -4730,6 +4756,60 @@ ONNXModelLoader::ONNXModelLoader(
 
     RETURN_IF_ERR(loadModel(modelDef, {}, {}, /* B */ nullptr,
                             loadInputsAsPlaceholdersForOnnx));
+
+    return Error::success();
+  };
+
+  if (errPtr) {
+    *errPtr = setup();
+  } else {
+    EXIT_ON_ERR(setup());
+  }
+}
+
+ONNXModelLoader::ONNXModelLoader(
+    const void *model, uint32_t modelSize, uint32_t weightsCount,
+    const onnxTensorDescriptorV1 *weightDescriptors, Module &mod,
+    llvm::StringRef funName, PrePartitionedConfig *PPC,
+    bool loadInputsAsPlaceholdersForOnnx, Error *errPtr, bool constFoldInLoader,
+    BackendSpecificNodeInfo *perNodeOpts)
+    : CommonOperatorLoader({}, {}, mod, errPtr, true),
+      perNodeOpts_(perNodeOpts) {
+  // if errPtr already contains an error then don't continue with constructor
+  if (errPtr && *errPtr) {
+    return;
+  }
+
+  // Always override the default for folding in this constructor.
+  constFoldInLoader_ = constFoldInLoader;
+
+  // Lambda to setup the ONNXModelLoader and return any Errors that were
+  // raised.
+  auto setup = [&]() -> Error {
+    ONNX_NAMESPACE::ModelProto modelDef;
+    ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(model, modelSize));
+
+    RETURN_IF_ERR(loadWeights(weightsCount, weightDescriptors));
+
+    auto numPartitionsOrErr = getIntMetadataProp(modelDef, "numPartitions");
+    if (!numPartitionsOrErr) {
+      ERR_TO_VOID(numPartitionsOrErr.takeError(), /*log*/ false);
+      G_ = mod_.createFunction(funName);
+    } else {
+      RETURN_ERR_IF_NOT(PPC, "No PrePartitionConfig to load partitions into");
+      RETURN_IF_ERR(
+          setupPartitions(modelDef, *PPC, funName, *numPartitionsOrErr));
+    }
+
+    RETURN_IF_ERR(loadModel(modelDef, {}, {}, /* B */ nullptr,
+                            loadInputsAsPlaceholdersForOnnx));
+
+    for (const auto &input : modelDef.graph().input()) {
+      positionalInputNames_.emplace_back(input.name());
+    }
+    for (const auto &output : modelDef.graph().output()) {
+      positionalOutputNames_.emplace_back(output.name());
+    }
 
     return Error::success();
   };

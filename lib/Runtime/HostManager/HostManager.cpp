@@ -464,7 +464,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   // partitioned.
   if (cctx.serializeCompiledDAG) {
     std::string loc = nodeList.begin()->root->name + ".onnx";
-    LOG(INFO) << "Serializing DAG to " << loc;
+    LOG(INFO) << "Serializing final compiled DAG to " << loc;
     {
       Error writeErr = Error::empty();
       ONNXModelWriter onnxWR(loc, nodeList, 7, 9, &writeErr,
@@ -534,12 +534,14 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
     for (auto &node : nodeList) {
+      LOG(INFO) << "Successfully compiled and provisioned " << node.root->name;
       auto &networkData = networks_[(node.root)->name];
       networkData.dag = std::move(node);
       networkData.module = sharedModule;
     }
     cleanupAddNetwork(names);
   }
+
   return Error::success();
 }
 
