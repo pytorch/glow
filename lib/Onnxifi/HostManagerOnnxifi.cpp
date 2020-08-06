@@ -313,7 +313,9 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
     return ONNXIFI_STATUS_INVALID_MODEL;
   }
 
-  bindPlaceholders(*loader);
+  if (!bindPlaceholders(*loader, &cctx.loadedPHNames)) {
+    return ONNXIFI_STATUS_INVALID_MODEL;
+  }
   setZeroLengthSequence(maxSeqLength);
   // Make sure the pool is ready to go.
   for (auto &obj : onnxInputToPlaceholder_) {

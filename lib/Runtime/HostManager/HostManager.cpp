@@ -463,15 +463,16 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   // If requested, serialize the resulting DAG that was just optimized and
   // partitioned.
   if (cctx.serializeCompiledDAG) {
-    std::string loc = nodeList.begin()->root->name + ".onnx";
+    std::string loc = nodeList.begin()->root->name + ".onnxtxt";
     LOG(INFO) << "Serializing final compiled DAG to " << loc;
     {
       Error writeErr = Error::empty();
       ONNXModelWriter onnxWR(loc, nodeList, 7, 9, &writeErr,
-                             /* textMode */ false, /* zipMode */ false,
+                             /* textMode */ true, /* zipMode */ false,
                              /* includeConstantData */ false,
                              /* extraMetadataProps */ {}, record,
-                             cctx.backendOpts.backendSpecificNodeInfo);
+                             cctx.backendOpts.backendSpecificNodeInfo,
+                             &cctx.loadedPHNames);
       RETURN_IF_ERR(writeErr);
     }
   }
