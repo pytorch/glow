@@ -69,7 +69,8 @@ static bool shouldDeleteNode(Node *N) {
   return true;
 }
 
-ConstantModificationPreventer::ConstantModificationPreventer(Module &mod)
+ConstantModificationPreventer::ConstantModificationPreventer(
+    Module &mod, CompilationContext &cctx)
     : ScopeGuard([&]() {
         // Ensure we cleanup Placeholder-Constant swap if necessary.
         auto &PHs = mod_.getPlaceholders();
@@ -79,8 +80,11 @@ ConstantModificationPreventer::ConstantModificationPreventer(Module &mod)
           tmpPH->getOutput().replaceAllUsesOfWith(C->getOutput());
           mod_.erasePlaceholder(std::find(PHs.begin(), PHs.end(), tmpPH));
         }
+        cctx_.optimizationOpts.enableConstantFolding =
+            origEnableConstantFolding_;
       }),
-      mod_(mod) {
+      mod_(mod), cctx_(cctx),
+      origEnableConstantFolding_(cctx.optimizationOpts.enableConstantFolding) {
   // By default dismiss until explicitly activated.
   dismissed_ = true;
 }
@@ -96,6 +100,8 @@ void ConstantModificationPreventer::activate() {
     tmpPHToConstMap_[tmpPH] = C;
     C->getOutput().replaceAllUsesOfWith(tmpPH->getOutput());
   }
+  // Disable constant folding temporarily; restored later by the scope guard.
+  cctx_.optimizationOpts.enableConstantFolding = false;
 }
 
 /// Helper that \returns whether all sibling Functions of \p F (other Functions
