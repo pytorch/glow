@@ -81,17 +81,28 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os,
   size_t numDims = shape.size();
   auto &Ty = handle.getType();
 
+  constexpr unsigned numDigsFP = 5;
+  const unsigned numDigs = std::is_integral<ElemTy>::value ? 0 : numDigsFP;
+
   // Check for 0-dimensional tensor.
   if (!numDims) {
     os << "[ Scalar containing: ";
-    llvm::write_double(os, handle.raw(0), llvm::FloatStyle::Fixed, 3);
+    llvm::write_double(os, handle.raw(0), llvm::FloatStyle::Fixed, numDigs);
     os << " ]\n";
     return;
   }
 
+  const size_t numRealElems = handle.getRealNumElements();
+
   // Output shape.
   dumpShape(shape, os);
+  if (numRealElems < handle.size()) {
+    os << " ; partial num elements: " << numRealElems;
+  }
   os << "\n";
+
+  // Output ElemKind.
+  os << "elemkind: " << Ty.getElementName() << "\n";
 
   // Check for tensor of size 0.
   if (handle.getUnpaddedSizeInBytes() == 0) {
@@ -101,11 +112,14 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os,
 
   ElemTy mx = handle.raw(0);
   ElemTy mn = handle.raw(0);
+  double avg = 0.0f;
 
   for (auto elem : handle) {
     mx = std::max(mx, elem);
     mn = std::min(mn, elem);
+    avg += (double)elem;
   }
+  avg /= numRealElems;
 
   // Check for zero tensor.
   if (mn == ElemTy(.0) && mx == ElemTy(.0)) {
@@ -115,14 +129,16 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os,
 
   // Output max and min.
   os << "max: ";
-  llvm::write_double(os, mx, llvm::FloatStyle::Fixed, 3);
+  llvm::write_double(os, mx, llvm::FloatStyle::Fixed, numDigs);
   os << "  min: ";
-  llvm::write_double(os, mn, llvm::FloatStyle::Fixed, 3);
+  llvm::write_double(os, mn, llvm::FloatStyle::Fixed, numDigs);
+  os << "  avg: ";
+  llvm::write_double(os, avg, llvm::FloatStyle::Fixed, numDigsFP);
   os << "\n";
 
   os << "[";
 
-  for (size_t i = 0, e = std::min<size_t>(maxNumElem, handle.size()); i < e;
+  for (size_t i = 0, e = std::min<size_t>(maxNumElem, numRealElems); i < e;
        i++) {
 
     // Print one open brace at the beginning of every row, slice, and tensor.
@@ -134,7 +150,7 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os,
     }
 
     // Print the value at the current index.
-    llvm::write_double(os, handle.raw(i), llvm::FloatStyle::Fixed, 3);
+    llvm::write_double(os, handle.raw(i), llvm::FloatStyle::Fixed, numDigs);
 
     // Print one closed brace at the end of every row, slice, or tensor.
     for (size_t j = 0, e = numDims - 1; numDims > 1 && j < e; j++) {
@@ -156,7 +172,7 @@ static void dumpGenericImpl(Handle<ElemTy> handle, llvm::raw_ostream &os,
     }
   }
 
-  if (handle.size() > maxNumElem) {
+  if (numRealElems > maxNumElem) {
     os << "...";
   }
 
