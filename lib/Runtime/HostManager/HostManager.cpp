@@ -20,6 +20,7 @@
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Partitioner/Partitioner.h"
+#include "glow/Runtime/DeferredWeightLoader.h"
 #include "glow/Runtime/DeviceHealthMonitor.h"
 #include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
@@ -466,13 +467,17 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     std::string loc = nodeList.begin()->root->name + ".onnxtxt";
     LOG(INFO) << "Serializing final compiled DAG to " << loc;
     {
+      // Pass in any types we loaded originally from static PHs.
+      const std::map<std::string, Type> *staticPHTypesPtr =
+          cctx.deferredWeightLoader ? &cctx.deferredWeightLoader->getTypeInfo()
+                                    : nullptr;
       Error writeErr = Error::empty();
       ONNXModelWriter onnxWR(loc, nodeList, 7, 9, &writeErr,
                              /* textMode */ true, /* zipMode */ false,
                              /* includeConstantData */ false,
                              /* extraMetadataProps */ {}, record,
                              cctx.backendOpts.backendSpecificNodeInfo,
-                             &cctx.loadedPHNames);
+                             &cctx.loadedPHNames, staticPHTypesPtr);
       RETURN_IF_ERR(writeErr);
     }
   }

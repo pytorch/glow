@@ -69,11 +69,15 @@ public:
   /// \p PPC is ignored, and \p netName is used as the name of the single
   /// Function that is created inside \p mod. \p BSNI is filled with any info
   /// loaded from the proto, relevant for custom ONNX Glow models only.
+  /// \p staticPlaceholderTypes will be filled with types to use for static
+  /// Placeholders if the proto being parsed is a custom ONNX Glow model and
+  /// contains such information; otherwise it's left unchanged.
   static Expected<std::unique_ptr<ONNXIFIModelLoader>>
   parse(const void *onnxModel, uint32_t onnxModelSize, uint32_t weightsCount,
         const onnxTensorDescriptorV1 *weightDescriptors, Module &mod,
         llvm::StringRef netName, runtime::PrePartitionedConfig *PPC,
         BackendSpecificNodeInfo *BSNI,
+        std::map<std::string, Type> *staticPlaceholderTypes,
         bool loadInputsAsPlaceholdersForOnnx = true, bool use_onnx = true,
         bool constFoldInLoader = true);
 };

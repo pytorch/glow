@@ -456,6 +456,12 @@ protected:
   /// static placeholders if it's marked in the ValueInfoProto.
   Error collectStaticInputs(ONNX_NAMESPACE::GraphProto &net);
 
+  /// Looks through all ops in \p net for any dummy static PH nodes carrying the
+  /// type that was used for loading deferred weights initially. If found then
+  /// they're added to \ref staticPlaceholderTypes_. If \ref
+  /// staticPlaceholderTypes_ is a nullptr then this method is a no-op.
+  Error setupOrigStaticTypeMap(ONNX_NAMESPACE::GraphProto &net);
+
   /// Creates a ONNX model loader to build \p F.
   /// Loads the ONNIXFI \p model from memory of \p modelSize size,
   /// and \p weightsCount, and \p onnxTensorDescriptorV1 correspondent
@@ -481,12 +487,17 @@ protected:
   /// used to setup the DAG root node's name, or if the input model is not
   /// partitioned then is used as the name of the single Function loaded. Loads
   /// backend-specific node info annotations into \p perNodeOpts.
-  ONNXModelLoader(const void *model, uint32_t modelSize, uint32_t weightsCount,
-                  const onnxTensorDescriptorV1 *weightDescriptors, Module &mod,
-                  llvm::StringRef funName, runtime::PrePartitionedConfig *PPC,
-                  bool loadInputsAsPlaceholdersForOnnx, Error *errPtr = nullptr,
-                  bool constFoldInLoader = true,
-                  BackendSpecificNodeInfo *perNodeOpts = nullptr);
+  /// \p staticPlaceholderTypes will be filled with types to use for static
+  /// Placeholders if the proto being parsed contains such information;
+  /// otherwise it's left unchanged.
+  ONNXModelLoader(
+      const void *model, uint32_t modelSize, uint32_t weightsCount,
+      const onnxTensorDescriptorV1 *weightDescriptors, Module &mod,
+      llvm::StringRef funName, runtime::PrePartitionedConfig *PPC,
+      bool loadInputsAsPlaceholdersForOnnx, Error *errPtr = nullptr,
+      bool constFoldInLoader = true,
+      BackendSpecificNodeInfo *perNodeOpts = nullptr,
+      std::map<std::string, Type> *staticPlaceholderTypes = nullptr);
 
   friend class ONNXIFIModelLoader;
 
@@ -590,6 +601,8 @@ public:
 private:
   /// Per-node options that may be specified in a proto.
   BackendSpecificNodeInfo *perNodeOpts_{nullptr};
+  /// Map from static PH names to the type it was originally loaded with.
+  std::map<std::string, Type> *staticPlaceholderTypes_;
 };
 
 } // namespace glow

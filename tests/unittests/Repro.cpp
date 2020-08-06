@@ -442,7 +442,6 @@ public:
 private:
   std::unique_ptr<::glow::ZipReader> zip_;
   std::string largeBuffer_;
-  std::map<std::string, ::glow::Type> typeInfo_;
   std::string currentBlobName_;
   std::unique_ptr<::glow::Tensor> currentTensor_;
   size_t weightsToLoad_{0};

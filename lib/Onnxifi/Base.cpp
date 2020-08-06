@@ -92,8 +92,9 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
       onnxModel, onnxModelSize, 0 /*weightCount*/,
       nullptr /*weightDescriptors*/, module, compatibilityFunctionName,
       /* PPC */ nullptr, /* BSNI */ nullptr,
-      false /*loadInputsAsPlaceholdersForOnnx*/, getUseOnnx(),
-      /*constFoldInLoader*/ false);
+      /* staticPlaceholderTypes */ nullptr,
+      /* loadInputsAsPlaceholdersForOnnx */ false, getUseOnnx(),
+      /* constFoldInLoader */ false);
   if (loaderOrErr) {
     loader = std::move(*loaderOrErr);
   } else {
