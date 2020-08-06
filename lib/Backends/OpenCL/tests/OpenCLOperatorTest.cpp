@@ -539,6 +539,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "ConvertFrom_Float16Ty_To_BFloat16Ty_AndBack/0",
     "concatVectorsRepeated_BFloat16/0",
     "ConvertFrom_BFloat16Ty_To_Float16Ty/0",
+    "ConvertFusedToFusedFP16/0",
     "sliceVectors_BFloat16/0",
     "BFloat16Splat/0",
     "GatherDataBFloat16IdxInt32/0",
