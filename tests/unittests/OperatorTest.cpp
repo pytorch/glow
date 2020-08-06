@@ -15212,6 +15212,38 @@ TEST_CAST_2WAYS(int64_t, int64_t, Int64ITy, Int64ITy, /* castIsNoOp */ true)
 
 #undef TEST_CAST_2WAYS
 
+TEST_P(OperatorTest, ConvertFusedToFusedFP16) {
+  CHECK_IF_ENABLED();
+
+  // First create float data.
+  Tensor fData(ElemKind::FloatTy, {20, 30});
+  fData.getHandle().randomize(-10.0f, 10.0f, mod_.getPRNG());
+
+  // Convert the float data to RWQ, with float scale/offset.
+  Tensor rwqData(ElemKind::UInt8FusedQTy, {20, 30 + 2 * (dim_t)sizeof(float)},
+                 1.0, 0);
+  quantization::tensorFusedRowwiseQuantization<float>(fData, rwqData);
+
+  // Create graph where we convert to using float16_t scale/offset.
+  Placeholder *rwqDataPH =
+      mod_.createPlaceholder(mod_.uniqueType(rwqData.getType()), "lhs", false);
+  auto OT = mod_.uniqueType(ElemKind::UInt8FusedFP16QTy,
+                            {20, 30 + 2 * (dim_t)sizeof(float16_t)}, 1.0, 0);
+  auto *convert = F_->createConvertTo("convert", rwqDataPH, OT);
+  auto *save = F_->createSave("save", convert);
+  auto *resultT = bindings_.allocate(save->getPlaceholder());
+  bindings_.insert(rwqDataPH, std::move(rwqData));
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  // Dequantize the resulting RWQ w/ float16_t scale/offset, and compare to the
+  // original float data we started with.
+  Tensor dequantResult =
+      quantization::dequantizeTensor(*resultT, ElemKind::FloatTy);
+  EXPECT_TRUE(dequantResult.isEqual(fData, 0.05));
+}
+
 template <typename DataType>
 glow::Handle<DataType>
 mulHelper(glow::PlaceholderBindings &bindings, glow::Module &mod,
