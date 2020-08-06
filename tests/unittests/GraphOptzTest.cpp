@@ -1801,7 +1801,7 @@ TEST_F(GraphOptz, SliceOfSplatNode) {
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
 
   auto *CN = llvm::dyn_cast<SplatNode>(llvm::dyn_cast<SaveNode>(O)->getInput());
-  EXPECT_TRUE(CN);
+  ASSERT_TRUE(CN);
 
   EXPECT_TRUE(CN->getResult().getType()->dims().equals({94, 73, 35}));
 }
@@ -4059,7 +4059,7 @@ TEST_F(GraphOptz, constantFoldSingleNode) {
   std::vector<Constant *> constResults =
       constantFold(SN1->getInput().getNode());
 
-  EXPECT_EQ(constResults.size(), 1);
+  ASSERT_EQ(constResults.size(), 1);
   SN1->getInput().replaceAllUsesOfWith(constResults[0]);
   // Second save should be unaffected.
   EXPECT_FALSE(llvm::isa<Constant>(SN2->getInput()));
@@ -4072,6 +4072,51 @@ TEST_F(GraphOptz, constantFoldSingleNode) {
   EXPECT_EQ(CH.at({0, 1}), 18.0f);
   EXPECT_EQ(CH.at({1, 0}), 18.0f);
   EXPECT_EQ(CH.at({1, 1}), 18.0f);
+}
+
+/// Verify that we can specify what splats should be materialized to constants
+/// based on their users via optimizationOpts.materializeSplatsUsedBySet.
+TEST_F(GraphOptz, constantFoldSpecificSplat) {
+  Placeholder *PH = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1}, "input",
+                                           /* isTrainable */ false);
+  SplatNode *splat1 = F_->createSplat(
+      "splat1", mod_.uniqueType(ElemKind::FloatTy, {1, 1}), 1.0f);
+  AddNode *add = F_->createAdd("add", PH, splat1);
+  SplatNode *splat2 = F_->createSplat(
+      "splat2", mod_.uniqueType(ElemKind::FloatTy, {1, 1}), 2.0f);
+  MulNode *mul = F_->createMul("mul", add, splat2);
+  SaveNode *save = F_->createSave("save", mul);
+
+  // Signal to materialize the splat used by Add, but not by Mul.
+  cctx_.optimizationOpts.materializeSplatsUsedBySet.insert(
+      Kinded::Kind::AddNodeKind);
+
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  ConstantFoldingRecordMap record = constantFoldAndRecord(optimizedF_, cctx_);
+  runDCEPass(optimizedF_, cctx_);
+
+  ASSERT_EQ(record.size(), 1);
+  SaveNode *SN = record.begin()->second;
+  SplatNode *foldSplat1 = llvm::dyn_cast<SplatNode>(SN->getInput());
+  ASSERT_TRUE(foldSplat1);
+  EXPECT_EQ(foldSplat1->getValue(), 1.0f);
+
+  // Verify one splat left in the optimized Function, and a new Constant.
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SplatNodeKind));
+  const SaveNode *optSave =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+  MulNode *optMul = llvm::dyn_cast<MulNode>(optSave->getInput());
+  ASSERT_TRUE(optMul);
+  SplatNode *optSplat2 = llvm::dyn_cast<SplatNode>(optMul->getRHS());
+  ASSERT_TRUE(optSplat2);
+  EXPECT_EQ(optSplat2->getValue(), 2.0f);
+  AddNode *optAdd = llvm::dyn_cast<AddNode>(optMul->getLHS());
+  ASSERT_TRUE(optAdd);
+  EXPECT_EQ(optAdd->getLHS().getNode(), PH);
+  Constant *optSplatConst1 = llvm::dyn_cast<Constant>(optAdd->getRHS());
+  ASSERT_TRUE(optSplatConst1);
+  EXPECT_EQ(optSplatConst1->getPayload().getHandle().at({0, 0}), 1.0f);
 }
 
 /// Test that we correctly record a single constant folding subgraph that has a
