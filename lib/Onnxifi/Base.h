@@ -190,7 +190,8 @@ protected:
   void setZeroLengthSequence(dim_t maxSeqLength);
 
   /// Bind input/output placeholders
-  void bindPlaceholders(const ONNXIFIModelLoader &loader);
+  bool bindPlaceholders(const ONNXIFIModelLoader &loader,
+                        LoadedPlaceholderNameMap *loadedPHNames = nullptr);
 
 private:
   /// inference dump counter
