@@ -5516,8 +5516,9 @@ TEST_F(GraphOptz, constantFoldPreventedNoop) {
   auto *add3 = F_->createAdd("add", const1, ph1);
   F_->createSave("save", add3);
 
-  ConstantModificationPreventer constModPreventer(mod_);
+  ConstantModificationPreventer constModPreventer(mod_, cctx_);
   constModPreventer.activate();
+  EXPECT_FALSE(cctx_.optimizationOpts.enableConstantFolding);
 
   // Check that both Constants are protected and no change is made to the
   // Function during optimization.
@@ -5530,6 +5531,7 @@ TEST_F(GraphOptz, constantFoldPreventedNoop) {
 
   // Now deactivate the constModPreventer and check we can const fold still.
   constModPreventer.deactivateAndCleanup();
+  EXPECT_TRUE(cctx_.optimizationOpts.enableConstantFolding);
   mod_.eraseFunction(optimizedF_);
   optimizedF_ = optimizeFunction(F_);
 
