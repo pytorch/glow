@@ -148,12 +148,18 @@ class ConstantModificationPreventer : protected ScopeGuard {
   /// Module which contains Constants we want to prevent modification of.
   Module &mod_;
 
+  /// CompilationContext under which we're compiling.
+  CompilationContext &cctx_;
+
+  /// Original setting in \ref cctx_ for if constant folding was enabled.
+  bool origEnableConstantFolding_;
+
   /// Map from temporary Placeholders to the Constants they replaced.
   std::unordered_map<Placeholder *, Constant *> tmpPHToConstMap_;
 
 public:
   /// Ctor.
-  ConstantModificationPreventer(Module &mod);
+  ConstantModificationPreventer(Module &mod, CompilationContext &cctx);
 
   /// Make not copyable.
   ConstantModificationPreventer(const ConstantModificationPreventer &) = delete;
