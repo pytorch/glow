@@ -214,6 +214,19 @@ bool evaluateConstantOperation(Backend &backend, CompilationContext &cctx,
   // Create save nodes for each of the results.
   llvm::SmallVector<SaveNode *, 16> savedResults;
 
+  // If we're recording constant folding, only lower the const fold subgraph
+  // (i.e. do not run optimizations when compiling the const fold subgraph).
+  // Otherwise some graph optimizations may do folding themselves, meaning that
+  // the the subgraph will not contain all folding that occurs.
+  if (record) {
+    cctx.optimizationOpts.onlyLowerFuns.insert(constEvaluationF);
+  }
+  ScopeGuard cleanupOnlyLowerFuns([&]() {
+    if (record) {
+      cctx.optimizationOpts.onlyLowerFuns.erase(constEvaluationF);
+    }
+  });
+
   for (size_t idx = 0, e = clonedC->getNumResults(); idx < e; ++idx) {
     auto RN = clonedC->getNthResult(idx);
     auto *SN = constEvaluationF->createSave(clonedC->getName(), RN);
@@ -237,8 +250,9 @@ bool evaluateConstantOperation(Backend &backend, CompilationContext &cctx,
   constResults.reserve(savedResults.size());
   for (auto *SN : savedResults) {
     Tensor *outputTensor = bindings.get(SN->getPlaceholder());
-    auto *constResult =
-        mod.createConstant(SN->getName(), std::move(*outputTensor));
+    auto *constResult = mod.createConstant(
+        SN->getInput().getNode()->getName().str() + ".constfold",
+        std::move(*outputTensor));
     constResults.emplace_back(constResult);
 
     if (record) {
@@ -388,6 +402,9 @@ static bool constantFoldFun(Function *F, const CompilationContext &cctx,
     // compile-time results of this operation.
     for (size_t idx = 0, e = constResults.size(); idx < e; ++idx) {
       auto constResult = constResults[idx];
+      assert(N->getNthResult(idx).getType() ==
+                 constResult->getOutput().getType() &&
+             "Constant replacement type must match.");
       // Replace the old result by the new constant result.
       N->getNthResult(idx).replaceAllUsesOfWith(constResult);
     }
