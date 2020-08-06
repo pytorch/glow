@@ -749,13 +749,15 @@ protected:
 
       if (intermediate) {
         const std::string &opName = loadOperatorName(op);
-        Placeholder *PH = nullptr;
-        if (loadIntoExistingModule_) {
-          PH = mod_.getPlaceholderByNameSlow(op.output(0));
-          RETURN_ERR_IF_NOT(PH, "Did not find intermediate PH" + op.output(0));
-        } else {
+        Placeholder *PH = mod_.getPlaceholderByNameSlow(op.output(0));
+        if (!PH) {
           PH = mod_.createPlaceholder(in.getType(), op.output(0),
                                       /* isTrainable */ false);
+        } else {
+          RETURN_ERR_IF_NOT(loadIntoExistingModule_,
+                            "Found pre-existing PH by name " + op.output(0));
+          RETURN_ERR_IF_NOT(PH->getType()->isEqual(in.getType()),
+                            "Mismatch on pre-existing intermediate PH type");
         }
         G_->createSave(opName, in, PH, /* skipSuffix */ true);
         intermediatePHsByName_[op.output(0)] = PH;
@@ -1405,6 +1407,42 @@ protected:
         RETURN_IF_ERR(createAndRegisterConstant(scalesName,
                                                 std::move(*loadResult.scales)));
       }
+    }
+
+    return Error::success();
+  }
+
+  /// Sets the type of \p S to have \p dstKind, using the same dims as S.
+  Error setFusedTy(Storage *S, ElemKind dstKind) {
+    // Use dummy 0.0/0 as scale/offset, since the actual scales/offsets
+    // are fused inline with the data.
+    TypeRef fusedTy = mod_.uniqueType(dstKind, S->dims(), 0.0, 0);
+    return setFusedTy(S, fusedTy);
+  }
+
+  /// Sets the type of \p S to have \p fusedTy. If \p S already has type \p
+  /// fusedTy, then this is a noop. Otherwise, expected that the original S is
+  /// UInt8QTy. If \p S is a Constant, then also sets the payload of the
+  /// Constant to have the same type.
+  /// The motivation here is that there is no fused quantized type in
+  /// Caffe2/ONNX, so we will always load them in UInt8QTy. We then change it
+  /// from UInt8QTy to one of the fused kinds here. This may not be necessary if
+  /// another user has already changed it, or the type may already have been
+  /// modified in the case of loading into an existing module.
+  Error setFusedTy(Storage *S, TypeRef fusedTy) {
+    assert(fusedTy->isFusedQuantizedType() && "Expected fused quantized type.");
+
+    // If S already has the requested type then return early.
+    if (S->getOutput().getType()->isEqual(*fusedTy)) {
+      return Error::success();
+    }
+
+    RETURN_ERR_IF_NOT(S->getElementType() == ElemKind::UInt8QTy,
+                      "Data must be UInt8QTy.");
+    S->setType(Storage::OutputIdx, fusedTy);
+    // If the node is a Constant set the payload type as well.
+    if (auto *C = llvm::dyn_cast<Constant>(S)) {
+      C->setPayloadType(fusedTy);
     }
 
     return Error::success();

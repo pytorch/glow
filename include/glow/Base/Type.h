@@ -617,8 +617,9 @@ struct Type final {
       }
     }
 
-    // Compare the scale and offset of integers.
-    if (isQuantizedType()) {
+    // Compare the scale and offset of integers. Fused types use dummy
+    // scale/offset, so can ignore them.
+    if (isQuantizedType() && !isFusedQuantizedType()) {
       if (scale_ != other.scale_ || offset_ != other.offset_) {
         return false;
       }
@@ -708,6 +709,12 @@ struct Type final {
 
   /// \returns true if the type of this Tensor is one of the quantized types.
   bool isQuantizedType() const { return isQuantizedElemKind(elementType_); }
+
+  /// \returns true if the type of this Tensor is one of the fused quantized
+  /// types.
+  bool isFusedQuantizedType() const {
+    return isFusedQuantizedElemKind(elementType_);
+  }
 
   /// \returns true if the type of this Tensor is one of the floating point
   /// types.

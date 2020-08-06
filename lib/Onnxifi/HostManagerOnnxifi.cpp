@@ -159,10 +159,8 @@ void HostManagerBackend::runNetwork(const Graph *graph,
 
 onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
                                           void *deferredBlobReader,
-                                          runtime::PrePartitionedConfig *PPC) {
-  CompilationContext cctx;
+                                          CompilationContext &cctx) {
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
-  cctx.prepartitionedConfig = PPC;
   cctx.maxActiveRequestsPerInstance = GlowMaxActiveRequestsPerInstance;
 
   if (deferredBlobReader) {
@@ -297,13 +295,16 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   netName_ = strFormat("onnxifi_function_%lu", makeUniqueGraphId());
 
   std::unique_ptr<Module> module = glow::make_unique<Module>();
+  CompilationContext cctx;
   runtime::PrePartitionedConfig PPC;
+  cctx.prepartitionedConfig = &PPC;
 
   std::unique_ptr<ONNXIFIModelLoader> loader;
   auto loaderOrErr = ONNXIFIModelLoader::parse(
       onnxModel, onnxModelSize, weightCount, weightDescriptors, *module,
-      netName_, &PPC, true /*loadInputsAsPlaceholdersForOnnx*/,
-      backendPtr_->getUseOnnx());
+      netName_, &PPC, &cctx.backendOpts.backendSpecificNodeInfo,
+      true /*loadInputsAsPlaceholdersForOnnx*/, backendPtr_->getUseOnnx(),
+      /* constFoldInLoader */ false);
   if (loaderOrErr) {
     loader = std::move(*loaderOrErr);
   } else {
@@ -326,7 +327,7 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   }
 
   return static_cast<HostManagerBackend *>(backendPtr_)
-      ->addNetwork(std::move(module), deferedBlobReader, &PPC);
+      ->addNetwork(std::move(module), deferedBlobReader, cctx);
 }
 
 namespace {
