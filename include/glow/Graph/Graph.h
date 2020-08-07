@@ -1215,7 +1215,7 @@ public:
   /// use a specialized implementation.
   RowwiseQuantizedSparseLengthsWeightedSumNode *
   createRowwiseQuantizedSparseLengthsSum(
-      llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
+      llvm::StringRef name, Storage *data, NodeValue scales, NodeValue offsets,
       NodeValue indices, NodeValue lengths,
       ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false,
       LengthsMode lengthsMode = LengthsMode::Variable, float avgLength = NAN);
@@ -1233,7 +1233,7 @@ public:
   /// multiplied by weights[i]. len(weights) must be equal to len(indices).
   RowwiseQuantizedSparseLengthsWeightedSumNode *
   createRowwiseQuantizedSparseLengthsWeightedSum(
-      llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
+      llvm::StringRef name, Storage *data, NodeValue scales, NodeValue offsets,
       NodeValue weights, NodeValue indices, NodeValue lengths,
       ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false,
       LengthsMode lengthsMode = LengthsMode::Variable, float avgLength = NAN);
