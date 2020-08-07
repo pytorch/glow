@@ -738,6 +738,33 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
       .autoIRGen("Exp");
 
+  BB.newInstr("ElementAcos")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Acos");
+
+  BB.newInstr("ElementAsin")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Asin");
+
+  BB.newInstr("ElementAtan")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Atan");
+
   BB.newInstr("ElementSelect")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Cond", OperandKind::In)
