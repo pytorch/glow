@@ -114,7 +114,7 @@ public:
   const char *getKindName() const { return getKindName(kind_); }
 };
 
-using KindSet = llvm::SmallSet<Kinded::Kind, 4>;
+using KindSet = llvm::SmallSet<Kinded::Kind, 6>;
 
 /// Subclasses of this class represent an IR container, e.g. a function or a
 /// module.
