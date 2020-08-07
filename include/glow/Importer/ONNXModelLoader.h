@@ -476,7 +476,27 @@ protected:
   ONNXModelLoader(const void *model, uint32_t modelSize, uint32_t weightsCount,
                   const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
                   bool loadInputsAsPlaceholdersForOnnx, Error *errPtr = nullptr,
-                  bool constFoldInLoader = true);
+                  bool constFoldInLoader = true,
+                  BackendSpecificNodeInfo *perNodeOpts = nullptr);
+
+  /// Creates a ONNX model loader to build \p mod.
+  /// Loads the ONNIXFI \p model from memory of \p modelSize size,
+  /// and \p weightsCount, and \p onnxTensorDescriptorV1 correspondent
+  /// descriptors. Converts inputs into placeholder if requested \p
+  /// loadInputsAsPlaceholdersForOnnx. Reports success/failure through optional
+  /// parameter \p errPtr. This constructor always overrides the default
+  /// constant folding in loader flag with \p constFoldInLoader.
+  /// Supports loading a DAG which was serialized, loading in DAGNode meta info
+  /// into \p PPC which can be later used to recreated the DAG. \p funName is
+  /// used to setup the DAG root node's name, or if the input model is not
+  /// partitioned then is used as the name of the single Function loaded. Loads
+  /// backend-specific node info annotations into \p perNodeOpts.
+  ONNXModelLoader(const void *model, uint32_t modelSize, uint32_t weightsCount,
+                  const onnxTensorDescriptorV1 *weightDescriptors, Module &mod,
+                  llvm::StringRef funName, runtime::PrePartitionedConfig *PPC,
+                  bool loadInputsAsPlaceholdersForOnnx, Error *errPtr = nullptr,
+                  bool constFoldInLoader = true,
+                  BackendSpecificNodeInfo *perNodeOpts = nullptr);
 
   friend class ONNXIFIModelLoader;
 

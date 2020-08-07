@@ -2017,7 +2017,7 @@ SparseLengthsWeightedSumNode *Function::createSparseLengthsWeightedSum(
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsWeightedSum(
-    llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
+    llvm::StringRef name, Storage *data, NodeValue scales, NodeValue offsets,
     NodeValue weights, NodeValue indices, NodeValue lengths, ElemKind precision,
     bool useFP16Accumulation, LengthsMode lengthsMode, float avgLength) {
   auto inDims = data->dims();
@@ -2031,7 +2031,7 @@ Function::createRowwiseQuantizedSparseLengthsWeightedSum(
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsSum(
-    llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
+    llvm::StringRef name, Storage *data, NodeValue scales, NodeValue offsets,
     NodeValue indices, NodeValue lengths, ElemKind precision,
     bool useFP16Accumulation, LengthsMode lengthsMode, float avgLength) {
   auto ty = getParent()->uniqueType(precision, {indices.dims()[0]});
@@ -4919,8 +4919,13 @@ class FunctionDottyPrinter : public AbstractDottyPrinter {
 
 public:
   void visitGraph(Function *F) {
-    for (auto &N : F->getNodes()) {
-      visitNode(&N);
+    // Sort nodes before printing the dot so we can diff dot files.
+    std::set<Node *, SortNamed> sorted;
+    for (Node &N : F->getNodes()) {
+      sorted.insert(&N);
+    }
+    for (auto *N : sorted) {
+      visitNode(N);
     }
   }
 };
@@ -4934,15 +4939,21 @@ std::string Function::dumpDAG() {
 }
 
 void Function::dumpDAG(llvm::StringRef dotFilename) {
-  llvm::outs() << "Writing dotty graph for Function to: " << dotFilename
+  llvm::StringRef legalDotFilename = dotFilename.take_back(255);
+  llvm::outs() << "Writing dotty graph for Function to: " << legalDotFilename
                << '\n';
+  if (dotFilename.size() > 255) {
+    llvm::outs() << "WARNING: Filename " << dotFilename
+                 << " is longer than 255 characters, and so was truncated to "
+                 << legalDotFilename << '\n';
+  }
 
   FunctionDottyPrinter DP;
 
   DP.visitGraph(this);
 
   std::ofstream myfile;
-  myfile.open(dotFilename);
+  myfile.open(legalDotFilename);
   DP.dumpAll(myfile);
   myfile.close();
 }
