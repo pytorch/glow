@@ -1415,346 +1415,117 @@ TEST_F(OnnxImporterTest, importAveragePool3D) {
   }
 }
 
-/// Test loading ReduceMean op from a ONNX model.
-/// Input shape is 4D, one dimension is reduced, and output shape is 3D.
-TEST_F(OnnxImporterTest, reduceMean4Dto3D) {
+static void testReductionOps(std::string modelName,
+                             const std::vector<dim_t> &expectedDims,
+                             const std::vector<float> &expectedValues) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string netFilename(GLOW_DATA_PATH
-                          "tests/models/onnxModels/reduceMean4Dto3D.onnxtxt");
-
-  PlaceholderBindings bindings;
-  Placeholder *output;
+  // Input.
   Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
   x.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-  {
-    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
-    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    bindings.allocate(mod.getPlaceholders());
 
-    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
-  }
+  // Load model.
+  std::string netFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + modelName;
+  ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
+  Placeholder *output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+
+  // Allocate placeholders.
+  PlaceholderBindings bindings;
+  bindings.allocate(mod.getPlaceholders());
+  updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
 
   auto *res = bindings.get(output);
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
+  // Compare results.
   auto result = res->getHandle();
-  std::vector<dim_t> expectedDims = {2, 2, 2};
-  std::vector<float> expectedValues = {
-      1.5, 3.5, 5.5, 7.5, 9.5, 11.5, 13.5, 15.5,
-  };
-
   EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < 8; i++) {
+  for (dim_t i = 0; i < result.size(); i++) {
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
   }
 
   // Constant Folding Test.
   FAIL_TEST_IF_ERR(
       checkConstFoldedOutput(netFilename, {"x"}, {&x}, {bindings.get(output)}));
+}
+
+/// Test loading ReduceMean op from a ONNX model.
+/// Input shape is 4D, one dimension is reduced, and output shape is 3D.
+TEST_F(OnnxImporterTest, reduceMean4Dto3D) {
+  testReductionOps("reduceMean4Dto3D.onnxtxt", {2, 2, 2},
+                   {1.5, 3.5, 5.5, 7.5, 9.5, 11.5, 13.5, 15.5});
 }
 
 /// Test loading ReduceMean op from a ONNX model.
 /// Input shape is 4D, one dimension is reduced, and output shape stays 4D.
 TEST_F(OnnxImporterTest, reduceMean4Dto4D) {
-  ExecutionEngine EE{};
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  std::string netFilename(GLOW_DATA_PATH
-                          "tests/models/onnxModels/reduceMean4Dto4D.onnxtxt");
-
-  PlaceholderBindings bindings;
-  Placeholder *output;
-  Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
-  x.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-
-  {
-
-    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
-    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    bindings.allocate(mod.getPlaceholders());
-
-    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
-  }
-
-  auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer);
-  EE.run(bindings);
-
-  auto result = res->getHandle();
-  std::vector<dim_t> expectedDims = {2, 2, 2, 1};
-  std::vector<float> expectedValues = {
-      1.5, 3.5, 5.5, 7.5, 9.5, 11.5, 13.5, 15.5,
-  };
-
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < 8; i++) {
-    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
-  }
-
-  // Constant Folding Test.
-  FAIL_TEST_IF_ERR(
-      checkConstFoldedOutput(netFilename, {"x"}, {&x}, {bindings.get(output)}));
+  testReductionOps("reduceMean4Dto4D.onnxtxt", {2, 2, 2, 1},
+                   {1.5, 3.5, 5.5, 7.5, 9.5, 11.5, 13.5, 15.5});
 }
 
 /// Test loading ReduceSum op from a ONNX model.
 /// Input shape is 4D, one dimension is reduced, and output shape is 4D.
 TEST_F(OnnxImporterTest, reduceSum4D) {
-  ExecutionEngine EE{};
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  std::string netFilename(GLOW_DATA_PATH
-                          "tests/models/onnxModels/reduceSum4D.onnxtxt");
-
-  PlaceholderBindings bindings;
-  Placeholder *output;
-  Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
-  x.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-
-  {
-
-    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
-    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    bindings.allocate(mod.getPlaceholders());
-
-    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
-  }
-
-  auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer);
-  EE.run(bindings);
-  auto result = res->getHandle();
-  std::vector<dim_t> expectedDims = {2, 2, 2, 1};
-  std::vector<float> expectedValues = {3, 7, 11, 15, 19, 23, 27, 31};
-
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < 8; i++) {
-    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
-  }
-  // Constant Folding Test.
-  FAIL_TEST_IF_ERR(
-      checkConstFoldedOutput(netFilename, {"x"}, {&x}, {bindings.get(output)}));
+  testReductionOps("reduceSum4D.onnxtxt", {2, 2, 2, 1},
+                   {3, 7, 11, 15, 19, 23, 27, 31});
 }
 
 /// Test loading ReduceMean op from a ONNX model.
 /// Input shape is 4D, two dimensions are reduced, targeting ReduceMean
 /// optimization using AvgPool. Output shape is 4D.
 TEST_F(OnnxImporterTest, reduceMean2AvgPoolKeepDims) {
-  ExecutionEngine EE{};
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  std::string netFilename(GLOW_DATA_PATH
-                          "tests/models/onnxModels/reduceMean2AvgPool.onnxtxt");
-
-  PlaceholderBindings bindings;
-  Placeholder *output;
-  Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
-  x.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-
-  {
-
-    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
-    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    bindings.allocate(mod.getPlaceholders());
-
-    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
-  }
-
-  auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer);
-  EE.run(bindings);
-
-  auto result = res->getHandle();
-  std::vector<dim_t> expectedDims = {2, 2, 1, 1};
-  std::vector<float> expectedValues = {
-      2.5,
-      6.5,
-      10.5,
-      14.5,
-  };
-
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < 4; i++) {
-    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
-  }
-  // Constant Folding Test.
-  FAIL_TEST_IF_ERR(
-      checkConstFoldedOutput(netFilename, {"x"}, {&x}, {bindings.get(output)}));
+  testReductionOps("reduceMean2AvgPool.onnxtxt", {2, 2, 1, 1},
+                   {2.5, 6.5, 10.5, 14.5});
 }
 
 /// Test loading ReduceMean op from a ONNX model.
 /// Input shape is 4D, two dimensions are reduced, targeting ReduceMean
 /// optimization using AvgPool. Output shape is 2D.
 TEST_F(OnnxImporterTest, reduceMean2AvgPoolNoKeepDims) {
-  ExecutionEngine EE{};
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
+  testReductionOps("reduceMean2AvgPoolNoKeep.onnxtxt", {2, 2},
+                   {2.5, 6.5, 10.5, 14.5});
+}
 
-  std::string netFilename(
-      GLOW_DATA_PATH
-      "tests/models/onnxModels/reduceMean2AvgPoolNoKeep.onnxtxt");
+/// Test loading ReduceMax op from a ONNX model.
+/// Input shape is 4D, two dimensions are reduced,Output shape is 4D.
+TEST_F(OnnxImporterTest, reduceMaxKeepDims) {
+  testReductionOps("reduceMax.onnxtxt", {2, 2, 1, 1}, {4, 8, 12, 16});
+}
 
-  PlaceholderBindings bindings;
-  Placeholder *output;
-  Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
-  x.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+/// Test loading ReduceMax op from a ONNX model.
+/// Input shape is 4D, two dimensions are reduced, targeting ReduceMean
+/// optimization using AvgPool. Output shape is 2D.
+TEST_F(OnnxImporterTest, reduceMaxNoKeepDims) {
+  testReductionOps("reduceMaxNoKeep.onnxtxt", {2, 2}, {4, 8, 12, 16});
+}
 
-  {
-
-    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
-    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    bindings.allocate(mod.getPlaceholders());
-
-    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
-  }
-
-  auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer);
-  EE.run(bindings);
-
-  auto result = res->getHandle();
-  std::vector<dim_t> expectedDims = {2, 2};
-  std::vector<float> expectedValues = {
-      2.5,
-      6.5,
-      10.5,
-      14.5,
-  };
-
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < 4; i++) {
-    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
-  }
-
-  // Constant Folding Test.
-  FAIL_TEST_IF_ERR(
-      checkConstFoldedOutput(netFilename, {"x"}, {&x}, {bindings.get(output)}));
+/// Test loading ReduceMax op from a ONNX model.
+/// Input shape is 4D, two dimensions are reduced,Output shape is 4D.
+TEST_F(OnnxImporterTest, reduceMaxKeepDimsDefaultAxis) {
+  testReductionOps("reduceMaxDefaultAxis.onnxtxt", {1, 1, 1, 1}, {16});
 }
 
 /// Test loading ReduceMin op from a ONNX model.
 /// Input shape is 4D, two dimensions are reduced,Output shape is 4D.
 TEST_F(OnnxImporterTest, reduceMinKeepDims) {
-  ExecutionEngine EE{};
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  std::string netFilename(GLOW_DATA_PATH
-                          "tests/models/onnxModels/reduceMin.onnxtxt");
-
-  PlaceholderBindings bindings;
-  Placeholder *output;
-  Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
-  x.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-
-  {
-
-    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
-    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    bindings.allocate(mod.getPlaceholders());
-
-    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
-  }
-
-  auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer);
-  EE.run(bindings);
-
-  auto result = res->getHandle();
-  std::vector<dim_t> expectedDims = {2, 2, 1, 1};
-  std::vector<float> expectedValues = {1, 5, 9, 13};
-
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (dim_t i = 0; i < result.size(); i++) {
-    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
-  }
+  testReductionOps("reduceMin.onnxtxt", {2, 2, 1, 1}, {1, 5, 9, 13});
 }
 
-/// Test loading ReduceMean op from a ONNX model.
+/// Test loading ReduceMin op from a ONNX model.
 /// Input shape is 4D, two dimensions are reduced, targeting ReduceMean
 /// optimization using AvgPool. Output shape is 2D.
 TEST_F(OnnxImporterTest, reduceMinNoKeepDims) {
-  ExecutionEngine EE{};
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  std::string netFilename(GLOW_DATA_PATH
-                          "tests/models/onnxModels/reduceMinNoKeep.onnxtxt");
-
-  PlaceholderBindings bindings;
-  Placeholder *output;
-  Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
-  x.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-
-  {
-
-    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
-    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    bindings.allocate(mod.getPlaceholders());
-
-    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
-  }
-
-  auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer);
-  EE.run(bindings);
-
-  auto result = res->getHandle();
-  std::vector<dim_t> expectedDims = {2, 2};
-  std::vector<float> expectedValues = {
-      1,
-      5,
-      9,
-      13,
-  };
-
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (dim_t i = 0; i < result.size(); i++) {
-    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
-  }
+  testReductionOps("reduceMinNoKeep.onnxtxt", {2, 2}, {1, 5, 9, 13});
 }
 
 /// Test loading ReduceMin op from a ONNX model.
 /// Input shape is 4D, two dimensions are reduced,Output shape is 4D.
 TEST_F(OnnxImporterTest, reduceMinKeepDimsDefaultAxis) {
-  ExecutionEngine EE{};
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  std::string netFilename(
-      GLOW_DATA_PATH "tests/models/onnxModels/reduceMinDefaultAxis.onnxtxt");
-
-  PlaceholderBindings bindings;
-  Placeholder *output;
-  Tensor x(ElemKind::FloatTy, {2, 2, 2, 2});
-  x.getHandle() = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
-
-  {
-
-    ONNXModelLoader onnxLD(netFilename, {"x"}, {&x.getType()}, *F);
-    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
-    bindings.allocate(mod.getPlaceholders());
-
-    updateInputPlaceholdersByName(bindings, &mod, {"x"}, {&x});
-  }
-
-  auto *res = bindings.get(output);
-  EE.compile(CompilationMode::Infer);
-  EE.run(bindings);
-
-  auto result = res->getHandle();
-  std::vector<dim_t> expectedDims = {1, 1, 1, 1};
-  std::vector<float> expectedValues = {1};
-
-  EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < result.size(); i++) {
-    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
-  }
+  testReductionOps("reduceMinDefaultAxis.onnxtxt", {1, 1, 1, 1}, {1});
 }
 
 /// Test loading SpaceToDepth op from an ONNX model.
