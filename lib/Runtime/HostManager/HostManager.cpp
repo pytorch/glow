@@ -274,7 +274,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   /// If specified in the cctx, this will prevent Constants from being modified
   /// until the current scope ends or the preventer is dismissed. Does so by
   /// swapping in temporary Placeholders instead of Constants.
-  ConstantModificationPreventer constModPreventer(*module);
+  ConstantModificationPreventer constModPreventer(*module, cctx);
   if (cctx.optimizationOpts.delayAndRecordConstantModification) {
     constModPreventer.activate();
   }
