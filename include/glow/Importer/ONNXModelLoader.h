@@ -530,6 +530,10 @@ protected:
   /// Deletes the Functions in \ref constFoldFuns_ from \ref mod_.
   void deleteConstFoldFunctions();
 
+  /// Sets up positional IO into \ref positionalInputNames_ and
+  /// \ref positionalOutputNames_ from \p graph.
+  void setupPositionalIO(const ONNX_NAMESPACE::GraphProto &graph);
+
 public:
   /// \returns ONNX model ir_version;
   size_t getIrVersion() const { return irVersion_; };

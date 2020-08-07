@@ -194,7 +194,8 @@ void Graph::setZeroLengthSequence(dim_t maxSeqLength) {
   zeroLengthSequence_.zero();
 }
 
-void Graph::bindPlaceholders(const ONNXIFIModelLoader &loader) {
+bool Graph::bindPlaceholders(const ONNXIFIModelLoader &loader,
+                             LoadedPlaceholderNameMap *loadedPHNames) {
   onnxInputToPlaceholder_ = loader.getInputVarsMapping();
   onnxOutputToPlaceholder_ = loader.getOutputVarsMapping();
   onnxInputNames_ = loader.getPositionalInputNames();
@@ -221,6 +222,35 @@ void Graph::bindPlaceholders(const ONNXIFIModelLoader &loader) {
   if (onnxOutputPlaceholders_.size() != onnxOutputToPlaceholder_.size()) {
     onnxOutputPlaceholders_.clear();
   }
+
+  // If requested, load all of the input/output PHs into loadedPHNames, which is
+  // essentially the onnxInputToPlaceholder_/onnxOutputToPlaceholder_ with
+  // keys/values swapped and combined in a single map.
+  if (loadedPHNames) {
+#define REVERSE_MAPPING(ORIG_VEC_, ORIG_MAP_)                                  \
+  if (ORIG_VEC_.size() > 0) {                                                  \
+    for (size_t i = 0, e = ORIG_VEC_.size(); i < e; i++) {                     \
+      auto &name = ORIG_VEC_[i];                                               \
+      auto it = ORIG_MAP_.find(name);                                          \
+      if (it == ORIG_MAP_.end()) {                                             \
+        LOG(ERROR) << "Issue finding matching positional PH for " << name;     \
+        return false;                                                          \
+      }                                                                        \
+      if (!loadedPHNames->emplace(it->second, std::make_pair(name, i))         \
+               .second) {                                                      \
+        LOG(ERROR)                                                             \
+            << "Loading model error due to input or output name reuse: "       \
+            << name;                                                           \
+        return false;                                                          \
+      }                                                                        \
+    }                                                                          \
+  }
+    REVERSE_MAPPING(onnxInputNames_, onnxInputToPlaceholder_);
+    REVERSE_MAPPING(onnxOutputNames_, onnxOutputToPlaceholder_);
+#undef REVERSE_MAPPING
+  }
+
+  return true;
 }
 
 onnxStatus Graph::adjustInputs(uint32_t inputsCount,

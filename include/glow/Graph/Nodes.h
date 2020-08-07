@@ -363,6 +363,7 @@ constexpr char layoutSignifier[] = "layout";
 constexpr char staticSignifier[] = "offline";
 constexpr char trainableSignifier[] = "trainable";
 constexpr char elemKindSignifier[] = "elemKind";
+constexpr char loaderNameSignifier[] = "loaderName";
 constexpr char saveNameSignifier[] = "saveName";
 constexpr char qScaleSignifier[] = "qScale";
 constexpr char qOffsetSignifier[] = "qOffset";
