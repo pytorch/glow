@@ -271,6 +271,7 @@ struct BlacklistInitializer {
             {"TopK1/0", TestBlacklist::AnyDeviceHWEngine},
             {"TopK1int32/0", TestBlacklist::AnyDeviceAnyEngine},
             {"ConvTransposedAsymmetric/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"ConvTransposedGroup/0", TestBlacklist::AnyDeviceAnyEngine},
             {"sanityConvTranspose/0", TestBlacklist::AnyDeviceAnyEngine},
             {"convTransposeCompareSimpleK8S1P0I3/0",
              TestBlacklist::AnyDeviceAnyEngine},

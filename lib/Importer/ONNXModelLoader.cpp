@@ -1627,7 +1627,7 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
   // number of filters. We use this value to calculate the size of the bias
   // if it is not specified.
   const NodeValue filterTransposedValue = filterTransposeNode->getResult();
-  dim_t depth = filterTransposedValue.dims()[0];
+  dim_t depth = filterTransposedValue.dims()[0] * group;
 
   // Get the kernel shape from the input.
   llvm::SmallVector<unsigned_t, 2> kernels(2);

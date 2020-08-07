@@ -2144,8 +2144,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *filterPtr = emitValueAddress(builder, filter);
     auto *biasPtr = emitValueAddress(builder, bias);
 
-    assert(CI->getGroup() == 1 && "Group != 1 is not supported.");
-
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);
     auto *filterDims = emitValueDims(builder, filter);

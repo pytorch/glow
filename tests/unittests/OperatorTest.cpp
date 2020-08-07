@@ -8091,6 +8091,58 @@ TEST_P(OperatorTest, ConvTransposedAsymmetric) {
   }
 }
 
+/// ConvTranspose test with Group>1
+TEST_P(OperatorTest, ConvTransposedGroup) {
+
+  CHECK_IF_ENABLED();
+
+  float biasVal[2] = {0, 0};
+  auto bias = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "bias", false);
+  bindings_.allocate(bias)->getHandle() = biasVal;
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 2}, "input", false);
+  bindings_.allocate(input)->getHandle() = {0., 9.,  1., 10., 2., 11.,
+                                            3., 12., 4., 13., 5., 14.,
+                                            6., 15., 7., 16., 8., 17.};
+
+  auto filter =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 2}, "filter", false);
+  bindings_.allocate(filter)->getHandle() = {
+      0., 8., 2., 10., 4., 12., 6., 14,
+  };
+
+  std::pair<dim_t, dim_t> outWH =
+      calculateConvTransposeOutputDims(3, 3, {2, 2}, {2, 2}, {0, 0, 0, 0});
+  auto outTy =
+      mod_.uniqueType(ElemKind::FloatTy, {1, outWH.first, outWH.second, 2});
+
+  ConvTransposeNode *CN =
+      F_->createConvTranspose("ConvTranspose", input, filter, bias, outTy,
+                              {2, 2}, {2, 2}, {0, 0, 0, 0}, 2, 1);
+
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+  std::vector<dim_t> expectedDims = {1, 6, 6, 2};
+  ASSERT_TRUE(result.dims().vec() == expectedDims);
+  std::vector<float> expected = {
+      0,   72,  0,   90,  0,   80,  2,   100, 0,   88,  4,   110, 0,   108, 0,
+      126, 4,   120, 6,   140, 8,   132, 12,  154, 0,   96,  6,   120, 0,   104,
+      8,   130, 0,   112, 10,  140, 12,  144, 18,  168, 16,  156, 24,  182, 20,
+      168, 30,  196, 0,   120, 12,  150, 0,   128, 14,  160, 0,   136, 16,  170,
+      24,  180, 36,  210, 28,  192, 42,  224, 32,  204, 48,  238};
+
+  for (dim_t i = 0; i < result.size(); i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expected[i]);
+  }
+}
+
 /// Compare ConvTranspose with equivalent Convolution, no strides.
 /// TODO - need version with Strides (dilate input).
 template <unsigned_t kernel, unsigned_t stride, unsigned_t pad, unsigned_t idim>
