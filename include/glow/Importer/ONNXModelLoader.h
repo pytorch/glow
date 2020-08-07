@@ -150,6 +150,11 @@ class ONNXModelLoader
   Error loadSlice(const ONNX_NAMESPACE::NodeProto &op,
                   ArgumentDictionaryTy &dict);
 
+  /// Load Trignometric ONNX operators.
+  Error loadTrigonometricOps(const std::string &typeName,
+                             const ONNX_NAMESPACE::NodeProto &op,
+                             ArgumentDictionaryTy &dict);
+
   /// Load Conv ONNX operator.
   Error loadConv(const ONNX_NAMESPACE::NodeProto &op,
                  ArgumentDictionaryTy &dict);
