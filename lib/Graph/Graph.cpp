@@ -1713,6 +1713,21 @@ XorNode *Function::createXor(llvm::StringRef name, NodeValue LHS,
   TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
   return addNode(new XorNode(name, OT, LHS, RHS));
 }
+#define TRIGONOMETRIC_FUN_DEF(NODE_NAME_)                                      \
+  NODE_NAME_##Node *Function::create##NODE_NAME_(llvm::StringRef name,         \
+                                                 NodeValue input) {            \
+    return create##NODE_NAME_(name, input.getType(), input);                   \
+  }                                                                            \
+  NODE_NAME_##Node *Function::create##NODE_NAME_(llvm::StringRef name,         \
+                                                 TypeRef T, NodeValue input) { \
+    TypeRef OT = getParent()->uniqueType(*T);                                  \
+    return addNode(new NODE_NAME_##Node(name, OT, input));                     \
+  }
+
+TRIGONOMETRIC_FUN_DEF(Acos)
+TRIGONOMETRIC_FUN_DEF(Asin)
+TRIGONOMETRIC_FUN_DEF(Atan)
+#undef TRIGONOMETRIC_FUN_DEF
 
 CmpLTENode *Function::createCmpLTE(llvm::StringRef name, NodeValue LHS,
                                    NodeValue RHS) {

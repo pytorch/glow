@@ -3863,6 +3863,39 @@ Error ONNXModelLoader::loadMFCC(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadAsin(const ONNX_NAMESPACE::NodeProto &op,
+                                const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  auto outTy = mod_.uniqueType(*(in.getType()));
+  Node *node = G_->createAsin(opName, outTy, in);
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadAcos(const ONNX_NAMESPACE::NodeProto &op,
+                                const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  auto outTy = mod_.uniqueType(*(in.getType()));
+  Node *node = G_->createAcos(opName, outTy, in);
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadAtan(const ONNX_NAMESPACE::NodeProto &op,
+                                const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  auto outTy = mod_.uniqueType(*(in.getType()));
+  Node *node = G_->createAtan(opName, outTy, in);
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
+  return Error::success();
+}
+
 Expected<TypeRef>
 ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
                                         ArgumentDictionaryTy &dict) {
@@ -4170,6 +4203,15 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "NonZero") {
     return loadNonZero(op, dict);
+  }
+  if (typeName == "Acos") {
+    return loadAcos(op, dict);
+  }
+  if (typeName == "Asin") {
+    return loadAsin(op, dict);
+  }
+  if (typeName == "Atan") {
+    return loadAtan(op, dict);
   }
 
   RETURN_ERR("Failed to load operator " + typeName + " .",

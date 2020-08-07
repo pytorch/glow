@@ -535,6 +535,24 @@ int main(int argc, char **argv) {
       .dataParallel()
       .setDocstring("Performs element-wise natural log to the Input.");
 
+  BB.newNode("Acos")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise Arccosine(x) of the Input operand.");
+
+  BB.newNode("Asin")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise Arcsine(x) of the Input operand.");
+
+  BB.newNode("Atan")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise Arctan(x) of the Input operand.");
+
   BB.newNode("Exp")
       .addInput("Input")
       .addResultFromCtorArg()

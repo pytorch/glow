@@ -1976,6 +1976,180 @@ TEST_P(OperatorTest, log) {
   }
 }
 
+/// Range of asin domain is [-1,1] and the range of output
+/// is [-pi/2, pi/2]
+TEST_P(OperatorTest, Asin_FloatTy) {
+  CHECK_IF_ENABLED();
+
+  auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {6}, "X", false);
+  auto XH = bindings_.allocate(X)->getHandle();
+  XH = {-0.34, 0.32, 0.0001, 1.0, -0.4, 0.78};
+
+  auto *AS = F_->createAsin("Asin", X);
+
+  auto *save = F_->createSave("save", AS);
+  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  auto saveH = saveTensor->getHandle();
+
+  for (dim_t i = 0; i < 6; i++) {
+    EXPECT_NEAR(saveH.at({i}), asin(XH.at({i})), 1E-5);
+  }
+}
+
+/// Range of acos domain is [-1,1] and the range of output
+/// is [0, pi]
+TEST_P(OperatorTest, Acos_FloatTy) {
+  CHECK_IF_ENABLED();
+
+  auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {6}, "X", false);
+  auto XH = bindings_.allocate(X)->getHandle();
+  XH = {-0.34, 0.32, 0.0001, 1.0, -0.4, 0.78};
+
+  auto *AC = F_->createAcos("Acos", X);
+
+  auto *save = F_->createSave("save", AC);
+  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  auto saveH = saveTensor->getHandle();
+
+  for (dim_t i = 0; i < 6; i++) {
+    EXPECT_NEAR(saveH.at({i}), acos(XH.at({i})), 1E-5);
+  }
+}
+
+/// Range of atan domain is [-1,1] and the range of output
+/// is [-pi/2, pi/2]
+TEST_P(OperatorTest, Atan_FloatTy) {
+  CHECK_IF_ENABLED();
+
+  auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {6}, "X", false);
+  auto XH = bindings_.allocate(X)->getHandle();
+  XH = {-0.34, 0.32, 0.0001, 1.0, -0.4, 0.78};
+
+  auto *AT = F_->createAtan("Atan", X);
+
+  auto *save = F_->createSave("save", AT);
+  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  auto saveH = saveTensor->getHandle();
+
+  for (dim_t i = 0; i < 6; i++) {
+    EXPECT_NEAR(saveH.at({i}), atan(XH.at({i})), 1E-5);
+  }
+}
+
+/// Range of asin domain is [-1,1] and the range of output
+/// is [-pi/2, pi/2]
+TEST_P(OperatorTest, Asin_Int8QTy) {
+  CHECK_IF_ENABLED();
+  auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {6}, "X", false);
+  auto qParams = glow::quantization::chooseQuantizationParams({-1, 1});
+  auto oParams = glow::quantization::chooseQuantizationParams({-1.57, 1.57});
+  auto *data =
+      mod_.uniqueType(ElemKind::Int8QTy, {6}, qParams.scale, qParams.offset);
+
+  auto OT =
+      mod_.uniqueType(ElemKind::Int8QTy, {6}, oParams.scale, oParams.offset);
+  auto XH = bindings_.allocate(X)->getHandle();
+  XH = {-0.34, 0.32, 0.0001, 1.0, -0.4, 0.78};
+  auto *XQ = F_->createQuantize("quantizeQ", X, data);
+  auto *ASQ = F_->createAsin("Asin", OT, XQ);
+
+  auto *AS = F_->createDequantize("dequantize", ASQ, ElemKind::FloatTy);
+
+  auto *save = F_->createSave("save", AS);
+  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  auto saveH = saveTensor->getHandle();
+
+  for (dim_t i = 0; i < 6; i++) {
+    EXPECT_NEAR(saveH.at({i}), asin(XH.at({i})), 0.25);
+  }
+}
+
+/// Range of acos domain is [-1,1] and the range of output
+/// is [0, pi]
+TEST_P(OperatorTest, Acos_Int8QTy) {
+  CHECK_IF_ENABLED();
+  auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {6}, "X", false);
+  auto qParams = glow::quantization::chooseQuantizationParams({-1, 1});
+  auto oParams = glow::quantization::chooseQuantizationParams({0, 3.14});
+  auto *data =
+      mod_.uniqueType(ElemKind::Int8QTy, {6}, qParams.scale, qParams.offset);
+
+  auto OT =
+      mod_.uniqueType(ElemKind::Int8QTy, {6}, oParams.scale, oParams.offset);
+  auto XH = bindings_.allocate(X)->getHandle();
+  XH = {-0.34, 0.32, 0.0001, 1.0, -0.4, 0.78};
+  auto *XQ = F_->createQuantize("quantizeQ", X, data);
+  auto *ACQ = F_->createAcos("Acos", OT, XQ);
+
+  auto *AC = F_->createDequantize("dequantize", ACQ, ElemKind::FloatTy);
+
+  auto *save = F_->createSave("save", AC);
+  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  auto saveH = saveTensor->getHandle();
+
+  for (dim_t i = 0; i < 6; i++) {
+    EXPECT_NEAR(saveH.at({i}), acos(XH.at({i})), 0.25);
+  }
+}
+
+/// Range of atan domain is [-1,1] and the range of output
+/// is [-pi/2, pi/2]
+TEST_P(OperatorTest, Atan_Int8QTy) {
+  CHECK_IF_ENABLED();
+  auto *X = mod_.createPlaceholder(ElemKind::FloatTy, {6}, "X", false);
+  auto qParams = glow::quantization::chooseQuantizationParams({-1, 1});
+  auto oParams = glow::quantization::chooseQuantizationParams({-1.57, 1.57});
+  auto *data =
+      mod_.uniqueType(ElemKind::Int8QTy, {6}, qParams.scale, qParams.offset);
+
+  auto OT =
+      mod_.uniqueType(ElemKind::Int8QTy, {6}, oParams.scale, oParams.offset);
+  auto XH = bindings_.allocate(X)->getHandle();
+  XH = {-0.34, 0.32, 0.0001, 1.0, -0.4, 0.78};
+  auto *XQ = F_->createQuantize("quantizeQ", X, data);
+  auto *ATQ = F_->createAtan("Atan", OT, XQ);
+
+  auto *AT = F_->createDequantize("dequantize", ATQ, ElemKind::FloatTy);
+
+  auto *save = F_->createSave("save", AT);
+  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+
+  EE_.run(bindings_);
+
+  auto saveH = saveTensor->getHandle();
+
+  for (dim_t i = 0; i < 6; i++) {
+    EXPECT_NEAR(saveH.at({i}), atan(XH.at({i})), 0.25);
+  }
+}
+
 /// Helper to test Logit using \p DTy.
 template <typename DataType>
 static void testLogit(glow::PlaceholderBindings &bindings, glow::Module &mod,

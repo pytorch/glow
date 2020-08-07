@@ -132,6 +132,16 @@ class ONNXModelLoader
   Error loadNonZero(const ONNX_NAMESPACE::NodeProto &op,
                     const ArgumentDictionaryTy &dict);
 
+  /// Load Trigonometric Ops
+  Error loadAsin(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
+
+  Error loadAcos(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
+
+  Error loadAtan(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
+
   /// Load Constant ONNX operator.
   Error loadConstant(const ONNX_NAMESPACE::NodeProto &op,
                      ArgumentDictionaryTy &dict);
