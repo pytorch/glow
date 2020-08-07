@@ -3919,8 +3919,6 @@ Error ONNXModelLoader::loadAtan(const ONNX_NAMESPACE::NodeProto &op,
 Expected<TypeRef>
 ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
                                         ArgumentDictionaryTy &dict) {
-  Module &mod = *G_->getParent();
-
   // Load ElemKind.
   std::string elemKindStr;
   ASSIGN_VALUE_OR_RETURN_ERR(
@@ -3936,7 +3934,7 @@ ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
 
   // Create and return uniqued non-quantized Type.
   if (!isQuantizedElemKind(k)) {
-    return mod.uniqueType(k, shape);
+    return mod_.uniqueType(k, shape);
   }
 
   // Must be quantized kind, so get scale/offset and create and return uniqued
@@ -3947,7 +3945,7 @@ ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
   int32_t offset;
   ASSIGN_VALUE_OR_RETURN_ERR(
       offset, loadInt(dict[getTypeAttrID(resNo, qOffsetSignifier)]));
-  return mod.uniqueType(k, shape, scale, offset);
+  return mod_.uniqueType(k, shape, scale, offset);
 }
 
 Expected<Node *>
@@ -4012,9 +4010,10 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
       return loadPerNodeOptions(loadedNode, *perNodeOpts_, dict);
     }
 
-    // These are handled earlier when loading initializers and so can be safely
-    // ignored here.
-    if (typeName == constFoldSubgraphNodeName) {
+    // These are handled earlier when loading initializers and inputs and so can
+    // be safely ignored here.
+    if (typeName == constFoldSubgraphNodeName ||
+        typeName == staticPHDummyNodeName) {
       return Error::success();
     }
 
@@ -4463,6 +4462,12 @@ Error ONNXModelLoader::loadNetwork(ONNX_NAMESPACE::GraphProto &net,
   for (int i = 0; i < net.node_size(); i++) {
     auto &op = net.node(i);
 
+    // Always ignore these since they're dummy nodes used to just carry meta
+    // info that is processed via setupOrigStaticTypeMap().
+    if (op.op_type() == staticPHDummyNodeName) {
+      continue;
+    }
+
     // Set up current partition to load into if relevant.
     if (partNameToFun_.size() && !loadingConstFoldSubgraph &&
         op.op_type() != constFoldSubgraphNodeName) {
@@ -4571,6 +4576,28 @@ Error ONNXModelLoader::checkInputs(ONNX_NAMESPACE::GraphProto &net,
   return Error::success();
 }
 
+Error ONNXModelLoader::setupOrigStaticTypeMap(ONNX_NAMESPACE::GraphProto &net) {
+  if (!staticPlaceholderTypes_) {
+    return Error::success();
+  }
+
+  for (int i = 0; i < net.node_size(); i++) {
+    auto &op = net.node(i);
+    ArgumentDictionaryTy dict = loadArgumentMap(op);
+    if (op.op_type() != staticPHDummyNodeName) {
+      continue;
+    }
+    RETURN_ERR_IF_NOT(staticInputs_.count(op.name()),
+                      "Expected static input for " + op.name());
+    TypeRef OT;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        OT, loadTypeFromAttributes(Storage::OutputIdx, dict));
+    staticPlaceholderTypes_->emplace(op.name(), *OT);
+  }
+  RETURN_ERR_IF_NOT(staticPlaceholderTypes_->size() == staticInputs_.size(),
+                    "Expected to find types for all static Placeholders");
+  return Error::success();
+}
 Error ONNXModelLoader::loadModel(ONNX_NAMESPACE::ModelProto &modelDef,
                                  llvm::ArrayRef<const char *> tensorNames,
                                  llvm::ArrayRef<TypeRef> types,
@@ -4583,6 +4610,7 @@ Error ONNXModelLoader::loadModel(ONNX_NAMESPACE::ModelProto &modelDef,
   ONNX_NAMESPACE::GraphProto graphDef = modelDef.graph();
   RETURN_IF_ERR(checkInputs(graphDef, tensorNames, types));
   RETURN_IF_ERR(collectStaticInputs(graphDef));
+  RETURN_IF_ERR(setupOrigStaticTypeMap(graphDef));
 
   RETURN_IF_ERR(loadInitializers(graphDef));
 
@@ -4613,7 +4641,7 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  bool loadIntoExistingModule, const Backend *B)
     : CommonOperatorLoader(tensorNames, types, &F, errPtr,
                            loadIntoExistingModule),
-      perNodeOpts_(perNodeOpts) {
+      perNodeOpts_(perNodeOpts), staticPlaceholderTypes_(nullptr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
@@ -4777,7 +4805,7 @@ ONNXModelLoader::ONNXModelLoader(
     const Backend *B)
     : CommonOperatorLoader(tensorNames, types, mod, errPtr,
                            loadIntoExistingModule),
-      perNodeOpts_(perNodeOpts) {
+      perNodeOpts_(perNodeOpts), staticPlaceholderTypes_(nullptr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
@@ -4819,8 +4847,8 @@ ONNXModelLoader::ONNXModelLoader(
     const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
     bool loadInputsAsPlaceholdersForOnnx, Error *errPtr, bool constFoldInLoader,
     BackendSpecificNodeInfo *perNodeOpts)
-    : CommonOperatorLoader({}, {}, &F, errPtr, true),
-      perNodeOpts_(perNodeOpts) {
+    : CommonOperatorLoader({}, {}, &F, errPtr, true), perNodeOpts_(perNodeOpts),
+      staticPlaceholderTypes_(nullptr) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
@@ -4855,9 +4883,11 @@ ONNXModelLoader::ONNXModelLoader(
     const onnxTensorDescriptorV1 *weightDescriptors, Module &mod,
     llvm::StringRef funName, PrePartitionedConfig *PPC,
     bool loadInputsAsPlaceholdersForOnnx, Error *errPtr, bool constFoldInLoader,
-    BackendSpecificNodeInfo *perNodeOpts)
+    BackendSpecificNodeInfo *perNodeOpts,
+    std::map<std::string, Type> *staticPlaceholderTypes)
     : CommonOperatorLoader({}, {}, mod, errPtr, true),
-      perNodeOpts_(perNodeOpts) {
+      perNodeOpts_(perNodeOpts),
+      staticPlaceholderTypes_(staticPlaceholderTypes) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;

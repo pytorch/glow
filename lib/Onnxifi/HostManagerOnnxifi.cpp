@@ -157,9 +157,10 @@ void HostManagerBackend::runNetwork(const Graph *graph,
                            std::move(callback), priority);
 }
 
-onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
-                                          void *deferredBlobReader,
-                                          CompilationContext &cctx) {
+onnxStatus HostManagerBackend::addNetwork(
+    std::unique_ptr<Module> module, void *deferredBlobReader,
+    CompilationContext &cctx,
+    std::map<std::string, Type> &&staticPlaceholderTypes) {
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
   cctx.maxActiveRequestsPerInstance = GlowMaxActiveRequestsPerInstance;
 
@@ -172,10 +173,11 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
     }
 
     // Generate a map of type date for all static placeholders.
-    std::map<std::string, Type> staticPlaceholderTypes;
-    for (auto PH : module->getPlaceholders()) {
-      if (PH->isStatic()) {
-        staticPlaceholderTypes[std::string(PH->getName())] = *PH->getType();
+    if (staticPlaceholderTypes.size() == 0) {
+      for (auto *PH : module->getPlaceholders()) {
+        if (PH->isStatic()) {
+          staticPlaceholderTypes[std::string(PH->getName())] = *PH->getType();
+        }
       }
     }
     loader->setTypeInfo(std::move(staticPlaceholderTypes));
@@ -298,12 +300,14 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   CompilationContext cctx;
   runtime::PrePartitionedConfig PPC;
   cctx.prepartitionedConfig = &PPC;
+  std::map<std::string, Type> staticPlaceholderTypes;
 
   std::unique_ptr<ONNXIFIModelLoader> loader;
   auto loaderOrErr = ONNXIFIModelLoader::parse(
       onnxModel, onnxModelSize, weightCount, weightDescriptors, *module,
       netName_, &PPC, &cctx.backendOpts.backendSpecificNodeInfo,
-      true /*loadInputsAsPlaceholdersForOnnx*/, backendPtr_->getUseOnnx(),
+      &staticPlaceholderTypes, true /*loadInputsAsPlaceholdersForOnnx*/,
+      backendPtr_->getUseOnnx(),
       /* constFoldInLoader */ false);
   if (loaderOrErr) {
     loader = std::move(*loaderOrErr);
@@ -329,7 +333,8 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   }
 
   return static_cast<HostManagerBackend *>(backendPtr_)
-      ->addNetwork(std::move(module), deferedBlobReader, cctx);
+      ->addNetwork(std::move(module), deferedBlobReader, cctx,
+                   std::move(staticPlaceholderTypes));
 }
 
 namespace {
