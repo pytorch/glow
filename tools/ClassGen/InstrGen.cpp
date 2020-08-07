@@ -1036,7 +1036,7 @@ int main(int argc, char **argv) {
   BB.newInstr("ConvertTo")
       .addOperand("Result", OperandKind::Out)
       .addOperand("Input", OperandKind::In)
-      .autoVerify(VerifyKind::SameShape, {"Result", "Input"})
+      .autoVerify(VerifyKind::NoVerify)
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//

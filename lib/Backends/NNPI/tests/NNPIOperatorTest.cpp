@@ -52,6 +52,7 @@ struct BlacklistInitializer {
              TestBlacklist::AnyDeviceAnyEngine},
             {"ConvertFrom_Int64ITy_To_Float16Ty_AndBack/0",
              TestBlacklist::AnyDeviceAnyEngine},
+            {"ConvertFusedToFusedFP16/0", TestBlacklist::AnyDeviceAnyEngine},
             {"ConvolutionDepth10_Int16_BiasInt16/0",
              TestBlacklist::AnyDeviceAnyEngine},
             {"ConvolutionDepth10_Int16_BiasInt32/0",
