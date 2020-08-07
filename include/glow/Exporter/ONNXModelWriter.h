@@ -83,6 +83,8 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   /// Map from Placeholders in the Module to the symbolic name they were loaded
   /// with from the input model. If not null, included in IO doc_string info.
   const LoadedPlaceholderNameMap *loadedPHNames_;
+  /// Map from static PH names to the type it was originally loaded with.
+  const std::map<std::string, Type> *staticPlaceholderTypes_;
   /// A dedicated list of initializers in case the tensors get too big and don't
   /// fit into the model.
   std::list<TensorType> initializers_;
@@ -216,16 +218,18 @@ public:
   /// \p backendSpecificNodeInfo contains attributes to add onto Nodes when
   /// exporting if found.
 
-  ONNXModelWriter(const std::string &modelFilename, runtime::DAGListTy &dagList,
-                  size_t irVersion, size_t opsetVersion,
-                  Error *errPtr = nullptr, bool textMode = false,
-                  bool zipMode = false, bool includeConstantData = true,
-                  const llvm::StringMap<std::string> &extraMetadataProps =
-                      llvm::StringMap<std::string>(),
-                  const ConstantFoldingRecordMap &constFoldRecord =
-                      ConstantFoldingRecordMap(),
-                  const BackendSpecificNodeInfo &backendSpecificNodeInfo = {},
-                  const LoadedPlaceholderNameMap *loadedPHNames = nullptr);
+  ONNXModelWriter(
+      const std::string &modelFilename, runtime::DAGListTy &dagList,
+      size_t irVersion, size_t opsetVersion, Error *errPtr = nullptr,
+      bool textMode = false, bool zipMode = false,
+      bool includeConstantData = true,
+      const llvm::StringMap<std::string> &extraMetadataProps =
+          llvm::StringMap<std::string>(),
+      const ConstantFoldingRecordMap &constFoldRecord =
+          ConstantFoldingRecordMap(),
+      const BackendSpecificNodeInfo &backendSpecificNodeInfo = {},
+      const LoadedPlaceholderNameMap *loadedPHNames = nullptr,
+      const std::map<std::string, Type> *staticPlaceholderTypes = nullptr);
 
 private:
   /// \returns error for the unexpected node kind.

@@ -134,13 +134,11 @@ void addValueAttribute(ONNX_NAMESPACE::NodeProto *proto,
                     T>::assign(attr, container);
 }
 
-/// Adds the type attributes from \p NV to \p proto. \p ioNum, \p isInput, and
+/// Adds the type attributes from \p ty to \p proto. \p ioNum, \p isInput, and
 /// \p addPrefix are used to format the name of the attribute.
-void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, const NodeValue NV,
+void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, TypeRef ty,
                        unsigned ioNum, bool isInput,
                        const std::string &addPrefix = "") {
-  const TypeRef ty = NV.getType();
-
   // Add ElemKind.
   auto *elemKindAttr = proto->add_attribute();
   elemKindAttr->set_name(
@@ -151,7 +149,7 @@ void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, const NodeValue NV,
   // Add Shape.
   addValueAttribute(proto,
                     getTypeAttrID(ioNum, shapeSignifier, isInput, addPrefix),
-                    NV.dims());
+                    ty->dims());
 
   // Write out scale/offset if quantized ElemKind.
   if (isQuantizedElemKind(ty->getElementType())) {
@@ -162,6 +160,14 @@ void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, const NodeValue NV,
         proto, getTypeAttrID(ioNum, qOffsetSignifier, isInput, addPrefix),
         ty->getOffset());
   }
+}
+
+/// Adds the type attributes from \p NV to \p proto. \p ioNum, \p isInput, and
+/// \p addPrefix are used to format the name of the attribute.
+void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, const NodeValue &NV,
+                       unsigned ioNum, bool isInput,
+                       const std::string &addPrefix = "") {
+  addTypeAttributes(proto, NV.getType(), ioNum, isInput, addPrefix);
 }
 
 /// Add the type attributes from the \p ioNum number input or output (depending
@@ -923,7 +929,7 @@ ONNXModelWriter::ONNXModelWriter(
       useGlowCustomOps_(useGlowCustomOps), dagMode_(false),
       constFoldRecord_(constFoldRecord),
       backendSpecificNodeInfo_(backendSpecificNodeInfo),
-      loadedPHNames_(nullptr) {
+      loadedPHNames_(nullptr), staticPlaceholderTypes_(nullptr) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -1041,14 +1047,16 @@ ONNXModelWriter::ONNXModelWriter(
     const llvm::StringMap<std::string> &extraMetadataProps,
     const ConstantFoldingRecordMap &constFoldRecord,
     const BackendSpecificNodeInfo &backendSpecificNodeInfo,
-    const LoadedPlaceholderNameMap *loadedPHNames)
+    const LoadedPlaceholderNameMap *loadedPHNames,
+    const std::map<std::string, Type> *staticPlaceholderTypes)
     : CommonOperatorWriter(modelFilename, nullptr, errPtr),
       irVersion_(irVersion), opsetVersion_(opsetVersion), zipMode_(zipMode),
       textMode_(textMode), includeConstantData_(includeConstantData),
       extraMetadataProps_(extraMetadataProps), useGlowCustomOps_(true),
       dagMode_(true), constFoldRecord_(constFoldRecord),
       backendSpecificNodeInfo_(backendSpecificNodeInfo),
-      loadedPHNames_(loadedPHNames) {
+      loadedPHNames_(loadedPHNames),
+      staticPlaceholderTypes_(staticPlaceholderTypes) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -1205,6 +1213,28 @@ ONNXModelWriter::createProtoForIO(const Placeholder *PH, bool isInput) {
                             PH->getName().str() + " while writing Function " +
                             F_->getName().str());
       addAttrToDocString(valueProto, loaderNameSignifier, it->second.first);
+    }
+
+    // If we have a type that was used for loading a static Placeholder, then
+    // serialize that type into a dummy node.
+    if (staticPlaceholderTypes_ && PH->isStatic()) {
+      auto it = staticPlaceholderTypes_->find(PH->getName().data());
+      RETURN_ERR_IF_NOT(it != staticPlaceholderTypes_->end(),
+                        "Did not find associated type for static PH " +
+                            PH->getName().str() + " while writing Function " +
+                            F_->getName().str());
+
+      // Create new static PH dummy node that carries the type that the static
+      // PH was loaded with. Note it has no inputs or outputs, howeverr there is
+      // a type appended for the output idx, and the node has the same name as
+      // the static PH to use when reloading.
+      auto *staticPHDummyNodeProto = graphProto_->add_node();
+      staticPHDummyNodeProto->set_op_type(staticPHDummyNodeName);
+      staticPHDummyNodeProto->set_name(PH->getName().data());
+
+      // Set the output type to be the one we found in staticPlaceholderTypes_.
+      addTypeAttributes(staticPHDummyNodeProto, &it->second, Storage::OutputIdx,
+                        /* isInput */ false);
     }
 
     // Also include quantization params if necessary.

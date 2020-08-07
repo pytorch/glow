@@ -55,6 +55,7 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   auto loaderOrErr = ONNXIFIModelLoader::parse(
       onnxModel, onnxModelSize, weightCount, weightDescriptors, mod, "function",
       /* PPC */ nullptr, /* BSNI */ nullptr,
+      /* staticPlaceholderTypes */ nullptr,
       true /*loadInputsAsPlaceholdersForOnnx*/, backendPtr_->getUseOnnx());
   if (loaderOrErr) {
     loader = std::move(*loaderOrErr);
