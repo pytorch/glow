@@ -46,6 +46,7 @@ extern bool GlowSparseNNPartitioningAddSLSConcats;
 extern bool GlowSparseNNPartitioningBalancePerfModel;
 extern bool GlowSparseNNPartitioningPairLNWithSLS;
 extern bool GlowDumpGraph;
+extern bool GlowDumpInitialLoadedGraph;
 extern bool GlowUseDAGOptimizer;
 extern std::string GlowDAGOptimizerPlacementTaggingAlgorithm;
 extern std::string GlowDAGOptimizerParallelizationTaggingAlgorithm;
@@ -368,6 +369,14 @@ DEFINE_validator(glow_dump_graph, [](const char * /* unused */, bool value) {
   glow::onnxifi::GlowDumpGraph = value;
   return true;
 });
+
+DEFINE_bool(glow_dump_initial_loaded_graph, false,
+            "Dump the glow Graph right after onnxification");
+DEFINE_validator(glow_dump_initial_loaded_graph,
+                 [](const char * /* unused */, bool value) {
+                   glow::onnxifi::GlowDumpInitialLoadedGraph = value;
+                   return true;
+                 });
 
 DEFINE_bool(glow_use_dag_optimizer, false, "Whether to call the DAG optimizer");
 DEFINE_validator(glow_use_dag_optimizer,

@@ -3443,6 +3443,19 @@ static bool isUsedByNodeWithSideEffects(Node *N) {
   return false;
 }
 
+/// Helper that \returns whether \p NV cannot have its output quantization
+/// parameters changed. For example, Concats require all inputs to have the same
+/// quantization parameters, so we cannot change the quantization parameters of
+/// a Node if it is input into a Concat.
+static bool disallowQuantParamChange(const NodeValue &NV) {
+  for (auto &user : NV.getUsers()) {
+    if (isa<ConcatNode>(user.getUser())) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// When quantized operators and Clips are used together, we can often merge the
 /// Clip range and the Quantized range and remove the Clip.
 bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
@@ -3460,6 +3473,10 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
     // Clip and do not need to change the type of qResult.
     if (newMin == qMinMax.first && newMax == qMinMax.second) {
       return true;
+    }
+
+    if (disallowQuantParamChange(qResult)) {
+      return false;
     }
 
     // At this point the quantization parameters must be changing, so if we do
