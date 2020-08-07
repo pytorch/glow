@@ -704,8 +704,7 @@ Error ONNXModelWriter::writeFunction() {
         continue;
       }
       // Write global input, output only tensor shape.
-      auto *inputProto = graphProto_->add_input();
-      tensorShapeFromPlaceholder(PH, inputProto);
+      RETURN_IF_EXPECTED_IS_ERR(createProtoForIO(PH, /* isInput */ true));
     } else if (kind == Kinded::Kind::ConstantKind) {
       // Write global initializer, output tensor bytes.
       const auto *C = llvm::cast<Constant>(N);
@@ -781,8 +780,9 @@ Error ONNXModelWriter::writeFunction() {
         }
       }
 
-      auto *out = graphProto_->add_output();
-      tensorShapeFromPlaceholder(PH, out);
+      ONNX_NAMESPACE::ValueInfoProto *out;
+      ASSIGN_VALUE_OR_RETURN_ERR(out,
+                                 createProtoForIO(PH, /* isInput */ false));
 
       // Use the doc string to specify the name that should be used for the
       // SaveNode to ensure it's kept the same between export and import.
@@ -835,6 +835,46 @@ Error ONNXModelWriter::finalizeAndWriteProto(llvm::StringRef name) {
     }
   }
 
+  // If we have loadedPHNames_, then we buffered the non-static PH IO protobuf
+  // in inputValueInfos_ and outputValueInfos_. Now we write it all out in order
+  // according to indices provided in loadedPHNames_.
+  if (loadedPHNames_) {
+    RETURN_ERR_IF_NOT(
+        inputValueInfos_.size() + outputValueInfos_.size() ==
+            loadedPHNames_->size(),
+        strFormat("Number of buffered inputs and outputs %lu didn't match the "
+                  "number of loadedPHNames %lu",
+                  inputValueInfos_.size() + outputValueInfos_.size(),
+                  loadedPHNames_->size()));
+
+    // If we have the loaded PH names map, then we need to reorder the inputs
+    // and outputs to follow the same order as provided in the loadedPHNames_.
+    std::vector<const Placeholder *> orderedInputs(inputValueInfos_.size());
+    std::vector<const Placeholder *> orderedOutputs(outputValueInfos_.size());
+    for (const auto &pair : *loadedPHNames_) {
+      const Placeholder *PH = pair.first;
+      const unsigned orderIdx = pair.second.second;
+      if (inputValueInfos_.count(PH)) {
+        orderedInputs[orderIdx] = PH;
+      } else if (outputValueInfos_.count(PH)) {
+        orderedOutputs[orderIdx] = PH;
+      } else {
+        RETURN_ERR("PH must either be in inputs or outputs: " +
+                   PH->getName().str());
+      }
+    }
+
+    // Now have IO in order matching loadedPHNames_, so finally write them out.
+    for (const Placeholder *PH : orderedInputs) {
+      auto *inputProto = graphProto_->add_input();
+      inputProto->MergeFrom(inputValueInfos_[PH]);
+    }
+    for (const Placeholder *PH : orderedOutputs) {
+      auto *outputProto = graphProto_->add_output();
+      outputProto->MergeFrom(outputValueInfos_[PH]);
+    }
+  }
+
   if (zipMode_) {
     const bool compressed = false;
     ZipWriter zip(&ff_, name);
@@ -882,7 +922,8 @@ ONNXModelWriter::ONNXModelWriter(
       extraMetadataProps_(extraMetadataProps),
       useGlowCustomOps_(useGlowCustomOps), dagMode_(false),
       constFoldRecord_(constFoldRecord),
-      backendSpecificNodeInfo_(backendSpecificNodeInfo) {
+      backendSpecificNodeInfo_(backendSpecificNodeInfo),
+      loadedPHNames_(nullptr) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -999,13 +1040,15 @@ ONNXModelWriter::ONNXModelWriter(
     bool includeConstantData,
     const llvm::StringMap<std::string> &extraMetadataProps,
     const ConstantFoldingRecordMap &constFoldRecord,
-    const BackendSpecificNodeInfo &backendSpecificNodeInfo)
+    const BackendSpecificNodeInfo &backendSpecificNodeInfo,
+    const LoadedPlaceholderNameMap *loadedPHNames)
     : CommonOperatorWriter(modelFilename, nullptr, errPtr),
       irVersion_(irVersion), opsetVersion_(opsetVersion), zipMode_(zipMode),
       textMode_(textMode), includeConstantData_(includeConstantData),
       extraMetadataProps_(extraMetadataProps), useGlowCustomOps_(true),
       dagMode_(true), constFoldRecord_(constFoldRecord),
-      backendSpecificNodeInfo_(backendSpecificNodeInfo) {
+      backendSpecificNodeInfo_(backendSpecificNodeInfo),
+      loadedPHNames_(loadedPHNames) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -1122,8 +1165,19 @@ void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out,
   }
 }
 
-void ONNXModelWriter::tensorShapeFromPlaceholder(const Placeholder *PH,
-                                                 ValueInfoType *valueProto) {
+Expected<ONNX_NAMESPACE::ValueInfoProto *>
+ONNXModelWriter::createProtoForIO(const Placeholder *PH, bool isInput) {
+  // If loadedPHNames_ then we have a specific order we need to write out IO
+  // protos. If so, buffer non-static IO that is not part of a constant folding
+  // subgraph into inputValueInfos_/outputValueInfos_ to later be written out in
+  // order inside finalizeAndWriteProto() based on loadedPHNames_.
+  ONNX_NAMESPACE::ValueInfoProto *valueProto;
+  if (!loadedPHNames_ || isWritingConstFoldSubgraph() || PH->isStatic()) {
+    valueProto = isInput ? graphProto_->add_input() : graphProto_->add_output();
+  } else {
+    valueProto = isInput ? &inputValueInfos_[PH] : &outputValueInfos_[PH];
+  }
+
   tensorShapeFromInput(PH->getName(), PH->getType(), valueProto);
 
   if (useGlowCustomOps_) {
@@ -1136,11 +1190,29 @@ void ONNXModelWriter::tensorShapeFromPlaceholder(const Placeholder *PH,
     addAttrToDocString(valueProto, elemKindSignifier,
                        PH->getType()->getElementName());
 
+    // If we're writing out a Placeholder from the original input Function, then
+    // expect to find a corresponding input loaded PH name if they are
+    // provided. This is expected when the PH is not static (as otherwise it's
+    // input as a weight), when the Function being written isn't a constant
+    // folding subgraph (then we have PHs that are used just to save the const
+    // folding result), and when the PH isn't intermediate (then it's only
+    // visible/used by Glow when executing partitioned DAGs).
+    if (loadedPHNames_ && !PH->isStatic() && !isWritingConstFoldSubgraph() &&
+        !isIntermediatePHForDAG(PH)) {
+      auto it = loadedPHNames_->find(PH);
+      RETURN_ERR_IF_NOT(it != loadedPHNames_->end(),
+                        "Did not find associated loader name for " +
+                            PH->getName().str() + " while writing Function " +
+                            F_->getName().str());
+      addAttrToDocString(valueProto, loaderNameSignifier, it->second.first);
+    }
+
     // Also include quantization params if necessary.
     if (PH->getType()->isQuantizedType()) {
       addQuantParamsToDocString(valueProto, *PH->getType());
     }
   }
+  return valueProto;
 }
 
 Error ONNXModelWriter::writeAllWithNode(const std::string &opName,

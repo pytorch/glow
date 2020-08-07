@@ -28,6 +28,12 @@ struct PrePartitionedConfig;
 class DeferredWeightLoader;
 } // namespace runtime
 
+/// Map from Placeholders to their original name and index in the proto that
+/// loaded them. Used to keep around info from when we import a proto to then
+/// exporting it later on.
+using LoadedPlaceholderNameMap =
+    std::unordered_map<const Placeholder *, std::pair<std::string, unsigned>>;
+
 /// Configuration for different precision modes.
 struct PrecisionConfiguration {
   /// Enum for what kind of transformation should be done for Quantization.
@@ -224,6 +230,10 @@ struct CompilationContext {
 
   /// Used during Quantization and Profiling.
   LoweredInfoMap *loweredInfoMap{nullptr};
+
+  /// Set up during model loading to map from Placeholders in the Module to the
+  /// symbolic name they were loaded with from the input model.
+  LoadedPlaceholderNameMap loadedPHNames;
 
   /// Select whether in Training or Inference mode.
   enum class CompilationMode {

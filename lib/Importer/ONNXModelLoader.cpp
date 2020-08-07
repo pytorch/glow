@@ -769,12 +769,14 @@ Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
       continue;
     }
 
+    const std::string &docString = in.doc_string();
+
     Type ty;
     ASSIGN_VALUE_OR_RETURN_ERR(ty, getTensorType(in));
     std::pair<bool, std::string> trainableLayoutPair;
-    ASSIGN_VALUE_OR_RETURN_ERR(trainableLayoutPair,
-                               getTrainableLayoutPairFromDocString(
-                                   in.doc_string(), useGlowCustomOps_));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        trainableLayoutPair,
+        getTrainableLayoutPairFromDocString(docString, useGlowCustomOps_));
 
     // If we already have the existing module then we may already have the input
     // Placeholder. If so, verify it has the correct type.
@@ -799,13 +801,20 @@ Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
 
     // We must not have the input created yet, so do so.
     if (loadInputsAsPlaceholdersForOnnx) {
-      Placeholder *placeholder;
+      Placeholder *inPH;
       ASSIGN_VALUE_OR_RETURN_ERR(
-          placeholder,
-          createAndRegisterPlaceholder(
-              in.name(), mod_.uniqueType(ty), staticInputs_.count(in.name()),
-              trainableLayoutPair.first, trainableLayoutPair.second));
-      inputVarsByName_.try_emplace(in.name(), placeholder);
+          inPH, createAndRegisterPlaceholder(in.name(), mod_.uniqueType(ty),
+                                             staticInputs_.count(in.name()),
+                                             trainableLayoutPair.first,
+                                             trainableLayoutPair.second));
+      auto loaderNameOrErr =
+          getAttrFromDocString(loaderNameSignifier, docString);
+      const std::string &loaderName =
+          !ERR_TO_BOOL(loaderNameOrErr.takeError(), /* log */ false)
+              ? loaderNameOrErr.get()
+              : in.name();
+      RETURN_ERR_IF_NOT(inputVarsByName_.try_emplace(loaderName, inPH).second,
+                        "Already had input placeholder by name " + loaderName);
     } else {
       Tensor T(ty);
       RETURN_IF_ERR(createAndRegisterConstant(in.name(), std::move(T)));
@@ -4434,9 +4443,15 @@ Error ONNXModelLoader::setOutputNodes(ONNX_NAMESPACE::GraphProto &net) {
                                              trainableLayoutPair.second,
                                              trainableLayoutPair.first));
     }
-    SaveNode *SN =
-        G_->createSave(saveNodeName, r, savePH, hasSpecifiedSaveName);
-    outputVarsByName_[outputName] = SN->getPlaceholder();
+    G_->createSave(saveNodeName, r, savePH, hasSpecifiedSaveName);
+
+    auto loaderNameOrErr = getAttrFromDocString(loaderNameSignifier, docString);
+    const std::string &loaderName =
+        !ERR_TO_BOOL(loaderNameOrErr.takeError(), /* log */ false)
+            ? loaderNameOrErr.get()
+            : outputName;
+    RETURN_ERR_IF_NOT(outputVarsByName_.try_emplace(loaderName, savePH).second,
+                      "Already had output placeholder by name " + loaderName);
   }
 
   return Error::success();
@@ -4727,6 +4742,32 @@ Error ONNXModelLoader::setupPartitions(ONNX_NAMESPACE::ModelProto &modelDef,
   return Error::success();
 }
 
+void ONNXModelLoader::setupPositionalIO(
+    const ONNX_NAMESPACE::GraphProto &graph) {
+  for (const auto &in : graph.input()) {
+    if (staticInputs_.count(in.name())) {
+      continue;
+    }
+    auto loaderNameOrErr =
+        getAttrFromDocString(loaderNameSignifier, in.doc_string());
+    if (ERR_TO_BOOL(loaderNameOrErr.takeError(), /* log */ false)) {
+      positionalInputNames_.clear();
+      break;
+    }
+    positionalInputNames_.emplace_back(loaderNameOrErr.get());
+  }
+
+  for (const auto &out : graph.output()) {
+    auto loaderNameOrErr =
+        getAttrFromDocString(loaderNameSignifier, out.doc_string());
+    if (ERR_TO_BOOL(loaderNameOrErr.takeError(), /* log */ false)) {
+      positionalOutputNames_.clear();
+      break;
+    }
+    positionalOutputNames_.emplace_back(loaderNameOrErr.get());
+  }
+}
+
 ONNXModelLoader::ONNXModelLoader(
     const std::string &modelDescFilename,
     llvm::ArrayRef<const char *> tensorNames, llvm::ArrayRef<TypeRef> types,
@@ -4846,11 +4887,8 @@ ONNXModelLoader::ONNXModelLoader(
     RETURN_IF_ERR(loadModel(modelDef, {}, {}, /* B */ nullptr,
                             loadInputsAsPlaceholdersForOnnx));
 
-    for (const auto &input : modelDef.graph().input()) {
-      positionalInputNames_.emplace_back(input.name());
-    }
-    for (const auto &output : modelDef.graph().output()) {
-      positionalOutputNames_.emplace_back(output.name());
+    if (loadInputsAsPlaceholdersForOnnx) {
+      setupPositionalIO(modelDef.graph());
     }
 
     return Error::success();
