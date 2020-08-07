@@ -390,6 +390,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "RWQSLWSAllSame_Float16_AccumFP32/0",
     "sanityConvTranspose/0",
     "ConvTransposedAsymmetric/0",
+    "ConvTransposedGroup/0",
     "convTransposeCompareSimpleK8S1P0I3/0",
     "convTransposeCompareSimpleK6S1P1I4/0",
     "convTransposeConvolutionCompareSimpleK5S1P2I3/0",

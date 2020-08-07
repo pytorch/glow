@@ -1260,6 +1260,54 @@ TEST(onnx, importDeconvAsymmetric) {
   }
 }
 
+// ConvTranspose test with Group>1
+TEST(onnx, importDeconvGrouped) {
+
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetFilename = std::string(
+      GLOW_DATA_PATH "tests/models/onnxModels/convTransposeGroup.onnxtxt");
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    Tensor input(ElemKind::FloatTy, {1, 2, 3, 3});
+    for (dim_t i = 0; i < 2 * 3 * 3; i++) {
+      input.getHandle().raw(i) = i;
+    }
+    Tensor filter(ElemKind::FloatTy, {2, 1, 2, 2});
+    for (dim_t i = 0; i < 2 * 2 * 2; i++) {
+      filter.getHandle().raw(i) = i * 2;
+    }
+    ONNXModelLoader onnxLD(NetFilename, {"X", "W"},
+                           {&input.getType(), &filter.getType()}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"X", "W"},
+                                  {&input, &filter});
+  }
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto result = res->getHandle();
+
+  EXPECT_TRUE(result.dims() == llvm::ArrayRef<dim_t>({1, 2, 6, 6}));
+
+  std::vector<float> expected = {
+      0,   0,   0,   2,   0,   4,   0,   0,   4,   6,   8,   12,  0,   6,   0,
+      8,   0,   10,  12,  18,  16,  24,  20,  30,  0,   12,  0,   14,  0,   16,
+      24,  36,  28,  42,  32,  48,  72,  90,  80,  100, 88,  110, 108, 126, 120,
+      140, 132, 154, 96,  120, 104, 130, 112, 140, 144, 168, 156, 182, 168, 196,
+      120, 150, 128, 160, 136, 170, 180, 210, 192, 224, 204, 238};
+
+  for (dim_t i = 0, e = expected.size(); i < e; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expected[i]);
+  }
+}
+
 /// Helper method to run the AveragePool operator test cases.
 /// \p filename contains the model .onnxtxt.
 /// \p expectedDims: output Tensor dimensions.
