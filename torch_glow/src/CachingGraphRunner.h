@@ -167,6 +167,10 @@ class CachingGraphRunner {
   /// file no matter what.
   void aggregateAndDumpTraces(TraceContext *traceContext, bool flush = false);
 
+  /// Initialize the Glow compilation context \p cctx with \p settings
+  void initializeCompiliationContextFromSettings(
+      glow::CompilationContext &cctx, const PyTorchLoaderSettings &settings);
+
 public:
   CachingGraphRunner(std::shared_ptr<torch::jit::Graph> graph,
                      std::shared_ptr<runtime::HostManager> hostManager,
