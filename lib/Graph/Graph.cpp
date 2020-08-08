@@ -1691,27 +1691,11 @@ ARITHMETIC_FUN_DEF(Div);
 ARITHMETIC_FUN_DEF(Max);
 ARITHMETIC_FUN_DEF(Min);
 ARITHMETIC_FUN_DEF(Pow);
+ARITHMETIC_FUN_DEF(And);
+ARITHMETIC_FUN_DEF(Or);
+ARITHMETIC_FUN_DEF(Xor);
 #undef ARITHMETIC_FUN_DEF
 
-AndNode *Function::createAnd(llvm::StringRef name, NodeValue LHS,
-                             NodeValue RHS) {
-  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
-  TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
-  return addNode(new AndNode(name, OT, LHS, RHS));
-}
-
-OrNode *Function::createOr(llvm::StringRef name, NodeValue LHS, NodeValue RHS) {
-  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
-  TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
-  return addNode(new OrNode(name, OT, LHS, RHS));
-}
-
-XorNode *Function::createXor(llvm::StringRef name, NodeValue LHS,
-                             NodeValue RHS) {
-  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
-  TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
-  return addNode(new XorNode(name, OT, LHS, RHS));
-}
 #define TRIGONOMETRIC_FUN_DEF(NODE_NAME_)                                      \
   NODE_NAME_##Node *Function::create##NODE_NAME_(llvm::StringRef name,         \
                                                  NodeValue input) {            \
