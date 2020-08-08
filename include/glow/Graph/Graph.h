@@ -993,6 +993,9 @@ public:
   DECLARE_BROADCAST_NODE(Div, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Add, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Sub, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(And, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(Xor, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(Or, /* NUM_INPUTS */ 2)
 
 #define DECLARE_CMP_BROADCAST_NODE(NODE_NAME)                                  \
   template <class T, class... Args>                                            \
