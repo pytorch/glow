@@ -1188,6 +1188,18 @@ protected:
     return Error::success();
   }
 
+  // Loads Abs operator
+  Error loadAbs(const OpType &op, ArgumentDictionaryTy &dict) {
+    std::string opName = loadOperatorName(op);
+    NodeValue xNV;
+    ASSIGN_VALUE_OR_RETURN_ERR(xNV, getNodeValueByName(op.input(0)));
+    auto *input = xNV.getNode();
+
+    auto *N = G_->createAbs(opName, input);
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
+    return Error::success();
+  }
+
   using ProtobufLoader::ProtobufLoader;
 
   /// If operator type is supported, returns Expected<true> and creates new
@@ -1222,6 +1234,10 @@ protected:
     }
     if (typeName == "Neg") {
       RETURN_IF_ERR(loadNeg(op, dict));
+      return true;
+    }
+    if (typeName == "Abs") {
+      RETURN_IF_ERR(loadAbs(op, dict));
       return true;
     }
     if (typeName == "Ceil") {
