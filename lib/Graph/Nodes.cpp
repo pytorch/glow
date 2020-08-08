@@ -1305,6 +1305,16 @@ bool LocalResponseNormalizationGradNode::verify() const {
 VERIFY_UNARY_LOGICAL(Not)
 #undef VERIFY_UNARY_LOGICAL
 
+bool SignNode::verify() const {
+  if (getResult().getType()->isQuantizedType()) {
+    bool isValid = checkSameShape(getInput(), getResult(), this);
+    isValid &=
+        checkType(getResult(), getInput().getType()->getElementType(), this);
+    return isValid;
+  }
+  return checkSameType(getInput(), getResult(), this);
+}
+
 #define VERIFY_BINARY_LOGICAL(NODE_NAME_)                                      \
   bool NODE_NAME_##Node::verify() const {                                      \
     bool isValid = checkSameShape(getLHS(), getResult(), this);                \

@@ -3598,6 +3598,45 @@ TEST_F(OnnxImporterTest, importDimParamImplicit) {
   EXPECT_EQ(outputPH->dims()[1], 2);
 }
 
+static void importUnary(const std::string &netFilename,
+                        llvm::ArrayRef<float> input,
+                        llvm::ArrayRef<dim_t> inputShape,
+                        llvm::ArrayRef<dim_t> outputShape,
+                        llvm::ArrayRef<float> expectedValues) {
+
+  float delta = 1e-08;
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *graphOutputVar;
+  // Load the .onnxtxt model
+  Type inputType(ElemKind::FloatTy, inputShape);
+  ONNXModelLoader onnxLD(netFilename, {"input"}, {&inputType}, *F);
+  graphOutputVar = EXIT_ON_ERR(onnxLD.getSingleOutput());
+  auto inputPH = mod.getPlaceholderByNameSlow("input");
+  auto *inputTensor = bindings.allocate(inputPH);
+  inputTensor->getHandle<float>() = input;
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+  auto result = bindings.get(graphOutputVar)->getHandle<float>();
+  ASSERT_TRUE(result.dims() == (llvm::ArrayRef<dim_t>)outputShape);
+  for (size_t i = 0; i < result.getType().size(); i++) {
+    EXPECT_NEAR(result.raw(i), (float)expectedValues[i], delta);
+  }
+}
+
+TEST(onnx, importSign) {
+  std::vector<float> input = {-1, -2, 0, -2, 1, 2, 1, 2, -10, 0, 0, -2};
+  std::vector<dim_t> inputShape = {1, 2, 3, 2};
+  std::vector<dim_t> outputShape = {1, 2, 3, 2};
+  std::vector<float> expectedValues = {-1, -1, 0, -1, 1, 1, 1, 1, -1, 0, 0, -1};
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/sign.onnxtxt");
+  importUnary(netFilename, input, inputShape, outputShape, expectedValues);
+}
+
 /// Test loading RNN from a ONNX model. The ONNX model already computes
 /// the error compared to a PyTorch reference implementation.
 static void importRNN(std::string fileName) {

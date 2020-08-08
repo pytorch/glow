@@ -155,6 +155,10 @@ class ONNXModelLoader
                              const ONNX_NAMESPACE::NodeProto &op,
                              ArgumentDictionaryTy &dict);
 
+  /// Load Sign ONNX operator
+  Error loadSign(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
+
   /// Load Conv ONNX operator.
   Error loadConv(const ONNX_NAMESPACE::NodeProto &op,
                  ArgumentDictionaryTy &dict);
