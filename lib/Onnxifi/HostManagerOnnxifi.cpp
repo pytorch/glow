@@ -40,6 +40,7 @@ bool GlowFP16Placeholders = true;
 bool GlowFP16Constants = true;
 bool GlowEnableQuantParamChanges = true;
 bool GlowDumpGraph = false;
+bool GlowDumpInitialLoadedGraph = false;
 bool GlowUseDAGOptimizer = false;
 std::string GlowDAGOptimizerPlacementTaggingAlgorithm = "None";
 std::string GlowDAGOptimizerParallelizationTaggingAlgorithm = "None";
@@ -329,6 +330,14 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   if (GlowSaveOnnxifiModel) {
     for (Function *F : module->getFunctions()) {
       saveOnnxifiModel(F);
+    }
+  }
+
+  if (GlowDumpInitialLoadedGraph) {
+    for (Function *F : module->getFunctions()) {
+      auto fname = strFormat("initial_graph__%s.dot", F->getName().data());
+      LOG(INFO) << "Dumping initially loaded graph to " << fname;
+      F->dumpDAG(fname);
     }
   }
 

@@ -5801,3 +5801,37 @@ TEST_F(GraphOptz, DequantSwishQuantOpt) {
 
   checkNumericalEquivalence(0.025f);
 }
+
+/// Test that when we have Concat({X, Quantize(Clip)}), that we don't optimize
+/// to Concat({X, Quantize'}), since Quantize' will have different quantization
+/// parameters and therefore won't have the same quantization parameters as X.
+TEST_F(GraphOptz, DisallowChangeQuantParamWithConcatInput) {
+  Placeholder *PH1 = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32}, 0.3, 5,
+                                            "input", false);
+  bindings_.allocate(PH1)->getHandle<int8_t>().randomize(-128, 127,
+                                                         mod_.getPRNG());
+  Placeholder *PH2 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 32}, "input", false);
+  bindings_.allocate(PH2)->getHandle<float16_t>().randomize(-40.f, 40.f,
+                                                            mod_.getPRNG());
+
+  ClipNode *clip = F_->createClip("clip", PH2, 0.f, 1000.f);
+  QuantizeNode *quant = F_->createQuantize(
+      "quantize", clip, mod_.uniqueType(ElemKind::Int8QTy, {1, 32}, 0.3, 5));
+
+  ConcatNode *CN = F_->createConcat("concat", {PH1, quant}, 0);
+  F_->createSave("save", CN);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Expect the graph didn't change at all, since we disallowed it due to the
+  // fact that we disallowed Quantize(Clip) to be merged into Quantize', ssince
+  // the Quantize is consumed by a Concat which requires the quantization
+  // parameters to stay the same across all inputs.
+  EXPECT_EQ(F_->toString(/* skipUsersForStorage */ false,
+                         /* skipName */ true),
+            optimizedF_->toString(/* skipUsersForStorage */ false,
+                                  /* skipName */ true));
+
+  checkNumericalEquivalence();
+}
