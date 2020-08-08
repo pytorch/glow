@@ -7190,6 +7190,42 @@ TEST_P(OperatorTest, Floor_Int8QTy) {
   EXPECT_EQ(outH.raw(4), 2);
 }
 
+TEST_P(OperatorTest, Sign_FloatTy) {
+  CHECK_IF_ENABLED();
+  auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {3}, "inp", false);
+  bindings_.allocate(inp)->getHandle<float>() = {-1.0, 0.0, 1.0};
+  auto *node = F_->createSign("Sign", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float>();
+  EXPECT_EQ(outH.size(), 3);
+  EXPECT_FLOAT_EQ(outH.raw(0), -1.0);
+  EXPECT_FLOAT_EQ(outH.raw(1), 0.0);
+  EXPECT_FLOAT_EQ(outH.raw(2), 1.0);
+}
+
+TEST_P(OperatorTest, Sign_Int8QTy) {
+  CHECK_IF_ENABLED();
+
+  auto qParams = glow::quantization::chooseQuantizationParams({-100, 100});
+  auto *inp = mod_.createPlaceholder(ElemKind::Int8QTy, {3}, qParams.scale,
+                                     qParams.offset, "input", false);
+  bindings_.allocate(inp)->getHandle<int8_t>() = {-100, 0, 100};
+
+  auto *node = F_->createSign("Sign", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<int8_t>();
+  EXPECT_EQ(outH.size(), 3);
+  EXPECT_EQ(outH.raw(0), -1);
+  EXPECT_EQ(outH.raw(1), 0);
+  EXPECT_EQ(outH.raw(2), 1);
+}
+
 TEST_P(OperatorTest, Ceil_FloatTy) {
   CHECK_IF_ENABLED();
   auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {3}, "inp", false);

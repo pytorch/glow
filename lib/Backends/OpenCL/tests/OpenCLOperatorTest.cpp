@@ -425,6 +425,8 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Neg_Int8QTy/0",
     "Floor_FloatTy/0",
     "Floor_Int8QTy/0",
+    "Sign_FloatTy/0",
+    "Sign_Int8QTy/0",
     "Ceil_FloatTy/0",
     "Ceil_Int8QTy/0",
     "Round_FloatTy/0",

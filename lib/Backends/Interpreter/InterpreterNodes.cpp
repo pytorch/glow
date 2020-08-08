@@ -2876,6 +2876,11 @@ void BoundInterpreterFunction::fwdElementFloorInst(const ElementFloorInst *I) {
   dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
 }
 
+void BoundInterpreterFunction::fwdElementSignInst(const ElementSignInst *I) {
+  auto func = [](float x) -> float { return ((x > 0) - (x < 0)); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
 void BoundInterpreterFunction::fwdElementCeilInst(const ElementCeilInst *I) {
   auto func = [](float x) -> float { return std::ceil(x); };
   dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
