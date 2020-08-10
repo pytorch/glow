@@ -168,6 +168,20 @@ public:
   /// \returns the number of allocated bytes pointed to by \ref data_.
   size_t getUnpaddedSizeInBytes() const { return unpaddedSize_; }
 
+  /// \returns the number of real elements in a Tensor, not including extra
+  /// padding, or not including number of elements that do not exist outside of
+  /// a partial tensor shape. Note that Tensors cannot be both custom aligned
+  /// and partial.
+  size_t getRealNumElements() const {
+    // If custom alignment then return size from the handle.
+    if (size() < actualSize()) {
+      return size();
+    }
+    // Else assume no custom alignment, so return number of elements based on
+    // unpaddedSize_, i.e. accounts for partial Tensors.
+    return unpaddedSize_ / type_.getElementSize();
+  }
+
   /// \returns the type of the tensor.
   const Type &getType() const { return type_; }
 
@@ -489,6 +503,10 @@ public:
 
     // Set unpaddedSize_ to the actual number of bytes.
     unpaddedSize_ = unpaddedSize;
+
+    assert(!(size() < actualSize() &&
+             getSizeInBytes() != getUnpaddedSizeInBytes()) &&
+           "Custom aligned Tensors cannot also be partial");
 
 #ifdef GLOW_DEBUG_TENSOR_INIT
     PseudoRNG rng;
@@ -1026,7 +1044,7 @@ class HandleIterator
 
   static HandleIterator end(HandleTy handle) {
     auto res = HandleIterator(handle);
-    res.idx_ = res.handle_->size();
+    res.idx_ = res.handle_->getRealNumElements();
     return res;
   }
 
@@ -1216,6 +1234,9 @@ public:
   size_t getUnpaddedSizeInBytes() const {
     return tensor_->getUnpaddedSizeInBytes();
   }
+
+  /// \returns the number of unpadded elements in the underlying \ref tensor_.
+  size_t getRealNumElements() const { return tensor_->getRealNumElements(); }
 
   bool isInBounds(llvm::ArrayRef<dim_t> indices) const {
     return tensor_->isInBounds(indices);

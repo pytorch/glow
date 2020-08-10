@@ -1239,8 +1239,9 @@ TEST(Tensor, dump) {
   llvm::raw_string_ostream osT1(storageT1);
   T.dump(osT1);
   std::string expectMes = R"(shape: ( 4 )
-max: 1515.200  min: 1.200
-[1.200, 12.100, 51.000, 1515.200, ]
+elemkind: float
+max: 1515.19995  min: 1.20000  avg: 394.87499
+[1.20000, 12.10000, 51.00000, 1515.19995, ]
 )";
   EXPECT_EQ(mes, expectMes);
   EXPECT_EQ(mes, osT1.str());
@@ -1250,8 +1251,9 @@ max: 1515.200  min: 1.200
   EXPECT_EQ(mes, osT2.str());
   T.dump(2);
   std::string expectMes2 = R"(shape: ( 4 )
-max: 1515.200  min: 1.200
-[1.200, 12.100, ...]
+elemkind: float
+max: 1515.19995  min: 1.20000  avg: 394.87499
+[1.20000, 12.10000, ...]
 )";
   std::string storageT3;
   llvm::raw_string_ostream osT3(storageT3);
@@ -1260,6 +1262,17 @@ max: 1515.200  min: 1.200
   std::string mes2 = T.toString(2);
   EXPECT_EQ(mes2, expectMes2);
   EXPECT_EQ(mes2, osT3.str());
+
+  // Get an unowned padded (partial) tensor sharing storage with T.
+  auto paddedType = Type::newShape(T.getType(), {256});
+  Tensor partialT(T.getUnsafePtr(), &paddedType, T.getSizeInBytes());
+  std::string expectPartial = R"(shape: ( 256 ) ; partial num elements: 4
+elemkind: float
+max: 1515.19995  min: 1.20000  avg: 394.87499
+[1.20000, 12.10000, 51.00000, ...]
+)";
+  std::string partialString = partialT.toString(3);
+  EXPECT_EQ(partialString, expectPartial);
 }
 
 /// Check Type serialization functions.
@@ -1284,7 +1297,14 @@ TEST(Tensor, typeSerialization) {
 /// Test unpadded size.
 TEST(Tensor, unpaddedSize) {
   Tensor partial(ElemKind::FloatTy, {11});
+  PseudoRNG PRNG;
+  partial.init(Tensor::InitKind::Broadcast, 5, PRNG);
   auto bytes = partial.getSizeInBytes();
+
+  auto H = partial.getHandle<float>();
+  for (const auto &e : H) {
+    EXPECT_EQ(e, 5);
+  }
 
   // Get an unowned padded tensor sharing storage with partial.
   auto paddedType = Type::newShape(partial.getType(), {256});
@@ -1292,6 +1312,14 @@ TEST(Tensor, unpaddedSize) {
   Tensor T(partial.getUnsafePtr(), &paddedType, bytes);
   EXPECT_EQ(T.getUnpaddedSizeInBytes(), bytes);
   EXPECT_EQ(T.getSizeInBytes(), paddedBytes);
+  EXPECT_EQ(T.getRealNumElements(), 11);
+  auto partialH = partial.getHandle<float>();
+  int numElemCount = 0;
+  for (const auto &e : partialH) {
+    EXPECT_EQ(e, 5);
+    numElemCount += 1;
+  }
+  EXPECT_EQ(numElemCount, 11);
 
   // Test that moving the padded tensor preserves properties.
   auto moved = std::move(T);
