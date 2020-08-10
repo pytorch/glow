@@ -616,7 +616,8 @@ TEST_F(NNPIOptPipelineTestLowering, NoLowerLogit) {
 TEST_F(NNPIOptPipelineTest, DataParallelLNClip) {
   auto *input =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 1024}, "input", false);
-
+  bindings_.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                              mod_.getPRNG());
   auto *tiled = F_->createTile("tile", input, 32, 0);
   Tensor scaleT(ElemKind::Float16Ty, {1024});
   scaleT.getHandle<float16_t>().randomize(0.0f, 1.0f, mod_.getPRNG());
@@ -639,6 +640,49 @@ TEST_F(NNPIOptPipelineTest, DataParallelLNClip) {
       countNodeKind(optimizedF_, Kinded::Kind::LayerNormalizationNodeKind), 8);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 8);
+  checkNumericalEquivalence(/* allowedError */ 0.00f);
+}
+
+// BatchedReduceAdd Model Parallel reducing dim 0
+TEST_F(NNPIOptPipelineTest, ModelParallelBatchedReduceAdd) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {20, 64, 8}, "input", false);
+  bindings_.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                              mod_.getPRNG());
+
+  auto *reduced = F_->createBatchedReduceAdd("BR", input, {0});
+  F_->createSave("ret", reduced);
+
+  // Should split BatchedReduceAdd by 8
+  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+      std::to_string(8);
+  cloneAndCompile();
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedReduceAddNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::BatchedReduceAddNodeKind),
+            8);
+  checkNumericalEquivalence(/* allowedError */ 0.00f);
+}
+
+// BatchedReduceAdd Model Parallel reducing dim 1
+TEST_F(NNPIOptPipelineTest, DataParallelBatchedReduceAdd) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {64, 20, 8}, "input", false);
+  bindings_.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                              mod_.getPRNG());
+
+  auto *reduced = F_->createBatchedReduceAdd("BR", input, {1});
+  F_->createSave("ret", reduced);
+
+  // Should split BatchedReduceAdd by 8
+  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+      std::to_string(8);
+  cloneAndCompile();
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedReduceAddNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::BatchedReduceAddNodeKind),
+            8);
+  checkNumericalEquivalence(/* allowedError */ 0.00f);
 }
 
 // Quantize -> FC -> DQ
