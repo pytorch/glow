@@ -328,6 +328,7 @@ struct BlacklistInitializer {
             {"ChannelwiseQuantizedConv2D_Int8_BiasInt32/0",
              TestBlacklist::AnyDeviceAnyEngine},
             {"ROIAlign/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"BBoxTransform/0", TestBlacklist::AnyDeviceAnyEngine},
             {"Abs_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
             {"Abs_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
             {"And/0", TestBlacklist::AnyDeviceAnyEngine},

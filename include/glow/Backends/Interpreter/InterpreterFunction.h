@@ -381,6 +381,8 @@ private:
 
   void fwdROIAlignInstFloatImpl(glow::ROIAlignInst const *I);
 
+  void fwdBBoxTransformInstFloatImpl(glow::BBoxTransformInst const *I);
+
   template <typename T, typename AccumT>
   void fwdEmbeddingBagByteRowwiseOffsetsImpl(
       const EmbeddingBagByteRowwiseOffsetsInst *I);

@@ -1359,6 +1359,18 @@ Error ONNXModelWriter::writeROIAlign(const ROIAlignNode *node,
   return writeAllWithNode("ROIAlign", node, graph, proto);
 }
 
+Error ONNXModelWriter::writeBBoxTransform(const BBoxTransformNode *node,
+                                          GraphType &graph) {
+  auto *proto = graph.add_node();
+  addValueAttribute(proto, "ApplyScale", node->getApplyScale());
+  addValueAttribute(proto, "Rotated", node->getRotated());
+  addValueAttribute(proto, "AngleBoundOn", node->getAngleBoundOn());
+  addValueAttribute(proto, "AngleBoundLo", node->getAngleBoundLo());
+  addValueAttribute(proto, "AngleBoundHi", node->getAngleBoundHi());
+  addValueAttribute(proto, "ClipAngleThresh", node->getClipAngleThresh());
+  return writeAllWithNode("BBoxTransform", node, graph, proto);
+}
+
 Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
                                         GraphType &graph) {
   // Loading convolution creates a sandwich with Transpose nodes for Input,

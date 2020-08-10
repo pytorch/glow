@@ -2132,6 +2132,54 @@ bool ROIAlignNode::verify() const {
   return isValid;
 }
 
+bool BBoxTransformNode::verify() const {
+  auto rois = getRois();
+  auto deltas = getDeltas();
+  auto imInfo = getImInfo();
+  auto boxOut = getBoxOut();
+  auto weights = getWeights();
+
+  auto roisDims = rois.dims();
+  auto deltasDims = deltas.dims();
+  auto imInfoDims = imInfo.dims();
+
+  bool rotated = getRotated();
+  // BoxDim is of the format
+  // <x1, y1, x2, y2, [optional_angle]>
+  dim_t expectedBoxDim = rotated ? 5 : 4;
+
+  // Rois row is of the format
+  // <[optinal_batch_index], x1, y1, x2, y2, [optional_angle]>
+  bool validRoiDim =
+      roisDims[1] == expectedBoxDim || roisDims[1] == expectedBoxDim + 1;
+
+  bool isValid = checkTypeIgnoreShape(rois, boxOut, this);
+  isValid &= checkSameType(deltas, boxOut, this);
+  isValid &= checkTypeIgnoreShape(imInfo, boxOut, this);
+  isValid &= checkType(rois, ElemKind::FloatTy, this);
+  isValid &= expectCompareTrue("Rois must be a 2D tensor", roisDims.size(),
+                               size_t(2), this);
+  isValid &=
+      expectCompareTrue("Rois must have with equals boxDim or larger in 1",
+                        validRoiDim, true, this);
+  isValid &= expectCompareTrue("Deltas must be a 2D tensor", deltasDims.size(),
+                               size_t(2), this);
+  isValid &= expectCompareTrue("ImInfo must be a 2D tensor", imInfoDims.size(),
+                               size_t(2), this);
+  isValid &= expectCompareTrue("ImInfo must be a {batch_size, 3} tensor",
+                               imInfoDims[1], dim_t(3), this);
+  isValid &= expectCompareTrue("Rois and Deltas must have same 0 dimension",
+                               roisDims[0], deltasDims[0], this);
+  isValid &= expectCompareTrue("Deltas must be divisible by box dimensions",
+                               deltasDims[1] % expectedBoxDim, dim_t(0), this);
+  isValid &= expectCompareTrue("Weights must be a 1D vector of length 4",
+                               weights.size(), size_t(4), this);
+  isValid &= expectCompareTrue("Rotated bbox transform is not supported.",
+                               rotated, false, this);
+
+  return isValid;
+}
+
 bool SaveNode::verify() const {
   return checkSameType(getInput(), getOutput(), this);
 }
