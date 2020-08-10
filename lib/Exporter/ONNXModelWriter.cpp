@@ -134,13 +134,11 @@ void addValueAttribute(ONNX_NAMESPACE::NodeProto *proto,
                     T>::assign(attr, container);
 }
 
-/// Adds the type attributes from \p NV to \p proto. \p ioNum, \p isInput, and
+/// Adds the type attributes from \p ty to \p proto. \p ioNum, \p isInput, and
 /// \p addPrefix are used to format the name of the attribute.
-void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, const NodeValue NV,
+void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, TypeRef ty,
                        unsigned ioNum, bool isInput,
                        const std::string &addPrefix = "") {
-  const TypeRef ty = NV.getType();
-
   // Add ElemKind.
   auto *elemKindAttr = proto->add_attribute();
   elemKindAttr->set_name(
@@ -151,7 +149,7 @@ void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, const NodeValue NV,
   // Add Shape.
   addValueAttribute(proto,
                     getTypeAttrID(ioNum, shapeSignifier, isInput, addPrefix),
-                    NV.dims());
+                    ty->dims());
 
   // Write out scale/offset if quantized ElemKind.
   if (isQuantizedElemKind(ty->getElementType())) {
@@ -162,6 +160,14 @@ void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, const NodeValue NV,
         proto, getTypeAttrID(ioNum, qOffsetSignifier, isInput, addPrefix),
         ty->getOffset());
   }
+}
+
+/// Adds the type attributes from \p NV to \p proto. \p ioNum, \p isInput, and
+/// \p addPrefix are used to format the name of the attribute.
+void addTypeAttributes(ONNX_NAMESPACE::NodeProto *proto, const NodeValue &NV,
+                       unsigned ioNum, bool isInput,
+                       const std::string &addPrefix = "") {
+  addTypeAttributes(proto, NV.getType(), ioNum, isInput, addPrefix);
 }
 
 /// Add the type attributes from the \p ioNum number input or output (depending
@@ -704,8 +710,7 @@ Error ONNXModelWriter::writeFunction() {
         continue;
       }
       // Write global input, output only tensor shape.
-      auto *inputProto = graphProto_->add_input();
-      tensorShapeFromPlaceholder(PH, inputProto);
+      RETURN_IF_EXPECTED_IS_ERR(createProtoForIO(PH, /* isInput */ true));
     } else if (kind == Kinded::Kind::ConstantKind) {
       // Write global initializer, output tensor bytes.
       const auto *C = llvm::cast<Constant>(N);
@@ -781,8 +786,9 @@ Error ONNXModelWriter::writeFunction() {
         }
       }
 
-      auto *out = graphProto_->add_output();
-      tensorShapeFromPlaceholder(PH, out);
+      ONNX_NAMESPACE::ValueInfoProto *out;
+      ASSIGN_VALUE_OR_RETURN_ERR(out,
+                                 createProtoForIO(PH, /* isInput */ false));
 
       // Use the doc string to specify the name that should be used for the
       // SaveNode to ensure it's kept the same between export and import.
@@ -835,6 +841,46 @@ Error ONNXModelWriter::finalizeAndWriteProto(llvm::StringRef name) {
     }
   }
 
+  // If we have loadedPHNames_, then we buffered the non-static PH IO protobuf
+  // in inputValueInfos_ and outputValueInfos_. Now we write it all out in order
+  // according to indices provided in loadedPHNames_.
+  if (loadedPHNames_) {
+    RETURN_ERR_IF_NOT(
+        inputValueInfos_.size() + outputValueInfos_.size() ==
+            loadedPHNames_->size(),
+        strFormat("Number of buffered inputs and outputs %lu didn't match the "
+                  "number of loadedPHNames %lu",
+                  inputValueInfos_.size() + outputValueInfos_.size(),
+                  loadedPHNames_->size()));
+
+    // If we have the loaded PH names map, then we need to reorder the inputs
+    // and outputs to follow the same order as provided in the loadedPHNames_.
+    std::vector<const Placeholder *> orderedInputs(inputValueInfos_.size());
+    std::vector<const Placeholder *> orderedOutputs(outputValueInfos_.size());
+    for (const auto &pair : *loadedPHNames_) {
+      const Placeholder *PH = pair.first;
+      const unsigned orderIdx = pair.second.second;
+      if (inputValueInfos_.count(PH)) {
+        orderedInputs[orderIdx] = PH;
+      } else if (outputValueInfos_.count(PH)) {
+        orderedOutputs[orderIdx] = PH;
+      } else {
+        RETURN_ERR("PH must either be in inputs or outputs: " +
+                   PH->getName().str());
+      }
+    }
+
+    // Now have IO in order matching loadedPHNames_, so finally write them out.
+    for (const Placeholder *PH : orderedInputs) {
+      auto *inputProto = graphProto_->add_input();
+      inputProto->MergeFrom(inputValueInfos_[PH]);
+    }
+    for (const Placeholder *PH : orderedOutputs) {
+      auto *outputProto = graphProto_->add_output();
+      outputProto->MergeFrom(outputValueInfos_[PH]);
+    }
+  }
+
   if (zipMode_) {
     const bool compressed = false;
     ZipWriter zip(&ff_, name);
@@ -882,7 +928,8 @@ ONNXModelWriter::ONNXModelWriter(
       extraMetadataProps_(extraMetadataProps),
       useGlowCustomOps_(useGlowCustomOps), dagMode_(false),
       constFoldRecord_(constFoldRecord),
-      backendSpecificNodeInfo_(backendSpecificNodeInfo) {
+      backendSpecificNodeInfo_(backendSpecificNodeInfo),
+      loadedPHNames_(nullptr), staticPlaceholderTypes_(nullptr) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -999,13 +1046,17 @@ ONNXModelWriter::ONNXModelWriter(
     bool includeConstantData,
     const llvm::StringMap<std::string> &extraMetadataProps,
     const ConstantFoldingRecordMap &constFoldRecord,
-    const BackendSpecificNodeInfo &backendSpecificNodeInfo)
+    const BackendSpecificNodeInfo &backendSpecificNodeInfo,
+    const LoadedPlaceholderNameMap *loadedPHNames,
+    const std::map<std::string, Type> *staticPlaceholderTypes)
     : CommonOperatorWriter(modelFilename, nullptr, errPtr),
       irVersion_(irVersion), opsetVersion_(opsetVersion), zipMode_(zipMode),
       textMode_(textMode), includeConstantData_(includeConstantData),
       extraMetadataProps_(extraMetadataProps), useGlowCustomOps_(true),
       dagMode_(true), constFoldRecord_(constFoldRecord),
-      backendSpecificNodeInfo_(backendSpecificNodeInfo) {
+      backendSpecificNodeInfo_(backendSpecificNodeInfo),
+      loadedPHNames_(loadedPHNames),
+      staticPlaceholderTypes_(staticPlaceholderTypes) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -1122,8 +1173,19 @@ void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out,
   }
 }
 
-void ONNXModelWriter::tensorShapeFromPlaceholder(const Placeholder *PH,
-                                                 ValueInfoType *valueProto) {
+Expected<ONNX_NAMESPACE::ValueInfoProto *>
+ONNXModelWriter::createProtoForIO(const Placeholder *PH, bool isInput) {
+  // If loadedPHNames_ then we have a specific order we need to write out IO
+  // protos. If so, buffer non-static IO that is not part of a constant folding
+  // subgraph into inputValueInfos_/outputValueInfos_ to later be written out in
+  // order inside finalizeAndWriteProto() based on loadedPHNames_.
+  ONNX_NAMESPACE::ValueInfoProto *valueProto;
+  if (!loadedPHNames_ || isWritingConstFoldSubgraph() || PH->isStatic()) {
+    valueProto = isInput ? graphProto_->add_input() : graphProto_->add_output();
+  } else {
+    valueProto = isInput ? &inputValueInfos_[PH] : &outputValueInfos_[PH];
+  }
+
   tensorShapeFromInput(PH->getName(), PH->getType(), valueProto);
 
   if (useGlowCustomOps_) {
@@ -1136,11 +1198,51 @@ void ONNXModelWriter::tensorShapeFromPlaceholder(const Placeholder *PH,
     addAttrToDocString(valueProto, elemKindSignifier,
                        PH->getType()->getElementName());
 
+    // If we're writing out a Placeholder from the original input Function, then
+    // expect to find a corresponding input loaded PH name if they are
+    // provided. This is expected when the PH is not static (as otherwise it's
+    // input as a weight), when the Function being written isn't a constant
+    // folding subgraph (then we have PHs that are used just to save the const
+    // folding result), and when the PH isn't intermediate (then it's only
+    // visible/used by Glow when executing partitioned DAGs).
+    if (loadedPHNames_ && !PH->isStatic() && !isWritingConstFoldSubgraph() &&
+        !isIntermediatePHForDAG(PH)) {
+      auto it = loadedPHNames_->find(PH);
+      RETURN_ERR_IF_NOT(it != loadedPHNames_->end(),
+                        "Did not find associated loader name for " +
+                            PH->getName().str() + " while writing Function " +
+                            F_->getName().str());
+      addAttrToDocString(valueProto, loaderNameSignifier, it->second.first);
+    }
+
+    // If we have a type that was used for loading a static Placeholder, then
+    // serialize that type into a dummy node.
+    if (staticPlaceholderTypes_ && PH->isStatic()) {
+      auto it = staticPlaceholderTypes_->find(PH->getName().data());
+      RETURN_ERR_IF_NOT(it != staticPlaceholderTypes_->end(),
+                        "Did not find associated type for static PH " +
+                            PH->getName().str() + " while writing Function " +
+                            F_->getName().str());
+
+      // Create new static PH dummy node that carries the type that the static
+      // PH was loaded with. Note it has no inputs or outputs, howeverr there is
+      // a type appended for the output idx, and the node has the same name as
+      // the static PH to use when reloading.
+      auto *staticPHDummyNodeProto = graphProto_->add_node();
+      staticPHDummyNodeProto->set_op_type(staticPHDummyNodeName);
+      staticPHDummyNodeProto->set_name(PH->getName().data());
+
+      // Set the output type to be the one we found in staticPlaceholderTypes_.
+      addTypeAttributes(staticPHDummyNodeProto, &it->second, Storage::OutputIdx,
+                        /* isInput */ false);
+    }
+
     // Also include quantization params if necessary.
     if (PH->getType()->isQuantizedType()) {
       addQuantParamsToDocString(valueProto, *PH->getType());
     }
   }
+  return valueProto;
 }
 
 Error ONNXModelWriter::writeAllWithNode(const std::string &opName,
@@ -1255,6 +1357,18 @@ Error ONNXModelWriter::writeROIAlign(const ROIAlignNode *node,
   addValueAttribute(proto, "sampling_ratio", node->getSamplingRatio());
   addValueAttribute(proto, "spatial_scale", node->getSpatialScale());
   return writeAllWithNode("ROIAlign", node, graph, proto);
+}
+
+Error ONNXModelWriter::writeBBoxTransform(const BBoxTransformNode *node,
+                                          GraphType &graph) {
+  auto *proto = graph.add_node();
+  addValueAttribute(proto, "ApplyScale", node->getApplyScale());
+  addValueAttribute(proto, "Rotated", node->getRotated());
+  addValueAttribute(proto, "AngleBoundOn", node->getAngleBoundOn());
+  addValueAttribute(proto, "AngleBoundLo", node->getAngleBoundLo());
+  addValueAttribute(proto, "AngleBoundHi", node->getAngleBoundHi());
+  addValueAttribute(proto, "ClipAngleThresh", node->getClipAngleThresh());
+  return writeAllWithNode("BBoxTransform", node, graph, proto);
 }
 
 Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
@@ -1397,6 +1511,15 @@ Error ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
   outputsToProto(node, graph, proto);
 
   return Error::success();
+}
+
+Error ONNXModelWriter::writeBatchedReduceMax(const BatchedReduceMaxNode *node,
+                                             GraphType &graph) {
+  auto *proto = graph.add_node();
+  // Find dictionary entries.
+  addValueAttribute(proto, "axes", node->getAxes());
+
+  return writeAllWithNode("ReduceMax", node, graph, proto);
 }
 
 Error ONNXModelWriter::writeBatchedReduceMin(const BatchedReduceMinNode *node,
@@ -1677,19 +1800,52 @@ Error ONNXModelWriter::writeBucketize(const BucketizeNode *node,
 Error ONNXModelWriter::writeResizeNearest(const ResizeNearestNode *node,
                                           GraphType &graph) {
   auto *proto = graph.add_node();
-  // Add dictionary entries.
-  addValueAttribute(proto, "Scale", node->getScale());
+  // Converting arrayRef scale to a constant node
+  auto scale = node->getScale();
+  Tensor scaleTensor(ElemKind::FloatTy, {(dim_t)scale.size()});
+  auto handleScale = scaleTensor.getHandle<float>();
+  for (size_t b = 0, e = scale.size(); b < e; ++b) {
+    handleScale.raw(b) = scale[b];
+  }
 
-  return writeAllWithNode(node->getName(), node, graph, proto);
+  auto *tensorProto = addInitializer(graph);
+  tensorProto->set_name(node->getName().str() + "_scale");
+  writeTensor(scaleTensor, tensorProto, useGlowCustomOps_);
+
+  // Add dictionary entries.
+  addValueAttribute(proto, "coordinate_transformation_mode",
+                    std::string("asymmetric"));
+  addValueAttribute(proto, "mode", std::string("nearest"));
+  addValueAttribute(proto, "nearest_mode", std::string("floor"));
+
+  RETURN_IF_ERR(writeAllWithNode("Resize", node, graph, proto));
+  proto->add_input(node->getName().str() + "_scale");
+  return Error::success();
 }
 
 Error ONNXModelWriter::writeResizeBilinear(const ResizeBilinearNode *node,
                                            GraphType &graph) {
   auto *proto = graph.add_node();
-  // Add dictionary entries.
-  addValueAttribute(proto, "Scale", node->getScale());
+  // Converting arrayRef scale to a constant node
+  auto scale = node->getScale();
+  Tensor scaleTensor(ElemKind::FloatTy, {(dim_t)scale.size()});
+  auto handleScale = scaleTensor.getHandle<float>();
+  for (size_t b = 0, e = scale.size(); b < e; ++b) {
+    handleScale.raw(b) = scale[b];
+  }
 
-  return writeAllWithNode(node->getName(), node, graph, proto);
+  auto *tensorProto = addInitializer(graph);
+  tensorProto->set_name(node->getName().str() + "_scale");
+  writeTensor(scaleTensor, tensorProto, useGlowCustomOps_);
+
+  // Add dictionary entries.
+  addValueAttribute(proto, "coordinate_transformation_mode",
+                    std::string("asymmetric"));
+  addValueAttribute(proto, "mode", std::string("linear"));
+
+  RETURN_IF_ERR(writeAllWithNode("Resize", node, graph, proto));
+  proto->add_input(node->getName().str() + "_scale");
+  return Error::success();
 }
 
 Error ONNXModelWriter::writeSoftMax(const SoftMaxNode *node, GraphType &graph) {
@@ -2007,6 +2163,7 @@ DEF_ALL_WRITER_NODE(Not)
 DEF_ALL_WRITER_NODE(Abs)
 DEF_ALL_WRITER_NODE(Neg)
 DEF_ALL_WRITER_NODE(Floor)
+DEF_ALL_WRITER_NODE(Sign)
 DEF_ALL_WRITER_NODE(Ceil)
 DEF_ALL_WRITER_NODE(Round)
 DEF_ALL_WRITER_NODE(Sqrt)
@@ -2017,6 +2174,9 @@ DEF_ALL_WRITER_NODE(Cos)
 DEF_ALL_WRITER_NODE(Min)
 DEF_ALL_WRITER_NODE(Max)
 DEF_ALL_WRITER_NODE(Log)
+DEF_ALL_WRITER_NODE(Asin)
+DEF_ALL_WRITER_NODE(Acos)
+DEF_ALL_WRITER_NODE(Atan)
 DEF_ALL_WRITER_NODE(Exp)
 DEF_ALL_WRITER_NODE(Relu)
 DEF_ALL_WRITER_NODE(LeakyRelu)

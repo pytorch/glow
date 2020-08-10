@@ -132,6 +132,16 @@ class ONNXModelLoader
   Error loadNonZero(const ONNX_NAMESPACE::NodeProto &op,
                     const ArgumentDictionaryTy &dict);
 
+  /// Load Trigonometric Ops
+  Error loadAsin(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
+
+  Error loadAcos(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
+
+  Error loadAtan(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
+
   /// Load Constant ONNX operator.
   Error loadConstant(const ONNX_NAMESPACE::NodeProto &op,
                      ArgumentDictionaryTy &dict);
@@ -139,6 +149,15 @@ class ONNXModelLoader
   /// Load Slice ONNX operator.
   Error loadSlice(const ONNX_NAMESPACE::NodeProto &op,
                   ArgumentDictionaryTy &dict);
+
+  /// Load Trignometric ONNX operators.
+  Error loadTrigonometricOps(const std::string &typeName,
+                             const ONNX_NAMESPACE::NodeProto &op,
+                             ArgumentDictionaryTy &dict);
+
+  /// Load Sign ONNX operator
+  Error loadSign(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
 
   /// Load Conv ONNX operator.
   Error loadConv(const ONNX_NAMESPACE::NodeProto &op,
@@ -456,6 +475,12 @@ protected:
   /// static placeholders if it's marked in the ValueInfoProto.
   Error collectStaticInputs(ONNX_NAMESPACE::GraphProto &net);
 
+  /// Looks through all ops in \p net for any dummy static PH nodes carrying the
+  /// type that was used for loading deferred weights initially. If found then
+  /// they're added to \ref staticPlaceholderTypes_. If \ref
+  /// staticPlaceholderTypes_ is a nullptr then this method is a no-op.
+  Error setupOrigStaticTypeMap(ONNX_NAMESPACE::GraphProto &net);
+
   /// Creates a ONNX model loader to build \p F.
   /// Loads the ONNIXFI \p model from memory of \p modelSize size,
   /// and \p weightsCount, and \p onnxTensorDescriptorV1 correspondent
@@ -466,7 +491,32 @@ protected:
   ONNXModelLoader(const void *model, uint32_t modelSize, uint32_t weightsCount,
                   const onnxTensorDescriptorV1 *weightDescriptors, Function &F,
                   bool loadInputsAsPlaceholdersForOnnx, Error *errPtr = nullptr,
-                  bool constFoldInLoader = true);
+                  bool constFoldInLoader = true,
+                  BackendSpecificNodeInfo *perNodeOpts = nullptr);
+
+  /// Creates a ONNX model loader to build \p mod.
+  /// Loads the ONNIXFI \p model from memory of \p modelSize size,
+  /// and \p weightsCount, and \p onnxTensorDescriptorV1 correspondent
+  /// descriptors. Converts inputs into placeholder if requested \p
+  /// loadInputsAsPlaceholdersForOnnx. Reports success/failure through optional
+  /// parameter \p errPtr. This constructor always overrides the default
+  /// constant folding in loader flag with \p constFoldInLoader.
+  /// Supports loading a DAG which was serialized, loading in DAGNode meta info
+  /// into \p PPC which can be later used to recreated the DAG. \p funName is
+  /// used to setup the DAG root node's name, or if the input model is not
+  /// partitioned then is used as the name of the single Function loaded. Loads
+  /// backend-specific node info annotations into \p perNodeOpts.
+  /// \p staticPlaceholderTypes will be filled with types to use for static
+  /// Placeholders if the proto being parsed contains such information;
+  /// otherwise it's left unchanged.
+  ONNXModelLoader(
+      const void *model, uint32_t modelSize, uint32_t weightsCount,
+      const onnxTensorDescriptorV1 *weightDescriptors, Module &mod,
+      llvm::StringRef funName, runtime::PrePartitionedConfig *PPC,
+      bool loadInputsAsPlaceholdersForOnnx, Error *errPtr = nullptr,
+      bool constFoldInLoader = true,
+      BackendSpecificNodeInfo *perNodeOpts = nullptr,
+      std::map<std::string, Type> *staticPlaceholderTypes = nullptr);
 
   friend class ONNXIFIModelLoader;
 
@@ -499,6 +549,10 @@ protected:
 
   /// Deletes the Functions in \ref constFoldFuns_ from \ref mod_.
   void deleteConstFoldFunctions();
+
+  /// Sets up positional IO into \ref positionalInputNames_ and
+  /// \ref positionalOutputNames_ from \p graph.
+  void setupPositionalIO(const ONNX_NAMESPACE::GraphProto &graph);
 
 public:
   /// \returns ONNX model ir_version;
@@ -566,6 +620,8 @@ public:
 private:
   /// Per-node options that may be specified in a proto.
   BackendSpecificNodeInfo *perNodeOpts_{nullptr};
+  /// Map from static PH names to the type it was originally loaded with.
+  std::map<std::string, Type> *staticPlaceholderTypes_;
 };
 
 } // namespace glow

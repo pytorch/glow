@@ -1830,7 +1830,7 @@ TEST_F(GraphOptz, SliceOfSplatNode) {
   EXPECT_TRUE(llvm::isa<SaveNode>(O));
 
   auto *CN = llvm::dyn_cast<SplatNode>(llvm::dyn_cast<SaveNode>(O)->getInput());
-  EXPECT_TRUE(CN);
+  ASSERT_TRUE(CN);
 
   EXPECT_TRUE(CN->getResult().getType()->dims().equals({94, 73, 35}));
 }
@@ -4088,7 +4088,7 @@ TEST_F(GraphOptz, constantFoldSingleNode) {
   std::vector<Constant *> constResults =
       constantFold(SN1->getInput().getNode());
 
-  EXPECT_EQ(constResults.size(), 1);
+  ASSERT_EQ(constResults.size(), 1);
   SN1->getInput().replaceAllUsesOfWith(constResults[0]);
   // Second save should be unaffected.
   EXPECT_FALSE(llvm::isa<Constant>(SN2->getInput()));
@@ -4101,6 +4101,51 @@ TEST_F(GraphOptz, constantFoldSingleNode) {
   EXPECT_EQ(CH.at({0, 1}), 18.0f);
   EXPECT_EQ(CH.at({1, 0}), 18.0f);
   EXPECT_EQ(CH.at({1, 1}), 18.0f);
+}
+
+/// Verify that we can specify what splats should be materialized to constants
+/// based on their users via optimizationOpts.materializeSplatsUsedBySet.
+TEST_F(GraphOptz, constantFoldSpecificSplat) {
+  Placeholder *PH = mod_.createPlaceholder(ElemKind::FloatTy, {1, 1}, "input",
+                                           /* isTrainable */ false);
+  SplatNode *splat1 = F_->createSplat(
+      "splat1", mod_.uniqueType(ElemKind::FloatTy, {1, 1}), 1.0f);
+  AddNode *add = F_->createAdd("add", PH, splat1);
+  SplatNode *splat2 = F_->createSplat(
+      "splat2", mod_.uniqueType(ElemKind::FloatTy, {1, 1}), 2.0f);
+  MulNode *mul = F_->createMul("mul", add, splat2);
+  SaveNode *save = F_->createSave("save", mul);
+
+  // Signal to materialize the splat used by Add, but not by Mul.
+  cctx_.optimizationOpts.materializeSplatsUsedBySet.insert(
+      Kinded::Kind::AddNodeKind);
+
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  ConstantFoldingRecordMap record = constantFoldAndRecord(optimizedF_, cctx_);
+  runDCEPass(optimizedF_, cctx_);
+
+  ASSERT_EQ(record.size(), 1);
+  SaveNode *SN = record.begin()->second;
+  SplatNode *foldSplat1 = llvm::dyn_cast<SplatNode>(SN->getInput());
+  ASSERT_TRUE(foldSplat1);
+  EXPECT_EQ(foldSplat1->getValue(), 1.0f);
+
+  // Verify one splat left in the optimized Function, and a new Constant.
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SplatNodeKind));
+  const SaveNode *optSave =
+      findFunctionNodeByName<SaveNode>(optimizedF_, save->getName());
+  MulNode *optMul = llvm::dyn_cast<MulNode>(optSave->getInput());
+  ASSERT_TRUE(optMul);
+  SplatNode *optSplat2 = llvm::dyn_cast<SplatNode>(optMul->getRHS());
+  ASSERT_TRUE(optSplat2);
+  EXPECT_EQ(optSplat2->getValue(), 2.0f);
+  AddNode *optAdd = llvm::dyn_cast<AddNode>(optMul->getLHS());
+  ASSERT_TRUE(optAdd);
+  EXPECT_EQ(optAdd->getLHS().getNode(), PH);
+  Constant *optSplatConst1 = llvm::dyn_cast<Constant>(optAdd->getRHS());
+  ASSERT_TRUE(optSplatConst1);
+  EXPECT_EQ(optSplatConst1->getPayload().getHandle().at({0, 0}), 1.0f);
 }
 
 /// Test that we correctly record a single constant folding subgraph that has a
@@ -4376,6 +4421,35 @@ TEST_F(GraphOptz, constantFoldWithRecordSingleChainMultiOutput) {
 
   // Now compile/run/compare F_ and optimizedF_.
   checkNumericalEquivalence(0.f);
+}
+
+/// Test that the constant folding record Function includes all ops,
+/// i.e. they're not optimized away during optimizations when the constant
+/// folding function is optimized.
+TEST_F(GraphOptz, constantFoldOnlyLower) {
+  Constant *W = mod_.createConstant(ElemKind::FloatTy, {10, 100}, "weight");
+  ConvertToNode *convertW = F_->createConvertTo("conv", W, ElemKind::Float16Ty);
+  SaveNode *save = F_->createSave("save", convertW);
+  Placeholder *O = save->getPlaceholder();
+  bindings_.allocate(O);
+
+  ASSERT_TRUE(F_->verify());
+
+  W->getPayloadMutable().getHandle<float>().randomize(-10, 10, mod_.getPRNG());
+
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  ConstantFoldingRecordMap record = constantFoldAndRecord(optimizedF_, cctx_);
+
+  ASSERT_EQ(record.size(), 1);
+  SaveNode *SN = record.begin()->second;
+  Function *constFoldF = SN->getParent();
+
+  // Expect to find a Save and the ConvertTo still, i.e. it shouldn't have been
+  // folded into the Constant as part of the OptimizeConversions pass.
+  EXPECT_EQ(2, constFoldF->getNodes().size());
+  EXPECT_EQ(1, countNodeKind(constFoldF, Kinded::Kind::ConvertToNodeKind));
+  EXPECT_EQ(1, countNodeKind(constFoldF, Kinded::Kind::SaveNodeKind));
 }
 
 TEST_F(GraphOptz, constantFoldWholeFunction) {
@@ -5500,8 +5574,9 @@ TEST_F(GraphOptz, constantFoldPreventedNoop) {
   auto *add3 = F_->createAdd("add", const1, ph1);
   F_->createSave("save", add3);
 
-  ConstantModificationPreventer constModPreventer(mod_);
+  ConstantModificationPreventer constModPreventer(mod_, cctx_);
   constModPreventer.activate();
+  EXPECT_FALSE(cctx_.optimizationOpts.enableConstantFolding);
 
   // Check that both Constants are protected and no change is made to the
   // Function during optimization.
@@ -5514,6 +5589,7 @@ TEST_F(GraphOptz, constantFoldPreventedNoop) {
 
   // Now deactivate the constModPreventer and check we can const fold still.
   constModPreventer.deactivateAndCleanup();
+  EXPECT_TRUE(cctx_.optimizationOpts.enableConstantFolding);
   mod_.eraseFunction(optimizedF_);
   optimizedF_ = optimizeFunction(F_);
 
@@ -5753,4 +5829,38 @@ TEST_F(GraphOptz, DequantSwishQuantOpt) {
   bindings_.get(A)->getHandle<int8_t>().randomize(-128, 127, mod_.getPRNG());
 
   checkNumericalEquivalence(0.025f);
+}
+
+/// Test that when we have Concat({X, Quantize(Clip)}), that we don't optimize
+/// to Concat({X, Quantize'}), since Quantize' will have different quantization
+/// parameters and therefore won't have the same quantization parameters as X.
+TEST_F(GraphOptz, DisallowChangeQuantParamWithConcatInput) {
+  Placeholder *PH1 = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32}, 0.3, 5,
+                                            "input", false);
+  bindings_.allocate(PH1)->getHandle<int8_t>().randomize(-128, 127,
+                                                         mod_.getPRNG());
+  Placeholder *PH2 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 32}, "input", false);
+  bindings_.allocate(PH2)->getHandle<float16_t>().randomize(-40.f, 40.f,
+                                                            mod_.getPRNG());
+
+  ClipNode *clip = F_->createClip("clip", PH2, 0.f, 1000.f);
+  QuantizeNode *quant = F_->createQuantize(
+      "quantize", clip, mod_.uniqueType(ElemKind::Int8QTy, {1, 32}, 0.3, 5));
+
+  ConcatNode *CN = F_->createConcat("concat", {PH1, quant}, 0);
+  F_->createSave("save", CN);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  // Expect the graph didn't change at all, since we disallowed it due to the
+  // fact that we disallowed Quantize(Clip) to be merged into Quantize', ssince
+  // the Quantize is consumed by a Concat which requires the quantization
+  // parameters to stay the same across all inputs.
+  EXPECT_EQ(F_->toString(/* skipUsersForStorage */ false,
+                         /* skipName */ true),
+            optimizedF_->toString(/* skipUsersForStorage */ false,
+                                  /* skipName */ true));
+
+  checkNumericalEquivalence();
 }

@@ -357,11 +357,9 @@ TEST(exporter, onnxModels) {
         name.find("ArgMaxNoKeepDim.onnxtxt") != std::string::npos ||
         name.find("upsampleOpset7.onnxtxt") != std::string::npos ||
         name.find("upsampleOpset9.onnxtxt") != std::string::npos ||
-        name.find("resizeNearest.onnxtxt") != std::string::npos ||
         name.find("resizeNearestV11compat.onnxtxt") != std::string::npos ||
         name.find("resizeNearestV11compat_sizes.onnxtxt") !=
             std::string::npos ||
-        name.find("resizeBilinear.onnxtxt") != std::string::npos ||
         name.find("resizeBilinearV11compat.onnxtxt") != std::string::npos ||
         name.find("resizeBilinearV11compat_sizes.onnxtxt") !=
             std::string::npos ||
@@ -371,9 +369,16 @@ TEST(exporter, onnxModels) {
         name.find("NonMaxSuppressionSSD.onnxtxt") != std::string::npos ||
         name.find("ROIAlign_onnx.onnxtxt") != std::string::npos ||
         name.find("Less.onnxtxt") != std::string::npos ||
+        name.find("Asin.onnxtxt") != std::string::npos ||
+        name.find("Acos.onnxtxt") != std::string::npos ||
+        name.find("Atan.onnxtxt") != std::string::npos ||
+        name.find("Sin.onnxtxt") != std::string::npos ||
+        name.find("Cos.onnxtxt") != std::string::npos ||
+        name.find("abs.onnxtxt") != std::string::npos ||
         name.find("log.onnxtxt") != std::string::npos ||
         name.find("scatterND.onnxtxt") != std::string::npos ||
         name.find("mscatterND.onnxtxt") != std::string::npos ||
+        name.find("sign.onnxtxt") != std::string::npos ||
         name.find("simpleConvTranspose.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShape.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeOutShapeDilation.onnxtxt") !=
@@ -388,6 +393,14 @@ TEST(exporter, onnxModels) {
             std::string::npos ||
         name.find("convTransposeAsymmetric.onnxtxt") != std::string::npos ||
         name.find("NonZero.onnxtxt") != std::string::npos ||
+        name.find("logicalAnd.onnxtxt") != std::string::npos ||
+        name.find("logicalAndBcast.onnxtxt") != std::string::npos ||
+        name.find("logicalOrBcast.onnxtxt") != std::string::npos ||
+        name.find("logicalOr.onnxtxt") != std::string::npos ||
+        name.find("logicalXorBcast.onnxtxt") != std::string::npos ||
+        name.find("logicalXor.onnxtxt") != std::string::npos ||
+        name.find("logicalNot.onnxtxt") != std::string::npos ||
+
         name.find("simpleConvTransposePads.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeAutoPadValid.onnxtxt") !=
             std::string::npos ||
@@ -395,6 +408,7 @@ TEST(exporter, onnxModels) {
             std::string::npos ||
         name.find("simpleConvTransposeAutoPadSameLower.onnxtxt") !=
             std::string::npos ||
+        name.find("convTransposeGroup.onnxtxt") != std::string::npos ||
         name.find("simpleConvTransposeAutoPadSameUpper.onnxtxt") !=
             std::string::npos) {
       // Ignore invalid ONNX files and graphs without nodes.

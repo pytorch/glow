@@ -20,6 +20,7 @@
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Partitioner/Partitioner.h"
+#include "glow/Runtime/DeferredWeightLoader.h"
 #include "glow/Runtime/DeviceHealthMonitor.h"
 #include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
@@ -274,7 +275,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   /// If specified in the cctx, this will prevent Constants from being modified
   /// until the current scope ends or the preventer is dismissed. Does so by
   /// swapping in temporary Placeholders instead of Constants.
-  ConstantModificationPreventer constModPreventer(*module);
+  ConstantModificationPreventer constModPreventer(*module, cctx);
   if (cctx.optimizationOpts.delayAndRecordConstantModification) {
     constModPreventer.activate();
   }
@@ -463,15 +464,20 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   // If requested, serialize the resulting DAG that was just optimized and
   // partitioned.
   if (cctx.serializeCompiledDAG) {
-    std::string loc = nodeList.begin()->root->name + ".onnx";
-    LOG(INFO) << "Serializing DAG to " << loc;
+    std::string loc = nodeList.begin()->root->name + ".onnxtxt";
+    LOG(INFO) << "Serializing final compiled DAG to " << loc;
     {
+      // Pass in any types we loaded originally from static PHs.
+      const std::map<std::string, Type> *staticPHTypesPtr =
+          cctx.deferredWeightLoader ? &cctx.deferredWeightLoader->getTypeInfo()
+                                    : nullptr;
       Error writeErr = Error::empty();
       ONNXModelWriter onnxWR(loc, nodeList, 7, 9, &writeErr,
-                             /* textMode */ false, /* zipMode */ false,
+                             /* textMode */ true, /* zipMode */ false,
                              /* includeConstantData */ false,
                              /* extraMetadataProps */ {}, record,
-                             cctx.backendOpts.backendSpecificNodeInfo);
+                             cctx.backendOpts.backendSpecificNodeInfo,
+                             &cctx.loadedPHNames, staticPHTypesPtr);
       RETURN_IF_ERR(writeErr);
     }
   }
@@ -534,12 +540,14 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
     for (auto &node : nodeList) {
+      LOG(INFO) << "Successfully compiled and provisioned " << node.root->name;
       auto &networkData = networks_[(node.root)->name];
       networkData.dag = std::move(node);
       networkData.module = sharedModule;
     }
     cleanupAddNetwork(names);
   }
+
   return Error::success();
 }
 

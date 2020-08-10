@@ -296,9 +296,19 @@ int main(int argc, char **argv) {
       .autoIRGen();
 
   /// Calculates minimum of all of the layers in the batch along the axes
-  /// dimensions and produce a tensor that has the same dimensions as the input.
+  /// dimensions and produce a tensor that has the same dimensions as the input
   /// tensor without the Axes dimension.
   BB.newInstr("BatchedReduceMin")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Batch", OperandKind::In)
+      .addMember(MemberType::VectorUnsigned, "Axes")
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Batch"})
+      .autoIRGen();
+
+  /// Calculates maximum of all of the layers in the batch along the axes
+  /// dimensions and produce a tensor that has the same dimensions as the input
+  /// tensor without the Axes dimension.
+  BB.newInstr("BatchedReduceMax")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Batch", OperandKind::In)
       .addMember(MemberType::VectorUnsigned, "Axes")
@@ -653,6 +663,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen("Floor");
 
+  BB.newInstr("ElementSign")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Sign");
+
   BB.newInstr("ElementCeil")
       .addOperand("Dest", OperandKind::Out)
       .addOperand("Src", OperandKind::In)
@@ -737,6 +756,33 @@ int main(int argc, char **argv) {
       .dataParallel()
       .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
       .autoIRGen("Exp");
+
+  BB.newInstr("ElementAcos")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Acos");
+
+  BB.newInstr("ElementAsin")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Asin");
+
+  BB.newInstr("ElementAtan")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .inplaceOperand({"Dest", "Src"})
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen("Atan");
 
   BB.newInstr("ElementSelect")
       .addOperand("Dest", OperandKind::Out)
@@ -1022,7 +1068,7 @@ int main(int argc, char **argv) {
   BB.newInstr("ConvertTo")
       .addOperand("Result", OperandKind::Out)
       .addOperand("Input", OperandKind::In)
-      .autoVerify(VerifyKind::SameShape, {"Result", "Input"})
+      .autoVerify(VerifyKind::NoVerify)
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//
@@ -1102,6 +1148,24 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Float, "Offset")
       .addMember(MemberType::Boolean, "Normalized")
       .autoVerify(VerifyKind::SameElementType, {"FeatureMap", "Boxes"})
+      .autoIRGen();
+
+  BB.newInstr("BBoxTransform")
+      .addOperand("BoxOut", OperandKind::Out)
+      .addOperand("RoiBatchSplits", OperandKind::Out)
+      .addOperand("Rois", OperandKind::In)
+      .addOperand("Deltas", OperandKind::In)
+      .addOperand("ImInfo", OperandKind::In)
+      .addMember(MemberType::VectorFloat, "Weights")
+      .addMember(MemberType::Boolean, "ApplyScale")
+      .addMember(MemberType::Boolean, "Rotated")
+      .addMember(MemberType::Boolean, "AngleBoundOn")
+      .addMember(MemberType::Int64, "AngleBoundLo")
+      .addMember(MemberType::Int64, "AngleBoundHi")
+      .addMember(MemberType::Float, "ClipAngleThresh")
+      .addMember(MemberType::Boolean, "LegacyPlusOne")
+      .autoVerify(VerifyKind::SameElementType, {"Rois", "Deltas"})
+      .autoVerify(VerifyKind::SameElementType, {"Rois", "ImInfo"})
       .autoIRGen();
 
   //===--------------------------------------------------------------------===//

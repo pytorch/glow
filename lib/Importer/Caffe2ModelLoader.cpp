@@ -317,21 +317,20 @@ Error Caffe2ModelLoader::loadConv(const caffe2::OperatorDef &op,
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
-  Constant *w;
+  NodeValue w;
   ASSIGN_VALUE_OR_RETURN_ERR(w, getConstantByName(op.input(1)));
 
   // Transpose the weights to the right format. Glow expects to read the
   // weights in the format CRSK.
   // C - output_depth, R - filter_height, S - filter_width, K - input_depth.
   // Caffe2 "Conv" op always stores the weight as CKRS.
-  Tensor wT;
-  w->getPayload().transpose(&wT, NCHW2NHWC);
-  w = mod_.createConstant(w->getName(), std::move(wT), "NHWC");
+  w = G_->createTranspose(w.getNode()->getName().str() + "_NHWC", w, NCHW2NHWC,
+                          "NHWC");
 
   // The structure of the conv weights is: CRSK. We take the C, which is the
   // number of filters. We use this value to calculate the size of the bias
   // if it is not specified.
-  dim_t depth = w->dims()[0];
+  dim_t depth = w.dims()[0];
 
   // We expect the input to be NHWC.
   NodeValue finalIn;
@@ -350,16 +349,15 @@ Error Caffe2ModelLoader::loadConv(const caffe2::OperatorDef &op,
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
 
   // Try to find a loaded bias constant.
-  Constant *bias = nullptr;
+  NodeValue bias(nullptr);
   if (op.input_size() > 2) {
     const auto &biasName = op.input(2);
     bias = getConstantByNameOrNull(biasName);
   }
   // Construct the bias constant if one wasn't found.
-  if (!bias) {
-    Tensor b(ElemKind::FloatTy, {depth});
-    b.zero();
-    bias = mod_.createConstant("conv.bias", std::move(b));
+  if (!bias.getNode()) {
+    TypeRef bTy = mod_.uniqueType(ElemKind::FloatTy, {depth});
+    bias = G_->createSplat(opName + ".bias", bTy, 0.f);
   }
 
   TypeRef outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
@@ -412,7 +410,7 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
-  Constant *w;
+  NodeValue w;
   ASSIGN_VALUE_OR_RETURN_ERR(w, getConstantByName(op.input(1)));
 
   // Transpose the weights to the right format. Glow expects to read the
@@ -421,15 +419,14 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
   // For Caffe2 "Int8Conv" and "Int8ConvRelu", the weights always follows the
   // "order" arg.
   if (order != "NHWC") {
-    Tensor wT;
-    w->getPayload().transpose(&wT, NCHW2NHWC);
-    w = mod_.createConstant(w->getName(), std::move(wT), "NHWC");
+    w = G_->createTranspose(w.getNode()->getName().str() + "_NHWC", w,
+                            NCHW2NHWC, "NHWC");
   }
 
   // The structure of the conv weights is: CRSK. We take the C, which is the
   // number of filters. We use this value to calculate the size of the bias
   // if it is not specified.
-  dim_t depth = w->dims()[0];
+  dim_t depth = w.dims()[0];
 
   // We expect the input to be NHWC.
   NodeValue finalIn;
@@ -455,19 +452,18 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
                     "missing Y_scale for quantized output type");
 
   // Try to find a loaded bias constant.
-  Constant *bias = nullptr;
+  NodeValue bias(nullptr);
   if (op.input_size() > 2) {
     const auto &biasName = op.input(2);
     bias = getConstantByNameOrNull(biasName);
   }
   // Construct the bias constant if one wasn't found.
-  if (!bias) {
-    Tensor b(ElemKind::Int32QTy, {depth}, 1.0, 0);
-    b.zero();
-    bias = mod_.createConstant("conv.bias", std::move(b));
+  if (!bias.getNode()) {
+    TypeRef bTy = mod_.uniqueType(ElemKind::Int32QTy, {depth}, 1.0, 0);
+    bias = G_->createSplat("conv.bias", bTy, 0.f);
   }
 
-  RETURN_ERR_IF_NOT(bias->getPayload().size() == depth,
+  RETURN_ERR_IF_NOT(bias.getType()->size() == depth,
                     "Loaded bias tensor of incorrect size");
 
   // Construct output type
@@ -497,19 +493,13 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
         dilation, /* quantizeFilter */ true, /* quantizeBias */ false);
   } else {
     // If the bias isn't quantized for a non group quantized conv, quantize it.
-    const Tensor &biasTensor = bias->getPayload();
-    if (biasTensor.getElementType() == ElemKind::FloatTy) {
-      TensorQuantizationParams tqp;
-      // Bias quantization params chosen to match the scale of the output
-      // without requiring shifting.
-      tqp.offset = 0;
-      tqp.scale =
-          finalInType->getScale() * w->getPayload().getType().getScale();
+    if (bias.getElementType() == ElemKind::FloatTy) {
+      int32_t biasOffset = 0;
+      float biasScale = finalInType->getScale() * w.getType()->getScale();
 
-      Tensor quantizedBiasTensor =
-          quantization::quantizeTensor(biasTensor, tqp, ElemKind::Int32QTy);
-
-      bias = mod_.createConstant("conv.bias", quantizedBiasTensor);
+      auto biasTy = mod_.uniqueType(ElemKind::Int32QTy, bias.dims(), biasScale,
+                                    biasOffset);
+      bias = G_->createQuantize("conv.bias", bias, biasTy);
     }
 
     node = G_->createConv(opName, finalIn, w, bias, outTy, kernels, strides,
@@ -633,21 +623,20 @@ Error Caffe2ModelLoader::loadConvTranspose(const caffe2::OperatorDef &op,
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
 
-  Constant *weight;
+  NodeValue weight;
   ASSIGN_VALUE_OR_RETURN_ERR(weight, getConstantByName(op.input(1)));
 
   // Transpose the weights to the right format. Glow expects to read the
   // weights in the format CRSK.
   // C - output_depth, R - filter_height, S - filter_width, K - input_depth.
   // Caffe2 "ConvTranspose" op always stores the weight as KCRS.
-  Tensor wT;
-  weight->getPayload().transpose(&wT, CNHW2NHWC);
-  weight = mod_.createConstant(weight->getName(), std::move(wT));
+  weight = G_->createTranspose(weight.getNode()->getName().str() + "_NHWC",
+                               weight, CNHW2NHWC, "NHWC");
 
   // The structure of the conv weights is: CRSK. We take the C, which is the
   // number of filters. We use this value to calculate the size of the bias
   // if it is not specified.
-  dim_t depth = weight->dims()[0];
+  dim_t depth = weight.dims()[0];
 
   // We expect the input to be NHWC.
   NodeValue finalIn;
@@ -666,16 +655,15 @@ Error Caffe2ModelLoader::loadConvTranspose(const caffe2::OperatorDef &op,
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
 
   // Try to find a loaded bias constant.
-  Constant *bias = nullptr;
+  NodeValue bias(nullptr);
   if (op.input_size() > 2) {
     const auto &biasName = op.input(2);
     bias = getConstantByNameOrNull(biasName);
   }
   // Construct the bias constant if one wasn't found.
-  if (!bias) {
-    Tensor b(ElemKind::FloatTy, {depth});
-    b.zero();
-    bias = mod_.createConstant("conv.bias", std::move(b));
+  if (!bias.getNode()) {
+    TypeRef bTy = mod_.uniqueType(ElemKind::FloatTy, {depth});
+    bias = G_->createSplat("conv.bias", bTy, 0.f);
   }
 
   TypeRef outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
@@ -1035,33 +1023,23 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       ASSIGN_VALUE_OR_RETURN_ERR(axis_w, loadInt(dict["axis_w"]));
     }
 
-    Constant *W;
+    NodeValue W;
     ASSIGN_VALUE_OR_RETURN_ERR(W, getConstantByName(op.input(1)));
 
     // Caffe2 stores the transposed W matrix. In here we first coerce W to a
     // 2D matrix size if necessary and then transpose it back.
-    auto wDims = flattenCdr(W->dims(), axis_w);
-    if (W->dims().size() > 2) {
-      Tensor tmp;
-      if (typeName == "FC" || typeName == "FCTransposed") {
-        tmp.reset(ElemKind::FloatTy, {wDims.first, wDims.second});
-      } else if (typeName == "FbFCPacked") {
-        tmp.reset(ElemKind::Float16Ty, {wDims.first, wDims.second});
-      } else {
-        tmp.reset(ElemKind::Int8QTy, {wDims.first, wDims.second},
-                  W->getType()->getScale(), W->getType()->getOffset());
-      }
-      tmp.copyRawFrom(&W->getPayload());
-      W = mod_.createConstant(W->getName(), tmp);
+    auto wDims = flattenCdr(W.dims(), axis_w);
+    if (W.dims().size() > 2) {
+      W = G_->createReshape(W.getNode()->getName(), W,
+                            {wDims.first, wDims.second});
     }
 
     if (typeName == "FC" || typeName == "Int8FC" || typeName == "FbFCPacked") {
-      Tensor tmp;
-      W->getPayloadMutable().transpose(&tmp, {1, 0});
-      W = mod_.createConstant(W->getName(), tmp);
+      W = G_->createTranspose(W.getNode()->getName(), W, {1, 0});
     }
 
     Constant *B;
+
     ASSIGN_VALUE_OR_RETURN_ERR(B, getConstantByName(op.input(2)));
 
     Node *node = nullptr;
@@ -1461,24 +1439,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
     Node *node;
     if (isFused) {
-      // There is no specific fused quantized type in Caffe2, so we will load
-      // UInt8QTy. We then change it from UInt8QTy to UInt8FusedQTy or
-      // UInt4FusedFP16QTy here if necessary -- another user could have already
-      // changed it.
-      if (dataS->getElementType() != ElemKind::UInt8FusedQTy) {
-        RETURN_ERR_IF_NOT(dataS->getElementType() == ElemKind::UInt8QTy,
-                          "Data must be UInt8QTy.");
-        // Use dummy 0.0/0 as scale/offset, since the actual scales/offsets
-        // are fused inline with the data.
-        TypeRef fusedTy = mod_.uniqueType(is4Bit ? ElemKind::UInt4FusedFP16QTy
-                                                 : ElemKind::UInt8FusedQTy,
-                                          dataS->dims(), 0.0, 0);
-        dataS->setType(Storage::OutputIdx, fusedTy);
-        // If the node is a Constant set the payload type as well.
-        if (auto dataConstant = llvm::dyn_cast<Constant>(data)) {
-          dataConstant->setPayloadType(fusedTy);
-        }
-      }
+      RETURN_IF_ERR(setFusedTy(dataS, is4Bit ? ElemKind::UInt4FusedFP16QTy
+                                             : ElemKind::UInt8FusedQTy));
 
       // No other work to do, since the data is already loaded fused, so just
       // create the new node with its inputs.
@@ -1511,28 +1473,28 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
                         "Second dim of scale_bias has to be equal to 2.");
 
       // Now strip out the scales and biases into their own tensors.
-      Constant *dataScales =
-          mod_.createConstant(ElemKind::FloatTy, {numRows}, "dataScales");
-      Constant *dataOffsets =
-          mod_.createConstant(ElemKind::FloatTy, {numRows}, "dataOffsets");
-
-      auto dataScalesH = dataScales->getHandle<float>();
-      auto dataOffsetsH = dataOffsets->getHandle<float>();
-      auto scalesBiasesH = scalesBiasesC->getHandle<float>();
-      for (dim_t i = 0, e = numRows; i < e; i++) {
-        dataScalesH.at({i}) = scalesBiasesH.at({i, 0});
-        dataOffsetsH.at({i}) = scalesBiasesH.at({i, 1});
-      }
+      NodeValue sliceScales =
+          G_->createSlice(scalesBiasesC->getName().str() + "_scale",
+                          scalesBiasesC, {0, 0}, {numRows, 1});
+      NodeValue sliceBiases =
+          G_->createSlice(scalesBiasesC->getName().str() + "_bias",
+                          scalesBiasesC, {0, 1}, {numRows, 2});
+      sliceScales =
+          G_->createReshape(sliceScales.getNode()->getName().str() + "_1D",
+                            sliceScales, {numRows});
+      sliceBiases =
+          G_->createReshape(sliceBiases.getNode()->getName().str() + "_1D",
+                            sliceBiases, {numRows});
 
       // Now create the actual node.
       if (isWeighted) {
         node = G_->createRowwiseQuantizedSparseLengthsWeightedSum(
-            opName, dataS, dataScales, dataOffsets, weights, indices, lengths,
+            opName, dataS, sliceScales, sliceBiases, weights, indices, lengths,
             /* precision */ ElemKind::FloatTy,
             /* useFP16Accumulation */ false, lengthsMode, avgLength);
       } else {
         node = G_->createRowwiseQuantizedSparseLengthsSum(
-            opName, dataS, dataScales, dataOffsets, indices, lengths,
+            opName, dataS, sliceScales, sliceBiases, indices, lengths,
             /* precision */ ElemKind::FloatTy,
             /* useFP16Accumulation */ false, lengthsMode, avgLength);
       }

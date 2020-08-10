@@ -3240,8 +3240,8 @@ Error PyTorchModelLoader::loadAdaptiveAvgPool2d(
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[AdaptiveAvgPoolInputs::input]));
 
-  size_t inputH = input.dims()[1];
-  size_t inputW = input.dims()[2];
+  size_t inputH = input.dims()[2];
+  size_t inputW = input.dims()[3];
   input = F_.createTranspose("adaptive_avg_pool2d_input_transposed", input,
                              NCHW2NHWC);
 

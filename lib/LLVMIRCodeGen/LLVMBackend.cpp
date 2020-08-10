@@ -53,6 +53,7 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
   // Note: For brevity below, "X ==> Y, Z" signifes that Node X is IRGen'd into
   // Instructions Y and Z.
   switch (NI.getKind()) {
+  case Kinded::Kind::BatchedReduceMaxNodeKind:
   case Kinded::Kind::BatchedReduceMinNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int32ITy, ElemKind::Int64ITy});

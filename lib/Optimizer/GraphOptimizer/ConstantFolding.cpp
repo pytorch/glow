@@ -30,6 +30,7 @@
 #include "llvm/Support/Casting.h"
 
 using namespace glow;
+using llvm::cast;
 using llvm::dyn_cast;
 using llvm::isa;
 
@@ -163,6 +164,20 @@ static void bailOnNonCanonicalLayout(
   mod.eraseFunction(constEvaluationF);
 }
 
+/// \returns whether \p N should be folded based on \p cctx's
+/// optimizationOpts.materializeSplatsUsedBySet.count, where the backend may
+/// specify what Splats should be materialized into Constants based on if
+/// they're used by other op kinds.
+static bool isSplatToFold(SplatNode *N, const CompilationContext &cctx) {
+  for (const auto &U : N->getUsers()) {
+    if (cctx.optimizationOpts.materializeSplatsUsedBySet.count(
+            U.getUser()->getKind())) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// Use to make sure we don't reuse the same name for const fold Functions.
 static uint64_t numFolds = 0;
 
@@ -182,7 +197,8 @@ bool evaluateConstantOperation(Backend &backend, CompilationContext &cctx,
   assert(isConstantOperation(C, backend, enableQuantizeConstFolding) &&
          "Expected a constant expression");
   // Constants and splats do not need to be constant evaluated.
-  if (isa<Constant>(C) || isa<SplatNode>(C)) {
+  if (isa<Constant>(C) ||
+      (isa<SplatNode>(C) && !isSplatToFold(cast<SplatNode>(C), cctx))) {
     return true;
   }
   Module &mod = *C->getParent()->getParent();
@@ -197,6 +213,19 @@ bool evaluateConstantOperation(Backend &backend, CompilationContext &cctx,
   auto *clonedC = recursiveClone(constEvaluationF, C, currToNew);
   // Create save nodes for each of the results.
   llvm::SmallVector<SaveNode *, 16> savedResults;
+
+  // If we're recording constant folding, only lower the const fold subgraph
+  // (i.e. do not run optimizations when compiling the const fold subgraph).
+  // Otherwise some graph optimizations may do folding themselves, meaning that
+  // the the subgraph will not contain all folding that occurs.
+  if (record) {
+    cctx.optimizationOpts.onlyLowerFuns.insert(constEvaluationF);
+  }
+  ScopeGuard cleanupOnlyLowerFuns([&]() {
+    if (record) {
+      cctx.optimizationOpts.onlyLowerFuns.erase(constEvaluationF);
+    }
+  });
 
   for (size_t idx = 0, e = clonedC->getNumResults(); idx < e; ++idx) {
     auto RN = clonedC->getNthResult(idx);
@@ -221,8 +250,9 @@ bool evaluateConstantOperation(Backend &backend, CompilationContext &cctx,
   constResults.reserve(savedResults.size());
   for (auto *SN : savedResults) {
     Tensor *outputTensor = bindings.get(SN->getPlaceholder());
-    auto *constResult =
-        mod.createConstant(SN->getName(), std::move(*outputTensor));
+    auto *constResult = mod.createConstant(
+        SN->getInput().getNode()->getName().str() + ".constfold",
+        std::move(*outputTensor));
     constResults.emplace_back(constResult);
 
     if (record) {
@@ -279,9 +309,10 @@ Error verifyConstantFunction(Backend &backend, Function &F,
 /// \returns list of constants which are the result of the
 /// constant-folding. These constants correspond to results of the node. If no
 /// constant folding was possible an empty vector will be returned
-bool constantFoldNodeImpl(Backend &backend, Node *N,
-                          std::vector<Constant *> &constResults,
-                          ConstantFoldingRecordMap *record = nullptr) {
+bool constantFoldNodeImpl(
+    Backend &backend, Node *N, std::vector<Constant *> &constResults,
+    ConstantFoldingRecordMap *record = nullptr,
+    const CompilationContext &origCctx = CompilationContext()) {
   CompilationContext cctx;
   // Do not recursively call constant folding.
   cctx.optimizationOpts.enableConstantFolding = false;
@@ -292,6 +323,10 @@ bool constantFoldNodeImpl(Backend &backend, Node *N,
   // Signal to the graph optimizer that it should not be deleting unused
   // Constants in the module.
   cctx.optimizationOpts.delayAndRecordConstantModification = true;
+  // Copy over the splats to materialize from the original cctx.
+  cctx.optimizationOpts.materializeSplatsUsedBySet =
+      origCctx.optimizationOpts.materializeSplatsUsedBySet;
+  assert(!ERR_TO_BOOL(cctx.verify()) && "cctx for const folding must be valid");
   return evaluateConstantOperation(backend, cctx, N, constResults, record);
 }
 
@@ -337,7 +372,8 @@ static bool constantFoldFun(Function *F, const CompilationContext &cctx,
   for (auto *N : nodes) {
     // Skip trivial nodes/operations that do not require any constant
     // computations.
-    if (isa<Storage>(N) || isa<Constant>(N) || isa<SplatNode>(N) ||
+    if (isa<Storage>(N) || isa<Constant>(N) ||
+        (isa<SplatNode>(N) && !isSplatToFold(cast<SplatNode>(N), cctx)) ||
         isa<TouchNode>(N)) {
       continue;
     }
@@ -359,13 +395,16 @@ static bool constantFoldFun(Function *F, const CompilationContext &cctx,
 
     // Compute the constant value of the node.
     std::vector<Constant *> constResults;
-    if (!constantFoldNodeImpl(*backend, N, constResults, record)) {
-      return false;
+    if (!constantFoldNodeImpl(*backend, N, constResults, record, cctx)) {
+      continue;
     }
     // Replace all results of the original operation by the computed
     // compile-time results of this operation.
     for (size_t idx = 0, e = constResults.size(); idx < e; ++idx) {
       auto constResult = constResults[idx];
+      assert(N->getNthResult(idx).getType() ==
+                 constResult->getOutput().getType() &&
+             "Constant replacement type must match.");
       // Replace the old result by the new constant result.
       N->getNthResult(idx).replaceAllUsesOfWith(constResult);
     }

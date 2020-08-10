@@ -143,8 +143,8 @@ TEST_F(Caffe2ImporterTest, importConvRelu) {
   }
 
   // High level check on the content of the graph. We should have
-  // transpose => conv => relu => transpose => save
-  EXPECT_EQ(F->getNodes().size(), 5);
+  // {transpose, transpose} => conv => relu => transpose => save
+  EXPECT_EQ(F->getNodes().size(), 6);
   auto *saveNode = getSaveNodeFromDest(output);
 
   auto *transNode1 =
@@ -158,6 +158,9 @@ TEST_F(Caffe2ImporterTest, importConvRelu) {
   auto *transNode2 =
       llvm::dyn_cast<TransposeNode>(convNode->getInput().getNode());
   ASSERT_TRUE(transNode2);
+  auto *transNode3 =
+      llvm::dyn_cast<TransposeNode>(convNode->getFilter().getNode());
+  ASSERT_TRUE(transNode3);
 
   auto res = bindings.get(output);
   EE.compile(CompilationMode::Infer);
@@ -198,12 +201,15 @@ TEST_F(Caffe2ImporterTest, convNHWC) {
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
   }
 
-  // High level check on the content of the graph. We have 1 conv and 1 save.
-  EXPECT_EQ(F->getNodes().size(), 2);
+  // High level check on the content of the graph. We have 1 conv, 1 transpose,
+  // and1 save.
+  EXPECT_EQ(F->getNodes().size(), 3);
   auto *saveNode = getSaveNodeFromDest(output);
   auto *convNode =
       llvm::dyn_cast<ConvolutionNode>(saveNode->getInput().getNode());
   ASSERT_TRUE(convNode);
+  auto *transposeNode = llvm::dyn_cast<TransposeNode>(convNode->getFilter());
+  ASSERT_TRUE(transposeNode);
 
   // We have 2 placeholders:  1 input and 1 output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
@@ -420,12 +426,16 @@ TEST(caffe2, convTransposeNHWC) {
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
   }
 
-  // High level check on the content of the graph. We have 1 conv and 1 save.
-  EXPECT_EQ(F->getNodes().size(), 2);
+  // High level check on the content of the graph. We have 1 conv, 1 Transpose,
+  // and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 3);
   auto *saveNode = getSaveNodeFromDest(output);
   auto *convTransposeNode =
       llvm::dyn_cast<ConvTransposeNode>(saveNode->getInput().getNode());
   ASSERT_TRUE(convTransposeNode);
+  auto *transposeNode =
+      llvm::dyn_cast<TransposeNode>(convTransposeNode->getFilter());
+  ASSERT_TRUE(transposeNode);
 
   // We have 2 placeholders:  1 input and 1 output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
@@ -920,23 +930,26 @@ TEST_F(Caffe2ImporterTest, FC) {
     updateInputPlaceholdersByName(bindings, &mod, {"inputs"}, {&inputs});
   }
 
-  // High level check on the content of the graph. We have 1 FC node and 1 save.
-  EXPECT_EQ(F->getNodes().size(), 2);
+  // High level check on the content of the graph. We have 1 FC node,
+  // 1 transpose, and 1 save.
+  EXPECT_EQ(F->getNodes().size(), 3);
   auto *saveNode = getSaveNodeFromDest(output);
   auto *fcNode =
       llvm::dyn_cast<FullyConnectedNode>(saveNode->getInput().getNode());
-  EXPECT_TRUE(fcNode);
+  ASSERT_TRUE(fcNode);
+  auto *transposeNode = llvm::dyn_cast<TransposeNode>(fcNode->getWeights());
+  ASSERT_TRUE(transposeNode);
 
   // Check the numerical values of the weights and biases.
   {
-    // NOTE: this is weights1 because the weights constant was transposed
-    const Constant *constant = mod.getConstantByName("weights__1");
+    const Constant *constant =
+        llvm::dyn_cast<Constant>(transposeNode->getInput());
     ASSERT_TRUE(constant);
     const Tensor &weights = constant->getPayload();
-    const std::vector<dim_t> expectedDimensions = {3, 4};
-    const std::vector<float> expectedValues = {1.0f, 4.0f, 7.0f, 10.0f, //
-                                               2.0f, 5.0f, 8.0f, 11.0f, //
-                                               3.0f, 6.0f, 9.0f, 12.0f};
+    const std::vector<dim_t> expectedDimensions = {4, 3};
+    const std::vector<float> expectedValues = {1.0f, 2.0f,  3.0f,  4.0f,
+                                               5.0f, 6.0f,  7.0f,  8.0f,
+                                               9.0f, 10.0f, 11.0f, 12.0f};
     EXPECT_EQ(expectedDimensions, weights.dims().vec());
     ASSERT_EQ(expectedValues.size(), weights.size());
     const auto elements = weights.getHandle();
@@ -990,9 +1003,9 @@ TEST_F(Caffe2ImporterTest, FCWithFlatten) {
     updateInputPlaceholdersByName(bindings, &mod, {"inputs"}, {&inputs});
   }
 
-  // High level check on the content of the graph. We have a reshape, an FC,
-  // another reshape, and a save.
-  EXPECT_EQ(F->getNodes().size(), 4);
+  // High level check on the content of the graph. We have a reshape, Transpose
+  // for FC weights, an FC, another reshape, and a save.
+  EXPECT_EQ(F->getNodes().size(), 5);
 
   auto finalShape = output->getType()->dims();
   std::vector<dim_t> expectedOutput{1, 1, 1, 9190};
@@ -1007,6 +1020,8 @@ TEST_F(Caffe2ImporterTest, FCWithFlatten) {
   ASSERT_TRUE(fcNode);
   auto *reshape = llvm::dyn_cast<ReshapeNode>(fcNode->getInput());
   ASSERT_TRUE(reshape);
+  auto *transpose = llvm::dyn_cast<TransposeNode>(fcNode->getWeights());
+  ASSERT_TRUE(transpose);
 
   // We don't actually check that the output is correct, because this is
   // already covered in the Operator.FCWithFlatten/* tests.
@@ -2387,8 +2402,9 @@ TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSum8BitsRowwise) {
   };
 
   // High level check on the content of the graph. We have 1 rowwise-quantized
-  // SLWS and 1 save.
-  EXPECT_EQ(F->getNodes().size(), 2);
+  // SLWS and 1 save, along with 2 Slices and 2 Reshapes to extract out
+  // scales/biases from the loaded Constant.
+  EXPECT_EQ(F->getNodes().size(), 6);
   SaveNode *saveNode = getSaveNodeFromDest(output);
   RowwiseQuantizedSparseLengthsWeightedSumNode *RWQSLWS =
       llvm::dyn_cast<RowwiseQuantizedSparseLengthsWeightedSumNode>(
@@ -2398,18 +2414,35 @@ TEST_F(Caffe2ImporterTest, SparseLengthsWeightedSum8BitsRowwise) {
   Constant *weights = llvm::dyn_cast<Constant>(RWQSLWS->getWeights().getNode());
   ASSERT_TRUE(weights);
 
+  // Check that we have a Reshape(Slice(Constant)) for Scales/Offsets.
+  ReshapeNode *reshapeScales =
+      llvm::dyn_cast<ReshapeNode>(RWQSLWS->getScales());
+  ASSERT_TRUE(reshapeScales);
+  SliceNode *sliceScales = llvm::dyn_cast<SliceNode>(reshapeScales->getInput());
+  ASSERT_TRUE(sliceScales);
+  ReshapeNode *reshapeOffsets =
+      llvm::dyn_cast<ReshapeNode>(RWQSLWS->getOffsets());
+  ASSERT_TRUE(reshapeOffsets);
+  SliceNode *sliceOffsets =
+      llvm::dyn_cast<SliceNode>(reshapeOffsets->getInput());
+  ASSERT_TRUE(sliceOffsets);
+  EXPECT_EQ(sliceScales->getInput(), sliceOffsets->getInput());
+  EXPECT_TRUE(llvm::isa<Constant>(sliceScales->getInput()));
+
   // We have 3 placeholders: 1 for save, and then indices and lengths.
   EXPECT_EQ(mod.getPlaceholders().size(), 3);
 
-  // We have 4 constants: data, scales, offsets, and weights. Originally fused
+  // We have 3 constants: data, scales+offsets, and weights. Originally fused
   // data is no longer used and is removed by loader.
-  EXPECT_EQ(mod.getConstants().size(), 4);
+  EXPECT_EQ(mod.getConstants().size(), 3);
 
   EE.compile(CompilationMode::Infer);
   bindings.allocate(mod.getPlaceholders());
 
-  // Post compile, DCE should have gotten rid of the originally fused data
-  // Constant, as it is no longer used.
+  // Post compile, should have folded the Slice and Reshape into the
+  // Scales/Biases. Also, DCE should have gotten rid of the originally fused
+  // data Constant, as it is no longer used.
+  EXPECT_EQ(F->getNodes().size(), 2);
   EXPECT_EQ(mod.getConstants().size(), 4);
 
   EE.run(bindings);
@@ -2489,8 +2522,10 @@ TEST_F(Caffe2ImporterTest, SparseLengthsSum8BitsRowwise) {
   };
 
   // High level check on the content of the graph. We have 1 rowwise-quantized
-  // SLWS (which implements SLS), 1 Splat for the weights, and 1 save.
-  EXPECT_EQ(F->getNodes().size(), 3);
+  // SLWS (which implements SLS), 1 Splat for the weights, and 1 save. For SLS
+  // scales/bias, we have 2 Slices and 2 Reshapes to extract out scales/biases
+  // from the loaded Constant.
+  EXPECT_EQ(F->getNodes().size(), 7);
   SaveNode *saveNode = getSaveNodeFromDest(output);
   RowwiseQuantizedSparseLengthsWeightedSumNode *RWQSLS =
       llvm::dyn_cast<RowwiseQuantizedSparseLengthsWeightedSumNode>(
@@ -2501,12 +2536,25 @@ TEST_F(Caffe2ImporterTest, SparseLengthsSum8BitsRowwise) {
   ASSERT_TRUE(splatNode);
   EXPECT_EQ(splatNode->getValue(), 1.0f);
 
+  // Check that we have a Reshape(Slice(Constant)) for Scales/Offsets.
+  ReshapeNode *reshapeScales = llvm::dyn_cast<ReshapeNode>(RWQSLS->getScales());
+  ASSERT_TRUE(reshapeScales);
+  SliceNode *sliceScales = llvm::dyn_cast<SliceNode>(reshapeScales->getInput());
+  ASSERT_TRUE(sliceScales);
+  ReshapeNode *reshapeOffsets =
+      llvm::dyn_cast<ReshapeNode>(RWQSLS->getOffsets());
+  ASSERT_TRUE(reshapeOffsets);
+  SliceNode *sliceOffsets =
+      llvm::dyn_cast<SliceNode>(reshapeOffsets->getInput());
+  ASSERT_TRUE(sliceOffsets);
+  EXPECT_EQ(sliceScales->getInput(), sliceOffsets->getInput());
+  EXPECT_TRUE(llvm::isa<Constant>(sliceScales->getInput()));
+
   // We have 3 placeholders: 1 for save, and then indices and lengths.
   EXPECT_EQ(mod.getPlaceholders().size(), 3);
 
-  // We have 5 constants: Data, scales, and offsets. Originally fused data is no
-  // longer used and is removed by loader.
-  EXPECT_EQ(mod.getConstants().size(), 3);
+  // We have 2 constants: Data and fused scales+offsets.
+  EXPECT_EQ(mod.getConstants().size(), 2);
 
   EE.compile(CompilationMode::Infer);
   bindings.allocate(mod.getPlaceholders());
@@ -2966,8 +3014,8 @@ TEST_F(Caffe2ImporterTest, importInt8ConvRelu) {
   }
 
   // High level check on the content of the graph. We should have
-  // transpose => conv => relu => transpose => save
-  EXPECT_EQ(F->getNodes().size(), 5);
+  // {transpose, transpose} => conv => relu => transpose => save
+  EXPECT_EQ(F->getNodes().size(), 6);
   auto *saveNode = getSaveNodeFromDest(output);
 
   auto *transNode1 =
@@ -2981,6 +3029,9 @@ TEST_F(Caffe2ImporterTest, importInt8ConvRelu) {
   auto *transNode2 =
       llvm::dyn_cast<TransposeNode>(convNode->getInput().getNode());
   ASSERT_TRUE(transNode2);
+  auto *transNode3 =
+      llvm::dyn_cast<TransposeNode>(convNode->getFilter().getNode());
+  ASSERT_TRUE(transNode3);
 
   EE.compile(CompilationMode::Infer);
 }

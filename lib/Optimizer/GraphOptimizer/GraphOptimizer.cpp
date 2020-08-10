@@ -69,7 +69,8 @@ static bool shouldDeleteNode(Node *N) {
   return true;
 }
 
-ConstantModificationPreventer::ConstantModificationPreventer(Module &mod)
+ConstantModificationPreventer::ConstantModificationPreventer(
+    Module &mod, CompilationContext &cctx)
     : ScopeGuard([&]() {
         // Ensure we cleanup Placeholder-Constant swap if necessary.
         auto &PHs = mod_.getPlaceholders();
@@ -79,8 +80,11 @@ ConstantModificationPreventer::ConstantModificationPreventer(Module &mod)
           tmpPH->getOutput().replaceAllUsesOfWith(C->getOutput());
           mod_.erasePlaceholder(std::find(PHs.begin(), PHs.end(), tmpPH));
         }
+        cctx_.optimizationOpts.enableConstantFolding =
+            origEnableConstantFolding_;
       }),
-      mod_(mod) {
+      mod_(mod), cctx_(cctx),
+      origEnableConstantFolding_(cctx.optimizationOpts.enableConstantFolding) {
   // By default dismiss until explicitly activated.
   dismissed_ = true;
 }
@@ -89,13 +93,18 @@ void ConstantModificationPreventer::activate() {
   dismissed_ = false;
   // Prevent Constant modification by temporarily replacing them with PHs.
   for (Constant *C : mod_.getConstants()) {
+    // Note: These temp Placeholders are more like static Placeholders, but we
+    // don't want to set them as static here because optimizations may kick in
+    // to modify the type of the static Placeholder (see
+    // cctx.optimizationOpts.foldStaticPlaceholderConversions).
     Placeholder *tmpPH = mod_.createPlaceholder(
         C->getType(), C->getName().str() + "_SWAP_CONST_FOLD",
         /* isTrainable */ false, C->getLayout());
-    tmpPH->setStatic(true);
     tmpPHToConstMap_[tmpPH] = C;
     C->getOutput().replaceAllUsesOfWith(tmpPH->getOutput());
   }
+  // Disable constant folding temporarily; restored later by the scope guard.
+  cctx_.optimizationOpts.enableConstantFolding = false;
 }
 
 /// Helper that \returns whether all sibling Functions of \p F (other Functions
@@ -3477,6 +3486,19 @@ static bool isUsedByNodeWithSideEffects(Node *N) {
   return false;
 }
 
+/// Helper that \returns whether \p NV cannot have its output quantization
+/// parameters changed. For example, Concats require all inputs to have the same
+/// quantization parameters, so we cannot change the quantization parameters of
+/// a Node if it is input into a Concat.
+static bool disallowQuantParamChange(const NodeValue &NV) {
+  for (auto &user : NV.getUsers()) {
+    if (isa<ConcatNode>(user.getUser())) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// When quantized operators and Clips are used together, we can often merge the
 /// Clip range and the Quantized range and remove the Clip.
 bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
@@ -3494,6 +3516,10 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
     // Clip and do not need to change the type of qResult.
     if (newMin == qMinMax.first && newMax == qMinMax.second) {
       return true;
+    }
+
+    if (disallowQuantParamChange(qResult)) {
+      return false;
     }
 
     // At this point the quantization parameters must be changing, so if we do

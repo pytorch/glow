@@ -396,7 +396,6 @@ void BoundInterpreterFunction::fwdConvTransposeInstFloatImpl(
 
   assert(idim.c % group == 0 && "Input channels must be divisible by group.");
   assert(odim.c % group == 0 && "Output channels must be divisible by group.");
-  assert(group == 1 && "Group must be 1.");
 
   dim_t inCperG = idim.c / group;
   dim_t outCperG = odim.c / group;
@@ -2882,6 +2881,11 @@ void BoundInterpreterFunction::fwdElementFloorInst(const ElementFloorInst *I) {
   dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
 }
 
+void BoundInterpreterFunction::fwdElementSignInst(const ElementSignInst *I) {
+  auto func = [](float x) -> float { return ((x > 0) - (x < 0)); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
 void BoundInterpreterFunction::fwdElementCeilInst(const ElementCeilInst *I) {
   auto func = [](float x) -> float { return std::ceil(x); };
   dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
@@ -3252,6 +3256,55 @@ void BoundInterpreterFunction::fwdModuloInst(glow::ModuloInst const *I) {
   dispatchIndexTypeImpl(fwdModuloInstImpl, I->getSrc()->getElementType(), I);
 }
 
+///=============== Trigonometric Operators===============
+template <typename ElemTy, typename InstKind>
+void BoundInterpreterFunction::fwdUnaryTrigonometricImpl(
+    const InstKind *I, std::function<float(float)> func) {
+  Value *inpV = I->getSrc();
+  Value *outV = I->getDest();
+  auto inpTy = inpV->getType();
+  auto outTy = outV->getType();
+  auto inpH = getWeightHandle<ElemTy>(inpV);
+  auto outH = getWeightHandle<ElemTy>(outV);
+
+  if (inpTy->isQuantizedType()) {
+    float inpScale = inpTy->getScale();
+    int32_t inpOffset = inpTy->getOffset();
+    float outScale = outTy->getScale();
+    int32_t outOffset = outTy->getOffset();
+    for (size_t i = 0, e = outH.size(); i < e; ++i) {
+      float inpVal =
+          quantization::dequantize<ElemTy>(inpH.raw(i), {inpScale, inpOffset});
+      float outVal = func(inpVal);
+      outH.raw(i) =
+          quantization::quantize<ElemTy>(outVal, {outScale, outOffset});
+    }
+  } else {
+    for (size_t i = 0, e = outH.size(); i < e; ++i) {
+      float inpVal = static_cast<float>(inpH.raw(i));
+      float outVal = func(inpVal);
+      outH.raw(i) = static_cast<ElemTy>(outVal);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdElementAcosInst(const ElementAcosInst *I) {
+  auto func = [](float x) -> float { return std::acos(x); };
+  dispatchImpl(fwdUnaryTrigonometricImpl, I->getSrc()->getElementType(), I,
+               func);
+}
+
+void BoundInterpreterFunction::fwdElementAsinInst(const ElementAsinInst *I) {
+  auto func = [](float x) -> float { return std::asin(x); };
+  dispatchImpl(fwdUnaryTrigonometricImpl, I->getSrc()->getElementType(), I,
+               func);
+}
+
+void BoundInterpreterFunction::fwdElementAtanInst(const ElementAtanInst *I) {
+  auto func = [](float x) -> float { return std::atan(x); };
+  dispatchImpl(fwdUnaryTrigonometricImpl, I->getSrc()->getElementType(), I,
+               func);
+}
 //===----------------------------------------------------------------------===//
 //                       Mat Mul
 //===----------------------------------------------------------------------===//
@@ -3701,67 +3754,87 @@ void BoundInterpreterFunction::fwdBatchedReduceAddInst(
                             eBatchDims, eDestDims);
 }
 
-template <typename ElemTy>
-void BoundInterpreterFunction::fwdBatchedReduceMinInstImpl(
-    Value *batch, Value *dest, const ShapeVector &eBatchDims,
-    const ShapeVector &eDestDims, ElemTy max) {
-  static_assert(max_tensor_dimensions == 6,
-                "Loops below assume max_tensor_dimensions = 6.");
-  // Get unowned handles of the batch and dest with these new expanded dims.
-  auto eBatch = getTensor(batch)->getUnowned(eBatchDims);
-  auto eDest = getTensor(dest)->getUnowned(eDestDims);
-  auto eBatchH = eBatch.getHandle<ElemTy>();
-  auto eDestH = eDest.getHandle<ElemTy>();
-  eDestH.clear(max);
-
-  unsigned int axes[max_tensor_dimensions];
-  for (dim_t i = 0; i < max_tensor_dimensions; i++) {
-    axes[i] = (eDestDims[i] > 1);
+/// Macro to define ReduceMin/Max kernel implementation.
+#define DEFINE_REDUCEMINMAX_INST_IMPL(func, compare)                           \
+  template <typename ElemTy>                                                   \
+  void BoundInterpreterFunction::fwdBatched##func##InstImpl(                   \
+      Value *batch, Value *dest, const ShapeVector &eBatchDims,                \
+      const ShapeVector &eDestDims, ElemTy init) {                             \
+    static_assert(max_tensor_dimensions == 6,                                  \
+                  "Loops below assume max_tensor_dimensions = 6.");            \
+    /* Get unowned handles of the batch and dest with these new expanded       \
+     * dims.*/                                                                 \
+    auto eBatch = getTensor(batch)->getUnowned(eBatchDims);                    \
+    auto eDest = getTensor(dest)->getUnowned(eDestDims);                       \
+    auto eBatchH = eBatch.getHandle<ElemTy>();                                 \
+    auto eDestH = eDest.getHandle<ElemTy>();                                   \
+    eDestH.clear(init);                                                        \
+                                                                               \
+    unsigned int axes[max_tensor_dimensions];                                  \
+    for (dim_t i = 0; i < max_tensor_dimensions; i++) {                        \
+      axes[i] = (eDestDims[i] > 1);                                            \
+    }                                                                          \
+                                                                               \
+    /* We can use this loop for all shapes. Use the same indices for both the  \
+     * batch and dest, except for setting the axis index in the dest to 0.*/   \
+    for (dim_t x = 0, dx = 0; x < eBatchDims[0]; x++, dx += axes[0]) {         \
+      for (dim_t y = 0, dy = 0; y < eBatchDims[1]; y++, dy += axes[1]) {       \
+        for (dim_t z = 0, dz = 0; z < eBatchDims[2]; z++, dz += axes[2]) {     \
+          for (dim_t w = 0, dw = 0; w < eBatchDims[3]; w++, dw += axes[3]) {   \
+            for (dim_t q = 0, dq = 0; q < eBatchDims[4]; q++, dq += axes[4]) { \
+              for (dim_t r = 0, dr = 0; r < eBatchDims[5];                     \
+                   r++, dr += axes[5]) {                                       \
+                dim_t destIndices[] = {dx, dy, dz, dw, dq, dr};                \
+                dim_t srcIndices[] = {x, y, z, w, q, r};                       \
+                eDestH.at(destIndices) =                                       \
+                    compare(eDestH.at(destIndices), eBatchH.at(srcIndices));   \
+              }                                                                \
+            }                                                                  \
+          }                                                                    \
+        }                                                                      \
+      }                                                                        \
+    }                                                                          \
   }
 
-  // We can use this loop for all shapes. Use the same indices for both the
-  // batch and dest, except for setting the axis index in the dest to 0.
-  for (dim_t x = 0, dx = 0; x < eBatchDims[0]; x++, dx += axes[0]) {
-    for (dim_t y = 0, dy = 0; y < eBatchDims[1]; y++, dy += axes[1]) {
-      for (dim_t z = 0, dz = 0; z < eBatchDims[2]; z++, dz += axes[2]) {
-        for (dim_t w = 0, dw = 0; w < eBatchDims[3]; w++, dw += axes[3]) {
-          for (dim_t q = 0, dq = 0; q < eBatchDims[4]; q++, dq += axes[4]) {
-            for (dim_t r = 0, dr = 0; r < eBatchDims[5]; r++, dr += axes[5]) {
-              dim_t destIndices[] = {dx, dy, dz, dw, dq, dr};
-              dim_t srcIndices[] = {x, y, z, w, q, r};
-              eDestH.at(destIndices) =
-                  eDestH.at(destIndices) < eBatchH.at(srcIndices)
-                      ? eDestH.at(destIndices)
-                      : eBatchH.at(srcIndices);
-            }
-          }
-        }
-      }
-    }
-  }
-}
+/// Define fwdBatchedReduceMaxInstImpl.
+DEFINE_REDUCEMINMAX_INST_IMPL(ReduceMax, std::max)
 
-void BoundInterpreterFunction::fwdBatchedReduceMinInst(
-    const glow::BatchedReduceMinInst *I) {
+/// Define fwdBatchedReduceMinInstImpl.
+DEFINE_REDUCEMINMAX_INST_IMPL(ReduceMin, std::min)
 
-  auto *batch = I->getBatch();
-  auto *dest = I->getDest();
-  const auto axes = I->getAxes();
+#undef DEFINE_REDUCEMINMAX_INST_IMPL
 
-  // Initialize both expanded batch and dest dims to the expanded batch
-  // dims. This allows us below to iterate over the tensor regardless of its
-  // shape using max_tensor_dimensions loops below.
-  ShapeVector eBatchDims = expandDimsToMax(batch->dims());
-  ShapeVector eDestDims = eBatchDims;
-  // Set the destination axes dimensions (the one we are reducing) to 1.
-  for (dim_t i = 0; i < axes.size(); i++) {
-    eDestDims[axes[i]] = 1;
+/// Macro to define ReduceMin/Max instruction.
+#define DEFINE_REDUCEMINMAX_INST(func, init)                                   \
+  void BoundInterpreterFunction::fwdBatched##func##Inst(                       \
+      const glow::Batched##func##Inst *I) {                                    \
+                                                                               \
+    auto *batch = I->getBatch();                                               \
+    auto *dest = I->getDest();                                                 \
+    const auto axes = I->getAxes();                                            \
+                                                                               \
+    /* Initialize both expanded batch and dest dims to the expanded batch      \
+     dims. This allows us below to iterate over the tensor regardless of its   \
+     shape using max_tensor_dimensions loops below.*/                          \
+    ShapeVector eBatchDims = expandDimsToMax(batch->dims());                   \
+    ShapeVector eDestDims = eBatchDims;                                        \
+    /* Set the destination axes dimensions (the one we are reducing) to 1.*/   \
+    for (dim_t i = 0; i < axes.size(); i++) {                                  \
+      eDestDims[axes[i]] = 1;                                                  \
+    }                                                                          \
+                                                                               \
+    dispatchArithmeticImpl(fwdBatched##func##InstImpl,                         \
+                           batch->getElementType(), batch, dest, eBatchDims,   \
+                           eDestDims, init);                                   \
   }
 
-  dispatchArithmeticImpl(fwdBatchedReduceMinInstImpl, batch->getElementType(),
-                         batch, dest, eBatchDims, eDestDims,
-                         std::numeric_limits<int32_t>::max());
-}
+// Define fwdBatchedMinInst
+DEFINE_REDUCEMINMAX_INST(ReduceMin, std::numeric_limits<int32_t>::max())
+
+// Define fwdBatchedMaxInst
+DEFINE_REDUCEMINMAX_INST(ReduceMax, std::numeric_limits<int32_t>::min())
+
+#undef DEFINE_REDUCEMINMAX_INST
 
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdCumSumInstImpl(Value *input, Value *dest,
@@ -5005,7 +5078,8 @@ void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
 
   if (srcElType == ElemKind::UInt8FusedQTy &&
       destElType == ElemKind::UInt8FusedFP16QTy) {
-    dest->convertToType(ElemKind::UInt8FusedFP16QTy);
+    Tensor result = source->getCopyConvertedToType(ElemKind::UInt8FusedFP16QTy);
+    dest->assign(&result);
     return;
   }
   llvm_unreachable("Type not supported");
@@ -5703,4 +5777,212 @@ void BoundInterpreterFunction::fwdROIAlignInstFloatImpl(
 
 void BoundInterpreterFunction::fwdROIAlignInst(glow::ROIAlignInst const *I) {
   fwdROIAlignInstFloatImpl(I);
+}
+
+// Forward transform that maps proposal boxes to ground-truth boxes using
+//     bounding-box regression deltas.
+// boxes: pixel coordinates of the bounding boxes
+//     size (M, 4), format [x1; y1; x2; y2], x2 >= x1, y2 >= y1
+// deltas: bounding box translations and scales
+//     size (M, 4), format [dx; dy; dw; dh]
+//     dx, dy: scale-invariant translation of the center of the bounding box
+//     dw, dh: log-space scaling of the width and height of the bounding box
+// weights: weights [wx, wy, ww, wh] for the deltas
+// bboxXformClip: minimum bounding box width and height in log-space after
+//     transofmration
+// correct_transform_coords: Correct bounding box transform coordates. Set to
+//     true to match the detectron code, set to false for backward compatibility
+// return: pixel coordinates of the bounding boxes
+//     size (M, 4), format [x1; y1; x2; y2]
+// see "Rich feature hierarchies for accurate object detection and semantic
+//     segmentation" Appendix C for more details
+// reference: detectron/lib/utils/boxes.py bbox_transform()
+static void
+bbox_transform_upright(Handle<float> &boxesOut, const Handle<float> &boxes,
+                       const Handle<float> &deltas, dim_t startRowBoxesOut,
+                       dim_t startColBoxesOut, dim_t startRowBoxes,
+                       dim_t startColBoxes, dim_t startRowDeltas,
+                       dim_t startColDeltas, dim_t rows, dim_t cols,
+                       llvm::ArrayRef<float> weights, const float bboxXformClip,
+                       float scaleBeforeInv, const bool legacyPlusOne = false) {
+
+  if (boxes.dims()[0] == 0) {
+    return;
+  }
+
+  std::vector<float> widths(rows), heights(rows), ctrX(rows), ctrY(rows);
+  for (dim_t i = 0; i < rows; i++) {
+    widths[i] = boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)}) *
+                    scaleBeforeInv -
+                boxes.at({startRowBoxes + i, startColBoxes}) * scaleBeforeInv +
+                float(int(legacyPlusOne));
+    heights[i] = boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)}) *
+                     scaleBeforeInv -
+                 boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) *
+                     scaleBeforeInv +
+                 float(int(legacyPlusOne));
+
+    ctrX[i] = boxes.at({startRowBoxes + i, startColBoxes}) * scaleBeforeInv +
+              float(0.5) * widths[i];
+    ctrY[i] = boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) *
+                  scaleBeforeInv +
+              float(0.5) * heights[i];
+  }
+
+  std::vector<float> dx(rows), dy(rows), dw(rows), dh(rows);
+  for (dim_t i = 0; i < rows; i++) {
+    dx[i] = deltas.at({startRowDeltas + i, startColDeltas}) / weights[0];
+    dy[i] =
+        deltas.at({startRowDeltas + i, startColDeltas + dim_t(1)}) / weights[1];
+    dw[i] = std::min(
+        deltas.at({startRowDeltas + i, startColDeltas + dim_t(2)}) / weights[2],
+        bboxXformClip);
+    dh[i] = std::min(
+        deltas.at({startRowDeltas + i, startColDeltas + dim_t(3)}) / weights[3],
+        bboxXformClip);
+  }
+
+  std::vector<float> predCtrX(rows), predCtrY(rows), predW(rows), predH(rows);
+  for (dim_t i = 0; i < rows; i++) {
+    predCtrX[i] = dx[i] * widths[i] + ctrX[i];
+    predCtrY[i] = dy[i] * heights[i] + ctrY[i];
+    predW[i] = std::exp(dw[i]) * widths[i];
+    predH[i] = std::exp(dh[i]) * heights[i];
+  }
+
+  for (dim_t i = 0; i < rows; i++) {
+    // x1
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut}) =
+        predCtrX[i] - float(0.5) * predW[i];
+    // x2
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(1)}) =
+        predCtrY[i] - float(0.5) * predH[i];
+    // y1
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(2)}) =
+        predCtrX[i] + float(0.5) * predW[i] - float(int(legacyPlusOne));
+    // y2
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(3)}) =
+        predCtrY[i] + float(0.5) * predH[i] - float(int(legacyPlusOne));
+  }
+}
+
+// Clip boxes to image boundaries
+// boxes: pixel coordinates of bounding box, size (M * 4)
+void clip_boxes_upright(Handle<float> &boxes, dim_t startRowBoxes,
+                        dim_t startColBoxes, dim_t rows, dim_t cols, int height,
+                        int width, float scaleAfter,
+                        bool legacyPlusOne = false) {
+  for (dim_t i = 0; i < rows; i++) {
+    // x1 >= 0 && x1 < width
+    boxes.at({startRowBoxes + i, startColBoxes}) =
+        scaleAfter *
+        std::max(std::min(boxes.at({startRowBoxes + i, startColBoxes}),
+                          float(width - int(legacyPlusOne))),
+                 float(0));
+    // y1 >= 0 && y1 < height
+    boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) =
+        scaleAfter * std::max(std::min(boxes.at({startRowBoxes + i,
+                                                 startColBoxes + dim_t(1)}),
+                                       float(height - int(legacyPlusOne))),
+                              float(0));
+
+    // x2 >= 0 && x2 < width
+    boxes.at({startRowBoxes + i, startColBoxes + 2}) =
+        scaleAfter * std::max(std::min(boxes.at({startRowBoxes + i,
+                                                 startColBoxes + dim_t(2)}),
+                                       float(width - int(legacyPlusOne))),
+                              float(0));
+    // y2 >= 0 && y2 < height
+    boxes.at({startRowBoxes + i, startColBoxes + 3}) =
+        scaleAfter * std::max(std::min(boxes.at({startRowBoxes + i,
+                                                 startColBoxes + dim_t(3)}),
+                                       float(height - int(legacyPlusOne))),
+                              float(0));
+  }
+}
+
+void BoundInterpreterFunction::fwdBBoxTransformInstFloatImpl(
+    glow::BBoxTransformInst const *I) {
+  auto roiIn = I->getRois();
+  auto deltaIn = I->getDeltas();
+  auto imInfoIn = I->getImInfo();
+
+  auto boxOut = I->getBoxOut();
+  auto roiBatchSplits = I->getRoiBatchSplits();
+
+  auto weights = I->getWeights();
+  const dim_t boxDim = I->getRotated() ? 5 : 4;
+  auto applyScale = I->getApplyScale();
+  auto legacyPlusOne = I->getLegacyPlusOne();
+  const dim_t N = roiIn->dims()[0];
+  const dim_t numClasses = deltaIn->dims()[1] / boxDim;
+  const dim_t batchSize = imInfoIn->dims()[0];
+
+  auto roisH = getTensor(roiIn)->getHandle<float>();
+  auto deltasH = getTensor(deltaIn)->getHandle<float>();
+  auto roiBatchSplitsH = getTensor(roiBatchSplits)->getHandle<float>();
+
+  // Count the number of RoIs per batch
+  std::vector<int> numRoisPerBatch(batchSize, 0);
+  if (roiIn->dims()[1] == boxDim) {
+    numRoisPerBatch[0] = N;
+  } else {
+    for (dim_t i = 0; i < N; ++i) {
+      const int roiBatchId = roisH.at({i, 0});
+      numRoisPerBatch[roiBatchId]++;
+    }
+  }
+
+  auto imInfoH = getTensor(imInfoIn)->getHandle<float>();
+  auto boxOutH = getTensor(boxOut)->getHandle<float>();
+  getTensor(boxOut)->zero();
+
+  // Default value for minimum bounding box width and height after bounding
+  // box transformation (bbox_transform()) in log-space
+  const float bboxXformClip = std::log(1000.0 / 16.0);
+
+  // We assume roiIn and deltaIn over multiple batches are grouped
+  // together in increasing order as generated by GenerateProposalsOp
+  dim_t offset = 0;
+  for (dim_t i = 0; i < batchSize; ++i) {
+    const dim_t numRois = numRoisPerBatch[i];
+    const float scaleBefore = imInfoH.at({i, 2});
+    const float scaleAfter = applyScale ? scaleBefore : 1.0;
+    dim_t imgH = dim_t(imInfoH.at({i, 0}) / scaleBefore + 0.5);
+    dim_t imgW = dim_t(imInfoH.at({i, 1}) / scaleBefore + 0.5);
+
+    // Apply for the rectangle starting at (startRowRoi, startColRoi)
+    // with height (Rows) of unm_rois, and width (Cols) of boxDim.
+    dim_t startRowRoi = offset;
+    dim_t startColRoi = batchSize > 1 ? 1 : 0;
+    dim_t rows = numRois;
+    dim_t cols = boxDim;
+    float scaleBeforeInv = 1 / scaleBefore;
+
+    // scale before and after on the fly.
+    // Do not apply scale for angle in rotated boxes
+    for (dim_t k = 0; k < numClasses; k++) {
+      dim_t startRowDelta = offset;
+      dim_t startColDelta = k * boxDim;
+      bbox_transform_upright(boxOutH, roisH, deltasH, startRowDelta,
+                             startColDelta, startRowRoi, startColRoi,
+                             startRowDelta, startColDelta, rows, cols, weights,
+                             bboxXformClip, scaleBeforeInv, legacyPlusOne);
+
+      clip_boxes_upright(boxOutH, startRowDelta, startColDelta, rows, cols,
+                         imgH, imgW, scaleAfter, legacyPlusOne);
+    }
+
+    offset += rows;
+  }
+  if (batchSize > 1) {
+    for (dim_t i = 0; i < batchSize; i++) {
+      roiBatchSplitsH.at({i}) = numRoisPerBatch[i];
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdBBoxTransformInst(
+    glow::BBoxTransformInst const *I) {
+  fwdBBoxTransformInstFloatImpl(I);
 }

@@ -130,14 +130,14 @@ static void dequantizeTensorUtil(Tensor *dest, const Tensor &src) {
 }
 
 /// Helper for dequantizing UInt8FusedQTy \p src to \p dest.
-template <typename DeqElemTy>
+template <typename DeqElemTy, typename ScaleOffsetTy>
 static void dequantizeFusedRowwiseTensorUtil(Tensor &dest, const Tensor &src) {
   auto dims = dest.dims();
   auto srcH = src.getHandle<uint8_t>();
   auto destH = dest.getHandle<DeqElemTy>();
   for (dim_t i = 0, e = dims[0]; i < e; ++i) {
     float scale, offset;
-    std::tie(scale, offset) = srcH.getFusedScaleOffsetFromRow<float>(i);
+    std::tie(scale, offset) = srcH.getFusedScaleOffsetFromRow<ScaleOffsetTy>(i);
     for (dim_t j = 0, f = dims[1]; j < f; ++j) {
       destH.at({i, j}) =
           static_cast<DeqElemTy>(quantization::dequantizeWithFloatOffset(
@@ -151,18 +151,29 @@ Tensor dequantizeTensor(const Tensor &tensor, ElemKind floatKind) {
          "Non supported output floating point type");
   auto Ty = tensor.getType().getElementType();
 
-  if (Ty == ElemKind::UInt8FusedQTy) {
+  if (Ty == ElemKind::UInt8FusedQTy || Ty == ElemKind::UInt8FusedFP16QTy) {
+    const bool scaleOffsetFP16 = Ty == ElemKind::UInt8FusedFP16QTy;
+    const dim_t scaleOffsetSize =
+        scaleOffsetFP16 ? sizeof(float16_t) : sizeof(float);
     assert(tensor.dims().size() == 2 && "Fused tensors should be 2D");
-    assert(tensor.dims()[1] > 2 * sizeof(float) &&
+    assert(tensor.dims()[1] > 2 * scaleOffsetSize &&
            "Expected space for per-row scale/offset");
     Tensor tmp(floatKind, {tensor.dims()[0],
-                           tensor.dims()[1] - (dim_t)(2 * sizeof(float))});
+                           tensor.dims()[1] - (dim_t)(2 * scaleOffsetSize)});
     switch (floatKind) {
     case ElemKind::FloatTy:
-      dequantizeFusedRowwiseTensorUtil<float>(tmp, tensor);
+      if (scaleOffsetFP16) {
+        dequantizeFusedRowwiseTensorUtil<float, float16_t>(tmp, tensor);
+      } else {
+        dequantizeFusedRowwiseTensorUtil<float, float>(tmp, tensor);
+      }
       break;
     case ElemKind::Float16Ty:
-      dequantizeFusedRowwiseTensorUtil<float16_t>(tmp, tensor);
+      if (scaleOffsetFP16) {
+        dequantizeFusedRowwiseTensorUtil<float16_t, float16_t>(tmp, tensor);
+      } else {
+        dequantizeFusedRowwiseTensorUtil<float16_t, float>(tmp, tensor);
+      }
       break;
     default:
       llvm_unreachable("Cannot dequantize to the given type");

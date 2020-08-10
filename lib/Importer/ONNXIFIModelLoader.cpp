@@ -26,6 +26,8 @@ Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
     const void *model, uint32_t modelSize, uint32_t weightsCount,
     const onnxTensorDescriptorV1 *weightDescriptors, Module &mod,
     llvm::StringRef netName, runtime::PrePartitionedConfig *PPC,
+    BackendSpecificNodeInfo *BSNI,
+    std::map<std::string, Type> *staticPlaceholderTypes,
     bool loadInputsAsPlaceholdersForOnnx, bool use_onnx,
     bool constFoldInLoader) {
 
@@ -33,11 +35,10 @@ Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
   Error loaderConstructionErr = Error::empty();
 
   if (use_onnx) {
-    Function *F = mod.createFunction(netName);
-    std::unique_ptr<ONNXModelLoader> onnxLoader(
-        new ONNXModelLoader(model, modelSize, weightsCount, weightDescriptors,
-                            *F, loadInputsAsPlaceholdersForOnnx,
-                            &loaderConstructionErr, constFoldInLoader));
+    std::unique_ptr<ONNXModelLoader> onnxLoader(new ONNXModelLoader(
+        model, modelSize, weightsCount, weightDescriptors, mod, netName, PPC,
+        loadInputsAsPlaceholdersForOnnx, &loaderConstructionErr,
+        constFoldInLoader, BSNI, staticPlaceholderTypes));
     if (loaderConstructionErr) {
       return std::move(loaderConstructionErr);
     }

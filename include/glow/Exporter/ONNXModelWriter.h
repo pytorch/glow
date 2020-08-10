@@ -80,6 +80,11 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   const ConstantFoldingRecordMap &constFoldRecord_;
   /// Backend-specific node info to include in the exported model.
   const BackendSpecificNodeInfo &backendSpecificNodeInfo_;
+  /// Map from Placeholders in the Module to the symbolic name they were loaded
+  /// with from the input model. If not null, included in IO doc_string info.
+  const LoadedPlaceholderNameMap *loadedPHNames_;
+  /// Map from static PH names to the type it was originally loaded with.
+  const std::map<std::string, Type> *staticPlaceholderTypes_;
   /// A dedicated list of initializers in case the tensors get too big and don't
   /// fit into the model.
   std::list<TensorType> initializers_;
@@ -87,9 +92,19 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   llvm::SmallSet<Function *, 6> functionsFromDAG_;
   /// Holds all constant folding Functions that have been processed.
   llvm::SmallSet<Function *, 6> processedConstFoldFunctions_;
-  /// Writes tensor shape from placeholder \p PH into protpbuf \p valueProto.
-  void tensorShapeFromPlaceholder(const Placeholder *PH,
-                                  ValueInfoType *valueProto);
+  /// Maps from all non-static input PHs to the generated proto. It's used to
+  /// buffer protos; later on written out in order based on \ref loadedPHNames_.
+  std::unordered_map<const Placeholder *, ValueInfoType> inputValueInfos_;
+  /// Maps from all output PHs to the generated proto. It's used to buffer
+  /// protos; later on written out in order based on \ref loadedPHNames_.
+  std::unordered_map<const Placeholder *, ValueInfoType> outputValueInfos_;
+
+  /// Creates and \returns a new ValueInfoType for \p PH based on \p isInput.
+  /// It's added either directy to \ref graphProto_, or to \ref inputValueInfos_
+  /// / \ref outputValueInfos_, depending on whether there's an order we need to
+  /// serialize the IO in (order comes from \ref loadedPHNames_ if non-null).
+  Expected<ValueInfoType *> createProtoForIO(const Placeholder *PH,
+                                             bool isInput);
   /// Writes all inputs and outputs with operator name \p opName from give Node
   /// \p node into protobuf \p proto.
   static Error writeAllWithNode(const std::string &opName, const Node *node,
@@ -203,15 +218,18 @@ public:
   /// \p backendSpecificNodeInfo contains attributes to add onto Nodes when
   /// exporting if found.
 
-  ONNXModelWriter(const std::string &modelFilename, runtime::DAGListTy &dagList,
-                  size_t irVersion, size_t opsetVersion,
-                  Error *errPtr = nullptr, bool textMode = false,
-                  bool zipMode = false, bool includeConstantData = true,
-                  const llvm::StringMap<std::string> &extraMetadataProps =
-                      llvm::StringMap<std::string>(),
-                  const ConstantFoldingRecordMap &constFoldRecord =
-                      ConstantFoldingRecordMap(),
-                  const BackendSpecificNodeInfo &backendSpecificNodeInfo = {});
+  ONNXModelWriter(
+      const std::string &modelFilename, runtime::DAGListTy &dagList,
+      size_t irVersion, size_t opsetVersion, Error *errPtr = nullptr,
+      bool textMode = false, bool zipMode = false,
+      bool includeConstantData = true,
+      const llvm::StringMap<std::string> &extraMetadataProps =
+          llvm::StringMap<std::string>(),
+      const ConstantFoldingRecordMap &constFoldRecord =
+          ConstantFoldingRecordMap(),
+      const BackendSpecificNodeInfo &backendSpecificNodeInfo = {},
+      const LoadedPlaceholderNameMap *loadedPHNames = nullptr,
+      const std::map<std::string, Type> *staticPlaceholderTypes = nullptr);
 
 private:
   /// \returns error for the unexpected node kind.

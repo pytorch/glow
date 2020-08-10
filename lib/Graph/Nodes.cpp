@@ -299,8 +299,8 @@ static bool verifyConvTranspose(NodeValue src, NodeValue dest, NodeValue filter,
   isValid &= expectCompareTrue("Invalid output dimension CT", odim.c % group,
                                dim_t(0), parent);
 
-  const dim_t filterDims[] = {odim.c, kdim.height, kdim.width,
-                              idim.c / (dim_t)group};
+  const dim_t filterDims[] = {odim.c / (dim_t)group, kdim.height, kdim.width,
+                              idim.c};
   isValid &=
       expectCompareTrue("Invalid filter dimensions", filter.getType()->dims(),
                         llvm::makeArrayRef(filterDims), parent);
@@ -1305,6 +1305,16 @@ bool LocalResponseNormalizationGradNode::verify() const {
 VERIFY_UNARY_LOGICAL(Not)
 #undef VERIFY_UNARY_LOGICAL
 
+bool SignNode::verify() const {
+  if (getResult().getType()->isQuantizedType()) {
+    bool isValid = checkSameShape(getInput(), getResult(), this);
+    isValid &=
+        checkType(getResult(), getInput().getType()->getElementType(), this);
+    return isValid;
+  }
+  return checkSameType(getInput(), getResult(), this);
+}
+
 #define VERIFY_BINARY_LOGICAL(NODE_NAME_)                                      \
   bool NODE_NAME_##Node::verify() const {                                      \
     bool isValid = checkSameShape(getLHS(), getResult(), this);                \
@@ -1383,6 +1393,16 @@ VERIFY_CMP(CmpLT)
 VERIFY_CMP(CmpLTE)
 #undef VERIFY_CMP
 
+//            Trigonometric Ops
+#define VERIFY_TRIGONOMERTRIC_OPS(NODE_NAME_)                                  \
+  bool NODE_NAME_##Node::verify() const {                                      \
+    return checkSameShape(getInput(), getResult(), this);                      \
+  }
+VERIFY_TRIGONOMERTRIC_OPS(Acos);
+VERIFY_TRIGONOMERTRIC_OPS(Asin);
+VERIFY_TRIGONOMERTRIC_OPS(Atan);
+#undef VERIFY_UNARY_ARITHMETIC
+
 bool BatchedPairwiseDotProductNode::verify() const {
   auto inputs = getInputs();
 
@@ -1427,15 +1447,6 @@ bool BatchedAddNode::verify() const {
   return isValid;
 }
 
-bool BatchedReduceAddNode::verify() const {
-  bool isValid = checkType(getResult(), getBatch().getElementType(), this);
-
-  isValid &=
-      expectCompareTrue("Invalid shape", getBatch().dims().size(), size_t(0),
-                        this, CompareOperatorGreaterThan<size_t>());
-  return isValid;
-}
-
 bool CumSumNode::verify() const {
   return checkSameType(getResult(), getInput(), this);
 }
@@ -1445,23 +1456,22 @@ bool LengthsSumNode::verify() const {
                            getLengths().dims().size(), size_t(1), this);
 }
 
-bool BatchedReduceMeanNode::verify() const {
-  bool isValid = checkType(getResult(), getBatch().getElementType(), this);
+// Define verification for Reduction operations.
+#define DEFINE_BATCHED_REDUCTION_VERIFICATION(name)                            \
+  bool name##Node::verify() const {                                            \
+    bool isValid = checkType(getResult(), getBatch().getElementType(), this);  \
+    isValid &= expectCompareTrue("Invalid shape", getBatch().dims().size(),    \
+                                 size_t(0), this,                              \
+                                 CompareOperatorGreaterThan<size_t>());        \
+    return isValid;                                                            \
+  }
 
-  isValid &=
-      expectCompareTrue("Invalid shape", getBatch().dims().size(), size_t(0),
-                        this, CompareOperatorGreaterThan<size_t>());
-  return isValid;
-}
+DEFINE_BATCHED_REDUCTION_VERIFICATION(BatchedReduceAdd)
+DEFINE_BATCHED_REDUCTION_VERIFICATION(BatchedReduceMean)
+DEFINE_BATCHED_REDUCTION_VERIFICATION(BatchedReduceMin)
+DEFINE_BATCHED_REDUCTION_VERIFICATION(BatchedReduceMax)
 
-bool BatchedReduceMinNode::verify() const {
-  bool isValid = checkType(getResult(), getBatch().getElementType(), this);
-
-  isValid &=
-      expectCompareTrue("Invalid shape", getBatch().dims().size(), size_t(0),
-                        this, CompareOperatorGreaterThan<size_t>());
-  return isValid;
-}
+#undef DEFINE_BATCHED_REDUCTION_VERIFICATION
 
 bool SparseLengthsSumNode::verify() const {
   return verifySparseLengthsSum(getResult(), getData(), getIndices(),
@@ -2119,6 +2129,54 @@ bool ROIAlignNode::verify() const {
                                batchIndicesDims.size(), size_t(1), this);
   isValid &= expectCompareTrue("Output must be a 4D tensor", outputDims.size(),
                                size_t(4), this);
+  return isValid;
+}
+
+bool BBoxTransformNode::verify() const {
+  auto rois = getRois();
+  auto deltas = getDeltas();
+  auto imInfo = getImInfo();
+  auto boxOut = getBoxOut();
+  auto weights = getWeights();
+
+  auto roisDims = rois.dims();
+  auto deltasDims = deltas.dims();
+  auto imInfoDims = imInfo.dims();
+
+  bool rotated = getRotated();
+  // BoxDim is of the format
+  // <x1, y1, x2, y2, [optional_angle]>
+  dim_t expectedBoxDim = rotated ? 5 : 4;
+
+  // Rois row is of the format
+  // <[optinal_batch_index], x1, y1, x2, y2, [optional_angle]>
+  bool validRoiDim =
+      roisDims[1] == expectedBoxDim || roisDims[1] == expectedBoxDim + 1;
+
+  bool isValid = checkTypeIgnoreShape(rois, boxOut, this);
+  isValid &= checkSameType(deltas, boxOut, this);
+  isValid &= checkTypeIgnoreShape(imInfo, boxOut, this);
+  isValid &= checkType(rois, ElemKind::FloatTy, this);
+  isValid &= expectCompareTrue("Rois must be a 2D tensor", roisDims.size(),
+                               size_t(2), this);
+  isValid &=
+      expectCompareTrue("Rois must have with equals boxDim or larger in 1",
+                        validRoiDim, true, this);
+  isValid &= expectCompareTrue("Deltas must be a 2D tensor", deltasDims.size(),
+                               size_t(2), this);
+  isValid &= expectCompareTrue("ImInfo must be a 2D tensor", imInfoDims.size(),
+                               size_t(2), this);
+  isValid &= expectCompareTrue("ImInfo must be a {batch_size, 3} tensor",
+                               imInfoDims[1], dim_t(3), this);
+  isValid &= expectCompareTrue("Rois and Deltas must have same 0 dimension",
+                               roisDims[0], deltasDims[0], this);
+  isValid &= expectCompareTrue("Deltas must be divisible by box dimensions",
+                               deltasDims[1] % expectedBoxDim, dim_t(0), this);
+  isValid &= expectCompareTrue("Weights must be a 1D vector of length 4",
+                               weights.size(), size_t(4), this);
+  isValid &= expectCompareTrue("Rotated bbox transform is not supported.",
+                               rotated, false, this);
+
   return isValid;
 }
 
