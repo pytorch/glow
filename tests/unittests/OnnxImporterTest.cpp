@@ -532,7 +532,7 @@ TEST_F(OnnxImporterTest, leakyRelu) {
   }
 
   auto *save = getSaveNodeFromDest(output);
-  PReluNode *LR = llvm::dyn_cast<LeakyReluNode>(save->getInput().getNode());
+  LeakyReluNode *LR = llvm::dyn_cast<LeakyReluNode>(save->getInput().getNode());
   ASSERT_TRUE(LR);
   EXPECT_FLOAT_EQ(LR->getAlpha(), 0.100000001);
 }
@@ -557,7 +557,7 @@ TEST_F(OnnxImporterTest, leakyReluDefault) {
   }
 
   auto *save = getSaveNodeFromDest(output);
-  PReluNode *LR = llvm::dyn_cast<LeakyReluNode>(save->getInput().getNode());
+  LeakyReluNode *LR = llvm::dyn_cast<LeakyReluNode>(save->getInput().getNode());
   ASSERT_TRUE(LR);
   EXPECT_FLOAT_EQ(LR->getAlpha(), 0.01);
 }
