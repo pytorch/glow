@@ -1130,8 +1130,8 @@ TEST_F(GraphOptz, SinkTransposeBelowPRelu) {
 
   optimizedF_ = optimizeFunction(F_);
 
-  EXPECT_EQ(F_->getNodes().size(), 5);
-  EXPECT_EQ(optimizedF_->getNodes().size(), 5);
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
 
   auto *optOut = findFunctionNodeByName<SaveNode>(optimizedF_, O->getName());
   EXPECT_TRUE(llvm::isa<TransposeNode>(optOut->getInput().getNode()));
