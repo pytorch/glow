@@ -1036,15 +1036,13 @@ public:
   /// multiplies \p input with itself to produce an equivalent Square node.
   MulNode *createSquare(llvm::StringRef name, TypeRef outTy, NodeValue input);
 
-  /// Create an equivalent LeakyRELU node with given \p name, \p input and slope
-  /// \p alpha by using a SplatNode and a PRELU node.
-  PReluNode *createLeakyRELU(llvm::StringRef name, NodeValue input,
-                             float alpha);
+  /// Create a LeakyRELU with \p name, \p input and slope \p alpha.
+  LeakyReluNode *createLeakyRELU(llvm::StringRef name, NodeValue input,
+                                 float alpha);
 
-  /// Create an equivalent LeakyRELU node with given \p name, \p outTy, \p input
-  /// and slope \p alpha by using a SplatNode and a PRELU node.
-  PReluNode *createLeakyRELU(llvm::StringRef name, TypeRef outTy,
-                             NodeValue input, float alpha);
+  /// Create a LeakyRELU with \p name, \p outTy, \p input and slope \p alpha.
+  LeakyReluNode *createLeakyRELU(llvm::StringRef name, TypeRef outTy,
+                                 NodeValue input, float alpha);
 
   /// Create a node that produces an boolean output of the same shape as
   /// \p input in which each element indicates whether or not the corresponding

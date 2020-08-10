@@ -622,6 +622,49 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       continue;
     }
 
+    // Sink Transpose below LeakyRelu nodes.
+    if (auto *LR = dyn_cast<LeakyReluNode>(node)) {
+      auto *TR = dyn_cast<TransposeNode>(LR->getInput());
+      if (!TR) {
+        continue;
+      }
+      auto newLROutTy = F->getParent()->uniqueTypeWithNewShape(
+          LR->getResult().getType(), TR->getInput().getType());
+      auto *newLR = F->createLeakyRELU(LR->getName(), newLROutTy,
+                                       TR->getInput(), LR->getAlpha());
+      newLR->setPredicate(node->getPredicate());
+      auto *newTR = F->createTranspose(TR->getName(), newLR, TR->getShuffle());
+      newTR->setPredicate(node->getPredicate());
+      LR->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
+      continue;
+    }
+
+    // Sink Transpose below PRelu with Splat.
+    if (auto *PN = dyn_cast<PReluNode>(node)) {
+      auto *TR = dyn_cast<TransposeNode>(PN->getInput());
+      if (!TR) {
+        continue;
+      }
+      auto *SN = dyn_cast<SplatNode>(PN->getSlope());
+      if (!SN) {
+        continue;
+      }
+      auto newSNOutTy = F->getParent()->uniqueTypeWithNewShape(
+          SN->getResult().getType(), TR->getInput().getType());
+      auto newPNOutTy = F->getParent()->uniqueTypeWithNewShape(
+          PN->getResult().getType(), TR->getInput().getType());
+      auto *newSN = F->createSplat(SN->getName(), newSNOutTy, SN->getValue());
+      auto *newPN =
+          F->createPRELU(PN->getName(), TR->getInput(), newSN, newPNOutTy);
+      auto *newTR = F->createTranspose(TR->getName(), newPN, TR->getShuffle());
+      newPN->setPredicate(node->getPredicate());
+      newTR->setPredicate(node->getPredicate());
+      PN->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
+      continue;
+    }
+
     // Sink Transpose below Sigmoid nodes.
     if (auto *SI = dyn_cast<SigmoidNode>(node)) {
       auto *TR = dyn_cast<TransposeNode>(SI->getInput());

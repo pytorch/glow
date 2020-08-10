@@ -1721,6 +1721,25 @@ int8_t libjit_element_clip_i8(dim_t idx, const int8_t *src, int8_t clipMin,
   return libjit_clip(scaledVal);
 }
 
+float libjit_element_leaky_relu_f(dim_t idx, const float *src, float alpha) {
+  float srcVal = src[idx];
+  return (srcVal >= 0) ? srcVal : alpha * srcVal;
+}
+
+int8_t libjit_element_leaky_relu_i8(dim_t idx, const int8_t *src,
+                                    int8_t srcOffset, int8_t destOffset,
+                                    int32_t posPre, int32_t posPost,
+                                    int32_t posScale, int32_t negPre,
+                                    int32_t negPost, int32_t negScale) {
+  int32_t srcVal = src[idx];
+  int32_t scaledVal = (srcVal >= srcOffset)
+                          ? libjit_scale_i32i8(srcVal - srcOffset, posPre,
+                                               posPost, posScale, destOffset)
+                          : libjit_scale_i32i8(srcVal - srcOffset, negPre,
+                                               negPost, negScale, destOffset);
+  return libjit_clip(scaledVal);
+}
+
 // When the LIBJIT compile option "-ffast-math" is enabled the intermediate
 // computation expf(x) for Sigmoid operator is not handled properly for very
 // large positive values which results in NaN values for the Sigmoid output.

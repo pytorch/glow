@@ -28,6 +28,7 @@
 #include <chrono>
 #include <cmath>
 #include <math.h>
+#include <numeric>
 
 #ifdef WIN32
 #include <corecrt_math_defines.h>
@@ -1650,6 +1651,10 @@ void BoundInterpreterFunction::fwdReluInst(const ReluInst *) {
 
 void BoundInterpreterFunction::fwdClipInst(const ClipInst *) {
   DCHECK(!"Found ClipInst but Clip is lowered on Interpreter");
+}
+
+void BoundInterpreterFunction::fwdLeakyReluInst(const LeakyReluInst *) {
+  DCHECK(!"Found LeakyReluInst but LeakyRelu is lowered on Interpreter");
 }
 
 template <typename ElemTy>

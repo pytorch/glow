@@ -1765,17 +1765,14 @@ MulNode *Function::createSquare(llvm::StringRef name, TypeRef outTy,
   return createMul(name, outTy, input, input);
 }
 
-PReluNode *Function::createLeakyRELU(llvm::StringRef name, NodeValue input,
-                                     float alpha) {
-  return createLeakyRELU(name, input.getType(), input, alpha);
+LeakyReluNode *Function::createLeakyRELU(llvm::StringRef name, NodeValue input,
+                                         float alpha) {
+  return addNode(new LeakyReluNode(name, input.getType(), input, alpha));
 }
 
-PReluNode *Function::createLeakyRELU(llvm::StringRef name, TypeRef outTy,
-                                     NodeValue input, float alpha) {
-  auto splatType = getParent()->uniqueType(*(input.getType()));
-  SplatNode *splat = createSplat(name.str() + ".alpha", splatType, alpha);
-  auto OT = getParent()->uniqueType(*outTy);
-  return createPRELU(name, input, splat, OT);
+LeakyReluNode *Function::createLeakyRELU(llvm::StringRef name, TypeRef outTy,
+                                         NodeValue input, float alpha) {
+  return addNode(new LeakyReluNode(name, outTy, input, alpha));
 }
 
 IsNaNNode *Function::createIsNaN(llvm::StringRef name, NodeValue input) {

@@ -2164,6 +2164,10 @@ bool ReluGradNode::verify() const {
          verifyRelu(getGradOfOriginalOutputNamedResult(), getInput());
 }
 
+bool LeakyReluNode::verify() const {
+  return verifyRelu(getResult(), getInput());
+}
+
 bool PReluNode::verify() const {
   return verifyPRelu(getResult(), getInput(), getSlope());
 }

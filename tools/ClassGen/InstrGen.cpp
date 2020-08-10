@@ -825,6 +825,19 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameType, {"Dest", "Src"})
       .autoIRGen();
 
+  BB.newInstr("LeakyRelu")
+      .addOperand("Dest", OperandKind::Out)
+      .addOperand("Src", OperandKind::In)
+      .addMember(MemberType::Float, "Alpha")
+      .inplaceOperand({
+          "Dest",
+          "Src",
+      })
+      .dataParallel()
+      .autoVerify(VerifyKind::SameShape, {"Dest", "Src"})
+      .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
+      .autoIRGen();
+
   //===--------------------------------------------------------------------===//
   //                Shape transformations
   //===--------------------------------------------------------------------===//

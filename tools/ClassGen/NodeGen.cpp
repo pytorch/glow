@@ -899,6 +899,15 @@ int main(int argc, char **argv) {
       .setDocstring("Applies hyperbolic tangent to each element in the Input "
                     "tensor.");
 
+  BB.newNode("LeakyRelu")
+      .addInput("Input")
+      .addMember(MemberType::Float, "Alpha")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring(
+          "Applies LeakyReLU = x for positive x and alpha * x for negative x "
+          "to each element in the Input tensor.");
+
   //===--------------------------------------------------------------------===//
   //                Shape transformations
   //===--------------------------------------------------------------------===//
