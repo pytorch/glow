@@ -8016,6 +8016,64 @@ TEST_P(OperatorTest, Relu_Int8) {
   }
 }
 
+// Test for elementwise add with quantization and broadcast support
+TEST_P(OperatorTest, IntAddBroadcast) {
+  CHECK_IF_ENABLED();
+
+  const float in1Scale = 0.1;
+  const float in2Scale = 0.2;
+  const float addScale = 0.3;
+  const int32_t in1Offset = 5;
+  const int32_t in2Offset = 10;
+  const int32_t addOffset = -8;
+  const dim_t N = 2;
+  const dim_t C = 3;
+  const dim_t H = 4;
+  const dim_t W = 5;
+
+  auto in1Ty =
+      mod_.uniqueType(ElemKind::Int8QTy, {N, C, H, W}, in1Scale, in1Offset);
+  auto in2Ty = mod_.uniqueType(ElemKind::Int8QTy, {W}, in2Scale, in2Offset);
+  auto outTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {N, C, H, W}, addScale, addOffset);
+
+  auto *in1 = mod_.createPlaceholder(in1Ty, "in1", false);
+  auto *in2 = mod_.createPlaceholder(in2Ty, "in2", false);
+
+  bindings_.allocate(in1)->getHandle<int8_t>().randomize(-10, 10,
+                                                         mod_.getPRNG());
+  bindings_.allocate(in2)->getHandle<int8_t>().randomize(-10, 10,
+                                                         mod_.getPRNG());
+  constexpr int axis = -1;
+  auto *addbroadcast = F_->createNodeWithBroadcastOutTy<AddNode>(
+      "addbroadcast", axis, outTy, in1, in2);
+
+  auto *save = F_->createSave("save", addbroadcast);
+  bindings_.allocate(mod_.getPlaceholders());
+
+  auto Qin1H = bindings_.get(in1)->getHandle<int8_t>();
+  auto Qin2H = bindings_.get(in2)->getHandle<int8_t>();
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(save->getPlaceholder())->getHandle<int8_t>();
+
+  for (dim_t w = 0; w < W; w++) {
+    float b = quantization::dequantize(Qin2H.at({w}), {in2Scale, in2Offset});
+    for (dim_t n = 0; n < N; n++) {
+      for (dim_t c = 0; c < C; c++) {
+        for (dim_t h = 0; h < H; h++) {
+          float a = quantization::dequantize(Qin1H.at({n, c, h, w}),
+                                             {in1Scale, in1Offset});
+          int8_t add = quantization::quantize((a + b), {addScale, addOffset});
+          EXPECT_NEAR(add, result.at({n, c, h, w}), 1);
+        }
+      }
+    }
+  }
+}
+
 /// Test Clip with Int8QTy.
 TEST_P(OperatorTest, Clip_Int8) {
   CHECK_IF_ENABLED();
