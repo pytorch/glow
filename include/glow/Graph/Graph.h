@@ -2009,6 +2009,52 @@ public:
                                float spatialScale, float offset,
                                bool normalized);
 
+  /// Transform proposal bounding boxes to target bounding box using bounding
+  /// box regression deltas.
+  /// Inputs:
+  /// \p rois - Bounding box proposals in pixel coordinates.
+  ///   Size (M, 4), format [x1, y1, x2, y2], or
+  ///   Size (M, 5), format [batch_index, x1, y1, x2, y2].
+  ///   If proposals from multiple images in a batch are present, they
+  ///   should be grouped sequentially and in incremental order.
+  ///   For rotated boxes, this would have an additional angle (in degrees)
+  ///   in the format [<optionaal_batch_id>, ctr_x, ctr_y, w, h, angle].
+  /// \p deltas - bounding box translations and scales,
+  ///   size (M, 4*K), format [dx, dy, dw, dh], K = # classes.
+  ///   For rotated boxes, size (M, 5*K, format [dx, dy, dw, dh, da].)
+  /// \p imInfo - Image dimensions, size (batch_size, 3),
+  ///   format [img_height, img_width, img_scale]
+  /// Arguments:
+  /// \p weights - vector<float> weights [wx, wy, ww, wh] for the deltas
+  /// \p applyScale - transform the boxes to the scaled image space after
+  /// applying the bbox deltas. Set to false to match the detectron code, set to
+  /// true for keypoint models and for backward compatibility rotated - If true,
+  /// then boxes (rois and deltas) include angle info to handle rotation. The
+  /// format will be [ctr_x, ctr_y, width, height, angle (in degrees)].
+  /// \p angleBoundOn - If set, for rotated boxes, angle is normalized to be
+  /// within [angle_bound_lo, angle_bound_hi].
+  /// \p angleBoundLo - If set, for rotated boxes, angle is normalized to be
+  /// within [angle_bound_lo, angle_bound_hi].
+  /// \p angleBoundHi - If set, for rotated boxes, angle is normalized to be
+  /// within [angle_bound_lo, angle_bound_hi].
+  /// \p clipAngleThresh - For RRPN, clip almost horizontal boxes within this
+  /// threshold of tolerance for backward compatibility. Set to negative value
+  /// for no clipping.
+  /// Outputs:
+  /// boxOut - Pixel coordinates of the transformed bounding boxes,
+  /// Size (M, 4*K), format [x1, y1, x2, y2]. For rotated boxes, size (M, 5*K),
+  /// format [ctr_x, ctr_y, w, h, angle].
+  /// roiBatchSplits - Tensor of shape (batch_size) with each element
+  /// denoting the number of RoIs belonging to the corresponding image in batch
+  /// See definition:
+  /// https://github.com/pytorch/pytorch/blob/master/caffe2/operators/bbox_transform_op.cc#L10
+  BBoxTransformNode *
+  createBBoxTransform(llvm::StringRef name, NodeValue rois, NodeValue deltas,
+                      NodeValue imInfo, llvm::ArrayRef<float> weights,
+                      bool applyScale, bool rotated, bool angleBoundOn,
+                      int64_t angleBoundLo, int64_t angleBoundHi,
+                      float clipAngleThresh, bool legacyPlusOne);
+
   /// Erase the node \p N from the Function.
   void eraseNode(Node *N);
 

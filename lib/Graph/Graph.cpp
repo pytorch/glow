@@ -4821,6 +4821,25 @@ Function::createROIAlign(llvm::StringRef name, NodeValue featureMap,
       outputHeight, samplingRatio, spatialScale, offset, normalized));
 }
 
+BBoxTransformNode *Function::createBBoxTransform(
+    llvm::StringRef name, NodeValue rois, NodeValue deltas, NodeValue imInfo,
+    llvm::ArrayRef<float> weights, bool applyScale, bool rotated,
+    bool angleBoundOn, int64_t angleBoundLo, int64_t angleBoundHi,
+    float clipAngleThresh, bool legacyPlusOne) {
+  auto deltasDims = deltas.dims();
+  auto imInfoDims = imInfo.dims();
+
+  auto boxOutTy = getParent()->uniqueTypeWithNewShape(
+      rois.getType(), {deltasDims[0], deltasDims[1]});
+  auto roiBatchSplitsTy =
+      getParent()->uniqueType(rois.getElementType(), {imInfoDims[0]});
+
+  return addNode(new BBoxTransformNode(
+      name, boxOutTy, roiBatchSplitsTy, rois, deltas, imInfo, weights,
+      applyScale, rotated, angleBoundOn, angleBoundLo, angleBoundHi,
+      clipAngleThresh, legacyPlusOne));
+}
+
 //===----------------------------------------------------------------------===//
 //                   Graph dumping and printing
 //===----------------------------------------------------------------------===//
