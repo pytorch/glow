@@ -1137,6 +1137,24 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"FeatureMap", "Boxes"})
       .autoIRGen();
 
+  BB.newInstr("BBoxTransform")
+      .addOperand("BoxOut", OperandKind::Out)
+      .addOperand("RoiBatchSplits", OperandKind::Out)
+      .addOperand("Rois", OperandKind::In)
+      .addOperand("Deltas", OperandKind::In)
+      .addOperand("ImInfo", OperandKind::In)
+      .addMember(MemberType::VectorFloat, "Weights")
+      .addMember(MemberType::Boolean, "ApplyScale")
+      .addMember(MemberType::Boolean, "Rotated")
+      .addMember(MemberType::Boolean, "AngleBoundOn")
+      .addMember(MemberType::Int64, "AngleBoundLo")
+      .addMember(MemberType::Int64, "AngleBoundHi")
+      .addMember(MemberType::Float, "ClipAngleThresh")
+      .addMember(MemberType::Boolean, "LegacyPlusOne")
+      .autoVerify(VerifyKind::SameElementType, {"Rois", "Deltas"})
+      .autoVerify(VerifyKind::SameElementType, {"Rois", "ImInfo"})
+      .autoIRGen();
+
   //===--------------------------------------------------------------------===//
   //                Backend-Specific Instructions
   //===--------------------------------------------------------------------===//

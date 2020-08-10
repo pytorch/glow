@@ -665,6 +665,12 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
                ElemKind::Int64ITy &&
            NI.getOutElemTy(ROIAlignNode::ResultIdx) == ElemKind::FloatTy;
 
+  case Kinded::Kind::BBoxTransformNodeKind:
+    return NI.getInElemTy(BBoxTransformNode::RoisIdx) == ElemKind::FloatTy &&
+           NI.getInElemTy(BBoxTransformNode::DeltasIdx) == ElemKind::FloatTy &&
+           NI.getInElemTy(BBoxTransformNode::ImInfoIdx) == ElemKind::FloatTy &&
+           NI.getOutElemTy(BBoxTransformNode::BoxOutIdx) == ElemKind::FloatTy;
+
   case Kinded::Kind::SoftMaxGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
                {ElemKind::FloatTy}, {SoftMaxGradNode::SelectedIdx},
