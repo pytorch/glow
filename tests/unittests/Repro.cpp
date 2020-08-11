@@ -529,8 +529,10 @@ int run() {
       << "ONNXModelLoader failed to load model: " << modelPathOpt;
   llvm::outs() << "End onnx model load\n";
 
-  for (Function *F : mod->getFunctions()) {
-    F->dumpDAG(F->getName().str() + ".dot");
+  if (glowDumpGraphAfterLoadOpt) {
+    for (Function *F : mod->getFunctions()) {
+      F->dumpDAG(F->getName().str() + ".dot");
+    }
   }
 
   // Build host manager and compile the module.
