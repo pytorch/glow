@@ -5547,7 +5547,7 @@ TEST_F(GraphOptz, EliminateSliceConcatWithReshapeTest) {
 
   bindings_.allocate(src)->getHandle<float>().randomize(-10.0, 10.0,
                                                         mod_.getPRNG());
-  checkNumericalEquivalence();
+  checkNumericalEquivalence(0.f);
 }
 
 /// Verify that when we want to prevent constant folding it doesn't occur.
