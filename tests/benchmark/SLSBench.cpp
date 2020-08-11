@@ -459,6 +459,9 @@ int main(int argc, char *argv[]) {
          "useFP16AccumulationStr(\"True\"|\"False\") \n"
          "Optional: dev_id(Int)\n");
   printf("\n");
+  printf("Standard Glow command-line options may be passed via the GLOW_OPTS "
+         "environment variable\n");
+  llvm::cl::ParseEnvironmentOptions(argv[0], "GLOW_OPTS", "");
 
   std::vector<SLSParam> params;
   std::string runHeader;

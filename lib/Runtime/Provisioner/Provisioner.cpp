@@ -554,7 +554,8 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   // If a deferredWeightLoader is provided, create a deferredWeightLoader and
   // load deferred weights.
   if (cctx.deferredWeightLoader) {
-    LOG(INFO) << "Loading deferred weights";
+    const size_t totalNumDeferredWeights = placeholderToDeviceManager.size();
+    LOG(INFO) << "Loading " << totalNumDeferredWeights << " deferred weights";
 
     auto startTime = std::chrono::steady_clock::now();
     auto loader = cctx.deferredWeightLoader;
@@ -566,8 +567,10 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     }
     std::string weightName = loader->getName();
     // Load weights while there are weights to be loaded.
+    unsigned int weightCount = 0;
     while (weightName != "") {
-      LOG(INFO) << "Loading " << weightName;
+      LOG(INFO) << "Loading deferred weight (" << ++weightCount << " / "
+                << totalNumDeferredWeights << "): " << weightName;
       const auto PH = module.getPlaceholderByNameSlow(weightName);
       if (!PH) {
         cleanupProvision(localActiveNames, addedNetworks);

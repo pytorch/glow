@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "PyTorchCommon.h"
 #include "PyTorchFileLoader.h"
 #include "PyTorchModelLoader.h"
 #include "glow/Support/Error.h"
@@ -68,4 +69,19 @@ TEST(ModelLoaderTest, Direct) {
       fileName, vec, *F, inputPlaceholders, outputPlaceholders);
 
   EXPECT_FALSE(ERR_TO_BOOL(std::move(err)));
+}
+
+TEST(PyTorchLoaderSettings, Settings) {
+  torch::Dict<std::string, std::string> dict;
+  dict.insert("convertToFP16", "True");
+
+  std::string opts = "k1,v1,k2,v2,k3,v3";
+  dict.insert("backendSpecificOpts", opts);
+
+  glow::PyTorchLoaderSettings settings(dict);
+  EXPECT_TRUE(settings.convertToFP16);
+  EXPECT_TRUE(settings.backendSpecificOpts.size() == 3);
+
+  torch::Dict<std::string, std::string> ser = settings.serializeToDict();
+  EXPECT_TRUE(ser.at("convertToFP16") == "true");
 }

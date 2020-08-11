@@ -33,6 +33,7 @@ extern bool GlowFusedScaleOffsetFP16;
 extern bool GlowForceSLSAccumFP16;
 extern bool GlowClipFP16;
 extern bool GlowClipFP16SkipInputs;
+extern bool GlowEnableQuantParamChanges;
 extern bool GlowSaturateHost;
 extern bool GlowSaveOnnxifiModel;
 extern bool GlowSaveOnnxifiDAG;
@@ -45,6 +46,7 @@ extern bool GlowSparseNNPartitioningAddSLSConcats;
 extern bool GlowSparseNNPartitioningBalancePerfModel;
 extern bool GlowSparseNNPartitioningPairLNWithSLS;
 extern bool GlowDumpGraph;
+extern bool GlowDumpInitialLoadedGraph;
 extern bool GlowUseDAGOptimizer;
 extern std::string GlowDAGOptimizerPlacementTaggingAlgorithm;
 extern std::string GlowDAGOptimizerParallelizationTaggingAlgorithm;
@@ -80,6 +82,7 @@ extern unsigned GlowNNPITimeout;
 #endif
 extern bool GlowEnableDRT;
 extern bool GlowEnableP2P;
+extern unsigned GlowDeviceInitTimeoutMs;
 extern std::string GlowAvailableDevices;
 } // namespace runtime
 
@@ -200,6 +203,14 @@ DEFINE_bool(
 DEFINE_validator(glow_global_force_sls_fp16_accum,
                  [](const char * /* unused */, bool value) {
                    glow::onnxifi::GlowForceSLSAccumFP16 = value;
+                   return true;
+                 });
+
+DEFINE_bool(glow_enable_quant_param_changes, true,
+            "Enable quantization param changes during optimizations");
+DEFINE_validator(glow_enable_quant_param_changes,
+                 [](const char * /* unused */, bool value) {
+                   glow::onnxifi::GlowEnableQuantParamChanges = value;
                    return true;
                  });
 
@@ -359,6 +370,14 @@ DEFINE_validator(glow_dump_graph, [](const char * /* unused */, bool value) {
   return true;
 });
 
+DEFINE_bool(glow_dump_initial_loaded_graph, false,
+            "Dump the glow Graph right after onnxification");
+DEFINE_validator(glow_dump_initial_loaded_graph,
+                 [](const char * /* unused */, bool value) {
+                   glow::onnxifi::GlowDumpInitialLoadedGraph = value;
+                   return true;
+                 });
+
 DEFINE_bool(glow_use_dag_optimizer, false, "Whether to call the DAG optimizer");
 DEFINE_validator(glow_use_dag_optimizer,
                  [](const char * /* unused */, bool value) {
@@ -517,6 +536,15 @@ DEFINE_validator(glow_enable_drt, [](const char * /*unused*/, bool value) {
   glow::runtime::GlowEnableDRT = value;
   return true;
 });
+
+DEFINE_int32(glow_device_init_timeout_ms, 5000,
+             "Timeout threshold for device initialization in milliseconds. "
+             "Default 5000");
+DEFINE_validator(glow_device_init_timeout_ms,
+                 [](const char * /*unused*/, int32_t value) {
+                   glow::runtime::GlowDeviceInitTimeoutMs = value;
+                   return true;
+                 });
 
 DEFINE_bool(glow_dump_partition, false,
             "Enable dumping the graph of each partition");

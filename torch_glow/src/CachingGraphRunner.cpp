@@ -99,6 +99,26 @@ size_t CachingGraphRunner::computeGraphHash(
   return hash;
 }
 
+// Hashing input tensors using their shapes.
+size_t CachingGraphRunner::hashTensorShape(
+    const c10::ArrayRef<c10::IValue> &inputs) const {
+
+  assert(perGlowGraphInfoMap_.size() == 1);
+  // Start off hash with pointer to this CachingGraphRunner to avoid collisions
+  // with Glow functions created by other CachingGraphRunners.
+  size_t hash = reinterpret_cast<size_t>(this);
+  for (auto &input : inputs) {
+    CHECK(input.isTensor()) << "Found non-tensor input. Glow AOT compiled "
+                               "graph accepts tensor inputs only.";
+    // hash on input tensor shape
+    for (auto dimSize : input.toTensor().sizes()) {
+      size_t tensorHash = std::hash<int64_t>()(dimSize);
+      hash = torch::hash_combine(hash, tensorHash);
+    }
+  }
+  return hash;
+}
+
 void CachingGraphRunner::aggregateAndDumpTraces(TraceContext *traceContext,
                                                 bool flush) {
   size_t numTracesPerDump = settings_.numTracesPerDump;
@@ -207,13 +227,48 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
   return ret.first->second;
 }
 
-void CachingGraphRunner::runOnJit(torch::jit::Stack &stack) {
+Expected<std::vector<std::vector<int64_t>> *>
+CachingGraphRunner::loadShape(const c10::ArrayRef<c10::IValue> &inputs,
+                              TraceContext *traceContext) {
+
+  TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME, "torch_glow::loadShape");
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "computeShapeHash");
+  size_t hash = hashTensorShape(inputs);
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "computeShapeHash");
+
+  // If we already have a shape info for this graph output with and the
+  // given inputs then use that.
+  auto it = perGlowGraphShapeMap_.find(hash);
+  if (it != perGlowGraphShapeMap_.end()) {
+    return &(it->second);
+  }
+
+  // If we don't have a shape info for this graph output with and the
+  // given inputs then run shape inference, then push into the map.
+  std::vector<std::vector<int64_t>> outputShape;
+  TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "runShapeInference");
+
+  ShapeInferenceEngine shapeG(*graph_, inputs);
+  RETURN_IF_ERR(shapeG.run());
+  outputShape = shapeG.getGraphOutputShape();
+
+  TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "runShapeInference");
+
+  auto ret = perGlowGraphShapeMap_.emplace(hash, outputShape);
+  CHECK(ret.second);
+  return &(ret.first->second);
+}
+
+int64_t CachingGraphRunner::runOnJit(torch::jit::Stack &stack) {
   static std::mutex runJitLock;
   std::lock_guard<std::mutex> guard(runJitLock);
   bool temp = getPyTorchLoaderSettings().fusionPassEnabled;
   getPyTorchLoaderSettings().fusionPassEnabled = false;
+  int64_t startTime = TraceEvent::now();
   ptGraphExecutor_.run(stack);
+  int64_t runTime = TraceEvent::now() - startTime;
   getPyTorchLoaderSettings().fusionPassEnabled = temp;
+  return runTime;
 }
 
 struct TensorCompareResult {
@@ -269,6 +324,8 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
                                   std::unique_ptr<ExecutionContext> &ctx) {
   size_t runId = numRuns_++;
 
+  int64_t jitRunningTime = 0;
+
   // Run the subgraph using JIT for comparison with Glow.
   torch::jit::Stack copyStack;
   if (settings_.writeToOnnx || settings_.jitVsGlowCompare) {
@@ -279,7 +336,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
         copyStack.push_back(ival);
       }
     }
-    runOnJit(copyStack);
+    jitRunningTime = runOnJit(copyStack);
   }
 
   TraceContext *traceContext = ctx->getTraceContext();
@@ -437,7 +494,9 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "setupOutput");
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "runNetwork");
 
+  int64_t glowRunStartTime = TraceEvent::now();
   auto err = hostManager_->runNetworkBlocking(info.functionName, ctx);
+  int64_t glowRuningnTime = TraceEvent::now() - glowRunStartTime;
 
   // Reset the traceContext again in case it was changed during run.
   traceContext = ctx->getTraceContext();
@@ -445,18 +504,14 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "runNetwork");
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "setOutputs");
 
-  std::vector<std::vector<int64_t>> outputShape = {};
+  std::vector<std::vector<int64_t>> *ptrOutputShape;
   if (settings_.runShapeInference) {
-    TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "runShapeInference");
-
-    ShapeInferenceEngine shapeG(*graph_, inputs);
-    RETURN_IF_ERR(shapeG.run());
-    outputShape = shapeG.getGraphOutputShape();
-    if (outputs.size() != outputShape.size()) {
+    /// load shape. If already existed, extracted directly, if not, run shape
+    /// inference
+    ASSIGN_VALUE_OR_RETURN_ERR(ptrOutputShape, loadShape(inputs, traceContext));
+    if (outputs.size() != (*ptrOutputShape).size()) {
       return MAKE_ERR("Fail to infer shape for outputs");
     }
-
-    TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "runShapeInference");
   }
 
   torch::jit::drop(stack, numInputs);
@@ -495,8 +550,8 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     }
 
     if (settings_.runShapeInference) {
-      if (i < outputShape.size()) {
-        ptTensor = sliceTensor(ptTensor, outputShape[i]);
+      if (i < (*ptrOutputShape).size()) {
+        ptTensor = sliceTensor(ptTensor, (*ptrOutputShape)[i]);
       }
     }
 
@@ -523,6 +578,12 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       }
     }
     stack.push_back(at::IValue(std::move(ptTensor)));
+  }
+
+  if (settings_.jitVsGlowCompare) {
+    LOG(INFO) << "Perf comparison | Function: " << info.functionName
+              << "\tGlow run time: " << glowRuningnTime
+              << " us\tCPU run time: " << jitRunningTime << " us" << std::endl;
   }
 
   if (settings_.writeToOnnx) {
@@ -582,13 +643,24 @@ Error CachingGraphRunner::run(torch::jit::Stack &stack) {
 }
 
 Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
-  size_t hash = hashTensorStack(stack, graph_->inputs().size(), this);
-  std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
-  auto it = perGlowGraphInfoMap_.find(hash);
-  if (it == perGlowGraphInfoMap_.end()) {
-    return MAKE_ERR(strFormat("No compiled graph found for hash: %lu", hash));
+  std::shared_ptr<PerGlowGraphInfo> info;
+  if (useMaxSizeCompilation_) {
+    std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
+    if (perGlowGraphInfoMap_.size() != 1) {
+      return MAKE_ERR(strFormat(
+          "There should be one and only one compiled graph, but got %lu",
+          perGlowGraphInfoMap_.size()));
+    }
+    info = perGlowGraphInfoMap_.begin()->second;
+  } else {
+    size_t hash = hashTensorStack(stack, graph_->inputs().size(), this);
+    std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
+    auto it = perGlowGraphInfoMap_.find(hash);
+    if (it == perGlowGraphInfoMap_.end()) {
+      return MAKE_ERR(strFormat("No compiled graph found for hash: %lu", hash));
+    }
+    info = it->second;
   }
-  std::shared_ptr<PerGlowGraphInfo> info = it->second;
 
   std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
   TraceContext *traceContext = nullptr;
@@ -610,7 +682,8 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
 }
 
 Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
-                                    const PyTorchLoaderSettings &settings) {
+                                    const PyTorchLoaderSettings &settings,
+                                    bool useMaxSizeCompilation) {
   if (!hostManager_) {
     return MAKE_ERR("Host manager is null!");
   }
@@ -641,8 +714,14 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
   // 2) HostManager mapping a functionName to a Glow function.
   // The input-based hash is combined with the pointer to this runner to
   // produce a unique mapping for HostManager.
-  torch::jit::Stack fakeStack = createFakeStackFromInputMeta(inputMeta);
-  size_t hash = hashTensorStack(fakeStack, inputMeta.size(), this);
+  size_t hash;
+  if (useMaxSizeCompilation) {
+    useMaxSizeCompilation_ = true;
+    hash = reinterpret_cast<size_t>(this);
+  } else {
+    torch::jit::Stack fakeStack = createFakeStackFromInputMeta(inputMeta);
+    hash = hashTensorStack(fakeStack, inputMeta.size(), this);
+  }
   {
     std::unique_lock<std::shared_timed_mutex> wlock(graphInfoMapMutex);
     if (perGlowGraphInfoMap_.find(hash) != perGlowGraphInfoMap_.end()) {
@@ -650,7 +729,6 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
           strFormat("There is already a compiled graph for hash: %lu", hash));
     }
   }
-
   auto info = std::make_shared<PerGlowGraphInfo>(
       strFormat("pt_function_%lu", hash), settings);
 

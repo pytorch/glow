@@ -323,10 +323,13 @@ void LLVMIRGen::finishCodeGen() {
 #if FACEBOOK_INTERNAL && LLVM_VERSION_MAJOR < 8
     getTargetMachine().addPassesToEmitFile(
         PM, asmStream, llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
-#else
+#elif LLVM_VERSION_MAJOR < 10
     getTargetMachine().addPassesToEmitFile(
         PM, asmStream, nullptr,
         llvm::TargetMachine::CodeGenFileType::CGFT_AssemblyFile);
+#else
+    getTargetMachine().addPassesToEmitFile(PM, asmStream, nullptr,
+                                           llvm::CGFT_AssemblyFile);
 #endif
 
     PM.run(*llmodule_);
@@ -1971,40 +1974,48 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
-  case Kinded::Kind::BatchedReduceMinInstKind: {
-    auto *BR = cast<BatchedReduceMinInst>(I);
-    auto *dest = BR->getDest();
-    auto *batch = BR->getBatch();
-    auto axes = BR->getAxes();
-    auto *destPtr = emitValueAddress(builder, dest);
-    auto *batchPtr = emitValueAddress(builder, batch);
-
-    ShapeVector eBatchDims = expandDimsToMax(batch->dims());
-    ShapeVector eDestDims = eBatchDims;
-    for (dim_t i = 0; i < axes.size(); i++) {
-      eDestDims[axes[i]] = 1;
-    }
-
-    auto *batchDims =
-        emitConstDimTArray(builder, llvm::makeArrayRef(eBatchDims));
-    auto *destDims = emitConstDimTArray(builder, llvm::makeArrayRef(eDestDims));
-
-    if (((batch->getElementType() != ElemKind::FloatTy) &&
-         (batch->getElementType() != ElemKind::Int32ITy) &&
-         (batch->getElementType() != ElemKind::Int64ITy)) ||
-        (batch->getElementType() != dest->getElementType())) {
-      llvm_unreachable("Cannot get function for ReduceMin. ");
-    }
-
-    llvm::Function *F = getFunction("reducemin", batch->getElementType());
-    if (!batch->getType()->isQuantizedType()) {
-      auto *destSize = emitConstSizeT(builder, dest->size());
-
-      createCall(builder, F,
-                 {destPtr, batchPtr, destSize, destDims, batchDims});
-    }
-    break;
+#define BATCHED_REDUCE_MINMAX_CASE(INST_NAME_, FUN_NAME_)                      \
+  case Kinded::Kind::Batched##INST_NAME_##InstKind: {                          \
+    auto *BR = cast<Batched##INST_NAME_##Inst>(I);                             \
+    auto *dest = BR->getDest();                                                \
+    auto *batch = BR->getBatch();                                              \
+    auto axes = BR->getAxes();                                                 \
+    auto *destPtr = emitValueAddress(builder, dest);                           \
+    auto *batchPtr = emitValueAddress(builder, batch);                         \
+                                                                               \
+    ShapeVector eBatchDims = expandDimsToMax(batch->dims());                   \
+    ShapeVector eDestDims = eBatchDims;                                        \
+    for (dim_t i = 0; i < axes.size(); i++) {                                  \
+      eDestDims[axes[i]] = 1;                                                  \
+    }                                                                          \
+                                                                               \
+    auto *batchDims =                                                          \
+        emitConstDimTArray(builder, llvm::makeArrayRef(eBatchDims));           \
+    auto *destDims =                                                           \
+        emitConstDimTArray(builder, llvm::makeArrayRef(eDestDims));            \
+                                                                               \
+    if (((batch->getElementType() != ElemKind::FloatTy) &&                     \
+         (batch->getElementType() != ElemKind::Int32ITy) &&                    \
+         (batch->getElementType() != ElemKind::Int64ITy)) ||                   \
+        (batch->getElementType() != dest->getElementType())) {                 \
+      std::string errStr = "Cannot get function for ";                         \
+      std::string name = "INST_NAME_";                                         \
+      errStr += name;                                                          \
+      llvm_unreachable(errStr.c_str());                                        \
+    }                                                                          \
+                                                                               \
+    llvm::Function *F = getFunction(FUN_NAME_, batch->getElementType());       \
+    if (!batch->getType()->isQuantizedType()) {                                \
+      auto *destSize = emitConstSizeT(builder, dest->size());                  \
+                                                                               \
+      createCall(builder, F,                                                   \
+                 {destPtr, batchPtr, destSize, destDims, batchDims});          \
+    }                                                                          \
+    break;                                                                     \
   }
+    BATCHED_REDUCE_MINMAX_CASE(ReduceMin, "reducemin")
+    BATCHED_REDUCE_MINMAX_CASE(ReduceMax, "reducemax")
+#undef BATCHED_REDUCE_MINMAX_CASE
 
   case Kinded::Kind::ConvolutionInstKind: {
     auto *CI = cast<ConvolutionInst>(I);
@@ -2140,8 +2151,6 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *srcPtr = emitValueAddress(builder, src);
     auto *filterPtr = emitValueAddress(builder, filter);
     auto *biasPtr = emitValueAddress(builder, bias);
-
-    assert(CI->getGroup() == 1 && "Group != 1 is not supported.");
 
     auto *destDims = emitValueDims(builder, dest);
     auto *srcDims = emitValueDims(builder, src);

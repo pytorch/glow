@@ -14,9 +14,10 @@
 # limitations under the License.
 
 import argparse
-import sqlite3
 import os
-from typing import List, Dict
+import sqlite3
+from typing import Dict, List
+
 
 # A list of all filtered transformations.
 TRANS_LIST: List["Transformation"] = []
@@ -157,8 +158,7 @@ def init_db(sqliteFile: str) -> sqlite3.Connection:
     return sqlite3.connect(sqliteFile)
 
 
-def find_all_related_transformation(
-        cursor: sqlite3.Cursor, transIDs: List[str]):
+def find_all_related_transformation(cursor: sqlite3.Cursor, transIDs: List[str]):
     """A recursive function that find all related transformations given a list of transformation IDs in the database.
 
     Args:
@@ -238,9 +238,7 @@ def filter_node_transformation(
             if tid in directTransIDs:
                 tran.isDirectTrans_ = True
             TRANS_LIST.append(tran)
-            tran.scopeName_ = rows[0][4].replace(
-                "glow::", "").replace(
-                "->", r" --\> ")
+            tran.scopeName_ = rows[0][4].replace("glow::", "").replace("->", r" --\> ")
             for r in rows:
                 opr_type, name, kind = r[1:4]
                 if opr_type == "ADD_OPERAND":
@@ -278,8 +276,7 @@ def filter_node_transformation(
             if not checkNodeInIt(tran, nodeName):
                 continue
 
-        print(
-            f"\n===============Transformation ID: {tran.transID_} ================")
+        print(f"\n===============Transformation ID: {tran.transID_} ================")
         print("Scope:  " + tran.scopeName_.replace(r"\>", ">"))
         if nodeName == processOutDottyName(tran.baseNode_):
             print("USER NODE: \n(*)" + tran.baseNode_.replace(r"\l", " "))
@@ -328,8 +325,7 @@ def stat_list_phases(conn, depth=0):
             assert currDepth >= 0
 
 
-def stat_phases_summary(conn: sqlite3.Connection,
-                        startPhase: int, endPhase: int):
+def stat_phases_summary(conn: sqlite3.Connection, startPhase: int, endPhase: int):
     cursor = conn.cursor()
     cursor.execute(
         """
@@ -378,22 +374,18 @@ def stat_phase(conn: sqlite3.Connection, phaseId: int):
     print(f"=== At phase {phaseId} ({fullScope}): \n")
     print(
         "\t{:>4s}  \t{:>12s} \t\t{:>2s}\n--------------------------------------------------------".format(
-            "Num",
-            "Kind",
-            "(Percentage)"))
+            "Num", "Kind", "(Percentage)"
+        )
+    )
     for r in rows:
         kind, num, perc = r
-        print(
-            "\t{:>4d}  \t{:>12s} \t\t({:>2f}%)".format(
-                num, kind, round(
-                    perc, 2)))
+        print("\t{:>4d}  \t{:>12s} \t\t({:>2f}%)".format(num, kind, round(perc, 2)))
 
 
 def process():
     """Parse args and process this script. """
 
-    parser = argparse.ArgumentParser(
-        description="Filter compilation and optimiztion.")
+    parser = argparse.ArgumentParser(description="Filter compilation and optimiztion.")
     parser.add_argument("--db-file")
     parser.add_argument("--filter-target")
     parser.add_argument("--filter-target-verbose")
@@ -408,8 +400,7 @@ def process():
     with init_db(options.db_file) as conn:
         dottyFile = options.dotty_file if options.dotty_file else "dotty"
         if options.filter_target:
-            filter_node_transformation(
-                options.filter_target, conn, False, dottyFile)
+            filter_node_transformation(options.filter_target, conn, False, dottyFile)
 
         if options.filter_target_verbose:
             filter_node_transformation(

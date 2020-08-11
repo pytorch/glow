@@ -980,37 +980,47 @@ libjit_copy_kernel_with_conversion(DstType *dstPtr, const SrcType *srcPtr,
 
 /// The dimensions passed in here are pre-expanded in LLVMIRGen with 1s so that
 /// we can iterate over the shape here, regardless of the shape of the tensor.
-template <typename T>
-static void libjit_reducemin(T *dest, const T *batch, size_t destSize,
-                             const dim_t *destDims, const dim_t *batchDims,
-                             T init) {
-  for (dim_t i = 0; i < destSize; i++) {
-    dest[i] = init;
+#define DEFINE_REDUCE_MINMAX_KERNEL(minmax)                                    \
+  template <typename T>                                                        \
+  static void libjit_reduce##minmax(T *dest, const T *batch, size_t destSize,  \
+                                    const dim_t *destDims,                     \
+                                    const dim_t *batchDims, T init) {          \
+    for (dim_t i = 0; i < destSize; i++) {                                     \
+      dest[i] = init;                                                          \
+    }                                                                          \
+                                                                               \
+    unsigned int axis[6];                                                      \
+    for (dim_t i = 0; i < 6; i++) {                                            \
+      axis[i] = (destDims[i] > 1);                                             \
+    }                                                                          \
+                                                                               \
+    for (dim_t x = 0, dx = 0; x < batchDims[0]; x++, dx += axis[0]) {          \
+      for (dim_t y = 0, dy = 0; y < batchDims[1]; y++, dy += axis[1]) {        \
+        for (dim_t z = 0, dz = 0; z < batchDims[2]; z++, dz += axis[2]) {      \
+          for (dim_t w = 0, dw = 0; w < batchDims[3]; w++, dw += axis[3]) {    \
+            for (dim_t q = 0, dq = 0; q < batchDims[4]; q++, dq += axis[4]) {  \
+              for (dim_t r = 0, dr = 0; r < batchDims[5];                      \
+                   r++, dr += axis[5]) {                                       \
+                T fdest =                                                      \
+                    dest[libjit_getXYZWQR(destDims, dx, dy, dz, dw, dq, dr)];  \
+                T fnew = batch[libjit_getXYZWQR(batchDims, x, y, z, w, q, r)]; \
+                dest[libjit_getXYZWQR(destDims, dx, dy, dz, dw, dq, dr)] =     \
+                    std::minmax(fdest, fnew);                                  \
+              }                                                                \
+            }                                                                  \
+          }                                                                    \
+        }                                                                      \
+      }                                                                        \
+    }                                                                          \
   }
 
-  unsigned int axis[6];
-  for (dim_t i = 0; i < 6; i++) {
-    axis[i] = (destDims[i] > 1);
-  }
+// Define libjit_reducemax
+DEFINE_REDUCE_MINMAX_KERNEL(max)
 
-  for (dim_t x = 0, dx = 0; x < batchDims[0]; x++, dx += axis[0]) {
-    for (dim_t y = 0, dy = 0; y < batchDims[1]; y++, dy += axis[1]) {
-      for (dim_t z = 0, dz = 0; z < batchDims[2]; z++, dz += axis[2]) {
-        for (dim_t w = 0, dw = 0; w < batchDims[3]; w++, dw += axis[3]) {
-          for (dim_t q = 0, dq = 0; q < batchDims[4]; q++, dq += axis[4]) {
-            for (dim_t r = 0, dr = 0; r < batchDims[5]; r++, dr += axis[5]) {
-              T fdest =
-                  dest[libjit_getXYZWQR(destDims, dx, dy, dz, dw, dq, dr)];
-              T fnew = batch[libjit_getXYZWQR(batchDims, x, y, z, w, q, r)];
-              dest[libjit_getXYZWQR(destDims, dx, dy, dz, dw, dq, dr)] =
-                  std::min(fdest, fnew);
-            }
-          }
-        }
-      }
-    }
-  }
-}
+// Define libjit_reducemin
+DEFINE_REDUCE_MINMAX_KERNEL(min)
+
+#undef DEFINE_REDUCE_MINMAX_KERNEL
 
 template <typename T, typename T2>
 static void libjit_cross_entropy_loss_generic(T *CE, T *P, T2 *labels,
@@ -1813,23 +1823,30 @@ void libjit_batchedreduceadd_f(float *dest, const float *batch, dim_t destSize,
             }
 }
 
-void libjit_reducemin_f(float *dest, const float *batch, size_t destSize,
-                        const dim_t *destDims, const dim_t *batchDims) {
-  libjit_reducemin(dest, batch, destSize, destDims, batchDims,
-                   std::numeric_limits<float>::max());
-}
+/// Macro to reducemin/max wrapper kernels.
+#define DEFINE_REDUCE_MINMAX(func, suffix, type, init)                         \
+  void func##_##suffix(type *dest, const type *batch, size_t destSize,         \
+                       const dim_t *destDims, const dim_t *batchDims) {        \
+    func(dest, batch, destSize, destDims, batchDims, init);                    \
+  }
 
-void libjit_reducemin_i32(int32_t *dest, const int32_t *batch, size_t destSize,
-                          const dim_t *destDims, const dim_t *batchDims) {
-  libjit_reducemin(dest, batch, destSize, destDims, batchDims,
-                   std::numeric_limits<int32_t>::max());
-}
+/// Define reducemin wrapper kernels for float, int32_t and int64_t
+DEFINE_REDUCE_MINMAX(libjit_reducemin, f, float,
+                     std::numeric_limits<float>::infinity());
+DEFINE_REDUCE_MINMAX(libjit_reducemin, u, int64_t,
+                     std::numeric_limits<int64_t>::max());
+DEFINE_REDUCE_MINMAX(libjit_reducemin, i32, int32_t,
+                     std::numeric_limits<int32_t>::max());
 
-void libjit_reducemin_u(int64_t *dest, const int64_t *batch, size_t destSize,
-                        const dim_t *destDims, const dim_t *batchDims) {
-  libjit_reducemin(dest, batch, destSize, destDims, batchDims,
-                   std::numeric_limits<int64_t>::max());
-}
+/// Define reducemax wrapper kernels for float, int32_t and int64_t
+DEFINE_REDUCE_MINMAX(libjit_reducemax, f, float,
+                     (-std::numeric_limits<float>::infinity()));
+DEFINE_REDUCE_MINMAX(libjit_reducemax, u, int64_t,
+                     std::numeric_limits<int64_t>::min());
+DEFINE_REDUCE_MINMAX(libjit_reducemax, i32, int32_t,
+                     std::numeric_limits<int32_t>::min());
+
+#undef DEF_REDUCE_MINMAX_WRAPPER_F
 
 /// Same as the non-quantized version, the dimensions here are pre-expanded in
 /// LLVMIRGen. However, for quantization, we must accumulate in the inner-most

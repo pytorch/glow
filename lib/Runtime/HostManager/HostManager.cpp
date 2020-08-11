@@ -20,6 +20,7 @@
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Partitioner/Partitioner.h"
+#include "glow/Runtime/DeferredWeightLoader.h"
 #include "glow/Runtime/DeviceHealthMonitor.h"
 #include "glow/Runtime/Executor/ThreadPoolExecutor.h"
 #include "glow/Runtime/Provisioner/Provisioner.h"
@@ -34,6 +35,7 @@
 #include <glog/logging.h>
 
 #include "folly/String.h"
+#include "folly/executors/CPUThreadPoolExecutor.h"
 
 #include <algorithm>
 #include <future>
@@ -57,6 +59,7 @@ namespace glow {
 namespace runtime {
 bool GlowEnableP2P = false;
 bool GlowEnableDRT = false;
+unsigned GlowDeviceInitTimeoutMs = 5000;
 std::string GlowAvailableDevices = "";
 } // namespace runtime
 } // namespace glow
@@ -88,6 +91,15 @@ llvm::cl::opt<bool, /* ExternalStorage */ true>
               llvm::cl::Optional,
               llvm::cl::location(glow::runtime::GlowEnableP2P),
               llvm::cl::cat(hostManagerCat));
+
+/// The value that should be used for device initialization timeout, default:
+/// 5000 milliseconds.
+llvm::cl::opt<unsigned, /* ExternalStorage */ true> deviceInitTimeout(
+    "glow_device_init_timeout_ms",
+    llvm::cl::desc("Set device init timout in milliseconds"),
+    llvm::cl::Optional,
+    llvm::cl::location(glow::runtime::GlowDeviceInitTimeoutMs),
+    llvm::cl::cat(hostManagerCat));
 
 /// Set which devices are available to add a network to.
 llvm::cl::opt<std::string, true> GlowAvailableDevicesOpt(
@@ -157,16 +169,30 @@ Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
   });
 
   DeviceIDTy deviceCount = 0;
-
   for (auto &config : configs) {
     if (!config->hasName()) {
-      config->name = "config" + std::to_string(deviceCount);
+      config->name = "device_" + std::to_string(deviceCount);
     }
 
     devices_[deviceCount] = std::unique_ptr<DeviceManager>(
         DeviceManager::createDeviceManager(*config));
 
-    RETURN_IF_ERR(devices_[deviceCount]->init());
+    std::promise<Error> devPromise;
+    auto devFuture = devPromise.get_future();
+    auto *dev = devices_[deviceCount].get();
+    threadPool_.submit([&devPromise, dev] {
+      auto err = dev->init();
+      devPromise.set_value(std::move(err));
+    });
+    if (devFuture.wait_for(std::chrono::milliseconds(
+            GlowDeviceInitTimeoutMs)) != std::future_status::timeout) {
+      RETURN_IF_ERR(devFuture.get());
+    } else {
+      // Device initialization is taking longer than expected, return an error.
+      return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_ERROR,
+                      "Timout encountered when initializing device: " +
+                          std::string(config->name));
+    }
     availableDevices_.push_back(deviceCount);
     deviceCount++;
   }
@@ -249,7 +275,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   /// If specified in the cctx, this will prevent Constants from being modified
   /// until the current scope ends or the preventer is dismissed. Does so by
   /// swapping in temporary Placeholders instead of Constants.
-  ConstantModificationPreventer constModPreventer(*module);
+  ConstantModificationPreventer constModPreventer(*module, cctx);
   if (cctx.optimizationOpts.delayAndRecordConstantModification) {
     constModPreventer.activate();
   }
@@ -438,15 +464,20 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   // If requested, serialize the resulting DAG that was just optimized and
   // partitioned.
   if (cctx.serializeCompiledDAG) {
-    std::string loc = nodeList.begin()->root->name + ".onnx";
-    LOG(INFO) << "Serializing DAG to " << loc;
+    std::string loc = nodeList.begin()->root->name + ".onnxtxt";
+    LOG(INFO) << "Serializing final compiled DAG to " << loc;
     {
+      // Pass in any types we loaded originally from static PHs.
+      const std::map<std::string, Type> *staticPHTypesPtr =
+          cctx.deferredWeightLoader ? &cctx.deferredWeightLoader->getTypeInfo()
+                                    : nullptr;
       Error writeErr = Error::empty();
       ONNXModelWriter onnxWR(loc, nodeList, 7, 9, &writeErr,
-                             /* textMode */ false, /* zipMode */ false,
+                             /* textMode */ true, /* zipMode */ false,
                              /* includeConstantData */ false,
                              /* extraMetadataProps */ {}, record,
-                             cctx.backendOpts.backendSpecificNodeInfo);
+                             cctx.backendOpts.backendSpecificNodeInfo,
+                             &cctx.loadedPHNames, staticPHTypesPtr);
       RETURN_IF_ERR(writeErr);
     }
   }
@@ -509,12 +540,14 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
     for (auto &node : nodeList) {
+      LOG(INFO) << "Successfully compiled and provisioned " << node.root->name;
       auto &networkData = networks_[(node.root)->name];
       networkData.dag = std::move(node);
       networkData.module = sharedModule;
     }
     cleanupAddNetwork(names);
   }
+
   return Error::success();
 }
 

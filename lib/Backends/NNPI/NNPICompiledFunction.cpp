@@ -22,7 +22,6 @@
 
 #include "glow/Backend/BackendUtils.h"
 
-#include <fstream>
 #include <sstream>
 
 #include "llvm/ADT/StringSet.h"
@@ -37,31 +36,6 @@ extern bool GlowUsePerPartitionIcetConfig;
 } // namespace onnxifi
 } // namespace glow
 
-/// Looks for device stepping and sets it if possible in \p compilationOptions.
-static void trySetDeviceVersion(NNPICompilationOptions &compilationOptions) {
-  std::ifstream inFile;
-  constexpr char stepLoc[] = "/sys/class/nnpi/nnpi0/card_stepping";
-  inFile.open(stepLoc);
-  if (!inFile.good() || inFile.eof()) {
-    LOG(INFO) << strFormat("Could not find device steppping at %s\n", stepLoc);
-    return;
-  }
-
-  // Only value in the file should be a single int for which step we're using.
-  std::string stepping;
-  getline(inFile, stepping);
-  inFile.close();
-
-  auto devVerOrErr = getIntFromStr(stepping);
-  if (ERR_TO_BOOL(devVerOrErr.takeError(), /* log */ false)) {
-    LOG(INFO) << strFormat("Invalid value for stepping at %s: '%s'\n", stepLoc,
-                           stepping.data());
-    return;
-  }
-  // Stepping is off by one vs. deviceVersion.
-  compilationOptions.deviceVersion.setVal(*devVerOrErr + 1);
-}
-
 /// Update device network config from the compilation config
 static NNPIDeviceNetworkConfig parseDeviceNetworkConfig(
     const glow::NNPICompilationOptions &compilationOptions) {
@@ -74,8 +48,6 @@ static NNPIDeviceNetworkConfig parseDeviceNetworkConfig(
   cfg.pnpHints.iceBOFrequencyPrio[3] = compilationOptions.iceBOPrio3;
   cfg.pnpHints.iceBOFrequencyPrio[4] = compilationOptions.iceBOPrio4;
   cfg.pnpHints.iceBOFrequencyPrio[5] = compilationOptions.iceBOPrio5;
-  cfg.pnpHints.IAFrequencyPrio[0] = compilationOptions.iaPrio0;
-  cfg.pnpHints.IAFrequencyPrio[1] = compilationOptions.iaPrio1;
   cfg.pnpHints.DDRBandwidth = compilationOptions.ddrBandwidth;
   return cfg;
 }
@@ -94,7 +66,7 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   // Handle device version.
   if (compilationOptions.inferOnDevice &&
       compilationOptions.deviceVersion == -1) {
-    trySetDeviceVersion(compilationOptions);
+    compilationOptions.trySetDeviceVersion();
   }
 
   if (compilationOptions.deviceVersion > 0) {
@@ -656,30 +628,77 @@ std::string NNPICompilationInfo::dump(const std::string &functionName) const {
   return stream.str();
 }
 
-const std::string NNPICompiledFunction::toJSON() const {
+static const std::string tensorToJSON(const NNPICompiledTensor &tensor) {
   std::stringstream fs;
   fs << "{" << std::endl;
-  fs << "  \"ops\": [ " << std::endl;
-  for (auto it = compilationInfo_.ops.begin(); it != compilationInfo_.ops.end();
-       it++) {
-    if (it != compilationInfo_.ops.begin()) {
+  fs << "\"type\" : \"" << tensor.type << "\"," << std::endl;
+  fs << "\"size\" : " << std::endl;
+  fs << "[" << std::endl;
+  for (auto it = tensor.shape.begin(); it != tensor.shape.end(); it++) {
+    if (it != tensor.shape.begin()) {
       fs << "," << std::endl;
-      ;
     }
-    fs << " \"" << it->second.name << "\"";
-    ;
+    fs << *it << std::endl;
   }
-  fs << "  ]," << std::endl;
-  fs << "  \"edges\": [ " << std::endl;
-  for (auto it = compilationInfo_.opDependencies.begin();
-       it != compilationInfo_.opDependencies.end(); it++) {
-    if (it != compilationInfo_.opDependencies.begin()) {
+  fs << "]" << std::endl;
+  fs << "}" << std::endl;
+  return fs.str();
+}
+
+static const std::string
+tensorListToJSON(const std::vector<NNPICompiledTensor> &tensors,
+                 const std::string &label) {
+  std::stringstream fs;
+  fs << "  \"" << label << "\": [ " << std::endl;
+  for (auto it = tensors.begin(); it != tensors.end(); it++) {
+    if (it != tensors.begin()) {
       fs << "," << std::endl;
-      ;
+    }
+    fs << tensorToJSON(*it);
+  }
+  fs << "]" << std::endl;
+  return fs.str();
+}
+
+static const std::string
+opsToJSON(const std::map<std::string, NNPICompiledOp> &ops) {
+  std::stringstream fs;
+  fs << "  \"ops\": { " << std::endl;
+  for (auto it = ops.begin(); it != ops.end(); it++) {
+    if (it != ops.begin()) {
+      fs << "," << std::endl;
+    }
+    fs << " \"" << it->second.name << "\": " << std::endl;
+    fs << "{" << std::endl;
+    fs << tensorListToJSON(it->second.inputs, "inputs");
+    fs << "," << std::endl;
+    fs << tensorListToJSON(it->second.outputs, "outputs");
+    fs << "}" << std::endl;
+  }
+  fs << "  }" << std::endl;
+  return fs.str();
+}
+
+static const std::string
+edgesToJSON(const std::vector<std::pair<std::string, std::string>> &edges) {
+  std::stringstream fs;
+  fs << "  \"edges\": [ " << std::endl;
+  for (auto it = edges.begin(); it != edges.end(); it++) {
+    if (it != edges.begin()) {
+      fs << "," << std::endl;
     }
     fs << " \"" << it->first << "\",\"" << it->second << "\"";
   }
   fs << "  ]" << std::endl;
+  return fs.str();
+}
+
+const std::string NNPICompiledFunction::toJSON() const {
+  std::stringstream fs;
+  fs << "{" << std::endl;
+  fs << opsToJSON(compilationInfo_.ops) << std::endl;
+  fs << "," << std::endl;
+  fs << edgesToJSON(compilationInfo_.opDependencies) << std::endl;
   fs << "}" << std::endl;
   return fs.str();
 }

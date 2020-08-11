@@ -484,6 +484,12 @@ int main(int argc, char **argv) {
       .dataParallel()
       .setDocstring("Performs an element-wise FLOOR(x) of the Input operand.");
 
+  BB.newNode("Sign")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise Sign(x) of the Input operand");
+
   BB.newNode("Ceil")
       .addInput("Input")
       .addResultFromCtorArg()
@@ -534,6 +540,24 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .dataParallel()
       .setDocstring("Performs element-wise natural log to the Input.");
+
+  BB.newNode("Acos")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise Arccosine(x) of the Input operand.");
+
+  BB.newNode("Asin")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise Arcsine(x) of the Input operand.");
+
+  BB.newNode("Atan")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs an element-wise Arctan(x) of the Input operand.");
 
   BB.newNode("Exp")
       .addInput("Input")
@@ -601,6 +625,13 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Axes")
       .addResultFromCtorArg()
       .setDocstring("Performs Reduce Min operation on the Input given "
+                    "Axes.");
+
+  BB.newNode("BatchedReduceMax")
+      .addInput("Batch")
+      .addMember(MemberType::VectorUnsigned, "Axes")
+      .addResultFromCtorArg()
+      .setDocstring("Performs Reduce Max operation on the Input given "
                     "Axes.");
 
   BB.newNode("ChannelShuffle")
@@ -1258,6 +1289,60 @@ int main(int argc, char **argv) {
                     "classes and does per class NMS. It also supports TF NMS "
                     "V4 by outputting indices and scalar tensor with number of "
                     "valid indices. It pads the rest with global MIN box.");
+
+  //===--------------------------------------------------------------------===//
+  //                Region of Interest nodes
+  //===--------------------------------------------------------------------===//
+
+  BB.newNode("ROIAlign")
+      .addInput("FeatureMap")
+      .addInput("Boxes")
+      .addInput("BatchIndices")
+      .addMember(MemberType::String, "Mode")
+      .addMember(MemberType::Unsigned, "OutputHeight")
+      .addMember(MemberType::Unsigned, "OutputWidth")
+      .addMember(MemberType::Unsigned, "SamplingRatio")
+      .addMember(MemberType::Float, "SpatialScale")
+      .addMember(MemberType::Float, "Offset")
+      .addMember(MemberType::Boolean, "Normalized")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Given FeatureMap tensor of [N,H,W,C], Boxes tensor of [K,4],"
+          "and BatchIndices tensor of [K,], where N is the batch, C is the "
+          "channel,"
+          "H is the height, W is the width, K is the number of boxes,"
+          "Performs region of interest (ROI) align operator and generates"
+          "an Output tensor with shape [K, OutputHeight, OutputWidth, C]");
+
+  BB.newNode("BBoxTransform")
+      .addInput("Rois")
+      .addInput("Deltas")
+      .addInput("ImInfo")
+      .addMember(MemberType::VectorFloat, "Weights")
+      .addMember(MemberType::Boolean, "ApplyScale")
+      .addMember(MemberType::Boolean, "Rotated")
+      .addMember(MemberType::Boolean, "AngleBoundOn")
+      .addMember(MemberType::Int64, "AngleBoundLo")
+      .addMember(MemberType::Int64, "AngleBoundHi")
+      .addMember(MemberType::Float, "ClipAngleThresh")
+      .addMember(MemberType::Boolean, "LegacyPlusOne")
+      .addResultFromCtorArg("BoxOut")
+      .addResultFromCtorArg("RoiBatchSplits")
+      .setDocstring(
+          "Transform proposal bounding boxes to target bounding box using "
+          "bounding box regression deltas. "
+          "Rois tensor's format is: "
+          "<[optional_batch_index], x1, y1, x2, y2>, shape (M, 4) or (M, 5) "
+          "where M is the number of Rois. "
+          "For rotated boxes, this would have an additional angle (in degrees) "
+          "in the format <[optional_batch_id], ctr_x, ctr_y, w, h, angle> "
+          "Deltas are of shape (M, K*4) with format <dx, dy, dw, dh>, "
+          "where K is the number of classes. "
+          "For rotated Rois: shape (M, K*5), format <dx, dy, dw, dh, da>. "
+          "ImInfo is of shape <batch_size, 3> with format <img_height, "
+          "img_width, img_scale>."
+          "If proposals from multiple images in a batch are present, they "
+          "should be grouped sequentially and in incremental order.");
 
   //===--------------------------------------------------------------------===//
   //                Backend-Specific Nodes

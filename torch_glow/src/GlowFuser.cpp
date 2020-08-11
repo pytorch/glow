@@ -263,9 +263,45 @@ void verifyFusions(const std::shared_ptr<torch::jit::Graph> graph,
   }
 }
 
+void setIncludeLastOffsets(std::shared_ptr<torch::jit::Graph> graph) {
+  c10::IValue ivalTrue(true);
+  torch::jit::Value *constantTrue = graph->insertConstant(ivalTrue);
+  for (auto *node : graph->nodes()) {
+    if (node->kind() == at::Symbol::fromQualString("aten::embedding_bag") ||
+        node->kind() == at::Symbol::fromQualString(
+                            "fb::embedding_bag_byte_rowwise_offsets") ||
+        node->kind() == at::Symbol::fromQualString(
+                            "fb::embedding_bag_4bit_rowwise_offsets") ||
+        node->kind() == at::Symbol::fromQualString(
+                            "quantized::embedding_bag_byte_rowwise_offsets") ||
+        node->kind() == at::Symbol::fromQualString(
+                            "quantized::embedding_bag_4bit_rowwise_offsets")) {
+
+      // locate constant for include_last_offset
+      int positionIndex = node->inputs().size() - 1;
+      const auto val = node->input(positionIndex);
+      assert(torch::jit::toIValue(val).has_value());
+      const auto ivalIncludeLastOffset = *torch::jit::toIValue(val);
+
+      assert(ivalIncludeLastOffset.isBool());
+      if (!ivalIncludeLastOffset.toBool()) {
+        node->replaceInput(positionIndex, constantTrue);
+        LOG_FIRST_N(WARNING, 1)
+            << "Set include_last_offset to True for "
+            << node->kind().toQualString() << " and all other occurrences";
+      }
+    }
+  }
+}
+
 void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
                         at::Symbol kind, const PyTorchLoaderSettings &settings,
                         IsSupportFunc fn) {
+  // Set include_last_offset all embedding_bag-like operators to be compatible
+  if (settings.setIncludeLastOffsets) {
+    setIncludeLastOffsets(graph);
+  }
+
   // Reason for node being blacklisted.
   enum class NodeBlacklistReason {
     Kind,
@@ -277,6 +313,12 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
 
   size_t i = 0;
   for (const torch::jit::Node *node : graph->nodes()) {
+    // if a node is in super allowlist, it is always allowed
+    if (settings.opOverrideAllowlist.count(node->kind())) {
+      i++;
+      continue;
+    }
+
     if (settings.fusionStartIndex >= 0 && i < settings.fusionStartIndex) {
       blacklistedNodes[node] = NodeBlacklistReason::Index;
     }
@@ -300,12 +342,12 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
     if (blacklist.count(ptNode)) {
       switch (blacklist.at(ptNode)) {
       case NodeBlacklistReason::Kind:
-        LOG(INFO) << "Skipping " << ptNode->kind().toQualString()
-                  << " op because its kind is blacklisted";
+        VLOG(1) << "Skipping " << ptNode->kind().toQualString()
+                << " op because its kind is blacklisted";
         break;
       case NodeBlacklistReason::Index:
-        LOG(INFO) << "Skipping " << ptNode->kind().toQualString()
-                  << " op because it's outside of the fusion range";
+        VLOG(1) << "Skipping " << ptNode->kind().toQualString()
+                << " op because it's outside of the fusion range";
         break;
       }
       return false;

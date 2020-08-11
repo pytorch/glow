@@ -301,6 +301,7 @@ protected:
   LOAD_UNARY_OP(Neg)
   LOAD_UNARY_OP(Floor)
   LOAD_UNARY_OP(Ceil)
+  LOAD_UNARY_OP(Log)
 
   Error loadShape(const OpType &op, ArgumentDictionaryTy &dict) {
     NodeValue in;
@@ -748,13 +749,15 @@ protected:
 
       if (intermediate) {
         const std::string &opName = loadOperatorName(op);
-        Placeholder *PH = nullptr;
-        if (loadIntoExistingModule_) {
-          PH = mod_.getPlaceholderByNameSlow(op.output(0));
-          RETURN_ERR_IF_NOT(PH, "Did not find intermediate PH" + op.output(0));
-        } else {
+        Placeholder *PH = mod_.getPlaceholderByNameSlow(op.output(0));
+        if (!PH) {
           PH = mod_.createPlaceholder(in.getType(), op.output(0),
                                       /* isTrainable */ false);
+        } else {
+          RETURN_ERR_IF_NOT(loadIntoExistingModule_,
+                            "Found pre-existing PH by name " + op.output(0));
+          RETURN_ERR_IF_NOT(PH->getType()->isEqual(in.getType()),
+                            "Mismatch on pre-existing intermediate PH type");
         }
         G_->createSave(opName, in, PH, /* skipSuffix */ true);
         intermediatePHsByName_[op.output(0)] = PH;
@@ -840,6 +843,8 @@ protected:
       node = G_->createBatchedReduceAdd(opName, in, axes);
     } else if (typeName == "ReduceMin") {
       node = G_->createBatchedReduceMin(opName, in, axes);
+    } else if (typeName == "ReduceMax") {
+      node = G_->createBatchedReduceMax(opName, in, axes);
     } else {
       RETURN_ERR("Unsupported Reduce Op " + typeName.str());
     }
@@ -1153,6 +1158,48 @@ protected:
     return Error::success();
   }
 
+  Error loadLogicalOps(llvm::StringRef typeName, const OpType &op) {
+    std::string opName = loadOperatorName(op);
+    NodeValue xNV;
+    ASSIGN_VALUE_OR_RETURN_ERR(xNV, getNodeValueByName(op.input(0)));
+    NodeValue yNV;
+    ASSIGN_VALUE_OR_RETURN_ERR(yNV, getNodeValueByName(op.input(1)));
+    constexpr int axis = -1;
+    Node *N = nullptr;
+    if (typeName == "And") {
+      N = G_->createNodeWithBroadcast<AndNode>(opName, axis, xNV, yNV);
+    } else if (typeName == "Or") {
+      N = G_->createNodeWithBroadcast<OrNode>(opName, axis, xNV, yNV);
+    } else if (typeName == "Xor") {
+      N = G_->createNodeWithBroadcast<XorNode>(opName, axis, xNV, yNV);
+    } else {
+      RETURN_ERR("Unsupported Logical Operator");
+    }
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
+    return Error::success();
+  }
+
+  Error loadNotOp(llvm::StringRef typeName, const OpType &op) {
+    std::string opName = loadOperatorName(op);
+    NodeValue xNV;
+    ASSIGN_VALUE_OR_RETURN_ERR(xNV, getNodeValueByName(op.input(0)));
+    Node *N = G_->createNot(opName, xNV);
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
+    return Error::success();
+  }
+
+  // Loads Abs operator
+  Error loadAbs(const OpType &op, ArgumentDictionaryTy &dict) {
+    std::string opName = loadOperatorName(op);
+    NodeValue xNV;
+    ASSIGN_VALUE_OR_RETURN_ERR(xNV, getNodeValueByName(op.input(0)));
+    auto *input = xNV.getNode();
+
+    auto *N = G_->createAbs(opName, input);
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
+    return Error::success();
+  }
+
   using ProtobufLoader::ProtobufLoader;
 
   /// If operator type is supported, returns Expected<true> and creates new
@@ -1181,8 +1228,16 @@ protected:
       RETURN_IF_ERR(loadExp(op, dict));
       return true;
     }
+    if (typeName == "Log") {
+      RETURN_IF_ERR(loadLog(op, dict));
+      return true;
+    }
     if (typeName == "Neg") {
       RETURN_IF_ERR(loadNeg(op, dict));
+      return true;
+    }
+    if (typeName == "Abs") {
+      RETURN_IF_ERR(loadAbs(op, dict));
       return true;
     }
     if (typeName == "Ceil") {
@@ -1258,7 +1313,7 @@ protected:
       return true;
     }
     if (typeName == "ReduceMean" || typeName == "ReduceSum" ||
-        typeName == "ReduceMin") {
+        typeName == "ReduceMin" || typeName == "ReduceMax") {
       RETURN_IF_ERR(loadReduceOp(typeName, op, dict));
       return true;
     }
@@ -1330,6 +1385,15 @@ protected:
       RETURN_IF_ERR(loadLess(op, dict));
       return true;
     }
+    if (typeName == "And" || typeName == "Or" || typeName == "Xor") {
+      RETURN_IF_ERR(loadLogicalOps(typeName, op));
+      return true;
+    }
+    if (typeName == "Not") {
+      RETURN_IF_ERR(loadNotOp(typeName, op));
+      return true;
+    }
+
     return false;
   }
 
@@ -1400,6 +1464,42 @@ protected:
         RETURN_IF_ERR(createAndRegisterConstant(scalesName,
                                                 std::move(*loadResult.scales)));
       }
+    }
+
+    return Error::success();
+  }
+
+  /// Sets the type of \p S to have \p dstKind, using the same dims as S.
+  Error setFusedTy(Storage *S, ElemKind dstKind) {
+    // Use dummy 0.0/0 as scale/offset, since the actual scales/offsets
+    // are fused inline with the data.
+    TypeRef fusedTy = mod_.uniqueType(dstKind, S->dims(), 0.0, 0);
+    return setFusedTy(S, fusedTy);
+  }
+
+  /// Sets the type of \p S to have \p fusedTy. If \p S already has type \p
+  /// fusedTy, then this is a noop. Otherwise, expected that the original S is
+  /// UInt8QTy. If \p S is a Constant, then also sets the payload of the
+  /// Constant to have the same type.
+  /// The motivation here is that there is no fused quantized type in
+  /// Caffe2/ONNX, so we will always load them in UInt8QTy. We then change it
+  /// from UInt8QTy to one of the fused kinds here. This may not be necessary if
+  /// another user has already changed it, or the type may already have been
+  /// modified in the case of loading into an existing module.
+  Error setFusedTy(Storage *S, TypeRef fusedTy) {
+    assert(fusedTy->isFusedQuantizedType() && "Expected fused quantized type.");
+
+    // If S already has the requested type then return early.
+    if (S->getOutput().getType()->isEqual(*fusedTy)) {
+      return Error::success();
+    }
+
+    RETURN_ERR_IF_NOT(S->getElementType() == ElemKind::UInt8QTy,
+                      "Data must be UInt8QTy.");
+    S->setType(Storage::OutputIdx, fusedTy);
+    // If the node is a Constant set the payload type as well.
+    if (auto *C = llvm::dyn_cast<Constant>(S)) {
+      C->setPayloadType(fusedTy);
     }
 
     return Error::success();

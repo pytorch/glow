@@ -36,8 +36,8 @@ public:
                   runtime::ResultCBTy callback, uint64_t priority = 0) override;
 
   onnxStatus addNetwork(std::unique_ptr<Module> module,
-                        void *deferredBlobReader,
-                        runtime::PrePartitionedConfig *PPC);
+                        void *deferredBlobReader, CompilationContext &cctx,
+                        std::map<std::string, Type> &&staticPlaceholderTypes);
 
   onnxStatus removeNetwork(const Graph *graph) override;
 

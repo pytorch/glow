@@ -95,10 +95,15 @@ public:
   /// Check if event was signalled.
   bool isSignalled() { return fired_; }
 
+  const std::string &getMessage() const { return message_; }
+
+  void setMessage(const std::string &message) { message_ = message; }
+
 private:
   std::atomic<bool> fired_;
   std::mutex mutex_;
   std::condition_variable cond_;
+  std::string message_;
   /// Used to hold an onnxStatus that will be passed for the signaller of the
   /// event to a waiter. Should only be accessed while holding mutex_.
   onnxStatus status_ = ONNXIFI_STATUS_SUCCESS;
@@ -185,7 +190,8 @@ protected:
   void setZeroLengthSequence(dim_t maxSeqLength);
 
   /// Bind input/output placeholders
-  void bindPlaceholders(const ONNXIFIModelLoader &loader);
+  bool bindPlaceholders(const ONNXIFIModelLoader &loader,
+                        LoadedPlaceholderNameMap *loadedPHNames = nullptr);
 
 private:
   /// inference dump counter

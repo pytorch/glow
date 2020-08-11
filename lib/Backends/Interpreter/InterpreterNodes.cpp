@@ -395,7 +395,6 @@ void BoundInterpreterFunction::fwdConvTransposeInstFloatImpl(
 
   assert(idim.c % group == 0 && "Input channels must be divisible by group.");
   assert(odim.c % group == 0 && "Output channels must be divisible by group.");
-  assert(group == 1 && "Group must be 1.");
 
   dim_t inCperG = idim.c / group;
   dim_t outCperG = odim.c / group;
@@ -2877,6 +2876,11 @@ void BoundInterpreterFunction::fwdElementFloorInst(const ElementFloorInst *I) {
   dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
 }
 
+void BoundInterpreterFunction::fwdElementSignInst(const ElementSignInst *I) {
+  auto func = [](float x) -> float { return ((x > 0) - (x < 0)); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
 void BoundInterpreterFunction::fwdElementCeilInst(const ElementCeilInst *I) {
   auto func = [](float x) -> float { return std::ceil(x); };
   dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
@@ -3247,6 +3251,55 @@ void BoundInterpreterFunction::fwdModuloInst(glow::ModuloInst const *I) {
   dispatchIndexTypeImpl(fwdModuloInstImpl, I->getSrc()->getElementType(), I);
 }
 
+///=============== Trigonometric Operators===============
+template <typename ElemTy, typename InstKind>
+void BoundInterpreterFunction::fwdUnaryTrigonometricImpl(
+    const InstKind *I, std::function<float(float)> func) {
+  Value *inpV = I->getSrc();
+  Value *outV = I->getDest();
+  auto inpTy = inpV->getType();
+  auto outTy = outV->getType();
+  auto inpH = getWeightHandle<ElemTy>(inpV);
+  auto outH = getWeightHandle<ElemTy>(outV);
+
+  if (inpTy->isQuantizedType()) {
+    float inpScale = inpTy->getScale();
+    int32_t inpOffset = inpTy->getOffset();
+    float outScale = outTy->getScale();
+    int32_t outOffset = outTy->getOffset();
+    for (size_t i = 0, e = outH.size(); i < e; ++i) {
+      float inpVal =
+          quantization::dequantize<ElemTy>(inpH.raw(i), {inpScale, inpOffset});
+      float outVal = func(inpVal);
+      outH.raw(i) =
+          quantization::quantize<ElemTy>(outVal, {outScale, outOffset});
+    }
+  } else {
+    for (size_t i = 0, e = outH.size(); i < e; ++i) {
+      float inpVal = static_cast<float>(inpH.raw(i));
+      float outVal = func(inpVal);
+      outH.raw(i) = static_cast<ElemTy>(outVal);
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdElementAcosInst(const ElementAcosInst *I) {
+  auto func = [](float x) -> float { return std::acos(x); };
+  dispatchImpl(fwdUnaryTrigonometricImpl, I->getSrc()->getElementType(), I,
+               func);
+}
+
+void BoundInterpreterFunction::fwdElementAsinInst(const ElementAsinInst *I) {
+  auto func = [](float x) -> float { return std::asin(x); };
+  dispatchImpl(fwdUnaryTrigonometricImpl, I->getSrc()->getElementType(), I,
+               func);
+}
+
+void BoundInterpreterFunction::fwdElementAtanInst(const ElementAtanInst *I) {
+  auto func = [](float x) -> float { return std::atan(x); };
+  dispatchImpl(fwdUnaryTrigonometricImpl, I->getSrc()->getElementType(), I,
+               func);
+}
 //===----------------------------------------------------------------------===//
 //                       Mat Mul
 //===----------------------------------------------------------------------===//
@@ -3696,67 +3749,87 @@ void BoundInterpreterFunction::fwdBatchedReduceAddInst(
                             eBatchDims, eDestDims);
 }
 
-template <typename ElemTy>
-void BoundInterpreterFunction::fwdBatchedReduceMinInstImpl(
-    Value *batch, Value *dest, const ShapeVector &eBatchDims,
-    const ShapeVector &eDestDims, ElemTy max) {
-  static_assert(max_tensor_dimensions == 6,
-                "Loops below assume max_tensor_dimensions = 6.");
-  // Get unowned handles of the batch and dest with these new expanded dims.
-  auto eBatch = getTensor(batch)->getUnowned(eBatchDims);
-  auto eDest = getTensor(dest)->getUnowned(eDestDims);
-  auto eBatchH = eBatch.getHandle<ElemTy>();
-  auto eDestH = eDest.getHandle<ElemTy>();
-  eDestH.clear(max);
-
-  unsigned int axes[max_tensor_dimensions];
-  for (dim_t i = 0; i < max_tensor_dimensions; i++) {
-    axes[i] = (eDestDims[i] > 1);
+/// Macro to define ReduceMin/Max kernel implementation.
+#define DEFINE_REDUCEMINMAX_INST_IMPL(func, compare)                           \
+  template <typename ElemTy>                                                   \
+  void BoundInterpreterFunction::fwdBatched##func##InstImpl(                   \
+      Value *batch, Value *dest, const ShapeVector &eBatchDims,                \
+      const ShapeVector &eDestDims, ElemTy init) {                             \
+    static_assert(max_tensor_dimensions == 6,                                  \
+                  "Loops below assume max_tensor_dimensions = 6.");            \
+    /* Get unowned handles of the batch and dest with these new expanded       \
+     * dims.*/                                                                 \
+    auto eBatch = getTensor(batch)->getUnowned(eBatchDims);                    \
+    auto eDest = getTensor(dest)->getUnowned(eDestDims);                       \
+    auto eBatchH = eBatch.getHandle<ElemTy>();                                 \
+    auto eDestH = eDest.getHandle<ElemTy>();                                   \
+    eDestH.clear(init);                                                        \
+                                                                               \
+    unsigned int axes[max_tensor_dimensions];                                  \
+    for (dim_t i = 0; i < max_tensor_dimensions; i++) {                        \
+      axes[i] = (eDestDims[i] > 1);                                            \
+    }                                                                          \
+                                                                               \
+    /* We can use this loop for all shapes. Use the same indices for both the  \
+     * batch and dest, except for setting the axis index in the dest to 0.*/   \
+    for (dim_t x = 0, dx = 0; x < eBatchDims[0]; x++, dx += axes[0]) {         \
+      for (dim_t y = 0, dy = 0; y < eBatchDims[1]; y++, dy += axes[1]) {       \
+        for (dim_t z = 0, dz = 0; z < eBatchDims[2]; z++, dz += axes[2]) {     \
+          for (dim_t w = 0, dw = 0; w < eBatchDims[3]; w++, dw += axes[3]) {   \
+            for (dim_t q = 0, dq = 0; q < eBatchDims[4]; q++, dq += axes[4]) { \
+              for (dim_t r = 0, dr = 0; r < eBatchDims[5];                     \
+                   r++, dr += axes[5]) {                                       \
+                dim_t destIndices[] = {dx, dy, dz, dw, dq, dr};                \
+                dim_t srcIndices[] = {x, y, z, w, q, r};                       \
+                eDestH.at(destIndices) =                                       \
+                    compare(eDestH.at(destIndices), eBatchH.at(srcIndices));   \
+              }                                                                \
+            }                                                                  \
+          }                                                                    \
+        }                                                                      \
+      }                                                                        \
+    }                                                                          \
   }
 
-  // We can use this loop for all shapes. Use the same indices for both the
-  // batch and dest, except for setting the axis index in the dest to 0.
-  for (dim_t x = 0, dx = 0; x < eBatchDims[0]; x++, dx += axes[0]) {
-    for (dim_t y = 0, dy = 0; y < eBatchDims[1]; y++, dy += axes[1]) {
-      for (dim_t z = 0, dz = 0; z < eBatchDims[2]; z++, dz += axes[2]) {
-        for (dim_t w = 0, dw = 0; w < eBatchDims[3]; w++, dw += axes[3]) {
-          for (dim_t q = 0, dq = 0; q < eBatchDims[4]; q++, dq += axes[4]) {
-            for (dim_t r = 0, dr = 0; r < eBatchDims[5]; r++, dr += axes[5]) {
-              dim_t destIndices[] = {dx, dy, dz, dw, dq, dr};
-              dim_t srcIndices[] = {x, y, z, w, q, r};
-              eDestH.at(destIndices) =
-                  eDestH.at(destIndices) < eBatchH.at(srcIndices)
-                      ? eDestH.at(destIndices)
-                      : eBatchH.at(srcIndices);
-            }
-          }
-        }
-      }
-    }
-  }
-}
+/// Define fwdBatchedReduceMaxInstImpl.
+DEFINE_REDUCEMINMAX_INST_IMPL(ReduceMax, std::max)
 
-void BoundInterpreterFunction::fwdBatchedReduceMinInst(
-    const glow::BatchedReduceMinInst *I) {
+/// Define fwdBatchedReduceMinInstImpl.
+DEFINE_REDUCEMINMAX_INST_IMPL(ReduceMin, std::min)
 
-  auto *batch = I->getBatch();
-  auto *dest = I->getDest();
-  const auto axes = I->getAxes();
+#undef DEFINE_REDUCEMINMAX_INST_IMPL
 
-  // Initialize both expanded batch and dest dims to the expanded batch
-  // dims. This allows us below to iterate over the tensor regardless of its
-  // shape using max_tensor_dimensions loops below.
-  ShapeVector eBatchDims = expandDimsToMax(batch->dims());
-  ShapeVector eDestDims = eBatchDims;
-  // Set the destination axes dimensions (the one we are reducing) to 1.
-  for (dim_t i = 0; i < axes.size(); i++) {
-    eDestDims[axes[i]] = 1;
+/// Macro to define ReduceMin/Max instruction.
+#define DEFINE_REDUCEMINMAX_INST(func, init)                                   \
+  void BoundInterpreterFunction::fwdBatched##func##Inst(                       \
+      const glow::Batched##func##Inst *I) {                                    \
+                                                                               \
+    auto *batch = I->getBatch();                                               \
+    auto *dest = I->getDest();                                                 \
+    const auto axes = I->getAxes();                                            \
+                                                                               \
+    /* Initialize both expanded batch and dest dims to the expanded batch      \
+     dims. This allows us below to iterate over the tensor regardless of its   \
+     shape using max_tensor_dimensions loops below.*/                          \
+    ShapeVector eBatchDims = expandDimsToMax(batch->dims());                   \
+    ShapeVector eDestDims = eBatchDims;                                        \
+    /* Set the destination axes dimensions (the one we are reducing) to 1.*/   \
+    for (dim_t i = 0; i < axes.size(); i++) {                                  \
+      eDestDims[axes[i]] = 1;                                                  \
+    }                                                                          \
+                                                                               \
+    dispatchArithmeticImpl(fwdBatched##func##InstImpl,                         \
+                           batch->getElementType(), batch, dest, eBatchDims,   \
+                           eDestDims, init);                                   \
   }
 
-  dispatchArithmeticImpl(fwdBatchedReduceMinInstImpl, batch->getElementType(),
-                         batch, dest, eBatchDims, eDestDims,
-                         std::numeric_limits<int32_t>::max());
-}
+// Define fwdBatchedMinInst
+DEFINE_REDUCEMINMAX_INST(ReduceMin, std::numeric_limits<int32_t>::max())
+
+// Define fwdBatchedMaxInst
+DEFINE_REDUCEMINMAX_INST(ReduceMax, std::numeric_limits<int32_t>::min())
+
+#undef DEFINE_REDUCEMINMAX_INST
 
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdCumSumInstImpl(Value *input, Value *dest,
@@ -5000,7 +5073,8 @@ void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
 
   if (srcElType == ElemKind::UInt8FusedQTy &&
       destElType == ElemKind::UInt8FusedFP16QTy) {
-    dest->convertToType(ElemKind::UInt8FusedFP16QTy);
+    Tensor result = source->getCopyConvertedToType(ElemKind::UInt8FusedFP16QTy);
+    dest->assign(&result);
     return;
   }
   llvm_unreachable("Type not supported");
@@ -5557,4 +5631,353 @@ void BoundInterpreterFunction::fwdMFCCInst(glow::MFCCInst const *I) {
   } else {
     llvm_unreachable("Type is not supported.");
   }
+}
+
+struct BinGrid {
+  uint32_t Y0;
+  uint32_t Y1;
+  uint32_t X0;
+  uint32_t X1;
+  float yDiff;
+  float xDiff;
+};
+
+// Function to calculate the xy coordinates of the resized image (grid)
+// Ref: https://arxiv.org/pdf/1703.06870.pdf and OnnxRuntime implementation
+static void getROIAlignInterpolationCoordinates(
+    unsigned inputHeight, unsigned inputWidth, unsigned outputHeight,
+    unsigned outputWidth, const std::vector<float> &box,
+    unsigned samplingRatioH, unsigned samplingRatioW, float offset,
+    std::vector<BinGrid> &binGrids) {
+  float y0 = box[0];
+  float x0 = box[1];
+  uint64_t binCount = 0;
+  // H & W of the each bin in the final output
+  const float binH = (box[2] - box[0]) / outputHeight;
+  const float binW = (box[3] - box[1]) / outputWidth;
+  const float roiBinSizeH = binH / samplingRatioH;
+  const float roiBinSizeW = binW / samplingRatioW;
+  for (uint32_t H = 0; H < outputHeight; H++) {
+    for (uint32_t W = 0; W < outputWidth; W++) {
+      for (uint32_t h = 0; h < samplingRatioH; h++) {
+        // initial y coordinate  with offset
+        const float inY = y0 + (H * binH) + ((h + offset) * roiBinSizeH);
+        const uint32_t topYIndex = std::floor(inY);
+        const uint32_t bottomYIndex =
+            (inY <= inputHeight - 1) ? std::ceil(inY) : (inputHeight - 1);
+        const float yLerp = inY - topYIndex;
+        for (uint32_t w = 0; w < samplingRatioW; w++) {
+          // initial x coordinate  with offset
+          const float inX = x0 + (W * binW) + ((w + offset) * roiBinSizeW);
+          const uint32_t leftXIndex = std::floor(inX);
+          const uint32_t rightXIndex =
+              (inX <= inputWidth - 1) ? std::ceil(inX) : (inputWidth - 1);
+          const float xLerp = inX - leftXIndex;
+          binGrids[binCount++] = BinGrid{topYIndex,   bottomYIndex, leftXIndex,
+                                         rightXIndex, yLerp,        xLerp};
+        } // end of w
+      }   // end of h
+    }     // end of W
+  }       // end of H
+}
+
+// Implementation of ROIAlign as described in
+// https://arxiv.org/pdf/1703.06870.pdf ROIAlign is similar to crop_and_resize +
+// pooling with minor modifications in the crop_and_resize.
+void BoundInterpreterFunction::fwdROIAlignInstFloatImpl(
+    glow::ROIAlignInst const *I) {
+  auto featureMap = I->getFeatureMap();
+  auto boxes = I->getBoxes();
+  auto batchIndices = I->getBatchIndices();
+  auto result = I->getResult();
+  std::string mode = I->getMode();
+  unsigned outputHeight = I->getOutputHeight();
+  unsigned outputWidth = I->getOutputHeight();
+  unsigned samplingRatio = I->getSamplingRatio();
+  float offset = I->getOffset();
+  bool normalized = I->getNormalized();
+  auto boxesH = getTensor(boxes)->getHandle<float>();
+  auto featureMapH = getTensor(featureMap)->getHandle<float>();
+  auto batchIndicesH = getTensor(batchIndices)->getHandle<int64_t>();
+  auto resultH = getTensor(result)->getHandle<float>();
+  getTensor(result)->zero();
+  const unsigned imageHeight = featureMap->dims()[1];
+  const unsigned imageWidth = featureMap->dims()[2];
+  const unsigned numBoxes = result->dims()[0];
+  const unsigned depth = result->dims()[3];
+  float normConstantH = normalized ? (imageHeight - 1) : 1;
+  float normConstantW = normalized ? (imageWidth - 1) : 1;
+  for (uint32_t b = 0; b < numBoxes; b++) {
+    const std::vector<float> box = {
+        boxesH.at({b, 0}) * normConstantH, boxesH.at({b, 1}) * normConstantW,
+        boxesH.at({b, 2}) * normConstantH, boxesH.at({b, 3}) * normConstantW};
+    unsigned samplingRatioH = (samplingRatio > 0)
+                                  ? samplingRatio
+                                  : std::ceil((box[2] - box[0]) / outputHeight);
+    unsigned samplingRatioW = (samplingRatio > 0)
+                                  ? samplingRatio
+                                  : std::ceil((box[3] - box[1]) / outputWidth);
+    std::vector<BinGrid> binGrids(samplingRatioH * samplingRatioW *
+                                  outputHeight * outputWidth);
+    // get the xy coordinates in the resized image(grid)
+    getROIAlignInterpolationCoordinates(imageHeight, imageWidth, outputHeight,
+                                        outputWidth, box, samplingRatioH,
+                                        samplingRatioW, offset, binGrids);
+    const uint32_t batchIndex = batchIndicesH.at({
+        b,
+    });
+    uint64_t binCount = 0;
+    for (uint32_t H = 0; H < outputHeight; ++H) {
+      for (uint32_t W = 0; W < outputWidth; ++W) {
+        for (uint32_t d = 0; d < depth; ++d) {
+          std::vector<float> pixels;
+          for (uint32_t h = 0; h < samplingRatioH; ++h) {
+            for (uint32_t w = 0; w < samplingRatioW; ++w) {
+              BinGrid bG = binGrids[binCount++];
+              // The four pixels of  the i/p image surrounding the point of
+              // interest (POI) in the resized image
+              const float topLeft =
+                  featureMapH.at({batchIndex, bG.Y0, bG.X0, d});
+              const float topRight =
+                  featureMapH.at({batchIndex, bG.Y0, bG.X1, d});
+              const float bottomLeft =
+                  featureMapH.at({batchIndex, bG.Y1, bG.X0, d});
+              const float bottomRight =
+                  featureMapH.at({batchIndex, bG.Y1, bG.X1, d});
+              // bilinear interpolation = interpolation along {top_horizontal +
+              // bottom_horizontal + vertical} lines or bilinear interpolation =
+              // interpolation along {left_vertical + right_vertical +
+              // horizontal} lines interpolation along top_horizontal line
+              const float top = topLeft + ((topRight - topLeft) * bG.xDiff);
+              // interpolation along bottom_horizontal line
+              const float bottom =
+                  bottomLeft + ((bottomRight - bottomLeft) * bG.xDiff);
+              // interpolation along vertical line
+              pixels.push_back(top + ((bottom - top) * bG.yDiff));
+            } // end of w
+          }   // end of h
+          // {Average or Max} pooling
+          resultH.at({b, H, W, d}) =
+              (mode == "avg")
+                  ? std::accumulate(pixels.begin(), pixels.end(), 0.0) /
+                        pixels.size()
+                  : *std::max_element(pixels.begin(), pixels.end());
+          binCount = binCount - (samplingRatioH * samplingRatioW);
+        } // end of d
+        binCount = binCount + (samplingRatioH * samplingRatioW);
+      } // end of W
+    }   // end of H
+  }     // end of b
+}
+
+void BoundInterpreterFunction::fwdROIAlignInst(glow::ROIAlignInst const *I) {
+  fwdROIAlignInstFloatImpl(I);
+}
+
+// Forward transform that maps proposal boxes to ground-truth boxes using
+//     bounding-box regression deltas.
+// boxes: pixel coordinates of the bounding boxes
+//     size (M, 4), format [x1; y1; x2; y2], x2 >= x1, y2 >= y1
+// deltas: bounding box translations and scales
+//     size (M, 4), format [dx; dy; dw; dh]
+//     dx, dy: scale-invariant translation of the center of the bounding box
+//     dw, dh: log-space scaling of the width and height of the bounding box
+// weights: weights [wx, wy, ww, wh] for the deltas
+// bboxXformClip: minimum bounding box width and height in log-space after
+//     transofmration
+// correct_transform_coords: Correct bounding box transform coordates. Set to
+//     true to match the detectron code, set to false for backward compatibility
+// return: pixel coordinates of the bounding boxes
+//     size (M, 4), format [x1; y1; x2; y2]
+// see "Rich feature hierarchies for accurate object detection and semantic
+//     segmentation" Appendix C for more details
+// reference: detectron/lib/utils/boxes.py bbox_transform()
+static void
+bbox_transform_upright(Handle<float> &boxesOut, const Handle<float> &boxes,
+                       const Handle<float> &deltas, dim_t startRowBoxesOut,
+                       dim_t startColBoxesOut, dim_t startRowBoxes,
+                       dim_t startColBoxes, dim_t startRowDeltas,
+                       dim_t startColDeltas, dim_t rows, dim_t cols,
+                       llvm::ArrayRef<float> weights, const float bboxXformClip,
+                       float scaleBeforeInv, const bool legacyPlusOne = false) {
+
+  if (boxes.dims()[0] == 0) {
+    return;
+  }
+
+  std::vector<float> widths(rows), heights(rows), ctrX(rows), ctrY(rows);
+  for (dim_t i = 0; i < rows; i++) {
+    widths[i] = boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)}) *
+                    scaleBeforeInv -
+                boxes.at({startRowBoxes + i, startColBoxes}) * scaleBeforeInv +
+                float(int(legacyPlusOne));
+    heights[i] = boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)}) *
+                     scaleBeforeInv -
+                 boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) *
+                     scaleBeforeInv +
+                 float(int(legacyPlusOne));
+
+    ctrX[i] = boxes.at({startRowBoxes + i, startColBoxes}) * scaleBeforeInv +
+              float(0.5) * widths[i];
+    ctrY[i] = boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) *
+                  scaleBeforeInv +
+              float(0.5) * heights[i];
+  }
+
+  std::vector<float> dx(rows), dy(rows), dw(rows), dh(rows);
+  for (dim_t i = 0; i < rows; i++) {
+    dx[i] = deltas.at({startRowDeltas + i, startColDeltas}) / weights[0];
+    dy[i] =
+        deltas.at({startRowDeltas + i, startColDeltas + dim_t(1)}) / weights[1];
+    dw[i] = std::min(
+        deltas.at({startRowDeltas + i, startColDeltas + dim_t(2)}) / weights[2],
+        bboxXformClip);
+    dh[i] = std::min(
+        deltas.at({startRowDeltas + i, startColDeltas + dim_t(3)}) / weights[3],
+        bboxXformClip);
+  }
+
+  std::vector<float> predCtrX(rows), predCtrY(rows), predW(rows), predH(rows);
+  for (dim_t i = 0; i < rows; i++) {
+    predCtrX[i] = dx[i] * widths[i] + ctrX[i];
+    predCtrY[i] = dy[i] * heights[i] + ctrY[i];
+    predW[i] = std::exp(dw[i]) * widths[i];
+    predH[i] = std::exp(dh[i]) * heights[i];
+  }
+
+  for (dim_t i = 0; i < rows; i++) {
+    // x1
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut}) =
+        predCtrX[i] - float(0.5) * predW[i];
+    // x2
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(1)}) =
+        predCtrY[i] - float(0.5) * predH[i];
+    // y1
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(2)}) =
+        predCtrX[i] + float(0.5) * predW[i] - float(int(legacyPlusOne));
+    // y2
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(3)}) =
+        predCtrY[i] + float(0.5) * predH[i] - float(int(legacyPlusOne));
+  }
+}
+
+// Clip boxes to image boundaries
+// boxes: pixel coordinates of bounding box, size (M * 4)
+void clip_boxes_upright(Handle<float> &boxes, dim_t startRowBoxes,
+                        dim_t startColBoxes, dim_t rows, dim_t cols, int height,
+                        int width, float scaleAfter,
+                        bool legacyPlusOne = false) {
+  for (dim_t i = 0; i < rows; i++) {
+    // x1 >= 0 && x1 < width
+    boxes.at({startRowBoxes + i, startColBoxes}) =
+        scaleAfter *
+        std::max(std::min(boxes.at({startRowBoxes + i, startColBoxes}),
+                          float(width - int(legacyPlusOne))),
+                 float(0));
+    // y1 >= 0 && y1 < height
+    boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) =
+        scaleAfter * std::max(std::min(boxes.at({startRowBoxes + i,
+                                                 startColBoxes + dim_t(1)}),
+                                       float(height - int(legacyPlusOne))),
+                              float(0));
+
+    // x2 >= 0 && x2 < width
+    boxes.at({startRowBoxes + i, startColBoxes + 2}) =
+        scaleAfter * std::max(std::min(boxes.at({startRowBoxes + i,
+                                                 startColBoxes + dim_t(2)}),
+                                       float(width - int(legacyPlusOne))),
+                              float(0));
+    // y2 >= 0 && y2 < height
+    boxes.at({startRowBoxes + i, startColBoxes + 3}) =
+        scaleAfter * std::max(std::min(boxes.at({startRowBoxes + i,
+                                                 startColBoxes + dim_t(3)}),
+                                       float(height - int(legacyPlusOne))),
+                              float(0));
+  }
+}
+
+void BoundInterpreterFunction::fwdBBoxTransformInstFloatImpl(
+    glow::BBoxTransformInst const *I) {
+  auto roiIn = I->getRois();
+  auto deltaIn = I->getDeltas();
+  auto imInfoIn = I->getImInfo();
+
+  auto boxOut = I->getBoxOut();
+  auto roiBatchSplits = I->getRoiBatchSplits();
+
+  auto weights = I->getWeights();
+  const dim_t boxDim = I->getRotated() ? 5 : 4;
+  auto applyScale = I->getApplyScale();
+  auto legacyPlusOne = I->getLegacyPlusOne();
+  const dim_t N = roiIn->dims()[0];
+  const dim_t numClasses = deltaIn->dims()[1] / boxDim;
+  const dim_t batchSize = imInfoIn->dims()[0];
+
+  auto roisH = getTensor(roiIn)->getHandle<float>();
+  auto deltasH = getTensor(deltaIn)->getHandle<float>();
+  auto roiBatchSplitsH = getTensor(roiBatchSplits)->getHandle<float>();
+
+  // Count the number of RoIs per batch
+  std::vector<int> numRoisPerBatch(batchSize, 0);
+  if (roiIn->dims()[1] == boxDim) {
+    numRoisPerBatch[0] = N;
+  } else {
+    for (dim_t i = 0; i < N; ++i) {
+      const int roiBatchId = roisH.at({i, 0});
+      numRoisPerBatch[roiBatchId]++;
+    }
+  }
+
+  auto imInfoH = getTensor(imInfoIn)->getHandle<float>();
+  auto boxOutH = getTensor(boxOut)->getHandle<float>();
+  getTensor(boxOut)->zero();
+
+  // Default value for minimum bounding box width and height after bounding
+  // box transformation (bbox_transform()) in log-space
+  const float bboxXformClip = std::log(1000.0 / 16.0);
+
+  // We assume roiIn and deltaIn over multiple batches are grouped
+  // together in increasing order as generated by GenerateProposalsOp
+  dim_t offset = 0;
+  for (dim_t i = 0; i < batchSize; ++i) {
+    const dim_t numRois = numRoisPerBatch[i];
+    const float scaleBefore = imInfoH.at({i, 2});
+    const float scaleAfter = applyScale ? scaleBefore : 1.0;
+    dim_t imgH = dim_t(imInfoH.at({i, 0}) / scaleBefore + 0.5);
+    dim_t imgW = dim_t(imInfoH.at({i, 1}) / scaleBefore + 0.5);
+
+    // Apply for the rectangle starting at (startRowRoi, startColRoi)
+    // with height (Rows) of unm_rois, and width (Cols) of boxDim.
+    dim_t startRowRoi = offset;
+    dim_t startColRoi = batchSize > 1 ? 1 : 0;
+    dim_t rows = numRois;
+    dim_t cols = boxDim;
+    float scaleBeforeInv = 1 / scaleBefore;
+
+    // scale before and after on the fly.
+    // Do not apply scale for angle in rotated boxes
+    for (dim_t k = 0; k < numClasses; k++) {
+      dim_t startRowDelta = offset;
+      dim_t startColDelta = k * boxDim;
+      bbox_transform_upright(boxOutH, roisH, deltasH, startRowDelta,
+                             startColDelta, startRowRoi, startColRoi,
+                             startRowDelta, startColDelta, rows, cols, weights,
+                             bboxXformClip, scaleBeforeInv, legacyPlusOne);
+
+      clip_boxes_upright(boxOutH, startRowDelta, startColDelta, rows, cols,
+                         imgH, imgW, scaleAfter, legacyPlusOne);
+    }
+
+    offset += rows;
+  }
+  if (batchSize > 1) {
+    for (dim_t i = 0; i < batchSize; i++) {
+      roiBatchSplitsH.at({i}) = numRoisPerBatch[i];
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdBBoxTransformInst(
+    glow::BBoxTransformInst const *I) {
+  fwdBBoxTransformInstFloatImpl(I);
 }

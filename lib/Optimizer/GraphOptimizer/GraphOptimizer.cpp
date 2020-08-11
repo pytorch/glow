@@ -69,7 +69,8 @@ static bool shouldDeleteNode(Node *N) {
   return true;
 }
 
-ConstantModificationPreventer::ConstantModificationPreventer(Module &mod)
+ConstantModificationPreventer::ConstantModificationPreventer(
+    Module &mod, CompilationContext &cctx)
     : ScopeGuard([&]() {
         // Ensure we cleanup Placeholder-Constant swap if necessary.
         auto &PHs = mod_.getPlaceholders();
@@ -79,8 +80,11 @@ ConstantModificationPreventer::ConstantModificationPreventer(Module &mod)
           tmpPH->getOutput().replaceAllUsesOfWith(C->getOutput());
           mod_.erasePlaceholder(std::find(PHs.begin(), PHs.end(), tmpPH));
         }
+        cctx_.optimizationOpts.enableConstantFolding =
+            origEnableConstantFolding_;
       }),
-      mod_(mod) {
+      mod_(mod), cctx_(cctx),
+      origEnableConstantFolding_(cctx.optimizationOpts.enableConstantFolding) {
   // By default dismiss until explicitly activated.
   dismissed_ = true;
 }
@@ -89,13 +93,18 @@ void ConstantModificationPreventer::activate() {
   dismissed_ = false;
   // Prevent Constant modification by temporarily replacing them with PHs.
   for (Constant *C : mod_.getConstants()) {
+    // Note: These temp Placeholders are more like static Placeholders, but we
+    // don't want to set them as static here because optimizations may kick in
+    // to modify the type of the static Placeholder (see
+    // cctx.optimizationOpts.foldStaticPlaceholderConversions).
     Placeholder *tmpPH = mod_.createPlaceholder(
         C->getType(), C->getName().str() + "_SWAP_CONST_FOLD",
         /* isTrainable */ false, C->getLayout());
-    tmpPH->setStatic(true);
     tmpPHToConstMap_[tmpPH] = C;
     C->getOutput().replaceAllUsesOfWith(tmpPH->getOutput());
   }
+  // Disable constant folding temporarily; restored later by the scope guard.
+  cctx_.optimizationOpts.enableConstantFolding = false;
 }
 
 /// Helper that \returns whether all sibling Functions of \p F (other Functions
@@ -500,9 +509,13 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
         auto outDims = RS->getResult().dims();
         unsigned_t newChannelIdx;
 
-        // Skip sinking if the input was less than 3 dimensions, because we need
-        // spatial dimensions in addition to batch and channel.
-        if (RS->getInput().dims().size() < 3) {
+        // Skip sinking if: 1) the input was less than 3 dimensions,
+        // because we need spatial dimensions in addition to batch
+        // and channel or 2) if it is 3D data because the reshapes
+        // are deliberately introduced to phrase 3D BatchNormalization
+        // as a 2D one.
+        if (RS->getInput().dims().size() < 3 ||
+            RS->getInput().dims().size() == 5) {
           continue;
         }
 
@@ -3501,6 +3514,19 @@ static bool isUsedByNodeWithSideEffects(Node *N) {
   return false;
 }
 
+/// Helper that \returns whether \p NV cannot have its output quantization
+/// parameters changed. For example, Concats require all inputs to have the same
+/// quantization parameters, so we cannot change the quantization parameters of
+/// a Node if it is input into a Concat.
+static bool disallowQuantParamChange(const NodeValue &NV) {
+  for (auto &user : NV.getUsers()) {
+    if (isa<ConcatNode>(user.getUser())) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// When quantized operators and Clips are used together, we can often merge the
 /// Clip range and the Quantized range and remove the Clip.
 bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
@@ -3518,6 +3544,10 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
     // Clip and do not need to change the type of qResult.
     if (newMin == qMinMax.first && newMax == qMinMax.second) {
       return true;
+    }
+
+    if (disallowQuantParamChange(qResult)) {
+      return false;
     }
 
     // At this point the quantization parameters must be changing, so if we do
@@ -3678,6 +3708,12 @@ bool OptimizeOutIntermediateConversions::run(Function *F,
 bool OptimizeQuantFCFloatRelu::run(Function *F,
                                    const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
+
+  // This opt implies there to be changes to quantization, because we create an
+  // int relu that was previously float.
+  if (!cctx.optimizationOpts.enableQuantParamChanges) {
+    return false;
+  }
 
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -3931,7 +3967,8 @@ static bool combineDownRescaleToArithmeticNode(Function &F, T *AN) {
 
 /// Sink Rescale nodes down when possible.
 /// \returns if anything was changed in the given function.
-static bool sinkRescaleQuantizedNode(Function *F) {
+static bool sinkRescaleQuantizedNode(Function *F,
+                                     const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "sinkRescaleQuantizedNode");
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -3996,7 +4033,10 @@ static bool sinkRescaleQuantizedNode(Function *F) {
     }
 
     if (auto *PN = dyn_cast<AvgPoolNode>(&node)) {
-      changed |= sinkDownRescaleToPoolingNode<AvgPoolNode>(*F, PN);
+      // AvgPool input and output scale/bias may differ.
+      if (!cctx.optimizationOpts.enableQuantParamChanges) {
+        changed |= sinkDownRescaleToPoolingNode<AvgPoolNode>(*F, PN);
+      }
       continue;
     }
 
@@ -4175,6 +4215,13 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
     }
 
     if (auto *RS = dyn_cast<RescaleQuantizedNode>(node)) {
+      // All cases below tend to change the output scale/bias of a Node. This
+      // may change the numerics of the op (even the range is narrower and so it
+      // should be more accurate).
+      if (!cctx.optimizationOpts.enableQuantParamChanges) {
+        continue;
+      }
+
       if (RS->getInput().getType() == RS->getResult().getType()) {
         // If rescale does not change the type, then simply drop it.
         changed = true;
@@ -4206,6 +4253,7 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
       case Kinded::Kind::MinNodeKind:
       case Kinded::Kind::MatMulNodeKind:
       case Kinded::Kind::ConvolutionNodeKind:
+      case Kinded::Kind::FullyConnectedNodeKind:
       case Kinded::Kind::SparseLengthsWeightedSumNodeKind: {
         changed = true;
         Node *newNode =
@@ -4244,7 +4292,7 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
 
   // If nothing has changed then sink rescale quantization nodes.
   if (!changed) {
-    changed = sinkRescaleQuantizedNode(F);
+    changed = sinkRescaleQuantizedNode(F, cctx);
   }
   return changed;
 }
@@ -4931,6 +4979,41 @@ static void setFP16AccumSLS(Function *F,
   } while (nodeIt != stopIt);
 }
 
+/// Look for Dequantize -> Swish -> Quantize, replace it with a quantized Swish.
+bool QuantizeSwish::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  if (!cctx.optimizationOpts.enableQuantParamChanges) {
+    return false;
+  }
+
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    auto *SN = dyn_cast<SwishNode>(&N);
+    if (!SN || SN->getNumUsers() != 1) {
+      continue;
+    }
+
+    QuantizeNode *QN =
+        dyn_cast<QuantizeNode>((*SN->getUsers().begin()).getUser());
+    if (!QN) {
+      continue;
+    }
+
+    DequantizeNode *DN = dyn_cast<DequantizeNode>(SN->getInput());
+    if (!DN) {
+      continue;
+    }
+
+    SwishNode *newSN =
+        F->createSwish(SN->getName().str() + "_int", DN->getInput(),
+                       QN->getResult().getType());
+    QN->getResult().replaceAllUsesOfWith(newSN);
+    changed = true;
+  }
+  return changed;
+}
+
 /// This funciton uses TypeAToTypeBFunctionConverter to do a whole graph
 /// demotion of Index type from INT64 to INT32.
 static void transformIndexTypeDemotion(const Backend &B, Function *F,
@@ -5459,6 +5542,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                                           TanhNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::SwishNodeKind: {
+        splitDims[SwishNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          SwishNode::InputIdx,
+                                          SwishNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::TransposeNodeKind: {
         splitDims[TransposeNode::InputIdx] = 0;
         unsigned_t resultDim = cast<TransposeNode>(curNode)->getShuffle()[0];
@@ -5494,6 +5585,18 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           TileNode::InputIdx,
                                           TileNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::BatchedReduceAddNodeKind: {
+        BatchedReduceAddNode *BR = llvm::cast<BatchedReduceAddNode>(curNode);
+        RETURN_ERR_IF_NOT(BR->getAxis() != 0,
+                          "BatchedReduceAdd node cannot be split on axis 0 "
+                          "which is being reduced");
+        splitDims[BatchedReduceAddNode::BatchIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, BatchedReduceAddNode::BatchIdx,
+                    BatchedReduceAddNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::ConcatNodeKind: {
@@ -5592,6 +5695,21 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           TileNode::InputIdx,
                                           TileNode::ResultIdx, splitDims, 1));
+        break;
+      }
+      case Kinded::Kind::BatchedReduceAddNodeKind: {
+        BatchedReduceAddNode *BR = llvm::cast<BatchedReduceAddNode>(curNode);
+        if (BR->getBatch().dims().size() < 2) {
+          break;
+        }
+        RETURN_ERR_IF_NOT(BR->getAxis() == 0,
+                          "BatchedReduceAdd model parallel splitting must have "
+                          "dim 0 reduction");
+        splitDims[BatchedReduceAddNode::BatchIdx] = 1;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, BatchedReduceAddNode::BatchIdx,
+                    BatchedReduceAddNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::ConcatNodeKind: {

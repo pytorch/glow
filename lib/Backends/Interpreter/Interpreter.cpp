@@ -83,6 +83,7 @@ Interpreter::compileIRWithoutConstants(std::unique_ptr<IRFunction> IR) const {
 bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   switch (NI.getKind()) {
   case Kinded::Kind::BatchedReduceMinNodeKind:
+  case Kinded::Kind::BatchedReduceMaxNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::BFloat16Ty,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
@@ -154,6 +155,12 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            (NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int64ITy ||
             NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int32ITy);
 
+  case Kinded::Kind::AcosNodeKind:
+  case Kinded::Kind::AsinNodeKind:
+  case Kinded::Kind::AtanNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Int8QTy});
+
   case Kinded::Kind::PowNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
   case Kinded::Kind::LogNodeKind:
@@ -197,7 +204,7 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::AbsNodeKind:
   case Kinded::Kind::NegNodeKind:
-  case Kinded::Kind::FloorNodeKind:
+  case Kinded::Kind::SignNodeKind:
   case Kinded::Kind::CeilNodeKind:
   case Kinded::Kind::RoundNodeKind:
   case Kinded::Kind::SqrtNodeKind:
@@ -207,6 +214,10 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::CosNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int8QTy});
+
+  case Kinded::Kind::FloorNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
 
   case Kinded::Kind::CmpEQNodeKind:
   case Kinded::Kind::CmpNEQNodeKind:
@@ -646,6 +657,19 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::MFCCNodeKind:
     return NI.getInElemTy(MFCCNode::SpectrogramIdx) == ElemKind::FloatTy &&
            NI.getOutElemTy(MFCCNode::CoefficientsIdx) == ElemKind::FloatTy;
+
+  case Kinded::Kind::ROIAlignNodeKind:
+    return NI.getInElemTy(ROIAlignNode::FeatureMapIdx) == ElemKind::FloatTy &&
+           NI.getInElemTy(ROIAlignNode::BoxesIdx) == ElemKind::FloatTy &&
+           NI.getInElemTy(ROIAlignNode::BatchIndicesIdx) ==
+               ElemKind::Int64ITy &&
+           NI.getOutElemTy(ROIAlignNode::ResultIdx) == ElemKind::FloatTy;
+
+  case Kinded::Kind::BBoxTransformNodeKind:
+    return NI.getInElemTy(BBoxTransformNode::RoisIdx) == ElemKind::FloatTy &&
+           NI.getInElemTy(BBoxTransformNode::DeltasIdx) == ElemKind::FloatTy &&
+           NI.getInElemTy(BBoxTransformNode::ImInfoIdx) == ElemKind::FloatTy &&
+           NI.getOutElemTy(BBoxTransformNode::BoxOutIdx) == ElemKind::FloatTy;
 
   case Kinded::Kind::SoftMaxGradNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(

@@ -298,8 +298,14 @@ private:
   void fwdElementExpInstFloatImpl(const ElementExpInst *I);
 
   template <typename ElemTy>
+  void fwdElementSignInstFloatImpl(const ElementSignInst *I);
+
+  template <typename ElemTy>
   void fwdElementSelectInstFloatImpl(const ElementSelectInst *I);
 
+  template <typename ElemTy, typename InstKind>
+  void fwdUnaryTrigonometricImpl(const InstKind *I,
+                                 std::function<float(float)> func);
   template <typename ElemTy>
   void fwdBatchedReduceAddInstFloatImpl(Value *batch, Value *dest,
                                         unsigned_t axis,
@@ -310,6 +316,11 @@ private:
   void fwdBatchedReduceMinInstImpl(Value *batch, Value *dest,
                                    const ShapeVector &eBatchDims,
                                    const ShapeVector &eDestDims, ElemTy max);
+
+  template <typename ElemTy>
+  void fwdBatchedReduceMaxInstImpl(Value *batch, Value *dest,
+                                   const ShapeVector &eBatchDims,
+                                   const ShapeVector &eDestDims, ElemTy min);
 
   template <typename ElemTy>
   void fwdCumSumInstImpl(Value *input, Value *dest, bool exclusive,
@@ -367,6 +378,10 @@ private:
   void fwdAudioSpectrogramInstFloatImpl(glow::AudioSpectrogramInst const *I);
 
   void fwdMFCCInstFloatImpl(glow::MFCCInst const *I);
+
+  void fwdROIAlignInstFloatImpl(glow::ROIAlignInst const *I);
+
+  void fwdBBoxTransformInstFloatImpl(glow::BBoxTransformInst const *I);
 
   template <typename T, typename AccumT>
   void fwdEmbeddingBagByteRowwiseOffsetsImpl(

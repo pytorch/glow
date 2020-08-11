@@ -1,6 +1,7 @@
 // Copyright 2004-present Facebook. All Rights Reserved.
 
 #include "GlowCompileSpec.h"
+#include "PyTorchCommon.h"
 #include <ATen/core/ivalue.h>
 #include <torch/custom_class.h>
 
@@ -24,7 +25,7 @@ void SpecInputMeta::set(std::vector<int64_t> dims, c10::ScalarType type) {
   dims_ = dims;
 }
 
-void SpecInputMeta::setSameAs(const at::Tensor &t) {
+void SpecInputMeta::set_same_as(const at::Tensor &t) {
   if (t.is_quantized()) {
     throw std::invalid_argument(
         "Quantized PyTorch Tensor is not supported yet in GlowCompileSpec.");
@@ -54,12 +55,45 @@ void GlowCompileSpec::addInputs(
 }
 
 void registerGlowCompileSpecCustomClass() {
+  using SettingsSerializationType = torch::Dict<std::string, std::string>;
+  static auto glow_options_registry =
+      torch::class_<PyTorchLoaderSettings>("glow", "PyTorchLoaderSettings")
+          .def(torch::init())
+          .def("get_backend_name", &PyTorchLoaderSettings::get_backend_name)
+          .def("set_backend_name", &PyTorchLoaderSettings::set_backend_name)
+          .def("get_convert_to_fp16",
+               &PyTorchLoaderSettings::get_convert_to_fp16)
+          .def("set_convert_to_fp16",
+               &PyTorchLoaderSettings::set_convert_to_fp16)
+          .def("get_convert_fused_to_fp16",
+               &PyTorchLoaderSettings::get_convert_fused_to_fp16)
+          .def("set_convert_to_fused_fp16",
+               &PyTorchLoaderSettings::set_convert_fused_to_fp16)
+          .def("get_replication_count",
+               &PyTorchLoaderSettings::get_replication_count)
+          .def("set_replication_count",
+               &PyTorchLoaderSettings::set_replication_count)
+          .def("get_saturate_host", &PyTorchLoaderSettings::get_saturate_host)
+          .def("set_saturate_host", &PyTorchLoaderSettings::set_saturate_host)
+          .def("get_randomize_constants",
+               &PyTorchLoaderSettings::get_randomize_constants)
+          .def("set_randomize_constants",
+               &PyTorchLoaderSettings::set_randomize_constants)
+          .def_pickle(
+              [](const c10::intrusive_ptr<PyTorchLoaderSettings> &options)
+                  -> SettingsSerializationType { // __getstate__
+                return options->serializeToDict();
+              },
+              [](SettingsSerializationType state)
+                  -> c10::intrusive_ptr<PyTorchLoaderSettings> { // __setstate__
+                return c10::make_intrusive<PyTorchLoaderSettings>(state);
+              });
 
   static auto spec_input_meta_registry =
       torch::class_<SpecInputMeta>("glow", "SpecInputMeta")
           .def(torch::init())
           .def("set", &SpecInputMeta::set)
-          .def("setSameAs", &SpecInputMeta::setSameAs)
+          .def("set_same_as", &SpecInputMeta::set_same_as)
           .def("type", &SpecInputMeta::type)
           .def_pickle(
               [](const c10::intrusive_ptr<SpecInputMeta> &sim)
@@ -72,35 +106,36 @@ void registerGlowCompileSpecCustomClass() {
               });
 
   using GcsSerializationType =
-      std::tuple<std::string, std::vector<SpecInputMetaSerializationType>>;
+      std::tuple<std::vector<SpecInputMetaSerializationType>,
+                 SettingsSerializationType>;
   static auto glow_compile_spec_registry =
       torch::class_<GlowCompileSpec>("glow", "GlowCompileSpec")
           .def(torch::init())
-          .def("setBackend", &GlowCompileSpec::setBackend)
           .def("addInputTensor", &GlowCompileSpec::addInputTensor)
           .def("addInput", &GlowCompileSpec::addInput)
           .def("addInputs", &GlowCompileSpec::addInputs)
+          .def("set_settings", &GlowCompileSpec::set_settings)
           .def_pickle(
               [](const c10::intrusive_ptr<GlowCompileSpec> &gcs)
                   -> GcsSerializationType { // __getstate__
-                std::string backend = gcs->getBackend();
                 std::vector<SpecInputMetaSerializationType> inputs;
                 for (const auto &meta : gcs->inputs()) {
                   inputs.emplace_back(meta.serializeToTuple());
                 }
-                return std::make_tuple(backend, inputs);
+                SettingsSerializationType settings = gcs->serialized_settings();
+                return std::make_tuple(inputs, settings);
               },
               [](GcsSerializationType state)
                   -> c10::intrusive_ptr<GlowCompileSpec> { // __setstate__
-                std::string backend;
                 std::vector<SpecInputMetaSerializationType> inputs;
-                std::tie(backend, inputs) = state;
+                SettingsSerializationType settings;
+                std::tie(inputs, settings) = state;
                 std::vector<SpecInputMeta> glowInputs;
                 for (auto inputState : inputs) {
                   glowInputs.emplace_back(SpecInputMeta(inputState));
                 }
-                return c10::make_intrusive<GlowCompileSpec>(
-                    GlowCompileSpec(backend, glowInputs));
+                return c10::make_intrusive<GlowCompileSpec>(GlowCompileSpec(
+                    glowInputs, PyTorchLoaderSettings(settings)));
               }
 
           );

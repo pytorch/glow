@@ -395,43 +395,59 @@ static TensorLayoutDescription layoutsForDims[] = {
     layout0D, layout1D, layout2D, layout3D, layout4D, layout5D, layout6D,
 };
 
-TensorLayoutCommon::TensorLayoutCommon() : enabled_(false) {
-  layoutNameToLayoutDescription_.insert(
-      std::make_pair("NCHW", new TensorLayoutDescription("NCHW")));
-  layoutNameToLayoutDescription_.insert(
-      std::make_pair("NHWC", new TensorLayoutDescription("NHWC")));
-  layoutNameToLayoutDescription_.insert(
-      std::make_pair("HWNC", new TensorLayoutDescription("HWNC")));
-  layoutNameToLayoutDescription_.insert(
-      std::make_pair("CNHW", new TensorLayoutDescription("CNHW")));
-  layoutNameToLayoutDescription_.insert(
-      std::make_pair("N", new TensorLayoutDescription("N")));
+TensorLayoutCommon::TensorLayoutCommon() : enabled_(false) {}
+
+TensorLayoutCommon::TensorLayoutCommon(TensorLayoutCommon *ctxTensorLayout)
+    : TensorLayoutCommon() {
+  ctxTensorLayout_ = ctxTensorLayout;
 }
 
-TensorLayoutCommon::~TensorLayoutCommon() {
-  while (!layoutNameToLayoutDescription_.empty()) {
-    auto curr = layoutNameToLayoutDescription_.begin();
-    auto *tld = curr->second;
-    layoutNameToLayoutDescription_.erase(curr);
-    delete tld;
+TensorLayoutCommon::~TensorLayoutCommon() {}
+
+LayoutNameToLayoutDescriptionTy &
+TensorLayoutCommon::getLayoutNameToLayoutDescription() const {
+  if (ctxTensorLayout_) {
+    return ctxTensorLayout_->getLayoutNameToLayoutDescription();
   }
+  return layoutNameToLayoutDescription_;
 }
 
 llvm::ArrayRef<TensorLayoutDescription>
 TensorLayoutCommon::getLayoutsForDims() const {
+  if (ctxTensorLayout_) {
+    return ctxTensorLayout_->getLayoutsForDims();
+  }
   return llvm::makeArrayRef(layoutsForDims);
 }
 
-static TensorLayoutDescription *
-getLayoutFromName(const std::string &name,
-                  std::unordered_map<std::string, TensorLayoutDescription *>
-                      &layoutNameToLayoutDescription) {
+static LayoutNameToLayoutDescriptionTy initLayoutNameToDescription() {
+  LayoutNameToLayoutDescriptionTy map;
+  map.insert(std::make_pair(
+      "NCHW", glow::make_unique<TensorLayoutDescription>("NCHW")));
+  map.insert(std::make_pair(
+      "NHWC", glow::make_unique<TensorLayoutDescription>("NHWC")));
+  map.insert(std::make_pair(
+      "HWNC", glow::make_unique<TensorLayoutDescription>("HWNC")));
+  map.insert(std::make_pair(
+      "CNHW", glow::make_unique<TensorLayoutDescription>("CNHW")));
+  map.insert(
+      std::make_pair("N", glow::make_unique<TensorLayoutDescription>("N")));
+  return map;
+}
+
+LayoutNameToLayoutDescriptionTy
+    TensorLayoutCommon::layoutNameToLayoutDescription_ =
+        initLayoutNameToDescription();
+
+static TensorLayoutDescription *getLayoutFromName(
+    const std::string &name,
+    LayoutNameToLayoutDescriptionTy &layoutNameToLayoutDescription) {
   if (isAnyHelper(name)) {
     return nullptr;
   }
   auto it = layoutNameToLayoutDescription.find(name);
   if (it != layoutNameToLayoutDescription.end()) {
-    return it->second;
+    return it->second.get();
   }
   // Add new layout to map:
   auto *ret = new TensorLayoutDescription(name);
@@ -440,13 +456,23 @@ getLayoutFromName(const std::string &name,
     delete ret;
     ret = nullptr;
   }
-  layoutNameToLayoutDescription.insert(std::make_pair(name, ret));
+  layoutNameToLayoutDescription.insert(
+      std::make_pair(name, std::unique_ptr<TensorLayoutDescription>(ret)));
   return ret;
 }
 
 std::string TensorLayoutCommon::getDefaultNDLayout(unsigned dims) const {
   DCHECK_LE(dims, max_tensor_dimensions) << "Too many dimensions";
   return getLayoutsForDims()[dims].getSerializedLayout();
+}
+
+std::string
+TensorLayoutCommon::getNthInputLayoutRequirementsImpl(const Node *node,
+                                                      size_t n) {
+  if (ctxTensorLayout_) {
+    return ctxTensorLayout_->getNthInputLayoutRequirementsImpl(node, n);
+  }
+  return getNthInputLayoutRequirements(node, n);
 }
 
 std::string TensorLayoutCommon::getNthInputLayoutRequirements(const Node *node,
@@ -458,21 +484,25 @@ std::string TensorLayoutCommon::getNthInputLayoutRequirements(const Node *node,
     // The layout for the input of transpose is the same as the layout of the
     // operation's result producing this input.
     auto input = TN->getInput();
-    return getNthResultLayoutRequirements(input.getNode(), input.getResNo());
+    return getNthResultLayoutRequirementsImpl(input.getNode(),
+                                              input.getResNo());
   }
   if (const auto *QN = llvm::dyn_cast<QuantizeNode>(node)) {
     auto input = QN->getInput();
-    return getNthResultLayoutRequirements(input.getNode(), input.getResNo());
+    return getNthResultLayoutRequirementsImpl(input.getNode(),
+                                              input.getResNo());
   }
   if (const auto *CTN = llvm::dyn_cast<ConvertToNode>(node)) {
     auto input = CTN->getInput();
-    return getNthResultLayoutRequirements(input.getNode(), input.getResNo());
+    return getNthResultLayoutRequirementsImpl(input.getNode(),
+                                              input.getResNo());
   }
   if (const auto *QPN = llvm::dyn_cast<QuantizationProfileNode>(node)) {
     switch (n) {
     case QuantizationProfileNode::InputIndices::InputIdx: {
       auto input = QPN->getInput();
-      return getNthResultLayoutRequirements(input.getNode(), input.getResNo());
+      return getNthResultLayoutRequirementsImpl(input.getNode(),
+                                                input.getResNo());
     }
     default:
       return getLayoutsForDims()[dims.size()].getSerializedLayout();
@@ -504,6 +534,15 @@ static bool inputDoesNotKnowRequirements(const Node *node) {
   }
 }
 
+std::string
+TensorLayoutCommon::getNthResultLayoutRequirementsImpl(const Node *node,
+                                                       size_t n) {
+  if (ctxTensorLayout_) {
+    return ctxTensorLayout_->getNthResultLayoutRequirementsImpl(node, n);
+  }
+  return getNthResultLayoutRequirements(node, n);
+}
+
 std::string TensorLayoutCommon::getNthResultLayoutRequirements(const Node *node,
                                                                size_t n) {
   DCHECK_LT(n, node->getNumResults()) << "Wrong output number";
@@ -513,7 +552,7 @@ std::string TensorLayoutCommon::getNthResultLayoutRequirements(const Node *node,
     // If the result of Transpose is a concrete layout, try to use this specific
     // layout.
     if (auto *layout = getLayoutFromName(TN->getLayout(),
-                                         layoutNameToLayoutDescription_)) {
+                                         getLayoutNameToLayoutDescription())) {
       return layout->getSerializedLayout();
     }
     // Dynamically form the layout description for transposes.
@@ -522,7 +561,7 @@ std::string TensorLayoutCommon::getNthResultLayoutRequirements(const Node *node,
       input = input.getNode()->getNthInput(0);
     }
     auto inputLayout =
-        getNthInputLayoutRequirements(node, TransposeNode::InputIdx);
+        getNthInputLayoutRequirementsImpl(node, TransposeNode::InputIdx);
     auto inputLayoutHelper = TensorLayoutDescription(inputLayout);
     llvm::SmallVector<std::string, max_tensor_dimensions> dims(
         input.dims().size());
@@ -534,20 +573,20 @@ std::string TensorLayoutCommon::getNthResultLayoutRequirements(const Node *node,
     return tld.getSerializedLayout();
   }
   if (auto *C = llvm::dyn_cast<Constant>(node)) {
-    if (auto *layout =
-            getLayoutFromName(C->getLayout(), layoutNameToLayoutDescription_)) {
+    if (auto *layout = getLayoutFromName(C->getLayout(),
+                                         getLayoutNameToLayoutDescription())) {
       return layout->getSerializedLayout();
     }
   }
   if (auto *PH = llvm::dyn_cast<Placeholder>(node)) {
     if (auto *layout = getLayoutFromName(PH->getLayout(),
-                                         layoutNameToLayoutDescription_)) {
+                                         getLayoutNameToLayoutDescription())) {
       return layout->getSerializedLayout();
     }
   }
   if (auto *RN = llvm::dyn_cast<ReshapeNode>(node)) {
     if (auto *layout = getLayoutFromName(RN->getLayout(),
-                                         layoutNameToLayoutDescription_)) {
+                                         getLayoutNameToLayoutDescription())) {
       return layout->getSerializedLayout();
     }
     auto result = node->getNthResult(n);
@@ -557,9 +596,9 @@ std::string TensorLayoutCommon::getNthResultLayoutRequirements(const Node *node,
         inputIdx >= user->getNumInputs() || llvm::isa<TransposeNode>(user)) {
       return getLayoutsForDims()[dims.size()].getSerializedLayout();
     }
-    auto layout = getNthInputLayoutRequirements(user, inputIdx);
+    auto layout = getNthInputLayoutRequirementsImpl(user, inputIdx);
     if (auto *layoutDesc =
-            getLayoutFromName(layout, layoutNameToLayoutDescription_)) {
+            getLayoutFromName(layout, getLayoutNameToLayoutDescription())) {
       return layoutDesc->getSerializedLayout();
     }
   }
@@ -656,6 +695,7 @@ static bool acceptsAnyInputLayout(const glow::Node *node) {
   case Kinded::Kind::BatchedAddNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:
   case Kinded::Kind::BatchedReduceMinNodeKind:
+  case Kinded::Kind::BatchedReduceMaxNodeKind:
   case Kinded::Kind::BatchNormalizationNodeKind:
   case Kinded::Kind::BatchNormalizationGradNodeKind:
   case Kinded::Kind::PadNodeKind:

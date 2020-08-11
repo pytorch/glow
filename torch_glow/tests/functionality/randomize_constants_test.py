@@ -1,8 +1,11 @@
+# isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch_glow
-import torch
 import unittest
+
+import torch_glow
+from torch_glow import InputMeta, CompilationOptions, GlowCompileSpec
+import torch
 
 
 class Model(torch.nn.Module):
@@ -15,19 +18,17 @@ class Model(torch.nn.Module):
 
 
 def run_model(m, input, randomize):
-    if randomize:
-        torch_glow.enable_randomize_constants()
-    else:
-        torch_glow.disable_randomize_constants()
-
     torch_glow.disableFusionPass()
     traced_m = torch.jit.trace(m, input)
 
-    spec = torch.classes.glow.GlowCompileSpec()
-    spec.setBackend("Interpreter")
-    sim = torch.classes.glow.SpecInputMeta()
-    sim.setSameAs(input)
-    spec.addInputs([sim])
+    input_meta = InputMeta()
+    input_meta.set_same_as(input)
+    inputs = [input_meta]
+    options = CompilationOptions()
+    options.backend = "Interpreter"
+    options.randomize_constants = randomize
+    spec = GlowCompileSpec()
+    spec.set(inputs, options)
 
     glow_m = torch_glow.to_glow(traced_m, {"forward": spec})
     return glow_m.forward(input)
@@ -41,5 +42,5 @@ class TestRandomizeWeights(unittest.TestCase):
         normal2 = run_model(m, input, False)
         rand = run_model(m, input, True)
 
-        assert(torch.allclose(normal1, normal2))
-        assert(not torch.allclose(normal1, rand))
+        assert torch.allclose(normal1, normal2)
+        assert not torch.allclose(normal1, rand)

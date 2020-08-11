@@ -17,10 +17,10 @@
 # ./tests/unittests/onnxImporterTest.cpp
 # Run $>python gen_onnx_model.py to get the ONNX model.
 
-import onnx
-from onnx import helper
-from onnx import AttributeProto, TensorProto, GraphProto
 import numpy as np
+import onnx
+from onnx import AttributeProto, GraphProto, TensorProto, helper
+
 
 # The protobuf definition can be found here:
 # https://github.com/onnx/onnx/blob/master/onnx/onnx.proto
@@ -45,12 +45,12 @@ node_def = onnx.helper.make_node(
 )
 
 weight_tensor = helper.make_tensor(
-    name="W", data_type=TensorProto.FLOAT, dims=(
-        1, 1, 2, 2), vals=W.reshape(4).tolist())
+    name="W", data_type=TensorProto.FLOAT, dims=(1, 1, 2, 2), vals=W.reshape(4).tolist()
+)
 
 bias_tensor = helper.make_tensor(
-    name="B", data_type=TensorProto.FLOAT, dims=(
-        1,), vals=B.reshape(1).tolist())
+    name="B", data_type=TensorProto.FLOAT, dims=(1,), vals=B.reshape(1).tolist()
+)
 # Create the graph (GraphProto)
 graph_def = helper.make_graph(
     [node_def],
@@ -60,10 +60,7 @@ graph_def = helper.make_graph(
         helper.make_tensor_value_info("W", TensorProto.FLOAT, [1, 1, 2, 2]),
         helper.make_tensor_value_info("B", TensorProto.FLOAT, [1]),
     ],
-    outputs=[
-        helper.make_tensor_value_info(
-            "y", TensorProto.FLOAT, [
-                1, 1, 4, 4])],
+    outputs=[helper.make_tensor_value_info("y", TensorProto.FLOAT, [1, 1, 4, 4])],
 )
 
 graph_def.initializer.extend([weight_tensor])

@@ -1,9 +1,9 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-
-from tests.utils import jitVsGlow
 import unittest
+
+import torch
+from tests.utils import jitVsGlow
 
 
 class TestQuantizedAdd(unittest.TestCase):
@@ -11,8 +11,7 @@ class TestQuantizedAdd(unittest.TestCase):
         """Basic test of the PyTorch quantized::add Node on Glow with zero offset."""
 
         def test_f(a, b):
-            q = torch.nn.quantized.Quantize(
-                scale=0.3, zero_point=0, dtype=torch.quint8)
+            q = torch.nn.quantized.Quantize(scale=0.3, zero_point=0, dtype=torch.quint8)
             dq = torch.nn.quantized.DeQuantize()
             return dq(torch.ops.quantized.add(q(a), q(b), scale=0.05, zero_point=0))
 
@@ -42,8 +41,7 @@ class TestQuantizedAdd(unittest.TestCase):
             )
             dq = torch.nn.quantized.DeQuantize()
             return dq(
-                torch.ops.quantized.add(
-                    q1(a), q2(b), scale=1.0 / 128, zero_point=3)
+                torch.ops.quantized.add(q1(a), q2(b), scale=1.0 / 128, zero_point=3)
             )
 
         x = torch.randn([5, 5])
@@ -72,8 +70,7 @@ class TestQuantizedAdd(unittest.TestCase):
             )
             dq = torch.nn.quantized.DeQuantize()
             return dq(
-                torch.ops.quantized.add(
-                    q1(a), q2(b), scale=1.0 / 128, zero_point=3)
+                torch.ops.quantized.add(q1(a), q2(b), scale=1.0 / 128, zero_point=3)
             )
 
         x = torch.randn([5, 5])
@@ -83,11 +80,6 @@ class TestQuantizedAdd(unittest.TestCase):
             test_f,
             x,
             y,
-            expected_fused_ops={
-                "quantized::add",
-            },
-            black_list=[
-                "aten::quantize_per_tensor",
-                "aten::dequantize",
-            ]
+            expected_fused_ops={"quantized::add"},
+            black_list=["aten::quantize_per_tensor", "aten::dequantize"],
         )

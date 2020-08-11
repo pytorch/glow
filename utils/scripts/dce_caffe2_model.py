@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import argparse
+
 from caffe2.proto import caffe2_pb2
 from google.protobuf import text_format
-import argparse
 
 
 def read_model_from_file(path):
@@ -67,8 +68,7 @@ def dce(init_net, predict_net):
                 live_predict_net_ops.append(op)
 
     # Delete all unused ops in predict_net.
-    num_predict_net_ops_eliminated = len(
-        predict_net.op) - len(live_predict_net_ops)
+    num_predict_net_ops_eliminated = len(predict_net.op) - len(live_predict_net_ops)
     del predict_net.op[:]
     predict_net.op.extend(live_predict_net_ops)
 

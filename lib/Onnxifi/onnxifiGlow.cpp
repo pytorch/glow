@@ -20,6 +20,7 @@
 
 #include "glow/Importer/ONNXIFIModelLoader.h"
 
+#include <cstring>
 #include <glog/logging.h>
 
 /// Allow defining names for onnxifi implementation.
@@ -93,7 +94,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
                               /*useOnnx*/ false, /*forQuantization*/ true);
     backendIDs[0] = quantizationBackendC2;
   } else {
-    *numBackends = 1;
+    *numBackends = 2;
 
     auto backendName = GlowOnnxifiBackend;
 
@@ -116,10 +117,11 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
     }
 
     LOG(INFO) << "ONNXIFI: Executing on " << backendName << " Glow backend";
-    auto *executionBackend = manager.createBackend(backendName,
-                                                   /*useOnnx*/ false);
 
-    backendIDs[0] = executionBackend;
+    backendIDs[0] = manager.createBackend(backendName,
+                                          /*useOnnx*/ false);
+    backendIDs[1] = manager.createBackend(backendName,
+                                          /*useOnnx*/ true);
   }
 
   return ONNXIFI_STATUS_SUCCESS;
@@ -329,7 +331,10 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxWaitEvent)(onnxEvent event) {
 EXTERNC ONNXIFI_PUBLIC ONNXIFI_CHECK_RESULT onnxStatus ONNXIFI_ABI
 GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxWaitEventFor)(
     onnxEvent event, uint32_t timeoutMs, onnxEventState *eventState,
-    onnxStatus *eventStatus) {
+    onnxStatus *eventStatus, char *outMessage, size_t *outMessageLength) {
+  size_t maxMessageLength = *outMessageLength - 1;
+  *outMessageLength = 0;
+
   auto &manager = glow::onnxifi::GlowOnnxifiManager::get();
 
   if (!eventState || !eventStatus) {
@@ -353,6 +358,15 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxWaitEventFor)(
     } else {
       *eventState = ONNXIFI_EVENT_STATE_NONSIGNALLED;
     }
+  }
+
+  const auto &message = glowEvent->getMessage();
+  if (message.size() > 0) {
+    std::strncpy(outMessage, message.c_str(), maxMessageLength);
+    // make sure the message is null termininated. strncpy will pad 0 iff
+    // message size is smaller than maxMessageLength.
+    outMessage[maxMessageLength] = '\0';
+    *outMessageLength = std::min(message.size(), maxMessageLength) + 1;
   }
 
   return ONNXIFI_STATUS_SUCCESS;

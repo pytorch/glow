@@ -148,7 +148,6 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   // General math fp32/fp16/i8.
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::SubNodeKind:
-  case Kinded::Kind::MulNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:
   case Kinded::Kind::PowNodeKind:
@@ -168,17 +167,32 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
-
+  case Kinded::Kind::ModuloNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
+  case Kinded::Kind::MulNodeKind:
   case Kinded::Kind::LayerNormalizationNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
 
-  case Kinded::Kind::BatchNormalizationNodeKind:
+  case Kinded::Kind::BatchNormalizationNodeKind: {
+    auto elemType = NI.getInElemTy(BatchNormalizationNode::InputIdx);
+    bool isSup =
+        (elemType == ElemKind::Int8QTy || elemType == ElemKind::FloatTy ||
+         elemType == ElemKind::Float16Ty);
+
+    isSup = isSup && NI.allInputsAndOutputsHaveSameElemKind(
+                         {ElemKind::FloatTy, ElemKind::Float16Ty},
+                         {BatchNormalizationNode::InputIdx});
+
+    return isSup;
+  }
+
   case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
 
+  case Kinded::Kind::SwishNodeKind:
   case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::PReluNodeKind:
   case Kinded::Kind::ClipNodeKind:
@@ -219,6 +233,7 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
            ((NI.getInElemTy(Convolution3DNode::BiasIdx) ==
              ElemKind::Int32QTy) ||
             (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::FloatTy));
+
   case Kinded::Kind::QuantizeNodeKind:
     return (NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::FloatTy ||
             NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::Float16Ty) &&
@@ -519,6 +534,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::ConcatNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
+  case Kinded::Kind::SwishNodeKind:
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::Convolution3DNodeKind:
@@ -531,20 +547,13 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::BatchNormalizationNodeKind:
   case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
-  case Kinded::Kind::AdaptiveAvgPoolNodeKind:
   case Kinded::Kind::EmbeddingBagNodeKind:
   case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind:
   case Kinded::Kind::LayerNormalizationNodeKind:
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
   case Kinded::Kind::PReluNodeKind:
   case Kinded::Kind::LogitNodeKind:
-    return false;
   case Kinded::Kind::SparseLengthsSumNodeKind:
-    // WA - lower until ICE-T implements it.
-    if (NNPIBackend::backendOptions_.useIceT ||
-        NNPIBackend::backendOptions_.inferOnDevice) {
-      return true;
-    }
     return false;
   default:
     return true;
@@ -572,13 +581,15 @@ static void setupBasicParallelizationConfigs(
       size_t K = FC->getWeights().dims()[1];
       if (K >= 512) {
         parOpts[FC] = ParallelTransformKind::Model;
-        numChunks[FC] = numParallelChunks;
+        numChunks[FC] =
+            std::min((size_t)numParallelChunks, FC->getResult().dims()[1]);
         continue;
       }
       size_t M = FC->getInput().dims()[0];
       if (M >= 256) {
         parOpts[FC] = ParallelTransformKind::Data;
-        numChunks[FC] = numParallelChunks;
+        numChunks[FC] =
+            std::min((size_t)numParallelChunks, FC->getResult().dims()[0]);
         continue;
       }
     }
@@ -595,7 +606,8 @@ static void setupBasicParallelizationConfigs(
         if (numChunks.find(inputNode) != numChunks.end() &&
             parOpts.find(inputNode) != parOpts.end()) {
           parOpts[R] = ParallelTransformKind::Data;
-          numChunks[R] = numParallelChunks;
+          numChunks[R] =
+              std::min((size_t)numParallelChunks, R->getResult().dims()[0]);
         }
         continue;
       }
@@ -607,13 +619,15 @@ static void setupBasicParallelizationConfigs(
       size_t K = R->getInput().dims()[1];
       if (K >= 512) {
         parOpts[R] = ParallelTransformKind::Model;
-        numChunks[R] = numParallelChunks;
+        numChunks[R] =
+            std::min((size_t)numParallelChunks, R->getResult().dims()[1]);
         continue;
       }
       size_t M = R->getInput().dims()[0];
       if (M >= 256) {
         parOpts[R] = ParallelTransformKind::Data;
-        numChunks[R] = numParallelChunks;
+        numChunks[R] =
+            std::min((size_t)numParallelChunks, R->getResult().dims()[0]);
         continue;
       }
     }
@@ -621,60 +635,80 @@ static void setupBasicParallelizationConfigs(
     // Split transpose layers in data parallel fashion
     if (auto *TP = llvm::dyn_cast<TransposeNode>(node)) {
       parOpts[TP] = ParallelTransformKind::Data;
-      numChunks[TP] = numParallelChunks;
+      numChunks[TP] =
+          std::min((size_t)numParallelChunks, TP->getResult().dims()[0]);
       continue;
     }
 
     // Split Quantize layers in data parallel fashion
     if (auto *QN = llvm::dyn_cast<QuantizeNode>(node)) {
       parOpts[QN] = ParallelTransformKind::Data;
-      numChunks[QN] = numParallelChunks;
+      numChunks[QN] =
+          std::min((size_t)numParallelChunks, QN->getResult().dims()[0]);
       continue;
     }
 
     // Split Dequantize layers in data parallel fashion
     if (auto *DQN = llvm::dyn_cast<DequantizeNode>(node)) {
       parOpts[DQN] = ParallelTransformKind::Data;
-      numChunks[DQN] = numParallelChunks;
+      numChunks[DQN] =
+          std::min((size_t)numParallelChunks, DQN->getResult().dims()[0]);
       continue;
     }
 
-    // Split Tile layers in data parallel fashion
+    // Split Tile layers
     if (auto *TN = llvm::dyn_cast<TileNode>(node)) {
       if (TN->getAxis() == 0) {
         if (TN->getInput().dims().size() < 2) {
           continue;
         }
         size_t N = TN->getInput().dims()[1];
-        if (N < 1024) {
+        if (N < 256) {
           continue;
         }
         parOpts[TN] = ParallelTransformKind::Model;
-        numChunks[TN] = numParallelChunks;
+        numChunks[TN] =
+            std::min((size_t)numParallelChunks, TN->getResult().dims()[1]);
       } else if (TN->getAxis() == 1) {
         if (TN->getInput().dims().size() < 2) {
           continue;
         }
         size_t M = TN->getInput().dims()[0];
-        if (M < 1024) {
+        if (M < 256) {
           continue;
         }
         parOpts[TN] = ParallelTransformKind::Data;
-        numChunks[TN] = numParallelChunks;
+        numChunks[TN] =
+            std::min((size_t)numParallelChunks, TN->getResult().dims()[0]);
       }
       continue;
     }
 
-    // Split Concat layers.
-    if (auto *CN = llvm::dyn_cast<ConcatNode>(node)) {
-      if (CN->getDim() == 0) {
-        parOpts[CN] = ParallelTransformKind::Data;
-      } else if (CN->getDim() == 1) {
-        parOpts[CN] = ParallelTransformKind::Model;
-      } else {
-        continue;
+    // Split BatchedReduceAdd layers
+    if (auto *BR = llvm::dyn_cast<BatchedReduceAddNode>(node)) {
+      if (BR->getAxis() == 0) {
+        if (BR->getBatch().dims().size() < 2) {
+          continue;
+        }
+        size_t N = BR->getBatch().dims()[1];
+        if (N < 64) {
+          continue;
+        }
+        parOpts[BR] = ParallelTransformKind::Model;
+        numChunks[BR] =
+            std::min((size_t)numParallelChunks, BR->getResult().dims()[0]);
+      } else if (BR->getAxis() == 1) {
+        if (BR->getBatch().dims().size() < 2) {
+          continue;
+        }
+        size_t M = BR->getBatch().dims()[0];
+        if (M < 64) {
+          continue;
+        }
+        parOpts[BR] = ParallelTransformKind::Data;
+        numChunks[BR] =
+            std::min((size_t)numParallelChunks, BR->getResult().dims()[0]);
       }
-      numChunks[CN] = numParallelChunks;
       continue;
     }
 
@@ -688,14 +722,16 @@ static void setupBasicParallelizationConfigs(
         continue;
       }
       parOpts[LN] = ParallelTransformKind::Data;
-      numChunks[LN] = numParallelChunks;
+      numChunks[LN] =
+          std::min((size_t)numParallelChunks, LN->getResult().dims()[0]);
       continue;
     }
 
     // Split BMM layers in data parallel fashion
     if (auto *BMM = llvm::dyn_cast<BatchMatMulNode>(node)) {
       parOpts[BMM] = ParallelTransformKind::Data;
-      numChunks[BMM] = numParallelChunks;
+      numChunks[BMM] =
+          std::min((size_t)numParallelChunks, BMM->getResult().dims()[0]);
       continue;
     }
 
@@ -704,12 +740,67 @@ static void setupBasicParallelizationConfigs(
       if (TH->getInput().dims().size() < 2) {
         continue;
       }
-      size_t N = TH->getInput().dims()[1];
-      if (N < 4096) {
+      if (TH->getInput().dims().size() == 2) {
+        size_t N = TH->getInput().dims()[1];
+        if (N < 1792) {
+          continue;
+        }
+        parOpts[TH] = ParallelTransformKind::Data;
+        numChunks[TH] =
+            std::min((size_t)numParallelChunks, TH->getResult().dims()[0]);
+        continue;
+      } else if (TH->getInput().dims().size() == 3) {
+        size_t N = TH->getInput().dims()[1];
+        size_t K = TH->getInput().dims()[2];
+        if (N * K < 2048) {
+          continue;
+        }
+        parOpts[TH] = ParallelTransformKind::Data;
+        numChunks[TH] =
+            std::min((size_t)numParallelChunks, TH->getResult().dims()[0]);
         continue;
       }
-      parOpts[TH] = ParallelTransformKind::Data;
-      numChunks[TH] = numParallelChunks;
+    }
+
+    // Split Add layers in data parallel fashion
+    if (auto *AD = llvm::dyn_cast<AddNode>(node)) {
+      if (AD->getLHS().dims().size() < 2) {
+        continue;
+      }
+      if (AD->getLHS().dims().size() == 2) {
+        size_t N = AD->getLHS().dims()[1];
+        if (N < 1792) {
+          continue;
+        }
+        parOpts[AD] = ParallelTransformKind::Data;
+        numChunks[AD] =
+            std::min((size_t)numParallelChunks, AD->getResult().dims()[0]);
+        continue;
+      } else if (AD->getLHS().dims().size() == 3) {
+        size_t N = AD->getLHS().dims()[1];
+        size_t K = AD->getLHS().dims()[2];
+        if (N * K < 2048) {
+          continue;
+        }
+        parOpts[AD] = ParallelTransformKind::Data;
+        numChunks[AD] =
+            std::min((size_t)numParallelChunks, AD->getResult().dims()[0]);
+        continue;
+      }
+    }
+
+    // Split Swish layers in data parallel fashion
+    if (auto *SW = llvm::dyn_cast<SwishNode>(node)) {
+      if (SW->getInput().dims().size() < 2) {
+        continue;
+      }
+      size_t N = SW->getInput().dims()[1];
+      if (N < 512) {
+        continue;
+      }
+      parOpts[SW] = ParallelTransformKind::Data;
+      numChunks[SW] =
+          std::min((size_t)numParallelChunks, SW->getResult().dims()[0]);
       continue;
     }
 
@@ -719,11 +810,27 @@ static void setupBasicParallelizationConfigs(
         continue;
       }
       size_t N = M->getLHS().dims()[1];
-      if (N < 4096) {
+      if (N < 512) {
         continue;
       }
       parOpts[M] = ParallelTransformKind::Data;
-      numChunks[M] = numParallelChunks;
+      numChunks[M] =
+          std::min((size_t)numParallelChunks, M->getResult().dims()[0]);
+      continue;
+    }
+
+    // Split Sigmoid layers in data parallel fashion
+    if (auto *S = llvm::dyn_cast<SigmoidNode>(node)) {
+      if (S->getInput().dims().size() < 2) {
+        continue;
+      }
+      size_t N = S->getInput().dims()[1];
+      if (N < 512) {
+        continue;
+      }
+      parOpts[S] = ParallelTransformKind::Data;
+      numChunks[S] =
+          std::min((size_t)numParallelChunks, S->getResult().dims()[0]);
       continue;
     }
 
@@ -999,6 +1106,9 @@ NNPIBackend::getOptimizationPipeline() const {
   // not want to undo that by sinking Nodes back together.
   pipeline->removeAllInstancesOfPass(FunctionPassID::SinkCode);
 
+  // Quantize Swish when wrapped inS Quantize/Dequantize.
+  pipeline->pushBack(FunctionPassID::QuantizeSwish);
+
   // Raise Clips above Shape Nodes (e.g. Reshape) to try to ensure fusion
   // occurs. Note that we do this last as it may counteract some earlier
   // optimizations that push Clips down to try to eliminate them.
@@ -1061,9 +1171,8 @@ NNPIBackend::getOptimizationPipeline() const {
   return pipeline;
 }
 
-/// Helper to lower nodes which need further lowering. \returns whether \p F was
-/// modified.
-static bool lowerRequiredNodes(Function *F, CompilationContext &cctx) {
+bool NNPIBackend::lowerRequiredNodes(Function *F,
+                                     CompilationContext &cctx) const {
   bool changed = false;
   for (auto &N : F->getNodes()) {
     NodeInfo NI(N);
@@ -1111,15 +1220,52 @@ static bool lowerRequiredNodes(Function *F, CompilationContext &cctx) {
       continue;
     }
 
+    case Kinded::Kind::ReshapeNodeKind: {
+      ReshapeNode *RS = llvm::cast<ReshapeNode>(&N);
+      // Handle bool reshape by converting to Float16, reshaping, and
+      // comparing >0
+      if ((RS->getResult().getElementType() == ElemKind::BoolTy) &&
+          (RS->getInput().getElementType() == ElemKind::BoolTy)) {
+        auto rsName = RS->getName().str();
+        auto *inputType = RS->getInput().getType();
+        auto *outputType = RS->getResult().getType();
+        auto *fp16Type =
+            F->getParent()->uniqueType(ElemKind::Float16Ty, inputType->dims());
+        auto *s0 = F->createSplat(rsName + "_s0", fp16Type, 0.0f);
+        auto *s1 = F->createSplat(rsName + "_s1", fp16Type, 1.0f);
+        auto *sel = F->createSelect(rsName + "_sel", RS->getInput(), s1, s0);
+        auto *fp16ResType =
+            F->getParent()->uniqueType(ElemKind::Float16Ty, outputType->dims());
+        auto *res = F->createReshape(rsName + "_res", sel, fp16ResType->dims());
+        auto *c0 = F->createSplat(rsName + "_c0", fp16ResType, 0.0f);
+        auto *bres = F->createCmpGT(rsName + "_cmpGT", res, c0);
+        RS->getResult().replaceAllUsesOfWith(bres);
+        changed = true;
+      }
+      continue;
+    }
+
     // Explicitly lower clips as they may be introduced during lowering other
     // ops above, e.g. Logit.
     case Kinded::Kind::ClipNodeKind:
+    case Kinded::Kind::SwishNodeKind:
       if (NI.allInputsAndOutputsHaveSameElemKind(
               {ElemKind::Float16Ty, ElemKind::Int8QTy})) {
         continue;
       }
       changed |= lowerNode(F, &N, cctx);
       continue;
+
+    case Kinded::Kind::SparseLengthsSumNodeKind: {
+      const ElemKind k = NI.getOutElemTy(SparseLengthsSumNode::ResultIdx);
+      // WA - lower until ICE-T implements it.
+      if ((NNPIBackend::backendOptions_.useIceT ||
+           NNPIBackend::backendOptions_.inferOnDevice) &&
+          (k == ElemKind::FloatTy || k == ElemKind::Int8QTy)) {
+        changed |= lowerNode(F, &N, cctx);
+      }
+      continue;
+    }
 
     default:
       continue;
@@ -1207,6 +1353,15 @@ Expected<bool> NNPIBackend::transformPostLowering(
     Function *F, CompilationContext &cctx,
     const glow::runtime::DeviceInfo *devInfo) const {
   LOG_SCOPE(F->getLogContext(), "NNPIBackend::transformPostLowering");
+
+  // Signal to ConstantFolding to materialize those Splats which we require to
+  // be Constants when importing later on.
+  auto &kindSet = cctx.optimizationOpts.materializeSplatsUsedBySet;
+  kindSet.insert(Kinded::Kind::ConvolutionNodeKind);
+  kindSet.insert(Kinded::Kind::Convolution3DNodeKind);
+  kindSet.insert(Kinded::Kind::FullyConnectedNodeKind);
+  kindSet.insert(Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind);
+  kindSet.insert(Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind);
 
   if (glow::onnxifi::GlowDisableNNPITransforms) {
     return false;

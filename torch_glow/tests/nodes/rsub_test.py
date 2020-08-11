@@ -1,9 +1,9 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-
-from tests.utils import jitVsGlow
 import unittest
+
+import torch
+from tests.utils import jitVsGlow
 
 
 class TestRsub(unittest.TestCase):
@@ -17,7 +17,7 @@ class TestRsub(unittest.TestCase):
         x = torch.randn(4)
         y = torch.randn(4)
 
-        jitVsGlow(test_f, x, y,  expected_fused_ops={"aten::rsub"})
+        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::rsub"})
 
     def test_rsub_broadcast_1(self):
         """Test of the PyTorch rsub Node on Glow with broadcasting."""

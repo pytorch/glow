@@ -724,11 +724,10 @@ static void assertConvTransposeDims(NodeValue input, NodeValue filter,
   ShapeNHWC filterDims(filter.dims());
   (void)filterDims;
 
-  assert(filterDims.n % group == 0 && filterDims.h == kdim.height &&
-         filterDims.w == kdim.width && filterDims.c == idim.c / group &&
-         "Invalid filter dims");
+  assert(filterDims.h == kdim.height && filterDims.w == kdim.width &&
+         filterDims.c == idim.c && "Invalid filter dims");
 
-  assert(bias.getType()->size() == filterDims.n && "Invalid bias size");
+  assert(bias.getType()->size() == filterDims.n * group && "Invalid bias size");
 }
 
 /// Check that the dimensions that are passed in when the convolution is
@@ -1200,8 +1199,12 @@ SigmoidNode *Function::createSigmoid(llvm::StringRef name, NodeValue input) {
   return createSigmoid(name, input.getType(), input);
 }
 
-SwishNode *Function::createSwish(llvm::StringRef name, NodeValue input) {
-  return addNode(new SwishNode(name, input.getType(), input));
+SwishNode *Function::createSwish(llvm::StringRef name, NodeValue input,
+                                 TypeRef OT) {
+  if (!OT) {
+    OT = getParent()->uniqueType(*input.getType());
+  }
+  return addNode(new SwishNode(name, OT, input));
 }
 
 TanhNode *Function::createTanh(llvm::StringRef name, TypeRef outTy,
@@ -1660,6 +1663,7 @@ NotNode *Function::createNot(llvm::StringRef name, NodeValue input) {
 UNARY_ARITHMETIC_FUN_DEF(Abs)
 UNARY_ARITHMETIC_FUN_DEF(Neg)
 UNARY_ARITHMETIC_FUN_DEF(Floor)
+UNARY_ARITHMETIC_FUN_DEF(Sign)
 UNARY_ARITHMETIC_FUN_DEF(Ceil)
 UNARY_ARITHMETIC_FUN_DEF(Round)
 UNARY_ARITHMETIC_FUN_DEF(Sqrt)
@@ -1688,27 +1692,26 @@ ARITHMETIC_FUN_DEF(Div);
 ARITHMETIC_FUN_DEF(Max);
 ARITHMETIC_FUN_DEF(Min);
 ARITHMETIC_FUN_DEF(Pow);
+ARITHMETIC_FUN_DEF(And);
+ARITHMETIC_FUN_DEF(Or);
+ARITHMETIC_FUN_DEF(Xor);
 #undef ARITHMETIC_FUN_DEF
 
-AndNode *Function::createAnd(llvm::StringRef name, NodeValue LHS,
-                             NodeValue RHS) {
-  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
-  TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
-  return addNode(new AndNode(name, OT, LHS, RHS));
-}
+#define TRIGONOMETRIC_FUN_DEF(NODE_NAME_)                                      \
+  NODE_NAME_##Node *Function::create##NODE_NAME_(llvm::StringRef name,         \
+                                                 NodeValue input) {            \
+    return create##NODE_NAME_(name, input.getType(), input);                   \
+  }                                                                            \
+  NODE_NAME_##Node *Function::create##NODE_NAME_(llvm::StringRef name,         \
+                                                 TypeRef T, NodeValue input) { \
+    TypeRef OT = getParent()->uniqueType(*T);                                  \
+    return addNode(new NODE_NAME_##Node(name, OT, input));                     \
+  }
 
-OrNode *Function::createOr(llvm::StringRef name, NodeValue LHS, NodeValue RHS) {
-  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
-  TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
-  return addNode(new OrNode(name, OT, LHS, RHS));
-}
-
-XorNode *Function::createXor(llvm::StringRef name, NodeValue LHS,
-                             NodeValue RHS) {
-  assert(LHS.dims() == RHS.dims() && "Invalid operand shapes");
-  TypeRef OT = getParent()->uniqueType(ElemKind::BoolTy, LHS.dims());
-  return addNode(new XorNode(name, OT, LHS, RHS));
-}
+TRIGONOMETRIC_FUN_DEF(Acos)
+TRIGONOMETRIC_FUN_DEF(Asin)
+TRIGONOMETRIC_FUN_DEF(Atan)
+#undef TRIGONOMETRIC_FUN_DEF
 
 CmpLTENode *Function::createCmpLTE(llvm::StringRef name, NodeValue LHS,
                                    NodeValue RHS) {
@@ -1940,6 +1943,15 @@ Function::createBatchedReduceMin(llvm::StringRef name, NodeValue batch,
   return addNode(new BatchedReduceMinNode(name, OT, batch, axes));
 }
 
+BatchedReduceMaxNode *
+Function::createBatchedReduceMax(llvm::StringRef name, NodeValue batch,
+                                 llvm::ArrayRef<unsigned_t> axes) {
+  // Create new shape with specified dimensions either reduced or removed.
+  auto outDims = getNewShapeWithoutAxes(batch.dims(), axes);
+  auto OT = getParent()->uniqueType(batch.getType()->getElementType(), outDims);
+  return addNode(new BatchedReduceMaxNode(name, OT, batch, axes));
+}
+
 BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name,
                                            NodeValue batch, NodeValue slice) {
   return addNode(new BatchedAddNode(name, batch.getType(), batch, slice));
@@ -1998,7 +2010,7 @@ SparseLengthsWeightedSumNode *Function::createSparseLengthsWeightedSum(
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsWeightedSum(
-    llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
+    llvm::StringRef name, Storage *data, NodeValue scales, NodeValue offsets,
     NodeValue weights, NodeValue indices, NodeValue lengths, ElemKind precision,
     bool useFP16Accumulation, LengthsMode lengthsMode, float avgLength) {
   auto inDims = data->dims();
@@ -2012,7 +2024,7 @@ Function::createRowwiseQuantizedSparseLengthsWeightedSum(
 
 RowwiseQuantizedSparseLengthsWeightedSumNode *
 Function::createRowwiseQuantizedSparseLengthsSum(
-    llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
+    llvm::StringRef name, Storage *data, NodeValue scales, NodeValue offsets,
     NodeValue indices, NodeValue lengths, ElemKind precision,
     bool useFP16Accumulation, LengthsMode lengthsMode, float avgLength) {
   auto ty = getParent()->uniqueType(precision, {indices.dims()[0]});
@@ -2618,6 +2630,13 @@ QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
 
   return addNode(
       new QuantizeNode(name, getParent()->uniqueType(*outTy), input));
+}
+
+QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
+                                       ElemKind q, float scale,
+                                       int32_t offset) {
+  TypeRef OT = getParent()->uniqueType(q, input.dims(), scale, offset);
+  return createQuantize(name, input, OT);
 }
 
 DequantizeNode *Function::createDequantize(llvm::StringRef name,
@@ -4785,6 +4804,42 @@ MFCCNode *Function::createMFCC(llvm::StringRef name, NodeValue spectrogram,
                               numCoefficients));
 }
 
+ROIAlignNode *
+Function::createROIAlign(llvm::StringRef name, NodeValue featureMap,
+                         NodeValue boxes, NodeValue batchIndices,
+                         std::string mode, uint32_t outputHeight,
+                         uint32_t outputWidth, uint32_t samplingRatio,
+                         float spatialScale, float offset, bool normalized) {
+  auto featureMapDims = featureMap.dims();
+  auto boxesDims = boxes.dims();
+  std::vector<dim_t> outDim = {boxesDims[0], outputHeight, outputWidth,
+                               featureMapDims[3]};
+  auto outTy =
+      getParent()->uniqueTypeWithNewShape(featureMap.getType(), outDim);
+  return addNode(new ROIAlignNode(
+      name, outTy, featureMap, boxes, batchIndices, mode, outputHeight,
+      outputHeight, samplingRatio, spatialScale, offset, normalized));
+}
+
+BBoxTransformNode *Function::createBBoxTransform(
+    llvm::StringRef name, NodeValue rois, NodeValue deltas, NodeValue imInfo,
+    llvm::ArrayRef<float> weights, bool applyScale, bool rotated,
+    bool angleBoundOn, int64_t angleBoundLo, int64_t angleBoundHi,
+    float clipAngleThresh, bool legacyPlusOne) {
+  auto deltasDims = deltas.dims();
+  auto imInfoDims = imInfo.dims();
+
+  auto boxOutTy = getParent()->uniqueTypeWithNewShape(
+      rois.getType(), {deltasDims[0], deltasDims[1]});
+  auto roiBatchSplitsTy =
+      getParent()->uniqueType(rois.getElementType(), {imInfoDims[0]});
+
+  return addNode(new BBoxTransformNode(
+      name, boxOutTy, roiBatchSplitsTy, rois, deltas, imInfo, weights,
+      applyScale, rotated, angleBoundOn, angleBoundLo, angleBoundHi,
+      clipAngleThresh, legacyPlusOne));
+}
+
 //===----------------------------------------------------------------------===//
 //                   Graph dumping and printing
 //===----------------------------------------------------------------------===//
@@ -4876,8 +4931,13 @@ class FunctionDottyPrinter : public AbstractDottyPrinter {
 
 public:
   void visitGraph(Function *F) {
-    for (auto &N : F->getNodes()) {
-      visitNode(&N);
+    // Sort nodes before printing the dot so we can diff dot files.
+    std::set<Node *, SortNamed> sorted;
+    for (Node &N : F->getNodes()) {
+      sorted.insert(&N);
+    }
+    for (auto *N : sorted) {
+      visitNode(N);
     }
   }
 };
@@ -4891,15 +4951,21 @@ std::string Function::dumpDAG() {
 }
 
 void Function::dumpDAG(llvm::StringRef dotFilename) {
-  llvm::outs() << "Writing dotty graph for Function to: " << dotFilename
+  llvm::StringRef legalDotFilename = dotFilename.take_back(255);
+  llvm::outs() << "Writing dotty graph for Function to: " << legalDotFilename
                << '\n';
+  if (dotFilename.size() > 255) {
+    llvm::outs() << "WARNING: Filename " << dotFilename
+                 << " is longer than 255 characters, and so was truncated to "
+                 << legalDotFilename << '\n';
+  }
 
   FunctionDottyPrinter DP;
 
   DP.visitGraph(this);
 
   std::ofstream myfile;
-  myfile.open(dotFilename);
+  myfile.open(legalDotFilename);
   DP.dumpAll(myfile);
   myfile.close();
 }

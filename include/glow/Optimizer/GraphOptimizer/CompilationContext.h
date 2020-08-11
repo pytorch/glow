@@ -28,6 +28,12 @@ struct PrePartitionedConfig;
 class DeferredWeightLoader;
 } // namespace runtime
 
+/// Map from Placeholders to their original name and index in the proto that
+/// loaded them. Used to keep around info from when we import a proto to then
+/// exporting it later on.
+using LoadedPlaceholderNameMap =
+    std::unordered_map<const Placeholder *, std::pair<std::string, unsigned>>;
+
 /// Configuration for different precision modes.
 struct PrecisionConfiguration {
   /// Enum for what kind of transformation should be done for Quantization.
@@ -109,6 +115,11 @@ struct OptimizationOptions {
   /// If true, perform compile-time computation of constant operations.
   bool enableConstantFolding{true};
 
+  /// For all Splats in the Function being optimized, if they are used by any
+  /// Nodes listed in this set, then they will be materialized into Constants
+  /// during Constant Folding.
+  KindSet materializeSplatsUsedBySet;
+
   /// If true, before any Function optimization, all the Constants will be
   /// temporarily replaced by Placeholders, preventing the Constants from being
   /// modified during the normal optimization pipeline. The original Constants
@@ -179,10 +190,17 @@ struct OptimizationOptions {
   bool enableTypeDemotion{true};
 
   /// If true, optimizations are allowed to change quantization scale/offset.
-  bool enableQuantParamChanges{false};
+  bool enableQuantParamChanges{true};
 
   /// If true, ConcatNodes will not be merged during the optimizer.
   bool skipConcatMerging{false};
+
+  /// Default ctor.
+  OptimizationOptions() {
+    // By default, always materialize Splats used by ConvolutionNodes, as
+    // optimizations such as BatchNorm fusion depend on it.
+    materializeSplatsUsedBySet.insert(Kinded::Kind::ConvolutionNodeKind);
+  }
 };
 
 /// Meta information produced during the compilation. Whereas the compile
@@ -212,6 +230,10 @@ struct CompilationContext {
 
   /// Used during Quantization and Profiling.
   LoweredInfoMap *loweredInfoMap{nullptr};
+
+  /// Set up during model loading to map from Placeholders in the Module to the
+  /// symbolic name they were loaded with from the input model.
+  LoadedPlaceholderNameMap loadedPHNames;
 
   /// Select whether in Training or Inference mode.
   enum class CompilationMode {

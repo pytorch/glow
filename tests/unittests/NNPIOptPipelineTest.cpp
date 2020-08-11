@@ -54,6 +54,22 @@ protected:
   }
 };
 
+/// Test that when we rely on the optimization pipeline to do lowering based on
+/// precision that the resulting ops are using the precision we expect. Note
+/// that this test is not intended to run, just to compile to examine the output
+/// Function, and thus \ref checkNumericalEquivalence() will fail if called.
+class NNPIOptPipelineTestLowering : public GraphOptz {
+public:
+  NNPIOptPipelineTestLowering() : GraphOptz("NNPI") {}
+
+protected:
+  /// Disabled for this harness.
+  void checkNumericalEquivalence(float allowedError = 0.0001) override {
+    FAIL() << "checkNumericalEquivalence not supported for tests using "
+              "NNPIOptPipelineTestLowering";
+  }
+};
+
 /// Note: This differs from NNPIOptPipelineTest only in that cloneAndCompile()
 /// will clone into unoptimizedF_ instead of optimizedF_. This means that we can
 /// correctly specify per-node opts in backendSpecificNodeInfo based on the
@@ -546,7 +562,7 @@ TEST_F(NNPIOptPipelineTest, NoParallelizationTestAddReluNNPI) {
 
 /// Test FRWQ-SLS is not lowered when we rely on FP16 conversion in the
 /// optimization pipeline.
-TEST_F(NNPIOptPipelineTest, NoLowerSLSFP16) {
+TEST_F(NNPIOptPipelineTestLowering, NoLowerSLSFP16) {
   Tensor data(ElemKind::FloatTy, {3, 2});
   data.getHandle() = {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f};
 
@@ -563,13 +579,10 @@ TEST_F(NNPIOptPipelineTest, NoLowerSLSFP16) {
   cctx_.precisionConfig.convertToFP16 = true;
   cctx_.precisionConfig.convertFusedToFP16 = true;
 
-  cloneAndCompile();
-
-  SaveNode *optSave = getSaveByName(optimizedF_, save->getName());
-  ASSERT_TRUE(optSave);
+  EE_.compile(cctx_);
 
   // Expect one FP16 SLS after optimization (converted back to Float for Save).
-  auto *CN = llvm::dyn_cast<ConvertToNode>(optSave->getInput());
+  auto *CN = llvm::dyn_cast<ConvertToNode>(save->getInput());
   ASSERT_TRUE(CN);
   auto *SLS =
       llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsSumNode>(CN->getInput());
@@ -580,7 +593,7 @@ TEST_F(NNPIOptPipelineTest, NoLowerSLSFP16) {
 
 /// Test Logit is not lowered when we rely on FP16 conversion in the
 /// optimization pipeline.
-TEST_F(NNPIOptPipelineTest, NoLowerLogit) {
+TEST_F(NNPIOptPipelineTestLowering, NoLowerLogit) {
   auto *input = mod_.createPlaceholder(ElemKind::FloatTy, {10}, "input", false);
   auto *tanh = F_->createLogit("logit", input, 1E-6f);
   auto *save = F_->createSave("Save", tanh);
@@ -588,13 +601,10 @@ TEST_F(NNPIOptPipelineTest, NoLowerLogit) {
   cctx_.precisionConfig.convertToFP16 = true;
   cctx_.precisionConfig.convertFusedToFP16 = true;
 
-  cloneAndCompile();
-
-  SaveNode *optSave = getSaveByName(optimizedF_, save->getName());
-  ASSERT_TRUE(optSave);
+  EE_.compile(cctx_);
 
   // Expect one FP16 SLS after optimization (converted back to Float for Save).
-  auto *CN = llvm::dyn_cast<ConvertToNode>(optSave->getInput());
+  auto *CN = llvm::dyn_cast<ConvertToNode>(save->getInput());
   ASSERT_TRUE(CN);
   auto *LN = llvm::dyn_cast<LogitNode>(CN->getInput());
   ASSERT_TRUE(LN);
@@ -606,7 +616,8 @@ TEST_F(NNPIOptPipelineTest, NoLowerLogit) {
 TEST_F(NNPIOptPipelineTest, DataParallelLNClip) {
   auto *input =
       mod_.createPlaceholder(ElemKind::Float16Ty, {1, 1024}, "input", false);
-
+  bindings_.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                              mod_.getPRNG());
   auto *tiled = F_->createTile("tile", input, 32, 0);
   Tensor scaleT(ElemKind::Float16Ty, {1024});
   scaleT.getHandle<float16_t>().randomize(0.0f, 1.0f, mod_.getPRNG());
@@ -629,6 +640,49 @@ TEST_F(NNPIOptPipelineTest, DataParallelLNClip) {
       countNodeKind(optimizedF_, Kinded::Kind::LayerNormalizationNodeKind), 8);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 8);
+  checkNumericalEquivalence(/* allowedError */ 0.00f);
+}
+
+// BatchedReduceAdd Model Parallel reducing dim 0
+TEST_F(NNPIOptPipelineTest, ModelParallelBatchedReduceAdd) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {20, 64, 8}, "input", false);
+  bindings_.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                              mod_.getPRNG());
+
+  auto *reduced = F_->createBatchedReduceAdd("BR", input, {0});
+  F_->createSave("ret", reduced);
+
+  // Should split BatchedReduceAdd by 8
+  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+      std::to_string(8);
+  cloneAndCompile();
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedReduceAddNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::BatchedReduceAddNodeKind),
+            8);
+  checkNumericalEquivalence(/* allowedError */ 0.00f);
+}
+
+// BatchedReduceAdd Model Parallel reducing dim 1
+TEST_F(NNPIOptPipelineTest, DataParallelBatchedReduceAdd) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {64, 20, 8}, "input", false);
+  bindings_.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                              mod_.getPRNG());
+
+  auto *reduced = F_->createBatchedReduceAdd("BR", input, {1});
+  F_->createSave("ret", reduced);
+
+  // Should split BatchedReduceAdd by 8
+  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+      std::to_string(8);
+  cloneAndCompile();
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedReduceAddNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::BatchedReduceAddNodeKind),
+            8);
+  checkNumericalEquivalence(/* allowedError */ 0.00f);
 }
 
 // Quantize -> FC -> DQ
@@ -684,53 +738,35 @@ TEST_F(NNPIOptPipelineTest, BMMClip) {
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::BatchMatMulNodeKind), 8);
 }
 
-static void setupConcatTest(Function *F, Module &mod,
-                            PlaceholderBindings &bindings, size_t numInputs,
-                            unsigned_t dim) {
-  std::vector<NodeValue> inputs;
-  for (size_t i = 0; i < numInputs; i++) {
-    auto *input = mod.createPlaceholder(ElemKind::Float16Ty, {32, 32, 32},
-                                        "input", false);
-    inputs.push_back(input);
-    bindings.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
-                                                               mod.getPRNG());
-  }
-  auto *CN = F->createConcat("merge", inputs, dim);
-  F->createSave("save", CN);
-}
+// Swish
+TEST_F(NNPIOptPipelineTest, Swish) {
+  auto *input0 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {32, 2048}, "input", false);
 
-/// Verify we can parallelize Concats that are concatenated on dimension 1.
-TEST_F(NNPIOptPipelineTest, ConcatSplitDim0) {
-  setupConcatTest(F_, mod_, bindings_, /* numInputs */ 5, /* dim */ 0);
+  auto *S = F_->createSwish("swish", input0);
+  F_->createSave("ret", S);
+
   cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
-      std::to_string(3);
+      std::to_string(8);
   cloneAndCompile();
 
-  // Expect 3 concats after. A 5-input Concat split into 3 have two 2-input
-  // Concats and one 1-input Concat (which is optimized after parallelization
-  // into routing the input to the result). So we expect 2 Concats plus a
-  // Placeholder finally concatenated into a single Concat to merge them all
-  // back together.
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 1);
-  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 3);
-
-  checkNumericalEquivalence(/* allowedError */ 0.f);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SwishNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SwishNodeKind), 8);
 }
 
-/// Verify we can parallelize Concats that are concatenated on dimension 1.
-TEST_F(NNPIOptPipelineTest, ConcatSplitDim1) {
-  setupConcatTest(F_, mod_, bindings_, /* numInputs */ 5, /* dim */ 1);
+// Swish with a small batch. When we try to parallelize beyond the size
+// of the batch, it should fall back to fully split the batch dim
+TEST_F(NNPIOptPipelineTest, SwishSmallBatch) {
+  auto *input0 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {4, 2048}, "input", false);
+
+  auto *S = F_->createSwish("swish", input0);
+  F_->createSave("ret", S);
+
   cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
-      std::to_string(3);
+      std::to_string(8);
   cloneAndCompile();
 
-  // Expect 3 concats after. A 5-input Concat split into 3 have two 2-input
-  // Concats and one 1-input Concat (which is optimized after parallelization
-  // into routing the input to the result). So we expect 2 Concats plus a
-  // Placeholder finally concatenated into a single Concat to merge them all
-  // back together.
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 1);
-  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 3);
-
-  checkNumericalEquivalence(/* allowedError */ 0.f);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SwishNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SwishNodeKind), 4);
 }

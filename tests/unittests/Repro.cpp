@@ -155,6 +155,11 @@ llvm::cl::opt<bool>
                          llvm::cl::Optional, llvm::cl::init(true),
                          llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<bool> enableQuantParamChangesOpt(
+    "glow_enable_quant_param_changes",
+    llvm::cl::desc("Enable quantization param changes during optimizations"),
+    llvm::cl::Optional, llvm::cl::init(true), llvm::cl::cat(reproTestCat));
+
 llvm::cl::opt<bool> enablePartialTensor("glow_enable_partial_tensor",
                                         llvm::cl::desc("Enable partial tensor"),
                                         llvm::cl::Optional,
@@ -442,7 +447,6 @@ public:
 private:
   std::unique_ptr<::glow::ZipReader> zip_;
   std::string largeBuffer_;
-  std::map<std::string, ::glow::Type> typeInfo_;
   std::string currentBlobName_;
   std::unique_ptr<::glow::Tensor> currentTensor_;
   size_t weightsToLoad_{0};
@@ -525,8 +529,10 @@ int run() {
       << "ONNXModelLoader failed to load model: " << modelPathOpt;
   llvm::outs() << "End onnx model load\n";
 
-  for (Function *F : mod->getFunctions()) {
-    F->dumpDAG(F->getName().str() + ".dot");
+  if (glowDumpGraphAfterLoadOpt) {
+    for (Function *F : mod->getFunctions()) {
+      F->dumpDAG(F->getName().str() + ".dot");
+    }
   }
 
   // Build host manager and compile the module.
@@ -562,6 +568,10 @@ int run() {
   if (forceFP16AccumSLSOpt) {
     precConfig.forceFP16AccumSLS = true;
     llvm::outs() << "Forcing fp16 accumulation for SLS ops enabled\n";
+  }
+  if (!enableQuantParamChangesOpt) {
+    cctx.optimizationOpts.enableQuantParamChanges = false;
+    LOG(INFO) << "Disabling quantization param changes during optimizations";
   }
   if (glowDumpGraphOpt) {
     cctx.dumpFinalGraph = true;

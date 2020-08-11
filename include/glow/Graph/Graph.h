@@ -731,8 +731,10 @@ public:
   SigmoidNode *createSigmoid(llvm::StringRef name, NodeValue input);
 
   /// Create a Swish node with the given \p name and \p input.
-  /// Result type will be implicitly set based on the \p input type.
-  SwishNode *createSwish(llvm::StringRef name, NodeValue input);
+  /// If \p OT is nullptr, then result type will be implicitly set based on the
+  /// \p input type.
+  SwishNode *createSwish(llvm::StringRef name, NodeValue input,
+                         TypeRef OT = nullptr);
 
   /// Create a Tanh node with the given \p name, \p input and
   /// output type \p outTy.
@@ -924,6 +926,7 @@ public:
   UNARY_ARITHMETIC_FUN_DECL(Abs)
   UNARY_ARITHMETIC_FUN_DECL(Neg)
   UNARY_ARITHMETIC_FUN_DECL(Floor)
+  UNARY_ARITHMETIC_FUN_DECL(Sign)
   UNARY_ARITHMETIC_FUN_DECL(Ceil)
   UNARY_ARITHMETIC_FUN_DECL(Round)
   UNARY_ARITHMETIC_FUN_DECL(Sqrt)
@@ -954,6 +957,15 @@ public:
   ARITHMETIC_FUN_DECL(Pow);
 #undef ARITHMETIC_FUN_DECL
 
+#define TRIGONOMETRIC_FUN_DECL(NODE_NAME_)                                     \
+  NODE_NAME_##Node *create##NODE_NAME_(llvm::StringRef name, NodeValue input); \
+  NODE_NAME_##Node *create##NODE_NAME_(llvm::StringRef name, TypeRef Ty,       \
+                                       NodeValue input);
+  TRIGONOMETRIC_FUN_DECL(Acos)
+  TRIGONOMETRIC_FUN_DECL(Asin)
+  TRIGONOMETRIC_FUN_DECL(Atan)
+#undef TRIGONOMETRIC_FUN_DECL
+
   std::vector<NodeValue>
   broadcastInputs(int axis, const llvm::ArrayRef<NodeValue> inputs);
 
@@ -982,6 +994,21 @@ public:
   DECLARE_BROADCAST_NODE(Div, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Add, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Sub, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(And, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(Xor, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(Or, /* NUM_INPUTS */ 2)
+
+#define DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(NODE_NAME, NUM_INPUTS,            \
+                                             OUTTYPEREF)                       \
+  template <class T, class... Args>                                            \
+  typename enable_if_same_t<T, NODE_NAME##Node>::type *                        \
+  createNodeWithBroadcastOutTy(const std::string &name, int axis,              \
+                               TypeRef OUTTYPEREF, Args &&... inputArgs) {     \
+    BROADCAST_FUNC_COMMON_CODE(NUM_INPUTS)                                     \
+    return create##NODE_NAME(name, OUTTYPEREF, inputs[0], inputs[1]);          \
+  }
+
+  DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Add, /* NUM_INPUTS */ 2, outTy)
 
 #define DECLARE_CMP_BROADCAST_NODE(NODE_NAME)                                  \
   template <class T, class... Args>                                            \
@@ -1015,6 +1042,7 @@ public:
 
 #undef BROADCAST_FUNC_COMMON_CODE
 #undef DECLARE_BROADCAST_NODE
+#undef DECLARE_BROADCAST_NODE_WITH_OUT_TYPE
 #undef DECLARE_CMP_BROADCAST_NODE
 #undef BROADCAST_FUNC_COMMON_CODE
 
@@ -1093,6 +1121,13 @@ public:
   /// based on the input \p batch type with dimensions specified with \p axes
   /// removed.
   BatchedReduceMinNode *createBatchedReduceMin(llvm::StringRef name,
+                                               NodeValue batch,
+                                               llvm::ArrayRef<unsigned_t> axes);
+
+  /// Create a node, performing BatchedReduceMax operation. Output type is
+  /// based on the input \p batch type with dimensions specified with \p axes
+  /// removed.
+  BatchedReduceMaxNode *createBatchedReduceMax(llvm::StringRef name,
                                                NodeValue batch,
                                                llvm::ArrayRef<unsigned_t> axes);
 
@@ -1204,7 +1239,7 @@ public:
   /// use a specialized implementation.
   RowwiseQuantizedSparseLengthsWeightedSumNode *
   createRowwiseQuantizedSparseLengthsSum(
-      llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
+      llvm::StringRef name, Storage *data, NodeValue scales, NodeValue offsets,
       NodeValue indices, NodeValue lengths,
       ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false,
       LengthsMode lengthsMode = LengthsMode::Variable, float avgLength = NAN);
@@ -1222,7 +1257,7 @@ public:
   /// multiplied by weights[i]. len(weights) must be equal to len(indices).
   RowwiseQuantizedSparseLengthsWeightedSumNode *
   createRowwiseQuantizedSparseLengthsWeightedSum(
-      llvm::StringRef name, Storage *data, Constant *scales, Constant *offsets,
+      llvm::StringRef name, Storage *data, NodeValue scales, NodeValue offsets,
       NodeValue weights, NodeValue indices, NodeValue lengths,
       ElemKind precision = ElemKind::FloatTy, bool useFP16Accumulation = false,
       LengthsMode lengthsMode = LengthsMode::Variable, float avgLength = NAN);
@@ -1456,6 +1491,11 @@ public:
   /// part of the \p outTy.
   QuantizeNode *createQuantize(llvm::StringRef name, NodeValue input,
                                TypeRef outTy);
+
+  /// Create quantization node which transforms floating point tensor to a
+  /// quantized one of kind \p q with given \p scale and \p offset.
+  QuantizeNode *createQuantize(llvm::StringRef name, NodeValue input,
+                               ElemKind q, float scale, int32_t offset);
 
   /// Create dequantization node which transforms quantized tensor to a
   /// floating point one with given Scale and Offset. Scale and Offset params
@@ -1966,6 +2006,67 @@ public:
                        float sampleRate, float lowerFrequency,
                        float upperFrequency, int64_t filterBankCount,
                        int64_t numCoefficients);
+
+  /// Peformas the ROIAlign operation given the \p featureMap and the \p boxes.
+  /// ROIAlign is similar to crop and resize followed by pooling. The
+  /// co-ordinates to extract the crops are specified in \p boxes. Each cropped
+  /// image has to be resized to have the shape specified by \p outputHeight and
+  /// \p outputWidth. The \p samplingRatio specifies the number of samples to
+  /// take from each bin (along both the dimensions) for the purpose of pooling.
+  /// This node is inspired from onnx
+  /// (https://github.com/onnx/onnx/blob/master/docs/Operators.md#RoiAlign).
+  ROIAlignNode *createROIAlign(llvm::StringRef name, NodeValue featureMap,
+                               NodeValue boxes, NodeValue batchIndices,
+                               std::string mode, uint32_t outputHeight,
+                               uint32_t outputWidth, uint32_t samplingRatio,
+                               float spatialScale, float offset,
+                               bool normalized);
+
+  /// Transform proposal bounding boxes to target bounding box using bounding
+  /// box regression deltas.
+  /// Inputs:
+  /// \p rois - Bounding box proposals in pixel coordinates.
+  ///   Size (M, 4), format [x1, y1, x2, y2], or
+  ///   Size (M, 5), format [batch_index, x1, y1, x2, y2].
+  ///   If proposals from multiple images in a batch are present, they
+  ///   should be grouped sequentially and in incremental order.
+  ///   For rotated boxes, this would have an additional angle (in degrees)
+  ///   in the format [<optionaal_batch_id>, ctr_x, ctr_y, w, h, angle].
+  /// \p deltas - bounding box translations and scales,
+  ///   size (M, 4*K), format [dx, dy, dw, dh], K = # classes.
+  ///   For rotated boxes, size (M, 5*K, format [dx, dy, dw, dh, da].)
+  /// \p imInfo - Image dimensions, size (batch_size, 3),
+  ///   format [img_height, img_width, img_scale]
+  /// Arguments:
+  /// \p weights - vector<float> weights [wx, wy, ww, wh] for the deltas
+  /// \p applyScale - transform the boxes to the scaled image space after
+  /// applying the bbox deltas. Set to false to match the detectron code, set to
+  /// true for keypoint models and for backward compatibility rotated - If true,
+  /// then boxes (rois and deltas) include angle info to handle rotation. The
+  /// format will be [ctr_x, ctr_y, width, height, angle (in degrees)].
+  /// \p angleBoundOn - If set, for rotated boxes, angle is normalized to be
+  /// within [angle_bound_lo, angle_bound_hi].
+  /// \p angleBoundLo - If set, for rotated boxes, angle is normalized to be
+  /// within [angle_bound_lo, angle_bound_hi].
+  /// \p angleBoundHi - If set, for rotated boxes, angle is normalized to be
+  /// within [angle_bound_lo, angle_bound_hi].
+  /// \p clipAngleThresh - For RRPN, clip almost horizontal boxes within this
+  /// threshold of tolerance for backward compatibility. Set to negative value
+  /// for no clipping.
+  /// Outputs:
+  /// boxOut - Pixel coordinates of the transformed bounding boxes,
+  /// Size (M, 4*K), format [x1, y1, x2, y2]. For rotated boxes, size (M, 5*K),
+  /// format [ctr_x, ctr_y, w, h, angle].
+  /// roiBatchSplits - Tensor of shape (batch_size) with each element
+  /// denoting the number of RoIs belonging to the corresponding image in batch
+  /// See definition:
+  /// https://github.com/pytorch/pytorch/blob/master/caffe2/operators/bbox_transform_op.cc#L10
+  BBoxTransformNode *
+  createBBoxTransform(llvm::StringRef name, NodeValue rois, NodeValue deltas,
+                      NodeValue imInfo, llvm::ArrayRef<float> weights,
+                      bool applyScale, bool rotated, bool angleBoundOn,
+                      int64_t angleBoundLo, int64_t angleBoundHi,
+                      float clipAngleThresh, bool legacyPlusOne);
 
   /// Erase the node \p N from the Function.
   void eraseNode(Node *N);

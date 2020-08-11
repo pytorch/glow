@@ -1,9 +1,9 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-
-from tests.utils import jitVsGlow
 import unittest
+
+import torch
+from tests.utils import jitVsGlow
 
 
 class TestAddMM(unittest.TestCase):
@@ -17,8 +17,7 @@ class TestAddMM(unittest.TestCase):
         y = torch.randn(6, 10)
         z = torch.randn(10, 4)
 
-        jitVsGlow(test_f, x, y, z, expected_fused_ops={
-                  "aten::add", "aten::mm"})
+        jitVsGlow(test_f, x, y, z, expected_fused_ops={"aten::add", "aten::mm"})
 
     def test_addmm_broadcast(self):
         """Test of the PyTorch addmm with broadcasting add on Glow."""
@@ -30,8 +29,7 @@ class TestAddMM(unittest.TestCase):
         y = torch.randn(6, 10)
         z = torch.randn(10, 4)
 
-        jitVsGlow(test_f, x, y, z, expected_fused_ops={
-                  "aten::add", "aten::mm"})
+        jitVsGlow(test_f, x, y, z, expected_fused_ops={"aten::add", "aten::mm"})
 
     def test_addmm_broadcast_with_alpha_and_beta(self):
         """Test of the PyTorch addmm with broadcasting add on Glow."""

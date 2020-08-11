@@ -38,7 +38,9 @@ bool GlowSaturateHost = false;
 bool GlowFP16 = false;
 bool GlowFP16Placeholders = true;
 bool GlowFP16Constants = true;
+bool GlowEnableQuantParamChanges = true;
 bool GlowDumpGraph = false;
+bool GlowDumpInitialLoadedGraph = false;
 bool GlowUseDAGOptimizer = false;
 std::string GlowDAGOptimizerPlacementTaggingAlgorithm = "None";
 std::string GlowDAGOptimizerParallelizationTaggingAlgorithm = "None";
@@ -156,12 +158,11 @@ void HostManagerBackend::runNetwork(const Graph *graph,
                            std::move(callback), priority);
 }
 
-onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
-                                          void *deferredBlobReader,
-                                          runtime::PrePartitionedConfig *PPC) {
-  CompilationContext cctx;
+onnxStatus HostManagerBackend::addNetwork(
+    std::unique_ptr<Module> module, void *deferredBlobReader,
+    CompilationContext &cctx,
+    std::map<std::string, Type> &&staticPlaceholderTypes) {
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
-  cctx.prepartitionedConfig = PPC;
   cctx.maxActiveRequestsPerInstance = GlowMaxActiveRequestsPerInstance;
 
   if (deferredBlobReader) {
@@ -173,10 +174,11 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
     }
 
     // Generate a map of type date for all static placeholders.
-    std::map<std::string, Type> staticPlaceholderTypes;
-    for (auto PH : module->getPlaceholders()) {
-      if (PH->isStatic()) {
-        staticPlaceholderTypes[std::string(PH->getName())] = *PH->getType();
+    if (staticPlaceholderTypes.size() == 0) {
+      for (auto *PH : module->getPlaceholders()) {
+        if (PH->isStatic()) {
+          staticPlaceholderTypes[std::string(PH->getName())] = *PH->getType();
+        }
       }
     }
     loader->setTypeInfo(std::move(staticPlaceholderTypes));
@@ -218,6 +220,10 @@ onnxStatus HostManagerBackend::addNetwork(std::unique_ptr<Module> module,
   if (GlowForceSLSAccumFP16) {
     precConfig.forceFP16AccumSLS = GlowForceSLSAccumFP16;
     LOG(INFO) << "Forcing all SLS/SLWS ops to use FP16 accumulation enabled";
+  }
+  if (!GlowEnableQuantParamChanges) {
+    cctx.optimizationOpts.enableQuantParamChanges = false;
+    LOG(INFO) << "Disabling quantization param changes during optimizations";
   }
   if (GlowDumpCompilationLog) {
     cctx.compilationLogPrefix = "glow-onnxifi";
@@ -292,13 +298,18 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   netName_ = strFormat("onnxifi_function_%lu", makeUniqueGraphId());
 
   std::unique_ptr<Module> module = glow::make_unique<Module>();
+  CompilationContext cctx;
   runtime::PrePartitionedConfig PPC;
+  cctx.prepartitionedConfig = &PPC;
+  std::map<std::string, Type> staticPlaceholderTypes;
 
   std::unique_ptr<ONNXIFIModelLoader> loader;
   auto loaderOrErr = ONNXIFIModelLoader::parse(
       onnxModel, onnxModelSize, weightCount, weightDescriptors, *module,
-      netName_, &PPC, true /*loadInputsAsPlaceholdersForOnnx*/,
-      backendPtr_->getUseOnnx());
+      netName_, &PPC, &cctx.backendOpts.backendSpecificNodeInfo,
+      &staticPlaceholderTypes, true /*loadInputsAsPlaceholdersForOnnx*/,
+      backendPtr_->getUseOnnx(),
+      /* constFoldInLoader */ false);
   if (loaderOrErr) {
     loader = std::move(*loaderOrErr);
   } else {
@@ -307,7 +318,9 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
     return ONNXIFI_STATUS_INVALID_MODEL;
   }
 
-  bindPlaceholders(*loader);
+  if (!bindPlaceholders(*loader, &cctx.loadedPHNames)) {
+    return ONNXIFI_STATUS_INVALID_MODEL;
+  }
   setZeroLengthSequence(maxSeqLength);
   // Make sure the pool is ready to go.
   for (auto &obj : onnxInputToPlaceholder_) {
@@ -320,8 +333,17 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
     }
   }
 
+  if (GlowDumpInitialLoadedGraph) {
+    for (Function *F : module->getFunctions()) {
+      auto fname = strFormat("initial_graph__%s.dot", F->getName().data());
+      LOG(INFO) << "Dumping initially loaded graph to " << fname;
+      F->dumpDAG(fname);
+    }
+  }
+
   return static_cast<HostManagerBackend *>(backendPtr_)
-      ->addNetwork(std::move(module), deferedBlobReader, &PPC);
+      ->addNetwork(std::move(module), deferedBlobReader, cctx,
+                   std::move(staticPlaceholderTypes));
 }
 
 namespace {
@@ -361,22 +383,22 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
              std::unique_ptr<ExecutionContext> ctx) mutable {
         TRACE_EVENT_SCOPE(ctx->getTraceContext(), TraceLevel::RUNTIME,
                           "Onnxifi::callback");
-        // If an Error occurred then log it in ERR_TO_BOOL and signal the output
-        // event.
-        if (ERR_TO_BOOL(std::move(err))) {
+
+        if (err) {
+          outputEvent->setMessage(ERR_TO_STRING(std::move(err)));
           outputEvent->signal(ONNXIFI_STATUS_INTERNAL_ERROR);
           return;
         }
 
-        // End the current trace event before we convert TraceEvents to the ONNX
-        // format.
+        // End the current trace event before we convert TraceEvents to the
+        // ONNX format.
         TRACE_EVENT_SCOPE_END();
 
         auto *traceContext = ctx->getTraceContext();
         if (traceContext) {
           // We want to log the async start event with the original caller's
-          // threadId. This way, chrome UI will put the async event next to the
-          // caller thread.
+          // threadId. This way, chrome UI will put the async event next to
+          // the caller thread.
           traceContext->logTraceEvent("glow e2e", TraceLevel::RUNTIME,
                                       TraceEvent::BeginType, startTime,
                                       attributes, threadId, runId);

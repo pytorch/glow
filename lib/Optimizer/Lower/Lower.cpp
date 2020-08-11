@@ -23,6 +23,7 @@
 #include "glow/Graph/TensorLayout.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
+#include "glow/Quantization/Quantization.h"
 
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
@@ -318,6 +319,35 @@ static void lowerTanhGradNode(Function *F, CompilationContext &cctx,
                             THG.getGradOfOriginalOutputNamedResult());
   replaceAllUsesOfWith(cctx.loweredInfoMap, THG.getGradOfInputNamedInput(),
                        grad);
+}
+
+static void lowerSigmoidNode(Function *F, CompilationContext &cctx,
+                             const SigmoidNode &SN) {
+  LOG_SCOPE(F->getLogContext(), "lowerSigmoidNode")
+
+  if (SN.getInput().getType()->isQuantizedType()) {
+    NodeValue newReplacement =
+        quantization::replaceQuantizedSigmoidWithLookupTable(*F, SN);
+    if (cctx.loweredInfoMap) {
+      (*cctx.loweredInfoMap)[newReplacement.generateNodeOutputName()].insert(
+          NodeNameAndKind(SN.getName(), SigmoidNode::ResultIdx, SN.getKind()));
+    }
+  }
+}
+
+static void lowerAdaptiveAvgPoolNode(Function *F, CompilationContext &cctx,
+                                     const AdaptiveAvgPoolNode &AAP) {
+  LOG_SCOPE(F->getLogContext(), "lowerAdaptiveAvgPoolNode");
+  auto inDims = ShapeNHWC(AAP.getInput().getType()->dims());
+  auto outDims = ShapeNHWC(AAP.getResult().getType()->dims());
+  // If output is 1x1 (entire IFM is averaged) we can use the more simple
+  // AvgPool.
+  if (outDims.h == 1 && outDims.w == 1) {
+    auto *AP = F->createAvgPool(AAP.getName(), AAP.getInput(),
+                                {unsigned_t(inDims.h), unsigned_t(inDims.w)},
+                                /*strides*/ {1, 1}, /*pads*/ {0, 0, 0, 0});
+    replaceAllUsesOfWith(cctx.loweredInfoMap, AAP.getResult(), AP->getResult());
+  }
 }
 
 static void lowerSigmoidGradNode(Function *F, CompilationContext &cctx,
@@ -1436,8 +1466,20 @@ static void lowerSwishNode(Function *F, CompilationContext &cctx,
                            const SwishNode &S) {
   LOG_SCOPE(F->getLogContext(), "lowerSwishNode")
 
-  SigmoidNode *sig = F->createSigmoid(S.getName().str() + "_sig", S.getInput());
-  MulNode *mul = F->createMul(S.getName().str() + "_mul", sig, S.getInput());
+  TypeRef sigOT = nullptr;
+  if (S.getInput().getType()->isQuantizedType()) {
+    // Make sure output is clipped in [0.0, 1.0] floating point range.
+    auto sigQP = glow::quantization::chooseQuantizationParams({0.0, 1.0});
+    sigOT = F->getParent()->uniqueType(ElemKind::Int8QTy, S.getResult().dims(),
+                                       sigQP.scale, sigQP.offset);
+  } else {
+    sigOT = S.getInput().getType();
+  }
+
+  SigmoidNode *sig =
+      F->createSigmoid(S.getName().str() + "_sig", sigOT, S.getInput());
+  MulNode *mul = F->createMul(S.getName().str() + "_mul",
+                              S.getResult().getType(), sig, S.getInput());
   replaceAllUsesOfWith(cctx.loweredInfoMap, S.getResult(), mul->getResult());
 }
 
@@ -1524,6 +1566,8 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(Convolution3D);
     CASE_LOWER(Swish);
     CASE_LOWER(Logit);
+    CASE_LOWER(Sigmoid);
+    CASE_LOWER(AdaptiveAvgPool);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
     if (CN->getGroup() > 1 && CN->hasFusedActivation()) {

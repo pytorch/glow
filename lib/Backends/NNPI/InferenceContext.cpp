@@ -295,8 +295,6 @@ bool InferenceContext::init(
 
   // Preallocate enough configs to be used for partials later on.
   cmdConfigs_.resize(commands.size());
-  // Preallocate enough errors to be used later durin inference.
-  cmdListErrors_.resize(commands.size());
 
   if (deviceOptions_->dumpRuntime) {
     dumpRuntime();

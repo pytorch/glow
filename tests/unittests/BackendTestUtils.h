@@ -154,7 +154,7 @@ public:
   }
 
 protected:
-  void checkNumericalEquivalence(float allowedError = 0.0001) {
+  virtual void checkNumericalEquivalence(float allowedError = 0.0001) {
     // Check that the function and its optimized complement exist.
     ASSERT_TRUE(F_);
     ASSERT_TRUE(optimizedF_);

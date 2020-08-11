@@ -44,7 +44,12 @@ public:
                        const at::ArrayRef<torch::jit::IValue> &inputs);
 
   /// Get all VariableMeta for outputs of the given graph.
-  std::vector<std::vector<int64_t>> &getGraphOutputShape();
+  const std::vector<std::vector<int64_t>> &getGraphOutputShape();
+
+  /// Get the Variable Map which uses const torch::jit::Value * as a key,
+  /// VariableMeta as a value.
+  const std::unordered_map<const torch::jit::Value *, VariableMeta> &
+  getVariableMap();
 
   /// This run the shape inference engine for the given \p graph and \p inputs.
   /// \returns error of failure.
@@ -64,6 +69,10 @@ private:
 
   /// Store shapes of all the outputs in a graph.
   std::vector<std::vector<int64_t>> outputShape_;
+
+  /// Offset flag for aten::embedding_bag and embedding_bag_byte_rowwise_offsets
+  /// In Glow, \p hasEndOffset_ always true
+  static bool const hasEndOffset_ = true;
 
   /// Print shapeMap_ as format:
   /// %5: [2 4]
@@ -86,47 +95,44 @@ private:
   primConstant(const torch::jit::Node *node);
   // Shape inference for aten::add, aten::mul, aten::pow
   static Expected<std::vector<int64_t>>
-  binaryOp(const MetaStack &varibableMetas);
+  binaryOp(const MetaStack &variableMetas);
   // Shape inference for aten::mm
-  static Expected<std::vector<int64_t>> mm(const MetaStack &varibableMetas);
+  static Expected<std::vector<int64_t>> mm(const MetaStack &variableMetas);
   // Shape inference for aten::bmm
-  static Expected<std::vector<int64_t>> bmm(const MetaStack &varibableMetas);
+  static Expected<std::vector<int64_t>> bmm(const MetaStack &variableMetas);
   // Shape inference for aten::addmm
-  static Expected<std::vector<int64_t>> addmm(const MetaStack &varibableMetas);
+  static Expected<std::vector<int64_t>> addmm(const MetaStack &variableMetas);
+  // Shape inference for aten::t
+  static Expected<std::vector<int64_t>> t(const MetaStack &variableMetas);
   // Shape inference for prim::ConstantChunk
   static Expected<std::vector<std::vector<int64_t>>>
-  constantChunk(const MetaStack &varibableMetas, int64_t chunks, int64_t dim);
+  constantChunk(const MetaStack &variableMetas, int64_t chunks, int64_t dim);
   // Shape inference for prim::FusedConcat
   static Expected<std::vector<int64_t>>
-  fusedConcat(const MetaStack &varibableMetas, int64_t dim);
+  fusedConcat(const MetaStack &variableMetas, int64_t dim);
   // Shape inference for prim::ListConstruct
   static Expected<std::vector<int64_t>>
-  listConstruct(const MetaStack &varibableMetas);
+  listConstruct(const MetaStack &variableMetas);
   // Shape inference for aten::permute
-  static Expected<std::vector<int64_t>>
-  permute(const MetaStack &varibableMetas);
+  static Expected<std::vector<int64_t>> permute(const MetaStack &variableMetas);
   // Shape inference for aten::reshape
-  static Expected<std::vector<int64_t>>
-  reshape(const MetaStack &varibableMetas);
+  static Expected<std::vector<int64_t>> reshape(const MetaStack &variableMetas);
   // Shape inference for aten::slice
-  static Expected<std::vector<int64_t>> slice(const MetaStack &varibableMetas);
-
-  /// TODO: To be extended
+  static Expected<std::vector<int64_t>> slice(const MetaStack &variableMetas);
   // Shape inference for aten::transpose
   static Expected<std::vector<int64_t>>
-  transpose(const MetaStack &varibableMetas);
+  transpose(const MetaStack &variableMetas);
   // Shape inference for aten::flatten
-  static Expected<std::vector<int64_t>>
-  flatten(const MetaStack &varibableMetas);
+  static Expected<std::vector<int64_t>> flatten(const MetaStack &variableMetas);
   // Shape inference for glow::fused_stack
   static Expected<std::vector<int64_t>>
-  fusedStack(const MetaStack &varibableMetas, int64_t dim);
+  fusedStack(const MetaStack &variableMetas, int64_t dim);
   // Shape inference for fb::embedding_bag_byte_rowwise_offsets
   static Expected<std::vector<int64_t>>
-  embeddingBagByteRowwiseOffsets(const MetaStack &varibableMetas);
+  embeddingBagByteRowwiseOffsets(const MetaStack &variableMetas);
   // Shape inference for aten::embedding_bag
   static Expected<std::vector<int64_t>>
-  embeddingBag(const MetaStack &varibableMetas);
+  embeddingBag(const MetaStack &variableMetas);
 };
 
 } // namespace glow

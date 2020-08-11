@@ -1,9 +1,9 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-
-from tests.utils import jitVsGlow
 import unittest
+
+import torch
+from tests.utils import jitVsGlow
 
 
 class TestQuantizedRelu(unittest.TestCase):
@@ -46,11 +46,6 @@ class TestQuantizedRelu(unittest.TestCase):
         jitVsGlow(
             test_f,
             x,
-            expected_fused_ops={
-                "aten::quantize_per_tensor",
-                "aten::relu",
-            },
-            black_list=[
-                "aten::dequantize",
-            ]
+            expected_fused_ops={"aten::quantize_per_tensor", "aten::relu"},
+            black_list=["aten::dequantize"],
         )
