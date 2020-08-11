@@ -1510,6 +1510,46 @@ static void lowerLogitNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, L.getResult(), LN->getResult());
 }
 
+static void lowerGeluNode(Function *F, CompilationContext &cctx,
+                          const GeluNode &GN) {
+  NodeValue input = GN.getInput();
+  auto outTy = input.getType();
+  auto name = GN.getName().str();
+
+  Node *alphaSplat =
+      F->createSplat(name + ".alpha", outTy, M_2_SQRTPI * M_SQRT1_2);
+  Node *splat = F->createSplat(name + ".splat", outTy, 0.044715);
+  Node *splatHalf = F->createSplat(name + ".splatHalf", outTy, 0.5);
+  Node *splat1 = F->createSplat(name + ".splat3", outTy, 1.0);
+  Node *splat3 = F->createSplat(name + ".splat3", outTy, 3.0);
+
+  // pow(x, 3)
+  NodeValue pow = F->createPow(name + ".pow", input, splat3);
+
+  // pow(x, 3) * 0.044715
+  NodeValue mul = F->createMul(name + ".mul", pow, splat);
+
+  // x + pow(x, 3) * 0.044715
+  NodeValue add = F->createAdd(name + ".add", input, mul);
+
+  // (x * pow(x, 3) * 0.044715) * alpha
+  NodeValue mul2 = F->createMul(name + ".mul2", add, alphaSplat);
+
+  // tanh((x * pow(x, 3) * 0.044715) * alpha)
+  NodeValue tanh = F->createTanh(name + ".tanh", mul2);
+
+  // tanh((x * pow(x, 3) * 0.044715) * alpha) + 1
+  NodeValue add2 = F->createAdd(name + ".add2", tanh, splat1);
+
+  // (tanh((x * pow(x, 3) * 0.044715) * alpha) + 1) * 0.5
+  NodeValue mul3 = F->createMul(name + ".mul3", splatHalf, add2);
+
+  // (tanh((x * pow(x, 3) * 0.044715) * alpha) + 1) * 0.5 * x
+  NodeValue mul4 = F->createMul(name + ".mul4", mul3, input);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, GN.getResult(), mul4);
+}
+
 bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
 #define CASE_LOWER(NODE_NAME_)                                                 \
   case Kinded::Kind::NODE_NAME_##NodeKind:                                     \
@@ -1552,6 +1592,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(Swish);
     CASE_LOWER(Logit);
     CASE_LOWER(Sigmoid);
+    CASE_LOWER(Gelu);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
     if (CN->getGroup() > 1 && CN->hasFusedActivation()) {
