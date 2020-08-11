@@ -5835,3 +5835,28 @@ TEST_F(GraphOptz, DisallowChangeQuantParamWithConcatInput) {
 
   checkNumericalEquivalence();
 }
+
+/// Test that a AdaptiveAvgPool with 1x1 OFM is correctly lowered to AvgPool.
+TEST_F(GraphOptz, lower1x1AdaptiveAvgPoolToAvgPool) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 3, 4},
+                                              "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {2, 1, 1, 4});
+  auto *pool = F_->createAdaptiveAvgPool("avg", input, outTy);
+  SaveNode *save = F_->createSave("save", pool);
+  bindings_.allocate(save->getPlaceholder());
+
+  // Backup function in optimizedF_.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Lower
+  EXPECT_TRUE(glow::lowerNode(F_, pool, cctx_));
+  runDCEPass(F_, cctx_);
+  EXPECT_EQ(0, countNodeKind(F_, Kinded::Kind::AdaptiveAvgPoolNodeKind));
+  EXPECT_EQ(1, countNodeKind(F_, Kinded::Kind::AvgPoolNodeKind));
+
+  // Now compile/run/compare F_ and optimizedF_.
+  checkNumericalEquivalence(1e-6);
+}
