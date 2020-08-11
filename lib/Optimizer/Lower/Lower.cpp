@@ -335,6 +335,21 @@ static void lowerSigmoidNode(Function *F, CompilationContext &cctx,
   }
 }
 
+static void lowerAdaptiveAvgPoolNode(Function *F, CompilationContext &cctx,
+                                     const AdaptiveAvgPoolNode &AAP) {
+  LOG_SCOPE(F->getLogContext(), "lowerAdaptiveAvgPoolNode");
+  auto inDims = ShapeNHWC(AAP.getInput().getType()->dims());
+  auto outDims = ShapeNHWC(AAP.getResult().getType()->dims());
+  // If output is 1x1 (entire IFM is averaged) we can use the more simple
+  // AvgPool.
+  if (outDims.h == 1 && outDims.w == 1) {
+    auto *AP = F->createAvgPool(AAP.getName(), AAP.getInput(),
+                                {unsigned_t(inDims.h), unsigned_t(inDims.w)},
+                                /*strides*/ {1, 1}, /*pads*/ {0, 0, 0, 0});
+    replaceAllUsesOfWith(cctx.loweredInfoMap, AAP.getResult(), AP->getResult());
+  }
+}
+
 static void lowerSigmoidGradNode(Function *F, CompilationContext &cctx,
                                  const SigmoidGradNode &THG) {
   // Sigmoid grad is calculated as:
@@ -1552,6 +1567,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(Swish);
     CASE_LOWER(Logit);
     CASE_LOWER(Sigmoid);
+    CASE_LOWER(AdaptiveAvgPool);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
     if (CN->getGroup() > 1 && CN->hasFusedActivation()) {

@@ -104,6 +104,17 @@ llvm::cl::opt<int>
              llvm::cl::init(1000), llvm::cl::value_desc("N"),
              llvm::cl::cat(category));
 
+llvm::cl::opt<bool>
+    avgPool("avgPool",
+            llvm::cl::desc("Add quantized AdaptiveAvgPool node to the graph. "
+                           "If fpEverywhere then the node will also be fp."),
+            llvm::cl::init(true), llvm::cl::cat(category));
+
+llvm::cl::opt<bool>
+    avgPoolFP("avgPoolFP",
+              llvm::cl::desc("Add fp AdaptiveAvgPool node to the graph."),
+              llvm::cl::init(false), llvm::cl::cat(category));
+
 enum class Block {
   Bottleneck,
   BasicBlock,
@@ -232,6 +243,14 @@ private:
         << "Fake batchnorm op has to be after a convolution to emulate fusion";
   }
 
+  NodeValue makeAvgPool(NodeValue input) {
+    auto inputDims = input.dims();
+    auto *outTy = F_->getParent()->uniqueTypeWithNewShape(
+        input.getType(), {inputDims[0], 1, 1, inputDims[3]});
+    return F_->createAdaptiveAvgPool("adaptive_avg_pool", input, outTy)
+        ->getResult();
+  }
+
   NodeValue makeBlock(NodeValue input, NodeValue residual, unsigned_t planes,
                       unsigned_t stride = 1, unsigned_t groups = 1,
                       unsigned_t baseWidth = 64, unsigned_t dilation = 1) {
@@ -321,9 +340,16 @@ public:
 
     next = makeLayer(next, /*planes*/ 512, /*blocks*/ layers_[3],
                      /*stride*/ 2);
+    if (avgPool) {
+      next = makeAvgPool(next);
+    }
+    next = makeAvgPool(next);
     if (!fpEverywhere) {
       next =
           F_->createDequantize("dequant", next, ElemKind::FloatTy)->getResult();
+    }
+    if (avgPoolFP) {
+      next = makeAvgPool(next);
     }
     next = F_->createTranspose("NHWC2NCHW", next, NHWC2NCHW);
     Placeholder *output = F_->createSave("save", next)->getPlaceholder();
@@ -447,7 +473,8 @@ public:
     LOG(INFO) << "Running";
     int64_t startTime = TraceEvent::now();
     for (auto i = 0; i < numRequesters; ++i) {
-      threads.push_back(std::thread([&]() { runImpl(reqsPerThread, i); }));
+      threads.push_back(std::thread(
+          [this, reqsPerThread, i]() { runImpl(reqsPerThread, i); }));
     }
 
     for (auto &thread : threads) {
@@ -500,6 +527,9 @@ std::vector<ShapeNCHW> generateShapes(dim_t batchSize, dim_t baseSize,
 
 int main(int argc, char *argv[]) {
   llvm::cl::ParseCommandLineOptions(argc, argv, "ResNet benchmark");
+
+  CHECK(!avgPool || !avgPoolFP) << "avgPool and avgPoolFP can't be true or "
+                                   "pooling will occur two times";
 
   std::vector<ShapeNCHW> shapes =
       generateShapes(batchSize, baseSize, numBins, stepSize);
