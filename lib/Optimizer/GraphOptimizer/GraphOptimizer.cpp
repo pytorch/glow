@@ -1324,13 +1324,7 @@ bool MergeTransposeIntoMatMulOrFC::run(Function *F,
 /// are consecutive but Slice(0..10) Slice(20..30) are not.
 static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned_t dim) {
   // The slices must extract from the same input.
-  if (A->getInput().getNode() != B->getInput().getNode()) {
-    return false;
-  }
-
-  // The result element type must be identical.
-  if (A->getResult().getType()->getElementType() !=
-      B->getResult().getType()->getElementType()) {
+  if (A->getInput() != B->getInput()) {
     return false;
   }
 
@@ -1370,13 +1364,7 @@ static bool areSlicesConsecutive(SliceNode *A, SliceNode *B, unsigned_t dim) {
 static bool findConsecutiveSliceDim(SliceNode *A, SliceNode *B,
                                     unsigned_t *dim) {
   // The slices must extract from the same input.
-  if (A->getInput().getNode() != B->getInput().getNode()) {
-    return false;
-  }
-
-  // The result element type must be identical.
-  if (A->getResult().getType()->getElementType() !=
-      B->getResult().getType()->getElementType()) {
+  if (A->getInput() != B->getInput()) {
     return false;
   }
 
@@ -2568,12 +2556,12 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
     // slices' dimension is the same as the concat, the concat can be removed.
     // If the slices' dimension is different from the concat, the nodes
     // can be replaced with a single slice+reshape.
-    std::vector<std::pair<unsigned_t /* dimension of slicing */,
+    std::vector<std::pair<int /* dimension of slicing */,
                           std::vector<SliceNode *>>>
         consecutiveSlices;
     std::vector<SliceNode *> currConsecutiveSlices;
     SliceNode *lastSN = nullptr;
-    unsigned_t lastDim = -1;
+    int lastDim = -1;
     for (auto &concatInput : CN->getInputs()) {
       auto *SN = dyn_cast<SliceNode>(concatInput.getNode());
       // slices with multiple users will not be considered
@@ -2613,11 +2601,16 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
       if (slices.size() <= 1) {
         continue;
       }
-      if (slicesDim != CN->getDim() && slicesDim != CN->getDim() + 1 &&
-          slicesDim != CN->getDim() - 1) {
+      if (slicesDim != CN->getDim() &&
+          ((slicesDim != CN->getDim() + 1 && slicesDim != CN->getDim() - 1) ||
+           slices[0]->getResult().dims()[slicesDim] != 1)) {
         // Optimizations are possible only if:
         // 1) slices consecutive dimension is the same as concat dimension, or
-        // 2) slices consecutive dimension is adjact to the concat dimension.
+        // 2) slices consecutive dimension is adjacent to the concat dimension,
+        //    and the size of each slice along the consecutive dimension is 1.
+        //    NOTE: Checking the size of 0th slice is sufficient, as opposed
+        //    to checking every slice. If the slices can be concatenated,
+        //    each slice size must be equal.
         //
         // In the former case, we replace it with a single slice. In the latter
         // case, we replace it with a single slice and reshape.
