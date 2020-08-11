@@ -24,8 +24,8 @@ class TestQuantizedLinear(unittest.TestCase):
         torch.quantization.convert(model, inplace=True)
 
         x = torch.tensor(range(5), dtype=torch.float)
-        x = torch.cat((x, x, x, x, x))
-        x = torch.reshape(x, [5, 5])
+        x = torch.cat((x, x, x, x, x, x))
+        x = torch.reshape(x, [3, 2, 5])
 
         jitVsGlow(
             model,
@@ -109,8 +109,8 @@ class TestQuantizedLinear(unittest.TestCase):
         linear.weight.data.random_(0, 100)
         linear.bias.data.random_(0, 10)
 
-        x = torch.tensor(range(30), dtype=torch.float)
-        x = torch.reshape(x, [5, 6])
+        x = torch.tensor(range(36), dtype=torch.float)
+        x = torch.reshape(x, [3, 2, 6])
 
         model = torch.quantization.QuantWrapper(linear)
         model.qconfig = torch.quantization.get_default_qconfig("fbgemm")
