@@ -70,6 +70,11 @@ llvm::cl::opt<bool> convertToFP16("convertToFP16",
                                   llvm::cl::init(true),
                                   llvm::cl::cat(category));
 
+llvm::cl::opt<bool>
+    fpEverywhere("fpEverywhere",
+                 llvm::cl::desc("Run model in fp instead quantized"),
+                 llvm::cl::init(false), llvm::cl::cat(category));
+
 llvm::cl::opt<bool> dumpDAG("dumpDAG",
                             llvm::cl::desc("Dump the final glow graph"),
                             llvm::cl::init(true), llvm::cl::cat(category));
@@ -78,6 +83,10 @@ llvm::cl::opt<unsigned> numDevices("numDevices",
                                    llvm::cl::desc("Number of backend devices"),
                                    llvm::cl::init(1), llvm::cl::value_desc("N"),
                                    llvm::cl::cat(category));
+
+llvm::cl::opt<unsigned> maxActiveRequests(
+    "maxActiveRequests", llvm::cl::desc("Maximum active Glow requests"),
+    llvm::cl::init(250), llvm::cl::value_desc("N"), llvm::cl::cat(category));
 
 llvm::cl::opt<unsigned> numBatches("numBatches",
                                    llvm::cl::desc("Number of batches to run"),
@@ -128,6 +137,10 @@ private:
                        unsigned_t kernel, unsigned_t stride = 1,
                        unsigned_t pad = 0, unsigned_t dilation = 1,
                        unsigned_t groups = 1, bool fp = false) {
+
+    if (fpEverywhere) {
+      fp = true;
+    }
 
     ShapeNHWC inputShape(input.dims());
 
@@ -294,7 +307,9 @@ public:
                              /*pad*/
                              1)
                ->getResult();
-    next = F_->createQuantize("quant", next, ElemKind::Int8QTy, 1.0, 0);
+    if (!fpEverywhere) {
+      next = F_->createQuantize("quant", next, ElemKind::Int8QTy, 1.0, 0);
+    }
     next = makeLayer(next, /*planes*/ 64, /*blocks*/ layers_[0],
                      /*stride*/ 1);
 
@@ -306,8 +321,10 @@ public:
 
     next = makeLayer(next, /*planes*/ 512, /*blocks*/ layers_[3],
                      /*stride*/ 2);
-    next =
-        F_->createDequantize("dequant", next, ElemKind::FloatTy)->getResult();
+    if (!fpEverywhere) {
+      next =
+          F_->createDequantize("dequant", next, ElemKind::FloatTy)->getResult();
+    }
     next = F_->createTranspose("NHWC2NCHW", next, NHWC2NCHW);
     Placeholder *output = F_->createSave("save", next)->getPlaceholder();
     F_ = nullptr;
@@ -373,9 +390,15 @@ public:
     std::vector<std::unique_ptr<runtime::DeviceConfig>> configs;
     for (auto i = 0; i < numDevices; ++i) {
       auto config = std::make_unique<runtime::DeviceConfig>(backendName_);
+      config->deviceID = i;
       configs.push_back(std::move(config));
     }
-    hostManager_ = std::make_unique<runtime::HostManager>(std::move(configs));
+
+    glow::runtime::HostConfig hostConfig;
+    hostConfig.maxActiveRequests = maxActiveRequests;
+
+    hostManager_ =
+        std::make_unique<runtime::HostManager>(std::move(configs), hostConfig);
 
     auto mod = std::make_unique<Module>();
     LOG(INFO) << "Building networks";
