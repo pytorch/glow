@@ -865,6 +865,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadQuantizedBatchNorm2d},
       {{"quantized::batch_norm3d"},
        &PyTorchModelLoader::loadQuantizedBatchNorm3d},
+      {{"quantized::batch_norm3d_relu"},
+       &PyTorchModelLoader::loadQuantizedBatchNorm3dRelu},
       {{"aten::layer_norm"}, &PyTorchModelLoader::loadLayerNorm},
       {{"aten::max_pool2d"}, &PyTorchModelLoader::loadMaxPool2d},
       {{"aten::avg_pool2d"}, &PyTorchModelLoader::loadAvgPool2d},
@@ -2787,6 +2789,19 @@ Error PyTorchModelLoader::loadQuantizedBatchNorm3d(
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+  return addValueMapping(outputs[0], output, dtype);
+}
+
+Error PyTorchModelLoader::loadQuantizedBatchNorm3dRelu(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  glow::NodeValue output;
+  ASSIGN_VALUE_OR_RETURN_ERR(output, loadQuantizedBatchNormImpl(ptNode, 3));
+
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+  output = F_.createRELU("quantized_relu_after_bn", output);
   return addValueMapping(outputs[0], output, dtype);
 }
 
