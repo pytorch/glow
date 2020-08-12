@@ -2555,9 +2555,11 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
     // Store consecutive slices along *any* dimension. If the consecutive
     // slices' dimension is the same as the concat, the concat can be removed.
     // If the slices' dimension is different from the concat, the nodes
-    // can be replaced with a single slice+reshape.
-    std::vector<std::pair<int /* dimension of slicing */,
-                          std::vector<SliceNode *>>>
+    // can be replaced with slice+reshape OR slice+transpose+reshape.
+    // The extra transpose is needed when the consecutive dimension is
+    // after the concat dimension.
+    std::vector<
+        std::pair<int /* dimension of slicing */, std::vector<SliceNode *>>>
         consecutiveSlices;
     std::vector<SliceNode *> currConsecutiveSlices;
     SliceNode *lastSN = nullptr;
@@ -2592,6 +2594,7 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
     // Mapping from old Slices to new Nodes where a Node can either be
     // i) a merged Slice
     // ii) a merged Slice + Reshape
+    // iii) a merged Slice + Transpose + Reshape
     std::unordered_map<SliceNode *, Node *> oldSlicesToNewNodes;
 
     for (const auto &slicePairs : consecutiveSlices) {
@@ -2611,9 +2614,11 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
         //    NOTE: Checking the size of 0th slice is sufficient, as opposed
         //    to checking every slice. If the slices can be concatenated,
         //    each slice size must be equal.
-        //
-        // In the former case, we replace it with a single slice. In the latter
-        // case, we replace it with a single slice and reshape.
+        continue;
+      }
+      if ((slicesDim == CN->getDim() + 1 && slices.size() <= 3) ||
+          (slicesDim == CN->getDim() - 1 && slices.size() <= 2)) {
+        // Optimization does not decrease the number of nodes.
         continue;
       }
 
@@ -2637,8 +2642,19 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
         outputDimVec[CN->getDim()] *= outputDimVec[slicesDim];
         outputDimVec[slicesDim] = 1;
         auto outputDims = llvm::makeArrayRef(outputDimVec);
+
+        Node *inputToReshape = nullptr;
+        if (slicesDim == CN->getDim() + 1) {
+          std::vector<unsigned_t> shuffle(outputDimVec.size());
+          std::iota(shuffle.begin(), shuffle.end(), 0);
+          std::swap(shuffle[slicesDim], shuffle[CN->getDim()]);
+          inputToReshape = F->createTranspose(
+              newSlice->getName().str() + "_Transpose", newSlice, shuffle);
+        } else {
+          inputToReshape = newSlice;
+        }
         newNode = F->createReshape(newSlice->getName().str() + "_Reshape",
-                                   newSlice, outputDims);
+                                   inputToReshape, outputDims);
       } else {
         newNode = newSlice;
       }

@@ -5527,23 +5527,30 @@ TEST_F(GraphOptz, EliminateSliceConcatTest) {
 
 TEST_F(GraphOptz, EliminateSliceConcatWithReshapeTest) {
   auto *src =
-      mod_.createPlaceholder(ElemKind::FloatTy, {4, 5, 3}, "src", false);
-  auto *A = F_->createSlice("A", src, {0, 0, 0}, {1, 5, 3});
-  auto *B = F_->createSlice("B", src, {1, 0, 0}, {2, 5, 3});
-  auto *C = F_->createSlice("C", src, {2, 0, 0}, {3, 5, 3});
+      mod_.createPlaceholder(ElemKind::FloatTy, {4, 5, 4}, "src", false);
+  auto *A = F_->createSlice("A", src, {0, 0, 0}, {1, 5, 4});
+  auto *B = F_->createSlice("B", src, {1, 0, 0}, {2, 5, 4});
+  auto *C = F_->createSlice("C", src, {2, 0, 0}, {3, 5, 4});
+  auto *CN1 = F_->createConcat("Concat1", {A, B, C}, 1);
 
-  auto *CN = F_->createConcat("Concat", {A, B, C}, 1);
-  F_->createSave("save", CN);
+  auto *E = F_->createSlice("E", src, {0, 0, 0}, {4, 5, 1});
+  auto *F = F_->createSlice("F", src, {0, 0, 1}, {4, 5, 2});
+  auto *G = F_->createSlice("G", src, {0, 0, 2}, {4, 5, 3});
+  auto *H = F_->createSlice("H", src, {0, 0, 3}, {4, 5, 4});
+  auto *CN2 = F_->createConcat("Concat2", {E, F, G, H}, 1);
+
+  F_->createSave("save1", CN1);
+  F_->createSave("save2", CN2);
 
   // src, A, B, C, CN.
-  EXPECT_EQ(F_->getNodes().size(), 5);
+  EXPECT_EQ(F_->getNodes().size(), 11);
 
   optimizedF_ = optimizeFunction(
       F_, {FunctionPassID::EliminateSliceConcat, getDCEPassConfig()});
 
   // src, FUSED_SLICE[A, B, C], RESHAPE, CN.
   // FUSED_SLICE, RESHAPE are inserted by optimization.
-  EXPECT_EQ(optimizedF_->getNodes().size(), 4);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 9);
 
   bindings_.allocate(src)->getHandle<float>().randomize(-10.0, 10.0,
                                                         mod_.getPRNG());
