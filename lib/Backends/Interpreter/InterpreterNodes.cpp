@@ -5634,47 +5634,59 @@ void BoundInterpreterFunction::fwdMFCCInst(glow::MFCCInst const *I) {
 }
 
 struct BinGrid {
-  uint32_t Y0;
-  uint32_t Y1;
-  uint32_t X0;
-  uint32_t X1;
-  float yDiff;
+  dim_t x0;
+  dim_t y0;
+  dim_t x1;
+  dim_t y1;
   float xDiff;
+  float yDiff;
 };
 
 // Function to calculate the xy coordinates of the resized image (grid)
 // Ref: https://arxiv.org/pdf/1703.06870.pdf and OnnxRuntime implementation
 static void getROIAlignInterpolationCoordinates(
-    unsigned inputHeight, unsigned inputWidth, unsigned outputHeight,
-    unsigned outputWidth, const std::vector<float> &box,
-    unsigned samplingRatioH, unsigned samplingRatioW, float offset,
-    std::vector<BinGrid> &binGrids) {
-  float y0 = box[0];
-  float x0 = box[1];
+    dim_t inputHeight, dim_t inputWidth, dim_t outputHeight, dim_t outputWidth,
+    const std::vector<float> &box, dim_t samplingRatioH, dim_t samplingRatioW,
+    float offset, std::vector<BinGrid> &binGrids) {
+  float y0 = box[1];
+  float x0 = box[0];
   uint64_t binCount = 0;
-  // H & W of the each bin in the final output
-  const float binH = (box[2] - box[0]) / outputHeight;
-  const float binW = (box[3] - box[1]) / outputWidth;
+  // height and width of the each bin in the final output
+  const float binH = (box[3] - box[1]) / outputHeight;
+  const float binW = (box[2] - box[0]) / outputWidth;
   const float roiBinSizeH = binH / samplingRatioH;
   const float roiBinSizeW = binW / samplingRatioW;
-  for (uint32_t H = 0; H < outputHeight; H++) {
-    for (uint32_t W = 0; W < outputWidth; W++) {
-      for (uint32_t h = 0; h < samplingRatioH; h++) {
-        // initial y coordinate  with offset
-        const float inY = y0 + (H * binH) + ((h + offset) * roiBinSizeH);
-        const uint32_t topYIndex = std::floor(inY);
-        const uint32_t bottomYIndex =
-            (inY <= inputHeight - 1) ? std::ceil(inY) : (inputHeight - 1);
-        const float yLerp = inY - topYIndex;
-        for (uint32_t w = 0; w < samplingRatioW; w++) {
-          // initial x coordinate  with offset
-          const float inX = x0 + (W * binW) + ((w + offset) * roiBinSizeW);
-          const uint32_t leftXIndex = std::floor(inX);
-          const uint32_t rightXIndex =
-              (inX <= inputWidth - 1) ? std::ceil(inX) : (inputWidth - 1);
-          const float xLerp = inX - leftXIndex;
-          binGrids[binCount++] = BinGrid{topYIndex,   bottomYIndex, leftXIndex,
-                                         rightXIndex, yLerp,        xLerp};
+  for (dim_t oh = 0; oh < outputHeight; oh++) {
+    for (dim_t ow = 0; ow < outputWidth; ow++) {
+      for (dim_t gh = 0; gh < samplingRatioH; gh++) {
+        for (dim_t gw = 0; gw < samplingRatioW; gw++) {
+          // x,y coordinates w.r.t input dimensions
+          const float inY = y0 + (oh * binH) + ((gh + 0.5f) * roiBinSizeH);
+          const float inX = x0 + (ow * binW) + ((gw + 0.5f) * roiBinSizeW);
+
+          // zero pad mal-formed boxes
+          if (inY < float(-1) || inY > static_cast<float>(inputHeight)) {
+            binGrids[binCount++] = BinGrid{0, 0, 0, 0, 0, 0};
+            continue;
+          }
+          if (inX < float(-1) || inX > static_cast<float>(inputWidth)) {
+            binGrids[binCount++] = BinGrid{0, 0, 0, 0, 0, 0};
+            continue;
+          }
+          // clip to input dimensions
+          float y = std::min(std::max(inY, float(0)),
+                             static_cast<float>(inputHeight - 1));
+          float x = std::min(std::max(inX, float(0)),
+                             static_cast<float>(inputWidth - 1));
+          // calc interpolation parameters
+          const dim_t yl = static_cast<dim_t>(std::floor(y));
+          const dim_t xl = static_cast<dim_t>(std::floor(x));
+          const dim_t yh = std::min(yl + 1, inputHeight - 1);
+          const dim_t xh = std::min(xl + 1, inputWidth - 1);
+          const float py = y - static_cast<float>(yl);
+          const float px = x - static_cast<float>(xl);
+
+          binGrids[binCount++] = BinGrid{xl, yl, xh, yh, px, py};
         } // end of w
       }   // end of h
     }     // end of W
@@ -5691,59 +5703,78 @@ void BoundInterpreterFunction::fwdROIAlignInstFloatImpl(
   auto batchIndices = I->getBatchIndices();
   auto result = I->getResult();
   std::string mode = I->getMode();
-  unsigned outputHeight = I->getOutputHeight();
-  unsigned outputWidth = I->getOutputHeight();
-  unsigned samplingRatio = I->getSamplingRatio();
-  float offset = I->getOffset();
-  bool normalized = I->getNormalized();
+  dim_t outputHeight = I->getOutputHeight();
+  dim_t outputWidth = I->getOutputHeight();
+  dim_t samplingRatio = I->getSamplingRatio();
+  float spatialScale = I->getSpatialScale();
+  bool aligned = I->getAligned();
+  float offset = aligned ? 0.5f : 0;
   auto boxesH = getTensor(boxes)->getHandle<float>();
   auto featureMapH = getTensor(featureMap)->getHandle<float>();
   auto batchIndicesH = getTensor(batchIndices)->getHandle<int64_t>();
+  bool useSeparateBatchIndexVector = true;
+  dim_t boxesStartCol = 0;
+  if (boxes->dims()[1] == 5) {
+    boxesStartCol = 1;
+    useSeparateBatchIndexVector = false;
+  }
   auto resultH = getTensor(result)->getHandle<float>();
-  getTensor(result)->zero();
-  const unsigned imageHeight = featureMap->dims()[1];
-  const unsigned imageWidth = featureMap->dims()[2];
-  const unsigned numBoxes = result->dims()[0];
-  const unsigned depth = result->dims()[3];
-  float normConstantH = normalized ? (imageHeight - 1) : 1;
-  float normConstantW = normalized ? (imageWidth - 1) : 1;
-  for (uint32_t b = 0; b < numBoxes; b++) {
-    const std::vector<float> box = {
-        boxesH.at({b, 0}) * normConstantH, boxesH.at({b, 1}) * normConstantW,
-        boxesH.at({b, 2}) * normConstantH, boxesH.at({b, 3}) * normConstantW};
-    unsigned samplingRatioH = (samplingRatio > 0)
-                                  ? samplingRatio
-                                  : std::ceil((box[2] - box[0]) / outputHeight);
-    unsigned samplingRatioW = (samplingRatio > 0)
-                                  ? samplingRatio
-                                  : std::ceil((box[3] - box[1]) / outputWidth);
+  const dim_t imageHeight = featureMap->dims()[1];
+  const dim_t imageWidth = featureMap->dims()[2];
+  const dim_t numBoxes = result->dims()[0];
+  const dim_t depth = result->dims()[3];
+  for (dim_t b = 0; b < numBoxes; b++) {
+    std::vector<float> box = {
+        boxesH.at({b, boxesStartCol + dim_t(0)}) * spatialScale - offset,
+        boxesH.at({b, boxesStartCol + dim_t(1)}) * spatialScale - offset,
+        boxesH.at({b, boxesStartCol + dim_t(2)}) * spatialScale - offset,
+        boxesH.at({b, boxesStartCol + dim_t(3)}) * spatialScale - offset};
+
+    if (aligned) {
+      CHECK_GE(box[3] - box[1], 0) << "Roi height cannot be negative.";
+      CHECK_GE(box[2] - box[0], 0) << "Roi width cannot be negative.";
+    } else {
+      // Caffe2 backwards compatibility for mal-formed ROIs:
+      // Force ROI size to be at least 1x1.
+      box[2] = std::max(box[2], box[0] + 1.0f);
+      box[3] = std::max(box[3], box[1] + 1.0f);
+    }
+    dim_t samplingRatioH = (samplingRatio > 0)
+                               ? samplingRatio
+                               : std::ceil((box[3] - box[1]) / outputHeight);
+    dim_t samplingRatioW = (samplingRatio > 0)
+                               ? samplingRatio
+                               : std::ceil((box[2] - box[0]) / outputWidth);
     std::vector<BinGrid> binGrids(samplingRatioH * samplingRatioW *
                                   outputHeight * outputWidth);
     // get the xy coordinates in the resized image(grid)
     getROIAlignInterpolationCoordinates(imageHeight, imageWidth, outputHeight,
                                         outputWidth, box, samplingRatioH,
                                         samplingRatioW, offset, binGrids);
-    const uint32_t batchIndex = batchIndicesH.at({
-        b,
-    });
+    dim_t batchIndex;
+    if (useSeparateBatchIndexVector) {
+      batchIndex = static_cast<dim_t>(batchIndicesH.at({b}));
+    } else {
+      batchIndex = static_cast<dim_t>(boxesH.at({b, 0}));
+    }
     uint64_t binCount = 0;
-    for (uint32_t H = 0; H < outputHeight; ++H) {
-      for (uint32_t W = 0; W < outputWidth; ++W) {
-        for (uint32_t d = 0; d < depth; ++d) {
+    for (dim_t oh = 0; oh < outputHeight; ++oh) {
+      for (dim_t ow = 0; ow < outputWidth; ++ow) {
+        for (dim_t d = 0; d < depth; ++d) {
           std::vector<float> pixels;
-          for (uint32_t h = 0; h < samplingRatioH; ++h) {
-            for (uint32_t w = 0; w < samplingRatioW; ++w) {
+          for (dim_t gh = 0; gh < samplingRatioH; ++gh) {
+            for (dim_t gw = 0; gw < samplingRatioW; ++gw) {
               BinGrid bG = binGrids[binCount++];
               // The four pixels of  the i/p image surrounding the point of
               // interest (POI) in the resized image
               const float topLeft =
-                  featureMapH.at({batchIndex, bG.Y0, bG.X0, d});
+                  featureMapH.at({batchIndex, bG.y0, bG.x0, d});
               const float topRight =
-                  featureMapH.at({batchIndex, bG.Y0, bG.X1, d});
+                  featureMapH.at({batchIndex, bG.y0, bG.x1, d});
               const float bottomLeft =
-                  featureMapH.at({batchIndex, bG.Y1, bG.X0, d});
+                  featureMapH.at({batchIndex, bG.y1, bG.x0, d});
               const float bottomRight =
-                  featureMapH.at({batchIndex, bG.Y1, bG.X1, d});
+                  featureMapH.at({batchIndex, bG.y1, bG.x1, d});
               // bilinear interpolation = interpolation along {top_horizontal +
               // bottom_horizontal + vertical} lines or bilinear interpolation =
               // interpolation along {left_vertical + right_vertical +
@@ -5757,10 +5788,10 @@ void BoundInterpreterFunction::fwdROIAlignInstFloatImpl(
             } // end of w
           }   // end of h
           // {Average or Max} pooling
-          resultH.at({b, H, W, d}) =
+          resultH.at({b, oh, ow, d}) =
               (mode == "avg")
                   ? std::accumulate(pixels.begin(), pixels.end(), 0.0) /
-                        pixels.size()
+                        static_cast<float>(pixels.size())
                   : *std::max_element(pixels.begin(), pixels.end());
           binCount = binCount - (samplingRatioH * samplingRatioW);
         } // end of d
