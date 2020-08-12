@@ -1257,12 +1257,48 @@ TEST_MFCC(2, 257, 1e-5)
 TEST_MFCC(3, 513, 1e-5)
 TEST_MFCC(3, 1025, 1e-5)
 
+template <typename DataType>
+static void
+testRoiAlign(PlaceholderBindings &bindings, Module &mod, Function &F,
+             ExecutionEngine &EE, ElemKind ElemTy, llvm::ArrayRef<dim_t> x1Dims,
+             llvm::ArrayRef<DataType> x1, llvm::ArrayRef<dim_t> x2Dims,
+             llvm::ArrayRef<DataType> x2, llvm::ArrayRef<dim_t> x3Dims,
+             llvm::ArrayRef<int64_t> x3, std::string mode, dim_t outputHeight,
+             dim_t outputWidth, uint32_t samplingRatio, float spatialScale,
+             bool aligned, llvm::ArrayRef<DataType> expectedValues) {
+  auto *X1 = mod.createPlaceholder(ElemTy, x1Dims, "featureMap", false);
+  bindings.allocate(X1)->getHandle<DataType>() = x1;
+
+  auto *X2 = mod.createPlaceholder(ElemTy, x2Dims, "boxes", false);
+  bindings.allocate(X2)->getHandle<DataType>() = x2;
+
+  auto *X3 =
+      mod.createPlaceholder(ElemKind::Int64ITy, x3Dims, "batchIndices", false);
+  bindings.allocate(X3)->getHandle<int64_t>() = x3;
+
+  auto *LN =
+      F.createROIAlign("ROIAlign", X1, X2, X3, mode, outputHeight, outputWidth,
+                       samplingRatio, spatialScale, aligned, /*rotated*/ false);
+  auto *save = F.createSave("save", LN);
+  auto *savePlaceholder = save->getPlaceholder();
+  bindings.allocate(savePlaceholder);
+
+  EE.compile(CompilationMode::Infer);
+
+  EE.run(bindings);
+
+  auto saveH = bindings.get(savePlaceholder)->getHandle();
+
+  for (dim_t i = 0; i < expectedValues.size(); i++) {
+    EXPECT_NEAR(saveH.raw(i), expectedValues[i], 1E-4);
+  }
+}
+
 TEST_P(OperatorTest, ROIAlign) {
   CHECK_IF_ENABLED();
 
-  auto *X1 = mod_.createPlaceholder(ElemKind::FloatTy, {2, 5, 5, 2},
-                                    "featureMap", false);
-  bindings_.allocate(X1)->getHandle<float>() = {
+  llvm::SmallVector<dim_t, 4> x1Dims = {2, 5, 5, 2};
+  llvm::SmallVector<float, 100> x1 = {
       1.,  0.,  1.,  1.,  1.,  2.,  1.,  3.,  1.,  4.,  1.,  5.,  1.,  6.,  1.,
       7.,  1.,  8.,  1.,  9.,  1.,  10., 1.,  11., 1.,  12., 1.,  13., 1.,  14.,
       1.,  15., 1.,  16., 1.,  17., 1.,  18., 1.,  19., 1.,  20., 1.,  21., 1.,
@@ -1271,30 +1307,73 @@ TEST_P(OperatorTest, ROIAlign) {
       1.,  13., 1.,  14., 1.,  15., 1.,  16., 1.,  17., 1.,  18., 1.,  19., 1.,
       20., 1.,  21., 1.,  22., 1.,  23., 1.,  24., 1.};
 
-  auto *X2 = mod_.createPlaceholder(ElemKind::FloatTy, {2, 4}, "boxes", false);
-  bindings_.allocate(X2)->getHandle<float>() = {0.25, 0.25, 0.75, 0.75,
-                                                0.25, 0.25, 0.75, 0.75};
+  llvm::SmallVector<dim_t, 2> x2Dims = {2, 4};
+  llvm::SmallVector<float, 8> x2 = {1., 1., 3., 3., 1., 1., 3., 3.};
 
-  auto *X3 =
-      mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "batchIndices", false);
-  bindings_.allocate(X3)->getHandle<int64_t>() = {1, 0};
+  llvm::SmallVector<dim_t, 1> x3Dims = {2};
+  llvm::SmallVector<int64_t, 2> x3 = {1, 0};
 
-  auto *LN =
-      F_->createROIAlign("ROIAlign", X1, X2, X3, "avg", 2, 2, 2, 1, 0.5, true);
-  auto *save = F_->createSave("save", LN);
-  auto *savePlaceholder = save->getPlaceholder();
-  bindings_.allocate(savePlaceholder);
+  llvm::SmallVector<float, 12> expectedValues = {9, 1, 10, 1,  14, 1,  15, 1,
+                                                 1, 9, 1,  10, 1,  14, 1,  15.};
 
-  EE_.compile(CompilationMode::Infer);
+  testRoiAlign<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy, x1Dims, x1,
+                      x2Dims, x2, x3Dims, x3, "avg", 2, 2, 2, 1, false,
+                      expectedValues);
+}
 
-  EE_.run(bindings_);
+TEST_P(OperatorTest, ROIAlignWithAlignedCoordinates) {
+  CHECK_IF_ENABLED();
+  llvm::SmallVector<dim_t, 4> x1Dims = {1, 5, 5, 1};
+  llvm::SmallVector<float, 25> x1 = {
+      0.1, 0.2, 0.3, 0.4, 0.5, 0.1, 0.2, 0.3, 0.4, 0.5, 0.1, 0.2, 0.3,
+      0.4, 0.5, 0.1, 0.2, 0.3, 0.4, 0.5, 0.1, 0.2, 0.3, 0.4, 0.5};
 
-  auto saveH = bindings_.get(savePlaceholder)->getHandle();
-  std::vector<float> expectedValues = {9, 1, 10, 1,  14, 1,  15, 1,
-                                       1, 9, 1,  10, 1,  14, 1,  15.};
-  for (dim_t i = 0; i < expectedValues.size(); i++) {
-    EXPECT_NEAR(saveH.raw(i), expectedValues[i], 1E-5);
-  }
+  llvm::SmallVector<dim_t, 2> x2Dims = {1, 4};
+  llvm::SmallVector<float, 5> x2 = {0.0, 0.4, 4.3, 2.9};
+
+  llvm::SmallVector<dim_t, 1> x3Dims = {1};
+  llvm::SmallVector<int64_t, 1> x3 = {0};
+
+  llvm::SmallVector<float, 9> expectedValues = {
+      0.1287, 0.2650, 0.4083, 0.1288, 0.2650, 0.4083, 0.1287, 0.2650, 0.4083};
+
+  testRoiAlign<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy, x1Dims, x1,
+                      x2Dims, x2, x3Dims, x3, "avg", 3, 3, 2, 1, true,
+                      expectedValues);
+}
+
+TEST_P(OperatorTest, ROIAlignBatchIndexInBoxesTensor) {
+  CHECK_IF_ENABLED();
+  llvm::SmallVector<dim_t, 4> x1Dims = {2, 5, 5, 1};
+  llvm::SmallVector<float, 25> x1 = {
+      -1.2428743,  -0.9784467,  0.33036363,  0.47368783,  -0.81611377,
+      -1.1874917,  -1.6208626,  -0.04190686, -0.5767553,  1.1949452,
+      -2.1838918,  1.0099407,   0.6925469,   0.37020323,  -0.3799704,
+      -0.10355259, -0.64257944, -1.3108171,  -1.5346326,  -1.4158413,
+      0.65036285,  -0.59222955, -1.560379,   -0.33371264, 0.37395215,
+      0.5459632,   0.5273131,   0.28447518,  0.12805837,  1.7352446,
+      0.20994481,  1.4071242,   0.5303186,   -0.27663556, -0.82167315,
+      0.6842198,   -0.2994734,  1.5149841,   0.6579617,   0.223398,
+      0.03313996,  0.7019578,   0.02679764,  -0.05407761, 1.2506387,
+      -0.1649399,  -0.05537327, -2.365379,   0.28033617,  -0.47050563,
+  };
+
+  llvm::SmallVector<dim_t, 2> x2Dims = {2, 5};
+  llvm::SmallVector<float, 5> x2 = {0.,        1.1889961, 0.53260314, 3.1794803,
+                                    3.5056353, 0.,        1.4748696,  2.4069107,
+                                    4.1870456, 4.6166725};
+
+  llvm::SmallVector<dim_t, 1> x3Dims = {1};
+  llvm::SmallVector<int64_t, 1> x3 = {1};
+
+  llvm::SmallVector<float, 18> expectedValues = {
+      -1.1747, -0.3246, 0.0591,  -0.3049, 0.1516,  0.1917,
+      0.0270,  -0.1727, -0.4240, 0.3784,  0.0435,  -0.2741,
+      -0.7801, -1.1925, -1.2289, -0.9860, -1.2124, -0.5044};
+
+  testRoiAlign<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy, x1Dims, x1,
+                      x2Dims, x2, x3Dims, x3, "avg", 3, 3, 2, 1, true,
+                      expectedValues);
 }
 
 TEST_P(OperatorTest, BBoxTransform) {

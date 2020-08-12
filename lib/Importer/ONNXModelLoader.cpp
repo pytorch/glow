@@ -3843,9 +3843,10 @@ Error ONNXModelLoader::loadROIAlign(const ONNX_NAMESPACE::NodeProto &op,
 
   const std::string &opName = loadOperatorName(op);
   featureMap = G_->createTranspose(opName, featureMap, NCHW2NHWC);
-  Node *N = G_->createROIAlign(loadOperatorName(op), featureMap, boxes,
-                               batchIndices, mode, outputHeight, outputWidth,
-                               samplingRatio, spatialScale, 0.5, false);
+  Node *N =
+      G_->createROIAlign(loadOperatorName(op), featureMap, boxes, batchIndices,
+                         mode, outputHeight, outputWidth, samplingRatio,
+                         spatialScale, /*aligned*/ false, /*rotated*/ false);
   N = G_->createTranspose(opName, N, NHWC2NCHW);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
