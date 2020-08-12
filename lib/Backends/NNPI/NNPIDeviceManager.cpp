@@ -324,7 +324,8 @@ Error NNPIDeviceManager::startDeviceTrace(TraceContext *traceContext) {
           traceContext, device_, true /* Software traces are always enabled. */,
           deviceOptions_->hardwareTraces,
           deviceOptions_->softwareTracesMaxBuffer,
-          deviceOptions_->hardwareTracesMaxBuffer)) {
+          deviceOptions_->hardwareTracesMaxBuffer,
+          deviceOptions_->rawTracesDumpPath)) {
     return MAKE_ERR("Failed to start NNPI device trace.");
   }
   return Error::success();
