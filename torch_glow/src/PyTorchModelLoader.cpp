@@ -865,6 +865,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadQuantizedBatchNorm2d},
       {{"quantized::batch_norm3d"},
        &PyTorchModelLoader::loadQuantizedBatchNorm3d},
+      {{"quantized::batch_norm3d_relu"},
+       &PyTorchModelLoader::loadQuantizedBatchNorm3dRelu},
       {{"aten::layer_norm"}, &PyTorchModelLoader::loadLayerNorm},
       {{"aten::max_pool2d"}, &PyTorchModelLoader::loadMaxPool2d},
       {{"aten::avg_pool2d"}, &PyTorchModelLoader::loadAvgPool2d},
@@ -1457,6 +1459,12 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       input, getGlowNodeValueForValue(inputs[QuantizedLinearInputs::input]));
 
+  // Flatten outer dims if necessary
+  auto inputDims = input.dims();
+  if (inputDims.size() > 2) {
+    input = F_.createFlatten("flatten", input, inputDims.size() - 1);
+  }
+
   CHECK(qparamsMap_.count(inputs[QuantizedLinearInputs::packed_weights]));
   auto packed_params =
       qparamsMap_[inputs[QuantizedLinearInputs::packed_weights]]
@@ -1509,6 +1517,11 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
   bool isRowwiseQuantized = ptWeightTensor.is_quantized() &&
                             ptWeightTensor.qscheme() == at::kPerChannelAffine;
 
+  NodeValue output;
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(
+      getCorrectTypeMapping(dtype, inputs[QuantizedLinearInputs::input]));
+
   if (isRowwiseQuantized) {
     // extract qparams from ptWeightTensor.
     // Notice since the memory of qparams may not be continous
@@ -1542,22 +1555,27 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
     auto wOffsets = F_.getParent()->createConstant(
         "channel_wised_offsets_of_qlinear", std::move(wOffsetsTensor));
     wOffsets->ensureIsOwned();
-    auto rowwise_fc = F_.createRowwiseQuantizedFullyConnected(
+    auto rowwiseFC = F_.createRowwiseQuantizedFullyConnected(
         "rowwise_quantized_fc", input, weightConstant, wScales, wOffsets, bias,
         outTy);
-    return addValueMapping(outputs[0], rowwise_fc->getResult());
+    output = rowwiseFC->getResult();
   } else {
     weight = rescaleUIntToInt(weight);
 
     weight = F_.createTranspose("weight_transpose", weight, {1, 0});
     auto fc =
         F_.createFullyConnected("quantized_fc", input, weight, bias, outTy);
-
-    c10::ScalarType dtype;
-    RETURN_IF_ERR(
-        getCorrectTypeMapping(dtype, inputs[QuantizedLinearInputs::input]));
-    return addValueMapping(outputs[0], fc->getResult(), dtype);
+    output = fc->getResult();
   }
+
+  // Restore original outer dims
+  if (inputDims.size() > 2) {
+    std::vector<dim_t> finalDims = inputDims.vec();
+    finalDims.back() = output.dims().back();
+    output = F_.createReshape("expand", output, finalDims);
+  }
+
+  return addValueMapping(outputs[0], output, dtype);
 }
 
 Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
@@ -1570,6 +1588,12 @@ Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
   ASSIGN_VALUE_OR_RETURN_ERR(
       input,
       getGlowNodeValueForValue(inputs[QuantizedUnpackedLinearInputs::input]));
+
+  // Flatten outer dims if necessary
+  auto inputDims = input.dims();
+  if (inputDims.size() > 2) {
+    input = F_.createFlatten("flatten", input, inputDims.size() - 1);
+  }
 
   glow::NodeValue weight;
   ASSIGN_VALUE_OR_RETURN_ERR(
@@ -1617,12 +1641,21 @@ Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
 
   bias = F_.createQuantize("quantize_bias", bias, biasType);
 
-  auto fc = F_.createFullyConnected("quantized_fc", input, weight, bias, outTy);
+  auto output =
+      F_.createFullyConnected("quantized_fc", input, weight, bias, outTy)
+          ->getResult();
+
+  // Restore original outer dims
+  if (inputDims.size() > 2) {
+    std::vector<dim_t> finalDims = inputDims.vec();
+    finalDims.back() = output.dims().back();
+    output = F_.createReshape("expand", output, finalDims);
+  }
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(
       dtype, inputs[QuantizedUnpackedLinearInputs::input]));
-  return addValueMapping(outputs[0], fc->getResult(), dtype);
+  return addValueMapping(outputs[0], output, dtype);
 }
 
 Error PyTorchModelLoader::loadGlowFusedLinear(const torch::jit::Node *ptNode) {
@@ -2756,6 +2789,19 @@ Error PyTorchModelLoader::loadQuantizedBatchNorm3d(
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+  return addValueMapping(outputs[0], output, dtype);
+}
+
+Error PyTorchModelLoader::loadQuantizedBatchNorm3dRelu(
+    const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  glow::NodeValue output;
+  ASSIGN_VALUE_OR_RETURN_ERR(output, loadQuantizedBatchNormImpl(ptNode, 3));
+
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+  output = F_.createRELU("quantized_relu_after_bn", output);
   return addValueMapping(outputs[0], output, dtype);
 }
 

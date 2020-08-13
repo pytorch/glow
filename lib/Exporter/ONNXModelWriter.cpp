@@ -1356,6 +1356,8 @@ Error ONNXModelWriter::writeROIAlign(const ROIAlignNode *node,
   addValueAttribute(proto, "output_width", node->getOutputWidth());
   addValueAttribute(proto, "sampling_ratio", node->getSamplingRatio());
   addValueAttribute(proto, "spatial_scale", node->getSpatialScale());
+  addValueAttribute(proto, "aligned", node->getAligned());
+  addValueAttribute(proto, "rotated", node->getRotated());
   return writeAllWithNode("ROIAlign", node, graph, proto);
 }
 

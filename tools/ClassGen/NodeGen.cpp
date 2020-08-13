@@ -1312,16 +1312,19 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "OutputWidth")
       .addMember(MemberType::Unsigned, "SamplingRatio")
       .addMember(MemberType::Float, "SpatialScale")
-      .addMember(MemberType::Float, "Offset")
-      .addMember(MemberType::Boolean, "Normalized")
+      .addMember(MemberType::Boolean, "Aligned")
+      .addMember(MemberType::Boolean, "Rotated")
       .addResultFromCtorArg()
       .setDocstring(
-          "Given FeatureMap tensor of [N,H,W,C], Boxes tensor of [K,4],"
-          "and BatchIndices tensor of [K,], where N is the batch, C is the "
-          "channel,"
-          "H is the height, W is the width, K is the number of boxes,"
-          "Performs region of interest (ROI) align operator and generates"
-          "an Output tensor with shape [K, OutputHeight, OutputWidth, C]");
+          "Performs region of interest (ROI) align operator. "
+          "FeatureMap - a tensor of [N,H,W,C]. N is the batch, C is the "
+          "channel, H is the height, W is the width. "
+          "Boxes - a tensor of [K,4] or [K,5] with format "
+          "[[optinal_batch_index] x0, y0, x1, y1]. K is the number of boxes. "
+          "BatchIndices - a tensor of [K,]. If N > 1 and Box shape is [K,4], "
+          "BatchIndices must be valid. "
+          "Output is a tensor with shape [K, OutputHeight, OutputWidth, C]. "
+          "Aligned - if true, coordinates are aligned to a center of a pixel.");
 
   BB.newNode("BBoxTransform")
       .addInput("Rois")

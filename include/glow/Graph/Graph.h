@@ -2005,20 +2005,21 @@ public:
                        float upperFrequency, int64_t filterBankCount,
                        int64_t numCoefficients);
 
-  /// Peformas the ROIAlign operation given the \p featureMap and the \p boxes.
+  /// Performs the ROIAlign operation given the \p featureMap and the \p boxes.
   /// ROIAlign is similar to crop and resize followed by pooling. The
   /// co-ordinates to extract the crops are specified in \p boxes. Each cropped
   /// image has to be resized to have the shape specified by \p outputHeight and
   /// \p outputWidth. The \p samplingRatio specifies the number of samples to
   /// take from each bin (along both the dimensions) for the purpose of pooling.
-  /// This node is inspired from onnx
+  /// This node is defined in:
   /// (https://github.com/onnx/onnx/blob/master/docs/Operators.md#RoiAlign).
+  /// \p aligned flag is an addition to Onnx definition to indicate if box
+  /// coordinates are aligned to the center of a pixel (VS top-left corner).
   ROIAlignNode *createROIAlign(llvm::StringRef name, NodeValue featureMap,
                                NodeValue boxes, NodeValue batchIndices,
                                std::string mode, uint32_t outputHeight,
                                uint32_t outputWidth, uint32_t samplingRatio,
-                               float spatialScale, float offset,
-                               bool normalized);
+                               float spatialScale, bool aligned, bool rotated);
 
   /// Transform proposal bounding boxes to target bounding box using bounding
   /// box regression deltas.

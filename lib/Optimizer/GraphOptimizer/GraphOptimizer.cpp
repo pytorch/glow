@@ -5559,6 +5559,18 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                                           TileNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::BatchedReduceAddNodeKind: {
+        BatchedReduceAddNode *BR = llvm::cast<BatchedReduceAddNode>(curNode);
+        RETURN_ERR_IF_NOT(BR->getAxis() != 0,
+                          "BatchedReduceAdd node cannot be split on axis 0 "
+                          "which is being reduced");
+        splitDims[BatchedReduceAddNode::BatchIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, BatchedReduceAddNode::BatchIdx,
+                    BatchedReduceAddNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::ConcatNodeKind: {
         ConcatNode *concat = llvm::cast<ConcatNode>(curNode);
         RETURN_ERR_IF_NOT(concat->getDim() == 0,
@@ -5655,6 +5667,21 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           TileNode::InputIdx,
                                           TileNode::ResultIdx, splitDims, 1));
+        break;
+      }
+      case Kinded::Kind::BatchedReduceAddNodeKind: {
+        BatchedReduceAddNode *BR = llvm::cast<BatchedReduceAddNode>(curNode);
+        if (BR->getBatch().dims().size() < 2) {
+          break;
+        }
+        RETURN_ERR_IF_NOT(BR->getAxis() == 0,
+                          "BatchedReduceAdd model parallel splitting must have "
+                          "dim 0 reduction");
+        splitDims[BatchedReduceAddNode::BatchIdx] = 1;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, BatchedReduceAddNode::BatchIdx,
+                    BatchedReduceAddNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::ConcatNodeKind: {

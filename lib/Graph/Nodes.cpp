@@ -2114,7 +2114,6 @@ bool ROIAlignNode::verify() const {
   auto result = getResult();
   auto featureMapDims = featureMap.dims();
   auto boxesDims = boxes.dims();
-  auto batchIndicesDims = batchIndices.dims();
   auto outputDims = result.dims();
 
   bool isValid = checkTypeIgnoreShape(featureMap, result, this);
@@ -2125,10 +2124,22 @@ bool ROIAlignNode::verify() const {
                                featureMapDims.size(), size_t(4), this);
   isValid &= expectCompareTrue("Boxes must be a 2D tensor", boxesDims.size(),
                                size_t(2), this);
-  isValid &= expectCompareTrue("BatchIndices must be a 1D tensor",
-                               batchIndicesDims.size(), size_t(1), this);
   isValid &= expectCompareTrue("Output must be a 4D tensor", outputDims.size(),
                                size_t(4), this);
+  // If batch size > 1 batch indices must be provided.
+  if (featureMapDims[0] > 1) {
+    // Caffe2 gets indices using boxes tensor
+    bool indicesInBoxesTensor = boxesDims[1] == 5;
+    // Onnx requires batchIndices to be valid
+    if (!indicesInBoxesTensor) {
+      auto batchIndicesDims = batchIndices.dims();
+      isValid &= expectCompareTrue("BatchIndices must be a 1D tensor",
+                                   batchIndicesDims.size(), size_t(1), this);
+      isValid &=
+          expectCompareTrue("BatchIndices must have same length as Boxes",
+                            batchIndicesDims[0], boxesDims[0], this);
+    }
+  }
   return isValid;
 }
 

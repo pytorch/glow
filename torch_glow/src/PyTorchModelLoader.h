@@ -484,13 +484,17 @@ private:
   /// \returns error on failure.
   Error loadBatchNorm(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch batch_norm2d node.
+  /// Load a PyTorch quantized::batch_norm2d node.
   /// \returns error on failure.
   Error loadQuantizedBatchNorm2d(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch batch_norm3d node.
+  /// Load a PyTorch quantized::batch_norm3d node.
   /// \returns error on failure.
   Error loadQuantizedBatchNorm3d(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch quantized::batch_norm3d_relu node.
+  /// \returns error on failure.
+  Error loadQuantizedBatchNorm3dRelu(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch aten::layer_norm node.
   /// \returns error on failure.

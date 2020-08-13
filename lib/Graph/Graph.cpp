@@ -4806,7 +4806,7 @@ Function::createROIAlign(llvm::StringRef name, NodeValue featureMap,
                          NodeValue boxes, NodeValue batchIndices,
                          std::string mode, uint32_t outputHeight,
                          uint32_t outputWidth, uint32_t samplingRatio,
-                         float spatialScale, float offset, bool normalized) {
+                         float spatialScale, bool aligned, bool rotated) {
   auto featureMapDims = featureMap.dims();
   auto boxesDims = boxes.dims();
   std::vector<dim_t> outDim = {boxesDims[0], outputHeight, outputWidth,
@@ -4815,7 +4815,7 @@ Function::createROIAlign(llvm::StringRef name, NodeValue featureMap,
       getParent()->uniqueTypeWithNewShape(featureMap.getType(), outDim);
   return addNode(new ROIAlignNode(
       name, outTy, featureMap, boxes, batchIndices, mode, outputHeight,
-      outputHeight, samplingRatio, spatialScale, offset, normalized));
+      outputHeight, samplingRatio, spatialScale, aligned, rotated));
 }
 
 BBoxTransformNode *Function::createBBoxTransform(

@@ -547,7 +547,6 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::BatchNormalizationNodeKind:
   case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
-  case Kinded::Kind::AdaptiveAvgPoolNodeKind:
   case Kinded::Kind::EmbeddingBagNodeKind:
   case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind:
   case Kinded::Kind::LayerNormalizationNodeKind:
@@ -657,7 +656,7 @@ static void setupBasicParallelizationConfigs(
       continue;
     }
 
-    // Split Tile layers in data parallel fashion
+    // Split Tile layers
     if (auto *TN = llvm::dyn_cast<TileNode>(node)) {
       if (TN->getAxis() == 0) {
         if (TN->getInput().dims().size() < 2) {
@@ -681,6 +680,34 @@ static void setupBasicParallelizationConfigs(
         parOpts[TN] = ParallelTransformKind::Data;
         numChunks[TN] =
             std::min((size_t)numParallelChunks, TN->getResult().dims()[0]);
+      }
+      continue;
+    }
+
+    // Split BatchedReduceAdd layers
+    if (auto *BR = llvm::dyn_cast<BatchedReduceAddNode>(node)) {
+      if (BR->getAxis() == 0) {
+        if (BR->getBatch().dims().size() < 2) {
+          continue;
+        }
+        size_t N = BR->getBatch().dims()[1];
+        if (N < 64) {
+          continue;
+        }
+        parOpts[BR] = ParallelTransformKind::Model;
+        numChunks[BR] =
+            std::min((size_t)numParallelChunks, BR->getResult().dims()[0]);
+      } else if (BR->getAxis() == 1) {
+        if (BR->getBatch().dims().size() < 2) {
+          continue;
+        }
+        size_t M = BR->getBatch().dims()[0];
+        if (M < 64) {
+          continue;
+        }
+        parOpts[BR] = ParallelTransformKind::Data;
+        numChunks[BR] =
+            std::min((size_t)numParallelChunks, BR->getResult().dims()[0]);
       }
       continue;
     }

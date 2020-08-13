@@ -1145,8 +1145,8 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "OutputWidth")
       .addMember(MemberType::Unsigned, "SamplingRatio")
       .addMember(MemberType::Float, "SpatialScale")
-      .addMember(MemberType::Float, "Offset")
-      .addMember(MemberType::Boolean, "Normalized")
+      .addMember(MemberType::Boolean, "Aligned")
+      .addMember(MemberType::Boolean, "Rotated")
       .autoVerify(VerifyKind::SameElementType, {"FeatureMap", "Boxes"})
       .autoIRGen();
 
