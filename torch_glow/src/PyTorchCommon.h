@@ -98,6 +98,21 @@ public:
   bool get_convert_fused_to_fp16() { return convertFusedToFP16; }
   void set_convert_fused_to_fp16(bool val) { convertFusedToFP16 = val; }
 
+  /// Add clip operators after each fp16 ops during Glow compilation.
+  bool clipFP16 = false;
+
+  /// Force glow to skip clipping fp16 Node inputs to min/max
+  bool clipFP16SkipInputs = true;
+
+  /// Enable fp16 conversion for Placeholders
+  bool convertPlaceholdersToFP16 = true;
+
+  /// Enable fp16 conversion for Constants
+  bool convertConstantsToFP16 = true;
+
+  /// Force all SLS/SLWS ops to use FP16 accumulation.
+  bool forceFP16AccumSLS = true;
+
   /// Dump Glow dot graph to file after Glow compilation is finished.
   bool dumpFinalGlowGraph = false;
 

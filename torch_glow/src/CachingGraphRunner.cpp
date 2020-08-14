@@ -188,20 +188,15 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "loadJITGraph");
 
   glow::CompilationContext cctx;
+  initializeCompiliationContextFromSettings(cctx, settings_);
 
   if (settings_.convertToFP16) {
-    cctx.precisionConfig.convertToFP16 = true;
     cctx.precisionConfig.precisionModeKindSet.insert(
         Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind);
     cctx.precisionConfig.precisionModeKindSet.insert(
         Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind);
   }
   cctx.replicationCount = settings_.replicationCount;
-
-  if (settings_.dumpFinalGlowGraph) {
-    cctx.dumpFinalGraph = true;
-  }
-
   cctx.backendOpts.backendSpecificOpts = settings_.backendSpecificOpts;
 
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "addNetwork");
@@ -215,8 +210,6 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
     cctx.backendOpts.backendSpecificOpts.insert(loadBackendSpecificOpts);
   }
 
-  cctx.replicationCount = settings_.replicationCount;
-  cctx.saturateHost = settings_.saturateHost;
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(module), cctx));
 
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "addNetwork");
@@ -681,6 +674,47 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
   return err;
 }
 
+void CachingGraphRunner::initializeCompiliationContextFromSettings(
+    glow::CompilationContext &cctx, const PyTorchLoaderSettings &settings) {
+  if (settings.convertToFP16) {
+    cctx.precisionConfig.convertToFP16 = settings.convertToFP16;
+    LOG(INFO) << "Conversion to fp16 enabled";
+  }
+  if (settings.convertPlaceholdersToFP16) {
+    cctx.precisionConfig.convertPlaceholdersToFP16 =
+        settings.convertFusedToFP16;
+    LOG(INFO) << "Conversion of Placeholders to fp16 enabled";
+  }
+  if (settings.convertConstantsToFP16) {
+    cctx.precisionConfig.convertConstantsToFP16 =
+        settings.convertConstantsToFP16;
+    LOG(INFO) << "Conversion of Constants to fp16 enabled";
+  }
+  if (settings.convertFusedToFP16) {
+    cctx.precisionConfig.convertFusedToFP16 = settings.convertFusedToFP16;
+    LOG(INFO) << "Conversion of fused scales/offsets to fp16 enabled";
+  }
+  if (settings.clipFP16) {
+    cctx.precisionConfig.clipFP16 = settings.clipFP16;
+    LOG(INFO) << "Clipping to fp16 enabled";
+  }
+  if (settings.clipFP16SkipInputs) {
+    cctx.precisionConfig.clipFP16SkipInputs = settings.clipFP16SkipInputs;
+    LOG(INFO) << "Skipping clipping for fp16 Node inputs fp16";
+  }
+  if (settings.forceFP16AccumSLS) {
+    cctx.precisionConfig.forceFP16AccumSLS = settings.forceFP16AccumSLS;
+    LOG(INFO) << "Forcing all SLS/SLWS ops to use FP16 accumulation enabled";
+  }
+
+  if (settings.dumpFinalGlowGraph) {
+    cctx.dumpFinalGraph = settings.dumpFinalGlowGraph;
+  }
+  if (settings.saturateHost) {
+    cctx.saturateHost = settings.saturateHost;
+  }
+}
+
 Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
                                     const PyTorchLoaderSettings &settings,
                                     bool useMaxSizeCompilation) {
@@ -757,11 +791,7 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
   zeroLengthSequence_.zero();
 
   glow::CompilationContext cctx;
-
-  cctx.precisionConfig.convertToFP16 = settings.convertToFP16;
-  cctx.precisionConfig.convertFusedToFP16 = settings.convertFusedToFP16;
-  cctx.dumpFinalGraph = settings.dumpFinalGlowGraph;
-  cctx.saturateHost = settings.saturateHost;
+  initializeCompiliationContextFromSettings(cctx, settings);
 
   TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(glowModule), cctx));

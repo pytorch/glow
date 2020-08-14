@@ -32,6 +32,9 @@
 DEFINE_string(torch_glow_backend, "Interpreter",
               "Glow backend used for torchifi");
 DEFINE_int32(torch_glow_num_devices, -1, "Number of devices for Glow backend");
+
+DEFINE_bool(saturateHost, false, "See PyTorchLoaderSettings");
+
 DEFINE_int32(torch_glow_min_fusion_group_size, 1,
              "Minimum number of nodes in the glow fusion group");
 DEFINE_bool(dumpGlowDag, false, "See PyTorchLoaderSettings");
@@ -39,9 +42,16 @@ DEFINE_bool(jitVsGlowCompare, false, "Enable per-group error check");
 DEFINE_bool(dumpFinalGlowGraph, false, "See PyTorchLoaderSettings");
 DEFINE_bool(enableGlowTracing, false, "See PyTorchLoaderSettings");
 DEFINE_int32(numTracesPerDump, 1, "See PyTorchLoaderSettings");
-DEFINE_bool(saturateHost, false, "See PyTorchLoaderSettings");
+
+// settings for model precision conversion
 DEFINE_bool(convertToFP16, false, "See PyTorchLoaderSettings");
 DEFINE_bool(convertFusedToFP16, false, "See PyTorchLoaderSettings");
+DEFINE_bool(clipFP16, false, "See PyTorchLoaderSettings");
+DEFINE_bool(clipFP16SkipInputs, true, "See PyTorchLoaderSettings");
+DEFINE_bool(convertPlaceholdersToFP16, true, "See PyTorchLoaderSettings");
+DEFINE_bool(convertConstantsToFP16, true, "See PyTorchLoaderSettings");
+DEFINE_bool(forceFP16AccumSLS, true, "See PyTorchLoaderSettings");
+
 DEFINE_string(opBlacklist, "", "See PyTorchLoaderSettings");
 DEFINE_string(opOverrideAllowlist, "", "See PyTorchLoaderSettings");
 DEFINE_int32(replicationCount, 1, "Number of replications on each device");
@@ -226,6 +236,12 @@ void PyTorchLoaderSettings::initSettings() {
   saturateHost = FLAGS_saturateHost;
   convertToFP16 = FLAGS_convertToFP16;
   convertFusedToFP16 = FLAGS_convertFusedToFP16;
+  clipFP16 = FLAGS_clipFP16;
+  clipFP16SkipInputs = FLAGS_clipFP16SkipInputs;
+  convertPlaceholdersToFP16 = FLAGS_convertPlaceholdersToFP16;
+  convertConstantsToFP16 = FLAGS_convertConstantsToFP16;
+  forceFP16AccumSLS = FLAGS_forceFP16AccumSLS;
+
   replicationCount = FLAGS_replicationCount;
   writeToOnnx = FLAGS_writeToOnnx;
   onnxZipMode = FLAGS_onnxZipMode;
@@ -293,6 +309,11 @@ PyTorchLoaderSettings::PyTorchLoaderSettings(
   initSettings();
   TRY_LOAD_BOOL_FROM_DICT(convertToFP16, dict);
   TRY_LOAD_BOOL_FROM_DICT(convertFusedToFP16, dict);
+  TRY_LOAD_BOOL_FROM_DICT(clipFP16, dict);
+  TRY_LOAD_BOOL_FROM_DICT(clipFP16SkipInputs, dict);
+  TRY_LOAD_BOOL_FROM_DICT(convertPlaceholdersToFP16, dict);
+  TRY_LOAD_BOOL_FROM_DICT(convertConstantsToFP16, dict);
+  TRY_LOAD_BOOL_FROM_DICT(forceFP16AccumSLS, dict);
   TRY_LOAD_BOOL_FROM_DICT(saturateHost, dict);
   TRY_LOAD_BOOL_FROM_DICT(randomizeConstants, dict);
   TRY_LOAD_STR_FROM_DICT(backendOptionsFile, dict);
@@ -315,6 +336,7 @@ PyTorchLoaderSettings::PyTorchLoaderSettings(
   TRY_LOAD_STR_FROM_DICT(backendName, dict);
   TRY_LOAD_INT_FROM_DICT(numDevices, dict);
   TRY_LOAD_BOOL_FROM_DICT(runShapeInference, dict);
+  TRY_LOAD_BOOL_FROM_DICT(setIncludeLastOffsets, dict);
   TRY_LOAD_BOOL_FROM_DICT(enableDebugFuser, dict);
   if (dict.contains("opBlacklist")) {
     std::string commaSepOpsList = dict.at("opBlacklist");
@@ -356,6 +378,11 @@ PyTorchLoaderSettings::serializeToDict() const {
   torch::Dict<std::string, std::string> dict;
   INSERT_BOOL_TO_DICT(convertToFP16, dict);
   INSERT_BOOL_TO_DICT(convertFusedToFP16, dict);
+  INSERT_BOOL_TO_DICT(clipFP16, dict);
+  INSERT_BOOL_TO_DICT(clipFP16SkipInputs, dict);
+  INSERT_BOOL_TO_DICT(convertPlaceholdersToFP16, dict);
+  INSERT_BOOL_TO_DICT(convertConstantsToFP16, dict);
+  INSERT_BOOL_TO_DICT(forceFP16AccumSLS, dict);
   INSERT_BOOL_TO_DICT(saturateHost, dict);
   INSERT_BOOL_TO_DICT(randomizeConstants, dict);
   INSERT_STR_TO_DICT(backendOptionsFile, dict);
@@ -378,6 +405,7 @@ PyTorchLoaderSettings::serializeToDict() const {
   INSERT_STR_TO_DICT(backendName, dict);
   INSERT_INT_TO_DICT(numDevices, dict);
   INSERT_BOOL_TO_DICT(runShapeInference, dict);
+  INSERT_BOOL_TO_DICT(setIncludeLastOffsets, dict);
   INSERT_BOOL_TO_DICT(enableDebugFuser, dict);
   if (opBlacklist.size() > 0) {
     std::stringstream commaSepOpsList;
