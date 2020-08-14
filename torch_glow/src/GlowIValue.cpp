@@ -493,6 +493,17 @@ iValToIntList(Expected<GlowIValue *> expectedIVal) {
   }
 }
 
+/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toDoubleList,
+/// propogate any Errors.
+Expected<std::vector<double> *>
+iValToDoubleList(Expected<GlowIValue *> expectedIVal) {
+  if (expectedIVal) {
+    return (*expectedIVal)->toDoubleList();
+  } else {
+    return expectedIVal.takeError();
+  }
+}
+
 /// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toPTTensor,
 /// propogate any Errors.
 Expected<at::Tensor *> iValToPTTensor(Expected<GlowIValue *> expectedIVal) {

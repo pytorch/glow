@@ -2174,15 +2174,38 @@ Error PyTorchModelLoader::loadUpsampleNearest3D(
     const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+  RETURN_ERR_IF_NOT(
+      inputs.size() == 3 || inputs.size() == 5,
+      glow::strFormat("Expected 3 or 5 arguments.  Got %zu.", inputs.size()));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, inputs.size(), outputs, 1));
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
   RETURN_ERR_IF_NOT(input.dims().size() == 5, "Expecting 5D input Tensor");
 
+  std::vector<int64_t> outputSizeBuf;
   std::vector<int64_t> *outputSize;
-  ASSIGN_VALUE_OR_RETURN_ERR(outputSize,
-                             iValToIntList(getGlowIValueForValue(inputs[1])));
-  RETURN_ERR_IF_NOT((*outputSize).size() == 3, "Expecting 3D output size");
+  glow::GlowIValue *outputSizeIValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(outputSizeIValue,
+                             getGlowIValueForValue(inputs[1]));
+  if (!outputSizeIValue->isNone()) {
+    // Explicit output size in upsample call.
+    ASSIGN_VALUE_OR_RETURN_ERR(outputSize,
+                               iValToIntList(getGlowIValueForValue(inputs[1])));
+    RETURN_ERR_IF_NOT((*outputSize).size() == 3, "Expecting 3D output size");
+  } else {
+    // Node specifies scale factor.  Compute output size.
+    RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+    std::vector<double> *scaleFactors;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        scaleFactors, iValToDoubleList(getGlowIValueForValue(inputs[2])));
+    RETURN_ERR_IF_NOT(scaleFactors->size() == 3,
+                      glow::strFormat("Expected 3 scale factors.  Got %zu.",
+                                      scaleFactors->size()));
+    for (int i = 0; i < 3; ++i) {
+      outputSizeBuf.push_back(input.dims()[i + 2] * scaleFactors->at(i));
+    }
+    outputSize = &outputSizeBuf;
+  }
 
   dim_t ia = input.dims()[0];
   dim_t ib = input.dims()[1];
