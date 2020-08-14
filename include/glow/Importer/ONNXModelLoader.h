@@ -111,6 +111,10 @@ class ONNXModelLoader
   /// \returns True if the operator\ op is successfully folded.
   Expected<bool> foldOperator(const ONNX_NAMESPACE::NodeProto &op);
 
+  /// Helper function to print better log information for operator failure cases
+  const std::string opErrMsg(const ONNX_NAMESPACE::NodeProto &op,
+                             const std::string &errMsg);
+
   /// ONNX model ir_version;
   size_t irVersion_;
 

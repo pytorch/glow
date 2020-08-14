@@ -65,6 +65,9 @@ class Caffe2ModelLoader
   /// \returns True if the operator \p op is successfully folded.
   Expected<bool> foldOperator(const caffe2::OperatorDef &op);
 
+  /// Helper function to print better log information for operator failure cases
+  const std::string opErrMsg(const caffe2::OperatorDef &op,
+                             const std::string &errMsg);
   /// Load the Conv or ConvRelu operators.
   Error loadConv(const caffe2::OperatorDef &op, ArgumentDictionaryTy &dict);
 
