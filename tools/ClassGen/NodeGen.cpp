@@ -891,6 +891,12 @@ int main(int argc, char **argv) {
       .setDocstring(
           "Applies ReLU, max(0, x), to each element in the Input tensor.");
 
+  BB.newNode("Gelu")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Applies GeLU, to each element in the Input tensor.");
+
   BB.newNode("Clip")
       .addInput("Input")
       .addMember(MemberType::Float, "Min")
