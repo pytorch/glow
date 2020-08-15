@@ -371,6 +371,10 @@ public:
   /// This is to make sure that performing optimizations have a deterministic
   /// behavior on the graphs which have the same ops but different ordering in
   /// nodes_.
+  /// Please do not call this in the middle of PyTorchModelLoading, since
+  /// constant propagation is heavily relied on the order of nodes in nodelist.
+  /// If the order is changed during model loading, the constant propagation may
+  /// cause unpredictable fatal error when building the graph.
   void orderNodes() {
     nodes_.sort(
         [](const Node &a, const Node &b) { return a.getName() < b.getName(); });
