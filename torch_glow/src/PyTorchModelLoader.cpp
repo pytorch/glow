@@ -970,9 +970,18 @@ static bool isConstNode(const glow::Node &glowNode) {
 // this output, and replace it with our newly created constant. This process
 // strictly relies on the topological order of the node in nodelist, therefore
 // please do not change it during PyTorch model loading.
+// Also, currently we dont support one jit node map to multiple glow node and
+// having multiple outputs. The only scenario of this to be happening is
+// prim::ConstantChunk, which we would like to skip running this.
 Error PyTorchModelLoader::runAndRemapSingleNode(
     glow::Node &glowNode, const torch::jit::Node *const node,
     llvm::simple_ilist<glow::Node>::iterator nodeBeginPtr) {
+
+  // Do not do constant propagation if jit node is prim:ConstantChunk
+  // TODO reverse map of jit-glow node should resolve this problem.
+  if (node->kind() == torch::jit::prim::ConstantChunk) {
+    return Error::success();
+  }
 
   std::vector<glow::Tensor *> outputTensors;
   PlaceholderBindings bindings;
