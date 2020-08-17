@@ -413,6 +413,9 @@ private:
   /// \returns error on failure.
   Error loadContiguous(const torch::jit::Node *ptNode);
 
+  /// NOP - aten::detach returns
+  Error loadDetach(const torch::jit::Node *ptNode);
+
   /// Helper function for loading arithmetic nodes. \p name is of the name of
   /// the node in the Glow graph, \p lhs and \p rhs are the inputs to the
   /// arithetic node and template parameter \p GlowNode is the type of the node

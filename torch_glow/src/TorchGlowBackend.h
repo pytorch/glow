@@ -4,6 +4,7 @@
 
 #include "CachingGraphRunner.h"
 #include "PyTorchCommon.h"
+#include <torch/csrc/jit/backends/backend.h>
 #include <torch/csrc/jit/backends/backend_interface.h>
 
 namespace glow {
@@ -51,6 +52,12 @@ private:
                                         std::unique_ptr<JITGraphRunner>>>
       handleToRunnerMap_;
 };
+
+/// Registers TorchGlowBackend, related custom classes and helper JIT IR ops.
+void registerTorchGlowBackendAndDeps();
+
+// Register TorchGlowBackend
+torch::jit::backend<TorchGlowBackend> &torchGlowBackend();
 
 } // namespace glow
 #endif // GLOW_TORCH_GLOW_BACKEND_H
