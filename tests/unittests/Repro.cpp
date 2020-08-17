@@ -99,6 +99,10 @@ llvm::cl::opt<bool> glowDumpGraphOpt(
     llvm::cl::desc("Dump the glow Graph into files before compilation"),
     llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<std::string> glowDumpGraphPathOpt(
+    "glow_dump_graph_path", llvm::cl::desc("Path for dumped glow graphs."),
+    llvm::cl::Optional, llvm::cl::init("./"), llvm::cl::cat(reproTestCat));
+
 llvm::cl::opt<bool> glowDumpGraphAfterLoadOpt(
     "glow_dump_graph_after_load",
     llvm::cl::desc(
@@ -531,7 +535,7 @@ int run() {
 
   if (glowDumpGraphAfterLoadOpt) {
     for (Function *F : mod->getFunctions()) {
-      F->dumpDAG(F->getName().str() + ".dot");
+      F->dumpDAG(glowDumpGraphPathOpt + F->getName().str() + ".dot");
     }
   }
 
@@ -575,6 +579,7 @@ int run() {
   }
   if (glowDumpGraphOpt) {
     cctx.dumpFinalGraph = true;
+    cctx.dumpGraphPath = glowDumpGraphPathOpt;
   }
 
   if (useSparseNNPartitioningScheme) {
