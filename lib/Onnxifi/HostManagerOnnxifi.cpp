@@ -40,6 +40,7 @@ bool GlowFP16Placeholders = true;
 bool GlowFP16Constants = true;
 bool GlowEnableQuantParamChanges = true;
 bool GlowDumpGraph = false;
+std::string GlowDumpGraphPath = "./";
 bool GlowDumpInitialLoadedGraph = false;
 bool GlowUseDAGOptimizer = false;
 std::string GlowDAGOptimizerPlacementTaggingAlgorithm = "None";
@@ -247,6 +248,7 @@ onnxStatus HostManagerBackend::addNetwork(
   }
   if (GlowDumpGraph) {
     cctx.dumpFinalGraph = true;
+    cctx.dumpGraphPath = GlowDumpGraphPath;
   }
   if (GlowUseDAGOptimizer) {
     LOG(INFO) << "Will call the DAG optimizer.";

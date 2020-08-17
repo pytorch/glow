@@ -269,6 +269,9 @@ struct CompilationContext {
   /// Call dumpDag on each Function passed to the backend for compilation.
   bool dumpFinalGraph = false;
 
+  /// Path where the dumped graphs should go, default "./".
+  std::string dumpGraphPath = "./";
+
   /// Whether to skip stripping the module.
   bool skipModuleStrip{false};
 
