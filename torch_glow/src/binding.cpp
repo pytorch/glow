@@ -26,21 +26,12 @@
 #include <pybind11/pybind11.h>
 /// Required include files for a proper binding TorchGlowTrainingWrapper class.
 #include <pybind11/stl.h>
-#include <torch/csrc/jit/backends/backend.h>
 
 #include "glow/Graph/Graph.h"
 
 namespace py = pybind11;
 
 using namespace glow;
-
-namespace glow {
-torch::jit::backend<glow::TorchGlowBackend> &torchGlowBackend() {
-  static auto cls = torch::jit::backend<glow::TorchGlowBackend>("glow");
-  return cls;
-}
-
-} // namespace glow
 
 /// The torch_glow pybind11 module.
 #ifdef TORCH_GLOW_MODULE_NAME
@@ -53,17 +44,15 @@ PYBIND11_MODULE(_torch_glow, m) {
   registerGlowFusionOpAndPass(
       []() { return getPyTorchLoaderSettings().fusionPassEnabled; });
 
-  /// Register GlowCompileSpec as PyTorch custom class
-  registerGlowCompileSpecCustomClass();
+  /// 1) Registers TorchGlowBackend as a PyTorch backend.
+  /// 2) Registers custom classes used by TorchGlowBackend.
+  /// 3) Registers JIT IR ops that are used in preprocessing.
+  registerTorchGlowBackendAndDeps();
 
   /// Enable overriding signal handlers for torch_glow to make interruping long
   /// running processes possible. This should only be used when running
   /// torch_glow with Python.
   enableSignalHandlerOverrides();
-
-  /// Lowers and compiles a given torch.nn module following the given spec.
-  /// Returns a lowered module.
-  (void)torchGlowBackend();
 
   /// Enable compiling PyTorch subgraphs to Glow Functions.
   m.def("enableFusionPass",

@@ -802,6 +802,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
   auto symbolLoaderMapping = MappingOfMemberFunctions({
       {{"aten::type_as"}, &PyTorchModelLoader::loadTypeAs},
       {{"aten::contiguous"}, &PyTorchModelLoader::loadContiguous},
+      {{"aten::detach"}, &PyTorchModelLoader::loadDetach},
       {{"prim::Constant"}, &PyTorchModelLoader::loadConstant},
       {{"prim::NumToTensor"}, &PyTorchModelLoader::loadNumToTensor},
       {{"aten::Int"}, &PyTorchModelLoader::loadInt},
@@ -1925,6 +1926,17 @@ Error PyTorchModelLoader::loadContiguous(const torch::jit::Node *ptNode) {
                     glow::strFormat("Scalar must have value equal 0."));
 
   return addValueMapping(outputs[0], dataValue);
+}
+
+Error PyTorchModelLoader::loadDetach(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  return addValueMapping(outputs[0], input);
 }
 
 template <typename GlowNode>
