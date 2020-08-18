@@ -2224,6 +2224,11 @@ bool SelectNode::verify() const {
 
 bool ReluNode::verify() const { return verifyRelu(getResult(), getInput()); }
 
+bool GeluNode::verify() const {
+  const Node *parent = getResult().getNode();
+  return checkSameType(getResult(), getInput(), parent);
+}
+
 bool ReluGradNode::verify() const {
   return verifyInputAndGradInputTypes(getInput(), getGradOfInputNamedInput(),
                                       this) &&

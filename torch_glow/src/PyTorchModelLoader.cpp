@@ -802,8 +802,10 @@ PyTorchModelLoader::buildSymbolsMapping() {
   auto symbolLoaderMapping = MappingOfMemberFunctions({
       {{"aten::type_as"}, &PyTorchModelLoader::loadTypeAs},
       {{"aten::contiguous"}, &PyTorchModelLoader::loadContiguous},
+      {{"aten::detach"}, &PyTorchModelLoader::loadDetach},
       {{"prim::Constant"}, &PyTorchModelLoader::loadConstant},
       {{"prim::NumToTensor"}, &PyTorchModelLoader::loadNumToTensor},
+      {{"aten::Int"}, &PyTorchModelLoader::loadInt},
       {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul},
       {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv},
       {{"aten::add", "aten::add_"}, &PyTorchModelLoader::loadAdd},
@@ -939,8 +941,126 @@ bool PyTorchModelLoader::isNodeSupported(const torch::jit::Node *ptNode) {
   return mapping.count(kind) != 0;
 }
 
+// Check if node only has const inputs, which indicate output should be
+// propagated from input when compiling.
+static bool isConstNode(const glow::Node &glowNode) {
+  // It is constant node already, dont need to propagate
+  // And we dont want to do constant propagation for quantize node
+  if (glowNode.getKind() == Kinded::Kind::ConstantKind ||
+      glowNode.getKind() == Kinded::Kind::QuantizeNodeKind) {
+    return false;
+  }
+  unsigned int n = glowNode.getNumInputs();
+  for (int i = 0; i < n; i++) {
+    auto ithInputNodeValue = glowNode.getNthInput(i);
+    // Cannot propagate if not all inputs are constant
+    if (ithInputNodeValue.getNode()->getKind() != Kinded::Kind::ConstantKind) {
+      return false;
+    }
+  }
+  // If all input nodes are constant, then this glowNode should propagate
+  // its input to output and create a constant node to replace
+  return true;
+}
+
+// This function creates and runs a graph which contains one node \p glowNode,
+// and remaps its result as a constant back to original graph. If \p glowNode 's
+// output is directly mapped to a jit node, then we modify the jit value
+// mapping; If it is mapped to another glow nodevalue, usually when one jit node
+// creates more than one glow nodes, then we find all other places that using
+// this output, and replace it with our newly created constant. This process
+// strictly relies on the topological order of the node in nodelist, therefore
+// please do not change it during PyTorch model loading.
+// Also, currently we dont support one jit node map to multiple glow node and
+// having multiple outputs. The only scenario of this to be happening is
+// prim::ConstantChunk, which we would like to skip running this.
+Error PyTorchModelLoader::runAndRemapSingleNode(
+    glow::Node &glowNode, const torch::jit::Node *const node,
+    llvm::simple_ilist<glow::Node>::iterator nodeBeginPtr) {
+
+  // Do not do constant propagation if jit node is prim:ConstantChunk
+  // TODO reverse map of jit-glow node should resolve this problem.
+  if (node->kind() == torch::jit::prim::ConstantChunk) {
+    return Error::success();
+  }
+
+  std::vector<glow::Tensor *> outputTensors;
+  PlaceholderBindings bindings;
+  auto &nodelist = F_.getNodes();
+
+  // Create a tmp Function to run the single node
+  glow::Function *tmpF =
+      F_.getParent()->createFunction("eval_const_propagating");
+  unsigned int numResults = glowNode.getNumResults();
+  auto tmpGlowNode = glowNode.clone();
+  tmpF->addNode(tmpGlowNode);
+
+  // Create output placeholders and tensors
+  for (int i = 0; i < numResults; i++) {
+    glow::NodeValue outputNodeValue = tmpGlowNode->getNthResult(i);
+    auto *save = tmpF->createSave("save", outputNodeValue);
+    auto *result = bindings.allocate(save->getPlaceholder());
+    outputTensors.push_back(result);
+  }
+
+  // Evaluate the constant outputs using interpreter backend.
+  std::unique_ptr<Backend> backend(createBackend("Interpreter"));
+  CompilationContext cctx;
+  cctx.compMode = CompilationMode::Infer;
+  cctx.optimizationOpts.enableConstantFolding = false;
+  cctx.backendOpts.collectConstants = true;
+  cctx.verboseCompile = false;
+  RETURN_IF_ERR(executeConstantFunction(*backend, *tmpF, bindings, cctx, true));
+
+  bool isJitOutputNode = true;
+  // Remap result back to original jit graph
+  for (int i = 0; i < numResults; i++) {
+    auto t = outputTensors[i];
+    auto outputNodeValue = glowNode.getNthResult(i);
+    auto nodePtr = nodeBeginPtr;
+
+    auto glowConstant =
+        tmpF->getParent()->createConstant("eval_graph_output", std::move(*t));
+
+    glowConstant->ensureIsOwned();
+    // Remap back to glow graph
+    while (nodePtr != nodelist.end()) {
+      glow::Node &checkNode = *nodePtr;
+      for (int j = 0; j < checkNode.getNumInputs(); j++) {
+        auto jthInputNodeValue = checkNode.getNthInput(j);
+        if (jthInputNodeValue == outputNodeValue) {
+          checkNode.setNthInput(j, glowConstant->getOutput());
+          isJitOutputNode = false;
+        }
+      }
+      nodePtr++;
+    }
+    // Remap back to jit graph if does not remap back to glow graph
+    if (isJitOutputNode) {
+      // If a node is jit output node, it should have the same
+      // number of outputs of the jit node.
+      RETURN_ERR_IF_NOT(
+          node->outputs().size() == numResults,
+          glow::strFormat(
+              "Node %s has output number mismatch while const propagating.",
+              node->kind().toDisplayString()));
+      removeValueMapping(node->outputs()[i]);
+      auto scalarType =
+          elemKindToScalarType(glowConstant->getType()->getElementType());
+      RETURN_IF_ERR(addValueMapping(node->outputs()[i],
+                                    glowConstant->getOutput(), scalarType));
+    }
+  }
+
+  // Remove tmp stuffs and return success
+  F_.getParent()->eraseFunction(tmpF);
+  return Error::success();
+}
+
 Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
   const auto &mapping = getSymbolsMapping();
+  auto &nodelist = F_.getNodes();
+  int nodeIdx = 0;
   // Nodes are topologically sorted.
   for (const auto &node : graph.nodes()) {
     const auto kind = node->kind();
@@ -956,6 +1076,23 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
                                       node->kind().toDisplayString()));
 
     RETURN_IF_ERR((this->*it->second.loadFn)(node));
+
+    auto nodeItr = nodelist.begin();
+    for (int j = 0; j < nodeIdx; j++) {
+      nodeItr++;
+    }
+    // TODO we visited many redundent nodes during this process,
+    // which makes while constant propagation to be a O(N^2) algorithm.
+    // We should be able to improve this by improving nodelist structure.
+    while (nodeItr != nodelist.end()) {
+      glow::Node &glowNode = *nodeItr;
+      if (isConstNode(glowNode)) {
+        // Run glowNode and remap it result as a constant node as node's output.
+        RETURN_IF_ERR(runAndRemapSingleNode(glowNode, node, nodeItr));
+      }
+      nodeIdx++;
+      nodeItr++;
+    }
   }
 
   return Error::success();
@@ -1791,6 +1928,17 @@ Error PyTorchModelLoader::loadContiguous(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], dataValue);
 }
 
+Error PyTorchModelLoader::loadDetach(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  return addValueMapping(outputs[0], input);
+}
+
 template <typename GlowNode>
 Expected<NodeValue>
 PyTorchModelLoader::loadArithmeticNode(llvm::StringRef name,
@@ -2122,6 +2270,42 @@ Error PyTorchModelLoader::loadNumToTensor(const torch::jit::Node *ptNode) {
   return addValueMapping(outputs[0], output);
 }
 
+Error PyTorchModelLoader::loadInt(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  // LoadInt receive an input constant node,
+  // generate an glow iValue.
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+  auto inputElementType = input.getType()->getElementType();
+
+  glow::Constant *intConstant = llvm::dyn_cast<glow::Constant>(input.getNode());
+  RETURN_ERR_IF_NOT(
+      intConstant,
+      strFormat("Expected input to be a Constant in loadInt, but found: %s",
+                input.getNode()->getKindName()));
+  // Also need to check if intConstant is a scalar
+  int value;
+
+  if (inputElementType == glow::ElemKind::Int32ITy) {
+    value = intConstant->getPayload().getHandle<int32_t>().at({0});
+  } else if (inputElementType == glow::ElemKind::Int64ITy) {
+    value = intConstant->getPayload().getHandle<int64_t>().at({0});
+  } else if (inputElementType == glow::ElemKind::FloatTy) {
+    auto value_f = intConstant->getPayload().getHandle<float>().at({0});
+    value = static_cast<int>(value_f);
+  } else {
+    RETURN_ERR("Expected integer/float tensor in loadInt");
+  }
+  glow::GlowIValue glowIVal;
+  // No matter input is int32 or int64, it is int in glowIVal.
+  // When using NumToTensor, this int will transformed into int64 again.
+  glowIVal.fromInt(value);
+  return addValueMapping(outputs[0], std::move(glowIVal));
+}
+
 Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -2174,15 +2358,38 @@ Error PyTorchModelLoader::loadUpsampleNearest3D(
     const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+  RETURN_ERR_IF_NOT(
+      inputs.size() == 3 || inputs.size() == 5,
+      glow::strFormat("Expected 3 or 5 arguments.  Got %zu.", inputs.size()));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, inputs.size(), outputs, 1));
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
   RETURN_ERR_IF_NOT(input.dims().size() == 5, "Expecting 5D input Tensor");
 
+  std::vector<int64_t> outputSizeBuf;
   std::vector<int64_t> *outputSize;
-  ASSIGN_VALUE_OR_RETURN_ERR(outputSize,
-                             iValToIntList(getGlowIValueForValue(inputs[1])));
-  RETURN_ERR_IF_NOT((*outputSize).size() == 3, "Expecting 3D output size");
+  glow::GlowIValue *outputSizeIValue;
+  ASSIGN_VALUE_OR_RETURN_ERR(outputSizeIValue,
+                             getGlowIValueForValue(inputs[1]));
+  if (!outputSizeIValue->isNone()) {
+    // Explicit output size in upsample call.
+    ASSIGN_VALUE_OR_RETURN_ERR(outputSize,
+                               iValToIntList(getGlowIValueForValue(inputs[1])));
+    RETURN_ERR_IF_NOT((*outputSize).size() == 3, "Expecting 3D output size");
+  } else {
+    // Node specifies scale factor.  Compute output size.
+    RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+    std::vector<double> *scaleFactors;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        scaleFactors, iValToDoubleList(getGlowIValueForValue(inputs[2])));
+    RETURN_ERR_IF_NOT(scaleFactors->size() == 3,
+                      glow::strFormat("Expected 3 scale factors.  Got %zu.",
+                                      scaleFactors->size()));
+    for (int i = 0; i < 3; ++i) {
+      outputSizeBuf.push_back(input.dims()[i + 2] * scaleFactors->at(i));
+    }
+    outputSize = &outputSizeBuf;
+  }
 
   dim_t ia = input.dims()[0];
   dim_t ib = input.dims()[1];

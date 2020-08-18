@@ -59,6 +59,7 @@ namespace glow {
 namespace runtime {
 bool GlowEnableP2P = false;
 bool GlowEnableDRT = false;
+std::string GlowDumpGraphPath = "./";
 unsigned GlowDeviceInitTimeoutMs = 5000;
 std::string GlowAvailableDevices = "";
 } // namespace runtime
@@ -264,8 +265,8 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   ScopeGuard debugDumpDAGGuard([&]() {
     if (cctx.dumpFinalGraph) {
       for (Function *F : module->getFunctions()) {
-        auto fname =
-            strFormat("final_graph_dbg_err_%s.dot", F->getName().data());
+        auto fname = strFormat("%sfinal_graph_dbg_err_%s.dot",
+                               cctx.dumpGraphPath.c_str(), F->getName().data());
         LOG(INFO) << "Dumping final graph due to error to " << fname;
         F->dumpDAG(fname);
       }

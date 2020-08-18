@@ -127,7 +127,8 @@ class CachingGraphRunner {
   /// subgraph into the owned HostManager, creates a PerGlowGraphInfo which is
   /// cached for the given inputs, and then \returns this PerGlowGraphInfo.
   Expected<std::shared_ptr<PerGlowGraphInfo>>
-  loadImpl(torch::jit::Stack &stack, TraceContext *traceContext);
+  loadImpl(torch::jit::Stack &stack, const PyTorchLoaderSettings &settings,
+           TraceContext *traceContext);
 
   /// Given a PyTorch inputs \p inputs, this generates a hash from the input
   /// shape and checks to see if the graph output shape with the given input
@@ -166,6 +167,10 @@ class CachingGraphRunner {
   /// then dump them to file. If flush is true then dump aggregated traces to
   /// file no matter what.
   void aggregateAndDumpTraces(TraceContext *traceContext, bool flush = false);
+
+  /// Initialize the Glow compilation context \p cctx with \p settings
+  void initializeCompiliationContextFromSettings(
+      glow::CompilationContext &cctx, const PyTorchLoaderSettings &settings);
 
 public:
   CachingGraphRunner(std::shared_ptr<torch::jit::Graph> graph,

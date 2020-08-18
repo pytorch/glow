@@ -53,9 +53,6 @@ class TestUpsample(unittest.TestCase):
 
         jitVsGlow(test_f, x, expected_fused_ops={"aten::upsample_nearest3d"})
 
-    @unittest.skip(
-        reason="breaks because of constants not being differentiated in CachingGraphRunner"
-    )
     def test_upsample3d_not_2x_scale_factor(self):
         """Test of the PyTorch upsample Node on Glow."""
 

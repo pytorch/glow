@@ -157,6 +157,19 @@ private:
     }
   };
 
+  /// Create and run a simple function with only one glowNode node,
+  /// then map its result back to original graph.
+  /// Used for constant propagation.
+  /// \returns error on failure.
+  /// \p glowNode is the glow node we would like to run,
+  /// \p node is the torch jit node that generate \p glowNode,
+  /// and \p nodeBeginPtr is the current glow node ptr of the glow node
+  /// linklist.
+  Error
+  runAndRemapSingleNode(glow::Node &glowNode,
+                        const torch::jit::Node *const node,
+                        llvm::simple_ilist<glow::Node>::iterator nodeBeginPtr);
+
 public:
   /// Returns whether or not a PyTorch node is supported.
   /// NOTE: For now this is just an enumeration of all type of PyTorch nodes
@@ -400,6 +413,9 @@ private:
   /// \returns error on failure.
   Error loadContiguous(const torch::jit::Node *ptNode);
 
+  /// NOP - aten::detach returns
+  Error loadDetach(const torch::jit::Node *ptNode);
+
   /// Helper function for loading arithmetic nodes. \p name is of the name of
   /// the node in the Glow graph, \p lhs and \p rhs are the inputs to the
   /// arithetic node and template parameter \p GlowNode is the type of the node
@@ -624,6 +640,10 @@ private:
   /// Load a PyTorch prim::ListConstruct node.
   /// \returns error on failure.
   Error loadListConstruct(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::Int node.
+  /// \returns error on failure.
+  Error loadInt(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch prim::NumToTensor node.
   /// \returns error on failure.
