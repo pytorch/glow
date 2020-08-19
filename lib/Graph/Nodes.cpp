@@ -2118,7 +2118,6 @@ bool ROIAlignNode::verify() const {
 
   bool isValid = checkTypeIgnoreShape(featureMap, result, this);
   isValid &= checkTypeIgnoreShape(boxes, result, this);
-  isValid &= checkType(batchIndices, ElemKind::Int64ITy, this);
   isValid &= checkType(featureMap, ElemKind::FloatTy, this);
   isValid &= expectCompareTrue("FeatureMap must be a 4D tensor",
                                featureMapDims.size(), size_t(4), this);
@@ -2133,6 +2132,7 @@ bool ROIAlignNode::verify() const {
     // Onnx requires batchIndices to be valid
     if (!indicesInBoxesTensor) {
       auto batchIndicesDims = batchIndices.dims();
+      isValid &= checkType(batchIndices, ElemKind::Int64ITy, this);
       isValid &= expectCompareTrue("BatchIndices must be a 1D tensor",
                                    batchIndicesDims.size(), size_t(1), this);
       isValid &=

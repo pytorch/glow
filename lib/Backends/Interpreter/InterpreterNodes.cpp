@@ -6001,10 +6001,9 @@ void BoundInterpreterFunction::fwdBBoxTransformInstFloatImpl(
 
     offset += rows;
   }
-  if (batchSize > 1) {
-    for (dim_t i = 0; i < batchSize; i++) {
-      roiBatchSplitsH.at({i}) = numRoisPerBatch[i];
-    }
+
+  for (dim_t i = 0; i < batchSize; i++) {
+    roiBatchSplitsH.at({i}) = numRoisPerBatch[i];
   }
 }
 
