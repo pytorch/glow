@@ -793,6 +793,37 @@ struct EmbeddingBag4BitRowwiseOffsetsInputs {
   };
 };
 
+/// Indexes used for _caffe2::RoIAlign inputs
+struct RoiAlignInputs {
+  enum {
+    features = 0,
+    rois,
+    layout,
+    spatialScale,
+    outputHeight,
+    outputWidth,
+    samplingRatio,
+    aligned,
+  };
+};
+
+/// Indexes used for _caffe2::BBoxTransform inputs
+struct BBoxTransformInputs {
+  enum {
+    rois = 0,
+    deltas,
+    imInfo,
+    weights,
+    applyScale,
+    rotated,
+    angleBoundOn,
+    angleBoundLo,
+    angleBoundHi,
+    clipAngleThresh,
+    legacyPlusOne,
+  };
+};
+
 } // namespace
 
 // static
@@ -898,6 +929,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets},
       {{"fb::embedding_bag_4bit_rowwise_offsets"},
        &PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets},
+      {{"_caffe2::RoIAlign"}, &PyTorchModelLoader::loadRoiAlign},
+      {{"_caffe2::BBoxTransform"}, &PyTorchModelLoader::loadBBoxTransform},
   });
 
   // Add in custom operator loaders.
@@ -4529,6 +4562,132 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
 Error PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets(
     const torch::jit::Node *ptNode) {
   return loadEmbeddingBagByteRowwiseOffsetsHelper(ptNode, true);
+}
+
+Error PyTorchModelLoader::loadRoiAlign(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 9, outputs, 1));
+
+  glow::NodeValue features;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      features, getGlowNodeValueForValue(inputs[RoiAlignInputs::features]));
+
+  glow::NodeValue rois;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      rois, getGlowNodeValueForValue(inputs[RoiAlignInputs::rois]));
+
+  std::string *layout;
+  ASSIGN_VALUE_OR_RETURN_ERR(layout, iValToString(getGlowIValueForValue(
+                                         inputs[RoiAlignInputs::layout])));
+
+  float spatialScale;
+  ASSIGN_VALUE_OR_RETURN_ERR(spatialScale,
+                             iValToDouble(getGlowIValueForValue(
+                                 inputs[RoiAlignInputs::spatialScale])));
+
+  int64_t outputHeight;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      outputHeight,
+      iValToInt(getGlowIValueForValue(inputs[RoiAlignInputs::outputHeight])));
+
+  int64_t outputWidth;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      outputWidth,
+      iValToInt(getGlowIValueForValue(inputs[RoiAlignInputs::outputWidth])));
+
+  int64_t samplingRatio;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      samplingRatio,
+      iValToInt(getGlowIValueForValue(inputs[RoiAlignInputs::samplingRatio])));
+
+  bool aligned;
+  ASSIGN_VALUE_OR_RETURN_ERR(aligned, iValToBool(getGlowIValueForValue(
+                                          inputs[RoiAlignInputs::aligned])));
+
+  auto *transposedFeatures =
+      F_.createTranspose("features_transposed", features, NCHW2NHWC);
+
+  // rois tensor is passed as a dummy NodeValue instead of batchedIndices
+  // input which is not used in caffe2.
+  auto *RAN = F_.createROIAlign("RoiAlign", transposedFeatures, rois, rois,
+                                *layout, outputHeight, outputWidth,
+                                samplingRatio, spatialScale, aligned, false);
+
+  auto *output = F_.createTranspose("roi_align_output_transposed",
+                                    RAN->getResult(), NHWC2NCHW);
+
+  return addValueMapping(outputs[0], output);
+}
+
+Error PyTorchModelLoader::loadBBoxTransform(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 12, outputs, 2));
+
+  glow::NodeValue rois;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      rois, getGlowNodeValueForValue(inputs[BBoxTransformInputs::rois]));
+
+  glow::NodeValue deltas;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      deltas, getGlowNodeValueForValue(inputs[BBoxTransformInputs::deltas]));
+
+  glow::NodeValue imInfo;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      imInfo, getGlowNodeValueForValue(inputs[BBoxTransformInputs::imInfo]));
+
+  std::vector<double> *weightsDouble;
+  ASSIGN_VALUE_OR_RETURN_ERR(weightsDouble,
+                             iValToDoubleList(getGlowIValueForValue(
+                                 inputs[BBoxTransformInputs::weights])));
+  std::vector<float> weights;
+  for (const auto &w : *weightsDouble) {
+    weights.push_back(w);
+  }
+
+  bool applyScale;
+  ASSIGN_VALUE_OR_RETURN_ERR(applyScale,
+                             iValToBool(getGlowIValueForValue(
+                                 inputs[BBoxTransformInputs::applyScale])));
+
+  bool rotated;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      rotated,
+      iValToBool(getGlowIValueForValue(inputs[BBoxTransformInputs::rotated])));
+
+  bool angleBoundOn;
+  ASSIGN_VALUE_OR_RETURN_ERR(angleBoundOn,
+                             iValToBool(getGlowIValueForValue(
+                                 inputs[BBoxTransformInputs::angleBoundOn])));
+
+  int64_t angleBoundLo;
+  ASSIGN_VALUE_OR_RETURN_ERR(angleBoundLo,
+                             iValToInt(getGlowIValueForValue(
+                                 inputs[BBoxTransformInputs::angleBoundLo])));
+
+  int64_t angleBoundHi;
+  ASSIGN_VALUE_OR_RETURN_ERR(angleBoundHi,
+                             iValToInt(getGlowIValueForValue(
+                                 inputs[BBoxTransformInputs::angleBoundHi])));
+
+  float clipAngleThresh;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      clipAngleThresh, iValToDouble(getGlowIValueForValue(
+                           inputs[BBoxTransformInputs::clipAngleThresh])));
+
+  bool legacyPlusOne;
+  ASSIGN_VALUE_OR_RETURN_ERR(legacyPlusOne,
+                             iValToBool(getGlowIValueForValue(
+                                 inputs[BBoxTransformInputs::legacyPlusOne])));
+
+  auto *BBTN = F_.createBBoxTransform(
+      "BBoxTransform", rois, deltas, imInfo, weights, applyScale, rotated,
+      angleBoundOn, angleBoundLo, angleBoundHi, clipAngleThresh, legacyPlusOne);
+
+  RETURN_IF_ERR(addValueMapping(outputs[0], BBTN->getBoxOut()));
+  RETURN_IF_ERR(addValueMapping(outputs[1], BBTN->getRoiBatchSplits()));
+  return Error::success();
 }
 
 Error PyTorchModelLoader::loadAttributes(

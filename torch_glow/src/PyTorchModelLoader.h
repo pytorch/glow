@@ -383,6 +383,14 @@ private:
   Error loadEmbeddingBagByteRowwiseOffsetsHelper(const torch::jit::Node *ptNode,
                                                  bool is4Bit = false);
 
+  // Load a PyTorch _caffe2::RoIAlign op.
+  // \returns error on failure.
+  Error loadRoiAlign(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch _caffe2::BBoxTransform op.
+  // \returns error on failure.
+  Error loadBBoxTransform(const torch::jit::Node *ptNode);
+
   /// Load all PyTorch prim::GetAttr nodes in \p graph. This method uses the
   /// PyTorch Module hierarchy to map Values for all outputs of prim::GetAttr
   /// nodes. If the output type of a prim::GetAttr is a tensor, this will load
