@@ -84,6 +84,8 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
       LOG_IF_NOT_RETURN_LLVMERROR(
           false, "INVALID NNPI_DEVICE_VERSION, valid values are 1,2,3");
     }
+  } else if (!compilationOptions_.inferOnDevice) {
+    config_.deviceType = NNPI_1000_C;
   }
 
   if (compilationOptions.iceCores > 0) {
