@@ -185,13 +185,15 @@ public:
 /// Perform data or model parallel transformation of supported Nodes in \p F.
 /// \p numOfChunksMap maps Nodes to how many chunks they should be split into;
 /// if not listed this falls back to \p numOfChunks. \p parOpts represents what
-/// kind of parallelism to use. \returns an expected map of Nodes from \p F to
-/// the ConcatNode that they were replaced with.
+/// kind of parallelism to use. \p modelParallelSplitAlignment optionally can
+/// increase the size of model parallel splits to multiple of the given value.
+/// \returns an expected map of Nodes from \p F to the ConcatNode that they were
+/// replaced with.
 Expected<std::unordered_map<Node *, ConcatNode *>>
 parallelizeOps(Function *F,
                const llvm::DenseMap<Node *, size_t> &numOfChunksMap,
                const llvm::DenseMap<Node *, ParallelTransformKind> &parOpts,
-               size_t numOfChunks = 1);
+               size_t numOfChunks = 1, size_t modelParallelSplitAlignment = 1);
 
 } // namespace glow
 

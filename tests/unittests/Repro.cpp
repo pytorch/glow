@@ -225,6 +225,11 @@ llvm::cl::opt<int32_t> glowNNPINumParallelChunks(
     llvm::cl::desc("Number of parallel splits to apply to certain ops in glow"),
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<int32_t> glowNNPIModelParallelSplitAlignment(
+    "glow_nnpi_model_parallel_split_alignment",
+    llvm::cl::desc("Alignment value for model parallel splits"),
+    llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
+
 llvm::cl::opt<bool> glowUseDagOptimizer(
     "glow_use_dag_optimizer", llvm::cl::desc("Use the DAG optimizer in Glow"),
     llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
@@ -604,6 +609,10 @@ int run() {
   if (glowNNPINumParallelChunks > 1) {
     cctx.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
         std::to_string(glowNNPINumParallelChunks);
+  }
+  if (glowNNPIModelParallelSplitAlignment > 1) {
+    cctx.backendOpts.backendSpecificOpts["NNPIModelParallelSplitAlignment"] =
+        std::to_string(glowNNPIModelParallelSplitAlignment);
   }
 
   if (glowUseDagOptimizer) {
