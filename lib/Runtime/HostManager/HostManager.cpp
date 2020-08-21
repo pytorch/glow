@@ -109,8 +109,7 @@ llvm::cl::opt<std::string, true> GlowAvailableDevicesOpt(
                    "should be used, example 2,3,4"),
     llvm::cl::location(GlowAvailableDevices), llvm::cl::cat(hostManagerCat));
 
-HostManager::HostManager()
-    : config_(), statsExporterRegistry_(StatsExporterRegistry::Stats()) {}
+HostManager::HostManager() : HostManager(HostConfig{}) {}
 
 HostManager::HostManager(const HostConfig &hostConfig)
     : config_(hostConfig),
@@ -118,10 +117,7 @@ HostManager::HostManager(const HostConfig &hostConfig)
 
 HostManager::HostManager(
     std::vector<std::unique_ptr<DeviceConfig>> deviceConfigs)
-    : config_(), statsExporterRegistry_(StatsExporterRegistry::Stats()) {
-  // TODO: move all initialization out of constructor.
-  EXIT_ON_ERR(init(std::move(deviceConfigs)));
-}
+    : HostManager(std::move(deviceConfigs), HostConfig{}) {}
 
 HostManager::HostManager(
     std::vector<std::unique_ptr<DeviceConfig>> deviceConfigs,
