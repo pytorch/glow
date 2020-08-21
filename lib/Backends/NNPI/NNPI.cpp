@@ -82,6 +82,7 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true>
 bool GlowDisableNNPITransforms = false;
 bool GlowDisableNNPIPrivateTransforms = false;
 int32_t GlowNNPINumParallelChunks = 0;
+int32_t GlowNNPIModelParallelSplitAlignment = 1;
 
 } // namespace onnxifi
 } // namespace glow
@@ -890,7 +891,9 @@ static Error validateBackendSpecificNodeInfo(
     int numParChunksVal;
     ASSIGN_VALUE_OR_RETURN_ERR(numParChunksVal,
                                getIntFromStr(numParChunksIt->second.front()));
-    RETURN_ERR_IF_NOT(numParChunksVal == CN->getInputs().size(),
+    // It is possible that the number of inputs is less than numParChunksVal
+    // due to alignment
+    RETURN_ERR_IF_NOT(numParChunksVal >= CN->getInputs().size(),
                       "Node not split the expected number of times.");
 
     // Now we can erase this Node's info from currFunInfo because it has been
@@ -1064,11 +1067,26 @@ static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts) {
     return false;
   }
 
+  int32_t defaultModelParallelSplitAlignment =
+      glow::onnxifi::GlowNNPIModelParallelSplitAlignment;
+
+  // GlowNNPIModelParallelSplitAlignment set via flags takes precedence over
+  // backend options in cctx.
+  if (defaultModelParallelSplitAlignment == 1) {
+    auto it = opts.backendSpecificOpts.find(
+        std::string("NNPIModelParallelSplitAlignment"));
+    if (it != opts.backendSpecificOpts.end()) {
+      ASSIGN_VALUE_OR_RETURN_ERR(defaultModelParallelSplitAlignment,
+                                 getIntFromStr(it->second));
+    }
+  }
+
   // Now actually do the parallelization.
   std::unordered_map<Node *, ConcatNode *> replacedMap;
   ASSIGN_VALUE_OR_RETURN_ERR(
       replacedMap,
-      parallelizeOps(F, numChunks, parOpts, defaultNumParallelChunks));
+      parallelizeOps(F, numChunks, parOpts, defaultNumParallelChunks,
+                     defaultModelParallelSplitAlignment));
 
   RETURN_ERR_IF_NOT(numChunks.size() == replacedMap.size(),
                     "Expected that numChunks and replacedMap have same size.");

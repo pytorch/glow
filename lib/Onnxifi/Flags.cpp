@@ -64,6 +64,7 @@ extern bool GlowUsePerPartitionIcetConfig;
 extern bool GlowDisableNNPITransforms;
 extern bool GlowDisableNNPIPrivateTransforms;
 extern int32_t GlowNNPINumParallelChunks;
+extern int32_t GlowNNPIModelParallelSplitAlignment;
 #endif
 
 } // namespace onnxifi
@@ -481,6 +482,13 @@ DEFINE_int32(glow_nnpi_num_parallel_chunks, 1,
 DEFINE_validator(glow_nnpi_num_parallel_chunks,
                  [](const char * /* flagname */, int32_t value) {
                    glow::onnxifi::GlowNNPINumParallelChunks = value;
+                   return true;
+                 });
+DEFINE_int32(glow_nnpi_model_parallel_split_alignment, 1,
+             "Alignment value for model parallel splits");
+DEFINE_validator(glow_nnpi_model_parallel_split_alignment,
+                 [](const char * /* flagname */, int32_t value) {
+                   glow::onnxifi::GlowNNPIModelParallelSplitAlignment = value;
                    return true;
                  });
 #endif /* GLOW_WITH_NNPI */
