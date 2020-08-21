@@ -71,7 +71,7 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       RETURN_ERR_IF_NOT(inputMetas.size() == 1,
                         "Expected 1 input shape for operators.");
       outputShapesOrValues[0] =
-          std::get<std::vector<int64_t>>(inputMetas[0].shape());
+          boost::get<std::vector<int64_t>>(inputMetas[0].shape());
       break;
     }
     case c10::aten::sub:
@@ -168,28 +168,27 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
   /// Store the shapes \p outputShapesOrValues into VariableMeta.tensorShapes
   if (kind == c10::prim::Constant) {
     if (node->output()->type()->isSubtypeOf(at::TensorType::get())) {
-      ElemShape s = std::move(outputShapesOrValues[0]);
-      shapeMap_[node->output()].addShape(s);
+      shapeMap_[node->output()].listOfShape.emplace_back(
+          std::move(outputShapesOrValues[0]));
     } else {
-      ElemShape s = (std::vector<int64_t>){1};
-      shapeMap_[node->output()].addShape(s);
+      shapeMap_[node->output()].listOfShape.emplace_back(
+          (std::vector<int64_t>){1});
       shapeMap_[node->output()].intValue = std::move(outputShapesOrValues[0]);
     }
   } else if (kind == c10::prim::ListConstruct) {
-    ElemShape s = (std::vector<int64_t>){
-        static_cast<long>(outputShapesOrValues[0].size()), 1};
-    shapeMap_[node->output()].addShape(s);
+    shapeMap_[node->output()].listOfShape.emplace_back((std::vector<int64_t>){
+        static_cast<long>(outputShapesOrValues[0].size()), 1});
     shapeMap_[node->output()].intValue = std::move(outputShapesOrValues[0]);
   } else if (kind == c10::aten::embedding_bag) {
-    ElemShape s = std::move(outputShapesOrValues[0]);
-    shapeMap_[node->output(0)].addShape(s);
+    shapeMap_[node->output(0)].listOfShape.emplace_back(
+        std::move(outputShapesOrValues[0]));
   } else if (kind == c10::aten::chunk) {
-    ElemShape s = std::move(outputShapesOrValues);
-    shapeMap_[node->output()].addShape(s);
+    shapeMap_[node->output()].listOfShape.emplace_back(
+        std::move(outputShapesOrValues));
   } else {
     for (int i = 0; i < node->outputs().size(); i++) {
-      ElemShape s = std::move(outputShapesOrValues[i]);
-      shapeMap_[node->output(i)].addShape(s);
+      shapeMap_[node->output(i)].listOfShape.emplace_back(
+          std::move(outputShapesOrValues[i]));
     }
   }
   return Error::success();
@@ -218,7 +217,7 @@ void ShapeInferenceEngine::printShapeMap() {
   for (auto elem : shapeMap_) {
     std::cout << elem.first->debugName() << ":[ ";
     const std::vector<int64_t> &shape =
-        std::get<std::vector<int64_t>>(elem.second.shape());
+        boost::get<std::vector<int64_t>>(elem.second.shape());
     for (auto value : shape) {
       std::cout << value << " ";
     }
@@ -252,8 +251,7 @@ Error ShapeInferenceEngine::getGraphIntputShape() {
     } else {
       return MAKE_ERR("Input type doesn't support yet.");
     }
-    ElemShape elemShape = std::move(shape);
-    shapeMap_[gInName].addShape(elemShape);
+    shapeMap_[gInName].listOfShape.emplace_back(std::move(shape));
     shapeMap_[gInName].intValue = intValue;
   }
   return Error::success();
@@ -314,9 +312,9 @@ ShapeInferenceEngine::binaryOp(const MetaStack &variableMetas) {
   }
 
   const std::vector<int64_t> &t0 =
-      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[0].shape());
   const std::vector<int64_t> &t1 =
-      std::get<std::vector<int64_t>>(variableMetas[1].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[1].shape());
 
   auto d0 = t0.size();
   auto d1 = t1.size();
@@ -360,9 +358,9 @@ ShapeInferenceEngine::mm(const MetaStack &variableMetas) {
                     "Expected two inputs shapes of this operation.");
 
   const std::vector<int64_t> &t0 =
-      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[0].shape());
   const std::vector<int64_t> &t1 =
-      std::get<std::vector<int64_t>>(variableMetas[1].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[1].shape());
 
   if (!(t1.size() == 2 && t0.size() == 2)) {
     return MAKE_ERR("Expected 2-dimensional tensor.");
@@ -391,9 +389,9 @@ ShapeInferenceEngine::bmm(const MetaStack &variableMetas) {
   }
 
   const std::vector<int64_t> &t0 =
-      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[0].shape());
   const std::vector<int64_t> &t1 =
-      std::get<std::vector<int64_t>>(variableMetas[1].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[1].shape());
 
   if (!(t0.size() == 3 && t1.size() == 3)) {
     return MAKE_ERR("Expected 3-dimensional tensor.");
@@ -430,13 +428,13 @@ ShapeInferenceEngine::addmm(const MetaStack &variableMetas) {
   VariableMeta t;
 
   // For Scalar type, the shape.size() is 1
-  if (std::get<std::vector<int64_t>>(t2.shape()).size() == 1) {
+  if (boost::get<std::vector<int64_t>>(t2.shape()).size() == 1) {
     t = variableMetas[1];
   } else {
     const MetaStack &mmShape = {t1, t2};
     ElemShape s;
     ASSIGN_VALUE_OR_RETURN_ERR(s, mm(mmShape));
-    t.addShape(s);
+    t.listOfShape.emplace_back(std::move(s));
   }
 
   return binaryOp({t0, std::move(t)});
@@ -454,7 +452,7 @@ ShapeInferenceEngine::t(const MetaStack &variableMetas) {
       strFormat("Expected one input, got %zu.", variableMetas.size()));
 
   const std::vector<int64_t> &t0 =
-      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[0].shape());
 
   auto d0 = t0.size();
 
@@ -488,7 +486,7 @@ ShapeInferenceEngine::transpose(const MetaStack &variableMetas) {
                     "Expect 1 int dimension");
 
   std::vector<int64_t> shape =
-      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[0].shape());
 
   int64_t inDims = shape.size();
   int64_t dim0 = variableMetas[1].intValue[0];
@@ -520,7 +518,7 @@ ShapeInferenceEngine::flatten(const MetaStack &variableMetas) {
                     "Expect 1 int dimension");
 
   const std::vector<int64_t> &t =
-      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[0].shape());
 
   int64_t inDims = t.size();
   int64_t startDim = variableMetas[1].intValue[0];
@@ -563,7 +561,7 @@ ShapeInferenceEngine::constantChunk(const MetaStack &variableMetas,
       strFormat("Expected one input, got %zu.", variableMetas.size()));
 
   const std::vector<int64_t> &t =
-      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[0].shape());
 
   /// Convert dim into positive
   int64_t inDims = t.size();
@@ -596,11 +594,11 @@ ShapeInferenceEngine::fusedConcat(const MetaStack &variableMetas, int64_t dim) {
       strFormat("Expected at least 1 inputs, got %zu.", variableMetas.size()));
 
   if (variableMetas.size() == 1) {
-    return std::get<std::vector<int64_t>>(variableMetas[0].shape());
+    return boost::get<std::vector<int64_t>>(variableMetas[0].shape());
   }
 
   std::vector<int64_t> shape =
-      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[0].shape());
   /// Convert negtive dimension to positive, then check the dim range.
   int64_t inDims = shape.size();
   dim = at::maybe_wrap_dim(dim, inDims);
@@ -608,7 +606,7 @@ ShapeInferenceEngine::fusedConcat(const MetaStack &variableMetas, int64_t dim) {
   /// Handle multiple inputs cases
   for (int i = 1; i < variableMetas.size(); ++i) {
     const std::vector<int64_t> &t =
-        std::get<std::vector<int64_t>>(variableMetas[i].shape());
+        boost::get<std::vector<int64_t>>(variableMetas[i].shape());
     RETURN_ERR_IF_NOT(inDims == t.size(),
                       "All inputs must have the same number of dimensions.");
     for (int j = 0; j < inDims; j++) {
@@ -647,7 +645,7 @@ ShapeInferenceEngine::slice(const MetaStack &variableMetas) {
   int64_t step = variableMetas[4].intValue[0];
 
   std::vector<int64_t> shape =
-      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[0].shape());
   int64_t inDims = shape[dim];
 
   /// Check if the start or end dim out of the input dimension
@@ -697,7 +695,7 @@ ShapeInferenceEngine::reshape(const MetaStack &variableMetas) {
   int64_t s1 = 1;
 
   const std::vector<int64_t> &t =
-      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[0].shape());
 
   /// Flag for multiple negative index
   int64_t negIndex = -1;
@@ -738,7 +736,7 @@ ShapeInferenceEngine::permute(const MetaStack &variableMetas) {
       strFormat("Expected two inputs shapes, got %zu.", variableMetas.size()));
 
   const std::vector<int64_t> &t =
-      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[0].shape());
 
   int64_t inDims = t.size();
 
@@ -792,7 +790,7 @@ ShapeInferenceEngine::fusedStack(const MetaStack &variableMetas, int64_t dim) {
       strFormat("Expected at least 1 inputs, got %zu.", variableMetas.size()));
 
   std::vector<int64_t> shape =
-      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[0].shape());
 
   if (variableMetas.size() == 1) {
     return shape;
@@ -802,7 +800,7 @@ ShapeInferenceEngine::fusedStack(const MetaStack &variableMetas, int64_t dim) {
   dim = at::maybe_wrap_dim(dim, inDims + 1);
 
   for (auto eleShape : variableMetas) {
-    RETURN_ERR_IF_NOT(std::get<std::vector<int64_t>>(eleShape.shape()) == shape,
+    RETURN_ERR_IF_NOT(boost::get<std::vector<int64_t>>(eleShape.shape()) == shape,
                       "All inputs must have same shape");
   }
 
@@ -834,13 +832,13 @@ ShapeInferenceEngine::embeddingBag(const MetaStack &variableMetas) {
   std::vector<int64_t> shape;
 
   const std::vector<int64_t> &t0 =
-      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[0].shape());
 
   const std::vector<int64_t> &t1 =
-      std::get<std::vector<int64_t>>(variableMetas[1].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[1].shape());
 
   const std::vector<int64_t> &t2 =
-      std::get<std::vector<int64_t>>(variableMetas[2].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[2].shape());
 
   if (t1.size() == 1) {
     RETURN_ERR_IF_NOT(t2.size() == 1,
@@ -875,10 +873,10 @@ ShapeInferenceEngine::embeddingBagByteRowwiseOffsets(
       strFormat("Expected 8 inputs, got %zu.", variableMetas.size()));
 
   const std::vector<int64_t> &t0 =
-      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[0].shape());
 
   const std::vector<int64_t> &t2 =
-      std::get<std::vector<int64_t>>(variableMetas[2].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[2].shape());
 
   /// variableMetas[0].shape[1] - 8 is to account for scale and bias
   /// 4-byte scale, 4-byte zero_offset
@@ -898,7 +896,7 @@ ShapeInferenceEngine::chunk(const MetaStack &variableMetas) {
       strFormat("Expected one input, got %zu.", variableMetas.size()));
 
   const std::vector<int64_t> &t =
-      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+      boost::get<std::vector<int64_t>>(variableMetas[0].shape());
 
   int64_t chunks = variableMetas[1].intValue[0];
   int64_t dim = variableMetas[2].intValue[0];

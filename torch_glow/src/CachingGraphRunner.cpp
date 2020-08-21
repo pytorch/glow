@@ -543,7 +543,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     if (settings.runShapeInference) {
       if (i < (*ptrOutputShape).size()) {
         const std::vector<int64_t> &expectedShape =
-            std::get<std::vector<int64_t>>((*ptrOutputShape)[i].shape());
+            boost::get<std::vector<int64_t>>((*ptrOutputShape)[i].shape());
         ptTensor = sliceTensor(ptTensor, expectedShape);
       }
     }

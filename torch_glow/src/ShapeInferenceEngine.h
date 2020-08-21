@@ -17,9 +17,10 @@
 #ifndef GLOW_TORCH_GLOW_SRC_SHAPEINFERENCEENGINE_H
 #define GLOW_TORCH_GLOW_SRC_SHAPEINFERENCEENGINE_H
 
+#include "boost/variant.hpp"
 #include <string>
 #include <unordered_set>
-#include <variant>
+
 #include <vector>
 
 #include "glow/Support/Error.h"
@@ -33,7 +34,7 @@ namespace glow {
 /// case1: Tensor shape: std::vector<int64_t>
 /// case2: Tensor[] shape: std::vector<std::vector<int64_t>>
 using ElemShape =
-    std::variant<std::vector<int64_t>, std::vector<std::vector<int64_t>>>;
+    boost::variant<std::vector<int64_t>, std::vector<std::vector<int64_t>>>;
 
 struct VariableMeta {
   /// For Tensor, Tensor[], store the shape in \p listOfShape[0]
@@ -46,7 +47,6 @@ struct VariableMeta {
 
   const ElemShape &shape() const { return listOfShape[0]; }
   const ElemShape &getShape(int i) const { return listOfShape[i]; }
-  void addShape(ElemShape s) { listOfShape.emplace_back(s); }
 };
 
 using MetaStack = std::vector<VariableMeta>;
