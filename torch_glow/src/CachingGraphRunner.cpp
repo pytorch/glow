@@ -221,7 +221,7 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
   return ret.first->second;
 }
 
-Expected<std::vector<std::vector<int64_t>> *>
+Expected<MetaStack *>
 CachingGraphRunner::loadShape(const c10::ArrayRef<c10::IValue> &inputs,
                               TraceContext *traceContext) {
 
@@ -239,12 +239,11 @@ CachingGraphRunner::loadShape(const c10::ArrayRef<c10::IValue> &inputs,
 
   // If we don't have a shape info for this graph output with and the
   // given inputs then run shape inference, then push into the map.
-  std::vector<std::vector<int64_t>> outputShape;
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "runShapeInference");
 
   ShapeInferenceEngine shapeG(*graph_, inputs);
   RETURN_IF_ERR(shapeG.run());
-  outputShape = shapeG.getGraphOutputShape();
+  auto outputShape = shapeG.getGraphOutputShape();
 
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "runShapeInference");
 
@@ -305,11 +304,8 @@ TensorCompareResult compareTensors(glow::Tensor &RefT, glow::Tensor &CmpT) {
 /// This function slice the input Tensor according to the expected shape in the
 /// zero dimension.
 /// TODO: Multi-dimension slicing will be supported later.
-at::Tensor sliceTensor(at::Tensor &t, std::vector<int64_t> &shape) {
+at::Tensor sliceTensor(at::Tensor &t, const std::vector<int64_t> &shape) {
   CHECK_GT(shape.size(), 0);
-  if (shape.size() == 0) {
-    return t;
-  }
   return at::native::slice(t, 0, 0, shape[0]);
 }
 
@@ -499,8 +495,8 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "runNetwork");
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "setOutputs");
 
-  std::vector<std::vector<int64_t>> *ptrOutputShape;
-  if (settings.runShapeInference) {
+  MetaStack *ptrOutputShape;
+  if (settings_.runShapeInference) {
     /// load shape. If already existed, extracted directly, if not, run shape
     /// inference
     ASSIGN_VALUE_OR_RETURN_ERR(ptrOutputShape, loadShape(inputs, traceContext));
@@ -546,7 +542,9 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 
     if (settings.runShapeInference) {
       if (i < (*ptrOutputShape).size()) {
-        ptTensor = sliceTensor(ptTensor, (*ptrOutputShape)[i]);
+        const std::vector<int64_t> &expectedShape =
+            std::get<std::vector<int64_t>>((*ptrOutputShape)[i].shape());
+        ptTensor = sliceTensor(ptTensor, expectedShape);
       }
     }
 

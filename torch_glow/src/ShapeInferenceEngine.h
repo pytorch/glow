@@ -19,6 +19,7 @@
 
 #include <string>
 #include <unordered_set>
+#include <variant>
 #include <vector>
 
 #include "glow/Support/Error.h"
@@ -29,11 +30,23 @@
 /// expected by PyTorch.
 namespace glow {
 
+/// case1: Tensor shape: std::vector<int64_t>
+/// case2: Tensor[] shape: std::vector<std::vector<int64_t>>
+using ElemShape =
+    std::variant<std::vector<int64_t>, std::vector<std::vector<int64_t>>>;
+
 struct VariableMeta {
-  /// Store shape info of Tensor, Scalar, and IntList
-  std::vector<int64_t> shape;
+  /// For Tensor, Tensor[], store the shape in \p listOfShape[0]
+  /// For tuple(Tensor, Tensor[], ...), store shapes in \p listOfShape
+  std::vector<ElemShape> listOfShape;
   /// Store Int and IntList value
   std::vector<int64_t> intValue;
+  /// Data type
+  c10::ScalarType dtype;
+
+  const ElemShape &shape() const { return listOfShape[0]; }
+  const ElemShape &getShape(int i) const { return listOfShape[i]; }
+  void addShape(ElemShape s) { listOfShape.emplace_back(s); }
 };
 
 using MetaStack = std::vector<VariableMeta>;
@@ -44,7 +57,7 @@ public:
                        const at::ArrayRef<torch::jit::IValue> &inputs);
 
   /// Get all VariableMeta for outputs of the given graph.
-  const std::vector<std::vector<int64_t>> &getGraphOutputShape();
+  const MetaStack &getGraphOutputShape();
 
   /// Get the Variable Map which uses const torch::jit::Value * as a key,
   /// VariableMeta as a value.
@@ -68,7 +81,7 @@ private:
   std::unordered_map<const torch::jit::Value *, VariableMeta> shapeMap_;
 
   /// Store shapes of all the outputs in a graph.
-  std::vector<std::vector<int64_t>> outputShape_;
+  MetaStack outputShape_;
 
   /// Offset flag for aten::embedding_bag and embedding_bag_byte_rowwise_offsets
   /// In Glow, \p hasEndOffset_ always true
@@ -133,6 +146,9 @@ private:
   // Shape inference for aten::embedding_bag
   static Expected<std::vector<int64_t>>
   embeddingBag(const MetaStack &variableMetas);
+  // Shape inference for aten::chuck
+  static Expected<std::vector<std::vector<int64_t>>>
+  chunk(const MetaStack &variableMetas);
 };
 
 } // namespace glow

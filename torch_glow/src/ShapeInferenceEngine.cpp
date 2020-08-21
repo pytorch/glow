@@ -27,8 +27,7 @@ void ShapeInferenceEngine::getNodeInputShape(const torch::jit::Node *node,
   }
 }
 
-const std::vector<std::vector<int64_t>> &
-ShapeInferenceEngine::getGraphOutputShape() {
+const MetaStack &ShapeInferenceEngine::getGraphOutputShape() {
   return outputShape_;
 }
 
@@ -71,7 +70,8 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
     case c10::aten::sigmoid: {
       RETURN_ERR_IF_NOT(inputMetas.size() == 1,
                         "Expected 1 input shape for operators.");
-      outputShapesOrValues[0] = inputMetas[0].shape;
+      outputShapesOrValues[0] =
+          std::get<std::vector<int64_t>>(inputMetas[0].shape());
       break;
     }
     case c10::aten::sub:
@@ -119,6 +119,10 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
                                  constantChunk(inputMetas, chunks, dim));
       break;
     }
+    case c10::aten::chunk: {
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues, chunk(inputMetas));
+      break;
+    }
     case c10::prim::ListConstruct: {
       ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
                                  listConstruct(inputMetas));
@@ -160,22 +164,32 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
   /// Tensor, Tensor, Tensor>(ret, offset2bag, bag_size, bag_size), and for now,
   /// only the ret tensor shape needed, the embeddingBag() only generate the ret
   /// shape.
+  /// For \p c10::aten::chunk, the output is tensor[],
+  /// Store the shapes \p outputShapesOrValues into VariableMeta.tensorShapes
   if (kind == c10::prim::Constant) {
     if (node->output()->type()->isSubtypeOf(at::TensorType::get())) {
-      shapeMap_[node->output()].shape = std::move(outputShapesOrValues[0]);
+      ElemShape s = std::move(outputShapesOrValues[0]);
+      shapeMap_[node->output()].addShape(s);
     } else {
-      shapeMap_[node->output()].shape = {1};
+      ElemShape s = (std::vector<int64_t>){1};
+      shapeMap_[node->output()].addShape(s);
       shapeMap_[node->output()].intValue = std::move(outputShapesOrValues[0]);
     }
   } else if (kind == c10::prim::ListConstruct) {
-    shapeMap_[node->output()].shape = {
+    ElemShape s = (std::vector<int64_t>){
         static_cast<long>(outputShapesOrValues[0].size()), 1};
+    shapeMap_[node->output()].addShape(s);
     shapeMap_[node->output()].intValue = std::move(outputShapesOrValues[0]);
   } else if (kind == c10::aten::embedding_bag) {
-    shapeMap_[node->output(0)].shape = std::move(outputShapesOrValues[0]);
+    ElemShape s = std::move(outputShapesOrValues[0]);
+    shapeMap_[node->output(0)].addShape(s);
+  } else if (kind == c10::aten::chunk) {
+    ElemShape s = std::move(outputShapesOrValues);
+    shapeMap_[node->output()].addShape(s);
   } else {
     for (int i = 0; i < node->outputs().size(); i++) {
-      shapeMap_[node->output(i)].shape = std::move(outputShapesOrValues[i]);
+      ElemShape s = std::move(outputShapesOrValues[i]);
+      shapeMap_[node->output(i)].addShape(s);
     }
   }
   return Error::success();
@@ -203,7 +217,9 @@ Error ShapeInferenceEngine::run() {
 void ShapeInferenceEngine::printShapeMap() {
   for (auto elem : shapeMap_) {
     std::cout << elem.first->debugName() << ":[ ";
-    for (auto value : elem.second.shape) {
+    const std::vector<int64_t> &shape =
+        std::get<std::vector<int64_t>>(elem.second.shape());
+    for (auto value : shape) {
       std::cout << value << " ";
     }
     std::cout << "]" << std::endl;
@@ -218,25 +234,27 @@ void ShapeInferenceEngine::printShapeMap() {
 Error ShapeInferenceEngine::getGraphIntputShape() {
   for (auto i = 0; i < inputs_.size(); i++) {
     auto gInName = graph_.inputs()[i];
-    shapeMap_[gInName].shape = {};
-    shapeMap_[gInName].intValue = {};
-
     auto input = inputs_[i];
+    std::vector<int64_t> shape = {};
+    std::vector<int64_t> intValue = {};
+
     if (input.isTensor()) {
       auto ptTensor = input.toTensor();
       for (auto s : ptTensor.sizes()) {
-        shapeMap_[gInName].shape.emplace_back(s);
+        shape.emplace_back(s);
       }
     } else if (input.isBool() || input.isInt()) {
-      shapeMap_[gInName].shape = {1};
-      shapeMap_[gInName].intValue = {input.toInt()};
+      shape = {1};
+      intValue = {input.toInt()};
     } else if (input.isIntList()) {
-      auto ptIntList = input.toIntVector();
-      shapeMap_[gInName].shape = {static_cast<long>(ptIntList.size()), 1};
-      shapeMap_[gInName].intValue = ptIntList;
+      intValue = input.toIntVector();
+      shape = {static_cast<long>(intValue.size()), 1};
     } else {
       return MAKE_ERR("Input type doesn't support yet.");
     }
+    ElemShape elemShape = std::move(shape);
+    shapeMap_[gInName].addShape(elemShape);
+    shapeMap_[gInName].intValue = intValue;
   }
   return Error::success();
 }
@@ -245,7 +263,7 @@ void ShapeInferenceEngine::generateGraphOutputShape() {
   for (auto output : graph_.outputs()) {
     auto it = shapeMap_.find(output);
     CHECK(it != shapeMap_.end());
-    outputShape_.emplace_back(it->second.shape);
+    outputShape_.emplace_back(it->second);
   }
 }
 
@@ -295,8 +313,10 @@ ShapeInferenceEngine::binaryOp(const MetaStack &variableMetas) {
     return MAKE_ERR("Expected two or three inputs shapes of this operation.");
   }
 
-  const std::vector<int64_t> &t0 = variableMetas[0].shape;
-  const std::vector<int64_t> &t1 = variableMetas[1].shape;
+  const std::vector<int64_t> &t0 =
+      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+  const std::vector<int64_t> &t1 =
+      std::get<std::vector<int64_t>>(variableMetas[1].shape());
 
   auto d0 = t0.size();
   auto d1 = t1.size();
@@ -339,8 +359,10 @@ ShapeInferenceEngine::mm(const MetaStack &variableMetas) {
   RETURN_ERR_IF_NOT(variableMetas.size() == 2,
                     "Expected two inputs shapes of this operation.");
 
-  const std::vector<int64_t> &t0 = variableMetas[0].shape;
-  const std::vector<int64_t> &t1 = variableMetas[1].shape;
+  const std::vector<int64_t> &t0 =
+      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+  const std::vector<int64_t> &t1 =
+      std::get<std::vector<int64_t>>(variableMetas[1].shape());
 
   if (!(t1.size() == 2 && t0.size() == 2)) {
     return MAKE_ERR("Expected 2-dimensional tensor.");
@@ -368,8 +390,10 @@ ShapeInferenceEngine::bmm(const MetaStack &variableMetas) {
     return MAKE_ERR("Expected two inputs shapes of this operation.");
   }
 
-  const std::vector<int64_t> &t0 = variableMetas[0].shape;
-  const std::vector<int64_t> &t1 = variableMetas[1].shape;
+  const std::vector<int64_t> &t0 =
+      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+  const std::vector<int64_t> &t1 =
+      std::get<std::vector<int64_t>>(variableMetas[1].shape());
 
   if (!(t0.size() == 3 && t1.size() == 3)) {
     return MAKE_ERR("Expected 3-dimensional tensor.");
@@ -406,11 +430,13 @@ ShapeInferenceEngine::addmm(const MetaStack &variableMetas) {
   VariableMeta t;
 
   // For Scalar type, the shape.size() is 1
-  if (variableMetas[2].shape.size() == 1) {
+  if (std::get<std::vector<int64_t>>(t2.shape()).size() == 1) {
     t = variableMetas[1];
   } else {
-    const MetaStack &mm_shape = {t1, t2};
-    ASSIGN_VALUE_OR_RETURN_ERR(t.shape, mm(mm_shape));
+    const MetaStack &mmShape = {t1, t2};
+    ElemShape s;
+    ASSIGN_VALUE_OR_RETURN_ERR(s, mm(mmShape));
+    t.addShape(s);
   }
 
   return binaryOp({t0, std::move(t)});
@@ -427,7 +453,8 @@ ShapeInferenceEngine::t(const MetaStack &variableMetas) {
       variableMetas.size() == 1,
       strFormat("Expected one input, got %zu.", variableMetas.size()));
 
-  const std::vector<int64_t> &t0 = variableMetas[0].shape;
+  const std::vector<int64_t> &t0 =
+      std::get<std::vector<int64_t>>(variableMetas[0].shape());
 
   auto d0 = t0.size();
 
@@ -455,21 +482,22 @@ ShapeInferenceEngine::transpose(const MetaStack &variableMetas) {
     return MAKE_ERR(
         strFormat("Expect 3 inputs, get %zu", variableMetas.size()));
   }
-  RETURN_ERR_IF_NOT(variableMetas[1].shape.size() == 1,
+  RETURN_ERR_IF_NOT(variableMetas[1].intValue.size() == 1,
                     "Expect 1 int dimension");
-  RETURN_ERR_IF_NOT(variableMetas[2].shape.size() == 1,
+  RETURN_ERR_IF_NOT(variableMetas[2].intValue.size() == 1,
                     "Expect 1 int dimension");
 
-  const VariableMeta &t = variableMetas[0];
-  int64_t shapeSize = t.shape.size();
+  std::vector<int64_t> shape =
+      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+
+  int64_t inDims = shape.size();
   int64_t dim0 = variableMetas[1].intValue[0];
   int64_t dim1 = variableMetas[2].intValue[0];
 
   // convert to positive dimension
-  dim0 = at::maybe_wrap_dim(dim0, shapeSize);
-  dim1 = at::maybe_wrap_dim(dim1, shapeSize);
+  dim0 = at::maybe_wrap_dim(dim0, inDims);
+  dim1 = at::maybe_wrap_dim(dim1, inDims);
 
-  std::vector<int64_t> shape = t.shape;
   std::swap(shape[dim0], shape[dim1]);
 
   return shape;
@@ -486,19 +514,21 @@ ShapeInferenceEngine::flatten(const MetaStack &variableMetas) {
     return MAKE_ERR(
         strFormat("Expect 3 inputs, get %zu", variableMetas.size()));
   }
-  RETURN_ERR_IF_NOT(variableMetas[1].shape.size() == 1,
+  RETURN_ERR_IF_NOT(variableMetas[1].intValue.size() == 1,
                     "Expect 1 int dimension");
-  RETURN_ERR_IF_NOT(variableMetas[2].shape.size() == 1,
+  RETURN_ERR_IF_NOT(variableMetas[2].intValue.size() == 1,
                     "Expect 1 int dimension");
 
-  const VariableMeta &t = variableMetas[0];
-  int64_t shapeSize = t.shape.size();
+  const std::vector<int64_t> &t =
+      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+
+  int64_t inDims = t.size();
   int64_t startDim = variableMetas[1].intValue[0];
   int64_t endDim = variableMetas[2].intValue[0];
 
   // convert to positive dimension
-  startDim = at::maybe_wrap_dim(startDim, shapeSize);
-  endDim = at::maybe_wrap_dim(endDim, shapeSize);
+  startDim = at::maybe_wrap_dim(startDim, inDims);
+  endDim = at::maybe_wrap_dim(endDim, inDims);
 
   if (startDim > endDim) {
     return MAKE_ERR("start dimension should not be larger than end dimension");
@@ -506,15 +536,15 @@ ShapeInferenceEngine::flatten(const MetaStack &variableMetas) {
 
   std::vector<int64_t> shape;
   for (int i = 0; i < startDim; i++) {
-    shape.push_back(t.shape[i]);
+    shape.push_back(t[i]);
   }
   int64_t flattenDim = 1;
   for (int i = startDim; i <= endDim; i++) {
-    flattenDim *= t.shape[i];
+    flattenDim *= t[i];
   }
   shape.push_back(flattenDim);
-  for (int i = endDim + 1; i < shapeSize; i++) {
-    shape.push_back(t.shape[i]);
+  for (int i = endDim + 1; i < inDims; i++) {
+    shape.push_back(t[i]);
   }
 
   return shape;
@@ -532,26 +562,26 @@ ShapeInferenceEngine::constantChunk(const MetaStack &variableMetas,
       variableMetas.size() == 1,
       strFormat("Expected one input, got %zu.", variableMetas.size()));
 
+  const std::vector<int64_t> &t =
+      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+
   /// Convert dim into positive
-  if (dim < 0) {
-    dim += variableMetas[0].shape.size();
-  }
-  RETURN_ERR_IF_NOT(dim < variableMetas[0].shape.size() && dim >= 0,
-                    "Dim value is out of range.");
+  int64_t inDims = t.size();
+  dim = at::maybe_wrap_dim(dim, inDims);
 
   /// For constant chunk, the size of the last chunk one may smaller than the
   /// others
-  int64_t c = (variableMetas[0].shape[dim] + chunks - 1) / chunks;
-  int64_t r = variableMetas[0].shape[dim] - c * (chunks - 1);
+  int64_t c = (t[dim] + chunks - 1) / chunks;
+  int64_t r = t[dim] - c * (chunks - 1);
 
-  std::vector<std::vector<int64_t>> outShapes;
+  std::vector<std::vector<int64_t>> resShapes;
   for (int i = 0; i < chunks; i++) {
-    std::vector<int64_t> shape = variableMetas[0].shape;
+    std::vector<int64_t> shape = t;
     shape[dim] = (i == chunks - 1) ? r : c;
-    outShapes.emplace_back(shape);
+    resShapes.emplace_back(shape);
   }
 
-  return outShapes;
+  return resShapes;
 }
 
 /**
@@ -566,27 +596,27 @@ ShapeInferenceEngine::fusedConcat(const MetaStack &variableMetas, int64_t dim) {
       strFormat("Expected at least 1 inputs, got %zu.", variableMetas.size()));
 
   if (variableMetas.size() == 1) {
-    return variableMetas[0].shape;
+    return std::get<std::vector<int64_t>>(variableMetas[0].shape());
   }
 
-  std::vector<int64_t> shape = variableMetas[0].shape;
+  std::vector<int64_t> shape =
+      std::get<std::vector<int64_t>>(variableMetas[0].shape());
   /// Convert negtive dimension to positive, then check the dim range.
-  int64_t inDims = variableMetas[0].shape.size();
-  if (dim < 0) {
-    dim += inDims;
-  }
-  RETURN_ERR_IF_NOT(dim < inDims && dim >= 0, "Dim value is out of range.");
+  int64_t inDims = shape.size();
+  dim = at::maybe_wrap_dim(dim, inDims);
 
   /// Handle multiple inputs cases
   for (int i = 1; i < variableMetas.size(); ++i) {
-    RETURN_ERR_IF_NOT(inDims == variableMetas[i].shape.size(),
+    const std::vector<int64_t> &t =
+        std::get<std::vector<int64_t>>(variableMetas[i].shape());
+    RETURN_ERR_IF_NOT(inDims == t.size(),
                       "All inputs must have the same number of dimensions.");
     for (int j = 0; j < inDims; j++) {
       if (j == dim) {
-        shape[dim] += variableMetas[i].shape[dim];
+        shape[dim] += t[dim];
       } else {
         RETURN_ERR_IF_NOT(
-            shape[j] == variableMetas[i].shape[j],
+            shape[j] == t[j],
             strFormat("Sizes of tensors must match except in dimension %zu.",
                       dim));
       }
@@ -607,7 +637,7 @@ ShapeInferenceEngine::slice(const MetaStack &variableMetas) {
       strFormat("Expected 5 inputs, got %zu.", variableMetas.size()));
 
   for (int i = 1; i < 5; i++) {
-    RETURN_ERR_IF_NOT(variableMetas[i].shape.size() == 1,
+    RETURN_ERR_IF_NOT(variableMetas[i].intValue.size() == 1,
                       "Expected int in Slice.");
   }
 
@@ -615,9 +645,10 @@ ShapeInferenceEngine::slice(const MetaStack &variableMetas) {
   int64_t start = variableMetas[2].intValue[0];
   int64_t end = variableMetas[3].intValue[0];
   int64_t step = variableMetas[4].intValue[0];
-  int64_t inDims = variableMetas[0].shape[dim];
 
-  std::vector<int64_t> shape = variableMetas[0].shape;
+  std::vector<int64_t> shape =
+      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+  int64_t inDims = shape[dim];
 
   /// Check if the start or end dim out of the input dimension
   if (start >= inDims || end <= -inDims) {
@@ -665,9 +696,12 @@ ShapeInferenceEngine::reshape(const MetaStack &variableMetas) {
   int64_t s0 = 1;
   int64_t s1 = 1;
 
+  const std::vector<int64_t> &t =
+      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+
   /// Flag for multiple negative index
   int64_t negIndex = -1;
-  for (auto i : variableMetas[0].shape) {
+  for (auto i : t) {
     s0 *= i;
   }
 
@@ -703,7 +737,10 @@ ShapeInferenceEngine::permute(const MetaStack &variableMetas) {
       variableMetas.size() == 2,
       strFormat("Expected two inputs shapes, got %zu.", variableMetas.size()));
 
-  int64_t inDims = variableMetas[0].shape.size();
+  const std::vector<int64_t> &t =
+      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+
+  int64_t inDims = t.size();
 
   RETURN_ERR_IF_NOT(inDims == variableMetas[1].intValue.size(),
                     "Shuffle for permute must has the same number of "
@@ -717,7 +754,7 @@ ShapeInferenceEngine::permute(const MetaStack &variableMetas) {
     RETURN_ERR_IF_NOT(
         dim < inDims,
         "All shuffle dimensions must be less than the rank of the input.");
-    shape.emplace_back(variableMetas[0].shape[dim]);
+    shape.emplace_back(t[dim]);
   }
   return shape;
 }
@@ -736,7 +773,7 @@ ShapeInferenceEngine::listConstruct(const MetaStack &variableMetas) {
 
   std::vector<int64_t> intValueList;
   for (auto ele : variableMetas) {
-    RETURN_ERR_IF_NOT(ele.shape.size() == 1,
+    RETURN_ERR_IF_NOT(ele.intValue.size() == 1,
                       "Expected int type input in listConstruct.");
     intValueList.emplace_back(ele.intValue[0]);
   }
@@ -754,22 +791,18 @@ ShapeInferenceEngine::fusedStack(const MetaStack &variableMetas, int64_t dim) {
       variableMetas.size() >= 1,
       strFormat("Expected at least 1 inputs, got %zu.", variableMetas.size()));
 
-  if (variableMetas.size() == 1) {
-    return variableMetas[0].shape;
-  }
-  int64_t inDims = variableMetas[0].shape.size();
-  /// glow::fused_stack will add one more dim
-  if (dim < 0) {
-    dim += inDims + 1;
-  }
-  RETURN_ERR_IF_NOT(
-      dim < inDims + 1 && dim >= 0,
-      "Dim must be less than the rank of inputs plus the added dimension");
+  std::vector<int64_t> shape =
+      std::get<std::vector<int64_t>>(variableMetas[0].shape());
 
-  std::vector<int64_t> shape = variableMetas[0].shape;
+  if (variableMetas.size() == 1) {
+    return shape;
+  }
+  int64_t inDims = shape.size();
+  /// glow::fused_stack will add one more dim
+  dim = at::maybe_wrap_dim(dim, inDims + 1);
 
   for (auto eleShape : variableMetas) {
-    RETURN_ERR_IF_NOT(eleShape.shape == shape,
+    RETURN_ERR_IF_NOT(std::get<std::vector<int64_t>>(eleShape.shape()) == shape,
                       "All inputs must have same shape");
   }
 
@@ -800,14 +833,21 @@ ShapeInferenceEngine::embeddingBag(const MetaStack &variableMetas) {
 
   std::vector<int64_t> shape;
 
-  if (variableMetas[1].shape.size() == 1) {
-    RETURN_ERR_IF_NOT(variableMetas[2].shape.size() == 1,
-                      strFormat("Expected 1D offset, got %zu.",
-                                variableMetas[2].shape.size()));
-    shape = {variableMetas[2].shape[0] - static_cast<int>(hasEndOffset_),
-             variableMetas[0].shape[1]};
-  } else if (variableMetas[1].shape.size() == 2) {
-    shape = {variableMetas[1].shape[0], variableMetas[0].shape[1]};
+  const std::vector<int64_t> &t0 =
+      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+
+  const std::vector<int64_t> &t1 =
+      std::get<std::vector<int64_t>>(variableMetas[1].shape());
+
+  const std::vector<int64_t> &t2 =
+      std::get<std::vector<int64_t>>(variableMetas[2].shape());
+
+  if (t1.size() == 1) {
+    RETURN_ERR_IF_NOT(t2.size() == 1,
+                      strFormat("Expected 1D offset, got %zu.", t2.size()));
+    shape = {t2[0] - static_cast<int>(hasEndOffset_), t0[1]};
+  } else if (t1.size() == 2) {
+    shape = {t1[0], t0[1]};
   } else {
     return MAKE_ERR("Only support 1D and 2D Input in Embedding bag.");
   }
@@ -834,11 +874,50 @@ ShapeInferenceEngine::embeddingBagByteRowwiseOffsets(
       variableMetas.size() == 8,
       strFormat("Expected 8 inputs, got %zu.", variableMetas.size()));
 
+  const std::vector<int64_t> &t0 =
+      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+
+  const std::vector<int64_t> &t2 =
+      std::get<std::vector<int64_t>>(variableMetas[2].shape());
+
   /// variableMetas[0].shape[1] - 8 is to account for scale and bias
   /// 4-byte scale, 4-byte zero_offset
-  std::vector<int64_t> shape = {variableMetas[2].shape[0] -
-                                    static_cast<int>(hasEndOffset_),
-                                variableMetas[0].shape[1] - 8};
+  std::vector<int64_t> shape = {t2[0] - static_cast<int>(hasEndOffset_),
+                                t0[1] - 8};
   return shape;
+}
+
+/**
+ * aten::chuck(Tensor self, int chunks, int dim) -> Tensor[]
+ */
+Expected<std::vector<std::vector<int64_t>>>
+ShapeInferenceEngine::chunk(const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 3,
+      strFormat("Expected one input, got %zu.", variableMetas.size()));
+
+  const std::vector<int64_t> &t =
+      std::get<std::vector<int64_t>>(variableMetas[0].shape());
+
+  int64_t chunks = variableMetas[1].intValue[0];
+  int64_t dim = variableMetas[2].intValue[0];
+
+  /// Convert dim into positive
+  int64_t inDims = t.size();
+  dim = at::maybe_wrap_dim(dim, inDims);
+
+  /// For constant chunk, the size of the last chunk one may smaller than the
+  /// others
+  int64_t c = (t[dim] + chunks - 1) / chunks;
+  int64_t r = t[dim] - c * (chunks - 1);
+
+  std::vector<std::vector<int64_t>> resShapes;
+  for (int i = 0; i < chunks; i++) {
+    std::vector<int64_t> shape = t;
+    shape[dim] = (i == chunks - 1) ? r : c;
+    resShapes.emplace_back(shape);
+  }
+  return resShapes;
 }
 } // namespace glow
