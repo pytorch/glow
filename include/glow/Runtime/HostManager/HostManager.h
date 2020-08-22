@@ -136,6 +136,9 @@ class HostManager final {
   /// onto the devices.
   std::unique_ptr<Provisioner> provisioner_;
 
+  /// String const for logging max queue size in glow
+  static constexpr const char *kMaxQueueSize = "glow.queue.max.size";
+
   /// String const for logging total device memory usage.
   static constexpr const char *kDeviceMemoryUsed =
       "glow.devices.used_memory.total";
@@ -160,6 +163,9 @@ class HostManager final {
 
   /// Method to calculate and export aggregate memory usage counters.
   void exportMemoryCounters();
+
+  /// Queue size stat update
+  void reportCurrentQueueSize(int32_t queueSize);
 
   /// Execution stats update.
   void updateExecutionStats(uint64_t startTime,
@@ -275,6 +281,10 @@ public:
   size_t numDevices() const { return devices_.size(); }
 
   ~HostManager();
+
+  /// String const for logging current queue size in glow
+  static constexpr const char *kCurrentQueueSize10k =
+      "glow.queue.current.occupancy.10k";
 };
 
 /// If the device config file specified in loadDeviceConfigsFileOpt is

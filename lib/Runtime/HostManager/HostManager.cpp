@@ -113,7 +113,9 @@ HostManager::HostManager() : HostManager(HostConfig{}) {}
 
 HostManager::HostManager(const HostConfig &hostConfig)
     : config_(hostConfig),
-      statsExporterRegistry_(StatsExporterRegistry::Stats()) {}
+      statsExporterRegistry_(StatsExporterRegistry::Stats()) {
+  statsExporterRegistry_->setCounter(kMaxQueueSize, hostConfig.maxQueueSize);
+}
 
 HostManager::HostManager(
     std::vector<std::unique_ptr<DeviceConfig>> deviceConfigs)
@@ -126,6 +128,7 @@ HostManager::HostManager(
       statsExporterRegistry_(StatsExporterRegistry::Stats()) {
   // TODO: move all initialization out of constructor.
   EXIT_ON_ERR(init(std::move(deviceConfigs)));
+  statsExporterRegistry_->setCounter(kMaxQueueSize, hostConfig.maxQueueSize);
 }
 
 Expected<DAG *> HostManager::getNetworkDAG(llvm::StringRef network) {
@@ -753,6 +756,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
                     "HostManager::runNetwork");
   auto currentRun = totalRequestCount_++;
   uint64_t requestReceived = TraceEvent::now();
+  size_t queueSize = 0;
 
   NetworkData *network = nullptr;
   {
@@ -775,7 +779,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
     // Put the request in the queue.
     {
       std::shared_lock<std::shared_timed_mutex> lock(inferQueueLock_);
-      auto queueSize = inferQueue_.size();
+      queueSize = inferQueue_.size();
       if (queueSize >= config_.maxQueueSize) {
         // The queue is full, return an error.
         network->refcount--;
@@ -792,6 +796,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
         return currentRun;
       }
     }
+    reportCurrentQueueSize(queueSize);
     // Setup the request
     InferRequest queuedRequest(networkName, std::move(context), callback,
                                priority, currentRun, requestReceived);
@@ -810,6 +815,14 @@ HostManager::runNetwork(llvm::StringRef networkName,
   }
   activeRequestCount_--;
   return currentRun;
+}
+
+/// Helper to report current queue size
+void HostManager::reportCurrentQueueSize(int32_t queueSize) {
+  statsExporterRegistry_->setCounter(
+      kCurrentQueueSize10k, static_cast<float>(queueSize) /
+                                static_cast<float>(config_.maxQueueSize) *
+                                100000);
 }
 
 /// Helper to update execution stats
