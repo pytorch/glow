@@ -9684,16 +9684,14 @@ TEST_P(OperatorTest, FP16AvgPool3D) {
   CHECK_IF_ENABLED();
 
   auto *input =
-      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 1, 3, 3, 3}, // NCTHW
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 3, 1}, // NCTHW
                              "input", false);
   bindings_.allocate(input)->getHandle<float16_t>() = {
       0., 1., 2., 3., 4., 5., 6., 7., 8., 0., 1., 2., 3., 4.,
       5., 6., 7., 8., 0., 1., 2., 3., 4., 5., 6., 7., 8.};
-  auto *inputNTHWC =
-      F_->createTranspose("avgpool3d_input_NCTHW2NTHWC", input, NCTHW2NTHWC);
-  auto *Pool = F_->createAvgPool("pool", inputNTHWC, {2, 2, 2}, // kernel
-                                 {1, 1, 1},                     // stride
-                                 {0, 0, 0, 0, 0, 0},            // padding
+  auto *Pool = F_->createAvgPool("pool", input, {2, 2, 2}, // kernel
+                                 {1, 1, 1},                // stride
+                                 {0, 0, 0, 0, 0, 0},       // padding
                                  NTHWC);
   auto *outputNCTHW =
       F_->createTranspose("avgpool3d_output_NTHWC2NCTHW", Pool, NTHWC2NCTHW);
