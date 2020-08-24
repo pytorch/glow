@@ -8226,6 +8226,42 @@ TEST_P(OperatorTest, Cos_Int8QTy) {
   EXPECT_EQ(outH.raw(3), static_cast<int8_t>(std::round(std::cos(2) * 127)));
 }
 
+TEST_P(OperatorTest, Erf_FloatTy) {
+  CHECK_IF_ENABLED();
+  auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {4}, "inp", false);
+  bindings_.allocate(inp)->getHandle<float>() = {-1.0, 0.0, 1.0, 2.0};
+  auto *node = F_->createErf("erf", inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float>();
+  EXPECT_EQ(outH.size(), 4);
+  EXPECT_FLOAT_EQ(outH.raw(0), std::erf(-1.0));
+  EXPECT_FLOAT_EQ(outH.raw(1), std::erf(0.0));
+  EXPECT_FLOAT_EQ(outH.raw(2), std::erf(1.0));
+  EXPECT_FLOAT_EQ(outH.raw(3), std::erf(2.0));
+}
+
+TEST_P(OperatorTest, Erf_Int8QTy) {
+  CHECK_IF_ENABLED();
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {4}, 1.0, 0, "inp", false);
+  bindings_.allocate(inp)->getHandle<int8_t>() = {-1, 0, 1, 2};
+  auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {4}, 1.0 / 127.0, 0);
+  auto *node = F_->createErf("erf", outTy, inp);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<int8_t>();
+  EXPECT_EQ(outH.size(), 4);
+  EXPECT_EQ(outH.raw(0), static_cast<int8_t>(std::round(std::erf(-1) * 127)));
+  EXPECT_EQ(outH.raw(1), static_cast<int8_t>(std::round(std::erf(0) * 127)));
+  EXPECT_EQ(outH.raw(2), static_cast<int8_t>(std::round(std::erf(1) * 127)));
+  EXPECT_EQ(outH.raw(3), static_cast<int8_t>(std::round(std::erf(2) * 127)));
+}
+
 /// Helper to test CmpNEQ using \p elemKind.
 template <typename ElemType>
 static void testCmpNEQ(glow::PlaceholderBindings &bindings, glow::Module &mod,

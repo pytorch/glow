@@ -486,6 +486,8 @@ struct BlacklistInitializer {
       {"LSTMUnitFP16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"PyTorchLSTMFP16/0", TestBlacklist::AnyDeviceAnyEngine},
 #endif
+      {"Erf_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"Erf_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
     };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);

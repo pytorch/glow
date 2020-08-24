@@ -1463,6 +1463,16 @@ Error ONNXModelLoader::loadTrigonometricOps(const std::string &typeName,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadErf(const ONNX_NAMESPACE::NodeProto &op,
+                               const ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+  Node *N = G_->createErf(opName, in);
+  RETURN_IF_ERR(addNodeAsOutput(op, N));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadConv1D(const ONNX_NAMESPACE::NodeProto &op,
                                   ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -4513,6 +4523,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "Sin" || typeName == "Cos") {
     return loadTrigonometricOps(typeName, op, dict);
+  }
+  if (typeName == "Erf") {
+    return loadErf(op, dict);
   }
   if (typeName == "Conv") {
     // If the Conv operator has quantized inputs, use

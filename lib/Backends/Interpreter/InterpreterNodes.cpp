@@ -2992,6 +2992,11 @@ void BoundInterpreterFunction::fwdElementCosInst(const ElementCosInst *I) {
   dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
 }
 
+void BoundInterpreterFunction::fwdElementErfInst(const ElementErfInst *I) {
+  auto func = [](float x) -> float { return std::erf(x); };
+  dispatchImpl(fwdUnaryArithmeticImpl, I->getSrc()->getElementType(), I, func);
+}
+
 //===----------------------------------------------------------------------===//
 //                              Compare operations
 //===----------------------------------------------------------------------===//

@@ -391,6 +391,8 @@ TEST(exporter, onnxModels) {
         name.find("NonMaxSuppression.onnxtxt") != std::string::npos ||
         name.find("NonMaxSuppressionSSD.onnxtxt") != std::string::npos ||
         name.find("ROIAlign_onnx.onnxtxt") != std::string::npos ||
+        name.find("Less.onnxtxt") != std::string::npos ||
+        name.find("Erf.onnxtxt") != std::string::npos ||
         name.find("Asin.onnxtxt") != std::string::npos ||
         name.find("Acos.onnxtxt") != std::string::npos ||
         name.find("Atan.onnxtxt") != std::string::npos ||
