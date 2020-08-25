@@ -54,6 +54,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "ReluSimple_Float16/0",
     "PReluSimple_BFloat16/0",
     "PReluSimple_Float16/0",
+    "Gelu_Float16/0",
     "GatherDataBFloat16IdxInt32/0",
     "GatherDataFloat16IdxInt32/0",
     "GatherDataBFloat16IdxInt64/0",
