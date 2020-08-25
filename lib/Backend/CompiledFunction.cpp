@@ -17,9 +17,19 @@
 #include "glow/Backend/CompiledFunction.h"
 #include "glow/Backend/BackendUtils.h"
 
+#include <fstream>
+
 using namespace glow;
 
 CompiledFunction::~CompiledFunction() { runtimeBundle_.freeConstants(); }
 
 CompiledFunction::CompiledFunction(runtime::RuntimeBundle &&bundle)
     : runtimeBundle_(std::move(bundle)){};
+
+void CompiledFunction::dumpJSON(llvm::StringRef fname) const {
+  LOG(INFO) << "Dumping CompiledFunction JSON to " << fname.str() << std::endl;
+  std::ofstream myfile;
+  myfile.open(fname);
+  myfile << toJSON();
+  myfile.close();
+}
