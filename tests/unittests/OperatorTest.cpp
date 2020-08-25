@@ -3729,6 +3729,49 @@ TEST_P(OperatorTest, PReluSimple_BFloat16) {
                               1E-16);
 }
 
+/// Helper to test Gelu using \p DTy.
+template <typename DataType>
+static void testGelu(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                     glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
+                     double allowedError) {
+  auto *in = mod.createPlaceholder(DTy, {7}, "in", false);
+  auto *gelu = F->createGELU("gelu", in);
+  auto *save = F->createSave("gelu", gelu);
+  auto *result = bindings.allocate(save->getPlaceholder());
+
+  bindings.allocate(in)->getHandle<DataType>().randomize(0.1, 3.0,
+                                                         mod.getPRNG());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto resultH = result->getHandle<DataType>();
+  auto inH = bindings.get(in)->getHandle<DataType>();
+  // see https://arxiv.org/pdf/1606.08415.pdf
+  float geluConst = 0.044715f;
+
+  for (size_t i = 0; i < 7; i++) {
+    float inHf = static_cast<float>(inH.raw(i));
+    float expectedResult =
+        0.5f * inHf *
+        (1.0f + std::tanh(M_2_SQRTPI * M_SQRT1_2 *
+                          (inHf + geluConst * std::pow(inHf, 3))));
+    EXPECT_NEAR(resultH.at(i), expectedResult, allowedError);
+  }
+}
+
+/// Verify that the GELU operator works correctly for Float.
+TEST_P(OperatorTest, Gelu_Float) {
+  CHECK_IF_ENABLED();
+  testGelu<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 1E-6);
+}
+
+/// Verify that the GELU operator works correctly for Float16.
+TEST_P(OperatorTest, Gelu_Float16) {
+  CHECK_IF_ENABLED();
+  testGelu<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 1.5E-2);
+}
+
 TEST_P(OperatorTest, TopK) {
   CHECK_IF_ENABLED();
 

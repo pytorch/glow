@@ -94,6 +94,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "batchedReduceMeanQuantizedWithAxis/0",
     "batchedReduceMeanUsingAvgPool/0",
     "batchedReduceMeanUsingAvgPoolQuantized/0",
+    "Gelu_Float16/0",
     "ReluSimple_Float16/0",
     "PReluSimple_Float16/0",
     "FloatArgMaxKeepDim/0",
