@@ -89,6 +89,7 @@ extern std::string GlowAvailableDevices;
 } // namespace runtime
 
 extern bool GlowDumpCompilationLog;
+extern bool GlowDumpBackendSpecificIRJSON;
 extern bool GlowLogPartition;
 extern bool GlowDumpPartition;
 } // namespace glow
@@ -575,5 +576,13 @@ DEFINE_bool(glow_dump_compilation_log, false,
 DEFINE_validator(glow_dump_compilation_log,
                  [](const char * /*unused*/, bool value) {
                    glow::GlowDumpCompilationLog = value;
+                   return true;
+                 });
+
+DEFINE_bool(glow_dump_backend_specific_ir_json, false,
+            "Dump the backend-specific IR JSON file");
+DEFINE_validator(glow_dump_backend_specific_ir_json,
+                 [](const char * /*unused*/, bool value) {
+                   glow::GlowDumpBackendSpecificIRJSON = value;
                    return true;
                  });
