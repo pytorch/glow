@@ -32,8 +32,8 @@ namespace glow {
 namespace onnxifi {
 extern bool GlowDumpNNPICompilerData;
 extern bool GlowUsePerPartitionIcetConfig;
-
 } // namespace onnxifi
+extern bool GlowDumpBackendSpecificIRJSON;
 } // namespace glow
 
 /// Update device network config from the compilation config
@@ -388,7 +388,7 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
 
     // Update compilation info after NNPI compilation.
     if (compilationOptions_.dumpCompilationInfo ||
-        compilationOptions_.lightCompilation) {
+        compilationOptions_.lightCompilation || GlowDumpBackendSpecificIRJSON) {
       if (!updateCompilationInfo()) {
         // Only issuing a warning (soft fail)
         LOG(WARNING) << "Failed to update NNPI compilation info";
@@ -537,6 +537,29 @@ bool NNPICompiledFunction::updateCompilationInfo() {
   return true;
 }
 
+static const char *dumpAllocType(const NNPI_ALLOCATION_TYPE &allocType) {
+  switch (allocType) {
+  case NNPI_ALLOCATION_DEFAULT:
+    return "Default";
+  case NNPI_ALLOCATION_DRAM:
+    return "DRAM";
+  case NNPI_ALLOCATION_ECC_DRAM:
+    return "ECC DRAM";
+  case NNPI_ALLOCATION_LLC:
+  case NNPI_ALLOCATION_LLC_CLOS0:
+  case NNPI_ALLOCATION_LLC_CLOS1:
+  case NNPI_ALLOCATION_LLC_CLOS2:
+  case NNPI_ALLOCATION_LLC_CLOS3:
+    return "LLC";
+  case NNPI_ALLOCATION_SRAM:
+    return "SRAM";
+  case NNPI_ALLOCATION_INTERNAL:
+    return "Internal";
+  default:
+    return "Unknown";
+  }
+}
+
 std::string NNPICompiledTensor::dump() const {
   std::stringstream stream;
   stream << "name: " << name << ", type: " << type << " (";
@@ -547,33 +570,7 @@ std::string NNPICompiledTensor::dump() const {
     stream.seekp(-1, stream.cur);
   }
   stream << "), allocation: ";
-  switch (allocType) {
-  case NNPI_ALLOCATION_DEFAULT:
-    stream << "Default";
-    break;
-  case NNPI_ALLOCATION_DRAM:
-    stream << "DRAM";
-    break;
-  case NNPI_ALLOCATION_ECC_DRAM:
-    stream << "ECC DRAM";
-    break;
-  case NNPI_ALLOCATION_LLC:
-  case NNPI_ALLOCATION_LLC_CLOS0:
-  case NNPI_ALLOCATION_LLC_CLOS1:
-  case NNPI_ALLOCATION_LLC_CLOS2:
-  case NNPI_ALLOCATION_LLC_CLOS3:
-    stream << "LLC";
-    break;
-  case NNPI_ALLOCATION_SRAM:
-    stream << "SRAM";
-    break;
-  case NNPI_ALLOCATION_INTERNAL:
-    stream << "Internal";
-    break;
-  default:
-    stream << "Unknown";
-    break;
-  }
+  stream << dumpAllocType(allocType);
   return stream.str();
 }
 
@@ -634,6 +631,8 @@ static const std::string tensorToJSON(const NNPICompiledTensor &tensor) {
   std::stringstream fs;
   fs << "{" << std::endl;
   fs << "\"type\" : \"" << tensor.type << "\"," << std::endl;
+  fs << "\"alloc\" : \"" << dumpAllocType(tensor.allocType) << "\","
+     << std::endl;
   fs << "\"size\" : " << std::endl;
   fs << "[" << std::endl;
   for (auto it = tensor.shape.begin(); it != tensor.shape.end(); it++) {
@@ -675,6 +674,9 @@ opsToJSON(const std::map<std::string, NNPICompiledOp> &ops) {
     fs << tensorListToJSON(it->second.inputs, "inputs");
     fs << "," << std::endl;
     fs << tensorListToJSON(it->second.outputs, "outputs");
+    fs << "," << std::endl;
+    fs << " \"core\": " << it->second.coreIndex << "," << std::endl;
+    fs << " \"type\": \"" << it->second.type << "\"" << std::endl;
     fs << "}" << std::endl;
   }
   fs << "  }" << std::endl;
