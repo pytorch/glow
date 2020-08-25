@@ -424,8 +424,9 @@ void InferenceContext::execute(RunIdentifierTy runId,
     if (deviceOptions_->disableCommands < 2) {
       // Queue Command list
       int64_t issueTime = TraceEvent::now();
-      LOG_AND_CALLBACK_EXECUTE_NNPI_INF_IF_ERROR(
-          nnpiCommandListQueue(commandList_, &(cmdConfigs_.at(0)), usedConfigs),
+      FATAL_CALLBACK_IF_NOT(
+          nnpiCommandListQueue(commandList_, &(cmdConfigs_.at(0)),
+                               usedConfigs) == NNPI_INF_NO_ERROR,
           "Failed to queue command list.", runId, ctx, resultCB);
 
       // Wait on completion and error handling.
