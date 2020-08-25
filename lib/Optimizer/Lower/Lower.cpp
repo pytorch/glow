@@ -28,7 +28,13 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
 
+#include <cmath>
+#include <math.h>
 #include <numeric>
+
+#ifdef WIN32
+#include <corecrt_math_defines.h>
+#endif
 
 using namespace glow;
 using llvm::cast;

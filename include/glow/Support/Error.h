@@ -411,11 +411,10 @@ class GlowError : protected detail::CheckState<detail::enableCheckingErrors> {
     return std::move(errorValue_);
   }
 
-protected:
+public:
   /// Construct a new empty Error.
   explicit GlowError() { setErrorValue(nullptr, /*skipCheck*/ true); }
 
-public:
   /// Construct an Error from an ErrorValue \p errorValue.
   GlowError(std::unique_ptr<GlowErrorValue> errorValue) {
     assert(errorValue &&
