@@ -51,6 +51,7 @@ void optimizeCommunicationCost(NodeToFunctionMap &partitions,
       }
       Function *cur = (*it).first;
       GraphMemInfo curCost = partitions.getGraphMemInfo(cur);
+      auto contextCount = curCost.contextCount;
       // Check if a node can be moved to current node set (i.e curSet).
       for (int i = 0, e = outUsers.size(); i < e; i++) {
         // Get the new cost if outUsers[i] is added.
@@ -95,7 +96,7 @@ void optimizeCommunicationCost(NodeToFunctionMap &partitions,
             nodesSet.erase(suc);
             mod->eraseFunction(suc);
           } else {
-            GraphMemInfo newCost = getGraphMemInfo(nodesSet[suc]);
+            GraphMemInfo newCost = getGraphMemInfo(nodesSet[suc], contextCount);
             partitions.setGraphMemInfo(suc, newCost);
           }
           gain = true;

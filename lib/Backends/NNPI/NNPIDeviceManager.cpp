@@ -64,7 +64,7 @@ DeviceManager *createNNPIDeviceManager(const DeviceConfig &config,
 }
 
 // 1K bytes.
-static constexpr uint64_t KB = 1 << 10;
+static constexpr uint64_t KB = 1000;
 
 //////////////////////////////////////////////////////////////////////////
 std::atomic<RunIdentifierTy> NNPIDeviceManager::runIdentifier_;
