@@ -86,7 +86,7 @@ GlowOnnxifiManager::getOrCreateHostManager(llvm::StringRef backendName) {
   auto it = hostManagers_.find(backendName);
 
   if (it != hostManagers_.end()) {
-    hostManager = it->second.lock();
+    hostManager = it->second;
   }
 
   if (!hostManager) {
@@ -121,10 +121,6 @@ void GlowOnnxifiManager::release(BackendPtr backend) {
 
   if (erased) {
     delete backend;
-  }
-
-  if (backends_.empty()) {
-    hostManagers_.clear();
   }
 }
 
