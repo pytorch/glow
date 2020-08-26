@@ -45,10 +45,11 @@
 
 llvm::cl::OptionCategory graphOptCat("Graph Optimizations Options");
 llvm::cl::opt<unsigned> constDedupSizeOpt(
-    "const_dedup_size",
+    "const-dedup-size",
     llvm::cl::desc(
-        "Max number of elements allowed for deduplicating Constants"),
-    llvm::cl::Optional, llvm::cl::init(256), llvm::cl::cat(graphOptCat));
+        "Max number of elements allowed for deduplicating Constants. "
+        "A value equal to 0 means no limit. Default is 0."),
+    llvm::cl::Optional, llvm::cl::init(0), llvm::cl::cat(graphOptCat));
 
 using namespace glow;
 using llvm::cast;
@@ -2886,12 +2887,10 @@ static bool deduplicateConstants(Module *M) {
 
   bool changed = false;
   for (auto &C : M->getConstants()) {
-    // Only perform deduplication on consts of small enough size. Otherwise
-    // just skip them. constDedupSizeOpt defaults to 256 as a heuristic, to
-    // keep compile time reasonable.
+    // Only perform deduplication of consts with given max number of elements.
     size_t maxNumEls = constDedupSizeOpt;
     size_t numEls = C->getType()->size();
-    if (numEls > maxNumEls) {
+    if ((maxNumEls != 0) && (numEls > maxNumEls)) {
       continue;
     }
 
