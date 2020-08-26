@@ -1746,8 +1746,9 @@ public:
   /// - [f] in case the RNN is unidirectional (1 function).
   /// - [f] for the forward cell followed by [f] for the reverse cell in
   ///    case the RNN is bidirectional (4 functions).
-  /// The input \p B is optional (assumed 0 if nullptr is provided).
-  /// The names of all the nodes created are prefixed with \p namePrefix.
+  /// The inputs \p B and \p initial_h are optional (assumed 0 if nullptr is
+  /// provided). The names of all the nodes created are prefixed with
+  /// \p namePrefix.
   void createOnnxRNN(llvm::StringRef namePrefix, NodeValue X, NodeValue W,
                      NodeValue R, NodeValue B, NodeValue initial_h,
                      NodeValue &Y, NodeValue &Y_h, unsigned hiddenSize,
@@ -1772,10 +1773,11 @@ public:
   /// - [f,g] in case the GRU is unidirectional (2 functions).
   /// - [f,g] for the forward cell followed by [f,g] for the reverse cell in
   ///    case the GRU is bidirectional (4 functions).
-  /// The input \p B is optional (assumed 0 if nullptr is provided).
-  /// The names of all the nodes created are prefixed with \p namePrefix.
-  /// The boolean parameter \p linearBeforeReset defines whether the reset
-  /// for the previous hidden state occurs before/after the linear expression.
+  /// The inputs \p B and \p initial_h are optional (assumed 0 if nullptr is
+  /// provided). The names of all the nodes created are prefixed with
+  /// \p namePrefix. The boolean parameter \p linearBeforeReset defines whether
+  /// the reset for the previous hidden state occurs before/after the linear
+  /// expression.
   void createOnnxGRU(llvm::StringRef namePrefix, NodeValue X, NodeValue W,
                      NodeValue R, NodeValue B, NodeValue initial_h,
                      NodeValue &Y, NodeValue &Y_h, unsigned hiddenSize,
@@ -1804,10 +1806,11 @@ public:
   /// - [f,g,h] in case the LSTM is unidirectional (3 functions).
   /// - [f,g,h] for the forward cell followed by [f,g,h] for the reverse cell in
   ///    case the LSTM is bidirectional (6 functions).
-  /// The inputs \p B and \p P are optional (assumed 0 if nullptr is provided).
-  /// The names of all the nodes created are prefixed with \p namePrefix.
-  /// The boolean parameter \p inputForget defines whether the input and forget
-  /// gates should be coupled (compute the input gate from the forget gate).
+  /// The inputs \p B, \p initial_h, \p initial_c and \p P are optional (assumed
+  /// 0 if nullptr is provided). The names of all the nodes created are prefixed
+  /// with \p namePrefix. The boolean parameter \p inputForget defines whether
+  /// the input and forget gates should be coupled (compute the input gate from
+  /// the forget gate).
   void createOnnxLSTM(llvm::StringRef namePrefix, NodeValue X, NodeValue W,
                       NodeValue R, NodeValue B, NodeValue initial_h,
                       NodeValue initial_c, NodeValue P, NodeValue &Y,
