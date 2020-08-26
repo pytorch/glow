@@ -276,7 +276,7 @@ void testPTB() {
         for (unsigned int i = 0; i < minibatchSize; i++) {
           auto T =
               result->getHandle<float>().extractSlice(step * minibatchSize + i);
-          dim_t correct = targetWords.getHandle<dim_t>().at(
+          dim_t correct = targetWords.getHandle<int64_t>().at(
               {minibatchSize * batch + i, step});
           float soft_guess = -std::log(T.getHandle<float>().at({correct}));
           perplexity += soft_guess;
