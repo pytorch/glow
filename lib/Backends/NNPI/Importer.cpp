@@ -866,6 +866,22 @@ public:
   }
 };
 
+class GeluNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowGelu = llvm::dyn_cast<GeluNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowGelu, "Bad node type", NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors({nodeValueName(glowGelu->getInput())},
+                            {nodeValueName(glowGelu->getResult())});
+
+    return nnpiNetworkAddGeluOp(importer.getNetwork(),
+                                glowGelu->getName().begin(),
+                                nodeValueName(glowGelu->getInput()).c_str(),
+                                nodeValueName(glowGelu->getResult()).c_str());
+  }
+};
+
 template <class EltwiseNodeType, NNPI_ELTWISE_TYPE eltwiseType>
 class BinaryEltwiseNodeImporter : public INNPINodeImporter {
 public:
@@ -2142,6 +2158,7 @@ std::unordered_map<
     {"Save", glow::make_unique<SaveNodeImporter>()},
     {"Relu", glow::make_unique<ReluNodeImporter>()},
     {"PRelu", glow::make_unique<PReluNodeImporter>()},
+    {"Gelu", glow::make_unique<GeluNodeImporter>()},
     {"Exp", glow::make_unique<
                 UnaryEltwiseNodeImporter<glow::ExpNode, NNPI_ELTWISE_EXP>>()},
     {"Max", glow::make_unique<
