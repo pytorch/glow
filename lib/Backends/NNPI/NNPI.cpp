@@ -174,7 +174,9 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::LayerNormalizationNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
-
+  case Kinded::Kind::GeluNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty});
   case Kinded::Kind::BatchNormalizationNodeKind: {
     auto elemType = NI.getInElemTy(BatchNormalizationNode::InputIdx);
     bool isSup =
@@ -553,6 +555,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::LayerNormalizationNodeKind:
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
   case Kinded::Kind::PReluNodeKind:
+  case Kinded::Kind::GeluNodeKind:
   case Kinded::Kind::LogitNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
     return false;
