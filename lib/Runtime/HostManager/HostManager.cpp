@@ -248,6 +248,7 @@ void HostManager::exportMemoryCounters() {
 }
 
 HostManager::~HostManager() {
+  LOG(INFO) << "Destroying host manager...";
   ERR_TO_VOID(clearHost());
   exportMemoryCounters();
 }
