@@ -2573,7 +2573,9 @@ Error PyTorchModelLoader::loadSigmoid(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
   glow::SigmoidNode *glowNode = F_.createSigmoid("sigmoid", input);
-  return addValueMapping(outputs[0], glowNode->getResult());
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+  return addValueMapping(outputs[0], glowNode->getResult(), dtype);
 }
 
 Error PyTorchModelLoader::loadReciprocal(const torch::jit::Node *ptNode) {
