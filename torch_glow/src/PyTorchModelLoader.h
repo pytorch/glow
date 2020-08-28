@@ -462,6 +462,10 @@ private:
   /// \returns error on failure.
   Error loadFloor(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch ceil node.
+  /// \returns error on failure.
+  Error loadCeil(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch relu node.
   /// \returns error on failure.
   Error loadRelu(const torch::jit::Node *ptNode);

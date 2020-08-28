@@ -856,6 +856,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"prim::FusedConcat"}, &PyTorchModelLoader::loadFusedConcat},
       {{"glow::fused_stack"}, &PyTorchModelLoader::loadFusedStack},
       {{"aten::floor"}, &PyTorchModelLoader::loadFloor},
+      {{"aten::ceil"}, &PyTorchModelLoader::loadCeil},
       {{"aten::mean"}, &PyTorchModelLoader::loadMean},
       {{"aten::pow"}, &PyTorchModelLoader::loadPow},
       {{"aten::dropout", "aten::dropout_"}, &PyTorchModelLoader::loadDropout},
@@ -2479,6 +2480,20 @@ Error PyTorchModelLoader::loadFloor(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
   auto *glowNode = F_.createFloor("floor", input);
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+  return addValueMapping(outputs[0], glowNode->getResult(), dtype);
+}
+
+Error PyTorchModelLoader::loadCeil(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  auto *glowNode = F_.createCeil("ceil", input);
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
   return addValueMapping(outputs[0], glowNode->getResult(), dtype);
