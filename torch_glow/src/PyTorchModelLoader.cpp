@@ -588,6 +588,16 @@ struct QuantizedAddInputs {
   };
 };
 
+/// Indexes of quantized::add inputs.
+struct QuantizedMulInputs {
+  enum {
+    lhs = 0,
+    rhs = 1,
+    scale = 2,
+    zero_point = 3,
+  };
+};
+
 /// Indexes of glow::unpacked_quantized_linear inputs.
 struct QuantizedUnpackedLinearInputs {
   enum {
@@ -863,6 +873,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::clamp"}, &PyTorchModelLoader::loadClamp},
       {{"quantized::add"}, &PyTorchModelLoader::loadQuantizedAdd},
       {{"quantized::add_relu"}, &PyTorchModelLoader::loadQuantizedAddRelu},
+      {{"quantized::mul"}, &PyTorchModelLoader::loadQuantizedMul},
       {{"glow::fused_linear"}, &PyTorchModelLoader::loadGlowFusedLinear},
       {{"glow::unpacked_quantized_conv2d"},
        &PyTorchModelLoader::loadQuantizedConvUnpacked},
@@ -1617,6 +1628,49 @@ Error PyTorchModelLoader::loadQuantizedAddRelu(const torch::jit::Node *ptNode) {
   c10::ScalarType dtype;
   RETURN_IF_ERR(
       getCorrectTypeMapping(dtype, inputs[QuantizedAddReluInputs::lhs]));
+  return addValueMapping(outputs[0], output, dtype);
+}
+
+Error PyTorchModelLoader::loadQuantizedMul(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 4, outputs, 1));
+
+  glow::NodeValue lhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      lhs, getGlowNodeValueForValue(inputs[QuantizedMulInputs::lhs]));
+  glow::NodeValue rhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      rhs, getGlowNodeValueForValue(inputs[QuantizedMulInputs::rhs]));
+
+  // scale
+  float outScale;
+  ASSIGN_VALUE_OR_RETURN_ERR(outScale, iValToDouble(getGlowIValueForValue(
+                                           inputs[QuantizedMulInputs::scale])));
+
+  // zero_point
+  int32_t outOffset;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      outOffset,
+      iValToInt(getGlowIValueForValue(inputs[QuantizedMulInputs::zero_point])));
+
+  TypeRef inputType = lhs.getType();
+  auto outDims = inputType->dims();
+  auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy, outDims, outScale,
+                                          outOffset - UINT8_TO_INT8_SHIFT);
+
+  RETURN_ERR_IF_NOT(
+      lhs.dims().size() == rhs.dims().size(),
+      glow::strFormat("LHS and RHS must have number of dimensions, but LHS got "
+                      "%lu , RHS got %lu .",
+                      lhs.dims().size(), rhs.dims().size()));
+  auto *bcast =
+      F_.createBroadcast("broadcasted_rhs_quant_mul", rhs, lhs.dims(), 0);
+  glow::MulNode *qmul = F_.createMul("quantized_mul", outTy, lhs, bcast);
+  auto output = qmul->getResult();
+
+  c10::ScalarType dtype;
+  RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[QuantizedMulInputs::lhs]));
   return addValueMapping(outputs[0], output, dtype);
 }
 
