@@ -754,6 +754,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
   }
 
   if (typeName == "Int8Quantize") {
+    RETURN_ERR_IF_NOT(op.input_size() == 1,
+                      "Glow only suports Int8Quantize with 1 input");
     RETURN_ERR_IF_NOT(dict.count("Y_zero_point"),
                       "missing zero point for quantized output type");
     RETURN_ERR_IF_NOT(dict.count("Y_scale"),
@@ -1006,6 +1008,8 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "FC" || typeName == "FCTransposed" || typeName == "Int8FC" ||
       typeName == "FbFCPacked") {
+    RETURN_ERR_IF_NOT(op.input_size() == 3,
+                      "Glow only suports FC with 3 inputs");
     // Load the inputs:
     NodeValue in;
     ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
