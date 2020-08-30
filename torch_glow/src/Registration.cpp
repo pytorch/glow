@@ -19,6 +19,7 @@
 #include "PyTorchCommon.h"
 #include "glow/Support/Error.h"
 
+#include <c10/util/hash.h>
 #include <glog/logging.h>
 #include <torch/csrc/jit/ir/alias_analysis.h>
 #include <torch/csrc/jit/ir/node_hashing.h>
@@ -28,7 +29,6 @@
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
 #include <torch/csrc/jit/passes/utils/subgraph_utils.h>
 #include <torch/csrc/jit/runtime/custom_operator.h>
-#include <torch/csrc/utils/hash.h>
 
 #include <mutex>
 #include <shared_mutex>
