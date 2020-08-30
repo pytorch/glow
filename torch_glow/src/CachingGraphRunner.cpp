@@ -19,8 +19,8 @@
 #include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Support/Support.h"
 
-#include <mutex>
 #include <c10/util/hash.h>
+#include <mutex>
 #include <torch/csrc/jit/runtime/argument_spec.h>
 
 #include "ShapeInferenceEngine.h"
