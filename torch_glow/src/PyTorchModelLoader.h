@@ -387,6 +387,10 @@ private:
   // \returns error on failure.
   Error loadRoiAlign(const torch::jit::Node *ptNode);
 
+  // Load a PyTorch _caffe2::RoIAlignRotated op.
+  // \returns error on failure.
+  Error loadRoiAlignRotated(const torch::jit::Node *ptNode);
+
   // Load a PyTorch _caffe2::BBoxTransform op.
   // \returns error on failure.
   Error loadBBoxTransform(const torch::jit::Node *ptNode);
@@ -548,6 +552,10 @@ private:
 
   Error loadQuantizedConvUnpackedImpl(const torch::jit::Node *ptNode,
                                       bool isRelu = false);
+
+  /// Load a PyTorch _caffe2::RoIAlign op or if \p isRotated is true then a
+  /// _caffe2::RoIAlignRotated op.
+  Error loadRoiAlignImpl(const torch::jit::Node *ptNode, bool isRotated);
 
   /// Load a PyTorch quantized::conv2d node.
   // \return error on failure.

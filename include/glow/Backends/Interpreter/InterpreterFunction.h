@@ -379,6 +379,7 @@ private:
 
   void fwdMFCCInstFloatImpl(glow::MFCCInst const *I);
 
+  template <typename T>
   void fwdROIAlignInstFloatImpl(glow::ROIAlignInst const *I);
 
   void fwdBBoxTransformInstFloatImpl(glow::BBoxTransformInst const *I);
