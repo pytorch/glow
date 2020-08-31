@@ -4981,8 +4981,8 @@ PyTorchModelLoader::PyTorchModelLoader(
   error = loadFn();
 
   if (error) {
-    DLOG(ERROR) << "Encountered error while loading graph:" << std::endl
-                << graph << std::endl;
+    std::cerr << "Encountered error while loading graph:" << std::endl
+              << graph << std::endl;
   }
 }
 
