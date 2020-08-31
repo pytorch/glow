@@ -4776,9 +4776,9 @@ MFCCNode *Function::createMFCC(llvm::StringRef name, NodeValue spectrogram,
 ROIAlignNode *
 Function::createROIAlign(llvm::StringRef name, NodeValue featureMap,
                          NodeValue boxes, NodeValue batchIndices,
-                         std::string mode, uint32_t outputHeight,
-                         uint32_t outputWidth, uint32_t samplingRatio,
-                         float spatialScale, bool aligned, bool rotated) {
+                         uint32_t outputHeight, uint32_t outputWidth,
+                         uint32_t samplingRatio, float spatialScale,
+                         bool aligned, bool rotated, PoolingMode mode) {
   auto featureMapDims = featureMap.dims();
   auto boxesDims = boxes.dims();
   std::vector<dim_t> outDim = {boxesDims[0], outputHeight, outputWidth,

@@ -1351,7 +1351,14 @@ Error ONNXModelWriter::writeMFCC(const MFCCNode *node, GraphType &graph) {
 Error ONNXModelWriter::writeROIAlign(const ROIAlignNode *node,
                                      GraphType &graph) {
   auto *proto = graph.add_node();
-  addValueAttribute(proto, "mode", node->getMode());
+  switch (node->getMode()) {
+  case PoolingMode::AVG:
+    addValueAttribute(proto, "mode", std::string("avg"));
+    break;
+  case PoolingMode::MAX:
+    addValueAttribute(proto, "mode", std::string("max"));
+    break;
+  }
   addValueAttribute(proto, "output_height", node->getOutputHeight());
   addValueAttribute(proto, "output_width", node->getOutputWidth());
   addValueAttribute(proto, "sampling_ratio", node->getSamplingRatio());

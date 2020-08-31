@@ -3811,12 +3811,27 @@ Error ONNXModelLoader::loadROIAlign(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue batchIndices;
   ASSIGN_VALUE_OR_RETURN_ERR(batchIndices, getNodeValueByName(op.input(2)));
 
-  std::string mode = "avg";
+  PoolingMode mode = PoolingMode::AVG;
   if (dict.count("mode")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(mode, loadStr(dict.at("mode")));
-    RETURN_ERR_IF_NOT(mode == "avg" || mode == "max",
-                      "Unsupported mode. Only average pooling and max pooling "
-                      "are supported.");
+    std::string modeStr;
+    ASSIGN_VALUE_OR_RETURN_ERR(modeStr, loadStr(dict.at("mode")));
+    if (modeStr == "avg") {
+      mode = PoolingMode::AVG;
+    } else if (modeStr == "max") {
+      mode = PoolingMode::MAX;
+    } else {
+      return MAKE_ERR(strFormat("Invalid PoolingMode: %s", modeStr.c_str()));
+    }
+  }
+
+  bool rotated = false;
+  if (dict.count("rotated")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(rotated, loadInt(dict.at("rotated")));
+  }
+
+  bool aligned = false;
+  if (dict.count("aligned")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(aligned, loadInt(dict.at("aligned")));
   }
 
   uint32_t outputHeight = 1;
@@ -3843,10 +3858,9 @@ Error ONNXModelLoader::loadROIAlign(const ONNX_NAMESPACE::NodeProto &op,
 
   const std::string &opName = loadOperatorName(op);
   featureMap = G_->createTranspose(opName, featureMap, NCHW2NHWC);
-  Node *N =
-      G_->createROIAlign(loadOperatorName(op), featureMap, boxes, batchIndices,
-                         mode, outputHeight, outputWidth, samplingRatio,
-                         spatialScale, /*aligned*/ false, /*rotated*/ false);
+  Node *N = G_->createROIAlign(
+      loadOperatorName(op), featureMap, boxes, batchIndices, outputHeight,
+      outputWidth, samplingRatio, spatialScale, aligned, rotated, mode);
   N = G_->createTranspose(opName, N, NHWC2NCHW);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();

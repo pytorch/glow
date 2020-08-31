@@ -1258,27 +1258,28 @@ TEST_MFCC(3, 513, 1e-5)
 TEST_MFCC(3, 1025, 1e-5)
 
 template <typename DataType>
-static void
-testRoiAlign(PlaceholderBindings &bindings, Module &mod, Function &F,
-             ExecutionEngine &EE, ElemKind ElemTy, llvm::ArrayRef<dim_t> x1Dims,
-             llvm::ArrayRef<DataType> x1, llvm::ArrayRef<dim_t> x2Dims,
-             llvm::ArrayRef<DataType> x2, llvm::ArrayRef<dim_t> x3Dims,
-             llvm::ArrayRef<int64_t> x3, std::string mode, dim_t outputHeight,
-             dim_t outputWidth, uint32_t samplingRatio, float spatialScale,
-             bool aligned, llvm::ArrayRef<DataType> expectedValues) {
-  auto *X1 = mod.createPlaceholder(ElemTy, x1Dims, "featureMap", false);
-  bindings.allocate(X1)->getHandle<DataType>() = x1;
+static void testRoiAlign(
+    PlaceholderBindings &bindings, Module &mod, Function &F,
+    ExecutionEngine &EE, ElemKind ElemTy, llvm::ArrayRef<dim_t> featureMapDims,
+    llvm::ArrayRef<DataType> featureMap, llvm::ArrayRef<dim_t> boxesDims,
+    llvm::ArrayRef<DataType> boxes, llvm::ArrayRef<dim_t> batchIndicesDims,
+    llvm::ArrayRef<int64_t> batchIndices, PoolingMode mode, dim_t outputHeight,
+    dim_t outputWidth, uint32_t samplingRatio, float spatialScale, bool aligned,
+    llvm::ArrayRef<DataType> expectedValues) {
+  auto *featureMapT =
+      mod.createPlaceholder(ElemTy, featureMapDims, "featureMap", false);
+  bindings.allocate(featureMapT)->getHandle<DataType>() = featureMap;
 
-  auto *X2 = mod.createPlaceholder(ElemTy, x2Dims, "boxes", false);
-  bindings.allocate(X2)->getHandle<DataType>() = x2;
+  auto *boxesT = mod.createPlaceholder(ElemTy, boxesDims, "boxes", false);
+  bindings.allocate(boxesT)->getHandle<DataType>() = boxes;
 
-  auto *X3 =
-      mod.createPlaceholder(ElemKind::Int64ITy, x3Dims, "batchIndices", false);
-  bindings.allocate(X3)->getHandle<int64_t>() = x3;
+  auto *batchIndicesT = mod.createPlaceholder(
+      ElemKind::Int64ITy, batchIndicesDims, "batchIndices", false);
+  bindings.allocate(batchIndicesT)->getHandle<int64_t>() = batchIndices;
 
-  auto *LN =
-      F.createROIAlign("ROIAlign", X1, X2, X3, mode, outputHeight, outputWidth,
-                       samplingRatio, spatialScale, aligned, /*rotated*/ false);
+  auto *LN = F.createROIAlign("ROIAlign", featureMapT, boxesT, batchIndicesT,
+                              outputHeight, outputWidth, samplingRatio,
+                              spatialScale, aligned, /*rotated*/ false, mode);
   auto *save = F.createSave("save", LN);
   auto *savePlaceholder = save->getPlaceholder();
   bindings.allocate(savePlaceholder);
@@ -1297,8 +1298,8 @@ testRoiAlign(PlaceholderBindings &bindings, Module &mod, Function &F,
 TEST_P(OperatorTest, ROIAlign) {
   CHECK_IF_ENABLED();
 
-  llvm::SmallVector<dim_t, 4> x1Dims = {2, 5, 5, 2};
-  llvm::SmallVector<float, 100> x1 = {
+  llvm::SmallVector<dim_t, 4> featureMapDims = {2, 5, 5, 2};
+  llvm::SmallVector<float, 100> featureMap = {
       1.,  0.,  1.,  1.,  1.,  2.,  1.,  3.,  1.,  4.,  1.,  5.,  1.,  6.,  1.,
       7.,  1.,  8.,  1.,  9.,  1.,  10., 1.,  11., 1.,  12., 1.,  13., 1.,  14.,
       1.,  15., 1.,  16., 1.,  17., 1.,  18., 1.,  19., 1.,  20., 1.,  21., 1.,
@@ -1307,45 +1308,47 @@ TEST_P(OperatorTest, ROIAlign) {
       1.,  13., 1.,  14., 1.,  15., 1.,  16., 1.,  17., 1.,  18., 1.,  19., 1.,
       20., 1.,  21., 1.,  22., 1.,  23., 1.,  24., 1.};
 
-  llvm::SmallVector<dim_t, 2> x2Dims = {2, 4};
-  llvm::SmallVector<float, 8> x2 = {1., 1., 3., 3., 1., 1., 3., 3.};
+  llvm::SmallVector<dim_t, 2> boxesDims = {2, 4};
+  llvm::SmallVector<float, 8> boxes = {1., 1., 3., 3., 1., 1., 3., 3.};
 
-  llvm::SmallVector<dim_t, 1> x3Dims = {2};
-  llvm::SmallVector<int64_t, 2> x3 = {1, 0};
+  llvm::SmallVector<dim_t, 1> batchIndicesDims = {2};
+  llvm::SmallVector<int64_t, 2> batchIndices = {1, 0};
 
   llvm::SmallVector<float, 12> expectedValues = {9, 1, 10, 1,  14, 1,  15, 1,
                                                  1, 9, 1,  10, 1,  14, 1,  15.};
 
-  testRoiAlign<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy, x1Dims, x1,
-                      x2Dims, x2, x3Dims, x3, "avg", 2, 2, 2, 1, false,
-                      expectedValues);
+  testRoiAlign<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy,
+                      featureMapDims, featureMap, boxesDims, boxes,
+                      batchIndicesDims, batchIndices, PoolingMode::AVG, 2, 2, 2,
+                      1, false, expectedValues);
 }
 
 TEST_P(OperatorTest, ROIAlignWithAlignedCoordinates) {
   CHECK_IF_ENABLED();
-  llvm::SmallVector<dim_t, 4> x1Dims = {1, 5, 5, 1};
-  llvm::SmallVector<float, 25> x1 = {
+  llvm::SmallVector<dim_t, 4> featureMapDims = {1, 5, 5, 1};
+  llvm::SmallVector<float, 25> featureMap = {
       0.1, 0.2, 0.3, 0.4, 0.5, 0.1, 0.2, 0.3, 0.4, 0.5, 0.1, 0.2, 0.3,
       0.4, 0.5, 0.1, 0.2, 0.3, 0.4, 0.5, 0.1, 0.2, 0.3, 0.4, 0.5};
 
-  llvm::SmallVector<dim_t, 2> x2Dims = {1, 4};
-  llvm::SmallVector<float, 5> x2 = {0.0, 0.4, 4.3, 2.9};
+  llvm::SmallVector<dim_t, 2> boxesDims = {1, 4};
+  llvm::SmallVector<float, 5> boxes = {0.0, 0.4, 4.3, 2.9};
 
-  llvm::SmallVector<dim_t, 1> x3Dims = {1};
-  llvm::SmallVector<int64_t, 1> x3 = {0};
+  llvm::SmallVector<dim_t, 1> batchIndicesDims = {1};
+  llvm::SmallVector<int64_t, 1> batchIndices = {0};
 
   llvm::SmallVector<float, 9> expectedValues = {
       0.1287, 0.2650, 0.4083, 0.1288, 0.2650, 0.4083, 0.1287, 0.2650, 0.4083};
 
-  testRoiAlign<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy, x1Dims, x1,
-                      x2Dims, x2, x3Dims, x3, "avg", 3, 3, 2, 1, true,
-                      expectedValues);
+  testRoiAlign<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy,
+                      featureMapDims, featureMap, boxesDims, boxes,
+                      batchIndicesDims, batchIndices, PoolingMode::AVG, 3, 3, 2,
+                      1, true, expectedValues);
 }
 
 TEST_P(OperatorTest, ROIAlignBatchIndexInBoxesTensor) {
   CHECK_IF_ENABLED();
-  llvm::SmallVector<dim_t, 4> x1Dims = {2, 5, 5, 1};
-  llvm::SmallVector<float, 25> x1 = {
+  llvm::SmallVector<dim_t, 4> featureMapDims = {2, 5, 5, 1};
+  llvm::SmallVector<float, 25> featureMap = {
       -1.2428743,  -0.9784467,  0.33036363,  0.47368783,  -0.81611377,
       -1.1874917,  -1.6208626,  -0.04190686, -0.5767553,  1.1949452,
       -2.1838918,  1.0099407,   0.6925469,   0.37020323,  -0.3799704,
@@ -1358,22 +1361,23 @@ TEST_P(OperatorTest, ROIAlignBatchIndexInBoxesTensor) {
       -0.1649399,  -0.05537327, -2.365379,   0.28033617,  -0.47050563,
   };
 
-  llvm::SmallVector<dim_t, 2> x2Dims = {2, 5};
-  llvm::SmallVector<float, 5> x2 = {0.,        1.1889961, 0.53260314, 3.1794803,
-                                    3.5056353, 0.,        1.4748696,  2.4069107,
-                                    4.1870456, 4.6166725};
+  llvm::SmallVector<dim_t, 2> boxesDims = {2, 5};
+  llvm::SmallVector<float, 5> boxes = {
+      0., 1.1889961, 0.53260314, 3.1794803, 3.5056353,
+      0., 1.4748696, 2.4069107,  4.1870456, 4.6166725};
 
-  llvm::SmallVector<dim_t, 1> x3Dims = {1};
-  llvm::SmallVector<int64_t, 1> x3 = {1};
+  llvm::SmallVector<dim_t, 1> batchIndicesDims = {1};
+  llvm::SmallVector<int64_t, 1> batchIndices = {1};
 
   llvm::SmallVector<float, 18> expectedValues = {
       -1.1747, -0.3246, 0.0591,  -0.3049, 0.1516,  0.1917,
       0.0270,  -0.1727, -0.4240, 0.3784,  0.0435,  -0.2741,
       -0.7801, -1.1925, -1.2289, -0.9860, -1.2124, -0.5044};
 
-  testRoiAlign<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy, x1Dims, x1,
-                      x2Dims, x2, x3Dims, x3, "avg", 3, 3, 2, 1, true,
-                      expectedValues);
+  testRoiAlign<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy,
+                      featureMapDims, featureMap, boxesDims, boxes,
+                      batchIndicesDims, batchIndices, PoolingMode::AVG, 3, 3, 2,
+                      1, true, expectedValues);
 }
 
 TEST_P(OperatorTest, BBoxTransform) {
