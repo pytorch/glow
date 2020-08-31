@@ -264,6 +264,9 @@ inline bool is3DData(ConvolutionLayout layout) {
   return (layout == NTHWC || layout == NCTHW);
 }
 
+/// Modes of pooling for RoiAlign operation.
+enum PoolingMode { AVG = 0, MAX };
+
 /// Activations fused into ConvolutionNode (not supported on all backends).
 enum FusedActivation { NONE = 0, RELU, TANH, SIGMOID };
 

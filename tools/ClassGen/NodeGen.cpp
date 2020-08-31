@@ -1304,7 +1304,7 @@ int main(int argc, char **argv) {
       .addInput("FeatureMap")
       .addInput("Boxes")
       .addInput("BatchIndices")
-      .addMember(MemberType::String, "Mode")
+      .addMember(MemberType::Enum, "Mode")
       .addMember(MemberType::Unsigned, "OutputHeight")
       .addMember(MemberType::Unsigned, "OutputWidth")
       .addMember(MemberType::Unsigned, "SamplingRatio")
@@ -1313,7 +1313,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Boolean, "Rotated")
       .addResultFromCtorArg()
       .setDocstring(
-          "Performs region of interest (ROI) align operator. "
+          "Performs region of interest align (ROI) operator. "
           "FeatureMap - a tensor of [N,H,W,C]. N is the batch, C is the "
           "channel, H is the height, W is the width. "
           "Boxes - a tensor of [K,4] or [K,5] with format "
