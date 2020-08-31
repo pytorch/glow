@@ -30,14 +30,14 @@ def rand_rois(N, H, W, num_rois):
 
 class TestRoiAlign(unittest.TestCase):
     def test_roi_align_basic(self):
-        """Basic test of the _caffe2::RoiAlign Node on Glow."""
+        """Test of the _caffe2::RoiAlign Node on Glow."""
 
         def test_f(features, rois):
             return torch.ops._caffe2.RoIAlign(
                 features,
                 rois,
                 order="NCHW",
-                spatial_scale=0.0625,
+                spatial_scale=1.0,
                 pooled_h=6,
                 pooled_w=6,
                 sampling_ratio=2,
@@ -59,7 +59,7 @@ class TestRoiAlign(unittest.TestCase):
                 features,
                 rois,
                 order="NHWC",
-                spatial_scale=0.0625,
+                spatial_scale=1.0,
                 pooled_h=6,
                 pooled_w=6,
                 sampling_ratio=2,
@@ -81,7 +81,7 @@ class TestRoiAlign(unittest.TestCase):
                 features,
                 rois,
                 order="NCHW",
-                spatial_scale=0.0625,
+                spatial_scale=1.0,
                 pooled_h=6,
                 pooled_w=6,
                 sampling_ratio=2,
@@ -94,3 +94,101 @@ class TestRoiAlign(unittest.TestCase):
         rois = rand_rois(N, H, W, 250)
 
         jitVsGlow(test_f, features, rois, expected_fused_ops={"_caffe2::RoIAlign"})
+
+    def test_roi_align_scaled(self):
+        """Test of the _caffe2::RoiAlign Node on Glow."""
+
+        def test_f(features, rois):
+            return torch.ops._caffe2.RoIAlign(
+                features,
+                rois,
+                order="NCHW",
+                spatial_scale=0.0625,
+                pooled_h=6,
+                pooled_w=6,
+                sampling_ratio=2,
+                aligned=True,
+            )
+
+        N, C, H, W = 1, 3, 224, 224
+
+        features = torch.randn(N, C, H, W)
+        rois = rand_rois(N, H, W, 10)
+
+        jitVsGlow(test_f, features, rois, expected_fused_ops={"_caffe2::RoIAlign"})
+
+    def test_roi_align_unaligned(self):
+        """Test of the _caffe2::RoiAlign Node on Glow."""
+
+        def test_f(features, rois):
+            return torch.ops._caffe2.RoIAlign(
+                features,
+                rois,
+                order="NCHW",
+                spatial_scale=1.0,
+                pooled_h=6,
+                pooled_w=6,
+                sampling_ratio=2,
+                aligned=False,
+            )
+
+        N, C, H, W = 1, 3, 16, 20
+
+        features = torch.randn(N, C, H, W)
+        rois = rand_rois(N, H, W, 250)
+
+        jitVsGlow(test_f, features, rois, expected_fused_ops={"_caffe2::RoIAlign"})
+
+    def test_roi_align_dynamic_sampling(self):
+        """Test of the _caffe2::RoiAlign Node on Glow."""
+
+        def test_f(features, rois):
+            return torch.ops._caffe2.RoIAlign(
+                features,
+                rois,
+                order="NCHW",
+                spatial_scale=1.0,
+                pooled_h=6,
+                pooled_w=6,
+                sampling_ratio=0,
+                aligned=True,
+            )
+
+        N, C, H, W = 1, 3, 16, 20
+
+        features = torch.randn(N, C, H, W)
+        rois = rand_rois(N, H, W, 250)
+
+        jitVsGlow(test_f, features, rois, expected_fused_ops={"_caffe2::RoIAlign"})
+
+    def test_roi_align_fp16(self):
+        """Test of the _caffe2::RoiAlign Node on Glow."""
+
+        def test_f(features, rois):
+            return torch.ops._caffe2.RoIAlign(
+                features,
+                rois,
+                order="NCHW",
+                spatial_scale=1.0,
+                pooled_h=6,
+                pooled_w=6,
+                sampling_ratio=2,
+                aligned=True,
+            )
+
+        N, C, H, W = 1, 3, 16, 20
+
+        features = torch.randn(N, C, H, W)
+        rois = rand_rois(N, H, W, 250)
+
+        # atol/rtol must be high because maximum delta can be high due to shifts
+        # in sampling points due to fp16 rounding of coordinates.
+        jitVsGlow(
+            test_f,
+            features,
+            rois,
+            expected_fused_ops={"_caffe2::RoIAlign"},
+            use_fp16=True,
+            atol=1e-1,
+            rtol=1e-1,
+        )

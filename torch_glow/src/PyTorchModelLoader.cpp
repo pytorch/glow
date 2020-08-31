@@ -941,6 +941,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"fb::embedding_bag_4bit_rowwise_offsets"},
        &PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets},
       {{"_caffe2::RoIAlign"}, &PyTorchModelLoader::loadRoiAlign},
+      {{"_caffe2::RoIAlignRotated"}, &PyTorchModelLoader::loadRoiAlignRotated},
       {{"_caffe2::BBoxTransform"}, &PyTorchModelLoader::loadBBoxTransform},
   });
 
@@ -4620,7 +4621,8 @@ Error PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets(
   return loadEmbeddingBagByteRowwiseOffsetsHelper(ptNode, true);
 }
 
-Error PyTorchModelLoader::loadRoiAlign(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadRoiAlignImpl(const torch::jit::Node *ptNode,
+                                           bool isRotated) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 9, outputs, 1));
@@ -4680,14 +4682,15 @@ Error PyTorchModelLoader::loadRoiAlign(const torch::jit::Node *ptNode) {
   // PyTorch/Caffe2.
   auto dummyBatchIndices =
       F_.getParent()
-          ->createConstant(ElemKind::Int64ITy, {rois.dims()[0]},
+          ->createConstant(ElemKind::Int32ITy, {rois.dims()[0]},
                            "dummy_batch_indices")
           ->getOutput();
 
-  auto output = F_.createROIAlign("RoiAlign", features, rois, dummyBatchIndices,
-                                  outputHeight, outputWidth, samplingRatio,
-                                  spatialScale, aligned)
-                    ->getResult();
+  NodeValue output =
+      F_.createROIAlign("RoiAlign", features, rois, dummyBatchIndices,
+                        outputHeight, outputWidth, samplingRatio, spatialScale,
+                        aligned, isRotated)
+          ->getResult();
 
   if (needsTranspose) {
     output =
@@ -4695,6 +4698,14 @@ Error PyTorchModelLoader::loadRoiAlign(const torch::jit::Node *ptNode) {
   }
 
   return addValueMapping(outputs[0], output);
+}
+
+Error PyTorchModelLoader::loadRoiAlign(const torch::jit::Node *ptNode) {
+  return loadRoiAlignImpl(ptNode, /*isRotated*/ false);
+}
+
+Error PyTorchModelLoader::loadRoiAlignRotated(const torch::jit::Node *ptNode) {
+  return loadRoiAlignImpl(ptNode, /*isRotated*/ true);
 }
 
 Error PyTorchModelLoader::loadBBoxTransform(const torch::jit::Node *ptNode) {
