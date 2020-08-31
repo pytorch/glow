@@ -4,7 +4,6 @@ import unittest
 
 import torch
 import torch.nn as nn
-import torch_glow
 from tests.utils import jitVsGlow
 from torch.quantization import QConfig, observer
 
@@ -51,8 +50,9 @@ class TestQuantizedBatchNorm3D(unittest.TestCase):
         )
         model.eval()
 
-        torch_glow.enable_convert_to_fp16()
-        jitVsGlow(model, inputs, expected_fused_ops={"quantized::batch_norm3d"})
+        jitVsGlow(
+            model, inputs, expected_fused_ops={"quantized::batch_norm3d"}, use_fp16=True
+        )
 
     def test_batchnorm_with_weights(self):
         """
@@ -95,5 +95,6 @@ class TestQuantizedBatchNorm3D(unittest.TestCase):
         )
         model.eval()
 
-        torch_glow.enable_convert_to_fp16()
-        jitVsGlow(model, inputs, expected_fused_ops={"quantized::batch_norm3d"})
+        jitVsGlow(
+            model, inputs, expected_fused_ops={"quantized::batch_norm3d"}, use_fp16=True
+        )
