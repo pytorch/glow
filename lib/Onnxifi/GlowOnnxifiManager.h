@@ -104,9 +104,9 @@ private:
 
   /// Map from backend name to HostManager managing devices of that backend that
   /// is shared by all Backends using that HostManager. HostManager is stored
-  /// as shared_ptr here because we want to persist through the life time of the
-  /// process.
-  std::map<std::string, std::shared_ptr<runtime::HostManager>> hostManagers_;
+  /// as weak_ptr here so that it will be destructed when the last Backend
+  /// using it is destroyed not when this singleton is destroyed.
+  std::map<std::string, std::weak_ptr<runtime::HostManager>> hostManagers_;
 
   /// Mutex that protects all members of GlowOnnxifiManager.
   /// TODO: can use one mutex per set if performance becomes an issue.
