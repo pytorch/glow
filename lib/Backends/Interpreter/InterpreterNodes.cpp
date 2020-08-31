@@ -5702,7 +5702,7 @@ void BoundInterpreterFunction::fwdROIAlignInstFloatImpl(
   auto boxes = I->getBoxes();
   auto batchIndices = I->getBatchIndices();
   auto result = I->getResult();
-  std::string mode = I->getMode();
+  auto mode = I->getMode();
   dim_t outputHeight = I->getOutputHeight();
   dim_t outputWidth = I->getOutputHeight();
   dim_t samplingRatio = I->getSamplingRatio();
@@ -5789,7 +5789,7 @@ void BoundInterpreterFunction::fwdROIAlignInstFloatImpl(
           }   // end of h
           // {Average or Max} pooling
           resultH.at({b, oh, ow, d}) =
-              (mode == "avg")
+              (mode == PoolingMode::AVG)
                   ? std::accumulate(pixels.begin(), pixels.end(), 0.0) /
                         static_cast<float>(pixels.size())
                   : *std::max_element(pixels.begin(), pixels.end());

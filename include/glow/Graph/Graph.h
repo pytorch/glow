@@ -2023,9 +2023,10 @@ public:
   /// coordinates are aligned to the center of a pixel (VS top-left corner).
   ROIAlignNode *createROIAlign(llvm::StringRef name, NodeValue featureMap,
                                NodeValue boxes, NodeValue batchIndices,
-                               std::string mode, uint32_t outputHeight,
-                               uint32_t outputWidth, uint32_t samplingRatio,
-                               float spatialScale, bool aligned, bool rotated);
+                               uint32_t outputHeight, uint32_t outputWidth,
+                               uint32_t samplingRatio, float spatialScale,
+                               bool aligned, bool rotated = false,
+                               PoolingMode mode = PoolingMode::AVG);
 
   /// Transform proposal bounding boxes to target bounding box using bounding
   /// box regression deltas.

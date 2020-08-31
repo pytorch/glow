@@ -4637,6 +4637,16 @@ Error PyTorchModelLoader::loadRoiAlign(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(layout, iValToString(getGlowIValueForValue(
                                          inputs[RoiAlignInputs::layout])));
 
+  bool needsTranspose = false;
+
+  if (*layout == "NCHW") {
+    needsTranspose = true;
+  } else if (*layout == "NHWC") {
+    needsTranspose = false;
+  } else {
+    return MAKE_ERR(strFormat("Invalid RoiAlign layout: %s", layout->c_str()));
+  }
+
   float spatialScale;
   ASSIGN_VALUE_OR_RETURN_ERR(spatialScale,
                              iValToDouble(getGlowIValueForValue(
@@ -4661,17 +4671,28 @@ Error PyTorchModelLoader::loadRoiAlign(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(aligned, iValToBool(getGlowIValueForValue(
                                           inputs[RoiAlignInputs::aligned])));
 
-  auto *transposedFeatures =
-      F_.createTranspose("features_transposed", features, NCHW2NHWC);
+  if (needsTranspose) {
+    features = F_.createTranspose("features_transposed", features, NCHW2NHWC)
+                   ->getResult();
+  }
 
-  // rois tensor is passed as a dummy NodeValue instead of batchedIndices
-  // input which is not used in caffe2.
-  auto *RAN = F_.createROIAlign("RoiAlign", transposedFeatures, rois, rois,
-                                *layout, outputHeight, outputWidth,
-                                samplingRatio, spatialScale, aligned, false);
+  // Create a dummy BatchIndices tensor because this input is not used in
+  // PyTorch/Caffe2.
+  auto dummyBatchIndices =
+      F_.getParent()
+          ->createConstant(ElemKind::Int64ITy, {rois.dims()[0]},
+                           "dummy_batch_indices")
+          ->getOutput();
 
-  auto *output = F_.createTranspose("roi_align_output_transposed",
-                                    RAN->getResult(), NHWC2NCHW);
+  auto output = F_.createROIAlign("RoiAlign", features, rois, dummyBatchIndices,
+                                  outputHeight, outputWidth, samplingRatio,
+                                  spatialScale, aligned)
+                    ->getResult();
+
+  if (needsTranspose) {
+    output =
+        F_.createTranspose("roi_align_output_transposed", output, NHWC2NCHW);
+  }
 
   return addValueMapping(outputs[0], output);
 }
