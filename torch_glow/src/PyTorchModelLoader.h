@@ -112,6 +112,11 @@ private:
   /// during loading.
   std::unordered_map<const torch::jit::Value *, ValueMapping> valueMap_;
 
+  /// Reverse of valueMap_, mapping from Glow NodeValues to their
+  /// corresponding PyTorch Values.
+  std::unordered_map<glow::NodeValue, const torch::jit::Value *>
+      valueMapReverse_;
+
   std::unordered_map<const torch::jit::Value *, torch::jit::IValue> qparamsMap_;
 
   /// Flags if the memory held by aten::Constants of Tensor type should be
@@ -268,7 +273,8 @@ public:
                               const torch::jit::Value *src);
 
   /// Remove any ValueMapping associated with \p value.
-  void removeValueMapping(const torch::jit::Value *value);
+  /// \returns error on failure.
+  Error removeValueMapping(const torch::jit::Value *value);
 
   /// Returns true if a Glow NodeValue has been created for a given PyTorch
   /// Value \p value.
