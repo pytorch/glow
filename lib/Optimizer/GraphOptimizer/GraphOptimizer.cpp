@@ -5513,7 +5513,10 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
       }
       case Kinded::Kind::TransposeNodeKind: {
         splitDims[TransposeNode::InputIdx] = 0;
-        unsigned_t resultDim = cast<TransposeNode>(curNode)->getShuffle()[0];
+        auto shuffleVec = cast<TransposeNode>(curNode)->getShuffle();
+        unsigned_t resultDim =
+            std::find(shuffleVec.begin(), shuffleVec.end(), 0) -
+            shuffleVec.begin();
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, TransposeNode::InputIdx,
