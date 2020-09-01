@@ -1057,7 +1057,6 @@ Error PyTorchModelLoader::runAndRemapSingleNode(
   cctx.verboseCompile = false;
   RETURN_IF_ERR(executeConstantFunction(*backend, *tmpF, bindings, cctx, true));
 
-  bool isJitOutputNode = true;
   // Remap result back to original jit graph
   for (int i = 0; i < numResults; i++) {
     auto t = outputTensors[i];
@@ -1075,25 +1074,17 @@ Error PyTorchModelLoader::runAndRemapSingleNode(
         auto jthInputNodeValue = checkNode.getNthInput(j);
         if (jthInputNodeValue == outputNodeValue) {
           checkNode.setNthInput(j, glowConstant->getOutput());
-          isJitOutputNode = false;
         }
       }
       nodePtr++;
     }
-    // Remap back to jit graph if does not remap back to glow graph
-    if (isJitOutputNode) {
-      // If a node is jit output node, it should have the same
-      // number of outputs of the jit node.
-      RETURN_ERR_IF_NOT(
-          node->outputs().size() == numResults,
-          glow::strFormat(
-              "Node %s has output number mismatch while const propagating.",
-              node->kind().toDisplayString()));
-      removeValueMapping(node->outputs()[i]);
+    if (valueMapReverse_.count(outputNodeValue)) {
+      auto *value = valueMapReverse_[outputNodeValue];
+      RETURN_IF_ERR(removeValueMapping(value));
       auto scalarType =
           elemKindToScalarType(glowConstant->getType()->getElementType());
-      RETURN_IF_ERR(addValueMapping(node->outputs()[i],
-                                    glowConstant->getOutput(), scalarType));
+      RETURN_IF_ERR(
+          addValueMapping(value, glowConstant->getOutput(), scalarType));
     }
   }
 
@@ -1159,12 +1150,21 @@ Error PyTorchModelLoader::addValueMapping(const torch::jit::Value *value,
                                           glow::NodeValue nodeValue,
                                           c10::ScalarType correctType) {
 
-  ValueMapping mapping(std::move(nodeValue));
+  ValueMapping mapping(nodeValue);
   mapping.setCorrectType(correctType);
   auto p = valueMap_.emplace(value, std::move(mapping));
 
   RETURN_ERR_IF_NOT(p.second, glow::strFormat("Value %s is already mapped",
                                               value->debugNameBase().c_str()));
+  // Overwrite map, since sometimes we remap an exist nodeValue to a new jit
+  // node.
+  if (valueMapReverse_.count(nodeValue)) {
+    valueMapReverse_.erase(nodeValue);
+  }
+  auto q = valueMapReverse_.insert({nodeValue, value});
+  RETURN_ERR_IF_NOT(q.second,
+                    glow::strFormat("Value %s's reversed mapping is occupied",
+                                    value->debugNameBase().c_str()));
   return Error::success();
 }
 
@@ -1175,8 +1175,19 @@ Error PyTorchModelLoader::addValueMapping(const torch::jit::Value *value,
   return addValueMapping(value, nodeValue, correctType);
 }
 
-void PyTorchModelLoader::removeValueMapping(const torch::jit::Value *value) {
+Error PyTorchModelLoader::removeValueMapping(const torch::jit::Value *value) {
+  auto it = valueMap_.find(value);
+  if (it != valueMap_.end()) {
+    // if this value is IValue, then just ignore it, since we dont have
+    // valueMapReverse for IValue.
+    if (it->second.getMappingType() == ValueMappingType::NodeValue) {
+      glow::NodeValue n;
+      ASSIGN_VALUE_OR_RETURN_ERR(n, it->second.getMappedNodeValue());
+      valueMapReverse_.erase(n);
+    }
+  }
   valueMap_.erase(value);
+  return Error::success();
 }
 
 Error PyTorchModelLoader::addValueMapping(const torch::jit::Value *value,
