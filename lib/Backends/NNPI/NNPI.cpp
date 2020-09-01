@@ -638,6 +638,27 @@ static void setupBasicParallelizationConfigs(
       }
     }
 
+    // Split Gelu layers in data parallel fashion
+    if (auto *GL = llvm::dyn_cast<GeluNode>(node)) {
+      if (GL->getInput().dims().size() < 2) {
+        continue;
+      }
+      size_t M = GL->getInput().dims()[0];
+      size_t NIdx = getMaxDimOtherThanBatch(GL->getInput().dims());
+      size_t N = GL->getInput().dims()[NIdx];
+      if (N >= 512) {
+        parOpts[GL] = ParallelTransformKind::Model;
+        numChunks[GL] = std::min((size_t)numParallelChunks, N);
+        continue;
+      }
+      if (M >= 256) {
+        parOpts[GL] = ParallelTransformKind::Data;
+        numChunks[GL] =
+            std::min((size_t)numParallelChunks, GL->getResult().dims()[0]);
+        continue;
+      }
+    }
+
     // Split transpose layers in data parallel fashion
     if (auto *TP = llvm::dyn_cast<TransposeNode>(node)) {
       parOpts[TP] = ParallelTransformKind::Data;

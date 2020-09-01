@@ -388,13 +388,14 @@ TEST_F(NNPIOptPipelineTest, SplitParallelizationTestMulReluNNPI) {
 }
 
 /// Test data parallel splitting for Tanh and Relu
-TEST_F(NNPIOptPipelineTest, SplitParallelizationTestTanhReluNNPI) {
+TEST_F(NNPIOptPipelineTest, SplitParallelizationTestTanhReluGeluNNPI) {
   auto *input1 =
       mod_.createPlaceholder(ElemKind::Float16Ty, {8, 4096}, "input", false);
 
   auto *TH = F_->createTanh("tanh", input1);
   auto *TH_relu = F_->createRELU("relu", TH);
-  F_->createSave("ret", TH_relu);
+  auto *TH_relu_gelu = F_->createGELU("gelu", TH_relu);
+  F_->createSave("ret", TH_relu_gelu);
 
   cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
       std::to_string(3);
@@ -405,6 +406,8 @@ TEST_F(NNPIOptPipelineTest, SplitParallelizationTestTanhReluNNPI) {
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::TanhNodeKind), 3);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 3);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::GeluNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::GeluNodeKind), 3);
 
   bindings_.allocate(input1)->getHandle<float16_t>().randomize(-1.0, 1.0,
                                                                mod_.getPRNG());
