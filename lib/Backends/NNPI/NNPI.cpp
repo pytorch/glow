@@ -536,6 +536,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::ClipNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::ConcatNodeKind:
+  case Kinded::Kind::SoftMaxNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
   case Kinded::Kind::SwishNodeKind:
   case Kinded::Kind::TanhNodeKind:
@@ -844,6 +845,22 @@ static void setupBasicParallelizationConfigs(
       parOpts[S] = ParallelTransformKind::Data;
       numChunks[S] =
           std::min((size_t)numParallelChunks, S->getResult().dims()[0]);
+      continue;
+    }
+
+    // Split Softmax layers in data parallel fashion
+    if (auto *SM = llvm::dyn_cast<SoftMaxNode>(node)) {
+      if (SM->getInput().dims().size() < 2) {
+        continue;
+      }
+      size_t M = SM->getInput().dims()[0];
+      size_t N = SM->getInput().dims()[1];
+      if (N < 32 || M < 128) {
+        continue;
+      }
+      parOpts[SM] = ParallelTransformKind::Data;
+      numChunks[SM] =
+          std::min((size_t)numParallelChunks, SM->getResult().dims()[0]);
       continue;
     }
 
