@@ -796,3 +796,19 @@ TEST_F(NNPIOptPipelineTest, SwishSmallBatch) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SwishNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SwishNodeKind), 4);
 }
+
+// SoftMax
+TEST_F(NNPIOptPipelineTest, SoftMax) {
+  auto *input0 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {512, 2048}, "input", false);
+  auto selected = mod_.createConstant(ElemKind::Int64ITy, {512, 1}, "selected");
+  auto *SFMX = F_->createSoftMax("softmax", input0, selected);
+  F_->createSave("ret", SFMX);
+
+  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+      std::to_string(8);
+  cloneAndCompile();
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SoftMaxNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SoftMaxNodeKind), 8);
+}
