@@ -1211,6 +1211,55 @@ TEST_F(OnnxImporterTest, importConvTransposeOutputShape) {
   convTransposeTestHelper(filename, expectedDims, expectedValues);
 }
 
+/// Helper method to run the Range operator test cases.
+/// \p filename contains the model .onnxtxt.
+/// \p expectedDims: output Tensor dimensions.
+/// \p expectedValues : output Tensor values expected.
+template <typename T>
+static void rangeTestHelper(std::string &filename,
+                            llvm::ArrayRef<dim_t> expectedDims,
+                            llvm::ArrayRef<T> expectedValues) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetFilename =
+      std::string(GLOW_DATA_PATH "tests/models/onnxModels/") + filename;
+
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    ONNXModelLoader onnxLD(NetFilename, {}, {}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {}, {});
+  }
+  auto *res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  auto result = res->getHandle<T>();
+  EXPECT_TRUE(result.dims() == expectedDims);
+  for (dim_t i = 0, e = expectedValues.size(); i < e; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
+/// Test loading Range with int32 datatype.
+TEST(onnx, importRangeInt32) {
+  std::string filename("RangeInt32.onnxtxt");
+  std::vector<dim_t> expectedDims = {2};
+  std::vector<int32_t> expectedValues = {10, 7};
+  rangeTestHelper<int32_t>(filename, expectedDims, expectedValues);
+}
+
+/// Test loading Range with float datatype.
+TEST(onnx, importRangeFloat) {
+  std::string filename("RangeFloat.onnxtxt");
+  std::vector<dim_t> expectedDims = {5};
+  std::vector<float> expectedValues = {0.0, 1.0, 2.0, 3.0, 4.0};
+  rangeTestHelper<float>(filename, expectedDims, expectedValues);
+}
+
 /// Test loading ConvTranspose, implicit kernel, multi-channel input/output,
 /// asymmetric kernel and pads.
 TEST(onnx, importDeconvAsymmetric) {
