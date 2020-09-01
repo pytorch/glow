@@ -547,6 +547,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
   case Kinded::Kind::BatchedReduceMeanNodeKind:
   case Kinded::Kind::BatchedReduceMinNodeKind:
+  case Kinded::Kind::MatMulNodeKind:
   case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::BatchNormalizationNodeKind:
   case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
@@ -736,6 +737,14 @@ static void setupBasicParallelizationConfigs(
       parOpts[BMM] = ParallelTransformKind::Data;
       numChunks[BMM] =
           std::min((size_t)numParallelChunks, BMM->getResult().dims()[0]);
+      continue;
+    }
+
+    // Split MatMul layers in Model parallel fashion
+    if (auto *MM = llvm::dyn_cast<MatMulNode>(node)) {
+      parOpts[MM] = ParallelTransformKind::Model;
+      numChunks[MM] =
+          std::min((size_t)numParallelChunks, MM->getResult().dims()[1]);
       continue;
     }
 
