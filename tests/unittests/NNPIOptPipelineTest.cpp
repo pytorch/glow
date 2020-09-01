@@ -332,6 +332,32 @@ TEST_F(NNPIOptPipelineTest, SplitParallelizationTestBatchMatMulReluNNPI) {
   checkNumericalEquivalence(/* allowedError */ 0.f);
 }
 
+/// Test model parallelism for MatMul
+TEST_F(NNPIOptPipelineTest, SplitParallelizationTestMatMul) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {8, 64}, "input", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {64, 16}, "input", false);
+
+  auto *MM = F_->createMatMul("mm", input1, input2);
+  F_->createSave("ret", MM);
+
+  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+      std::to_string(3);
+  cloneAndCompile();
+
+  EXPECT_LT(F_->getNodes().size(), optimizedF_->getNodes().size());
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MatMulNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::MatMulNodeKind), 3);
+
+  bindings_.allocate(input1)->getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                               mod_.getPRNG());
+  bindings_.allocate(input2)->getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                               mod_.getPRNG());
+
+  checkNumericalEquivalence(/* allowedError */ 0.f);
+}
+
 /// Test data parallel splitting for Mul and Relu
 TEST_F(NNPIOptPipelineTest, SplitParallelizationTestMulReluNNPI) {
   auto *input1 =
