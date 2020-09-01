@@ -744,7 +744,8 @@ static void setupBasicParallelizationConfigs(
       if (LN->getInput().dims().size() < 2) {
         continue;
       }
-      size_t N = LN->getInput().dims()[1];
+      size_t NIdx = getMaxDimOtherThanBatch(LN->getInput().dims());
+      size_t N = LN->getInput().dims()[NIdx];
       if (N < 1024) {
         continue;
       }
