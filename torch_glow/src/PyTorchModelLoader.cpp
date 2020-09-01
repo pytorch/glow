@@ -2658,7 +2658,7 @@ Error PyTorchModelLoader::loadReciprocal(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 12, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -12, outputs, 1));
 
   // Glow expects conv inputs to be in NHWC but PyTorch keeps them in NCHW so
   // we transpose them.
