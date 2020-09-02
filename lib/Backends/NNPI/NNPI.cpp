@@ -144,7 +144,15 @@ static bool isSLSIndicesValid(TypeRef type) {
   return type->dims().size() == 1 && type->dims()[0] < (1 << 16);
 }
 
-bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
+enum NodeSupportLevels {
+  PRECISION_SUPPORTED,
+  SUPPORTED,
+  NOT_SUPPORTED,
+};
+
+static bool isNodeSupported(const NodeInfo &NI) {
+  bool isNodeprecisionSupported = false;
+  bool isNodeHasAnySupport = true;
   switch (NI.getKind()) {
   // General math fp32/fp16/i8.
   case Kinded::Kind::AddNodeKind:
@@ -158,249 +166,293 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::BatchedReduceAddNodeKind:
   case Kinded::Kind::BatchedReduceMeanNodeKind:
   case Kinded::Kind::BatchedReduceMinNodeKind:
-  case Kinded::Kind::LocalResponseNormalizationNodeKind:
   case Kinded::Kind::BatchedAddNodeKind:
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::LogNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
   case Kinded::Kind::SplatNodeKind:
-  case Kinded::Kind::ExpNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
-         ElemKind::Int32ITy, ElemKind::Int64ITy});
-  case Kinded::Kind::ModuloNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
-  case Kinded::Kind::MulNodeKind:
-  case Kinded::Kind::LayerNormalizationNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    isNodeprecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
+    break;
+  case Kinded::Kind::ExpNodeKind:
+  case Kinded::Kind::LocalResponseNormalizationNodeKind:
+    isNodeprecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Float16Ty, ElemKind::Int8QTy});
+    break;
+  case Kinded::Kind::ModuloNodeKind:
+    isNodeprecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
+    break;
+#if NNPI_MINOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+  case Kinded::Kind::BBoxTransformNodeKind:
+    isNodeprecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::Float16Ty}, {},
+            {BBoxTransformNode::RoiBatchSplitsIdx}) &&
+        (NI.getOutElemTy(BBoxTransformNode::RoiBatchSplitsIdx) ==
+         ElemKind::FloatTy);
+    break;
+  case Kinded::Kind::ROIAlignNodeKind:
+    isNodeprecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::Float16Ty}, {ROIAlignNode::BatchIndicesIdx}) &&
+        (NI.getInElemTy(ROIAlignNode::BatchIndicesIdx) == ElemKind::Int64ITy);
+    break;
+#endif // NNPI > 1.1
+  case Kinded::Kind::MulNodeKind:
+    isNodeprecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
+    break;
+  case Kinded::Kind::LayerNormalizationNodeKind:
+    isNodeprecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Float16Ty, ElemKind::Int8QTy});
+    break;
+  case Kinded::Kind::SwishNodeKind:
+    isNodeprecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::Float16Ty, ElemKind::Int8QTy, ElemKind::UInt8QTy});
+    break;
   case Kinded::Kind::GeluNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    isNodeprecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty});
+    break;
   case Kinded::Kind::BatchNormalizationNodeKind: {
     auto elemType = NI.getInElemTy(BatchNormalizationNode::InputIdx);
-    bool isSup =
+    isNodeprecisionSupported =
         (elemType == ElemKind::Int8QTy || elemType == ElemKind::FloatTy ||
          elemType == ElemKind::Float16Ty);
 
-    isSup = isSup && NI.allInputsAndOutputsHaveSameElemKind(
-                         {ElemKind::FloatTy, ElemKind::Float16Ty},
-                         {BatchNormalizationNode::InputIdx});
-
-    return isSup;
+    isNodeprecisionSupported &= NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty},
+        {BatchNormalizationNode::InputIdx});
+    break;
   }
-
   case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    isNodeprecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
-
-  case Kinded::Kind::SwishNodeKind:
+    break;
   case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::PReluNodeKind:
   case Kinded::Kind::ClipNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    isNodeprecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::Int8QTy, ElemKind::Float16Ty});
-
+    break;
   case Kinded::Kind::DivNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    isNodeprecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
          ElemKind::Int64ITy});
-
+    break;
   // Data transfer fp32/fp16/i8/i32/i64/bool.
   case Kinded::Kind::SaveNodeKind:
   case Kinded::Kind::ConcatNodeKind:
   case Kinded::Kind::TileNodeKind:
   case Kinded::Kind::TransposeNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    isNodeprecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
          ElemKind::Int32ITy, ElemKind::Int64ITy, ElemKind::BoolTy});
-
-  case Kinded::Kind::ConvolutionNodeKind:
+    break;
+  case Kinded::Kind::ConvolutionNodeKind: {
     if (!NI.getInTy(ConvolutionNode::InputIdx)->isQuantizedType()) {
-      return NI.allInputsAndOutputsHaveSameElemKind(
+      isNodeprecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
           {ElemKind::FloatTy, ElemKind::Float16Ty});
+    } else {
+      isNodeprecisionSupported =
+          NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy},
+                                                 {ConvolutionNode::BiasIdx}) &&
+          ((NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int32QTy) ||
+           (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::FloatTy));
     }
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy},
-                                                  {ConvolutionNode::BiasIdx}) &&
-           ((NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::Int32QTy) ||
-            (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::FloatTy));
-
+    break;
+  }
   case Kinded::Kind::Convolution3DNodeKind:
     if (!NI.getInTy(Convolution3DNode::InputIdx)->isQuantizedType()) {
-      return NI.allInputsAndOutputsHaveSameElemKind(
+      isNodeprecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
           {ElemKind::FloatTy, ElemKind::Float16Ty});
+    } else {
+      isNodeprecisionSupported =
+          NI.allInputsAndOutputsHaveSameElemKind(
+              {ElemKind::Int8QTy}, {Convolution3DNode::BiasIdx}) &&
+          ((NI.getInElemTy(Convolution3DNode::BiasIdx) == ElemKind::Int32QTy) ||
+           (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::FloatTy));
     }
-    return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::Int8QTy}, {Convolution3DNode::BiasIdx}) &&
-           ((NI.getInElemTy(Convolution3DNode::BiasIdx) ==
-             ElemKind::Int32QTy) ||
-            (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::FloatTy));
-
   case Kinded::Kind::QuantizeNodeKind:
-    return (NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::FloatTy ||
-            NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::Float16Ty) &&
-           (NI.getOutElemTy(QuantizeNode::ResultIdx) == ElemKind::Int8QTy);
-
+    isNodeprecisionSupported =
+        (NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::FloatTy ||
+         NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::Float16Ty) &&
+        (NI.getOutElemTy(QuantizeNode::ResultIdx) == ElemKind::Int8QTy);
+    break;
   case Kinded::Kind::DequantizeNodeKind:
-    return (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int8QTy) &&
-           (NI.getOutElemTy(DequantizeNode::ResultIdx) == ElemKind::FloatTy ||
-            NI.getOutElemTy(DequantizeNode::ResultIdx) == ElemKind::Float16Ty);
-
+    isNodeprecisionSupported =
+        (NI.getInElemTy(DequantizeNode::InputIdx) == ElemKind::Int8QTy) &&
+        (NI.getOutElemTy(DequantizeNode::ResultIdx) == ElemKind::FloatTy ||
+         NI.getOutElemTy(DequantizeNode::ResultIdx) == ElemKind::Float16Ty);
+    break;
   case Kinded::Kind::RescaleQuantizedNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy});
-
+    isNodeprecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy});
+    break;
   case Kinded::Kind::ConvertToNodeKind: {
     auto isConversionSupportedFor = [](ElemKind kind) {
       switch (kind) {
       case ElemKind::FloatTy:
       case ElemKind::Float16Ty:
-      case ElemKind::Int32ITy:
-      case ElemKind::Int64ITy:
         return true;
       default:
         return false;
       }
     };
-    return isConversionSupportedFor(NI.getInElemTy(ConvertToNode::InputIdx)) &&
-           isConversionSupportedFor(NI.getOutElemTy(ConvertToNode::ResultIdx));
+    isNodeprecisionSupported =
+        isConversionSupportedFor(NI.getInElemTy(ConvertToNode::InputIdx)) &&
+        isConversionSupportedFor(NI.getOutElemTy(ConvertToNode::ResultIdx));
+    break;
   }
-
   case Kinded::Kind::FullyConnectedNodeKind:
     if (!NI.getInTy(FullyConnectedNode::InputIdx)->isQuantizedType()) {
-      return NI.allInputsAndOutputsHaveSameElemKind(
+      isNodeprecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
           {ElemKind::FloatTy, ElemKind::Float16Ty});
+    } else {
+      isNodeprecisionSupported =
+          NI.allInputsAndOutputsHaveSameElemKind(
+              {ElemKind::Int8QTy}, {FullyConnectedNode::BiasIdx}) &&
+          ((NI.getInElemTy(FullyConnectedNode::BiasIdx) ==
+            ElemKind::Int32QTy) ||
+           (NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::FloatTy));
     }
-    return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::Int8QTy}, {FullyConnectedNode::BiasIdx}) &&
-           ((NI.getInElemTy(FullyConnectedNode::BiasIdx) ==
-             ElemKind::Int32QTy) ||
-            (NI.getInElemTy(FullyConnectedNode::BiasIdx) == ElemKind::FloatTy));
-
+    break;
   case Kinded::Kind::MaxPoolNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
-               {MaxPoolNode::ArgmaxIdx}) &&
-           (NI.getOutElemTy(MaxPoolNode::ArgmaxIdx) == ElemKind::Int64ITy);
-
+    isNodeprecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
+            {MaxPoolNode::ArgmaxIdx}) &&
+        (NI.getOutElemTy(MaxPoolNode::ArgmaxIdx) == ElemKind::Int64ITy);
+    break;
   case Kinded::Kind::TopKNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
-               {TopKNode::IndicesIdx}) &&
-           (NI.getOutElemTy(TopKNode::IndicesIdx) == ElemKind::Int64ITy);
-
+    isNodeprecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
+            {TopKNode::IndicesIdx}) &&
+        (NI.getOutElemTy(TopKNode::IndicesIdx) == ElemKind::Int64ITy);
+    break;
   case Kinded::Kind::GatherNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int64ITy,
-                ElemKind::Int8QTy},
-               {GatherNode::IndicesIdx}) &&
-           ((NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int32ITy) ||
-            (NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int64ITy));
-
+    isNodeprecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int64ITy,
+             ElemKind::Int8QTy},
+            {GatherNode::IndicesIdx}) &&
+        ((NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int32ITy) ||
+         (NI.getInElemTy(GatherNode::IndicesIdx) == ElemKind::Int64ITy));
+    break;
   case Kinded::Kind::GatherRangesNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::Int32ITy, ElemKind::Int64ITy},
-               {GatherRangesNode::DataIdx}, {GatherRangesNode::OutputIdx}) &&
-           ((NI.getInElemTy(GatherRangesNode::DataIdx) == ElemKind::FloatTy) ||
-            (NI.getInElemTy(GatherRangesNode::DataIdx) ==
-             ElemKind::Float16Ty) ||
-            (NI.getInElemTy(GatherRangesNode::DataIdx) == ElemKind::Int8QTy) ||
-            (NI.getInElemTy(GatherRangesNode::DataIdx) == ElemKind::Int32ITy) ||
-            (NI.getInElemTy(GatherRangesNode::DataIdx) ==
-             ElemKind::Int64ITy)) &&
-           (NI.getOutElemTy(GatherRangesNode::OutputIdx) ==
-            NI.getInElemTy(GatherRangesNode::DataIdx));
 
+    isNodeprecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::Int32ITy, ElemKind::Int64ITy},
+            {GatherRangesNode::DataIdx}, {GatherRangesNode::OutputIdx}) &&
+        ((NI.getInElemTy(GatherRangesNode::DataIdx) == ElemKind::FloatTy) ||
+         (NI.getInElemTy(GatherRangesNode::DataIdx) == ElemKind::Float16Ty) ||
+         (NI.getInElemTy(GatherRangesNode::DataIdx) == ElemKind::Int8QTy) ||
+         (NI.getInElemTy(GatherRangesNode::DataIdx) == ElemKind::Int32ITy) ||
+         (NI.getInElemTy(GatherRangesNode::DataIdx) == ElemKind::Int64ITy)) &&
+        (NI.getOutElemTy(GatherRangesNode::OutputIdx) ==
+         NI.getInElemTy(GatherRangesNode::DataIdx));
+    break;
   case Kinded::Kind::SliceNodeKind:
   case Kinded::Kind::ReshapeNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+
+    isNodeprecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
          ElemKind::Int64ITy});
-
+    break;
   case Kinded::Kind::CmpLTENodeKind:
   case Kinded::Kind::CmpEQNodeKind:
   case Kinded::Kind::CmpLTNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
-                ElemKind::Int32ITy, ElemKind::Int64ITy},
-               {}, {CmpEQNode::ResultIdx}) &&
-           (NI.getOutElemTy(CmpEQNode::ResultIdx) == ElemKind::BoolTy);
+    isNodeprecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy}, {},
+            {CmpEQNode::ResultIdx}) &&
+        (NI.getOutElemTy(CmpEQNode::ResultIdx) == ElemKind::BoolTy);
+    break;
   case Kinded::Kind::SelectNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
-               {SelectNode::CondIdx}) &&
-           (NI.getInElemTy(SelectNode::CondIdx) == ElemKind::BoolTy);
-
+    isNodeprecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+            {SelectNode::CondIdx}) &&
+        (NI.getInElemTy(SelectNode::CondIdx) == ElemKind::BoolTy);
+    break;
   case Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind:
-    return (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::InputIdx) ==
-            ElemKind::Int8QTy) &&
-           (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::WeightsIdx) ==
-            ElemKind::Int8QTy) &&
-           (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::ScalesIdx) ==
-            ElemKind::FloatTy) &&
-           (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::OffsetsIdx) ==
-            ElemKind::Int32ITy) &&
-           ((NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
-             ElemKind::Int32QTy) ||
-            (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
-             ElemKind::FloatTy)) &&
-           (NI.getOutElemTy(RowwiseQuantizedFullyConnectedNode::ResultIdx) ==
-            ElemKind::Int8QTy);
-
+    isNodeprecisionSupported =
+        (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::InputIdx) ==
+         ElemKind::Int8QTy) &&
+        (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::WeightsIdx) ==
+         ElemKind::Int8QTy) &&
+        (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::ScalesIdx) ==
+         ElemKind::FloatTy) &&
+        (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::OffsetsIdx) ==
+         ElemKind::Int32ITy) &&
+        ((NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
+          ElemKind::Int32QTy) ||
+         (NI.getInElemTy(RowwiseQuantizedFullyConnectedNode::BiasIdx) ==
+          ElemKind::FloatTy)) &&
+        (NI.getOutElemTy(RowwiseQuantizedFullyConnectedNode::ResultIdx) ==
+         ElemKind::Int8QTy);
+    break;
   case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
-    return (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::InputIdx) ==
-            ElemKind::Int8QTy) &&
-           (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::FilterIdx) ==
-            ElemKind::Int8QTy) &&
-           ((NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
-             ElemKind::Int32QTy) ||
-            (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
-             ElemKind::FloatTy)) &&
-           (NI.getInElemTy(
-                ChannelwiseQuantizedConvolutionNode::FilterScalesIdx) ==
-            ElemKind::FloatTy) &&
-           (NI.getInElemTy(
-                ChannelwiseQuantizedConvolutionNode::FilterOffsetsIdx) ==
+    isNodeprecisionSupported =
+        (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::InputIdx) ==
+         ElemKind::Int8QTy) &&
+        (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::FilterIdx) ==
+         ElemKind::Int8QTy) &&
+        ((NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
+          ElemKind::Int32QTy) ||
+         (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::BiasIdx) ==
+          ElemKind::FloatTy)) &&
+        (NI.getInElemTy(ChannelwiseQuantizedConvolutionNode::FilterScalesIdx) ==
+         ElemKind::FloatTy) &&
+        (NI.getInElemTy(
+             ChannelwiseQuantizedConvolutionNode::FilterOffsetsIdx) ==
 
-            ElemKind::Int32ITy) &&
-           (NI.getOutElemTy(ChannelwiseQuantizedConvolutionNode::ResultIdx) ==
-            ElemKind::Int8QTy);
-
+         ElemKind::Int32ITy) &&
+        (NI.getOutElemTy(ChannelwiseQuantizedConvolutionNode::ResultIdx) ==
+         ElemKind::Int8QTy);
+    break;
   case Kinded::Kind::SparseLengthsSumNodeKind:
-    return isSLSIndicesValid(NI.getInTy(SparseLengthsSumNode::IndicesIdx)) &&
-           NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
-               {SparseLengthsSumNode::IndicesIdx,
-                SparseLengthsSumNode::LengthsIdx}) &&
-           (NI.getInElemTy(SparseLengthsSumNode::IndicesIdx) ==
-                ElemKind::Int64ITy ||
-            NI.getInElemTy(SparseLengthsSumNode::IndicesIdx) ==
-                ElemKind::Int32ITy) &&
-           (NI.getInElemTy(SparseLengthsSumNode::LengthsIdx) ==
-            ElemKind::Int32ITy);
+    isNodeprecisionSupported =
+        isSLSIndicesValid(NI.getInTy(SparseLengthsSumNode::IndicesIdx)) &&
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+            {SparseLengthsSumNode::IndicesIdx,
+             SparseLengthsSumNode::LengthsIdx}) &&
+        (NI.getInElemTy(SparseLengthsSumNode::IndicesIdx) ==
+             ElemKind::Int64ITy ||
+         NI.getInElemTy(SparseLengthsSumNode::IndicesIdx) ==
+             ElemKind::Int32ITy) &&
+        (NI.getInElemTy(SparseLengthsSumNode::LengthsIdx) ==
+         ElemKind::Int32ITy);
+    break;
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
-    return isSLSIndicesValid(
-               NI.getInTy(SparseLengthsWeightedSumNode::IndicesIdx)) &&
-           NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
-               {SparseLengthsWeightedSumNode::IndicesIdx,
-                SparseLengthsWeightedSumNode::LengthsIdx}) &&
-           (NI.getInElemTy(SparseLengthsWeightedSumNode::IndicesIdx) ==
-                ElemKind::Int64ITy ||
-            NI.getInElemTy(SparseLengthsWeightedSumNode::IndicesIdx) ==
-                ElemKind::Int32ITy) &&
-           (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
-            ElemKind::Int32ITy);
-
+    isNodeprecisionSupported =
+        isSLSIndicesValid(
+            NI.getInTy(SparseLengthsWeightedSumNode::IndicesIdx)) &&
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+            {SparseLengthsWeightedSumNode::IndicesIdx,
+             SparseLengthsWeightedSumNode::LengthsIdx}) &&
+        (NI.getInElemTy(SparseLengthsWeightedSumNode::IndicesIdx) ==
+             ElemKind::Int64ITy ||
+         NI.getInElemTy(SparseLengthsWeightedSumNode::IndicesIdx) ==
+             ElemKind::Int32ITy) &&
+        (NI.getInElemTy(SparseLengthsWeightedSumNode::LengthsIdx) ==
+         ElemKind::Int32ITy);
+    break;
   case Kinded::Kind::EmbeddingBagNodeKind:
-    return isSLSIndicesValid(NI.getInTy(EmbeddingBagNode::IndicesIdx)) &&
-           NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
-               {EmbeddingBagNode::IndicesIdx, EmbeddingBagNode::OffsetsIdx}) &&
-           (NI.getInElemTy(EmbeddingBagNode::IndicesIdx) ==
-            ElemKind::Int64ITy) &&
-           (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == ElemKind::Int64ITy);
-
+    isNodeprecisionSupported =
+        isSLSIndicesValid(NI.getInTy(EmbeddingBagNode::IndicesIdx)) &&
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+            {EmbeddingBagNode::IndicesIdx, EmbeddingBagNode::OffsetsIdx}) &&
+        (NI.getInElemTy(EmbeddingBagNode::IndicesIdx) == ElemKind::Int64ITy) &&
+        (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == ElemKind::Int64ITy);
+    break;
   case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind: {
     auto dataK = NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::DataIdx);
     auto offsetsK =
@@ -409,15 +461,16 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
         NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx);
     auto resultK =
         NI.getOutElemTy(EmbeddingBagByteRowwiseOffsetsNode::ResultIdx);
-    return isSLSIndicesValid(
-               NI.getInTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx)) &&
-           (dataK == ElemKind::UInt8FusedQTy ||
-            dataK == ElemKind::UInt8FusedFP16QTy ||
-            dataK == ElemKind::UInt4FusedFP16QTy) &&
-           (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
-           (indicesK == ElemKind::Int64ITy) && (offsetsK == ElemKind::Int64ITy);
+    isNodeprecisionSupported =
+        isSLSIndicesValid(
+            NI.getInTy(EmbeddingBagByteRowwiseOffsetsNode::IndicesIdx)) &&
+        (dataK == ElemKind::UInt8FusedQTy ||
+         dataK == ElemKind::UInt8FusedFP16QTy ||
+         dataK == ElemKind::UInt4FusedFP16QTy) &&
+        (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
+        (indicesK == ElemKind::Int64ITy) && (offsetsK == ElemKind::Int64ITy);
+    break;
   }
-
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
     auto dataK =
         NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::DataIdx);
@@ -427,16 +480,17 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
         NI.getInElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::IndicesIdx);
     auto resultK =
         NI.getOutElemTy(FusedRowwiseQuantizedSparseLengthsSumNode::ResultIdx);
-    return isSLSIndicesValid(NI.getInTy(
-               FusedRowwiseQuantizedSparseLengthsSumNode::IndicesIdx)) &&
-           (dataK == ElemKind::UInt8FusedQTy ||
-            dataK == ElemKind::UInt8FusedFP16QTy ||
-            dataK == ElemKind::UInt4FusedFP16QTy) &&
-           (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
-           (indicesK == ElemKind::Int64ITy || indicesK == ElemKind::Int32ITy) &&
-           (lengthsK == ElemKind::Int32ITy);
+    isNodeprecisionSupported =
+        isSLSIndicesValid(NI.getInTy(
+            FusedRowwiseQuantizedSparseLengthsSumNode::IndicesIdx)) &&
+        (dataK == ElemKind::UInt8FusedQTy ||
+         dataK == ElemKind::UInt8FusedFP16QTy ||
+         dataK == ElemKind::UInt4FusedFP16QTy) &&
+        (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
+        (indicesK == ElemKind::Int64ITy || indicesK == ElemKind::Int32ITy) &&
+        (lengthsK == ElemKind::Int32ITy);
+    break;
   }
-
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind: {
     auto dataK = NI.getInElemTy(
         FusedRowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx);
@@ -448,123 +502,127 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
         FusedRowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx);
     auto resultK = NI.getOutElemTy(
         FusedRowwiseQuantizedSparseLengthsWeightedSumNode::ResultIdx);
-    return isSLSIndicesValid(
-               NI.getInTy(FusedRowwiseQuantizedSparseLengthsWeightedSumNode::
-                              IndicesIdx)) &&
-           (dataK == ElemKind::UInt8FusedQTy ||
-            dataK == ElemKind::UInt8FusedFP16QTy ||
-            dataK == ElemKind::UInt4FusedFP16QTy) &&
-           (weightsK == ElemKind::FloatTy || weightsK == ElemKind::Float16Ty) &&
-           (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
-           (indicesK == ElemKind::Int64ITy || indicesK == ElemKind::Int32ITy) &&
-           (lengthsK == ElemKind::Int32ITy);
-  }
-
+    isNodeprecisionSupported =
+        isSLSIndicesValid(NI.getInTy(
+            FusedRowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx)) &&
+        (dataK == ElemKind::UInt8FusedQTy ||
+         dataK == ElemKind::UInt8FusedFP16QTy ||
+         dataK == ElemKind::UInt4FusedFP16QTy) &&
+        (weightsK == ElemKind::FloatTy || weightsK == ElemKind::Float16Ty) &&
+        (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
+        (indicesK == ElemKind::Int64ITy || indicesK == ElemKind::Int32ITy) &&
+        (lengthsK == ElemKind::Int32ITy);
+  } break;
   case Kinded::Kind::RowwiseQuantizedSparseLengthsWeightedSumNodeKind:
-    return isSLSIndicesValid(NI.getInTy(
-               RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx)) &&
-           NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Float16Ty},
-               {RowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx,
-                RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx,
-                RowwiseQuantizedSparseLengthsWeightedSumNode::LengthsIdx}) &&
-           (NI.getInElemTy(
-                RowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx) ==
-            ElemKind::UInt8QTy) &&
-           (NI.getInElemTy(
-                RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx) ==
-                ElemKind::Int64ITy ||
-            NI.getInElemTy(
-                RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx) ==
-                ElemKind::Int32ITy) &&
-           (NI.getInElemTy(
-                RowwiseQuantizedSparseLengthsWeightedSumNode::LengthsIdx) ==
-            ElemKind::Int32ITy);
-
+    isNodeprecisionSupported =
+        isSLSIndicesValid(NI.getInTy(
+            RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx)) &&
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty},
+            {RowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx,
+             RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx,
+             RowwiseQuantizedSparseLengthsWeightedSumNode::LengthsIdx}) &&
+        (NI.getInElemTy(
+             RowwiseQuantizedSparseLengthsWeightedSumNode::DataIdx) ==
+         ElemKind::UInt8QTy) &&
+        (NI.getInElemTy(
+             RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx) ==
+             ElemKind::Int64ITy ||
+         NI.getInElemTy(
+             RowwiseQuantizedSparseLengthsWeightedSumNode::IndicesIdx) ==
+             ElemKind::Int32ITy) &&
+        (NI.getInElemTy(
+             RowwiseQuantizedSparseLengthsWeightedSumNode::LengthsIdx) ==
+         ElemKind::Int32ITy);
+    break;
   case Kinded::Kind::SparseToDenseNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy}, {SparseToDenseNode::IndicesIdx}) &&
-           (NI.getInElemTy(SparseToDenseNode::IndicesIdx) ==
-            ElemKind::Int64ITy);
-
+    isNodeprecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy}, {SparseToDenseNode::IndicesIdx}) &&
+        (NI.getInElemTy(SparseToDenseNode::IndicesIdx) == ElemKind::Int64ITy);
+    break;
   case Kinded::Kind::SoftMaxNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
-               {SoftMaxNode::SelectedIdx}) &&
-           (NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int64ITy);
-
+    isNodeprecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
+            {SoftMaxNode::SelectedIdx}) &&
+        (NI.getInElemTy(SoftMaxNode::SelectedIdx) == ElemKind::Int64ITy);
+    break;
   case Kinded::Kind::LengthsRangeFillNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
-
+    isNodeprecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
+    break;
   case Kinded::Kind::BatchOneHotNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
-               {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
-                ElemKind::Int32ITy, ElemKind::Int64ITy},
-               {BatchOneHotNode::LengthsIdx}) &&
-           (NI.getInElemTy(BatchOneHotNode::LengthsIdx) == ElemKind::Int32ITy);
 
+    isNodeprecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
+             ElemKind::Int32ITy, ElemKind::Int64ITy},
+            {BatchOneHotNode::LengthsIdx}) &&
+        (NI.getInElemTy(BatchOneHotNode::LengthsIdx) == ElemKind::Int32ITy);
+    break;
   case Kinded::Kind::NNPICustomDSPNodeKind:
   case Kinded::Kind::NNPICustomIANodeKind:
-    return true;
-
+    isNodeprecisionSupported = true;
+    break;
   case Kinded::Kind::SpaceToDepthNodeKind:
-    return NI.allInputsAndOutputsHaveSameElemKind(
+    isNodeprecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
-
+    break;
   case Kinded::Kind::ArgMaxNodeKind:
-    return (NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int64ITy);
-
-  case Kinded::Kind::LogitNodeKind: {
-    return NI.allInputsAndOutputsHaveSameElemKind(
-        {ElemKind::FloatTy, ElemKind::Float16Ty});
+    isNodeprecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind(
+            {ElemKind::Float16Ty, ElemKind::Int8QTy, ElemKind::Int32ITy,
+             ElemKind::Int64ITy, ElemKind::BoolTy},
+            {}, {ArgMaxNode::ResultIdx}) &&
+        (NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int64ITy);
+    break;
+  case Kinded::Kind::LogitNodeKind:
+    isNodeprecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
+    break;
+  default:
+    isNodeHasAnySupport = false;
+    isNodeprecisionSupported = false;
   }
 
-  default:
+  if (isNodeprecisionSupported) {
+    return NodeSupportLevels::PRECISION_SUPPORTED;
+  } else if (isNodeHasAnySupport) {
+    return NodeSupportLevels::SUPPORTED;
+  }
+  return NOT_SUPPORTED;
+}
+
+bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
+  if (isNodeSupported(NI) != NodeSupportLevels::PRECISION_SUPPORTED) {
     llvm::outs() << "Unsupported op:\n" << NI.getDebugDesc() << "\n";
     return false;
   }
-
-  return false;
+  return true;
 }
 
 bool NNPIBackend::shouldLower(const Node *N) const {
   switch (N->getKind()) {
-  case Kinded::Kind::ConvolutionNodeKind:
-    return isConvolutionSameAsFullyConnected(llvm::cast<ConvolutionNode>(N),
+  case Kinded::Kind::ConvolutionNodeKind: {
+    bool isDilated = false;
+    const ConvolutionNode *convNode = llvm::dyn_cast<ConvolutionNode>(N);
+    if (convNode && convNode->getDilation() > 1) {
+      isDilated = true;
+    }
+    return isDilated ||
+           isConvolutionSameAsFullyConnected(llvm::cast<ConvolutionNode>(N),
                                              /* enforceInput1x1*/ true);
-  case Kinded::Kind::ClipNodeKind:
-  case Kinded::Kind::FullyConnectedNodeKind:
-  case Kinded::Kind::ConcatNodeKind:
-  case Kinded::Kind::SoftMaxNodeKind:
-  case Kinded::Kind::SigmoidNodeKind:
-  case Kinded::Kind::SwishNodeKind:
-  case Kinded::Kind::TanhNodeKind:
-  case Kinded::Kind::ReluNodeKind:
-  case Kinded::Kind::Convolution3DNodeKind:
-  case Kinded::Kind::TileNodeKind:
-  case Kinded::Kind::LogNodeKind:
-  case Kinded::Kind::ReplaceNaNNodeKind:
-  case Kinded::Kind::LocalResponseNormalizationNodeKind:
-  case Kinded::Kind::BatchedReduceMeanNodeKind:
-  case Kinded::Kind::BatchedReduceMinNodeKind:
-  case Kinded::Kind::MatMulNodeKind:
-  case Kinded::Kind::BatchMatMulNodeKind:
-  case Kinded::Kind::BatchNormalizationNodeKind:
-  case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
-  case Kinded::Kind::EmbeddingBagNodeKind:
-  case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind:
-  case Kinded::Kind::LayerNormalizationNodeKind:
-  case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
-  case Kinded::Kind::PReluNodeKind:
-  case Kinded::Kind::GeluNodeKind:
-  case Kinded::Kind::LogitNodeKind:
+  } break;
   case Kinded::Kind::SparseLengthsSumNodeKind:
     return false;
   default:
-    return true;
+    break;
   }
-  return true;
+
+  NodeInfo dummyNodeInfo(*N);
+  return isNodeSupported(dummyNodeInfo) == NodeSupportLevels::NOT_SUPPORTED;
 }
 
 runtime::DeviceManager *
@@ -1245,34 +1303,13 @@ bool NNPIBackend::lowerRequiredNodes(Function *F,
   bool changed = false;
   for (auto &N : F->getNodes()) {
     NodeInfo NI(N);
+    bool shouldLowerNode = isNodeSupported(NI) == NodeSupportLevels::SUPPORTED;
     switch (N.getKind()) {
     case Kinded::Kind::BatchMatMulNodeKind:
-      if (!GlowNNPILowerAllBatchMatMul &&
-          !NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy})) {
-        continue;
-      }
-      changed |= lowerNode(F, &N, cctx);
-      continue;
-
-    case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
-      if (NI.getOutElemTy(
-              FusedRowwiseQuantizedSparseLengthsSumNode::ResultIdx) ==
-          ElemKind::Float16Ty) {
-        continue;
-      }
-      changed |= lowerNode(F, &N, cctx);
-      continue;
-    }
-
-    case Kinded::Kind::PReluNodeKind:
-    case Kinded::Kind::LogitNodeKind:
-      if (NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty})) {
-        continue;
-      }
-      changed |= lowerNode(F, &N, cctx);
-      continue;
-
+      shouldLowerNode |= GlowNNPILowerAllBatchMatMul;
+      break;
     case Kinded::Kind::ConvertToNodeKind: {
+      shouldLowerNode = false;
       ConvertToNode *CT = llvm::cast<ConvertToNode>(&N);
       // Handle bool->float conversion
       if (((CT->getResult().getElementType() == ElemKind::FloatTy) ||
@@ -1286,10 +1323,11 @@ bool NNPIBackend::lowerRequiredNodes(Function *F,
         CT->getResult().replaceAllUsesOfWith(sel);
         changed = true;
       }
-      continue;
+      break;
     }
 
     case Kinded::Kind::ReshapeNodeKind: {
+      shouldLowerNode = false;
       ReshapeNode *RS = llvm::cast<ReshapeNode>(&N);
       // Handle bool reshape by converting to Float16, reshaping, and
       // comparing >0
@@ -1313,19 +1351,8 @@ bool NNPIBackend::lowerRequiredNodes(Function *F,
       }
       continue;
     }
-
-    // Explicitly lower clips as they may be introduced during lowering other
-    // ops above, e.g. Logit.
-    case Kinded::Kind::ClipNodeKind:
-    case Kinded::Kind::SwishNodeKind:
-      if (NI.allInputsAndOutputsHaveSameElemKind(
-              {ElemKind::Float16Ty, ElemKind::Int8QTy})) {
-        continue;
-      }
-      changed |= lowerNode(F, &N, cctx);
-      continue;
-
     case Kinded::Kind::SparseLengthsSumNodeKind: {
+      shouldLowerNode = false;
       const ElemKind k = NI.getOutElemTy(SparseLengthsSumNode::ResultIdx);
       // WA - lower until ICE-T implements it.
       if ((NNPIBackend::backendOptions_.useIceT ||
@@ -1337,7 +1364,10 @@ bool NNPIBackend::lowerRequiredNodes(Function *F,
     }
 
     default:
-      continue;
+      break;
+    }
+    if (shouldLowerNode) {
+      changed |= lowerNode(F, &N, cctx);
     }
   }
   return changed;

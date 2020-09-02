@@ -42,7 +42,7 @@ struct BlacklistInitializer {
             {"softmaxGradTest/0", TestBlacklist::AnyDeviceAnyEngine},
             {"convOps/0", TestBlacklist::AnyDeviceHWEngine},
             {"localResponseNormalizationTest/0",
-             TestBlacklist::AnyDeviceHWEngine},
+             TestBlacklist::AnyDeviceAnyEngine},
             {"tinyResnet/0", TestBlacklist::AnyDeviceHWEngine},
         };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
