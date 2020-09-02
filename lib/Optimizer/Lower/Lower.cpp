@@ -160,6 +160,20 @@ static void lowerRegressionGradNode(Function *F, CompilationContext &cctx,
                        expG);
 }
 
+static void lowerFloorDivNode(Function *F, CompilationContext &cctx,
+                              const FloorDivNode &node) {
+  LOG_SCOPE(F->getLogContext(), "lowerFloorDivNode")
+
+  NodeValue LHS = node.getLHS();
+  NodeValue RHS = node.getRHS();
+
+  auto *div = F->createDiv(DECORATE_NODE_NAME(node, "lhs", "rhs"), LHS, RHS);
+
+  auto *result = F->createFloor(DECORATE_NODE_NAME(node, "floor"), div);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, node.getResult(), result);
+}
+
 static void lowerGemmNode(Function *F, CompilationContext &cctx,
                           const GemmNode &GN) {
 
@@ -1609,6 +1623,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(Sigmoid);
     CASE_LOWER(AdaptiveAvgPool);
     CASE_LOWER(Gelu);
+    CASE_LOWER(FloorDiv);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
     if (CN->getGroup() > 1 && CN->hasFusedActivation()) {

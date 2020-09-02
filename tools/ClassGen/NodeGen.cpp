@@ -381,6 +381,13 @@ int main(int argc, char **argv) {
       .addGradient()
       .setDocstring("Performs Div on the LHS and RHS operands.");
 
+  BB.newNode("FloorDiv")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs Div on the LHS and RHS operands, then Floor.");
+
   BB.newNode("Max")
       .addInput("LHS")
       .addInput("RHS")
