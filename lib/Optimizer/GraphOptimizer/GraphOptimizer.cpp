@@ -4817,6 +4817,8 @@ template <class T> bool fuseActivation(T *N, Function *F, const Backend *B) {
   }
 
   N->setFusedActivation(activationType);
+  // The out-scale of the Conv node is replaced with Activiation out-scale.
+  N->getResult().setType(activationNV.getType());
   activationNV.replaceAllUsesOfWith(N->getResult());
   return true;
 }
@@ -5119,17 +5121,17 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   // instrument with profiling nodes. This must be done after lowering.
   transformForPrecisionMode(B, F, cctx);
 
-  // Fold activations before lowering to enable cases which would not fuse after
-  // lowering. This concerns particularly convolution&relu since relu will be
-  // lowered to max(0, x).
-  foldActivations(F, cctx, &B);
-
   // Lower once more, in case precision transform has introduced operators that
   // need to be lowered, e.g., Clip.
   ::glow::lower(F, cctx, &B);
 
   // Optimize the graph again now that we have a lowered representation.
   ::glow::optimize(F, cctx);
+
+  // Fold activations after optimization.
+  // Quantization nodes should be optimized before folding Activation in to
+  // Conv.
+  foldActivations(F, cctx, &B);
 
   // If requested fold ElemKind conversion Nodes into static Placeholders,
   // inputs, and outputs (Placeholders and SaveNodes).
