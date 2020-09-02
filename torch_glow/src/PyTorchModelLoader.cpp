@@ -849,6 +849,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::Int"}, &PyTorchModelLoader::loadInt},
       {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul},
       {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv},
+      {{"aten::floor_divide", "aten::floor_divide_"},
+       &PyTorchModelLoader::loadFloorDiv},
       {{"aten::add", "aten::add_"}, &PyTorchModelLoader::loadAdd},
       {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub},
       {{"aten::rsub"}, &PyTorchModelLoader::loadRsub},
@@ -2087,6 +2089,18 @@ Error PyTorchModelLoader::loadDiv(const torch::jit::Node *ptNode) {
   glow::NodeValue res;
   ASSIGN_VALUE_OR_RETURN_ERR(
       res, loadArithmeticNode<glow::DivNode>("div", inputs[0], inputs[1]));
+
+  return addValueMapping(outputs[0], res);
+}
+
+Error PyTorchModelLoader::loadFloorDiv(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue res;
+  ASSIGN_VALUE_OR_RETURN_ERR(res, loadArithmeticNode<glow::FloorDivNode>(
+                                      "floor_divide", inputs[0], inputs[1]));
 
   return addValueMapping(outputs[0], res);
 }

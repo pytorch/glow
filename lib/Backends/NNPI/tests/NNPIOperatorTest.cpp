@@ -516,6 +516,12 @@ struct BlacklistInitializer {
             {"Asin_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
             {"Acos_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
             {"Atan_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"BasicFloorDivNetFloatVsBFloat16/0",
+             TestBlacklist::AnyDeviceAnyEngine},
+            {"BasicFloorDivNetFloatVsFloat16/0",
+             TestBlacklist::AnyDeviceAnyEngine},
+            {"ArithFloorDiv_float/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"ArithFloorDiv_float16_t/0", TestBlacklist::AnyDeviceAnyEngine},
         };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);
