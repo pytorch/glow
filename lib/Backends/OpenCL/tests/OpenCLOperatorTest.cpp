@@ -572,4 +572,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Acos_Int8QTy/0",
     "Atan_Int8QTy/0",
     "BBoxTransform/0",
-};
+    "BasicFloorDivNetFloatVsBFloat16/0",
+    "BasicFloorDivNetFloatVsFloat16/0",
+    "ArithFloorDiv_float/0",
+    "ArithFloorDiv_float16_t/0"};

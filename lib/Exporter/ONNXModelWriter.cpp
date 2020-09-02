@@ -2149,6 +2149,11 @@ Error ONNXModelWriter::writeDiv(const DivNode *node, GraphType &graph) {
   return writeArithmetic("Div", node, graph, reportedNodes_);
 }
 
+Error ONNXModelWriter::writeFloorDiv(const FloorDivNode *node,
+                                     GraphType &graph) {
+  return writeArithmetic("FloorDiv", node, graph, reportedNodes_);
+}
+
 Error ONNXModelWriter::writeMul(const MulNode *node, GraphType &graph) {
   return writeArithmetic("Mul", node, graph, reportedNodes_);
 }
