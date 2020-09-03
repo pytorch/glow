@@ -28,6 +28,10 @@
 
 namespace glow {
 
+template <class T> using VecVec = std::vector<std::vector<T>>;
+template <class T> using VecVecRef = llvm::ArrayRef<std::vector<T>>;
+template <class T> using UniquePtrVec = std::vector<std::unique_ptr<T>>;
+
 /// Convert the ptr \p ptr into an ascii representation in the format "0xFFF..."
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, void *ptr);
 

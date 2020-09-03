@@ -172,6 +172,7 @@ static void normalizeData(ImageLayout imageLayout, llvm::ArrayRef<float> mean,
                           llvm::ArrayRef<float> stddev,
                           ImageNormalizationMode imageNormMode,
                           std::vector<float> &data, std::vector<dim_t> &shape) {
+
   auto range = normModeToRange(imageNormMode);
   float scale = ((range.second - range.first) / 255.f);
   float bias = range.first;
