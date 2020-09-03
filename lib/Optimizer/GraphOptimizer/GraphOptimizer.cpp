@@ -4816,9 +4816,22 @@ template <class T> bool fuseActivation(T *N, Function *F, const Backend *B) {
     return false;
   }
 
+  // currently not to support asymmetric quantization fusion.
+  if (N->getResult().getType()->isQuantizedType()) {
+    if ((N->getResult().getType()->getOffset() != 0) ||
+        (activationNV.getType()->getOffset() != 0)) {
+      return false;
+    }
+  }
+
   N->setFusedActivation(activationType);
-  // The out-scale of the Conv node is replaced with Activiation out-scale.
-  N->getResult().setType(activationNV.getType());
+
+  // In only symmetric case, If Relu outScale is not equal to Conv outScale,
+  // Conv outScale is replaced by Relu outScale.
+  if (!(activationNV.getType()->isEqual(N->getResult().getType()))) {
+    N->getResult().setType(activationNV.getType());
+  }
+
   activationNV.replaceAllUsesOfWith(N->getResult());
   return true;
 }
