@@ -16,6 +16,7 @@
 
 #include "HostManagerOnnxifi.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
+#include "glow/Runtime/ErrorReporter.h"
 #include "glow/Runtime/RequestData.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -387,6 +388,14 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
                           "Onnxifi::callback");
 
         if (err) {
+          if (err.peekErrorValue() && err.peekErrorValue()->isFatalError()) {
+            std::string msg = err.peekErrorValue()->logToString();
+            auto reporters = ErrorReporterRegistry::ErrorReporters();
+            if (reporters) {
+              reporters->report(msg);
+            }
+            LOG(FATAL) << "Non-recoverable device error: " << msg;
+          }
           outputEvent->setMessage(ERR_TO_STRING(std::move(err)));
           outputEvent->signal(ONNXIFI_STATUS_INTERNAL_ERROR);
           return;
