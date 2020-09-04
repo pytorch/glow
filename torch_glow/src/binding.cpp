@@ -177,26 +177,10 @@ PYBIND11_MODULE(_torch_glow, m) {
       bl.insert(torch::jit::Symbol::fromQualString(kind));
     }
   });
-  /// Add all of the symbols in \p allowlist to the fusion allowlist so that
-  /// nodes with these symbols will always be fused to Glow.
-  /// Noticing this is a super allowlist which overwrites blacklist and fusion
-  /// index.
-  m.def("setFusionOverrideAllowlist",
-        [](const std::vector<std::string> &superAllowlist) {
-          auto &al = getPyTorchLoaderSettings().opOverrideAllowlist;
-          al.clear();
-          for (const auto &kind : superAllowlist) {
-            al.insert(torch::jit::Symbol::fromQualString(kind));
-          }
-        });
 
   /// Clear the fusion blacklist.
   m.def("clearFusionBlacklist",
         []() { getPyTorchLoaderSettings().opBlacklist.clear(); });
-
-  /// Clear the fusion allow.
-  m.def("clearFusionOverrideAllowlist",
-        []() { getPyTorchLoaderSettings().opOverrideAllowlist.clear(); });
 
   /// Set the index (inclusive) of the first node in the graph to fuse.
   m.def("setFusionStartIndex", [](int64_t startIndex) {
