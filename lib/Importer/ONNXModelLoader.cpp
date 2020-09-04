@@ -4296,7 +4296,11 @@ ONNXModelLoader::runDeserializedConstFold(llvm::StringRef initializerName,
   NodeValue NV;
   ASSIGN_VALUE_OR_RETURN_ERR(NV, getNodeValueByName(outputName));
 
-  std::vector<Constant *> constResults = constantFold(NV.getNode());
+  // Force folding single splats, because we're folding a constant folding
+  // subgraph, and so we know the exported model already decided to fold it
+  // (normally the backend decides whether to fold it or not).
+  std::vector<Constant *> constResults =
+      constantFold(NV.getNode(), /* foldSingleSplats */ true);
   RETURN_ERR_IF_NOT(constResults.size() > 0,
                     strFormat("Constant folding did not occur for %s",
                               NV.getNode()->getName().data()));

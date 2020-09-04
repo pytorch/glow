@@ -187,18 +187,20 @@ static uint64_t numFolds = 0;
 /// generated that Constant. Additionally if \p record is not a nullptr then the
 /// constEvaluationF its associated Placeholders for saving results will not be
 /// deleted, and the caller is responsble for deleting them if necessary.
-/// \returns constant results.
+/// \returns constant results. If \p foldSingleSplats then single splat
+/// subgraphs will be forced to fold.
 bool evaluateConstantOperation(Backend &backend, CompilationContext &cctx,
                                Node *C, std::vector<Constant *> &constResults,
-                               ConstantFoldingRecordMap *record) {
+                               ConstantFoldingRecordMap *record,
+                               bool foldSingleSplats) {
   // Allow for quantize folding when we have a const folding record.
   const bool enableQuantizeConstFolding = record != nullptr;
   PlaceholderBindings bindings;
   assert(isConstantOperation(C, backend, enableQuantizeConstFolding) &&
          "Expected a constant expression");
   // Constants and splats do not need to be constant evaluated.
-  if (isa<Constant>(C) ||
-      (isa<SplatNode>(C) && !isSplatToFold(cast<SplatNode>(C), cctx))) {
+  if (isa<Constant>(C) || (isa<SplatNode>(C) && !foldSingleSplats &&
+                           !isSplatToFold(cast<SplatNode>(C), cctx))) {
     return true;
   }
   Module &mod = *C->getParent()->getParent();
@@ -308,11 +310,13 @@ Error verifyConstantFunction(Backend &backend, Function &F,
 /// to the map, pointing to the SaveNode that generated that Constant.
 /// \returns list of constants which are the result of the
 /// constant-folding. These constants correspond to results of the node. If no
-/// constant folding was possible an empty vector will be returned
+/// constant folding was possible an empty vector will be returned. If
+/// \p foldSingleSplats then single splat subgraphs will be forced to fold.
 bool constantFoldNodeImpl(
     Backend &backend, Node *N, std::vector<Constant *> &constResults,
     ConstantFoldingRecordMap *record = nullptr,
-    const CompilationContext &origCctx = CompilationContext()) {
+    const CompilationContext &origCctx = CompilationContext(),
+    bool foldSingleSplats = false) {
   CompilationContext cctx;
   // Do not recursively call constant folding.
   cctx.optimizationOpts.enableConstantFolding = false;
@@ -327,7 +331,8 @@ bool constantFoldNodeImpl(
   cctx.optimizationOpts.materializeSplatsUsedBySet =
       origCctx.optimizationOpts.materializeSplatsUsedBySet;
   assert(!ERR_TO_BOOL(cctx.verify()) && "cctx for const folding must be valid");
-  return evaluateConstantOperation(backend, cctx, N, constResults, record);
+  return evaluateConstantOperation(backend, cctx, N, constResults, record,
+                                   foldSingleSplats);
 }
 
 } // namespace
@@ -427,7 +432,7 @@ glow::constantFoldAndRecord(Function *F, const CompilationContext &cctx) {
   return record;
 }
 
-std::vector<Constant *> glow::constantFold(Node *N) {
+std::vector<Constant *> glow::constantFold(Node *N, bool foldSingleSplats) {
   LOG_SCOPE(N->getParent()->getLogContext(), "glow::constantFold")
   std::unique_ptr<Backend> backend(new Interpreter());
   if (!isConstantOperation(N, *backend,
@@ -435,10 +440,10 @@ std::vector<Constant *> glow::constantFold(Node *N) {
     return {};
   }
   std::vector<Constant *> constResults;
-  if (!constantFoldNodeImpl(*backend, N, constResults)) {
+  if (!constantFoldNodeImpl(*backend, N, constResults, nullptr,
+                            CompilationContext(), foldSingleSplats)) {
     return {};
   }
-
   return constResults;
 }
 

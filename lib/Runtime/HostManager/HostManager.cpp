@@ -63,7 +63,6 @@ std::string GlowDumpGraphPath = "./";
 unsigned GlowDeviceInitTimeoutMs = 5000;
 std::string GlowAvailableDevices = "";
 } // namespace runtime
-} // namespace glow
 
 #if FACEBOOK_INTERNAL
 Error optimizeDAG(DAGListTy &nodeList, const Provisioner &provisioner,
@@ -71,6 +70,7 @@ Error optimizeDAG(DAGListTy &nodeList, const Provisioner &provisioner,
                   CompilationContext &cctx,
                   ConstantFoldingRecordMap &constFoldRecord);
 #endif /* FACEBOOK_INTERNAL */
+} // namespace glow
 
 /// The device configs file used for Runtime.
 llvm::cl::opt<std::string> loadDeviceConfigsFileOpt(
@@ -465,21 +465,37 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   // If requested, serialize the resulting DAG that was just optimized and
   // partitioned.
   if (cctx.serializeCompiledDAG) {
-    std::string loc = nodeList.begin()->root->name + ".onnxtxt";
+    std::string loc;
+    char *envSpecifiedSerializationPath = getenv("GLOW_DAG_SERIALIZATION_LOC");
+    if (!envSpecifiedSerializationPath) {
+      loc = nodeList.begin()->root->name + ".onnxtxt";
+    } else {
+      loc = std::string(envSpecifiedSerializationPath);
+    }
+
     LOG(INFO) << "Serializing final compiled DAG to " << loc;
     {
-      // Pass in any types we loaded originally from static PHs.
-      const std::map<std::string, Type> *staticPHTypesPtr =
-          cctx.deferredWeightLoader ? &cctx.deferredWeightLoader->getTypeInfo()
-                                    : nullptr;
       Error writeErr = Error::empty();
       ONNXModelWriter onnxWR(loc, nodeList, 7, 9, &writeErr,
                              /* textMode */ true, /* zipMode */ false,
                              /* includeConstantData */ false,
                              /* extraMetadataProps */ {}, record,
                              cctx.backendOpts.backendSpecificNodeInfo,
-                             &cctx.loadedPHNames, staticPHTypesPtr);
+                             &cctx.loadedPHNames,
+                             &cctx.staticPlaceholderTypesForAOT);
       RETURN_IF_ERR(writeErr);
+    }
+
+    // If we're using AOT DAG optimizer then skip provisioning.
+    if (cctx.callDAGOptimizer && cctx.useDAGOptimizerAOTMode) {
+      LOG(INFO) << "Skipping provisioning because DAG optimizer and AOT mode "
+                   "were enabled.";
+      {
+        std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+        cleanupAddNetwork(names);
+      }
+      debugDumpDAGGuard.dismiss();
+      return Error::success();
     }
   }
 
