@@ -26,6 +26,7 @@
 #include <torch/csrc/jit/passes/common_subexpression_elimination.h>
 #include <torch/csrc/jit/passes/dead_code_elimination.h>
 #include <torch/csrc/jit/passes/inliner.h>
+#include <torch/csrc/jit/passes/remove_mutation.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
 #include <torch/csrc/jit/passes/utils/subgraph_utils.h>
 #include <torch/csrc/jit/runtime/custom_operator.h>
@@ -305,6 +306,10 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
   std::unordered_set<const torch::jit::Node *> indexBlacklistedNodes;
 
   size_t i = 0;
+  if (settings.enableRemoveMutation) {
+    RemoveListMutation(graph);
+    RemoveTensorMutation(graph);
+  }
   for (const torch::jit::Node *node : graph->nodes()) {
     if (settings.fusionStartIndex >= 0 && i < settings.fusionStartIndex) {
       indexBlacklistedNodes.insert(node);

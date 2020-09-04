@@ -106,6 +106,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("enable_glow_tracing",
         []() { getPyTorchLoaderSettings().enableGlowTracing = true; });
 
+  // Enable the auto removal of mutation in JIT graph, i.e, inline ops.
+  m.def("enable_remove_mutation",
+        []() { getPyTorchLoaderSettings().enableRemoveMutation = true; });
+
+  // Disable the auto removal of mutation in JIT graph
+  m.def("disable_remove_mutation",
+        []() { getPyTorchLoaderSettings().enableRemoveMutation = false; });
+
   /// Set the number of traces to dump per trace file.
   m.def("set_num_traces_per_dump", [](size_t numTracesPerDump) {
     getPyTorchLoaderSettings().numTracesPerDump = numTracesPerDump;
