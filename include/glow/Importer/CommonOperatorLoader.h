@@ -387,9 +387,8 @@ protected:
     RETURN_ERR_IF_NOT(in.dims().size() >= 2, "SoftMax input dims must be >= 2");
 
     // Create a constant to store labels to be used in SoftMaxGradNode.
-    auto *selected = G_->createSplat(
-        opName + ".selected",
-        mod_.uniqueType(ElemKind::Int64ITy, {in.dims()[0], 1}), 0.f);
+    auto selected =
+        mod_.createConstant(ElemKind::Int64ITy, {in.dims()[0], 1}, "selected");
 
     // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
     // softmax function. This is similar to a bitcast operation.
@@ -1496,8 +1495,7 @@ protected:
     }
 
     RETURN_ERR_IF_NOT(S->getElementType() == ElemKind::UInt8QTy,
-                      "Data must be UInt8QTy, but was " +
-                          Type::getElementName(S->getElementType()).str());
+                      "Data must be UInt8QTy.");
     S->setType(Storage::OutputIdx, fusedTy);
     // If the node is a Constant set the payload type as well.
     if (auto *C = llvm::dyn_cast<Constant>(S)) {

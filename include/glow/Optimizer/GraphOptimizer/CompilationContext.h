@@ -292,12 +292,6 @@ struct CompilationContext {
   /// Whether to call the DAG optimizer after the DAG is created in HostManager.
   bool callDAGOptimizer{false};
 
-  /// Whether to use AOT mode for DAG optimizer.
-  bool useDAGOptimizerAOTMode{false};
-
-  /// Static placeholder type info used for AOT optimization.
-  std::map<std::string, Type> staticPlaceholderTypesForAOT;
-
   CompilationContext(PlaceholderBindings *bindings_ = nullptr,
                      LoweredInfoMap *loweredInfoMap_ = nullptr)
       : bindings(bindings_), loweredInfoMap(loweredInfoMap_) {}
