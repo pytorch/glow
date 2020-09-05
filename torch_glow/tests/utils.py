@@ -64,17 +64,24 @@ def checkResult(torch_res, glow_res, atol, rtol):
     else:
         print("torch shape: {}".format(torch_res.shape), file=sys.stderr)
         print("glow shape: {}".format(glow_res.shape), file=sys.stderr)
-        is_all_close = torch.allclose(torch_res, glow_res, atol=atol, rtol=rtol)
+        if glow_res.dtype == torch.bool:
+            is_all_close = torch.all(torch.eq(glow_res, torch_res))
+        else:
+            is_all_close = torch.allclose(torch_res, glow_res, atol=atol, rtol=rtol)
         if not is_all_close:
             print("torch_res\n", torch_res)
             print("glow_res\n", glow_res)
-            diff = torch.abs(glow_res - torch_res)
-            print("diff\n", diff)
-            print(
-                "diff histogram (100 buckets from 0.0 to 1.0)\n",
-                torch.histc(diff, bins=100, min=0, max=1),
-            )
-            print("max diff\n", torch.max(diff))
+            if glow_res.dtype == torch.bool:
+                diff = ~(glow_res < torch_res)
+                print("diff\n", diff)
+            else:
+                diff = torch.abs(glow_res - torch_res)
+                print("diff\n", diff)
+                print(
+                    "diff histogram (100 buckets from 0.0 to 1.0)\n",
+                    torch.histc(diff, bins=100, min=0, max=1),
+                )
+                print("max diff\n", torch.max(diff))
         assert is_all_close
 
 

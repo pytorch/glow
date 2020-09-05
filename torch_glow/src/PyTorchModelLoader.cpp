@@ -873,6 +873,12 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::pow"}, &PyTorchModelLoader::loadPow},
       {{"aten::dropout", "aten::dropout_"}, &PyTorchModelLoader::loadDropout},
       {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt},
+      {{"aten::le", "aten::le_"}, &PyTorchModelLoader::loadCmp<CmpLTENode>},
+      {{"aten::lt", "aten::lt_"}, &PyTorchModelLoader::loadCmp<CmpLTNode>},
+      {{"aten::ne", "aten::ne_"}, &PyTorchModelLoader::loadCmp<CmpNEQNode>},
+      {{"aten::eq", "aten::eq_"}, &PyTorchModelLoader::loadCmp<CmpEQNode>},
+      {{"aten::ge", "aten::ge_"}, &PyTorchModelLoader::loadCmpGt<CmpLTENode>},
+      {{"aten::gt", "aten::gt_"}, &PyTorchModelLoader::loadCmpGt<CmpLTNode>},
       {{"aten::clamp"}, &PyTorchModelLoader::loadClamp},
       {{"quantized::add"}, &PyTorchModelLoader::loadQuantizedAdd},
       {{"quantized::add_relu"}, &PyTorchModelLoader::loadQuantizedAddRelu},
@@ -2663,6 +2669,42 @@ Error PyTorchModelLoader::loadSqrt(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
   glow::PowNode *glowNode = F_.createPow("sqrt", input, /*exp=*/0.5);
+  return addValueMapping(outputs[0], glowNode->getResult());
+}
+
+template <typename CmpType>
+Error PyTorchModelLoader::loadCmpGt(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  auto kind = ptNode->kind();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue xNV, yNV;
+  ASSIGN_VALUE_OR_RETURN_ERR(xNV, getGlowNodeValueForValue(inputs[0]));
+  ASSIGN_VALUE_OR_RETURN_ERR(yNV, getGlowNodeValueForValue(inputs[1]));
+
+  constexpr int axis = -1;
+  auto *glowNode = F_.createNodeWithBroadcast<CmpType>(kind.toUnqualString(),
+                                                       axis, yNV, xNV);
+
+  return addValueMapping(outputs[0], glowNode->getResult());
+}
+
+template <typename CmpType>
+Error PyTorchModelLoader::loadCmp(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  auto kind = ptNode->kind();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue xNV, yNV;
+  ASSIGN_VALUE_OR_RETURN_ERR(xNV, getGlowNodeValueForValue(inputs[0]));
+  ASSIGN_VALUE_OR_RETURN_ERR(yNV, getGlowNodeValueForValue(inputs[1]));
+
+  constexpr int axis = -1;
+  auto *glowNode = F_.createNodeWithBroadcast<CmpType>(kind.toUnqualString(),
+                                                       axis, xNV, yNV);
+
   return addValueMapping(outputs[0], glowNode->getResult());
 }
 
