@@ -2422,6 +2422,19 @@ ArgMinNode *Function::createArgMin(llvm::StringRef name, NodeValue input,
   return addNode(new ArgMinNode(name, OT, input, axis, keepDims));
 }
 
+VectorNormNode *Function::createVectorNorm(llvm::StringRef name,
+                                           NodeValue input, unsigned_t axis,
+                                           unsigned_t p) {
+  auto outDims = getNewShapeWithoutAxes(input.dims(), axis);
+  auto outTy = getParent()->uniqueTypeWithNewShape(input.getType(), outDims);
+  const size_t outNumElements = input.getType()->size() / input.dims()[axis];
+  (void)outNumElements;
+  assert(outTy->size() == outNumElements &&
+         "Incorrect number of elements in the output type.");
+  auto OT = getParent()->uniqueType(*outTy);
+  return addNode(new VectorNormNode(name, OT, input, axis, p));
+}
+
 GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
                                    NodeValue indices, unsigned_t batchDims) {
   auto dDims = data.dims();

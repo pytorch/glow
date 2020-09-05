@@ -1110,6 +1110,11 @@ public:
   BatchMatMulNode *createBatchMatMul(llvm::StringRef name, NodeValue lhs,
                                      NodeValue rhs);
 
+  /// Create a node, performing Norm operation. Output type is based on the
+  /// input \p p type with dimensions specified with \p axes removed.
+  VectorNormNode *createVectorNorm(llvm::StringRef name, NodeValue input,
+                                   unsigned_t axis, unsigned_t p = 2);
+
   /// Create a node, performing BatchedReduceAdd operation. Output type is
   /// based on the input \p batch type with dimensions specified with \p axes
   /// removed.

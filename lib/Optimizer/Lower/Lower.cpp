@@ -1196,6 +1196,46 @@ static void lowerBatchedReduceMeanNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, BRM.getResult(), DN);
 }
 
+static void lowerVectorNormNode(Function *F, CompilationContext &cctx,
+                                const VectorNormNode &VN) {
+  LOG_SCOPE(F->getLogContext(), "lowerVectorNormNode")
+
+  auto input = VN.getInput();
+
+  auto axis = VN.getAxis();
+
+  assert(axis < input.dims().size() &&
+         "Axis to remove must fit inside dimensions of the provided dims.");
+
+  ShapeVector redDims(input.dims().begin(), input.dims().end());
+  redDims.erase(redDims.begin() + axis);
+
+  auto outTy =
+      F->getParent()->uniqueTypeWithNewShape(VN.getResult().getType(), redDims);
+
+  const size_t outNumElements = input.getType()->size() / input.dims()[axis];
+  (void)outNumElements;
+  assert(outTy->size() == outNumElements &&
+         "Incorrect number of elements in the output type.");
+
+  // pow(x, 2)
+  NodeValue pow = F->createPow(VN.getName().str() + ".pow_2", input, 2.0f);
+
+  // Create a batched add to sum up the values in the provided axis.
+  auto outTyBRA =
+      F->getParent()->uniqueTypeWithNewShape(input.getType(), redDims);
+
+  auto *BRA = F->createBatchedReduceAdd(VN.getName().str() + ".reduceAdd",
+                                        outTyBRA, pow, axis);
+
+  auto *exp = F->createSplat(VN.getName().str() + ".exp", outTy, 0.5f);
+
+  // Create a sqrt by leveraging pow(x, 0.5)
+  auto *SQ = F->createPow(VN.getName().str() + ".sqrt", outTy, BRA, exp);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, VN.getResult(), SQ);
+}
+
 /// Implement ReplaceNaN via a Select node with the input of \p RN as one of the
 /// inputs, a Splat node created using value from \p RN as the other input, and
 /// an IsNaN node as the comparator input.
@@ -1608,6 +1648,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(BatchNormalizationGrad);
     CASE_LOWER(SigmoidCrossEntropyWithLogits);
     CASE_LOWER(BatchedReduceMean);
+    CASE_LOWER(VectorNorm);
     CASE_LOWER(Bucketize);
     CASE_LOWER(ChannelShuffle);
     CASE_LOWER(Tile);

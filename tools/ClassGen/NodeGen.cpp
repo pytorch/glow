@@ -303,6 +303,13 @@ int main(int argc, char **argv) {
       .setDocstring("Apply box-cox transform for each column for each column "
                     "in NxD input tensor");
 
+  BB.newNode("VectorNorm")
+      .addInput("Input")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addMember(MemberType::Unsigned, "P")
+      .addResultFromCtorArg()
+      .setDocstring("Performs L2 norm of the Input operand based on Axis.");
+
   //===--------------------------------------------------------------------===//
   //                     Bucketing
   //===--------------------------------------------------------------------===//
