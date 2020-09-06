@@ -990,11 +990,15 @@ bool PyTorchModelLoader::isNodeSupported(const torch::jit::Node *ptNode) {
 
 // Check if node only has const inputs, which indicate output should be
 // propagated from input when compiling.
-static bool isConstNode(const glow::Node &glowNode) {
+static bool isConstNode(const glow::Node &glowNode,
+                        const torch::jit::Node *const node) {
   // It is constant node already, dont need to propagate
   // And we dont want to do constant propagation for quantize node
   if (glowNode.getKind() == Kinded::Kind::ConstantKind ||
       glowNode.getKind() == Kinded::Kind::QuantizeNodeKind) {
+    return false;
+  }
+  if (node->kind() == torch::jit::aten::matmul) {
     return false;
   }
   unsigned int n = glowNode.getNumInputs();
@@ -1124,7 +1128,7 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
     // We should be able to improve this by improving nodelist structure.
     while (nodeItr != nodelist.end()) {
       glow::Node &glowNode = *nodeItr;
-      if (isConstNode(glowNode)) {
+      if (isConstNode(glowNode, node)) {
         // Run glowNode and remap it result as a constant node as node's output.
         RETURN_IF_ERR(runAndRemapSingleNode(glowNode, node, nodeItr));
       }
