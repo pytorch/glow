@@ -1922,6 +1922,32 @@ Function::createBatchedReduceMax(llvm::StringRef name, NodeValue batch,
   return addNode(new BatchedReduceMaxNode(name, OT, batch, axes));
 }
 
+BatchedReduceProdNode *
+Function::createBatchedReduceProd(llvm::StringRef name, TypeRef outTy,
+                                  NodeValue batch,
+                                  llvm::ArrayRef<unsigned_t> axes) {
+  assert(axes.size() == 1 && "Only supporting single reduction for now.");
+  auto axis = axes[0];
+
+  // Calculate the expected total number of elements in the output tensor
+  // based on the number of elements in the batch divided by the axis
+  // dimension.
+  const size_t outNumElements = batch.getType()->size() / batch.dims()[axis];
+  (void)outNumElements;
+  assert(outTy->size() == outNumElements &&
+         "Incorrect number of elements in the output type.");
+  auto OT = getParent()->uniqueType(*outTy);
+  return addNode(new BatchedReduceProdNode(name, OT, batch, axis));
+}
+
+BatchedReduceProdNode *
+Function::createBatchedReduceProd(llvm::StringRef name, NodeValue batch,
+                                  llvm::ArrayRef<unsigned_t> axes) {
+  auto outDims = getNewShapeWithoutAxes(batch.dims(), axes);
+  auto OT = getParent()->uniqueTypeWithNewShape(batch.getType(), outDims);
+  return createBatchedReduceProd(name, OT, batch, axes);
+}
+
 BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name,
                                            NodeValue batch, NodeValue slice) {
   return addNode(new BatchedAddNode(name, batch.getType(), batch, slice));

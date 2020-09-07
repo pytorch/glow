@@ -3097,6 +3097,48 @@ TEST_P(OperatorTest, VectorNorm_3D_innerAxis) {
   EXPECT_TRUE(result->isEqual(expected));
 }
 
+/// Helper to test BatchedReduceProd using \p DTy.
+template <typename DataType>
+static void testBatchedReduceProd(glow::PlaceholderBindings &bindings,
+                                  glow::Module &mod, glow::Function *F,
+                                  glow::ExecutionEngine &EE, ElemKind DTy) {
+  auto *batch = mod.createPlaceholder(DTy, {2, 4}, "batch", false);
+  bindings.allocate(batch)->getHandle<DataType>() = {10, 20, 30, 40,
+                                                     1,  2,  3,  4};
+
+  auto *R = F->createBatchedReduceProd("reduce.prod", batch, /* axis */ 0);
+
+  auto *save = F->createSave("save", R);
+  auto *result = bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor expected(DTy, {4});
+  expected.getHandle<DataType>() = {10, 40, 90, 160};
+
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that BatchedReduceProd is correctly supported in FloatTy.
+TEST_P(OperatorTest, batchedReduceProd_Float) {
+  CHECK_IF_ENABLED();
+
+  testBatchedReduceProd<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Test that BatchedReduceProd is correctly supported in Int32Ty.
+TEST_P(OperatorTest, batchedReduceProd_Int32) {
+  CHECK_IF_ENABLED();
+  testBatchedReduceProd<int32_t>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+}
+
+/// Test that BatchedReduceProd is correctly supported in Int64Ty.
+TEST_P(OperatorTest, batchedReduceProd_Int64) {
+  CHECK_IF_ENABLED();
+  testBatchedReduceProd<int64_t>(bindings_, mod_, F_, EE_, ElemKind::Int64ITy);
+}
+
 /// Helper to test BatchedReduceMax using \p DTy.
 template <typename DataType>
 static void testBatchedReduceMax(glow::PlaceholderBindings &bindings,

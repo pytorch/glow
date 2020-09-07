@@ -323,6 +323,11 @@ private:
                                    const ShapeVector &eDestDims, ElemTy min);
 
   template <typename ElemTy>
+  void fwdBatchedReduceProdInstImpl(Value *batch, Value *dest, unsigned_t axis,
+                                    const ShapeVector &eBatchDims,
+                                    const ShapeVector &eDestDims);
+
+  template <typename ElemTy>
   void fwdCumSumInstImpl(Value *input, Value *dest, bool exclusive,
                          bool reverse);
 

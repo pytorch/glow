@@ -648,6 +648,14 @@ int main(int argc, char **argv) {
       .setDocstring("Performs Reduce Max operation on the Input given "
                     "Axes.");
 
+  BB.newNode("BatchedReduceProd")
+      .addInput("Batch")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addResultFromCtorArg()
+      .setDocstring("Accumulates the product all of the layers in the batch "
+                    " and produce a tensor that has the same dimensions as "
+                    " the input tensor without the first dimension.");
+
   BB.newNode("ChannelShuffle")
       .addInput("Input")
       .addMember(MemberType::Unsigned, "Group")

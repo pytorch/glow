@@ -3832,6 +3832,115 @@ DEFINE_REDUCEMINMAX_INST(ReduceMax, std::numeric_limits<int32_t>::min())
 #undef DEFINE_REDUCEMINMAX_INST
 
 template <typename ElemTy>
+void BoundInterpreterFunction::fwdBatchedReduceProdInstImpl(
+    Value *batch, Value *dest, unsigned_t axis, const ShapeVector &eBatchDims,
+    const ShapeVector &eDestDims) {
+
+  // Get unowned handles of the batch and dest with these new expanded dims.
+  auto eBatch = getTensor(batch)->getUnowned(eBatchDims);
+  auto eDest = getTensor(dest)->getUnowned(eDestDims);
+  auto eBatchH = eBatch.getHandle<ElemTy>();
+  auto eDestH = eDest.getHandle<ElemTy>();
+  eDestH.clear(1);
+
+  // We can use this loop for all shapes. Use the same indices for both the
+  // batch and dest, except for setting the axis index in the dest to 0.
+  for (dim_t x = 0; x < eBatchDims[0]; x++) {
+    for (dim_t y = 0; y < eBatchDims[1]; y++) {
+      for (dim_t z = 0; z < eBatchDims[2]; z++) {
+        for (dim_t w = 0; w < eBatchDims[3]; w++) {
+          for (dim_t q = 0; q < eBatchDims[4]; q++) {
+            for (dim_t r = 0; r < eBatchDims[5]; r++) {
+              dim_t destIndices[] = {x, y, z, w, q, r};
+              destIndices[axis] = 0;
+              eDestH.at(destIndices) =
+                  eDestH.at(destIndices) * eBatchH.at({x, y, z, w, q, r});
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdBatchedReduceProdInst(
+    const glow::BatchedReduceProdInst *I) {
+  static_assert(max_tensor_dimensions == 6,
+                "Loops below assume max_tensor_dimensions = 6.");
+
+  auto *batch = I->getBatch();
+  auto *dest = I->getDest();
+  const auto axis = I->getAxis();
+
+  // Initialize both expanded batch and dest dims to the expanded batch
+  // dims. This allows us below to iterate over the tensor regardless of its
+  // shape using max_tensor_dimensions loops below.
+  ShapeVector eBatchDims = expandDimsToMax(batch->dims());
+  ShapeVector eDestDims = eBatchDims;
+
+  // Set the destination axis dimension (the one we are reducing) to 1.
+  eDestDims[axis] = 1;
+
+  if (getTensor(batch)->getType().isQuantizedType()) {
+    auto destTy = dest->getType();
+    auto batchTy = batch->getType();
+
+    float destScale = destTy->getScale();
+    float batchScale = batchTy->getScale();
+
+    int32_t destOffset = destTy->getOffset();
+    int32_t batchOffset = batchTy->getOffset();
+
+    // Get unowned handles of the batch and dest with these new expanded dims.
+    auto eBatch = getTensor(batch)->getUnowned(eBatchDims);
+    auto eDest = getTensor(dest)->getUnowned(eDestDims);
+    auto eBatchH = eBatch.getHandle<int8_t>();
+    auto eDestH = eDest.getHandle<int8_t>();
+    eDestH.clear(1);
+
+    // For quantization, we must accumulate in the inner-most loop into a local
+    // float and then clip the result back into the dest tensor. Here are the
+    // max_tensor_dimensions cases for this, to ensure the axis is used as the
+    // inner-most loop.
+    switch (axis) {
+#define LOOP_AXIS_CASE(_D0, _D1, _D2, _D3, _D4, _D5_AXIS)                      \
+  case _D5_AXIS:                                                               \
+    for (dim_t i##_D0 = 0; i##_D0 < eBatchDims[_D0]; i##_D0++)                 \
+      for (dim_t i##_D1 = 0; i##_D1 < eBatchDims[_D1]; i##_D1++)               \
+        for (dim_t i##_D2 = 0; i##_D2 < eBatchDims[_D2]; i##_D2++)             \
+          for (dim_t i##_D3 = 0; i##_D3 < eBatchDims[_D3]; i##_D3++)           \
+            for (dim_t i##_D4 = 0; i##_D4 < eBatchDims[_D4]; i##_D4++) {       \
+              float prod = 1.0;                                                \
+              for (dim_t i##_D5_AXIS = 0; i##_D5_AXIS < eBatchDims[_D5_AXIS];  \
+                   i##_D5_AXIS++) {                                            \
+                prod *= eBatchH.at({i0, i1, i2, i3, i4, i5}) - batchOffset;    \
+              }                                                                \
+              dim_t i##_D5_AXIS = 0;                                           \
+              int32_t res =                                                    \
+                  std::round(prod * batchScale / destScale) + destOffset;      \
+              eDestH.at({i0, i1, i2, i3, i4, i5}) =                            \
+                  quantization::clip<int32_t, int8_t>(res);                    \
+            }                                                                  \
+    return;
+
+      // Each loop order, with the inner-most dimension/index equal to the axis.
+      LOOP_AXIS_CASE(1, 2, 3, 4, 5, 0);
+      LOOP_AXIS_CASE(0, 2, 3, 4, 5, 1);
+      LOOP_AXIS_CASE(0, 1, 3, 4, 5, 2);
+      LOOP_AXIS_CASE(0, 1, 2, 4, 5, 3);
+      LOOP_AXIS_CASE(0, 1, 2, 3, 5, 4);
+      LOOP_AXIS_CASE(0, 1, 2, 3, 4, 5);
+#undef LOOP_AXIS_CASE
+    default:
+      llvm_unreachable("Axis should be less than max_tensor_dimensions.");
+    }
+  }
+
+  dispatchArithmeticImpl(fwdBatchedReduceProdInstImpl, batch->getElementType(),
+                         batch, dest, axis, eBatchDims, eDestDims);
+}
+
+template <typename ElemTy>
 void BoundInterpreterFunction::fwdCumSumInstImpl(Value *input, Value *dest,
                                                  bool exclusive, bool reverse) {
   auto *eInput = getTensor(input);

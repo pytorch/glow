@@ -1533,6 +1533,13 @@ TEST_F(OnnxImporterTest, reduceMinKeepDimsDefaultAxis) {
   testReductionOps("reduceMinDefaultAxis.onnxtxt", {1, 1, 1, 1}, {1});
 }
 
+/// Test loading ReduceProd op from a ONNX model.
+/// Input shape is 4D, one dimension is reduced, and output shape is 4D
+TEST_F(OnnxImporterTest, reduceProd4D) {
+  testReductionOps("reduceProd.onnxtxt", {2, 2, 2, 1},
+                   {2, 12, 30, 56, 90, 132, 182, 240});
+}
+
 /// Test loading SpaceToDepth op from an ONNX model.
 TEST_F(OnnxImporterTest, spaceToDepth) {
   ExecutionEngine EE{};
