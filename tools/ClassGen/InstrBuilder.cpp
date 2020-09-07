@@ -139,7 +139,7 @@ void InstrBuilder::emitIRBuilderMethods(std::ostream &osH,
 void InstrBuilder::emitInplaceMethod(std::ostream &os) const {
   os << "\n  bool isInplaceOp(unsigned dstIdx, unsigned srcIdx) const {\n";
   if (!inplaceOperands_.empty()) {
-    for (const std::vector<std::string> curInplaceOperands : inplaceOperands_) {
+    for (const auto &curInplaceOperands : inplaceOperands_) {
       assert(curInplaceOperands.size() > 1 &&
              "We don't have a pair of inplace args");
       for (int i = 1, e = curInplaceOperands.size(); i < e; i++) {
