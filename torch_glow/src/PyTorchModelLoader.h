@@ -119,10 +119,6 @@ private:
 
   std::unordered_map<const torch::jit::Value *, torch::jit::IValue> qparamsMap_;
 
-  /// Flags if the memory held by aten::Constants of Tensor type should be
-  /// copied.
-  const bool copyTensorMemory_;
-
   /// Values in the MappingOfMemberFunctions map. These values contain the
   /// information necessary to load PyTorch nodes such as which
   /// PyTorchModelLoader method to use and which inputs should be considered as
@@ -197,17 +193,6 @@ public:
                const at::ArrayRef<torch::jit::IValue> inputs,
                const std::vector<InputMeta> &inputMeta);
 
-  /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, \p inputs
-  /// as graph external inputs, and \parameters as known tensors. Output
-  /// parameters \p inputPlaceholders and \p outputPlaceholders are filled out.
-  /// \returns error on failure.
-  static Error loadJITGraphForOnnxTraining(
-      glow::Function &F, const torch::jit::Graph &graph,
-      const at::ArrayRef<torch::jit::IValue> inputs,
-      const std::vector<torch::jit::IValue> &parameters,
-      std::vector<glow::Placeholder *> &inputPlaceholders,
-      std::vector<glow::Placeholder *> &outputPlaceholders);
-
 private:
   /// Takes a glow::Function \p F, a jit::Graph \p graph to load, and a
   /// stack of \p inputs for the graph to be loaded. Parameter \p settings
@@ -220,17 +205,6 @@ private:
                      Error &error, const PyTorchLoaderSettings &settings,
                      const at::ArrayRef<torch::jit::IValue> inputs,
                      const std::vector<InputMeta> &inputMeta = {});
-
-  /// Takes a glow::Function \p F, a jit::Graph \p graph to load, and a
-  /// graph \p inputs and placeholders \p parameters. Output parameters \p
-  /// inputPlaceholders and \p outputPlaceholders are filled out.
-  /// This is only used by loadJITGraphForOnnxTraining.
-  PyTorchModelLoader(glow::Function &F, const torch::jit::Graph &graph,
-                     const std::vector<torch::jit::IValue> &parameters,
-                     std::vector<glow::Placeholder *> &inputPlaceholders,
-                     std::vector<glow::Placeholder *> &outputPlaceholders,
-                     Error &error,
-                     const at::ArrayRef<torch::jit::IValue> inputs);
 
   /// Build mapping from jit symbols to function that loads nodes of that kind.
   static const MappingOfMemberFunctions buildSymbolsMapping();
