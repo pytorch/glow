@@ -5322,7 +5322,7 @@ TEST_F(GraphOptz, OptimizeConcatQuantFCFloatReluTest) {
   ASSERT_TRUE(optCN);
   EXPECT_EQ(optCN->getInputs().size(), 5);
 
-  for (const NodeValue NV : optCN->getInputs()) {
+  for (const NodeValue &NV : optCN->getInputs()) {
     DequantizeNode *optDN = llvm::dyn_cast<DequantizeNode>(NV);
     ASSERT_TRUE(optDN);
     ReluNode *optRN = llvm::dyn_cast<ReluNode>(optDN->getInput());
