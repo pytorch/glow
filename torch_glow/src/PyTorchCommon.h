@@ -53,10 +53,6 @@ public:
   /// Whether or not run the custom pass that fuses jit nodes into a glow node.
   bool fusionPassEnabled = false;
 
-  /// The PyTorch symbol used to identify the Node that contains PyTorch
-  /// subgraphs that are compiled for running on Glow.
-  bool weightFreezingEnabled = true;
-
   /// Dump Glow dot graph to file after model loading is finished.
   bool dumpGlowDag = false;
 

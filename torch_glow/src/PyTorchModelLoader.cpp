@@ -4459,9 +4459,6 @@ Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
     ASSIGN_VALUE_OR_RETURN_ERR(t, glowIVal.toTensor());
     glow::Constant *glowConstant =
         F_.getParent()->createConstant("constant", std::move(*t));
-    if (copyTensorMemory_) {
-      glowConstant->ensureIsOwned();
-    }
     RETURN_IF_ERR(addValueMapping(outputs[0], glowConstant->getOutput()));
   } else {
     RETURN_IF_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
@@ -4882,9 +4879,6 @@ Error PyTorchModelLoader::loadAttributes(
         glow::Constant *glowConstant =
             F_.getParent()->createConstant(newNameHierarchy, std::move(*t));
 
-        if (copyTensorMemory_) {
-          glowConstant->ensureIsOwned();
-        }
         RETURN_IF_ERR(addValueMapping(outputValue, glowConstant->getOutput()));
       }
     } else {
@@ -4921,7 +4915,7 @@ PyTorchModelLoader::PyTorchModelLoader(
     const PyTorchLoaderSettings &settings,
     const at::ArrayRef<torch::jit::IValue> inputs,
     const std::vector<InputMeta> &inputMeta)
-    : F_(F), inputs_(inputs), copyTensorMemory_(false) {
+    : F_(F), inputs_(inputs) {
   auto loadFn = [&]() -> Error {
     auto graphInputValues = graph.inputs();
 
@@ -5045,88 +5039,6 @@ PyTorchModelLoader::PyTorchModelLoader(
     std::cerr << "Encountered error while loading graph:" << std::endl
               << graph << std::endl;
   }
-}
-
-/*static*/
-Error PyTorchModelLoader::loadJITGraphForOnnxTraining(
-    glow::Function &F, const torch::jit::Graph &graph,
-    const at::ArrayRef<torch::jit::IValue> inputs,
-    const std::vector<torch::jit::IValue> &parameters,
-    std::vector<glow::Placeholder *> &inputPlaceholders,
-    std::vector<glow::Placeholder *> &outputPlaceholders) {
-  Error error = Error::empty();
-  PyTorchModelLoader loader(F, graph, parameters, inputPlaceholders,
-                            outputPlaceholders, error, inputs);
-  return error;
-}
-
-PyTorchModelLoader::PyTorchModelLoader(
-    glow::Function &F, const torch::jit::Graph &graph,
-    const std::vector<torch::jit::IValue> &parameters,
-    std::vector<glow::Placeholder *> &inputPlaceholders,
-    std::vector<glow::Placeholder *> &outputPlaceholders, Error &error,
-    const at::ArrayRef<torch::jit::IValue> inputs)
-    : F_(F), inputs_(inputs), copyTensorMemory_(true) {
-
-  auto setup = [&]() -> Error {
-    auto graphInputValues = graph.inputs();
-    RETURN_ERR_IF_NOT(
-        inputs.size() + parameters.size() == graphInputValues.size(),
-        glow::strFormat("Number of Graph inputs %lu must match the "
-                        "number of placeholders %lu + number of "
-                        "provided inputs %lu.",
-                        graphInputValues.size(), parameters.size(),
-                        inputs.size()));
-
-    size_t graphIdx = 0;
-
-    // Create Glow Placeholders for inputs.
-    for (size_t i = 0; i < inputs.size(); ++i, ++graphIdx) {
-      const torch::jit::Value *inputValue = graphInputValues[graphIdx];
-      const c10::IValue inputIValue = inputs.at(i);
-      GlowIValue glowIVal;
-      RETURN_IF_ERR(glowIVal.fromIValue(inputIValue));
-      if (glowIVal.isTensor()) {
-        glow::Tensor *t;
-        ASSIGN_VALUE_OR_RETURN_ERR(t, glowIVal.toTensor());
-        glow::Placeholder *ph = F_.getParent()->createPlaceholder(
-            &t->getType(), "input", /*isTrainable*/ false);
-        RETURN_IF_ERR(addValueMapping(inputValue, ph->getOutput()));
-        inputPlaceholders.push_back(ph);
-        inputPlaceholdersReverseIndex_[ph] = i;
-      } else {
-        RETURN_IF_ERR(addValueMapping(inputValue, std::move(glowIVal)));
-      }
-    }
-
-    // Create Glow Placeholders for training parameters (don't put them in
-    // inputPlaceholders though).
-    for (size_t i = 0; i < parameters.size(); ++i, ++graphIdx) {
-      DCHECK(parameters[i].isTensor()) << "Expecting parameters to be Tensor";
-      glow::Constant *C = F_.getParent()->createConstant(
-          "parameter", ptTensorToGlowTensor(parameters[i].toTensor()));
-      C->ensureIsOwned();
-
-      RETURN_IF_ERR(
-          addValueMapping(graphInputValues[graphIdx], C->getOutput()));
-    }
-
-    RETURN_IF_ERR(loadNodes(graph));
-
-    // Create Glow Placeholders for outputs.
-    for (const torch::jit::Value *output : graph.outputs()) {
-      glow::NodeValue outputNodeValue;
-      // Only allow tensor outputs from Glow subgraph.
-      ASSIGN_VALUE_OR_RETURN_ERR(outputNodeValue,
-                                 getGlowNodeValueForValue(output));
-      auto *save = F_.createSave("save", outputNodeValue);
-      outputPlaceholders.push_back(save->getPlaceholder());
-    }
-
-    return Error::success();
-  };
-
-  error = setup();
 }
 
 ValueMappingType ValueMapping::getMappingType() const { return mappingType_; }

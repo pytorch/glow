@@ -22,9 +22,7 @@
 #include "PyTorchCommon.h"
 #include "Registration.h"
 #include "TorchGlowBackend.h"
-#include "TorchGlowTraining.h"
 #include <pybind11/pybind11.h>
-/// Required include files for a proper binding TorchGlowTrainingWrapper class.
 #include <pybind11/stl.h>
 
 #include "glow/Graph/Graph.h"
@@ -61,14 +59,6 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Disable compiling PyTorch subgraphs to Glow Functions.
   m.def("disableFusionPass",
         []() { getPyTorchLoaderSettings().fusionPassEnabled = false; });
-
-  /// Enable freezing weights as Constants in PyTorch subgraphs loaded in Glow.
-  m.def("enableWeightFreezing",
-        []() { getPyTorchLoaderSettings().weightFreezingEnabled = true; });
-
-  /// Disable freezing weights as Constants in PyTorch subgraphs loaded in Glow.
-  m.def("disableWeightFreezing",
-        []() { getPyTorchLoaderSettings().weightFreezingEnabled = false; });
 
   /// Enable dumping Glow DAG to file after model loading finishes.
   m.def("enableDumpGlowDag",
@@ -272,13 +262,4 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Disable running fusion pass in to_glow as a debug flow
   m.def("disable_debug_fuser",
         []() { getPyTorchLoaderSettings().enableDebugFuser = false; });
-
-  /// Binding wrapper class for TorchGlowTraining and its settings.
-  py::class_<TorchGlowTrainingWrapper>(m, "TorchGlowTrainingWrapper")
-      .def(py::init())
-      .def("init", &TorchGlowTrainingWrapper::init)
-      .def("train", &TorchGlowTrainingWrapper::train)
-      .def("save", &TorchGlowTrainingWrapper::save)
-      .def("parameters", &TorchGlowTrainingWrapper::setONNXWriterParameters)
-      .def("config", &TorchGlowTrainingWrapper::setTrainingConfig);
 }

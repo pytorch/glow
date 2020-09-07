@@ -319,7 +319,6 @@ PyTorchLoaderSettings::PyTorchLoaderSettings(
   TRY_LOAD_INT_FROM_DICT(replicationCount, dict);
   TRY_LOAD_BOOL_FROM_DICT(preCompilePyTorchModule, dict);
   TRY_LOAD_BOOL_FROM_DICT(fusionPassEnabled, dict);
-  TRY_LOAD_BOOL_FROM_DICT(weightFreezingEnabled, dict);
   TRY_LOAD_BOOL_FROM_DICT(dumpGlowDag, dict);
   TRY_LOAD_INT_FROM_DICT(minFusionGroupSize, dict);
   TRY_LOAD_INT_FROM_DICT(maxFusionMergeSize, dict);
@@ -388,7 +387,6 @@ PyTorchLoaderSettings::serializeToDict() const {
   INSERT_INT_TO_DICT(replicationCount, dict);
   INSERT_BOOL_TO_DICT(preCompilePyTorchModule, dict);
   INSERT_BOOL_TO_DICT(fusionPassEnabled, dict);
-  INSERT_BOOL_TO_DICT(weightFreezingEnabled, dict);
   INSERT_BOOL_TO_DICT(dumpGlowDag, dict);
   INSERT_INT_TO_DICT(minFusionGroupSize, dict);
   INSERT_INT_TO_DICT(maxFusionMergeSize, dict);
