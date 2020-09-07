@@ -5502,8 +5502,7 @@ bool Function::verify(const Backend *backend) const {
   // dependencies that may not be honored by the scheduler.
   // Either the input IR is incorrect or the scheduler needs
   // fixing.
-  for (const std::pair<const Placeholder *, const Node *> &varToWrite :
-       placeholderWrittenTo) {
+  for (const auto &varToWrite : placeholderWrittenTo) {
     if (isa<SaveNode>(varToWrite.second)) {
       continue;
     }
