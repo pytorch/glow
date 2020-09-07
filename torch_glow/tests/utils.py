@@ -19,7 +19,8 @@ def jitVsGlow(
     atol=5e-4,
     rtol=1e-3,
     black_list=None,
-    use_script=False
+    use_script=False,
+    use_fp16=False
 ):
     """
     Runs the given inputs *inputs on f both with and without lowering f to Glow,
@@ -34,7 +35,8 @@ def jitVsGlow(
             *inputs,
             expected_fused_ops=expected_fused_ops,
             accept_all_ops=accept_all_ops,
-            black_list=black_list
+            black_list=black_list,
+            use_fp16=use_fp16,
         )
     else:
         traceVsGlow(
@@ -46,7 +48,8 @@ def jitVsGlow(
             *inputs,
             expected_fused_ops=expected_fused_ops,
             accept_all_ops=accept_all_ops,
-            black_list=black_list
+            black_list=black_list,
+            use_fp16=use_fp16,
         )
 
 
@@ -65,7 +68,13 @@ def checkResult(torch_res, glow_res, atol, rtol):
         if not is_all_close:
             print("torch_res\n", torch_res)
             print("glow_res\n", glow_res)
-            print("diff\n", torch.abs(glow_res - torch_res))
+            diff = torch.abs(glow_res - torch_res)
+            print("diff\n", diff)
+            print(
+                "diff histogram (100 buckets from 0.0 to 1.0)\n",
+                torch.histc(diff, bins=100, min=0, max=1),
+            )
+            print("max diff\n", torch.max(diff))
         assert is_all_close
 
 
@@ -119,7 +128,8 @@ def traceVsGlow(
     *inputs,
     expected_fused_ops=None,
     accept_all_ops=False,
-    black_list=None
+    black_list=None,
+    use_fp16=False
 ):
     if black_list is None:
         black_list = []
@@ -131,6 +141,12 @@ def traceVsGlow(
 
         torch_glow.enableFusionPass()
         torch_glow.setFusionBlacklist(black_list)
+
+        if use_fp16:
+            torch_glow.enable_convert_to_fp16()
+        else:
+            torch_glow.disable_convert_to_fp16()
+
         glow_trace = torch.jit.trace(f_glow, inputs, check_trace=check_trace)
         glow_res = glow_trace(*inputs)
 
@@ -157,7 +173,8 @@ def scriptVsGlow(
     *inputs,
     expected_fused_ops=None,
     accept_all_ops=False,
-    black_list=None
+    black_list=None,
+    use_fp16=False
 ):
     if black_list is None:
         black_list = []
@@ -167,6 +184,12 @@ def scriptVsGlow(
 
         torch_glow.enableFusionPass()
         torch_glow.setFusionBlacklist(black_list)
+
+        if use_fp16:
+            torch_glow.enable_convert_to_fp16()
+        else:
+            torch_glow.disable_convert_to_fp16()
+
         glow_trace = torch.jit.script(f)
         glow_res = glow_trace(*inputs)
 

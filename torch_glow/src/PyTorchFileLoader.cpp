@@ -199,7 +199,7 @@ Error PyTorchFileLoader::parsePyTorchGraphForOnnxTraining(
   auto graphAndTensors =
       torch::jit::LowerGraph(*method.graph(), module->_ivalue());
 
-  fuseKnownPatterns(graphAndTensors.first);
+  fuseKnownPatterns(graphAndTensors.first, {});
 
   // Parse JIT Graph and load into Glow Function.
   return PyTorchModelLoader::loadJITGraphForOnnxTraining(

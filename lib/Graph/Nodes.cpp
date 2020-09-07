@@ -1353,6 +1353,7 @@ VERIFY_ARITHMETIC(Add);
 VERIFY_ARITHMETIC(Mul);
 VERIFY_ARITHMETIC(Sub);
 VERIFY_ARITHMETIC(Div);
+VERIFY_ARITHMETIC(FloorDiv);
 VERIFY_ARITHMETIC(Max);
 VERIFY_ARITHMETIC(Min);
 VERIFY_ARITHMETIC(Pow);
@@ -2118,8 +2119,8 @@ bool ROIAlignNode::verify() const {
 
   bool isValid = checkTypeIgnoreShape(featureMap, result, this);
   isValid &= checkTypeIgnoreShape(boxes, result, this);
-  isValid &= checkType(batchIndices, ElemKind::Int64ITy, this);
-  isValid &= checkType(featureMap, ElemKind::FloatTy, this);
+  isValid &=
+      checkType(featureMap, {ElemKind::FloatTy, ElemKind::Float16Ty}, this);
   isValid &= expectCompareTrue("FeatureMap must be a 4D tensor",
                                featureMapDims.size(), size_t(4), this);
   isValid &= expectCompareTrue("Boxes must be a 2D tensor", boxesDims.size(),
@@ -2129,10 +2130,12 @@ bool ROIAlignNode::verify() const {
   // If batch size > 1 batch indices must be provided.
   if (featureMapDims[0] > 1) {
     // Caffe2 gets indices using boxes tensor
-    bool indicesInBoxesTensor = boxesDims[1] == 5;
+    bool indicesInBoxesTensor = boxesDims[1] == (getRotated() ? 6 : 5);
     // Onnx requires batchIndices to be valid
     if (!indicesInBoxesTensor) {
       auto batchIndicesDims = batchIndices.dims();
+      isValid &= checkType(batchIndices,
+                           {ElemKind::Int64ITy, ElemKind::Int32ITy}, this);
       isValid &= expectCompareTrue("BatchIndices must be a 1D tensor",
                                    batchIndicesDims.size(), size_t(1), this);
       isValid &=

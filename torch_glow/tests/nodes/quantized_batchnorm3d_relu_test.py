@@ -4,7 +4,6 @@ import unittest
 
 import torch
 import torch.nn as nn
-import torch_glow
 from tests.utils import jitVsGlow
 from torch.quantization import (
     DeQuantStub,
@@ -64,7 +63,6 @@ class TestQuantizedBatchNorm3DRelu(unittest.TestCase):
         model.forward(inputs)
         convert(model, inplace=True)
 
-        torch_glow.enable_convert_to_fp16()
         # Because of the difference of quantization between PyTorch & Glow
         # We set eps big enough.
         # Batchnorm introduced great accuracy issues, which could create up to
@@ -75,4 +73,5 @@ class TestQuantizedBatchNorm3DRelu(unittest.TestCase):
             inputs,
             expected_fused_ops={"quantized::batch_norm3d_relu"},
             atol=1e-1,
+            use_fp16=True,
         )

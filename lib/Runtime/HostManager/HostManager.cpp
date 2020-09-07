@@ -63,7 +63,6 @@ std::string GlowDumpGraphPath = "./";
 unsigned GlowDeviceInitTimeoutMs = 5000;
 std::string GlowAvailableDevices = "";
 } // namespace runtime
-} // namespace glow
 
 #if FACEBOOK_INTERNAL
 Error optimizeDAG(DAGListTy &nodeList, const Provisioner &provisioner,
@@ -71,6 +70,7 @@ Error optimizeDAG(DAGListTy &nodeList, const Provisioner &provisioner,
                   CompilationContext &cctx,
                   ConstantFoldingRecordMap &constFoldRecord);
 #endif /* FACEBOOK_INTERNAL */
+} // namespace glow
 
 /// The device configs file used for Runtime.
 llvm::cl::opt<std::string> loadDeviceConfigsFileOpt(
@@ -109,19 +109,17 @@ llvm::cl::opt<std::string, true> GlowAvailableDevicesOpt(
                    "should be used, example 2,3,4"),
     llvm::cl::location(GlowAvailableDevices), llvm::cl::cat(hostManagerCat));
 
-HostManager::HostManager()
-    : config_(), statsExporterRegistry_(StatsExporterRegistry::Stats()) {}
+HostManager::HostManager() : HostManager(HostConfig{}) {}
 
 HostManager::HostManager(const HostConfig &hostConfig)
     : config_(hostConfig),
-      statsExporterRegistry_(StatsExporterRegistry::Stats()) {}
+      statsExporterRegistry_(StatsExporterRegistry::Stats()) {
+  statsExporterRegistry_->setCounter(kMaxQueueSize, hostConfig.maxQueueSize);
+}
 
 HostManager::HostManager(
     std::vector<std::unique_ptr<DeviceConfig>> deviceConfigs)
-    : config_(), statsExporterRegistry_(StatsExporterRegistry::Stats()) {
-  // TODO: move all initialization out of constructor.
-  EXIT_ON_ERR(init(std::move(deviceConfigs)));
-}
+    : HostManager(std::move(deviceConfigs), HostConfig{}) {}
 
 HostManager::HostManager(
     std::vector<std::unique_ptr<DeviceConfig>> deviceConfigs,
@@ -130,6 +128,7 @@ HostManager::HostManager(
       statsExporterRegistry_(StatsExporterRegistry::Stats()) {
   // TODO: move all initialization out of constructor.
   EXIT_ON_ERR(init(std::move(deviceConfigs)));
+  statsExporterRegistry_->setCounter(kMaxQueueSize, hostConfig.maxQueueSize);
 }
 
 Expected<DAG *> HostManager::getNetworkDAG(llvm::StringRef network) {
@@ -249,6 +248,7 @@ void HostManager::exportMemoryCounters() {
 }
 
 HostManager::~HostManager() {
+  LOG(INFO) << "Destroying host manager...";
   ERR_TO_VOID(clearHost());
   exportMemoryCounters();
 }
@@ -465,21 +465,37 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   // If requested, serialize the resulting DAG that was just optimized and
   // partitioned.
   if (cctx.serializeCompiledDAG) {
-    std::string loc = nodeList.begin()->root->name + ".onnxtxt";
+    std::string loc;
+    char *envSpecifiedSerializationPath = getenv("GLOW_DAG_SERIALIZATION_LOC");
+    if (!envSpecifiedSerializationPath) {
+      loc = nodeList.begin()->root->name + ".onnxtxt";
+    } else {
+      loc = std::string(envSpecifiedSerializationPath);
+    }
+
     LOG(INFO) << "Serializing final compiled DAG to " << loc;
     {
-      // Pass in any types we loaded originally from static PHs.
-      const std::map<std::string, Type> *staticPHTypesPtr =
-          cctx.deferredWeightLoader ? &cctx.deferredWeightLoader->getTypeInfo()
-                                    : nullptr;
       Error writeErr = Error::empty();
       ONNXModelWriter onnxWR(loc, nodeList, 7, 9, &writeErr,
                              /* textMode */ true, /* zipMode */ false,
                              /* includeConstantData */ false,
                              /* extraMetadataProps */ {}, record,
                              cctx.backendOpts.backendSpecificNodeInfo,
-                             &cctx.loadedPHNames, staticPHTypesPtr);
+                             &cctx.loadedPHNames,
+                             &cctx.staticPlaceholderTypesForAOT);
       RETURN_IF_ERR(writeErr);
+    }
+
+    // If we're using AOT DAG optimizer then skip provisioning.
+    if (cctx.callDAGOptimizer && cctx.useDAGOptimizerAOTMode) {
+      LOG(INFO) << "Skipping provisioning because DAG optimizer and AOT mode "
+                   "were enabled.";
+      {
+        std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+        cleanupAddNetwork(names);
+      }
+      debugDumpDAGGuard.dismiss();
+      return Error::success();
     }
   }
 
@@ -757,6 +773,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
                     "HostManager::runNetwork");
   auto currentRun = totalRequestCount_++;
   uint64_t requestReceived = TraceEvent::now();
+  size_t queueSize = 0;
 
   NetworkData *network = nullptr;
   {
@@ -779,7 +796,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
     // Put the request in the queue.
     {
       std::shared_lock<std::shared_timed_mutex> lock(inferQueueLock_);
-      auto queueSize = inferQueue_.size();
+      queueSize = inferQueue_.size();
       if (queueSize >= config_.maxQueueSize) {
         // The queue is full, return an error.
         network->refcount--;
@@ -796,6 +813,7 @@ HostManager::runNetwork(llvm::StringRef networkName,
         return currentRun;
       }
     }
+    reportCurrentQueueSize(queueSize);
     // Setup the request
     InferRequest queuedRequest(networkName, std::move(context), callback,
                                priority, currentRun, requestReceived);
@@ -814,6 +832,14 @@ HostManager::runNetwork(llvm::StringRef networkName,
   }
   activeRequestCount_--;
   return currentRun;
+}
+
+/// Helper to report current queue size
+void HostManager::reportCurrentQueueSize(int32_t queueSize) {
+  statsExporterRegistry_->setCounter(
+      kCurrentQueueSize10k, static_cast<float>(queueSize) /
+                                static_cast<float>(config_.maxQueueSize) *
+                                100000);
 }
 
 /// Helper to update execution stats

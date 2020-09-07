@@ -53,7 +53,6 @@ DEFINE_bool(convertConstantsToFP16, true, "See PyTorchLoaderSettings");
 DEFINE_bool(forceFP16AccumSLS, true, "See PyTorchLoaderSettings");
 
 DEFINE_string(opBlacklist, "", "See PyTorchLoaderSettings");
-DEFINE_string(opOverrideAllowlist, "", "See PyTorchLoaderSettings");
 DEFINE_int32(replicationCount, 1, "Number of replications on each device");
 DEFINE_bool(writeToOnnx, false, "See PyTorchLoaderSettings");
 DEFINE_bool(onnxZipMode, false, "See PyTorchLoaderSettings");

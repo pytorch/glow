@@ -4580,10 +4580,10 @@ TEST_F(GraphOptz, SplitFCIntoMultipleOps) {
 /// Test Splitting FC into multiple FCs.
 TEST_F(GraphOptz, ParallelizeGraph_FC_ModelParallel) {
   auto *input =
-      mod_.createPlaceholder(ElemKind::FloatTy, {8, 32}, "input", false);
+      mod_.createPlaceholder(ElemKind::FloatTy, {8, 3}, "input", false);
   bindings_.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
                                                           mod_.getPRNG());
-  auto *weights1 = mod_.createConstant(ElemKind::FloatTy, {32, 150}, "weights");
+  auto *weights1 = mod_.createConstant(ElemKind::FloatTy, {3, 150}, "weights");
   weights1->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
   auto *bias1 = mod_.createConstant(ElemKind::FloatTy, {150}, "bias");
   bias1->getHandle().randomize(0.0, 0.5, mod_.getPRNG());
@@ -4628,6 +4628,134 @@ TEST_F(GraphOptz, ParallelizeGraph_FC_ModelParallel) {
 
   EXPECT_EQ(4, countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind));
   EXPECT_EQ(4, countNodeKind(F_, Kinded::Kind::ReluNodeKind));
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting FC into multiple FCs, special case for 866 by 8 with an
+/// alignment of 64, which is a corner case for alignment and should only
+/// produce 7 splits
+TEST_F(GraphOptz, ParallelizeGraph_FC_ModelParallel_Split866by8) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {8, 3}, "input", false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                          mod_.getPRNG());
+  auto *weights1 = mod_.createConstant(ElemKind::FloatTy, {3, 866}, "weights");
+  weights1->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  auto *bias1 = mod_.createConstant(ElemKind::FloatTy, {866}, "bias");
+  bias1->getHandle().randomize(0.0, 0.5, mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {8, 866}, "output", false);
+  bindings_.allocate(output);
+
+  auto *fc1 = F_->createFullyConnected("fc1", input, weights1, bias1);
+  auto *relu1 = F_->createRELU("relu1", fc1);
+
+  F_->createSave("save", relu1, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Perform parallel transformation on F_.
+  llvm::DenseMap<Node *, size_t> numChunks;
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  numChunks[fc1] = 8;
+  numChunks[relu1] = 8;
+  parOpts[fc1] = ParallelTransformKind::Model;
+  parOpts[relu1] = ParallelTransformKind::Model;
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap,
+      ::glow::parallelizeOps(F_, numChunks, parOpts, /*numOfChunks*/ 1,
+                             /*modelParallelSplitAlignment*/ 64));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+
+  runDCEPass(F_, cctx_);
+
+  EXPECT_EQ(7, countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind));
+  EXPECT_EQ(7, countNodeKind(F_, Kinded::Kind::ReluNodeKind));
+
+  // Check all splitted FCs.
+  auto *concatNode = replacedMap[fc1];
+  for (unsigned i = 0; i < 7; ++i) {
+    auto *fc = llvm::dyn_cast<FullyConnectedNode>(concatNode->getNthInput(i));
+    ASSERT_TRUE(fc);
+    // 8 x 128 for first 6 FCs and last 8 x 30
+    if (i == 6) {
+      EXPECT_TRUE(fc->getResult().dims().equals({8, 98}));
+      EXPECT_TRUE(fc->getBias().dims().equals({98}));
+      EXPECT_TRUE(fc->getWeights().dims().equals({3, 98}));
+    } else {
+      EXPECT_TRUE(fc->getResult().dims().equals({8, 128}));
+      EXPECT_TRUE(fc->getBias().dims().equals({128}));
+      EXPECT_TRUE(fc->getWeights().dims().equals({3, 128}));
+    }
+  }
+
+  checkNumericalEquivalence();
+}
+
+/// Test Splitting FC into multiple FCs, special case for 140 by 3 with an
+/// alignment of 64. Should split 64, 64, 12
+TEST_F(GraphOptz, ParallelizeGraph_FC_ModelParallel_Split140by3) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {8, 3}, "input", false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                          mod_.getPRNG());
+  auto *weights1 = mod_.createConstant(ElemKind::FloatTy, {3, 140}, "weights");
+  weights1->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  auto *bias1 = mod_.createConstant(ElemKind::FloatTy, {140}, "bias");
+  bias1->getHandle().randomize(0.0, 0.5, mod_.getPRNG());
+  auto *output =
+      mod_.createPlaceholder(ElemKind::FloatTy, {8, 140}, "output", false);
+  bindings_.allocate(output);
+
+  auto *fc1 = F_->createFullyConnected("fc1", input, weights1, bias1);
+  auto *relu1 = F_->createRELU("relu1", fc1);
+
+  F_->createSave("save", relu1, output);
+
+  ::glow::optimize(F_, CompilationMode::Infer);
+
+  // This is F_ but without the parallel transformation below.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  // Perform parallel transformation on F_.
+  llvm::DenseMap<Node *, size_t> numChunks;
+  llvm::DenseMap<Node *, ParallelTransformKind> parOpts;
+  numChunks[fc1] = 3;
+  parOpts[fc1] = ParallelTransformKind::Model;
+  std::unordered_map<Node *, ConcatNode *> replacedMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      replacedMap,
+      ::glow::parallelizeOps(F_, numChunks, parOpts, /*numOfChunks*/ 1,
+                             /*modelParallelSplitAlignment*/ 64));
+  EXPECT_EQ(replacedMap.size(), parOpts.size());
+  runDCEPass(F_, cctx_);
+  EXPECT_EQ(3, countNodeKind(F_, Kinded::Kind::FullyConnectedNodeKind));
+
+  // Check all splitted FCs.
+  auto *concatNode = replacedMap[fc1];
+  auto *fc_split0 =
+      llvm::dyn_cast<FullyConnectedNode>(concatNode->getNthInput(0));
+  auto *fc_split1 =
+      llvm::dyn_cast<FullyConnectedNode>(concatNode->getNthInput(1));
+  auto *fc_split2 =
+      llvm::dyn_cast<FullyConnectedNode>(concatNode->getNthInput(2));
+  ASSERT_TRUE(fc_split0);
+  ASSERT_TRUE(fc_split1);
+  ASSERT_TRUE(fc_split2);
+  EXPECT_TRUE(fc_split0->getResult().dims().equals({8, 64}));
+  EXPECT_TRUE(fc_split0->getBias().dims().equals({64}));
+  EXPECT_TRUE(fc_split0->getWeights().dims().equals({3, 64}));
+  EXPECT_TRUE(fc_split1->getResult().dims().equals({8, 64}));
+  EXPECT_TRUE(fc_split1->getBias().dims().equals({64}));
+  EXPECT_TRUE(fc_split1->getWeights().dims().equals({3, 64}));
+  EXPECT_TRUE(fc_split2->getResult().dims().equals({8, 12}));
+  EXPECT_TRUE(fc_split2->getBias().dims().equals({12}));
+  EXPECT_TRUE(fc_split2->getWeights().dims().equals({3, 12}));
 
   checkNumericalEquivalence();
 }
@@ -5223,7 +5351,7 @@ TEST_F(GraphOptz, OptimizeConcatQuantFCFloatReluTest) {
   ASSERT_TRUE(optCN);
   EXPECT_EQ(optCN->getInputs().size(), 5);
 
-  for (const NodeValue NV : optCN->getInputs()) {
+  for (const NodeValue &NV : optCN->getInputs()) {
     DequantizeNode *optDN = llvm::dyn_cast<DequantizeNode>(NV);
     ASSERT_TRUE(optDN);
     ReluNode *optRN = llvm::dyn_cast<ReluNode>(optDN->getInput());

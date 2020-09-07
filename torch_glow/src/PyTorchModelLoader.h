@@ -112,6 +112,11 @@ private:
   /// during loading.
   std::unordered_map<const torch::jit::Value *, ValueMapping> valueMap_;
 
+  /// Reverse of valueMap_, mapping from Glow NodeValues to their
+  /// corresponding PyTorch Values.
+  std::unordered_map<glow::NodeValue, const torch::jit::Value *>
+      valueMapReverse_;
+
   std::unordered_map<const torch::jit::Value *, torch::jit::IValue> qparamsMap_;
 
   /// Flags if the memory held by aten::Constants of Tensor type should be
@@ -268,7 +273,8 @@ public:
                               const torch::jit::Value *src);
 
   /// Remove any ValueMapping associated with \p value.
-  void removeValueMapping(const torch::jit::Value *value);
+  /// \returns error on failure.
+  Error removeValueMapping(const torch::jit::Value *value);
 
   /// Returns true if a Glow NodeValue has been created for a given PyTorch
   /// Value \p value.
@@ -383,6 +389,18 @@ private:
   Error loadEmbeddingBagByteRowwiseOffsetsHelper(const torch::jit::Node *ptNode,
                                                  bool is4Bit = false);
 
+  // Load a PyTorch _caffe2::RoIAlign op.
+  // \returns error on failure.
+  Error loadRoiAlign(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch _caffe2::RoIAlignRotated op.
+  // \returns error on failure.
+  Error loadRoiAlignRotated(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch _caffe2::BBoxTransform op.
+  // \returns error on failure.
+  Error loadBBoxTransform(const torch::jit::Node *ptNode);
+
   /// Load all PyTorch prim::GetAttr nodes in \p graph. This method uses the
   /// PyTorch Module hierarchy to map Values for all outputs of prim::GetAttr
   /// nodes. If the output type of a prim::GetAttr is a tensor, this will load
@@ -433,6 +451,10 @@ private:
   /// Load a PyTorch div node.
   /// \returns error on failure.
   Error loadDiv(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch floor div node.
+  /// \returns error on failure.
+  Error loadFloorDiv(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch add node.
   /// \returns error on failure.
@@ -528,6 +550,10 @@ private:
   /// \return error on failure.
   Error loadQuantizedAddRelu(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch quantized::mul node.
+  /// \return error on failure.
+  Error loadQuantizedMul(const torch::jit::Node *ptNode);
+
   /// Load a glow::unpacked_quantized_conv node.
   // \return error on failure.
   Error loadQuantizedConvUnpacked(const torch::jit::Node *ptNode);
@@ -536,6 +562,10 @@ private:
 
   Error loadQuantizedConvUnpackedImpl(const torch::jit::Node *ptNode,
                                       bool isRelu = false);
+
+  /// Load a PyTorch _caffe2::RoIAlign op or if \p isRotated is true then a
+  /// _caffe2::RoIAlignRotated op.
+  Error loadRoiAlignImpl(const torch::jit::Node *ptNode, bool isRotated);
 
   /// Load a PyTorch quantized::conv2d node.
   // \return error on failure.

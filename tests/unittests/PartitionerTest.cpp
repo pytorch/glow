@@ -1196,8 +1196,8 @@ TEST_F(PartitionerTest, graphMemInfoCalculation1) {
   nodes3.insert(CI);
   nodes3.insert(saveValues);
   nodes3.insert(saveIndices);
-  GraphMemInfo res1 = getGraphMemInfo(nodes2);
-  GraphMemInfo res2 = getGraphMemInfo(nodes3);
+  GraphMemInfo res1 = getGraphMemInfo(nodes2, 1);
+  GraphMemInfo res2 = getGraphMemInfo(nodes3, 1);
   GraphMemInfo ref1(48, 96, 0);
   GraphMemInfo ref2(96, 96, 0);
   EXPECT_EQ(res1, ref1);
@@ -1250,7 +1250,7 @@ TEST_F(PartitionerTest, graphMemInfoCalculation2) {
   EXPECT_EQ(res1, GraphMemInfo(64, 96, 1632));
   nodes1.insert(R2);
 
-  res1 = getGraphMemInfo(nodes1);
+  res1 = getGraphMemInfo(nodes1, 1);
   EXPECT_EQ(res1, GraphMemInfo(64, 96, 1632));
 
   res2 = updateGraphMemInfoByAddingNode(nodes2, res2, L1);
@@ -1277,7 +1277,7 @@ TEST_F(PartitionerTest, graphMemInfoCalculation2) {
   EXPECT_EQ(res2, GraphMemInfo(96, 32, 544));
   nodes2.insert(save);
 
-  res2 = getGraphMemInfo(nodes2);
+  res2 = getGraphMemInfo(nodes2, 1);
   EXPECT_EQ(res2, GraphMemInfo(96, 32, 544));
 }
 

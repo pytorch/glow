@@ -64,11 +64,6 @@ public:
   /// thus will not be fused to Glow.
   std::unordered_set<torch::jit::Symbol> opBlacklist;
 
-  /// A list of symbols for nodes that will always be fused by Glow fuser when
-  /// it is supported. This list overwrite all other blacklisting/indexing, and
-  /// can only be canceled by min/max fusion group size.
-  std::unordered_set<torch::jit::Symbol> opOverrideAllowlist;
-
   /// The minimum size of a glow fusion groups in terms of number of PyTorch
   /// nodes. 0 indicates no minimum size.
   size_t minFusionGroupSize = 0;
@@ -118,6 +113,9 @@ public:
 
   /// Enable tracing inside of Glow.
   bool enableGlowTracing = false;
+
+  /// Enable the auto removal of muation in JIT graph, i.e, inline ops.
+  bool enableRemoveMutation = false;
 
   /// Number of traces per json trace file dump.
   size_t numTracesPerDump = 1;

@@ -949,6 +949,7 @@ public:
   ARITHMETIC_FUN_DECL(Mul);
   ARITHMETIC_FUN_DECL(Sub);
   ARITHMETIC_FUN_DECL(Div);
+  ARITHMETIC_FUN_DECL(FloorDiv);
   ARITHMETIC_FUN_DECL(Max);
   ARITHMETIC_FUN_DECL(Min);
   ARITHMETIC_FUN_DECL(CmpEQ);
@@ -996,6 +997,7 @@ public:
   /// automatically for multi directional broadcast.
   DECLARE_BROADCAST_NODE(Mul, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Div, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(FloorDiv, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Add, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Sub, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(And, /* NUM_INPUTS */ 2)
@@ -2021,9 +2023,10 @@ public:
   /// coordinates are aligned to the center of a pixel (VS top-left corner).
   ROIAlignNode *createROIAlign(llvm::StringRef name, NodeValue featureMap,
                                NodeValue boxes, NodeValue batchIndices,
-                               std::string mode, uint32_t outputHeight,
-                               uint32_t outputWidth, uint32_t samplingRatio,
-                               float spatialScale, bool aligned, bool rotated);
+                               uint32_t outputHeight, uint32_t outputWidth,
+                               uint32_t samplingRatio, float spatialScale,
+                               bool aligned, bool rotated = false,
+                               PoolingMode mode = PoolingMode::AVG);
 
   /// Transform proposal bounding boxes to target bounding box using bounding
   /// box regression deltas.

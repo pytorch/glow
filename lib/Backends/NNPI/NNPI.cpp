@@ -82,6 +82,7 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true>
 bool GlowDisableNNPITransforms = false;
 bool GlowDisableNNPIPrivateTransforms = false;
 int32_t GlowNNPINumParallelChunks = 0;
+int32_t GlowNNPIModelParallelSplitAlignment = 1;
 
 } // namespace onnxifi
 } // namespace glow
@@ -173,7 +174,9 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::LayerNormalizationNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
-
+  case Kinded::Kind::GeluNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty});
   case Kinded::Kind::BatchNormalizationNodeKind: {
     auto elemType = NI.getInElemTy(BatchNormalizationNode::InputIdx);
     bool isSup =
@@ -533,6 +536,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::ClipNodeKind:
   case Kinded::Kind::FullyConnectedNodeKind:
   case Kinded::Kind::ConcatNodeKind:
+  case Kinded::Kind::SoftMaxNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
   case Kinded::Kind::SwishNodeKind:
   case Kinded::Kind::TanhNodeKind:
@@ -544,6 +548,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
   case Kinded::Kind::BatchedReduceMeanNodeKind:
   case Kinded::Kind::BatchedReduceMinNodeKind:
+  case Kinded::Kind::MatMulNodeKind:
   case Kinded::Kind::BatchMatMulNodeKind:
   case Kinded::Kind::BatchNormalizationNodeKind:
   case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind:
@@ -552,6 +557,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::LayerNormalizationNodeKind:
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind:
   case Kinded::Kind::PReluNodeKind:
+  case Kinded::Kind::GeluNodeKind:
   case Kinded::Kind::LogitNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
     return false;
@@ -628,6 +634,27 @@ static void setupBasicParallelizationConfigs(
         parOpts[R] = ParallelTransformKind::Data;
         numChunks[R] =
             std::min((size_t)numParallelChunks, R->getResult().dims()[0]);
+        continue;
+      }
+    }
+
+    // Split Gelu layers in data parallel fashion
+    if (auto *GL = llvm::dyn_cast<GeluNode>(node)) {
+      if (GL->getInput().dims().size() < 2) {
+        continue;
+      }
+      size_t M = GL->getInput().dims()[0];
+      size_t NIdx = getMaxDimOtherThanBatch(GL->getInput().dims());
+      size_t N = GL->getInput().dims()[NIdx];
+      if (N >= 512) {
+        parOpts[GL] = ParallelTransformKind::Model;
+        numChunks[GL] = std::min((size_t)numParallelChunks, N);
+        continue;
+      }
+      if (M >= 256) {
+        parOpts[GL] = ParallelTransformKind::Data;
+        numChunks[GL] =
+            std::min((size_t)numParallelChunks, GL->getResult().dims()[0]);
         continue;
       }
     }
@@ -717,7 +744,8 @@ static void setupBasicParallelizationConfigs(
       if (LN->getInput().dims().size() < 2) {
         continue;
       }
-      size_t N = LN->getInput().dims()[1];
+      size_t NIdx = getMaxDimOtherThanBatch(LN->getInput().dims());
+      size_t N = LN->getInput().dims()[NIdx];
       if (N < 1024) {
         continue;
       }
@@ -732,6 +760,14 @@ static void setupBasicParallelizationConfigs(
       parOpts[BMM] = ParallelTransformKind::Data;
       numChunks[BMM] =
           std::min((size_t)numParallelChunks, BMM->getResult().dims()[0]);
+      continue;
+    }
+
+    // Split MatMul layers in Model parallel fashion
+    if (auto *MM = llvm::dyn_cast<MatMulNode>(node)) {
+      parOpts[MM] = ParallelTransformKind::Model;
+      numChunks[MM] =
+          std::min((size_t)numParallelChunks, MM->getResult().dims()[1]);
       continue;
     }
 
@@ -834,6 +870,22 @@ static void setupBasicParallelizationConfigs(
       continue;
     }
 
+    // Split Softmax layers in data parallel fashion
+    if (auto *SM = llvm::dyn_cast<SoftMaxNode>(node)) {
+      if (SM->getInput().dims().size() < 2) {
+        continue;
+      }
+      size_t M = SM->getInput().dims()[0];
+      size_t N = SM->getInput().dims()[1];
+      if (N < 32 || M < 128) {
+        continue;
+      }
+      parOpts[SM] = ParallelTransformKind::Data;
+      numChunks[SM] =
+          std::min((size_t)numParallelChunks, SM->getResult().dims()[0]);
+      continue;
+    }
+
     // Clip parallelization.
     // If a Clip follows a parallel op, mirror that.
     if (auto *C = llvm::dyn_cast<ClipNode>(node)) {
@@ -890,7 +942,9 @@ static Error validateBackendSpecificNodeInfo(
     int numParChunksVal;
     ASSIGN_VALUE_OR_RETURN_ERR(numParChunksVal,
                                getIntFromStr(numParChunksIt->second.front()));
-    RETURN_ERR_IF_NOT(numParChunksVal == CN->getInputs().size(),
+    // It is possible that the number of inputs is less than numParChunksVal
+    // due to alignment
+    RETURN_ERR_IF_NOT(numParChunksVal >= CN->getInputs().size(),
                       "Node not split the expected number of times.");
 
     // Now we can erase this Node's info from currFunInfo because it has been
@@ -1064,11 +1118,26 @@ static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts) {
     return false;
   }
 
+  int32_t defaultModelParallelSplitAlignment =
+      glow::onnxifi::GlowNNPIModelParallelSplitAlignment;
+
+  // GlowNNPIModelParallelSplitAlignment set via flags takes precedence over
+  // backend options in cctx.
+  if (defaultModelParallelSplitAlignment == 1) {
+    auto it = opts.backendSpecificOpts.find(
+        std::string("NNPIModelParallelSplitAlignment"));
+    if (it != opts.backendSpecificOpts.end()) {
+      ASSIGN_VALUE_OR_RETURN_ERR(defaultModelParallelSplitAlignment,
+                                 getIntFromStr(it->second));
+    }
+  }
+
   // Now actually do the parallelization.
   std::unordered_map<Node *, ConcatNode *> replacedMap;
   ASSIGN_VALUE_OR_RETURN_ERR(
       replacedMap,
-      parallelizeOps(F, numChunks, parOpts, defaultNumParallelChunks));
+      parallelizeOps(F, numChunks, parOpts, defaultNumParallelChunks,
+                     defaultModelParallelSplitAlignment));
 
   RETURN_ERR_IF_NOT(numChunks.size() == replacedMap.size(),
                     "Expected that numChunks and replacedMap have same size.");

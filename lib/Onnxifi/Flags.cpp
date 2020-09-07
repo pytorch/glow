@@ -64,6 +64,7 @@ extern bool GlowUsePerPartitionIcetConfig;
 extern bool GlowDisableNNPITransforms;
 extern bool GlowDisableNNPIPrivateTransforms;
 extern int32_t GlowNNPINumParallelChunks;
+extern int32_t GlowNNPIModelParallelSplitAlignment;
 #endif
 
 } // namespace onnxifi
@@ -88,6 +89,7 @@ extern std::string GlowAvailableDevices;
 } // namespace runtime
 
 extern bool GlowDumpCompilationLog;
+extern bool GlowDumpBackendSpecificIRJSON;
 extern bool GlowLogPartition;
 extern bool GlowDumpPartition;
 } // namespace glow
@@ -483,6 +485,13 @@ DEFINE_validator(glow_nnpi_num_parallel_chunks,
                    glow::onnxifi::GlowNNPINumParallelChunks = value;
                    return true;
                  });
+DEFINE_int32(glow_nnpi_model_parallel_split_alignment, 1,
+             "Alignment value for model parallel splits");
+DEFINE_validator(glow_nnpi_model_parallel_split_alignment,
+                 [](const char * /* flagname */, int32_t value) {
+                   glow::onnxifi::GlowNNPIModelParallelSplitAlignment = value;
+                   return true;
+                 });
 #endif /* GLOW_WITH_NNPI */
 
 DEFINE_int32(glow_interpreter_memory, 0,
@@ -567,5 +576,13 @@ DEFINE_bool(glow_dump_compilation_log, false,
 DEFINE_validator(glow_dump_compilation_log,
                  [](const char * /*unused*/, bool value) {
                    glow::GlowDumpCompilationLog = value;
+                   return true;
+                 });
+
+DEFINE_bool(glow_dump_backend_specific_ir_json, false,
+            "Dump the backend-specific IR JSON file");
+DEFINE_validator(glow_dump_backend_specific_ir_json,
+                 [](const char * /*unused*/, bool value) {
+                   glow::GlowDumpBackendSpecificIRJSON = value;
                    return true;
                  });

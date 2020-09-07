@@ -34,6 +34,13 @@ static llvm::cl::opt<bool, true>
                             llvm::cl::desc("Dump Compilation Log"),
                             llvm::cl::location(GlowDumpCompilationLog));
 
+bool GlowDumpBackendSpecificIRJSON;
+static llvm::cl::opt<bool, /* ExternalStorage */ true>
+    GlowDumpBackendSpecificIRJSONOpt(
+        "glow_dump_backend_specific_ir_json",
+        llvm::cl::desc("Dump backend-specific IR in JSON format"),
+        llvm::cl::location(GlowDumpBackendSpecificIRJSON));
+
 static llvm::cl::opt<bool> verboseCompilationLogOpt(
     "verbose-compilation", llvm::cl::init(false),
     llvm::cl::desc("Log empty passes to Compilation Log"));

@@ -5312,18 +5312,30 @@ bool glow::executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
 /// \p splitDim represents what dimension to split for each of the inputs to
 /// \p curNode. \p resultDim is the dimension on which we are splitting and then
 /// concatenating the results. \p resultIdx represents the result index from
-/// \p curNode that is being split and later concatenated. \returns an Expected
-/// of the ConcatNode that is created and replaces \p curNode, or otherwise an
-/// Error if parallelization had some issue.
+/// \p curNode that is being split and later concatenated. The size of the
+/// splits will be increased to a multiple of \p modelParallelSplitAlignment, if
+/// possible. If the result after aligning the splits is that the new aligned
+/// splits are larger than the original requested num splits, then the number of
+/// resulting splits may be less than requested. \returns an Expected of the
+/// ConcatNode that is created and replaces \p curNode, or otherwise an Error if
+/// parallelization had some issue.
 static Expected<ConcatNode *>
 parallelizeAndReplaceNode(Function *F, Node *curNode, dim_t numOfChunksNode,
                           dim_t inputBatchIdx, dim_t resultIdx,
-                          llvm::ArrayRef<int> splitDims, size_t resultDim) {
+                          llvm::ArrayRef<int> splitDims, size_t resultDim,
+                          dim_t modelParallelSplitAlignment = 1) {
   const int inputIdx = splitDims[inputBatchIdx];
   CHECK_GE(inputIdx, 0) << "Input batch idx must be split";
   const dim_t batchSize = curNode->getNthInput(inputBatchIdx).dims()[inputIdx];
   const dim_t elemPerChunk = batchSize / numOfChunksNode;
   const dim_t remain = batchSize % numOfChunksNode;
+  // This alignment will create aligned splits. So for example, if we're
+  // splitting 190 by 3, then without alignment it would be {64, 63, 63}.
+  // With alignment of 64, it will be {64, 64, 62}
+  const dim_t alignedElemPerChunk =
+      ((elemPerChunk + (modelParallelSplitAlignment - 1)) /
+       modelParallelSplitAlignment) *
+      modelParallelSplitAlignment;
 
   RETURN_ERR_IF_NOT(
       batchSize >= numOfChunksNode,
@@ -5332,11 +5344,31 @@ parallelizeAndReplaceNode(Function *F, Node *curNode, dim_t numOfChunksNode,
           " for node " + curNode->getName().str() + " with kind " +
           curNode->getKindName());
 
+  // Potentially modify numOfChunksNode, if the aligned size times current
+  // numOfChunksNode exceeds the total size
+  if (modelParallelSplitAlignment > 1) {
+    numOfChunksNode =
+        (batchSize + alignedElemPerChunk - 1) / alignedElemPerChunk;
+  }
+
   std::vector<NodeValue> newNodes(numOfChunksNode);
   for (dim_t i = 0; i < numOfChunksNode; ++i) {
     // Calculate the out type of this chunk.
-    const dim_t sliceStart = i * elemPerChunk + std::min(i, remain);
-    const dim_t sliceEnd = sliceStart + elemPerChunk + ((i < remain) ? 1 : 0);
+    dim_t sliceStart, sliceEnd;
+
+    if (modelParallelSplitAlignment > 1) {
+      // If we are using aligned splits, then slice by multiples of the
+      // alignment, leaving the rest to the last split. The last split is
+      // necessarily smaller than the other splits.
+      sliceStart = i * alignedElemPerChunk;
+      sliceEnd = (i < numOfChunksNode - 1) ? sliceStart + alignedElemPerChunk
+                                           : batchSize;
+    } else {
+      // Otherwise, distribute elements evenly across the splits and sprinkle
+      // the remainder evenly as well
+      sliceStart = i * elemPerChunk + std::min(i, remain);
+      sliceEnd = sliceStart + elemPerChunk + ((i < remain) ? 1 : 0);
+    }
     VLOG(1) << "\tChunk " << i << ": start: " << sliceStart
             << " end: " << sliceEnd << "\n";
     auto outDims = curNode->dims(resultIdx).vec();
@@ -5432,7 +5464,7 @@ parallelizeAndReplaceConcat(Function *F, ConcatNode *CN, dim_t numOfChunks) {
 Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
     Function *F, const llvm::DenseMap<Node *, size_t> &numOfChunksMap,
     const llvm::DenseMap<Node *, ParallelTransformKind> &parOpts,
-    size_t numOfChunks) {
+    size_t numOfChunks, size_t modelParallelSplitAlignment) {
   // Since we will be transforming the original list of nodes, reverse iterate.
   auto &nodes = F->getNodes();
   size_t numProcessedNodes = 0;
@@ -5506,6 +5538,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                     SigmoidNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::SoftMaxNodeKind: {
+        splitDims[SoftMaxNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, SoftMaxNode::InputIdx,
+                    SoftMaxNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::TanhNodeKind: {
         splitDims[TanhNode::InputIdx] = 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
@@ -5524,7 +5564,10 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
       }
       case Kinded::Kind::TransposeNodeKind: {
         splitDims[TransposeNode::InputIdx] = 0;
-        unsigned_t resultDim = cast<TransposeNode>(curNode)->getShuffle()[0];
+        auto shuffleVec = cast<TransposeNode>(curNode)->getShuffle();
+        unsigned_t resultDim =
+            std::find(shuffleVec.begin(), shuffleVec.end(), 0) -
+            shuffleVec.begin();
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, TransposeNode::InputIdx,
@@ -5537,6 +5580,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           ReluNode::InputIdx,
                                           ReluNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::GeluNodeKind: {
+        splitDims[GeluNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          GeluNode::InputIdx,
+                                          GeluNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::ClipNodeKind: {
@@ -5629,7 +5680,17 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, FullyConnectedNode::WeightsIdx,
-                    FullyConnectedNode::ResultIdx, splitDims, 1));
+                    FullyConnectedNode::ResultIdx, splitDims, /*resultDim*/ 1,
+                    modelParallelSplitAlignment));
+        break;
+      }
+      case Kinded::Kind::MatMulNodeKind: {
+        splitDims[MatMulNode::RHSIdx] = 1;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, MatMulNode::RHSIdx,
+                    MatMulNode::ResultIdx, splitDims, /*resultDim*/ 1,
+                    modelParallelSplitAlignment));
         break;
       }
       case Kinded::Kind::ReluNodeKind: {
@@ -5638,20 +5699,36 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
         }
         splitDims[ReluNode::InputIdx] = 1;
         ASSIGN_VALUE_OR_RETURN_ERR(
-            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
-                                          ReluNode::InputIdx,
-                                          ReluNode::ResultIdx, splitDims, 1));
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, ReluNode::InputIdx,
+                    ReluNode::ResultIdx, splitDims,
+                    /*resultDim*/ 1, modelParallelSplitAlignment));
+        break;
+      }
+      case Kinded::Kind::GeluNodeKind: {
+        // split across the largest dim other than batch dim
+        auto *GL = llvm::cast<GeluNode>(curNode);
+        size_t NIdx = getMaxDimOtherThanBatch(GL->getInput().dims());
+        splitDims[GeluNode::InputIdx] = NIdx;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, GeluNode::InputIdx,
+                    GeluNode::ResultIdx, splitDims, /*resultDim*/ NIdx,
+                    modelParallelSplitAlignment));
         break;
       }
       case Kinded::Kind::ClipNodeKind: {
-        if (curNode->getNthInput(ClipNode::InputIdx).dims().size() < 2) {
+        auto *CL = llvm::cast<ClipNode>(curNode);
+        if (CL->getNthInput(ClipNode::InputIdx).dims().size() < 2) {
           break;
         }
-        splitDims[ClipNode::InputIdx] = 1;
+        size_t NIdx = getMaxDimOtherThanBatch(CL->getInput().dims());
+        splitDims[ClipNode::InputIdx] = NIdx;
         ASSIGN_VALUE_OR_RETURN_ERR(
-            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
-                                          ClipNode::InputIdx,
-                                          ClipNode::ResultIdx, splitDims, 1));
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, ClipNode::InputIdx,
+                    ClipNode::ResultIdx, splitDims,
+                    /*resultDim*/ NIdx, modelParallelSplitAlignment));
         break;
       }
       case Kinded::Kind::TileNodeKind: {
@@ -5664,9 +5741,10 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             "Tile node cannot be split on axis 1 which is being replicated");
         splitDims[TileNode::InputIdx] = 1;
         ASSIGN_VALUE_OR_RETURN_ERR(
-            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
-                                          TileNode::InputIdx,
-                                          TileNode::ResultIdx, splitDims, 1));
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, TileNode::InputIdx,
+                    TileNode::ResultIdx, splitDims,
+                    /*resultDim*/ 1, modelParallelSplitAlignment));
         break;
       }
       case Kinded::Kind::BatchedReduceAddNodeKind: {
@@ -5700,7 +5778,8 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, QuantizeNode::InputIdx,
-                    QuantizeNode::ResultIdx, splitDims, 1));
+                    QuantizeNode::ResultIdx, splitDims,
+                    /*resultDim*/ 1, modelParallelSplitAlignment));
         break;
       }
       case Kinded::Kind::DequantizeNodeKind: {
@@ -5711,7 +5790,8 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, DequantizeNode::InputIdx,
-                    DequantizeNode::ResultIdx, splitDims, 1));
+                    DequantizeNode::ResultIdx, splitDims,
+                    /*resultDim*/ 1, modelParallelSplitAlignment));
         break;
       }
       default:
