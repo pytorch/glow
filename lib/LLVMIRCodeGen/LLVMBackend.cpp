@@ -58,6 +58,9 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
     return NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Int32ITy, ElemKind::Int64ITy});
 
+  case Kinded::Kind::BatchedReduceProdNodeKind:
+    return NI.allInputsAndOutputsHaveSameElemKind({ElemKind::FloatTy});
+
   case Kinded::Kind::AddNodeKind:
   case Kinded::Kind::MulNodeKind:
     return NI.allInputsAndOutputsHaveSameElemKind(

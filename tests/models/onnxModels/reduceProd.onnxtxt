@@ -1,0 +1,68 @@
+ir_version: 7
+producer_name: "reduceProd-onnx-example"
+graph {
+  node {
+    input: "x"
+    output: "y"
+    op_type: "ReduceProd"
+    attribute {
+      name: "axes"
+      ints: 3
+      type: INTS
+    }
+    attribute {
+      name: "keepdims"
+      i: 1
+      type: INT
+    }
+  }
+  name: "reduceProd-node"
+  input {
+    name: "x"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "y"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 1
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  domain: ""
+  version: 9
+}
