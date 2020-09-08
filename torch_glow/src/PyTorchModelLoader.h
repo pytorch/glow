@@ -496,6 +496,10 @@ private:
   /// \returns error on failure.
   Error loadBatchNorm(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch vector_norm node.
+  /// \returns error on failure.
+  Error loadNorm(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch quantized::batch_norm2d node.
   /// \returns error on failure.
   Error loadQuantizedBatchNorm2d(const torch::jit::Node *ptNode);
