@@ -2341,6 +2341,25 @@ Error ONNXModelWriter::writeFullyConnected(const FullyConnectedNode *node,
   return Error::success();
 }
 
+Error ONNXModelWriter::writeVectorNorm(const VectorNormNode *node,
+                                       GraphType &graph) {
+  auto *proto = graph.add_node();
+
+  // Add dictionary entries.
+  addValueAttribute(proto, "axis", node->getAxis());
+
+  proto->set_name(node->getName());
+  proto->set_op_type("VectorNorm");
+  inputsToProto(node, proto);
+
+  // currently support p = 2 (Frobenius or i2)
+  addValueAttribute(proto, "p", node->getP());
+
+  outputsToProto(node, graph, proto);
+
+  return Error::success();
+}
+
 Error ONNXModelWriter::writeRowwiseQuantizedFullyConnected(
     const RowwiseQuantizedFullyConnectedNode *node, GraphType &graph) {
   auto *proto = graph.add_node();

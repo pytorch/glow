@@ -907,6 +907,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::_convolution"}, &PyTorchModelLoader::loadConvolution},
       {{"aten::conv2d"}, &PyTorchModelLoader::loadConv2D},
       {{"aten::batch_norm"}, &PyTorchModelLoader::loadBatchNorm},
+      {{"aten::norm", "aten::frobenius_norm"}, &PyTorchModelLoader::loadNorm},
       {{"quantized::batch_norm2d"},
        &PyTorchModelLoader::loadQuantizedBatchNorm2d},
       {{"quantized::batch_norm3d"},
@@ -3767,6 +3768,68 @@ Error PyTorchModelLoader::loadMean(const torch::jit::Node *ptNode) {
   }
 
   return addValueMapping(outputs[0], input);
+}
+
+Error PyTorchModelLoader::loadNorm(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  // (1) Without p in torch.norm(input, dim), aten::norm(Tensor, axis[],
+  // keepDim) is assumed in glow_graph, the input size will be 3.
+  // (2) With p in torch.norm(input, dim, p), aten::norm(Tensor, p, axis[],
+  // keepDim) is assumed in glow_graph, the input size will be 4.
+
+  // the input size is at least 3, output size is 1
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -3, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  int64_t axis;
+  int64_t p;
+
+  GlowIValue *pOrAxis;
+  ASSIGN_VALUE_OR_RETURN_ERR(pOrAxis, getGlowIValueForValue(inputs[1]));
+
+  if (pOrAxis->isIntList()) {
+    // Without p in torch.norm(Tensor, dim), inputs[1] is the list of int
+    // representing axis/dim
+    std::vector<int64_t> *axisList;
+    ASSIGN_VALUE_OR_RETURN_ERR(axisList, iValToIntList(pOrAxis));
+    RETURN_ERR_IF_NOT(axisList->size() == 1,
+                      glow::strFormat("we currently only support 1 dimension "
+                                      "of axis, but got dimension size = %lu",
+                                      axisList->size()));
+    axis = axisList->front();
+    p = 2;
+  } else {
+    // With p in torch.norm(input, p,  dim), inputs[1] is the int representing p
+    GlowIValue *pVal;
+    ASSIGN_VALUE_OR_RETURN_ERR(pVal, getGlowIValueForValue(inputs[1]));
+    // check if p is int
+    if (!pVal->isInt()) {
+      RETURN_ERR("We only support p as an integer input");
+    } else {
+      ASSIGN_VALUE_OR_RETURN_ERR(p, iValToInt(pVal));
+      // check if p is set to 2s
+      RETURN_ERR_IF_NOT(
+          p == 2, glow::strFormat(
+                      "we currently only support p = 2, but got p = %lu", p));
+    }
+    // With p in torch.norm(input, p,  dim), inputs[2] is the list of int
+    // representing axis/dim
+    std::vector<int64_t> *axisList;
+    ASSIGN_VALUE_OR_RETURN_ERR(axisList,
+                               iValToIntList(getGlowIValueForValue(inputs[2])));
+    RETURN_ERR_IF_NOT(axisList->size() == 1,
+                      glow::strFormat("we currently only support 1 dimension "
+                                      "of axis, but got dimension size = %lu",
+                                      axisList->size()));
+    axis = axisList->front();
+  }
+
+  auto output = F_.createVectorNorm("norm", input, axis, p);
+
+  return addValueMapping(outputs[0], output);
 }
 
 Expected<glow::NodeValue>

@@ -1798,6 +1798,18 @@ bool ArgMinNode::verify() const {
   return isValid;
 }
 
+bool VectorNormNode::verify() const {
+  bool isValid = true;
+
+  isValid &= expectCompareTrue("Only support Frobenius, p should be 2", getP(),
+                               (unsigned)2, this);
+  // Check output shape.
+  ShapeVector expDstDims = reduceDims(getInput().dims(), {getAxis()}, false);
+  isValid &= expectCompareTrue("Invalid output dims", getResult().dims(),
+                               llvm::makeArrayRef(expDstDims), this);
+  return isValid;
+}
+
 bool RowwiseQuantizedFullyConnectedNode::verify() const {
   auto src = getInput();
   auto weights = getWeights();

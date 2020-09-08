@@ -522,6 +522,9 @@ struct BlacklistInitializer {
              TestBlacklist::AnyDeviceAnyEngine},
             {"ArithFloorDiv_float/0", TestBlacklist::AnyDeviceAnyEngine},
             {"ArithFloorDiv_float16_t/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"VectorNorm_BFloat16/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"VectorNorm_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"VectorNorm_Float16Ty/0", TestBlacklist::AnyDeviceAnyEngine},
         };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);

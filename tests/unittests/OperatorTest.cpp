@@ -3035,6 +3035,68 @@ TEST_P(OperatorTest, batchedReduceAdd_5Dinput) {
   EXPECT_TRUE(result->isEqual(expected));
 }
 
+/// Helper to test VectorNorm using \p DTy.
+template <typename DataType>
+static void testVectorNorm(glow::PlaceholderBindings &bindings,
+                           glow::Module &mod, glow::Function *F,
+                           glow::ExecutionEngine &EE, ElemKind elemKind) {
+  auto *input = mod.createPlaceholder(elemKind, {2, 3}, "norm", false);
+  bindings.allocate(input)->getHandle<DataType>() = {1, 2, 3, -1, 1, 4};
+
+  auto *R = F->createVectorNorm("vector.norm", input, /* axis */ 0, /* p */ 2);
+
+  auto *save = F->createSave("save", R);
+  auto *result = bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor expected(elemKind, {3});
+  expected.getHandle<DataType>() = {1.4142, 2.2361, 5.0000};
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that VectorNorm is correctly supported in FloatTy.
+TEST_P(OperatorTest, VectorNorm_Float) {
+  CHECK_IF_ENABLED();
+
+  testVectorNorm<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Test that VectorNorm is correctly supported in Float16Ty.
+TEST_P(OperatorTest, VectorNorm_Float16Ty) {
+  CHECK_IF_ENABLED();
+
+  testVectorNorm<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Test that VectorNorm is correctly supported in BFloat16Ty.
+TEST_P(OperatorTest, VectorNorm_BFloat16) {
+  CHECK_IF_ENABLED();
+
+  testVectorNorm<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
+}
+
+/// Test that BatchedReduceAdd works correctly reducing an internal axis.
+TEST_P(OperatorTest, VectorNorm_3D_innerAxis) {
+  CHECK_IF_ENABLED();
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2}, "norm", false);
+  bindings_.allocate(input)->getHandle<float>() = {0, 1, 2, 3, 4, 5, 6, 7};
+
+  auto *R = F_->createVectorNorm("vector.norm", input, /* axis */ 1, /* p */ 2);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor expected(ElemKind::FloatTy, {2, 2});
+  expected.getHandle<float>() = {2.0000, 3.1623, 7.2111, 8.6023};
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
 /// Helper to test BatchedReduceMax using \p DTy.
 template <typename DataType>
 static void testBatchedReduceMax(glow::PlaceholderBindings &bindings,
