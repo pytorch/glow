@@ -475,14 +475,18 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
 
     LOG(INFO) << "Serializing final compiled DAG to " << loc;
     {
+      llvm::StringMap<std::string> extraMetadataProps;
+      if (cctx.precisionConfig.originNameToTQPMap) {
+        RETURN_IF_ERR(ONNXModelWriter::insertLoaderNameUniqueOffsetMetadata(
+            extraMetadataProps, *cctx.precisionConfig.originNameToTQPMap));
+      }
       Error writeErr = Error::empty();
-      ONNXModelWriter onnxWR(loc, nodeList, 7, 9, &writeErr,
-                             /* textMode */ true, /* zipMode */ false,
-                             /* includeConstantData */ false,
-                             /* extraMetadataProps */ {}, record,
-                             cctx.backendOpts.backendSpecificNodeInfo,
-                             &cctx.loadedPHNames,
-                             &cctx.staticPlaceholderTypesForAOT);
+      ONNXModelWriter onnxWR(
+          loc, nodeList, 7, 9, &writeErr,
+          /* textMode */ true, /* zipMode */ false,
+          /* includeConstantData */ false, extraMetadataProps, record,
+          cctx.backendOpts.backendSpecificNodeInfo, &cctx.loadedPHNames,
+          &cctx.staticPlaceholderTypesForAOT);
       RETURN_IF_ERR(writeErr);
     }
 
