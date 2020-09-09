@@ -62,6 +62,7 @@ size_t GlowMaxQueueSize = 100;
 size_t GlowExecutorThreads = 10;
 bool GlowSaveOnnxifiDAG = false;
 bool GlowDelayAndRecordConstantModification = false;
+bool GlowUseTrackedDummyQuantParams = false;
 
 static llvm::cl::opt<int32_t, true>
     GlowNumDevicesOpt("glow-num-devices",
@@ -320,14 +321,18 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   CompilationContext cctx;
   runtime::PrePartitionedConfig PPC;
   cctx.prepartitionedConfig = &PPC;
+  OriginNameToTQPMap originNameToTQPMap;
+  if (GlowUseTrackedDummyQuantParams) {
+    cctx.precisionConfig.originNameToTQPMap = &originNameToTQPMap;
+    cctx.precisionConfig.loadUniquedDummyQParams = true;
+  }
   std::map<std::string, Type> staticPlaceholderTypes;
 
   std::unique_ptr<ONNXIFIModelLoader> loader;
   auto loaderOrErr = ONNXIFIModelLoader::parse(
       onnxModel, onnxModelSize, weightCount, weightDescriptors, *module,
-      netName_, &PPC, &cctx.backendOpts.backendSpecificNodeInfo,
-      &staticPlaceholderTypes, true /*loadInputsAsPlaceholdersForOnnx*/,
-      backendPtr_->getUseOnnx(),
+      netName_, cctx, &staticPlaceholderTypes,
+      true /*loadInputsAsPlaceholdersForOnnx*/, backendPtr_->getUseOnnx(),
       /* constFoldInLoader */ false);
   if (loaderOrErr) {
     loader = std::move(*loaderOrErr);

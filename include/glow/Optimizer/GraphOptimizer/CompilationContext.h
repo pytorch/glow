@@ -34,6 +34,11 @@ class DeferredWeightLoader;
 using LoadedPlaceholderNameMap =
     std::unordered_map<const Placeholder *, std::pair<std::string, unsigned>>;
 
+/// Map from the name of the original op that some quantization parameters was
+/// loaded from to those associated quantization parameters.
+using OriginNameToTQPMap =
+    std::unordered_map<std::string, TensorQuantizationParams>;
+
 /// Configuration for different precision modes.
 struct PrecisionConfiguration {
   /// Enum for what kind of transformation should be done for Quantization.
@@ -90,6 +95,13 @@ struct PrecisionConfiguration {
   /// Whether to use the precisionModeKindSet as a whitelist instead of the
   /// default blacklist. Currently only supported for convertToFP16.
   bool useSetAsWhitelist{false};
+
+  /// Pointer to a map of loader names to loaded quant params.
+  OriginNameToTQPMap *originNameToTQPMap{nullptr};
+
+  /// If true, then discard original quantization params that are loaded, to
+  /// instead track origin of quantization params in \ref originNameToTQPMap.
+  bool loadUniquedDummyQParams{false};
 
   /// Converts a float16 \p format into an ElemKind.
   static ElemKind getElementType(Float16Format format) {
@@ -344,6 +356,11 @@ struct CompilationContext {
                         !optimizationOpts.delayAndRecordConstantModification),
                       "When serializing the compiled DAG, must also enable "
                       "delayAndRecordConstantModification.");
+
+    RETURN_ERR_IF_NOT(
+        !precisionConfig.loadUniquedDummyQParams ||
+            precisionConfig.originNameToTQPMap,
+        "If loading unique dummy QParams, must have valid originNameToTQPMap");
 
     return Error::success();
   }

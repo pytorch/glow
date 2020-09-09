@@ -217,10 +217,10 @@ deserializeStrStrMapFromYaml(llvm::StringRef fileName) {
 }
 
 Expected<int> getIntFromStr(llvm::StringRef input) {
-  const char *start = input.data();
+  const std::string start = input.str();
   char *end;
-  int val = std::strtol(start, &end, 10);
-  RETURN_ERR_IF_NOT(!(end == start || *end != '\0'),
+  int val = std::strtol(start.data(), &end, 10);
+  RETURN_ERR_IF_NOT(!(end == start.data() || *end != '\0'),
                     "Integer was not properly specified.");
   return val;
 }
