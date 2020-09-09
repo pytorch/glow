@@ -43,7 +43,8 @@ Expected<Function *> saveAndReloadFunction(
     bool includeConstantData = true,
     ConstantFoldingRecordMap *constFoldRecord = nullptr,
     CompilationContext *reloadCctx = nullptr,
-    const BackendSpecificNodeInfo &backendSpecificNodeInfo = {}) {
+    const BackendSpecificNodeInfo &backendSpecificNodeInfo = {},
+    const OriginNameToTQPMap &originNameToTQPMap = {}) {
   llvm::SmallString<64> path;
   auto tempFileRes = llvm::sys::fs::createTemporaryFile(
       "exporter", zipMode ? "output.zip" : "output.onnxtxt", path);
@@ -58,6 +59,8 @@ Expected<Function *> saveAndReloadFunction(
   {
     Error err = Error::empty();
     llvm::StringMap<std::string> extraMetadataProps;
+    RETURN_IF_ERR(ONNXModelWriter::insertLoaderNameUniqueOffsetMetadata(
+        extraMetadataProps, originNameToTQPMap));
     ONNXModelWriter onnxWR(
         outputFilename, *F, irVer, opsetVer, &err, !zipMode, zipMode,
         useGlowCustomOps, includeConstantData, extraMetadataProps,
@@ -1032,4 +1035,47 @@ TEST(exporter, VeryLongChain) {
   Module reloadMod;
   ASSIGN_VALUE_OR_FAIL_TEST(
       R, saveAndReloadFunction(reloadMod, F, {"input"}, {input->getType()}));
+}
+
+/// Tests that we can serialize and then reload a model with OriginNameToTQPMap
+/// added to the model. Note that we don't do anything with the reloaded map.
+TEST(exporter, TestUniqueOffsetMapSerialization) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  auto *F = mod.createFunction("F");
+
+  Placeholder *I =
+      mod.createPlaceholder(ElemKind::Float16Ty, {5, 3}, "input", false);
+  Constant *W =
+      mod.createConstant(ElemKind::Int8QTy, {3, 4}, 0.f, 0, "weights");
+  Constant *B = mod.createConstant(ElemKind::Int8QTy, {4}, 0.f, 1, "bias");
+  QuantizeNode *QI = F->createQuantize("quant", I, ElemKind::Int8QTy, 0.f, 2);
+  FullyConnectedNode *FC = F->createFullyConnected("fc", QI, W, B);
+  SaveNode *save = F->createSave("save_out", FC);
+
+  Placeholder *output = save->getPlaceholder();
+
+  ASSERT_TRUE(F->verify());
+
+  PlaceholderBindings bindings;
+  bindings.allocate({I, output});
+
+#define GET_TQP(T_) TensorQuantizationParams{T_->getScale(), T_->getOffset()}
+  OriginNameToTQPMap originNameToTQPMap;
+  originNameToTQPMap.emplace(W->getName(), GET_TQP(W->getOutput().getType()));
+  originNameToTQPMap.emplace(B->getName(), GET_TQP(B->getOutput().getType()));
+  originNameToTQPMap.emplace(QI->getName(), GET_TQP(QI->getResult().getType()));
+#undef GET_TQP
+
+  // Save and reload F.
+  Function *R;
+  Module reloadMod;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      R, saveAndReloadFunction(reloadMod, F, {"input"}, {I->getType()}, 7, 9,
+                               /* zipMode */ false,
+                               /* useGlowCustomOps */ true,
+                               /* includeConstantData */ true,
+                               /* record */ nullptr, /* reloadCctx */ nullptr,
+                               /* backendSpecificNodeInfo */ {},
+                               originNameToTQPMap));
 }

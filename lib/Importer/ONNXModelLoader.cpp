@@ -15,9 +15,11 @@
  */
 
 #include "glow/Importer/ONNXModelLoader.h"
+
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Support/Support.h"
 #include "glow/Support/ZipUtils.h"
 
@@ -743,15 +745,27 @@ ONNXModelLoader::getTensorType(const ONNX_NAMESPACE::ValueInfoProto &in) {
   return Type(kind, dim);
 }
 
-/// \returns whether there's an issue with pre-existing \p S with name \p name,
-/// \p ty, \p layout, and \p trainable (for Placeholders).
-static Error verifyPreexistingStorage(const Storage *S, const std::string &name,
-                                      const Type &ty, const std::string &layout,
-                                      const bool trainable = false) {
+Error ONNXModelLoader::verifyPreexistingStorage(const Storage *S,
+                                                const std::string &name,
+                                                const Type &ty,
+                                                const std::string &layout,
+                                                const bool trainable) {
   RETURN_ERR_IF_NOT(S, "Storage did not exist in Module: " + name);
-  RETURN_ERR_IF_NOT(S->getType()->isEqual(ty),
-                    "Incorrect type for existing  " + S->getDebugDesc() + " " +
-                        "Expected type " + ty.toString());
+  if (replaceDummyTQPs_ && ty.isQuantizedType() && ty.getScale() == 0.f) {
+    TensorQuantizationParams TQP;
+    ASSIGN_VALUE_OR_RETURN_ERR(TQP, getUpdatedTQP(ty.getOffset()));
+    // If we are replacing dummy TQPs with updated ones, then do verification
+    // based on the updated type and not the base dummy type we found.
+    Type updatedTy(ty.getElementType(), ty.dims(), TQP.scale, TQP.offset);
+    RETURN_ERR_IF_NOT(S->getType()->isEqual(updatedTy),
+                      "Incorrect type for quant param updated existing  " +
+                          S->getDebugDesc() + " " + "Expected type " +
+                          updatedTy.toString());
+  } else {
+    RETURN_ERR_IF_NOT(S->getType()->isEqual(ty),
+                      "Incorrect type for existing  " + S->getDebugDesc() +
+                          " " + "Expected type " + ty.toString());
+  }
   if (const Placeholder *PH = llvm::dyn_cast<Placeholder>(S)) {
     RETURN_ERR_IF_NOT(trainable == PH->isTraining(),
                       "Incorrect trainability for existing Storage " + name);
@@ -773,6 +787,13 @@ Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
 
     Type ty;
     ASSIGN_VALUE_OR_RETURN_ERR(ty, getTensorType(in));
+
+    if (replaceDummyTQPs_ && ty.isQuantizedType() && ty.getScale() == 0.f) {
+      TensorQuantizationParams TQP;
+      ASSIGN_VALUE_OR_RETURN_ERR(TQP, getUpdatedTQP(ty.getOffset()));
+      ty = Type(ty.getElementType(), ty.dims(), TQP.scale, TQP.offset);
+    }
+
     std::pair<bool, std::string> trainableLayoutPair;
     ASSIGN_VALUE_OR_RETURN_ERR(
         trainableLayoutPair,
@@ -3986,6 +4007,18 @@ ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
   int32_t offset;
   ASSIGN_VALUE_OR_RETURN_ERR(
       offset, loadInt(dict[getTypeAttrID(resNo, qOffsetSignifier)]));
+
+  // If we have a scale of 0.f, then this must be a dummy pair of
+  // scale/offset. Look up the actual scale/offset to use as previously loaded,
+  // using the offset as the key to updatedTQPs_. Skip fused kinds because
+  // scales are already dummies.
+  if (replaceDummyTQPs_ && scale == 0.f && !isFusedQuantizedElemKind(k)) {
+    TensorQuantizationParams TQP;
+    ASSIGN_VALUE_OR_RETURN_ERR(TQP, getUpdatedTQP(offset));
+    scale = TQP.scale;
+    offset = TQP.offset;
+  }
+
   return mod_.uniqueType(k, shape, scale, offset);
 }
 
@@ -4645,10 +4678,27 @@ Error ONNXModelLoader::setupOrigStaticTypeMap(ONNX_NAMESPACE::GraphProto &net) {
         OT, loadTypeFromAttributes(Storage::OutputIdx, dict));
     staticPlaceholderTypes_->emplace(op.name(), *OT);
   }
-  RETURN_ERR_IF_NOT(staticPlaceholderTypes_->size() == staticInputs_.size(),
-                    "Expected to find types for all static Placeholders");
+  RETURN_ERR_IF_NOT(
+      staticPlaceholderTypes_->size() == staticInputs_.size(),
+      strFormat(
+          "Expected to find types for all static Placeholders. %lu vs. %lu",
+          staticPlaceholderTypes_->size(), staticInputs_.size()));
   return Error::success();
 }
+
+/// \returns an Error if any results from \p N are non-fused quantized with
+/// scale == 0.f.
+static Error verifyNoDummyQuantParamResults(const Node &N) {
+  for (size_t i = 0, e = N.getNumResults(); i < e; i++) {
+    TypeRef T = N.getType(i);
+    if (T->isQuantizedType() && !T->isFusedQuantizedType()) {
+      RETURN_ERR_IF_NOT(T->getScale() != 0.f,
+                        "Found dummy 0.f scale: " + N.getDebugDesc());
+    }
+  }
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadModel(ONNX_NAMESPACE::ModelProto &modelDef,
                                  llvm::ArrayRef<const char *> tensorNames,
                                  llvm::ArrayRef<TypeRef> types,
@@ -4679,6 +4729,21 @@ Error ONNXModelLoader::loadModel(ONNX_NAMESPACE::ModelProto &modelDef,
   deleteUnusedConstants();
 
   deleteConstFoldFunctions();
+
+  // If we were replacing dummy TQPs, verify we don't have any dummies left.
+  if (replaceDummyTQPs_) {
+    for (const Function *F : mod_.getFunctions()) {
+      for (const Node &N : F->getNodes()) {
+        RETURN_IF_ERR(verifyNoDummyQuantParamResults(N));
+      }
+    }
+    for (const Placeholder *PH : mod_.getPlaceholders()) {
+      RETURN_IF_ERR(verifyNoDummyQuantParamResults(*PH));
+    }
+    for (const Constant *C : mod_.getConstants()) {
+      RETURN_IF_ERR(verifyNoDummyQuantParamResults(*C));
+    }
+  }
 
   return Error::success();
 }
@@ -4847,6 +4912,67 @@ void ONNXModelLoader::setupPositionalIO(
   }
 }
 
+Error ONNXModelLoader::setupUpdatedTQPMap(
+    ONNX_NAMESPACE::ModelProto &modelDef, uint32_t weightsCount,
+    const onnxTensorDescriptorV1 *weightDescriptors) {
+  // Check if we have the two strings in metadata props we need to do TQP
+  // updating, and if not print a warning/return early.
+  const char *originNameToUniqueOffsetMappingStr =
+      getMetadataProp(modelDef, originNameToUniqueOffsetMappingSignifier);
+  if (!originNameToUniqueOffsetMappingStr) {
+    LOG(WARNING) << "Did not find \""
+                 << originNameToUniqueOffsetMappingSignifier
+                 << "\" in ONNX model, skipping setting updated TQP map.";
+    return Error::success();
+  }
+
+  const char *qParamC2ProtoStr = getMetadataProp(modelDef, "C2_with_q_params");
+  if (!qParamC2ProtoStr) {
+    LOG(WARNING) << "Did not find \"C2_with_q_params\" in ONNX model, skipping "
+                    "setting updated TQP map.";
+    return Error::success();
+  }
+
+  // Now load the qParamC2ProtoStr into a temporary dummy Caffe2ModelLoader,
+  // which fills in the originNameToTQPMap based on that model and the weights.
+  OriginNameToTQPMap originNameToTQPMap;
+  Error err(Error::success());
+  Module dummyMod;
+  Caffe2ModelLoader tmpLoader(qParamC2ProtoStr, weightsCount, weightDescriptors,
+                              dummyMod, &err, &originNameToTQPMap);
+  RETURN_IF_ERR(err);
+
+  // Now parse the originNameToUniqueOffsetMappingStr to find the original C2
+  // name : unique offset pairs. These are formatted like
+  // "name_op_a:0;name_op_b:1;", with semicolon separating each pair, and colon
+  // separating name from unique offset.
+  llvm::SmallVector<llvm::StringRef, 128> nameOffsetSplits;
+  llvm::StringRef strRef = llvm::StringRef(originNameToUniqueOffsetMappingStr);
+  strRef.split(nameOffsetSplits, ';', /* MaxSplit */ -1, /* KeepEmpty */ false);
+
+  // Store the mapping into updatedTQPs_, where each unique offset is used as
+  // the index into updatedTQPs_ to the actual TQP to use. I.e. we essentially
+  // already have c2_name -> offset, and c2_name -> TQP, so we change this to
+  // offset -> TQP.
+  updatedTQPs_.resize(nameOffsetSplits.size());
+  for (auto &nameOffsetSplit : nameOffsetSplits) {
+    auto nameOffsetPair = nameOffsetSplit.split(':');
+    int32_t idx;
+    ASSIGN_VALUE_OR_RETURN_ERR(idx, getIntFromStr(nameOffsetPair.second));
+    RETURN_ERR_IF_NOT(idx < updatedTQPs_.size(),
+                      strFormat("Provided offset index %d not inside size "
+                                "of updatedTQPs_ %lu",
+                                idx, updatedTQPs_.size()));
+
+    auto it = originNameToTQPMap.find(nameOffsetPair.first);
+    RETURN_ERR_IF_NOT(it != originNameToTQPMap.end(),
+                      strFormat("Did not find matching TQP for %s",
+                                nameOffsetPair.first.str().data()));
+    updatedTQPs_[idx] = it->second;
+  }
+  return Error::success();
+}
+
 ONNXModelLoader::ONNXModelLoader(
     const std::string &modelDescFilename,
     llvm::ArrayRef<const char *> tensorNames, llvm::ArrayRef<TypeRef> types,
@@ -4935,8 +5061,12 @@ ONNXModelLoader::ONNXModelLoader(
     llvm::StringRef funName, PrePartitionedConfig *PPC,
     bool loadInputsAsPlaceholdersForOnnx, Error *errPtr, bool constFoldInLoader,
     BackendSpecificNodeInfo *perNodeOpts,
-    std::map<std::string, Type> *staticPlaceholderTypes)
-    : CommonOperatorLoader({}, {}, mod, errPtr, true),
+    std::map<std::string, Type> *staticPlaceholderTypes, bool replaceDummyTQPs)
+    : CommonOperatorLoader({}, {}, mod, errPtr,
+                           /* loadIntoExistingModule */ true,
+                           /* originNameToTQPMap */ nullptr,
+                           /* loadUniquedDummyQParams */ false,
+                           replaceDummyTQPs),
       perNodeOpts_(perNodeOpts),
       staticPlaceholderTypes_(staticPlaceholderTypes) {
   // if errPtr already contains an error then don't continue with constructor
@@ -4952,6 +5082,13 @@ ONNXModelLoader::ONNXModelLoader(
   auto setup = [&]() -> Error {
     ONNX_NAMESPACE::ModelProto modelDef;
     ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(model, modelSize));
+
+    // If we're going to be replacing dummy TQPs then setup the updated TQP map,
+    // which is used later on when loading each op.
+    if (replaceDummyTQPs_) {
+      RETURN_IF_ERR(
+          setupUpdatedTQPMap(modelDef, weightsCount, weightDescriptors));
+    }
 
     RETURN_IF_ERR(loadWeights(weightsCount, weightDescriptors));
 

@@ -588,6 +588,19 @@ static void addAttrToDocString(T *proto, const std::string &attrName,
 
 } // namespace
 
+Error ONNXModelWriter::insertLoaderNameUniqueOffsetMetadata(
+    llvm::StringMap<std::string> &extraMetadataProps,
+    const OriginNameToTQPMap &map) {
+  RETURN_ERR_IF_NOT(!extraMetadataProps.count("OriginNameToTQPMap"),
+                    "Already had OriginNameToTQPMap");
+  std::string str;
+  for (const auto &nameTQP : map) {
+    str += nameTQP.first + ":" + std::to_string(nameTQP.second.offset) + ";";
+  }
+  extraMetadataProps.try_emplace(originNameToUniqueOffsetMappingSignifier, str);
+  return Error::success();
+}
+
 bool ONNXModelWriter::isIntermediatePHForDAG(const Placeholder *PH) {
   if (!dagMode_) {
     return false;

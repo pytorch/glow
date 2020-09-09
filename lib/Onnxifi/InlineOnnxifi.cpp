@@ -52,10 +52,11 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   // Note: Pass in a nullptr for PPC here because we do not currently support
   // pre-partitioned models here.
   std::unique_ptr<ONNXIFIModelLoader> loader;
+  PlaceholderBindings dummyBindings;
+  CompilationContext cctx{&dummyBindings, &loweredMap_};
   auto loaderOrErr = ONNXIFIModelLoader::parse(
       onnxModel, onnxModelSize, weightCount, weightDescriptors, mod, "function",
-      /* PPC */ nullptr, /* BSNI */ nullptr,
-      /* staticPlaceholderTypes */ nullptr,
+      cctx, /* staticPlaceholderTypes */ nullptr,
       true /*loadInputsAsPlaceholdersForOnnx*/, backendPtr_->getUseOnnx());
   if (loaderOrErr) {
     loader = std::move(*loaderOrErr);
@@ -77,8 +78,6 @@ InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   computeModelHash(onnxModel, onnxModelSize, modelHash_);
   optimize(function_, CompilationMode::Infer);
 
-  PlaceholderBindings dummyBindings;
-  CompilationContext cctx{&dummyBindings, &loweredMap_};
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
   precConfig.quantMode = quantizationMode_;
 

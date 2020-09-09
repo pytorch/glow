@@ -371,6 +371,8 @@ constexpr char saveNameSignifier[] = "saveName";
 constexpr char qScaleSignifier[] = "qScale";
 constexpr char qOffsetSignifier[] = "qOffset";
 constexpr char shapeSignifier[] = "shape";
+constexpr char originNameToUniqueOffsetMappingSignifier[] =
+    "originNameToUniqueOffsetMapping";
 constexpr char constFoldSubgraphNodeName[] = "Glow__ConstFoldSubgraph";
 constexpr char staticPHDummyNodeName[] = "Glow__StaticPHDummyNode";
 
