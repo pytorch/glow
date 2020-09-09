@@ -348,6 +348,9 @@ private:
   // \returns error on failure.
   Error loadEmbeddingBag(const torch::jit::Node *ptNode);
 
+  /// Load a _caffe2::BatchPermutation node.
+  Error loadBatchPermutation(const torch::jit::Node *ptNode);
+
   // Load a PyTorch fb::embedding_bag_byte_rowwise_offsets node.
   // \returns error on failure.
   Error loadEmbeddingBagByteRowwiseOffsets(const torch::jit::Node *ptNode);
