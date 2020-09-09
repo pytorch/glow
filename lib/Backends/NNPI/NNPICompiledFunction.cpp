@@ -308,6 +308,10 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
     optConf.constantFolding = 1;
   }
 
+  config_.forceWeightsOutOfLLC = compilationOptions_.forceWeightsOutOfLLC;
+  config_.disableSlsAllLenOneCalcAtRunTime =
+      compilationOptions_.disableSlsAllLenOneCalcAtRunTime;
+
   DBG_MEM_USAGE("NNPICompiledFunction call optimize <<");
   LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(nnpiNetworkOptimize(network_, &optConf),
                                      "Failed NNPI API Optimize");
@@ -348,8 +352,6 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   }
 
   if (compilationOptions_.useIceT || compilationOptions_.inferOnDevice) {
-    static std::mutex compileMutex;
-    std::lock_guard<std::mutex> guard(compileMutex);
     if (compilationFileName_.empty()) // Compile to memory.
     {
       NNPIStream outFileStream;

@@ -297,6 +297,15 @@ public:
       disableSLSOffloadToIA, bool, "DisableSLSOffloadToIA",
       "Disable SLS offloading to IA (SLS will execute on ICE where possible).",
       "NNPI_DISABLE_SLS_OFFLOAD", "1");
+  /// Do not allow weights on LLC.
+  DECLARE_NNPI_OPTION(forceWeightsOutOfLLC, bool, "forceWeightsOutOfLLC",
+                      "Do not allow weights on LLC.", "NNPI_WEIGHTS_OFF_LLC",
+                      "0");
+  /// Disable Calculation of all one len at runtime.
+  DECLARE_NNPI_OPTION(disableSlsAllLenOneCalcAtRunTime, bool,
+                      "disableSlsAllLenOneCalcAtRunTime",
+                      "Disable Calculation of all one len at runtime.",
+                      "NNPI_DISABLE_SLS_ALL_ONE_RUNTIME_CALC", "0");
   /// Enable lightweight compilation.
   DECLARE_NNPI_OPTION(lightCompilation, bool, "LightCompilation",
                       "Enable light compilation (only for gathering metadata).",
@@ -337,6 +346,8 @@ public:
     INIT_NNPI_OPTIONS(ddrBandwidth, parameters);
     INIT_NNPI_OPTIONS(disableSLSOffloadToIA, parameters);
     INIT_NNPI_OPTIONS(lightCompilation, parameters);
+    INIT_NNPI_OPTIONS(forceWeightsOutOfLLC, parameters);
+    INIT_NNPI_OPTIONS(disableSlsAllLenOneCalcAtRunTime, parameters);
     INIT_NNPI_OPTIONS(dumpDotFiles, parameters);
     INIT_NNPI_OPTIONS(dumpCompilationInfo, parameters);
   }
