@@ -5017,7 +5017,14 @@ PyTorchModelLoader::PyTorchModelLoader(
           } else {
             elemKind = ElemKind::Int8QTy;
           }
-          glow::Type t(elemKind, inputMeta[i].dims);
+
+          // TODO: Change Glow Type to use sdim_t to be consistent
+          // with other places.
+          std::vector<glow::dim_t> dims;
+          for (auto d : inputMeta[i].dims) {
+            dims.push_back(static_cast<glow::dim_t>(d));
+          }
+          glow::Type t(elemKind, dims);
 
           ph = F_.getParent()->createPlaceholder(&t, "input",
                                                  /*isTrainable*/ false);

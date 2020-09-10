@@ -171,6 +171,9 @@ public:
   /// embedding-bag-like operators. This is default to true since it is
   /// currently a requirement if we want to support partial inputs
   bool setIncludeLastOffsets = true;
+
+  /// infer shape for entire model and run AOT compilation
+  bool inferShapeForCompilation = false;
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
@@ -222,12 +225,16 @@ at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
 
 /// Load the \p InputMeta data contains Glow fusion node's input size and type
 /// info from \p raw_data stored in string format.
-std::shared_ptr<std::vector<glow::InputMeta>>
-loadInputMeta(const std::string &raw_data);
+std::vector<glow::InputMeta> loadInputMeta(const std::string &raw_data);
 
 /// Lower a pytorch \p module to glow before execution. \p inputMetaStr is the
 /// raw string containing the meta data of the glow fuser node input.
 void glowAOTFusion(torch::jit::Module &module, const std::string &inputMetaStr);
+
+/// Lower a pytorch \p module to glow before execution. \p inputMeta is a
+/// vector containing the meta data of the model inputs.
+void glowAOTFusionWithShapeInference(torch::jit::Module &module,
+                                     const std::vector<glow::InputMeta> &);
 
 /// Enable overriding signal handlers while exeucting torch_glow code. This
 /// should only be used in Python to enable easier debugging and not in
