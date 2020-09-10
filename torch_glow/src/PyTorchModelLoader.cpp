@@ -935,6 +935,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::to"}, &PyTorchModelLoader::loadTo},
       {{"prim::ConstantChunk"}, &PyTorchModelLoader::loadConstantChunk},
       {{"aten::embedding_bag"}, &PyTorchModelLoader::loadEmbeddingBag},
+      {{"_caffe2::BatchPermutation"},
+       &PyTorchModelLoader::loadBatchPermutation},
       {{"quantized::embedding_bag_byte_rowwise_offsets"},
        &PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets},
       {{"quantized::embedding_bag_4bit_rowwise_offsets"},
@@ -4400,6 +4402,19 @@ Error PyTorchModelLoader::loadUnsqueeze(const torch::jit::Node *ptNode) {
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[UnsqueezeInputs::input]));
   return addValueMapping(outputs[0], res, dtype);
+}
+
+Error PyTorchModelLoader::loadBatchPermutation(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  glow::NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(indices, getGlowNodeValueForValue(inputs[1]));
+  auto res = F_.createGather("BatchPermutation", input, indices)->getResult();
+  return addValueMapping(outputs[0], res);
 }
 
 Error PyTorchModelLoader::loadTopK(const torch::jit::Node *ptNode) {
