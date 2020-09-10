@@ -105,7 +105,13 @@ bool aliasChecks(torch::jit::Node *consumer, torch::jit::Node *producer,
   if (aliasDb.isMutable(consumer) && aliasDb.isMutable(producer)) {
     return true;
   }
-  if (aliasDb.isMutable(consumer) && aliasDb.hasInputWriters(producer)) {
+
+  // TODO: delete this once this is fixed by
+  // https://github.com/pytorch/pytorch/issues/43409
+  bool isC2Op = consumer->kind().is_caffe2();
+
+  if (!isC2Op &&
+      (aliasDb.isMutable(consumer) && aliasDb.hasInputWriters(producer))) {
     return false;
   }
   if (aliasDb.isMutable(producer) && aliasDb.hasOutputWriters(consumer)) {
