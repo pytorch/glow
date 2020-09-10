@@ -15,8 +15,9 @@
 namespace glow {
 
 ShapeInferenceEngine::ShapeInferenceEngine(
-    const torch::jit::Graph &graph, const at::ArrayRef<at::IValue> &inputs)
-    : graph_(graph), inputs_(inputs){};
+    const torch::jit::Graph &graph, const at::ArrayRef<at::IValue> &inputs,
+    const std::string &fusionNodeSymbol)
+    : graph_(graph), inputs_(inputs), fusionNodeSymbol_(fusionNodeSymbol){};
 
 void ShapeInferenceEngine::getNodeInputShape(const torch::jit::Node *node,
                                              MetaStack &inputMetas) {
@@ -181,19 +182,53 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
   return Error::success();
 }
 
-Error ShapeInferenceEngine::run() {
+Error ShapeInferenceEngine::runRecursively(
+    const torch::jit::Graph &graph,
+    const at::ArrayRef<torch::jit::IValue> &inputs) {
+  // Populate input shapes
+  RETURN_IF_ERR(getGraphIntputShape(graph, inputs));
 
+  /// Run shape inference for each node
+  for (auto *node : graph.nodes()) {
+    if (node->hasAttribute(torch::jit::attr::Subgraph)) {
+      std::string kind = node->kind().toQualString();
+      CHECK_EQ(kind.find(fusionNodeSymbol_), 0);
+      // After fusion the input Value of the subgraph and
+      // input Value of the fusion node are different
+      // in memory objects. Therefore we populate inputMeta
+      // beforehand and pass it to recursive run.
+      std::vector<torch::jit::IValue> subgraphInputs;
+      for (auto i : node->inputs()) {
+        auto it = shapeMap_.find(i);
+        CHECK(it != shapeMap_.end());
+        subgraphInputs.push_back(torch::empty(
+            it->second.shape, torch::TensorOptions().dtype(it->second.dtype)));
+      }
+
+      const at::ArrayRef<torch::jit::IValue> inputRefs(subgraphInputs);
+
+      auto subgraph = node->g(torch::jit::attr::Subgraph);
+      RETURN_IF_ERR(runRecursively(*subgraph, subgraphInputs));
+
+      CHECK_EQ(subgraph->outputs().size(), node->outputs().size());
+      for (int i = 0; i < subgraph->outputs().size(); ++i) {
+        shapeMap_[node->outputs()[i]] = shapeMap_[subgraph->outputs()[i]];
+      }
+    } else {
+      RETURN_IF_ERR(shapeOnNode(node));
+    }
+  }
+  return Error::success();
+}
+
+Error ShapeInferenceEngine::run() {
   RETURN_ERR_IF_NOT(
       inputs_.size() == graph_.inputs().size(),
       "Number of inputs mismatch between Graph and actual inputs");
 
   /// Put graph input into shape mapping
-  RETURN_IF_ERR(getGraphIntputShape());
 
-  /// Run shape inference for each node
-  for (auto *node : graph_.nodes()) {
-    RETURN_IF_ERR(shapeOnNode(node));
-  }
+  RETURN_IF_ERR(runRecursively(graph_, inputs_));
 
   /// Extract output from shape mapping
   generateGraphOutputShape();
@@ -215,13 +250,15 @@ void ShapeInferenceEngine::printShapeMap() {
 /// Else if the input is intlist, store the intlist, and set shape as [sizeof
 /// intlist, 1]
 /// Else return an error
-Error ShapeInferenceEngine::getGraphIntputShape() {
-  for (auto i = 0; i < inputs_.size(); i++) {
-    auto gInName = graph_.inputs()[i];
+Error ShapeInferenceEngine::getGraphIntputShape(
+    const torch::jit::Graph &graph,
+    const at::ArrayRef<torch::jit::IValue> &inputs) {
+  for (auto i = 0; i < inputs.size(); i++) {
+    auto gInName = graph.inputs()[i];
     shapeMap_[gInName].shape = {};
     shapeMap_[gInName].intValue = {};
 
-    auto input = inputs_[i];
+    auto input = inputs[i];
     if (input.isTensor()) {
       auto ptTensor = input.toTensor();
       for (auto s : ptTensor.sizes()) {
