@@ -86,7 +86,7 @@ static std::vector<glow::InputMeta>
 getInputMetas(const GlowCompileSpec &method_spec) {
   std::vector<glow::InputMeta> inputMeta;
   for (const auto &in : method_spec.inputs()) {
-    std::vector<glow::dim_t> dims;
+    std::vector<glow::sdim_t> dims;
     for (auto d : in.dims()) {
       dims.emplace_back(static_cast<size_t>(d));
     }

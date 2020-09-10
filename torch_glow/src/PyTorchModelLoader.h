@@ -84,9 +84,13 @@ public:
 // Input's shape and type
 struct InputMeta {
   c10::ScalarType type;
-  std::vector<glow::dim_t> dims;
+  std::vector<glow::sdim_t> dims;
 
-  InputMeta(c10::ScalarType type_, std::vector<glow::dim_t> &&dims_) {
+  InputMeta(c10::ScalarType type_, std::vector<glow::sdim_t> &&dims_) {
+    type = type_;
+    dims = dims_;
+  }
+  InputMeta(c10::ScalarType type_, const std::vector<glow::sdim_t> &dims_) {
     type = type_;
     dims = dims_;
   }

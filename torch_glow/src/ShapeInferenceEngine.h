@@ -34,6 +34,8 @@ struct VariableMeta {
   std::vector<int64_t> shape;
   /// Store Int and IntList value
   std::vector<int64_t> intValue;
+  /// Data type
+  c10::ScalarType dtype = c10::ScalarType::Float;
 };
 
 using MetaStack = std::vector<VariableMeta>;
@@ -41,7 +43,8 @@ using MetaStack = std::vector<VariableMeta>;
 class ShapeInferenceEngine {
 public:
   ShapeInferenceEngine(const torch::jit::Graph &graph,
-                       const at::ArrayRef<torch::jit::IValue> &inputs);
+                       const at::ArrayRef<torch::jit::IValue> &inputs,
+                       const std::string &fusionNodeSymbol = "ShapeInf");
 
   /// Get all VariableMeta for outputs of the given graph.
   const std::vector<std::vector<int64_t>> &getGraphOutputShape();
@@ -62,6 +65,9 @@ private:
   /// Actual inputs of the given \p graph.
   const at::ArrayRef<torch::jit::IValue> &inputs_;
 
+  /// Glow fusion node symbol.
+  const std::string fusionNodeSymbol_;
+
   /// This is a mapping which uses torch::jit::Value as a key, VariableMeta as a
   /// value. It is used for tracking the shape for tensors and values for
   /// integers in a graph.
@@ -74,12 +80,17 @@ private:
   /// In Glow, \p hasEndOffset_ always true
   static bool const hasEndOffset_ = true;
 
+  /// Run shape inference recursively
+  Error runRecursively(const torch::jit::Graph &,
+                       const at::ArrayRef<torch::jit::IValue> &);
+
   /// Print shapeMap_ as format:
   /// %5: [2 4]
   void printShapeMap();
 
   /// Put shape info of actual graph inputs into \p shapeMap_.
-  Error getGraphIntputShape();
+  Error getGraphIntputShape(const torch::jit::Graph &,
+                            const at::ArrayRef<torch::jit::IValue> &);
 
   /// Extract shape info of graph outputs from \p shapeMap_.
   void generateGraphOutputShape();
