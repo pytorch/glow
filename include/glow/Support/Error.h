@@ -17,6 +17,7 @@
 #define GLOW_SUPPORT_ERROR_H
 
 #include <cassert>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <type_traits>
@@ -372,6 +373,7 @@ StreamT &operator<<(StreamT &os, const GlowErrorValue &errorValue) {
 /// contained Error ensures that it is checked before being destroyed.
 class GlowError : protected detail::CheckState<detail::enableCheckingErrors> {
   template <typename T> friend class GlowExpected;
+  template <typename T> friend class std::promise;
   friend std::unique_ptr<GlowErrorValue> detail::takeErrorValue(GlowError);
 
   /// Pointer to ErrorValue managed by this Error. Can be null if no error
@@ -411,10 +413,11 @@ class GlowError : protected detail::CheckState<detail::enableCheckingErrors> {
     return std::move(errorValue_);
   }
 
-public:
+protected:
   /// Construct a new empty Error.
   explicit GlowError() { setErrorValue(nullptr, /*skipCheck*/ true); }
 
+public:
   /// Construct an Error from an ErrorValue \p errorValue.
   GlowError(std::unique_ptr<GlowErrorValue> errorValue) {
     assert(errorValue &&
