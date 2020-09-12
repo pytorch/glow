@@ -5495,6 +5495,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                     SigmoidNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::SoftMaxNodeKind: {
+        splitDims[SoftMaxNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, SoftMaxNode::InputIdx,
+                    SoftMaxNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::TanhNodeKind: {
         splitDims[TanhNode::InputIdx] = 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
@@ -5513,7 +5521,10 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
       }
       case Kinded::Kind::TransposeNodeKind: {
         splitDims[TransposeNode::InputIdx] = 0;
-        unsigned_t resultDim = cast<TransposeNode>(curNode)->getShuffle()[0];
+        auto shuffleVec = cast<TransposeNode>(curNode)->getShuffle();
+        unsigned_t resultDim =
+            std::find(shuffleVec.begin(), shuffleVec.end(), 0) -
+            shuffleVec.begin();
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, TransposeNode::InputIdx,
@@ -5526,6 +5537,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           ReluNode::InputIdx,
                                           ReluNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::GeluNodeKind: {
+        splitDims[GeluNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          GeluNode::InputIdx,
+                                          GeluNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::ClipNodeKind: {
@@ -5622,6 +5641,15 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                     modelParallelSplitAlignment));
         break;
       }
+      case Kinded::Kind::MatMulNodeKind: {
+        splitDims[MatMulNode::RHSIdx] = 1;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, MatMulNode::RHSIdx,
+                    MatMulNode::ResultIdx, splitDims, /*resultDim*/ 1,
+                    modelParallelSplitAlignment));
+        break;
+      }
       case Kinded::Kind::ReluNodeKind: {
         if (curNode->getNthInput(ReluNode::InputIdx).dims().size() < 2) {
           break;
@@ -5634,16 +5662,30 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                     /*resultDim*/ 1, modelParallelSplitAlignment));
         break;
       }
+      case Kinded::Kind::GeluNodeKind: {
+        // split across the largest dim other than batch dim
+        auto *GL = llvm::cast<GeluNode>(curNode);
+        size_t NIdx = getMaxDimOtherThanBatch(GL->getInput().dims());
+        splitDims[GeluNode::InputIdx] = NIdx;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, GeluNode::InputIdx,
+                    GeluNode::ResultIdx, splitDims, /*resultDim*/ NIdx,
+                    modelParallelSplitAlignment));
+        break;
+      }
       case Kinded::Kind::ClipNodeKind: {
-        if (curNode->getNthInput(ClipNode::InputIdx).dims().size() < 2) {
+        auto *CL = llvm::cast<ClipNode>(curNode);
+        if (CL->getNthInput(ClipNode::InputIdx).dims().size() < 2) {
           break;
         }
-        splitDims[ClipNode::InputIdx] = 1;
+        size_t NIdx = getMaxDimOtherThanBatch(CL->getInput().dims());
+        splitDims[ClipNode::InputIdx] = NIdx;
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, ClipNode::InputIdx,
                     ClipNode::ResultIdx, splitDims,
-                    /*resultDim*/ 1, modelParallelSplitAlignment));
+                    /*resultDim*/ NIdx, modelParallelSplitAlignment));
         break;
       }
       case Kinded::Kind::TileNodeKind: {

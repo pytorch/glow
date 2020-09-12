@@ -39,6 +39,7 @@ extern bool GlowSaveOnnxifiModel;
 extern bool GlowSaveOnnxifiDAG;
 extern bool GlowSaveOnnxifiIO;
 extern bool GlowDelayAndRecordConstantModification;
+extern bool GlowUseTrackedDummyQuantParams;
 extern bool GlowEnablePartialTensors;
 extern bool GlowUseCustomOpsForExport;
 extern bool GlowUseSparseNNPartitioningScheme;
@@ -89,6 +90,7 @@ extern std::string GlowAvailableDevices;
 } // namespace runtime
 
 extern bool GlowDumpCompilationLog;
+extern bool GlowDumpBackendSpecificIRJSON;
 extern bool GlowLogPartition;
 extern bool GlowDumpPartition;
 } // namespace glow
@@ -287,6 +289,15 @@ DEFINE_validator(glow_delay_and_record_constant_modification,
                  [](const char *flagname, bool value) {
                    glow::onnxifi::GlowDelayAndRecordConstantModification =
                        value;
+                   return true;
+                 });
+
+DEFINE_bool(glow_use_tracked_dummy_quant_params, false,
+            "Whether to use uniqued dummy quant params when loading the model, "
+            "which are then mapped to loaded names for serialization.");
+DEFINE_validator(glow_use_tracked_dummy_quant_params,
+                 [](const char *flagname, bool value) {
+                   glow::onnxifi::GlowUseTrackedDummyQuantParams = value;
                    return true;
                  });
 
@@ -575,5 +586,13 @@ DEFINE_bool(glow_dump_compilation_log, false,
 DEFINE_validator(glow_dump_compilation_log,
                  [](const char * /*unused*/, bool value) {
                    glow::GlowDumpCompilationLog = value;
+                   return true;
+                 });
+
+DEFINE_bool(glow_dump_backend_specific_ir_json, false,
+            "Dump the backend-specific IR JSON file");
+DEFINE_validator(glow_dump_backend_specific_ir_json,
+                 [](const char * /*unused*/, bool value) {
+                   glow::GlowDumpBackendSpecificIRJSON = value;
                    return true;
                  });

@@ -16,12 +16,13 @@
 
 #include "CachingGraphRunner.h"
 
+#include <mutex>
+
 #include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Support/Support.h"
 
-#include <mutex>
+#include <c10/util/hash.h>
 #include <torch/csrc/jit/runtime/argument_spec.h>
-#include <torch/csrc/utils/hash.h>
 
 #include "ShapeInferenceEngine.h"
 

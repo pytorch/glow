@@ -209,6 +209,7 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
       }
       currentPartition.insert(N);
       mapping.add(N, newF);
+      graphMem.contextCount = contextCount_;
       mapping.setGraphMemInfo(newF, graphMem);
     }
   }
@@ -874,7 +875,7 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig,
 
   // Validate memory usage.
   for (size_t i = 0; i < partitionConfig.numOfPartitions; i++) {
-    GraphMemInfo cost = getGraphMemInfo(nodesSets[i]);
+    GraphMemInfo cost = getGraphMemInfo(nodesSets[i], contextCount_);
     partitionMap.setGraphMemInfo(funcList[i], cost);
   }
   RETURN_IF_ERR(memoryUsageValidation(partitionMap, backendMap_));

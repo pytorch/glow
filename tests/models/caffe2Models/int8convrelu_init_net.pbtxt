@@ -15,11 +15,11 @@ op {
   }
   arg {
     name: "Y_scale"
-    f: 1
+    f: 2
   }
   arg {
     name: "Y_zero_point"
-    i: 0
+    i: 10
   }
 }
 op {
@@ -35,11 +35,10 @@ op {
   }
   arg {
     name: "Y_scale"
-    f: 1
+    f: 10
   }
   arg {
     name: "Y_zero_point"
-    i: 0
+    i: 4
   }
 }
-

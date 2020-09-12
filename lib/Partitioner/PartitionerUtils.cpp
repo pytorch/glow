@@ -472,8 +472,9 @@ GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSet &currNodes,
   return ret;
 }
 
-GraphMemInfo getGraphMemInfo(const NodesSet &nodes) {
+GraphMemInfo getGraphMemInfo(const NodesSet &nodes, unsigned contextCount) {
   GraphMemInfo ret;
+  ret.contextCount = contextCount;
   NodesSet nodeSet;
   for (NodesSet::iterator it = nodes.begin(); it != nodes.end(); ++it) {
     Node *cur = *it;

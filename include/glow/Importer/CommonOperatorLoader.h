@@ -144,17 +144,33 @@ class CommonOperatorLoader : public ProtobufLoader {
       scale = in.scales[0];
       offset = in.biases[0];
     } else {
+      RETURN_ERR_IF_NOT(!loadUniquedDummyQParams_,
+                        strFormat("Unsupported loading of uniqued qparams for "
+                                  "vector of scales/biases for %s",
+                                  in.name));
       Type scalesTy(ElemKind::FloatTy, llvm::makeArrayRef({qparams}));
       Type offsetsTy(ElemKind::Int32ITy, llvm::makeArrayRef({qparams}));
       result.scales = glow::make_unique<Tensor>((void *)in.scales, &scalesTy);
       result.offsets = glow::make_unique<Tensor>((void *)in.biases, &offsetsTy);
     }
 
+    // If we have a scale of 0.f, then this must be a dummy pair of
+    // scale/offset. Look up the actual scale/offset to use as previously
+    // loaded, using the offset as the key to updatedTQPs_.
+    if (replaceDummyTQPs_ && scale == 0.f) {
+      TensorQuantizationParams TQP;
+      ASSIGN_VALUE_OR_RETURN_ERR(TQP, getUpdatedTQP(offset));
+      scale = TQP.scale;
+      offset = TQP.offset;
+    }
+
     if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
+      TypeRef outTy;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          outTy, loadQuantTy(in.name, ElemKind::Int8QTy, dims, scale, offset));
       // Must copy the weights here because we will need to modify them by
       // adjusting for UINT8_TO_INT8_SHIFT.
-      result.type =
-          Type(ElemKind::Int8QTy, dims, scale, offset - UINT8_TO_INT8_SHIFT);
+      result.type = *outTy;
       if (!in.isOffline) {
         result.t->reset(result.type);
 
@@ -165,12 +181,19 @@ class CommonOperatorLoader : public ProtobufLoader {
         }
       }
     } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
-      result.type = Type(ElemKind::Int32QTy, dims, scale, offset);
+      TypeRef outTy;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          outTy, loadQuantTy(in.name, ElemKind::Int32QTy, dims, scale, offset));
+      result.type = *outTy;
       if (!in.isOffline) {
         *result.t = Tensor((void *)in.buffer, &result.type);
       }
     } else if (in.dataType == ONNXIFI_DATATYPE_INT8) {
-      result.type = Type(ElemKind::Int8QTy, dims, scale, offset);
+      TypeRef outTy;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          outTy, loadQuantTy(in.name, ElemKind::Int8QTy, dims, scale, offset,
+                             /* shiftUInt8ToInt8 */ false));
+      result.type = *outTy;
       if (!in.isOffline) {
         *result.t = Tensor((void *)in.buffer, &result.type);
       }
@@ -202,12 +225,26 @@ class CommonOperatorLoader : public ProtobufLoader {
 
 protected:
   CommonOperatorLoader(llvm::ArrayRef<const char *> names,
-                       llvm::ArrayRef<TypeRef> types, Function *F)
-      : ProtobufLoader(names, types, F) {}
+                       llvm::ArrayRef<TypeRef> types, Function *F,
+                       Error *errPtr = nullptr,
+                       bool loadIntoExistingModule = false,
+                       OriginNameToTQPMap *originNameToTQPMap = nullptr,
+                       bool loadUniquedDummyQParams = false)
+      : ProtobufLoader(names, types, F, errPtr, loadIntoExistingModule),
+        originNameToTQPMap_(originNameToTQPMap),
+        loadUniquedDummyQParams_(loadUniquedDummyQParams) {}
 
   CommonOperatorLoader(llvm::ArrayRef<const char *> names,
-                       llvm::ArrayRef<TypeRef> types, Module &mod)
-      : ProtobufLoader(names, types, mod) {}
+                       llvm::ArrayRef<TypeRef> types, Module &mod,
+                       Error *errPtr = nullptr,
+                       bool loadIntoExistingModule = false,
+                       OriginNameToTQPMap *originNameToTQPMap = nullptr,
+                       bool loadUniquedDummyQParams = false,
+                       bool replaceDummyTQPs = false)
+      : ProtobufLoader(names, types, mod, errPtr, loadIntoExistingModule),
+        originNameToTQPMap_(originNameToTQPMap),
+        loadUniquedDummyQParams_(loadUniquedDummyQParams),
+        replaceDummyTQPs_(replaceDummyTQPs) {}
 
   using ArgumentDictionaryTy =
       std::unordered_map<std::string, const AttrType *>;
@@ -250,6 +287,80 @@ protected:
       nodeValueByName_[op.output(i)] = NodeValue(node, i);
     }
     return Error::success();
+  }
+
+  /// \returns the TQP located at \p uniqueOffsetIdx in \ref updatedTQPs_.
+  Expected<TensorQuantizationParams> getUpdatedTQP(int32_t uniqueOffsetIdx) {
+    RETURN_ERR_IF_NOT(replaceDummyTQPs_, "replaceDummyTQPs_ was not enabled");
+    RETURN_ERR_IF_NOT(
+        uniqueOffsetIdx < updatedTQPs_.size(),
+        strFormat("Unexpected size of updated TQPs %lu vs. dummy offset %d",
+                  updatedTQPs_.size(), uniqueOffsetIdx));
+    return updatedTQPs_[uniqueOffsetIdx];
+  }
+
+  /// Helper to load quantization parameters from \p dict for op named \p name.
+  /// \returns a new TypeRef given \p k and \p dims.
+  Expected<TypeRef> loadQuantTy(const std::string &name, ElemKind k,
+                                llvm::ArrayRef<dim_t> dims,
+                                ArgumentDictionaryTy &dict) {
+    RETURN_ERR_IF_NOT(dict.count("Y_scale"),
+                      "missing Y_scale for quantized output type for " + name);
+    RETURN_ERR_IF_NOT(dict.count("Y_zero_point"),
+                      "missing zero point for quantized output type for " +
+                          name);
+
+    float scale;
+    ASSIGN_VALUE_OR_RETURN_ERR(scale, loadFloat(dict["Y_scale"]));
+    int32_t offset;
+    ASSIGN_VALUE_OR_RETURN_ERR(offset, loadInt(dict["Y_zero_point"]));
+
+    return loadQuantTy(name, k, dims, scale, offset);
+  }
+
+  Expected<TypeRef> loadQuantTy(const std::string &name, ElemKind k,
+                                llvm::ArrayRef<dim_t> dims, float scale,
+                                int32_t offset, bool shiftUInt8ToInt8 = true) {
+    if (k == ElemKind::Int8QTy && shiftUInt8ToInt8) {
+      offset -= UINT8_TO_INT8_SHIFT;
+    }
+
+    // If we don't have a map to track dummy unique offsets to loader names,
+    // then just load as normal with the actual scale/offset we loaded.
+    if (!loadUniquedDummyQParams_) {
+      if (originNameToTQPMap_) {
+        bool inserted =
+            originNameToTQPMap_
+                ->emplace(name, TensorQuantizationParams{scale, offset})
+                .second;
+        RETURN_ERR_IF_NOT(inserted, "Already inserted TQP for " + name);
+      }
+      return mod_.uniqueType(k, dims, scale, offset);
+    }
+
+    RETURN_ERR_IF_NOT(originNameToTQPMap_,
+                      "Must have valid originNameToTQPMap_ when loading "
+                      "uniqued dummy qparams.");
+
+    // We use 0.f scale to represent a dummy scale/offset pair. Make sure the
+    // original model did not have 0.f scale.
+    RETURN_ERR_IF_NOT(scale != 0.f, "Found scale of 0 for " + name);
+
+    // For uniqued scale/offset, ignore the actual loaded values. Instead use
+    // scale 0.f to signal these quant params are dummies, and then a uniqued
+    // incremented offset to represent this unique quant param pair. Save the
+    // name of the C2 edge that we loaded to use these quant params in the cctx
+    // so we can ue it in the future. The index the name is at represents which
+    // unique index it is mapped to.
+    RETURN_ERR_IF_NOT(originNameToTQPMap_->size() == currUniqueOffset_,
+                      "Unexpected size encountered for qparam origin tracking");
+    const int32_t thisUniqueOffset = currUniqueOffset_++;
+    bool inserted =
+        originNameToTQPMap_
+            ->emplace(name, TensorQuantizationParams{0.f, thisUniqueOffset})
+            .second;
+    RETURN_ERR_IF_NOT(inserted, "Already inserted TQP for " + name);
+    return mod_.uniqueType(k, dims, 0.f, thisUniqueOffset);
   }
 
   /// Loads RELU operator, given its protobuf representation and parsed args.
@@ -387,8 +498,9 @@ protected:
     RETURN_ERR_IF_NOT(in.dims().size() >= 2, "SoftMax input dims must be >= 2");
 
     // Create a constant to store labels to be used in SoftMaxGradNode.
-    auto selected =
-        mod_.createConstant(ElemKind::Int64ITy, {in.dims()[0], 1}, "selected");
+    auto *selected = G_->createSplat(
+        opName + ".selected",
+        mod_.uniqueType(ElemKind::Int64ITy, {in.dims()[0], 1}), 0.f);
 
     // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
     // softmax function. This is similar to a bitcast operation.
@@ -1200,8 +1312,6 @@ protected:
     return Error::success();
   }
 
-  using ProtobufLoader::ProtobufLoader;
-
   /// If operator type is supported, returns Expected<true> and creates new
   /// operator. Returns Operator<false> if operator type is not supported.
   /// Returns Error if an error occurred
@@ -1495,7 +1605,8 @@ protected:
     }
 
     RETURN_ERR_IF_NOT(S->getElementType() == ElemKind::UInt8QTy,
-                      "Data must be UInt8QTy.");
+                      "Data must be UInt8QTy, but was " +
+                          Type::getElementName(S->getElementType()).str());
     S->setType(Storage::OutputIdx, fusedTy);
     // If the node is a Constant set the payload type as well.
     if (auto *C = llvm::dyn_cast<Constant>(S)) {
@@ -1504,6 +1615,26 @@ protected:
 
     return Error::success();
   }
+
+  /// Uniqued offset value used when saving the mapping from quant params to
+  /// loader names.
+  int32_t currUniqueOffset_{0};
+
+  /// An optional mapping from the names of ops and inputs that are quantized to
+  /// the TQP that it came with.
+  OriginNameToTQPMap *originNameToTQPMap_{nullptr};
+
+  /// Whether to load uniqued dummy quantization params instead of the actual
+  /// quantization params in the model. \ref originNameToTQPMap_ must be
+  /// non-null when this is true.
+  bool loadUniquedDummyQParams_{false};
+
+  /// New TQP to use, indexed by the unique dummy offset it is mapped to.
+  std::vector<TensorQuantizationParams> updatedTQPs_;
+
+  /// Whether to try to replace dummy TQPs found during loading with real
+  /// updated ones in \ref updatedTQPs_.
+  bool replaceDummyTQPs_{false};
 };
 
 } // namespace glow

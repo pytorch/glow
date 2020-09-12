@@ -1658,6 +1658,7 @@ ARITHMETIC_FUN_DEF(Add);
 ARITHMETIC_FUN_DEF(Mul);
 ARITHMETIC_FUN_DEF(Sub);
 ARITHMETIC_FUN_DEF(Div);
+ARITHMETIC_FUN_DEF(FloorDiv);
 ARITHMETIC_FUN_DEF(Max);
 ARITHMETIC_FUN_DEF(Min);
 ARITHMETIC_FUN_DEF(Pow);
@@ -2419,6 +2420,19 @@ ArgMinNode *Function::createArgMin(llvm::StringRef name, NodeValue input,
   ShapeVector outDims = reduceDims(input.dims(), {axis}, keepDims);
   auto OT = getParent()->uniqueType(elemTy, outDims);
   return addNode(new ArgMinNode(name, OT, input, axis, keepDims));
+}
+
+VectorNormNode *Function::createVectorNorm(llvm::StringRef name,
+                                           NodeValue input, unsigned_t axis,
+                                           unsigned_t p) {
+  auto outDims = getNewShapeWithoutAxes(input.dims(), axis);
+  auto outTy = getParent()->uniqueTypeWithNewShape(input.getType(), outDims);
+  const size_t outNumElements = input.getType()->size() / input.dims()[axis];
+  (void)outNumElements;
+  assert(outTy->size() == outNumElements &&
+         "Incorrect number of elements in the output type.");
+  auto OT = getParent()->uniqueType(*outTy);
+  return addNode(new VectorNormNode(name, OT, input, axis, p));
 }
 
 GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
@@ -4776,9 +4790,9 @@ MFCCNode *Function::createMFCC(llvm::StringRef name, NodeValue spectrogram,
 ROIAlignNode *
 Function::createROIAlign(llvm::StringRef name, NodeValue featureMap,
                          NodeValue boxes, NodeValue batchIndices,
-                         std::string mode, uint32_t outputHeight,
-                         uint32_t outputWidth, uint32_t samplingRatio,
-                         float spatialScale, bool aligned, bool rotated) {
+                         uint32_t outputHeight, uint32_t outputWidth,
+                         uint32_t samplingRatio, float spatialScale,
+                         bool aligned, bool rotated, PoolingMode mode) {
   auto featureMapDims = featureMap.dims();
   auto boxesDims = boxes.dims();
   std::vector<dim_t> outDim = {boxesDims[0], outputHeight, outputWidth,
@@ -5501,8 +5515,7 @@ bool Function::verify(const Backend *backend) const {
   // dependencies that may not be honored by the scheduler.
   // Either the input IR is incorrect or the scheduler needs
   // fixing.
-  for (const std::pair<const Placeholder *, const Node *> &varToWrite :
-       placeholderWrittenTo) {
+  for (const auto &varToWrite : placeholderWrittenTo) {
     if (isa<SaveNode>(varToWrite.second)) {
       continue;
     }

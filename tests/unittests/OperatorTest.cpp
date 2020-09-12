@@ -1258,27 +1258,29 @@ TEST_MFCC(3, 513, 1e-5)
 TEST_MFCC(3, 1025, 1e-5)
 
 template <typename DataType>
-static void
-testRoiAlign(PlaceholderBindings &bindings, Module &mod, Function &F,
-             ExecutionEngine &EE, ElemKind ElemTy, llvm::ArrayRef<dim_t> x1Dims,
-             llvm::ArrayRef<DataType> x1, llvm::ArrayRef<dim_t> x2Dims,
-             llvm::ArrayRef<DataType> x2, llvm::ArrayRef<dim_t> x3Dims,
-             llvm::ArrayRef<int64_t> x3, std::string mode, dim_t outputHeight,
-             dim_t outputWidth, uint32_t samplingRatio, float spatialScale,
-             bool aligned, llvm::ArrayRef<DataType> expectedValues) {
-  auto *X1 = mod.createPlaceholder(ElemTy, x1Dims, "featureMap", false);
-  bindings.allocate(X1)->getHandle<DataType>() = x1;
+static void testRoiAlign(
+    PlaceholderBindings &bindings, Module &mod, Function &F,
+    ExecutionEngine &EE, ElemKind ElemTy, llvm::ArrayRef<dim_t> featureMapDims,
+    llvm::ArrayRef<DataType> featureMap, llvm::ArrayRef<dim_t> boxesDims,
+    llvm::ArrayRef<DataType> boxes, llvm::ArrayRef<dim_t> batchIndicesDims,
+    llvm::ArrayRef<int64_t> batchIndices, PoolingMode mode, dim_t outputHeight,
+    dim_t outputWidth, uint32_t samplingRatio, float spatialScale, bool aligned,
+    llvm::ArrayRef<DataType> expectedValues, float comparisonThreshold,
+    bool rotated) {
+  auto *featureMapT =
+      mod.createPlaceholder(ElemTy, featureMapDims, "featureMap", false);
+  bindings.allocate(featureMapT)->getHandle<DataType>() = featureMap;
 
-  auto *X2 = mod.createPlaceholder(ElemTy, x2Dims, "boxes", false);
-  bindings.allocate(X2)->getHandle<DataType>() = x2;
+  auto *boxesT = mod.createPlaceholder(ElemTy, boxesDims, "boxes", false);
+  bindings.allocate(boxesT)->getHandle<DataType>() = boxes;
 
-  auto *X3 =
-      mod.createPlaceholder(ElemKind::Int64ITy, x3Dims, "batchIndices", false);
-  bindings.allocate(X3)->getHandle<int64_t>() = x3;
+  auto *batchIndicesT = mod.createPlaceholder(
+      ElemKind::Int64ITy, batchIndicesDims, "batchIndices", false);
+  bindings.allocate(batchIndicesT)->getHandle<int64_t>() = batchIndices;
 
-  auto *LN =
-      F.createROIAlign("ROIAlign", X1, X2, X3, mode, outputHeight, outputWidth,
-                       samplingRatio, spatialScale, aligned, /*rotated*/ false);
+  auto *LN = F.createROIAlign("ROIAlign", featureMapT, boxesT, batchIndicesT,
+                              outputHeight, outputWidth, samplingRatio,
+                              spatialScale, aligned, rotated, mode);
   auto *save = F.createSave("save", LN);
   auto *savePlaceholder = save->getPlaceholder();
   bindings.allocate(savePlaceholder);
@@ -1287,18 +1289,19 @@ testRoiAlign(PlaceholderBindings &bindings, Module &mod, Function &F,
 
   EE.run(bindings);
 
-  auto saveH = bindings.get(savePlaceholder)->getHandle();
+  auto saveH = bindings.get(savePlaceholder)->getHandle<DataType>();
 
   for (dim_t i = 0; i < expectedValues.size(); i++) {
-    EXPECT_NEAR(saveH.raw(i), expectedValues[i], 1E-4);
+    EXPECT_NEAR(saveH.raw(i), expectedValues[i], comparisonThreshold);
   }
 }
 
-TEST_P(OperatorTest, ROIAlign) {
-  CHECK_IF_ENABLED();
-
-  llvm::SmallVector<dim_t, 4> x1Dims = {2, 5, 5, 2};
-  llvm::SmallVector<float, 100> x1 = {
+template <typename DataType>
+static void roiAlignBasicTest(PlaceholderBindings &bindings, Module &mod,
+                              Function &F, ExecutionEngine &EE, ElemKind ElemTy,
+                              float comparisonThreshold) {
+  llvm::SmallVector<dim_t, 4> featureMapDims = {2, 5, 5, 2};
+  llvm::SmallVector<DataType, 100> featureMap = {
       1.,  0.,  1.,  1.,  1.,  2.,  1.,  3.,  1.,  4.,  1.,  5.,  1.,  6.,  1.,
       7.,  1.,  8.,  1.,  9.,  1.,  10., 1.,  11., 1.,  12., 1.,  13., 1.,  14.,
       1.,  15., 1.,  16., 1.,  17., 1.,  18., 1.,  19., 1.,  20., 1.,  21., 1.,
@@ -1307,45 +1310,77 @@ TEST_P(OperatorTest, ROIAlign) {
       1.,  13., 1.,  14., 1.,  15., 1.,  16., 1.,  17., 1.,  18., 1.,  19., 1.,
       20., 1.,  21., 1.,  22., 1.,  23., 1.,  24., 1.};
 
-  llvm::SmallVector<dim_t, 2> x2Dims = {2, 4};
-  llvm::SmallVector<float, 8> x2 = {1., 1., 3., 3., 1., 1., 3., 3.};
+  llvm::SmallVector<dim_t, 2> boxesDims = {2, 4};
+  llvm::SmallVector<DataType, 8> boxes = {1., 1., 3., 3., 1., 1., 3., 3.};
 
-  llvm::SmallVector<dim_t, 1> x3Dims = {2};
-  llvm::SmallVector<int64_t, 2> x3 = {1, 0};
+  llvm::SmallVector<dim_t, 1> batchIndicesDims = {2};
+  llvm::SmallVector<int64_t, 2> batchIndices = {1, 0};
 
-  llvm::SmallVector<float, 12> expectedValues = {9, 1, 10, 1,  14, 1,  15, 1,
-                                                 1, 9, 1,  10, 1,  14, 1,  15.};
+  llvm::SmallVector<DataType, 12> expectedValues = {
+      9, 1, 10, 1, 14, 1, 15, 1, 1, 9, 1, 10, 1, 14, 1, 15.};
 
-  testRoiAlign<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy, x1Dims, x1,
-                      x2Dims, x2, x3Dims, x3, "avg", 2, 2, 2, 1, false,
-                      expectedValues);
+  testRoiAlign<DataType>(
+      bindings, mod, F, EE, ElemTy, featureMapDims, featureMap, boxesDims,
+      boxes, batchIndicesDims, batchIndices, PoolingMode::AVG, 2, 2, 2, 1,
+      false, expectedValues, comparisonThreshold, /*rotated*/ false);
 }
 
-TEST_P(OperatorTest, ROIAlignWithAlignedCoordinates) {
+TEST_P(OperatorTest, RoiAlign) {
   CHECK_IF_ENABLED();
-  llvm::SmallVector<dim_t, 4> x1Dims = {1, 5, 5, 1};
-  llvm::SmallVector<float, 25> x1 = {
+  roiAlignBasicTest<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy, 1E-4);
+}
+
+TEST_P(OperatorTest, FP16RoiAlign) {
+  CHECK_IF_ENABLED();
+  roiAlignBasicTest<float16_t>(bindings_, mod_, *F_, EE_, ElemKind::Float16Ty,
+                               1E-3);
+}
+
+template <typename DataType>
+static void
+roiAlignWithAlignedCoordinatesTest(PlaceholderBindings &bindings, Module &mod,
+                                   Function &F, ExecutionEngine &EE,
+                                   ElemKind ElemTy, float comparisonThreshold) {
+  llvm::SmallVector<dim_t, 4> featureMapDims = {1, 5, 5, 1};
+  llvm::SmallVector<DataType, 25> featureMap = {
       0.1, 0.2, 0.3, 0.4, 0.5, 0.1, 0.2, 0.3, 0.4, 0.5, 0.1, 0.2, 0.3,
       0.4, 0.5, 0.1, 0.2, 0.3, 0.4, 0.5, 0.1, 0.2, 0.3, 0.4, 0.5};
 
-  llvm::SmallVector<dim_t, 2> x2Dims = {1, 4};
-  llvm::SmallVector<float, 5> x2 = {0.0, 0.4, 4.3, 2.9};
+  llvm::SmallVector<dim_t, 2> boxesDims = {1, 4};
+  llvm::SmallVector<DataType, 5> boxes = {0.0, 0.4, 4.3, 2.9};
 
-  llvm::SmallVector<dim_t, 1> x3Dims = {1};
-  llvm::SmallVector<int64_t, 1> x3 = {0};
+  llvm::SmallVector<dim_t, 1> batchIndicesDims = {1};
+  llvm::SmallVector<int64_t, 1> batchIndices = {0};
 
-  llvm::SmallVector<float, 9> expectedValues = {
+  llvm::SmallVector<DataType, 9> expectedValues = {
       0.1287, 0.2650, 0.4083, 0.1288, 0.2650, 0.4083, 0.1287, 0.2650, 0.4083};
 
-  testRoiAlign<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy, x1Dims, x1,
-                      x2Dims, x2, x3Dims, x3, "avg", 3, 3, 2, 1, true,
-                      expectedValues);
+  testRoiAlign<DataType>(
+      bindings, mod, F, EE, ElemTy, featureMapDims, featureMap, boxesDims,
+      boxes, batchIndicesDims, batchIndices, PoolingMode::AVG, 3, 3, 2, 1, true,
+      expectedValues, comparisonThreshold, /*rotated*/ false);
 }
 
-TEST_P(OperatorTest, ROIAlignBatchIndexInBoxesTensor) {
+TEST_P(OperatorTest, RoiAlignWithAlignedCoordinates) {
   CHECK_IF_ENABLED();
-  llvm::SmallVector<dim_t, 4> x1Dims = {2, 5, 5, 1};
-  llvm::SmallVector<float, 25> x1 = {
+  roiAlignWithAlignedCoordinatesTest<float>(bindings_, mod_, *F_, EE_,
+                                            ElemKind::FloatTy, 1E-4);
+}
+
+TEST_P(OperatorTest, FP16RoiAlignWithAlignedCoordinates) {
+  CHECK_IF_ENABLED();
+  roiAlignWithAlignedCoordinatesTest<float16_t>(bindings_, mod_, *F_, EE_,
+                                                ElemKind::Float16Ty, 1E-3);
+}
+
+template <typename DataType>
+static void roiAlignBatchIndexInBoxesTensorTest(PlaceholderBindings &bindings,
+                                                Module &mod, Function &F,
+                                                ExecutionEngine &EE,
+                                                ElemKind ElemTy,
+                                                float comparisonThreshold) {
+  llvm::SmallVector<dim_t, 4> featureMapDims = {2, 5, 5, 1};
+  llvm::SmallVector<DataType, 25> featureMap = {
       -1.2428743,  -0.9784467,  0.33036363,  0.47368783,  -0.81611377,
       -1.1874917,  -1.6208626,  -0.04190686, -0.5767553,  1.1949452,
       -2.1838918,  1.0099407,   0.6925469,   0.37020323,  -0.3799704,
@@ -1358,22 +1393,143 @@ TEST_P(OperatorTest, ROIAlignBatchIndexInBoxesTensor) {
       -0.1649399,  -0.05537327, -2.365379,   0.28033617,  -0.47050563,
   };
 
-  llvm::SmallVector<dim_t, 2> x2Dims = {2, 5};
-  llvm::SmallVector<float, 5> x2 = {0.,        1.1889961, 0.53260314, 3.1794803,
-                                    3.5056353, 0.,        1.4748696,  2.4069107,
-                                    4.1870456, 4.6166725};
+  llvm::SmallVector<dim_t, 2> boxesDims = {2, 5};
+  llvm::SmallVector<DataType, 5> boxes = {
+      0., 1.1889961, 0.53260314, 3.1794803, 3.5056353,
+      0., 1.4748696, 2.4069107,  4.1870456, 4.6166725};
 
-  llvm::SmallVector<dim_t, 1> x3Dims = {1};
-  llvm::SmallVector<int64_t, 1> x3 = {1};
+  llvm::SmallVector<dim_t, 1> batchIndicesDims = {1};
+  llvm::SmallVector<int64_t, 1> batchIndices = {1};
 
-  llvm::SmallVector<float, 18> expectedValues = {
+  llvm::SmallVector<DataType, 18> expectedValues = {
       -1.1747, -0.3246, 0.0591,  -0.3049, 0.1516,  0.1917,
       0.0270,  -0.1727, -0.4240, 0.3784,  0.0435,  -0.2741,
       -0.7801, -1.1925, -1.2289, -0.9860, -1.2124, -0.5044};
 
-  testRoiAlign<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy, x1Dims, x1,
-                      x2Dims, x2, x3Dims, x3, "avg", 3, 3, 2, 1, true,
-                      expectedValues);
+  testRoiAlign<DataType>(
+      bindings, mod, F, EE, ElemTy, featureMapDims, featureMap, boxesDims,
+      boxes, batchIndicesDims, batchIndices, PoolingMode::AVG, 3, 3, 2, 1, true,
+      expectedValues, comparisonThreshold, /*rotated*/ false);
+}
+
+TEST_P(OperatorTest, RoiAlignBatchIndexInBoxesTensor) {
+  CHECK_IF_ENABLED();
+  roiAlignBatchIndexInBoxesTensorTest<float>(bindings_, mod_, *F_, EE_,
+                                             ElemKind::FloatTy, 1E-4);
+}
+
+TEST_P(OperatorTest, FP16RoiAlignBatchIndexInBoxesTensor) {
+  CHECK_IF_ENABLED();
+
+  // 1E-2 threshold is required because fp16 occasionally causes sampling
+  // points to be shifted due to rounding which results in large maximum
+  // difference from reference.
+  roiAlignBatchIndexInBoxesTensorTest<float16_t>(bindings_, mod_, *F_, EE_,
+                                                 ElemKind::Float16Ty, 1E-2);
+}
+
+template <typename DataType>
+static void roiAlignRotatedBatchIndexInBoxesTensorTest(
+    PlaceholderBindings &bindings, Module &mod, Function &F,
+    ExecutionEngine &EE, ElemKind ElemTy, float comparisonThreshold) {
+  llvm::SmallVector<dim_t, 4> featureMapDims = {1, 5, 5, 3};
+  llvm::SmallVector<DataType, 25> featureMap = {
+      -8.6497840881,  -5.0528664589, -5.1990814209,  -10.8463373184,
+      -14.9225864410, 4.0806860924,  14.7214040756,  -11.9505138397,
+      16.7156505585,  -9.7665214539, -13.4883165359, 1.3252578974,
+      -1.6687428951,  10.5697870255, -4.4617910385,  16.9429378510,
+      9.5267467499,   5.9925584793,  5.6118640900,   1.5372716188,
+      2.4355530739,   -3.0808238983, 2.6959202290,   -9.9537315369,
+      -1.1652010679,  15.3153333664, 11.4361877441,  8.7219638824,
+      6.0323386192,   -3.3185434341, -5.8790159225,  -7.0839004517,
+      11.3739776611,  -7.1884007454, 10.0514144897,  -7.9980802536,
+      15.8880462646,  -2.3542327881, -9.3197269440,  -4.7869114876,
+      15.6589784622,  -1.5917046070, -1.2245910168,  0.0595506988,
+      3.6575553417,   14.7897586823, 11.4384317398,  -5.1155147552,
+      0.7425209880,   1.1070071459,  4.2300715446,   -17.3323173523,
+      -2.9571244717,  -3.6389255524, -8.8692741394,  19.7417812347,
+      7.1416730881,   25.0613708496, 3.8868305683,   -1.4834585190,
+      0.3542223871,   14.2146720886, -7.8964066505,  7.7495927811,
+      3.6963310242,   9.0857019424,  -3.4129979610,  -3.1457190514,
+      -15.2861795425, 10.1850719452, -0.2935675085,  9.8417263031,
+      1.1156638861,   -8.5692892075, -1.8766889572};
+
+  llvm::SmallVector<dim_t, 2> boxesDims = {4, 6};
+  llvm::SmallVector<DataType, 5> boxes = {
+      0.0000000000e+00, 3.7350432873e+00, 1.8349769115e+00,
+      2.2127370536e-01, 1.7214350700e+00, 6.7396400452e+01,
+
+      0.0000000000e+00, 2.5810198784e+00, 2.7632935047e+00,
+      4.5813250542e-01, 1.0615788698e+00, 5.9284824371e+01,
+
+      0.0000000000e+00, 1.4992059469e+00, 3.3264288902e+00,
+      5.8828938752e-02, 1.2860099971e-01, 1.7042655945e+02,
+
+      0.0000000000e+00, 1.6475434303e+00, 1.1158514023e+00,
+      6.0969877243e-01, 1.6949450970e+00, 5.7489040375e+01};
+
+  // Unused
+  llvm::SmallVector<dim_t, 1> batchIndicesDims = {4};
+  llvm::SmallVector<int64_t, 1> batchIndices = {42, 42, 42, 42};
+
+  llvm::SmallVector<DataType, 18> expectedValues = {
+      -1.2753072977e+00, 1.1022174835e+01,  2.8559112549e+00,
+      -1.5445901155e+00, 1.1492666245e+01,  4.0045604706e+00,
+      -1.6816796064e+00, 1.1780773163e+01,  5.1841292381e+00,
+      -1.1537375450e+00, 1.2963508606e+01,  4.9455566406e+00,
+      -5.9787964821e-01, 1.2705860138e+01,  5.3227939606e+00,
+      -1.7603963614e-02, 1.2472600937e+01,  5.6228017807e+00,
+      9.0734308958e-01,  5.7471928596e+00,  1.7764383554e+00,
+      1.6517986059e+00,  5.6778922081e+00,  1.5571854115e+00,
+      2.4206719398e+00,  5.6329779625e+00,  1.2607033253e+00,
+      4.3689918518e+00,  7.3948031664e-01,  -7.3034667969e+00,
+      8.6381378174e+00,  2.3455758393e-01,  -8.4534435272e+00,
+      1.1591947556e+01,  -4.2240649462e-01, -9.0010957718e+00,
+      2.1553003788e+00,  -1.4560343027e+00, -6.5866470337e+00,
+      6.0744242668e+00,  -8.3328241110e-01, -7.0825934410e+00,
+      8.9081802368e+00,  5.4210889339e-01,  -7.2683048248e+00,
+      -4.3445730209e+00, 3.6746215820e+00,  -3.1289699078e+00,
+      -1.7619293928e+00, 5.1320915222e+00,  -3.2894101143e+00,
+      2.2393733263e-01,  6.4935913086e+00,  -3.5123698711e+00,
+      -4.1849538684e-01, 2.1935482025e+00,  2.5842363834e+00,
+      -2.0057903230e-01, 2.3351111412e+00,  2.5799021721e+00,
+      1.1708274484e-02,  2.4918785095e+00,  2.4347753525e+00,
+      -8.1277823448e-01, 2.5285022259e+00,  2.0223598480e+00,
+      -6.2242215872e-01, 2.6641519070e+00,  2.0815916061e+00,
+      -4.2229780555e-01, 2.7992806435e+00,  1.9814052582e+00,
+      -1.1822580099e+00, 2.8584275246e+00,  1.4644309282e+00,
+      -1.0267944336e+00, 3.0002222061e+00,  1.5492329597e+00,
+      -8.4862631559e-01, 3.1232376099e+00,  1.5107266903e+00,
+      -6.1683624983e-02, -3.0222876072e+00, 1.8380764723e+00,
+      -4.1196775436e+00, -6.7160081863e+00, 1.7320134640e+00,
+      -7.8356714249e+00, -1.0480127335e+01, 2.1065652370e+00,
+      2.1715850830e+00,  -1.5094176531e+00, 2.0960900784e+00,
+      -3.2094952464e-01, -4.5263018608e+00, 2.4609162807e+00,
+      -1.1458464861e+00, -7.0648045540e+00, 3.5408535004e+00,
+      1.7010095119e+00,  2.0761563778e+00,  -4.2401647568e+00,
+      4.8630356789e-01,  8.5567343235e-01,  -3.9398088455e+00,
+      1.1503255367e+00,  -1.4384213686e+00, -1.8096057177e+00};
+
+  testRoiAlign<DataType>(bindings, mod, F, EE, ElemTy, featureMapDims,
+                         featureMap, boxesDims, boxes, batchIndicesDims,
+                         batchIndices, PoolingMode::AVG, 3, 3, 2, 1, true,
+                         expectedValues, comparisonThreshold, /*rotated*/ true);
+}
+
+TEST_P(OperatorTest, RoiAlignRotatedBatchIndexInBoxesTensor) {
+  CHECK_IF_ENABLED();
+  roiAlignRotatedBatchIndexInBoxesTensorTest<float>(bindings_, mod_, *F_, EE_,
+                                                    ElemKind::FloatTy, 1E-4);
+}
+
+TEST_P(OperatorTest, FP16RoiAlignRotatedBatchIndexInBoxesTensor) {
+  CHECK_IF_ENABLED();
+
+  // 1E-1 threshold is required because fp16 occasionally causes sampling
+  // points to be shifted due to rounding which results in large maximum
+  // difference from reference.
+  roiAlignRotatedBatchIndexInBoxesTensorTest<float16_t>(
+      bindings_, mod_, *F_, EE_, ElemKind::Float16Ty, 1E-1);
 }
 
 TEST_P(OperatorTest, BBoxTransform) {
@@ -2879,6 +3035,68 @@ TEST_P(OperatorTest, batchedReduceAdd_5Dinput) {
   EXPECT_TRUE(result->isEqual(expected));
 }
 
+/// Helper to test VectorNorm using \p DTy.
+template <typename DataType>
+static void testVectorNorm(glow::PlaceholderBindings &bindings,
+                           glow::Module &mod, glow::Function *F,
+                           glow::ExecutionEngine &EE, ElemKind elemKind) {
+  auto *input = mod.createPlaceholder(elemKind, {2, 3}, "norm", false);
+  bindings.allocate(input)->getHandle<DataType>() = {1, 2, 3, -1, 1, 4};
+
+  auto *R = F->createVectorNorm("vector.norm", input, /* axis */ 0, /* p */ 2);
+
+  auto *save = F->createSave("save", R);
+  auto *result = bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor expected(elemKind, {3});
+  expected.getHandle<DataType>() = {1.4142, 2.2361, 5.0000};
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that VectorNorm is correctly supported in FloatTy.
+TEST_P(OperatorTest, VectorNorm_Float) {
+  CHECK_IF_ENABLED();
+
+  testVectorNorm<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+}
+
+/// Test that VectorNorm is correctly supported in Float16Ty.
+TEST_P(OperatorTest, VectorNorm_Float16Ty) {
+  CHECK_IF_ENABLED();
+
+  testVectorNorm<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+}
+
+/// Test that VectorNorm is correctly supported in BFloat16Ty.
+TEST_P(OperatorTest, VectorNorm_BFloat16) {
+  CHECK_IF_ENABLED();
+
+  testVectorNorm<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
+}
+
+/// Test that BatchedReduceAdd works correctly reducing an internal axis.
+TEST_P(OperatorTest, VectorNorm_3D_innerAxis) {
+  CHECK_IF_ENABLED();
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2}, "norm", false);
+  bindings_.allocate(input)->getHandle<float>() = {0, 1, 2, 3, 4, 5, 6, 7};
+
+  auto *R = F_->createVectorNorm("vector.norm", input, /* axis */ 1, /* p */ 2);
+
+  auto *save = F_->createSave("save", R);
+  auto *result = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor expected(ElemKind::FloatTy, {2, 2});
+  expected.getHandle<float>() = {2.0000, 3.1623, 7.2111, 8.6023};
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
 /// Helper to test BatchedReduceMax using \p DTy.
 template <typename DataType>
 static void testBatchedReduceMax(glow::PlaceholderBindings &bindings,
@@ -3727,6 +3945,49 @@ TEST_P(OperatorTest, PReluSimple_BFloat16) {
   CHECK_IF_ENABLED();
   testPReluSimple<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
                               1E-16);
+}
+
+/// Helper to test Gelu using \p DTy.
+template <typename DataType>
+static void testGelu(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                     glow::Function *F, glow::ExecutionEngine &EE, ElemKind DTy,
+                     double allowedError) {
+  auto *in = mod.createPlaceholder(DTy, {7}, "in", false);
+  auto *gelu = F->createGELU("gelu", in);
+  auto *save = F->createSave("gelu", gelu);
+  auto *result = bindings.allocate(save->getPlaceholder());
+
+  bindings.allocate(in)->getHandle<DataType>().randomize(0.1, 3.0,
+                                                         mod.getPRNG());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  auto resultH = result->getHandle<DataType>();
+  auto inH = bindings.get(in)->getHandle<DataType>();
+  // see https://arxiv.org/pdf/1606.08415.pdf
+  float geluConst = 0.044715f;
+
+  for (size_t i = 0; i < 7; i++) {
+    float inHf = static_cast<float>(inH.raw(i));
+    float expectedResult =
+        0.5f * inHf *
+        (1.0f + std::tanh(M_2_SQRTPI * M_SQRT1_2 *
+                          (inHf + geluConst * std::pow(inHf, 3))));
+    EXPECT_NEAR(resultH.at(i), expectedResult, allowedError);
+  }
+}
+
+/// Verify that the GELU operator works correctly for Float.
+TEST_P(OperatorTest, Gelu_Float) {
+  CHECK_IF_ENABLED();
+  testGelu<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, 1E-6);
+}
+
+/// Verify that the GELU operator works correctly for Float16.
+TEST_P(OperatorTest, Gelu_Float16) {
+  CHECK_IF_ENABLED();
+  testGelu<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, 1.5E-2);
 }
 
 TEST_P(OperatorTest, TopK) {
@@ -5526,6 +5787,7 @@ COMPARE_ARITH_FUN(Add)
 COMPARE_ARITH_FUN(Sub)
 COMPARE_ARITH_FUN(Mul)
 COMPARE_ARITH_FUN(Div)
+COMPARE_ARITH_FUN(FloorDiv)
 COMPARE_ARITH_FUN(Max)
 COMPARE_ARITH_FUN(Min)
 #undef COMPARE_ARITH_FUN
@@ -5564,6 +5826,7 @@ COMPARE_ARITH_FLOAT_VS_FLOAT16(Add)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Sub)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Mul)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Div)
+COMPARE_ARITH_FLOAT_VS_FLOAT16(FloorDiv)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Max)
 COMPARE_ARITH_FLOAT_VS_FLOAT16(Min)
 
@@ -5571,6 +5834,7 @@ COMPARE_ARITH_FLOAT_VS_BFLOAT16(Add)
 COMPARE_ARITH_FLOAT_VS_BFLOAT16(Sub)
 COMPARE_ARITH_FLOAT_VS_BFLOAT16(Mul)
 COMPARE_ARITH_FLOAT_VS_BFLOAT16(Div)
+COMPARE_ARITH_FLOAT_VS_BFLOAT16(FloorDiv)
 COMPARE_ARITH_FLOAT_VS_BFLOAT16(Max)
 COMPARE_ARITH_FLOAT_VS_BFLOAT16(Min)
 #undef COMPARE_ARITH_FLOAT_VS_FLOAT16
@@ -5622,14 +5886,28 @@ COMPARE_ARITH_FLOAT_VS_BFLOAT16(Min)
   ARITH_FUNC_TEST_TYPED(_OP_NAME_, float16_t, ElemKind::Float16Ty)             \
   ARITH_FUNC_TEST_TYPED(_OP_NAME_, bfloat16_t, ElemKind::BFloat16Ty)
 
+template <typename DataType>
+static DataType floorDivide(DataType a, DataType b) {
+  return std::floor(static_cast<float>(a / b));
+}
+
 ARITH_FUNC_TEST(Add, std::plus, ())
 ARITH_FUNC_TEST(Sub, std::minus, ())
 ARITH_FUNC_TEST(Mul, std::multiplies, ())
 ARITH_FUNC_TEST(Max, std::max, )
 ARITH_FUNC_TEST(Min, std::min, )
+
+#define ARITH_FUNC_TEST_FLOAT(_OP_NAME_, _REFERENCE_FUNCTION_, _PARENTHESES_)  \
+  ARITH_FUN_IMPL(_OP_NAME_, _REFERENCE_FUNCTION_, _PARENTHESES_)               \
+  ARITH_FUNC_TEST_TYPED(_OP_NAME_, float, ElemKind::FloatTy)                   \
+  ARITH_FUNC_TEST_TYPED(_OP_NAME_, float16_t, ElemKind::Float16Ty)
+
+ARITH_FUNC_TEST_FLOAT(FloorDiv, floorDivide, )
+
 #undef ARITH_FUN_IMPL
 #undef ARITH_FUNC_TEST_TYPED
 #undef ARITH_FUNC_TEST
+#undef ARITH_FUNC_TEST_FLOAT
 
 TEST_P(OperatorTest, IntMatMul) {
   CHECK_IF_ENABLED();
@@ -9684,16 +9962,14 @@ TEST_P(OperatorTest, FP16AvgPool3D) {
   CHECK_IF_ENABLED();
 
   auto *input =
-      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 1, 3, 3, 3}, // NCTHW
+      mod_.createPlaceholder(ElemKind::Float16Ty, {1, 3, 3, 3, 1}, // NCTHW
                              "input", false);
   bindings_.allocate(input)->getHandle<float16_t>() = {
       0., 1., 2., 3., 4., 5., 6., 7., 8., 0., 1., 2., 3., 4.,
       5., 6., 7., 8., 0., 1., 2., 3., 4., 5., 6., 7., 8.};
-  auto *inputNTHWC =
-      F_->createTranspose("avgpool3d_input_NCTHW2NTHWC", input, NCTHW2NTHWC);
-  auto *Pool = F_->createAvgPool("pool", inputNTHWC, {2, 2, 2}, // kernel
-                                 {1, 1, 1},                     // stride
-                                 {0, 0, 0, 0, 0, 0},            // padding
+  auto *Pool = F_->createAvgPool("pool", input, {2, 2, 2}, // kernel
+                                 {1, 1, 1},                // stride
+                                 {0, 0, 0, 0, 0, 0},       // padding
                                  NTHWC);
   auto *outputNCTHW =
       F_->createTranspose("avgpool3d_output_NTHWC2NCTHW", Pool, NTHWC2NCTHW);

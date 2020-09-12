@@ -100,8 +100,9 @@ void transformForPrecisionMode(const Backend &B, Function *F,
 /// Perform a compile-time constant folding of the node \p N.
 /// \returns list of constants which are the result of the constant-folding.
 /// These constants correspond to results of the node. If no constant folding
-/// was possible an empty vector will be returned.
-std::vector<Constant *> constantFold(Node *N);
+/// was possible an empty vector will be returned. If \p foldSingleSplats then
+/// single splat subgraphs will be forced to fold.
+std::vector<Constant *> constantFold(Node *N, bool foldSingleSplats = false);
 
 /// Perform constant folding for all Nodes in \p F given \p cctx. \returns a
 /// record of what Constants are created by what SaveNodes pointing to

@@ -5634,166 +5634,285 @@ void BoundInterpreterFunction::fwdMFCCInst(glow::MFCCInst const *I) {
   }
 }
 
-struct BinGrid {
-  dim_t x0;
-  dim_t y0;
-  dim_t x1;
-  dim_t y1;
-  float xDiff;
-  float yDiff;
+namespace {
+/// Positions of the input values to be used for bilinear interpolation for each
+/// sample point and the weights to use for each.
+template <typename T> struct BinGrid {
+  dim_t left;
+  dim_t top;
+  dim_t right;
+  dim_t bottom;
+  T leftW;
+  T topW;
+  T rightW;
+  T bottomW;
 };
+} // namespace
 
-// Function to calculate the xy coordinates of the resized image (grid)
-// Ref: https://arxiv.org/pdf/1703.06870.pdf and OnnxRuntime implementation
-static void getROIAlignInterpolationCoordinates(
-    dim_t inputHeight, dim_t inputWidth, dim_t outputHeight, dim_t outputWidth,
-    const std::vector<float> &box, dim_t samplingRatioH, dim_t samplingRatioW,
-    float offset, std::vector<BinGrid> &binGrids) {
-  float y0 = box[1];
-  float x0 = box[0];
-  uint64_t binCount = 0;
+/// Function to calculate the xy coordinates of the resized image (grid)
+/// Ref: https://arxiv.org/pdf/1703.06870.pdf and OnnxRuntime implementation
+/// \p featureMapHeight and \p featureMapWidth are the dimensions of the
+/// input feature map to the operator, \p outputHeight and \p outputWidth are
+/// the dimensions of the operator output tensor, \p samplingRatioH and \p
+/// samplingRatioW are the number of sampling points to use in each bin in the
+/// height and width directions respectively (total sample points is
+/// samplingRatioH * samplingRatioW), \p boxHeight and \p boxWidth are the
+/// height and width of the RoI box, \p yRef and \p xRef are the adjustment to
+/// be made for each sampling point, this is either the top left corer of the
+/// box for RoiAlign or a vector to be added to center point after rotation for
+/// RoiAlignRotated, \p rotated is true if the op is RoiAlignRotated, \p theta
+/// is the rotation angle in the case of RoiAlignRotated and is unused in
+/// RoiAlign, \p boxCenterH and \p boxCenterW are the center of the box used for
+/// rotation in the case of RoiAlignRotated and unused in the case of RoiAlign.
+/// \returns a vector of BinGrids, each one to be used to compute a single
+/// sample point value.
+template <typename T>
+static std::vector<BinGrid<T>> getROIAlignInterpolationCoordinates(
+    dim_t featureMapHeight, dim_t featureMapWidth, dim_t outputHeight,
+    dim_t outputWidth, dim_t samplingRatioH, dim_t samplingRatioW, T boxHeight,
+    T boxWidth, T yRef, T xRef, bool rotated, T theta, T boxCenterH,
+    T boxCenterW) {
+
+  T sinTheta = T(0.0f);
+  T cosTheta = T(0.0f);
+  if (rotated) {
+    sinTheta = T(std::sin(float(theta)));
+    cosTheta = T(std::cos(float(theta)));
+  }
+
+  std::vector<BinGrid<T>> binGrids;
+
   // height and width of the each bin in the final output
-  const float binH = (box[3] - box[1]) / outputHeight;
-  const float binW = (box[2] - box[0]) / outputWidth;
-  const float roiBinSizeH = binH / samplingRatioH;
-  const float roiBinSizeW = binW / samplingRatioW;
+  const T binH = boxHeight / T(outputHeight);
+  const T binW = boxWidth / T(outputWidth);
+  const T roiBinSizeH = binH / T(samplingRatioH);
+  const T roiBinSizeW = binW / T(samplingRatioW);
   for (dim_t oh = 0; oh < outputHeight; oh++) {
     for (dim_t ow = 0; ow < outputWidth; ow++) {
       for (dim_t gh = 0; gh < samplingRatioH; gh++) {
         for (dim_t gw = 0; gw < samplingRatioW; gw++) {
-          // x,y coordinates w.r.t input dimensions
-          const float inY = y0 + (oh * binH) + ((gh + 0.5f) * roiBinSizeH);
-          const float inX = x0 + (ow * binW) + ((gw + 0.5f) * roiBinSizeW);
+          // x,y coordinates or vector w.r.t input dimensions
+          T inY = yRef + (T(oh) * binH) + ((T(gh) + T(0.5f)) * roiBinSizeH);
+          T inX = xRef + (T(ow) * binW) + ((T(gw) + T(0.5f)) * roiBinSizeW);
+
+          // If ROI is rotated, rotate by theta around the box center then
+          // translate
+          if (rotated) {
+            T inYY = inY;
+            T inXX = inX;
+            inY = inYY * cosTheta - inXX * sinTheta + boxCenterH;
+            inX = inXX * cosTheta + inYY * sinTheta + boxCenterW;
+          }
 
           // zero pad mal-formed boxes
-          if (inY < float(-1) || inY > static_cast<float>(inputHeight)) {
-            binGrids[binCount++] = BinGrid{0, 0, 0, 0, 0, 0};
+          if (inY < T(-1) || inY > T(featureMapHeight)) {
+            BinGrid<T> bg = BinGrid<T>{0, 0, 0, 0, 0, 0, 0, 0};
+            binGrids.push_back(bg);
             continue;
           }
-          if (inX < float(-1) || inX > static_cast<float>(inputWidth)) {
-            binGrids[binCount++] = BinGrid{0, 0, 0, 0, 0, 0};
+          if (inX < T(-1) || inX > T(featureMapWidth)) {
+            BinGrid<T> bg = BinGrid<T>{0, 0, 0, 0, 0, 0, 0, 0};
+            binGrids.push_back(bg);
             continue;
           }
-          // clip to input dimensions
-          float y = std::min(std::max(inY, float(0)),
-                             static_cast<float>(inputHeight - 1));
-          float x = std::min(std::max(inX, float(0)),
-                             static_cast<float>(inputWidth - 1));
-          // calc interpolation parameters
-          const dim_t yl = static_cast<dim_t>(std::floor(y));
-          const dim_t xl = static_cast<dim_t>(std::floor(x));
-          const dim_t yh = std::min(yl + 1, inputHeight - 1);
-          const dim_t xh = std::min(xl + 1, inputWidth - 1);
-          const float py = y - static_cast<float>(yl);
-          const float px = x - static_cast<float>(xl);
 
-          binGrids[binCount++] = BinGrid{xl, yl, xh, yh, px, py};
+          // clip to input dimensions
+          T y = std::min(std::max(inY, T(0)), T(featureMapHeight - 1));
+          T x = std::min(std::max(inX, T(0)), T(featureMapWidth - 1));
+
+          // calc interpolation parameters
+          const dim_t yl = dim_t(std::floor(float(y)));
+          const dim_t xl = dim_t(std::floor(float(x)));
+          const dim_t yh = std::min(yl + 1, featureMapHeight - 1);
+          const dim_t xh = std::min(xl + 1, featureMapWidth - 1);
+
+          BinGrid<T> bg;
+          bg.left = xl;
+          bg.top = yl;
+          bg.right = xh;
+          bg.bottom = yh;
+
+          bg.rightW = x - T(xl);
+          bg.bottomW = y - T(yl);
+          bg.leftW = T(1.0) - bg.rightW;
+          bg.topW = T(1.0) - bg.bottomW;
+
+          binGrids.push_back(bg);
         } // end of w
       }   // end of h
     }     // end of W
   }       // end of H
+
+  return binGrids;
 }
 
 // Implementation of ROIAlign as described in
 // https://arxiv.org/pdf/1703.06870.pdf ROIAlign is similar to crop_and_resize +
 // pooling with minor modifications in the crop_and_resize.
+template <typename T>
 void BoundInterpreterFunction::fwdROIAlignInstFloatImpl(
     glow::ROIAlignInst const *I) {
   auto featureMap = I->getFeatureMap();
   auto boxes = I->getBoxes();
   auto batchIndices = I->getBatchIndices();
   auto result = I->getResult();
-  std::string mode = I->getMode();
-  dim_t outputHeight = I->getOutputHeight();
-  dim_t outputWidth = I->getOutputHeight();
-  dim_t samplingRatio = I->getSamplingRatio();
-  float spatialScale = I->getSpatialScale();
-  bool aligned = I->getAligned();
-  float offset = aligned ? 0.5f : 0;
-  auto boxesH = getTensor(boxes)->getHandle<float>();
-  auto featureMapH = getTensor(featureMap)->getHandle<float>();
-  auto batchIndicesH = getTensor(batchIndices)->getHandle<int64_t>();
+
+  auto boxesH = getTensor(boxes)->getHandle<T>();
+  auto featureMapH = getTensor(featureMap)->getHandle<T>();
+  auto resultH = getTensor(result)->getHandle<T>();
+
+  const bool rotated = I->getRotated();
+  const PoolingMode mode = PoolingMode(I->getMode());
+  const bool aligned = I->getAligned();
+  const dim_t samplingRatio = I->getSamplingRatio();
+  const T spatialScale = I->getSpatialScale();
+
+  const dim_t featureMapHeight = featureMapH.dims()[1];
+  const dim_t featureMapWidth = featureMapH.dims()[2];
+  const dim_t numBoxes = resultH.dims()[0];
+  const dim_t outputHeight = resultH.dims()[1];
+  const dim_t outputWidth = resultH.dims()[2];
+  const dim_t depth = resultH.dims()[3];
+
+  const T offset = aligned ? T(0.5) : T(0);
+
   bool useSeparateBatchIndexVector = true;
   dim_t boxesStartCol = 0;
-  if (boxes->dims()[1] == 5) {
+  if (rotated || boxes->dims()[1] == 5) {
     boxesStartCol = 1;
     useSeparateBatchIndexVector = false;
   }
-  auto resultH = getTensor(result)->getHandle<float>();
-  const dim_t imageHeight = featureMap->dims()[1];
-  const dim_t imageWidth = featureMap->dims()[2];
-  const dim_t numBoxes = result->dims()[0];
-  const dim_t depth = result->dims()[3];
-  for (dim_t b = 0; b < numBoxes; b++) {
-    std::vector<float> box = {
-        boxesH.at({b, boxesStartCol + dim_t(0)}) * spatialScale - offset,
-        boxesH.at({b, boxesStartCol + dim_t(1)}) * spatialScale - offset,
-        boxesH.at({b, boxesStartCol + dim_t(2)}) * spatialScale - offset,
-        boxesH.at({b, boxesStartCol + dim_t(3)}) * spatialScale - offset};
 
-    if (aligned) {
-      CHECK_GE(box[3] - box[1], 0) << "Roi height cannot be negative.";
-      CHECK_GE(box[2] - box[0], 0) << "Roi width cannot be negative.";
-    } else {
-      // Caffe2 backwards compatibility for mal-formed ROIs:
-      // Force ROI size to be at least 1x1.
-      box[2] = std::max(box[2], box[0] + 1.0f);
-      box[3] = std::max(box[3], box[1] + 1.0f);
+  // Extract batch indices from batchIndices tensor if that is used (only used
+  // by ONNX which may provide Int64ITy tensors.)
+  std::vector<dim_t> batchIndicesExtracted;
+  if (useSeparateBatchIndexVector) {
+    Tensor *batchIndicesTensor = getTensor(batchIndices);
+    auto batchIndicesElemKind = batchIndicesTensor->getElementType();
+    for (dim_t b = 0; b < numBoxes; b++) {
+      if (batchIndicesElemKind == ElemKind::Int32ITy) {
+        batchIndicesExtracted.push_back(
+            batchIndicesTensor->getHandle<int32_t>().at({b}));
+      } else {
+        batchIndicesExtracted.push_back(
+            batchIndicesTensor->getHandle<int64_t>().at({b}));
+      }
     }
-    dim_t samplingRatioH = (samplingRatio > 0)
-                               ? samplingRatio
-                               : std::ceil((box[3] - box[1]) / outputHeight);
-    dim_t samplingRatioW = (samplingRatio > 0)
-                               ? samplingRatio
-                               : std::ceil((box[2] - box[0]) / outputWidth);
-    std::vector<BinGrid> binGrids(samplingRatioH * samplingRatioW *
-                                  outputHeight * outputWidth);
-    // get the xy coordinates in the resized image(grid)
-    getROIAlignInterpolationCoordinates(imageHeight, imageWidth, outputHeight,
-                                        outputWidth, box, samplingRatioH,
-                                        samplingRatioW, offset, binGrids);
+  }
+
+  for (dim_t b = 0; b < numBoxes; b++) {
     dim_t batchIndex;
     if (useSeparateBatchIndexVector) {
-      batchIndex = static_cast<dim_t>(batchIndicesH.at({b}));
+      batchIndex = batchIndicesExtracted[b];
     } else {
-      batchIndex = static_cast<dim_t>(boxesH.at({b, 0}));
+      batchIndex = dim_t(float(boxesH.at({b, 0})));
     }
+
+    // Values used to determine sampling points during bilinear interpolation.
+    // yRef and xRef have different interpreterations for rotated vs unrotated
+    // cases (vector vs coordinates) but are used very similarly.
+    T yRef;
+    T xRef;
+    T boxHeight;
+    T boxWidth;
+
+    // Values only used in rotated case.
+    T theta = T(0.0);
+    T boxCenterH = T(0.0);
+    T boxCenterW = T(0.0);
+
+    if (rotated) {
+      // Do not round
+      boxCenterW = boxesH.at({b, boxesStartCol + 0}) * spatialScale - offset;
+      boxCenterH = boxesH.at({b, boxesStartCol + 1}) * spatialScale - offset;
+      boxWidth = boxesH.at({b, boxesStartCol + 2}) * spatialScale;
+      boxHeight = boxesH.at({b, boxesStartCol + 3}) * spatialScale;
+      theta = boxesH.at({b, boxesStartCol + 4}) * T(M_PI) / T(180.0);
+
+      if (aligned) {
+        assert(boxWidth >= T(0.0) && boxHeight >= T(0.0) &&
+               "ROIs in ROIAlign must not have non-negative size!");
+      } else { // backward compatibility
+        // Force malformed ROIs to be 1x1
+        boxHeight = std::max(boxHeight, T(1.0));
+        boxWidth = std::max(boxWidth, T(1.0));
+      }
+
+      // These are computed wrt the center of RoI (x, y).
+      // Appropriate translation needs to be applied after.
+      yRef = (T(-1.0) * boxHeight) / T(2.0);
+      xRef = (T(-1.0) * boxWidth) / T(2.0);
+    } else {
+      llvm::SmallVector<T, 4> box = {
+          boxesH.at({b, boxesStartCol + 0}) * spatialScale - offset,
+          boxesH.at({b, boxesStartCol + 1}) * spatialScale - offset,
+          boxesH.at({b, boxesStartCol + 2}) * spatialScale - offset,
+          boxesH.at({b, boxesStartCol + 3}) * spatialScale - offset};
+
+      if (aligned) {
+        CHECK_GE(box[3] - box[1], T(0.0)) << "Roi height cannot be negative.";
+        CHECK_GE(box[2] - box[0], T(0.0)) << "Roi width cannot be negative.";
+      } else {
+        // Caffe2 backwards compatibility for mal-formed ROIs:
+        // Force ROI size to be at least 1x1.
+        box[2] = std::max(box[2], box[0] + T(1.0));
+        box[3] = std::max(box[3], box[1] + T(1.0));
+      }
+
+      yRef = box[1];
+      xRef = box[0];
+      boxHeight = (box[3] - box[1]);
+      boxWidth = (box[2] - box[0]);
+    }
+
+    const dim_t samplingRatioH =
+        (samplingRatio > 0) ? samplingRatio
+                            : std::ceil(float(boxHeight) / outputHeight);
+    const dim_t samplingRatioW = (samplingRatio > 0)
+                                     ? samplingRatio
+                                     : std::ceil(float(boxWidth) / outputWidth);
+
+    // get the xy coordinates in the resized image(grid)
+    std::vector<BinGrid<T>> binGrids = getROIAlignInterpolationCoordinates<T>(
+        featureMapHeight, featureMapWidth, outputHeight, outputWidth,
+        samplingRatioH, samplingRatioW, boxHeight, boxWidth, yRef, xRef,
+        rotated, theta, boxCenterH, boxCenterW);
+
     uint64_t binCount = 0;
     for (dim_t oh = 0; oh < outputHeight; ++oh) {
       for (dim_t ow = 0; ow < outputWidth; ++ow) {
         for (dim_t d = 0; d < depth; ++d) {
-          std::vector<float> pixels;
+          std::vector<T> values;
           for (dim_t gh = 0; gh < samplingRatioH; ++gh) {
             for (dim_t gw = 0; gw < samplingRatioW; ++gw) {
-              BinGrid bG = binGrids[binCount++];
-              // The four pixels of  the i/p image surrounding the point of
+              BinGrid<T> bg = binGrids[binCount++];
+              // The four values of  the i/p image surrounding the point of
               // interest (POI) in the resized image
-              const float topLeft =
-                  featureMapH.at({batchIndex, bG.y0, bG.x0, d});
-              const float topRight =
-                  featureMapH.at({batchIndex, bG.y0, bG.x1, d});
-              const float bottomLeft =
-                  featureMapH.at({batchIndex, bG.y1, bG.x0, d});
-              const float bottomRight =
-                  featureMapH.at({batchIndex, bG.y1, bG.x1, d});
-              // bilinear interpolation = interpolation along {top_horizontal +
-              // bottom_horizontal + vertical} lines or bilinear interpolation =
-              // interpolation along {left_vertical + right_vertical +
-              // horizontal} lines interpolation along top_horizontal line
-              const float top = topLeft + ((topRight - topLeft) * bG.xDiff);
-              // interpolation along bottom_horizontal line
-              const float bottom =
-                  bottomLeft + ((bottomRight - bottomLeft) * bG.xDiff);
+              const T topLeft =
+                  featureMapH.at({batchIndex, bg.top, bg.left, d});
+              const T topRight =
+                  featureMapH.at({batchIndex, bg.top, bg.right, d});
+              const T bottomLeft =
+                  featureMapH.at({batchIndex, bg.bottom, bg.left, d});
+              const T bottomRight =
+                  featureMapH.at({batchIndex, bg.bottom, bg.right, d});
+
+              // bilinear interpolation
+              const T value = (topLeft * (bg.topW * bg.leftW)) +
+                              (topRight * (bg.topW * bg.rightW)) +
+                              (bottomLeft * (bg.bottomW * bg.leftW)) +
+                              (bottomRight * (bg.bottomW * bg.rightW));
               // interpolation along vertical line
-              pixels.push_back(top + ((bottom - top) * bG.yDiff));
+              values.push_back(value);
             } // end of w
           }   // end of h
-          // {Average or Max} pooling
+              // {Average or Max} pooling
           resultH.at({b, oh, ow, d}) =
-              (mode == "avg")
-                  ? std::accumulate(pixels.begin(), pixels.end(), 0.0) /
-                        static_cast<float>(pixels.size())
-                  : *std::max_element(pixels.begin(), pixels.end());
+              (mode == PoolingMode::AVG)
+                  ? std::accumulate(values.begin(), values.end(), T(0.0)) /
+                        T(values.size())
+                  : *std::max_element(values.begin(), values.end());
+
           binCount = binCount - (samplingRatioH * samplingRatioW);
         } // end of d
         binCount = binCount + (samplingRatioH * samplingRatioW);
@@ -5803,7 +5922,8 @@ void BoundInterpreterFunction::fwdROIAlignInstFloatImpl(
 }
 
 void BoundInterpreterFunction::fwdROIAlignInst(glow::ROIAlignInst const *I) {
-  fwdROIAlignInstFloatImpl(I);
+  dispatchFloatingPointImpl(fwdROIAlignInstFloatImpl,
+                            I->getFeatureMap()->getElementType(), I);
 }
 
 // Forward transform that maps proposal boxes to ground-truth boxes using
@@ -5818,7 +5938,8 @@ void BoundInterpreterFunction::fwdROIAlignInst(glow::ROIAlignInst const *I) {
 // bboxXformClip: minimum bounding box width and height in log-space after
 //     transofmration
 // correct_transform_coords: Correct bounding box transform coordates. Set to
-//     true to match the detectron code, set to false for backward compatibility
+//     true to match the detectron code, set to false for backward
+//     compatibility
 // return: pixel coordinates of the bounding boxes
 //     size (M, 4), format [x1; y1; x2; y2]
 // see "Rich feature hierarchies for accurate object detection and semantic

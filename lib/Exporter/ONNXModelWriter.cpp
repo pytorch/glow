@@ -588,6 +588,19 @@ static void addAttrToDocString(T *proto, const std::string &attrName,
 
 } // namespace
 
+Error ONNXModelWriter::insertLoaderNameUniqueOffsetMetadata(
+    llvm::StringMap<std::string> &extraMetadataProps,
+    const OriginNameToTQPMap &map) {
+  RETURN_ERR_IF_NOT(!extraMetadataProps.count("OriginNameToTQPMap"),
+                    "Already had OriginNameToTQPMap");
+  std::string str;
+  for (const auto &nameTQP : map) {
+    str += nameTQP.first + ":" + std::to_string(nameTQP.second.offset) + ";";
+  }
+  extraMetadataProps.try_emplace(originNameToUniqueOffsetMappingSignifier, str);
+  return Error::success();
+}
+
 bool ONNXModelWriter::isIntermediatePHForDAG(const Placeholder *PH) {
   if (!dagMode_) {
     return false;
@@ -1351,7 +1364,14 @@ Error ONNXModelWriter::writeMFCC(const MFCCNode *node, GraphType &graph) {
 Error ONNXModelWriter::writeROIAlign(const ROIAlignNode *node,
                                      GraphType &graph) {
   auto *proto = graph.add_node();
-  addValueAttribute(proto, "mode", node->getMode());
+  switch (node->getMode()) {
+  case PoolingMode::AVG:
+    addValueAttribute(proto, "mode", std::string("avg"));
+    break;
+  case PoolingMode::MAX:
+    addValueAttribute(proto, "mode", std::string("max"));
+    break;
+  }
   addValueAttribute(proto, "output_height", node->getOutputHeight());
   addValueAttribute(proto, "output_width", node->getOutputWidth());
   addValueAttribute(proto, "sampling_ratio", node->getSamplingRatio());
@@ -2142,6 +2162,11 @@ Error ONNXModelWriter::writeDiv(const DivNode *node, GraphType &graph) {
   return writeArithmetic("Div", node, graph, reportedNodes_);
 }
 
+Error ONNXModelWriter::writeFloorDiv(const FloorDivNode *node,
+                                     GraphType &graph) {
+  return writeArithmetic("FloorDiv", node, graph, reportedNodes_);
+}
+
 Error ONNXModelWriter::writeMul(const MulNode *node, GraphType &graph) {
   return writeArithmetic("Mul", node, graph, reportedNodes_);
 }
@@ -2326,6 +2351,25 @@ Error ONNXModelWriter::writeFullyConnected(const FullyConnectedNode *node,
   proto->add_input(node->getWeights().getNode()->getName());
   proto->add_input(node->getBias().getNode()->getName());
   outputsToProto(node, graph, proto);
+  return Error::success();
+}
+
+Error ONNXModelWriter::writeVectorNorm(const VectorNormNode *node,
+                                       GraphType &graph) {
+  auto *proto = graph.add_node();
+
+  // Add dictionary entries.
+  addValueAttribute(proto, "axis", node->getAxis());
+
+  proto->set_name(node->getName());
+  proto->set_op_type("VectorNorm");
+  inputsToProto(node, proto);
+
+  // currently support p = 2 (Frobenius or i2)
+  addValueAttribute(proto, "p", node->getP());
+
+  outputsToProto(node, graph, proto);
+
   return Error::success();
 }
 

@@ -1127,7 +1127,7 @@ int main(int argc, char **argv) {
       .addOperand("FeatureMap", OperandKind::In)
       .addOperand("Boxes", OperandKind::In)
       .addOperand("BatchIndices", OperandKind::In)
-      .addMember(MemberType::String, "Mode")
+      .addMember(MemberType::Enum, "Mode")
       .addMember(MemberType::Unsigned, "OutputHeight")
       .addMember(MemberType::Unsigned, "OutputWidth")
       .addMember(MemberType::Unsigned, "SamplingRatio")

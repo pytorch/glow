@@ -68,6 +68,10 @@ public:
   /// the JSON is dependent on the backend.
   virtual const std::string toJSON() const { return ""; }
 
+  /// Dumps a JSON representation of the result of compilation to the specified
+  /// path \p fname.
+  void dumpJSON(llvm::StringRef fname) const;
+
 protected:
   /// Contains symbol offsets and allocation sizes.
   runtime::RuntimeBundle runtimeBundle_;
