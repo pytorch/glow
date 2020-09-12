@@ -373,8 +373,8 @@ StreamT &operator<<(StreamT &os, const GlowErrorValue &errorValue) {
 /// contained Error ensures that it is checked before being destroyed.
 class GlowError : protected detail::CheckState<detail::enableCheckingErrors> {
   template <typename T> friend class GlowExpected;
-  template <typename T> friend class std::promise;
   friend std::unique_ptr<GlowErrorValue> detail::takeErrorValue(GlowError);
+  friend class std::promise<GlowError>;
 
   /// Pointer to ErrorValue managed by this Error. Can be null if no error
   /// occurred. Use getters and setters defined below to access this since they
