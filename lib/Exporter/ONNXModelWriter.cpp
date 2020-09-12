@@ -595,7 +595,8 @@ Error ONNXModelWriter::insertLoaderNameUniqueOffsetMetadata(
                     "Already had OriginNameToTQPMap");
   std::string str;
   for (const auto &nameTQP : map) {
-    str += nameTQP.first + ":" + std::to_string(nameTQP.second.offset) + ";";
+    str += nameTQP.first + offsetSepSig +
+           std::to_string(nameTQP.second.offset) + offsetEndSig;
   }
   extraMetadataProps.try_emplace(originNameToUniqueOffsetMappingSignifier, str);
   return Error::success();

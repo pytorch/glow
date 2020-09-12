@@ -751,7 +751,8 @@ Error ONNXModelLoader::verifyPreexistingStorage(const Storage *S,
                                                 const std::string &layout,
                                                 const bool trainable) {
   RETURN_ERR_IF_NOT(S, "Storage did not exist in Module: " + name);
-  if (replaceDummyTQPs_ && ty.isQuantizedType() && ty.getScale() == 0.f) {
+  if (replaceDummyTQPs_ && ty.isQuantizedType() &&
+      ty.getScale() == dummyScale) {
     TensorQuantizationParams TQP;
     ASSIGN_VALUE_OR_RETURN_ERR(TQP, getUpdatedTQP(ty.getOffset()));
     // If we are replacing dummy TQPs with updated ones, then do verification
@@ -788,7 +789,8 @@ Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
     Type ty;
     ASSIGN_VALUE_OR_RETURN_ERR(ty, getTensorType(in));
 
-    if (replaceDummyTQPs_ && ty.isQuantizedType() && ty.getScale() == 0.f) {
+    if (replaceDummyTQPs_ && ty.isQuantizedType() &&
+        ty.getScale() == dummyScale) {
       TensorQuantizationParams TQP;
       ASSIGN_VALUE_OR_RETURN_ERR(TQP, getUpdatedTQP(ty.getOffset()));
       ty = Type(ty.getElementType(), ty.dims(), TQP.scale, TQP.offset);
@@ -4008,11 +4010,12 @@ ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
   ASSIGN_VALUE_OR_RETURN_ERR(
       offset, loadInt(dict[getTypeAttrID(resNo, qOffsetSignifier)]));
 
-  // If we have a scale of 0.f, then this must be a dummy pair of
+  // If we have a scale of dummyScale, then this must be a dummy pair of
   // scale/offset. Look up the actual scale/offset to use as previously loaded,
   // using the offset as the key to updatedTQPs_. Skip fused kinds because
   // scales are already dummies.
-  if (replaceDummyTQPs_ && scale == 0.f && !isFusedQuantizedElemKind(k)) {
+  if (replaceDummyTQPs_ && scale == dummyScale &&
+      !isFusedQuantizedElemKind(k)) {
     TensorQuantizationParams TQP;
     ASSIGN_VALUE_OR_RETURN_ERR(TQP, getUpdatedTQP(offset));
     scale = TQP.scale;
@@ -4686,19 +4689,6 @@ Error ONNXModelLoader::setupOrigStaticTypeMap(ONNX_NAMESPACE::GraphProto &net) {
   return Error::success();
 }
 
-/// \returns an Error if any results from \p N are non-fused quantized with
-/// scale == 0.f.
-static Error verifyNoDummyQuantParamResults(const Node &N) {
-  for (size_t i = 0, e = N.getNumResults(); i < e; i++) {
-    TypeRef T = N.getType(i);
-    if (T->isQuantizedType() && !T->isFusedQuantizedType()) {
-      RETURN_ERR_IF_NOT(T->getScale() != 0.f,
-                        "Found dummy 0.f scale: " + N.getDebugDesc());
-    }
-  }
-  return Error::success();
-}
-
 Error ONNXModelLoader::loadModel(ONNX_NAMESPACE::ModelProto &modelDef,
                                  llvm::ArrayRef<const char *> tensorNames,
                                  llvm::ArrayRef<TypeRef> types,
@@ -4730,20 +4720,7 @@ Error ONNXModelLoader::loadModel(ONNX_NAMESPACE::ModelProto &modelDef,
 
   deleteConstFoldFunctions();
 
-  // If we were replacing dummy TQPs, verify we don't have any dummies left.
-  if (replaceDummyTQPs_) {
-    for (const Function *F : mod_.getFunctions()) {
-      for (const Node &N : F->getNodes()) {
-        RETURN_IF_ERR(verifyNoDummyQuantParamResults(N));
-      }
-    }
-    for (const Placeholder *PH : mod_.getPlaceholders()) {
-      RETURN_IF_ERR(verifyNoDummyQuantParamResults(*PH));
-    }
-    for (const Constant *C : mod_.getConstants()) {
-      RETURN_IF_ERR(verifyNoDummyQuantParamResults(*C));
-    }
-  }
+  RETURN_IF_ERR(verifyDummyQParams());
 
   return Error::success();
 }
@@ -4944,11 +4921,12 @@ Error ONNXModelLoader::setupUpdatedTQPMap(
 
   // Now parse the originNameToUniqueOffsetMappingStr to find the original C2
   // name : unique offset pairs. These are formatted like
-  // "name_op_a:0;name_op_b:1;", with semicolon separating each pair, and colon
+  // "name_op_a@0@@name_op_b@1@@", with @@ separating each pair, and @
   // separating name from unique offset.
   llvm::SmallVector<llvm::StringRef, 128> nameOffsetSplits;
   llvm::StringRef strRef = llvm::StringRef(originNameToUniqueOffsetMappingStr);
-  strRef.split(nameOffsetSplits, ';', /* MaxSplit */ -1, /* KeepEmpty */ false);
+  strRef.split(nameOffsetSplits, offsetEndSig, /* MaxSplit */ -1,
+               /* KeepEmpty */ false);
 
   // Store the mapping into updatedTQPs_, where each unique offset is used as
   // the index into updatedTQPs_ to the actual TQP to use. I.e. we essentially
@@ -4956,7 +4934,7 @@ Error ONNXModelLoader::setupUpdatedTQPMap(
   // offset -> TQP.
   updatedTQPs_.resize(nameOffsetSplits.size());
   for (auto &nameOffsetSplit : nameOffsetSplits) {
-    auto nameOffsetPair = nameOffsetSplit.split(':');
+    auto nameOffsetPair = nameOffsetSplit.split(offsetSepSig);
     int32_t idx;
     ASSIGN_VALUE_OR_RETURN_ERR(idx, getIntFromStr(nameOffsetPair.second));
     RETURN_ERR_IF_NOT(idx < updatedTQPs_.size(),

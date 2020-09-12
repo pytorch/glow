@@ -34,12 +34,15 @@ Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
   Error loaderConstructionErr = Error::empty();
 
   if (use_onnx) {
+    // If we're loading an ONNX model then we will always be replacing dummy
+    // TQPs if they're found.
+    cctx.precisionConfig.replaceDummyTQPs = true;
     std::unique_ptr<ONNXModelLoader> onnxLoader(new ONNXModelLoader(
         model, modelSize, weightsCount, weightDescriptors, mod, netName,
         cctx.prepartitionedConfig, loadInputsAsPlaceholdersForOnnx,
         &loaderConstructionErr, constFoldInLoader,
         &cctx.backendOpts.backendSpecificNodeInfo, staticPlaceholderTypes,
-        /* replaceDummyTQPs */ true));
+        cctx.precisionConfig.replaceDummyTQPs));
     if (loaderConstructionErr) {
       return std::move(loaderConstructionErr);
     }

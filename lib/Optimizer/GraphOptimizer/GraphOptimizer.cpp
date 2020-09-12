@@ -3496,6 +3496,10 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
     return true;
   };
 
+  const bool disallowNewQuantParams =
+      cctx.optimizationOpts.enableQuantParamChanges &&
+      !cctx.precisionConfig.loadUniquedDummyQParams;
+
   for (Node &node : F->getNodes()) {
     // Clip(Dequantize(Node)) -> Dequantize(Node)
     if (ClipNode *clip = dyn_cast<ClipNode>(&node)) {
@@ -3511,9 +3515,8 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
           DQN->getNumUsers() != 1 || qResult.getNode()->getNumUsers() != 1;
 
       // Try to update the quantize's type, otherwise skip this one.
-      if (!updateQuantizeNodeType(
-              F, qResult, clip, skipIfQuantParamChange,
-              cctx.optimizationOpts.enableQuantParamChanges)) {
+      if (!updateQuantizeNodeType(F, qResult, clip, skipIfQuantParamChange,
+                                  disallowNewQuantParams)) {
         continue;
       }
 
@@ -3536,9 +3539,9 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
       const bool skipIfQuantParamChange = isUsedByNodeWithSideEffects(QN);
 
       // Try to update the quantize's type, otherwise skip this one.
-      if (!updateQuantizeNodeType(
-              F, QN->getResult(), clip, skipIfQuantParamChange,
-              cctx.optimizationOpts.enableQuantParamChanges)) {
+      if (!updateQuantizeNodeType(F, QN->getResult(), clip,
+                                  skipIfQuantParamChange,
+                                  disallowNewQuantParams)) {
         continue;
       }
 
@@ -3640,7 +3643,8 @@ bool OptimizeQuantFCFloatRelu::run(Function *F,
 
   // This opt implies there to be changes to quantization, because we create an
   // int relu that was previously float.
-  if (!cctx.optimizationOpts.enableQuantParamChanges) {
+  if (!cctx.optimizationOpts.enableQuantParamChanges ||
+      cctx.precisionConfig.loadUniquedDummyQParams) {
     return false;
   }
 
