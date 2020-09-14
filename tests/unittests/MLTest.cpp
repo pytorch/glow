@@ -1332,12 +1332,19 @@ TEST_P(MLTest, testFindPixelRegression) {
 
   // -- STEP2 - Profile and quantize the network. --
   mod = &EEP.getModule();
+  for (auto *PH : mod->getPlaceholders()) {
+    PH->setAllocZero();
+  }
   profileBindings.allocate(mod->getPlaceholders());
+  Tensor profileImages(ElemKind::FloatTy, {batchSize, 10, 10, 1});
+  Tensor profileLabels(ElemKind::FloatTy, {batchSize, 2});
+  generateRegressionTestData(profileImages, profileLabels, mod->getPRNG());
+  input = mod->getPlaceholderByNameSlow("input");
+  updateInputPlaceholders(profileBindings, {input}, {&profileImages});
   LoweredInfoMap loweredMapForProf;
   CompilationContext cctxProf{&profileBindings, &loweredMapForProf};
   cctxProf.precisionConfig.quantMode = QuantizationMode::Profile;
 
-  input = mod->getPlaceholderByNameSlow("input");
   trainingBindings.copyTrainableWeightsTo(profileBindings);
   EEP.compile(cctxProf);
   // Get new function after partitioning.
