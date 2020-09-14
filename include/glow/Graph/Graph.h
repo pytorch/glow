@@ -298,6 +298,10 @@ public:
   /// \Returns the module log context.
   LogContext *getModuleLogContext() { return &moduleLogCtx_; };
 
+  /// \returns whether any Node in the module are non-fused quantized with
+  /// scale == or != dummyScale, depending on \p expectDummy.
+  Error verifyDummyQParams(bool expectDummies);
+
   // Don't copy or move this class around.
   // The destructor will wipe the functions leaving
   // the original Module only dangling pointers.

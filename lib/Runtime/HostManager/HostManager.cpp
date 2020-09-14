@@ -401,6 +401,14 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     executor_.reset(new ThreadPoolExecutor(devices_, config_.executorThreads));
   }
 
+  // Now that we've partitioned and optimized, do some verification based on the
+  // dummy mode we're using, if any.
+  if (cctx.precisionConfig.replaceDummyTQPs ||
+      cctx.precisionConfig.loadUniquedDummyQParams) {
+    RETURN_IF_ERR(module->verifyDummyQParams(
+        cctx.precisionConfig.loadUniquedDummyQParams));
+  }
+
   // If we prevented constant modification then run constant folding with
   // recording now. Record so that if we are going to serialize we can embed the
   // constant folding subgraphs in the Glow ONNX model.
@@ -499,6 +507,16 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
         cleanupAddNetwork(names);
       }
       debugDumpDAGGuard.dismiss();
+      cleanupConstantFolding(*module, record);
+      if (cctx.dumpFinalGraph) {
+        for (Function *F : module->getFunctions()) {
+          auto fname =
+              strFormat("%sfinal_graph_aot_%s.dot", cctx.dumpGraphPath.c_str(),
+                        F->getName().data());
+          LOG(INFO) << "Dumping final graph to " << fname;
+          F->dumpDAG(fname);
+        }
+      }
       return Error::success();
     }
   }

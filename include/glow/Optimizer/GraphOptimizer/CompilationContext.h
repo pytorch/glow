@@ -103,6 +103,11 @@ struct PrecisionConfiguration {
   /// instead track origin of quantization params in \ref originNameToTQPMap.
   bool loadUniquedDummyQParams{false};
 
+  /// If true, then the model that is loaded is expected to have been originally
+  /// serialized with dummy quantization parameters, and was replaced with
+  /// actual quantization parameters when loaded in this compilation context.
+  bool replaceDummyTQPs{false};
+
   /// Converts a float16 \p format into an ElemKind.
   static ElemKind getElementType(Float16Format format) {
     switch (format) {
