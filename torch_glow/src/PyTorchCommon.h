@@ -111,7 +111,7 @@ public:
   bool enableGlowTracing = false;
 
   /// Enable the auto removal of muation in JIT graph, i.e, inline ops.
-  bool enableRemoveMutation = false;
+  bool enableRemoveMutation = true;
 
   /// Number of traces per json trace file dump.
   size_t numTracesPerDump = 1;

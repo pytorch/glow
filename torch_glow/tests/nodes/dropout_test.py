@@ -1,10 +1,10 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import unittest
+
 import torch
 import torch.nn.functional as F
-
 from tests.utils import jitVsGlow
-import unittest
 
 
 class TestDropout(unittest.TestCase):
@@ -26,4 +26,5 @@ class TestDropout(unittest.TestCase):
 
         x = torch.randn(6, 4, 10)
 
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::dropout_"})
+        # Expect fuser to out-of-place the operator
+        jitVsGlow(test_f, x, expected_fused_ops={"aten::dropout"})
