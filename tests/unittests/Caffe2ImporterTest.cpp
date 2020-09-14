@@ -3620,7 +3620,6 @@ static void testImportTrackedQParams(bool loadUniquedDummyQParams) {
     output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
 
     bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"gpu_0/data_0"}, {&data});
   }
 
   // High level check on the content of the graph. We should have
@@ -3628,8 +3627,8 @@ static void testImportTrackedQParams(bool loadUniquedDummyQParams) {
   EXPECT_EQ(F->getNodes().size(), 6);
   auto *saveNode = getSaveNodeFromDest(output);
 
-  EXPECT_EQ(originNameToTQPMap.size(), 3);
-  TensorQuantizationParams convOut, convBias, convWeight;
+  EXPECT_EQ(originNameToTQPMap.size(), 4);
+  TensorQuantizationParams convOut, convBias, convWeight, convInput;
   for (const auto &nameTQP : originNameToTQPMap) {
     if (nameTQP.first == "conv_out") {
       convOut = nameTQP.second;
@@ -3637,24 +3636,35 @@ static void testImportTrackedQParams(bool loadUniquedDummyQParams) {
       convWeight = nameTQP.second;
     } else if (nameTQP.first == "conv_b") {
       convBias = nameTQP.second;
+    } else if (nameTQP.first == "gpu_0/data_0") {
+      convInput = nameTQP.second;
     } else {
       FAIL();
     }
   }
 
   if (loadUniquedDummyQParams) {
-    EXPECT_EQ(convWeight.offset, 0);
-    EXPECT_EQ(convBias.offset, 1);
-    EXPECT_EQ(convOut.offset, 2);
-    // All dummmies should have 0 scale.
-    EXPECT_EQ(convWeight.scale, 0.f);
-    EXPECT_EQ(convBias.scale, 0.f);
-    EXPECT_EQ(convOut.scale, 0.f);
+    // Dummies should have unique offsets 0->3.
+    EXPECT_EQ(convInput.offset, 0);
+    EXPECT_EQ(convWeight.offset, 1);
+    EXPECT_EQ(convBias.offset, 2);
+    EXPECT_EQ(convOut.offset, 3);
+
+    // All dummmies should have dummy scale.
+    EXPECT_EQ(convInput.scale, dummyScale);
+    EXPECT_EQ(convWeight.scale, dummyScale);
+    EXPECT_EQ(convBias.scale, dummyScale);
+    EXPECT_EQ(convOut.scale, dummyScale);
   } else {
+    // This one was provided as an input PH with a type already based on Glow
+    // Int8QTy, so don't shift.
+    EXPECT_EQ(convInput.offset, 0);
     EXPECT_EQ(convWeight.offset, 10 - UINT8_TO_INT8_SHIFT);
     // This one is loaded int32, so has no shift.
     EXPECT_EQ(convBias.offset, 4);
     EXPECT_EQ(convOut.offset, 7 - UINT8_TO_INT8_SHIFT);
+
+    EXPECT_EQ(convInput.scale, 1.f);
     EXPECT_EQ(convWeight.scale, 2.f);
     EXPECT_EQ(convBias.scale, 10.f);
     EXPECT_EQ(convOut.scale, 1.5f);

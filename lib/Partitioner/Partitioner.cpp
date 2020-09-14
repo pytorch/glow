@@ -83,7 +83,7 @@ Error Partitioner::finalize(const DAGListTy &partitions,
 
   if (logPartition) {
     LOG(INFO) << "The number of partitions is : "
-              << module_->getFunctions().size();
+              << mapping.getPartitions().size();
     LOG(INFO) << "Dumping partitioning DAG to DAG.dot file.";
     dumpDAG("DAG.dot", partitions);
     logPartitionInfo(mapping);

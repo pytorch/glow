@@ -484,6 +484,46 @@ uint64_t Module::getConstantsSize() {
   return size;
 }
 
+/// \returns an Error if any results from \p N are non-fused quantized with
+/// scale == or != dummyScale, depending on \p expectDummy.
+static Error verifyDummyQParamResults(const Node &N, bool expectDummy) {
+  for (size_t i = 0, e = N.getNumResults(); i < e; i++) {
+    TypeRef T = N.getType(i);
+    if (T->isQuantizedType() && !T->isFusedQuantizedType()) {
+      const bool isDummy = T->getScale() == dummyScale;
+      if (expectDummy) {
+        RETURN_ERR_IF_NOT(
+            isDummy, strFormat("Expected all dummy scales, but found non-dummy "
+                               "inside Function %s: %s",
+                               N.getParent()->getName().data(),
+                               N.getDebugDesc().data()));
+      } else {
+        RETURN_ERR_IF_NOT(!isDummy,
+                          strFormat("Expected no dummy scales, but found one "
+                                    "inside Function %s: %s",
+                                    N.getParent()->getName().data(),
+                                    N.getDebugDesc().data()));
+      }
+    }
+  }
+  return Error::success();
+}
+
+Error Module::verifyDummyQParams(bool expectDummies) {
+  for (const Function *F : getFunctions()) {
+    for (const Node &N : F->getNodes()) {
+      RETURN_IF_ERR(verifyDummyQParamResults(N, expectDummies));
+    }
+  }
+  for (const Placeholder *PH : getPlaceholders()) {
+    RETURN_IF_ERR(verifyDummyQParamResults(*PH, expectDummies));
+  }
+  for (const Constant *C : getConstants()) {
+    RETURN_IF_ERR(verifyDummyQParamResults(*C, expectDummies));
+  }
+  return Error::success();
+}
+
 Function::~Function() {
   // Delete all of the nodes.
   for (auto it = nodes_.begin(), e = nodes_.end(); it != e;) {

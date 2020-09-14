@@ -35,16 +35,6 @@
 
 namespace glow {
 
-/// Some model formats (Caffe2, PyTorch, TensorFlowLite) allow defining weights
-/// and activations in UINT8 format. Since Glow supports only INT8 weights and
-/// activations we do a transformation from UINT8 to INT8 quantized data by
-/// subtracting the value 128 from both the quantized values and the offset:
-///   val(int8) = val(uint8) - 128
-///   scale(int8) = scale(uint8) (scale value is preserved)
-///   offset(int8) = scale(uint8) - 128
-/// The constant definition below defines the value used for subtraction.
-constexpr int32_t UINT8_TO_INT8_SHIFT = 128;
-
 /// Result of loading a weight, potentially with additional offsets and
 /// scales tensors containing quantization parameters only if the loaded weight
 /// was found to have multiple quantization parameters.
@@ -154,10 +144,10 @@ class CommonOperatorLoader : public ProtobufLoader {
       result.offsets = glow::make_unique<Tensor>((void *)in.biases, &offsetsTy);
     }
 
-    // If we have a scale of 0.f, then this must be a dummy pair of
+    // If we have a scale of dummyScale, then this must be a dummy pair of
     // scale/offset. Look up the actual scale/offset to use as previously
     // loaded, using the offset as the key to updatedTQPs_.
-    if (replaceDummyTQPs_ && scale == 0.f) {
+    if (replaceDummyTQPs_ && scale == dummyScale) {
       TensorQuantizationParams TQP;
       ASSIGN_VALUE_OR_RETURN_ERR(TQP, getUpdatedTQP(offset));
       scale = TQP.scale;
@@ -167,7 +157,8 @@ class CommonOperatorLoader : public ProtobufLoader {
     if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
       TypeRef outTy;
       ASSIGN_VALUE_OR_RETURN_ERR(
-          outTy, loadQuantTy(in.name, ElemKind::Int8QTy, dims, scale, offset));
+          outTy, ProtobufLoader::loadQuantTy(in.name, ElemKind::Int8QTy, dims,
+                                             scale, offset));
       // Must copy the weights here because we will need to modify them by
       // adjusting for UINT8_TO_INT8_SHIFT.
       result.type = *outTy;
@@ -183,7 +174,8 @@ class CommonOperatorLoader : public ProtobufLoader {
     } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
       TypeRef outTy;
       ASSIGN_VALUE_OR_RETURN_ERR(
-          outTy, loadQuantTy(in.name, ElemKind::Int32QTy, dims, scale, offset));
+          outTy, ProtobufLoader::loadQuantTy(in.name, ElemKind::Int32QTy, dims,
+                                             scale, offset));
       result.type = *outTy;
       if (!in.isOffline) {
         *result.t = Tensor((void *)in.buffer, &result.type);
@@ -191,8 +183,9 @@ class CommonOperatorLoader : public ProtobufLoader {
     } else if (in.dataType == ONNXIFI_DATATYPE_INT8) {
       TypeRef outTy;
       ASSIGN_VALUE_OR_RETURN_ERR(
-          outTy, loadQuantTy(in.name, ElemKind::Int8QTy, dims, scale, offset,
-                             /* shiftUInt8ToInt8 */ false));
+          outTy, ProtobufLoader::loadQuantTy(in.name, ElemKind::Int8QTy, dims,
+                                             scale, offset,
+                                             /* shiftUInt8ToInt8 */ false));
       result.type = *outTy;
       if (!in.isOffline) {
         *result.t = Tensor((void *)in.buffer, &result.type);
@@ -230,9 +223,8 @@ protected:
                        bool loadIntoExistingModule = false,
                        OriginNameToTQPMap *originNameToTQPMap = nullptr,
                        bool loadUniquedDummyQParams = false)
-      : ProtobufLoader(names, types, F, errPtr, loadIntoExistingModule),
-        originNameToTQPMap_(originNameToTQPMap),
-        loadUniquedDummyQParams_(loadUniquedDummyQParams) {}
+      : ProtobufLoader(names, types, F, errPtr, loadIntoExistingModule,
+                       originNameToTQPMap, loadUniquedDummyQParams) {}
 
   CommonOperatorLoader(llvm::ArrayRef<const char *> names,
                        llvm::ArrayRef<TypeRef> types, Module &mod,
@@ -241,13 +233,42 @@ protected:
                        OriginNameToTQPMap *originNameToTQPMap = nullptr,
                        bool loadUniquedDummyQParams = false,
                        bool replaceDummyTQPs = false)
-      : ProtobufLoader(names, types, mod, errPtr, loadIntoExistingModule),
-        originNameToTQPMap_(originNameToTQPMap),
-        loadUniquedDummyQParams_(loadUniquedDummyQParams),
-        replaceDummyTQPs_(replaceDummyTQPs) {}
+      : ProtobufLoader(names, types, mod, errPtr, loadIntoExistingModule,
+                       originNameToTQPMap, loadUniquedDummyQParams,
+                       replaceDummyTQPs) {}
 
   using ArgumentDictionaryTy =
       std::unordered_map<std::string, const AttrType *>;
+
+  /// If we were replacing or loading dummy TQPs, \returns success if there
+  /// aren't any dummies left, or there are only dummies left.
+  Error verifyDummyQParams() {
+    RETURN_ERR_IF_NOT(!(replaceDummyTQPs_ && loadUniquedDummyQParams_),
+                      "Cannot replace dummy TQPs when loading uniqued TQPs.");
+    if (replaceDummyTQPs_ || loadUniquedDummyQParams_) {
+      RETURN_IF_ERR(mod_.verifyDummyQParams(loadUniquedDummyQParams_));
+    }
+    return Error::success();
+  }
+
+  /// Helper to load quantization parameters from \p dict for op named \p name.
+  /// \returns a new TypeRef given \p k and \p dims.
+  Expected<TypeRef> loadQuantTy(const std::string &name, ElemKind k,
+                                llvm::ArrayRef<dim_t> dims,
+                                ArgumentDictionaryTy &dict) {
+    RETURN_ERR_IF_NOT(dict.count("Y_scale"),
+                      "missing Y_scale for quantized output type for " + name);
+    RETURN_ERR_IF_NOT(dict.count("Y_zero_point"),
+                      "missing zero point for quantized output type for " +
+                          name);
+
+    float scale;
+    ASSIGN_VALUE_OR_RETURN_ERR(scale, loadFloat(dict["Y_scale"]));
+    int32_t offset;
+    ASSIGN_VALUE_OR_RETURN_ERR(offset, loadInt(dict["Y_zero_point"]));
+
+    return ProtobufLoader::loadQuantTy(name, k, dims, scale, offset);
+  }
 
   /// \returns True if the operator has broadcasting activated.
   virtual Expected<bool> getBroadcast(ArgumentDictionaryTy &dict) = 0;
@@ -287,80 +308,6 @@ protected:
       nodeValueByName_[op.output(i)] = NodeValue(node, i);
     }
     return Error::success();
-  }
-
-  /// \returns the TQP located at \p uniqueOffsetIdx in \ref updatedTQPs_.
-  Expected<TensorQuantizationParams> getUpdatedTQP(int32_t uniqueOffsetIdx) {
-    RETURN_ERR_IF_NOT(replaceDummyTQPs_, "replaceDummyTQPs_ was not enabled");
-    RETURN_ERR_IF_NOT(
-        uniqueOffsetIdx < updatedTQPs_.size(),
-        strFormat("Unexpected size of updated TQPs %lu vs. dummy offset %d",
-                  updatedTQPs_.size(), uniqueOffsetIdx));
-    return updatedTQPs_[uniqueOffsetIdx];
-  }
-
-  /// Helper to load quantization parameters from \p dict for op named \p name.
-  /// \returns a new TypeRef given \p k and \p dims.
-  Expected<TypeRef> loadQuantTy(const std::string &name, ElemKind k,
-                                llvm::ArrayRef<dim_t> dims,
-                                ArgumentDictionaryTy &dict) {
-    RETURN_ERR_IF_NOT(dict.count("Y_scale"),
-                      "missing Y_scale for quantized output type for " + name);
-    RETURN_ERR_IF_NOT(dict.count("Y_zero_point"),
-                      "missing zero point for quantized output type for " +
-                          name);
-
-    float scale;
-    ASSIGN_VALUE_OR_RETURN_ERR(scale, loadFloat(dict["Y_scale"]));
-    int32_t offset;
-    ASSIGN_VALUE_OR_RETURN_ERR(offset, loadInt(dict["Y_zero_point"]));
-
-    return loadQuantTy(name, k, dims, scale, offset);
-  }
-
-  Expected<TypeRef> loadQuantTy(const std::string &name, ElemKind k,
-                                llvm::ArrayRef<dim_t> dims, float scale,
-                                int32_t offset, bool shiftUInt8ToInt8 = true) {
-    if (k == ElemKind::Int8QTy && shiftUInt8ToInt8) {
-      offset -= UINT8_TO_INT8_SHIFT;
-    }
-
-    // If we don't have a map to track dummy unique offsets to loader names,
-    // then just load as normal with the actual scale/offset we loaded.
-    if (!loadUniquedDummyQParams_) {
-      if (originNameToTQPMap_) {
-        bool inserted =
-            originNameToTQPMap_
-                ->emplace(name, TensorQuantizationParams{scale, offset})
-                .second;
-        RETURN_ERR_IF_NOT(inserted, "Already inserted TQP for " + name);
-      }
-      return mod_.uniqueType(k, dims, scale, offset);
-    }
-
-    RETURN_ERR_IF_NOT(originNameToTQPMap_,
-                      "Must have valid originNameToTQPMap_ when loading "
-                      "uniqued dummy qparams.");
-
-    // We use 0.f scale to represent a dummy scale/offset pair. Make sure the
-    // original model did not have 0.f scale.
-    RETURN_ERR_IF_NOT(scale != 0.f, "Found scale of 0 for " + name);
-
-    // For uniqued scale/offset, ignore the actual loaded values. Instead use
-    // scale 0.f to signal these quant params are dummies, and then a uniqued
-    // incremented offset to represent this unique quant param pair. Save the
-    // name of the C2 edge that we loaded to use these quant params in the cctx
-    // so we can ue it in the future. The index the name is at represents which
-    // unique index it is mapped to.
-    RETURN_ERR_IF_NOT(originNameToTQPMap_->size() == currUniqueOffset_,
-                      "Unexpected size encountered for qparam origin tracking");
-    const int32_t thisUniqueOffset = currUniqueOffset_++;
-    bool inserted =
-        originNameToTQPMap_
-            ->emplace(name, TensorQuantizationParams{0.f, thisUniqueOffset})
-            .second;
-    RETURN_ERR_IF_NOT(inserted, "Already inserted TQP for " + name);
-    return mod_.uniqueType(k, dims, 0.f, thisUniqueOffset);
   }
 
   /// Loads RELU operator, given its protobuf representation and parsed args.
@@ -1615,26 +1562,6 @@ protected:
 
     return Error::success();
   }
-
-  /// Uniqued offset value used when saving the mapping from quant params to
-  /// loader names.
-  int32_t currUniqueOffset_{0};
-
-  /// An optional mapping from the names of ops and inputs that are quantized to
-  /// the TQP that it came with.
-  OriginNameToTQPMap *originNameToTQPMap_{nullptr};
-
-  /// Whether to load uniqued dummy quantization params instead of the actual
-  /// quantization params in the model. \ref originNameToTQPMap_ must be
-  /// non-null when this is true.
-  bool loadUniquedDummyQParams_{false};
-
-  /// New TQP to use, indexed by the unique dummy offset it is mapped to.
-  std::vector<TensorQuantizationParams> updatedTQPs_;
-
-  /// Whether to try to replace dummy TQPs found during loading with real
-  /// updated ones in \ref updatedTQPs_.
-  bool replaceDummyTQPs_{false};
 };
 
 } // namespace glow

@@ -154,18 +154,21 @@ Caffe2ModelLoader::createAndSetTensorType(const caffe2::QTensorProto &in) {
   if (in.data_type() == caffe2::TensorProto::INT8) {
     TypeRef outTy;
     ASSIGN_VALUE_OR_RETURN_ERR(
-        outTy, loadQuantTy(in.name(), ElemKind::Int8QTy, dim, scale, offset,
-                           /* shiftUInt8ToInt8 */ false));
+        outTy, ProtobufLoader::loadQuantTy(in.name(), ElemKind::Int8QTy, dim,
+                                           scale, offset,
+                                           /* shiftUInt8ToInt8 */ false));
     result.t->reset(*outTy);
   } else if (in.data_type() == caffe2::TensorProto::UINT8) {
     TypeRef outTy;
     ASSIGN_VALUE_OR_RETURN_ERR(
-        outTy, loadQuantTy(in.name(), ElemKind::Int8QTy, dim, scale, offset));
+        outTy, ProtobufLoader::loadQuantTy(in.name(), ElemKind::Int8QTy, dim,
+                                           scale, offset));
     result.t->reset(*outTy);
   } else if (in.data_type() == caffe2::TensorProto::INT32) {
     TypeRef outTy;
     ASSIGN_VALUE_OR_RETURN_ERR(
-        outTy, loadQuantTy(in.name(), ElemKind::Int32QTy, dim, scale, offset));
+        outTy, ProtobufLoader::loadQuantTy(in.name(), ElemKind::Int32QTy, dim,
+                                           scale, offset));
     result.t->reset(*outTy);
   } else {
     RETURN_ERR("Only int8, uint8, and int32 qtensors are supported");
@@ -2016,6 +2019,8 @@ Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
 
     deleteUnusedConstants();
 
+    RETURN_IF_ERR(verifyDummyQParams());
+
     return Error::success();
   };
 
@@ -2090,6 +2095,8 @@ Error Caffe2ModelLoader::initWithModule(caffe2::NetDef &networkDef,
   }
 
   deleteUnusedConstants();
+
+  RETURN_IF_ERR(verifyDummyQParams());
 
   return Error::success();
 }

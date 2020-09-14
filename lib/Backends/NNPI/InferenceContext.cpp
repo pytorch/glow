@@ -254,7 +254,7 @@ bool InferenceContext::init(
   LOG_NNPI_INF_IF_ERROR_RETURN_FALSE(
       nnpiInferCommandCreate(deviceNetwork, inputHandles, numInputs,
                              outputHandles, numOutputs, &inferCmd_),
-      "Failed to create NNPI inference command");
+      "Failed to create NNPI inference command for " + functionName_);
 
   // Collect copy commands for the list (some resources may not need copying).
   std::vector<NNPICommandHandle> commands;
