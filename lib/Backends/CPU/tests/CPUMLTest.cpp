@@ -19,4 +19,5 @@ using namespace glow;
 
 std::set<std::string> glow::backendTestBlacklist = {
     "learnSparseLengthsSumEmbeddings/0",
+    "testFindPixelRegression/0",
 };
