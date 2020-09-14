@@ -1,8 +1,9 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import unittest
+
 import torch
 from tests.utils import jitVsGlow
-import unittest
 
 
 class TestUnsqueeze(unittest.TestCase):
@@ -65,4 +66,5 @@ class TestUnsqueeze(unittest.TestCase):
 
         x = torch.randn(2, 3, 4)
 
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::unsqueeze_"})
+        # Expect fuser to out-of-place the operator
+        jitVsGlow(test_f, x, expected_fused_ops={"aten::unsqueeze"})
