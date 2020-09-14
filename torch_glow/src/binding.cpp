@@ -76,6 +76,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("disable_convert_to_fp16",
         []() { getPyTorchLoaderSettings().convertToFP16 = false; });
 
+  /// Enable converting fp32 ops to fp16.
+  m.def("enable_clip_fp16",
+        []() { getPyTorchLoaderSettings().clipFP16 = true; });
+
+  /// Disable converting fp32 ops to fp16.
+  m.def("disable_clip_fp16",
+        []() { getPyTorchLoaderSettings().clipFP16 = false; });
+
   /// Enable converting fp32 fused ops to fp16.
   m.def("enable_convert_fused_to_fp16",
         []() { getPyTorchLoaderSettings().convertFusedToFP16 = true; });
