@@ -40,7 +40,8 @@ class TestFloorDiv(unittest.TestCase):
 
         x = torch.Tensor(4).random_(0, 5)
 
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::floor_divide_"})
+        # Expect fuser to out-of-place the operator
+        jitVsGlow(test_f, x, expected_fused_ops={"aten::floor_divide"})
 
     def test_floor_div_positive_broadcast_1(self):
         """Test of the PyTorch floor div Node on Glow with broadcasting."""

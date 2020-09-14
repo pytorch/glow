@@ -70,6 +70,7 @@ DEFINE_int32(fusionEndIndex, -1, "See PyTorchLoaderSettings");
 DEFINE_bool(setIncludeLastOffsets, true, "See PyTorchLoaderSettings");
 DEFINE_bool(inferShapeForCompilation, false,
             "Infer shape for the entire model for compilation");
+DEFINE_bool(enableRemoveMutation, true, "See PyTorchLoaderSettings");
 
 namespace glow {
 
@@ -259,6 +260,7 @@ void PyTorchLoaderSettings::initSettings() {
   fusionEndIndex = FLAGS_fusionEndIndex;
   setIncludeLastOffsets = FLAGS_setIncludeLastOffsets;
   inferShapeForCompilation = FLAGS_inferShapeForCompilation;
+  enableRemoveMutation = FLAGS_enableRemoveMutation;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
@@ -334,6 +336,7 @@ PyTorchLoaderSettings::PyTorchLoaderSettings(
   TRY_LOAD_INT_FROM_DICT(fusionEndIndex, dict);
   TRY_LOAD_BOOL_FROM_DICT(dumpFinalGlowGraph, dict);
   TRY_LOAD_BOOL_FROM_DICT(enableGlowTracing, dict);
+  TRY_LOAD_BOOL_FROM_DICT(enableRemoveMutation, dict);
   TRY_LOAD_INT_FROM_DICT(numTracesPerDump, dict);
   TRY_LOAD_BOOL_FROM_DICT(writeToOnnx, dict);
   TRY_LOAD_BOOL_FROM_DICT(onnxZipMode, dict);
@@ -400,6 +403,7 @@ PyTorchLoaderSettings::serializeToDict() const {
   INSERT_INT_TO_DICT(minFusionGroupSize, dict);
   INSERT_INT_TO_DICT(maxFusionMergeSize, dict);
   INSERT_INT_TO_DICT(fusionStartIndex, dict);
+  INSERT_BOOL_TO_DICT(enableRemoveMutation, dict);
   INSERT_INT_TO_DICT(fusionEndIndex, dict);
   INSERT_BOOL_TO_DICT(dumpFinalGlowGraph, dict);
   INSERT_BOOL_TO_DICT(enableGlowTracing, dict);
