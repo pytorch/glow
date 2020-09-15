@@ -411,7 +411,11 @@ class GlowError : protected detail::CheckState<detail::enableCheckingErrors> {
     return std::move(errorValue_);
   }
 
+#ifdef WIN32
+public:
+#else
 protected:
+#endif
   /// Construct a new empty Error.
   explicit GlowError() { setErrorValue(nullptr, /*skipCheck*/ true); }
 
