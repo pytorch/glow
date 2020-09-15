@@ -1805,10 +1805,21 @@ Error ONNXModelWriter::writeBatchMatMul(const BatchMatMulNode *node,
 Error ONNXModelWriter::writeReshape(const ReshapeNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
 
-  // Add ints type attribute.
-  addValueAttribute(proto, "shape", node->getDims());
+  // Converting arrayRef scale to a constant node
+  auto dims = node->getDims();
+  Tensor dimsTensor(ElemKind::Int64ITy, {(dim_t)dims.size()});
+  auto handleDims = dimsTensor.getHandle<int64_t>();
+  for (size_t b = 0, e = dims.size(); b < e; ++b) {
+    handleDims.raw(b) = dims[b];
+  }
 
-  return writeAllWithNode("Reshape", node, graph, proto);
+  auto *tensorProto = addInitializer(graph);
+  tensorProto->set_name(node->getName().str() + "_shape");
+  writeTensor(dimsTensor, tensorProto, useGlowCustomOps_);
+
+  RETURN_IF_ERR(writeAllWithNode("Reshape", node, graph, proto));
+  proto->add_input(node->getName().str() + "_shape");
+  return Error::success();
 }
 
 Error ONNXModelWriter::writeBucketize(const BucketizeNode *node,
