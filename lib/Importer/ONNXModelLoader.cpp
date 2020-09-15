@@ -64,6 +64,17 @@ llvm::cl::list<std::string, std::vector<std::string>> onnxDefineSymbolOpt(
         "    ..................................................\n"),
     llvm::cl::value_desc("name,value"), llvm::cl::cat(onnxModelLoaderCat));
 
+llvm::cl::opt<bool> onnxExportRnnStatesOpt(
+    "onnx-export-rnn-states", llvm::cl::init(false), llvm::cl::Optional,
+    llvm::cl::desc(
+        "Option to export the states of the ONNX RNN operators (for example \n"
+        "RNN, GRU, LSTM) as graph placeholders regardless of whether the    \n"
+        "states are explicitly set or not in the graph. The placeholders are\n"
+        "also providing an automatic way for tracking the RNN states since  \n"
+        "the states are updated automatically with the new RNN states after \n"
+        "each inference. Default is false."),
+    llvm::cl::cat(onnxModelLoaderCat));
+
 /// Parse the command line option and get the user defined map of symbols.
 /// The command line option has the format <symbol_name>,<symbol_value>.
 Expected<std::unordered_map<std::string, dim_t>> getSymbolMap() {
@@ -2878,7 +2889,7 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // -------------------------- Outputs ---------------------------------------
-  // We always create placeholders for the RNN state variable Y_h for the
+  // We allow creating placeholders for the RNN state variable Y_h for the
   // following reasons:
   // - expose the RNN state in the graph interface for accessibility (set
   //   desired state, reset state, watch the state being updated automatically).
@@ -2894,25 +2905,28 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
   dim_t batchSize = X.dims()[1];
 
   // Create Y_h (hidden state) output placeholder.
-  Placeholder *Y_h_ph;
-  TypeRef Htype = mod_.uniqueTypeWithNewShape(
-      X.getType(), {numDirections, batchSize, hiddenSize});
-  std::string Hname = opName + ".Y_h";
-  ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
-                             createAndRegisterPlaceholder(Hname, Htype));
-  inputVarsByName_.try_emplace(Hname, Y_h_ph);
+  Placeholder *Y_h_ph = nullptr;
+  if (onnxExportRnnStatesOpt) {
+    TypeRef Htype = mod_.uniqueTypeWithNewShape(
+        X.getType(), {numDirections, batchSize, hiddenSize});
+    std::string Hname = opName + ".Y_h";
+    ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
+                               createAndRegisterPlaceholder(Hname, Htype));
+    inputVarsByName_.try_emplace(Hname, Y_h_ph);
+  }
 
-  // If RNN input state is explicitly provided then used it. If not, then
-  // use the RNN state placeholder.
-  NodeValue Y_h_init = initial_h.getNode() ? initial_h : Y_h_ph;
+  // Set RNN input state.
+  NodeValue Y_h_init = onnxExportRnnStatesOpt ? Y_h_ph : initial_h;
 
   // Create ONNX RNN.
   NodeValue Y, Y_h;
   G_->createOnnxRNN(opName, X, W, R, B, Y_h_init, Y, Y_h, hiddenSize, direction,
                     activations);
 
-  // Save RNN state in the state placeholder.
-  G_->createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
+  // Save RNN output state.
+  if (onnxExportRnnStatesOpt) {
+    G_->createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
+  }
 
   // Add node.
   const int numOutputs = op.output_size();
@@ -3004,7 +3018,7 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // -------------------------- Outputs ---------------------------------------
-  // We always create placeholders for the GRU state variable Y_h for the
+  // We allow creating placeholders for the GRU state variable Y_h for the
   // following reasons:
   // - expose the GRU state in the graph interface for accessibility (set
   //   desired state, reset state, watch the state being updated automatically).
@@ -3020,25 +3034,28 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
   dim_t batchSize = X.dims()[1];
 
   // Create Y_h (hidden state) output placeholder.
-  Placeholder *Y_h_ph;
-  TypeRef Htype = mod_.uniqueTypeWithNewShape(
-      X.getType(), {numDirections, batchSize, hiddenSize});
-  std::string Hname = opName + ".Y_h";
-  ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
-                             createAndRegisterPlaceholder(Hname, Htype));
-  inputVarsByName_.try_emplace(Hname, Y_h_ph);
+  Placeholder *Y_h_ph = nullptr;
+  if (onnxExportRnnStatesOpt) {
+    TypeRef Htype = mod_.uniqueTypeWithNewShape(
+        X.getType(), {numDirections, batchSize, hiddenSize});
+    std::string Hname = opName + ".Y_h";
+    ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
+                               createAndRegisterPlaceholder(Hname, Htype));
+    inputVarsByName_.try_emplace(Hname, Y_h_ph);
+  }
 
-  // If GRU input state is explicitly provided then used it. If not, then
-  // use the GRU state placeholder.
-  NodeValue Y_h_init = initial_h.getNode() ? initial_h : Y_h_ph;
+  // Set GRU input state.
+  NodeValue Y_h_init = onnxExportRnnStatesOpt ? Y_h_ph : initial_h;
 
   // Create ONNX GRU.
   NodeValue Y, Y_h;
   G_->createOnnxGRU(opName, X, W, R, B, Y_h_init, Y, Y_h, hiddenSize, direction,
                     activations, (bool)linearBeforeReset);
 
-  // Save GRU state in the state placeholder.
-  G_->createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
+  // Save GRU output state.
+  if (onnxExportRnnStatesOpt) {
+    G_->createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
+  }
 
   // Add node.
   const int numOutputs = op.output_size();
@@ -3143,7 +3160,7 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // -------------------------- Outputs ---------------------------------------
-  // We always create placeholders for the LSTM state variables (Y_h and Y_c)
+  // We allow creating placeholders for the LSTM state variables (Y_h and Y_c)
   // for the following reasons:
   // - expose the LSTM state in the graph interface for accessibility (set
   //   desired state, reset state, watch the state being updated automatically).
@@ -3159,36 +3176,41 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   dim_t batchSize = X.dims()[1];
 
   // Create Y_h (hidden state) output placeholder.
-  Placeholder *Y_h_ph;
-  TypeRef Htype = mod_.uniqueTypeWithNewShape(
-      X.getType(), {numDirections, batchSize, hiddenSize});
-  std::string Hname = opName + ".Y_h";
-  ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
-                             createAndRegisterPlaceholder(Hname, Htype));
-  inputVarsByName_.try_emplace(Hname, Y_h_ph);
+  Placeholder *Y_h_ph = nullptr;
+  if (onnxExportRnnStatesOpt) {
+    TypeRef Htype = mod_.uniqueTypeWithNewShape(
+        X.getType(), {numDirections, batchSize, hiddenSize});
+    std::string Hname = opName + ".Y_h";
+    ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
+                               createAndRegisterPlaceholder(Hname, Htype));
+    inputVarsByName_.try_emplace(Hname, Y_h_ph);
+  }
 
   // Create Y_c (cell state) output placeholder.
-  Placeholder *Y_c_ph;
-  TypeRef Ctype = mod_.uniqueTypeWithNewShape(
-      X.getType(), {numDirections, batchSize, hiddenSize});
-  std::string Cname = opName + ".Y_c";
-  ASSIGN_VALUE_OR_RETURN_ERR(Y_c_ph,
-                             createAndRegisterPlaceholder(Cname, Ctype));
-  inputVarsByName_.try_emplace(Cname, Y_c_ph);
+  Placeholder *Y_c_ph = nullptr;
+  if (onnxExportRnnStatesOpt) {
+    TypeRef Ctype = mod_.uniqueTypeWithNewShape(
+        X.getType(), {numDirections, batchSize, hiddenSize});
+    std::string Cname = opName + ".Y_c";
+    ASSIGN_VALUE_OR_RETURN_ERR(Y_c_ph,
+                               createAndRegisterPlaceholder(Cname, Ctype));
+    inputVarsByName_.try_emplace(Cname, Y_c_ph);
+  }
 
-  // If LSTM input states are explicitly provided then used them. If not, then
-  // use the LSTM state placeholders.
-  NodeValue Y_h_init = initial_h.getNode() ? initial_h : Y_h_ph;
-  NodeValue Y_c_init = initial_c.getNode() ? initial_c : Y_c_ph;
+  // Set LSTM input states.
+  NodeValue Y_h_init = onnxExportRnnStatesOpt ? Y_h_ph : initial_h;
+  NodeValue Y_c_init = onnxExportRnnStatesOpt ? Y_c_ph : initial_c;
 
   // Create ONNX LSTM.
   NodeValue Y, Y_h, Y_c;
   G_->createOnnxLSTM(opName, X, W, R, B, Y_h_init, Y_c_init, P, Y, Y_h, Y_c,
                      hiddenSize, direction, activations, (bool)inputForget);
 
-  // Save LSTM state in the state placeholders.
-  G_->createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
-  G_->createSave(opName + ".Y_c.save", Y_c, Y_c_ph);
+  // Save LSTM output states.
+  if (onnxExportRnnStatesOpt) {
+    G_->createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
+    G_->createSave(opName + ".Y_c.save", Y_c, Y_c_ph);
+  }
 
   // Add node.
   const int numOutputs = op.output_size();
