@@ -532,12 +532,9 @@ TEST_F(OnnxImporterTest, leakyRelu) {
   }
 
   auto *save = getSaveNodeFromDest(output);
-  PReluNode *PRL = llvm::dyn_cast<PReluNode>(save->getInput().getNode());
-  ASSERT_TRUE(PRL);
-  NodeValue slopeN = PRL->getSlope();
-  SplatNode *splatN = llvm::dyn_cast<SplatNode>(slopeN.getNode());
-  ASSERT_TRUE(splatN);
-  EXPECT_FLOAT_EQ(splatN->getValue(), 0.100000001);
+  LeakyReluNode *LR = llvm::dyn_cast<LeakyReluNode>(save->getInput().getNode());
+  ASSERT_TRUE(LR);
+  EXPECT_FLOAT_EQ(LR->getAlpha(), 0.100000001);
 }
 
 /// Test Loading LeakyRelu op from an ONNX model with default alpha.
@@ -560,12 +557,9 @@ TEST_F(OnnxImporterTest, leakyReluDefault) {
   }
 
   auto *save = getSaveNodeFromDest(output);
-  PReluNode *PRL = llvm::dyn_cast<PReluNode>(save->getInput().getNode());
-  ASSERT_TRUE(PRL);
-  NodeValue slopeN = PRL->getSlope();
-  SplatNode *splatN = llvm::dyn_cast<SplatNode>(slopeN.getNode());
-  ASSERT_TRUE(splatN);
-  EXPECT_FLOAT_EQ(splatN->getValue(), 0.01);
+  LeakyReluNode *LR = llvm::dyn_cast<LeakyReluNode>(save->getInput().getNode());
+  ASSERT_TRUE(LR);
+  EXPECT_FLOAT_EQ(LR->getAlpha(), 0.01);
 }
 
 TEST_F(OnnxImporterTest, importAddMultiBroadcastOp7) {

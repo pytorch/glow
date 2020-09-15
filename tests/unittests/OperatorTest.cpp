@@ -7427,6 +7427,41 @@ TEST_P(OperatorTest, Clip) {
   }
 }
 
+TEST_P(OperatorTest, LeakyRelu_FloatTy) {
+  CHECK_IF_ENABLED();
+  auto *inp = mod_.createPlaceholder(ElemKind::FloatTy, {3}, "inp", false);
+  bindings_.allocate(inp)->getHandle<float>() = {-2, 0.0, 2};
+  auto *node = F_->createLeakyRELU("leaky_relu", inp, /* alpha */ 0.5);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<float>();
+  EXPECT_EQ(outH.size(), 3);
+  EXPECT_FLOAT_EQ(outH.raw(0), -1.0);
+  EXPECT_FLOAT_EQ(outH.raw(1), 0.0);
+  EXPECT_FLOAT_EQ(outH.raw(2), 2.0);
+}
+
+TEST_P(OperatorTest, LeakyRelu_Int8QTy) {
+  CHECK_IF_ENABLED();
+  auto *inp =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {5}, 0.5, 0, "inp", false);
+  bindings_.allocate(inp)->getHandle<int8_t>() = {-4, -2, 0, 2, 4};
+  auto *node = F_->createLeakyRELU("leaky_relu", inp, /* alpha */ 0.5);
+  auto *save = F_->createSave("save", node);
+  auto *outT = bindings_.allocate(save->getPlaceholder());
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto outH = outT->getHandle<int8_t>();
+  EXPECT_EQ(outH.size(), 5);
+  EXPECT_EQ(outH.raw(0), -2);
+  EXPECT_EQ(outH.raw(1), -1);
+  EXPECT_EQ(outH.raw(2), 0);
+  EXPECT_EQ(outH.raw(3), 2);
+  EXPECT_EQ(outH.raw(4), 4);
+}
+
 TEST_P(OperatorTest, Not) {
   CHECK_IF_ENABLED();
   auto *input = mod_.createPlaceholder(ElemKind::BoolTy, {2}, "inp", false);

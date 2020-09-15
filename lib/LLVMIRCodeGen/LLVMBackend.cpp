@@ -66,6 +66,7 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
 
   case Kinded::Kind::ReluNodeKind:
   case Kinded::Kind::ClipNodeKind:
+  case Kinded::Kind::LeakyReluNodeKind:
   case Kinded::Kind::SubNodeKind:
   case Kinded::Kind::MaxNodeKind:
   case Kinded::Kind::MinNodeKind:

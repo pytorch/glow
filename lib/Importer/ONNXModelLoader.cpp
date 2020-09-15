@@ -2358,6 +2358,8 @@ Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
 
 Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
                                      ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
   // Input Type.
   NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
@@ -2375,11 +2377,7 @@ Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Create the node.
-  auto splatType = mod_.uniqueType(ElemKind::FloatTy, input.dims());
-  const std::string &opName = loadOperatorName(op);
-  Node *splatN = G_->createSplat(opName + "Alpha", splatType, alphaVal);
-  Node *N = G_->createPRELU(opName, input, splatN);
-
+  Node *N = G_->createLeakyRELU(opName, input, alphaVal);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
 
   return Error::success();
