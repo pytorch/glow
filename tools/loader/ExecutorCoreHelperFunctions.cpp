@@ -22,6 +22,7 @@
 
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
@@ -49,6 +50,13 @@ llvm::cl::list<std::string> inputImageFilenames(
                    "mode, where the model is compiled once and then can be run "
                    "many times with new input filenames passed via stdin)"),
     llvm::cl::ZeroOrMore);
+
+llvm::cl::list<std::string> inputImageDirs(
+    "input-image-dir",
+    llvm::cl::desc(
+        "Name of directory containing images. Can be used multiple times."),
+    llvm::cl::value_desc("dir_name"), llvm::cl::Optional, llvm::cl::ZeroOrMore,
+    llvm::cl::cat(executorCat));
 
 llvm::cl::opt<std::string> inputImageListFile(
     "input-image-list-file",
@@ -149,6 +157,29 @@ llvm::cl::opt<unsigned> repeatSingleBatchCount(
         "size and repeated n times. Otherwise the first minibatch is repeated "
         "and all other inputs are ignored."),
     llvm::cl::init(0), llvm::cl::cat(executorCat));
+
+/// Read all images from \p inputImageDir into \p inputImageFilenames.
+void parseInputDir(const std::string &inputImageDir) {
+  CHECK(llvm::sys::fs::is_directory(inputImageDir))
+      << strFormat("Path '%s' is not a directory!", inputImageDir.data());
+  std::error_code code;
+  llvm::sys::fs::directory_iterator dirIt(inputImageDir, code);
+  std::vector<std::string> imageFiles;
+  while (!code && dirIt != llvm::sys::fs::directory_iterator()) {
+    auto path = dirIt->path();
+    if (llvm::sys::fs::is_regular_file(path)) {
+      imageFiles.emplace_back(path);
+    }
+    dirIt.increment(code);
+  }
+  // The paths retrieved by the directory iterator are not sorted.
+  // Sort the paths alphabetically in increasing order and add them
+  // to the overall list of image filenames.
+  std::sort(imageFiles.begin(), imageFiles.end());
+  for (auto &imageFile : imageFiles) {
+    inputImageFilenames.push_back(imageFile);
+  }
+}
 
 /// Read all images from \p inputImageListFile in to \p inputImageFilenames.
 void parseInputList(const std::string &inputListFile) {
