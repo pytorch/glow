@@ -557,6 +557,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Exp_BFloat16/0",
     "Tanh_Float16/0",
     "TestFP32Accumulator/0",
+    "LeakyRelu_Int8QTy/0",
     "RoiAlign/0",
     "RoiAlignWithAlignedCoordinates/0",
     "RoiAlignBatchIndexInBoxesTensor/0",

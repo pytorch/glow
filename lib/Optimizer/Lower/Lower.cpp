@@ -403,6 +403,23 @@ static void lowerReluNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, R.getResult(), relu);
 }
 
+static void lowerLeakyReluNode(Function *F, CompilationContext &cctx,
+                               const LeakyReluNode &LR) {
+
+  LOG_SCOPE(F->getLogContext(), "lowerLeakyReluNode")
+
+  // Lower LeakyRelu to PRelu with Splat.
+  auto splatType = F->getParent()->uniqueType(*(LR.getInput().getType()));
+  SplatNode *splat =
+      F->createSplat(DECORATE_NODE_NAME(LR, "alpha"), splatType, LR.getAlpha());
+
+  auto outTy = F->getParent()->uniqueType(*(LR.getResult().getType()));
+  auto *prelu = F->createPRELU(DECORATE_NODE_NAME(LR, "prelu"), LR.getInput(),
+                               splat, outTy);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, LR.getResult(), prelu);
+}
+
 static void lowerPReluNode(Function *F, CompilationContext &cctx,
                            const PReluNode &R) {
   // PRelu is :
@@ -1642,6 +1659,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(FullyConnected);
     CASE_LOWER(FullyConnectedGrad);
     CASE_LOWER(Relu);
+    CASE_LOWER(LeakyRelu);
     CASE_LOWER(ReluGrad);
     CASE_LOWER(PRelu);
     CASE_LOWER(Pad);
