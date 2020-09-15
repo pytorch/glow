@@ -138,6 +138,16 @@ target_link_libraries(ConcatBench
                         HostManager
                         CPURuntimeNative)
 
+add_executable(Int8AvgPool2dParallelBench
+               Int8AvgPool2dParallelBench.cpp)
+target_link_libraries(Int8AvgPool2dParallelBench
+                      PRIVATE
+                        Backends
+                        ExecutionEngine
+                        Graph
+                        GraphOptimizer
+                        HostManager
+                        CPURuntimeNative)
 
 add_executable(BERTProxyLayerBench
                BERTProxyLayerBench.cpp)
