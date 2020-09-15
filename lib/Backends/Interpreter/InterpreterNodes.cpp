@@ -28,6 +28,7 @@
 #include <chrono>
 #include <cmath>
 #include <math.h>
+#include <numeric>
 
 #ifdef WIN32
 #include <corecrt_math_defines.h>
