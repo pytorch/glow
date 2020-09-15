@@ -23,9 +23,10 @@
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Timer.h"
 
+extern llvm::cl::list<std::string> inputImageFilenames;
+extern llvm::cl::list<std::string> inputImageDirs;
 extern llvm::cl::opt<std::string> inputImageListFile;
 extern llvm::cl::opt<std::string> inputTensorListFile;
-extern llvm::cl::list<std::string> inputImageFilenames;
 extern llvm::cl::opt<unsigned> excludedFirstWarmupRuns;
 extern llvm::cl::opt<unsigned> warmup;
 extern llvm::cl::opt<std::string> tracePath;
@@ -36,6 +37,9 @@ extern llvm::cl::opt<bool> preloadAllImages;
 extern llvm::cl::opt<unsigned> repeatSingleBatchCount;
 
 extern std::unique_ptr<glow::TraceContext> traceContext;
+
+/// Read all images from \p inputImageDir into \p inputImageFilenames.
+void parseInputDir(const std::string &inputImageDir);
 
 /// Read all images from \p inputImageListFile in to \p inputImageFilenames.
 void parseInputList(const std::string &inputImageListFile);

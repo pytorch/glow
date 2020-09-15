@@ -5049,7 +5049,10 @@ Error glow::optimizeFunctionBeforeLowering(Function *F,
 
 /// Error message to print when there is a graph hash checking error.
 static const char *graphPreLowerHashCheckErrMsg =
-    R"RAW(Graph check error: graph hash mismatch! Potential causes:
+    R"RAW(Graph hash mismatch!
+%s
+%s
+Potential causes:
 1. The profile YAML file was produced with an older version of the Glow tools
    while the quantization of the model is performed with a newer version.
 2. The profile YAML file was produced for a different model than the model used
@@ -5098,8 +5101,16 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   } else if (precConfig.quantMode == QuantizationMode::Quantize) {
     const auto &quantConfig = cctx.precisionConfig.quantConfig;
     if (quantConfig.checkGraphPreLowerHash) {
-      RETURN_ERR_IF_NOT(F->getHash() == quantConfig.graphPreLowerHash,
-                        graphPreLowerHashCheckErrMsg);
+      auto profileHash = quantConfig.graphPreLowerHash;
+      auto currentHash = F->getHash();
+      auto profileHashStr =
+          strFormat("Profile graph hash: 0x%" PRIX64, (uint64_t)(profileHash));
+      auto currentHashStr =
+          strFormat("Current graph hash: 0x%" PRIX64, (uint64_t)(currentHash));
+      RETURN_ERR_IF_NOT(profileHash == currentHash,
+                        strFormat(graphPreLowerHashCheckErrMsg,
+                                  profileHashStr.c_str(),
+                                  currentHashStr.c_str()));
     }
   }
 

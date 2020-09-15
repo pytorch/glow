@@ -16,6 +16,7 @@
 
 #include "glow/Quantization/Serialization.h"
 #include "glow/Quantization/Base/Base.h"
+#include "glow/Support/Support.h"
 
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/YAMLParser.h"
@@ -23,6 +24,9 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <glog/logging.h>
+
+/// Yaml serializer for the Glow tools version.
+LLVM_YAML_STRONG_TYPEDEF(std::string, YAMLGlowToolsVersion)
 
 /// Yaml serializer for the graph hash code.
 LLVM_YAML_STRONG_TYPEDEF(llvm::yaml::Hex64, YAMLGraphPreLowerHash)
@@ -64,6 +68,13 @@ template <> struct ScalarTraits<FloatWrapper> {
     return "invalid floating point number";
   }
   static QuotingType mustQuote(StringRef) { return QuotingType::None; }
+};
+
+/// Mapping for YAMLGlowToolsVersion yaml serializer.
+template <> struct MappingTraits<YAMLGlowToolsVersion> {
+  static void mapping(IO &io, YAMLGlowToolsVersion &ver) {
+    io.mapRequired("GlowToolsVersion", ver.value);
+  }
 };
 
 /// Mapping for YAMLGraphPreLowerHash yaml serializer.
@@ -108,6 +119,14 @@ void serializeProfilingInfosToYaml(
   CHECK(!EC) << "Error opening YAML file '" << fileName.str() << "'!";
   llvm::yaml::Output yout(outputStream);
 
+  // Write Glow tools version.
+#ifdef GLOW_BUILD_DATE
+  YAMLGlowToolsVersion yamlVersion = YAMLGlowToolsVersion(GLOW_BUILD_DATE);
+#else
+  YAMLGlowToolsVersion yamlVersion = YAMLGlowToolsVersion("");
+#endif
+  yout << yamlVersion;
+
   // Write graph hash.
   auto uint64Hash = static_cast<uint64_t>(graphPreLowerHash);
   YAMLGraphPreLowerHash yamlHash = llvm::yaml::Hex64(uint64Hash);
@@ -133,16 +152,29 @@ bool deserializeProfilingInfosFromYaml(
   std::unique_ptr<llvm::MemoryBuffer> buffer = std::move(*text);
   llvm::yaml::Input yin(buffer->getBuffer());
 
+  // Error message in case of incorrect profile format.
+  std::string profileErrMsg =
+      strFormat("Error reading YAML file '%s'!", fileName.data());
+#ifdef GLOW_BUILD_DATE
+  profileErrMsg += strFormat(" Verify that the YAML file was generated with "
+                             "the current version (%s) of the Glow tools!",
+                             GLOW_BUILD_DATE);
+#endif
+
+  // Read Glow tools version.
+  YAMLGlowToolsVersion yamlVersion;
+  yin >> yamlVersion;
+  CHECK(yin.nextDocument()) << profileErrMsg;
+
   // Read graph hash.
   YAMLGraphPreLowerHash hash;
   yin >> hash;
   graphPreLowerHash = llvm::hash_code(static_cast<size_t>(hash.value));
-  CHECK(yin.nextDocument())
-      << "Error reading YAML file '" << fileName.str() << "'!";
+  CHECK(yin.nextDocument()) << profileErrMsg;
 
   // Read profiling info.
   yin >> profilingInfos;
-  CHECK(!yin.error()) << "Error reading YAML file '" << fileName.str() << "'!";
+  CHECK(!yin.error()) << profileErrMsg;
   return true;
 }
 
