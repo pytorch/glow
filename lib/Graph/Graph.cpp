@@ -3695,15 +3695,19 @@ void Function::createOnnxRNN(llvm::StringRef namePrefix, NodeValue X,
            "ONNX RNN 'B' tensor size invalid!");
   }
 
-  // Validate initial_h size.
-  assert(initial_h.getNode() &&
-         "ONNX RNN input 'initial_h' is mandatory. Null provided!");
-  assert(initial_h.dims().size() == 3 &&
-         "ONNX RNN input 'initial_h' should have 2 dimensions!");
-  assert(initial_h.dims()[0] == numDirections &&
-         initial_h.dims()[1] == batchSize &&
-         initial_h.dims()[2] == hiddenSize &&
-         "ONNX RNN 'initial_h' tensor size invalid!");
+  // Validate initial_h size if given else create Splat with 0.
+  if (initial_h.getNode()) {
+    assert(initial_h.dims().size() == 3 &&
+           "ONNX RNN input 'initial_h' should have 2 dimensions!");
+    assert(initial_h.dims()[0] == numDirections &&
+           initial_h.dims()[1] == batchSize &&
+           initial_h.dims()[2] == hiddenSize &&
+           "ONNX RNN 'initial_h' tensor size invalid!");
+  } else {
+    auto splatTy = getParent()->uniqueType(
+        ElemKind::FloatTy, {numDirections, batchSize, hiddenSize});
+    initial_h = createSplat(opName + ".initial_h", splatTy, 0.0);
+  }
 
   // Validate number of activations.
   assert(activations.size() == numDirections * 1 &&
@@ -3899,15 +3903,19 @@ void Function::createOnnxGRU(llvm::StringRef namePrefix, NodeValue X,
            "ONNX GRU 'B' tensor size invalid!");
   }
 
-  // Validate initial_h size.
-  assert(initial_h.getNode() &&
-         "ONNX GRU input 'initial_h' is mandatory. Null provided!");
-  assert(initial_h.dims().size() == 3 &&
-         "ONNX GRU input 'initial_h' should have 2 dimensions!");
-  assert(initial_h.dims()[0] == numDirections &&
-         initial_h.dims()[1] == batchSize &&
-         initial_h.dims()[2] == hiddenSize &&
-         "ONNX GRU 'initial_h' tensor size invalid!");
+  // Validate initial_h size if given else create Splat with 0.
+  if (initial_h.getNode()) {
+    assert(initial_h.dims().size() == 3 &&
+           "ONNX GRU input 'initial_h' should have 2 dimensions!");
+    assert(initial_h.dims()[0] == numDirections &&
+           initial_h.dims()[1] == batchSize &&
+           initial_h.dims()[2] == hiddenSize &&
+           "ONNX GRU 'initial_h' tensor size invalid!");
+  } else {
+    auto splatTy = getParent()->uniqueType(
+        ElemKind::FloatTy, {numDirections, batchSize, hiddenSize});
+    initial_h = createSplat(opName + ".initial_h", splatTy, 0.0);
+  }
 
   // Validate number of activations.
   assert(activations.size() == numDirections * 2 &&
@@ -4176,25 +4184,33 @@ void Function::createOnnxLSTM(llvm::StringRef namePrefix, NodeValue X,
            "ONNX LSTM 'B' tensor size invalid!");
   }
 
-  // Validate initial_h size.
-  assert(initial_h.getNode() &&
-         "ONNX LSTM input 'initial_h' is mandatory. Null provided!");
-  assert(initial_h.dims().size() == 3 &&
-         "ONNX LSTM input 'initial_h' should have 2 dimensions!");
-  assert(initial_h.dims()[0] == numDirections &&
-         initial_h.dims()[1] == batchSize &&
-         initial_h.dims()[2] == hiddenSize &&
-         "ONNX LSTM 'initial_h' tensor size invalid!");
+  // Validate initial_h size if given else create Splat with 0.
+  if (initial_h.getNode()) {
+    assert(initial_h.dims().size() == 3 &&
+           "ONNX LSTM input 'initial_h' should have 2 dimensions!");
+    assert(initial_h.dims()[0] == numDirections &&
+           initial_h.dims()[1] == batchSize &&
+           initial_h.dims()[2] == hiddenSize &&
+           "ONNX LSTM 'initial_h' tensor size invalid!");
+  } else {
+    auto splatTy = getParent()->uniqueType(
+        ElemKind::FloatTy, {numDirections, batchSize, hiddenSize});
+    initial_h = createSplat(opName + ".initial_h", splatTy, 0.0);
+  }
 
-  // Validate initial_c size.
-  assert(initial_c.getNode() &&
-         "ONNX LSTM input 'initial_c' is mandatory. Null provided!");
-  assert(initial_c.dims().size() == 3 &&
-         "ONNX LSTM input 'initial_c' should have 2 dimensions!");
-  assert(initial_c.dims()[0] == numDirections &&
-         initial_c.dims()[1] == batchSize &&
-         initial_c.dims()[2] == hiddenSize &&
-         "ONNX LSTM 'initial_c' tensor size invalid!");
+  // Validate initial_c size if given else create Splat with 0.
+  if (initial_c.getNode()) {
+    assert(initial_c.dims().size() == 3 &&
+           "ONNX LSTM input 'initial_c' should have 2 dimensions!");
+    assert(initial_c.dims()[0] == numDirections &&
+           initial_c.dims()[1] == batchSize &&
+           initial_c.dims()[2] == hiddenSize &&
+           "ONNX LSTM 'initial_c' tensor size invalid!");
+  } else {
+    auto splatTy = getParent()->uniqueType(
+        ElemKind::FloatTy, {numDirections, batchSize, hiddenSize});
+    initial_c = createSplat(opName + ".initial_c", splatTy, 0.0);
+  }
 
   // Validate P size.
   if (P.getNode()) {

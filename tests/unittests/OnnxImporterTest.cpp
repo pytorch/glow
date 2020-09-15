@@ -3653,18 +3653,7 @@ static void importRNN(std::string fileName) {
   {
     ONNXModelLoader onnxLD(fileName, {}, {}, *F);
     bindings.allocate(mod.getPlaceholders());
-    auto Y_h_nv = EXIT_ON_ERR(onnxLD.getNodeValueByName("Y_h"));
-    EXPECT_TRUE(Y_h_nv.getNode());
   }
-
-  // Search RNN state placeholder and set to 0.
-  Placeholder *Y_h_ph = nullptr;
-  for (const auto &ph : mod.getPlaceholders()) {
-    if (llvm::StringRef(ph->getName()).endswith("Y_h"))
-      Y_h_ph = ph;
-  }
-  EXPECT_TRUE(Y_h_ph);
-  bindings.get(Y_h_ph)->zero();
 
   // Compile and run.
   EE.compile(CompilationMode::Infer);
@@ -3710,18 +3699,7 @@ static void importGRU(std::string fileName) {
   {
     ONNXModelLoader onnxLD(fileName, {}, {}, *F);
     bindings.allocate(mod.getPlaceholders());
-    auto Y_h_nv = EXIT_ON_ERR(onnxLD.getNodeValueByName("Y_h"));
-    EXPECT_TRUE(Y_h_nv.getNode());
   }
-
-  // Search GRU state placeholder and set to 0.
-  Placeholder *Y_h_ph = nullptr;
-  for (const auto &ph : mod.getPlaceholders()) {
-    if (llvm::StringRef(ph->getName()).endswith("Y_h"))
-      Y_h_ph = ph;
-  }
-  EXPECT_TRUE(Y_h_ph);
-  bindings.get(Y_h_ph)->zero();
 
   // Compile and run.
   EE.compile(CompilationMode::Infer);
@@ -3772,25 +3750,7 @@ static void importLSTM(std::string fileName) {
   {
     ONNXModelLoader onnxLD(fileName, {}, {}, *F);
     bindings.allocate(mod.getPlaceholders());
-    auto Y_h_nv = EXIT_ON_ERR(onnxLD.getNodeValueByName("Y_h"));
-    auto Y_c_nv = EXIT_ON_ERR(onnxLD.getNodeValueByName("Y_c"));
-    EXPECT_TRUE(Y_h_nv.getNode());
-    EXPECT_TRUE(Y_c_nv.getNode());
   }
-
-  // Search LSTM state placeholders and set to 0.
-  Placeholder *Y_h_ph = nullptr;
-  Placeholder *Y_c_ph = nullptr;
-  for (const auto &ph : mod.getPlaceholders()) {
-    if (llvm::StringRef(ph->getName()).endswith("Y_h"))
-      Y_h_ph = ph;
-    if (llvm::StringRef(ph->getName()).endswith("Y_c"))
-      Y_c_ph = ph;
-  }
-  EXPECT_TRUE(Y_h_ph);
-  EXPECT_TRUE(Y_c_ph);
-  bindings.get(Y_h_ph)->zero();
-  bindings.get(Y_c_ph)->zero();
 
   // Compile and run.
   EE.compile(CompilationMode::Infer);
