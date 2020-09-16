@@ -604,6 +604,13 @@ int main(int argc, char **argv) {
       .setDocstring(
           "Adds the 'Slice' operand to each one of the slices in the batch.");
 
+  BB.newNode("BatchedMul")
+      .addInput("Batch")
+      .addInput("Slice")
+      .addResultFromCtorArg()
+      .setDocstring("Multiplies the 'Slice' operand to each one of the slices "
+                    "in the batch.");
+
   BB.newNode("MatMul")
       .addInput("LHS")
       .addInput("RHS")

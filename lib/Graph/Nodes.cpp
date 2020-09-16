@@ -1448,6 +1448,23 @@ bool BatchedAddNode::verify() const {
   return isValid;
 }
 
+bool BatchedMulNode::verify() const {
+  auto batchShape = getBatch().dims();
+  auto rhsShape = getSlice().dims();
+  bool isValid = expectCompareTrue("Invalid shape", batchShape.drop_front(),
+                                   rhsShape, this);
+  isValid &= checkSameShape(getBatch(), getResult(), this);
+
+  if (getBatch().getType()->isQuantizedType()) {
+    expectCompareTrue("Mismatched slice element types",
+                      getSlice().getType()->isQuantizedType(), true, this);
+  } else {
+    isValid &=
+        checkType(getBatch(), getSlice().getType()->getElementType(), this);
+  }
+  return isValid;
+}
+
 bool CumSumNode::verify() const {
   return checkSameType(getResult(), getInput(), this);
 }

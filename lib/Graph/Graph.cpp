@@ -1970,6 +1970,17 @@ BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name, TypeRef outTy,
       new BatchedAddNode(name, getParent()->uniqueType(*outTy), batch, slice));
 }
 
+BatchedMulNode *Function::createBatchedMul(llvm::StringRef name,
+                                           NodeValue batch, NodeValue slice) {
+  return addNode(new BatchedMulNode(name, batch.getType(), batch, slice));
+}
+
+BatchedMulNode *Function::createBatchedMul(llvm::StringRef name, TypeRef outTy,
+                                           NodeValue batch, NodeValue slice) {
+  return addNode(
+      new BatchedMulNode(name, getParent()->uniqueType(*outTy), batch, slice));
+}
+
 CumSumNode *Function::createCumSum(llvm::StringRef name, NodeValue input,
                                    bool exclusive, bool reverse) {
   return addNode(
