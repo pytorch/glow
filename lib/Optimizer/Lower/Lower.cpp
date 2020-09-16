@@ -180,6 +180,25 @@ static void lowerFloorDivNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, node.getResult(), result);
 }
 
+static void lowerBatchedMulNode(Function *F, CompilationContext &cctx,
+                                const BatchedMulNode &node) {
+  LOG_SCOPE(F->getLogContext(), "lowerBatchedMulNode")
+
+  NodeValue batch = node.getBatch();
+  NodeValue slice = node.getSlice();
+  auto sliceReshapeSize = slice.dims().vec();
+  sliceReshapeSize.insert(sliceReshapeSize.begin(), 1);
+  slice = F->createReshape("slice_tiled", slice, sliceReshapeSize);
+  slice = F->createTile(
+      "slice_tiled", slice, batch.dims()[0], 0,
+      F->getParent()->uniqueTypeWithNewShape(slice.getType(), batch.dims()));
+
+  NodeValue mul =
+      F->createMul("batched_mul", node.getResult().getType(), batch, slice)
+          ->getResult();
+  replaceAllUsesOfWith(cctx.loweredInfoMap, node.getResult(), mul);
+}
+
 static void lowerGemmNode(Function *F, CompilationContext &cctx,
                           const GemmNode &GN) {
 
@@ -1689,6 +1708,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(AdaptiveAvgPool);
     CASE_LOWER(Gelu);
     CASE_LOWER(FloorDiv);
+    CASE_LOWER(BatchedMul);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
     if (CN->getGroup() > 1 && CN->hasFusedActivation()) {

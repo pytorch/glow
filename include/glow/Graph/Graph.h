@@ -1163,6 +1163,12 @@ public:
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, TypeRef outTy,
                                    NodeValue batch, NodeValue slice);
 
+  BatchedMulNode *createBatchedMul(llvm::StringRef name, NodeValue batch,
+                                   NodeValue slice);
+
+  BatchedMulNode *createBatchedMul(llvm::StringRef name, TypeRef outTy,
+                                   NodeValue batch, NodeValue slice);
+
   /// Create a node performing a Cumulative Sum operation, output type matches
   /// \p input type.
   CumSumNode *createCumSum(llvm::StringRef name, NodeValue input,
