@@ -11557,11 +11557,15 @@ TEST_P(OperatorTest, IntLookupTable) {
 
 /// Helper to test BatchAdd using \p DTy.
 template <typename DataType>
-static void testBatchAdd(glow::PlaceholderBindings &bindings, glow::Module &mod,
-                         glow::Function *F, glow::ExecutionEngine &EE,
-                         ElemKind DTy) {
-  unsigned numSlices = 10;
-  auto *input = mod.createPlaceholder(DTy, {numSlices, 10, 10}, "input", false);
+static void testBatchOp(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                        glow::Function *F, glow::ExecutionEngine &EE,
+                        ElemKind DTy, const std::string &opName) {
+  CHECK(opName == "add" || opName == "mul") << "Invalid opName: " << opName;
+
+  constexpr unsigned numSlices = 10;
+  constexpr unsigned batchSize = 3;
+  auto *input = mod.createPlaceholder(DTy, {batchSize * numSlices, 10, 10},
+                                      "input", false);
   auto *slice = mod.createPlaceholder(DTy, {10, 10}, "slice", false);
 
   bindings.allocate(input)->getHandle<DataType>().randomize(-10.0, 10.0,
@@ -11569,17 +11573,21 @@ static void testBatchAdd(glow::PlaceholderBindings &bindings, glow::Module &mod,
   bindings.allocate(slice)->getHandle<DataType>().randomize(-10.0, 10.0,
                                                             mod.getPRNG());
 
-  std::vector<NodeValue> adds;
+  std::vector<NodeValue> ops;
   for (dim_t i = 0; i < numSlices; i++) {
-    auto *ex = F->createSlice("slice", input, {i, 0, 0}, {i + 1, 10, 10});
-    auto *ba = F->createBatchedAdd("add", ex, slice);
-    adds.push_back(ba);
+    auto *ex = F->createSlice("slice", input, {i * batchSize, 0, 0},
+                              {(i + 1) * batchSize, 10, 10});
+    if (opName == "add") {
+      ops.push_back(F->createBatchedAdd("add", ex, slice)->getResult());
+    } else {
+      ops.push_back(F->createBatchedMul("mul", ex, slice)->getResult());
+    }
   }
 
-  auto *cc = F->createConcat("concat", adds, 0);
+  auto *cc = F->createConcat("concat", ops, 0);
 
   // Remove the reference to the graph nodes to allow DCE to remove them.
-  adds.clear();
+  ops.clear();
 
   auto *result = F->createSave("save", cc);
   bindings.allocate(result->getPlaceholder());
@@ -11592,11 +11600,16 @@ static void testBatchAdd(glow::PlaceholderBindings &bindings, glow::Module &mod,
   auto SH = bindings.get(slice)->getHandle<DataType>();
 
   // Check that batched add works as expected.
-  for (dim_t i = 0; i < numSlices; i++) {
+  for (dim_t i = 0; i < numSlices * batchSize; i++) {
     for (dim_t j = 0; j < 10; j++) {
       for (dim_t k = 0; k < 10; k++) {
-        EXPECT_NEAR(IH.at({i, j, k}) + SH.at({j, k}), RH.at({i, j, k}),
-                    0.00001);
+        if (opName == "add") {
+          EXPECT_NEAR(IH.at({i, j, k}) + SH.at({j, k}), RH.at({i, j, k}),
+                      0.00001);
+        } else {
+          EXPECT_NEAR(IH.at({i, j, k}) * SH.at({j, k}), RH.at({i, j, k}),
+                      0.00001);
+        }
       }
     }
   }
@@ -11605,27 +11618,51 @@ static void testBatchAdd(glow::PlaceholderBindings &bindings, glow::Module &mod,
 /// Check that the sequence of extract-batchedadd-concat works.
 TEST_P(OperatorTest, testBatchAdd_Float) {
   CHECK_IF_ENABLED();
-  testBatchAdd<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy);
+  testBatchOp<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, "add");
 }
 
 /// Check that the sequence of extract-batchedadd-concat works.
 TEST_P(OperatorTest, testBatchAdd_Float16) {
   CHECK_IF_ENABLED();
-  testBatchAdd<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty);
+  testBatchOp<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, "add");
 }
 
 /// Check that the sequence of extract-batchedadd-concat works.
 TEST_P(OperatorTest, testBatchAdd_BFloat16) {
   CHECK_IF_ENABLED();
-  testBatchAdd<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
+  testBatchOp<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                          "add");
 }
 
-static void quantizedBatchAdd(ExecutionEngine &EE, Function *F,
-                              PlaceholderBindings &bindings, ElemKind Ty) {
+/// Check that the sequence of extract-batchedmul-concat works.
+TEST_P(OperatorTest, testBatchMul_Float) {
+  CHECK_IF_ENABLED();
+  testBatchOp<float>(bindings_, mod_, F_, EE_, ElemKind::FloatTy, "mul");
+}
+
+/// Check that the sequence of extract-batchedmul-concat works.
+TEST_P(OperatorTest, testBatchMul_Float16) {
+  CHECK_IF_ENABLED();
+  testBatchOp<float16_t>(bindings_, mod_, F_, EE_, ElemKind::Float16Ty, "mul");
+}
+
+/// Check that the sequence of extract-batchedmul-concat works.
+TEST_P(OperatorTest, testBatchMul_BFloat16) {
+  CHECK_IF_ENABLED();
+  testBatchOp<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
+                          "mul");
+}
+
+static void quantizedBatchOp(ExecutionEngine &EE, Function *F,
+                             PlaceholderBindings &bindings, ElemKind Ty,
+                             const std::string &opName) {
+  CHECK(opName == "add" || opName == "mul") << "Invalid opName: " << opName;
   auto &mod = EE.getModule();
-  unsigned numSlices = 10;
-  auto *input = mod.createPlaceholder(ElemKind::FloatTy, {numSlices, 10, 10},
-                                      "input", false);
+  constexpr unsigned numSlices = 10;
+  constexpr unsigned batchSize = 3;
+
+  auto *input = mod.createPlaceholder(
+      ElemKind::FloatTy, {numSlices * batchSize, 10, 10}, "input", false);
   auto *slice =
       mod.createPlaceholder(ElemKind::FloatTy, {10, 10}, "slice", false);
 
@@ -11633,27 +11670,43 @@ static void quantizedBatchAdd(ExecutionEngine &EE, Function *F,
   bindings.allocate(slice)->getHandle().randomize(-5.0, 5.0, mod.getPRNG());
 
   // Scale the numbers in the range (-5. .. 5.) to (-50 .. 50).
-  auto qInType = mod.uniqueType(ElemKind::Int8QTy, {numSlices, 10, 10}, .1, 0);
+  auto qInType =
+      mod.uniqueType(ElemKind::Int8QTy, {numSlices * batchSize, 10, 10}, .1, 0);
   auto qSliceType2 = mod.uniqueType(Ty, {10, 10}, .1, 0);
-  auto qSliceType3 = mod.uniqueType(ElemKind::Int8QTy, {1, 10, 10}, .1, 0);
+  auto qSliceType3 =
+      mod.uniqueType(ElemKind::Int8QTy, {batchSize, 10, 10}, .1, 0);
 
   auto *intInput = F->createQuantize("qinput", input, qInType);
   auto *intSlice = F->createQuantize("qslice", slice, qSliceType2);
 
-  std::vector<NodeValue> adds;
-  for (dim_t i = 0; i < numSlices; i++) {
-    auto *ex = F->createSlice("slice", intInput, {i, 0, 0}, qSliceType3);
-    auto *ba = F->createBatchedAdd("add", ex, intSlice);
-    adds.push_back(ba);
+  const Type *outTy;
+
+  if (opName == "add") {
+    outTy = qInType;
+  } else {
+    outTy = mod.uniqueType(ElemKind::Int8QTy, {batchSize, 10, 10}, 1.2, 0);
   }
 
-  Node *cc = F->createConcat("concat", adds, 0, qInType);
+  std::vector<NodeValue> ops;
+  for (dim_t i = 0; i < numSlices; i++) {
+    auto *ex =
+        F->createSlice("slice", intInput, {i * batchSize, 0, 0}, qSliceType3);
+    if (opName == "add") {
+      ops.push_back(F->createBatchedAdd("add", ex, intSlice)->getResult());
+    } else {
+      ops.push_back(
+          F->createBatchedMul("mul", outTy, ex, intSlice)->getResult());
+    }
+  }
+
+  Node *cc = F->createConcat(
+      "concat", ops, 0, mod.uniqueTypeWithNewShape(outTy, qInType->dims()));
   cc = F->createDequantize("dq", cc, ElemKind::FloatTy);
   auto *result = F->createSave("save", cc);
   bindings.allocate(result->getPlaceholder());
 
   // Remove the reference to the graph nodes to allow DCE to remove them.
-  adds.clear();
+  ops.clear();
 
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
@@ -11663,10 +11716,15 @@ static void quantizedBatchAdd(ExecutionEngine &EE, Function *F,
   auto SH = bindings.get(slice)->getHandle();
 
   // Check that batched add works as expected.
-  for (dim_t i = 0; i < numSlices; i++) {
+  for (dim_t i = 0; i < numSlices * batchSize; i++) {
     for (dim_t j = 0; j < 10; j++) {
       for (dim_t k = 0; k < 10; k++) {
-        EXPECT_NEAR(IH.at({i, j, k}) + SH.at({j, k}), RH.at({i, j, k}), 0.1);
+        if (opName == "add") {
+          EXPECT_NEAR(IH.at({i, j, k}) + SH.at({j, k}), RH.at({i, j, k}), 0.1);
+
+        } else {
+          EXPECT_NEAR(IH.at({i, j, k}) * SH.at({j, k}), RH.at({i, j, k}), 2.0);
+        }
       }
     }
   }
@@ -11675,15 +11733,19 @@ static void quantizedBatchAdd(ExecutionEngine &EE, Function *F,
 /// Tests quantized batched-add arithmetic on Int8QTy.
 TEST_P(OperatorTest, testQuantizedBatchAdd_Int8) {
   CHECK_IF_ENABLED();
-
-  quantizedBatchAdd(EE_, F_, bindings_, ElemKind::Int8QTy);
+  quantizedBatchOp(EE_, F_, bindings_, ElemKind::Int8QTy, "add");
 }
 
 /// Tests quantized batched-add arithmetic on Int32QTy.
 TEST_P(OperatorTest, testQuantizedBatchAdd_Int32) {
   CHECK_IF_ENABLED();
+  quantizedBatchOp(EE_, F_, bindings_, ElemKind::Int32QTy, "add");
+}
 
-  quantizedBatchAdd(EE_, F_, bindings_, ElemKind::Int32QTy);
+/// Tests quantized batched-mul arithmetic on Int8QTy.
+TEST_P(OperatorTest, testQuantizedBatchMul_Int8) {
+  CHECK_IF_ENABLED();
+  quantizedBatchOp(EE_, F_, bindings_, ElemKind::Int8QTy, "mul");
 }
 
 template <typename DataType>

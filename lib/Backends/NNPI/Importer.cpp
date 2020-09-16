@@ -1764,6 +1764,27 @@ public:
   }
 };
 
+class BatchMulNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowBatchMul = llvm::dyn_cast<BatchedMulNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowBatchMul, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    NNPIObjectName inputNames[2];
+    snprintf(inputNames[0], NNPI_MAX_STRING_LEN, "%s",
+             nodeValueName(glowBatchMul->getBatch()).c_str());
+    snprintf(inputNames[1], NNPI_MAX_STRING_LEN, "%s",
+             nodeValueName(glowBatchMul->getSlice()).c_str());
+    importer.setUsedTensors({nodeValueName(glowBatchMul->getBatch()),
+                             nodeValueName(glowBatchMul->getSlice())},
+                            {nodeValueName(glowBatchMul->getResult())});
+    return nnpiNetworkAddElementwiseOp(
+        importer.getNetwork(), glowBatchMul->getName().begin(), inputNames, 2,
+        nodeValueName(glowBatchMul->getResult()).c_str(), NNPI_ELTWISE_MUL);
+  }
+};
+
 class RQSLWSNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -2219,6 +2240,7 @@ std::unordered_map<
     {"ReplaceNaN", glow::make_unique<ReplaceNaNNodeImporter>()},
     {"GatherRanges", glow::make_unique<GatherRangesNodeImporter>()},
     {"BatchedAdd", glow::make_unique<BatchAddNodeImporter>()},
+    {"BatchedMul", glow::make_unique<BatchMulNodeImporter>()},
     {"RowwiseQuantizedSparseLengthsWeightedSum",
      glow::make_unique<RQSLWSNodeImporter>()},
     {"FusedRowwiseQuantizedSparseLengthsWeightedSum",

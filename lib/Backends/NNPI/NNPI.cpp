@@ -160,6 +160,7 @@ bool NNPIBackend::isOpSupported(const NodeInfo &NI) const {
   case Kinded::Kind::BatchedReduceMinNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
   case Kinded::Kind::BatchedAddNodeKind:
+  case Kinded::Kind::BatchedMulNodeKind:
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::LogNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
@@ -560,6 +561,7 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::GeluNodeKind:
   case Kinded::Kind::LogitNodeKind:
   case Kinded::Kind::SparseLengthsSumNodeKind:
+  case Kinded::Kind::BatchedMulNodeKind:
     return false;
   default:
     return true;
