@@ -354,6 +354,10 @@ unsigned countNodeKind(Function *F, Kinded::Kind kind);
 void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
                   llvm::StringRef kind);
 
+int inferConvReluNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
+                     unsigned_t kernel, unsigned_t stride, unsigned_t pad,
+                     llvm::StringRef kind);
+
 void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
                   Tensor *kernel2, Tensor *bias2, Tensor *selected,
                   llvm::ArrayRef<dim_t> shape1, llvm::ArrayRef<dim_t> shape2,
