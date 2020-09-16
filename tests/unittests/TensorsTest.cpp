@@ -1068,16 +1068,16 @@ TEST(Tensor, insertSlice) {
 
 /// Check that after converting to UInt8FusedQTy, the data, scale and offset are
 /// the same as original ones.
-static void testConvertToUInt8FusedQTy(ElemKind fusedKind, size_t row,
-                                       size_t col) {
+static void testConvertToUInt8FusedQTy(ElemKind fusedKind, dim_t row,
+                                       dim_t col) {
   EXPECT_LT(row, 100);
   EXPECT_LT(col, 100);
   Tensor T(fusedKind, {row, col}, 1.0, 0);
   auto dataCol = col - 2 * sizeof(float16_t);
   auto TH = T.getHandle<uint8_t>();
-  for (size_t i = 0; i < row; i++) {
+  for (dim_t i = 0; i < row; i++) {
     TH.setFusedScaleOffsetInRow<float16_t>(i, i, i);
-    for (size_t j = 0; j < dataCol; j++) {
+    for (dim_t j = 0; j < dataCol; j++) {
       TH.at({i, j}) = i + j;
     }
   }
@@ -1094,7 +1094,7 @@ static void testConvertToUInt8FusedQTy(ElemKind fusedKind, size_t row,
 
   // Check the converted FP32 scale/offset are correctly cast from Fp16
   // scale/offset.
-  for (size_t i = 0; i < row; i++) {
+  for (dim_t i = 0; i < row; i++) {
     float scale, offset;
     std::tie(scale, offset) = newTH.getFusedScaleOffsetFromRow<float>(i);
     EXPECT_EQ(scale, (float)i);
@@ -1102,8 +1102,8 @@ static void testConvertToUInt8FusedQTy(ElemKind fusedKind, size_t row,
   }
 
   // Check the converted data are the same as original ones.
-  for (size_t i = 0; i < row; i++) {
-    for (size_t j = 0; j < dataCol; j++) {
+  for (dim_t i = 0; i < row; i++) {
+    for (dim_t j = 0; j < dataCol; j++) {
       if (is4Bit) {
         EXPECT_EQ(newTH.at({i, j * 2}), (i + j) & 0x0F);
         EXPECT_EQ(newTH.at({i, j * 2 + 1}), ((i + j) >> 4) & 0x0F);
