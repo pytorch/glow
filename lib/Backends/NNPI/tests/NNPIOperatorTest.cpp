@@ -327,8 +327,6 @@ struct BlacklistInitializer {
             {"FP16RoiAlign/0", TestBlacklist::AnyDeviceAnyEngine},
             {"FP16RoiAlignWithAlignedCoordinates/0",
              TestBlacklist::AnyDeviceAnyEngine},
-            {"FP16RoiAlignBatchIndexInBoxesTensor/0",
-             TestBlacklist::AnyDeviceAnyEngine},
             {"FP16RoiAlignRotatedBatchIndexInBoxesTensor/0",
              TestBlacklist::AnyDeviceAnyEngine},
             {"BBoxTransform/0", TestBlacklist::AnyDeviceAnyEngine},

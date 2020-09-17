@@ -184,7 +184,7 @@ static bool isNodeSupported(const NodeInfo &NI) {
     isNodeprecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
     break;
-#if NNPI_MINOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
   case Kinded::Kind::BBoxTransformNodeKind:
     isNodeprecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind(
@@ -199,7 +199,7 @@ static bool isNodeSupported(const NodeInfo &NI) {
             {ElemKind::Float16Ty}, {ROIAlignNode::BatchIndicesIdx}) &&
         (NI.getInElemTy(ROIAlignNode::BatchIndicesIdx) == ElemKind::Int64ITy);
     break;
-#endif // NNPI > 1.1
+#endif // NNPI >= 1.1
   case Kinded::Kind::MulNodeKind:
     isNodeprecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});

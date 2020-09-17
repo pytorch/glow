@@ -2160,7 +2160,7 @@ public:
   }
 };
 
-#if NNPI_MINOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
 class BBoxTransformNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -2213,8 +2213,8 @@ public:
                             {nodeValueName(glowRoiAlign->getResult())});
 
     auto mode = glowRoiAlign->getMode();
-    LOG_AND_RETURN_IF_NOT(ERROR, mode == "avg", "Only avg mode is supported!",
-                          NNPI_INVALID_PARAM);
+    LOG_AND_RETURN_IF_NOT(ERROR, mode == PoolingMode::AVG,
+                          "Only avg mode is supported!", NNPI_INVALID_PARAM);
 
     auto pooledHeight = glowRoiAlign->getOutputHeight();
     auto pooledWidth = glowRoiAlign->getOutputWidth();
@@ -2223,13 +2223,96 @@ public:
     auto aligned = glowRoiAlign->getAligned();
     auto rotated = glowRoiAlign->getRotated();
 
-    return nnpiNetworkAddRoiAlignOp(
-        importer.getNetwork(), glowRoiAlign->getName().begin(),
-        nodeValueName(glowRoiAlign->getFeatureMap()).c_str(),
-        nodeValueName(glowRoiAlign->getBoxes()).c_str(),
+    auto featureMapTranposeName = NNPIImporter::internalName_ +
+                                  glowRoiAlign->getName().str() +
+                                  "_FeatureMap_tranpose";
+
+    auto featureMapTranposeTensorName = NNPIImporter::internalName_ +
+                                        glowRoiAlign->getName().str() +
+                                        "_FeatureMap_tranpose_tensor";
+
+    // NHWC
+    auto featureMapDimsOrig = glowRoiAlign->getFeatureMap().dims().vec();
+
+    // NCHW
+    auto featureMapDimsTranposed = {
+        featureMapDimsOrig[0], featureMapDimsOrig[3], featureMapDimsOrig[1],
+        featureMapDimsOrig[2]};
+
+    auto *featureMapTranposedType =
+        n->getParent()->getParent()->uniqueTypeWithNewShape(
+            glowRoiAlign->getFeatureMap().getType(), featureMapDimsTranposed);
+
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(featureMapTranposeTensorName,
+                          featureMapTranposedType),
+        "failed to create RoiAlign FeatureMap tranpose");
+
+    auto outputTranposeName = NNPIImporter::internalName_ +
+                              glowRoiAlign->getName().str() +
+                              "_RoiAlignOutput_tranpose";
+
+    auto roiAlignOutputTensorName = NNPIImporter::internalName_ +
+                                    glowRoiAlign->getName().str() +
+                                    "_RoiAlignOutput_tranpose_tensor";
+
+    // NHWC
+    auto roiAlignOutputDimsOrig = glowRoiAlign->getResult().dims().vec();
+
+    // NCHW
+    auto roiAlignOutputDimsTransposed = {
+        roiAlignOutputDimsOrig[0], roiAlignOutputDimsOrig[3],
+        roiAlignOutputDimsOrig[1], roiAlignOutputDimsOrig[2]};
+
+    auto *roiResultTranposedType =
+        n->getParent()->getParent()->uniqueTypeWithNewShape(
+            glowRoiAlign->getResult().getType(), roiAlignOutputDimsTransposed);
+
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(roiAlignOutputTensorName, roiResultTranposedType),
+        "failed to create RoiAlign FeatureMap tranpose");
+
+    std::vector<dim_t> glowNHWC2NCHW = NHWC2NCHW;
+    uint32_t nnpiNHWC2NCHW[NNPI_MAX_DIMS];
+    for (size_t i = 0, e = glowNHWC2NCHW.size(); i < e; i++) {
+      nnpiNHWC2NCHW[i] = glowNHWC2NCHW[i];
+    }
+
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        nnpiNetworkAddTransposeOp(
+            /*network*/ importer.getNetwork(),
+            /*opName*/ featureMapTranposeName.c_str(),
+            /*inputTensor*/
+            nodeValueName(glowRoiAlign->getFeatureMap()).c_str(),
+            /*outputTensor:*/
+            featureMapTranposeTensorName.c_str(),
+            /*axisOrder*/ nnpiNHWC2NCHW, /*numAxes*/ 4),
+        "Failed to create RoiAlign FeatureMap tranpose");
+
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        nnpiNetworkAddRoiAlignOp(
+            importer.getNetwork(), glowRoiAlign->getName().begin(),
+            featureMapTranposeTensorName.c_str(),
+            nodeValueName(glowRoiAlign->getBoxes()).c_str(),
+            roiAlignOutputTensorName.c_str(), (uint32_t)pooledHeight,
+            (uint32_t)pooledWidth, (float)spatialScale, (int32_t)samplingRatio,
+            (BOOL)aligned, (BOOL)rotated),
+        "Failed to create RoiAlign");
+
+    std::vector<dim_t> glowNCHW2NHWC = NCHW2NHWC;
+    uint32_t nnpiNCHW2NHWC[NNPI_MAX_DIMS];
+    for (size_t i = 0, e = glowNCHW2NHWC.size(); i < e; i++) {
+      nnpiNCHW2NHWC[i] = glowNCHW2NHWC[i];
+    }
+
+    return nnpiNetworkAddTransposeOp(
+        /*network*/ importer.getNetwork(),
+        /*opName*/ outputTranposeName.c_str(),
+        /*inputTensor*/
+        roiAlignOutputTensorName.c_str(),
+        /*outputTensor*/
         nodeValueName(glowRoiAlign->getResult()).c_str(),
-        (uint32_t)pooledHeight, (uint32_t)pooledWidth, (float)spatialScale,
-        (int32_t)samplingRatio, (BOOL)aligned, (BOOL)rotated);
+        /*axisOrder*/ nnpiNCHW2NHWC, /*numAxes*/ 4);
   }
 };
 #endif // NNPI >= 1.1
@@ -2339,7 +2422,7 @@ std::unordered_map<
     {"Logit", glow::make_unique<LogitNodeImporter>()},
     {"Modulo", glow::make_unique<ModuloNodeImporter>()},
     {"Swish", glow::make_unique<SwishNodeImporter>()},
-#if NNPI_MINOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
     {"ROIAlign", glow::make_unique<ROIAlignNodeImporter>()},
     {"BBoxTransform", glow::make_unique<BBoxTransformNodeImporter>()},
 #endif // NNPI >= 1.1
