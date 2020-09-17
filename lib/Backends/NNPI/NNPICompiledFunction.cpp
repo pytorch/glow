@@ -348,8 +348,6 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   }
 
   if (compilationOptions_.useIceT || compilationOptions_.inferOnDevice) {
-    static std::mutex compileMutex;
-    std::lock_guard<std::mutex> guard(compileMutex);
     if (compilationFileName_.empty()) // Compile to memory.
     {
       NNPIStream outFileStream;
