@@ -18,6 +18,7 @@
 
 #include "glow/Backend/Backend.h"
 #include "glow/Converter/Float16Converter.h"
+#include "glow/Converter/FusedRowwiseConverter.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Log.h"
@@ -5059,6 +5060,21 @@ void glow::transformForPrecisionMode(const Backend &B, Function *F,
   // If requested, Force all ops in the SLS family to use FP16 accumulation.
   if (precConfig.forceFP16AccumSLS) {
     setFP16AccumSLS(F, precConfig);
+  }
+
+  // Convert UInt4FusedFP16QTy/UInt8FusedFP16QTy to UInt8FusedQTy.
+  if ((precConfig.convert4BitFusedTo8Bit ||
+       precConfig.convert8BitFusedToFP32) &&
+      !precConfig.forceFP16AccumSLS) {
+    LOG_SCOPE(F->getLogContext(), "glow::convertFunctionToFP32ScaleOffset");
+    convertFunctionToFP32ScaleOffset(F, precConfig);
+  }
+
+  // In FusedRowwiseQSLWS, convert its indices from Int32(if there is any) to
+  // Int64.
+  if (precConfig.convertIndicesToInt64) {
+    LOG_SCOPE(F->getLogContext(), "glow::convertFunctionIndicesToInt64");
+    convertFunctionIndicesToInt64(F, precConfig);
   }
 }
 

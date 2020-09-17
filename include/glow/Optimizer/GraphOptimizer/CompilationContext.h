@@ -68,6 +68,15 @@ struct PrecisionConfiguration {
   /// Whether to convert UInt8FusedQTy to UInt8FusedFP16QTy in the Function.
   bool convertFusedToFP16{false};
 
+  /// Whether to convert UInt4FusedFP16QTy to UInt8FusedQTy in the Function.
+  bool convert4BitFusedTo8Bit{false};
+
+  /// Whether to convert UInt8FusedFP16QTy to UInt8FusedQTy in the Function.
+  bool convert8BitFusedToFP32{false};
+
+  /// Whether to convert indices in FusedRowwiseSLWS to Int64ITy.
+  bool convertIndicesToInt64{false};
+
   /// If convertToFP16, whether to convert input Placeholders.
   bool convertPlaceholdersToFP16{false};
 
