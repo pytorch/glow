@@ -24,7 +24,7 @@
 namespace glow {
 class LLVMBackend;
 
-class BundleSaver final {
+class BundleSaver {
 public:
   /// Information about a saved IR function.
   struct SavedIRFunction {
@@ -52,34 +52,38 @@ public:
   /// Ctor.
   explicit BundleSaver(const LLVMBackend &llvmBackend,
                        llvm::StringRef outputDir, llvm::StringRef bundleName);
-  void save(llvm::StringRef mainEntryName, const IRFunction *F);
+  /// Dtor.
+  virtual ~BundleSaver() = default;
+  virtual void save(llvm::StringRef mainEntryName, const IRFunction *F);
   /// Produce a bundle.
-  void produceBundle();
+  virtual void produceBundle();
 
-private:
+protected:
   /// Perform memory allocation for a bundle.
-  void performBundleMemoryAllocation();
+  virtual void performBundleMemoryAllocation();
   /// Save weights for the bundle.
-  void saveWeights(llvm::StringRef weightsFileName);
+  virtual void saveWeights(llvm::StringRef weightsFileName);
   /// Save header file for the bundle.
-  void saveHeader(llvm::StringRef headerFileName);
+  virtual void saveHeader(llvm::StringRef headerFileName);
   /// Emit config for a bundle.
-  void emitBundleConfig();
+  virtual void emitBundleConfig();
   /// Emit the symbol table for a bundle.
-  void emitSymbolTable();
+  virtual void emitSymbolTable();
   /// Emit the entry function for the saved function \p savedF.
-  void emitBundleEntryFunction(SavedIRFunction &savedF);
+  virtual void emitBundleEntryFunction(SavedIRFunction &savedF);
   /// Set current IRFunction.
-  void setIRFunction(llvm::StringRef mainEntryName, const IRFunction *F);
+  virtual void setIRFunction(llvm::StringRef mainEntryName,
+                             const IRFunction *F);
   /// Returns a set of placeholders associated with IR functions inside this
   /// bundle.
-  std::set<const Placeholder *> findPlaceholders() const;
+  virtual std::set<const Placeholder *> findPlaceholders() const;
   /// Returns a set of constant weights associated with IR functions inside this
   /// bundle.
-  std::set<WeightInfo, WeightAddrComparator> findConstantWeights() const;
+  virtual std::set<WeightInfo, WeightAddrComparator>
+  findConstantWeights() const;
   /// \returns the weight that the variable \p v is lowered into in one of the
   /// IR functions inside this bundle, or null if the variable is unknown.
-  Value *getWeightForNode(const Storage *V) const;
+  virtual Value *getWeightForNode(const Storage *V) const;
   /// Information about allocations.
   AllocationsInfo allocationsInfo_;
   /// The LLVM IR code generator.

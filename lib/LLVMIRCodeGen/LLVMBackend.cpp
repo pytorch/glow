@@ -652,20 +652,27 @@ void LLVMBackend::save(Function *F, llvm::StringRef outputDir,
   llvm::SmallVector<std::string, 8> targetFeatures(llvmTargetFeatures.begin(),
                                                    llvmTargetFeatures.end());
   auto IR = generateAndOptimizeIR(F, *this, shouldShareBuffers());
-  BundleSaver bundleSaver(*this, outputDir, bundleName);
-  bundleSaver.save(mainEntryName, IR.get());
-  bundleSaver.produceBundle();
+  auto bundleSaver = createBundleSaver(*this, outputDir, bundleName);
+  bundleSaver->save(mainEntryName, IR.get());
+  bundleSaver->produceBundle();
 }
 
 void LLVMBackend::saveFunctions(llvm::ArrayRef<BundleEntry> entries,
                                 llvm::StringRef outputDir,
                                 llvm::StringRef bundleName) const {
-  BundleSaver bundleSaver(*this, outputDir, bundleName);
+  auto bundleSaver = createBundleSaver(*this, outputDir, bundleName);
   std::vector<std::unique_ptr<glow::IRFunction>> irFunctions;
   for (auto &entry : entries) {
     auto IR = generateAndOptimizeIR(entry.func, *this, shouldShareBuffers());
-    bundleSaver.save(entry.name, IR.get());
+    bundleSaver->save(entry.name, IR.get());
     irFunctions.emplace_back(std::move(IR));
   }
-  bundleSaver.produceBundle();
+  bundleSaver->produceBundle();
+}
+
+std::unique_ptr<BundleSaver>
+LLVMBackend::createBundleSaver(const LLVMBackend &llvmBackend,
+                               llvm::StringRef outputDir,
+                               llvm::StringRef bundleName) const {
+  return glow::make_unique<BundleSaver>(llvmBackend, outputDir, bundleName);
 }
