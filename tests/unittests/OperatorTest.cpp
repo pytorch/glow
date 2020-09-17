@@ -1527,20 +1527,22 @@ TEST_P(OperatorTest, FP16RoiAlignRotatedBatchIndexInBoxesTensor) {
       bindings_, mod_, *F_, EE_, ElemKind::Float16Ty, 1E-1);
 }
 
-TEST_P(OperatorTest, BBoxTransform) {
-  CHECK_IF_ENABLED();
-
-  auto *rois = mod_.createPlaceholder(ElemKind::FloatTy, {5, 5}, "rois", false);
-  bindings_.allocate(rois)->getHandle<float>() = {
+template <typename DataType>
+static void testBBoxTransform(PlaceholderBindings &bindings, Module &mod,
+                              Function &F, ExecutionEngine &EE, ElemKind ElemTy,
+                              bool applyScale, bool rotated, bool angleBoundOn,
+                              int64_t angleBoundLo, int64_t angleBoundHi,
+                              float clipAngleThresh, bool legacyPlusOne) {
+  llvm::SmallVector<dim_t, 2> roisDims = {5, 5};
+  llvm::SmallVector<DataType, 25> rois = {
       0., 22.113754, 10.269318, 77.57481,   117.23254,
       0., 89.73806,  46.060974, 125.824005, 96.2649,
       1., 11.121593, 78.21209,  75.711426,  254.73167,
       3., 0.9983631, 352.86606, 248.86679,  367.66916,
       3., 221.1072,  136.93027, 413.82764,  211.13977};
 
-  auto *deltas =
-      mod_.createPlaceholder(ElemKind::FloatTy, {5, 8}, "deltas", false);
-  bindings_.allocate(deltas)->getHandle<float>() = {
+  llvm::SmallVector<dim_t, 2> deltasDims = {5, 8};
+  llvm::SmallVector<DataType, 40> deltas = {
       -0.30892685, -0.44120562, 1.7046866,   -0.62745374, 1.1726723,
       -0.52569604, -0.14308402, 0.48242334,  -1.3132329,  -1.5958056,
       -0.81750935, 2.2151427,   -0.73521894, -0.00737088, 2.3750482,
@@ -1550,35 +1552,61 @@ TEST_P(OperatorTest, BBoxTransform) {
       1.3996177,   -1.3575566,  0.6860114,   -0.4028068,  0.15296046,
       -0.22815527, -2.4161322,  -1.8008438,  -0.92949533, 0.19269551};
 
-  auto *imInfo =
-      mod_.createPlaceholder(ElemKind::FloatTy, {4, 3}, "imInfo", false);
-  bindings_.allocate(imInfo)->getHandle<float>() = {
-      159., 159., 1., 328., 328., 1., 466., 466., 1., 414., 414., 1.};
+  llvm::SmallVector<dim_t, 2> imInfoDims = {4, 3};
+  llvm::SmallVector<DataType, 12> imInfo = {159., 159., 1., 328., 328., 1.,
+                                            466., 466., 1., 414., 414., 1.};
 
   std::vector<float> weights = {1.0, 1.0, 1.0, 1.0};
-  auto *BBTN =
-      F_->createBBoxTransform("bboxTransform", rois, deltas, imInfo, weights,
-                              false, false, false, 0, 0, 0, true);
-  auto *save = F_->createSave("save", BBTN->getBoxOut());
-  auto *savePlaceholder = save->getPlaceholder();
-  bindings_.allocate(savePlaceholder);
 
-  EE_.compile(CompilationMode::Infer);
-
-  EE_.run(bindings_);
-
-  auto saveH = bindings_.get(savePlaceholder)->getHandle();
-
-  std::vector<float> expectedValues = {
+  std::vector<DataType> expectedValues = {
       0.0000,   0.0000,   158.0000, 44.4404,  92.0877,  0.0000,   140.0215,
       93.9451,  51.3913,  0.0000,   66.7658,  158.0000, 0.0000,   66.0093,
       158.0000, 75.5617,  0.0000,   327.0000, 71.3890,  327.0000, 0.7150,
       0.0000,   31.3340,  70.6096,  219.7409, 369.7931, 322.4225, 373.4951,
       0.0000,   344.4728, 413.0000, 347.5388, 337.9926, 114.3067, 413.0000,
       173.1735, 0.0000,   0.0000,   0.0000,   83.6907};
+
+  auto *ROIS = mod.createPlaceholder(ElemTy, roisDims, "rois", false);
+  bindings.allocate(ROIS)->getHandle<DataType>() = rois;
+
+  auto *DELTAS = mod.createPlaceholder(ElemTy, deltasDims, "deltas", false);
+  bindings.allocate(DELTAS)->getHandle<DataType>() = deltas;
+
+  auto *IMINFO = mod.createPlaceholder(ElemTy, imInfoDims, "imInfo", false);
+  bindings.allocate(IMINFO)->getHandle<DataType>() = imInfo;
+
+  auto *BBTN = F.createBBoxTransform(
+      "bboxTransform", ROIS, DELTAS, IMINFO, weights, applyScale, rotated,
+      angleBoundOn, angleBoundLo, angleBoundHi, clipAngleThresh, legacyPlusOne);
+
+  auto *save = F.createSave("save", BBTN->getBoxOut());
+  auto *savePlaceholder = save->getPlaceholder();
+  bindings.allocate(savePlaceholder);
+
+  EE.compile(CompilationMode::Infer);
+
+  EE.run(bindings);
+
+  auto saveH = bindings.get(savePlaceholder)->getHandle<DataType>();
+  float maxDiff = 0.0f;
   for (dim_t i = 0; i < expectedValues.size(); i++) {
-    EXPECT_NEAR(saveH.raw(i), expectedValues[i], 1E-4);
+    EXPECT_NEAR(saveH.raw(i), expectedValues[i], 1);
+    maxDiff =
+        std::max(maxDiff, std::abs((float)(saveH.raw(i) - expectedValues[i])));
   }
+  std::cout << "Max diff: " << maxDiff << std::endl;
+}
+
+TEST_P(OperatorTest, BBoxTransform_Float) {
+  CHECK_IF_ENABLED();
+  testBBoxTransform<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy, false,
+                           false, false, 0, 0, 0, true);
+}
+
+TEST_P(OperatorTest, BBoxTransform_Float16) {
+  CHECK_IF_ENABLED();
+  testBBoxTransform<float16_t>(bindings_, mod_, *F_, EE_, ElemKind::Float16Ty,
+                               false, false, false, 0, 0, 0, true);
 }
 
 // Helper to test SpaceToDepth using \p DTy.
