@@ -5082,6 +5082,15 @@ void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
     dest->assign(&result);
     return;
   }
+
+  if ((srcElType == ElemKind::UInt8FusedFP16QTy ||
+       srcElType == ElemKind::UInt4FusedFP16QTy) &&
+      destElType == ElemKind::UInt8FusedQTy) {
+    Tensor result = source->getCopyConvertedToType(ElemKind::UInt8FusedQTy);
+    dest->assign(&result);
+    return;
+  }
+
   llvm_unreachable("Type not supported");
 }
 
