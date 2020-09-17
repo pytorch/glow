@@ -50,7 +50,6 @@ TEST_P(BackendCorrectnessTest, convTest) {
   Tensor out1(ElemKind::FloatTy, shape);
   Tensor out2(ElemKind::FloatTy, shape);
 
-  llvm::outs()<<"jemin"<<backendName_<<"\n";
   inferConvNet(&inputs, &kernel, &bias, &out1, backendName_);
   inferConvNet(&inputs, &kernel, &bias, &out2, "Interpreter");
 
