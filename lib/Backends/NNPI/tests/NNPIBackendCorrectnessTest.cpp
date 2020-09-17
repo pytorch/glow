@@ -44,6 +44,8 @@ struct BlacklistInitializer {
             {"localResponseNormalizationTest/0",
              TestBlacklist::AnyDeviceHWEngine},
             {"tinyResnet/0", TestBlacklist::AnyDeviceHWEngine},
+            {"SymmetricQuantizedConvReluFusionTest/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"AsymmetricQuantizedConvReluFusionTest/0", TestBlacklist::AnyDeviceAnyEngine},
         };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);

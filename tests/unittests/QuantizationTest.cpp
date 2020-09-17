@@ -15,7 +15,6 @@
  */
 
 #include "BackendTestUtils.h"
-#include "glow/Base/TensorSerialization.h"
 
 #include "glow/ExecutionEngine/ExecutionEngine.h"
 #include "glow/Graph/Graph.h"
@@ -2912,46 +2911,6 @@ TEST(Quantization, QuantizationZeroUsersResult) {
   auto *qTK = llvm::dyn_cast<TopKNode>(qSN->getInput().getNode());
   ASSERT_TRUE(qTK);
   EXPECT_TRUE(qTK->getValues().getType()->isQuantizedType());
-}
-
-// Graph fusion testing for OpenCL
-TEST(Quantization, SymmetricQuantizedConvReluFusion) {
-  PseudoRNG PRNG;
-  Tensor inputs(ElemKind::Int8QTy, {1, 6, 6, 16}, 1, 0);
-  Tensor kernel(ElemKind::Int8QTy, {1, 3, 3, 16}, 1, 0);
-  Tensor bias(ElemKind::Int32QTy, {1}, 1, 0);
-  inputs.getHandle<int8_t>().randomize(0, 60, PRNG);
-  kernel.getHandle<int8_t>().randomize(-1, 1, PRNG);
-  // inputs.toBin("input");
-  // kernel.toBin("kernel");
-  bias.getHandle<int32_t>().randomize(0, 32768, PRNG);
-  // bias.zero();
-  std::array<dim_t, 4> S{{1, 6, 6, 1}};
-  llvm::ArrayRef<dim_t> shape(S);
-  Tensor out(ElemKind::Int8QTy, shape, 256, 0);
-
-  int ResFusion =
-      inferConvReluNet(&inputs, &kernel, &bias, &out, 3, 1, 1, "OpenCL");
-  EXPECT_EQ(ResFusion, FusedActivation::RELU);
-}
-TEST(Quantization, AsymmetricQuantizedConvReluFusion) {
-  PseudoRNG PRNG;
-  Tensor inputs(ElemKind::Int8QTy, {1, 6, 6, 16}, 1, 2);
-  Tensor kernel(ElemKind::Int8QTy, {1, 3, 3, 16}, 1, 2);
-  Tensor bias(ElemKind::Int32QTy, {1}, 1, 2);
-  inputs.getHandle<int8_t>().randomize(0, 60, PRNG);
-  kernel.getHandle<int8_t>().randomize(-1, 1, PRNG);
-  // inputs.toBin("input");
-  // kernel.toBin("kernel");
-  bias.getHandle<int32_t>().randomize(0, 32768, PRNG);
-  // bias.zero();
-  std::array<dim_t, 4> S{{1, 6, 6, 1}};
-  llvm::ArrayRef<dim_t> shape(S);
-  Tensor out(ElemKind::Int8QTy, shape, 256, 4);
-
-  int ResFusion =
-      inferConvReluNet(&inputs, &kernel, &bias, &out, 3, 1, 1, "OpenCL");
-  EXPECT_EQ(ResFusion, FusedActivation::NONE);
 }
 
 GLOW_INSTANTIATE_TEST_SUITE_P(Interpreter, Quantization,

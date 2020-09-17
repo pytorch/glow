@@ -558,8 +558,7 @@ target_link_libraries(QuantizationTest
                         GraphOptimizer
                         Quantization
                         gtest
-                        TestMain
-                        BackendTestUtils)
+                        TestMain)
 add_glow_test(QuantizationTest
               ${GLOW_BINARY_DIR}/tests/QuantizationTest
                   --gtest_output=xml:QuantizationTest.xml)
