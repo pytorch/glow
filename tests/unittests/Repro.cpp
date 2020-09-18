@@ -142,6 +142,17 @@ llvm::cl::opt<bool> fuseScaleOffsetFp16Opt(
         "Enable fp16 lowering for all op inputs using fused scale/offset"),
     llvm::cl::Optional, llvm::cl::init(true), llvm::cl::cat(reproTestCat));
 
+llvm::cl::opt<bool> fuseScaleOffsetFp32Opt(
+    "glow_global_fused_scale_offset_fp32",
+    llvm::cl::desc(
+        "Enable converting scale/offset in sls's input data from fp16 to fp32"),
+    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(reproTestCat));
+
+llvm::cl::opt<bool> indicesInt64Opt(
+    "glow_global_indices_fp64",
+    llvm::cl::desc("Enable converting scale/offset in frwqslws's data from "
+                   "int32 to int64"));
+
 llvm::cl::opt<bool>
     ClipFp16Opt("glow_clip_fp16",
                 llvm::cl::desc("Force glow to clip fp16 values to min/max"),
@@ -565,6 +576,16 @@ int run() {
   if (fuseScaleOffsetFp16Opt) {
     precConfig.convertFusedToFP16 = fuseScaleOffsetFp16Opt;
     llvm::outs() << "Conversion of fused scales/offsets to fp16 enabled\n";
+  }
+  if (fuseScaleOffsetFp32Opt) {
+    precConfig.convert4BitFusedTo8Bit = fuseScaleOffsetFp32Opt;
+    precConfig.convert8BitFusedToFP32 = fuseScaleOffsetFp32Opt;
+    llvm::outs()
+        << "Conversion of fused scales/offsets to fp32 in frwqslws enabled\n";
+  }
+  if (indicesInt64Opt) {
+    precConfig.convertIndicesToInt64 = indicesInt64Opt;
+    llvm::outs() << "Conversion of indices to int64 enabled\n";
   }
   if (ClipFp16Opt) {
     precConfig.clipFP16 = ClipFp16Opt;
