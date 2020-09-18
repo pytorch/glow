@@ -1462,6 +1462,12 @@ public:
   SpaceToDepthNode *createSpaceToDepth(llvm::StringRef name, NodeValue input,
                                        unsigned blockSize);
 
+  /// Create a sequence of Reshape and Transpose nodes representing DepthToSpace
+  /// operator with \p blockSize in DCR or CRD mode based on \p isCRD flag.
+  /// Assumes input layout to be NHWC. \returns the last node in the sequence.
+  ReshapeNode *createDepthToSpace(llvm::StringRef name, NodeValue input,
+                                  unsigned blockSize, bool isCRD = false);
+
   /// Given \p input tensor, \returns an upsampled tensor which has
   /// doubled the size of dimensions N, N-1, N-2...N-numLeadingDims,
   /// copying the nearest pixel value to the new locations.
@@ -2232,6 +2238,10 @@ bool isInput(const Placeholder *PH, const Function &F);
   { 1u, 2u, 0u, 3u }
 #define CNHW2NHWC                                                              \
   { 1u, 2u, 3u, 0u }
+#define D2S_DCR                                                                \
+  { 0u, 1u, 3u, 2u, 4u, 5u }
+#define D2S_CRD                                                                \
+  { 0u, 1u, 4u, 2u, 5u, 3u }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Module &mod);
 

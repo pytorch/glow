@@ -2472,6 +2472,38 @@ Error ONNXModelLoader::loadCast(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadDepthToSpace(const ONNX_NAMESPACE::NodeProto &op,
+                                        const ArgumentDictionaryTy &dict) {
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
+
+  dim_t blockSize = 0;
+  if (dict.count("blocksize")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(blockSize, loadInt(dict.at("blocksize")));
+  } else {
+    RETURN_ERR("DepthToSpace: missing 'blocksize' attribute");
+  }
+
+  std::string mode = "DCR";
+  if (dict.count("mode")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(mode, loadStr(dict.at("mode")));
+  }
+
+  auto inputDim = input.dims();
+  RETURN_ERR_IF_NOT(inputDim.size() == 4,
+                    "DepthToSpace: dimension size of 4 is expected.");
+  RETURN_ERR_IF_NOT(inputDim[1] % blockSize == 0,
+                    "DepthToSpace: depth should be divisible by block size.");
+
+  std::string opName = loadOperatorName(op);
+  auto *TR1 = G_->createTranspose(opName, input, NCHW2NHWC);
+  auto *D2S = G_->createDepthToSpace(opName, TR1, blockSize, mode == "CRD");
+  auto *TR2 = G_->createTranspose(opName, D2S, NHWC2NCHW);
+
+  RETURN_IF_ERR(addNodeAsOutput(op, TR2));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadSpaceToDepth(const ONNX_NAMESPACE::NodeProto &op,
                                         ArgumentDictionaryTy &dict) {
 
@@ -4198,6 +4230,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "SpaceToDepth") {
     return loadSpaceToDepth(op, dict);
+  }
+  if (typeName == "DepthToSpace") {
+    return loadDepthToSpace(op, dict);
   }
   if (typeName == "ReduceL2") {
     return loadReduceL2(op, dict);

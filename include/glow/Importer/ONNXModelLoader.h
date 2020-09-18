@@ -267,6 +267,10 @@ class ONNXModelLoader
   Error loadReduceL2(const ONNX_NAMESPACE::NodeProto &op,
                      const ArgumentDictionaryTy &dict);
 
+  /// Load DepthToSpace ONNX operator.
+  Error loadDepthToSpace(const ONNX_NAMESPACE::NodeProto &op,
+                         const ArgumentDictionaryTy &dict);
+
   /// Load ConstantOfShape ONNX operator.
   Error loadConstantOfShape(const ONNX_NAMESPACE::NodeProto &op,
                             ArgumentDictionaryTy &dict, bool isSplat);
