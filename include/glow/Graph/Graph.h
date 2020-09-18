@@ -2290,6 +2290,10 @@ bool isInput(const Placeholder *PH, const Function &F);
   { 1u, 2u, 0u, 3u }
 #define CNHW2NHWC                                                              \
   { 1u, 2u, 3u, 0u }
+#define NHWC2CHWN                                                              \
+  { 3u, 1u, 2u, 0u }
+#define CHWN2NHWC                                                              \
+  { 3u, 1u, 2u, 0u }
 #define D2S_DCR                                                                \
   { 0u, 1u, 3u, 2u, 4u, 5u }
 #define D2S_CRD                                                                \

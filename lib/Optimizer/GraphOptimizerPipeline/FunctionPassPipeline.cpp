@@ -153,6 +153,13 @@ createDefaultGraphOptimizationPassPipeline() {
       // Optimize combinations of Quantized Nodes and Clips.
       {FunctionPassID::OptimizeQuantizeClip},
 
+      // Fold a Convolution dilated manually using Transpose, SpaceToDepth and
+      // DepthToSpace nodes into a single Convolution node.
+      // Run Reshape/Transpose optimizations afterwards to clean up the graph.
+      {FunctionPassID::FoldDilatedConv},
+      {FunctionPassID::OptimizeReshape},
+      {FunctionPassID::SinkCode, ConvergenceMode::UntilFixedPoint},
+
       // Fold Arithmetic chain w/ constants into Batch Norm, when Conv preceeds.
       {FunctionPassID::FoldArithmeticChainUnderConvIntoBN,
        ConvergenceMode::OnePass,
