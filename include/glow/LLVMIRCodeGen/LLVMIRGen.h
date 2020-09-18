@@ -167,8 +167,8 @@ protected:
 
   /// Generates LLVM IR that computes the address of \p val using \p builder.
   /// The address type is specified by \p ptrTy.
-  llvm::Value *emitValueAddress(llvm::IRBuilder<> &builder,
-                                const glow::Value *val);
+  virtual llvm::Value *emitValueAddress(llvm::IRBuilder<> &builder,
+                                        const glow::Value *val);
   /// Emit the address of the buffer \p v inside a data-parallel kernel \p
   /// kernel using the mapping provided by \p bufferToArgNum.
   llvm::Value *emitBufferAddress(llvm::IRBuilder<> &builder, Value *val,

@@ -28,6 +28,7 @@
 namespace glow {
 
 class AllocationsInfo;
+class BundleSaver;
 class PlaceholderBindings;
 class LLVMIRGen;
 
@@ -170,6 +171,17 @@ public:
   /// \returns backend-specific LLVMIRGen instance.
   virtual std::unique_ptr<LLVMIRGen>
   createIRGen(const IRFunction *IR, AllocationsInfo &allocationsInfo) const = 0;
+
+  /// Method that creates a BundleSaver. This gives the possibility to
+  /// create a backend that inherits from the LLVMBackend backend, while
+  /// providing a specific version of the BundleSaver derived from BundleSaver.
+  /// \param llvmBackend backend to be used to produce in a bundle.
+  /// \param outputDir output directory for the bundle.
+  /// \param bundleName the name of the bundle.
+  /// \returns backend-specific BundleSaver instance.
+  virtual std::unique_ptr<BundleSaver>
+  createBundleSaver(const LLVMBackend &llvmBackend, llvm::StringRef outputDir,
+                    llvm::StringRef bundleName) const;
 
 protected:
   /// Method that creates a CompiledFunction.

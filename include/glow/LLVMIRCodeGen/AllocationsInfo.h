@@ -61,24 +61,25 @@ public:
       : constantWeightVarsAllocator("ConstantWeights", 0),
         mutableWeightVarsAllocator("MutableWeights", 0),
         activationsAllocator("Activations", 0) {}
+  virtual ~AllocationsInfo() = default;
   /// Assign offsets to all of the variables in the module \p M and to the
   /// placeholders.
-  void allocateWeightVars(const IRFunction *F);
+  virtual void allocateWeightVars(const IRFunction *F);
   /// Assign offsets to all activations.
   /// No actual memory allocation is performed. All the allocations should be
   /// performed by the client based on the information provided by the
   /// AllocationsInfo or RuntimeBundle.
-  void allocateActivations(const IRFunction *F);
+  virtual void allocateActivations(const IRFunction *F);
   /// Assign offsets to all tensorviews.
   /// No memory allocation is performed. Sets up all offsets into already
   /// defined offsets for WeightVars and AllocActivations. Assumes the weight
   /// vars and alloc activations have already been added to allocatedAddress_.
-  void allocateTensorViews(const IRFunction *F);
+  virtual void allocateTensorViews(const IRFunction *F);
   /// Number all allocations and weight variables by assigning them unique
   /// numbers.
-  void numberValues(const IRFunction *F);
+  virtual void numberValues(const IRFunction *F);
 
-private:
+protected:
   /// Index to be used for a new value.
   size_t valueIdx_{0};
   /// Use two different allocators, because constant weights and mutable weights
