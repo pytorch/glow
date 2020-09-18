@@ -436,7 +436,8 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   }
 
   if (settings.writeToOnnx) {
-    std::string filename = strFormat("input_%zu.onnx", runId);
+    std::string filename =
+        strFormat("%s_input_%zu.onnx", info.functionName.c_str(), runId);
     std::ofstream of(filename, std::ios::binary);
     if (!of) {
       LOG(ERROR) << "Cannot create input file " << filename;
@@ -583,7 +584,8 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   }
 
   if (settings.writeToOnnx) {
-    std::string filename = strFormat("glow_output_%zu.onnx", runId);
+    std::string filename =
+        strFormat("%s_glow_output_%zu.onnx", info.functionName.c_str(), runId);
     std::ofstream of(filename, std::ios::binary);
     if (!of) {
       LOG(ERROR) << "Cannot create output file " << filename;
@@ -595,7 +597,8 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   }
 
   if (settings.writeToOnnx) {
-    std::string filename = strFormat("pytorch_output_%zu.onnx", runId);
+    std::string filename = strFormat("%s_pytorch_output_%zu.onnx",
+                                     info.functionName.c_str(), runId);
     std::ofstream of(filename, std::ios::binary);
     if (!of) {
       LOG(ERROR) << "Cannot create output file " << filename;
