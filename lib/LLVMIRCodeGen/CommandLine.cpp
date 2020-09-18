@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "CommandLine.h"
+#include "glow/LLVMIRCodeGen/CommandLine.h"
 
 llvm::cl::OptionCategory &getLLVMBackendCat() {
   static llvm::cl::OptionCategory cpuBackendCat("Glow CPU Backend Options");

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "CommandLine.h"
+#include "glow/LLVMIRCodeGen/CommandLine.h"
 #include "glow/LLVMIRCodeGen/LLVMBackend.h"
 #include "glow/LLVMIRCodeGen/LLVMIRGen.h"
 
