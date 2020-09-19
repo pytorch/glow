@@ -428,6 +428,10 @@ class ONNXModelLoader
   Error loadAudioSpectrogram(const ONNX_NAMESPACE::NodeProto &op,
                              ArgumentDictionaryTy &dict);
 
+  /// Load Loop operator.
+  Error loadLoop(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
+
   /// Load MFCC Glow operator.
   Error loadMFCC(const ONNX_NAMESPACE::NodeProto &op,
                  ArgumentDictionaryTy &dict);
@@ -515,6 +519,12 @@ protected:
   /// they're added to \ref staticPlaceholderTypes_. If \ref
   /// staticPlaceholderTypes_ is a nullptr then this method is a no-op.
   Error setupOrigStaticTypeMap(ONNX_NAMESPACE::GraphProto &net);
+
+  /// Associate all inputs of \p net with nodes in \p NVs. Number of inputs of
+  /// \p net should match the number of elements of \p NVs.
+  /// \returns error code in case of error.
+  Error assignGraphInputs(const ONNX_NAMESPACE::GraphProto &net,
+                          llvm::ArrayRef<NodeValue> NVs);
 
   /// Creates a ONNX model loader to build \p F.
   /// Loads the ONNIXFI \p model from memory of \p modelSize size,

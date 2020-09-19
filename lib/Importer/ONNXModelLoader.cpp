@@ -76,6 +76,11 @@ llvm::cl::opt<bool> onnxExportRnnStatesOpt(
         "each inference. Default is false."),
     llvm::cl::cat(onnxModelLoaderCat));
 
+llvm::cl::opt<unsigned> loopUnrollLimit(
+    "loop-unroll-limit",
+    llvm::cl::desc("Maximum unrollable iterations for the Loop operator"),
+    llvm::cl::Optional, llvm::cl::init(20), llvm::cl::cat(onnxModelLoaderCat));
+
 /// Parse the command line option and get the user defined map of symbols.
 /// The command line option has the format <symbol_name>,<symbol_value>.
 Expected<std::unordered_map<std::string, dim_t>> getSymbolMap() {
@@ -4461,6 +4466,237 @@ Error ONNXModelLoader::loadSign(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadLoop(const ONNX_NAMESPACE::NodeProto &op,
+                                const ArgumentDictionaryTy &dict) {
+  int64_t maxTripCount;
+  bool ignoreMaxTripCount = op.input(0).empty();
+  if (!ignoreMaxTripCount) {
+    Constant *M = getConstantByNameOrNull(op.input(0));
+    RETURN_ERR_IF_NOT(M, "Loop operator M input must be a constant.");
+    RETURN_ERR_IF_NOT(M->getElementType() == ElemKind::Int64ITy,
+                      "Loop operator M input must be int64.");
+    maxTripCount = (M->getPayload().getHandle<int64_t>()).raw(0);
+
+    RETURN_ERR_IF_NOT(
+        maxTripCount >= 0,
+        strFormat("Loop operator trip count (%ld) must be positive",
+                  maxTripCount));
+  }
+
+  bool condOrig = false;
+  bool ignoreCond = op.input(1).empty();
+  if (!ignoreCond) {
+    Constant *cond = getConstantByNameOrNull(op.input(1));
+    RETURN_ERR_IF_NOT(cond, "Loop operator cond input must be a constant.");
+    RETURN_ERR_IF_NOT(cond->getElementType() == ElemKind::BoolTy,
+                      "Loop operator cond input must be bool.");
+    condOrig = (cond->getPayload().getHandle<bool>()).raw(0);
+  }
+
+  RETURN_ERR_IF_NOT(dict.count("body"), "Loop body not found.");
+  auto body = dict.at("body")->g();
+
+  // 2 + N (i.e., maximum trip-count, cond, and N)
+  const int numLoopInputs = op.input_size();
+  // N + K (final N loop carried dependency values then K scan_outputs)
+  const int numLoopOutputs = op.output_size();
+  // 2 + N (i.e., iteration_num, condition, and N loop carried dependencies)
+  const int numBodyInputs = body.input_size();
+  // 1 + N + K (i.e., condition, N loop carried dependencies, and K
+  // scan_outputs)
+  const int numBodyOutputs = body.output_size();
+
+  RETURN_ERR_IF_NOT(numLoopInputs >= 2 && numLoopInputs == numBodyInputs &&
+                        numLoopOutputs == numBodyOutputs - 1 &&
+                        numLoopOutputs >= 1,
+                    "Mismatched inputs/outputs of Loop and subgraph.");
+
+  const int numK = numBodyOutputs - numBodyInputs + 1;
+  const int numN = numLoopInputs - 2;
+
+  CHECK_GE(numN, 0) << "Invalid number of v_initial in Loop operator : "
+                    << numN;
+  CHECK_GE(numK, 0) << "Invalid number of scan_outputs in Loop operator : "
+                    << numK;
+
+  // Handle a loop with no iterations.
+  if ((!ignoreMaxTripCount && maxTripCount == 0) ||
+      (!ignoreCond && !condOrig)) {
+    // No need to load the subgraph, just connect loop's N v_initial to
+    // N v_final and empty Tensor for K scan_outputs.
+    llvm::SmallVector<NodeValue, 4> outputs;
+    outputs.reserve(numLoopOutputs);
+    // Connect N v_initial to N v_final.
+    for (int i = 0; i < numN; ++i) {
+      NodeValue in;
+      ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(i + 2)));
+      outputs.push_back(in);
+    }
+    // Connect empty Tensors for K scan_outputs.
+    for (int k = 0; k < numK; ++k) {
+      int ki = (body.input_size() - 1) + k;
+      auto scan_output = body.output(ki);
+      Type ty;
+      ASSIGN_VALUE_OR_RETURN_ERR(ty, getTensorType(scan_output));
+      Tensor T(ty);
+      T.zero();
+      Constant *c = G_->getParent()->createConstant("empty", std::move(T));
+      outputs.push_back(G_->createExpandDims("unsqueeze_K", c, {0}));
+    }
+    RETURN_IF_ERR(assignNodeOutputs(op, outputs));
+    return Error::success();
+  }
+
+  // Now, there is at least one iteration.
+  llvm::SmallVector<NodeValue, 4> inputs;
+  inputs.reserve(numBodyInputs);
+
+  // Collect names of N loop carried dependencies from Loop op. It will be used
+  // to connect Loop's inputs with subgraph's inputs for the first iteration.
+  llvm::SmallVector<llvm::StringRef, 4> namesOfLoopNs;
+  namesOfLoopNs.reserve(numN);
+  for (int i = 0; i < numN; ++i) {
+    namesOfLoopNs.push_back(op.input(i + 2));
+  }
+
+  // Collect output node names for the next iteration. It will be used when
+  // connecting subgraph's outputs with subgraph's input between iteration. Add
+  // names just for N loop carried dependencies. No need to add names for K
+  // scan_outputs because they are not input of subgraph.
+  llvm::SmallVector<llvm::StringRef, 4> namesOfBodyOutputNs;
+  namesOfBodyOutputNs.reserve(numN);
+  for (int i = 0; i < numN; ++i) {
+    namesOfBodyOutputNs.push_back(body.output(i + 1).name());
+  }
+
+  // Collect names of K scan_outputs.
+  llvm::SmallVector<llvm::SmallVector<NodeValue, 2>, 2> scanOutputKs;
+  scanOutputKs.reserve(numK);
+  for (int k = 0; k < numK; ++k) {
+    llvm::SmallVector<NodeValue, 2> scanOutputIter;
+    scanOutputIter.reserve(loopUnrollLimit);
+    scanOutputKs.push_back(scanOutputIter);
+  }
+
+  auto getDummyCond = [&]() -> Expected<NodeValue> {
+    RETURN_ERR_IF_NOT(ignoreCond, "Unexpected empty name in cond in Loop");
+    Tensor dummyCondT(ElemKind::BoolTy, {1});
+    dummyCondT.zero();
+    Constant *dummyCondNode =
+        G_->getParent()->createConstant("dumpCond", std::move(dummyCondT));
+    return dummyCondNode->getOutput();
+  };
+
+  auto getIterationNumConst = [&](int64_t val) -> Constant * {
+    Tensor T(ElemKind::Int64ITy, {1});
+    T.getHandle<int64_t>() = {val};
+    Constant *C = G_->getParent()->createConstant("const", std::move(T));
+    return C;
+  };
+
+  auto prepareNextIteration =
+      [&](int64_t iterationNum, NodeValue condNode,
+          llvm::ArrayRef<llvm::StringRef> outputNames) -> Error {
+    inputs.clear();
+    // Set iteration_num.
+    inputs.push_back(getIterationNumConst(iterationNum));
+    // Set condition.
+    inputs.push_back(condNode);
+    // Set N loop carried dependencies.
+    for (auto oName : outputNames) {
+      NodeValue in;
+      ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(oName));
+      inputs.push_back(in);
+    }
+    RETURN_IF_ERR(assignGraphInputs(body, inputs));
+    return Error::success();
+  };
+
+  auto accumulateScanOutputs = [&]() -> Error {
+    // Accumulate scan-outputs values.
+    for (int k = 0; k < numK; ++k) {
+      int ki = (body.input_size() - 1) + k;
+      auto scan_output = body.output(ki);
+      NodeValue outK;
+      ASSIGN_VALUE_OR_RETURN_ERR(outK, getNodeValueByName(scan_output.name()));
+      Node *unsqueezedOutK = G_->createExpandDims("unsqueezed_K", outK, {0});
+      scanOutputKs[k].push_back(unsqueezedOutK);
+    }
+    return Error::success();
+  };
+
+  auto loadSubgraph = [&](ONNX_NAMESPACE::GraphProto &graphDef) -> Error {
+    RETURN_IF_ERR(loadInitializers(graphDef));
+    RETURN_IF_ERR(loadNetwork(graphDef, false));
+    return Error::success();
+  };
+
+  auto canUnrollNextIter = [&](int64_t iterNum) -> Expected<bool> {
+    if (!ignoreMaxTripCount && iterNum >= maxTripCount) {
+      return false;
+    }
+    Constant *condOut = getConstantByNameOrNull(body.output(0).name());
+    RETURN_ERR_IF_NOT(condOut,
+                      "Loop exit condition is unpredictable to be unrolled.");
+    bool cond = (condOut->getPayload().getHandle<bool>()).raw(0) || ignoreCond;
+    if (!cond) {
+      return false;
+    }
+    RETURN_ERR_IF_NOT(
+        iterNum < loopUnrollLimit,
+        strFormat("Exceed the unroll limit (%u) while unrolling Loop operator.",
+                  loopUnrollLimit.getValue()));
+    return cond;
+  };
+
+  // Unroll the first iteration by connecting Loop's inputs to subgraph's
+  // inputs.
+  int64_t iterNum = 0;
+  NodeValue condNode;
+  ASSIGN_VALUE_OR_RETURN_ERR(condNode, op.input(1).empty()
+                                           ? getDummyCond()
+                                           : getNodeValueByName(op.input(1)));
+  RETURN_IF_ERR(prepareNextIteration(iterNum, condNode, namesOfLoopNs));
+  RETURN_IF_ERR(loadSubgraph(body));
+  RETURN_IF_ERR(accumulateScanOutputs());
+  ++iterNum;
+  auto condCheck = canUnrollNextIter(iterNum);
+
+  RETURN_ERR_IF_NOT(condCheck, ERR_TO_STRING(condCheck.takeError()));
+
+  // Unroll remaining iterations by connecting outputs of previous iteration
+  // with inputs of current iteration.
+  while (condCheck && condCheck.get()) {
+    NodeValue condOutNode;
+    ASSIGN_VALUE_OR_RETURN_ERR(condOutNode,
+                               getNodeValueByName(body.output(0).name()));
+    RETURN_IF_ERR(
+        prepareNextIteration(iterNum, condOutNode, namesOfBodyOutputNs));
+    RETURN_IF_ERR(loadSubgraph(body));
+    RETURN_IF_ERR(accumulateScanOutputs());
+    ++iterNum;
+    condCheck = canUnrollNextIter(iterNum);
+    RETURN_ERR_IF_NOT(condCheck, ERR_TO_STRING(condCheck.takeError()));
+  }
+
+  // Hook final subgraph outputs to loop outputs.
+  llvm::SmallVector<NodeValue, 4> outputs;
+  outputs.reserve(numLoopOutputs);
+  // Set outputs for N loop carried dependency values.
+  for (int i = 0; i < numN; ++i) {
+    NodeValue bodyout;
+    ASSIGN_VALUE_OR_RETURN_ERR(bodyout,
+                               getNodeValueByName(body.output(i + 1).name()));
+    outputs.push_back(bodyout);
+  }
+  // Set outputs for K scan_outputs.
+  for (int k = 0; k < numK; ++k) {
+    outputs.push_back(G_->createConcat("concat", scanOutputKs[k], 0));
+  }
+  RETURN_IF_ERR(assignNodeOutputs(op, outputs));
+  return Error::success();
+}
+
 Expected<TypeRef>
 ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
                                         ArgumentDictionaryTy &dict) {
@@ -4589,6 +4825,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
                              tryLoadCommonOperator(typeName, op, dict));
   if (tryLoadCommonOperatorResult) {
     return Error::success();
+  }
+  if (typeName == "Loop") {
+    return loadLoop(op, dict);
   }
 
   if (typeName == "Constant") {
@@ -5184,6 +5423,16 @@ Error ONNXModelLoader::setupOrigStaticTypeMap(ONNX_NAMESPACE::GraphProto &net) {
       strFormat(
           "Expected to find types for all static Placeholders. %lu vs. %lu",
           staticPlaceholderTypes_->size(), staticInputs_.size()));
+  return Error::success();
+}
+
+Error ONNXModelLoader::assignGraphInputs(const ONNX_NAMESPACE::GraphProto &net,
+                                         llvm::ArrayRef<NodeValue> NVs) {
+  RETURN_ERR_IF_NOT((dim_t)NVs.size() == (dim_t)net.input_size(),
+                    "Input size mismatch.");
+  for (size_t i = 0; i < NVs.size(); i++) {
+    nodeValueByName_[net.input(i).name()] = NVs[i];
+  }
   return Error::success();
 }
 
