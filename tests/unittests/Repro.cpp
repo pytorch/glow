@@ -687,6 +687,12 @@ int run() {
 
   auto hostManager =
       glow::make_unique<runtime::HostManager>(std::move(configs), hostConfig);
+  if (enablePartialTensor) {
+    CHECK(hostManager->getBackend().get()->supportsPartialTensors())
+        << "Backend " << ExecutionBackend
+        << " doesn't support partial tensor but enablePartialTensor is set to "
+           "true.";
+  }
   cctx.saturateHost = glowSaturateHost;
   EXIT_ON_ERR(hostManager->addNetwork(std::move(mod), cctx));
 
