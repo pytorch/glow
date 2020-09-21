@@ -1924,8 +1924,8 @@ Error ONNXModelLoader::loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
         axis, loadAxis<size_t>(dict.at("axis"), in.dims().size()));
   }
   bool keepDims = true;
-  if (dict.count("keepDims")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(keepDims, loadInt(dict.at("keepDims")));
+  if (dict.count("keepdims")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(keepDims, loadInt(dict.at("keepdims")));
   }
   Node *node = G_->createArgMax(opName, in, axis, keepDims);
   RETURN_IF_ERR(addNodeAsOutput(op, node));
