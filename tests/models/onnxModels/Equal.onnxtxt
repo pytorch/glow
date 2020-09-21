@@ -1,84 +1,47 @@
-ir_version: 5
-domain: "onnx"
-# ONNX TensorProto.DataType:
-#    UNDEFINED = 0;
-#    FLOAT = 1;
-#    UINT8 = 2;
-#    INT8 = 3;
-#    UINT16 = 4;
-#    INT16 = 5;
-#    INT32 = 6;
-#    INT64 = 7;
-#    STRING = 8;
-#    BOOL = 9;
-#    FLOAT16 = 10;
-#    DOUBLE = 11;
-#    UINT32 = 12;
-#    UINT64 = 13;
-#    COMPLEX64 = 14;
-#    COMPLEX128 = 15;
+ir_version: 6
+producer_name: "onnx-ex"
 graph {
+  node {
+    input: "X1"
+    input: "X2"
+    output: "output_0"
+    op_type: "Equal"
+  }
+  name: "graph"
   input {
-    name: "X"
+    name: "X1"
     type {
       tensor_type {
         elem_type: 1
         shape {
-         dim {
-            dim_value: 1
-          }
           dim {
-            dim_value: 4
-          }
-          dim {
-            dim_value: 1
+            dim_value: 10
           }
         }
       }
     }
   }
   input {
-    name: "Y"
+    name: "X2"
     type {
       tensor_type {
         elem_type: 1
         shape {
-         dim {
-            dim_value: 4
-          }
           dim {
-            dim_value: 1
-          }
-          dim {
-            dim_value: 1
+            dim_value: 10
           }
         }
       }
     }
   }
-   node {
-       input: "X"
-       input: "Y"
-       output: "Out"
-       name: "EqualNode"
-       op_type: "CmpEQ"
-       domain: ""
-   }
-
-output {
-    name: "Out"
+  output {
+    name: "output_0"
     type {
       tensor_type {
-        elem_type: 1
+        elem_type: 9
         shape {
           dim {
-            dim_value: 4
-          }
-          dim {
-            dim_value: 4
-          }
-          dim {
-            dim_value: 1
+            dim_value: 10
           }
         }
       }
@@ -86,5 +49,6 @@ output {
   }
 }
 opset_import {
-  version: 10
+  version: 11
 }
+

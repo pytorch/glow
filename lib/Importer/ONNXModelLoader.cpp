@@ -4223,6 +4223,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "LSTM") {
     return loadLSTM(op, dict);
   }
+  if (typeName == "Equal") {
+    return loadCmpEQ(op, dict);
+  }
   // Glow specific operators
   if (typeName == "CmpEQ") {
     return loadCmpEQ(op, dict);

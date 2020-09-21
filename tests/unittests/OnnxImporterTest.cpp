@@ -3109,13 +3109,13 @@ TEST_F(OnnxImporterTest, importLessEqual) {
   EXPECT_EQ(CMPLTE->getResult().dims()[2], 1);
 }
 
-TEST_F(OnnxImporterTest, importEqual) {
+TEST_F(OnnxImporterTest, importCmpEQ) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
   std::string netFilename(GLOW_DATA_PATH
-                          "tests/models/onnxModels/Equal.onnxtxt");
+                          "tests/models/onnxModels/CmpEQ.onnxtxt");
 
   Placeholder *out = nullptr;
   {
@@ -3138,6 +3138,46 @@ TEST_F(OnnxImporterTest, importEqual) {
   EXPECT_EQ(CMPEQ->getResult().dims()[0], 4);
   EXPECT_EQ(CMPEQ->getResult().dims()[1], 4);
   EXPECT_EQ(CMPEQ->getResult().dims()[2], 1);
+}
+
+TEST_F(OnnxImporterTest, importEqual) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/Equal.onnxtxt");
+  auto *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *output_0;
+
+  Tensor X1(ElemKind::FloatTy, {10});
+  X1.getHandle() = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+
+  Tensor X2(ElemKind::FloatTy, {10});
+  X2.getHandle() = {0, 1, 1, 3, 3, 5, 5, 7, 7, 9};
+
+  {
+    ONNXModelLoader onnxLD(netFilename, {"X1", "X2"},
+                           {&X1.getType(), &X2.getType()}, *F);
+
+    output_0 = EXIT_ON_ERR(onnxLD.getOutputByName("output_0"));
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"X1", "X2"}, {&X1, &X2});
+  }
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  std::vector<dim_t> expectedOutput0Dims = {10};
+  std::vector<bool> expectedOutput0Values = {true, true,  false, true,  false,
+                                             true, false, true,  false, true};
+
+  auto output0_H = bindings.get(output_0)->getHandle<bool>();
+
+  EXPECT_EQ(output0_H.dims().vec(), expectedOutput0Dims);
+
+  for (size_t i = 0; i < expectedOutput0Values.size(); i++)
+    EXPECT_EQ(output0_H.raw(i), expectedOutput0Values[i]);
 }
 
 static void importLogical(const std::string &netFilename,
