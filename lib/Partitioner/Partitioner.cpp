@@ -15,6 +15,8 @@
  */
 
 #include "glow/Partitioner/Partitioner.h"
+
+#include "glow/Flags/Flags.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Partitioner/PartitionerOptimizer.h"
 #include "glow/Partitioner/PartitionerUtils.h"
@@ -25,13 +27,11 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <fstream>
+
 namespace glow {
-bool GlowEnableLoadBalancedPartitioning = true;
-bool GlowLogPartition = false;
-bool GlowDumpPartition = false;
 static llvm::cl::opt<bool, /* ExternalStorage */ true>
     GlowEnableLoadBalancedPartitioningOpt(
-        "glow_partitioner_enable_load_balance",
+        "partitioner_enable_load_balance",
         llvm::cl::desc(
             "Enable a partitioner pass to optimize for "
             "load balance in addition to memory capacity constraints"),

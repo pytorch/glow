@@ -15,6 +15,8 @@
  */
 
 #include "glow/Graph/Log.h"
+
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
 #include "glow/Graph/NodeValue.h"
@@ -28,18 +30,10 @@ namespace glow {
 /// Log version number.
 static constexpr auto logVersionNo_ = "v1.0.0";
 
-bool GlowDumpCompilationLog = false;
 static llvm::cl::opt<bool, true>
     enableCompilationLogOpt("compilation-log",
                             llvm::cl::desc("Dump Compilation Log"),
                             llvm::cl::location(GlowDumpCompilationLog));
-
-bool GlowDumpBackendSpecificIRJSON;
-static llvm::cl::opt<bool, /* ExternalStorage */ true>
-    GlowDumpBackendSpecificIRJSONOpt(
-        "glow_dump_backend_specific_ir_json",
-        llvm::cl::desc("Dump backend-specific IR in JSON format"),
-        llvm::cl::location(GlowDumpBackendSpecificIRJSON));
 
 static llvm::cl::opt<bool> verboseCompilationLogOpt(
     "verbose-compilation", llvm::cl::init(false),

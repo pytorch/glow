@@ -21,6 +21,7 @@
 #include "NNPICompiledFunction.h"
 #include "NNPITracing.h"
 #include "NNPIUtils.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Support/Error.h"
 #include "nnpi_inference.h"
 #include "nnpi_transformer.h"
@@ -34,20 +35,6 @@
 namespace glow {
 namespace runtime {
 
-unsigned GlowNNPIMemory = 0;
-unsigned GlowNNPITimeout = 0;
-
-static llvm::cl::opt<unsigned, /* ExternalStorage */ true>
-    GlowNNPIMemoryOpt("glow-nnpi-memory",
-                      llvm::cl::desc("Override the amount of DRAM to allocate "
-                                     "per NNPI device, in kilobytes"),
-                      llvm::cl::location(GlowNNPIMemory));
-static llvm::cl::opt<unsigned, /* ExternalStorage */ true> GlowNNPITimeoutOpt(
-    "glow-nnpi-timeout",
-    llvm::cl::desc("Timeout threshold for inferecnce in microseconds. "
-                   "Default 0 means infinity"),
-    llvm::cl::location(GlowNNPITimeout));
-
 DeviceManager *createNNPIDeviceManager(const DeviceConfig &config,
                                        NNPIAdapterContainer *adapter) {
   std::shared_ptr<NNPIDeviceOptions> deviceOptions =
@@ -57,7 +44,7 @@ DeviceManager *createNNPIDeviceManager(const DeviceConfig &config,
     LOG(ERROR) << "Adapter allocation failed";
     return nullptr;
   }
-  if (GlowNNPITimeoutOpt != 0) {
+  if (GlowNNPITimeout != 0) {
     deviceOptions->inferTimeout = GlowNNPITimeout;
   }
   return new NNPIDeviceManager(config, deviceOptions, adapter);

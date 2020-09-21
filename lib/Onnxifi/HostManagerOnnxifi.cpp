@@ -15,6 +15,8 @@
  */
 
 #include "HostManagerOnnxifi.h"
+
+#include "glow/Flags/Flags.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
 #include "glow/Runtime/ErrorReporter.h"
 #include "glow/Runtime/RequestData.h"
@@ -23,46 +25,7 @@
 #include "llvm/Support/FileSystem.h"
 
 namespace glow {
-extern bool GlowDumpCompilationLog;
 namespace onnxifi {
-
-extern bool GlowSaveOnnxifiModel;
-
-int32_t GlowNumDevices = 0;
-int32_t GlowSparseNNPartitioningSchemeNumCards = 1;
-int64_t GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard = 0;
-int32_t GlowSparseNNPartitioningSchemeNumCoresSLS = 1;
-int32_t GlowSparseNNPartitioningSchemeNumCoresOther = 1;
-bool GlowDumpDebugTraces = false;
-int32_t GlowNumDebugTracesPerDump = 100;
-bool GlowSaturateHost = false;
-bool GlowFP16 = false;
-bool GlowFP16Placeholders = true;
-bool GlowFP16Constants = true;
-bool GlowEnableQuantParamChanges = true;
-bool GlowDumpGraph = false;
-std::string GlowDumpGraphPath = "./";
-bool GlowDumpInitialLoadedGraph = false;
-bool GlowUseDAGOptimizer = false;
-bool GlowUseDAGOptimizerAOT = false;
-std::string GlowDAGOptimizerPlacementTaggingAlgorithm = "None";
-std::string GlowDAGOptimizerParallelizationTaggingAlgorithm = "None";
-int32_t GlowDAGOptimizerNumParallelChunks = 1;
-bool GlowFusedScaleOffsetFP16 = false;
-bool GlowForceSLSAccumFP16 = false;
-bool GlowClipFP16 = false;
-bool GlowClipFP16SkipInputs = true;
-bool GlowUseSparseNNPartitioningScheme = false;
-bool GlowSparseNNPartitioningAddSLSConcats = false;
-bool GlowSparseNNPartitioningBalancePerfModel = false;
-bool GlowSparseNNPartitioningPairLNWithSLS = false;
-size_t GlowMaxActiveRequests = 48;
-size_t GlowMaxActiveRequestsPerInstance = 48;
-size_t GlowMaxQueueSize = 100;
-size_t GlowExecutorThreads = 10;
-bool GlowSaveOnnxifiDAG = false;
-bool GlowDelayAndRecordConstantModification = false;
-bool GlowUseTrackedDummyQuantParams = false;
 
 static llvm::cl::opt<int32_t, true>
     GlowNumDevicesOpt("glow-num-devices",

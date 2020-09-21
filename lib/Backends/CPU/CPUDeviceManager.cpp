@@ -16,14 +16,14 @@
 #include "CPUDeviceManager.h"
 #include "CPUFunction.h"
 
+#include "glow/Flags/Flags.h"
+
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace glow {
 namespace runtime {
-
-unsigned GlowCPUMemory = 0;
 
 static llvm::cl::opt<unsigned, /* ExternalStorage */ true> GlowCPUMemoryOpt(
     "cpu-memory",

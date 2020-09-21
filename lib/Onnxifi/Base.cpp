@@ -16,6 +16,7 @@
 #include "Base.h"
 
 #include "glow/Exporter/ONNXModelWriter.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Importer/ONNXIFIModelLoader.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
@@ -25,10 +26,6 @@
 
 namespace glow {
 namespace onnxifi {
-bool GlowSaveOnnxifiModel = false;
-bool GlowSaveOnnxifiIO = false;
-bool GlowEnablePartialTensors = true;
-bool GlowUseCustomOpsForExport = true;
 
 extern bool GlowDumpDebugTraces;
 
