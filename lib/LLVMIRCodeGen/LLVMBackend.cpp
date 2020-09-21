@@ -519,7 +519,9 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
             (NI.getOutElemTy(ConvertToNode::ResultIdx) ==
              ElemKind::Int64ITy)) ||
            ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::FloatTy) &&
-            (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::BoolTy));
+            (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::BoolTy)) ||
+           ((NI.getInElemTy(ConvertToNode::InputIdx) == ElemKind::BoolTy) &&
+            (NI.getOutElemTy(ConvertToNode::ResultIdx) == ElemKind::Int32ITy));
 
   default:
     return false;
