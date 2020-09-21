@@ -140,16 +140,21 @@ invertShuffle(llvm::ArrayRef<unsigned_t> shuffle) {
 static TransposeNode *insertMatchingTransposeAfterConstant(Function *F,
                                                            Constant *C,
                                                            TransposeNode *TR) {
-  auto *CT = C->getOutput().getType();
-  auto *TRT = TR->getResult().getType();
-  DCHECK(CT->isEqual(TRT));
+  const auto *CT = C->getOutput().getType();
+  const auto *TRT = TR->getResult().getType();
+  DCHECK(CT->isEqual(*TRT, /* allowDifferentShape */ false,
+                     /* allowDifferentStride */ false,
+                     /* allowDifferentScaleOffset */ true));
 
   auto &T = C->getPayload();
 
-  // In order for a new Transpose node with the same shuffle as TR to
-  // be created at the output of the Constant, a new Constant should
-  // created that has the same type as the input to TR.
-  auto *NC = F->getParent()->createConstant(TR->getInput().getType(),
+  // In order for a new Transpose node with the same shuffle as TR to be created
+  // at the output of the Constant, a new Constant with the same dimension as
+  // the input of TR should be created. Note that the original scale and offset
+  // should be kept for quantized types.
+  auto newConstTy =
+      F->getParent()->uniqueTypeWithNewShape(CT, TR->getInput().dims());
+  auto *NC = F->getParent()->createConstant(newConstTy,
                                             C->getName().str() + ".transposed");
 
   // The payload of the original Constant C has the same type as the
