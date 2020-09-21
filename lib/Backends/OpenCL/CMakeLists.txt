@@ -54,6 +54,7 @@ target_link_libraries(OpenCLBackend
                       PRIVATE
                       Backend
                       Base
+                      Flags
                       Graph
                       CodeGen
                       IR

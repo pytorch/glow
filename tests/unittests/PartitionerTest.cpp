@@ -1939,7 +1939,8 @@ TEST_F(PartitionerTest, RecordedConstantFolding) {
   EXPECT_TRUE(checkSaveNode(modP));
 
   DAGListTy dagList;
-  ASSIGN_VALUE_OR_FAIL_TEST(dagList, myPartitioner.partition(cctx));
+  ASSIGN_VALUE_OR_FAIL_TEST(dagList, myPartitioner.loadBalancedPartition(cctx));
+
   ASSERT_EQ(dagList.size(), 1);
   const auto &dag = *dagList.begin();
   EXPECT_EQ(dag.nodes.size(), 3);

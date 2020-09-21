@@ -18,6 +18,7 @@
 #include "GlowOnnxifiManager.h"
 #include "llvm/Support/CommandLine.h"
 
+#include "glow/Flags/Flags.h"
 #include "glow/Importer/ONNXIFIModelLoader.h"
 
 #include <cstring>
@@ -33,7 +34,6 @@
 namespace glow {
 namespace onnxifi {
 
-std::string GlowOnnxifiBackend = "";
 static llvm::cl::opt<std::string, /*external storage*/ true>
     GlowOnnxifiBackendOpt("glow-onnxifi-backend",
                           llvm::cl::desc("Glow backend used for ONNXIFI"),

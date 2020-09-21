@@ -17,6 +17,7 @@
 #include "glow/Runtime/HostManager/HostManager.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Exporter/ONNXModelWriter.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Partitioner/Partitioner.h"
@@ -56,13 +57,6 @@ llvm::cl::opt<std::string> loadBackendSpecificOptionsOpt(
 } // namespace
 
 namespace glow {
-namespace runtime {
-bool GlowEnableP2P = false;
-bool GlowEnableDRT = false;
-std::string GlowDumpGraphPath = "./";
-unsigned GlowDeviceInitTimeoutMs = 5000;
-std::string GlowAvailableDevices = "";
-} // namespace runtime
 
 #if FACEBOOK_INTERNAL
 Error optimizeDAG(DAGListTy &nodeList, const Provisioner &provisioner,
@@ -92,22 +86,6 @@ llvm::cl::opt<bool, /* ExternalStorage */ true>
               llvm::cl::Optional,
               llvm::cl::location(glow::runtime::GlowEnableP2P),
               llvm::cl::cat(hostManagerCat));
-
-/// The value that should be used for device initialization timeout, default:
-/// 5000 milliseconds.
-llvm::cl::opt<unsigned, /* ExternalStorage */ true> deviceInitTimeout(
-    "glow_device_init_timeout_ms",
-    llvm::cl::desc("Set device init timout in milliseconds"),
-    llvm::cl::Optional,
-    llvm::cl::location(glow::runtime::GlowDeviceInitTimeoutMs),
-    llvm::cl::cat(hostManagerCat));
-
-/// Set which devices are available to add a network to.
-llvm::cl::opt<std::string, true> GlowAvailableDevicesOpt(
-    "glow-available-devices",
-    llvm::cl::desc("Comma separated list of devices which "
-                   "should be used, example 2,3,4"),
-    llvm::cl::location(GlowAvailableDevices), llvm::cl::cat(hostManagerCat));
 
 HostManager::HostManager() : HostManager(HostConfig{}) {}
 

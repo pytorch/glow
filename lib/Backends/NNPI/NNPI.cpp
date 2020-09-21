@@ -20,6 +20,7 @@
 #include "NNPICompiledFunction.h"
 #include "NNPIDeviceManager.h"
 #include "NNPIUtils.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/Utils.h"
@@ -34,58 +35,6 @@
 #include <unordered_set>
 
 using namespace glow;
-
-namespace glow {
-llvm::cl::OptionCategory optionsForNNPI("NNPI Backend Options");
-
-bool GlowNNPILowerAllBatchMatMul = false;
-static llvm::cl::opt<bool, /* ExternalStorage */ true>
-    GlowNNPILowerAllBatchMatMulOpt(
-        "glow_nnpi_lower_all_batch_matmul",
-        llvm::cl::desc("Whether to override default "
-                       "lowering for NNPI and "
-                       "always lower BatchMatMul to a "
-                       "series of MatMuls."),
-        llvm::cl::location(GlowNNPILowerAllBatchMatMul), llvm::cl::Optional,
-        llvm::cl::init(false), llvm::cl::cat(optionsForNNPI));
-
-bool GlowNNPIAcceptUnarySLS = false;
-static llvm::cl::opt<bool, /* ExternalStorage */ true>
-    GlowNNPIAcceptUnarySLSOpt(
-        "glow_nnpi_accept_unary_sls",
-        llvm::cl::desc(
-            "Whether to accept unary SLS ops during ONNXIFI loading."),
-        llvm::cl::location(GlowNNPIAcceptUnarySLS), llvm::cl::Optional,
-        llvm::cl::init(false), llvm::cl::cat(optionsForNNPI));
-
-namespace onnxifi {
-
-bool GlowDumpNNPICompilerData = false;
-static llvm::cl::opt<bool, /* ExternalStorage */ true>
-    GlowDumpNNPICompilerDataOpt("glow_dump_nnpi_compiler_data",
-                                llvm::cl::desc("Whether to dump NNPI compiler"
-                                               "data to a file"),
-                                llvm::cl::location(GlowDumpNNPICompilerData),
-                                llvm::cl::Optional, llvm::cl::init(false),
-                                llvm::cl::cat(optionsForNNPI));
-
-bool GlowUsePerPartitionIcetConfig = true;
-static llvm::cl::opt<bool, /* ExternalStorage */ true>
-    GlowUsePerPartitionIcetConfigOpt(
-        "glow_use_per_partition_icet_config",
-        llvm::cl::desc("Whether to load an"
-                       "icet_config.json file"
-                       "for each partition"),
-        llvm::cl::location(GlowUsePerPartitionIcetConfig), llvm::cl::Optional,
-        llvm::cl::init(false), llvm::cl::cat(optionsForNNPI));
-
-bool GlowDisableNNPITransforms = false;
-bool GlowDisableNNPIPrivateTransforms = false;
-int32_t GlowNNPINumParallelChunks = 0;
-int32_t GlowNNPIModelParallelSplitAlignment = 1;
-
-} // namespace onnxifi
-} // namespace glow
 
 NNPIBackendOptions NNPIBackend::backendOptions_;
 NNPIAdapterContainer NNPIBackend::adapter_;
