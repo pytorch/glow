@@ -144,3 +144,15 @@ TEST(Support, ScopeGuardDismissAndRunAndDismiss) {
   }
   EXPECT_EQ(val, 1);
 }
+
+TEST(Support, ArrayRefPrinting) {
+  // Check that when printing ArrayRef,
+  // the elements are omitted when reached limit and vice versa.
+  const std::vector<int> shortVec(4, 0);
+  const std::vector<int> longVec(5, 0);
+  const llvm::ArrayRef<int> shortArr(shortVec);
+  const llvm::ArrayRef<int> longArr(longVec);
+  std::ostringstream oss;
+  oss << shortArr << longArr;
+  EXPECT_TRUE(oss.str().compare("[0, 0, 0, 0][0, 0, 0, 0, ...]") == 0);
+}
