@@ -4644,6 +4644,42 @@ TEST_F(OnnxImporterTest, importGemmTransB) {
              /* transA */ false, /* transB */ true);
 }
 
+TEST(onnx, importTransposeNullPerm) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(
+      GLOW_DATA_PATH "tests/models/onnxModels/transpose_null_perm.onnxtxt");
+  auto *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *output_0;
+
+  Tensor input_0(ElemKind::Int32ITy, {1, 2, 3, 4});
+  input_0.getHandle<int32_t>() = {1, 2, 3, 6, 4, 5, 6, 3, 1, 2, 3, 6,
+                                  4, 5, 6, 3, 7, 8, 9, 2, 3, 5, 7, 1};
+  {
+    ONNXModelLoader onnxLD(netFilename, {"X1"}, {&input_0.getType()}, *F);
+
+    output_0 = EXIT_ON_ERR(onnxLD.getOutputByName("output0"));
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"X1"}, {&input_0});
+  }
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  std::vector<dim_t> expectedDims = {4, 3, 2, 1};
+  std::vector<int32_t> expectedValues = {1, 4, 4, 7, 1, 3, 2, 5, 5, 8, 2, 5,
+                                         3, 6, 6, 9, 3, 7, 6, 3, 3, 2, 6, 1};
+
+  auto result = bindings.get(output_0)->getHandle<int32_t>();
+
+  EXPECT_EQ(result.dims().vec(), expectedDims);
+  for (dim_t i = 0; i < 24; i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+  }
+}
+
 TEST(onnx, importNames) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
