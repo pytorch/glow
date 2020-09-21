@@ -21,20 +21,13 @@
 #include "nnpi_transformer.h"
 
 #include "glow/Backend/BackendUtils.h"
+#include "glow/Flags/Flags.h"
 
 #include <sstream>
 
 #include "llvm/ADT/StringSet.h"
 
 using namespace glow;
-
-namespace glow {
-namespace onnxifi {
-extern bool GlowDumpNNPICompilerData;
-extern bool GlowUsePerPartitionIcetConfig;
-} // namespace onnxifi
-extern bool GlowDumpBackendSpecificIRJSON;
-} // namespace glow
 
 /// Update device network config from the compilation config
 static NNPIDeviceNetworkConfig parseDeviceNetworkConfig(

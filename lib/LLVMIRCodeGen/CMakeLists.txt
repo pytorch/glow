@@ -17,6 +17,7 @@ target_link_libraries(LLVMIRCodeGen
                         Backend
                         Base
                         CodeGen
+                        Flags
                         Graph
                         IR
                         IROptimizer

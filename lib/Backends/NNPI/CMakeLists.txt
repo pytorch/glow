@@ -137,6 +137,7 @@ target_link_libraries(NNPI
                       PRIVATE
                       Backend
                       Base
+                      Flags
                       Graph
                       GraphOptimizer
                       CodeGen
@@ -149,4 +150,3 @@ target_link_libraries(NNPI
 )
 
 set(linked_backends ${linked_backends} NNPI PARENT_SCOPE)
-

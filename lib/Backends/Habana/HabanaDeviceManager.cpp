@@ -16,6 +16,7 @@
 
 #include "HabanaDeviceManager.h"
 
+#include "glow/Flags/Flags.h"
 #include "glow/Runtime/StatsExporter.h"
 
 #include "llvm/Support/CommandLine.h"
@@ -32,8 +33,6 @@ using namespace glow::runtime;
 
 namespace glow {
 namespace runtime {
-
-unsigned GlowHabanaMemory = 7 << 20; // 7 GB.
 
 static llvm::cl::opt<unsigned, /* ExternalStorage */ true> GlowHabanaMemoryOpt(
     "glow-habana-memory",
