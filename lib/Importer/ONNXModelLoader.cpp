@@ -2616,17 +2616,43 @@ Error ONNXModelLoader::loadPad(const ONNX_NAMESPACE::NodeProto &op,
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_ATTRIBUTE);
     }
   }
-  float value = 0.f; // Default
-  if (dict.count("value")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(value, loadFloat(dict.at("value")));
+
+  std::vector<int> pads;
+
+  if (this->opsetVersion_ > 10) {
+    // Get pads through input(1) from opset v11.
+    RETURN_ERR_IF_NOT(
+        op.input_size() > 1,
+        "Pad: The 'pads' is mandatory as input(1) from opsetv11.");
+    Constant *padC;
+    ASSIGN_VALUE_OR_RETURN_ERR(padC, getConstantByName(op.input(1)));
+    RETURN_ERR_IF_NOT(padC, "Support only constant pad");
+    helperSetter<int64_t, int>(padC, pads);
+  } else {
+    RETURN_ERR_IF_NOT(dict.count("pads"),
+                      "Pad: The 'pads' property is mandatory");
+    ASSIGN_VALUE_OR_RETURN_ERR(pads, getShape<int>(dict["pads"]));
   }
 
-  // Pads are mandatory.
-  std::vector<int> pads;
-  ASSIGN_VALUE_OR_RETURN_ERR(pads, getShape<int>(dict["pads"]));
   RETURN_ERR_IF_NOT(
       (pads.size() == 2 * numDims),
       opErrMsg(op, " The 'pads' array must contain 2 values per dimensions"));
+
+  float value = 0.f;
+  if (this->opsetVersion_ > 10) {
+    if (op.input_size() > 2) {
+      Constant *valueC;
+      ASSIGN_VALUE_OR_RETURN_ERR(valueC, getConstantByName(op.input(2)));
+      RETURN_ERR_IF_NOT(valueC, "Support only constant value in Pad");
+      RETURN_ERR_IF_NOT(valueC->getElementType() == ElemKind::FloatTy,
+                        "Value in Pad should be float type.");
+      value = valueC->getPayload().getHandle().raw(0);
+    }
+  } else {
+    if (dict.count("value")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(value, loadFloat(dict.at("value")));
+    }
+  }
 
   // Compute the output type.
   std::vector<dim_t> outDims(numDims);
