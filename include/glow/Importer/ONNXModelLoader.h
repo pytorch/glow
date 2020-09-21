@@ -295,6 +295,10 @@ class ONNXModelLoader
   Error loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
                  ArgumentDictionaryTy &dict);
 
+  /// Load Clip ONNX operator.
+  Error loadClip(const ONNX_NAMESPACE::NodeProto &op,
+                 const ArgumentDictionaryTy &dict);
+
   /// Load Glow specific operators, not defined in ONNX format
   /// Load Glow CmpEQ operator.
   Error loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,
