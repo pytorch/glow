@@ -182,12 +182,26 @@ llvm::cl::opt<unsigned> replicationCountOpt(
     "replication_count", llvm::cl::desc("Set the network replication count"),
     llvm::cl::Optional, llvm::cl::init(1), llvm::cl::cat(reproTestCat));
 
-/// Used to sink unused opts by llvm::cl into. All flags in here are verified to
-/// be valid gflags, or else the program aborts.
-llvm::cl::list<std::string>
-    sinkUnusedOpts("glow_sink_unused", llvm::cl::desc("Sink unused opts."),
-                   llvm::cl::Optional, llvm::cl::ReallyHidden, llvm::cl::Sink,
-                   llvm::cl::ZeroOrMore, llvm::cl::cat(reproTestCat));
+/// Explicitly show gflags help/version info, depending on \p foundHelpFlag and
+/// \p foundVersionFlag. llvm shows its own help/version info when it parses.
+void gflagsShowHelpVersion(bool foundHelpFlag, bool foundVersionFlag) {
+  const char *binName = gflags::ProgramInvocationShortName();
+  if (foundHelpFlag) {
+    gflags::SetUsageMessage(
+        strFormat("gflags for %s\nUSAGE: %s [options]:", binName, binName));
+    gflags::ShowUsageWithFlagsRestrict(binName, /* restrict_ */ "");
+    llvm::outs() << "\nLLVM CommandLine options:\n";
+  }
+  if (foundVersionFlag) {
+    llvm::outs() << "gflags version:\n";
+    const char *versionStr = gflags::VersionString();
+    llvm::outs() << binName;
+    if (versionStr && *versionStr) {
+      llvm::outs() << " version " << versionStr;
+    }
+    llvm::outs() << "\n\n";
+  }
+}
 
 void parseCommandLine(int argc, char **argv) {
   // Use different defaults for some flags:
@@ -213,21 +227,57 @@ void parseCommandLine(int argc, char **argv) {
         << opt.getKey().data();
   }
 
-  // Tell gflags to ignore unknown flags, allowing them to be parsed by llvm.
+  // Separate out llvm and gflags into their own argc/argv.
+  llvm::SmallVector<char *, 40> llvmArgv, gflagsArgv;
+  llvmArgv.push_back(argv[0]);
+  gflagsArgv.push_back(argv[0]);
+  bool foundHelpFlag = false;
+  bool foundVersionFlag = false;
+  for (int i = 1; i < argc; ++i) {
+    llvm::StringRef flagName(argv[i]);
+    // Positional args are always llvm cl args.
+    if (!flagName.startswith("-")) {
+      llvmArgv.push_back(argv[i]);
+      continue;
+    }
+
+    // Strip off leading '-'.
+    flagName = flagName.drop_while([](char c) -> bool { return c == '-'; });
+    // Look for everything leading up to '=', if any.
+    flagName = flagName.take_until([](char c) -> bool { return c == '='; });
+
+    // Now check if flagName is a gflag, otherwise assume it was from llvm. If
+    // help/version, always pass to llvm; we will also call gflags directly for
+    // them to print before llvm parses/prints, so that both gflags and llvm
+    // will print help/version.
+    gflags::CommandLineFlagInfo dummy;
+    if (!gflags::GetCommandLineFlagInfo(flagName.str().c_str(), &dummy) ||
+        flagName == "help" || flagName == "version") {
+      llvmArgv.push_back(argv[i]);
+      if (flagName == "help") {
+        foundHelpFlag = true;
+      } else if (flagName == "version") {
+        foundVersionFlag = true;
+      }
+    } else {
+      gflagsArgv.push_back(argv[i]);
+    }
+  }
+  int llvmArgc = static_cast<int>(llvmArgv.size());
+  int gflagsArgc = static_cast<int>(gflagsArgv.size());
+
+  // Now we can parse both llvm and gflags safely. All gflags should be
+  // legitimate. All other flags will be passed to llvm, which will complain
+  // about unknown ones.
+  char **gflagsArgvPtr = &gflagsArgv[0];
   gflags::AllowCommandLineReparsing();
-  gflags::ParseCommandLineFlags(&argc, &argv, /* remove_flags */ false);
+  gflags::ParseCommandLineFlags(&gflagsArgc, &gflagsArgvPtr,
+                                /* remove_flags */ false);
+  gflagsShowHelpVersion(foundHelpFlag, foundVersionFlag);
   llvm::cl::ParseCommandLineOptions(
-      argc, argv,
+      llvmArgc, &llvmArgv[0],
       " The Glow compiler\n\n"
       "Glow is a compiler for neural network accelerators.\n");
-
-  // Now check that all of the LLVM-ignored flags were valid gflags.
-  for (const std::string &optStr : sinkUnusedOpts) {
-    llvm::StringRef optName = llvm::StringRef(optStr).rsplit("=").first;
-    optName.consume_front("-");
-    optName.consume_front("-");
-    gflags::GetCommandLineFlagInfoOrDie(optName.str().data());
-  }
 
   if (top1Threshold > 0.0 && topKCompare == 0) {
     topKCompare = 1;
