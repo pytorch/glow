@@ -528,7 +528,7 @@ int run() {
   auto hostManager =
       glow::make_unique<runtime::HostManager>(std::move(configs), hostConfig);
   if (glow::onnxifi::GlowEnablePartialTensors) {
-    CHECK(hostManager->getBackend().get()->supportsPartialTensors())
+    CHECK(hostManager->getBackend(ExecutionBackend).supportsPartialTensors())
         << "Backend " << ExecutionBackend
         << " doesn't support partial tensor but enablePartialTensor is set to "
            "true.";
