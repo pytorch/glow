@@ -5643,10 +5643,8 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
       }
       case Kinded::Kind::BatchedReduceAddNodeKind: {
         BatchedReduceAddNode *BR = llvm::cast<BatchedReduceAddNode>(curNode);
-        RETURN_ERR_IF_NOT(BR->getAxis() != 0,
-                          "BatchedReduceAdd node cannot be split on axis 0 "
-                          "which is being reduced");
-        splitDims[BatchedReduceAddNode::BatchIdx] = 0;
+        splitDims[BatchedReduceAddNode::BatchIdx] =
+            (BR->getAxis() == 0) ? 1 : 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, BatchedReduceAddNode::BatchIdx,
@@ -5736,30 +5734,17 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                     /*resultDim*/ 1, modelParallelSplitAlignment));
         break;
       }
-      case Kinded::Kind::GeluNodeKind: {
-        // split across the largest dim other than batch dim
-        auto *GL = llvm::cast<GeluNode>(curNode);
-        size_t NIdx = getMaxDimOtherThanBatch(GL->getInput().dims());
-        splitDims[GeluNode::InputIdx] = NIdx;
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            CN, parallelizeAndReplaceNode(
-                    F, curNode, curNumOfChunks, GeluNode::InputIdx,
-                    GeluNode::ResultIdx, splitDims, /*resultDim*/ NIdx,
-                    modelParallelSplitAlignment));
-        break;
-      }
       case Kinded::Kind::ClipNodeKind: {
         auto *CL = llvm::cast<ClipNode>(curNode);
         if (CL->getNthInput(ClipNode::InputIdx).dims().size() < 2) {
           break;
         }
-        size_t NIdx = getMaxDimOtherThanBatch(CL->getInput().dims());
-        splitDims[ClipNode::InputIdx] = NIdx;
+        splitDims[ClipNode::InputIdx] = 1;
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, ClipNode::InputIdx,
                     ClipNode::ResultIdx, splitDims,
-                    /*resultDim*/ NIdx, modelParallelSplitAlignment));
+                    /*resultDim*/ 1, modelParallelSplitAlignment));
         break;
       }
       case Kinded::Kind::TileNodeKind: {
@@ -5776,21 +5761,6 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                     F, curNode, curNumOfChunks, TileNode::InputIdx,
                     TileNode::ResultIdx, splitDims,
                     /*resultDim*/ 1, modelParallelSplitAlignment));
-        break;
-      }
-      case Kinded::Kind::BatchedReduceAddNodeKind: {
-        BatchedReduceAddNode *BR = llvm::cast<BatchedReduceAddNode>(curNode);
-        if (BR->getBatch().dims().size() < 2) {
-          break;
-        }
-        RETURN_ERR_IF_NOT(BR->getAxis() == 0,
-                          "BatchedReduceAdd model parallel splitting must have "
-                          "dim 0 reduction");
-        splitDims[BatchedReduceAddNode::BatchIdx] = 1;
-        ASSIGN_VALUE_OR_RETURN_ERR(
-            CN, parallelizeAndReplaceNode(
-                    F, curNode, curNumOfChunks, BatchedReduceAddNode::BatchIdx,
-                    BatchedReduceAddNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::ConcatNodeKind: {

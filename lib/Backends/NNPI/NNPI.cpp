@@ -591,21 +591,10 @@ static void setupBasicParallelizationConfigs(
 
     // Split Gelu layers in data parallel fashion
     if (auto *GL = llvm::dyn_cast<GeluNode>(node)) {
-      if (GL->getInput().dims().size() < 2) {
-        continue;
-      }
       size_t M = GL->getInput().dims()[0];
-      size_t NIdx = getMaxDimOtherThanBatch(GL->getInput().dims());
-      size_t N = GL->getInput().dims()[NIdx];
-      if (N >= 512) {
-        parOpts[GL] = ParallelTransformKind::Model;
-        numChunks[GL] = std::min((size_t)numParallelChunks, N);
-        continue;
-      }
-      if (M >= 256) {
+      if (M >= numParallelChunks) {
         parOpts[GL] = ParallelTransformKind::Data;
-        numChunks[GL] =
-            std::min((size_t)numParallelChunks, GL->getResult().dims()[0]);
+        numChunks[GL] = numParallelChunks;
         continue;
       }
     }
@@ -664,29 +653,13 @@ static void setupBasicParallelizationConfigs(
 
     // Split BatchedReduceAdd layers
     if (auto *BR = llvm::dyn_cast<BatchedReduceAddNode>(node)) {
-      if (BR->getAxis() == 0) {
-        if (BR->getBatch().dims().size() < 2) {
-          continue;
-        }
-        size_t N = BR->getBatch().dims()[1];
-        if (N < 64) {
-          continue;
-        }
-        parOpts[BR] = ParallelTransformKind::Model;
-        numChunks[BR] =
-            std::min((size_t)numParallelChunks, BR->getResult().dims()[0]);
-      } else if (BR->getAxis() == 1) {
-        if (BR->getBatch().dims().size() < 2) {
-          continue;
-        }
-        size_t M = BR->getBatch().dims()[0];
-        if (M < 64) {
-          continue;
-        }
-        parOpts[BR] = ParallelTransformKind::Data;
-        numChunks[BR] =
-            std::min((size_t)numParallelChunks, BR->getResult().dims()[0]);
+      size_t N = BR->getResult().dims()[0];
+      if (N < 64) {
+        continue;
       }
+      parOpts[BR] = ParallelTransformKind::Data;
+      numChunks[BR] =
+          std::min((size_t)numParallelChunks, BR->getResult().dims()[0]);
       continue;
     }
 
@@ -844,7 +817,13 @@ static void setupBasicParallelizationConfigs(
       if (numChunks.find(inputNode) != numChunks.end() &&
           parOpts.find(inputNode) != parOpts.end()) {
         parOpts[C] = parOpts[inputNode];
-        numChunks[C] = numChunks[inputNode];
+        if (parOpts[C] == ParallelTransformKind::Data) {
+          numChunks[C] =
+              std::min((size_t)numChunks[inputNode], C->getResult().dims()[0]);
+        } else {
+          numChunks[C] =
+              std::min((size_t)numChunks[inputNode], C->getResult().dims()[1]);
+        }
       }
       continue;
     }
