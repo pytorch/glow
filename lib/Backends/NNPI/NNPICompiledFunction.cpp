@@ -178,6 +178,44 @@ Error NNPICompiledFunction::setupCompilationHints(
       }
     }
 
+    // Read tensor assignments
+    auto tensorAssignmentNamesIt = nodeInfo.find(tensorAssignmentNamesKey);
+    auto tensorAssignmentValuesIt = nodeInfo.find(tensorAssignmentValuesKey);
+    if ((tensorAssignmentNamesIt != nodeInfo.end()) &&
+        (tensorAssignmentValuesIt != nodeInfo.end())) {
+      auto tensorAssignmentNames = tensorAssignmentNamesIt->second;
+      auto tensorAssignmentValues = tensorAssignmentValuesIt->second;
+      RETURN_ERR_IF_NOT(
+          tensorAssignmentNames.size() == tensorAssignmentValues.size(),
+          strFormat("Node %s tensorAssignmentsNames has length %zu, but "
+                    "tensorAssignmentValues has length %zu",
+                    N->getName().data(), tensorAssignmentNames.size(),
+                    tensorAssignmentValues.size()));
+
+      for (dim_t i = 0; i < tensorAssignmentNames.size(); i++) {
+        const std::string &memoryLevel = tensorAssignmentValues[i];
+        RETURN_ERR_IF_NOT((memoryLevel == "SRAM") || (memoryLevel == "LLC") ||
+                              (memoryLevel == "DRAM"),
+                          strFormat("Memory level must be either SRAM, LLC, or "
+                                    "DRAM. Unknown level: %s",
+                                    memoryLevel.data()));
+
+        const std::string &tensorName = tensorAssignmentNames[i];
+
+        NNPICompilationHint hint;
+        hint.type = NNPI_HINT_TENSOR_PLACEMENT;
+        strncpy(hint.tensorPlacement.tensorName, tensorName.c_str(),
+                sizeof(NNPIObjectName));
+        hint.tensorPlacement.allocationType = (memoryLevel == "SRAM")
+                                                  ? NNPI_ALLOCATION_SRAM
+                                                  : (memoryLevel == "LLC")
+                                                        ? NNPI_ALLOCATION_LLC
+                                                        : NNPI_ALLOCATION_DRAM;
+        hint.tensorPlacement.priority = 0.0f;
+        hints.emplace_back(hint);
+      }
+    }
+
     // Read extra edges
     auto extraEdgesTargetNameIt = nodeInfo.find(extraEdgesTargetNameKey);
     auto extraEdgesTargetSuffixIt = nodeInfo.find(extraEdgesTargetSuffixKey);

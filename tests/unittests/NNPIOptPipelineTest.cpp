@@ -480,6 +480,14 @@ static void setupSplitParallelizationTestFCReluNNPI(
     nodeInfo[CI]["NNPI_coreAssignmentsSuffix"].push_back("@copy_0");
     nodeInfo[CI]["NNPI_coreAssignments"].push_back("3");
     nodeInfo[CI]["NNPI_coreAssignmentsSuffix"].push_back("@copy_1");
+
+    // Assign some tensors to memory levels
+    nodeInfo[TN]["NNPI_tensorAssignmentNames"].push_back("tensor1");
+    nodeInfo[TN]["NNPI_tensorAssignmentValues"].push_back("LLC");
+    nodeInfo[TN]["NNPI_tensorAssignmentNames"].push_back("tensor2");
+    nodeInfo[TN]["NNPI_tensorAssignmentValues"].push_back("SRAM");
+    nodeInfo[TN]["NNPI_tensorAssignmentNames"].push_back("tensor3");
+    nodeInfo[TN]["NNPI_tensorAssignmentValues"].push_back("DRAM");
   }
 }
 
