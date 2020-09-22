@@ -672,15 +672,16 @@ TEST_F(NNPIOptPipelineTest, DataParallelLNClip) {
   checkNumericalEquivalence(/* allowedError */ 0.00f);
 }
 
-// BatchedReduceAdd Model Parallel reducing dim 0
-TEST_F(NNPIOptPipelineTest, ModelParallelBatchedReduceAdd) {
+// BatchedReduceAdd Data Parallel, reducing dim 0
+TEST_F(NNPIOptPipelineTest, ParallelBatchedReduceAddReduceDim0) {
   auto *input =
-      mod_.createPlaceholder(ElemKind::Float16Ty, {20, 64, 8}, "input", false);
+      mod_.createPlaceholder(ElemKind::Float16Ty, {20, 64, 6}, "input", false);
   bindings_.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
                                                               mod_.getPRNG());
 
   auto *reduced = F_->createBatchedReduceAdd("BR", input, {0});
-  F_->createSave("ret", reduced);
+  auto *clipped = F_->createClip("clip", reduced, -10.0f, 10.0f);
+  F_->createSave("ret", clipped);
 
   // Should split BatchedReduceAdd by 8
   cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
@@ -690,18 +691,21 @@ TEST_F(NNPIOptPipelineTest, ModelParallelBatchedReduceAdd) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedReduceAddNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::BatchedReduceAddNodeKind),
             8);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 8);
   checkNumericalEquivalence(/* allowedError */ 0.00f);
 }
 
-// BatchedReduceAdd Model Parallel reducing dim 1
-TEST_F(NNPIOptPipelineTest, DataParallelBatchedReduceAdd) {
+// BatchedReduceAdd Data Parallel reducing dim 1
+TEST_F(NNPIOptPipelineTest, ParallelBatchedReduceAddReduceDim1) {
   auto *input =
-      mod_.createPlaceholder(ElemKind::Float16Ty, {64, 20, 8}, "input", false);
+      mod_.createPlaceholder(ElemKind::Float16Ty, {64, 20, 6}, "input", false);
   bindings_.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
                                                               mod_.getPRNG());
 
   auto *reduced = F_->createBatchedReduceAdd("BR", input, {1});
-  F_->createSave("ret", reduced);
+  auto *clipped = F_->createClip("clip", reduced, -10.0f, 10.0f);
+  F_->createSave("ret", clipped);
 
   // Should split BatchedReduceAdd by 8
   cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
@@ -711,6 +715,8 @@ TEST_F(NNPIOptPipelineTest, DataParallelBatchedReduceAdd) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedReduceAddNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::BatchedReduceAddNodeKind),
             8);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 8);
   checkNumericalEquivalence(/* allowedError */ 0.00f);
 }
 
