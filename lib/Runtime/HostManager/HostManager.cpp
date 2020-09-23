@@ -315,9 +315,10 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
 
   // Optimize Functions only if we don't have any backendSpecificNodeInfo,
   // because if we do then the Functions were already optimized and Nodes had
-  // extra info mapped to them, so we don't want to mutate the Function.
+  // extra info mapped to them, so we don't want to mutate the Function. Also
+  // skip optimizations if we're loading an AOT optimized model.
   const bool skipOptimizations =
-      cctx.backendOpts.backendSpecificNodeInfo.size() > 0;
+      cctx.loadingAOTModel || !cctx.backendOpts.backendSpecificNodeInfo.empty();
 
   // Flag to check whether we are in profiling mode.
   bool profilingMode =
@@ -414,36 +415,38 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     }
   }
 
-  if (cctx.callDAGOptimizer) {
+  if (!cctx.loadingAOTModel) {
+    if (cctx.callDAGOptimizer) {
 #if FACEBOOK_INTERNAL
-    auto optDagErr =
-        optimizeDAG(nodeList, *provisioner_, *module, deviceInfo, cctx, record);
-    if (optDagErr) {
-      std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
-      cleanupAddNetwork(names);
-      return optDagErr;
-    }
+      auto optDagErr = optimizeDAG(nodeList, *provisioner_, *module, deviceInfo,
+                                   cctx, record);
+      if (optDagErr) {
+        std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+        cleanupAddNetwork(names);
+        return optDagErr;
+      }
 #endif /* FACEBOOK_INTERNAL */
-  } else {
-    // If not using the DAG optimizer, iterate over the DAGs and call
-    // transformPostOptPipeline() on the Functions.
-    for (const auto &dag : nodeList) {
-      for (auto &dagNode : dag.nodes) {
-        Function *F = module->getFunction(dagNode->name);
-        RETURN_ERR_IF_NOT(
-            F, strFormat("Function %s not found", dagNode->name.data()));
+    } else {
+      // If not using the DAG optimizer, iterate over the DAGs and call
+      // transformPostOptPipeline() on the Functions.
+      for (const auto &dag : nodeList) {
+        for (auto &dagNode : dag.nodes) {
+          Function *F = module->getFunction(dagNode->name);
+          RETURN_ERR_IF_NOT(
+              F, strFormat("Function %s not found", dagNode->name.data()));
 
-        if (cctx.optimizationOpts.onlyLowerFuns.count(F)) {
-          continue;
+          if (cctx.optimizationOpts.onlyLowerFuns.count(F)) {
+            continue;
+          }
+
+          Backend &B = provisioner_->getBackend(dagNode->backendName);
+          RETURN_IF_EXPECTED_IS_ERR(B.transformPostOptPipeline(F, cctx));
+
+          RETURN_ERR_IF_NOT(
+              B.verify(*F, cctx.verboseCompile),
+              "Unsupported node(s) found after transformPostOptPipeline() " +
+                  F->getName().str() + " for backend " + B.getBackendName());
         }
-
-        Backend &B = provisioner_->getBackend(dagNode->backendName);
-        RETURN_IF_EXPECTED_IS_ERR(B.transformPostOptPipeline(F, cctx));
-
-        RETURN_ERR_IF_NOT(
-            B.verify(*F, cctx.verboseCompile),
-            "Unsupported node(s) found after transformPostOptPipeline() " +
-                F->getName().str() + " for backend " + B.getBackendName());
       }
     }
   }

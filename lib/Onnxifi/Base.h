@@ -137,8 +137,8 @@ public:
   virtual onnxStatus initGraph(const void *onnxModel, size_t onnxModelSize,
                                uint32_t weightCount,
                                const onnxTensorDescriptorV1 *weightDescriptors,
-                               uint32_t maxSeqLength,
-                               void *deferedBlobReader) = 0;
+                               uint32_t maxSeqLength, void *deferedBlobReader,
+                               bool loadingGlowAOT) = 0;
 
   virtual onnxStatus run(std::unique_ptr<ExecutionContext> ctx,
                          EventPtr outputEvent,

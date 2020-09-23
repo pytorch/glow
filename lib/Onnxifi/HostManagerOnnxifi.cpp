@@ -272,11 +272,10 @@ onnxStatus HostManagerBackend::removeNetwork(const Graph *graph) {
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-onnxStatus
-HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
-                            uint32_t weightCount,
-                            const onnxTensorDescriptorV1 *weightDescriptors,
-                            uint32_t maxSeqLength, void *deferedBlobReader) {
+onnxStatus HostManagerGraph::initGraph(
+    const void *onnxModel, size_t onnxModelSize, uint32_t weightCount,
+    const onnxTensorDescriptorV1 *weightDescriptors, uint32_t maxSeqLength,
+    void *deferedBlobReader, bool loadingGlowAOT) {
 
   netName_ = strFormat("onnxifi_function_%lu", makeUniqueGraphId());
 
@@ -326,6 +325,11 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
       LOG(INFO) << "Dumping initially loaded graph to " << fname;
       F->dumpDAG(fname);
     }
+  }
+
+  if (loadingGlowAOT) {
+    LOG(INFO) << "Loading a Glow AOT optimized model.";
+    cctx.loadingAOTModel = true;
   }
 
   return static_cast<HostManagerBackend *>(backendPtr_)
