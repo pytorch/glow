@@ -157,6 +157,16 @@ TEST(Error, ExpectedConversion) {
   EXPECT_EQ(barRes, 42);
 }
 
+TEST(Error, ReturnIfExpectedIsErr) {
+  auto retErr = [&]() -> Expected<int> { return MAKE_ERR("Error!"); };
+  auto test = [&]() -> Error {
+    RETURN_IF_EXPECTED_IS_ERR(retErr());
+    return Error::success();
+  };
+
+  EXPECT_TRUE(ERR_TO_BOOL(test()));
+}
+
 TEST(Error, PeekError) {
   const char *msg = "some error";
   auto err = MAKE_ERR(msg);
