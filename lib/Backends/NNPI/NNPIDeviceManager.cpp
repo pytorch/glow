@@ -340,7 +340,10 @@ Error NNPIDeviceManager::bindContext(std::string functionName,
                   "Invalid function name.");
   std::shared_ptr<InferenceContext> infCtx(
       inferencePools_.at(functionName).createDetachedInferenceContext(phUsage));
-  ASSERT_WITH_MSG(infCtx, "Failed to create detached context");
+  ASSERT_WITH_MSG(
+      infCtx, "Failed to create detached context; NNPIDeviceManager status: " +
+                  getStatusStr() +
+                  "; with NNPIDeviceOptions: " + deviceOptions_->dumpStatus());
 
   // Set the inference context into NNPIDeviceBinding and store in the ExCtx.
   ctx->setDeviceBindings(std::make_unique<NNPIDeviceBindings>(infCtx));
@@ -378,6 +381,21 @@ void NNPIDeviceManager::freeAllocatedDeviceIOBuffer(void *buffer) {
   } else {
     return DeviceManager::freeAllocatedDeviceIOBuffer(buffer);
   }
+}
+
+std::string NNPIDeviceManager::getStatusStr() const {
+  std::stringstream stream;
+  stream << "MaximumMemory: \"" << getMaximumMemory() << '"';
+  stream << ", AvailableMemory: \"" << getAvailableMemory() << '"';
+  stream << ", DeviceID: \"" << deviceId_ << '"';
+  stream << ", Functions: {";
+  for (const auto &func : functions_) {
+    stream << func.first << ",";
+  }
+  stream << "}, ";
+  stream << ", FunctionCost: \"" << functionCost_ << '"';
+  stream << ", RunIdentifier: \"" << runIdentifier_ << '"';
+  return stream.str();
 }
 
 } // namespace runtime

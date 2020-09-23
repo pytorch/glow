@@ -106,6 +106,8 @@ public:
 
   void *allocateDeviceIOBuffer(dim_t size) override;
   void freeAllocatedDeviceIOBuffer(void *buffer) override;
+
+  std::string getStatusStr() const;
 };
 
 class NNPIDeviceBindings : public DeviceBindings {
