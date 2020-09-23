@@ -1912,8 +1912,8 @@ Error ONNXModelLoader::loadTensorwiseQuantizedPool(
   return Error::success();
 }
 
-Error ONNXModelLoader::loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
-                                  ArgumentDictionaryTy &dict) {
+Error ONNXModelLoader::loadArgMinMax(const ONNX_NAMESPACE::NodeProto &op,
+                                     ArgumentDictionaryTy &dict, bool isMin) {
   const std::string &opName = loadOperatorName(op);
 
   NodeValue in;
@@ -1927,7 +1927,12 @@ Error ONNXModelLoader::loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
   if (dict.count("keepdims")) {
     ASSIGN_VALUE_OR_RETURN_ERR(keepDims, loadInt(dict.at("keepdims")));
   }
-  Node *node = G_->createArgMax(opName, in, axis, keepDims);
+  Node *node;
+  if (isMin) {
+    node = G_->createArgMin(opName, in, axis, keepDims);
+  } else {
+    node = G_->createArgMax(opName, in, axis, keepDims);
+  }
   RETURN_IF_ERR(addNodeAsOutput(op, node));
   return Error::success();
 }
@@ -4284,8 +4289,11 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "InsertTensor") {
     return loadInsertTensor(op, dict);
   }
+  if (typeName == "ArgMin") {
+    return loadArgMinMax(op, dict, true);
+  }
   if (typeName == "ArgMax") {
-    return loadArgMax(op, dict);
+    return loadArgMinMax(op, dict, false);
   }
   if (typeName == "NonMaxSuppressionV4") {
     return loadNonMaxSuppression(op, dict, true);

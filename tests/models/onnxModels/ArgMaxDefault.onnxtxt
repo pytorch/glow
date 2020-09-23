@@ -48,13 +48,13 @@ graph {
   }
    node {
        input: "input"
-       output: "argmax_scores"
+       output: "scores"
        name: "argmax"
        op_type: "ArgMax"
    }
 
 output {
-    name: "argmax_scores"
+    name: "scores"
     type {
       tensor_type {
         elem_type: 7

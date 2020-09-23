@@ -215,9 +215,9 @@ class ONNXModelLoader
   Error loadUnsqueeze(const ONNX_NAMESPACE::NodeProto &op,
                       ArgumentDictionaryTy &dict);
 
-  /// Load ArgMax ONNX operator.
-  Error loadArgMax(const ONNX_NAMESPACE::NodeProto &op,
-                   ArgumentDictionaryTy &dict);
+  /// Load ArgMax and ArgMin ONNX operators.
+  Error loadArgMinMax(const ONNX_NAMESPACE::NodeProto &op,
+                      ArgumentDictionaryTy &dict, bool isMin);
 
   /// Load Upsample ONNX operator.
   Error loadUpsample(const ONNX_NAMESPACE::NodeProto &op,

@@ -358,6 +358,9 @@ TEST(exporter, onnxModels) {
         name.find("ArgMaxDefault.onnxtxt") != std::string::npos ||
         name.find("ArgMaxKeepDim.onnxtxt") != std::string::npos ||
         name.find("ArgMaxNoKeepDim.onnxtxt") != std::string::npos ||
+        name.find("ArgMinDefault.onnxtxt") != std::string::npos ||
+        name.find("ArgMinKeepDim.onnxtxt") != std::string::npos ||
+        name.find("ArgMinNoKeepDim.onnxtxt") != std::string::npos ||
         name.find("upsampleOpset7.onnxtxt") != std::string::npos ||
         name.find("upsampleOpset9.onnxtxt") != std::string::npos ||
         name.find("resizeNearestV11compat.onnxtxt") != std::string::npos ||
