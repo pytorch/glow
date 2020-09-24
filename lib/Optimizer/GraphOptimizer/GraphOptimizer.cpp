@@ -2965,7 +2965,10 @@ bool CSE::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
   CSEVisitor visitor;
 
-  bool changed = deduplicateConstants(F->getParent());
+  bool changed = false;
+  if (cctx.optimizationOpts.enableConstantDeduplication) {
+    changed |= deduplicateConstants(F->getParent());
+  }
 
   // Perform CSE on all nodes.
   for (auto &N : F->getNodes()) {
