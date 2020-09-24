@@ -8404,15 +8404,15 @@ TEST_P(OperatorTest, Relu_Int8) {
 }
 
 // Test for elementwise add with quantization and broadcast support
-TEST_P(OperatorTest, IntAddBroadcast) {
+TEST_P(OperatorTest, IntElementWiseBroadcast) {
   CHECK_IF_ENABLED();
 
-  const float in1Scale = 0.1;
-  const float in2Scale = 0.2;
-  const float addScale = 0.3;
-  const int32_t in1Offset = 5;
-  const int32_t in2Offset = 10;
-  const int32_t addOffset = -8;
+  const float in1Scale = 0.9;
+  const float in2Scale = 1.2;
+  const float outScale = 1;
+  const int32_t in1Offset = 2;
+  const int32_t in2Offset = -11;
+  const int32_t outOffset = -2;
   const dim_t N = 2;
   const dim_t C = 3;
   const dim_t H = 4;
@@ -8422,7 +8422,7 @@ TEST_P(OperatorTest, IntAddBroadcast) {
       mod_.uniqueType(ElemKind::Int8QTy, {N, C, H, W}, in1Scale, in1Offset);
   auto in2Ty = mod_.uniqueType(ElemKind::Int8QTy, {W}, in2Scale, in2Offset);
   auto outTy =
-      mod_.uniqueType(ElemKind::Int8QTy, {N, C, H, W}, addScale, addOffset);
+      mod_.uniqueType(ElemKind::Int8QTy, {N, C, H, W}, outScale, outOffset);
 
   auto *in1 = mod_.createPlaceholder(in1Ty, "in1", false);
   auto *in2 = mod_.createPlaceholder(in2Ty, "in2", false);
@@ -8432,11 +8432,27 @@ TEST_P(OperatorTest, IntAddBroadcast) {
   bindings_.allocate(in2)->getHandle<int8_t>().randomize(-10, 10,
                                                          mod_.getPRNG());
   constexpr int axis = -1;
-  auto *addbroadcast = F_->createNodeWithBroadcastOutTy<AddNode>(
-      "addbroadcast", axis, outTy, in1, in2);
+  auto *addBroadcast = F_->createNodeWithBroadcastOutTy<AddNode>(
+      "addBroadcast", axis, outTy, in1, in2);
 
-  auto *save = F_->createSave("save", addbroadcast);
-  bindings_.allocate(mod_.getPlaceholders());
+  auto *subBroadcast = F_->createNodeWithBroadcastOutTy<SubNode>(
+      "subBroadcast", axis, outTy, in1, in2);
+
+  auto *mulBroadcast = F_->createNodeWithBroadcastOutTy<MulNode>(
+      "mulBroadcast", axis, outTy, in1, in2);
+
+  auto *divBroadcast = F_->createNodeWithBroadcastOutTy<DivNode>(
+      "divBroadcast", axis, outTy, in1, in2);
+
+  auto *saveAdd = F_->createSave("saveAdd", addBroadcast);
+  auto *saveSub = F_->createSave("saveSub", subBroadcast);
+  auto *saveMul = F_->createSave("saveMul", mulBroadcast);
+  auto *saveDiv = F_->createSave("saveDiv", divBroadcast);
+
+  bindings_.allocate(saveAdd->getPlaceholder());
+  bindings_.allocate(saveSub->getPlaceholder());
+  bindings_.allocate(saveMul->getPlaceholder());
+  bindings_.allocate(saveDiv->getPlaceholder());
 
   auto Qin1H = bindings_.get(in1)->getHandle<int8_t>();
   auto Qin2H = bindings_.get(in2)->getHandle<int8_t>();
@@ -8444,7 +8460,14 @@ TEST_P(OperatorTest, IntAddBroadcast) {
   EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
-  auto result = bindings_.get(save->getPlaceholder())->getHandle<int8_t>();
+  auto resultAdd =
+      bindings_.get(saveAdd->getPlaceholder())->getHandle<int8_t>();
+  auto resultSub =
+      bindings_.get(saveSub->getPlaceholder())->getHandle<int8_t>();
+  auto resultMul =
+      bindings_.get(saveMul->getPlaceholder())->getHandle<int8_t>();
+  auto resultDiv =
+      bindings_.get(saveDiv->getPlaceholder())->getHandle<int8_t>();
 
   for (dim_t w = 0; w < W; w++) {
     float b = quantization::dequantize(Qin2H.at({w}), {in2Scale, in2Offset});
@@ -8453,8 +8476,14 @@ TEST_P(OperatorTest, IntAddBroadcast) {
         for (dim_t h = 0; h < H; h++) {
           float a = quantization::dequantize(Qin1H.at({n, c, h, w}),
                                              {in1Scale, in1Offset});
-          int8_t add = quantization::quantize((a + b), {addScale, addOffset});
-          EXPECT_NEAR(add, result.at({n, c, h, w}), 1);
+          int8_t add = quantization::quantize((a + b), {outScale, outOffset});
+          int8_t sub = quantization::quantize((a - b), {outScale, outOffset});
+          int8_t mul = quantization::quantize((a * b), {outScale, outOffset});
+          int8_t div = quantization::quantize((a / b), {outScale, outOffset});
+          EXPECT_NEAR(add, resultAdd.at({n, c, h, w}), 1);
+          EXPECT_NEAR(sub, resultSub.at({n, c, h, w}), 1);
+          EXPECT_NEAR(mul, resultMul.at({n, c, h, w}), 1);
+          EXPECT_NEAR(div, resultDiv.at({n, c, h, w}), 1);
         }
       }
     }
