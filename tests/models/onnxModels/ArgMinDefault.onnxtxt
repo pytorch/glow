@@ -49,25 +49,15 @@ graph {
    node {
        input: "input"
        output: "scores"
-       name: "argmax"
-       op_type: "ArgMax"
-       attribute {
-        name: "axis"
-        i: 2
-        type: INT
-      }
-      attribute {
-        name: "keepdims"
-        i: 2
-        type: INT
-      }
+       name: "argmin"
+       op_type: "ArgMin"
    }
 
 output {
     name: "scores"
     type {
       tensor_type {
-        elem_type: 6
+        elem_type: 7
         shape {
          dim {
             dim_value: 2
