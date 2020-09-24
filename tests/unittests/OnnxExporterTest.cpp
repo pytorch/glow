@@ -395,6 +395,8 @@ TEST(exporter, onnxModels) {
         name.find("simpleConvTransposeAutoPadSameUpper.onnxtxt") !=
             std::string::npos ||
         name.find("convTransposeAsymmetric.onnxtxt") != std::string::npos ||
+        name.find("Mean.onnxtxt") != std::string::npos ||
+        name.find("Mean_broadcast.onnxtxt") != std::string::npos ||
         name.find("NonZero.onnxtxt") != std::string::npos ||
         name.find("logicalAnd.onnxtxt") != std::string::npos ||
         name.find("logicalAndBcast.onnxtxt") != std::string::npos ||

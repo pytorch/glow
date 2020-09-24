@@ -3288,6 +3288,61 @@ Error ONNXModelLoader::loadCmpLTE(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+/// Takes a list of NodeValues \p inputs and broadcasts them to a common shape
+/// \p broadcastShape based on the maximum value along each dimension.
+static Error getShapeForBroadcast(llvm::ArrayRef<NodeValue> inputs,
+                                  std::vector<dim_t> &broadcastShape) {
+  std::vector<uint32_t> numDims;
+  for (auto &N : inputs) {
+    numDims.push_back(N.dims().size());
+  }
+  const uint32_t outputNumDims =
+      *std::max_element(numDims.begin(), numDims.end());
+  for (uint32_t i = 0; i < outputNumDims; i++) {
+    std::vector<dim_t> dims;
+    for (uint32_t j = 0; j < inputs.size(); j++) {
+      auto vals = inputs[j].dims();
+      if (vals.size() > i) {
+        dims.push_back(vals[vals.size() - 1 - i]);
+      }
+    }
+    broadcastShape.insert(broadcastShape.begin(),
+                          *std::max_element(dims.begin(), dims.end()));
+  }
+  return Error::success();
+}
+
+Error ONNXModelLoader::loadMean(const ONNX_NAMESPACE::NodeProto &op,
+                                ArgumentDictionaryTy &dict) {
+  size_t numInputTensors = op.input_size();
+  if (numInputTensors == 1) {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    RETURN_IF_ERR(addNodeAsOutput(op, in));
+  } else {
+    const std::string &opName = loadOperatorName(op);
+    llvm::SmallVector<NodeValue, 4> inputTensors;
+    inputTensors.reserve(numInputTensors);
+    for (unsigned i = 0; i < numInputTensors; i++) {
+      NodeValue in;
+      ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(i)));
+      inputTensors.push_back(in);
+    }
+    std::vector<dim_t> broadcastShape;
+    RETURN_IF_ERR(getShapeForBroadcast(inputTensors, broadcastShape));
+    for (unsigned i = 0; i < numInputTensors; i++) {
+      auto &in = inputTensors[i];
+      int axis = broadcastShape.size() - in.dims().size();
+      in = G_->createBroadcast(opName, in, broadcastShape, axis);
+      in = G_->createExpandDims(opName, in, {0});
+    }
+    ConcatNode *concat = G_->createConcat(opName, inputTensors, /* axis */ 0);
+    Node *N = G_->createBatchedReduceMean(opName, concat, /* axis */ {0});
+    RETURN_IF_ERR(addNodeAsOutput(op, N));
+  }
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadSelect(const ONNX_NAMESPACE::NodeProto &op,
                                   ArgumentDictionaryTy &dict) {
   NodeValue Cond;
@@ -4270,6 +4325,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "CmpLTE") {
     return loadCmpLTE(op, dict);
+  }
+  if (typeName == "Mean") {
+    return loadMean(op, dict);
   }
   if (typeName == "Select") {
     return loadSelect(op, dict);
