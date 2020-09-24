@@ -3232,6 +3232,36 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   return Error::success();
 }
 
+Error ONNXModelLoader::loadClip(const ONNX_NAMESPACE::NodeProto &op,
+                                const ArgumentDictionaryTy &dict) {
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  float cmin = std::numeric_limits<float>::lowest();
+  if (opsetVersion_ > 10 && op.input_size() > 1) {
+    Constant *minC = getConstantByNameOrNull(op.input(1));
+    RETURN_ERR_IF_NOT(minC, "Expect constant for min value in Clip operator.");
+    cmin = minC->getPayload().getHandle().raw(0);
+  } else if (dict.count("min")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(cmin, loadFloat(dict.find("min")->second));
+  }
+
+  // Windows headers define `max` macro, so have to wrap the function name in
+  // parenthesis to avoid compilation error.
+  float cmax = (std::numeric_limits<float>::max)();
+  if (opsetVersion_ > 10 && op.input_size() > 2) {
+    Constant *maxC = getConstantByNameOrNull(op.input(2));
+    RETURN_ERR_IF_NOT(maxC, "Expect constant for max value in Clip operator.");
+    cmax = maxC->getPayload().getHandle().raw(0);
+  } else if (dict.count("max")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(cmax, loadFloat(dict.find("max")->second));
+  }
+
+  auto *node = G_->createClip(loadOperatorName(op), in, cmin, cmax);
+  RETURN_IF_ERR(addNodeAsOutput(op, node));
+  return Error::success();
+}
+
 Error ONNXModelLoader::loadCmpEQ(const ONNX_NAMESPACE::NodeProto &op,
                                  ArgumentDictionaryTy &dict) {
   NodeValue LHS;
@@ -4230,6 +4260,9 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   }
   if (typeName == "LSTM") {
     return loadLSTM(op, dict);
+  }
+  if (typeName == "Clip") {
+    return loadClip(op, dict);
   }
   // Glow specific operators
   if (typeName == "CmpEQ") {
