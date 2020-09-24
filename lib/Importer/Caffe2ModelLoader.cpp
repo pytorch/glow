@@ -1234,6 +1234,24 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
+  if (typeName == "Clip") {
+    NodeValue in;
+    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+    float cmin = std::numeric_limits<float>::lowest();
+    if (dict.count("min")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(cmin, loadFloat(dict.find("min")->second));
+    }
+
+    float cmax = std::numeric_limits<float>::max();
+    if (dict.count("max")) {
+      ASSIGN_VALUE_OR_RETURN_ERR(cmax, loadFloat(dict.find("max")->second));
+    }
+
+    auto *node = G_->createClip(loadOperatorName(op), in, cmin, cmax);
+    RETURN_IF_ERR(addNodeAsOutput(op, node));
+    return Error::success();
+  }
+
   if (typeName == "MatMul") {
     RETURN_IF_ERR(loadBatchMatMul(op, dict, false));
     return Error::success();

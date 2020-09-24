@@ -1,0 +1,65 @@
+ir_version: 6
+producer_name: "onnx-ex"
+graph {
+  node {
+    input: "X"
+    input: "min"
+    input: "max"
+    output: "output0"
+    op_type: "Clip"
+  }
+  name: "graph"
+  initializer {
+    data_type: 1
+    float_data: -2.0
+    name: "min"
+  }
+  initializer {
+    data_type: 1
+    float_data: 2.0
+    name: "max"
+  }
+  input {
+    name: "X"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+            dim_value: 1
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+          dim {
+            dim_value: 2
+          }
+        }
+      }
+    }
+  }
+  output {
+    name: "output0"
+    type {
+      tensor_type {
+        elem_type: 1
+        shape {
+          dim {
+          }
+          dim {
+          }
+          dim {
+          }
+          dim {
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 11
+}
