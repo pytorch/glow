@@ -49,8 +49,8 @@ graph {
    node {
        input: "input"
        output: "scores"
-       name: "argmax"
-       op_type: "ArgMax"
+       name: "argmin"
+       op_type: "ArgMin"
        attribute {
         name: "axis"
         i: 2

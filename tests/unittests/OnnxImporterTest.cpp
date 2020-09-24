@@ -2850,21 +2850,22 @@ TEST_F(OnnxImporterTest, topK) {
       checkConstFoldedOutput(netFilename, {"scores"}, {&x}, {outputT, indexT}));
 }
 
-TEST_F(OnnxImporterTest, argMaxKeepDim) {
+void testArgMinMax(llvm::StringRef filename, bool isMin,
+                   const std::vector<dim_t> &expectedDims) {
   ExecutionEngine EE;
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
 
-  std::string netFilename(GLOW_DATA_PATH
-                          "tests/models/onnxModels/ArgMaxKeepDim.onnxtxt");
+  std::string netFilename = std::string(GLOW_DATA_PATH) + filename.str();
 
   PlaceholderBindings bindings;
-  Placeholder *argmaxPH;
+  Placeholder *PH;
+  std::vector<dim_t> inDims = {2, 3, 4, 5};
   {
-    Tensor inT(ElemKind::FloatTy, {2, 3, 4, 5});
+    Tensor inT(ElemKind::FloatTy, inDims);
 
     ONNXModelLoader onnxLD(netFilename, {"input"}, {&inT.getType()}, *F);
-    argmaxPH = EXIT_ON_ERR(onnxLD.getOutputByName("argmax_scores"));
+    PH = EXIT_ON_ERR(onnxLD.getOutputByName("scores"));
     bindings.allocate(mod.getPlaceholders());
     updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&inT});
   }
@@ -2872,63 +2873,45 @@ TEST_F(OnnxImporterTest, argMaxKeepDim) {
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  auto argmax = bindings.get(argmaxPH)->getHandle<int64_t>();
-  std::vector<dim_t> expectedDims = {2, 3, 1, 5};
-  EXPECT_TRUE(argmax.dims().vec() == expectedDims);
+  auto output = bindings.get(PH)->getHandle<int64_t>();
+  EXPECT_TRUE(output.dims().vec() == expectedDims);
+
+  auto *save = getSaveNodeFromDest(PH);
+  if (isMin) {
+    EXPECT_TRUE(llvm::isa<ArgMinNode>(save->getInput()));
+  } else {
+    EXPECT_TRUE(llvm::isa<ArgMaxNode>(save->getInput()));
+  }
+}
+
+TEST_F(OnnxImporterTest, argMaxKeepDim) {
+  testArgMinMax("tests/models/onnxModels/ArgMaxKeepDim.onnxtxt", false,
+                {2, 3, 1, 5});
 }
 
 TEST_F(OnnxImporterTest, argMaxNoKeepDim) {
-  ExecutionEngine EE;
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
-
-  std::string netFilename(GLOW_DATA_PATH
-                          "tests/models/onnxModels/ArgMaxNoKeepDim.onnxtxt");
-
-  PlaceholderBindings bindings;
-  Placeholder *argmaxPH;
-  {
-    Tensor inT(ElemKind::FloatTy, {2, 3, 4, 5});
-
-    ONNXModelLoader onnxLD(netFilename, {"input"}, {&inT.getType()}, *F);
-    argmaxPH = EXIT_ON_ERR(onnxLD.getOutputByName("argmax_scores"));
-    bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&inT});
-  }
-
-  EE.compile(CompilationMode::Infer);
-  EE.run(bindings);
-
-  auto argmax = bindings.get(argmaxPH)->getHandle<int64_t>();
-  std::vector<dim_t> expectedDims = {2, 4, 5};
-  EXPECT_TRUE(argmax.dims().vec() == expectedDims);
+  testArgMinMax("tests/models/onnxModels/ArgMaxNoKeepDim.onnxtxt", false,
+                {2, 4, 5});
 }
 
 TEST_F(OnnxImporterTest, argMaxDefault) {
-  ExecutionEngine EE;
-  auto &mod = EE.getModule();
-  Function *F = mod.createFunction("main");
+  testArgMinMax("tests/models/onnxModels/ArgMaxDefault.onnxtxt", false,
+                {1, 3, 4, 5});
+}
 
-  std::string netFilename(GLOW_DATA_PATH
-                          "tests/models/onnxModels/ArgMaxDefault.onnxtxt");
+TEST_F(OnnxImporterTest, argMinKeepDim) {
+  testArgMinMax("tests/models/onnxModels/ArgMinKeepDim.onnxtxt", true,
+                {2, 3, 1, 5});
+}
 
-  PlaceholderBindings bindings;
-  Placeholder *argmaxPH;
-  {
-    Tensor inT(ElemKind::FloatTy, {2, 3, 4, 5});
+TEST_F(OnnxImporterTest, argMinNoKeepDim) {
+  testArgMinMax("tests/models/onnxModels/ArgMinNoKeepDim.onnxtxt", true,
+                {2, 4, 5});
+}
 
-    ONNXModelLoader onnxLD(netFilename, {"input"}, {&inT.getType()}, *F);
-    argmaxPH = EXIT_ON_ERR(onnxLD.getOutputByName("argmax_scores"));
-    bindings.allocate(mod.getPlaceholders());
-    updateInputPlaceholdersByName(bindings, &mod, {"input"}, {&inT});
-  }
-
-  EE.compile(CompilationMode::Infer);
-  EE.run(bindings);
-
-  auto argmax = bindings.get(argmaxPH)->getHandle<int64_t>();
-  std::vector<dim_t> expectedDims = {1, 3, 4, 5};
-  EXPECT_TRUE(argmax.dims().vec() == expectedDims);
+TEST_F(OnnxImporterTest, argMinDefault) {
+  testArgMinMax("tests/models/onnxModels/ArgMinDefault.onnxtxt", true,
+                {1, 3, 4, 5});
 }
 
 TEST_F(OnnxImporterTest, importMaxPoolWithArgmax) {
