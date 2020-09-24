@@ -410,6 +410,9 @@ bool glow::NNPIImporter::isVariableUsingAlternativeLayout(Storage *v) {
     case Kinded::Kind::MaxPoolNodeKind:
       return true;
     case Kinded::Kind::FullyConnectedNodeKind:
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+    case Kinded::Kind::ROIAlignNodeKind:
+#endif
       return (v->getType()->dims().size() == 4);
     default: // Do nothing.
       break;
@@ -2219,11 +2222,25 @@ public:
     LOG_AND_RETURN_IF_NOT(ERROR, glowRoiAlign, "Bad node type",
                           NNPI_INVALID_PARAM);
 
-    // Batch Indices tensor dropped here, mode should always be "avg"
-    // "max" mode is not supported.
+    // Batch Indices tensor dropped here, mode should always be PoolingMode::AVG
+    // PoolingMode::MAX mode is not supported.
     importer.setUsedTensors({nodeValueName(glowRoiAlign->getFeatureMap()),
                              nodeValueName(glowRoiAlign->getBoxes())},
                             {nodeValueName(glowRoiAlign->getResult())});
+
+    // Set output of ROI to use NHWC.
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(nodeValueName(glowRoiAlign->getResult()),
+                          glowRoiAlign->getResult().getType(),
+                          /* alternativeLayout */ true),
+        "Failed to add tensor to NNPI");
+
+    // Set Feature Map to use NHWC.
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(nodeValueName(glowRoiAlign->getFeatureMap()),
+                          glowRoiAlign->getFeatureMap().getType(),
+                          /* alternativeLayout */ true),
+        "Failed to add tensor to NNPI");
 
     auto mode = glowRoiAlign->getMode();
     LOG_AND_RETURN_IF_NOT(ERROR, mode == PoolingMode::AVG,
@@ -2352,7 +2369,7 @@ std::unordered_map<
     {"Logit", glow::make_unique<LogitNodeImporter>()},
     {"Modulo", glow::make_unique<ModuloNodeImporter>()},
     {"Swish", glow::make_unique<SwishNodeImporter>()},
-#if NNPI_MINOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
     {"ROIAlign", glow::make_unique<ROIAlignNodeImporter>()},
     {"BBoxTransform", glow::make_unique<BBoxTransformNodeImporter>()},
 #endif // NNPI >= 1.1
