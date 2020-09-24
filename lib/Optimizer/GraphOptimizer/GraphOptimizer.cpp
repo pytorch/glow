@@ -110,10 +110,8 @@ void ConstantModificationPreventer::activate() {
   cctx_.optimizationOpts.enableConstantFolding = false;
 }
 
-/// Helper that \returns whether all sibling Functions of \p F (other Functions
-/// inside its Module) are Loaded.
-static bool shouldDeleteConstants(Function *F) {
-  Module *mod = F->getParent();
+/// Helper that \returns true if all functions in \p mod are loaded.
+static bool areAllFunctionsLoaded(Module *mod) {
   for (auto *MF : mod->getFunctions()) {
     if (MF->getState() < FunctionState::FuncLoaded) {
       return false;
@@ -222,7 +220,7 @@ bool DCE::run(Function *F, const CompilationContext &cctx) {
     return changed;
   }
 
-  if (!shouldDeleteConstants(F)) {
+  if (!areAllFunctionsLoaded(F->getParent())) {
     return changed;
   }
 
@@ -1809,7 +1807,7 @@ static Constant *getUniquelyUsedConstant(Module *M, Node &node) {
     return nullptr;
   }
 
-  if (constant->hasOneUse()) {
+  if (constant->hasOneUse() && areAllFunctionsLoaded(M)) {
     return constant;
   }
 
