@@ -499,7 +499,7 @@ int run() {
     cctx.dumpGraphPath = glow::onnxifi::GlowDumpGraphPath;
   }
 
-  if (glow::onnxifi::GlowSparseNNPartitioningSchemeNumCards) {
+  if (glow::onnxifi::GlowUseSparseNNPartitioningScheme) {
     cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
     cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
         glow::onnxifi::GlowSparseNNPartitioningAddSLSConcats;
