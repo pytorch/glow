@@ -664,6 +664,14 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
     if (in.has_raw_data()) {
       std::istringstream inStream(in.raw_data(), std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(bool));
+    } else if (in.int32_data_size() > 0) {
+      // Some ONNX models use int32_data to initialize bool type (e.g., when
+      // converted from Keras).
+      auto TH = T->getHandle<bool>();
+      size_t i = 0;
+      for (auto f : in.int32_data()) {
+        TH.raw(i++) = (bool)f;
+      }
     } else {
       RETURN_ERR("Unsupported Tensor format for BOOL, name: " + in.name(),
                  ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_DATATYPE);
