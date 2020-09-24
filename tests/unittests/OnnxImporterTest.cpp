@@ -4249,6 +4249,30 @@ static void importResizeBilinear(std::string filename) {
                                           {bindings.get(output)}));
 }
 
+TEST_F(OnnxImporterTest, importBoolFromInt) {
+  ExecutionEngine EE;
+  auto &mod = EE.getModule();
+  std::string netFilename(GLOW_DATA_PATH
+                          "tests/models/onnxModels/bool_from_int.onnxtxt");
+  auto *F = mod.createFunction("main");
+  PlaceholderBindings bindings;
+  Placeholder *output;
+  {
+    ONNXModelLoader onnxLD(netFilename, {}, {}, *F);
+    output = EXIT_ON_ERR(onnxLD.getSingleOutput());
+    ASSERT_TRUE(output);
+  }
+
+  EE.compile(CompilationMode::Infer);
+  bindings.allocate(mod.getPlaceholders());
+  EE.run(bindings);
+
+  std::vector<bool> expectedOut = {true, false, true};
+  auto result = bindings.get(output)->getHandle<bool>();
+  for (size_t i = 0; i < result.getType().size(); i++)
+    EXPECT_EQ(result.raw(i), expectedOut[i]);
+}
+
 /// ResizeNearest Test Helper.
 TEST(onnx, importResizeBilinear) {
   std::string netFilename(GLOW_DATA_PATH

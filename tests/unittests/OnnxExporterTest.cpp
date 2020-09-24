@@ -420,6 +420,7 @@ TEST(exporter, onnxModels) {
     }
     if (name.find("constant.onnxtxt") != std::string::npos ||
         name.find("shape.onnxtxt") != std::string::npos ||
+        name.find("bool_from_int.onnxtxt") != std::string::npos ||
         name.find("sum1.onnxtxt") != std::string::npos) {
       // Ignore invalid ONNX files and graphs without nodes.
       llvm::outs() << "Ignore empty graph file: " << name << "\n";
