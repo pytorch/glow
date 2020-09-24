@@ -43,11 +43,10 @@ void computeModelHash(const void *onnxModel, size_t onnxModelSize,
 }
 } // namespace
 
-onnxStatus
-InlineGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
-                       uint32_t weightCount,
-                       const onnxTensorDescriptorV1 *weightDescriptors,
-                       uint32_t maxSeqLength, void * /*unused */) {
+onnxStatus InlineGraph::initGraph(
+    const void *onnxModel, size_t onnxModelSize, uint32_t weightCount,
+    const onnxTensorDescriptorV1 *weightDescriptors, uint32_t maxSeqLength,
+    void * /*unused */, bool /*unused*/) {
   Module &mod = executionEngine_.getModule();
   // Note: Pass in a nullptr for PPC here because we do not currently support
   // pre-partitioned models here.
