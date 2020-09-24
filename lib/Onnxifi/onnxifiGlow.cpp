@@ -438,10 +438,22 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitGraph)(
     quantizationMode = glow::QuantizationMode::None;
   }
 
+  bool loadingGlowAOT = false;
+  if (auxPropertiesList) {
+    for (; *auxPropertiesList != ONNXIFI_GRAPH_PROPERTY_NONE;
+         auxPropertiesList++) {
+      if (*auxPropertiesList == ONNXIFI_OPTIMIZATION_AOT) {
+        loadingGlowAOT = true;
+      } else {
+        return ONNXIFI_STATUS_UNSUPPORTED_PROPERTY;
+      }
+    }
+  }
+
   auto *glowGraph = manager.createGraph(glowBackend, quantizationMode);
-  auto ret =
-      glowGraph->initGraph(onnxModel, onnxModelSize, weightsCount,
-                           weightDescriptors, maxSeqLength, deferredBlobReader);
+  auto ret = glowGraph->initGraph(onnxModel, onnxModelSize, weightsCount,
+                                  weightDescriptors, maxSeqLength,
+                                  deferredBlobReader, loadingGlowAOT);
   if (ret != ONNXIFI_STATUS_SUCCESS) {
     manager.release(glowGraph);
     return ret;

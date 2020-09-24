@@ -321,6 +321,9 @@ struct CompilationContext {
   /// Whether to use AOT mode for DAG optimizer.
   bool useDAGOptimizerAOTMode{false};
 
+  /// Whether we're loading a model that has been AOT optimized.
+  bool loadingAOTModel{false};
+
   /// Static placeholder type info used for AOT optimization.
   std::map<std::string, Type> staticPlaceholderTypesForAOT;
 
