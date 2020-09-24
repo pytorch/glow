@@ -336,7 +336,22 @@ void fuseBranchedLinearPattern(std::shared_ptr<torch::jit::Graph> &graph) {
 }
 } // namespace detail
 
-void fuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph) {
+/// \returns true if none of the symbols in \p symbolNames are contained in \p
+/// opBlacklist
+static bool
+noneInBlacklist(const std::unordered_set<torch::jit::Symbol> &opBlacklist,
+                std::vector<const char *> symbolNames) {
+  for (const char *symbolName : symbolNames) {
+    if (opBlacklist.count(at::Symbol::fromQualString(symbolName))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void fuseKnownPatterns(
+    std::shared_ptr<torch::jit::Graph> &graph,
+    const std::unordered_set<torch::jit::Symbol> &opBlacklist) {
   // Register dummy nodes used by custom fusers.
   static std::once_flag onceFlag;
   std::call_once(onceFlag, []() {
@@ -350,13 +365,31 @@ void fuseKnownPatterns(std::shared_ptr<torch::jit::Graph> &graph) {
   detail::removeExceptions(graph);
   EliminateDeadCode(graph);
 
-  detail::fuseBranchedLinearPattern(graph);
-  EliminateDeadCode(graph);
+  if (noneInBlacklist(opBlacklist, {"aten::dim", "aten::eq", "prim::If",
+                                    "aten::t", "aten::mm", "aten::add",
+                                    "aten::matmul", "aten::add_"})) {
+    detail::fuseBranchedLinearPattern(graph);
+    EliminateDeadCode(graph);
+  }
 
-  detail::fuseConcat(graph);
-  detail::fuseConvPrepack(graph);
-  detail::fuseLinearPrepack(graph);
-  detail::fuseNumToTensorToNum(graph);
+  if (noneInBlacklist(opBlacklist,
+                      {"aten::cat", "prim::ListConstruct", "aten::stack"})) {
+    detail::fuseConcat(graph);
+  }
+
+  if (noneInBlacklist(opBlacklist,
+                      {"quantized::conv2d_prepack", "quantized::conv2d"})) {
+    detail::fuseConvPrepack(graph);
+  }
+
+  if (noneInBlacklist(opBlacklist,
+                      {"quantized::linear_prepack", "quantized::linear"})) {
+    detail::fuseLinearPrepack(graph);
+  }
+
+  if (noneInBlacklist(opBlacklist, {"prim::NumToTensor", "aten::Int"})) {
+    detail::fuseNumToTensorToNum(graph);
+  }
 
   EliminateCommonSubexpression(graph);
   EliminateDeadCode(graph);

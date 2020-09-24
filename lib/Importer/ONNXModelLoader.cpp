@@ -15,9 +15,11 @@
  */
 
 #include "glow/Importer/ONNXModelLoader.h"
+
 #include "glow/Base/Tensor.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
+#include "glow/Importer/Caffe2ModelLoader.h"
 #include "glow/Support/Support.h"
 #include "glow/Support/ZipUtils.h"
 
@@ -61,6 +63,17 @@ llvm::cl::list<std::string, std::vector<std::string>> onnxDefineSymbolOpt(
         "    -onnx-define-symbol=<symbol_name2>,<symbol_value2>             \n"
         "    ..................................................\n"),
     llvm::cl::value_desc("name,value"), llvm::cl::cat(onnxModelLoaderCat));
+
+llvm::cl::opt<bool> onnxExportRnnStatesOpt(
+    "onnx-export-rnn-states", llvm::cl::init(false), llvm::cl::Optional,
+    llvm::cl::desc(
+        "Option to export the states of the ONNX RNN operators (for example \n"
+        "RNN, GRU, LSTM) as graph placeholders regardless of whether the    \n"
+        "states are explicitly set or not in the graph. The placeholders are\n"
+        "also providing an automatic way for tracking the RNN states since  \n"
+        "the states are updated automatically with the new RNN states after \n"
+        "each inference. Default is false."),
+    llvm::cl::cat(onnxModelLoaderCat));
 
 /// Parse the command line option and get the user defined map of symbols.
 /// The command line option has the format <symbol_name>,<symbol_value>.
@@ -743,15 +756,28 @@ ONNXModelLoader::getTensorType(const ONNX_NAMESPACE::ValueInfoProto &in) {
   return Type(kind, dim);
 }
 
-/// \returns whether there's an issue with pre-existing \p S with name \p name,
-/// \p ty, \p layout, and \p trainable (for Placeholders).
-static Error verifyPreexistingStorage(const Storage *S, const std::string &name,
-                                      const Type &ty, const std::string &layout,
-                                      const bool trainable = false) {
+Error ONNXModelLoader::verifyPreexistingStorage(const Storage *S,
+                                                const std::string &name,
+                                                const Type &ty,
+                                                const std::string &layout,
+                                                const bool trainable) {
   RETURN_ERR_IF_NOT(S, "Storage did not exist in Module: " + name);
-  RETURN_ERR_IF_NOT(S->getType()->isEqual(ty),
-                    "Incorrect type for existing  " + S->getDebugDesc() + " " +
-                        "Expected type " + ty.toString());
+  if (replaceDummyTQPs_ && ty.isQuantizedType() &&
+      ty.getScale() == dummyScale) {
+    TensorQuantizationParams TQP;
+    ASSIGN_VALUE_OR_RETURN_ERR(TQP, getUpdatedTQP(ty.getOffset()));
+    // If we are replacing dummy TQPs with updated ones, then do verification
+    // based on the updated type and not the base dummy type we found.
+    Type updatedTy(ty.getElementType(), ty.dims(), TQP.scale, TQP.offset);
+    RETURN_ERR_IF_NOT(S->getType()->isEqual(updatedTy),
+                      "Incorrect type for quant param updated existing  " +
+                          S->getDebugDesc() + " " + "Expected type " +
+                          updatedTy.toString());
+  } else {
+    RETURN_ERR_IF_NOT(S->getType()->isEqual(ty),
+                      "Incorrect type for existing  " + S->getDebugDesc() +
+                          " " + "Expected type " + ty.toString());
+  }
   if (const Placeholder *PH = llvm::dyn_cast<Placeholder>(S)) {
     RETURN_ERR_IF_NOT(trainable == PH->isTraining(),
                       "Incorrect trainability for existing Storage " + name);
@@ -773,6 +799,14 @@ Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
 
     Type ty;
     ASSIGN_VALUE_OR_RETURN_ERR(ty, getTensorType(in));
+
+    if (replaceDummyTQPs_ && ty.isQuantizedType() &&
+        ty.getScale() == dummyScale) {
+      TensorQuantizationParams TQP;
+      ASSIGN_VALUE_OR_RETURN_ERR(TQP, getUpdatedTQP(ty.getOffset()));
+      ty = Type(ty.getElementType(), ty.dims(), TQP.scale, TQP.offset);
+    }
+
     std::pair<bool, std::string> trainableLayoutPair;
     ASSIGN_VALUE_OR_RETURN_ERR(
         trainableLayoutPair,
@@ -2324,6 +2358,8 @@ Error ONNXModelLoader::loadMatMul(const ONNX_NAMESPACE::NodeProto &op,
 
 Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
                                      ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
   // Input Type.
   NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getNodeValueByName(op.input(0)));
@@ -2341,11 +2377,7 @@ Error ONNXModelLoader::loadLeakyRelu(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Create the node.
-  auto splatType = mod_.uniqueType(ElemKind::FloatTy, input.dims());
-  const std::string &opName = loadOperatorName(op);
-  Node *splatN = G_->createSplat(opName + "Alpha", splatType, alphaVal);
-  Node *N = G_->createPRELU(opName, input, splatN);
-
+  Node *N = G_->createLeakyRELU(opName, input, alphaVal);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
 
   return Error::success();
@@ -2855,7 +2887,7 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // -------------------------- Outputs ---------------------------------------
-  // We always create placeholders for the RNN state variable Y_h for the
+  // We allow creating placeholders for the RNN state variable Y_h for the
   // following reasons:
   // - expose the RNN state in the graph interface for accessibility (set
   //   desired state, reset state, watch the state being updated automatically).
@@ -2871,25 +2903,28 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
   dim_t batchSize = X.dims()[1];
 
   // Create Y_h (hidden state) output placeholder.
-  Placeholder *Y_h_ph;
-  TypeRef Htype = mod_.uniqueTypeWithNewShape(
-      X.getType(), {numDirections, batchSize, hiddenSize});
-  std::string Hname = opName + ".Y_h";
-  ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
-                             createAndRegisterPlaceholder(Hname, Htype));
-  inputVarsByName_.try_emplace(Hname, Y_h_ph);
+  Placeholder *Y_h_ph = nullptr;
+  if (onnxExportRnnStatesOpt) {
+    TypeRef Htype = mod_.uniqueTypeWithNewShape(
+        X.getType(), {numDirections, batchSize, hiddenSize});
+    std::string Hname = opName + ".Y_h";
+    ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
+                               createAndRegisterPlaceholder(Hname, Htype));
+    inputVarsByName_.try_emplace(Hname, Y_h_ph);
+  }
 
-  // If RNN input state is explicitly provided then used it. If not, then
-  // use the RNN state placeholder.
-  NodeValue Y_h_init = initial_h.getNode() ? initial_h : Y_h_ph;
+  // Set RNN input state.
+  NodeValue Y_h_init = onnxExportRnnStatesOpt ? Y_h_ph : initial_h;
 
   // Create ONNX RNN.
   NodeValue Y, Y_h;
   G_->createOnnxRNN(opName, X, W, R, B, Y_h_init, Y, Y_h, hiddenSize, direction,
                     activations);
 
-  // Save RNN state in the state placeholder.
-  G_->createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
+  // Save RNN output state.
+  if (onnxExportRnnStatesOpt) {
+    G_->createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
+  }
 
   // Add node.
   const int numOutputs = op.output_size();
@@ -2981,7 +3016,7 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // -------------------------- Outputs ---------------------------------------
-  // We always create placeholders for the GRU state variable Y_h for the
+  // We allow creating placeholders for the GRU state variable Y_h for the
   // following reasons:
   // - expose the GRU state in the graph interface for accessibility (set
   //   desired state, reset state, watch the state being updated automatically).
@@ -2997,25 +3032,28 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
   dim_t batchSize = X.dims()[1];
 
   // Create Y_h (hidden state) output placeholder.
-  Placeholder *Y_h_ph;
-  TypeRef Htype = mod_.uniqueTypeWithNewShape(
-      X.getType(), {numDirections, batchSize, hiddenSize});
-  std::string Hname = opName + ".Y_h";
-  ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
-                             createAndRegisterPlaceholder(Hname, Htype));
-  inputVarsByName_.try_emplace(Hname, Y_h_ph);
+  Placeholder *Y_h_ph = nullptr;
+  if (onnxExportRnnStatesOpt) {
+    TypeRef Htype = mod_.uniqueTypeWithNewShape(
+        X.getType(), {numDirections, batchSize, hiddenSize});
+    std::string Hname = opName + ".Y_h";
+    ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
+                               createAndRegisterPlaceholder(Hname, Htype));
+    inputVarsByName_.try_emplace(Hname, Y_h_ph);
+  }
 
-  // If GRU input state is explicitly provided then used it. If not, then
-  // use the GRU state placeholder.
-  NodeValue Y_h_init = initial_h.getNode() ? initial_h : Y_h_ph;
+  // Set GRU input state.
+  NodeValue Y_h_init = onnxExportRnnStatesOpt ? Y_h_ph : initial_h;
 
   // Create ONNX GRU.
   NodeValue Y, Y_h;
   G_->createOnnxGRU(opName, X, W, R, B, Y_h_init, Y, Y_h, hiddenSize, direction,
                     activations, (bool)linearBeforeReset);
 
-  // Save GRU state in the state placeholder.
-  G_->createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
+  // Save GRU output state.
+  if (onnxExportRnnStatesOpt) {
+    G_->createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
+  }
 
   // Add node.
   const int numOutputs = op.output_size();
@@ -3120,7 +3158,7 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // -------------------------- Outputs ---------------------------------------
-  // We always create placeholders for the LSTM state variables (Y_h and Y_c)
+  // We allow creating placeholders for the LSTM state variables (Y_h and Y_c)
   // for the following reasons:
   // - expose the LSTM state in the graph interface for accessibility (set
   //   desired state, reset state, watch the state being updated automatically).
@@ -3136,36 +3174,41 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   dim_t batchSize = X.dims()[1];
 
   // Create Y_h (hidden state) output placeholder.
-  Placeholder *Y_h_ph;
-  TypeRef Htype = mod_.uniqueTypeWithNewShape(
-      X.getType(), {numDirections, batchSize, hiddenSize});
-  std::string Hname = opName + ".Y_h";
-  ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
-                             createAndRegisterPlaceholder(Hname, Htype));
-  inputVarsByName_.try_emplace(Hname, Y_h_ph);
+  Placeholder *Y_h_ph = nullptr;
+  if (onnxExportRnnStatesOpt) {
+    TypeRef Htype = mod_.uniqueTypeWithNewShape(
+        X.getType(), {numDirections, batchSize, hiddenSize});
+    std::string Hname = opName + ".Y_h";
+    ASSIGN_VALUE_OR_RETURN_ERR(Y_h_ph,
+                               createAndRegisterPlaceholder(Hname, Htype));
+    inputVarsByName_.try_emplace(Hname, Y_h_ph);
+  }
 
   // Create Y_c (cell state) output placeholder.
-  Placeholder *Y_c_ph;
-  TypeRef Ctype = mod_.uniqueTypeWithNewShape(
-      X.getType(), {numDirections, batchSize, hiddenSize});
-  std::string Cname = opName + ".Y_c";
-  ASSIGN_VALUE_OR_RETURN_ERR(Y_c_ph,
-                             createAndRegisterPlaceholder(Cname, Ctype));
-  inputVarsByName_.try_emplace(Cname, Y_c_ph);
+  Placeholder *Y_c_ph = nullptr;
+  if (onnxExportRnnStatesOpt) {
+    TypeRef Ctype = mod_.uniqueTypeWithNewShape(
+        X.getType(), {numDirections, batchSize, hiddenSize});
+    std::string Cname = opName + ".Y_c";
+    ASSIGN_VALUE_OR_RETURN_ERR(Y_c_ph,
+                               createAndRegisterPlaceholder(Cname, Ctype));
+    inputVarsByName_.try_emplace(Cname, Y_c_ph);
+  }
 
-  // If LSTM input states are explicitly provided then used them. If not, then
-  // use the LSTM state placeholders.
-  NodeValue Y_h_init = initial_h.getNode() ? initial_h : Y_h_ph;
-  NodeValue Y_c_init = initial_c.getNode() ? initial_c : Y_c_ph;
+  // Set LSTM input states.
+  NodeValue Y_h_init = onnxExportRnnStatesOpt ? Y_h_ph : initial_h;
+  NodeValue Y_c_init = onnxExportRnnStatesOpt ? Y_c_ph : initial_c;
 
   // Create ONNX LSTM.
   NodeValue Y, Y_h, Y_c;
   G_->createOnnxLSTM(opName, X, W, R, B, Y_h_init, Y_c_init, P, Y, Y_h, Y_c,
                      hiddenSize, direction, activations, (bool)inputForget);
 
-  // Save LSTM state in the state placeholders.
-  G_->createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
-  G_->createSave(opName + ".Y_c.save", Y_c, Y_c_ph);
+  // Save LSTM output states.
+  if (onnxExportRnnStatesOpt) {
+    G_->createSave(opName + ".Y_h.save", Y_h, Y_h_ph);
+    G_->createSave(opName + ".Y_c.save", Y_c, Y_c_ph);
+  }
 
   // Add node.
   const int numOutputs = op.output_size();
@@ -3811,12 +3854,27 @@ Error ONNXModelLoader::loadROIAlign(const ONNX_NAMESPACE::NodeProto &op,
   NodeValue batchIndices;
   ASSIGN_VALUE_OR_RETURN_ERR(batchIndices, getNodeValueByName(op.input(2)));
 
-  std::string mode = "avg";
+  PoolingMode mode = PoolingMode::AVG;
   if (dict.count("mode")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(mode, loadStr(dict.at("mode")));
-    RETURN_ERR_IF_NOT(mode == "avg" || mode == "max",
-                      "Unsupported mode. Only average pooling and max pooling "
-                      "are supported.");
+    std::string modeStr;
+    ASSIGN_VALUE_OR_RETURN_ERR(modeStr, loadStr(dict.at("mode")));
+    if (modeStr == "avg") {
+      mode = PoolingMode::AVG;
+    } else if (modeStr == "max") {
+      mode = PoolingMode::MAX;
+    } else {
+      return MAKE_ERR(strFormat("Invalid PoolingMode: %s", modeStr.c_str()));
+    }
+  }
+
+  bool rotated = false;
+  if (dict.count("rotated")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(rotated, loadInt(dict.at("rotated")));
+  }
+
+  bool aligned = false;
+  if (dict.count("aligned")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(aligned, loadInt(dict.at("aligned")));
   }
 
   uint32_t outputHeight = 1;
@@ -3843,10 +3901,9 @@ Error ONNXModelLoader::loadROIAlign(const ONNX_NAMESPACE::NodeProto &op,
 
   const std::string &opName = loadOperatorName(op);
   featureMap = G_->createTranspose(opName, featureMap, NCHW2NHWC);
-  Node *N =
-      G_->createROIAlign(loadOperatorName(op), featureMap, boxes, batchIndices,
-                         mode, outputHeight, outputWidth, samplingRatio,
-                         spatialScale, /*aligned*/ false, /*rotated*/ false);
+  Node *N = G_->createROIAlign(
+      loadOperatorName(op), featureMap, boxes, batchIndices, outputHeight,
+      outputWidth, samplingRatio, spatialScale, aligned, rotated, mode);
   N = G_->createTranspose(opName, N, NHWC2NCHW);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();
@@ -3972,6 +4029,19 @@ ONNXModelLoader::loadTypeFromAttributes(unsigned resNo,
   int32_t offset;
   ASSIGN_VALUE_OR_RETURN_ERR(
       offset, loadInt(dict[getTypeAttrID(resNo, qOffsetSignifier)]));
+
+  // If we have a scale of dummyScale, then this must be a dummy pair of
+  // scale/offset. Look up the actual scale/offset to use as previously loaded,
+  // using the offset as the key to updatedTQPs_. Skip fused kinds because
+  // scales are already dummies.
+  if (replaceDummyTQPs_ && scale == dummyScale &&
+      !isFusedQuantizedElemKind(k)) {
+    TensorQuantizationParams TQP;
+    ASSIGN_VALUE_OR_RETURN_ERR(TQP, getUpdatedTQP(offset));
+    scale = TQP.scale;
+    offset = TQP.offset;
+  }
+
   return mod_.uniqueType(k, shape, scale, offset);
 }
 
@@ -4282,7 +4352,11 @@ ONNXModelLoader::runDeserializedConstFold(llvm::StringRef initializerName,
   NodeValue NV;
   ASSIGN_VALUE_OR_RETURN_ERR(NV, getNodeValueByName(outputName));
 
-  std::vector<Constant *> constResults = constantFold(NV.getNode());
+  // Force folding single splats, because we're folding a constant folding
+  // subgraph, and so we know the exported model already decided to fold it
+  // (normally the backend decides whether to fold it or not).
+  std::vector<Constant *> constResults =
+      constantFold(NV.getNode(), /* foldSingleSplats */ true);
   RETURN_ERR_IF_NOT(constResults.size() > 0,
                     strFormat("Constant folding did not occur for %s",
                               NV.getNode()->getName().data()));
@@ -4627,10 +4701,14 @@ Error ONNXModelLoader::setupOrigStaticTypeMap(ONNX_NAMESPACE::GraphProto &net) {
         OT, loadTypeFromAttributes(Storage::OutputIdx, dict));
     staticPlaceholderTypes_->emplace(op.name(), *OT);
   }
-  RETURN_ERR_IF_NOT(staticPlaceholderTypes_->size() == staticInputs_.size(),
-                    "Expected to find types for all static Placeholders");
+  RETURN_ERR_IF_NOT(
+      staticPlaceholderTypes_->size() == staticInputs_.size(),
+      strFormat(
+          "Expected to find types for all static Placeholders. %lu vs. %lu",
+          staticPlaceholderTypes_->size(), staticInputs_.size()));
   return Error::success();
 }
+
 Error ONNXModelLoader::loadModel(ONNX_NAMESPACE::ModelProto &modelDef,
                                  llvm::ArrayRef<const char *> tensorNames,
                                  llvm::ArrayRef<TypeRef> types,
@@ -4661,6 +4739,8 @@ Error ONNXModelLoader::loadModel(ONNX_NAMESPACE::ModelProto &modelDef,
   deleteUnusedConstants();
 
   deleteConstFoldFunctions();
+
+  RETURN_IF_ERR(verifyDummyQParams());
 
   return Error::success();
 }
@@ -4829,6 +4909,68 @@ void ONNXModelLoader::setupPositionalIO(
   }
 }
 
+Error ONNXModelLoader::setupUpdatedTQPMap(
+    ONNX_NAMESPACE::ModelProto &modelDef, uint32_t weightsCount,
+    const onnxTensorDescriptorV1 *weightDescriptors) {
+  // Check if we have the two strings in metadata props we need to do TQP
+  // updating, and if not print a warning/return early.
+  const char *originNameToUniqueOffsetMappingStr =
+      getMetadataProp(modelDef, originNameToUniqueOffsetMappingSignifier);
+  if (!originNameToUniqueOffsetMappingStr) {
+    LOG(WARNING) << "Did not find \""
+                 << originNameToUniqueOffsetMappingSignifier
+                 << "\" in ONNX model, skipping setting updated TQP map.";
+    return Error::success();
+  }
+
+  const char *qParamC2ProtoStr = getMetadataProp(modelDef, "C2_with_q_params");
+  if (!qParamC2ProtoStr) {
+    LOG(WARNING) << "Did not find \"C2_with_q_params\" in ONNX model, skipping "
+                    "setting updated TQP map.";
+    return Error::success();
+  }
+
+  // Now load the qParamC2ProtoStr into a temporary dummy Caffe2ModelLoader,
+  // which fills in the originNameToTQPMap based on that model and the weights.
+  OriginNameToTQPMap originNameToTQPMap;
+  Error err(Error::success());
+  Module dummyMod;
+  Caffe2ModelLoader tmpLoader(qParamC2ProtoStr, weightsCount, weightDescriptors,
+                              dummyMod, &err, &originNameToTQPMap);
+  RETURN_IF_ERR(err);
+
+  // Now parse the originNameToUniqueOffsetMappingStr to find the original C2
+  // name : unique offset pairs. These are formatted like
+  // "name_op_a@0@@name_op_b@1@@", with @@ separating each pair, and @
+  // separating name from unique offset.
+  llvm::SmallVector<llvm::StringRef, 128> nameOffsetSplits;
+  llvm::StringRef strRef = llvm::StringRef(originNameToUniqueOffsetMappingStr);
+  strRef.split(nameOffsetSplits, offsetEndSig, /* MaxSplit */ -1,
+               /* KeepEmpty */ false);
+
+  // Store the mapping into updatedTQPs_, where each unique offset is used as
+  // the index into updatedTQPs_ to the actual TQP to use. I.e. we essentially
+  // already have c2_name -> offset, and c2_name -> TQP, so we change this to
+  // offset -> TQP.
+  updatedTQPs_.resize(nameOffsetSplits.size());
+  for (auto &nameOffsetSplit : nameOffsetSplits) {
+    auto nameOffsetPair = nameOffsetSplit.split(offsetSepSig);
+    int32_t idx;
+    ASSIGN_VALUE_OR_RETURN_ERR(idx, getIntFromStr(nameOffsetPair.second));
+    RETURN_ERR_IF_NOT(idx < updatedTQPs_.size(),
+                      strFormat("Provided offset index %d not inside size "
+                                "of updatedTQPs_ %lu",
+                                idx, updatedTQPs_.size()));
+
+    auto it = originNameToTQPMap.find(nameOffsetPair.first);
+    RETURN_ERR_IF_NOT(it != originNameToTQPMap.end(),
+                      strFormat("Did not find matching TQP for %s",
+                                nameOffsetPair.first.str().data()));
+    updatedTQPs_[idx] = it->second;
+  }
+  return Error::success();
+}
+
 ONNXModelLoader::ONNXModelLoader(
     const std::string &modelDescFilename,
     llvm::ArrayRef<const char *> tensorNames, llvm::ArrayRef<TypeRef> types,
@@ -4917,8 +5059,12 @@ ONNXModelLoader::ONNXModelLoader(
     llvm::StringRef funName, PrePartitionedConfig *PPC,
     bool loadInputsAsPlaceholdersForOnnx, Error *errPtr, bool constFoldInLoader,
     BackendSpecificNodeInfo *perNodeOpts,
-    std::map<std::string, Type> *staticPlaceholderTypes)
-    : CommonOperatorLoader({}, {}, mod, errPtr, true),
+    std::map<std::string, Type> *staticPlaceholderTypes, bool replaceDummyTQPs)
+    : CommonOperatorLoader({}, {}, mod, errPtr,
+                           /* loadIntoExistingModule */ true,
+                           /* originNameToTQPMap */ nullptr,
+                           /* loadUniquedDummyQParams */ false,
+                           replaceDummyTQPs),
       perNodeOpts_(perNodeOpts),
       staticPlaceholderTypes_(staticPlaceholderTypes) {
   // if errPtr already contains an error then don't continue with constructor
@@ -4934,6 +5080,13 @@ ONNXModelLoader::ONNXModelLoader(
   auto setup = [&]() -> Error {
     ONNX_NAMESPACE::ModelProto modelDef;
     ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(model, modelSize));
+
+    // If we're going to be replacing dummy TQPs then setup the updated TQP map,
+    // which is used later on when loading each op.
+    if (replaceDummyTQPs_) {
+      RETURN_IF_ERR(
+          setupUpdatedTQPMap(modelDef, weightsCount, weightDescriptors));
+    }
 
     RETURN_IF_ERR(loadWeights(weightsCount, weightDescriptors));
 

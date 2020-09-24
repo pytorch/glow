@@ -426,8 +426,8 @@ static bool verifyBatchNormalization(NodeValue src, NodeValue dest,
   bool isValid = checkSameType(dest, src, parent);
 
   isValid &= expectCompareTrue(
-      "Require some spatial dimensions in addition to batch and channel",
-      src.dims().size(), (size_t)2, parent,
+      "Require at least two input dims i.e., batch and channel dimensions",
+      src.dims().size(), (size_t)1, parent,
       CompareOperatorGreaterThan<size_t>());
 
   // Figure out how many channels are in the tensor.
@@ -728,6 +728,8 @@ static size_t getNumDataColumnsFromFused(TypeRef type) {
     return n - 2 * sizeof(float);
   case ElemKind::UInt8FusedFP16QTy:
     return n - 2 * sizeof(float16_t);
+  case ElemKind::UInt4FusedFP16QTy:
+    return (n - 2 * sizeof(float16_t)) * 2;
   default:
     llvm_unreachable("Not supported Fused ElemKind");
   }
@@ -1353,6 +1355,7 @@ VERIFY_ARITHMETIC(Add);
 VERIFY_ARITHMETIC(Mul);
 VERIFY_ARITHMETIC(Sub);
 VERIFY_ARITHMETIC(Div);
+VERIFY_ARITHMETIC(FloorDiv);
 VERIFY_ARITHMETIC(Max);
 VERIFY_ARITHMETIC(Min);
 VERIFY_ARITHMETIC(Pow);
@@ -1431,6 +1434,23 @@ bool BatchedPairwiseDotProductNode::verify() const {
 bool BatchedPairwiseDotProductGradNode::verify() const { return true; }
 
 bool BatchedAddNode::verify() const {
+  auto batchShape = getBatch().dims();
+  auto rhsShape = getSlice().dims();
+  bool isValid = expectCompareTrue("Invalid shape", batchShape.drop_front(),
+                                   rhsShape, this);
+  isValid &= checkSameShape(getBatch(), getResult(), this);
+
+  if (getBatch().getType()->isQuantizedType()) {
+    expectCompareTrue("Mismatched slice element types",
+                      getSlice().getType()->isQuantizedType(), true, this);
+  } else {
+    isValid &=
+        checkType(getBatch(), getSlice().getType()->getElementType(), this);
+  }
+  return isValid;
+}
+
+bool BatchedMulNode::verify() const {
   auto batchShape = getBatch().dims();
   auto rhsShape = getSlice().dims();
   bool isValid = expectCompareTrue("Invalid shape", batchShape.drop_front(),
@@ -1797,6 +1817,18 @@ bool ArgMinNode::verify() const {
   return isValid;
 }
 
+bool VectorNormNode::verify() const {
+  bool isValid = true;
+
+  isValid &= expectCompareTrue("Only support Frobenius, p should be 2", getP(),
+                               (unsigned)2, this);
+  // Check output shape.
+  ShapeVector expDstDims = reduceDims(getInput().dims(), {getAxis()}, false);
+  isValid &= expectCompareTrue("Invalid output dims", getResult().dims(),
+                               llvm::makeArrayRef(expDstDims), this);
+  return isValid;
+}
+
 bool RowwiseQuantizedFullyConnectedNode::verify() const {
   auto src = getInput();
   auto weights = getWeights();
@@ -2118,7 +2150,8 @@ bool ROIAlignNode::verify() const {
 
   bool isValid = checkTypeIgnoreShape(featureMap, result, this);
   isValid &= checkTypeIgnoreShape(boxes, result, this);
-  isValid &= checkType(featureMap, ElemKind::FloatTy, this);
+  isValid &=
+      checkType(featureMap, {ElemKind::FloatTy, ElemKind::Float16Ty}, this);
   isValid &= expectCompareTrue("FeatureMap must be a 4D tensor",
                                featureMapDims.size(), size_t(4), this);
   isValid &= expectCompareTrue("Boxes must be a 2D tensor", boxesDims.size(),
@@ -2128,11 +2161,12 @@ bool ROIAlignNode::verify() const {
   // If batch size > 1 batch indices must be provided.
   if (featureMapDims[0] > 1) {
     // Caffe2 gets indices using boxes tensor
-    bool indicesInBoxesTensor = boxesDims[1] == 5;
+    bool indicesInBoxesTensor = boxesDims[1] == (getRotated() ? 6 : 5);
     // Onnx requires batchIndices to be valid
     if (!indicesInBoxesTensor) {
       auto batchIndicesDims = batchIndices.dims();
-      isValid &= checkType(batchIndices, ElemKind::Int64ITy, this);
+      isValid &= checkType(batchIndices,
+                           {ElemKind::Int64ITy, ElemKind::Int32ITy}, this);
       isValid &= expectCompareTrue("BatchIndices must be a 1D tensor",
                                    batchIndicesDims.size(), size_t(1), this);
       isValid &=
@@ -2236,6 +2270,10 @@ bool ReluGradNode::verify() const {
                                         getGradOfOriginalOutputNamedResult(),
                                         this) &&
          verifyRelu(getGradOfOriginalOutputNamedResult(), getInput());
+}
+
+bool LeakyReluNode::verify() const {
+  return verifyRelu(getResult(), getInput());
 }
 
 bool PReluNode::verify() const {

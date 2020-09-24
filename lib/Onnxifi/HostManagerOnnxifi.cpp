@@ -15,51 +15,17 @@
  */
 
 #include "HostManagerOnnxifi.h"
+
+#include "glow/Flags/Flags.h"
 #include "glow/Runtime/DeferredWeightLoader.h"
+#include "glow/Runtime/ErrorReporter.h"
 #include "glow/Runtime/RequestData.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 
 namespace glow {
-extern bool GlowDumpCompilationLog;
 namespace onnxifi {
-
-extern bool GlowSaveOnnxifiModel;
-
-int32_t GlowNumDevices = 0;
-int32_t GlowSparseNNPartitioningSchemeNumCards = 1;
-int64_t GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard = 0;
-int32_t GlowSparseNNPartitioningSchemeNumCoresSLS = 1;
-int32_t GlowSparseNNPartitioningSchemeNumCoresOther = 1;
-bool GlowDumpDebugTraces = false;
-int32_t GlowNumDebugTracesPerDump = 100;
-bool GlowSaturateHost = false;
-bool GlowFP16 = false;
-bool GlowFP16Placeholders = true;
-bool GlowFP16Constants = true;
-bool GlowEnableQuantParamChanges = true;
-bool GlowDumpGraph = false;
-std::string GlowDumpGraphPath = "./";
-bool GlowDumpInitialLoadedGraph = false;
-bool GlowUseDAGOptimizer = false;
-std::string GlowDAGOptimizerPlacementTaggingAlgorithm = "None";
-std::string GlowDAGOptimizerParallelizationTaggingAlgorithm = "None";
-int32_t GlowDAGOptimizerNumParallelChunks = 1;
-bool GlowFusedScaleOffsetFP16 = false;
-bool GlowForceSLSAccumFP16 = false;
-bool GlowClipFP16 = false;
-bool GlowClipFP16SkipInputs = true;
-bool GlowUseSparseNNPartitioningScheme = false;
-bool GlowSparseNNPartitioningAddSLSConcats = false;
-bool GlowSparseNNPartitioningBalancePerfModel = false;
-bool GlowSparseNNPartitioningPairLNWithSLS = false;
-size_t GlowMaxActiveRequests = 48;
-size_t GlowMaxActiveRequestsPerInstance = 48;
-size_t GlowMaxQueueSize = 100;
-size_t GlowExecutorThreads = 10;
-bool GlowSaveOnnxifiDAG = false;
-bool GlowDelayAndRecordConstantModification = false;
 
 static llvm::cl::opt<int32_t, true>
     GlowNumDevicesOpt("glow-num-devices",
@@ -166,6 +132,28 @@ onnxStatus HostManagerBackend::addNetwork(
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
   cctx.maxActiveRequestsPerInstance = GlowMaxActiveRequestsPerInstance;
 
+  if (GlowUseDAGOptimizerAOT || deferredBlobReader) {
+    // Generate a map of type date for all static placeholders. Do this
+    // regardless of whether we have deferredBlobReader because we don't have
+    // one for AOT but we still want to use this info for serialization.
+    if (staticPlaceholderTypes.size() == 0) {
+      for (auto *PH : module->getPlaceholders()) {
+        if (PH->isStatic()) {
+          staticPlaceholderTypes[std::string(PH->getName())] = *PH->getType();
+        }
+      }
+    }
+
+    // Signal that we want to fold convertTo and Quantize into static
+    // Placeholders. Also want to do this for AOT optimization even if we don't
+    // have a deferred blob reader present.
+    cctx.optimizationOpts.foldStaticPlaceholderConversions = true;
+  }
+
+  // Copy the types into the cctx so that we have access to them regardless of
+  // whether there is a deferredBlobReader.
+  cctx.staticPlaceholderTypesForAOT = staticPlaceholderTypes;
+
   if (deferredBlobReader) {
     // Initialize loader and set field in cctx.
     auto loader = runtime::DeferredLoader()->getLoader();
@@ -174,14 +162,6 @@ onnxStatus HostManagerBackend::addNetwork(
       return ONNXIFI_STATUS_INTERNAL_ERROR;
     }
 
-    // Generate a map of type date for all static placeholders.
-    if (staticPlaceholderTypes.size() == 0) {
-      for (auto *PH : module->getPlaceholders()) {
-        if (PH->isStatic()) {
-          staticPlaceholderTypes[std::string(PH->getName())] = *PH->getType();
-        }
-      }
-    }
     loader->setTypeInfo(std::move(staticPlaceholderTypes));
     auto err = loader->setSrc(deferredBlobReader);
     if (ERR_TO_BOOL(std::move(err))) {
@@ -189,9 +169,6 @@ onnxStatus HostManagerBackend::addNetwork(
     }
 
     cctx.deferredWeightLoader = loader;
-    // Signal that we want to fold convertTo and Quantize into static
-    // Placeholders.
-    cctx.optimizationOpts.foldStaticPlaceholderConversions = true;
   }
 
   if (GlowFP16) {
@@ -259,6 +236,10 @@ onnxStatus HostManagerBackend::addNetwork(
         GlowDAGOptimizerParallelizationTaggingAlgorithm;
     cctx.optimizationOpts.DAGOptimizerNumParallelChunks =
         GlowDAGOptimizerNumParallelChunks;
+    if (GlowUseDAGOptimizerAOT) {
+      LOG(INFO) << "Using AOT mode for DAG optimizer.";
+      cctx.useDAGOptimizerAOTMode = true;
+    }
   }
   if (GlowSaveOnnxifiDAG) {
     LOG(INFO) << "Serializing DAG after optimization and partitioning.";
@@ -291,11 +272,10 @@ onnxStatus HostManagerBackend::removeNetwork(const Graph *graph) {
   return ONNXIFI_STATUS_SUCCESS;
 }
 
-onnxStatus
-HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
-                            uint32_t weightCount,
-                            const onnxTensorDescriptorV1 *weightDescriptors,
-                            uint32_t maxSeqLength, void *deferedBlobReader) {
+onnxStatus HostManagerGraph::initGraph(
+    const void *onnxModel, size_t onnxModelSize, uint32_t weightCount,
+    const onnxTensorDescriptorV1 *weightDescriptors, uint32_t maxSeqLength,
+    void *deferedBlobReader, bool loadingGlowAOT) {
 
   netName_ = strFormat("onnxifi_function_%lu", makeUniqueGraphId());
 
@@ -303,14 +283,18 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
   CompilationContext cctx;
   runtime::PrePartitionedConfig PPC;
   cctx.prepartitionedConfig = &PPC;
+  OriginNameToTQPMap originNameToTQPMap;
+  if (GlowUseTrackedDummyQuantParams) {
+    cctx.precisionConfig.originNameToTQPMap = &originNameToTQPMap;
+    cctx.precisionConfig.loadUniquedDummyQParams = true;
+  }
   std::map<std::string, Type> staticPlaceholderTypes;
 
   std::unique_ptr<ONNXIFIModelLoader> loader;
   auto loaderOrErr = ONNXIFIModelLoader::parse(
       onnxModel, onnxModelSize, weightCount, weightDescriptors, *module,
-      netName_, &PPC, &cctx.backendOpts.backendSpecificNodeInfo,
-      &staticPlaceholderTypes, true /*loadInputsAsPlaceholdersForOnnx*/,
-      backendPtr_->getUseOnnx(),
+      netName_, cctx, &staticPlaceholderTypes,
+      true /*loadInputsAsPlaceholdersForOnnx*/, backendPtr_->getUseOnnx(),
       /* constFoldInLoader */ false);
   if (loaderOrErr) {
     loader = std::move(*loaderOrErr);
@@ -341,6 +325,11 @@ HostManagerGraph::initGraph(const void *onnxModel, size_t onnxModelSize,
       LOG(INFO) << "Dumping initially loaded graph to " << fname;
       F->dumpDAG(fname);
     }
+  }
+
+  if (loadingGlowAOT) {
+    LOG(INFO) << "Loading a Glow AOT optimized model.";
+    cctx.loadingAOTModel = true;
   }
 
   return static_cast<HostManagerBackend *>(backendPtr_)
@@ -387,6 +376,14 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
                           "Onnxifi::callback");
 
         if (err) {
+          if (err.peekErrorValue() && err.peekErrorValue()->isFatalError()) {
+            std::string msg = err.peekErrorValue()->logToString();
+            auto reporters = ErrorReporterRegistry::ErrorReporters();
+            if (reporters) {
+              reporters->report(msg);
+            }
+            LOG(FATAL) << "Non-recoverable device error: " << msg;
+          }
           outputEvent->setMessage(ERR_TO_STRING(std::move(err)));
           outputEvent->signal(ONNXIFI_STATUS_INTERNAL_ERROR);
           return;

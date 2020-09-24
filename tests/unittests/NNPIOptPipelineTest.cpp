@@ -332,6 +332,32 @@ TEST_F(NNPIOptPipelineTest, SplitParallelizationTestBatchMatMulReluNNPI) {
   checkNumericalEquivalence(/* allowedError */ 0.f);
 }
 
+/// Test model parallelism for MatMul
+TEST_F(NNPIOptPipelineTest, SplitParallelizationTestMatMul) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {8, 64}, "input", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {64, 16}, "input", false);
+
+  auto *MM = F_->createMatMul("mm", input1, input2);
+  F_->createSave("ret", MM);
+
+  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+      std::to_string(3);
+  cloneAndCompile();
+
+  EXPECT_LT(F_->getNodes().size(), optimizedF_->getNodes().size());
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MatMulNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::MatMulNodeKind), 3);
+
+  bindings_.allocate(input1)->getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                               mod_.getPRNG());
+  bindings_.allocate(input2)->getHandle<float16_t>().randomize(-1.0, 1.0,
+                                                               mod_.getPRNG());
+
+  checkNumericalEquivalence(/* allowedError */ 0.f);
+}
+
 /// Test data parallel splitting for Mul and Relu
 TEST_F(NNPIOptPipelineTest, SplitParallelizationTestMulReluNNPI) {
   auto *input1 =
@@ -362,13 +388,14 @@ TEST_F(NNPIOptPipelineTest, SplitParallelizationTestMulReluNNPI) {
 }
 
 /// Test data parallel splitting for Tanh and Relu
-TEST_F(NNPIOptPipelineTest, SplitParallelizationTestTanhReluNNPI) {
+TEST_F(NNPIOptPipelineTest, SplitParallelizationTestTanhReluGeluNNPI) {
   auto *input1 =
       mod_.createPlaceholder(ElemKind::Float16Ty, {8, 4096}, "input", false);
 
   auto *TH = F_->createTanh("tanh", input1);
   auto *TH_relu = F_->createRELU("relu", TH);
-  F_->createSave("ret", TH_relu);
+  auto *TH_relu_gelu = F_->createGELU("gelu", TH_relu);
+  F_->createSave("ret", TH_relu_gelu);
 
   cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
       std::to_string(3);
@@ -379,6 +406,8 @@ TEST_F(NNPIOptPipelineTest, SplitParallelizationTestTanhReluNNPI) {
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::TanhNodeKind), 3);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ReluNodeKind), 3);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::GeluNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::GeluNodeKind), 3);
 
   bindings_.allocate(input1)->getHandle<float16_t>().randomize(-1.0, 1.0,
                                                                mod_.getPRNG());
@@ -451,6 +480,14 @@ static void setupSplitParallelizationTestFCReluNNPI(
     nodeInfo[CI]["NNPI_coreAssignmentsSuffix"].push_back("@copy_0");
     nodeInfo[CI]["NNPI_coreAssignments"].push_back("3");
     nodeInfo[CI]["NNPI_coreAssignmentsSuffix"].push_back("@copy_1");
+
+    // Assign some tensors to memory levels
+    nodeInfo[TN]["NNPI_tensorAssignmentNames"].push_back("tensor1");
+    nodeInfo[TN]["NNPI_tensorAssignmentValues"].push_back("LLC");
+    nodeInfo[TN]["NNPI_tensorAssignmentNames"].push_back("tensor2");
+    nodeInfo[TN]["NNPI_tensorAssignmentValues"].push_back("SRAM");
+    nodeInfo[TN]["NNPI_tensorAssignmentNames"].push_back("tensor3");
+    nodeInfo[TN]["NNPI_tensorAssignmentValues"].push_back("DRAM");
   }
 }
 
@@ -643,15 +680,16 @@ TEST_F(NNPIOptPipelineTest, DataParallelLNClip) {
   checkNumericalEquivalence(/* allowedError */ 0.00f);
 }
 
-// BatchedReduceAdd Model Parallel reducing dim 0
-TEST_F(NNPIOptPipelineTest, ModelParallelBatchedReduceAdd) {
+// BatchedReduceAdd Data Parallel, reducing dim 0
+TEST_F(NNPIOptPipelineTest, ParallelBatchedReduceAddReduceDim0) {
   auto *input =
-      mod_.createPlaceholder(ElemKind::Float16Ty, {20, 64, 8}, "input", false);
+      mod_.createPlaceholder(ElemKind::Float16Ty, {20, 64, 6}, "input", false);
   bindings_.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
                                                               mod_.getPRNG());
 
   auto *reduced = F_->createBatchedReduceAdd("BR", input, {0});
-  F_->createSave("ret", reduced);
+  auto *clipped = F_->createClip("clip", reduced, -10.0f, 10.0f);
+  F_->createSave("ret", clipped);
 
   // Should split BatchedReduceAdd by 8
   cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
@@ -661,18 +699,21 @@ TEST_F(NNPIOptPipelineTest, ModelParallelBatchedReduceAdd) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedReduceAddNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::BatchedReduceAddNodeKind),
             8);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 8);
   checkNumericalEquivalence(/* allowedError */ 0.00f);
 }
 
-// BatchedReduceAdd Model Parallel reducing dim 1
-TEST_F(NNPIOptPipelineTest, DataParallelBatchedReduceAdd) {
+// BatchedReduceAdd Data Parallel reducing dim 1
+TEST_F(NNPIOptPipelineTest, ParallelBatchedReduceAddReduceDim1) {
   auto *input =
-      mod_.createPlaceholder(ElemKind::Float16Ty, {64, 20, 8}, "input", false);
+      mod_.createPlaceholder(ElemKind::Float16Ty, {64, 20, 6}, "input", false);
   bindings_.allocate(input)->getHandle<float16_t>().randomize(-1.0, 1.0,
                                                               mod_.getPRNG());
 
   auto *reduced = F_->createBatchedReduceAdd("BR", input, {1});
-  F_->createSave("ret", reduced);
+  auto *clipped = F_->createClip("clip", reduced, -10.0f, 10.0f);
+  F_->createSave("ret", clipped);
 
   // Should split BatchedReduceAdd by 8
   cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
@@ -682,6 +723,8 @@ TEST_F(NNPIOptPipelineTest, DataParallelBatchedReduceAdd) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchedReduceAddNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::BatchedReduceAddNodeKind),
             8);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ClipNodeKind), 8);
   checkNumericalEquivalence(/* allowedError */ 0.00f);
 }
 
@@ -769,4 +812,20 @@ TEST_F(NNPIOptPipelineTest, SwishSmallBatch) {
 
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SwishNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SwishNodeKind), 4);
+}
+
+// SoftMax
+TEST_F(NNPIOptPipelineTest, SoftMax) {
+  auto *input0 =
+      mod_.createPlaceholder(ElemKind::Float16Ty, {512, 2048}, "input", false);
+  auto selected = mod_.createConstant(ElemKind::Int64ITy, {512, 1}, "selected");
+  auto *SFMX = F_->createSoftMax("softmax", input0, selected);
+  F_->createSave("ret", SFMX);
+
+  cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
+      std::to_string(8);
+  cloneAndCompile();
+
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SoftMaxNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::SoftMaxNodeKind), 8);
 }

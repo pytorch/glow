@@ -28,6 +28,10 @@
 
 namespace glow {
 
+/// Dummy scale used for representing dummy quantization parameters that have
+/// been loaded in place of real quantization parameters.
+constexpr float dummyScale = 0.123456813395023345947265625;
+
 /// Profiling parameters of a tensor consisting in the global minimum and global
 /// maximum values and also the histogram obtained during profiling. To be noted
 /// that the histogram is not normalized.

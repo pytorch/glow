@@ -19,6 +19,7 @@
 #include "PyTorchCommon.h"
 #include "glow/Support/Error.h"
 
+#include <c10/util/hash.h>
 #include <glog/logging.h>
 #include <torch/csrc/jit/ir/alias_analysis.h>
 #include <torch/csrc/jit/ir/node_hashing.h>
@@ -28,7 +29,6 @@
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
 #include <torch/csrc/jit/passes/utils/subgraph_utils.h>
 #include <torch/csrc/jit/runtime/custom_operator.h>
-#include <torch/csrc/utils/hash.h>
 
 #include <mutex>
 #include <shared_mutex>
@@ -91,18 +91,44 @@ bool removeGraphRunnerForKey(const std::string &key) {
   return true;
 }
 
+int findIndex(const torch::jit::Node *node) {
+  auto g = node->owningGraph();
+  auto kind = node->kind();
+  int index = 0;
+  for (auto n : g->nodes()) {
+    if (n->kind() == kind) {
+      if (n == node) {
+        return index;
+      }
+      ++index;
+    }
+  }
+  CHECK(0); // should never reach this line
+  return index;
+}
+
 void registerGlowOp(const c10::Symbol &symbol) {
   torch::jit::RegisterOperators op({torch::jit::Operator(
       symbol,
       [](const torch::jit::Node *node) -> torch::jit::Operation {
+        std::string key = node->kind().toQualString();
+        if (getPyTorchLoaderSettings().inferShapeForCompilation) {
+          // All Glow fusion nodes would have the same kind and there isn't a
+          // good native way to differentiate them at runtime. Therefore we scan
+          // the graph containing Glow fusion nodes and index each of them. The
+          // index would be used as part of the key to find corresponding
+          // cachingGraphRunner.
+          int idx = findIndex(node);
+          key += std::to_string(idx);
+        }
+
         // How to find a graphRunner:
         // 1. See if a key based on fusion node symbol string has been
         // registered, which is usually done in AOT fashion
         // 2. If not, create a graphRunner with graph hash as a key
         std::shared_ptr<CachingGraphRunner> graphRunner;
-
         if (!graphRunner) {
-          graphRunner = getGraphRunnerForKey(node->kind().toQualString());
+          graphRunner = getGraphRunnerForKey(key);
         }
 
         // If no preloaded graph runner was created for this node, create a new

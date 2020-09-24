@@ -1,5 +1,6 @@
 add_library(Converter
             Float16Converter.cpp
+            FusedRowwiseConverter.cpp
             FunctionConverter.cpp
             TypeAToTypeBFunctionConverter.cpp)
 

@@ -18,6 +18,7 @@
 #include "GlowOnnxifiManager.h"
 #include "llvm/Support/CommandLine.h"
 
+#include "glow/Flags/Flags.h"
 #include "glow/Importer/ONNXIFIModelLoader.h"
 
 #include <cstring>
@@ -33,7 +34,6 @@
 namespace glow {
 namespace onnxifi {
 
-std::string GlowOnnxifiBackend = "";
 static llvm::cl::opt<std::string, /*external storage*/ true>
     GlowOnnxifiBackendOpt("glow-onnxifi-backend",
                           llvm::cl::desc("Glow backend used for ONNXIFI"),
@@ -438,10 +438,22 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxInitGraph)(
     quantizationMode = glow::QuantizationMode::None;
   }
 
+  bool loadingGlowAOT = false;
+  if (auxPropertiesList) {
+    for (; *auxPropertiesList != ONNXIFI_GRAPH_PROPERTY_NONE;
+         auxPropertiesList++) {
+      if (*auxPropertiesList == ONNXIFI_OPTIMIZATION_AOT) {
+        loadingGlowAOT = true;
+      } else {
+        return ONNXIFI_STATUS_UNSUPPORTED_PROPERTY;
+      }
+    }
+  }
+
   auto *glowGraph = manager.createGraph(glowBackend, quantizationMode);
-  auto ret =
-      glowGraph->initGraph(onnxModel, onnxModelSize, weightsCount,
-                           weightDescriptors, maxSeqLength, deferredBlobReader);
+  auto ret = glowGraph->initGraph(onnxModel, onnxModelSize, weightsCount,
+                                  weightDescriptors, maxSeqLength,
+                                  deferredBlobReader, loadingGlowAOT);
   if (ret != ONNXIFI_STATUS_SUCCESS) {
     manager.release(glowGraph);
     return ret;

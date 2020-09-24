@@ -45,11 +45,16 @@ template <typename Stream, typename E>
 Stream &operator<<(Stream &os, const llvm::ArrayRef<E> list) {
   os << '[';
   // Print the array without a trailing comma.
-  for (size_t i = 0, e = list.size(); i < e; i++) {
+  // Only up to `limit` elements will be printed.
+  for (size_t i = 0, e = list.size(), limit = 4; i < e && i <= limit; i++) {
     if (i) {
       os << ", ";
     }
-    os << list[i];
+    if (i == limit) {
+      os << "...";
+    } else {
+      os << list[i];
+    }
   }
   os << ']';
 
@@ -209,6 +214,11 @@ template <class T> inline constexpr unsigned convertEnumToUnsigned(T e) {
 constexpr char startChar = '$';
 /// Char used for separating attribute name from attribute value.
 constexpr char sepChar = ':';
+
+/// Signifier used to separate C2 loader name from unique offset mapping.
+constexpr const char *offsetSepSig = "@";
+/// Signifier used to separate C2 end of a loader name to unique offset mapping.
+constexpr const char *offsetEndSig = "@@";
 
 /// Convert a string to int. \returns the int or Error if problem parsing.
 Expected<int> getIntFromStr(llvm::StringRef input);

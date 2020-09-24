@@ -659,9 +659,13 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
            NI.getOutElemTy(MFCCNode::CoefficientsIdx) == ElemKind::FloatTy;
 
   case Kinded::Kind::ROIAlignNodeKind:
-    return NI.getInElemTy(ROIAlignNode::FeatureMapIdx) == ElemKind::FloatTy &&
-           NI.getInElemTy(ROIAlignNode::BoxesIdx) == ElemKind::FloatTy &&
-           NI.getOutElemTy(ROIAlignNode::ResultIdx) == ElemKind::FloatTy;
+    return (NI.getInElemTy(ROIAlignNode::BatchIndicesIdx) ==
+                ElemKind::Int32ITy ||
+            NI.getInElemTy(ROIAlignNode::BatchIndicesIdx) ==
+                ElemKind::Int64ITy) &&
+           NI.allInputsAndOutputsHaveSameElemKind(
+               {ElemKind::FloatTy, ElemKind::Float16Ty},
+               /*ignoreIn*/ {ROIAlignNode::BatchIndicesIdx});
 
   case Kinded::Kind::BBoxTransformNodeKind:
     return NI.getInElemTy(BBoxTransformNode::RoisIdx) == ElemKind::FloatTy &&

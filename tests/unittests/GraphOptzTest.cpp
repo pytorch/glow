@@ -955,6 +955,7 @@ TEST_F(GraphOptz, batchNormAfterConvNotOptimizeWhenMoreThanOneUseOfConv) {
 enum class TestSinkTransposeNodesKind {
   BatchNormalization,
   Relu,
+  LeakyRelu,
   Clip,
   Sigmoid,
   Tanh,
@@ -973,6 +974,9 @@ public:
     }
     case TestSinkTransposeNodesKind::Relu: {
       return F_->createRELU("relu", T)->getResult();
+    }
+    case TestSinkTransposeNodesKind::LeakyRelu: {
+      return F_->createLeakyRELU("leaky_relu", T, 0.1)->getResult();
     }
     case TestSinkTransposeNodesKind::Clip: {
       return F_->createClip("clip", T, 0.0, 6.0)->getResult();
@@ -1085,6 +1089,7 @@ GLOW_INSTANTIATE_TEST_SUITE_P(
     TestSinkTranspose, GraphOptzSinkTransposeBelowParametrized,
     ::testing::Values(TestSinkTransposeNodesKind::BatchNormalization,
                       TestSinkTransposeNodesKind::Relu,
+                      TestSinkTransposeNodesKind::LeakyRelu,
                       TestSinkTransposeNodesKind::Clip,
                       TestSinkTransposeNodesKind::Sigmoid,
                       TestSinkTransposeNodesKind::Tanh,
@@ -1110,6 +1115,30 @@ TEST_F(GraphOptz, SinkTransposeBelowDequantize) {
 
   bindings_.allocate(mod_.getPlaceholders());
   bindings_.get(in)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
+TEST_F(GraphOptz, SinkTransposeBelowPRelu) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "input", false);
+  auto *slope =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 10, 15}, "slope", false);
+  auto *OT = mod_.uniqueType(ElemKind::FloatTy, {1, 5, 10, 15});
+  auto *prelu = F_->createPRELU("prelu", input, slope, OT);
+  auto *transpose = F_->createTranspose("transpose", prelu, NHWC2NCHW);
+  SaveNode *O = F_->createSave("out", transpose);
+
+  optimizedF_ = optimizeFunction(F_);
+
+  EXPECT_EQ(F_->getNodes().size(), 3);
+  EXPECT_EQ(optimizedF_->getNodes().size(), 3);
+
+  auto *optOut = findFunctionNodeByName<SaveNode>(optimizedF_, O->getName());
+  EXPECT_TRUE(llvm::isa<TransposeNode>(optOut->getInput().getNode()));
+
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
+  bindings_.get(slope)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
   checkNumericalEquivalence();
 }
 
@@ -5322,7 +5351,7 @@ TEST_F(GraphOptz, OptimizeConcatQuantFCFloatReluTest) {
   ASSERT_TRUE(optCN);
   EXPECT_EQ(optCN->getInputs().size(), 5);
 
-  for (const NodeValue NV : optCN->getInputs()) {
+  for (const NodeValue &NV : optCN->getInputs()) {
     DequantizeNode *optDN = llvm::dyn_cast<DequantizeNode>(NV);
     ASSERT_TRUE(optDN);
     ReluNode *optRN = llvm::dyn_cast<ReluNode>(optDN->getInput());

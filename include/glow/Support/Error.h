@@ -107,15 +107,12 @@
   } while (0)
 
 /// Takes an Expected and returns it if it's not success.
-#define RETURN_IF_EXPECTED_IS_ERR(expV)                                        \
+#define RETURN_IF_EXPECTED_IS_ERR(expInp)                                      \
   do {                                                                         \
+    auto expV = (expInp);                                                      \
     static_assert(glow::detail::IsExpected<decltype(expV)>(),                  \
                   "Expected value to be a Expected");                          \
-    if (!expV) {                                                               \
-      auto err = expV.takeError();                                             \
-      err.addToStack(__FILE__, __LINE__);                                      \
-      return std::forward<Error>(err);                                         \
-    }                                                                          \
+    RETURN_IF_ERR((expV).takeError());                                         \
   } while (0)
 
 /// Takes an Error and if it contains an ErrorValue then calls FAIL().
@@ -411,7 +408,11 @@ class GlowError : protected detail::CheckState<detail::enableCheckingErrors> {
     return std::move(errorValue_);
   }
 
+#ifdef WIN32
+public:
+#else
 protected:
+#endif
   /// Construct a new empty Error.
   explicit GlowError() { setErrorValue(nullptr, /*skipCheck*/ true); }
 

@@ -35,16 +35,6 @@
 
 namespace glow {
 
-/// Some model formats (Caffe2, PyTorch, TensorFlowLite) allow defining weights
-/// and activations in UINT8 format. Since Glow supports only INT8 weights and
-/// activations we do a transformation from UINT8 to INT8 quantized data by
-/// subtracting the value 128 from both the quantized values and the offset:
-///   val(int8) = val(uint8) - 128
-///   scale(int8) = scale(uint8) (scale value is preserved)
-///   offset(int8) = scale(uint8) - 128
-/// The constant definition below defines the value used for subtraction.
-constexpr int32_t UINT8_TO_INT8_SHIFT = 128;
-
 /// Result of loading a weight, potentially with additional offsets and
 /// scales tensors containing quantization parameters only if the loaded weight
 /// was found to have multiple quantization parameters.
@@ -144,17 +134,34 @@ class CommonOperatorLoader : public ProtobufLoader {
       scale = in.scales[0];
       offset = in.biases[0];
     } else {
+      RETURN_ERR_IF_NOT(!loadUniquedDummyQParams_,
+                        strFormat("Unsupported loading of uniqued qparams for "
+                                  "vector of scales/biases for %s",
+                                  in.name));
       Type scalesTy(ElemKind::FloatTy, llvm::makeArrayRef({qparams}));
       Type offsetsTy(ElemKind::Int32ITy, llvm::makeArrayRef({qparams}));
       result.scales = glow::make_unique<Tensor>((void *)in.scales, &scalesTy);
       result.offsets = glow::make_unique<Tensor>((void *)in.biases, &offsetsTy);
     }
 
+    // If we have a scale of dummyScale, then this must be a dummy pair of
+    // scale/offset. Look up the actual scale/offset to use as previously
+    // loaded, using the offset as the key to updatedTQPs_.
+    if (replaceDummyTQPs_ && scale == dummyScale) {
+      TensorQuantizationParams TQP;
+      ASSIGN_VALUE_OR_RETURN_ERR(TQP, getUpdatedTQP(offset));
+      scale = TQP.scale;
+      offset = TQP.offset;
+    }
+
     if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
+      TypeRef outTy;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          outTy, ProtobufLoader::loadQuantTy(in.name, ElemKind::Int8QTy, dims,
+                                             scale, offset));
       // Must copy the weights here because we will need to modify them by
       // adjusting for UINT8_TO_INT8_SHIFT.
-      result.type =
-          Type(ElemKind::Int8QTy, dims, scale, offset - UINT8_TO_INT8_SHIFT);
+      result.type = *outTy;
       if (!in.isOffline) {
         result.t->reset(result.type);
 
@@ -165,12 +172,21 @@ class CommonOperatorLoader : public ProtobufLoader {
         }
       }
     } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
-      result.type = Type(ElemKind::Int32QTy, dims, scale, offset);
+      TypeRef outTy;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          outTy, ProtobufLoader::loadQuantTy(in.name, ElemKind::Int32QTy, dims,
+                                             scale, offset));
+      result.type = *outTy;
       if (!in.isOffline) {
         *result.t = Tensor((void *)in.buffer, &result.type);
       }
     } else if (in.dataType == ONNXIFI_DATATYPE_INT8) {
-      result.type = Type(ElemKind::Int8QTy, dims, scale, offset);
+      TypeRef outTy;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          outTy, ProtobufLoader::loadQuantTy(in.name, ElemKind::Int8QTy, dims,
+                                             scale, offset,
+                                             /* shiftUInt8ToInt8 */ false));
+      result.type = *outTy;
       if (!in.isOffline) {
         *result.t = Tensor((void *)in.buffer, &result.type);
       }
@@ -202,15 +218,57 @@ class CommonOperatorLoader : public ProtobufLoader {
 
 protected:
   CommonOperatorLoader(llvm::ArrayRef<const char *> names,
-                       llvm::ArrayRef<TypeRef> types, Function *F)
-      : ProtobufLoader(names, types, F) {}
+                       llvm::ArrayRef<TypeRef> types, Function *F,
+                       Error *errPtr = nullptr,
+                       bool loadIntoExistingModule = false,
+                       OriginNameToTQPMap *originNameToTQPMap = nullptr,
+                       bool loadUniquedDummyQParams = false)
+      : ProtobufLoader(names, types, F, errPtr, loadIntoExistingModule,
+                       originNameToTQPMap, loadUniquedDummyQParams) {}
 
   CommonOperatorLoader(llvm::ArrayRef<const char *> names,
-                       llvm::ArrayRef<TypeRef> types, Module &mod)
-      : ProtobufLoader(names, types, mod) {}
+                       llvm::ArrayRef<TypeRef> types, Module &mod,
+                       Error *errPtr = nullptr,
+                       bool loadIntoExistingModule = false,
+                       OriginNameToTQPMap *originNameToTQPMap = nullptr,
+                       bool loadUniquedDummyQParams = false,
+                       bool replaceDummyTQPs = false)
+      : ProtobufLoader(names, types, mod, errPtr, loadIntoExistingModule,
+                       originNameToTQPMap, loadUniquedDummyQParams,
+                       replaceDummyTQPs) {}
 
   using ArgumentDictionaryTy =
       std::unordered_map<std::string, const AttrType *>;
+
+  /// If we were replacing or loading dummy TQPs, \returns success if there
+  /// aren't any dummies left, or there are only dummies left.
+  Error verifyDummyQParams() {
+    RETURN_ERR_IF_NOT(!(replaceDummyTQPs_ && loadUniquedDummyQParams_),
+                      "Cannot replace dummy TQPs when loading uniqued TQPs.");
+    if (replaceDummyTQPs_ || loadUniquedDummyQParams_) {
+      RETURN_IF_ERR(mod_.verifyDummyQParams(loadUniquedDummyQParams_));
+    }
+    return Error::success();
+  }
+
+  /// Helper to load quantization parameters from \p dict for op named \p name.
+  /// \returns a new TypeRef given \p k and \p dims.
+  Expected<TypeRef> loadQuantTy(const std::string &name, ElemKind k,
+                                llvm::ArrayRef<dim_t> dims,
+                                ArgumentDictionaryTy &dict) {
+    RETURN_ERR_IF_NOT(dict.count("Y_scale"),
+                      "missing Y_scale for quantized output type for " + name);
+    RETURN_ERR_IF_NOT(dict.count("Y_zero_point"),
+                      "missing zero point for quantized output type for " +
+                          name);
+
+    float scale;
+    ASSIGN_VALUE_OR_RETURN_ERR(scale, loadFloat(dict["Y_scale"]));
+    int32_t offset;
+    ASSIGN_VALUE_OR_RETURN_ERR(offset, loadInt(dict["Y_zero_point"]));
+
+    return ProtobufLoader::loadQuantTy(name, k, dims, scale, offset);
+  }
 
   /// \returns True if the operator has broadcasting activated.
   virtual Expected<bool> getBroadcast(ArgumentDictionaryTy &dict) = 0;
@@ -387,8 +445,9 @@ protected:
     RETURN_ERR_IF_NOT(in.dims().size() >= 2, "SoftMax input dims must be >= 2");
 
     // Create a constant to store labels to be used in SoftMaxGradNode.
-    auto selected =
-        mod_.createConstant(ElemKind::Int64ITy, {in.dims()[0], 1}, "selected");
+    auto *selected = G_->createSplat(
+        opName + ".selected",
+        mod_.uniqueType(ElemKind::Int64ITy, {in.dims()[0], 1}), 0.f);
 
     // ONNX allows shapes like <N x 10 x 1 x 1 >. Flatten the inputs to the
     // softmax function. This is similar to a bitcast operation.
@@ -1092,10 +1151,6 @@ protected:
       int axis;
       ASSIGN_VALUE_OR_RETURN_ERR(
           axis, loadAxis<int>(dict.find("axis")->second, data.dims().size()));
-      if (axis != 0 && axis != 1) {
-        RETURN_ERR("Axis must be 0 or 1.");
-      }
-
       batchDims = axis;
     }
 
@@ -1199,8 +1254,6 @@ protected:
     RETURN_IF_ERR(addNodeAsOutput(op, N));
     return Error::success();
   }
-
-  using ProtobufLoader::ProtobufLoader;
 
   /// If operator type is supported, returns Expected<true> and creates new
   /// operator. Returns Operator<false> if operator type is not supported.
@@ -1495,7 +1548,8 @@ protected:
     }
 
     RETURN_ERR_IF_NOT(S->getElementType() == ElemKind::UInt8QTy,
-                      "Data must be UInt8QTy.");
+                      "Data must be UInt8QTy, but was " +
+                          Type::getElementName(S->getElementType()).str());
     S->setType(Storage::OutputIdx, fusedTy);
     // If the node is a Constant set the payload type as well.
     if (auto *C = llvm::dyn_cast<Constant>(S)) {

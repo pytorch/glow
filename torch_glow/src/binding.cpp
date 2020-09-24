@@ -22,9 +22,7 @@
 #include "PyTorchCommon.h"
 #include "Registration.h"
 #include "TorchGlowBackend.h"
-#include "TorchGlowTraining.h"
 #include <pybind11/pybind11.h>
-/// Required include files for a proper binding TorchGlowTrainingWrapper class.
 #include <pybind11/stl.h>
 
 #include "glow/Graph/Graph.h"
@@ -62,14 +60,6 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("disableFusionPass",
         []() { getPyTorchLoaderSettings().fusionPassEnabled = false; });
 
-  /// Enable freezing weights as Constants in PyTorch subgraphs loaded in Glow.
-  m.def("enableWeightFreezing",
-        []() { getPyTorchLoaderSettings().weightFreezingEnabled = true; });
-
-  /// Disable freezing weights as Constants in PyTorch subgraphs loaded in Glow.
-  m.def("disableWeightFreezing",
-        []() { getPyTorchLoaderSettings().weightFreezingEnabled = false; });
-
   /// Enable dumping Glow DAG to file after model loading finishes.
   m.def("enableDumpGlowDag",
         []() { getPyTorchLoaderSettings().dumpGlowDag = true; });
@@ -85,6 +75,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Disable converting fp32 ops to fp16.
   m.def("disable_convert_to_fp16",
         []() { getPyTorchLoaderSettings().convertToFP16 = false; });
+
+  /// Enable converting fp32 ops to fp16.
+  m.def("enable_clip_fp16",
+        []() { getPyTorchLoaderSettings().clipFP16 = true; });
+
+  /// Disable converting fp32 ops to fp16.
+  m.def("disable_clip_fp16",
+        []() { getPyTorchLoaderSettings().clipFP16 = false; });
 
   /// Enable converting fp32 fused ops to fp16.
   m.def("enable_convert_fused_to_fp16",
@@ -105,6 +103,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Enable tracing in Glow runtime.
   m.def("enable_glow_tracing",
         []() { getPyTorchLoaderSettings().enableGlowTracing = true; });
+
+  // Enable the auto removal of mutation in JIT graph, i.e, inline ops.
+  m.def("enable_remove_mutation",
+        []() { getPyTorchLoaderSettings().enableRemoveMutation = true; });
+
+  // Disable the auto removal of mutation in JIT graph
+  m.def("disable_remove_mutation",
+        []() { getPyTorchLoaderSettings().enableRemoveMutation = false; });
 
   /// Set the number of traces to dump per trace file.
   m.def("set_num_traces_per_dump", [](size_t numTracesPerDump) {
@@ -177,26 +183,10 @@ PYBIND11_MODULE(_torch_glow, m) {
       bl.insert(torch::jit::Symbol::fromQualString(kind));
     }
   });
-  /// Add all of the symbols in \p allowlist to the fusion allowlist so that
-  /// nodes with these symbols will always be fused to Glow.
-  /// Noticing this is a super allowlist which overwrites blacklist and fusion
-  /// index.
-  m.def("setFusionOverrideAllowlist",
-        [](const std::vector<std::string> &superAllowlist) {
-          auto &al = getPyTorchLoaderSettings().opOverrideAllowlist;
-          al.clear();
-          for (const auto &kind : superAllowlist) {
-            al.insert(torch::jit::Symbol::fromQualString(kind));
-          }
-        });
 
   /// Clear the fusion blacklist.
   m.def("clearFusionBlacklist",
         []() { getPyTorchLoaderSettings().opBlacklist.clear(); });
-
-  /// Clear the fusion allow.
-  m.def("clearFusionOverrideAllowlist",
-        []() { getPyTorchLoaderSettings().opOverrideAllowlist.clear(); });
 
   /// Set the index (inclusive) of the first node in the graph to fuse.
   m.def("setFusionStartIndex", [](int64_t startIndex) {
@@ -280,13 +270,4 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Disable running fusion pass in to_glow as a debug flow
   m.def("disable_debug_fuser",
         []() { getPyTorchLoaderSettings().enableDebugFuser = false; });
-
-  /// Binding wrapper class for TorchGlowTraining and its settings.
-  py::class_<TorchGlowTrainingWrapper>(m, "TorchGlowTrainingWrapper")
-      .def(py::init())
-      .def("init", &TorchGlowTrainingWrapper::init)
-      .def("train", &TorchGlowTrainingWrapper::train)
-      .def("save", &TorchGlowTrainingWrapper::save)
-      .def("parameters", &TorchGlowTrainingWrapper::setONNXWriterParameters)
-      .def("config", &TorchGlowTrainingWrapper::setTrainingConfig);
 }

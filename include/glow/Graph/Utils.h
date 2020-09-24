@@ -149,6 +149,16 @@ static bool isUniformConstant(const Constant &CN, ElemTy &val) {
   return true;
 }
 
+#ifdef WIN32
+static int
+#else
+static int __attribute__((unused))
+#endif
+getMaxDimOtherThanBatch(const llvm::ArrayRef<dim_t> &dims) {
+  return std::distance(dims.begin(),
+                       std::max_element(dims.begin() + 1, dims.end()));
+}
+
 } // namespace glow
 
 #endif // GLOW_GRAPH_UTILS_H

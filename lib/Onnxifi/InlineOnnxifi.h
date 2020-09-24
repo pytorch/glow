@@ -32,11 +32,13 @@ public:
 
   /// Init Glow graph based on the ONNX model \p onnxModel and
   /// static trained weights \p weightDescriptors. Weights can be read in later
-  /// by a \p deferedBlobReader.
+  /// by a \p deferedBlobReader. \p loadingGlowAOT specifies if the model has
+  /// already been AOT optimized via Glow.
   onnxStatus initGraph(const void *onnxModel, size_t onnxModelSize,
                        uint32_t weightCount,
                        const onnxTensorDescriptorV1 *weightDescriptors,
-                       uint32_t maxSeqLength, void *deferedBlobReader) override;
+                       uint32_t maxSeqLength, void *deferedBlobReader,
+                       bool loadingGlowAOT) override;
 
   onnxStatus run(std::unique_ptr<ExecutionContext> ctx, EventPtr outputEvent,
                  onnxTraceEventList *traceEvents) override;

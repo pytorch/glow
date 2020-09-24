@@ -29,4 +29,5 @@ class TestSigmoid(unittest.TestCase):
 
         x = torch.randn(6)
 
-        jitVsGlow(sigmoid_inplace, x, expected_fused_ops={"aten::sigmoid_"})
+        # Expect fuser to out-of-place the operator
+        jitVsGlow(sigmoid_inplace, x, expected_fused_ops={"aten::sigmoid"})

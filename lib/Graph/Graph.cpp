@@ -484,6 +484,46 @@ uint64_t Module::getConstantsSize() {
   return size;
 }
 
+/// \returns an Error if any results from \p N are non-fused quantized with
+/// scale == or != dummyScale, depending on \p expectDummy.
+static Error verifyDummyQParamResults(const Node &N, bool expectDummy) {
+  for (size_t i = 0, e = N.getNumResults(); i < e; i++) {
+    TypeRef T = N.getType(i);
+    if (T->isQuantizedType() && !T->isFusedQuantizedType()) {
+      const bool isDummy = T->getScale() == dummyScale;
+      if (expectDummy) {
+        RETURN_ERR_IF_NOT(
+            isDummy, strFormat("Expected all dummy scales, but found non-dummy "
+                               "inside Function %s: %s",
+                               N.getParent()->getName().data(),
+                               N.getDebugDesc().data()));
+      } else {
+        RETURN_ERR_IF_NOT(!isDummy,
+                          strFormat("Expected no dummy scales, but found one "
+                                    "inside Function %s: %s",
+                                    N.getParent()->getName().data(),
+                                    N.getDebugDesc().data()));
+      }
+    }
+  }
+  return Error::success();
+}
+
+Error Module::verifyDummyQParams(bool expectDummies) {
+  for (const Function *F : getFunctions()) {
+    for (const Node &N : F->getNodes()) {
+      RETURN_IF_ERR(verifyDummyQParamResults(N, expectDummies));
+    }
+  }
+  for (const Placeholder *PH : getPlaceholders()) {
+    RETURN_IF_ERR(verifyDummyQParamResults(*PH, expectDummies));
+  }
+  for (const Constant *C : getConstants()) {
+    RETURN_IF_ERR(verifyDummyQParamResults(*C, expectDummies));
+  }
+  return Error::success();
+}
+
 Function::~Function() {
   // Delete all of the nodes.
   for (auto it = nodes_.begin(), e = nodes_.end(); it != e;) {
@@ -1658,6 +1698,7 @@ ARITHMETIC_FUN_DEF(Add);
 ARITHMETIC_FUN_DEF(Mul);
 ARITHMETIC_FUN_DEF(Sub);
 ARITHMETIC_FUN_DEF(Div);
+ARITHMETIC_FUN_DEF(FloorDiv);
 ARITHMETIC_FUN_DEF(Max);
 ARITHMETIC_FUN_DEF(Min);
 ARITHMETIC_FUN_DEF(Pow);
@@ -1733,17 +1774,14 @@ MulNode *Function::createSquare(llvm::StringRef name, TypeRef outTy,
   return createMul(name, outTy, input, input);
 }
 
-PReluNode *Function::createLeakyRELU(llvm::StringRef name, NodeValue input,
-                                     float alpha) {
-  return createLeakyRELU(name, input.getType(), input, alpha);
+LeakyReluNode *Function::createLeakyRELU(llvm::StringRef name, NodeValue input,
+                                         float alpha) {
+  return addNode(new LeakyReluNode(name, input.getType(), input, alpha));
 }
 
-PReluNode *Function::createLeakyRELU(llvm::StringRef name, TypeRef outTy,
-                                     NodeValue input, float alpha) {
-  auto splatType = getParent()->uniqueType(*(input.getType()));
-  SplatNode *splat = createSplat(name.str() + ".alpha", splatType, alpha);
-  auto OT = getParent()->uniqueType(*outTy);
-  return createPRELU(name, input, splat, OT);
+LeakyReluNode *Function::createLeakyRELU(llvm::StringRef name, TypeRef outTy,
+                                         NodeValue input, float alpha) {
+  return addNode(new LeakyReluNode(name, outTy, input, alpha));
 }
 
 IsNaNNode *Function::createIsNaN(llvm::StringRef name, NodeValue input) {
@@ -1930,6 +1968,17 @@ BatchedAddNode *Function::createBatchedAdd(llvm::StringRef name, TypeRef outTy,
                                            NodeValue batch, NodeValue slice) {
   return addNode(
       new BatchedAddNode(name, getParent()->uniqueType(*outTy), batch, slice));
+}
+
+BatchedMulNode *Function::createBatchedMul(llvm::StringRef name,
+                                           NodeValue batch, NodeValue slice) {
+  return addNode(new BatchedMulNode(name, batch.getType(), batch, slice));
+}
+
+BatchedMulNode *Function::createBatchedMul(llvm::StringRef name, TypeRef outTy,
+                                           NodeValue batch, NodeValue slice) {
+  return addNode(
+      new BatchedMulNode(name, getParent()->uniqueType(*outTy), batch, slice));
 }
 
 CumSumNode *Function::createCumSum(llvm::StringRef name, NodeValue input,
@@ -2419,6 +2468,19 @@ ArgMinNode *Function::createArgMin(llvm::StringRef name, NodeValue input,
   ShapeVector outDims = reduceDims(input.dims(), {axis}, keepDims);
   auto OT = getParent()->uniqueType(elemTy, outDims);
   return addNode(new ArgMinNode(name, OT, input, axis, keepDims));
+}
+
+VectorNormNode *Function::createVectorNorm(llvm::StringRef name,
+                                           NodeValue input, unsigned_t axis,
+                                           unsigned_t p) {
+  auto outDims = getNewShapeWithoutAxes(input.dims(), axis);
+  auto outTy = getParent()->uniqueTypeWithNewShape(input.getType(), outDims);
+  const size_t outNumElements = input.getType()->size() / input.dims()[axis];
+  (void)outNumElements;
+  assert(outTy->size() == outNumElements &&
+         "Incorrect number of elements in the output type.");
+  auto OT = getParent()->uniqueType(*outTy);
+  return addNode(new VectorNormNode(name, OT, input, axis, p));
 }
 
 GatherNode *Function::createGather(llvm::StringRef name, NodeValue data,
@@ -3641,15 +3703,19 @@ void Function::createOnnxRNN(llvm::StringRef namePrefix, NodeValue X,
            "ONNX RNN 'B' tensor size invalid!");
   }
 
-  // Validate initial_h size.
-  assert(initial_h.getNode() &&
-         "ONNX RNN input 'initial_h' is mandatory. Null provided!");
-  assert(initial_h.dims().size() == 3 &&
-         "ONNX RNN input 'initial_h' should have 2 dimensions!");
-  assert(initial_h.dims()[0] == numDirections &&
-         initial_h.dims()[1] == batchSize &&
-         initial_h.dims()[2] == hiddenSize &&
-         "ONNX RNN 'initial_h' tensor size invalid!");
+  // Validate initial_h size if given else create Splat with 0.
+  if (initial_h.getNode()) {
+    assert(initial_h.dims().size() == 3 &&
+           "ONNX RNN input 'initial_h' should have 2 dimensions!");
+    assert(initial_h.dims()[0] == numDirections &&
+           initial_h.dims()[1] == batchSize &&
+           initial_h.dims()[2] == hiddenSize &&
+           "ONNX RNN 'initial_h' tensor size invalid!");
+  } else {
+    auto splatTy = getParent()->uniqueType(
+        ElemKind::FloatTy, {numDirections, batchSize, hiddenSize});
+    initial_h = createSplat(opName + ".initial_h", splatTy, 0.0);
+  }
 
   // Validate number of activations.
   assert(activations.size() == numDirections * 1 &&
@@ -3845,15 +3911,19 @@ void Function::createOnnxGRU(llvm::StringRef namePrefix, NodeValue X,
            "ONNX GRU 'B' tensor size invalid!");
   }
 
-  // Validate initial_h size.
-  assert(initial_h.getNode() &&
-         "ONNX GRU input 'initial_h' is mandatory. Null provided!");
-  assert(initial_h.dims().size() == 3 &&
-         "ONNX GRU input 'initial_h' should have 2 dimensions!");
-  assert(initial_h.dims()[0] == numDirections &&
-         initial_h.dims()[1] == batchSize &&
-         initial_h.dims()[2] == hiddenSize &&
-         "ONNX GRU 'initial_h' tensor size invalid!");
+  // Validate initial_h size if given else create Splat with 0.
+  if (initial_h.getNode()) {
+    assert(initial_h.dims().size() == 3 &&
+           "ONNX GRU input 'initial_h' should have 2 dimensions!");
+    assert(initial_h.dims()[0] == numDirections &&
+           initial_h.dims()[1] == batchSize &&
+           initial_h.dims()[2] == hiddenSize &&
+           "ONNX GRU 'initial_h' tensor size invalid!");
+  } else {
+    auto splatTy = getParent()->uniqueType(
+        ElemKind::FloatTy, {numDirections, batchSize, hiddenSize});
+    initial_h = createSplat(opName + ".initial_h", splatTy, 0.0);
+  }
 
   // Validate number of activations.
   assert(activations.size() == numDirections * 2 &&
@@ -4122,25 +4192,33 @@ void Function::createOnnxLSTM(llvm::StringRef namePrefix, NodeValue X,
            "ONNX LSTM 'B' tensor size invalid!");
   }
 
-  // Validate initial_h size.
-  assert(initial_h.getNode() &&
-         "ONNX LSTM input 'initial_h' is mandatory. Null provided!");
-  assert(initial_h.dims().size() == 3 &&
-         "ONNX LSTM input 'initial_h' should have 2 dimensions!");
-  assert(initial_h.dims()[0] == numDirections &&
-         initial_h.dims()[1] == batchSize &&
-         initial_h.dims()[2] == hiddenSize &&
-         "ONNX LSTM 'initial_h' tensor size invalid!");
+  // Validate initial_h size if given else create Splat with 0.
+  if (initial_h.getNode()) {
+    assert(initial_h.dims().size() == 3 &&
+           "ONNX LSTM input 'initial_h' should have 2 dimensions!");
+    assert(initial_h.dims()[0] == numDirections &&
+           initial_h.dims()[1] == batchSize &&
+           initial_h.dims()[2] == hiddenSize &&
+           "ONNX LSTM 'initial_h' tensor size invalid!");
+  } else {
+    auto splatTy = getParent()->uniqueType(
+        ElemKind::FloatTy, {numDirections, batchSize, hiddenSize});
+    initial_h = createSplat(opName + ".initial_h", splatTy, 0.0);
+  }
 
-  // Validate initial_c size.
-  assert(initial_c.getNode() &&
-         "ONNX LSTM input 'initial_c' is mandatory. Null provided!");
-  assert(initial_c.dims().size() == 3 &&
-         "ONNX LSTM input 'initial_c' should have 2 dimensions!");
-  assert(initial_c.dims()[0] == numDirections &&
-         initial_c.dims()[1] == batchSize &&
-         initial_c.dims()[2] == hiddenSize &&
-         "ONNX LSTM 'initial_c' tensor size invalid!");
+  // Validate initial_c size if given else create Splat with 0.
+  if (initial_c.getNode()) {
+    assert(initial_c.dims().size() == 3 &&
+           "ONNX LSTM input 'initial_c' should have 2 dimensions!");
+    assert(initial_c.dims()[0] == numDirections &&
+           initial_c.dims()[1] == batchSize &&
+           initial_c.dims()[2] == hiddenSize &&
+           "ONNX LSTM 'initial_c' tensor size invalid!");
+  } else {
+    auto splatTy = getParent()->uniqueType(
+        ElemKind::FloatTy, {numDirections, batchSize, hiddenSize});
+    initial_c = createSplat(opName + ".initial_c", splatTy, 0.0);
+  }
 
   // Validate P size.
   if (P.getNode()) {
@@ -4776,9 +4854,9 @@ MFCCNode *Function::createMFCC(llvm::StringRef name, NodeValue spectrogram,
 ROIAlignNode *
 Function::createROIAlign(llvm::StringRef name, NodeValue featureMap,
                          NodeValue boxes, NodeValue batchIndices,
-                         std::string mode, uint32_t outputHeight,
-                         uint32_t outputWidth, uint32_t samplingRatio,
-                         float spatialScale, bool aligned, bool rotated) {
+                         uint32_t outputHeight, uint32_t outputWidth,
+                         uint32_t samplingRatio, float spatialScale,
+                         bool aligned, bool rotated, PoolingMode mode) {
   auto featureMapDims = featureMap.dims();
   auto boxesDims = boxes.dims();
   std::vector<dim_t> outDim = {boxesDims[0], outputHeight, outputWidth,
@@ -5501,8 +5579,7 @@ bool Function::verify(const Backend *backend) const {
   // dependencies that may not be honored by the scheduler.
   // Either the input IR is incorrect or the scheduler needs
   // fixing.
-  for (const std::pair<const Placeholder *, const Node *> &varToWrite :
-       placeholderWrittenTo) {
+  for (const auto &varToWrite : placeholderWrittenTo) {
     if (isa<SaveNode>(varToWrite.second)) {
       continue;
     }

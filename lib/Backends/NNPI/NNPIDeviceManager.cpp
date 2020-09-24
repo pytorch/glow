@@ -21,6 +21,7 @@
 #include "NNPICompiledFunction.h"
 #include "NNPITracing.h"
 #include "NNPIUtils.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Support/Error.h"
 #include "nnpi_inference.h"
 #include "nnpi_transformer.h"
@@ -34,20 +35,6 @@
 namespace glow {
 namespace runtime {
 
-unsigned GlowNNPIMemory = 0;
-unsigned GlowNNPITimeout = 0;
-
-static llvm::cl::opt<unsigned, /* ExternalStorage */ true>
-    GlowNNPIMemoryOpt("glow-nnpi-memory",
-                      llvm::cl::desc("Override the amount of DRAM to allocate "
-                                     "per NNPI device, in kilobytes"),
-                      llvm::cl::location(GlowNNPIMemory));
-static llvm::cl::opt<unsigned, /* ExternalStorage */ true> GlowNNPITimeoutOpt(
-    "glow-nnpi-timeout",
-    llvm::cl::desc("Timeout threshold for inferecnce in microseconds. "
-                   "Default 0 means infinity"),
-    llvm::cl::location(GlowNNPITimeout));
-
 DeviceManager *createNNPIDeviceManager(const DeviceConfig &config,
                                        NNPIAdapterContainer *adapter) {
   std::shared_ptr<NNPIDeviceOptions> deviceOptions =
@@ -57,14 +44,14 @@ DeviceManager *createNNPIDeviceManager(const DeviceConfig &config,
     LOG(ERROR) << "Adapter allocation failed";
     return nullptr;
   }
-  if (GlowNNPITimeoutOpt != 0) {
+  if (GlowNNPITimeout != 0) {
     deviceOptions->inferTimeout = GlowNNPITimeout;
   }
   return new NNPIDeviceManager(config, deviceOptions, adapter);
 }
 
 // 1K bytes.
-static constexpr uint64_t KB = 1 << 10;
+static constexpr uint64_t KB = 1000;
 
 //////////////////////////////////////////////////////////////////////////
 std::atomic<RunIdentifierTy> NNPIDeviceManager::runIdentifier_;
@@ -353,7 +340,10 @@ Error NNPIDeviceManager::bindContext(std::string functionName,
                   "Invalid function name.");
   std::shared_ptr<InferenceContext> infCtx(
       inferencePools_.at(functionName).createDetachedInferenceContext(phUsage));
-  ASSERT_WITH_MSG(infCtx, "Failed to create detached context");
+  ASSERT_WITH_MSG(
+      infCtx, "Failed to create detached context; NNPIDeviceManager status: " +
+                  getStatusStr() +
+                  "; with NNPIDeviceOptions: " + deviceOptions_->dumpStatus());
 
   // Set the inference context into NNPIDeviceBinding and store in the ExCtx.
   ctx->setDeviceBindings(std::make_unique<NNPIDeviceBindings>(infCtx));
@@ -391,6 +381,21 @@ void NNPIDeviceManager::freeAllocatedDeviceIOBuffer(void *buffer) {
   } else {
     return DeviceManager::freeAllocatedDeviceIOBuffer(buffer);
   }
+}
+
+std::string NNPIDeviceManager::getStatusStr() const {
+  std::stringstream stream;
+  stream << "MaximumMemory: \"" << getMaximumMemory() << '"';
+  stream << ", AvailableMemory: \"" << getAvailableMemory() << '"';
+  stream << ", DeviceID: \"" << deviceId_ << '"';
+  stream << ", Functions: {";
+  for (const auto &func : functions_) {
+    stream << func.first << ",";
+  }
+  stream << "}, ";
+  stream << ", FunctionCost: \"" << functionCost_ << '"';
+  stream << ", RunIdentifier: \"" << runIdentifier_ << '"';
+  return stream.str();
 }
 
 } // namespace runtime

@@ -84,9 +84,13 @@ public:
 // Input's shape and type
 struct InputMeta {
   c10::ScalarType type;
-  std::vector<glow::dim_t> dims;
+  std::vector<glow::sdim_t> dims;
 
-  InputMeta(c10::ScalarType type_, std::vector<glow::dim_t> &&dims_) {
+  InputMeta(c10::ScalarType type_, std::vector<glow::sdim_t> &&dims_) {
+    type = type_;
+    dims = dims_;
+  }
+  InputMeta(c10::ScalarType type_, const std::vector<glow::sdim_t> &dims_) {
     type = type_;
     dims = dims_;
   }
@@ -112,11 +116,12 @@ private:
   /// during loading.
   std::unordered_map<const torch::jit::Value *, ValueMapping> valueMap_;
 
-  std::unordered_map<const torch::jit::Value *, torch::jit::IValue> qparamsMap_;
+  /// Reverse of valueMap_, mapping from Glow NodeValues to their
+  /// corresponding PyTorch Values.
+  std::unordered_map<glow::NodeValue, const torch::jit::Value *>
+      valueMapReverse_;
 
-  /// Flags if the memory held by aten::Constants of Tensor type should be
-  /// copied.
-  const bool copyTensorMemory_;
+  std::unordered_map<const torch::jit::Value *, torch::jit::IValue> qparamsMap_;
 
   /// Values in the MappingOfMemberFunctions map. These values contain the
   /// information necessary to load PyTorch nodes such as which
@@ -192,17 +197,6 @@ public:
                const at::ArrayRef<torch::jit::IValue> inputs,
                const std::vector<InputMeta> &inputMeta);
 
-  /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, \p inputs
-  /// as graph external inputs, and \parameters as known tensors. Output
-  /// parameters \p inputPlaceholders and \p outputPlaceholders are filled out.
-  /// \returns error on failure.
-  static Error loadJITGraphForOnnxTraining(
-      glow::Function &F, const torch::jit::Graph &graph,
-      const at::ArrayRef<torch::jit::IValue> inputs,
-      const std::vector<torch::jit::IValue> &parameters,
-      std::vector<glow::Placeholder *> &inputPlaceholders,
-      std::vector<glow::Placeholder *> &outputPlaceholders);
-
 private:
   /// Takes a glow::Function \p F, a jit::Graph \p graph to load, and a
   /// stack of \p inputs for the graph to be loaded. Parameter \p settings
@@ -215,17 +209,6 @@ private:
                      Error &error, const PyTorchLoaderSettings &settings,
                      const at::ArrayRef<torch::jit::IValue> inputs,
                      const std::vector<InputMeta> &inputMeta = {});
-
-  /// Takes a glow::Function \p F, a jit::Graph \p graph to load, and a
-  /// graph \p inputs and placeholders \p parameters. Output parameters \p
-  /// inputPlaceholders and \p outputPlaceholders are filled out.
-  /// This is only used by loadJITGraphForOnnxTraining.
-  PyTorchModelLoader(glow::Function &F, const torch::jit::Graph &graph,
-                     const std::vector<torch::jit::IValue> &parameters,
-                     std::vector<glow::Placeholder *> &inputPlaceholders,
-                     std::vector<glow::Placeholder *> &outputPlaceholders,
-                     Error &error,
-                     const at::ArrayRef<torch::jit::IValue> inputs);
 
   /// Build mapping from jit symbols to function that loads nodes of that kind.
   static const MappingOfMemberFunctions buildSymbolsMapping();
@@ -268,7 +251,8 @@ public:
                               const torch::jit::Value *src);
 
   /// Remove any ValueMapping associated with \p value.
-  void removeValueMapping(const torch::jit::Value *value);
+  /// \returns error on failure.
+  Error removeValueMapping(const torch::jit::Value *value);
 
   /// Returns true if a Glow NodeValue has been created for a given PyTorch
   /// Value \p value.
@@ -368,6 +352,9 @@ private:
   // \returns error on failure.
   Error loadEmbeddingBag(const torch::jit::Node *ptNode);
 
+  /// Load a _caffe2::BatchPermutation node.
+  Error loadBatchPermutation(const torch::jit::Node *ptNode);
+
   // Load a PyTorch fb::embedding_bag_byte_rowwise_offsets node.
   // \returns error on failure.
   Error loadEmbeddingBagByteRowwiseOffsets(const torch::jit::Node *ptNode);
@@ -386,6 +373,10 @@ private:
   // Load a PyTorch _caffe2::RoIAlign op.
   // \returns error on failure.
   Error loadRoiAlign(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch _caffe2::RoIAlignRotated op.
+  // \returns error on failure.
+  Error loadRoiAlignRotated(const torch::jit::Node *ptNode);
 
   // Load a PyTorch _caffe2::BBoxTransform op.
   // \returns error on failure.
@@ -442,6 +433,10 @@ private:
   /// \returns error on failure.
   Error loadDiv(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch floor div node.
+  /// \returns error on failure.
+  Error loadFloorDiv(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch add node.
   /// \returns error on failure.
   Error loadAdd(const torch::jit::Node *ptNode);
@@ -461,6 +456,10 @@ private:
   /// Load a PyTorch floor node.
   /// \returns error on failure.
   Error loadFloor(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch ceil node.
+  /// \returns error on failure.
+  Error loadCeil(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch relu node.
   /// \returns error on failure.
@@ -508,6 +507,10 @@ private:
   /// \returns error on failure.
   Error loadBatchNorm(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch vector_norm node.
+  /// \returns error on failure.
+  Error loadNorm(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch quantized::batch_norm2d node.
   /// \returns error on failure.
   Error loadQuantizedBatchNorm2d(const torch::jit::Node *ptNode);
@@ -536,6 +539,10 @@ private:
   /// \return error on failure.
   Error loadQuantizedAddRelu(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch quantized::mul node.
+  /// \return error on failure.
+  Error loadQuantizedMul(const torch::jit::Node *ptNode);
+
   /// Load a glow::unpacked_quantized_conv node.
   // \return error on failure.
   Error loadQuantizedConvUnpacked(const torch::jit::Node *ptNode);
@@ -544,6 +551,10 @@ private:
 
   Error loadQuantizedConvUnpackedImpl(const torch::jit::Node *ptNode,
                                       bool isRelu = false);
+
+  /// Load a PyTorch _caffe2::RoIAlign op or if \p isRotated is true then a
+  /// _caffe2::RoIAlignRotated op.
+  Error loadRoiAlignImpl(const torch::jit::Node *ptNode, bool isRotated);
 
   /// Load a PyTorch quantized::conv2d node.
   // \return error on failure.

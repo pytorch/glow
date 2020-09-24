@@ -67,4 +67,5 @@ class TestMaskedFill(unittest.TestCase):
         x = torch.randn([3])
         m = torch.tensor([True, False, True], dtype=torch.bool)
 
-        jitVsGlow(masked_fill, x, m, expected_fused_ops={"aten::masked_fill_"})
+        # Expect fuser to out-of-place the operator
+        jitVsGlow(masked_fill, x, m, expected_fused_ops={"aten::masked_fill"})

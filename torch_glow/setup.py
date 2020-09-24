@@ -119,6 +119,7 @@ class cmake_build(setuptools.Command):
                 "-DCMAKE_BUILD_RTTI=ON",
                 "-DGLOW_BUILD_PYTORCH_INTEGRATION=ON",
                 "-DGLOW_BUILD_EXAMPLES=OFF",
+                "-DGLOW_BUILD_TESTS=OFF",
                 "-DBUILD_SHARED_LIBS=OFF",
                 "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
                 "-DCMAKE_BUILD_TYPE={}".format("Release" if args.release else "Debug"),

@@ -17,6 +17,7 @@
 #include "glow/Runtime/HostManager/HostManager.h"
 #include "glow/Backends/DeviceManager.h"
 #include "glow/Exporter/ONNXModelWriter.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Partitioner/Partitioner.h"
@@ -56,14 +57,6 @@ llvm::cl::opt<std::string> loadBackendSpecificOptionsOpt(
 } // namespace
 
 namespace glow {
-namespace runtime {
-bool GlowEnableP2P = false;
-bool GlowEnableDRT = false;
-std::string GlowDumpGraphPath = "./";
-unsigned GlowDeviceInitTimeoutMs = 5000;
-std::string GlowAvailableDevices = "";
-} // namespace runtime
-} // namespace glow
 
 #if FACEBOOK_INTERNAL
 Error optimizeDAG(DAGListTy &nodeList, const Provisioner &provisioner,
@@ -71,6 +64,7 @@ Error optimizeDAG(DAGListTy &nodeList, const Provisioner &provisioner,
                   CompilationContext &cctx,
                   ConstantFoldingRecordMap &constFoldRecord);
 #endif /* FACEBOOK_INTERNAL */
+} // namespace glow
 
 /// The device configs file used for Runtime.
 llvm::cl::opt<std::string> loadDeviceConfigsFileOpt(
@@ -92,22 +86,6 @@ llvm::cl::opt<bool, /* ExternalStorage */ true>
               llvm::cl::Optional,
               llvm::cl::location(glow::runtime::GlowEnableP2P),
               llvm::cl::cat(hostManagerCat));
-
-/// The value that should be used for device initialization timeout, default:
-/// 5000 milliseconds.
-llvm::cl::opt<unsigned, /* ExternalStorage */ true> deviceInitTimeout(
-    "glow_device_init_timeout_ms",
-    llvm::cl::desc("Set device init timout in milliseconds"),
-    llvm::cl::Optional,
-    llvm::cl::location(glow::runtime::GlowDeviceInitTimeoutMs),
-    llvm::cl::cat(hostManagerCat));
-
-/// Set which devices are available to add a network to.
-llvm::cl::opt<std::string, true> GlowAvailableDevicesOpt(
-    "glow-available-devices",
-    llvm::cl::desc("Comma separated list of devices which "
-                   "should be used, example 2,3,4"),
-    llvm::cl::location(GlowAvailableDevices), llvm::cl::cat(hostManagerCat));
 
 HostManager::HostManager() : HostManager(HostConfig{}) {}
 
@@ -248,6 +226,7 @@ void HostManager::exportMemoryCounters() {
 }
 
 HostManager::~HostManager() {
+  LOG(INFO) << "Destroying host manager...";
   ERR_TO_VOID(clearHost());
   exportMemoryCounters();
 }
@@ -336,9 +315,10 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
 
   // Optimize Functions only if we don't have any backendSpecificNodeInfo,
   // because if we do then the Functions were already optimized and Nodes had
-  // extra info mapped to them, so we don't want to mutate the Function.
+  // extra info mapped to them, so we don't want to mutate the Function. Also
+  // skip optimizations if we're loading an AOT optimized model.
   const bool skipOptimizations =
-      cctx.backendOpts.backendSpecificNodeInfo.size() > 0;
+      cctx.loadingAOTModel || !cctx.backendOpts.backendSpecificNodeInfo.empty();
 
   // Flag to check whether we are in profiling mode.
   bool profilingMode =
@@ -400,6 +380,14 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     executor_.reset(new ThreadPoolExecutor(devices_, config_.executorThreads));
   }
 
+  // Now that we've partitioned and optimized, do some verification based on the
+  // dummy mode we're using, if any.
+  if (cctx.precisionConfig.replaceDummyTQPs ||
+      cctx.precisionConfig.loadUniquedDummyQParams) {
+    RETURN_IF_ERR(module->verifyDummyQParams(
+        cctx.precisionConfig.loadUniquedDummyQParams));
+  }
+
   // If we prevented constant modification then run constant folding with
   // recording now. Record so that if we are going to serialize we can embed the
   // constant folding subgraphs in the Glow ONNX model.
@@ -427,36 +415,38 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     }
   }
 
-  if (cctx.callDAGOptimizer) {
+  if (!cctx.loadingAOTModel) {
+    if (cctx.callDAGOptimizer) {
 #if FACEBOOK_INTERNAL
-    auto optDagErr =
-        optimizeDAG(nodeList, *provisioner_, *module, deviceInfo, cctx, record);
-    if (optDagErr) {
-      std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
-      cleanupAddNetwork(names);
-      return optDagErr;
-    }
+      auto optDagErr = optimizeDAG(nodeList, *provisioner_, *module, deviceInfo,
+                                   cctx, record);
+      if (optDagErr) {
+        std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+        cleanupAddNetwork(names);
+        return optDagErr;
+      }
 #endif /* FACEBOOK_INTERNAL */
-  } else {
-    // If not using the DAG optimizer, iterate over the DAGs and call
-    // transformPostOptPipeline() on the Functions.
-    for (const auto &dag : nodeList) {
-      for (auto &dagNode : dag.nodes) {
-        Function *F = module->getFunction(dagNode->name);
-        RETURN_ERR_IF_NOT(
-            F, strFormat("Function %s not found", dagNode->name.data()));
+    } else {
+      // If not using the DAG optimizer, iterate over the DAGs and call
+      // transformPostOptPipeline() on the Functions.
+      for (const auto &dag : nodeList) {
+        for (auto &dagNode : dag.nodes) {
+          Function *F = module->getFunction(dagNode->name);
+          RETURN_ERR_IF_NOT(
+              F, strFormat("Function %s not found", dagNode->name.data()));
 
-        if (cctx.optimizationOpts.onlyLowerFuns.count(F)) {
-          continue;
+          if (cctx.optimizationOpts.onlyLowerFuns.count(F)) {
+            continue;
+          }
+
+          Backend &B = provisioner_->getBackend(dagNode->backendName);
+          RETURN_IF_EXPECTED_IS_ERR(B.transformPostOptPipeline(F, cctx));
+
+          RETURN_ERR_IF_NOT(
+              B.verify(*F, cctx.verboseCompile),
+              "Unsupported node(s) found after transformPostOptPipeline() " +
+                  F->getName().str() + " for backend " + B.getBackendName());
         }
-
-        Backend &B = provisioner_->getBackend(dagNode->backendName);
-        RETURN_IF_EXPECTED_IS_ERR(B.transformPostOptPipeline(F, cctx));
-
-        RETURN_ERR_IF_NOT(
-            B.verify(*F, cctx.verboseCompile),
-            "Unsupported node(s) found after transformPostOptPipeline() " +
-                F->getName().str() + " for backend " + B.getBackendName());
       }
     }
   }
@@ -464,21 +454,51 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   // If requested, serialize the resulting DAG that was just optimized and
   // partitioned.
   if (cctx.serializeCompiledDAG) {
-    std::string loc = nodeList.begin()->root->name + ".onnxtxt";
+    std::string loc;
+    char *envSpecifiedSerializationPath = getenv("GLOW_DAG_SERIALIZATION_LOC");
+    if (!envSpecifiedSerializationPath) {
+      loc = nodeList.begin()->root->name + ".onnxtxt";
+    } else {
+      loc = std::string(envSpecifiedSerializationPath);
+    }
+
     LOG(INFO) << "Serializing final compiled DAG to " << loc;
     {
-      // Pass in any types we loaded originally from static PHs.
-      const std::map<std::string, Type> *staticPHTypesPtr =
-          cctx.deferredWeightLoader ? &cctx.deferredWeightLoader->getTypeInfo()
-                                    : nullptr;
+      llvm::StringMap<std::string> extraMetadataProps;
+      if (cctx.precisionConfig.originNameToTQPMap) {
+        RETURN_IF_ERR(ONNXModelWriter::insertLoaderNameUniqueOffsetMetadata(
+            extraMetadataProps, *cctx.precisionConfig.originNameToTQPMap));
+      }
       Error writeErr = Error::empty();
-      ONNXModelWriter onnxWR(loc, nodeList, 7, 9, &writeErr,
-                             /* textMode */ true, /* zipMode */ false,
-                             /* includeConstantData */ false,
-                             /* extraMetadataProps */ {}, record,
-                             cctx.backendOpts.backendSpecificNodeInfo,
-                             &cctx.loadedPHNames, staticPHTypesPtr);
+      ONNXModelWriter onnxWR(
+          loc, nodeList, 7, 9, &writeErr,
+          /* textMode */ true, /* zipMode */ false,
+          /* includeConstantData */ false, extraMetadataProps, record,
+          cctx.backendOpts.backendSpecificNodeInfo, &cctx.loadedPHNames,
+          &cctx.staticPlaceholderTypesForAOT);
       RETURN_IF_ERR(writeErr);
+    }
+
+    // If we're using AOT DAG optimizer then skip provisioning.
+    if (cctx.callDAGOptimizer && cctx.useDAGOptimizerAOTMode) {
+      LOG(INFO) << "Skipping provisioning because DAG optimizer and AOT mode "
+                   "were enabled.";
+      {
+        std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
+        cleanupAddNetwork(names);
+      }
+      debugDumpDAGGuard.dismiss();
+      cleanupConstantFolding(*module, record);
+      if (cctx.dumpFinalGraph) {
+        for (Function *F : module->getFunctions()) {
+          auto fname =
+              strFormat("%sfinal_graph_aot_%s.dot", cctx.dumpGraphPath.c_str(),
+                        F->getName().data());
+          LOG(INFO) << "Dumping final graph to " << fname;
+          F->dumpDAG(fname);
+        }
+      }
+      return Error::success();
     }
   }
 

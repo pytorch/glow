@@ -22,12 +22,17 @@
 #include "GlowFuser.h"
 #include "PyTorchModelLoader.h"
 #include "Registration.h"
+#include "ShapeInferenceEngine.h"
 
 #include "torch/csrc/jit/passes/canonicalize_graph_fuser_ops.h"
 #include <torch/csrc/jit/passes/pass_manager.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
 #include <torch/csrc/jit/runtime/graph_executor.h>
 #include <torch/csrc/jit/runtime/operator_options.h>
+
+#include "torch/csrc/jit/ir/irparser.h"
+
+#include <torch/script.h>
 
 DEFINE_string(torch_glow_backend, "Interpreter",
               "Glow backend used for torchifi");
@@ -53,7 +58,6 @@ DEFINE_bool(convertConstantsToFP16, true, "See PyTorchLoaderSettings");
 DEFINE_bool(forceFP16AccumSLS, true, "See PyTorchLoaderSettings");
 
 DEFINE_string(opBlacklist, "", "See PyTorchLoaderSettings");
-DEFINE_string(opOverrideAllowlist, "", "See PyTorchLoaderSettings");
 DEFINE_int32(replicationCount, 1, "Number of replications on each device");
 DEFINE_bool(writeToOnnx, false, "See PyTorchLoaderSettings");
 DEFINE_bool(onnxZipMode, false, "See PyTorchLoaderSettings");
@@ -64,6 +68,9 @@ DEFINE_bool(runShapeInference, false, "See PyTorchLoaderSettings");
 DEFINE_int32(fusionStartIndex, -1, "See PyTorchLoaderSettings");
 DEFINE_int32(fusionEndIndex, -1, "See PyTorchLoaderSettings");
 DEFINE_bool(setIncludeLastOffsets, true, "See PyTorchLoaderSettings");
+DEFINE_bool(inferShapeForCompilation, false,
+            "Infer shape for the entire model for compilation");
+DEFINE_bool(enableRemoveMutation, true, "See PyTorchLoaderSettings");
 
 namespace glow {
 
@@ -252,6 +259,8 @@ void PyTorchLoaderSettings::initSettings() {
   fusionStartIndex = FLAGS_fusionStartIndex;
   fusionEndIndex = FLAGS_fusionEndIndex;
   setIncludeLastOffsets = FLAGS_setIncludeLastOffsets;
+  inferShapeForCompilation = FLAGS_inferShapeForCompilation;
+  enableRemoveMutation = FLAGS_enableRemoveMutation;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
@@ -320,7 +329,6 @@ PyTorchLoaderSettings::PyTorchLoaderSettings(
   TRY_LOAD_INT_FROM_DICT(replicationCount, dict);
   TRY_LOAD_BOOL_FROM_DICT(preCompilePyTorchModule, dict);
   TRY_LOAD_BOOL_FROM_DICT(fusionPassEnabled, dict);
-  TRY_LOAD_BOOL_FROM_DICT(weightFreezingEnabled, dict);
   TRY_LOAD_BOOL_FROM_DICT(dumpGlowDag, dict);
   TRY_LOAD_INT_FROM_DICT(minFusionGroupSize, dict);
   TRY_LOAD_INT_FROM_DICT(maxFusionMergeSize, dict);
@@ -328,6 +336,7 @@ PyTorchLoaderSettings::PyTorchLoaderSettings(
   TRY_LOAD_INT_FROM_DICT(fusionEndIndex, dict);
   TRY_LOAD_BOOL_FROM_DICT(dumpFinalGlowGraph, dict);
   TRY_LOAD_BOOL_FROM_DICT(enableGlowTracing, dict);
+  TRY_LOAD_BOOL_FROM_DICT(enableRemoveMutation, dict);
   TRY_LOAD_INT_FROM_DICT(numTracesPerDump, dict);
   TRY_LOAD_BOOL_FROM_DICT(writeToOnnx, dict);
   TRY_LOAD_BOOL_FROM_DICT(onnxZipMode, dict);
@@ -337,6 +346,7 @@ PyTorchLoaderSettings::PyTorchLoaderSettings(
   TRY_LOAD_INT_FROM_DICT(numDevices, dict);
   TRY_LOAD_BOOL_FROM_DICT(runShapeInference, dict);
   TRY_LOAD_BOOL_FROM_DICT(setIncludeLastOffsets, dict);
+  TRY_LOAD_BOOL_FROM_DICT(inferShapeForCompilation, dict);
   TRY_LOAD_BOOL_FROM_DICT(enableDebugFuser, dict);
   if (dict.contains("opBlacklist")) {
     std::string commaSepOpsList = dict.at("opBlacklist");
@@ -389,11 +399,11 @@ PyTorchLoaderSettings::serializeToDict() const {
   INSERT_INT_TO_DICT(replicationCount, dict);
   INSERT_BOOL_TO_DICT(preCompilePyTorchModule, dict);
   INSERT_BOOL_TO_DICT(fusionPassEnabled, dict);
-  INSERT_BOOL_TO_DICT(weightFreezingEnabled, dict);
   INSERT_BOOL_TO_DICT(dumpGlowDag, dict);
   INSERT_INT_TO_DICT(minFusionGroupSize, dict);
   INSERT_INT_TO_DICT(maxFusionMergeSize, dict);
   INSERT_INT_TO_DICT(fusionStartIndex, dict);
+  INSERT_BOOL_TO_DICT(enableRemoveMutation, dict);
   INSERT_INT_TO_DICT(fusionEndIndex, dict);
   INSERT_BOOL_TO_DICT(dumpFinalGlowGraph, dict);
   INSERT_BOOL_TO_DICT(enableGlowTracing, dict);
@@ -440,12 +450,11 @@ const c10::Symbol &getGlowSymbol() {
 }
 
 c10::Symbol getGlowSymbol(std::shared_ptr<torch::jit::Graph> g) {
+  std::string symbol = "glow::FusionGroup";
   if (g) {
-    return at::Symbol::fromQualString(strFormat(
-        "glow::FusionGroup_%lu", reinterpret_cast<uint64_t>(g.get())));
-  } else {
-    return at::Symbol::fromQualString("glow::FusionGroup");
+    symbol += strFormat("_%lu", reinterpret_cast<uint64_t>(g.get()));
   }
+  return at::Symbol::fromQualString(symbol);
 }
 
 glow::Type ptTypeToGlowType(const c10::TensorType &ptType) {
@@ -569,17 +578,16 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
   }
 }
 
-std::shared_ptr<std::vector<glow::InputMeta>>
-loadInputMeta(const std::string &raw_data) {
+std::vector<glow::InputMeta> loadInputMeta(const std::string &raw_data) {
   if (raw_data.empty()) {
-    return nullptr;
+    return {};
   }
-  auto inputMeta = std::make_shared<std::vector<glow::InputMeta>>();
+  auto inputMeta = std::vector<glow::InputMeta>();
   std::stringstream ss_raw(raw_data);
 
   std::string line;
   while (std::getline(ss_raw, line)) {
-    std::vector<size_t> dims;
+    std::vector<glow::sdim_t> dims;
     std::stringstream ss(line);
     ss.ignore();
     for (int i; ss >> i;) {
@@ -590,12 +598,121 @@ loadInputMeta(const std::string &raw_data) {
     }
     std::getline(ss_raw, line);
     c10::ScalarType t = static_cast<c10::ScalarType>(std::stoi(line));
-    inputMeta->emplace_back(t, std::move(dims));
+    inputMeta.emplace_back(t, std::move(dims));
   }
   return inputMeta;
 }
 
+// Similar to glowAOTFusion() however supports multiple Glow subgraphs and
+// runners. We'd still need both since in some cases we may not be able to infer
+// the entire model and would leverage glowAOTFusion() to run the partially
+// lowered model.
+void glowAOTFusionWithShapeInference(
+    torch::jit::Module &model, const std::vector<glow::InputMeta> &inputMeta) {
+  glow::PyTorchLoaderSettings &glowLoaderSettings =
+      glow::getPyTorchLoaderSettings();
+  glowLoaderSettings.preCompilePyTorchModule = true;
+
+  auto graph = model.get_method("forward").function().graph();
+
+  // fuse ListUnpack and Chunk into ConstantChunk. Put it here to work around
+  // some JIT serialization/deserialization problem.
+  torch::jit::CanonicalizeOps(graph);
+
+  // create some fake inputs to run shape inference.
+  // Usually users provide one set of inputs for the entire
+  // model and expect the model can be lowered. However there
+  // are cases where we cannot lower the entire model.
+  // There could be multiple fused graphs and the inputs to
+  // each fused graph could be different from the inputMeta user
+  // provided. Therefore we leverage shape inference to populate
+  // shape and type information over the entire model so we
+  // could lower whatever we want.
+  std::vector<torch::jit::IValue> inputs;
+  for (const auto &i : inputMeta) {
+    inputs.push_back(
+        torch::empty(i.dims, torch::TensorOptions().dtype(i.type)));
+  }
+
+  const at::ArrayRef<torch::jit::IValue> inputRefs(inputs);
+
+  // The base symbol of all.
+  std::string baseSymbol = glow::getGlowSymbol(nullptr).toQualString();
+
+  // There could be multiple glow fusion nodes created.
+  glow::glowCustomFuse(graph);
+
+  ShapeInferenceEngine shapeInf(*graph, inputRefs, baseSymbol);
+  auto e = shapeInf.run();
+  if (e) {
+    LOG(ERROR) << ERR_TO_STRING(std::move(e));
+  }
+
+  const auto &shapeMap = shapeInf.getVariableMap();
+
+  // this is a fuser subgraph to lower
+  std::shared_ptr<torch::jit::Graph> subgraph;
+
+  // Create one cachingGraphRunner for each fused graph.
+  for (auto *node : graph->nodes()) {
+    std::string kind = node->kind().toQualString();
+
+    if (kind == baseSymbol) { // Found a match
+      assert(node->hasAttribute(torch::jit::attr::Subgraph));
+      subgraph = node->g(torch::jit::attr::Subgraph);
+      // Find the index of this fusion node
+      int idx = findIndex(node);
+
+      // create the graph runner and warm its cache, this graph runner will be
+      // picked up during operator registration
+      // All Glow fusion nodes would have the same kind and there isn't a good
+      // native way to differentiate them at runtime. Therefore we scan the
+      // graph containing Glow fusion nodes and index each of them. The index
+      // would be used as part of the key to find corresponding
+      // cachingGraphRunner.
+      auto runner =
+          glow::setGraphRunnerForKey(kind + std::to_string(idx), [subgraph] {
+            return std::make_unique<glow::CachingGraphRunner>(
+                subgraph, glow::getHostManager(),
+                glow::getPyTorchLoaderSettings());
+          });
+
+      std::vector<glow::InputMeta> perGraphInputMeta;
+      auto graphInputValues = subgraph->inputs();
+
+      for (size_t i = 0; i < graphInputValues.size(); ++i) {
+        const torch::jit::Value *inputValue = graphInputValues[i];
+        auto itr = shapeMap.find(inputValue);
+        if (itr == shapeMap.end()) {
+          LOG(ERROR) << "Node " << node->kind().toQualString() << " input " << i
+                     << " Not found in the shape map!";
+        }
+        perGraphInputMeta.emplace_back(itr->second.dtype, itr->second.shape);
+      }
+
+      e = runner->warmCache(perGraphInputMeta, runner->getSettings(),
+                            /*useMaxSizeCompilation*/ true);
+      if (e) {
+        // If the graph is already compiled previously, warmCache() will report
+        // an error but it is fine with our execution. So here we extract the
+        // error only.
+        LOG(ERROR) << ERR_TO_STRING(std::move(e));
+      }
+    }
+  }
+  if (!subgraph) {
+    // at least one
+    LOG(ERROR) << "Cannot create a Glow fusion subgraph";
+  }
+}
+
 void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr) {
+  auto inputMeta = glow::loadInputMeta(inputMetaStr);
+
+  if (FLAGS_inferShapeForCompilation) {
+    return glowAOTFusionWithShapeInference(model, inputMeta);
+  }
+
   glow::PyTorchLoaderSettings &glowLoaderSettings =
       glow::getPyTorchLoaderSettings();
   glowLoaderSettings.preCompilePyTorchModule = true;
@@ -632,9 +749,7 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr) {
         subgraph, glow::getHostManager(), glow::getPyTorchLoaderSettings());
   });
 
-  auto inputMeta = glow::loadInputMeta(inputMetaStr);
-
-  auto e = runner->warmCache(*inputMeta, runner->getSettings(),
+  auto e = runner->warmCache(inputMeta, runner->getSettings(),
                              /*useMaxSizeCompilation*/ true);
   if (e) {
     // If the graph is already compiled previously, warmCache() will report

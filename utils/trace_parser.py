@@ -130,8 +130,8 @@ def loadEvents(filename, runtimeEvents, fixedEvent, skip):
 
 
 def stackEvents(events):
-    """ Find all enclosed events and move them to be children. Returns a tree of Events
-        where parents completely enclose the timeline of their children. """
+    """Find all enclosed events and move them to be children. Returns a tree of Events
+    where parents completely enclose the timeline of their children."""
     # Ensure events are sorted by time.
     events = sorted(events, key=attrgetter("end"), reverse=True)
     events = sorted(events, key=attrgetter("start"))
@@ -158,8 +158,8 @@ def stackEvents(events):
 
 
 def dumpAccumulate(events, keyfunc, traceTime):
-    """ Accumulate Event durations by a key produced by keyfunc. Keyfunc is a lambda which
-        takes an Event as a parameter. """
+    """Accumulate Event durations by a key produced by keyfunc. Keyfunc is a lambda which
+    takes an Event as a parameter."""
     nameMap = defaultdict(list)
     for ev in events:
         name = keyfunc(ev)

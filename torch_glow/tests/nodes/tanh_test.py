@@ -1,9 +1,9 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-
-from tests.utils import jitVsGlow
 import unittest
+
+import torch
+from tests.utils import jitVsGlow
 
 
 class TestTanh(unittest.TestCase):
@@ -25,4 +25,5 @@ class TestTanh(unittest.TestCase):
 
         x = torch.randn(4)
 
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::tanh_"})
+        # Expect fuser to out-of-place the operator
+        jitVsGlow(test_f, x, expected_fused_ops={"aten::tanh"})

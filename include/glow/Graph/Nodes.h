@@ -264,6 +264,9 @@ inline bool is3DData(ConvolutionLayout layout) {
   return (layout == NTHWC || layout == NCTHW);
 }
 
+/// Modes of pooling for RoiAlign operation.
+enum PoolingMode { AVG = 0, MAX };
+
 /// Activations fused into ConvolutionNode (not supported on all backends).
 enum FusedActivation { NONE = 0, RELU, TANH, SIGMOID };
 
@@ -368,6 +371,8 @@ constexpr char saveNameSignifier[] = "saveName";
 constexpr char qScaleSignifier[] = "qScale";
 constexpr char qOffsetSignifier[] = "qOffset";
 constexpr char shapeSignifier[] = "shape";
+constexpr char originNameToUniqueOffsetMappingSignifier[] =
+    "originNameToUniqueOffsetMapping";
 constexpr char constFoldSubgraphNodeName[] = "Glow__ConstFoldSubgraph";
 constexpr char staticPHDummyNodeName[] = "Glow__StaticPHDummyNode";
 

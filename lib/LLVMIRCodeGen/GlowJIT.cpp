@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "CommandLine.h"
+#include "glow/LLVMIRCodeGen/CommandLine.h"
 
 #include "glow/LLVMIRCodeGen/GlowJIT.h"
 #include "glow/Support/Debug.h"

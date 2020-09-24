@@ -28,7 +28,13 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
 
+#include <cmath>
+#include <math.h>
 #include <numeric>
+
+#ifdef WIN32
+#include <corecrt_math_defines.h>
+#endif
 
 using namespace glow;
 using llvm::cast;
@@ -158,6 +164,39 @@ static void lowerRegressionGradNode(Function *F, CompilationContext &cctx,
                        inputG);
   replaceAllUsesOfWith(cctx.loweredInfoMap, node.getGradOfInputNamedExpected(),
                        expG);
+}
+
+static void lowerFloorDivNode(Function *F, CompilationContext &cctx,
+                              const FloorDivNode &node) {
+  LOG_SCOPE(F->getLogContext(), "lowerFloorDivNode")
+
+  NodeValue LHS = node.getLHS();
+  NodeValue RHS = node.getRHS();
+
+  auto *div = F->createDiv(DECORATE_NODE_NAME(node, "lhs", "rhs"), LHS, RHS);
+
+  auto *result = F->createFloor(DECORATE_NODE_NAME(node, "floor"), div);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, node.getResult(), result);
+}
+
+static void lowerBatchedMulNode(Function *F, CompilationContext &cctx,
+                                const BatchedMulNode &node) {
+  LOG_SCOPE(F->getLogContext(), "lowerBatchedMulNode")
+
+  NodeValue batch = node.getBatch();
+  NodeValue slice = node.getSlice();
+  auto sliceReshapeSize = slice.dims().vec();
+  sliceReshapeSize.insert(sliceReshapeSize.begin(), 1);
+  slice = F->createReshape("slice_tiled", slice, sliceReshapeSize);
+  slice = F->createTile(
+      "slice_tiled", slice, batch.dims()[0], 0,
+      F->getParent()->uniqueTypeWithNewShape(slice.getType(), batch.dims()));
+
+  NodeValue mul =
+      F->createMul("batched_mul", node.getResult().getType(), batch, slice)
+          ->getResult();
+  replaceAllUsesOfWith(cctx.loweredInfoMap, node.getResult(), mul);
 }
 
 static void lowerGemmNode(Function *F, CompilationContext &cctx,
@@ -381,6 +420,23 @@ static void lowerReluNode(Function *F, CompilationContext &cctx,
   auto *relu = F->createMax(DECORATE_NODE_NAME(R, "max"),
                             R.getResult().getType(), zero, R.getInput());
   replaceAllUsesOfWith(cctx.loweredInfoMap, R.getResult(), relu);
+}
+
+static void lowerLeakyReluNode(Function *F, CompilationContext &cctx,
+                               const LeakyReluNode &LR) {
+
+  LOG_SCOPE(F->getLogContext(), "lowerLeakyReluNode")
+
+  // Lower LeakyRelu to PRelu with Splat.
+  auto splatType = F->getParent()->uniqueType(*(LR.getInput().getType()));
+  SplatNode *splat =
+      F->createSplat(DECORATE_NODE_NAME(LR, "alpha"), splatType, LR.getAlpha());
+
+  auto outTy = F->getParent()->uniqueType(*(LR.getResult().getType()));
+  auto *prelu = F->createPRELU(DECORATE_NODE_NAME(LR, "prelu"), LR.getInput(),
+                               splat, outTy);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, LR.getResult(), prelu);
 }
 
 static void lowerPReluNode(Function *F, CompilationContext &cctx,
@@ -1182,6 +1238,46 @@ static void lowerBatchedReduceMeanNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, BRM.getResult(), DN);
 }
 
+static void lowerVectorNormNode(Function *F, CompilationContext &cctx,
+                                const VectorNormNode &VN) {
+  LOG_SCOPE(F->getLogContext(), "lowerVectorNormNode")
+
+  auto input = VN.getInput();
+
+  auto axis = VN.getAxis();
+
+  assert(axis < input.dims().size() &&
+         "Axis to remove must fit inside dimensions of the provided dims.");
+
+  ShapeVector redDims(input.dims().begin(), input.dims().end());
+  redDims.erase(redDims.begin() + axis);
+
+  auto outTy =
+      F->getParent()->uniqueTypeWithNewShape(VN.getResult().getType(), redDims);
+
+  const size_t outNumElements = input.getType()->size() / input.dims()[axis];
+  (void)outNumElements;
+  assert(outTy->size() == outNumElements &&
+         "Incorrect number of elements in the output type.");
+
+  // pow(x, 2)
+  NodeValue pow = F->createPow(VN.getName().str() + ".pow_2", input, 2.0f);
+
+  // Create a batched add to sum up the values in the provided axis.
+  auto outTyBRA =
+      F->getParent()->uniqueTypeWithNewShape(input.getType(), redDims);
+
+  auto *BRA = F->createBatchedReduceAdd(VN.getName().str() + ".reduceAdd",
+                                        outTyBRA, pow, axis);
+
+  auto *exp = F->createSplat(VN.getName().str() + ".exp", outTy, 0.5f);
+
+  // Create a sqrt by leveraging pow(x, 0.5)
+  auto *SQ = F->createPow(VN.getName().str() + ".sqrt", outTy, BRA, exp);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, VN.getResult(), SQ);
+}
+
 /// Implement ReplaceNaN via a Select node with the input of \p RN as one of the
 /// inputs, a Splat node created using value from \p RN as the other input, and
 /// an IsNaN node as the comparator input.
@@ -1582,6 +1678,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(FullyConnected);
     CASE_LOWER(FullyConnectedGrad);
     CASE_LOWER(Relu);
+    CASE_LOWER(LeakyRelu);
     CASE_LOWER(ReluGrad);
     CASE_LOWER(PRelu);
     CASE_LOWER(Pad);
@@ -1594,6 +1691,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(BatchNormalizationGrad);
     CASE_LOWER(SigmoidCrossEntropyWithLogits);
     CASE_LOWER(BatchedReduceMean);
+    CASE_LOWER(VectorNorm);
     CASE_LOWER(Bucketize);
     CASE_LOWER(ChannelShuffle);
     CASE_LOWER(Tile);
@@ -1609,6 +1707,8 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(Sigmoid);
     CASE_LOWER(AdaptiveAvgPool);
     CASE_LOWER(Gelu);
+    CASE_LOWER(FloorDiv);
+    CASE_LOWER(BatchedMul);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
     if (CN->getGroup() > 1 && CN->hasFusedActivation()) {
