@@ -3310,10 +3310,9 @@ Error ONNXModelLoader::loadRNN(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Input4: sequence_lens (Optional).
-  if (numInputs > 4) {
-    RETURN_ERR_IF_NOT(
-        op.input(4).empty(),
-        opErrMsg(op, "ONNX RNN 'sequence_lens' attribute not supported!"));
+  if (numInputs > 4 && !op.input(4).empty()) {
+    LOG(WARNING) << "sequence_lens ignored, will be inferred from shape of "
+                    "ONNX RNN input.";
   }
 
   // Input5: initial_h (Optional).
@@ -3447,10 +3446,9 @@ Error ONNXModelLoader::loadGRU(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Input4: sequence_lens (Optional).
-  if (numInputs > 4) {
-    RETURN_ERR_IF_NOT(
-        op.input(4).empty(),
-        opErrMsg(op, "ONNX GRU 'sequence_lens' attribute not supported!"));
+  if (numInputs > 4 && !op.input(4).empty()) {
+    LOG(WARNING) << "sequence_lens ignored, will be inferred from shape of "
+                    "ONNX GRU input.";
   }
 
   // Input5: initial_h (Optional).
@@ -3585,10 +3583,9 @@ Error ONNXModelLoader::loadLSTM(const ONNX_NAMESPACE::NodeProto &op,
   }
 
   // Input4: sequence_lens (Optional).
-  if (numInputs > 4) {
-    RETURN_ERR_IF_NOT(
-        op.input(4).empty(),
-        opErrMsg(op, "ONNX LSTM 'sequence_lens' attribute not supported!"));
+  if (numInputs > 4 && !op.input(4).empty()) {
+    LOG(WARNING) << "sequence_lens ignored, will be inferred from shape of "
+                    "ONNX LSTM input.";
   }
 
   // Input5: initial_h (Optional).
