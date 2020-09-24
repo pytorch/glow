@@ -414,6 +414,14 @@ Error GlowIValue::fromIValue(const at::IValue &ival) {
   } else if (ival.isString()) {
     std::string str = ival.toStringRef();
     fromString(std::move(str));
+  } else if (ival.isDevice()) {
+    auto device = ival.toDevice();
+    if (device.as_device.type != DeviceType::CPU) {
+      RETURN_ERR(strFormat("Encountered unhandled device type: %s",
+                           DeviceTypeName(device.as_device.type)));
+    }
+    // represent a CPU device as integer 0
+    fromInt(0);
   } else if (ival.isGenericDict()) {
     const auto &genericDict = ival.toGenericDict();
     GlowIValueMap ivalMap;
