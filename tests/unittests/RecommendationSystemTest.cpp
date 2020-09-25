@@ -147,7 +147,13 @@ public:
     return Error::success();
   }
   Error setSrc(void *loaderObject) override { return Error::success(); }
-  void addWeight(Tensor *weight) { weights_.push_back(weight); }
+
+  Tensor *addWeight(TypeRef ty) {
+    // auto weight = Tensor(ty);
+    weights_.push_back(Tensor(ty));
+    return &weights_.at(weights_.size() - 1);
+  }
+
   void addName(std::string name) { names_.push_back(name); }
   void setTypeInfo(std::map<std::string, Type> info) override {}
 
@@ -162,11 +168,11 @@ public:
     if (position_ >= int(weights_.size())) {
       return nullptr;
     }
-    return weights_[position_];
+    return &weights_[position_];
   }
 
 private:
-  std::vector<Tensor *> weights_{};
+  std::vector<Tensor> weights_{};
   std::vector<std::string> names_{};
   int position_{-1};
 };
@@ -604,17 +610,15 @@ protected:
           Placeholder *ph = createFusedRowwiseQuantizedPlaceholder(
               mod, {embSizes[i], embDim}, "data" + std::to_string(i),
               useFP16SLWS);
-          auto tensor = Tensor(ph->getType());
 
           ph->setStatic(true);
-          tensor.getHandle<uint8_t>().randomize(UINT8_MIN, UINT8_MAX,
-                                                mod.getPRNG());
-
-          loader.addWeight(&tensor);
+          auto *tensor = loader.addWeight(ph->getType());
+          tensor->getHandle<uint8_t>().randomize(UINT8_MIN, UINT8_MAX,
+                                                 mod.getPRNG());
           loader.addName("data" + std::to_string(i));
 
           bindings_.allocate(ph);
-          updateInputPlaceholders(bindings_, {ph}, {&tensor});
+          updateInputPlaceholders(bindings_, {ph}, {tensor});
 
           data = ph;
         } else {
@@ -640,6 +644,13 @@ protected:
               mod.createPlaceholder(ElemKind::FloatTy, {embSizes[i], embDim},
                                     "data" + std::to_string(i), false);
           ph->setStatic(true);
+          auto *tensor = loader.addWeight(ph->getType());
+          tensor->getHandle<float>().initXavier(tensor->getType().size() * 2,
+                                                mod.getPRNG());
+          loader.addName("data" + std::to_string(i));
+
+          bindings_.allocate(ph);
+          updateInputPlaceholders(bindings_, {ph}, {tensor});
           data = ph;
         } else {
           data = createRandomizedConstant(mod, internalTypeF,
@@ -695,17 +706,15 @@ protected:
           Placeholder *ph = createFusedRowwiseQuantizedPlaceholder(
               mod, {tableSizes[i], embeddingDim}, "data" + std::to_string(i),
               useFP16SLWS);
-          auto tensor = Tensor(ph->getType());
-
           ph->setStatic(true);
-          tensor.getHandle<uint8_t>().randomize(UINT8_MIN, UINT8_MAX,
-                                                mod.getPRNG());
+          auto *tensor = loader.addWeight(ph->getType());
+          tensor->getHandle<uint8_t>().randomize(UINT8_MIN, UINT8_MAX,
+                                                 mod.getPRNG());
 
-          loader.addWeight(&tensor);
           loader.addName("data" + std::to_string(i));
 
           bindings_.allocate(ph);
-          updateInputPlaceholders(bindings_, {ph}, {&tensor});
+          updateInputPlaceholders(bindings_, {ph}, {tensor});
 
           data = ph;
         } else {
@@ -731,6 +740,13 @@ protected:
               ElemKind::FloatTy, {tableSizes[i], embeddingDim},
               "data" + std::to_string(i), false);
           ph->setStatic(true);
+          auto *tensor = loader.addWeight(ph->getType());
+          tensor->getHandle<float>().initXavier(tensor->getType().size() * 2,
+                                                mod.getPRNG());
+          loader.addName("data" + std::to_string(i));
+
+          bindings_.allocate(ph);
+          updateInputPlaceholders(bindings_, {ph}, {tensor});
           data = ph;
         } else {
           data = createRandomizedConstant(
