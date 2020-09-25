@@ -441,6 +441,10 @@ private:
   /// \returns error on failure.
   Error loadAdd(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch arange node.
+  /// \returns error on failure.
+  Error loadArange(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch sub node.
   /// \returns error on failure.
   Error loadSub(const torch::jit::Node *ptNode);

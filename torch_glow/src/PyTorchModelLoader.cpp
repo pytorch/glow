@@ -852,6 +852,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::floor_divide", "aten::floor_divide_"},
        &PyTorchModelLoader::loadFloorDiv},
       {{"aten::add", "aten::add_"}, &PyTorchModelLoader::loadAdd},
+      {{"aten::arange"}, &PyTorchModelLoader::loadArange},
       {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub},
       {{"aten::rsub"}, &PyTorchModelLoader::loadRsub},
       {{"aten::sigmoid", "aten::sigmoid_"}, &PyTorchModelLoader::loadSigmoid},
@@ -2130,6 +2131,88 @@ Error PyTorchModelLoader::loadAdd(const torch::jit::Node *ptNode) {
       res, loadArithmeticNode<glow::AddNode>("add", inputs[0], inputs[1]));
 
   return addValueMapping(outputs[0], res);
+}
+
+Error PyTorchModelLoader::loadArange(const torch::jit::Node *ptNode) {
+
+  glow::GlowIValue defaultStartVal = glow::GlowIValue();
+  glow::GlowIValue defaultStepVal = glow::GlowIValue();
+  glow::GlowIValue *startIVal = &defaultStartVal;
+  glow::GlowIValue *endIVal;
+  glow::GlowIValue *stepIVal = &defaultStepVal;
+
+  startIVal->fromInt(0);
+  stepIVal->fromInt(1);
+
+  ASSIGN_VALUE_OR_RETURN_ERR(endIVal,
+                             getGlowIValueForValue(ptNode->namedInput("end")));
+  if (ptNode->hasNamedInput("start")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        startIVal, getGlowIValueForValue(ptNode->namedInput("start")));
+  }
+  if (ptNode->hasNamedInput("step")) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        stepIVal, getGlowIValueForValue(ptNode->namedInput("step")));
+  }
+
+  // If any of the input values are doubles, the outputs must also be.
+  if (startIVal->isDouble() || stepIVal->isDouble() || endIVal->isDouble()) {
+    float start;
+    float end;
+    float step;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        start, startIVal->isDouble()
+                   ? to32Bit(startIVal->toDouble())
+                   : static_cast_expected<float>(startIVal->toInt()));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        end, endIVal->isDouble()
+                 ? to32Bit(endIVal->toDouble())
+                 : static_cast_expected<float>(endIVal->toInt()));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        step, stepIVal->isDouble()
+                  ? to32Bit(stepIVal->toDouble())
+                  : static_cast_expected<float>(stepIVal->toInt()));
+    std::vector<float> outputValues;
+    auto span = std::abs(end - start);
+    for (float offset = 0.0; std::abs(offset) < span; offset += step) {
+      outputValues.push_back(start + offset);
+    }
+    auto type = F_.getParent()->uniqueType(glow::ElemKind::FloatTy,
+                                           outputValues.size());
+    auto outputTensor = glow::Tensor(outputValues.data(), type);
+    auto output = F_.getParent()->createConstant("Arange_output",
+                                                 std::move(outputTensor));
+    output->ensureIsOwned(); // Prevents heap use after free
+    return addValueMapping(ptNode->output(), output);
+  } else {
+    int64_t start;
+    int64_t end;
+    int64_t step;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        start, startIVal->isInt()
+                   ? startIVal->toInt()
+                   : static_cast_expected<int64_t>(startIVal->toDouble()));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        end, endIVal->isInt()
+                 ? endIVal->toInt()
+                 : static_cast_expected<int64_t>(endIVal->toDouble()));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        step, stepIVal->isInt()
+                  ? stepIVal->toInt()
+                  : static_cast_expected<int64_t>(stepIVal->toDouble()));
+    std::vector<int64_t> outputValues;
+    auto span = std::abs(end - start);
+    for (int64_t offset = 0; std::abs(offset) < span; offset += step) {
+      outputValues.push_back(start + offset);
+    }
+    auto type = F_.getParent()->uniqueType(glow::ElemKind::Int64ITy,
+                                           outputValues.size());
+    auto outputTensor = glow::Tensor(outputValues.data(), type);
+    auto output = F_.getParent()->createConstant("Arange_output",
+                                                 std::move(outputTensor));
+    output->ensureIsOwned(); // Prevents heap use after free
+    return addValueMapping(ptNode->output(), output);
+  }
 }
 
 Error PyTorchModelLoader::loadSub(const torch::jit::Node *ptNode) {
