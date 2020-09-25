@@ -1397,6 +1397,17 @@ TEST_F(OnnxImporterTest, importAveragePool2DAutoPadSameLower) {
   averagePoolTestHelper(filename, expectedDims, expectedValues);
 }
 
+/// Test loading AveragePool op from a ONNX model.
+/// The input is N*C*H*W (1*1*3*3), the kernels is {3, 3},
+/// strides is {2, 2}, pads is {1, 1, 1, 1},
+/// countIncludePads is false.
+TEST_F(OnnxImporterTest, importAveragePool2DCountExcludePads) {
+  std::string filename("averagePool2DCountExcludePads.onnxtxt");
+  std::vector<dim_t> expectedDims = {1, 1, 2, 2};
+  std::vector<float> expectedValues = {2, 3, 5, 6};
+  averagePoolTestHelper(filename, expectedDims, expectedValues);
+}
+
 TEST_F(OnnxImporterTest, importAveragePool3D) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();

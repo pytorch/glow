@@ -605,6 +605,43 @@ TEST_P(GradCheck, gradientCheckAvgPool) {
                    &inputs, &outputs, 0.001, 0.004);
 }
 
+TEST_P(GradCheck, gradientCheckAvgPoolCountExcludePads) {
+  CHECK_IF_ENABLED();
+  PlaceholderBindings bindings;
+  dim_t numDim = 10;
+  dim_t numOutputElem = 10;
+  Placeholder *A, *Exp;
+  SaveNode *result;
+  for (auto *EE : engines_) {
+    auto &mod = EE->getModule();
+    bindings.clear();
+    Function *F = mod.createFunction("main");
+    A = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim, numDim, 2}, "A",
+                              false);
+    Exp = mod.createPlaceholder(ElemKind::FloatTy, {1, numOutputElem}, "Exp",
+                                false);
+
+    Node *O = F->createAvgPool("pool", A, 3, 3, 1, NHWC,
+                               /* countIncludePads */ false);
+    O = F->createTanh("tanh", O);
+    O = F->createFullyConnected(bindings, "fc", O, numOutputElem);
+    O = F->createRegression("reg", O, Exp);
+    result = F->createSave("ret", O);
+  }
+
+  Tensor inputs(ElemKind::FloatTy, {1, numDim, numDim, 2});
+  Tensor outputs(ElemKind::FloatTy, {1, numOutputElem});
+
+  auto inputsH = inputs.getHandle<>();
+  auto outputsH = outputs.getHandle<>();
+  auto &mod = EET_.getModule();
+  inputsH.initXavier(1, mod.getPRNG());
+  outputsH.initXavier(1, mod.getPRNG());
+
+  performGradCheck(EET_, EEI_, bindings, result->getPlaceholder(), A, Exp,
+                   &inputs, &outputs, 0.001, 0.004);
+}
+
 TEST_P(GradCheck, gradientCheckMaxPool) {
   CHECK_IF_ENABLED();
   PlaceholderBindings bindings;

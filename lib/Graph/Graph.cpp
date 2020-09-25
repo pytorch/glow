@@ -969,7 +969,8 @@ AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
                                      llvm::ArrayRef<unsigned_t> kernels,
                                      llvm::ArrayRef<unsigned_t> strides,
                                      llvm::ArrayRef<unsigned_t> pads,
-                                     ConvolutionLayout layout) {
+                                     ConvolutionLayout layout,
+                                     bool countIncludePads) {
   if (!is3DData(layout)) {
 
     ShapeNHWC idim = ShapeNHWC(input.dims());
@@ -979,8 +980,8 @@ AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
         calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides, pads);
     auto OT = getParent()->uniqueTypeWithNewShape(
         input.getType(), {idim.n, outSz.first, outSz.second, idim.c});
-    return addNode(
-        new AvgPoolNode(name, OT, input, kernels, strides, pads, layout));
+    return addNode(new AvgPoolNode(name, OT, input, kernels, strides, pads,
+                                   layout, countIncludePads));
 
   } else {
     ShapeNTHWC idim = ShapeNTHWC(input.dims());
@@ -991,8 +992,8 @@ AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
     auto OT = getParent()->uniqueTypeWithNewShape(
         input.getType(),
         {idim.n, outSz.temporal_frames, outSz.height, outSz.width, idim.c});
-    return addNode(
-        new AvgPoolNode(name, OT, input, kernels, strides, pads, layout));
+    return addNode(new AvgPoolNode(name, OT, input, kernels, strides, pads,
+                                   layout, countIncludePads));
   }
 }
 
@@ -1001,15 +1002,16 @@ AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
                                      llvm::ArrayRef<unsigned_t> kernels,
                                      llvm::ArrayRef<unsigned_t> strides,
                                      llvm::ArrayRef<unsigned_t> pads,
-                                     ConvolutionLayout layout) {
+                                     ConvolutionLayout layout,
+                                     bool countIncludePads) {
   if (!is3DData(layout)) {
 
     ShapeNHWC idim = ShapeNHWC(input.dims());
     ShapeHW kdim(kernels);
     (void)kdim;
     checkKernelSize(idim, kernels, pads);
-    return addNode(
-        new AvgPoolNode(name, outTy, input, kernels, strides, pads, layout));
+    return addNode(new AvgPoolNode(name, outTy, input, kernels, strides, pads,
+                                   layout, countIncludePads));
 
   } else {
 
@@ -1017,27 +1019,30 @@ AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
     ShapeTHW kdim(kernels);
     (void)kdim;
     check3DKernelSize(idim, kernels, pads);
-    return addNode(
-        new AvgPoolNode(name, outTy, input, kernels, strides, pads, layout));
+    return addNode(new AvgPoolNode(name, outTy, input, kernels, strides, pads,
+                                   layout, countIncludePads));
   }
 }
 
 AvgPoolNode *Function::createAvgPool(llvm::StringRef name, NodeValue input,
                                      unsigned_t kernel, unsigned_t stride,
-                                     unsigned_t pad, ConvolutionLayout layout) {
+                                     unsigned_t pad, ConvolutionLayout layout,
+                                     bool countIncludePads) {
   if (!is3DData(layout)) {
 
     llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
     llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
     llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
-    return createAvgPool(name, input, kernels, strides, pads, layout);
+    return createAvgPool(name, input, kernels, strides, pads, layout,
+                         countIncludePads);
 
   } else {
 
     llvm::SmallVector<unsigned_t, 6> pads = {pad, pad, pad, pad, pad, pad};
     llvm::SmallVector<unsigned_t, 3> strides = {stride, stride, stride};
     llvm::SmallVector<unsigned_t, 3> kernels = {kernel, kernel, kernel};
-    return createAvgPool(name, input, kernels, strides, pads, layout);
+    return createAvgPool(name, input, kernels, strides, pads, layout,
+                         countIncludePads);
   }
 }
 

@@ -817,6 +817,9 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     ASSIGN_VALUE_OR_RETURN_ERR(kernels, getSizeHW(dict, "kernel", 0));
     std::vector<unsigned_t> pads;
     ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict));
+    bool countIncludePads;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        countIncludePads, getCountIncludePads(dict, /* defaultValue */ true));
     std::string order = "NCHW";
     if (dict.count("order")) {
       ASSIGN_VALUE_OR_RETURN_ERR(order, loadStr(dict["order"]));
@@ -876,13 +879,14 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
         TypeRef outTy;
         ASSIGN_VALUE_OR_RETURN_ERR(
             outTy, loadQuantTy(opName, ElemKind::Int8QTy, outDims, dict));
-        node =
-            G_->createAvgPool(opName, finalIn, outTy, kernels, strides, pads);
+        node = G_->createAvgPool(opName, finalIn, outTy, kernels, strides, pads,
+                                 NHWC, countIncludePads);
       }
     } else if (typeName == "MaxPool") {
       node = G_->createMaxPool(opName, finalIn, kernels, strides, pads);
     } else {
-      node = G_->createAvgPool(opName, finalIn, kernels, strides, pads);
+      node = G_->createAvgPool(opName, finalIn, kernels, strides, pads, NHWC,
+                               countIncludePads);
     }
     if (order == "NCHW") {
       unsigned resIdx = 0;

@@ -3548,15 +3548,17 @@ PyTorchModelLoader::loadAvgPoolImpl(const torch::jit::Node *ptNode,
   RETURN_ERR_IF_NOT(ceilMode == false,
                     "ceilMode must be scalar with false value.");
 
-  // Glow always includes zero-padding in the averaging calculation.
-  bool countIncludePad;
-  ASSIGN_VALUE_OR_RETURN_ERR(countIncludePad,
-                             iValToBool(getGlowIValueForValue(
-                                 inputs[AvgPoolInputs::count_include_pad])));
-  RETURN_ERR_IF_NOT(countIncludePad, "countIncludePad must be true.");
+  // CountIncludePad defaults to true.
+  bool countIncludePads = true;
+  if (hasGlowIValueForValue(inputs[AvgPoolInputs::count_include_pad])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(countIncludePads,
+                               iValToBool(getGlowIValueForValue(
+                                   inputs[AvgPoolInputs::count_include_pad])));
+  }
 
-  glow::AvgPoolNode *ap = F_.createAvgPool(opName, input, kernels, strides,
-                                           pads, (isConv3d ? NTHWC : NHWC));
+  glow::AvgPoolNode *ap =
+      F_.createAvgPool(opName, input, kernels, strides, pads,
+                       (isConv3d ? NTHWC : NHWC), countIncludePads);
   glow::NodeValue ap_output = ap->getResult();
   const glow::TransposeNode *output;
 

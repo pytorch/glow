@@ -109,7 +109,8 @@ AvgPoolInst *IRBuilder::createAvgPoolOp(Value *input,
                                         llvm::ArrayRef<unsigned_t> kernels,
                                         llvm::ArrayRef<unsigned_t> strides,
                                         llvm::ArrayRef<unsigned_t> pads,
-                                        unsigned_t layout) {
+                                        unsigned_t layout,
+                                        bool countIncludePads) {
 
   TypeRef outTy;
 
@@ -128,7 +129,8 @@ AvgPoolInst *IRBuilder::createAvgPoolOp(Value *input,
   }
 
   Value *dest = createAllocActivationInst("pool.res", outTy);
-  return createAvgPoolInst("pool", dest, input, kernels, strides, pads, layout);
+  return createAvgPoolInst("pool", dest, input, kernels, strides, pads, layout,
+                           countIncludePads);
 }
 
 CrossEntropyLossInst *IRBuilder::createCrossEntropyLossOp(llvm::StringRef name,
