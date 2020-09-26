@@ -542,14 +542,6 @@ DEFINE_validator(glow_nnpi_timeout_ms,
                    return true;
                  });
 
-DEFINE_int32(glow_nnpi_timeout, 0,
-             "Timeout threshold for inferecnce in microseconds. Default 0 "
-             "means infinity");
-DEFINE_validator(glow_nnpi_timeout, [](const char * /*unused*/, int32_t value) {
-  glow::runtime::GlowNNPITimeout = value;
-  return true;
-});
-
 #endif
 
 DEFINE_bool(glow_log_partition, true, "Enable logging partition info");
