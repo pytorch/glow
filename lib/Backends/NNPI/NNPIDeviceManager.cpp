@@ -44,9 +44,6 @@ DeviceManager *createNNPIDeviceManager(const DeviceConfig &config,
     LOG(ERROR) << "Adapter allocation failed";
     return nullptr;
   }
-  if (GlowNNPITimeout != 0) {
-    deviceOptions->inferTimeout = GlowNNPITimeout;
-  }
   return new NNPIDeviceManager(config, deviceOptions, adapter);
 }
 
@@ -67,6 +64,9 @@ NNPIDeviceManager::NNPIDeviceManager(
   }
   if (deviceOptions_->deviceId >= 0) {
     deviceId_ = static_cast<unsigned>(deviceOptions_->deviceId);
+  }
+  if (GlowNNPITimeout != 0) {
+    deviceOptions_->inferTimeout = GlowNNPITimeout;
   }
 }
 
