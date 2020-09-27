@@ -535,29 +535,8 @@ TEST_P(BackendCorrectnessTest, maxSplatTest) {
   EXPECT_TRUE(out1.isEqual(out2));
 }
 
-/// Symmetric Quantized Conv+Relu fusion testing for only OpenCL.
-TEST_P(BackendCorrectnessTest, SymmetricQuantizedConvReluFusionTest) {
-  CHECK_IF_ENABLED()
-  PseudoRNG PRNG;
-  Tensor inputs(ElemKind::Int8QTy, {1, 6, 6, 16}, 1, 0);
-  Tensor kernel(ElemKind::Int8QTy, {1, 3, 3, 16}, 1, 0);
-  Tensor bias(ElemKind::Int32QTy, {1}, 1, 0);
-  inputs.getHandle<int8_t>().randomize(0, 60, PRNG);
-  kernel.getHandle<int8_t>().randomize(-1, 1, PRNG);
-  bias.getHandle<int32_t>().randomize(0, 32768, PRNG);
-  std::array<dim_t, 4> S{{1, 6, 6, 1}};
-  llvm::ArrayRef<dim_t> shape(S);
-  Tensor out(ElemKind::Int8QTy, shape, 256, 0);
-
-  int ResFusion =
-      inferConvReluNet(&inputs, &kernel, &bias, &out, 3, 1, 1, backendName_);
-  // In symmetric case, Conv and Relu are fused.
-  EXPECT_EQ(ResFusion, FusedActivation::RELU);
-}
-
-/// Asymmetric Quantized Conv+Relu fusion testing for only OpenCL.
-TEST_P(BackendCorrectnessTest, AsymmetricQuantizedConvReluFusionTest) {
-  CHECK_IF_ENABLED()
+void QuantizedConvReluFusionTest(quantization::Schema schema,
+                                 std::string backendName_, int expectedFusion) {
   PseudoRNG PRNG;
   Tensor inputs(ElemKind::Int8QTy, {1, 6, 6, 16}, 1, 2);
   Tensor kernel(ElemKind::Int8QTy, {1, 3, 3, 16}, 1, 2);
@@ -565,14 +544,31 @@ TEST_P(BackendCorrectnessTest, AsymmetricQuantizedConvReluFusionTest) {
   inputs.getHandle<int8_t>().randomize(0, 60, PRNG);
   kernel.getHandle<int8_t>().randomize(-1, 1, PRNG);
   bias.getHandle<int32_t>().randomize(0, 32768, PRNG);
-  std::array<dim_t, 4> S{{1, 6, 6, 1}};
-  llvm::ArrayRef<dim_t> shape(S);
-  Tensor out(ElemKind::Int8QTy, shape, 256, 4);
 
-  int ResFusion =
+  TensorQuantizationParams quantParams =
+      chooseQuantizationParams({0.0, 6.0}, schema, ElemKind::Int8QTy);
+
+  Tensor out(ElemKind::Int8QTy, {1, 6, 6, 1}, quantParams.scale,
+             quantParams.offset);
+
+  int resFusion =
       inferConvReluNet(&inputs, &kernel, &bias, &out, 3, 1, 1, backendName_);
   // In asymmetric case, Conv and Relu are not fused.
-  EXPECT_EQ(ResFusion, FusedActivation::NONE);
+  EXPECT_EQ(resFusion, expectedFusion);
+}
+
+/// Symmetric Quantized Conv+Relu fusion testing for only OpenCL.
+TEST_P(BackendCorrectnessTest, SymmetricQuantizedConvReluFusionTest) {
+  CHECK_IF_ENABLED()
+  QuantizedConvReluFusionTest(quantization::Schema::Symmetric, backendName_,
+                              FusedActivation::RELU);
+}
+
+/// Asymmetric Quantized Conv+Relu fusion testing for only OpenCL.
+TEST_P(BackendCorrectnessTest, AsymmetricQuantizedConvReluFusionTest) {
+  CHECK_IF_ENABLED()
+  QuantizedConvReluFusionTest(quantization::Schema::Asymmetric, backendName_,
+                              FusedActivation::NONE);
 }
 
 INSTANTIATE_BACKEND_TEST(BackendCorrectnessTest);
