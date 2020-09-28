@@ -245,6 +245,27 @@ protected:
                            getTargetTypeForOutput(MM->getRHS()));
       }
     }
+
+    // Cases where one of the target input types is forced to be the same as one
+    // of the output target types. This is useful e.g. for activation nodes like
+    // Relu or Clip which reduce the dynamic range of the data via saturation
+    // such that using same quantization parameters for the input as for the
+    // output ensures the quantized dyanamic range is efficiently exploited only
+    // for the non-saturated part of the data range.
+    // NOTE: Changing the input target type will probably add RescaleQuantized
+    // nodes at the input of the node but these should fused (were possible) in
+    // the output value of the preceding node.
+#define FORCE_SAME_INPUT_TYPE_AS_OUTPUT(NODE_NAME_, INPUT_NAME_, OUTPUT_NAME_) \
+  if (use.getKind() == glow::Kinded::Kind::NODE_NAME_##NodeKind &&             \
+      idx == NODE_NAME_##Node::INPUT_NAME_##Idx) {                             \
+    return getTargetTypeForOutput(                                             \
+        use.getNthResult(NODE_NAME_##Node::OUTPUT_NAME_##Idx));                \
+  }
+    FORCE_SAME_INPUT_TYPE_AS_OUTPUT(Relu, Input, Result);
+    FORCE_SAME_INPUT_TYPE_AS_OUTPUT(Clip, Input, Result);
+    FORCE_SAME_INPUT_TYPE_AS_OUTPUT(LeakyRelu, Input, Result);
+#undef FORCE_SAME_INPUT_TYPE_AS_OUTPUT
+
     return mod_.uniqueType(quantizationPrecision_, val.dims(), TQP.scale,
                            TQP.offset);
   }
