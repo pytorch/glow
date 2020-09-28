@@ -1597,6 +1597,18 @@ protected:
 
     return Error::success();
   }
+
+  static Expected<bool> getCountIncludePads(ArgumentDictionaryTy &dict,
+                                            bool defaultValue) {
+    if (dict.count("count_include_pad")) {
+      int countIncludePads;
+      ASSIGN_VALUE_OR_RETURN_ERR(countIncludePads,
+                                 loadInt(dict.at("count_include_pad")));
+      return (bool)countIncludePads;
+    }
+    // Return default value if can't find in the dict
+    return defaultValue;
+  }
 };
 
 } // namespace glow

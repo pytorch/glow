@@ -7,25 +7,28 @@ graph {
     op_type: "AveragePool"
     attribute {
       name: "kernel_shape"
-      ints: 2
-      ints: 2
+      ints: 3
+      ints: 3
       type: INTS
     }
     attribute {
-      name: "auto_pad"
-      s: "SAME_UPPER"
-      type: STRING
+      name: "pads"
+      ints: 1
+      ints: 1
+      ints: 1
+      ints: 1
+      type: INTS
     }
     attribute {
       name: "strides"
-      ints: 1
-      ints: 1
+      ints: 2
+      ints: 2
       type: INTS
     }
     attribute {
-      name: "count_include_pad"
-      i: 1
-      type: INT
+        name: "count_include_pad"
+        i: 0
+        type: INT
     }
   }
   name: "test_averagepool"
@@ -64,10 +67,10 @@ graph {
             dim_value: 1
           }
           dim {
-            dim_value: 3
+            dim_value: 2
           }
           dim {
-            dim_value: 3
+            dim_value: 2
           }
         }
       }

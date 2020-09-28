@@ -188,6 +188,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads", /* addSetter */ true)
       .addMember(MemberType::Enum, "Layout")
+      .addMember(MemberType::Boolean, "CountIncludePads")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring(

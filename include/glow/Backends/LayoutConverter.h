@@ -125,9 +125,9 @@ inline Node *convertAvgPoolToNCHWPool(AvgPoolNode *PN, Function *F) {
   auto outTy = F->getParent()->uniqueTypeWithNewShape(PN->getResult().getType(),
                                                       dimsNCHW);
 
-  auto *NPN =
-      F->addNode(new AvgPoolNode(PN->getName(), outTy, NI, PN->getKernels(),
-                                 PN->getStrides(), PN->getPads(), NCHW));
+  auto *NPN = F->addNode(new AvgPoolNode(
+      PN->getName(), outTy, NI, PN->getKernels(), PN->getStrides(),
+      PN->getPads(), NCHW, PN->getCountIncludePads()));
   auto *NR = F->createTranspose("avgpool.result", NPN->getResult(), NCHW2NHWC);
 
   return NR;
@@ -143,9 +143,9 @@ inline Node *convertAvgPoolGradToNCHWPool(AvgPoolGradNode *PGN, Function *F) {
       F->createTranspose("avgpoolgrad.outputgrad",
                          PGN->getGradOfOriginalOutputNamedResult(), NHWC2NCHW);
 
-  auto *NPGN = F->addNode(
-      new AvgPoolGradNode(PGN->getName(), NI, NO, NG, PGN->getKernels(),
-                          PGN->getStrides(), PGN->getPads(), NCHW));
+  auto *NPGN = F->addNode(new AvgPoolGradNode(
+      PGN->getName(), NI, NO, NG, PGN->getKernels(), PGN->getStrides(),
+      PGN->getPads(), NCHW, PGN->getCountIncludePads()));
   auto *NR = F->createTranspose("avgpoolgrad.result",
                                 NPGN->getGradOfInputNamedInput(), NCHW2NHWC);
 

@@ -682,6 +682,10 @@ public:
     std::vector<uint32_t> paddingStart(numDims);
     std::vector<uint32_t> paddingEnd(numDims);
     std::vector<uint32_t> stride(numDims);
+    bool countIncludePads = 1;
+    if (auto *APN = llvm::dyn_cast<AvgPoolNode>(glowPool)) {
+      countIncludePads = APN->getCountIncludePads();
+    }
 
     for (size_t i = 0; i < numDims; i++) {
       kernel[i] = glowPool->getKernels()[i];
@@ -715,7 +719,7 @@ public:
         nodeValueName(glowPool->getInput()).c_str(),
         nodeValueName(glowPool->getResult()).c_str(), NULL, kernel.data(),
         paddingStart.data(), paddingEnd.data(), stride.data(), numDims,
-        poolType, 0, 0);
+        poolType, !countIncludePads, 0);
   }
 };
 

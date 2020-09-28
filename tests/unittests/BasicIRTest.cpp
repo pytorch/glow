@@ -202,7 +202,8 @@ TEST(IR, casting) {
     auto *res = bb.createAllocActivationInst("sigmoid.res", input->getType());
     auto *sig = bb.createSigmoidInst("sigmoid", res, input);
     auto *pool =
-        bb.createAvgPoolOp(sig->getDest(), {7, 7}, {2, 2}, {3, 3, 3, 3}, NHWC);
+        bb.createAvgPoolOp(sig->getDest(), {7, 7}, {2, 2}, {3, 3, 3, 3}, NHWC,
+                           /* countIncludePads */ true);
 
     EXPECT_EQ(isa<AvgPoolInst>(pool), true);
     EXPECT_EQ(isa<AvgPoolInst>(input), false);
@@ -362,7 +363,8 @@ TEST(IR, getOperandName) {
     auto *res = bb.createAllocActivationInst("sigmoid.res", input->getType());
     auto *sig = bb.createSigmoidInst("sigmoid", res, input);
     auto *pool =
-        bb.createAvgPoolOp(sig->getDest(), {7, 7}, {2, 2}, {3, 3, 3, 3}, NHWC);
+        bb.createAvgPoolOp(sig->getDest(), {7, 7}, {2, 2}, {3, 3, 3, 3}, NHWC,
+                           /* countIncludePads */ true);
 
     EXPECT_EQ(pool->getNumOperands(), 2);
     EXPECT_EQ(pool->getOperandName(0), "Dest");

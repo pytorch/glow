@@ -198,9 +198,9 @@ void IRGenVisitor::post(Node *parent, Node *N) {
     auto *inG = builder_.createAllocActivationInst(
         DECORATE_NODE_NAME(N, "outG"), PG->getInput().getType());
 
-    builder_.createAvgPoolGradInst(N->getName(), outW, inW, outG, inG,
-                                   PG->getKernels(), PG->getStrides(),
-                                   PG->getPads(), PG->getLayout());
+    builder_.createAvgPoolGradInst(
+        N->getName(), outW, inW, outG, inG, PG->getKernels(), PG->getStrides(),
+        PG->getPads(), PG->getLayout(), PG->getCountIncludePads());
     registerIR(PG->getGradOfInputNamedInput(), inG);
     break;
   }

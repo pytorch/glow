@@ -1108,7 +1108,7 @@ void BoundInterpreterFunction::fwdAvgPoolInstFloatImpl(const AvgPoolInst *I) {
   ShapeHW sdim(I->getStrides());
   // Implement the avg pooling operation as defined here:
   // https://arxiv.org/abs/1312.4400
-  float filterArea = kdim.height * kdim.width;
+  float rawFilterArea = kdim.height * kdim.width;
 
   auto inW = getWeightHandle<ElemTy>(I->getSrc());
   auto outW = getWeightHandle<ElemTy>(I->getDest());
@@ -1123,6 +1123,7 @@ void BoundInterpreterFunction::fwdAvgPoolInstFloatImpl(const AvgPoolInst *I) {
         ssize_t y = -ssize_t(pdim.left);
         for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
           float sum = 0;
+          float filterArea = rawFilterArea;
 
           for (dim_t fx = 0; fx < kdim.height; fx++) {
             for (dim_t fy = 0; fy < kdim.width; fy++) {
@@ -1132,12 +1133,17 @@ void BoundInterpreterFunction::fwdAvgPoolInstFloatImpl(const AvgPoolInst *I) {
               // Ignore index access below zero (this is due to padding).
               if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
                   oy >= ssize_t(idim.w)) {
+                if (!I->getCountIncludePads()) {
+                  filterArea--;
+                }
+
                 continue;
               }
 
               sum += float(inW.at({n, (dim_t)ox, (dim_t)oy, z}));
             }
           }
+          assert(filterArea != 0 && "filterArea can't be 0");
           outW.at({n, ax, ay, z}) = ElemTy(sum / filterArea);
         } // W
       }   // H
@@ -1154,7 +1160,7 @@ void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
   ShapeHW sdim(I->getStrides());
   // Implement the avg pooling operation as defined here:
   // https://arxiv.org/abs/1312.4400
-  float filterArea = kdim.height * kdim.width;
+  float rawFilterArea = kdim.height * kdim.width;
 
   auto inW = getWeightHandle<int8_t>(I->getSrc());
   auto outW = getWeightHandle<int8_t>(I->getDest());
@@ -1173,6 +1179,7 @@ void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
         ssize_t y = -ssize_t(pdim.left);
         for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
           int32_t sum = 0;
+          float filterArea = rawFilterArea;
 
           for (dim_t fx = 0; fx < kdim.height; fx++) {
             for (dim_t fy = 0; fy < kdim.width; fy++) {
@@ -1182,12 +1189,17 @@ void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
               // Ignore index access below zero (this is due to padding).
               if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
                   oy >= ssize_t(idim.w)) {
+                if (!I->getCountIncludePads()) {
+                  filterArea--;
+                }
+
                 continue;
               }
 
               sum += inW.at({n, (dim_t)ox, (dim_t)oy, z}) - inQP.offset;
             }
           }
+          assert(filterArea != 0 && "filterArea can't be 0");
           // Instead of dividing by filterArea, just change scale.
           outW.at({n, ax, ay, z}) = quantization::clip<int32_t, int8_t>(
               std::round(float(sum) * (inQP.scale / outQP.scale / filterArea) +
@@ -1210,7 +1222,7 @@ void BoundInterpreterFunction::fwdAvgPool3DInstFloatImpl(const AvgPoolInst *I) {
   ShapeTHW sdim(I->getStrides());
   // Implement the avg pooling operation as defined here:
   // https://arxiv.org/abs/1312.4400
-  float filterArea = kdim.temporal_frames * kdim.height * kdim.width;
+  float rawFilterArea = kdim.temporal_frames * kdim.height * kdim.width;
 
   auto inW = getWeightHandle<ElemTy>(I->getSrc());
   auto outW = getWeightHandle<ElemTy>(I->getDest());
@@ -1227,6 +1239,7 @@ void BoundInterpreterFunction::fwdAvgPool3DInstFloatImpl(const AvgPoolInst *I) {
           ssize_t y = -ssize_t(pdim.left);
           for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
             float sum = 0;
+            float filterArea = rawFilterArea;
 
             for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
               for (dim_t fx = 0; fx < kdim.height; fx++) {
@@ -1238,14 +1251,19 @@ void BoundInterpreterFunction::fwdAvgPool3DInstFloatImpl(const AvgPoolInst *I) {
                   // Ignore index access below zero (this is due to padding).
                   if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
                       ox >= ssize_t(idim.h) || oy >= ssize_t(idim.w)) {
+                    if (!I->getCountIncludePads()) {
+                      filterArea--;
+                    }
+
                     continue;
                   }
 
                   sum += float(inW.at({n, (dim_t)ot, (dim_t)ox, (dim_t)oy, z}));
                 }
               }
-              outW.at({n, at, ax, ay, z}) = ElemTy(sum / filterArea);
             }
+            assert(filterArea != 0 && "filterArea can't be 0");
+            outW.at({n, at, ax, ay, z}) = ElemTy(sum / filterArea);
           } // W
         }   // H
       }     // T
@@ -1262,7 +1280,7 @@ void BoundInterpreterFunction::fwdAvgPool3DInstI8Impl(const AvgPoolInst *I) {
   ShapeTHW sdim(I->getStrides());
   // Implement the avg pooling operation as defined here:
   // https://arxiv.org/abs/1312.4400
-  float filterArea = kdim.temporal_frames * kdim.height * kdim.width;
+  float rawFilterArea = kdim.temporal_frames * kdim.height * kdim.width;
 
   auto inW = getWeightHandle<int8_t>(I->getSrc());
   auto outW = getWeightHandle<int8_t>(I->getDest());
@@ -1283,6 +1301,7 @@ void BoundInterpreterFunction::fwdAvgPool3DInstI8Impl(const AvgPoolInst *I) {
           ssize_t y = -ssize_t(pdim.left);
           for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
             int32_t sum = 0;
+            float filterArea = rawFilterArea;
 
             for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
               for (dim_t fx = 0; fx < kdim.height; fx++) {
@@ -1294,6 +1313,10 @@ void BoundInterpreterFunction::fwdAvgPool3DInstI8Impl(const AvgPoolInst *I) {
                   // Ignore index access below zero (this is due to padding).
                   if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
                       ox >= ssize_t(idim.h) || oy >= ssize_t(idim.w)) {
+                    if (!I->getCountIncludePads()) {
+                      filterArea--;
+                    }
+
                     continue;
                   }
 
@@ -1303,6 +1326,7 @@ void BoundInterpreterFunction::fwdAvgPool3DInstI8Impl(const AvgPoolInst *I) {
               }
             }
             // Instead of dividing by filterArea, just change scale.
+            assert(filterArea != 0 && "filterArea can't be 0");
             outW.at({n, at, ax, ay, z}) =
                 quantization::clip<int32_t, int8_t>(std::round(
                     float(sum) * (inQP.scale / outQP.scale / filterArea) +
@@ -1542,7 +1566,7 @@ void BoundInterpreterFunction::fwdAvgPool2DGradInst(const AvgPoolGradInst *I) {
 
   inG.clear();
 
-  float filterArea = kdim.height * kdim.width;
+  float rawFilterArea = kdim.height * kdim.width;
 
   // For each input in the batch:
   for (dim_t n = 0; n < odim.n; n++) {
@@ -1554,7 +1578,22 @@ void BoundInterpreterFunction::fwdAvgPool2DGradInst(const AvgPoolGradInst *I) {
       for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
         ssize_t y = -ssize_t(pdim.left);
         for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+          float filterArea = rawFilterArea;
 
+          // Excludes the padding area in filterArea if the flag is false
+          if (!I->getCountIncludePads()) {
+            ssize_t pad_x = (-x > 0 ? -x : 0) +
+                            ((x + ssize_t(kdim.height) - ssize_t(idim.h)) > 0
+                                 ? (x + ssize_t(kdim.height) - ssize_t(idim.h))
+                                 : 0);
+            ssize_t pad_y = (-y > 0 ? -y : 0) +
+                            ((y + ssize_t(kdim.width) - ssize_t(idim.w)) > 0
+                                 ? (y + ssize_t(kdim.width) - ssize_t(idim.w))
+                                 : 0);
+            filterArea = rawFilterArea - pad_x * kdim.width -
+                         pad_y * kdim.height + pad_x * pad_y;
+          }
+          assert(filterArea != 0 && "filterArea can't be 0");
           float dy = outG.at({n, ax, ay, z}) / filterArea;
 
           for (dim_t fx = 0; fx < kdim.height; fx++) {
@@ -1590,7 +1629,7 @@ void BoundInterpreterFunction::fwdAvgPool3DGradInst(const AvgPoolGradInst *I) {
 
   inG.clear();
 
-  float filterArea = kdim.temporal_frames * kdim.height * kdim.width;
+  float rawFilterArea = kdim.temporal_frames * kdim.height * kdim.width;
 
   // For each input in the batch:
   for (dim_t n = 0; n < odim.n; n++) {
@@ -1604,7 +1643,33 @@ void BoundInterpreterFunction::fwdAvgPool3DGradInst(const AvgPoolGradInst *I) {
         for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
           ssize_t y = -ssize_t(pdim.left);
           for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+            float filterArea = rawFilterArea;
 
+            // Excludes the padding area in filterArea if the flag is false
+            if (!I->getCountIncludePads()) {
+              ssize_t pad_x =
+                  (-x > 0 ? -x : 0) +
+                  ((x + ssize_t(kdim.height) - ssize_t(idim.h)) > 0
+                       ? (x + ssize_t(kdim.height) - ssize_t(idim.h))
+                       : 0);
+              ssize_t pad_y = (-y > 0 ? -y : 0) +
+                              ((y + ssize_t(kdim.width) - ssize_t(idim.w)) > 0
+                                   ? (y + ssize_t(kdim.width) - ssize_t(idim.w))
+                                   : 0);
+              ssize_t pad_z =
+                  (-t > 0 ? -t : 0) +
+                  ((t + ssize_t(kdim.temporal_frames) - ssize_t(idim.t)) > 0
+                       ? (t + ssize_t(kdim.temporal_frames) - ssize_t(idim.t))
+                       : 0);
+              filterArea = rawFilterArea -
+                           pad_x * kdim.width * kdim.temporal_frames -
+                           pad_y * kdim.height * kdim.temporal_frames -
+                           pad_z * kdim.height * kdim.width +
+                           pad_x * pad_y * kdim.temporal_frames +
+                           pad_x * pad_z * kdim.width +
+                           pad_y * pad_z * kdim.height - pad_x * pad_y * pad_z;
+            }
+            assert(filterArea != 0 && "filterArea can't be 0");
             float dy = outG.at({n, at, ax, ay, z}) / filterArea;
 
             for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
