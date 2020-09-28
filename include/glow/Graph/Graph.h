@@ -603,17 +603,20 @@ public:
                              llvm::ArrayRef<unsigned_t> kernels,
                              llvm::ArrayRef<unsigned_t> strides,
                              llvm::ArrayRef<unsigned_t> pads,
-                             ConvolutionLayout layout = NHWC);
+                             ConvolutionLayout layout = NHWC,
+                             bool countIncludePads = true);
 
   AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,
                              TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
                              llvm::ArrayRef<unsigned_t> strides,
                              llvm::ArrayRef<unsigned_t> pads,
-                             ConvolutionLayout layout = NHWC);
+                             ConvolutionLayout layout = NHWC,
+                             bool countIncludePads = true);
 
   AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,
                              unsigned_t kernel, unsigned_t stride,
-                             unsigned_t pad, ConvolutionLayout layout = NHWC);
+                             unsigned_t pad, ConvolutionLayout layout = NHWC,
+                             bool countIncludePads = true);
 
   /// Creates and \returns an AdaptiveAvgPool node with \p name, \p input, and
   /// \p outTy. The AdaptiveAvgPoolNode will perform average pooling over the

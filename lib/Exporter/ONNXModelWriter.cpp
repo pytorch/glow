@@ -1994,6 +1994,10 @@ void writeTensorwiseQuantizedPool(const T *node, const std::string &op,
   addValueAttribute(proto, "strides", node->getStrides());
   addValueAttribute(proto, "pads", node->getPads());
 
+  if (auto *APN = llvm::dyn_cast<AvgPoolNode>(node)) {
+    addValueAttribute(proto, "count_include_pad", APN->getCountIncludePads());
+  }
+
   proto->add_input(node->getInput().getNode()->getName());
   outputsToProto(node, graph, proto);
 
@@ -2035,6 +2039,10 @@ void writePool(const T *node, const std::string &op,
   addValueAttribute(proto, "kernel_shape", node->getKernels());
   addValueAttribute(proto, "strides", node->getStrides());
   addValueAttribute(proto, "pads", node->getPads());
+
+  if (auto *APN = llvm::dyn_cast<AvgPoolNode>(node)) {
+    addValueAttribute(proto, "count_include_pad", APN->getCountIncludePads());
+  }
 
   const Node *input = node->getInput().getNode();
   if (const TransposeNode *TN = llvm::dyn_cast<TransposeNode>(input)) {

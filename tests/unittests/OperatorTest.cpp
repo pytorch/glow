@@ -10017,6 +10017,28 @@ TEST_P(OperatorTest, Int8AvgPool) {
   }
 }
 
+TEST_P(OperatorTest, Int8AvgPoolCountExcludePads) {
+  CHECK_IF_ENABLED();
+
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 3, 3, 1}, 1, 0,
+                                       "input", false);
+  bindings_.allocate(input)->getHandle<int8_t>() = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+  auto *Pool = F_->createAvgPool("pool", input, {3, 3}, {2, 2}, {1, 1, 1, 1},
+                                 NHWC, /* countIncludePads */ false);
+  auto *S = F_->createSave("save", Pool);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<int8_t>();
+  Tensor out(ElemKind::Int8QTy, {2, 2}, 1, 0);
+  out.getHandle<int8_t>() = {2, 3, 5, 6};
+  for (size_t i = 0; i < 2 * 2; i++) {
+    EXPECT_EQ(result.raw(i), out.getHandle<int8_t>().raw(i));
+  }
+}
+
 TEST_P(OperatorTest, FP16AvgPool3D) {
   CHECK_IF_ENABLED();
 
@@ -10105,6 +10127,26 @@ TEST_P(OperatorTest, Int8AvgPool3D) {
   for (size_t i = 0; i < 2 * 2 * 2; i++) {
     EXPECT_EQ(result.raw(i), out.getHandle<int8_t>().raw(i));
   }
+}
+
+TEST_P(OperatorTest, AvgPoolCountExcludePads) {
+  CHECK_IF_ENABLED();
+
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", false);
+  bindings_.allocate(input)->getHandle() = {0., 1., 2., 3., 4., 5., 6., 7., 8.};
+  auto *Pool = F_->createAvgPool("pool", input, {3, 3}, {2, 2}, {1, 1, 1, 1},
+                                 NHWC, /* countIncludePads */ false);
+  auto *S = F_->createSave("save", Pool);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto *result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::FloatTy, {1, 2, 2, 1});
+  out.getHandle() = {2., 3., 5., 6.};
+  EXPECT_TRUE(out.isEqual(*result));
 }
 
 /// Verify that the AdaptiveAvgPool operator works correctly.

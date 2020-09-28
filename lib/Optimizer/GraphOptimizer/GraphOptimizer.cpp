@@ -3880,7 +3880,8 @@ FUNCTION_ENABLE_IF_TEMPLATE(MatMul)
 FUNCTION_ENABLE_IF_TEMPLATE(AvgPool) *
     createNewPool(Function &F, T *PN, RescaleQuantizedNode *rescale) {
   return createNode<T>(F, PN->getName(), rescale->getInput(), PN->getKernels(),
-                       PN->getStrides(), PN->getPads());
+                       PN->getStrides(), PN->getPads(), NCHW,
+                       PN->getCountIncludePads());
 }
 FUNCTION_ENABLE_IF_TEMPLATE(MaxPool) *
     createNewPool(Function &F, T *PN, RescaleQuantizedNode *rescale) {

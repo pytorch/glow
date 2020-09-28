@@ -581,6 +581,7 @@ TEST_F(Caffe2ImporterTest, avgPoolNHWC) {
   auto *avgPoolNode =
       llvm::dyn_cast<AvgPoolNode>(saveNode->getInput().getNode());
   ASSERT_TRUE(avgPoolNode);
+  ASSERT_FALSE(avgPoolNode->getCountIncludePads());
 
   // We have 2 placeholders:  1 input and 1 output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
@@ -622,6 +623,7 @@ TEST_F(Caffe2ImporterTest, avgPool) {
   auto *avgPoolNode =
       llvm::dyn_cast<AvgPoolNode>(transNode1->getInput().getNode());
   ASSERT_TRUE(avgPoolNode);
+  ASSERT_TRUE(avgPoolNode->getCountIncludePads());
   auto *transNode2 =
       llvm::dyn_cast<TransposeNode>(avgPoolNode->getInput().getNode());
   ASSERT_TRUE(transNode2);

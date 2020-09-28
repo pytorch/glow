@@ -12,6 +12,11 @@ graph {
       ints: 2
       type: INTS
     }
+    attribute {
+      name: "count_include_pad"
+      i: 1
+      type: INT
+    }
   }
   name: "test_averagepool_3d_default"
   input {

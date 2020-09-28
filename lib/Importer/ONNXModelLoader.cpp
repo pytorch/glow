@@ -1850,6 +1850,10 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
 
   std::vector<unsigned_t> kernels = {1, kernelsShape[kerDim - 1]};
 
+  bool countIncludePads;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      countIncludePads, getCountIncludePads(dict, /* defaultValue */ false));
+
   // For maxPool1D inDim = 3
   if (inDim == 3) {
     in = G_->createExpandDims(opName, in, 2);
@@ -1916,7 +1920,8 @@ Error ONNXModelLoader::loadPool(const ONNX_NAMESPACE::NodeProto &op,
       node = G_->createMaxPool(opName, tr, kernels, strides, pads);
       idx = MaxPoolNode::ResultIdx;
     } else {
-      node = G_->createAvgPool(opName, tr, kernels, strides, pads);
+      node = G_->createAvgPool(opName, tr, kernels, strides, pads, NHWC,
+                               countIncludePads);
       idx = AvgPoolNode::ResultIdx;
     }
 
@@ -1957,6 +1962,10 @@ Error ONNXModelLoader::loadTensorwiseQuantizedPool(
         ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
   }
 
+  bool countIncludePads;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      countIncludePads, getCountIncludePads(dict, /* defaultValue */ false));
+
   // NHWC
   llvm::SmallVector<unsigned_t, 2> idimHW(2);
   idimHW[0] = in.dims()[1];
@@ -1981,7 +1990,8 @@ Error ONNXModelLoader::loadTensorwiseQuantizedPool(
     if (typeName == "MaxPool") {
       poolNode = G_->createMaxPool(opName, in, kernels, strides, pads);
     } else {
-      poolNode = G_->createAvgPool(opName, in, kernels, strides, pads);
+      poolNode = G_->createAvgPool(opName, in, kernels, strides, pads, NHWC,
+                                   countIncludePads);
     }
     RETURN_IF_ERR(addNodeAsOutput(op, poolNode));
   }
@@ -2298,8 +2308,13 @@ Error ONNXModelLoader::loadGlobalAveragePool(
   ASSIGN_VALUE_OR_RETURN_ERR(
       pads, getPads(dict, kernels, strides, kernels /* input sizes*/));
 
+  bool countIncludePads;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      countIncludePads, getCountIncludePads(dict, /* defaultValue */ false));
+
   auto *tr = G_->createTranspose(opName, in, NCHW2NHWC);
-  Node *node = G_->createAvgPool(opName, tr, kernels, strides, pads);
+  Node *node = G_->createAvgPool(opName, tr, kernels, strides, pads, NHWC,
+                                 countIncludePads);
   auto *N = G_->createTranspose(opName, node, NHWC2NCHW);
   RETURN_IF_ERR(addNodeAsOutput(op, N));
   return Error::success();

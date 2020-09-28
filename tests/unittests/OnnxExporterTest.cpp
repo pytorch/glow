@@ -747,6 +747,8 @@ TEST(exporter, QuantizedAvgPool) {
   EXPECT_EQ(avgPoolReloaded->getKernels(), avgPool->getKernels());
   EXPECT_EQ(avgPoolReloaded->getStrides(), avgPool->getStrides());
   EXPECT_EQ(avgPoolReloaded->getPads(), avgPool->getPads());
+  EXPECT_EQ(avgPoolReloaded->getCountIncludePads(),
+            avgPool->getCountIncludePads());
 }
 
 TEST(exporter, QuantizedAdaptiveAvgPool) {
