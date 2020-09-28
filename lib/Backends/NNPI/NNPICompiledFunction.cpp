@@ -661,6 +661,7 @@ std::string NNPICompilationInfo::dump(const std::string &functionName) const {
 static const std::string tensorToJSON(const NNPICompiledTensor &tensor) {
   std::stringstream fs;
   fs << "{" << std::endl;
+  fs << "\"name\" : \"" << tensor.name << "\"," << std::endl;
   fs << "\"type\" : \"" << tensor.type << "\"," << std::endl;
   fs << "\"alloc\" : \"" << dumpAllocType(tensor.allocType) << "\","
      << std::endl;
