@@ -1466,7 +1466,8 @@ __kernel void maxpoolwithargmaxgradW(__global void *mem, cl_uint32_t dest,
 
 __kernel void avgpoolK(__global float *dest, __global float *src,
                        cl_uint32_t kernelSize, cl_uint32_t stride,
-                       PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
+                       PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim,
+                       bool countIncludePads) {
   dim_t ax = get_global_id(0);
   dim_t ay = get_global_id(1);
   dim_t d = get_global_id(2);
@@ -1475,11 +1476,13 @@ __kernel void avgpoolK(__global float *dest, __global float *src,
   sdim_t x = -(sdim_t)pads.top + ax * stride;
   sdim_t y = -(sdim_t)pads.left + ay * stride;
 
-  float filterArea = kernelSize * kernelSize;
+  float rawFilterArea = kernelSize * kernelSize;
 
   // For each input in the batch:
   for (dim_t n = 0; n < idim.n; n++) {
     float sumVal = 0;
+    float filterArea = rawFilterArea;
+
     // For each element in the convolution-filter:
     for (dim_t fx = 0; fx < kernelSize; fx++) {
       for (dim_t fy = 0; fy < kernelSize; fy++) {
@@ -1488,25 +1491,32 @@ __kernel void avgpoolK(__global float *dest, __global float *src,
 
         // Ignore index access below zero (this is due to padding).
         if (ox < 0 || oy < 0 || ox >= (sdim_t)idim.h || oy >= (sdim_t)idim.w) {
+          if (!countIncludePads) {
+            filterArea--;
+          }
           continue;
         }
 
         sumVal += src[getNHWC(idim, n, (dim_t)ox, (dim_t)oy, d)];
       }
     }
+    assert(filterArea != 0 && "FilterArea shouldn't be 0");
     dest[getNHWC(odim, n, ax, ay, d)] = sumVal / filterArea;
   } // N
 }
 
 __kernel void avgpoolW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
                        cl_uint32_t kernelSize, cl_uint32_t stride,
-                       PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
-  avgpoolK(&mem[dest], &mem[src], kernelSize, stride, pads, odim, idim);
+                       PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim,
+                       bool countIncludePads) {
+  avgpoolK(&mem[dest], &mem[src], kernelSize, stride, pads, odim, idim,
+           countIncludePads);
 }
 
 __kernel void oclavgpoolK(__global float *dest, __global float *src,
                           cl_uint32_t kernelSize, cl_uint32_t stride,
-                          PaddingTLBR pads, ShapeNCHW odim, ShapeNCHW idim) {
+                          PaddingTLBR pads, ShapeNCHW odim, ShapeNCHW idim,
+                          bool countIncludePads) {
   dim_t ax = get_global_id(0);
   dim_t ay = get_global_id(1);
   dim_t d = get_global_id(2);
@@ -1515,11 +1525,13 @@ __kernel void oclavgpoolK(__global float *dest, __global float *src,
   sdim_t x = -(sdim_t)pads.top + ax * stride;
   sdim_t y = -(sdim_t)pads.left + ay * stride;
 
-  float filterArea = kernelSize * kernelSize;
+  float rawFilterArea = kernelSize * kernelSize;
 
   // For each input in the batch:
   for (dim_t n = 0; n < idim.n; n++) {
     float sumVal = 0;
+    float filterArea = rawFilterArea;
+
     // For each element in the convolution-filter:
     for (dim_t fx = 0; fx < kernelSize; fx++) {
       for (dim_t fy = 0; fy < kernelSize; fy++) {
@@ -1528,20 +1540,26 @@ __kernel void oclavgpoolK(__global float *dest, __global float *src,
 
         // Ignore index access below zero (this is due to padding).
         if (ox < 0 || oy < 0 || ox >= (sdim_t)idim.h || oy >= (sdim_t)idim.w) {
+          if (!countIncludePads) {
+            filterArea--;
+          }
           continue;
         }
 
         sumVal += src[getNCHW(idim, n, d, (dim_t)ox, (dim_t)oy)];
       }
     }
+    assert(filterArea != 0 && "FilterArea shouldn't be 0");
     dest[getNCHW(odim, n, d, ax, ay)] = sumVal / filterArea;
   } // N
 }
 
 __kernel void oclavgpoolW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
                           cl_uint32_t kernelSize, cl_uint32_t stride,
-                          PaddingTLBR pads, ShapeNCHW odim, ShapeNCHW idim) {
-  oclavgpoolK(&mem[dest], &mem[src], kernelSize, stride, pads, odim, idim);
+                          PaddingTLBR pads, ShapeNCHW odim, ShapeNCHW idim,
+                          bool countIncludePads) {
+  oclavgpoolK(&mem[dest], &mem[src], kernelSize, stride, pads, odim, idim,
+              countIncludePads);
 }
 
 __kernel void oclavgpool_i8K(__global cl_int8_t *dest, __global cl_int8_t *src,
