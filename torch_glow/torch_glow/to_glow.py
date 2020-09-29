@@ -133,7 +133,7 @@ def to_glow(model, method_compile_spec):
     else:
         method_compile_spec = {"forward", [method_compile_spec.spec]}
 
-    return torch._C._jit_to_backend("glow", model._c, method_compile_spec)
+    return torch._C._jit_to_backend("glow", model, method_compile_spec)
 
 
 def check_module_names(module_names):
