@@ -2643,7 +2643,7 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
 
     for (const auto &slicePairs : consecutiveSlices) {
       auto slicesDim = slicePairs.first;
-      auto slices = slicePairs.second;
+      auto &slices = slicePairs.second;
 
       if (slices.size() <= 1) {
         continue;
@@ -2655,9 +2655,10 @@ bool EliminateSliceConcat::run(Function *F, const CompilationContext &cctx) {
         // 1) slices consecutive dimension is the same as concat dimension, or
         // 2) slices consecutive dimension is adjacent to the concat dimension,
         //    and the size of each slice along the consecutive dimension is 1.
-        //    NOTE: Checking the size of 0th slice is sufficient, as opposed
-        //    to checking every slice. If the slices can be concatenated,
-        //    each slice size must be equal.
+        //    NOTE: Checking the slicesDim dimension of 0th slice is
+        //    sufficient, as opposed to checking every slice. If the slices
+        //    can be concatenated (and they're being concatenated along a
+        //    different dimension), then each slicesDim dim must be equal.
         continue;
       }
       if ((slicesDim == CN->getDim() + 1 && slices.size() <= 3) ||
