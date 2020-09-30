@@ -1247,9 +1247,8 @@ Error ONNXModelLoader::loadSlice(const ONNX_NAMESPACE::NodeProto &op,
                           axesC->getType()->getElementName().str().c_str())));
       }
 
-      RETURN_ERR_IF_NOT(
-          op.input_size() == 4,
-          opErrMsg(op, "Steps is not currently supported!"));
+      RETURN_ERR_IF_NOT(op.input_size() == 4,
+                        opErrMsg(op, "Steps is not currently supported!"));
     }
   } else {
     // Attributes 'starts' and 'ends' are mandatory and must be consistent.
