@@ -160,6 +160,11 @@ bool NNPIResource::init(const NNPIObjectName name,
   usage_ = usage;
   desc_ = *desc;
 
+  // At this point it's safe to call NNPIResource::dump(), so do so if we return
+  // false, representing some issue has occurred during initialization.
+  ScopeGuard dumpResourceInfo(
+      [&]() { LOG(ERROR) << "Error initializing " << dump(); });
+
   ResourceUsers *users = nullptr;
   if (phUsage) {
     users = &(phUsage->at(name_));
@@ -177,6 +182,7 @@ bool NNPIResource::init(const NNPIObjectName name,
       return false;
     }
     hostPtr_ = &(refStorage_[0]);
+    dumpResourceInfo.dismiss();
     return true;
   }
 
@@ -366,6 +372,7 @@ bool NNPIResource::init(const NNPIObjectName name,
   }
 
   DBG(__FUNCTION__ << dump());
+  dumpResourceInfo.dismiss();
   return true;
 }
 

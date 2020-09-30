@@ -52,6 +52,15 @@ getGraphRunnerForKey(const std::string &key);
 /// Remove an existing CachingGraphRunner for a given \p key. \returns false if
 /// no CachingGraphRunner was registered for the given key, true otherwise.
 bool removeGraphRunnerForKey(const std::string &key);
+
+/// Custom op registration needs to happen before Glow fusion since AliasDB
+/// needs to be able to recognize each registered op/node. If there are multiple
+/// graphs then it's hard to know how many node kinds we need. It's probably not
+/// a good idea to merge op registration into fuser logic. Therefore we scan
+/// though the graph and find the index of each Glow fusion node to
+/// differentiate between them. Here we assume all fusion nodes all in the
+/// top level graph.
+int findIndex(const torch::jit::Node *node);
 } // namespace glow
 
 #endif // GLOW_TORCH_GLOW_SRC_REGISTRATION_H

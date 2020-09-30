@@ -16,6 +16,7 @@
 #include "Base.h"
 
 #include "glow/Exporter/ONNXModelWriter.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Importer/ONNXIFIModelLoader.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
@@ -25,10 +26,6 @@
 
 namespace glow {
 namespace onnxifi {
-bool GlowSaveOnnxifiModel = false;
-bool GlowSaveOnnxifiIO = false;
-bool GlowEnablePartialTensors = true;
-bool GlowUseCustomOpsForExport = true;
 
 extern bool GlowDumpDebugTraces;
 
@@ -88,10 +85,10 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   // Constants, such as a Convolution's weights. In the future we should clean
   // this up so that we load Constants and Placeholders based on the actual
   // eventual input graph.
+  CompilationContext cctx;
   auto loaderOrErr = ONNXIFIModelLoader::parse(
       onnxModel, onnxModelSize, 0 /*weightCount*/,
-      nullptr /*weightDescriptors*/, module, compatibilityFunctionName,
-      /* PPC */ nullptr, /* BSNI */ nullptr,
+      nullptr /*weightDescriptors*/, module, compatibilityFunctionName, cctx,
       /* staticPlaceholderTypes */ nullptr,
       /* loadInputsAsPlaceholdersForOnnx */ false, getUseOnnx(),
       /* constFoldInLoader */ false);
@@ -129,7 +126,6 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
   // Perform the normal optimization pipeline, returning an internal error if we
   // encounter an issue during optimization. Skip backend support checking
   // because we check it next below via acceptForExecution().
-  CompilationContext cctx;
   cctx.optimizationOpts.skipBackendSupportCheck = true;
   auto optErr = glow::optimizeFunction(function, *glowBackend_, cctx);
   if (optErr) {
@@ -149,7 +145,6 @@ onnxStatus Backend::checkGraphCompatibility(const void *onnxModel,
       return ONNXIFI_STATUS_UNSUPPORTED_OPERATOR;
     }
   }
-
   return ONNXIFI_STATUS_SUCCESS;
 }
 

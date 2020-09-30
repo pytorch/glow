@@ -23,6 +23,8 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
+#include "caffe2/proto/caffe2.pb.h"
+
 #include <string>
 
 namespace caffe2 {
@@ -63,6 +65,9 @@ class Caffe2ModelLoader
   /// \returns True if the operator \p op is successfully folded.
   Expected<bool> foldOperator(const caffe2::OperatorDef &op);
 
+  /// Helper function to print better log information for operator failure cases
+  const std::string opErrMsg(const caffe2::OperatorDef &op,
+                             const std::string &errMsg);
   /// Load the Conv or ConvRelu operators.
   Error loadConv(const caffe2::OperatorDef &op, ArgumentDictionaryTy &dict);
 
@@ -91,6 +96,18 @@ class Caffe2ModelLoader
       const std::unordered_set<std::string> &initializers,
       const TensorProtoType &in);
 
+  /// Creates tensor \p T from the input \p in. Note, there is no data
+  /// associated with the Tensor. This method makes sure that the tensor is
+  /// created with the proper shape and element type.
+  Expected<LoadWeightResult>
+  createAndSetTensorType(const caffe2::TensorProto &in);
+
+  /// Creates quantized tensor \p T from the input \p in. Note, there is no data
+  /// associated with the Tensor. This method makes sure that the tensor is
+  /// created with the proper shape and element type.
+  Expected<LoadWeightResult>
+  createAndSetTensorType(const caffe2::QTensorProto &in);
+
   /// Load the inputs from the NetDef. \p initializers is the set of tensors
   /// that should be loaded as empty Constants in the graph for the purposes of
   /// onnxifi compatibility checks, any other inputs will be loaded as
@@ -114,13 +131,19 @@ class Caffe2ModelLoader
   /// PPC will be filled with relevant configuration for partitioning, and all
   /// Functions created will be named with prefix /p funNamePrefix. Otherwise \p
   /// PPC is ignored, and \p funNamePrefix is used as the name of the single
-  /// Function that is created inside \p mod.
+  /// Function that is created inside \p mod. If \p originNameToTQPMap is
+  /// non-null then names of ops and inputs that are quantized will be mapped to
+  /// the TQP that it came with. If \p loadUniquedDummyQParams then the actual
+  /// quant params in the model will be discarded and unique dummies will be
+  /// used instead.
   Caffe2ModelLoader(const void *model, uint32_t modelSize,
                     uint32_t weightsCount,
                     const onnxTensorDescriptorV1 *weightDescriptors,
                     Module &mod, llvm::StringRef funNamePrefix,
                     runtime::PrePartitionedConfig *PPC, Error *errPtr = nullptr,
-                    bool constFoldInLoader = true);
+                    bool constFoldInLoader = true,
+                    OriginNameToTQPMap *originNameToTQPMap = nullptr,
+                    bool loadUniquedDummyQParams = false);
 
   friend class ONNXIFIModelLoader;
 
@@ -146,11 +169,17 @@ public:
   /// outputs with specific names and types.
   /// If \p errPtr is not null then if an error occurs it will get assigned
   /// there otherwise if an error occurs it will abort.
+  /// If \p originNameToTQPMap is non-null then names of ops and inputs that are
+  /// quantized will be mapped to the TQP that it came with.
+  /// If \p loadUniquedDummyQParams then the actual quant params in the model
+  /// will be discarded and unique dummies will be used instead.
   Caffe2ModelLoader(const std::string &netDescFilename,
                     const std::string &netWeightFilename,
                     llvm::ArrayRef<const char *> names,
                     llvm::ArrayRef<TypeRef> types, Function &F,
-                    Error *errPtr = nullptr);
+                    Error *errPtr = nullptr,
+                    OriginNameToTQPMap *originNameToTQPMap = nullptr,
+                    bool loadUniquedDummyQParams = false);
 
   /// Loads the caffe2 model that's represented by a network description file,
   /// serialized in \p netDescFilename, and weights file, serialized in
@@ -174,6 +203,16 @@ public:
   /// If \p errPtr is not null then if an error occurs it will get assigned
   /// there otherwise if an error occurs it will abort.
   Caffe2ModelLoader(Function &F, Error *errPtr);
+
+  /// Creates a Caffe2 model loader that builds into what is intended to be a
+  /// dummy Module in \p dummyMod, in order to fill in \p originNameToTQPMap
+  /// with a map from C2 op names to TQPs that they were loaded with in model
+  /// \p modelStr given \p weightsCount and \p weightDescriptors. Returns any
+  /// errors into \p errPtr.
+  Caffe2ModelLoader(const std::string &modelStr, uint32_t weightsCount,
+                    const onnxTensorDescriptorV1 *weightDescriptors,
+                    Module &dummyMod, Error *errPtr,
+                    OriginNameToTQPMap *originNameToTQPMap);
 };
 
 } // namespace glow

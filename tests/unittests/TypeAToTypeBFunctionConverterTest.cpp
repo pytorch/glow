@@ -1545,3 +1545,68 @@ TEST(TypeAToTypeBFunctionConverter, DoNotConvertFloatBiasWithIntInput) {
 
   EXPECT_EQ(origGraph, F->toString());
 }
+
+/// Create a FRWQSLWS node with data type \p fusedKind and shape \p row and \p
+/// col, check if its data can be properly converted to UInt8FusedQTy, and its
+/// indices can be properly coverted to Int64.
+static void testFRWQSLWSDataIndicesConvert(ElemKind fusedKind, dim_t row,
+                                           dim_t col) {
+  EXPECT_LT(row, 100);
+  EXPECT_LT(col, 100);
+
+  Module mod;
+  Function *F = mod.createFunction("test");
+  Tensor data(ElemKind::FloatTy, {row, col});
+  auto dataH = data.getHandle();
+  for (dim_t i = 0; i < row; i++) {
+    for (dim_t j = 0; j < col; j++) {
+      dataH.at({i, j}) = 2.0 * i + 1.0 * j;
+    }
+  }
+
+  Constant *weights = mod.createConstant(ElemKind::FloatTy, {8}, "weights");
+  Placeholder *indices =
+      mod.createPlaceholder(ElemKind::Int32ITy, {8}, "indices",
+                            /* isTrainable */ false);
+  Placeholder *lengths =
+      mod.createPlaceholder(ElemKind::Int32ITy, {4}, "lengths",
+                            /* isTrainable */ false);
+  auto *R = F->createFusedRowwiseQuantizedSparseLengthsWeightedSum(
+      "RQSLWS", data, weights, indices, lengths, fusedKind);
+  SaveNode *S = F->createSave("save", R);
+
+  size_t origSize = F->getNodes().size();
+  CompilationContext cctx;
+  PrecisionConfiguration &precConfig = cctx.precisionConfig;
+  precConfig.convert4BitFusedTo8Bit = true;
+  precConfig.convert8BitFusedToFP32 = true;
+  precConfig.convertIndicesToInt64 = true;
+  precConfig.forceFP16AccumSLS = false;
+
+  transformForPrecisionMode(MockBackend(), F, cctx);
+  // Should have added ConvertTo nodes for the Data and indices.
+  EXPECT_EQ(F->getNodes().size(), origSize + 2);
+
+  optimize(F, CompilationMode::Infer);
+  // Since data is a constant, after optimization, const folding should be
+  // applied and a new data is created. Therefore, only 1 ConverTo node is left
+  // for indices.
+  EXPECT_EQ(F->getNodes().size(), origSize + 1);
+
+  auto *SLWS =
+      llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
+          S->getInput());
+  ASSERT_NE(SLWS, nullptr);
+  EXPECT_EQ(SLWS->getData().getElementType(), ElemKind::UInt8FusedQTy);
+  EXPECT_EQ(SLWS->getIndices().getElementType(), ElemKind::Int64ITy);
+
+  EXPECT_TRUE(F->verify());
+}
+
+TEST(TypeAToTypeBFunctionConverter, FRWLWSConvert8Bit) {
+  testFRWQSLWSDataIndicesConvert(ElemKind::UInt8FusedFP16QTy, 10, 10);
+}
+
+TEST(TypeAToTypeBFunctionConverter, FRWLWSConvert4Bit) {
+  testFRWQSLWSDataIndicesConvert(ElemKind::UInt4FusedFP16QTy, 10, 10);
+}

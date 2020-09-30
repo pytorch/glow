@@ -298,6 +298,10 @@ public:
   /// \Returns the module log context.
   LogContext *getModuleLogContext() { return &moduleLogCtx_; };
 
+  /// \returns whether any Node in the module are non-fused quantized with
+  /// scale == or != dummyScale, depending on \p expectDummy.
+  Error verifyDummyQParams(bool expectDummies);
+
   // Don't copy or move this class around.
   // The destructor will wipe the functions leaving
   // the original Module only dangling pointers.
@@ -371,6 +375,10 @@ public:
   /// This is to make sure that performing optimizations have a deterministic
   /// behavior on the graphs which have the same ops but different ordering in
   /// nodes_.
+  /// Please do not call this in the middle of PyTorchModelLoading, since
+  /// constant propagation is heavily relied on the order of nodes in nodelist.
+  /// If the order is changed during model loading, the constant propagation may
+  /// cause unpredictable fatal error when building the graph.
   void orderNodes() {
     nodes_.sort(
         [](const Node &a, const Node &b) { return a.getName() < b.getName(); });
@@ -595,17 +603,20 @@ public:
                              llvm::ArrayRef<unsigned_t> kernels,
                              llvm::ArrayRef<unsigned_t> strides,
                              llvm::ArrayRef<unsigned_t> pads,
-                             ConvolutionLayout layout = NHWC);
+                             ConvolutionLayout layout = NHWC,
+                             bool countIncludePads = true);
 
   AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,
                              TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
                              llvm::ArrayRef<unsigned_t> strides,
                              llvm::ArrayRef<unsigned_t> pads,
-                             ConvolutionLayout layout = NHWC);
+                             ConvolutionLayout layout = NHWC,
+                             bool countIncludePads = true);
 
   AvgPoolNode *createAvgPool(llvm::StringRef name, NodeValue input,
                              unsigned_t kernel, unsigned_t stride,
-                             unsigned_t pad, ConvolutionLayout layout = NHWC);
+                             unsigned_t pad, ConvolutionLayout layout = NHWC,
+                             bool countIncludePads = true);
 
   /// Creates and \returns an AdaptiveAvgPool node with \p name, \p input, and
   /// \p outTy. The AdaptiveAvgPoolNode will perform average pooling over the
@@ -945,6 +956,7 @@ public:
   ARITHMETIC_FUN_DECL(Mul);
   ARITHMETIC_FUN_DECL(Sub);
   ARITHMETIC_FUN_DECL(Div);
+  ARITHMETIC_FUN_DECL(FloorDiv);
   ARITHMETIC_FUN_DECL(Max);
   ARITHMETIC_FUN_DECL(Min);
   ARITHMETIC_FUN_DECL(CmpEQ);
@@ -992,6 +1004,7 @@ public:
   /// automatically for multi directional broadcast.
   DECLARE_BROADCAST_NODE(Mul, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Div, /* NUM_INPUTS */ 2)
+  DECLARE_BROADCAST_NODE(FloorDiv, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Add, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(Sub, /* NUM_INPUTS */ 2)
   DECLARE_BROADCAST_NODE(And, /* NUM_INPUTS */ 2)
@@ -1009,6 +1022,9 @@ public:
   }
 
   DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Add, /* NUM_INPUTS */ 2, outTy)
+  DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Sub, /* NUM_INPUTS */ 2, outTy)
+  DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Mul, /* NUM_INPUTS */ 2, outTy)
+  DECLARE_BROADCAST_NODE_WITH_OUT_TYPE(Div, /* NUM_INPUTS */ 2, outTy)
 
 #define DECLARE_CMP_BROADCAST_NODE(NODE_NAME)                                  \
   template <class T, class... Args>                                            \
@@ -1062,15 +1078,13 @@ public:
   /// multiplies \p input with itself to produce an equivalent Square node.
   MulNode *createSquare(llvm::StringRef name, TypeRef outTy, NodeValue input);
 
-  /// Create an equivalent LeakyRELU node with given \p name, \p input and slope
-  /// \p alpha by using a SplatNode and a PRELU node.
-  PReluNode *createLeakyRELU(llvm::StringRef name, NodeValue input,
-                             float alpha);
+  /// Create a LeakyRELU with \p name, \p input and slope \p alpha.
+  LeakyReluNode *createLeakyRELU(llvm::StringRef name, NodeValue input,
+                                 float alpha);
 
-  /// Create an equivalent LeakyRELU node with given \p name, \p outTy, \p input
-  /// and slope \p alpha by using a SplatNode and a PRELU node.
-  PReluNode *createLeakyRELU(llvm::StringRef name, TypeRef outTy,
-                             NodeValue input, float alpha);
+  /// Create a LeakyRELU with \p name, \p outTy, \p input and slope \p alpha.
+  LeakyReluNode *createLeakyRELU(llvm::StringRef name, TypeRef outTy,
+                                 NodeValue input, float alpha);
 
   /// Create a node that produces an boolean output of the same shape as
   /// \p input in which each element indicates whether or not the corresponding
@@ -1103,6 +1117,11 @@ public:
   /// rhs.slice(i).
   BatchMatMulNode *createBatchMatMul(llvm::StringRef name, NodeValue lhs,
                                      NodeValue rhs);
+
+  /// Create a node, performing Norm operation. Output type is based on the
+  /// input \p p type with dimensions specified with \p axes removed.
+  VectorNormNode *createVectorNorm(llvm::StringRef name, NodeValue input,
+                                   unsigned_t axis, unsigned_t p = 2);
 
   /// Create a node, performing BatchedReduceAdd operation. Output type is
   /// based on the input \p batch type with dimensions specified with \p axes
@@ -1148,6 +1167,12 @@ public:
                                    NodeValue slice);
 
   BatchedAddNode *createBatchedAdd(llvm::StringRef name, TypeRef outTy,
+                                   NodeValue batch, NodeValue slice);
+
+  BatchedMulNode *createBatchedMul(llvm::StringRef name, NodeValue batch,
+                                   NodeValue slice);
+
+  BatchedMulNode *createBatchedMul(llvm::StringRef name, TypeRef outTy,
                                    NodeValue batch, NodeValue slice);
 
   /// Create a node performing a Cumulative Sum operation, output type matches
@@ -1742,8 +1767,9 @@ public:
   /// - [f] in case the RNN is unidirectional (1 function).
   /// - [f] for the forward cell followed by [f] for the reverse cell in
   ///    case the RNN is bidirectional (4 functions).
-  /// The input \p B is optional (assumed 0 if nullptr is provided).
-  /// The names of all the nodes created are prefixed with \p namePrefix.
+  /// The inputs \p B and \p initial_h are optional (assumed 0 if nullptr is
+  /// provided). The names of all the nodes created are prefixed with
+  /// \p namePrefix.
   void createOnnxRNN(llvm::StringRef namePrefix, NodeValue X, NodeValue W,
                      NodeValue R, NodeValue B, NodeValue initial_h,
                      NodeValue &Y, NodeValue &Y_h, unsigned hiddenSize,
@@ -1768,10 +1794,11 @@ public:
   /// - [f,g] in case the GRU is unidirectional (2 functions).
   /// - [f,g] for the forward cell followed by [f,g] for the reverse cell in
   ///    case the GRU is bidirectional (4 functions).
-  /// The input \p B is optional (assumed 0 if nullptr is provided).
-  /// The names of all the nodes created are prefixed with \p namePrefix.
-  /// The boolean parameter \p linearBeforeReset defines whether the reset
-  /// for the previous hidden state occurs before/after the linear expression.
+  /// The inputs \p B and \p initial_h are optional (assumed 0 if nullptr is
+  /// provided). The names of all the nodes created are prefixed with
+  /// \p namePrefix. The boolean parameter \p linearBeforeReset defines whether
+  /// the reset for the previous hidden state occurs before/after the linear
+  /// expression.
   void createOnnxGRU(llvm::StringRef namePrefix, NodeValue X, NodeValue W,
                      NodeValue R, NodeValue B, NodeValue initial_h,
                      NodeValue &Y, NodeValue &Y_h, unsigned hiddenSize,
@@ -1800,10 +1827,11 @@ public:
   /// - [f,g,h] in case the LSTM is unidirectional (3 functions).
   /// - [f,g,h] for the forward cell followed by [f,g,h] for the reverse cell in
   ///    case the LSTM is bidirectional (6 functions).
-  /// The inputs \p B and \p P are optional (assumed 0 if nullptr is provided).
-  /// The names of all the nodes created are prefixed with \p namePrefix.
-  /// The boolean parameter \p inputForget defines whether the input and forget
-  /// gates should be coupled (compute the input gate from the forget gate).
+  /// The inputs \p B, \p initial_h, \p initial_c and \p P are optional (assumed
+  /// 0 if nullptr is provided). The names of all the nodes created are prefixed
+  /// with \p namePrefix. The boolean parameter \p inputForget defines whether
+  /// the input and forget gates should be coupled (compute the input gate from
+  /// the forget gate).
   void createOnnxLSTM(llvm::StringRef namePrefix, NodeValue X, NodeValue W,
                       NodeValue R, NodeValue B, NodeValue initial_h,
                       NodeValue initial_c, NodeValue P, NodeValue &Y,
@@ -2007,20 +2035,22 @@ public:
                        float upperFrequency, int64_t filterBankCount,
                        int64_t numCoefficients);
 
-  /// Peformas the ROIAlign operation given the \p featureMap and the \p boxes.
+  /// Performs the ROIAlign operation given the \p featureMap and the \p boxes.
   /// ROIAlign is similar to crop and resize followed by pooling. The
   /// co-ordinates to extract the crops are specified in \p boxes. Each cropped
   /// image has to be resized to have the shape specified by \p outputHeight and
   /// \p outputWidth. The \p samplingRatio specifies the number of samples to
   /// take from each bin (along both the dimensions) for the purpose of pooling.
-  /// This node is inspired from onnx
+  /// This node is defined in:
   /// (https://github.com/onnx/onnx/blob/master/docs/Operators.md#RoiAlign).
+  /// \p aligned flag is an addition to Onnx definition to indicate if box
+  /// coordinates are aligned to the center of a pixel (VS top-left corner).
   ROIAlignNode *createROIAlign(llvm::StringRef name, NodeValue featureMap,
                                NodeValue boxes, NodeValue batchIndices,
-                               std::string mode, uint32_t outputHeight,
-                               uint32_t outputWidth, uint32_t samplingRatio,
-                               float spatialScale, float offset,
-                               bool normalized);
+                               uint32_t outputHeight, uint32_t outputWidth,
+                               uint32_t samplingRatio, float spatialScale,
+                               bool aligned, bool rotated = false,
+                               PoolingMode mode = PoolingMode::AVG);
 
   /// Transform proposal bounding boxes to target bounding box using bounding
   /// box regression deltas.

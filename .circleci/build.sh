@@ -93,7 +93,7 @@ else
 fi
 
 # Install ninja, (newest version of) autopep8 through pip
-sudo pip install ninja 
+sudo pip install ninja
 hash cmake ninja
 
 # Build glow
@@ -156,7 +156,7 @@ elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     git clone https://github.com/pytorch/pytorch.git --recursive --depth 1
     cd pytorch
     pip install -r requirements.txt
-    BUILD_BINARY=OFF BUILD_TEST=0 BUILD_CAFFE2_OPS=0 USE_FBGEMM=ON python setup.py install
+    BUILD_BINARY=OFF BUILD_TEST=0 BUILD_CAFFE2_OPS=1 USE_FBGEMM=ON python setup.py install
     cd ${GLOW_DIR}
     cd build
 elif [[ "$CIRCLE_JOB" == "OPENCL" ]]; then

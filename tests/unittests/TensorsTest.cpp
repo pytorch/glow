@@ -1066,6 +1066,54 @@ TEST(Tensor, insertSlice) {
   EXPECT_TRUE(big.isEqual(expected));
 }
 
+/// Check that after converting to UInt8FusedQTy, the data, scale and offset are
+/// the same as original ones.
+static void testConvertToUInt8FusedQTy(ElemKind fusedKind, dim_t row,
+                                       dim_t col) {
+  EXPECT_LT(row, 100);
+  EXPECT_LT(col, 100);
+  Tensor T(fusedKind, {row, col}, 1.0, 0);
+  auto dataCol = col - 2 * sizeof(float16_t);
+  auto TH = T.getHandle<uint8_t>();
+  for (dim_t i = 0; i < row; i++) {
+    TH.setFusedScaleOffsetInRow<float16_t>(i, i, i);
+    for (dim_t j = 0; j < dataCol; j++) {
+      TH.at({i, j}) = i + j;
+    }
+  }
+
+  Tensor newT = T.getCopyConvertedToType(ElemKind::UInt8FusedQTy);
+  auto newTH = newT.getHandle<uint8_t>();
+  bool is4Bit = fusedKind == ElemKind::UInt4FusedFP16QTy;
+
+  // Check the converted dims.
+  auto expectedCol = dataCol * (is4Bit ? 2 : 1) + 2 * sizeof(float);
+  EXPECT_EQ(newTH.dims().size(), 2);
+  EXPECT_EQ(newTH.dims()[0], TH.dims()[0]);
+  EXPECT_EQ(newTH.dims()[1], expectedCol);
+
+  // Check the converted FP32 scale/offset are correctly cast from Fp16
+  // scale/offset.
+  for (dim_t i = 0; i < row; i++) {
+    float scale, offset;
+    std::tie(scale, offset) = newTH.getFusedScaleOffsetFromRow<float>(i);
+    EXPECT_EQ(scale, (float)i);
+    EXPECT_EQ(offset, (float)i);
+  }
+
+  // Check the converted data are the same as original ones.
+  for (dim_t i = 0; i < row; i++) {
+    for (dim_t j = 0; j < dataCol; j++) {
+      if (is4Bit) {
+        EXPECT_EQ(newTH.at({i, j * 2}), (i + j) & 0x0F);
+        EXPECT_EQ(newTH.at({i, j * 2 + 1}), ((i + j) >> 4) & 0x0F);
+      } else {
+        EXPECT_EQ(newTH.at({i, j}), i + j);
+      }
+    }
+  }
+}
+
 /// Check that after initializing a fused tensor to zero that the scale and
 /// offset are not changed and that the values for each row are set to that
 /// row's offset.
@@ -1343,8 +1391,8 @@ TEST(Tensor, unpaddedSize) {
   EXPECT_EQ(assigned.getSizeInBytes(), paddedBytes);
 
   // Check that when we reset a partial Tensor with the same Type but without
-  // specifying the reset should be partial that we do not have the same ptr, as
-  // it should have been reallocated.
+  // specifying the reset should be partial that we do not have the same ptr,
+  // as it should have been reallocated.
   char *oldPtr = assigned.getUnsafePtr();
   assigned.reset(paddedType);
   EXPECT_NE(assigned.getUnsafePtr(), oldPtr);
@@ -1455,8 +1503,9 @@ TEST(CustomAlignedTensor, getDimForPtr) {
   EXPECT_EQ(H.getDimForPtr(2, 3), 0);
 }
 
-// Check that we iterate over tensors correctly: unit test for a bug wherein we
-// used size() instead of actualSize() when treating the data as a raw pointer.
+// Check that we iterate over tensors correctly: unit test for a bug wherein
+// we used size() instead of actualSize() when treating the data as a raw
+// pointer.
 TEST(Tensor, sameAlignment) {
   Type Ty1(ElemKind::Float16Ty, {2, 1}, {4, 1});
   Type Ty2(ElemKind::Float16Ty, {2, 1}, {4, 1});
@@ -1474,8 +1523,8 @@ TEST(Tensor, sameAlignment) {
   EXPECT_FALSE(T1.isEqual(T2));
 }
 
-// Check that our tensor iteration is aware of padding: unit-test that checks we
-// iterate correctly when accessing elements in tensors that have different
+// Check that our tensor iteration is aware of padding: unit-test that checks
+// we iterate correctly when accessing elements in tensors that have different
 // alignment requirements.
 TEST(Tensor, differentAlignment) {
   Type Ty1(ElemKind::Float16Ty, {2, 1}, {4, 1});
@@ -1674,4 +1723,14 @@ TEST(Tensor, accessToRawBinaryFile) {
   for (size_t rcnt = 0; rcnt < tensorTest.actualSize(); rcnt++) {
     EXPECT_FLOAT_EQ(handleTest.raw(rcnt), handleRef.raw(rcnt));
   }
+}
+
+/// Test convert UInt4FusedFP16QTy tensor to a UInt8FusedQTy tensor.
+TEST(Tensor, typeConvert_UInt4FusedFP16QTy_To_UInt8FusedQTY) {
+  testConvertToUInt8FusedQTy(ElemKind::UInt4FusedFP16QTy, 10, 10);
+}
+
+/// Test convert UInt8FusedFP16QTy tensor to a UInt8FusedQTy tensor.
+TEST(Tensor, typeConvert_UInt8FusedFP16QTy_To_UInt8FusedQTy) {
+  testConvertToUInt8FusedQTy(ElemKind::UInt8FusedFP16QTy, 10, 10);
 }

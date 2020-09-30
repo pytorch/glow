@@ -581,6 +581,7 @@ TEST_F(Caffe2ImporterTest, avgPoolNHWC) {
   auto *avgPoolNode =
       llvm::dyn_cast<AvgPoolNode>(saveNode->getInput().getNode());
   ASSERT_TRUE(avgPoolNode);
+  ASSERT_FALSE(avgPoolNode->getCountIncludePads());
 
   // We have 2 placeholders:  1 input and 1 output.
   EXPECT_EQ(mod.getPlaceholders().size(), 2);
@@ -622,6 +623,7 @@ TEST_F(Caffe2ImporterTest, avgPool) {
   auto *avgPoolNode =
       llvm::dyn_cast<AvgPoolNode>(transNode1->getInput().getNode());
   ASSERT_TRUE(avgPoolNode);
+  ASSERT_TRUE(avgPoolNode->getCountIncludePads());
   auto *transNode2 =
       llvm::dyn_cast<TransposeNode>(avgPoolNode->getInput().getNode());
   ASSERT_TRUE(transNode2);
@@ -3023,9 +3025,25 @@ TEST_F(Caffe2ImporterTest, importInt8ConvRelu) {
   ASSERT_TRUE(transNode1);
   auto *reluNode = llvm::dyn_cast<ReluNode>(transNode1->getInput().getNode());
   ASSERT_TRUE(reluNode);
+  EXPECT_TRUE(reluNode->getResult().getType()->isQuantizedType());
+  EXPECT_EQ(reluNode->getResult().getType()->getScale(), 1.5f);
+  EXPECT_EQ(reluNode->getResult().getType()->getOffset(),
+            7 - UINT8_TO_INT8_SHIFT);
   auto *convNode =
       llvm::dyn_cast<ConvolutionNode>(reluNode->getInput().getNode());
   ASSERT_TRUE(convNode);
+  EXPECT_TRUE(convNode->getResult().getType()->isQuantizedType());
+  EXPECT_EQ(convNode->getResult().getType()->getScale(), 1.5f);
+  EXPECT_EQ(convNode->getResult().getType()->getOffset(),
+            7 - UINT8_TO_INT8_SHIFT);
+  EXPECT_TRUE(convNode->getFilter().getType()->isQuantizedType());
+  EXPECT_EQ(convNode->getFilter().getType()->getScale(), 2.f);
+  EXPECT_EQ(convNode->getFilter().getType()->getOffset(),
+            10 - UINT8_TO_INT8_SHIFT);
+  EXPECT_TRUE(convNode->getBias().getType()->isQuantizedType());
+  EXPECT_EQ(convNode->getBias().getType()->getScale(), 10.f);
+  // This one is loaded int32, so has no shift.
+  EXPECT_EQ(convNode->getBias().getType()->getOffset(), 4);
   auto *transNode2 =
       llvm::dyn_cast<TransposeNode>(convNode->getInput().getNode());
   ASSERT_TRUE(transNode2);
@@ -3577,4 +3595,125 @@ TEST_F(Caffe2ImporterTest, importLayerNormWithWeightBias) {
 
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
+}
+
+static void testImportTrackedQParams(bool loadUniquedDummyQParams) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/int8convrelu_pred_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/int8convrelu_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+  OriginNameToTQPMap originNameToTQPMap;
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Tensor data(ElemKind::Int8QTy, {1, 1, 3, 3}, 1, 0);
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"gpu_0/data_0"}, {&data.getType()}, *F,
+                               /* errPtr */ nullptr, &originNameToTQPMap,
+                               loadUniquedDummyQParams);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+  }
+
+  // High level check on the content of the graph. We should have
+  // {transpose, transpose} => conv => relu => transpose => save
+  EXPECT_EQ(F->getNodes().size(), 6);
+  auto *saveNode = getSaveNodeFromDest(output);
+
+  EXPECT_EQ(originNameToTQPMap.size(), 4);
+  TensorQuantizationParams convOut, convBias, convWeight, convInput;
+  for (const auto &nameTQP : originNameToTQPMap) {
+    if (nameTQP.first == "conv_out") {
+      convOut = nameTQP.second;
+    } else if (nameTQP.first == "conv_w") {
+      convWeight = nameTQP.second;
+    } else if (nameTQP.first == "conv_b") {
+      convBias = nameTQP.second;
+    } else if (nameTQP.first == "gpu_0/data_0") {
+      convInput = nameTQP.second;
+    } else {
+      FAIL();
+    }
+  }
+
+  if (loadUniquedDummyQParams) {
+    // Dummies should have unique offsets 0->3.
+    EXPECT_EQ(convInput.offset, 0);
+    EXPECT_EQ(convWeight.offset, 1);
+    EXPECT_EQ(convBias.offset, 2);
+    EXPECT_EQ(convOut.offset, 3);
+
+    // All dummmies should have dummy scale.
+    EXPECT_EQ(convInput.scale, dummyScale);
+    EXPECT_EQ(convWeight.scale, dummyScale);
+    EXPECT_EQ(convBias.scale, dummyScale);
+    EXPECT_EQ(convOut.scale, dummyScale);
+  } else {
+    // This one was provided as an input PH with a type already based on Glow
+    // Int8QTy, so don't shift.
+    EXPECT_EQ(convInput.offset, 0);
+    EXPECT_EQ(convWeight.offset, 10 - UINT8_TO_INT8_SHIFT);
+    // This one is loaded int32, so has no shift.
+    EXPECT_EQ(convBias.offset, 4);
+    EXPECT_EQ(convOut.offset, 7 - UINT8_TO_INT8_SHIFT);
+
+    EXPECT_EQ(convInput.scale, 1.f);
+    EXPECT_EQ(convWeight.scale, 2.f);
+    EXPECT_EQ(convBias.scale, 10.f);
+    EXPECT_EQ(convOut.scale, 1.5f);
+  }
+
+  auto *transNode1 =
+      llvm::dyn_cast<TransposeNode>(saveNode->getInput().getNode());
+  ASSERT_TRUE(transNode1);
+  auto *reluNode = llvm::dyn_cast<ReluNode>(transNode1->getInput().getNode());
+  ASSERT_TRUE(reluNode);
+  ASSERT_TRUE(reluNode);
+  EXPECT_TRUE(reluNode->getResult().getType()->isQuantizedType());
+  EXPECT_EQ(reluNode->getResult().getType()->getScale(), convOut.scale);
+  EXPECT_EQ(reluNode->getResult().getType()->getOffset(), convOut.offset);
+  auto *convNode =
+      llvm::dyn_cast<ConvolutionNode>(reluNode->getInput().getNode());
+  ASSERT_TRUE(convNode);
+  EXPECT_TRUE(convNode->getResult().getType()->isQuantizedType());
+  EXPECT_EQ(convNode->getResult().getType()->getScale(), convOut.scale);
+  EXPECT_EQ(convNode->getResult().getType()->getOffset(), convOut.offset);
+  EXPECT_TRUE(convNode->getFilter().getType()->isQuantizedType());
+  EXPECT_EQ(convNode->getFilter().getType()->getScale(), convWeight.scale);
+  EXPECT_EQ(convNode->getFilter().getType()->getOffset(), convWeight.offset);
+  EXPECT_TRUE(convNode->getBias().getType()->isQuantizedType());
+  EXPECT_EQ(convNode->getBias().getType()->getScale(), convBias.scale);
+  EXPECT_EQ(convNode->getBias().getType()->getOffset(), convBias.offset);
+  ASSERT_TRUE(convNode);
+  auto *transNode2 =
+      llvm::dyn_cast<TransposeNode>(convNode->getInput().getNode());
+  ASSERT_TRUE(transNode2);
+  auto *transNode3 =
+      llvm::dyn_cast<TransposeNode>(convNode->getFilter().getNode());
+  ASSERT_TRUE(transNode3);
+
+  EE.compile(CompilationMode::Infer);
+}
+
+/// Test that when we load a pre-quantized model when providing
+/// OriginNameToTQPMap that the quant params are discarded and unique offsets
+/// are used to track the mapping to names they came from.
+TEST_F(Caffe2ImporterTest, importInt8ConvReluTrackedDummyQParams) {
+  testImportTrackedQParams(/* loadUniquedDummyQParams */ true);
+}
+
+/// Test that when we load a pre-quantized model when providing
+/// OriginNameToTQPMap, but we don't enable loading unique dummy qparams, that
+/// we correctly have mapped the quant params to the name it came from.
+TEST_F(Caffe2ImporterTest, importInt8ConvReluTrackedRealQParams) {
+  testImportTrackedQParams(/* loadUniquedDummyQParams */ false);
 }

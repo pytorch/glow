@@ -32,7 +32,8 @@ NNPIDeviceTracing::NNPIDeviceTracing(unsigned deviceId) : deviceId_(deviceId) {
 bool NNPIDeviceTracing::start(TraceContext *traceContext,
                               NNPIDeviceContext deviceContext, bool swTraces,
                               bool hwTraces, uint32_t softwareBufferSizeMB,
-                              uint32_t hardwareBufferSizeMB) {
+                              uint32_t hardwareBufferSizeMB,
+                              const std::string &dumpRawEventsPath) {
   if (!traceContext ||
       !traceContext->shouldLog(TraceEvent::TraceLevel::OPERATOR)) {
     return false;
@@ -43,7 +44,8 @@ bool NNPIDeviceTracing::start(TraceContext *traceContext,
   }
   bool isFirstToStart = NNPIDeviceTracing::isFirstToChangeCaptureStart(true);
   if (!traceCtx_->startCapture(deviceContext, swTraces, hwTraces,
-                               softwareBufferSizeMB, hardwareBufferSizeMB)) {
+                               softwareBufferSizeMB, hardwareBufferSizeMB,
+                               dumpRawEventsPath)) {
     LOG(WARNING) << "Failed to start trace capture for device " << deviceId_
                  << " is first = " << (isFirstToStart);
     return false;
@@ -73,8 +75,14 @@ std::string NNPIDeviceTracing::getEntryName(NNPITraceEntry &entry) {
     }
   }
   auto params = entry.params;
+  if (entry.params.count("context_id") > 0) {
+    name << " CTX 0x" << std::hex << std::stol(entry.params["context_id"]);
+  }
   if (entry.params.count("ice_id") > 0) {
     name << " ICE_" << entry.params["ice_id"];
+  }
+  if (entry.params.count("core_id") > 0) {
+    name << " CORE_" << entry.params["core_id"];
   }
   if (entry.params.count("network_id") > 0) {
     name << " Net " << entry.params["network_id"];
@@ -82,9 +90,6 @@ std::string NNPIDeviceTracing::getEntryName(NNPITraceEntry &entry) {
   if (entry.params.count("network_name") > 0 &&
       entry.params["network_name"] != "NA") {
     name << " NetName " << entry.params["network_name"];
-  }
-  if (entry.params.count("context_id") > 0) {
-    name << " CTX 0x" << std::hex << std::stol(entry.params["context_id"]);
   }
   if (entry.params.count("subNetId") > 0) {
     name << " Subnet " << entry.params["subNetId"];
@@ -134,7 +139,9 @@ int NNPIDeviceTracing::getAffinityID(NNPITraceEntry &entry, std::string name,
   }
   // Use the op name.
   affinityNameStuct << " " << name.substr(0, name.find(' '));
-  if (entry.params.count("state") && entry.params["state"] == "q") {
+  if (entry.params.count("org_state") &&
+      (entry.params["org_state"] == "q" ||
+       entry.params["org_state"] == "queued")) {
     affinityNameStuct << " Queue";
   }
 
@@ -165,6 +172,11 @@ bool NNPIDeviceTracing::addTrace(
   if (entry.params.count("state") <= 0) {
     return false;
   }
+
+  std::string eventKey = name;
+  if (entry.params.count("event_key") > 0) {
+    eventKey += (std::string(" : ") + entry.params["event_key"]);
+  }
   std::string state = entry.params["state"];
 
   // Calculate affinity - use the trace thread id to make sections in the
@@ -177,30 +189,38 @@ bool NNPIDeviceTracing::addTrace(
   }
   // Add events.
   if (state == "q") {
-    name += "-Queue";
     traceContext->logTraceEvent(name, TraceLevel::OPERATOR,
                                 TraceEvent::InstantType, entry.hostTime,
                                 entry.params, affinId);
-  } else if (state == "s" && inflight.count(name) <= 0) {
-    inflight[name] = entry;
-  } else if (state == "c" && inflight.count(name) > 0) {
+  } else if (state == "s" && inflight.count(eventKey) <= 0) {
+    inflight[eventKey] = entry;
+  } else if (state == "c" && inflight.count(eventKey) > 0) {
     // Add only complate events.
-    if (entry.hostTime >= inflight[name].hostTime) {
+    if (entry.hostTime >= inflight[eventKey].hostTime) {
       traceContext->logTraceEvent(
           name, TraceLevel::OPERATOR, TraceEvent::BeginType,
-          inflight[name].hostTime, inflight[name].params, affinId);
+          inflight[eventKey].hostTime, inflight[eventKey].params, affinId);
       traceContext->logTraceEvent(name, TraceLevel::OPERATOR,
                                   TraceEvent::EndType, entry.hostTime,
                                   entry.params, affinId);
     } else {
-      LOG(WARNING) << "Found incomplete trace event " << name << ": start time "
-                   << inflight[name].hostTime << " end time " << entry.hostTime;
+      LOG(WARNING) << "[INCOMPLETE EVENT] Found incomplete trace event "
+                   << eventKey << ": start time " << inflight[eventKey].hostTime
+                   << " end time " << entry.hostTime;
     }
-    inflight.erase(name);
+    inflight.erase(eventKey);
   } else if (state == "po") {
     traceContext->logTraceEvent(name, TraceLevel::OPERATOR,
                                 TraceEvent::InstantType, entry.hostTime,
                                 entry.params, affinId);
+  } else if (entry.params.count("engine") > 0 &&
+             entry.params["engine"] != "HW") {
+    // Notifies only software events that are incomplete since HW events are
+    // much more likely to be lost.
+    LOG(WARNING) << "[INCOMPLETE EVENT] "
+                 << " event key:" << eventKey << " state:" << state
+                 << " inflight: " << (inflight.count(eventKey) > 0)
+                 << " time: " << entry.hostTime;
   }
 
   return true;
@@ -227,6 +247,19 @@ bool NNPIDeviceTracing::stopAndUpdate(TraceContext *traceContext,
   std::map<std::string, NNPITraceEntry> inflight;
   for (auto entry : traceCtx_->getEntries()) {
     addTrace(entry, inflight, traceContext);
+  }
+  if (inflight.size() > 0) {
+    LOG(WARNING) << "[INCOMPLETE EVENT] " << inflight.size()
+                 << " events not logged (still in flight/incomplate)";
+    for (const auto &event : inflight) {
+      if (event.second.params.at("engine") != "HW") {
+        // Notifies only software events that are incomplete since HW events are
+        // much more likely to be lost.
+        LOG(WARNING) << "[INCOMPLETE EVENT] " << event.first << " "
+                     << event.second.params.at("name")
+                     << " state:" << event.second.params.at("state");
+      }
+    }
   }
   started_.clear();
   return true;

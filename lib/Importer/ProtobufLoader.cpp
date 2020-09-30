@@ -239,16 +239,28 @@ bool ProtobufLoader::hasNodeByName(llvm::StringRef name) const {
 
 ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                                llvm::ArrayRef<TypeRef> types, Module &mod,
-                               Error *errPtr, bool loadIntoExistingModule)
-    : G_(nullptr), mod_(mod), loadIntoExistingModule_(loadIntoExistingModule) {
+                               Error *errPtr, bool loadIntoExistingModule,
+                               OriginNameToTQPMap *originNameToTQPMap,
+                               bool loadUniquedDummyQParams,
+                               bool replaceDummyTQPs)
+    : G_(nullptr), mod_(mod), loadIntoExistingModule_(loadIntoExistingModule),
+      originNameToTQPMap_(originNameToTQPMap),
+      loadUniquedDummyQParams_(loadUniquedDummyQParams),
+      replaceDummyTQPs_(replaceDummyTQPs) {
   setupLoader(tensorNames, types, errPtr);
 }
 
 ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                                llvm::ArrayRef<TypeRef> types, Function *F,
-                               Error *errPtr, bool loadIntoExistingModule)
+                               Error *errPtr, bool loadIntoExistingModule,
+                               OriginNameToTQPMap *originNameToTQPMap,
+                               bool loadUniquedDummyQParams,
+                               bool replaceDummyTQPs)
     : G_(F), mod_(*F->getParent()),
-      loadIntoExistingModule_(loadIntoExistingModule) {
+      loadIntoExistingModule_(loadIntoExistingModule),
+      originNameToTQPMap_(originNameToTQPMap),
+      loadUniquedDummyQParams_(loadUniquedDummyQParams),
+      replaceDummyTQPs_(replaceDummyTQPs) {
   setupLoader(tensorNames, types, errPtr);
 }
 
@@ -275,9 +287,18 @@ void ProtobufLoader::setupLoader(llvm::ArrayRef<const char *> tensorNames,
     for (size_t i = 0, e = tensorNames.size(); i < e; i++) {
       RETURN_ERR_IF_NOT(!hasNodeByName(tensorNames[i]),
                         "Input names have duplicate");
+      TypeRef T = types[i];
+      if (T->isQuantizedType() && !T->isFusedQuantizedType()) {
+        // Note: Never shift here, because these are the types that were already
+        // imported/defined based on Glow.
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            T, loadQuantTy(tensorNames[i], T->getElementType(), T->dims(),
+                           T->getScale(), T->getOffset(),
+                           /* shiftUInt8ToInt8 */ false));
+      }
       Placeholder *placeholder;
       ASSIGN_VALUE_OR_RETURN_ERR(
-          placeholder, createAndRegisterPlaceholder(tensorNames[i], types[i]));
+          placeholder, createAndRegisterPlaceholder(tensorNames[i], T));
       inputVarsByName_.try_emplace(tensorNames[i], placeholder);
     }
     return Error::success();
@@ -288,6 +309,67 @@ void ProtobufLoader::setupLoader(llvm::ArrayRef<const char *> tensorNames,
   } else {
     EXIT_ON_ERR(setup());
   }
+}
+
+Expected<TensorQuantizationParams>
+ProtobufLoader::getUpdatedTQP(int32_t uniqueOffsetIdx) {
+  RETURN_ERR_IF_NOT(replaceDummyTQPs_, "replaceDummyTQPs_ was not enabled");
+  RETURN_ERR_IF_NOT(
+      uniqueOffsetIdx < updatedTQPs_.size(),
+      strFormat("Unexpected size of updated TQPs %lu vs. dummy offset %d",
+                updatedTQPs_.size(), uniqueOffsetIdx));
+  return updatedTQPs_[uniqueOffsetIdx];
+}
+
+Expected<TypeRef> ProtobufLoader::loadQuantTy(const std::string &name,
+                                              ElemKind k,
+                                              llvm::ArrayRef<dim_t> dims,
+                                              float scale, int32_t offset,
+                                              bool shiftUInt8ToInt8) {
+  // If we have Int8QTy, we may have loaded as UInt8, and so will need to shift
+  // to align to Glow's Int8QTy.
+  if (k == ElemKind::Int8QTy && shiftUInt8ToInt8) {
+    offset -= UINT8_TO_INT8_SHIFT;
+  }
+
+  // If we don't have a map to track dummy unique offsets to loader names, then
+  // just load as normal with the actual scale/offset we loaded.
+  if (!loadUniquedDummyQParams_) {
+    if (originNameToTQPMap_) {
+      bool inserted =
+          originNameToTQPMap_
+              ->emplace(name, TensorQuantizationParams{scale, offset})
+              .second;
+      RETURN_ERR_IF_NOT(inserted, "Already inserted TQP for " + name);
+    }
+    return mod_.uniqueType(k, dims, scale, offset);
+  }
+
+  RETURN_ERR_IF_NOT(originNameToTQPMap_,
+                    "Must have valid originNameToTQPMap_ when loading "
+                    "uniqued dummy qparams.");
+
+  // We use dummyScale to represent a dummy scale/offset pair. Make sure the
+  // original model did not have dummyScale, since we will use it later on to
+  // verify all qparams are now dummies.
+  RETURN_ERR_IF_NOT(scale != dummyScale, "Found dummy scale for " + name);
+
+  // For uniqued scale/offset, ignore the actual loaded values. Instead use
+  // dummyScale to signal these quant params are dummies, and then a uniqued
+  // incremented offset to represent this unique quant param pair. Save the name
+  // of the C2 edge that we loaded to use these quant params in the cctx so we
+  // can ue it in the future. The index the name is at represents which unique
+  // index it is mapped to.
+  RETURN_ERR_IF_NOT(originNameToTQPMap_->size() == currUniqueOffset_,
+                    "Unexpected size encountered for qparam origin tracking");
+  const int32_t thisUniqueOffset = currUniqueOffset_++;
+  bool inserted =
+      originNameToTQPMap_
+          ->emplace(name,
+                    TensorQuantizationParams{dummyScale, thisUniqueOffset})
+          .second;
+  RETURN_ERR_IF_NOT(inserted, "Already inserted TQP for " + name);
+  return mod_.uniqueType(k, dims, dummyScale, thisUniqueOffset);
 }
 
 }; // namespace glow

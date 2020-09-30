@@ -51,8 +51,8 @@ GraphMemInfo updateGraphMemInfoByAddingNode(const NodesSet &currNodes,
                                             const GraphMemInfo &info,
                                             Node *newNode);
 
-/// Return the memory usage of a given nodes set.
-GraphMemInfo getGraphMemInfo(const NodesSet &nodes);
+/// Return the memory usage of a given nodes set with a given \p contextCount.
+GraphMemInfo getGraphMemInfo(const NodesSet &nodes, unsigned contextCount);
 
 /// Return the memory usage of \p func function.
 GraphMemInfo getFunctionMemory(Function *func);

@@ -39,7 +39,8 @@ std::string getReplicatedName(std::string name, unsigned count) {
 
 namespace glow {
 extern bool GlowDumpCompilationLog;
-}
+extern bool GlowDumpBackendSpecificIRJSON;
+} // namespace glow
 
 namespace {
 // STL sorting algorithm cannot inline predicate if it got provided as a regular
@@ -432,9 +433,9 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         // Note: This needs to come after compile above because compile may
         // modify the Function as well.
         if (cctx.dumpFinalGraph) {
-          auto fname =
-              strFormat("final_graph_%s_%s.dot", deviceBackendName.c_str(),
-                        function->getName().str().c_str());
+          auto fname = strFormat(
+              "%sfinal_graph_%s_%s.dot", cctx.dumpGraphPath.c_str(),
+              deviceBackendName.c_str(), function->getName().str().c_str());
           LOG(INFO) << "Dumping final graph to " << fname;
           function->dumpDAG(fname);
         }
@@ -464,6 +465,13 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
           return compiledOrErr.takeError();
         }
         auto compiled = std::move(*compiledOrErr);
+
+        // Dump backend-specific IR
+        if (GlowDumpBackendSpecificIRJSON) {
+          compiled->dumpJSON(strFormat("%sbackend_specific_ir_%s.json",
+                                       cctx.dumpGraphPath.c_str(),
+                                       function->getName().str().c_str()));
+        }
 
         node->runtimeBundle =
             glow::make_unique<RuntimeBundle>(compiled->getRuntimeBundle());

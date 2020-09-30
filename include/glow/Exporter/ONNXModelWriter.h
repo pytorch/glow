@@ -160,6 +160,12 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   bool isIntermediatePHForDAG(const Placeholder *PH);
 
 public:
+  /// Inserts the mapping in \p map into \p extraMetadataProps. \returns an
+  /// error if the key already exists for the map in \p extraMetadataProps.
+  static Error insertLoaderNameUniqueOffsetMetadata(
+      llvm::StringMap<std::string> &extraMetadataProps,
+      const OriginNameToTQPMap &map);
+
   /// Converts \p glowType to \p protoType.
   static typename TensorType::DataType convertType(const Type &glowType);
   /// Writes Glow tensor \p T to proto output \p out. Depending on

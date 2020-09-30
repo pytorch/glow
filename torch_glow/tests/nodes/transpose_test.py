@@ -1,9 +1,9 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-
-from tests.utils import jitVsGlow
 import unittest
+
+import torch
+from tests.utils import jitVsGlow
 
 
 class TestTranspose(unittest.TestCase):
@@ -38,7 +38,8 @@ class TestTranspose(unittest.TestCase):
 
         x = torch.randn(7, 4)
 
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::t_"})
+        # Expect fuser to out-of-place the operator
+        jitVsGlow(test_f, x, expected_fused_ops={"aten::t"})
 
     def test_transpose(self):
         """Test of PyTorch aten::transpose on Glow."""
@@ -60,7 +61,8 @@ class TestTranspose(unittest.TestCase):
 
         x = torch.randn(2, 3, 4)
 
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::transpose_"})
+        # Expect fuser to out-of-place the operator
+        jitVsGlow(test_f, x, expected_fused_ops={"aten::transpose"})
 
     def test_transpose_neg_dim(self):
         """Test negative dimension index for PyTorch aten::transpose on Glow."""

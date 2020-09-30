@@ -19,6 +19,7 @@ using namespace glow;
 
 std::set<std::string> glow::backendTestBlacklist = {
     "gradientCheckAvgPool/0",
+    "gradientCheckAvgPoolCountExcludePads/0",
     "gradientCheckAdaptiveAvgPool/0",
     "gradientCheckCrossEntropyLoss/0",
     "gradientCheckTile/0",

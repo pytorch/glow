@@ -588,6 +588,20 @@ static void addAttrToDocString(T *proto, const std::string &attrName,
 
 } // namespace
 
+Error ONNXModelWriter::insertLoaderNameUniqueOffsetMetadata(
+    llvm::StringMap<std::string> &extraMetadataProps,
+    const OriginNameToTQPMap &map) {
+  RETURN_ERR_IF_NOT(!extraMetadataProps.count("OriginNameToTQPMap"),
+                    "Already had OriginNameToTQPMap");
+  std::string str;
+  for (const auto &nameTQP : map) {
+    str += nameTQP.first + offsetSepSig +
+           std::to_string(nameTQP.second.offset) + offsetEndSig;
+  }
+  extraMetadataProps.try_emplace(originNameToUniqueOffsetMappingSignifier, str);
+  return Error::success();
+}
+
 bool ONNXModelWriter::isIntermediatePHForDAG(const Placeholder *PH) {
   if (!dagMode_) {
     return false;
@@ -1351,11 +1365,20 @@ Error ONNXModelWriter::writeMFCC(const MFCCNode *node, GraphType &graph) {
 Error ONNXModelWriter::writeROIAlign(const ROIAlignNode *node,
                                      GraphType &graph) {
   auto *proto = graph.add_node();
-  addValueAttribute(proto, "mode", node->getMode());
+  switch (node->getMode()) {
+  case PoolingMode::AVG:
+    addValueAttribute(proto, "mode", std::string("avg"));
+    break;
+  case PoolingMode::MAX:
+    addValueAttribute(proto, "mode", std::string("max"));
+    break;
+  }
   addValueAttribute(proto, "output_height", node->getOutputHeight());
   addValueAttribute(proto, "output_width", node->getOutputWidth());
   addValueAttribute(proto, "sampling_ratio", node->getSamplingRatio());
   addValueAttribute(proto, "spatial_scale", node->getSpatialScale());
+  addValueAttribute(proto, "aligned", node->getAligned());
+  addValueAttribute(proto, "rotated", node->getRotated());
   return writeAllWithNode("ROIAlign", node, graph, proto);
 }
 
@@ -1782,10 +1805,21 @@ Error ONNXModelWriter::writeBatchMatMul(const BatchMatMulNode *node,
 Error ONNXModelWriter::writeReshape(const ReshapeNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
 
-  // Add ints type attribute.
-  addValueAttribute(proto, "shape", node->getDims());
+  // Converting arrayRef scale to a constant node
+  auto dims = node->getDims();
+  Tensor dimsTensor(ElemKind::Int64ITy, {(dim_t)dims.size()});
+  auto handleDims = dimsTensor.getHandle<int64_t>();
+  for (size_t b = 0, e = dims.size(); b < e; ++b) {
+    handleDims.raw(b) = dims[b];
+  }
 
-  return writeAllWithNode("Reshape", node, graph, proto);
+  auto *tensorProto = addInitializer(graph);
+  tensorProto->set_name(node->getName().str() + "_shape");
+  writeTensor(dimsTensor, tensorProto, useGlowCustomOps_);
+
+  RETURN_IF_ERR(writeAllWithNode("Reshape", node, graph, proto));
+  proto->add_input(node->getName().str() + "_shape");
+  return Error::success();
 }
 
 Error ONNXModelWriter::writeBucketize(const BucketizeNode *node,
@@ -1960,6 +1994,10 @@ void writeTensorwiseQuantizedPool(const T *node, const std::string &op,
   addValueAttribute(proto, "strides", node->getStrides());
   addValueAttribute(proto, "pads", node->getPads());
 
+  if (auto *APN = llvm::dyn_cast<AvgPoolNode>(node)) {
+    addValueAttribute(proto, "count_include_pad", APN->getCountIncludePads());
+  }
+
   proto->add_input(node->getInput().getNode()->getName());
   outputsToProto(node, graph, proto);
 
@@ -2001,6 +2039,10 @@ void writePool(const T *node, const std::string &op,
   addValueAttribute(proto, "kernel_shape", node->getKernels());
   addValueAttribute(proto, "strides", node->getStrides());
   addValueAttribute(proto, "pads", node->getPads());
+
+  if (auto *APN = llvm::dyn_cast<AvgPoolNode>(node)) {
+    addValueAttribute(proto, "count_include_pad", APN->getCountIncludePads());
+  }
 
   const Node *input = node->getInput().getNode();
   if (const TransposeNode *TN = llvm::dyn_cast<TransposeNode>(input)) {
@@ -2140,6 +2182,11 @@ Error ONNXModelWriter::writeDiv(const DivNode *node, GraphType &graph) {
   return writeArithmetic("Div", node, graph, reportedNodes_);
 }
 
+Error ONNXModelWriter::writeFloorDiv(const FloorDivNode *node,
+                                     GraphType &graph) {
+  return writeArithmetic("FloorDiv", node, graph, reportedNodes_);
+}
+
 Error ONNXModelWriter::writeMul(const MulNode *node, GraphType &graph) {
   return writeArithmetic("Mul", node, graph, reportedNodes_);
 }
@@ -2179,6 +2226,8 @@ DEF_ALL_WRITER_NODE(Acos)
 DEF_ALL_WRITER_NODE(Atan)
 DEF_ALL_WRITER_NODE(Exp)
 DEF_ALL_WRITER_NODE(Relu)
+DEF_ALL_WRITER_NODE(LeakyRelu)
+DEF_ALL_WRITER_NODE(Gelu)
 DEF_ALL_WRITER_NODE(Tanh)
 DEF_ALL_WRITER_NODE(IsNaN)
 DEF_ALL_WRITER_NODE(Sigmoid)
@@ -2196,6 +2245,7 @@ DEF_ALL_WRITER_NODE(CmpNEQ)
 DEF_ALL_WRITER_NODE(CmpLT)
 DEF_ALL_WRITER_NODE(CmpLTE)
 DEF_ALL_WRITER_NODE(BatchedAdd)
+DEF_ALL_WRITER_NODE(BatchedMul)
 DEF_ALL_WRITER_NODE(Dequantize)
 DEF_ALL_WRITER_NODE(Regression)
 DEF_ALL_WRITER_NODE(RowwiseQuantizedSparseLengthsWeightedSum)
@@ -2323,6 +2373,25 @@ Error ONNXModelWriter::writeFullyConnected(const FullyConnectedNode *node,
   proto->add_input(node->getWeights().getNode()->getName());
   proto->add_input(node->getBias().getNode()->getName());
   outputsToProto(node, graph, proto);
+  return Error::success();
+}
+
+Error ONNXModelWriter::writeVectorNorm(const VectorNormNode *node,
+                                       GraphType &graph) {
+  auto *proto = graph.add_node();
+
+  // Add dictionary entries.
+  addValueAttribute(proto, "axis", node->getAxis());
+
+  proto->set_name(node->getName());
+  proto->set_op_type("VectorNorm");
+  inputsToProto(node, proto);
+
+  // currently support p = 2 (Frobenius or i2)
+  addValueAttribute(proto, "p", node->getP());
+
+  outputsToProto(node, graph, proto);
+
   return Error::success();
 }
 

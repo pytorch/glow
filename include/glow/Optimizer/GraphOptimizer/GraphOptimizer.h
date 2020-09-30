@@ -100,8 +100,9 @@ void transformForPrecisionMode(const Backend &B, Function *F,
 /// Perform a compile-time constant folding of the node \p N.
 /// \returns list of constants which are the result of the constant-folding.
 /// These constants correspond to results of the node. If no constant folding
-/// was possible an empty vector will be returned.
-std::vector<Constant *> constantFold(Node *N);
+/// was possible an empty vector will be returned. If \p foldSingleSplats then
+/// single splat subgraphs will be forced to fold.
+std::vector<Constant *> constantFold(Node *N, bool foldSingleSplats = false);
 
 /// Perform constant folding for all Nodes in \p F given \p cctx. \returns a
 /// record of what Constants are created by what SaveNodes pointing to
@@ -185,13 +186,15 @@ public:
 /// Perform data or model parallel transformation of supported Nodes in \p F.
 /// \p numOfChunksMap maps Nodes to how many chunks they should be split into;
 /// if not listed this falls back to \p numOfChunks. \p parOpts represents what
-/// kind of parallelism to use. \returns an expected map of Nodes from \p F to
-/// the ConcatNode that they were replaced with.
+/// kind of parallelism to use. \p modelParallelSplitAlignment optionally can
+/// increase the size of model parallel splits to multiple of the given value.
+/// \returns an expected map of Nodes from \p F to the ConcatNode that they were
+/// replaced with.
 Expected<std::unordered_map<Node *, ConcatNode *>>
 parallelizeOps(Function *F,
                const llvm::DenseMap<Node *, size_t> &numOfChunksMap,
                const llvm::DenseMap<Node *, ParallelTransformKind> &parOpts,
-               size_t numOfChunks = 1);
+               size_t numOfChunks = 1, size_t modelParallelSplitAlignment = 1);
 
 } // namespace glow
 

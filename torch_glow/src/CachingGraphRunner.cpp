@@ -16,12 +16,13 @@
 
 #include "CachingGraphRunner.h"
 
+#include <mutex>
+
 #include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Support/Support.h"
 
-#include <mutex>
+#include <c10/util/hash.h>
 #include <torch/csrc/jit/runtime/argument_spec.h>
-#include <torch/csrc/utils/hash.h>
 
 #include "ShapeInferenceEngine.h"
 
@@ -155,8 +156,9 @@ void CachingGraphRunner::aggregateAndDumpTraces(TraceContext *traceContext,
 
 Expected<std::shared_ptr<CachingGraphRunner::PerGlowGraphInfo>>
 CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
+                             const PyTorchLoaderSettings &settings,
                              TraceContext *traceContext) {
-  if (settings_.preCompilePyTorchModule) {
+  if (settings.preCompilePyTorchModule) {
     return MAKE_ERR(
         "Calling JIT compilation when preCompilePyTorchModule is set");
   }
@@ -176,7 +178,7 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
     return it->second;
   }
   auto info = std::make_shared<PerGlowGraphInfo>(
-      strFormat("pt_function_%lu", hash), getSettings());
+      strFormat("pt_function_%lu", hash), settings);
 
   std::unique_ptr<Module> module = glow::make_unique<Module>();
   Function *f = module->createFunction(info->functionName);
@@ -184,39 +186,32 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "loadJITGraph");
   RETURN_IF_ERR(PyTorchModelLoader::loadJITGraph(
       *f, *graph_, info->inputPlaceholders, info->outputPlaceholders,
-      outputCorrectType_, getPyTorchLoaderSettings(), inputs, {}));
+      outputCorrectType_, settings, inputs, {}));
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "loadJITGraph");
 
   glow::CompilationContext cctx;
+  initializeCompiliationContextFromSettings(cctx, settings);
 
-  if (settings_.convertToFP16) {
-    cctx.precisionConfig.convertToFP16 = true;
+  if (settings.convertToFP16) {
     cctx.precisionConfig.precisionModeKindSet.insert(
         Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind);
     cctx.precisionConfig.precisionModeKindSet.insert(
         Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind);
   }
-  cctx.replicationCount = settings_.replicationCount;
-
-  if (settings_.dumpFinalGlowGraph) {
-    cctx.dumpFinalGraph = true;
-  }
-
-  cctx.backendOpts.backendSpecificOpts = settings_.backendSpecificOpts;
+  cctx.replicationCount = settings.replicationCount;
+  cctx.backendOpts.backendSpecificOpts = settings.backendSpecificOpts;
 
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "addNetwork");
   // If --load-backend-specific-opts was passed from python, add it to the
   // compile context so the host manager knows to load backend options from
   // yaml.
 
-  if (!settings_.backendOptionsFile.empty()) {
+  if (!settings.backendOptionsFile.empty()) {
     std::pair<std::string, std::string> loadBackendSpecificOpts(
-        "loadBackendSpecificOptions", settings_.backendOptionsFile);
+        "loadBackendSpecificOptions", settings.backendOptionsFile);
     cctx.backendOpts.backendSpecificOpts.insert(loadBackendSpecificOpts);
   }
 
-  cctx.replicationCount = settings_.replicationCount;
-  cctx.saturateHost = settings_.saturateHost;
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(module), cctx));
 
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "addNetwork");
@@ -325,10 +320,11 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   size_t runId = numRuns_++;
 
   int64_t jitRunningTime = 0;
+  const PyTorchLoaderSettings &settings = info.settings;
 
   // Run the subgraph using JIT for comparison with Glow.
   torch::jit::Stack copyStack;
-  if (settings_.writeToOnnx || settings_.jitVsGlowCompare) {
+  if (settings.writeToOnnx || settings.jitVsGlowCompare) {
     for (auto &ival : stack) {
       if (ival.isTensor()) {
         copyStack.push_back(ival.deepcopy());
@@ -439,8 +435,9 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     }
   }
 
-  if (settings_.writeToOnnx) {
-    std::string filename = strFormat("input_%zu.onnx", runId);
+  if (settings.writeToOnnx) {
+    std::string filename =
+        strFormat("%s_input_%zu.onnx", info.functionName.c_str(), runId);
     std::ofstream of(filename, std::ios::binary);
     if (!of) {
       LOG(ERROR) << "Cannot create input file " << filename;
@@ -505,7 +502,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "setOutputs");
 
   std::vector<std::vector<int64_t>> *ptrOutputShape;
-  if (settings_.runShapeInference) {
+  if (settings.runShapeInference) {
     /// load shape. If already existed, extracted directly, if not, run shape
     /// inference
     ASSIGN_VALUE_OR_RETURN_ERR(ptrOutputShape, loadShape(inputs, traceContext));
@@ -532,14 +529,14 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       }
     }
 
-    if (settings_.writeToOnnx) {
+    if (settings.writeToOnnx) {
       glow::Tensor glowT = ptTensorToGlowTensor(ptTensor);
       auto *onnxT = outputG.add_initializer();
       onnxT->set_name(info.outputPlaceholders[i]->getName());
       ONNXModelWriter::writeTensor(glowT, onnxT, /*useGlowCustomOps*/ true);
     }
 
-    if (settings_.writeToOnnx) {
+    if (settings.writeToOnnx) {
       auto &jitOutput = torch::jit::peek(copyStack, i, outputs.size());
       auto jitPtTensor = jitOutput.toTensor().contiguous();
       glow::Tensor jitGlowT = ptTensorToGlowTensor(jitPtTensor);
@@ -549,13 +546,13 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
                                    /*useGlowCustomOps*/ true);
     }
 
-    if (settings_.runShapeInference) {
+    if (settings.runShapeInference) {
       if (i < (*ptrOutputShape).size()) {
         ptTensor = sliceTensor(ptTensor, (*ptrOutputShape)[i]);
       }
     }
 
-    if (settings_.jitVsGlowCompare) {
+    if (settings.jitVsGlowCompare) {
       glow::Tensor glowT = ptTensorToGlowTensor(ptTensor);
       auto &jitOutput = torch::jit::peek(copyStack, i, outputs.size());
       auto jitPtTensor = jitOutput.toTensor().contiguous();
@@ -580,14 +577,15 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     stack.push_back(at::IValue(std::move(ptTensor)));
   }
 
-  if (settings_.jitVsGlowCompare) {
+  if (settings.jitVsGlowCompare) {
     LOG(INFO) << "Perf comparison | Function: " << info.functionName
               << "\tGlow run time: " << glowRuningnTime
               << " us\tCPU run time: " << jitRunningTime << " us" << std::endl;
   }
 
-  if (settings_.writeToOnnx) {
-    std::string filename = strFormat("glow_output_%zu.onnx", runId);
+  if (settings.writeToOnnx) {
+    std::string filename =
+        strFormat("%s_glow_output_%zu.onnx", info.functionName.c_str(), runId);
     std::ofstream of(filename, std::ios::binary);
     if (!of) {
       LOG(ERROR) << "Cannot create output file " << filename;
@@ -598,8 +596,9 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     }
   }
 
-  if (settings_.writeToOnnx) {
-    std::string filename = strFormat("pytorch_output_%zu.onnx", runId);
+  if (settings.writeToOnnx) {
+    std::string filename = strFormat("%s_pytorch_output_%zu.onnx",
+                                     info.functionName.c_str(), runId);
     std::ofstream of(filename, std::ios::binary);
     if (!of) {
       LOG(ERROR) << "Cannot create output file " << filename;
@@ -629,7 +628,8 @@ Error CachingGraphRunner::run(torch::jit::Stack &stack) {
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "torch_glow::run");
 
   std::shared_ptr<PerGlowGraphInfo> info;
-  ASSIGN_VALUE_OR_RETURN_ERR(info, loadImpl(stack, traceContext));
+  ASSIGN_VALUE_OR_RETURN_ERR(info,
+                             loadImpl(stack, getSettings(), traceContext));
   auto err = runImpl(*DCHECK_NOTNULL(info.get()), stack, ctx);
 
   // Reset the traceContext again in case it was changed during run.
@@ -679,6 +679,47 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
 
   aggregateAndDumpTraces(traceContext);
   return err;
+}
+
+void CachingGraphRunner::initializeCompiliationContextFromSettings(
+    glow::CompilationContext &cctx, const PyTorchLoaderSettings &settings) {
+  if (settings.convertToFP16) {
+    cctx.precisionConfig.convertToFP16 = settings.convertToFP16;
+    LOG(INFO) << "Conversion to fp16 enabled";
+  }
+  if (settings.convertPlaceholdersToFP16) {
+    cctx.precisionConfig.convertPlaceholdersToFP16 =
+        settings.convertFusedToFP16;
+    LOG(INFO) << "Conversion of Placeholders to fp16 enabled";
+  }
+  if (settings.convertConstantsToFP16) {
+    cctx.precisionConfig.convertConstantsToFP16 =
+        settings.convertConstantsToFP16;
+    LOG(INFO) << "Conversion of Constants to fp16 enabled";
+  }
+  if (settings.convertFusedToFP16) {
+    cctx.precisionConfig.convertFusedToFP16 = settings.convertFusedToFP16;
+    LOG(INFO) << "Conversion of fused scales/offsets to fp16 enabled";
+  }
+  if (settings.clipFP16) {
+    cctx.precisionConfig.clipFP16 = settings.clipFP16;
+    LOG(INFO) << "Clipping to fp16 enabled";
+  }
+  if (settings.clipFP16SkipInputs) {
+    cctx.precisionConfig.clipFP16SkipInputs = settings.clipFP16SkipInputs;
+    LOG(INFO) << "Skipping clipping for fp16 Node inputs fp16";
+  }
+  if (settings.forceFP16AccumSLS) {
+    cctx.precisionConfig.forceFP16AccumSLS = settings.forceFP16AccumSLS;
+    LOG(INFO) << "Forcing all SLS/SLWS ops to use FP16 accumulation enabled";
+  }
+
+  if (settings.dumpFinalGlowGraph) {
+    cctx.dumpFinalGraph = settings.dumpFinalGlowGraph;
+  }
+  if (settings.saturateHost) {
+    cctx.saturateHost = settings.saturateHost;
+  }
 }
 
 Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
@@ -757,11 +798,7 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
   zeroLengthSequence_.zero();
 
   glow::CompilationContext cctx;
-
-  cctx.precisionConfig.convertToFP16 = settings.convertToFP16;
-  cctx.precisionConfig.convertFusedToFP16 = settings.convertFusedToFP16;
-  cctx.dumpFinalGraph = settings.dumpFinalGlowGraph;
-  cctx.saturateHost = settings.saturateHost;
+  initializeCompiliationContextFromSettings(cctx, settings);
 
   TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(glowModule), cctx));

@@ -16,6 +16,7 @@
 #include "Importer.h"
 #include "DebugMacros.h"
 #include "NNPI.h"
+#include "glow/Flags/Flags.h"
 #include "glow/IR/IR.h"
 #include "glow/IR/Instrs.h"
 #include "glow/Quantization/Base/Base.h"
@@ -29,20 +30,6 @@
 #include "llvm/Support/CommandLine.h"
 
 using namespace glow;
-
-namespace glow {
-llvm::cl::OptionCategory optionsForNNPIImporter("NNPI Importer Options");
-
-bool GlowNNPISpecializeAllOneSLS = false;
-static llvm::cl::opt<bool, /* ExternalStorage */ true>
-    GlowNNPISpecializeAllOneSLSOpt(
-        "glow_nnpi_specialize_all_one_sls",
-        llvm::cl::desc(
-            "Whether to import SLS ops with AllOne attribute to NNPI."),
-        llvm::cl::location(GlowNNPISpecializeAllOneSLS), llvm::cl::Optional,
-        llvm::cl::init(false), llvm::cl::cat(optionsForNNPIImporter));
-
-} // namespace glow
 
 const std::string NNPIImporter::internalName_("_NNPI_");
 
@@ -695,6 +682,10 @@ public:
     std::vector<uint32_t> paddingStart(numDims);
     std::vector<uint32_t> paddingEnd(numDims);
     std::vector<uint32_t> stride(numDims);
+    bool countIncludePads = 1;
+    if (auto *APN = llvm::dyn_cast<AvgPoolNode>(glowPool)) {
+      countIncludePads = APN->getCountIncludePads();
+    }
 
     for (size_t i = 0; i < numDims; i++) {
       kernel[i] = glowPool->getKernels()[i];
@@ -728,7 +719,7 @@ public:
         nodeValueName(glowPool->getInput()).c_str(),
         nodeValueName(glowPool->getResult()).c_str(), NULL, kernel.data(),
         paddingStart.data(), paddingEnd.data(), stride.data(), numDims,
-        poolType, 0, 0);
+        poolType, !countIncludePads, 0);
   }
 };
 
@@ -863,6 +854,22 @@ public:
                                  nodeValueName(glowPRelu->getInput()).c_str(),
                                  nodeValueName(glowPRelu->getResult()).c_str(),
                                  nodeValueName(glowPRelu->getSlope()).c_str());
+  }
+};
+
+class GeluNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowGelu = llvm::dyn_cast<GeluNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowGelu, "Bad node type", NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors({nodeValueName(glowGelu->getInput())},
+                            {nodeValueName(glowGelu->getResult())});
+
+    return nnpiNetworkAddGeluOp(importer.getNetwork(),
+                                glowGelu->getName().begin(),
+                                nodeValueName(glowGelu->getInput()).c_str(),
+                                nodeValueName(glowGelu->getResult()).c_str());
   }
 };
 
@@ -1748,6 +1755,27 @@ public:
   }
 };
 
+class BatchMulNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowBatchMul = llvm::dyn_cast<BatchedMulNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowBatchMul, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    NNPIObjectName inputNames[2];
+    snprintf(inputNames[0], NNPI_MAX_STRING_LEN, "%s",
+             nodeValueName(glowBatchMul->getBatch()).c_str());
+    snprintf(inputNames[1], NNPI_MAX_STRING_LEN, "%s",
+             nodeValueName(glowBatchMul->getSlice()).c_str());
+    importer.setUsedTensors({nodeValueName(glowBatchMul->getBatch()),
+                             nodeValueName(glowBatchMul->getSlice())},
+                            {nodeValueName(glowBatchMul->getResult())});
+    return nnpiNetworkAddElementwiseOp(
+        importer.getNetwork(), glowBatchMul->getName().begin(), inputNames, 2,
+        nodeValueName(glowBatchMul->getResult()).c_str(), NNPI_ELTWISE_MUL);
+  }
+};
+
 class RQSLWSNodeImporter : public INNPINodeImporter {
 public:
   NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
@@ -2142,6 +2170,7 @@ std::unordered_map<
     {"Save", glow::make_unique<SaveNodeImporter>()},
     {"Relu", glow::make_unique<ReluNodeImporter>()},
     {"PRelu", glow::make_unique<PReluNodeImporter>()},
+    {"Gelu", glow::make_unique<GeluNodeImporter>()},
     {"Exp", glow::make_unique<
                 UnaryEltwiseNodeImporter<glow::ExpNode, NNPI_ELTWISE_EXP>>()},
     {"Max", glow::make_unique<
@@ -2202,6 +2231,7 @@ std::unordered_map<
     {"ReplaceNaN", glow::make_unique<ReplaceNaNNodeImporter>()},
     {"GatherRanges", glow::make_unique<GatherRangesNodeImporter>()},
     {"BatchedAdd", glow::make_unique<BatchAddNodeImporter>()},
+    {"BatchedMul", glow::make_unique<BatchMulNodeImporter>()},
     {"RowwiseQuantizedSparseLengthsWeightedSum",
      glow::make_unique<RQSLWSNodeImporter>()},
     {"FusedRowwiseQuantizedSparseLengthsWeightedSum",

@@ -40,6 +40,16 @@
 
 namespace glow {
 
+/// Some model formats (Caffe2, PyTorch, TensorFlowLite) allow defining weights
+/// and activations in UINT8 format. Since Glow supports only INT8 weights and
+/// activations we do a transformation from UINT8 to INT8 quantized data by
+/// subtracting the value 128 from both the quantized values and the offset:
+///   val(int8) = val(uint8) - 128
+///   scale(int8) = scale(uint8) (scale value is preserved)
+///   offset(int8) = scale(uint8) - 128
+/// The constant definition below defines the value used for subtraction.
+constexpr int32_t UINT8_TO_INT8_SHIFT = 128;
+
 /// Enables or disables constant-folding of Loader Ops with \p flag.
 void setConstantFoldLoaderOpsFlag(bool flag);
 
@@ -205,6 +215,21 @@ protected:
   /// Storage should already exist for the proto; the Functions should be empty
   /// and will be filled with Nodes from the proto connected to Storage.
   bool loadIntoExistingModule_{false};
+  /// Uniqued offset value used when saving the mapping from quant params to
+  /// loader names.
+  int32_t currUniqueOffset_{0};
+  /// An optional mapping from the names of ops and inputs that are quantized to
+  /// the TQP that it came with.
+  OriginNameToTQPMap *originNameToTQPMap_{nullptr};
+  /// Whether to load uniqued dummy quantization params instead of the actual
+  /// quantization params in the model. \ref originNameToTQPMap_ must be
+  /// non-null when this is true.
+  bool loadUniquedDummyQParams_{false};
+  /// New TQP to use, indexed by the unique dummy offset it is mapped to.
+  std::vector<TensorQuantizationParams> updatedTQPs_;
+  /// Whether to try to replace dummy TQPs found during loading with real
+  /// updated ones in \ref updatedTQPs_.
+  bool replaceDummyTQPs_{false};
 
   // Delete all Constants that have no users. This is useful because some
   // Constants may have been copied and modified during loading instead of used
@@ -257,6 +282,16 @@ protected:
   void setupLoader(llvm::ArrayRef<const char *> tensorNames,
                    llvm::ArrayRef<TypeRef> types, Error *errPtr);
 
+  /// \returns the TQP located at \p uniqueOffsetIdx in \ref updatedTQPs_.
+  Expected<TensorQuantizationParams> getUpdatedTQP(int32_t uniqueOffsetIdx);
+
+  /// \returns a quantized type with loader name \p name given \p k, \p dims,
+  /// \p scale, and \p offset. If \p shiftUInt8ToInt8 and \p k is Int8QTy, then
+  /// the offset is shifted by UINT8_TO_INT8_SHIFT to Int8.
+  Expected<TypeRef> loadQuantTy(const std::string &name, ElemKind k,
+                                llvm::ArrayRef<dim_t> dims, float scale,
+                                int32_t offset, bool shiftUInt8ToInt8 = true);
+
 public:
   /// \returns the NodeValue that was registered with the name \p name.  If
   /// looking up a NodeValue which is produced from a different Function (and if
@@ -279,7 +314,10 @@ public:
   /// according to the proto being loaded instead of created as usual.
   ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                  llvm::ArrayRef<TypeRef> types, Function *F,
-                 Error *errPtr = nullptr, bool loadIntoExistingModule = false);
+                 Error *errPtr = nullptr, bool loadIntoExistingModule = false,
+                 OriginNameToTQPMap *originNameToTQPMap = nullptr,
+                 bool loadUniquedDummyQParams = false,
+                 bool replaceDummyTQPs = false);
 
   /// Constructs new ProtobufLoader object. It will populate the network into
   /// \p mod. The list \p types and \p names are used to initialize the inputs
@@ -290,7 +328,10 @@ public:
   /// according to the proto being loaded instead of created as usual.
   ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                  llvm::ArrayRef<TypeRef> types, Module &mod,
-                 Error *errPtr = nullptr, bool loadIntoExistingModule = false);
+                 Error *errPtr = nullptr, bool loadIntoExistingModule = false,
+                 OriginNameToTQPMap *originNameToTQPMap = nullptr,
+                 bool loadUniquedDummyQParams = false,
+                 bool replaceDummyTQPs = false);
 
   ProtobufLoader(const ProtobufLoader &other) = delete;
   ProtobufLoader &operator=(const ProtobufLoader &) = delete;

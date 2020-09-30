@@ -64,7 +64,7 @@ public:
   AvgPoolInst *createAvgPoolOp(Value *input, llvm::ArrayRef<unsigned_t> kernels,
                                llvm::ArrayRef<unsigned_t> strides,
                                llvm::ArrayRef<unsigned_t> pads,
-                               unsigned_t layout);
+                               unsigned_t layout, bool countIncludePads);
 
   CrossEntropyLossInst *createCrossEntropyLossOp(llvm::StringRef name, Value *P,
                                                  Value *labels);

@@ -16,6 +16,8 @@
 #include "glow/Backends/Interpreter/InterpreterDeviceManager.h"
 #include "glow/Backends/Interpreter/Interpreter.h"
 
+#include "glow/Flags/Flags.h"
+
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
@@ -23,7 +25,6 @@
 namespace glow {
 namespace runtime {
 
-unsigned GlowInterpreterMemory = 0;
 static llvm::cl::OptionCategory
     InterpreterBackendCat("Glow Interpreter Backend Options");
 static llvm::cl::opt<unsigned, /* ExternalStorage */ true> interpreterMaxMemOpt(

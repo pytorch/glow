@@ -17,8 +17,8 @@
 #include "glow/LLVMIRCodeGen/LLVMIRGen.h"
 #include "glow/Base/DimType.h"
 
-#include "CommandLine.h"
 #include "glow/LLVMIRCodeGen/AllocationsInfo.h"
+#include "glow/LLVMIRCodeGen/CommandLine.h"
 #include "glow/LLVMIRCodeGen/LLVMBackend.h"
 
 #include "glow/Graph/Graph.h"
@@ -1206,6 +1206,51 @@ void LLVMIRGen::generateLLVMIRForDataParallelInstr(
       auto *clipMax = emitConstF32(builder, clipMaxF);
       stackedOpCall =
           createCall(builder, F, {loopCount, srcPtr, clipMin, clipMax});
+    } else {
+      LOG(FATAL) << "Type is not supported";
+    }
+    auto *elementTy = getElementType(builder, dest);
+    auto *destAddr =
+        builder.CreateGEP(elementTy, destPtr, loopCount, "buffer.element.addr");
+    builder.CreateStore(stackedOpCall, destAddr);
+    break;
+  }
+
+  case Kinded::Kind::LeakyReluInstKind: {
+    auto *LI = cast<LeakyReluInst>(I);
+    auto *src = LI->getSrc();
+    auto *dest = LI->getDest();
+    auto *srcPtr = emitBufferAddress(builder, src, kernel, bufferToArgNum);
+    auto *destPtr = emitBufferAddress(builder, dest, kernel, bufferToArgNum);
+    auto srcTy = src->getType();
+    auto destTy = dest->getType();
+
+    auto *F = getFunction("element_leaky_relu", dest->getElementType());
+    llvm::CallInst *stackedOpCall = nullptr;
+    if (dest->getElementType() == ElemKind::Int8QTy) {
+      auto *srcOffset =
+          emitConstI8(builder, static_cast<int8_t>(srcTy->getOffset()));
+      auto *destOffset =
+          emitConstI8(builder, static_cast<int8_t>(destTy->getOffset()));
+      // Scale parameters for the positive input domain.
+      auto posParams = quantization::quantizeScaleOffset32To8(
+          srcTy->getScale() / destTy->getScale(), 0);
+      auto *posPre = emitConstI32(builder, posParams.pre);
+      auto *posPost = emitConstI32(builder, posParams.post);
+      auto *posScale = emitConstI32(builder, posParams.scale);
+      // Scale parameters for the negative input domain.
+      auto negParams = quantization::quantizeScaleOffset32To8(
+          srcTy->getScale() * LI->getAlpha() / destTy->getScale(), 0);
+      auto *negPre = emitConstI32(builder, negParams.pre);
+      auto *negPost = emitConstI32(builder, negParams.post);
+      auto *negScale = emitConstI32(builder, negParams.scale);
+      stackedOpCall =
+          createCall(builder, F,
+                     {loopCount, srcPtr, srcOffset, destOffset, posPre, posPost,
+                      posScale, negPre, negPost, negScale});
+    } else if (dest->getElementType() == ElemKind::FloatTy) {
+      auto *alpha = emitConstF32(builder, LI->getAlpha());
+      stackedOpCall = createCall(builder, F, {loopCount, srcPtr, alpha});
     } else {
       LOG(FATAL) << "Type is not supported";
     }
@@ -2521,26 +2566,44 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *srcTy = src->getType();
       auto *destOffset = emitConstI32(builder, destTy->getOffset());
       auto *srcOffset = emitConstI32(builder, srcTy->getOffset());
-      // Reduce resulting scale by a factor of PA->getKernels()[0] *
-      // PA->getKernels()[1] since each subtensor value is divided by the area
-      // of kernel.
-      auto outScaleParam = quantization::quantizeScaleOffset32To8(
-          srcTy->getScale() / destTy->getScale() /
-              (PA->getKernels()[0] * PA->getKernels()[1]),
-          destTy->getOffset());
-      auto *outPre = emitConstI32(builder, outScaleParam.pre);
-      auto *outPost = emitConstI32(builder, outScaleParam.post);
-      auto *outScale = emitConstI32(builder, outScaleParam.scale);
+
+      // if the flag is false, we can't pre-calculate the reduced scale
+      // because the kernel area will change since pads are excluded.
+      if (!PA->getCountIncludePads()) {
+        auto *srcScale = emitConstF32(builder, srcTy->getScale());
+        auto *destScale = emitConstF32(builder, destTy->getScale());
+
+        auto *F =
+            getFunction("avg_pool_count_exclude_pad", dest->getElementType());
+        createCall(builder, F,
+                   {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads,
+                    srcOffset, destOffset, srcScale, destScale});
+      } else {
+        // Reduce resulting scale by a factor of PA->getKernels()[0] *
+        // PA->getKernels()[1] since each subtensor value is divided by the area
+        // of kernel.
+        auto outScaleParam = quantization::quantizeScaleOffset32To8(
+            srcTy->getScale() / destTy->getScale() /
+                (PA->getKernels()[0] * PA->getKernels()[1]),
+            destTy->getOffset());
+        auto *outPre = emitConstI32(builder, outScaleParam.pre);
+        auto *outPost = emitConstI32(builder, outScaleParam.post);
+        auto *outScale = emitConstI32(builder, outScaleParam.scale);
+
+        auto *F = getFunction("avg_pool", dest->getElementType());
+        createCall(builder, F,
+                   {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads,
+                    destOffset, srcOffset, outPre, outPost, outScale});
+      }
+
+      break;
+    } else {
+      auto *countIncludePads = emitConstI1(builder, PA->getCountIncludePads());
 
       auto *F = getFunction("avg_pool", dest->getElementType());
       createCall(builder, F,
                  {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads,
-                  destOffset, srcOffset, outPre, outPost, outScale});
-      break;
-    } else {
-      auto *F = getFunction("avg_pool", dest->getElementType());
-      createCall(builder, F,
-                 {srcPtr, destPtr, srcDims, destDims, kernels, strides, pads});
+                  countIncludePads});
       break;
     }
   }
@@ -2573,11 +2636,12 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *kernels = emitConstDimTArray(builder, PAG->getKernels());
     auto *strides = emitConstDimTArray(builder, PAG->getStrides());
     auto *pads = emitConstDimTArray(builder, PAG->getPads());
+    auto *countIncludePads = emitConstI1(builder, PAG->getCountIncludePads());
 
     auto *F = getFunction("avg_pool_grad", srcGrad->getElementType());
     createCall(builder, F,
                {srcGradPtr, destGradPtr, srcGradDims, destDims, kernels,
-                strides, pads});
+                strides, pads, countIncludePads});
     break;
   }
 

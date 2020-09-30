@@ -1,0 +1,35 @@
+ir_version: 6
+producer_name: "onnx-example"
+
+graph {
+  node {
+    input: "input0"
+    output: "output0"
+    op_type: "Identity"
+  }
+  initializer {
+    dims: 3
+    data_type: 9
+    int32_data: 1
+    int32_data: 0
+    int32_data: 1
+    name: "input0"
+  }
+  output {
+    name: "output0"
+    type {
+      tensor_type {
+        elem_type: 9
+        shape {
+          dim {
+            dim_value: 3
+          }
+        }
+      }
+    }
+  }
+}
+opset_import {
+  version: 11
+}
+

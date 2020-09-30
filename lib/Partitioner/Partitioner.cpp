@@ -15,6 +15,8 @@
  */
 
 #include "glow/Partitioner/Partitioner.h"
+
+#include "glow/Flags/Flags.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Partitioner/PartitionerOptimizer.h"
 #include "glow/Partitioner/PartitionerUtils.h"
@@ -25,13 +27,11 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <fstream>
+
 namespace glow {
-bool GlowEnableLoadBalancedPartitioning = true;
-bool GlowLogPartition = false;
-bool GlowDumpPartition = false;
 static llvm::cl::opt<bool, /* ExternalStorage */ true>
     GlowEnableLoadBalancedPartitioningOpt(
-        "glow_partitioner_enable_load_balance",
+        "partitioner_enable_load_balance",
         llvm::cl::desc(
             "Enable a partitioner pass to optimize for "
             "load balance in addition to memory capacity constraints"),
@@ -83,7 +83,7 @@ Error Partitioner::finalize(const DAGListTy &partitions,
 
   if (logPartition) {
     LOG(INFO) << "The number of partitions is : "
-              << module_->getFunctions().size();
+              << mapping.getPartitions().size();
     LOG(INFO) << "Dumping partitioning DAG to DAG.dot file.";
     dumpDAG("DAG.dot", partitions);
     logPartitionInfo(mapping);
@@ -209,6 +209,7 @@ NodeToFunctionMap Partitioner::selectPartitions(Function *F,
       }
       currentPartition.insert(N);
       mapping.add(N, newF);
+      graphMem.contextCount = contextCount_;
       mapping.setGraphMemInfo(newF, graphMem);
     }
   }
@@ -874,7 +875,7 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig,
 
   // Validate memory usage.
   for (size_t i = 0; i < partitionConfig.numOfPartitions; i++) {
-    GraphMemInfo cost = getGraphMemInfo(nodesSets[i]);
+    GraphMemInfo cost = getGraphMemInfo(nodesSets[i], contextCount_);
     partitionMap.setGraphMemInfo(funcList[i], cost);
   }
   RETURN_IF_ERR(memoryUsageValidation(partitionMap, backendMap_));

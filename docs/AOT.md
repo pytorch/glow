@@ -266,7 +266,11 @@ image-classifier <images> <image-opts> -model=<model-path> -model-input-name=<na
 ```
 
 - The image paths are specified one after the other, separated by space. Only images in **PNG**
-format are supported (RGB or grayscale).
+format are supported (RGB or grayscale). If many images are to be used then it is more
+convenient to provide a directory of images using the option `input-image-dir`. This option
+can be used multiple times for multiple directories and can also be combined with individual
+images listed in a positional fashion:
+  `image-classifier <images> -input-image-dir=<dir1> -input-image-dir=<dir2> ...`
 - `model` specifies the path for the Caffe2, ONNX or TensorFlowLite model.
 - `model-input-name` specifies the name of the model input.
 - The option `dump-profile` specifies the file name used to dump the profile in YAML format.

@@ -28,6 +28,16 @@
 #include <unordered_map>
 #include <vector>
 
+/// Dump event entry to stream.
+static void dumpTraceEntry(const NNPITraceEntry &entry,
+                           std::ostream &outstream) {
+  outstream << "HTime:" << entry.hostTime << " ETime:" << entry.engineTime;
+  for (const auto &param : entry.params) {
+    outstream << " " << param.first << ":" << param.second;
+  }
+  outstream << std::endl;
+}
+
 /// Set default Hardware buffer size to 3GB.
 #define MAX_HW_TRACE_BUFFER_SIZE_MB (1024 * 3)
 /// Set default Software buffer size to 400MB.
@@ -58,20 +68,21 @@ static eIceCapsSwTraceEvent swEventTypes[] = {
     eIceCapsSwTraceEvent::ICE_CAPS_SW_EVENT_USER_DATA};
 
 NNPITraceContext::NNPITraceContext(unsigned devID)
-    : capsSession_(0), devID_(devID), devIDSet_(false) {}
+    : capsSession_(0), devID_(devID), devIDSet_(false), dumpRawEventsPath_() {}
 
 NNPITraceContext::~NNPITraceContext() { destroyInternalContext(); }
 
 bool NNPITraceContext::startCapture(NNPIDeviceContext deviceContext,
                                     bool swTraces, bool hwTraces,
                                     uint32_t softwareBufferSizeMB,
-                                    uint32_t hardwareBufferSizeMB) {
+                                    uint32_t hardwareBufferSizeMB,
+                                    const std::string &dumpRawEventsPath) {
   if (!createInternalContext(swTraces, hwTraces, softwareBufferSizeMB,
                              hardwareBufferSizeMB)) {
     LOG(WARNING) << "nnpi_trace: Failed to create trace device context.";
     return false;
   }
-
+  dumpRawEventsPath_ = dumpRawEventsPath;
   nnpimlStatus mlStatus = nnpiIceCapsStart(capsSession_);
   if (mlStatus != NNPIML_SUCCESS) {
     LOG(WARNING) << "nnpi_trace: Failed to start trace, err=" << mlStatus;
@@ -127,6 +138,14 @@ bool NNPITraceContext::readTraceOutput() {
     return false;
   }
 
+  std::ofstream outputFile;
+  if (!dumpRawEventsPath_.empty()) {
+    outputFile.open(dumpRawEventsPath_);
+    if (!outputFile.is_open()) {
+      LOG(WARNING) << "Failed to open fail for raw events dump";
+    }
+  }
+
   bool started = false;
   uint64_t glowStart = 0;
   uint64_t glowEnd = 0;
@@ -149,6 +168,10 @@ bool NNPITraceContext::readTraceOutput() {
     // Set parameters.
     if (entry.event_name) {
       traceEntry.params["name"] = std::string(entry.event_name);
+      if (traceEntry.params["name"] == "MASTER_FIRMWARE") {
+        // Skip MASTER_FIRMWARE events.
+        continue;
+      }
     } else {
       traceEntry.params["name"] = "NA";
     }
@@ -198,9 +221,20 @@ bool NNPITraceContext::readTraceOutput() {
       params << param.name << ":" << param.value << ", ";
     }
 
+    traceEntry.params["org_state"] = state;
     if (state == "created" || state == "queued" || state == "req" ||
-        state == "add") {
+        state == "cbnwc" || state == "po" || state == "a" ||
+        state == "destroyed") {
       state = "q";
+    } else if (traceEntry.params["name"] == "icedrvEventGeneration") {
+      // Exception for Event Generation.
+      if (state == "s") {
+        state = "q";
+      } else if (state == "add" || state == "start") {
+        state = "s";
+      } else if (state == "c") {
+        state = "c";
+      }
     } else if (state == "executed" || state == "cbs" || state == "start") {
       state = "s";
     } else if (state == "completed" || state == "cbc") {
@@ -208,6 +242,9 @@ bool NNPITraceContext::readTraceOutput() {
     }
     traceEntry.params["state"] = state;
     entries_.push_back(traceEntry);
+    if (outputFile.is_open()) {
+      dumpTraceEntry(traceEntry, outputFile);
+    }
     if (traceEntry.params["name"] == "user_data") {
       if (!started && traceEntry.params["key"] == "BG") {
         glowStart = std::stol(traceEntry.params["user_data"]);

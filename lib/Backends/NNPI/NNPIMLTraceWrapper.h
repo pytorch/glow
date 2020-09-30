@@ -35,7 +35,8 @@ public:
   /// Start capturing traces from the HW device.
   bool startCapture(NNPIDeviceContext deviceContext, bool swTraces,
                     bool hwTraces, uint32_t softwareBufferSizeMB,
-                    uint32_t hardwareBufferSizeMB);
+                    uint32_t hardwareBufferSizeMB,
+                    const std::string &dumpRawEventsPath);
   /// Start capturing.
   bool stopCapture(NNPIDeviceContext deviceContext) const;
   /// Load traces (valid only after stopCapture()).
@@ -64,6 +65,7 @@ private:
   unsigned devID_{0};
   bool devIDSet_{false};
   std::vector<NNPITraceEntry> entries_;
+  std::string dumpRawEventsPath_;
 };
 
 #endif // NNPI_NNPITRACING_ML_WRAPPER_H

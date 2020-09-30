@@ -17,79 +17,81 @@
 #include <gflags/gflags.h>
 
 namespace glow {
+bool GlowEnableLoadBalancedPartitioning = false;
+bool GlowLogPartition = false;
+bool GlowDumpPartition = false;
+bool GlowDumpCompilationLog = false;
+bool GlowDumpBackendSpecificIRJSON = false;
+bool GlowNNPILowerAllBatchMatMul = false;
+bool GlowNNPIAcceptUnarySLS = false;
+bool GlowNNPISpecializeAllOneSLS = false;
+
 namespace onnxifi {
-extern int32_t GlowNumDevices;
-extern int32_t GlowSparseNNPartitioningSchemeNumCards;
-extern int64_t GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard;
-extern int32_t GlowSparseNNPartitioningSchemeNumCoresSLS;
-extern int32_t GlowSparseNNPartitioningSchemeNumCoresOther;
-extern bool GlowDumpDebugTraces;
-extern int32_t GlowNumDebugTracesPerDump;
-extern std::string GlowOnnxifiBackend;
-extern bool GlowFP16;
-extern bool GlowFP16Placeholders;
-extern bool GlowFP16Constants;
-extern bool GlowFusedScaleOffsetFP16;
-extern bool GlowForceSLSAccumFP16;
-extern bool GlowClipFP16;
-extern bool GlowClipFP16SkipInputs;
-extern bool GlowEnableQuantParamChanges;
-extern bool GlowSaturateHost;
-extern bool GlowSaveOnnxifiModel;
-extern bool GlowSaveOnnxifiDAG;
-extern bool GlowSaveOnnxifiIO;
-extern bool GlowDelayAndRecordConstantModification;
-extern bool GlowEnablePartialTensors;
-extern bool GlowUseCustomOpsForExport;
-extern bool GlowUseSparseNNPartitioningScheme;
-extern bool GlowSparseNNPartitioningAddSLSConcats;
-extern bool GlowSparseNNPartitioningBalancePerfModel;
-extern bool GlowSparseNNPartitioningPairLNWithSLS;
-extern bool GlowDumpGraph;
-extern bool GlowDumpInitialLoadedGraph;
-extern bool GlowUseDAGOptimizer;
-extern std::string GlowDAGOptimizerPlacementTaggingAlgorithm;
-extern std::string GlowDAGOptimizerParallelizationTaggingAlgorithm;
-extern int32_t GlowDAGOptimizerNumParallelChunks;
-extern size_t GlowMaxActiveRequests;
-extern size_t GlowMaxActiveRequestsPerInstance;
-extern size_t GlowMaxQueueSize;
-extern size_t GlowExecutorThreads;
-
-// Defined in glow/lib/Backends/NNPI/NNPI.cpp
-#ifdef GLOW_WITH_NNPI
-extern bool GlowDumpNNPICompilerData;
-extern bool GlowUsePerPartitionIcetConfig;
-extern bool GlowDisableNNPITransforms;
-extern bool GlowDisableNNPIPrivateTransforms;
-extern int32_t GlowNNPINumParallelChunks;
-#endif
-
+int32_t GlowNumDevices = 0;
+int32_t GlowSparseNNPartitioningSchemeNumCards = 1;
+int64_t GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard = 0;
+int32_t GlowSparseNNPartitioningSchemeNumCoresSLS = 1;
+int32_t GlowSparseNNPartitioningSchemeNumCoresOther = 1;
+bool GlowDumpDebugTraces = false;
+int32_t GlowNumDebugTracesPerDump = 100;
+bool GlowSaturateHost = false;
+bool GlowFP16 = false;
+bool GlowFP16Placeholders = true;
+bool GlowFP16Constants = true;
+bool GlowEnableQuantParamChanges = true;
+bool GlowDumpGraph = false;
+std::string GlowDumpGraphPath = "./";
+bool GlowDumpInitialLoadedGraph = false;
+bool GlowUseDAGOptimizer = false;
+bool GlowUseDAGOptimizerAOT = false;
+std::string GlowDAGOptimizerPlacementTaggingAlgorithm = "None";
+std::string GlowDAGOptimizerParallelizationTaggingAlgorithm = "None";
+int32_t GlowDAGOptimizerNumParallelChunks = 1;
+bool GlowFusedScaleOffsetFP16 = false;
+bool GlowForceSLSAccumFP16 = false;
+bool GlowClipFP16 = false;
+bool GlowClipFP16SkipInputs = true;
+bool GlowUseSparseNNPartitioningScheme = false;
+bool GlowSparseNNPartitioningAddSLSConcats = false;
+bool GlowSparseNNPartitioningBalancePerfModel = false;
+bool GlowSparseNNPartitioningPairLNWithSLS = false;
+size_t GlowMaxActiveRequests = 48;
+size_t GlowMaxActiveRequestsPerInstance = 48;
+size_t GlowMaxQueueSize = 100;
+size_t GlowExecutorThreads = 10;
+bool GlowDelayAndRecordConstantModification = false;
+bool GlowUseTrackedDummyQuantParams = false;
+std::string GlowOnnxifiBackend = "";
+bool GlowSaveOnnxifiModel = false;
+bool GlowSaveOnnxifiIO = false;
+bool GlowSaveOnnxifiDAG = false;
+bool GlowEnablePartialTensors = true;
+bool GlowUseCustomOpsForExport = true;
+bool GlowDumpNNPICompilerData = false;
+bool GlowUsePerPartitionIcetConfig = false;
+bool GlowDisableNNPITransforms = false;
+bool GlowDisableNNPIPrivateTransforms = false;
+int32_t GlowNNPINumParallelChunks = 0;
+int32_t GlowNNPIModelParallelSplitAlignment = 1;
 } // namespace onnxifi
 
-extern bool GlowEnableLoadBalancedPartitioning;
-extern bool GlowNNPILowerAllBatchMatMul;
-extern bool GlowNNPIAcceptUnarySLS;
-extern bool GlowNNPISpecializeAllOneSLS;
-
 namespace runtime {
-extern unsigned GlowInterpreterMemory;
-extern unsigned GlowCPUMemory;
-extern unsigned GlowHabanaMemory;
-#ifdef GLOW_WITH_NNPI
-extern unsigned GlowNNPIMemory;
-extern unsigned GlowNNPITimeout;
-#endif
-extern bool GlowEnableDRT;
-extern bool GlowEnableP2P;
-extern unsigned GlowDeviceInitTimeoutMs;
-extern std::string GlowAvailableDevices;
+unsigned GlowInterpreterMemory = 0;
+unsigned GlowCPUMemory = 0;
+unsigned GlowHabanaMemory = 7 << 20; // 7 GB.
+unsigned GlowNNPIMemory = 0;
+unsigned GlowNNPITimeout = 0;
+bool GlowEnableP2P = false;
+bool GlowEnableDRT = false;
+unsigned GlowDeviceInitTimeoutMs = 5000;
+std::string GlowAvailableDevices = "";
 } // namespace runtime
 
-extern bool GlowDumpCompilationLog;
-extern bool GlowLogPartition;
-extern bool GlowDumpPartition;
 } // namespace glow
+
+//===--------------------------------------------------------------------===//
+//                    gflags config for all above flags
+//===--------------------------------------------------------------------===//
 
 DEFINE_int32(glow_num_devices, 1, "Number of devices for Glow backend");
 DEFINE_validator(glow_num_devices, [](const char *flagname, int32_t value) {
@@ -288,6 +290,15 @@ DEFINE_validator(glow_delay_and_record_constant_modification,
                    return true;
                  });
 
+DEFINE_bool(glow_use_tracked_dummy_quant_params, false,
+            "Whether to use uniqued dummy quant params when loading the model, "
+            "which are then mapped to loaded names for serialization.");
+DEFINE_validator(glow_use_tracked_dummy_quant_params,
+                 [](const char *flagname, bool value) {
+                   glow::onnxifi::GlowUseTrackedDummyQuantParams = value;
+                   return true;
+                 });
+
 DEFINE_int32(glow_max_active_requests, 48,
              "Number of max active requests before host manager start queuing");
 DEFINE_validator(glow_max_active_requests,
@@ -321,10 +332,9 @@ DEFINE_validator(glow_executor_threads,
                    return true;
                  });
 
-DEFINE_bool(glow_partitioner_enable_load_balance, false,
-            "Enable a partitioner "
-            "pass to optimize for load balance in addition to memory capacity "
-            "constraints");
+DEFINE_bool(glow_partitioner_enable_load_balance, true,
+            "Enable a partitioner pass to optimize for load balance in "
+            "addition to memory capacity constraints");
 DEFINE_validator(glow_partitioner_enable_load_balance,
                  [](const char *flagname, bool value) {
                    glow::GlowEnableLoadBalancedPartitioning = value;
@@ -369,6 +379,14 @@ DEFINE_validator(glow_dump_graph, [](const char * /* unused */, bool value) {
   glow::onnxifi::GlowDumpGraph = value;
   return true;
 });
+
+DEFINE_string(glow_dump_graph_path, "./",
+              "Directory path for the dumped graphs.");
+DEFINE_validator(glow_dump_graph_path,
+                 [](const char * /* unused */, const std::string &value) {
+                   glow::onnxifi::GlowDumpGraphPath = value;
+                   return true;
+                 });
 
 DEFINE_bool(glow_dump_initial_loaded_graph, false,
             "Dump the glow Graph right after onnxification");
@@ -467,11 +485,18 @@ DEFINE_validator(glow_nnpi_accept_unary_sls,
                    glow::GlowNNPIAcceptUnarySLS = value;
                    return true;
                  });
-DEFINE_int32(glow_nnpi_num_parallel_chunks, 1,
+DEFINE_int32(glow_nnpi_num_parallel_chunks, 0,
              "Number of parallel chunks for NNPI");
 DEFINE_validator(glow_nnpi_num_parallel_chunks,
                  [](const char * /* flagname */, int32_t value) {
                    glow::onnxifi::GlowNNPINumParallelChunks = value;
+                   return true;
+                 });
+DEFINE_int32(glow_nnpi_model_parallel_split_alignment, 1,
+             "Alignment value for model parallel splits");
+DEFINE_validator(glow_nnpi_model_parallel_split_alignment,
+                 [](const char * /* flagname */, int32_t value) {
+                   glow::onnxifi::GlowNNPIModelParallelSplitAlignment = value;
                    return true;
                  });
 #endif /* GLOW_WITH_NNPI */
@@ -558,5 +583,13 @@ DEFINE_bool(glow_dump_compilation_log, false,
 DEFINE_validator(glow_dump_compilation_log,
                  [](const char * /*unused*/, bool value) {
                    glow::GlowDumpCompilationLog = value;
+                   return true;
+                 });
+
+DEFINE_bool(glow_dump_backend_specific_ir_json, false,
+            "Dump the backend-specific IR JSON file");
+DEFINE_validator(glow_dump_backend_specific_ir_json,
+                 [](const char * /*unused*/, bool value) {
+                   glow::GlowDumpBackendSpecificIRJSON = value;
                    return true;
                  });

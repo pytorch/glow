@@ -5,6 +5,8 @@
 #include "Registration.h"
 #include <ATen/native/quantized/cpu/conv_packed_params.h>
 #include <ATen/native/quantized/cpu/packed_params.h>
+#include <torch/csrc/jit/backends/backend.h>
+#include <torch/csrc/jit/ir/alias_analysis.h>
 #include <torch/csrc/jit/ir/node_hashing.h>
 #include <torch/csrc/jit/passes/common_subexpression_elimination.h>
 #include <torch/csrc/jit/passes/constant_pooling.h>
@@ -12,14 +14,79 @@
 #include <torch/csrc/jit/passes/freeze_module.h>
 #include <torch/csrc/jit/passes/inliner.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
+#include <torch/csrc/jit/passes/utils/subgraph_utils.h>
+#include <torch/csrc/jit/runtime/custom_operator.h>
 
 namespace glow {
+
+namespace {
+void registerDummyOperatorWithSchema(const char *schema) {
+  static std::unordered_set<c10::OperatorName> registered_ops;
+  torch::jit::Operator op(
+      schema,
+      [](const torch::jit::Node *node) -> torch::jit::Operation {
+        return [node](torch::jit::Stack *stack) {
+          LOG(FATAL) << "Operator \"" << (*node)
+                     << "\" has no implementation and is meant only as a "
+                        "placeholder while fusing ops to run with Glow";
+        };
+      },
+      at::AliasAnalysisKind::PURE_FUNCTION);
+  if (registered_ops.count(op.schema().operator_name()) == 0) {
+    torch::jit::RegisterOperators op_to_register({op});
+    registered_ops.insert(op.schema().operator_name());
+  }
+}
+
+void registerGlowHelperOps() {
+  const char *conv2dSymbol =
+      "glow::unpacked_quantized_conv2d(Tensor a_quant, Tensor w_quant, Tensor "
+      "b, int[] stride, int[] padding, int[] dilation, int groups, float "
+      "r_scale, int r_zero_point) -> Tensor";
+  registerDummyOperatorWithSchema(conv2dSymbol);
+
+  const char *conv2dReluSymbol =
+      "glow::unpacked_quantized_conv2d_relu(Tensor a_quant, Tensor w_quant, "
+      "Tensor "
+      "b, int[] stride, int[] padding, int[] dilation, int groups, float "
+      "r_scale, int r_zero_point) -> Tensor";
+  registerDummyOperatorWithSchema(conv2dReluSymbol);
+
+  const char *linearSymbol =
+      "glow::unpacked_quantized_linear(Tensor a_quant, Tensor w_quant, Tensor "
+      "b, float r_scale, int r_zero_point) -> Tensor";
+  registerDummyOperatorWithSchema(linearSymbol);
+
+  const char *conv3dSymbol =
+      "glow::unpacked_quantized_conv3d(Tensor a_quant, Tensor w_quant, Tensor "
+      "b, int[] stride, int[] padding, int[] dilation, int groups, float "
+      "r_scale, int r_zero_point) -> Tensor";
+  registerDummyOperatorWithSchema(conv3dSymbol);
+
+  const char *conv3dReluSymbol =
+      "glow::unpacked_quantized_conv3d_relu(Tensor a_quant, Tensor w_quant, "
+      "Tensor  b, int[] stride, int[] padding, int[] dilation, int groups, "
+      "float r_scale, int r_zero_point) -> Tensor";
+  registerDummyOperatorWithSchema(conv3dReluSymbol);
+}
+} // namespace
+
+torch::jit::backend<TorchGlowBackend> &torchGlowBackend() {
+  static auto cls = torch::jit::backend<TorchGlowBackend>("glow");
+  return cls;
+}
+
+void registerTorchGlowBackendAndDeps() {
+  (void)torchGlowBackend();
+  registerGlowCompileSpecCustomClass();
+  registerGlowHelperOps();
+}
 
 static std::vector<glow::InputMeta>
 getInputMetas(const GlowCompileSpec &method_spec) {
   std::vector<glow::InputMeta> inputMeta;
   for (const auto &in : method_spec.inputs()) {
-    std::vector<glow::dim_t> dims;
+    std::vector<glow::sdim_t> dims;
     for (auto d : in.dims()) {
       dims.emplace_back(static_cast<size_t>(d));
     }
@@ -52,10 +119,6 @@ RewriteQuantPackedParamOps(std::shared_ptr<torch::jit::Graph> &graph) {
   quantized_conv2d_rewriter.RegisterRewritePattern(
       quantized_conv2d_pattern, glow_quantized_conv2d_pattern);
   quantized_conv2d_rewriter.runOnGraph(graph);
-  std::string conv2dSymbol = "glow::unpacked_quantized_conv2d";
-  c10::Symbol glowUnpackedConv2dSymbol =
-      at::Symbol::fromQualString(conv2dSymbol);
-  registerGlowOp(glowUnpackedConv2dSymbol);
 
   // Quantized Conv2d + Relu pattern
   std::string quantized_conv2d_relu_pattern = R"IR(
@@ -76,10 +139,6 @@ RewriteQuantPackedParamOps(std::shared_ptr<torch::jit::Graph> &graph) {
   quantized_conv2d_relu_rewriter.RegisterRewritePattern(
       quantized_conv2d_relu_pattern, glow_quantized_conv2d_relu_pattern);
   quantized_conv2d_relu_rewriter.runOnGraph(graph);
-  std::string conv2dReluSymbol = "glow::unpacked_quantized_conv2d_relu";
-  c10::Symbol glowUnpackedConv2dReluSymbol =
-      at::Symbol::fromQualString(conv2dReluSymbol);
-  registerGlowOp(glowUnpackedConv2dReluSymbol);
 
   // Quantized Conv3d pattern
   std::string quantized_conv3d_pattern = R"IR(
@@ -100,10 +159,6 @@ RewriteQuantPackedParamOps(std::shared_ptr<torch::jit::Graph> &graph) {
   quantized_conv3d_rewriter.RegisterRewritePattern(
       quantized_conv3d_pattern, glow_quantized_conv3d_pattern);
   quantized_conv3d_rewriter.runOnGraph(graph);
-  std::string conv3dSymbol = "glow::unpacked_quantized_conv3d";
-  c10::Symbol glowUnpackedConv3dSymbol =
-      at::Symbol::fromQualString(conv3dSymbol);
-  registerGlowOp(glowUnpackedConv3dSymbol);
 
   // Quantized Conv3d + Relu pattern
   std::string quantized_conv3d_relu_pattern = R"IR(
@@ -124,10 +179,6 @@ RewriteQuantPackedParamOps(std::shared_ptr<torch::jit::Graph> &graph) {
   quantized_conv3d_relu_rewriter.RegisterRewritePattern(
       quantized_conv3d_relu_pattern, glow_quantized_conv3d_relu_pattern);
   quantized_conv3d_relu_rewriter.runOnGraph(graph);
-  std::string conv3dReluSymbol = "glow::unpacked_quantized_conv3d_relu";
-  c10::Symbol glowUnpackedConv3dReluSymbol =
-      at::Symbol::fromQualString(conv3dReluSymbol);
-  registerGlowOp(glowUnpackedConv3dReluSymbol);
 
   // Quantized Linear pattern
   std::string quantized_linear_pattern = R"IR(
@@ -144,10 +195,6 @@ RewriteQuantPackedParamOps(std::shared_ptr<torch::jit::Graph> &graph) {
   quantized_linear_rewriter.RegisterRewritePattern(
       quantized_linear_pattern, glow_quantized_linear_pattern);
   quantized_linear_rewriter.runOnGraph(graph);
-  std::string linearSymbol = "glow::unpacked_quantized_linear";
-  c10::Symbol glowUnpackedLinearSymbol =
-      at::Symbol::fromQualString(linearSymbol);
-  registerGlowOp(glowUnpackedLinearSymbol);
 }
 
 template <int DIMS>
@@ -446,8 +493,8 @@ TorchGlowBackend::compile(c10::IValue processed,
         CHECK(!(bool)e) << ERR_TO_STRING(std::move(e));
       }
 
-      // Bakcend is created on each to_backend call --> use simple consecutive
-      // keys for methods.
+      // Bakcend is created on each to_backend call --> use simple
+      // consecutive keys for methods.
       handleToRunnerMap_.emplace(key,
                                  std::make_pair(std::move(runner), nullptr));
     }

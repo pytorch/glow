@@ -63,6 +63,7 @@ target_link_libraries(CPUBackend
                         Backend
                         Base
                         CodeGen
+                        Flags
                         Graph
                         IR
                         IROptimizer

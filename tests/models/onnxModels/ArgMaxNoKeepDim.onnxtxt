@@ -19,7 +19,7 @@ domain: "onnx"
 #    COMPLEX128 = 15;
 graph {
    initializer {
-       dims: 1   
+       dims: 1
        data_type: 7
        name: "k"
        int64_data: 2
@@ -48,7 +48,7 @@ graph {
   }
    node {
        input: "input"
-       output: "argmax_scores"	
+       output: "scores"
        name: "argmax"
        op_type: "ArgMax"
        attribute {
@@ -57,14 +57,14 @@ graph {
         type: INT
       }
       attribute {
-        name: "keepDims"
+        name: "keepdims"
         i: 0
         type: INT
       }
    }
 
 output {
-    name: "argmax_scores"
+    name: "scores"
     type {
       tensor_type {
         elem_type: 7

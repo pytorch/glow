@@ -26,6 +26,7 @@
 #include <torch/csrc/jit/passes/common_subexpression_elimination.h>
 #include <torch/csrc/jit/passes/dead_code_elimination.h>
 #include <torch/csrc/jit/passes/inliner.h>
+#include <torch/csrc/jit/passes/remove_mutation.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
 #include <torch/csrc/jit/passes/utils/subgraph_utils.h>
 #include <torch/csrc/jit/runtime/custom_operator.h>
@@ -104,7 +105,13 @@ bool aliasChecks(torch::jit::Node *consumer, torch::jit::Node *producer,
   if (aliasDb.isMutable(consumer) && aliasDb.isMutable(producer)) {
     return true;
   }
-  if (aliasDb.isMutable(consumer) && aliasDb.hasInputWriters(producer)) {
+
+  // TODO: delete this once this is fixed by
+  // https://github.com/pytorch/pytorch/issues/43409
+  bool isC2Op = consumer->kind().is_caffe2();
+
+  if (!isC2Op &&
+      (aliasDb.isMutable(consumer) && aliasDb.hasInputWriters(producer))) {
     return false;
   }
   if (aliasDb.isMutable(producer) && aliasDb.hasOutputWriters(consumer)) {
@@ -302,33 +309,20 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
     setIncludeLastOffsets(graph);
   }
 
-  // Reason for node being blacklisted.
-  enum class NodeBlacklistReason {
-    Kind,
-    Index,
-  };
-
-  std::unordered_map<const torch::jit::Node *, NodeBlacklistReason>
-      blacklistedNodes;
+  std::unordered_set<const torch::jit::Node *> indexBlacklistedNodes;
 
   size_t i = 0;
+  if (settings.enableRemoveMutation) {
+    RemoveListMutation(graph);
+    RemoveTensorMutation(graph);
+  }
   for (const torch::jit::Node *node : graph->nodes()) {
-    // if a node is in super allowlist, it is always allowed
-    if (settings.opOverrideAllowlist.count(node->kind())) {
-      i++;
-      continue;
-    }
-
     if (settings.fusionStartIndex >= 0 && i < settings.fusionStartIndex) {
-      blacklistedNodes[node] = NodeBlacklistReason::Index;
+      indexBlacklistedNodes.insert(node);
     }
 
     if (settings.fusionEndIndex >= 0 && i >= settings.fusionEndIndex) {
-      blacklistedNodes[node] = NodeBlacklistReason::Index;
-    }
-
-    if (settings.opBlacklist.count(node->kind())) {
-      blacklistedNodes[node] = NodeBlacklistReason::Kind;
+      indexBlacklistedNodes.insert(node);
     }
     i++;
   }
@@ -337,31 +331,30 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
   const auto maxFusionMergeSize = settings.maxFusionMergeSize;
 
   // Wrap fn in function that first checks the blacklist.
-  IsSupportFunc nodeSupportedFn = [blacklist = std::move(blacklistedNodes),
-                                   fn](const torch::jit::Node *ptNode) {
-    if (blacklist.count(ptNode)) {
-      switch (blacklist.at(ptNode)) {
-      case NodeBlacklistReason::Kind:
-        VLOG(1) << "Skipping " << ptNode->kind().toQualString()
-                << " op because its kind is blacklisted";
-        break;
-      case NodeBlacklistReason::Index:
-        VLOG(1) << "Skipping " << ptNode->kind().toQualString()
-                << " op because it's outside of the fusion range";
-        break;
-      }
-      return false;
-    }
+  IsSupportFunc nodeSupportedFn =
+      [indexBlacklist = std::move(indexBlacklistedNodes),
+       opBlacklist = settings.opBlacklist, fn](const torch::jit::Node *ptNode) {
+        if (indexBlacklist.count(ptNode)) {
+          VLOG(1) << "Skipping " << ptNode->kind().toQualString()
+                  << " op because it's outside of the fusion range";
+          return false;
+        }
 
-    return fn(ptNode);
-  };
+        if (opBlacklist.count(ptNode->kind())) {
+          VLOG(1) << "Skipping " << ptNode->kind().toQualString()
+                  << " op because its kind is blacklisted";
+          return false;
+        }
+
+        return fn(ptNode);
+      };
 
   Inline(*graph);
 
   // Prepare the graph by fusing known patterns for the model loader.
   // TODO: this should be done only on Glow subgraphs to avoid modifying parts
   // of the graph that Glow will not be running.
-  fuseKnownPatterns(graph);
+  fuseKnownPatterns(graph, settings.opBlacklist);
 
   fuseJITNodesToGlow(graph, nodeSupportedFn, kind, maxFusionMergeSize);
 

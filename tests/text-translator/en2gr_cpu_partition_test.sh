@@ -17,4 +17,4 @@
 set -euxo pipefail
 
 # CHECK: ich liebe Musik \.$
-$BIN/text-translator -m "${MODELS_DIR}/en2gr" -backend=CPU -cpu-memory=500000 -num-devices=2 -glow_partitioner_enable_load_balance=0 <<< "I love music ."
+$BIN/text-translator -m "${MODELS_DIR}/en2gr" -backend=CPU -cpu-memory=500000 -num-devices=2 -partitioner_enable_load_balance=0 <<< "I love music ."

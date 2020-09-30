@@ -18,6 +18,7 @@
 
 #include "glow/Backend/Backend.h"
 #include "glow/Converter/Float16Converter.h"
+#include "glow/Converter/FusedRowwiseConverter.h"
 #include "glow/Converter/TypeAToTypeBFunctionConverter.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Log.h"
@@ -627,6 +628,49 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
       auto *newTR = F->createTranspose(TR->getName(), NCL, TR->getShuffle());
       newTR->setPredicate(node->getPredicate());
       CL->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
+      continue;
+    }
+
+    // Sink Transpose below LeakyRelu nodes.
+    if (auto *LR = dyn_cast<LeakyReluNode>(node)) {
+      auto *TR = dyn_cast<TransposeNode>(LR->getInput());
+      if (!TR) {
+        continue;
+      }
+      auto newLROutTy = F->getParent()->uniqueTypeWithNewShape(
+          LR->getResult().getType(), TR->getInput().getType());
+      auto *newLR = F->createLeakyRELU(LR->getName(), newLROutTy,
+                                       TR->getInput(), LR->getAlpha());
+      newLR->setPredicate(node->getPredicate());
+      auto *newTR = F->createTranspose(TR->getName(), newLR, TR->getShuffle());
+      newTR->setPredicate(node->getPredicate());
+      LR->getResult().replaceAllUsesOfWith(newTR);
+      changed = true;
+      continue;
+    }
+
+    // Sink Transpose below PRelu with Splat.
+    if (auto *PN = dyn_cast<PReluNode>(node)) {
+      auto *TR = dyn_cast<TransposeNode>(PN->getInput());
+      if (!TR) {
+        continue;
+      }
+      auto *SN = dyn_cast<SplatNode>(PN->getSlope());
+      if (!SN) {
+        continue;
+      }
+      auto newSNOutTy = F->getParent()->uniqueTypeWithNewShape(
+          SN->getResult().getType(), TR->getInput().getType());
+      auto newPNOutTy = F->getParent()->uniqueTypeWithNewShape(
+          PN->getResult().getType(), TR->getInput().getType());
+      auto *newSN = F->createSplat(SN->getName(), newSNOutTy, SN->getValue());
+      auto *newPN =
+          F->createPRELU(PN->getName(), TR->getInput(), newSN, newPNOutTy);
+      auto *newTR = F->createTranspose(TR->getName(), newPN, TR->getShuffle());
+      newPN->setPredicate(node->getPredicate());
+      newTR->setPredicate(node->getPredicate());
+      PN->getResult().replaceAllUsesOfWith(newTR);
       changed = true;
       continue;
     }
@@ -3576,6 +3620,10 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
     return true;
   };
 
+  const bool disallowNewQuantParams =
+      cctx.optimizationOpts.enableQuantParamChanges &&
+      !cctx.precisionConfig.loadUniquedDummyQParams;
+
   for (Node &node : F->getNodes()) {
     // Clip(Dequantize(Node)) -> Dequantize(Node)
     if (ClipNode *clip = dyn_cast<ClipNode>(&node)) {
@@ -3591,9 +3639,8 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
           DQN->getNumUsers() != 1 || qResult.getNode()->getNumUsers() != 1;
 
       // Try to update the quantize's type, otherwise skip this one.
-      if (!updateQuantizeNodeType(
-              F, qResult, clip, skipIfQuantParamChange,
-              cctx.optimizationOpts.enableQuantParamChanges)) {
+      if (!updateQuantizeNodeType(F, qResult, clip, skipIfQuantParamChange,
+                                  disallowNewQuantParams)) {
         continue;
       }
 
@@ -3616,9 +3663,9 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
       const bool skipIfQuantParamChange = isUsedByNodeWithSideEffects(QN);
 
       // Try to update the quantize's type, otherwise skip this one.
-      if (!updateQuantizeNodeType(
-              F, QN->getResult(), clip, skipIfQuantParamChange,
-              cctx.optimizationOpts.enableQuantParamChanges)) {
+      if (!updateQuantizeNodeType(F, QN->getResult(), clip,
+                                  skipIfQuantParamChange,
+                                  disallowNewQuantParams)) {
         continue;
       }
 
@@ -3720,7 +3767,8 @@ bool OptimizeQuantFCFloatRelu::run(Function *F,
 
   // This opt implies there to be changes to quantization, because we create an
   // int relu that was previously float.
-  if (!cctx.optimizationOpts.enableQuantParamChanges) {
+  if (!cctx.optimizationOpts.enableQuantParamChanges ||
+      cctx.precisionConfig.loadUniquedDummyQParams) {
     return false;
   }
 
@@ -3912,7 +3960,8 @@ FUNCTION_ENABLE_IF_TEMPLATE(MatMul)
 FUNCTION_ENABLE_IF_TEMPLATE(AvgPool) *
     createNewPool(Function &F, T *PN, RescaleQuantizedNode *rescale) {
   return createNode<T>(F, PN->getName(), rescale->getInput(), PN->getKernels(),
-                       PN->getStrides(), PN->getPads());
+                       PN->getStrides(), PN->getPads(), NCHW,
+                       PN->getCountIncludePads());
 }
 FUNCTION_ENABLE_IF_TEMPLATE(MaxPool) *
     createNewPool(Function &F, T *PN, RescaleQuantizedNode *rescale) {
@@ -5093,6 +5142,21 @@ void glow::transformForPrecisionMode(const Backend &B, Function *F,
   if (precConfig.forceFP16AccumSLS) {
     setFP16AccumSLS(F, precConfig);
   }
+
+  // Convert UInt4FusedFP16QTy/UInt8FusedFP16QTy to UInt8FusedQTy.
+  if ((precConfig.convert4BitFusedTo8Bit ||
+       precConfig.convert8BitFusedToFP32) &&
+      !precConfig.forceFP16AccumSLS) {
+    LOG_SCOPE(F->getLogContext(), "glow::convertFunctionToFP32ScaleOffset");
+    convertFunctionToFP32ScaleOffset(F, precConfig);
+  }
+
+  // In FusedRowwiseQSLWS, convert its indices from Int32(if there is any) to
+  // Int64.
+  if (precConfig.convertIndicesToInt64) {
+    LOG_SCOPE(F->getLogContext(), "glow::convertFunctionIndicesToInt64");
+    convertFunctionIndicesToInt64(F, precConfig);
+  }
 }
 
 Error glow::optimizeFunctionBeforeLowering(Function *F,
@@ -5125,7 +5189,10 @@ Error glow::optimizeFunctionBeforeLowering(Function *F,
 
 /// Error message to print when there is a graph hash checking error.
 static const char *graphPreLowerHashCheckErrMsg =
-    R"RAW(Graph check error: graph hash mismatch! Potential causes:
+    R"RAW(Graph hash mismatch!
+%s
+%s
+Potential causes:
 1. The profile YAML file was produced with an older version of the Glow tools
    while the quantization of the model is performed with a newer version.
 2. The profile YAML file was produced for a different model than the model used
@@ -5174,8 +5241,16 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   } else if (precConfig.quantMode == QuantizationMode::Quantize) {
     const auto &quantConfig = cctx.precisionConfig.quantConfig;
     if (quantConfig.checkGraphPreLowerHash) {
-      RETURN_ERR_IF_NOT(F->getHash() == quantConfig.graphPreLowerHash,
-                        graphPreLowerHashCheckErrMsg);
+      auto profileHash = quantConfig.graphPreLowerHash;
+      auto currentHash = F->getHash();
+      auto profileHashStr =
+          strFormat("Profile graph hash: 0x%" PRIX64, (uint64_t)(profileHash));
+      auto currentHashStr =
+          strFormat("Current graph hash: 0x%" PRIX64, (uint64_t)(currentHash));
+      RETURN_ERR_IF_NOT(profileHash == currentHash,
+                        strFormat(graphPreLowerHashCheckErrMsg,
+                                  profileHashStr.c_str(),
+                                  currentHashStr.c_str()));
     }
   }
 
@@ -5349,18 +5424,30 @@ bool glow::executeVerticalFCWeightsSplit(Function *F, unsigned numOfChunks,
 /// \p splitDim represents what dimension to split for each of the inputs to
 /// \p curNode. \p resultDim is the dimension on which we are splitting and then
 /// concatenating the results. \p resultIdx represents the result index from
-/// \p curNode that is being split and later concatenated. \returns an Expected
-/// of the ConcatNode that is created and replaces \p curNode, or otherwise an
-/// Error if parallelization had some issue.
+/// \p curNode that is being split and later concatenated. The size of the
+/// splits will be increased to a multiple of \p modelParallelSplitAlignment, if
+/// possible. If the result after aligning the splits is that the new aligned
+/// splits are larger than the original requested num splits, then the number of
+/// resulting splits may be less than requested. \returns an Expected of the
+/// ConcatNode that is created and replaces \p curNode, or otherwise an Error if
+/// parallelization had some issue.
 static Expected<ConcatNode *>
 parallelizeAndReplaceNode(Function *F, Node *curNode, dim_t numOfChunksNode,
                           dim_t inputBatchIdx, dim_t resultIdx,
-                          llvm::ArrayRef<int> splitDims, size_t resultDim) {
+                          llvm::ArrayRef<int> splitDims, size_t resultDim,
+                          dim_t modelParallelSplitAlignment = 1) {
   const int inputIdx = splitDims[inputBatchIdx];
   CHECK_GE(inputIdx, 0) << "Input batch idx must be split";
   const dim_t batchSize = curNode->getNthInput(inputBatchIdx).dims()[inputIdx];
   const dim_t elemPerChunk = batchSize / numOfChunksNode;
   const dim_t remain = batchSize % numOfChunksNode;
+  // This alignment will create aligned splits. So for example, if we're
+  // splitting 190 by 3, then without alignment it would be {64, 63, 63}.
+  // With alignment of 64, it will be {64, 64, 62}
+  const dim_t alignedElemPerChunk =
+      ((elemPerChunk + (modelParallelSplitAlignment - 1)) /
+       modelParallelSplitAlignment) *
+      modelParallelSplitAlignment;
 
   RETURN_ERR_IF_NOT(
       batchSize >= numOfChunksNode,
@@ -5369,11 +5456,31 @@ parallelizeAndReplaceNode(Function *F, Node *curNode, dim_t numOfChunksNode,
           " for node " + curNode->getName().str() + " with kind " +
           curNode->getKindName());
 
+  // Potentially modify numOfChunksNode, if the aligned size times current
+  // numOfChunksNode exceeds the total size
+  if (modelParallelSplitAlignment > 1) {
+    numOfChunksNode =
+        (batchSize + alignedElemPerChunk - 1) / alignedElemPerChunk;
+  }
+
   std::vector<NodeValue> newNodes(numOfChunksNode);
   for (dim_t i = 0; i < numOfChunksNode; ++i) {
     // Calculate the out type of this chunk.
-    const dim_t sliceStart = i * elemPerChunk + std::min(i, remain);
-    const dim_t sliceEnd = sliceStart + elemPerChunk + ((i < remain) ? 1 : 0);
+    dim_t sliceStart, sliceEnd;
+
+    if (modelParallelSplitAlignment > 1) {
+      // If we are using aligned splits, then slice by multiples of the
+      // alignment, leaving the rest to the last split. The last split is
+      // necessarily smaller than the other splits.
+      sliceStart = i * alignedElemPerChunk;
+      sliceEnd = (i < numOfChunksNode - 1) ? sliceStart + alignedElemPerChunk
+                                           : batchSize;
+    } else {
+      // Otherwise, distribute elements evenly across the splits and sprinkle
+      // the remainder evenly as well
+      sliceStart = i * elemPerChunk + std::min(i, remain);
+      sliceEnd = sliceStart + elemPerChunk + ((i < remain) ? 1 : 0);
+    }
     VLOG(1) << "\tChunk " << i << ": start: " << sliceStart
             << " end: " << sliceEnd << "\n";
     auto outDims = curNode->dims(resultIdx).vec();
@@ -5469,7 +5576,7 @@ parallelizeAndReplaceConcat(Function *F, ConcatNode *CN, dim_t numOfChunks) {
 Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
     Function *F, const llvm::DenseMap<Node *, size_t> &numOfChunksMap,
     const llvm::DenseMap<Node *, ParallelTransformKind> &parOpts,
-    size_t numOfChunks) {
+    size_t numOfChunks, size_t modelParallelSplitAlignment) {
   // Since we will be transforming the original list of nodes, reverse iterate.
   auto &nodes = F->getNodes();
   size_t numProcessedNodes = 0;
@@ -5543,6 +5650,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                     SigmoidNode::ResultIdx, splitDims, 0));
         break;
       }
+      case Kinded::Kind::SoftMaxNodeKind: {
+        splitDims[SoftMaxNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, SoftMaxNode::InputIdx,
+                    SoftMaxNode::ResultIdx, splitDims, 0));
+        break;
+      }
       case Kinded::Kind::TanhNodeKind: {
         splitDims[TanhNode::InputIdx] = 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
@@ -5561,7 +5676,10 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
       }
       case Kinded::Kind::TransposeNodeKind: {
         splitDims[TransposeNode::InputIdx] = 0;
-        unsigned_t resultDim = cast<TransposeNode>(curNode)->getShuffle()[0];
+        auto shuffleVec = cast<TransposeNode>(curNode)->getShuffle();
+        unsigned_t resultDim =
+            std::find(shuffleVec.begin(), shuffleVec.end(), 0) -
+            shuffleVec.begin();
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, TransposeNode::InputIdx,
@@ -5574,6 +5692,14 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
                                           ReluNode::InputIdx,
                                           ReluNode::ResultIdx, splitDims, 0));
+        break;
+      }
+      case Kinded::Kind::GeluNodeKind: {
+        splitDims[GeluNode::InputIdx] = 0;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
+                                          GeluNode::InputIdx,
+                                          GeluNode::ResultIdx, splitDims, 0));
         break;
       }
       case Kinded::Kind::ClipNodeKind: {
@@ -5598,10 +5724,8 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
       }
       case Kinded::Kind::BatchedReduceAddNodeKind: {
         BatchedReduceAddNode *BR = llvm::cast<BatchedReduceAddNode>(curNode);
-        RETURN_ERR_IF_NOT(BR->getAxis() != 0,
-                          "BatchedReduceAdd node cannot be split on axis 0 "
-                          "which is being reduced");
-        splitDims[BatchedReduceAddNode::BatchIdx] = 0;
+        splitDims[BatchedReduceAddNode::BatchIdx] =
+            (BR->getAxis() == 0) ? 1 : 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, BatchedReduceAddNode::BatchIdx,
@@ -5666,7 +5790,17 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, FullyConnectedNode::WeightsIdx,
-                    FullyConnectedNode::ResultIdx, splitDims, 1));
+                    FullyConnectedNode::ResultIdx, splitDims, /*resultDim*/ 1,
+                    modelParallelSplitAlignment));
+        break;
+      }
+      case Kinded::Kind::MatMulNodeKind: {
+        splitDims[MatMulNode::RHSIdx] = 1;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, MatMulNode::RHSIdx,
+                    MatMulNode::ResultIdx, splitDims, /*resultDim*/ 1,
+                    modelParallelSplitAlignment));
         break;
       }
       case Kinded::Kind::ReluNodeKind: {
@@ -5675,20 +5809,23 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
         }
         splitDims[ReluNode::InputIdx] = 1;
         ASSIGN_VALUE_OR_RETURN_ERR(
-            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
-                                          ReluNode::InputIdx,
-                                          ReluNode::ResultIdx, splitDims, 1));
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, ReluNode::InputIdx,
+                    ReluNode::ResultIdx, splitDims,
+                    /*resultDim*/ 1, modelParallelSplitAlignment));
         break;
       }
       case Kinded::Kind::ClipNodeKind: {
-        if (curNode->getNthInput(ClipNode::InputIdx).dims().size() < 2) {
+        auto *CL = llvm::cast<ClipNode>(curNode);
+        if (CL->getNthInput(ClipNode::InputIdx).dims().size() < 2) {
           break;
         }
         splitDims[ClipNode::InputIdx] = 1;
         ASSIGN_VALUE_OR_RETURN_ERR(
-            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
-                                          ClipNode::InputIdx,
-                                          ClipNode::ResultIdx, splitDims, 1));
+            CN, parallelizeAndReplaceNode(
+                    F, curNode, curNumOfChunks, ClipNode::InputIdx,
+                    ClipNode::ResultIdx, splitDims,
+                    /*resultDim*/ 1, modelParallelSplitAlignment));
         break;
       }
       case Kinded::Kind::TileNodeKind: {
@@ -5701,24 +5838,10 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
             "Tile node cannot be split on axis 1 which is being replicated");
         splitDims[TileNode::InputIdx] = 1;
         ASSIGN_VALUE_OR_RETURN_ERR(
-            CN, parallelizeAndReplaceNode(F, curNode, curNumOfChunks,
-                                          TileNode::InputIdx,
-                                          TileNode::ResultIdx, splitDims, 1));
-        break;
-      }
-      case Kinded::Kind::BatchedReduceAddNodeKind: {
-        BatchedReduceAddNode *BR = llvm::cast<BatchedReduceAddNode>(curNode);
-        if (BR->getBatch().dims().size() < 2) {
-          break;
-        }
-        RETURN_ERR_IF_NOT(BR->getAxis() == 0,
-                          "BatchedReduceAdd model parallel splitting must have "
-                          "dim 0 reduction");
-        splitDims[BatchedReduceAddNode::BatchIdx] = 1;
-        ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
-                    F, curNode, curNumOfChunks, BatchedReduceAddNode::BatchIdx,
-                    BatchedReduceAddNode::ResultIdx, splitDims, 0));
+                    F, curNode, curNumOfChunks, TileNode::InputIdx,
+                    TileNode::ResultIdx, splitDims,
+                    /*resultDim*/ 1, modelParallelSplitAlignment));
         break;
       }
       case Kinded::Kind::ConcatNodeKind: {
@@ -5737,7 +5860,8 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, QuantizeNode::InputIdx,
-                    QuantizeNode::ResultIdx, splitDims, 1));
+                    QuantizeNode::ResultIdx, splitDims,
+                    /*resultDim*/ 1, modelParallelSplitAlignment));
         break;
       }
       case Kinded::Kind::DequantizeNodeKind: {
@@ -5748,7 +5872,8 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, DequantizeNode::InputIdx,
-                    DequantizeNode::ResultIdx, splitDims, 1));
+                    DequantizeNode::ResultIdx, splitDims,
+                    /*resultDim*/ 1, modelParallelSplitAlignment));
         break;
       }
       default:

@@ -21,20 +21,13 @@
 #include "nnpi_transformer.h"
 
 #include "glow/Backend/BackendUtils.h"
+#include "glow/Flags/Flags.h"
 
 #include <sstream>
 
 #include "llvm/ADT/StringSet.h"
 
 using namespace glow;
-
-namespace glow {
-namespace onnxifi {
-extern bool GlowDumpNNPICompilerData;
-extern bool GlowUsePerPartitionIcetConfig;
-
-} // namespace onnxifi
-} // namespace glow
 
 /// Update device network config from the compilation config
 static NNPIDeviceNetworkConfig parseDeviceNetworkConfig(
@@ -84,6 +77,8 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
       LOG_IF_NOT_RETURN_LLVMERROR(
           false, "INVALID NNPI_DEVICE_VERSION, valid values are 1,2,3");
     }
+  } else if (!compilationOptions_.inferOnDevice) {
+    config_.deviceType = NNPI_1000_C;
   }
 
   if (compilationOptions.iceCores > 0) {
@@ -179,6 +174,44 @@ Error NNPICompiledFunction::setupCompilationHints(
         strncpy(hint.iceCorePlacement.opName, opName.c_str(),
                 sizeof(NNPIObjectName));
         hint.iceCorePlacement.iceCore = core;
+        hints.emplace_back(hint);
+      }
+    }
+
+    // Read tensor assignments
+    auto tensorAssignmentNamesIt = nodeInfo.find(tensorAssignmentNamesKey);
+    auto tensorAssignmentValuesIt = nodeInfo.find(tensorAssignmentValuesKey);
+    if ((tensorAssignmentNamesIt != nodeInfo.end()) &&
+        (tensorAssignmentValuesIt != nodeInfo.end())) {
+      auto tensorAssignmentNames = tensorAssignmentNamesIt->second;
+      auto tensorAssignmentValues = tensorAssignmentValuesIt->second;
+      RETURN_ERR_IF_NOT(
+          tensorAssignmentNames.size() == tensorAssignmentValues.size(),
+          strFormat("Node %s tensorAssignmentsNames has length %zu, but "
+                    "tensorAssignmentValues has length %zu",
+                    N->getName().data(), tensorAssignmentNames.size(),
+                    tensorAssignmentValues.size()));
+
+      for (dim_t i = 0; i < tensorAssignmentNames.size(); i++) {
+        const std::string &memoryLevel = tensorAssignmentValues[i];
+        RETURN_ERR_IF_NOT((memoryLevel == "SRAM") || (memoryLevel == "LLC") ||
+                              (memoryLevel == "DRAM"),
+                          strFormat("Memory level must be either SRAM, LLC, or "
+                                    "DRAM. Unknown level: %s",
+                                    memoryLevel.data()));
+
+        const std::string &tensorName = tensorAssignmentNames[i];
+
+        NNPICompilationHint hint;
+        hint.type = NNPI_HINT_TENSOR_PLACEMENT;
+        strncpy(hint.tensorPlacement.tensorName, tensorName.c_str(),
+                sizeof(NNPIObjectName));
+        hint.tensorPlacement.allocationType = (memoryLevel == "SRAM")
+                                                  ? NNPI_ALLOCATION_SRAM
+                                                  : (memoryLevel == "LLC")
+                                                        ? NNPI_ALLOCATION_LLC
+                                                        : NNPI_ALLOCATION_DRAM;
+        hint.tensorPlacement.priority = 0.0f;
         hints.emplace_back(hint);
       }
     }
@@ -386,7 +419,7 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
 
     // Update compilation info after NNPI compilation.
     if (compilationOptions_.dumpCompilationInfo ||
-        compilationOptions_.lightCompilation) {
+        compilationOptions_.lightCompilation || GlowDumpBackendSpecificIRJSON) {
       if (!updateCompilationInfo()) {
         // Only issuing a warning (soft fail)
         LOG(WARNING) << "Failed to update NNPI compilation info";
@@ -535,6 +568,29 @@ bool NNPICompiledFunction::updateCompilationInfo() {
   return true;
 }
 
+static const char *dumpAllocType(const NNPI_ALLOCATION_TYPE &allocType) {
+  switch (allocType) {
+  case NNPI_ALLOCATION_DEFAULT:
+    return "Default";
+  case NNPI_ALLOCATION_DRAM:
+    return "DRAM";
+  case NNPI_ALLOCATION_ECC_DRAM:
+    return "ECC DRAM";
+  case NNPI_ALLOCATION_LLC:
+  case NNPI_ALLOCATION_LLC_CLOS0:
+  case NNPI_ALLOCATION_LLC_CLOS1:
+  case NNPI_ALLOCATION_LLC_CLOS2:
+  case NNPI_ALLOCATION_LLC_CLOS3:
+    return "LLC";
+  case NNPI_ALLOCATION_SRAM:
+    return "SRAM";
+  case NNPI_ALLOCATION_INTERNAL:
+    return "Internal";
+  default:
+    return "Unknown";
+  }
+}
+
 std::string NNPICompiledTensor::dump() const {
   std::stringstream stream;
   stream << "name: " << name << ", type: " << type << " (";
@@ -545,33 +601,7 @@ std::string NNPICompiledTensor::dump() const {
     stream.seekp(-1, stream.cur);
   }
   stream << "), allocation: ";
-  switch (allocType) {
-  case NNPI_ALLOCATION_DEFAULT:
-    stream << "Default";
-    break;
-  case NNPI_ALLOCATION_DRAM:
-    stream << "DRAM";
-    break;
-  case NNPI_ALLOCATION_ECC_DRAM:
-    stream << "ECC DRAM";
-    break;
-  case NNPI_ALLOCATION_LLC:
-  case NNPI_ALLOCATION_LLC_CLOS0:
-  case NNPI_ALLOCATION_LLC_CLOS1:
-  case NNPI_ALLOCATION_LLC_CLOS2:
-  case NNPI_ALLOCATION_LLC_CLOS3:
-    stream << "LLC";
-    break;
-  case NNPI_ALLOCATION_SRAM:
-    stream << "SRAM";
-    break;
-  case NNPI_ALLOCATION_INTERNAL:
-    stream << "Internal";
-    break;
-  default:
-    stream << "Unknown";
-    break;
-  }
+  stream << dumpAllocType(allocType);
   return stream.str();
 }
 
@@ -631,7 +661,10 @@ std::string NNPICompilationInfo::dump(const std::string &functionName) const {
 static const std::string tensorToJSON(const NNPICompiledTensor &tensor) {
   std::stringstream fs;
   fs << "{" << std::endl;
+  fs << "\"name\" : \"" << tensor.name << "\"," << std::endl;
   fs << "\"type\" : \"" << tensor.type << "\"," << std::endl;
+  fs << "\"alloc\" : \"" << dumpAllocType(tensor.allocType) << "\","
+     << std::endl;
   fs << "\"size\" : " << std::endl;
   fs << "[" << std::endl;
   for (auto it = tensor.shape.begin(); it != tensor.shape.end(); it++) {
@@ -673,6 +706,9 @@ opsToJSON(const std::map<std::string, NNPICompiledOp> &ops) {
     fs << tensorListToJSON(it->second.inputs, "inputs");
     fs << "," << std::endl;
     fs << tensorListToJSON(it->second.outputs, "outputs");
+    fs << "," << std::endl;
+    fs << " \"core\": " << it->second.coreIndex << "," << std::endl;
+    fs << " \"type\": \"" << it->second.type << "\"" << std::endl;
     fs << "}" << std::endl;
   }
   fs << "  }" << std::endl;

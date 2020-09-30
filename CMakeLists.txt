@@ -52,6 +52,7 @@ if(GLOW_USE_LLD)
 endif()
 
 include(Glog)
+include(Gflags)
 include(GlowDefaults)
 include(GlowTestSupport)
 include(GlowExternalBackends)
@@ -59,9 +60,6 @@ include(SanitizerSupport)
 include(CoverageSupport)
 include(DoxygenSupport)
 include(FindBackends)
-if(GLOW_BUILD_ONNXIFI_DYNLIB)
-  include(Gflags)
-endif()
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules/CMakeGraphVizOptions.cmake
                ${CMAKE_CURRENT_BINARY_DIR}/CMakeGraphVizOptions.cmake COPYONLY)
@@ -261,7 +259,6 @@ if (GLOW_BUILD_PYTORCH_INTEGRATION)
   endif()
 
   add_subdirectory(torch_glow/src)
-  add_subdirectory(torch_glow/tests/unittests)
 endif()
 
 if (GLOW_WITH_BUNDLES AND NOT GLOW_WITH_CPU)

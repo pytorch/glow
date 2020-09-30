@@ -28,6 +28,7 @@
 #include <chrono>
 #include <cmath>
 #include <math.h>
+#include <numeric>
 
 #ifdef WIN32
 #include <corecrt_math_defines.h>
@@ -1107,7 +1108,7 @@ void BoundInterpreterFunction::fwdAvgPoolInstFloatImpl(const AvgPoolInst *I) {
   ShapeHW sdim(I->getStrides());
   // Implement the avg pooling operation as defined here:
   // https://arxiv.org/abs/1312.4400
-  float filterArea = kdim.height * kdim.width;
+  float rawFilterArea = kdim.height * kdim.width;
 
   auto inW = getWeightHandle<ElemTy>(I->getSrc());
   auto outW = getWeightHandle<ElemTy>(I->getDest());
@@ -1122,6 +1123,7 @@ void BoundInterpreterFunction::fwdAvgPoolInstFloatImpl(const AvgPoolInst *I) {
         ssize_t y = -ssize_t(pdim.left);
         for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
           float sum = 0;
+          float filterArea = rawFilterArea;
 
           for (dim_t fx = 0; fx < kdim.height; fx++) {
             for (dim_t fy = 0; fy < kdim.width; fy++) {
@@ -1131,12 +1133,17 @@ void BoundInterpreterFunction::fwdAvgPoolInstFloatImpl(const AvgPoolInst *I) {
               // Ignore index access below zero (this is due to padding).
               if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
                   oy >= ssize_t(idim.w)) {
+                if (!I->getCountIncludePads()) {
+                  filterArea--;
+                }
+
                 continue;
               }
 
               sum += float(inW.at({n, (dim_t)ox, (dim_t)oy, z}));
             }
           }
+          assert(filterArea != 0 && "filterArea can't be 0");
           outW.at({n, ax, ay, z}) = ElemTy(sum / filterArea);
         } // W
       }   // H
@@ -1153,7 +1160,7 @@ void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
   ShapeHW sdim(I->getStrides());
   // Implement the avg pooling operation as defined here:
   // https://arxiv.org/abs/1312.4400
-  float filterArea = kdim.height * kdim.width;
+  float rawFilterArea = kdim.height * kdim.width;
 
   auto inW = getWeightHandle<int8_t>(I->getSrc());
   auto outW = getWeightHandle<int8_t>(I->getDest());
@@ -1172,6 +1179,7 @@ void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
         ssize_t y = -ssize_t(pdim.left);
         for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
           int32_t sum = 0;
+          float filterArea = rawFilterArea;
 
           for (dim_t fx = 0; fx < kdim.height; fx++) {
             for (dim_t fy = 0; fy < kdim.width; fy++) {
@@ -1181,12 +1189,17 @@ void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
               // Ignore index access below zero (this is due to padding).
               if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
                   oy >= ssize_t(idim.w)) {
+                if (!I->getCountIncludePads()) {
+                  filterArea--;
+                }
+
                 continue;
               }
 
               sum += inW.at({n, (dim_t)ox, (dim_t)oy, z}) - inQP.offset;
             }
           }
+          assert(filterArea != 0 && "filterArea can't be 0");
           // Instead of dividing by filterArea, just change scale.
           outW.at({n, ax, ay, z}) = quantization::clip<int32_t, int8_t>(
               std::round(float(sum) * (inQP.scale / outQP.scale / filterArea) +
@@ -1209,7 +1222,7 @@ void BoundInterpreterFunction::fwdAvgPool3DInstFloatImpl(const AvgPoolInst *I) {
   ShapeTHW sdim(I->getStrides());
   // Implement the avg pooling operation as defined here:
   // https://arxiv.org/abs/1312.4400
-  float filterArea = kdim.temporal_frames * kdim.height * kdim.width;
+  float rawFilterArea = kdim.temporal_frames * kdim.height * kdim.width;
 
   auto inW = getWeightHandle<ElemTy>(I->getSrc());
   auto outW = getWeightHandle<ElemTy>(I->getDest());
@@ -1226,6 +1239,7 @@ void BoundInterpreterFunction::fwdAvgPool3DInstFloatImpl(const AvgPoolInst *I) {
           ssize_t y = -ssize_t(pdim.left);
           for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
             float sum = 0;
+            float filterArea = rawFilterArea;
 
             for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
               for (dim_t fx = 0; fx < kdim.height; fx++) {
@@ -1237,14 +1251,19 @@ void BoundInterpreterFunction::fwdAvgPool3DInstFloatImpl(const AvgPoolInst *I) {
                   // Ignore index access below zero (this is due to padding).
                   if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
                       ox >= ssize_t(idim.h) || oy >= ssize_t(idim.w)) {
+                    if (!I->getCountIncludePads()) {
+                      filterArea--;
+                    }
+
                     continue;
                   }
 
                   sum += float(inW.at({n, (dim_t)ot, (dim_t)ox, (dim_t)oy, z}));
                 }
               }
-              outW.at({n, at, ax, ay, z}) = ElemTy(sum / filterArea);
             }
+            assert(filterArea != 0 && "filterArea can't be 0");
+            outW.at({n, at, ax, ay, z}) = ElemTy(sum / filterArea);
           } // W
         }   // H
       }     // T
@@ -1261,7 +1280,7 @@ void BoundInterpreterFunction::fwdAvgPool3DInstI8Impl(const AvgPoolInst *I) {
   ShapeTHW sdim(I->getStrides());
   // Implement the avg pooling operation as defined here:
   // https://arxiv.org/abs/1312.4400
-  float filterArea = kdim.temporal_frames * kdim.height * kdim.width;
+  float rawFilterArea = kdim.temporal_frames * kdim.height * kdim.width;
 
   auto inW = getWeightHandle<int8_t>(I->getSrc());
   auto outW = getWeightHandle<int8_t>(I->getDest());
@@ -1282,6 +1301,7 @@ void BoundInterpreterFunction::fwdAvgPool3DInstI8Impl(const AvgPoolInst *I) {
           ssize_t y = -ssize_t(pdim.left);
           for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
             int32_t sum = 0;
+            float filterArea = rawFilterArea;
 
             for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
               for (dim_t fx = 0; fx < kdim.height; fx++) {
@@ -1293,6 +1313,10 @@ void BoundInterpreterFunction::fwdAvgPool3DInstI8Impl(const AvgPoolInst *I) {
                   // Ignore index access below zero (this is due to padding).
                   if (ot < 0 || ox < 0 || oy < 0 || ot >= ssize_t(idim.t) ||
                       ox >= ssize_t(idim.h) || oy >= ssize_t(idim.w)) {
+                    if (!I->getCountIncludePads()) {
+                      filterArea--;
+                    }
+
                     continue;
                   }
 
@@ -1302,6 +1326,7 @@ void BoundInterpreterFunction::fwdAvgPool3DInstI8Impl(const AvgPoolInst *I) {
               }
             }
             // Instead of dividing by filterArea, just change scale.
+            assert(filterArea != 0 && "filterArea can't be 0");
             outW.at({n, at, ax, ay, z}) =
                 quantization::clip<int32_t, int8_t>(std::round(
                     float(sum) * (inQP.scale / outQP.scale / filterArea) +
@@ -1541,7 +1566,7 @@ void BoundInterpreterFunction::fwdAvgPool2DGradInst(const AvgPoolGradInst *I) {
 
   inG.clear();
 
-  float filterArea = kdim.height * kdim.width;
+  float rawFilterArea = kdim.height * kdim.width;
 
   // For each input in the batch:
   for (dim_t n = 0; n < odim.n; n++) {
@@ -1553,7 +1578,22 @@ void BoundInterpreterFunction::fwdAvgPool2DGradInst(const AvgPoolGradInst *I) {
       for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
         ssize_t y = -ssize_t(pdim.left);
         for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+          float filterArea = rawFilterArea;
 
+          // Excludes the padding area in filterArea if the flag is false
+          if (!I->getCountIncludePads()) {
+            ssize_t pad_x = (-x > 0 ? -x : 0) +
+                            ((x + ssize_t(kdim.height) - ssize_t(idim.h)) > 0
+                                 ? (x + ssize_t(kdim.height) - ssize_t(idim.h))
+                                 : 0);
+            ssize_t pad_y = (-y > 0 ? -y : 0) +
+                            ((y + ssize_t(kdim.width) - ssize_t(idim.w)) > 0
+                                 ? (y + ssize_t(kdim.width) - ssize_t(idim.w))
+                                 : 0);
+            filterArea = rawFilterArea - pad_x * kdim.width -
+                         pad_y * kdim.height + pad_x * pad_y;
+          }
+          assert(filterArea != 0 && "filterArea can't be 0");
           float dy = outG.at({n, ax, ay, z}) / filterArea;
 
           for (dim_t fx = 0; fx < kdim.height; fx++) {
@@ -1589,7 +1629,7 @@ void BoundInterpreterFunction::fwdAvgPool3DGradInst(const AvgPoolGradInst *I) {
 
   inG.clear();
 
-  float filterArea = kdim.temporal_frames * kdim.height * kdim.width;
+  float rawFilterArea = kdim.temporal_frames * kdim.height * kdim.width;
 
   // For each input in the batch:
   for (dim_t n = 0; n < odim.n; n++) {
@@ -1603,7 +1643,33 @@ void BoundInterpreterFunction::fwdAvgPool3DGradInst(const AvgPoolGradInst *I) {
         for (dim_t ax = 0; ax < odim.h; x += sdim.height, ax++) {
           ssize_t y = -ssize_t(pdim.left);
           for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
+            float filterArea = rawFilterArea;
 
+            // Excludes the padding area in filterArea if the flag is false
+            if (!I->getCountIncludePads()) {
+              ssize_t pad_x =
+                  (-x > 0 ? -x : 0) +
+                  ((x + ssize_t(kdim.height) - ssize_t(idim.h)) > 0
+                       ? (x + ssize_t(kdim.height) - ssize_t(idim.h))
+                       : 0);
+              ssize_t pad_y = (-y > 0 ? -y : 0) +
+                              ((y + ssize_t(kdim.width) - ssize_t(idim.w)) > 0
+                                   ? (y + ssize_t(kdim.width) - ssize_t(idim.w))
+                                   : 0);
+              ssize_t pad_z =
+                  (-t > 0 ? -t : 0) +
+                  ((t + ssize_t(kdim.temporal_frames) - ssize_t(idim.t)) > 0
+                       ? (t + ssize_t(kdim.temporal_frames) - ssize_t(idim.t))
+                       : 0);
+              filterArea = rawFilterArea -
+                           pad_x * kdim.width * kdim.temporal_frames -
+                           pad_y * kdim.height * kdim.temporal_frames -
+                           pad_z * kdim.height * kdim.width +
+                           pad_x * pad_y * kdim.temporal_frames +
+                           pad_x * pad_z * kdim.width +
+                           pad_y * pad_z * kdim.height - pad_x * pad_y * pad_z;
+            }
+            assert(filterArea != 0 && "filterArea can't be 0");
             float dy = outG.at({n, at, ax, ay, z}) / filterArea;
 
             for (dim_t ft = 0; ft < kdim.temporal_frames; ft++) {
@@ -1649,6 +1715,10 @@ void BoundInterpreterFunction::fwdReluInst(const ReluInst *) {
 
 void BoundInterpreterFunction::fwdClipInst(const ClipInst *) {
   DCHECK(!"Found ClipInst but Clip is lowered on Interpreter");
+}
+
+void BoundInterpreterFunction::fwdLeakyReluInst(const LeakyReluInst *) {
+  DCHECK(!"Found LeakyReluInst but LeakyRelu is lowered on Interpreter");
 }
 
 template <typename ElemTy>
@@ -5077,6 +5147,15 @@ void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
     dest->assign(&result);
     return;
   }
+
+  if ((srcElType == ElemKind::UInt8FusedFP16QTy ||
+       srcElType == ElemKind::UInt4FusedFP16QTy) &&
+      destElType == ElemKind::UInt8FusedQTy) {
+    Tensor result = source->getCopyConvertedToType(ElemKind::UInt8FusedQTy);
+    dest->assign(&result);
+    return;
+  }
+
   llvm_unreachable("Type not supported");
 }
 
@@ -5633,135 +5712,285 @@ void BoundInterpreterFunction::fwdMFCCInst(glow::MFCCInst const *I) {
   }
 }
 
-struct BinGrid {
-  uint32_t Y0;
-  uint32_t Y1;
-  uint32_t X0;
-  uint32_t X1;
-  float yDiff;
-  float xDiff;
+namespace {
+/// Positions of the input values to be used for bilinear interpolation for each
+/// sample point and the weights to use for each.
+template <typename T> struct BinGrid {
+  dim_t left;
+  dim_t top;
+  dim_t right;
+  dim_t bottom;
+  T leftW;
+  T topW;
+  T rightW;
+  T bottomW;
 };
+} // namespace
 
-// Function to calculate the xy coordinates of the resized image (grid)
-// Ref: https://arxiv.org/pdf/1703.06870.pdf and OnnxRuntime implementation
-static void getROIAlignInterpolationCoordinates(
-    unsigned inputHeight, unsigned inputWidth, unsigned outputHeight,
-    unsigned outputWidth, const std::vector<float> &box,
-    unsigned samplingRatioH, unsigned samplingRatioW, float offset,
-    std::vector<BinGrid> &binGrids) {
-  float y0 = box[0];
-  float x0 = box[1];
-  uint64_t binCount = 0;
-  // H & W of the each bin in the final output
-  const float binH = (box[2] - box[0]) / outputHeight;
-  const float binW = (box[3] - box[1]) / outputWidth;
-  const float roiBinSizeH = binH / samplingRatioH;
-  const float roiBinSizeW = binW / samplingRatioW;
-  for (uint32_t H = 0; H < outputHeight; H++) {
-    for (uint32_t W = 0; W < outputWidth; W++) {
-      for (uint32_t h = 0; h < samplingRatioH; h++) {
-        // initial y coordinate  with offset
-        const float inY = y0 + (H * binH) + ((h + offset) * roiBinSizeH);
-        const uint32_t topYIndex = std::floor(inY);
-        const uint32_t bottomYIndex =
-            (inY <= inputHeight - 1) ? std::ceil(inY) : (inputHeight - 1);
-        const float yLerp = inY - topYIndex;
-        for (uint32_t w = 0; w < samplingRatioW; w++) {
-          // initial x coordinate  with offset
-          const float inX = x0 + (W * binW) + ((w + offset) * roiBinSizeW);
-          const uint32_t leftXIndex = std::floor(inX);
-          const uint32_t rightXIndex =
-              (inX <= inputWidth - 1) ? std::ceil(inX) : (inputWidth - 1);
-          const float xLerp = inX - leftXIndex;
-          binGrids[binCount++] = BinGrid{topYIndex,   bottomYIndex, leftXIndex,
-                                         rightXIndex, yLerp,        xLerp};
+/// Function to calculate the xy coordinates of the resized image (grid)
+/// Ref: https://arxiv.org/pdf/1703.06870.pdf and OnnxRuntime implementation
+/// \p featureMapHeight and \p featureMapWidth are the dimensions of the
+/// input feature map to the operator, \p outputHeight and \p outputWidth are
+/// the dimensions of the operator output tensor, \p samplingRatioH and \p
+/// samplingRatioW are the number of sampling points to use in each bin in the
+/// height and width directions respectively (total sample points is
+/// samplingRatioH * samplingRatioW), \p boxHeight and \p boxWidth are the
+/// height and width of the RoI box, \p yRef and \p xRef are the adjustment to
+/// be made for each sampling point, this is either the top left corer of the
+/// box for RoiAlign or a vector to be added to center point after rotation for
+/// RoiAlignRotated, \p rotated is true if the op is RoiAlignRotated, \p theta
+/// is the rotation angle in the case of RoiAlignRotated and is unused in
+/// RoiAlign, \p boxCenterH and \p boxCenterW are the center of the box used for
+/// rotation in the case of RoiAlignRotated and unused in the case of RoiAlign.
+/// \returns a vector of BinGrids, each one to be used to compute a single
+/// sample point value.
+template <typename T>
+static std::vector<BinGrid<T>> getROIAlignInterpolationCoordinates(
+    dim_t featureMapHeight, dim_t featureMapWidth, dim_t outputHeight,
+    dim_t outputWidth, dim_t samplingRatioH, dim_t samplingRatioW, T boxHeight,
+    T boxWidth, T yRef, T xRef, bool rotated, T theta, T boxCenterH,
+    T boxCenterW) {
+
+  T sinTheta = T(0.0f);
+  T cosTheta = T(0.0f);
+  if (rotated) {
+    sinTheta = T(std::sin(float(theta)));
+    cosTheta = T(std::cos(float(theta)));
+  }
+
+  std::vector<BinGrid<T>> binGrids;
+
+  // height and width of the each bin in the final output
+  const T binH = boxHeight / T(outputHeight);
+  const T binW = boxWidth / T(outputWidth);
+  const T roiBinSizeH = binH / T(samplingRatioH);
+  const T roiBinSizeW = binW / T(samplingRatioW);
+  for (dim_t oh = 0; oh < outputHeight; oh++) {
+    for (dim_t ow = 0; ow < outputWidth; ow++) {
+      for (dim_t gh = 0; gh < samplingRatioH; gh++) {
+        for (dim_t gw = 0; gw < samplingRatioW; gw++) {
+          // x,y coordinates or vector w.r.t input dimensions
+          T inY = yRef + (T(oh) * binH) + ((T(gh) + T(0.5f)) * roiBinSizeH);
+          T inX = xRef + (T(ow) * binW) + ((T(gw) + T(0.5f)) * roiBinSizeW);
+
+          // If ROI is rotated, rotate by theta around the box center then
+          // translate
+          if (rotated) {
+            T inYY = inY;
+            T inXX = inX;
+            inY = inYY * cosTheta - inXX * sinTheta + boxCenterH;
+            inX = inXX * cosTheta + inYY * sinTheta + boxCenterW;
+          }
+
+          // zero pad mal-formed boxes
+          if (inY < T(-1) || inY > T(featureMapHeight)) {
+            BinGrid<T> bg = BinGrid<T>{0, 0, 0, 0, 0, 0, 0, 0};
+            binGrids.push_back(bg);
+            continue;
+          }
+          if (inX < T(-1) || inX > T(featureMapWidth)) {
+            BinGrid<T> bg = BinGrid<T>{0, 0, 0, 0, 0, 0, 0, 0};
+            binGrids.push_back(bg);
+            continue;
+          }
+
+          // clip to input dimensions
+          T y = std::min(std::max(inY, T(0)), T(featureMapHeight - 1));
+          T x = std::min(std::max(inX, T(0)), T(featureMapWidth - 1));
+
+          // calc interpolation parameters
+          const dim_t yl = dim_t(std::floor(float(y)));
+          const dim_t xl = dim_t(std::floor(float(x)));
+          const dim_t yh = std::min(yl + 1, featureMapHeight - 1);
+          const dim_t xh = std::min(xl + 1, featureMapWidth - 1);
+
+          BinGrid<T> bg;
+          bg.left = xl;
+          bg.top = yl;
+          bg.right = xh;
+          bg.bottom = yh;
+
+          bg.rightW = x - T(xl);
+          bg.bottomW = y - T(yl);
+          bg.leftW = T(1.0) - bg.rightW;
+          bg.topW = T(1.0) - bg.bottomW;
+
+          binGrids.push_back(bg);
         } // end of w
       }   // end of h
     }     // end of W
   }       // end of H
+
+  return binGrids;
 }
 
 // Implementation of ROIAlign as described in
 // https://arxiv.org/pdf/1703.06870.pdf ROIAlign is similar to crop_and_resize +
 // pooling with minor modifications in the crop_and_resize.
+template <typename T>
 void BoundInterpreterFunction::fwdROIAlignInstFloatImpl(
     glow::ROIAlignInst const *I) {
   auto featureMap = I->getFeatureMap();
   auto boxes = I->getBoxes();
   auto batchIndices = I->getBatchIndices();
   auto result = I->getResult();
-  std::string mode = I->getMode();
-  unsigned outputHeight = I->getOutputHeight();
-  unsigned outputWidth = I->getOutputHeight();
-  unsigned samplingRatio = I->getSamplingRatio();
-  float offset = I->getOffset();
-  bool normalized = I->getNormalized();
-  auto boxesH = getTensor(boxes)->getHandle<float>();
-  auto featureMapH = getTensor(featureMap)->getHandle<float>();
-  auto batchIndicesH = getTensor(batchIndices)->getHandle<int64_t>();
-  auto resultH = getTensor(result)->getHandle<float>();
-  getTensor(result)->zero();
-  const unsigned imageHeight = featureMap->dims()[1];
-  const unsigned imageWidth = featureMap->dims()[2];
-  const unsigned numBoxes = result->dims()[0];
-  const unsigned depth = result->dims()[3];
-  float normConstantH = normalized ? (imageHeight - 1) : 1;
-  float normConstantW = normalized ? (imageWidth - 1) : 1;
-  for (uint32_t b = 0; b < numBoxes; b++) {
-    const std::vector<float> box = {
-        boxesH.at({b, 0}) * normConstantH, boxesH.at({b, 1}) * normConstantW,
-        boxesH.at({b, 2}) * normConstantH, boxesH.at({b, 3}) * normConstantW};
-    unsigned samplingRatioH = (samplingRatio > 0)
-                                  ? samplingRatio
-                                  : std::ceil((box[2] - box[0]) / outputHeight);
-    unsigned samplingRatioW = (samplingRatio > 0)
-                                  ? samplingRatio
-                                  : std::ceil((box[3] - box[1]) / outputWidth);
-    std::vector<BinGrid> binGrids(samplingRatioH * samplingRatioW *
-                                  outputHeight * outputWidth);
+
+  auto boxesH = getTensor(boxes)->getHandle<T>();
+  auto featureMapH = getTensor(featureMap)->getHandle<T>();
+  auto resultH = getTensor(result)->getHandle<T>();
+
+  const bool rotated = I->getRotated();
+  const PoolingMode mode = PoolingMode(I->getMode());
+  const bool aligned = I->getAligned();
+  const dim_t samplingRatio = I->getSamplingRatio();
+  const T spatialScale = I->getSpatialScale();
+
+  const dim_t featureMapHeight = featureMapH.dims()[1];
+  const dim_t featureMapWidth = featureMapH.dims()[2];
+  const dim_t numBoxes = resultH.dims()[0];
+  const dim_t outputHeight = resultH.dims()[1];
+  const dim_t outputWidth = resultH.dims()[2];
+  const dim_t depth = resultH.dims()[3];
+
+  const T offset = aligned ? T(0.5) : T(0);
+
+  bool useSeparateBatchIndexVector = true;
+  dim_t boxesStartCol = 0;
+  if (rotated || boxes->dims()[1] == 5) {
+    boxesStartCol = 1;
+    useSeparateBatchIndexVector = false;
+  }
+
+  // Extract batch indices from batchIndices tensor if that is used (only used
+  // by ONNX which may provide Int64ITy tensors.)
+  std::vector<dim_t> batchIndicesExtracted;
+  if (useSeparateBatchIndexVector) {
+    Tensor *batchIndicesTensor = getTensor(batchIndices);
+    auto batchIndicesElemKind = batchIndicesTensor->getElementType();
+    for (dim_t b = 0; b < numBoxes; b++) {
+      if (batchIndicesElemKind == ElemKind::Int32ITy) {
+        batchIndicesExtracted.push_back(
+            batchIndicesTensor->getHandle<int32_t>().at({b}));
+      } else {
+        batchIndicesExtracted.push_back(
+            batchIndicesTensor->getHandle<int64_t>().at({b}));
+      }
+    }
+  }
+
+  for (dim_t b = 0; b < numBoxes; b++) {
+    dim_t batchIndex;
+    if (useSeparateBatchIndexVector) {
+      batchIndex = batchIndicesExtracted[b];
+    } else {
+      batchIndex = dim_t(float(boxesH.at({b, 0})));
+    }
+
+    // Values used to determine sampling points during bilinear interpolation.
+    // yRef and xRef have different interpreterations for rotated vs unrotated
+    // cases (vector vs coordinates) but are used very similarly.
+    T yRef;
+    T xRef;
+    T boxHeight;
+    T boxWidth;
+
+    // Values only used in rotated case.
+    T theta = T(0.0);
+    T boxCenterH = T(0.0);
+    T boxCenterW = T(0.0);
+
+    if (rotated) {
+      // Do not round
+      boxCenterW = boxesH.at({b, boxesStartCol + 0}) * spatialScale - offset;
+      boxCenterH = boxesH.at({b, boxesStartCol + 1}) * spatialScale - offset;
+      boxWidth = boxesH.at({b, boxesStartCol + 2}) * spatialScale;
+      boxHeight = boxesH.at({b, boxesStartCol + 3}) * spatialScale;
+      theta = boxesH.at({b, boxesStartCol + 4}) * T(M_PI) / T(180.0);
+
+      if (aligned) {
+        assert(boxWidth >= T(0.0) && boxHeight >= T(0.0) &&
+               "ROIs in ROIAlign must not have non-negative size!");
+      } else { // backward compatibility
+        // Force malformed ROIs to be 1x1
+        boxHeight = std::max(boxHeight, T(1.0));
+        boxWidth = std::max(boxWidth, T(1.0));
+      }
+
+      // These are computed wrt the center of RoI (x, y).
+      // Appropriate translation needs to be applied after.
+      yRef = (T(-1.0) * boxHeight) / T(2.0);
+      xRef = (T(-1.0) * boxWidth) / T(2.0);
+    } else {
+      llvm::SmallVector<T, 4> box = {
+          boxesH.at({b, boxesStartCol + 0}) * spatialScale - offset,
+          boxesH.at({b, boxesStartCol + 1}) * spatialScale - offset,
+          boxesH.at({b, boxesStartCol + 2}) * spatialScale - offset,
+          boxesH.at({b, boxesStartCol + 3}) * spatialScale - offset};
+
+      if (aligned) {
+        CHECK_GE(box[3] - box[1], T(0.0)) << "Roi height cannot be negative.";
+        CHECK_GE(box[2] - box[0], T(0.0)) << "Roi width cannot be negative.";
+      } else {
+        // Caffe2 backwards compatibility for mal-formed ROIs:
+        // Force ROI size to be at least 1x1.
+        box[2] = std::max(box[2], box[0] + T(1.0));
+        box[3] = std::max(box[3], box[1] + T(1.0));
+      }
+
+      yRef = box[1];
+      xRef = box[0];
+      boxHeight = (box[3] - box[1]);
+      boxWidth = (box[2] - box[0]);
+    }
+
+    const dim_t samplingRatioH =
+        (samplingRatio > 0) ? samplingRatio
+                            : std::ceil(float(boxHeight) / outputHeight);
+    const dim_t samplingRatioW = (samplingRatio > 0)
+                                     ? samplingRatio
+                                     : std::ceil(float(boxWidth) / outputWidth);
+
     // get the xy coordinates in the resized image(grid)
-    getROIAlignInterpolationCoordinates(imageHeight, imageWidth, outputHeight,
-                                        outputWidth, box, samplingRatioH,
-                                        samplingRatioW, offset, binGrids);
-    const uint32_t batchIndex = batchIndicesH.at({
-        b,
-    });
+    std::vector<BinGrid<T>> binGrids = getROIAlignInterpolationCoordinates<T>(
+        featureMapHeight, featureMapWidth, outputHeight, outputWidth,
+        samplingRatioH, samplingRatioW, boxHeight, boxWidth, yRef, xRef,
+        rotated, theta, boxCenterH, boxCenterW);
+
     uint64_t binCount = 0;
-    for (uint32_t H = 0; H < outputHeight; ++H) {
-      for (uint32_t W = 0; W < outputWidth; ++W) {
-        for (uint32_t d = 0; d < depth; ++d) {
-          std::vector<float> pixels;
-          for (uint32_t h = 0; h < samplingRatioH; ++h) {
-            for (uint32_t w = 0; w < samplingRatioW; ++w) {
-              BinGrid bG = binGrids[binCount++];
-              // The four pixels of  the i/p image surrounding the point of
+    for (dim_t oh = 0; oh < outputHeight; ++oh) {
+      for (dim_t ow = 0; ow < outputWidth; ++ow) {
+        for (dim_t d = 0; d < depth; ++d) {
+          std::vector<T> values;
+          for (dim_t gh = 0; gh < samplingRatioH; ++gh) {
+            for (dim_t gw = 0; gw < samplingRatioW; ++gw) {
+              BinGrid<T> bg = binGrids[binCount++];
+              // The four values of  the i/p image surrounding the point of
               // interest (POI) in the resized image
-              const float topLeft =
-                  featureMapH.at({batchIndex, bG.Y0, bG.X0, d});
-              const float topRight =
-                  featureMapH.at({batchIndex, bG.Y0, bG.X1, d});
-              const float bottomLeft =
-                  featureMapH.at({batchIndex, bG.Y1, bG.X0, d});
-              const float bottomRight =
-                  featureMapH.at({batchIndex, bG.Y1, bG.X1, d});
-              // bilinear interpolation = interpolation along {top_horizontal +
-              // bottom_horizontal + vertical} lines or bilinear interpolation =
-              // interpolation along {left_vertical + right_vertical +
-              // horizontal} lines interpolation along top_horizontal line
-              const float top = topLeft + ((topRight - topLeft) * bG.xDiff);
-              // interpolation along bottom_horizontal line
-              const float bottom =
-                  bottomLeft + ((bottomRight - bottomLeft) * bG.xDiff);
+              const T topLeft =
+                  featureMapH.at({batchIndex, bg.top, bg.left, d});
+              const T topRight =
+                  featureMapH.at({batchIndex, bg.top, bg.right, d});
+              const T bottomLeft =
+                  featureMapH.at({batchIndex, bg.bottom, bg.left, d});
+              const T bottomRight =
+                  featureMapH.at({batchIndex, bg.bottom, bg.right, d});
+
+              // bilinear interpolation
+              const T value = (topLeft * (bg.topW * bg.leftW)) +
+                              (topRight * (bg.topW * bg.rightW)) +
+                              (bottomLeft * (bg.bottomW * bg.leftW)) +
+                              (bottomRight * (bg.bottomW * bg.rightW));
               // interpolation along vertical line
-              pixels.push_back(top + ((bottom - top) * bG.yDiff));
+              values.push_back(value);
             } // end of w
           }   // end of h
-          // {Average or Max} pooling
-          resultH.at({b, H, W, d}) =
-              (mode == "avg")
-                  ? std::accumulate(pixels.begin(), pixels.end(), 0.0) /
-                        pixels.size()
-                  : *std::max_element(pixels.begin(), pixels.end());
+              // {Average or Max} pooling
+          resultH.at({b, oh, ow, d}) =
+              (mode == PoolingMode::AVG)
+                  ? std::accumulate(values.begin(), values.end(), T(0.0)) /
+                        T(values.size())
+                  : *std::max_element(values.begin(), values.end());
+
           binCount = binCount - (samplingRatioH * samplingRatioW);
         } // end of d
         binCount = binCount + (samplingRatioH * samplingRatioW);
@@ -5771,7 +6000,8 @@ void BoundInterpreterFunction::fwdROIAlignInstFloatImpl(
 }
 
 void BoundInterpreterFunction::fwdROIAlignInst(glow::ROIAlignInst const *I) {
-  fwdROIAlignInstFloatImpl(I);
+  dispatchFloatingPointImpl(fwdROIAlignInstFloatImpl,
+                            I->getFeatureMap()->getElementType(), I);
 }
 
 // Forward transform that maps proposal boxes to ground-truth boxes using
@@ -5786,7 +6016,8 @@ void BoundInterpreterFunction::fwdROIAlignInst(glow::ROIAlignInst const *I) {
 // bboxXformClip: minimum bounding box width and height in log-space after
 //     transofmration
 // correct_transform_coords: Correct bounding box transform coordates. Set to
-//     true to match the detectron code, set to false for backward compatibility
+//     true to match the detectron code, set to false for backward
+//     compatibility
 // return: pixel coordinates of the bounding boxes
 //     size (M, 4), format [x1; y1; x2; y2]
 // see "Rich feature hierarchies for accurate object detection and semantic
@@ -5970,10 +6201,9 @@ void BoundInterpreterFunction::fwdBBoxTransformInstFloatImpl(
 
     offset += rows;
   }
-  if (batchSize > 1) {
-    for (dim_t i = 0; i < batchSize; i++) {
-      roiBatchSplitsH.at({i}) = numRoisPerBatch[i];
-    }
+
+  for (dim_t i = 0; i < batchSize; i++) {
+    roiBatchSplitsH.at({i}) = numRoisPerBatch[i];
   }
 }
 

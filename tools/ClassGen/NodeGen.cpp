@@ -188,6 +188,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads", /* addSetter */ true)
       .addMember(MemberType::Enum, "Layout")
+      .addMember(MemberType::Boolean, "CountIncludePads")
       .addResultFromCtorArg()
       .addGradient()
       .setDocstring(
@@ -303,6 +304,13 @@ int main(int argc, char **argv) {
       .setDocstring("Apply box-cox transform for each column for each column "
                     "in NxD input tensor");
 
+  BB.newNode("VectorNorm")
+      .addInput("Input")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addMember(MemberType::Unsigned, "P")
+      .addResultFromCtorArg()
+      .setDocstring("Performs L2 norm of the Input operand based on Axis.");
+
   //===--------------------------------------------------------------------===//
   //                     Bucketing
   //===--------------------------------------------------------------------===//
@@ -380,6 +388,13 @@ int main(int argc, char **argv) {
       .dataParallel()
       .addGradient()
       .setDocstring("Performs Div on the LHS and RHS operands.");
+
+  BB.newNode("FloorDiv")
+      .addInput("LHS")
+      .addInput("RHS")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Performs Div on the LHS and RHS operands, then Floor.");
 
   BB.newNode("Max")
       .addInput("LHS")
@@ -589,6 +604,13 @@ int main(int argc, char **argv) {
       .addResultFromCtorArg()
       .setDocstring(
           "Adds the 'Slice' operand to each one of the slices in the batch.");
+
+  BB.newNode("BatchedMul")
+      .addInput("Batch")
+      .addInput("Slice")
+      .addResultFromCtorArg()
+      .setDocstring("Multiplies the 'Slice' operand to each one of the slices "
+                    "in the batch.");
 
   BB.newNode("MatMul")
       .addInput("LHS")
@@ -891,6 +913,12 @@ int main(int argc, char **argv) {
       .setDocstring(
           "Applies ReLU, max(0, x), to each element in the Input tensor.");
 
+  BB.newNode("Gelu")
+      .addInput("Input")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring("Applies GeLU, to each element in the Input tensor.");
+
   BB.newNode("Clip")
       .addInput("Input")
       .addMember(MemberType::Float, "Min")
@@ -929,6 +957,15 @@ int main(int argc, char **argv) {
       .addGradient()
       .setDocstring("Applies hyperbolic tangent to each element in the Input "
                     "tensor.");
+
+  BB.newNode("LeakyRelu")
+      .addInput("Input")
+      .addMember(MemberType::Float, "Alpha")
+      .addResultFromCtorArg()
+      .dataParallel()
+      .setDocstring(
+          "Applies LeakyReLU = x for positive x and alpha * x for negative x "
+          "to each element in the Input tensor.");
 
   //===--------------------------------------------------------------------===//
   //                Shape transformations
@@ -1298,21 +1335,24 @@ int main(int argc, char **argv) {
       .addInput("FeatureMap")
       .addInput("Boxes")
       .addInput("BatchIndices")
-      .addMember(MemberType::String, "Mode")
+      .addMember(MemberType::Enum, "Mode")
       .addMember(MemberType::Unsigned, "OutputHeight")
       .addMember(MemberType::Unsigned, "OutputWidth")
       .addMember(MemberType::Unsigned, "SamplingRatio")
       .addMember(MemberType::Float, "SpatialScale")
-      .addMember(MemberType::Float, "Offset")
-      .addMember(MemberType::Boolean, "Normalized")
+      .addMember(MemberType::Boolean, "Aligned")
+      .addMember(MemberType::Boolean, "Rotated")
       .addResultFromCtorArg()
       .setDocstring(
-          "Given FeatureMap tensor of [N,H,W,C], Boxes tensor of [K,4],"
-          "and BatchIndices tensor of [K,], where N is the batch, C is the "
-          "channel,"
-          "H is the height, W is the width, K is the number of boxes,"
-          "Performs region of interest (ROI) align operator and generates"
-          "an Output tensor with shape [K, OutputHeight, OutputWidth, C]");
+          "Performs region of interest align (ROI) operator. "
+          "FeatureMap - a tensor of [N,H,W,C]. N is the batch, C is the "
+          "channel, H is the height, W is the width. "
+          "Boxes - a tensor of [K,4] or [K,5] with format "
+          "[[optinal_batch_index] x0, y0, x1, y1]. K is the number of boxes. "
+          "BatchIndices - a tensor of [K,]. If N > 1 and Box shape is [K,4], "
+          "BatchIndices must be valid. "
+          "Output is a tensor with shape [K, OutputHeight, OutputWidth, C]. "
+          "Aligned - if true, coordinates are aligned to a center of a pixel.");
 
   BB.newNode("BBoxTransform")
       .addInput("Rois")
