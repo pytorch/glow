@@ -158,6 +158,10 @@ class ONNXModelLoader
   Error loadRange(const ONNX_NAMESPACE::NodeProto &op,
                   ArgumentDictionaryTy &dict);
 
+  /// Load PRelu ONNX operator.
+  Error loadPRelu(const ONNX_NAMESPACE::NodeProto &op,
+                  ArgumentDictionaryTy &dict);
+
   /// Load Slice ONNX operator.
   Error loadSlice(const ONNX_NAMESPACE::NodeProto &op,
                   ArgumentDictionaryTy &dict);

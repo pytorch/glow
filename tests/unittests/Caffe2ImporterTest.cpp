@@ -71,6 +71,52 @@ TEST_F(Caffe2ImporterTest, importExp) {
                           [](float a) { return std::exp(a); });
 }
 
+/// Test loading PReLU op from a Caffe2 model.
+/// The input is N*C*H*W (1*2*3*3), the slope is 2.
+TEST_F(Caffe2ImporterTest, importPReLU) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(GLOW_DATA_PATH
+                              "tests/models/caffe2Models/prelu.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH "tests/models/caffe2Models/empty_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Tensor data(ElemKind::FloatTy, {1, 2, 3, 3});
+    data.getHandle() = {-2.0, -0.5, 0, 1, 2, 3,  4,  5,  6,
+                        -1.5, -2.5, 7, 8, 9, 10, 11, 12, 13};
+    Tensor slope(ElemKind::FloatTy, {2});
+    slope.getHandle() = {0.1, 0.2};
+    Caffe2ModelLoader caffe2LD(NetDescFilename, NetWeightFilename,
+                               {"prelu_test_input", "slope"},
+                               {&data.getType(), &slope.getType()}, *F);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"prelu_test_input", "slope"},
+                                  {&data, &slope});
+  }
+
+  auto res = bindings.get(output);
+  EE.compile(CompilationMode::Infer);
+
+  EE.run(bindings);
+  auto result = res->getHandle();
+  std::vector<dim_t> expectedDims = {1, 2, 3, 3};
+  std::vector<float> expectedValues = {-0.2, -0.05, 0, 1, 2, 3,  4,  5,  6,
+                                       -0.3, -0.5,  7, 8, 9, 10, 11, 12, 13};
+  EXPECT_TRUE(result.dims().vec() == expectedDims);
+  for (size_t i = 0; i < expectedValues.size(); i++)
+    EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
+}
+
 /// Test loading conv op from a Caffe2 model.
 /// The input is N*C*H*W (1*1*3*3), the kernel is 2,
 /// stride is 1, pad is 1, group is 1.

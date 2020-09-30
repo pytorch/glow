@@ -310,6 +310,28 @@ const std::string Caffe2ModelLoader::opErrMsg(const caffe2::OperatorDef &op,
   return strFormat(" [Operator-'%s'] : %s ", opName.c_str(), errMsg.c_str());
 }
 
+// Caffe2 PRelu
+// https://github.com/pytorch/pytorch/blob/master/caffe2/operators/prelu_op.cc
+Error Caffe2ModelLoader::loadPRelu(const caffe2::OperatorDef &op,
+                                   ArgumentDictionaryTy &dict) {
+  const std::string &opName = loadOperatorName(op);
+
+  NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
+
+  NodeValue slope;
+  ASSIGN_VALUE_OR_RETURN_ERR(slope, getNodeValueByName(op.input(1)));
+
+  // Do broadcasting.
+  auto targetDim = in.dims();
+  // Set the axis assuming i/p is of NCHW format.
+  int axis = 1;
+  auto *finalSlope = G_->createBroadcast(opName, slope, targetDim, axis);
+  auto *R = G_->createPRELU(opName, in, finalSlope);
+  RETURN_IF_ERR(addNodeAsOutput(op, R));
+  return Error::success();
+}
+
 Error Caffe2ModelLoader::loadConv(const caffe2::OperatorDef &op,
                                   ArgumentDictionaryTy &dict) {
   const std::string &opName = loadOperatorName(op);
@@ -720,6 +742,10 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
 
   if (typeName == "Conv" || typeName == "ConvRelu") {
     return loadConv(op, dict);
+  }
+
+  if (typeName == "PRelu") {
+    return loadPRelu(op, dict);
   }
 
   if (typeName == "ConvTranspose") {

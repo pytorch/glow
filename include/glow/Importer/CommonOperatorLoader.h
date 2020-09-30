@@ -325,29 +325,6 @@ protected:
     return Error::success();
   }
 
-  /// Loads PRELU operator, given its protobuf representation and parsed args.
-  /// Follows undirectional broadcasting described here:
-  /// https://github.com/onnx/onnx/blob/fb1a80692c1ab0bd27b1072f2e7bffacba336777/docs/Broadcasting.md
-  Error loadPRelu(const OpType &op, ArgumentDictionaryTy &dict) {
-    const std::string &opName = loadOperatorName(op);
-
-    NodeValue in;
-    ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
-
-    NodeValue slope;
-    ASSIGN_VALUE_OR_RETURN_ERR(slope, getNodeValueByName(op.input(1)));
-
-    // Do broadcasting.
-    auto targetDim = in.dims();
-    // Sets the axis of each inputs so that the trailing-most dimensions of
-    // input tensors and the target shape are aligned.
-    int axis = targetDim.size() - slope.dims().size();
-    auto *finalSlope = G_->createBroadcast(opName, slope, targetDim, axis);
-    auto *R = G_->createPRELU(opName, in, finalSlope);
-    RETURN_IF_ERR(addNodeAsOutput(op, R));
-    return Error::success();
-  }
-
 #define LOAD_UNARY_OP(OPNAME)                                                  \
   Error load##OPNAME(const OpType &op, ArgumentDictionaryTy &dict) {           \
     const std::string &opName = loadOperatorName(op);                          \
@@ -1308,10 +1285,6 @@ protected:
                                        ArgumentDictionaryTy &dict) {
     if (typeName == "Relu") {
       RETURN_IF_ERR(loadRelu(op, dict));
-      return true;
-    }
-    if (typeName == "PRelu") {
-      RETURN_IF_ERR(loadPRelu(op, dict));
       return true;
     }
     if (typeName == "Sigmoid") {
