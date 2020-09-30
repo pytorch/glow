@@ -932,8 +932,7 @@ TEST_P(HostManagerTest, testTimeout) {
   XTensor->getHandle() = {1., 2., 3.};
   auto *pow = F->createPow("Poww", X, 2.0);
   auto *save = F->createSave("save", pow);
-  auto *saveTensor =
-      context->getPlaceholderBindings()->allocate(save->getPlaceholder());
+  context->getPlaceholderBindings()->allocate(save->getPlaceholder());
 
   auto hostManager = createHostManager(backendName_);
 
@@ -945,7 +944,7 @@ TEST_P(HostManagerTest, testTimeout) {
 
   std::unique_ptr<Error> runErr;
   hostManager->runNetwork("main", std::move(context),
-                          [&runNetwork, &saveTensor, &context, &runErr](
+                          [&runNetwork, &context, &runErr](
                               RunIdentifierTy runID, Error err,
                               std::unique_ptr<ExecutionContext> context_) {
                             context = std::move(context_);
