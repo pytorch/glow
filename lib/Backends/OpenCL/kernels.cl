@@ -1480,6 +1480,7 @@ __kernel void avgpoolK(__global float *dest, __global float *src,
   // For each input in the batch:
   for (dim_t n = 0; n < idim.n; n++) {
     float sumVal = 0;
+
     // For each element in the convolution-filter:
     for (dim_t fx = 0; fx < kernelSize; fx++) {
       for (dim_t fy = 0; fy < kernelSize; fy++) {
@@ -1500,7 +1501,8 @@ __kernel void avgpoolK(__global float *dest, __global float *src,
 
 __kernel void avgpoolW(__global void *mem, cl_uint32_t dest, cl_uint32_t src,
                        cl_uint32_t kernelSize, cl_uint32_t stride,
-                       PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim) {
+                       PaddingTLBR pads, ShapeNHWC odim, ShapeNHWC idim,
+                       bool countIncludePads) {
   avgpoolK(&mem[dest], &mem[src], kernelSize, stride, pads, odim, idim);
 }
 
@@ -1520,6 +1522,7 @@ __kernel void oclavgpoolK(__global float *dest, __global float *src,
   // For each input in the batch:
   for (dim_t n = 0; n < idim.n; n++) {
     float sumVal = 0;
+
     // For each element in the convolution-filter:
     for (dim_t fx = 0; fx < kernelSize; fx++) {
       for (dim_t fy = 0; fy < kernelSize; fy++) {

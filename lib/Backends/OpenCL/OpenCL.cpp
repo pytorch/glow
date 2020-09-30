@@ -1401,6 +1401,7 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       } else {
         ShapeNHWC odim(PA->getDest()->getType()->dims());
         ShapeNHWC idim(PA->getSrc()->getType()->dims());
+
         setKernelArg(kernel, numArgs + 4, odim);
         setKernelArg(kernel, numArgs + 5, idim);
         global = {{odim.h, odim.w, odim.c}};
@@ -1415,6 +1416,10 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
             destTy->getOffset());
         setKernelArg(kernel, numArgs + 6, srcTy->getOffset());
         setKernelArg(kernel, numArgs + 7, destScaleParam);
+      } else if (!isQuantized) {
+        auto countIncludePads = PA->getCountIncludePads();
+
+        setKernelArg(kernel, numArgs + 6, countIncludePads);
       }
 
       enqueueKernel(I.getName(), commands, kernel, deviceId, global,

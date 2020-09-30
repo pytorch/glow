@@ -176,7 +176,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "AdaptiveAvgPool/0",
     "FP16AdaptiveAvgPool/0",
     "Int8AdaptiveAvgPool/0",
-    "AvgPoolCountExcludePads/0",
     "Int8AvgPoolCountExcludePads/0",
     "AdaptiveAvgPoolNonSquare/0",
     "FP16MaxPool/0",
