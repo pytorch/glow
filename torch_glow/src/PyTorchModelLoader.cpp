@@ -4730,7 +4730,15 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsetsHelper(
       weightConstant->getOutput(), perSampleWeights, indices, offsets, false,
       includeLastOffset);
 
-  return addValueMapping(outputs[0], EB->getResult());
+  // Upcast EmbeddingBag4BitRowwiseOffsets to Float32 since its Glow output type
+  // is Float16.
+  if (is4Bit) {
+    auto *CT = F_.createConvertTo("ConvertEmbeddingBag4BitRowwiseOffsetsOutput",
+                                  EB, ElemKind::FloatTy);
+    return addValueMapping(outputs[0], CT->getResult());
+  } else {
+    return addValueMapping(outputs[0], EB->getResult());
+  }
 }
 
 Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets(
