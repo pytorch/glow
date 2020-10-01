@@ -382,6 +382,8 @@ TEST(exporter, onnxModels) {
         name.find("Cos.onnxtxt") != std::string::npos ||
         name.find("abs.onnxtxt") != std::string::npos ||
         name.find("log.onnxtxt") != std::string::npos ||
+        name.find("RangeInt32.onnxtxt") != std::string::npos ||
+        name.find("RangeFloat.onnxtxt") != std::string::npos ||
         name.find("scatterND.onnxtxt") != std::string::npos ||
         name.find("mscatterND.onnxtxt") != std::string::npos ||
         name.find("sign.onnxtxt") != std::string::npos ||
