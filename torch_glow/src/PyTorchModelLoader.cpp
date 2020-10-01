@@ -4694,7 +4694,8 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsetsHelper(
     // offsets.dims[0] - 1, if offsets is not empty
     glow::Tensor t(ElemKind::FloatTy,
                    {offsets.dims()[0] > 0 ? offsets.dims()[0] - 1 : 0,
-                    weight.dims()[1] - 2 * sizeof(float)});
+                    (is4Bit ? weight.dims()[1] * 2 : weight.dims()[1]) -
+                        2 * sizeof(float)});
     t.zero();
     glow::Constant *glowConstant = F_.getParent()->createConstant(
         "EmptyEmbeddingBagByteRowwiseOffsets", std::move(t));
