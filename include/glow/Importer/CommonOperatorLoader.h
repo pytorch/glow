@@ -785,7 +785,9 @@ protected:
     // one contains permutation under name "perm", the other contains it under
     // argument name "axes". That's why the name is passed as a parameter.
     std::vector<unsigned_t> perm;
-    ASSIGN_VALUE_OR_RETURN_ERR(perm, getShape<unsigned_t>(dict[permArgName]));
+    if (dict.count(permArgName))
+      ASSIGN_VALUE_OR_RETURN_ERR(perm, getShape<unsigned_t>(dict[permArgName]));
+
     if (perm.empty()) {
       // Empty permutation argument means reversing axes order.
       size_t N = in.dims().size();
