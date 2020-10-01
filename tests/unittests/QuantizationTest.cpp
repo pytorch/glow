@@ -618,7 +618,7 @@ static void quantizeSimpleConvGraph(ElemKind quantizationPrecision,
   auto *bias = mod.createConstant(ElemKind::FloatTy, {2}, "bias");
   auto outTy = mod.uniqueType(ElemKind::FloatTy, {1, 4, 8, 2});
   PlaceholderBindings bindings;
-  bindings.allocate(input);
+  bindings.allocate(input)->getHandle().randomize(0.f, 2.f, mod.getPRNG());
   filter->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
   bias->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
 
@@ -677,7 +677,7 @@ TEST(Quantization, TestQuantizedInputBeforeQuantizedNode) {
 
   auto *input = mod.createPlaceholder(ElemKind::FloatTy, {3}, "input", true);
   PlaceholderBindings bindings;
-  bindings.allocate(input);
+  bindings.allocate(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
 
   // Note: Intentionally add successive reshapes so the GraphOptimizer merges
   // them and creates a new one. This way the newly created Reshape will be
@@ -739,7 +739,7 @@ enableRowwiseQuantizedFullyConnected(ElemKind quantizationPrecision,
   auto *W = mod.createPlaceholder(ElemKind::FloatTy, {3, 2}, "weights", true);
   auto *B = mod.createPlaceholder(ElemKind::FloatTy, {2}, "bias", true);
   PlaceholderBindings bindings;
-  bindings.allocate(input);
+  bindings.allocate(input)->getHandle().randomize(0.2f, 2.f, mod.getPRNG());
   bindings.allocate(W)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
   bindings.allocate(B)->init(Tensor::InitKind::Broadcast, 0.1, mod.getPRNG());
 
@@ -827,8 +827,7 @@ TEST(Quantization, enableRowwiseQuantizedFullyConnectedSymmetric) {
   auto *FC = F->createFullyConnected(bindings, "FC", input, 100);
   auto *res = F->createSave("save", FC);
   bindings.allocate(res->getPlaceholder());
-  bindings.allocate(input);
-  bindings.get(input)->getHandle().randomize(-1.0, 6.0, mod.getPRNG());
+  bindings.allocate(input)->getHandle().randomize(-1.f, 6.f, mod.getPRNG());
 
   ::glow::convertPlaceholdersToConstants(F, bindings,
                                          {input, res->getPlaceholder()});
@@ -2557,7 +2556,7 @@ static FullyConnectedNode *createSimpleFCNet(PlaceholderBindings &bindings,
   auto *W = mod.createPlaceholder(ElemKind::FloatTy, {3, 3}, "weights", true);
   auto *B = mod.createPlaceholder(ElemKind::FloatTy, {3}, "bias", true);
 
-  bindings.allocate(input);
+  bindings.allocate(input)->getHandle().randomize(-1.0, 1.0, mod.getPRNG());
   bindings.allocate(W)->init(Tensor::InitKind::Xavier, 3, mod.getPRNG());
   bindings.allocate(B)->init(Tensor::InitKind::Broadcast, 0.1, mod.getPRNG());
 
