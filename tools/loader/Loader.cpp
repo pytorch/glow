@@ -691,9 +691,10 @@ void Loader::compile(CompilationContext &cctx) {
     if (!llvm::sys::fs::is_directory(emitBundle)) {
       llvm::sys::fs::create_directory(emitBundle);
     }
-    // Emit IR for the graph, compile it and save as a bundle.
-    auto error = ::glow::optimizeFunction(F_, *backend_, cctx);
-    EXIT_ON_ERR(std::move(error));
+    // Emit IR for the graph, compile it and save as a bundle. Replicate the
+    // same optimizations seen during normal execution inside addNetwork().
+    EXIT_ON_ERR(::glow::optimizeFunctionBeforeLowering(F_, cctx));
+    EXIT_ON_ERR(::glow::optimizeFunction(F_, *backend_, cctx));
     backend_->save(F_, emitBundle, networkName,
                    mainEntryName.empty() ? networkName : mainEntryName);
   } else {
