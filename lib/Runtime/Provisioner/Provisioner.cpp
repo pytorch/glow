@@ -74,7 +74,8 @@ Provisioner::Provisioner(DeviceManagerMapTy &devices) {
 }
 
 Error Provisioner::checkActiveNetworks(
-    const DAGListTy &networks, std::vector<std::string> &localActiveNames) {
+    const DAGListTy &networks,
+    std::map<std::string, std::string> &localActiveNames) {
 
   std::lock_guard<std::mutex> networkLock(functionsLock_);
   for (auto &network : networks) {
@@ -84,9 +85,10 @@ Error Provisioner::checkActiveNetworks(
     for (auto &node : network.nodes) {
       //  Check to see if another thread is actively working on the same
       //  networks.
-      if (activeFunctions_.find(node->name) != activeFunctions_.end()) {
+      std::string qualifiedName = network.root->name + node->name;
+      if (activeFunctions_.find(qualifiedName) != activeFunctions_.end()) {
         for (auto &name : localActiveNames) {
-          activeFunctions_.erase(name);
+          activeFunctions_.erase(name.second);
         }
         return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_NET_BUSY,
                         llvm::formatv("Cannot add the network {0}, as it is "
@@ -94,10 +96,10 @@ Error Provisioner::checkActiveNetworks(
                                       node->name)
                             .str());
       }
-      LOG(INFO) << "Adding partition name: " << node->name
+      LOG(INFO) << "Adding partition name: " << qualifiedName
                 << " to activeFunctions_";
-      localActiveNames.push_back(node->name);
-      activeFunctions_.insert(node->name);
+      localActiveNames.emplace(node->name, qualifiedName);
+      activeFunctions_.insert(qualifiedName);
     }
   }
   return Error::success();
@@ -269,7 +271,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
 
   // Check that the requested networks don't collide with the names of any other
   // networks being added.
-  std::vector<std::string> localActiveNames;
+  std::map<std::string, std::string> localActiveNames;
   RETURN_IF_ERR(checkActiveNetworks(networks, localActiveNames));
 
   // Walk the networks and group by logicalDeviceId.
@@ -380,13 +382,19 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
 
     for (auto &node : logicalDevices[logicalDevice]) {
       // Check if this is a duplicated function that has already been compiled.
-      if (duplicatedFunctions.find(node->name) != duplicatedFunctions.end()) {
-        functionMap.emplace(node->name, duplicatedFunctions[node->name].get());
+      if (duplicatedFunctions.find(localActiveNames[node->name]) !=
+          duplicatedFunctions.end()) {
+        functionMap.emplace(
+            node->name,
+            duplicatedFunctions[localActiveNames[node->name]].get());
         // Add replications.
         for (unsigned i = 1; i < node->replicationCount; i++) {
           auto replicatedName = getReplicatedName(node->name, i);
-          functionMap.emplace(replicatedName,
-                              duplicatedFunctions[replicatedName].get());
+          auto qualifiedReplicatedName =
+              getReplicatedName(localActiveNames[node->name], i);
+          functionMap.emplace(
+              replicatedName,
+              duplicatedFunctions[qualifiedReplicatedName].get());
         }
 
         remainingDuplications[node] -= 1;
@@ -415,6 +423,8 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         for (unsigned i = 1; i < node->replicationCount; i++) {
           std::string replicatedName =
               getReplicatedName(function->getName(), i);
+          std::string qualifiedReplicatedName =
+              getReplicatedName(localActiveNames[function->getName()], i);
           llvm::DenseMap<const Node *, Node *> oldToNewMap;
           auto *clonedFunction = function->clone(replicatedName, &oldToNewMap);
           RETURN_IF_ERR(propagateBackendSpecificNodeInfo(
@@ -429,7 +439,8 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
           }
           auto compiled2 = std::move(*compiledOrErr2);
           functionMap.emplace(replicatedName, compiled2.get());
-          compiledReplications.emplace(replicatedName, std::move(compiled2));
+          compiledReplications.emplace(qualifiedReplicatedName,
+                                       std::move(compiled2));
         }
 
         auto compiledOrErr =
@@ -485,20 +496,24 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         // If this function is in more than one logical device store it for
         // reuse.
         if (node->logicalDevices.size() > 1) {
-          duplicatedFunctions.emplace(node->name, std::move(compiled));
+          duplicatedFunctions.emplace(localActiveNames[node->name],
+                                      std::move(compiled));
           for (unsigned i = 1; i < node->replicationCount; i++) {
-            std::string replicatedName =
-                getReplicatedName(function->getName(), i);
-            auto compiled2 = std::move(compiledReplications[replicatedName]);
-            duplicatedFunctions.emplace(replicatedName, std::move(compiled2));
+            std::string qualifiedReplicatedName =
+                getReplicatedName(localActiveNames[function->getName()], i);
+            auto compiled2 =
+                std::move(compiledReplications[qualifiedReplicatedName]);
+            duplicatedFunctions.emplace(qualifiedReplicatedName,
+                                        std::move(compiled2));
           }
 
           remainingDuplications[node] = node->logicalDevices.size() - 1;
         } else {
-          compiledFunctions.emplace(node->name, std::move(compiled));
+          compiledFunctions.emplace(localActiveNames[node->name],
+                                    std::move(compiled));
           for (unsigned i = 1; i < node->replicationCount; i++) {
             std::string replicatedName =
-                getReplicatedName(function->getName(), i);
+                getReplicatedName(localActiveNames[function->getName()], i);
             auto compiled2 = std::move(compiledReplications[replicatedName]);
             compiledFunctions.emplace(replicatedName, std::move(compiled2));
           }
@@ -545,17 +560,23 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         if (func.second == 0) {
 
           for (unsigned i = 1; i < func.first->replicationCount; i++) {
-            std::string replicatedName = getReplicatedName(func.first->name, i);
-            duplicatedFunctions[replicatedName]->freeCompilationResources();
-            functions_.emplace(replicatedName,
-                               std::move(duplicatedFunctions[replicatedName]));
-            duplicatedFunctions.erase(replicatedName);
+            std::string qualifiedReplicatedName =
+                getReplicatedName(localActiveNames[func.first->name], i);
+            duplicatedFunctions[qualifiedReplicatedName]
+                ->freeCompilationResources();
+            functions_.emplace(
+                qualifiedReplicatedName,
+                std::move(duplicatedFunctions[qualifiedReplicatedName]));
+            duplicatedFunctions.erase(qualifiedReplicatedName);
           }
 
-          duplicatedFunctions[func.first->name]->freeCompilationResources();
-          functions_.emplace(func.first->name,
-                             std::move(duplicatedFunctions[func.first->name]));
-          duplicatedFunctions.erase(func.first->name);
+          duplicatedFunctions[localActiveNames[func.first->name]]
+              ->freeCompilationResources();
+          functions_.emplace(
+              localActiveNames[func.first->name],
+              std::move(
+                  duplicatedFunctions[localActiveNames[func.first->name]]));
+          duplicatedFunctions.erase(localActiveNames[func.first->name]);
           iter = remainingDuplications.erase(iter);
         } else {
           ++iter;
@@ -677,18 +698,20 @@ Expected<Backend *> Provisioner::getBackend() const {
   return backends_.begin()->second.get();
 }
 
-Error Provisioner::removeFunction(llvm::StringRef name) {
+Error Provisioner::removeFunction(llvm::StringRef networkName,
+                                  llvm::StringRef functionName) {
   std::lock_guard<std::mutex> functionsLock(functionsLock_);
-  auto it = activeFunctions_.find(name);
+  auto qualifiedName = std::string(networkName) + std::string(functionName);
+  auto it = activeFunctions_.find(qualifiedName);
   if (it != activeFunctions_.end()) {
     return MAKE_ERR(
         ErrorValue::ErrorCode::RUNTIME_NET_BUSY,
         llvm::formatv("Could not remove network: {0} as it is currently "
                       "being provisioned.",
-                      name)
+                      qualifiedName)
             .str());
   }
-  functions_.erase(name);
+  functions_.erase(qualifiedName);
   return Error::success();
 }
 
@@ -706,18 +729,18 @@ Error Provisioner::evictFunction(llvm::StringRef name, DeviceManager *device) {
 }
 
 void Provisioner::cleanupProvision(
-    llvm::ArrayRef<std::string> names,
+    std::map<std::string, std::string> names,
     std::map<DeviceIDTy, std::vector<std::string>> const
         &currentNetworkResidency,
     bool failure) {
   std::lock_guard<std::mutex> functionLock(functionsLock_);
   for (auto &name : names) {
-    LOG(INFO) << "Removing partition name: " << name
+    LOG(INFO) << "Removing partition name: " << name.second
               << " from activeFunctions_\n";
-    activeFunctions_.erase(name);
+    activeFunctions_.erase(name.second);
     if (failure) {
       // Remove any functions added before the failure.
-      functions_.erase(name);
+      functions_.erase(name.second);
     }
   }
   if (failure) {

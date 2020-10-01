@@ -42,7 +42,7 @@ public:
                   CompilationContext &cctx);
 
   /// Remove stored compiledFunction.
-  Error removeFunction(llvm::StringRef name);
+  Error removeFunction(llvm::StringRef networkName, llvm::StringRef functionName);
 
   /// Evict function from device.
   Error evictFunction(llvm::StringRef name, DeviceManager *device);
@@ -86,7 +86,7 @@ private:
   /// Helper function to cleanup a provision call. On \p failure free the
   /// compiledFunctions that were created, \p names , and remove networks
   /// already added to devices, \p currentNetworkResidency .
-  void cleanupProvision(llvm::ArrayRef<std::string> names,
+  void cleanupProvision(std::map<std::string, std::string> names,
                         std::map<DeviceIDTy, std::vector<std::string>> const
                             &currentNetworkResidency,
                         bool failure = true);
@@ -98,8 +98,9 @@ private:
   /// Helper method to check that new networks don't collide with another
   /// network currently being added. Note: This cannot be called under a lock on
   /// functionsLock_ as it acquires a lock internally.
-  Error checkActiveNetworks(const DAGListTy &networks,
-                            std::vector<std::string> &localActiveNames);
+  Error
+  checkActiveNetworks(const DAGListTy &networks,
+                      std::map<std::string, std::string> &localActiveNames);
 
   /// This function pairs logical devices with phsyical devices, it sorts both
   /// sets of devices by available memory and attempts to find pairings for all

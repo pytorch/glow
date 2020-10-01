@@ -625,7 +625,7 @@ Error HostManager::removeNetwork(llvm::StringRef networkName) {
       err.set(std::move(evictErr));
     }
     // Also remove compiledFunction from Provisioner.
-    err.set(provisioner_->removeFunction(node->name));
+    err.set(provisioner_->removeFunction(networkName, node->name));
   }
   networks_.erase(networkIterator);
   exportMemoryCounters();
