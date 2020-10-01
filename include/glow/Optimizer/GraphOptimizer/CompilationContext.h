@@ -141,6 +141,9 @@ struct OptimizationOptions {
   /// If true, perform compile-time computation of constant operations.
   bool enableConstantFolding{true};
 
+  /// If true, perform compile-time deduplication of Constants.
+  bool enableConstantDeduplication{true};
+
   /// For all Splats in the Function being optimized, if they are used by any
   /// Nodes listed in this set, then they will be materialized into Constants
   /// during Constant Folding.
