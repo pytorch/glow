@@ -4935,6 +4935,26 @@ TEST_P(OperatorTest, BoolTranspose2Dims) {
   EXPECT_TRUE(bindings_.get(result->getPlaceholder())->isEqual(dest));
 }
 
+/// Check that transpose is supported for 6 dimensions.
+TEST_P(OperatorTest, Transpose6Dims) {
+  CHECK_IF_ENABLED();
+
+  auto *A =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 2, 3, 3}, "A", false);
+  bindings_.allocate(A)->getHandle().randomize(0, 100, mod_.getPRNG());
+
+  auto *tr = F_->createTranspose("tr", A, {0, 3, 4, 1, 5, 2});
+  auto *result = F_->createSave("saveTranspose", tr);
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor dest(ElemKind::FloatTy, {1, 2, 2, 2, 3, 3});
+  bindings_.get(A)->transpose(&dest, {0, 3, 4, 1, 5, 2});
+  EXPECT_TRUE(bindings_.get(result->getPlaceholder())->isEqual(dest));
+}
+
 /// Helper to check if the code generation of transposes
 /// is correct for tensors with 3 dimensions using \p DTy.
 /// Note: This assumes that Tensor::transpose is correct.

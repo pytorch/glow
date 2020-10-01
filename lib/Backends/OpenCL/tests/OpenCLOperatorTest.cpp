@@ -123,6 +123,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "BoolTranspose2Dims/0",
     "Transpose3Dims_Float16/0",
     "TransposeIntoReshapeOptim/0",
+    "Transpose6Dims/0",
     "GatherSizeT/0",
     "ScatterDataQuantized/0",
     "ScatterDataNDimensionalSimple/0",
