@@ -517,6 +517,60 @@ void inferConvNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
   out->assign(resultTensor);
 }
 
+int inferConvReluNet(Tensor *inputs, Tensor *filter, Tensor *bias, Tensor *out,
+                     unsigned_t kernel, unsigned_t stride, unsigned_t pad,
+                     llvm::StringRef kind) {
+  PlaceholderBindings bindings;
+  ExecutionEngine EE(kind);
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  Placeholder *inputP;
+  Placeholder *filterP;
+  Placeholder *biasP;
+  Placeholder *outP;
+  TypeRef OT;
+  if (inputs->getType().isQuantizedType()) {
+    auto &outType = out->getType();
+    auto &inType = inputs->getType();
+    auto &filterType = filter->getType();
+    auto &biasType = bias->getType();
+    inputP = createQuantizedPlaceholder(
+        mod, bindings, inputs, inType.getScale(), inType.getOffset(), "inputP");
+    filterP =
+        createQuantizedPlaceholder(mod, bindings, filter, filterType.getScale(),
+                                   filterType.getOffset(), "filterP");
+    biasP = createQuantizedPlaceholder(mod, bindings, bias, biasType.getScale(),
+                                       biasType.getOffset(), "biasP");
+    outP = createQuantizedPlaceholder(mod, bindings, out, outType.getScale(),
+                                      outType.getOffset(), "outP");
+    OT = F->getParent()->uniqueType(out->getElementType(), out->dims(),
+                                    outType.getScale(), outType.getOffset());
+  } else {
+    inputP = createPlaceholder(mod, bindings, inputs, "inputP");
+    filterP = createPlaceholder(mod, bindings, filter, "filterP");
+    biasP = createPlaceholder(mod, bindings, bias, "biasP");
+    outP = createPlaceholder(mod, bindings, out, "outP");
+    OT = F->getParent()->uniqueType(out->getElementType(), out->dims());
+  }
+  auto *conv =
+      F->createConv("conv", inputP, filterP, biasP, OT, kernel, stride, pad, 1);
+  // Relu
+  auto *relu = F->createRELU("relu", conv);
+  auto *result = F->createSave("ret", relu, outP);
+  auto *resultTensor = bindings.get(result->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+
+  // check fusion depending on build option.
+  // EXPECT_EQ(conv->getFusedActivation(), FusedActivation::RELU);
+
+  updateInputPlaceholders(bindings, {inputP, filterP, biasP},
+                          {inputs, filter, bias});
+  EE.run(bindings);
+  out->assign(resultTensor);
+  return conv->getFusedActivation();
+}
+
 void trainConvNet(Tensor *inputs, Tensor *kernel1, Tensor *bias1,
                   Tensor *kernel2, Tensor *bias2, Tensor *selected,
                   llvm::ArrayRef<dim_t> shape1, llvm::ArrayRef<dim_t> shape2,

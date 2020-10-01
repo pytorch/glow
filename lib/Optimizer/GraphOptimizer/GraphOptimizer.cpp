@@ -4867,7 +4867,21 @@ template <class T> bool fuseActivation(T *N, Function *F, const Backend *B) {
     return false;
   }
 
+  // currently not to support asymmetric quantization fusion.
+  if (N->getResult().getType()->isQuantizedType() &&
+      ((N->getResult().getType()->getOffset() != 0) ||
+       (activationNV.getType()->getOffset() != 0))) {
+    return false;
+  }
+
   N->setFusedActivation(activationType);
+
+  // In only symmetric case, If Relu outScale is not equal to Conv outScale,
+  // Conv outScale is replaced by Relu outScale.
+  if (!(activationNV.getType()->isEqual(N->getResult().getType()))) {
+    N->getResult().setType(activationNV.getType());
+  }
+
   activationNV.replaceAllUsesOfWith(N->getResult());
   return true;
 }
@@ -5195,6 +5209,10 @@ Error glow::optimizeFunction(Function *F, const Backend &B,
   // Transform given precision mode; may quantize, convert to fp16, or
   // instrument with profiling nodes. This must be done after lowering.
   transformForPrecisionMode(B, F, cctx);
+
+  // Optimize the quantized graph because quantization nodes should be optimized
+  // before folding Activation into Conv.
+  ::glow::optimize(F, cctx);
 
   // Fold activations before lowering to enable cases which would not fuse after
   // lowering. This concerns particularly convolution&relu since relu will be
