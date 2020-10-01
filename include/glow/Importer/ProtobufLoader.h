@@ -431,6 +431,7 @@ Error constantFoldInLoader(Function *F, LoaderType &tmpLoader,
   CompilationContext cctx;
   cctx.compMode = CompilationMode::Infer;
   cctx.optimizationOpts.enableConstantFolding = false;
+  cctx.optimizationOpts.enableConstantDeduplication = false;
   cctx.backendOpts.collectConstants = true;
   // Do not print out compilation errors encountered, as constant folding is a
   // best effort; simply silently give up and continue with compilation.
