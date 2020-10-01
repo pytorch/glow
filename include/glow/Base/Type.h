@@ -406,6 +406,9 @@ enum class ElemKind : unsigned char {
   // 4-bit quantized type with fused FP16 scale/offset (uint8_t, each byte
   // represents 2 4-bit quantized data)
   UInt4FusedFP16QTy,
+  // 4-bit quantized type with fused FP32 scale/offset (uint8_t, each byte
+  // represents 2 4-bit quantized data)
+  UInt4FusedQTy,
   // Bool type (bool)
   BoolTy,
 };
@@ -415,7 +418,7 @@ inline bool isQuantizedElemKind(ElemKind e) {
   return e == ElemKind::Int8QTy || e == ElemKind::UInt8QTy ||
          e == ElemKind::Int16QTy || e == ElemKind::Int32QTy ||
          e == ElemKind::UInt8FusedQTy || e == ElemKind::UInt8FusedFP16QTy ||
-         e == ElemKind::UInt4FusedFP16QTy;
+         e == ElemKind::UInt4FusedFP16QTy || e == ElemKind::UInt4FusedQTy;
 }
 
 /// \returns whether \p e is a float ElemKind.
@@ -427,7 +430,7 @@ inline bool isFloatElemKind(ElemKind e) {
 /// \returns whether \p e is a fused quantized ElemKind.
 inline bool isFusedQuantizedElemKind(ElemKind e) {
   return e == ElemKind::UInt8FusedQTy || e == ElemKind::UInt8FusedFP16QTy ||
-         e == ElemKind::UInt4FusedFP16QTy;
+         e == ElemKind::UInt4FusedFP16QTy || e == ElemKind::UInt4FusedQTy;
 }
 
 /// \returns the scale and offset ElemKind used by the fused ElemKind \p e.
@@ -701,6 +704,8 @@ struct Type final {
       return std::is_same<ElemTy, uint8_t>::value;
     case ElemKind::UInt4FusedFP16QTy:
       return std::is_same<ElemTy, uint8_t>::value;
+    case ElemKind::UInt4FusedQTy:
+      return std::is_same<ElemTy, uint8_t>::value;
     case ElemKind::BoolTy:
       return std::is_same<ElemTy, bool>::value;
     }
@@ -769,6 +774,8 @@ struct Type final {
       return sizeof(uint8_t);
     case ElemKind::UInt4FusedFP16QTy:
       return sizeof(uint8_t);
+    case ElemKind::UInt4FusedQTy:
+      return sizeof(uint8_t);
     case ElemKind::BoolTy:
       return sizeof(bool);
     }
@@ -785,7 +792,7 @@ struct Type final {
     static const char *names[] = {
         "float",        "float16",      "bfloat16", "i8",      "ui8",
         "i16",          "i32",          "index32",  "index64", "ui8fused",
-        "ui8fusedfp16", "ui4fusedfp16", "bool",
+        "ui8fusedfp16", "ui4fusedfp16", "ui4fused", "bool",
     };
     return names[(int)Ty];
   }
@@ -818,6 +825,8 @@ struct Type final {
       return ElemKind::UInt8FusedFP16QTy;
     } else if (str == Type::getElementName(ElemKind::UInt4FusedFP16QTy)) {
       return ElemKind::UInt4FusedFP16QTy;
+    } else if (str == Type::getElementName(ElemKind::UInt4FusedQTy)) {
+      return ElemKind::UInt4FusedQTy;
     } else if (str == Type::getElementName(ElemKind::BoolTy)) {
       return ElemKind::BoolTy;
     } else {
