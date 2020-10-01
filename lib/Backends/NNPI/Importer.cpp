@@ -577,13 +577,17 @@ public:
     uint32_t dilation[convDims];
 
     ConvolutionNode *conv2DNode = llvm::dyn_cast<ConvolutionNode>(glowConv);
+    if (conv2DNode) {
+      LOG_AND_RETURN_IF_NOT(ERROR, conv2DNode->getDilation() == 1,
+                            "Dilation is not supported", NNPI_INVALID_PARAM);
+    }
     for (size_t i = 0; i < convDims; i++) {
       kernel[i] = glowConv->getKernels()[i];
       stride[i] = glowConv->getStrides()[i];
       if (conv2DNode) {
         paddingStart[i] = glowConv->getPads()[i];
         paddingEnd[i] = glowConv->getPads()[convDims + i];
-        dilation[i] = conv2DNode->getDilation();
+        dilation[i] = 1;
       } else {
         paddingStart[i] = glowConv->getPads()[i * 2];
         paddingEnd[i] = glowConv->getPads()[i * 2 + 1];
@@ -2147,6 +2151,80 @@ public:
   }
 };
 
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+class BBoxTransformNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowBboxTransform = llvm::dyn_cast<BBoxTransformNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowBboxTransform, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    importer.setUsedTensors(
+        {nodeValueName(glowBboxTransform->getRois()),
+         nodeValueName(glowBboxTransform->getDeltas()),
+         nodeValueName(glowBboxTransform->getImInfo())},
+        {nodeValueName(glowBboxTransform->getBoxOut()),
+         nodeValueName(glowBboxTransform->getRoiBatchSplits())});
+
+    // 4 elements as weights format is [wx, wy, ww, wh]
+
+    float weights[4] = {0};
+    llvm::ArrayRef<float> glowWeights = glowBboxTransform->getWeights();
+    for (int i = 0; i < glowWeights.size(); i++) {
+      weights[i] = glowWeights[i];
+    }
+
+    return nnpiNetworkAddBBoxTransformOp(
+        importer.getNetwork(), glowBboxTransform->getName().begin(),
+        nodeValueName(glowBboxTransform->getRois()).c_str(),
+        nodeValueName(glowBboxTransform->getDeltas()).c_str(),
+        nodeValueName(glowBboxTransform->getImInfo()).c_str(),
+        nodeValueName(glowBboxTransform->getBoxOut()).c_str(),
+        nodeValueName(glowBboxTransform->getRoiBatchSplits()).c_str(), weights,
+        glowBboxTransform->getApplyScale(), glowBboxTransform->getRotated(),
+        glowBboxTransform->getAngleBoundOn(),
+        glowBboxTransform->getAngleBoundLo(),
+        glowBboxTransform->getAngleBoundHi(),
+        glowBboxTransform->getClipAngleThresh(),
+        glowBboxTransform->getLegacyPlusOne());
+  }
+};
+
+class ROIAlignNodeImporter : public INNPINodeImporter {
+public:
+  NNPIErrorCode importNode(Node *n, NNPIImporter &importer) override {
+    auto *glowRoiAlign = llvm::dyn_cast<ROIAlignNode>(n);
+    LOG_AND_RETURN_IF_NOT(ERROR, glowRoiAlign, "Bad node type",
+                          NNPI_INVALID_PARAM);
+
+    // Batch Indices tensor dropped here, mode should always be "avg"
+    // "max" mode is not supported.
+    importer.setUsedTensors({nodeValueName(glowRoiAlign->getFeatureMap()),
+                             nodeValueName(glowRoiAlign->getBoxes())},
+                            {nodeValueName(glowRoiAlign->getResult())});
+
+    auto mode = glowRoiAlign->getMode();
+    LOG_AND_RETURN_IF_NOT(ERROR, mode == PoolingMode::AVG,
+                          "Only avg mode is supported!", NNPI_INVALID_PARAM);
+
+    auto pooledHeight = glowRoiAlign->getOutputHeight();
+    auto pooledWidth = glowRoiAlign->getOutputWidth();
+    auto spatialScale = glowRoiAlign->getSpatialScale();
+    auto samplingRatio = glowRoiAlign->getSamplingRatio();
+    auto aligned = glowRoiAlign->getAligned();
+    auto rotated = glowRoiAlign->getRotated();
+
+    return nnpiNetworkAddRoiAlignOp(
+        importer.getNetwork(), glowRoiAlign->getName().begin(),
+        nodeValueName(glowRoiAlign->getFeatureMap()).c_str(),
+        nodeValueName(glowRoiAlign->getBoxes()).c_str(),
+        nodeValueName(glowRoiAlign->getResult()).c_str(),
+        (uint32_t)pooledHeight, (uint32_t)pooledWidth, (float)spatialScale,
+        (int32_t)samplingRatio, (BOOL)aligned, (BOOL)rotated);
+  }
+};
+#endif // NNPI >= 1.1
+
 //////////////////////////////////////////////////////////////////////////
 namespace {
 std::unordered_map<
@@ -2252,8 +2330,12 @@ std::unordered_map<
     {"Logit", glow::make_unique<LogitNodeImporter>()},
     {"Modulo", glow::make_unique<ModuloNodeImporter>()},
     {"Swish", glow::make_unique<SwishNodeImporter>()},
+#if NNPI_MINOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+    {"ROIAlign", glow::make_unique<ROIAlignNodeImporter>()},
+    {"BBoxTransform", glow::make_unique<BBoxTransformNodeImporter>()},
+#endif // NNPI >= 1.1
 };
-}
+} // namespace
 
 const std::unordered_map<std::string, std::unique_ptr<INNPINodeImporter>>
     NNPIImporter::nodeImporters_ = {
