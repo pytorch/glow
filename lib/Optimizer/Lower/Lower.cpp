@@ -173,9 +173,11 @@ static void lowerFloorDivNode(Function *F, CompilationContext &cctx,
   NodeValue LHS = node.getLHS();
   NodeValue RHS = node.getRHS();
 
-  auto *div = F->createDiv(DECORATE_NODE_NAME(node, "lhs", "rhs"), LHS, RHS);
+  auto *div = F->createDiv(DECORATE_NODE_NAME(node, "lhs", "rhs"),
+                           node.getResult().getType(), LHS, RHS);
 
-  auto *result = F->createFloor(DECORATE_NODE_NAME(node, "floor"), div);
+  auto *result = F->createFloor(DECORATE_NODE_NAME(node, "floor"),
+                                node.getResult().getType(), div);
 
   replaceAllUsesOfWith(cctx.loweredInfoMap, node.getResult(), result);
 }

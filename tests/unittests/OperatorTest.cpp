@@ -8423,7 +8423,69 @@ TEST_P(OperatorTest, Relu_Int8) {
   }
 }
 
-// Test for elementwise add with quantization and broadcast support
+// Test for elementwise FloorDiv with quantization and Broadcast
+TEST_P(OperatorTest, IntFloorDivBroadcast) {
+  CHECK_IF_ENABLED();
+
+  const float in1Scale = 0.9;
+  const float in2Scale = 1.2;
+  const float outScale = 1;
+  const int32_t in1Offset = 2;
+  const int32_t in2Offset = -11;
+  const int32_t outOffset = -2;
+  const dim_t N = 2;
+  const dim_t C = 3;
+  const dim_t H = 4;
+  const dim_t W = 5;
+
+  auto in1Ty =
+      mod_.uniqueType(ElemKind::Int8QTy, {N, C, H, W}, in1Scale, in1Offset);
+  auto in2Ty = mod_.uniqueType(ElemKind::Int8QTy, {W}, in2Scale, in2Offset);
+  auto outTy =
+      mod_.uniqueType(ElemKind::Int8QTy, {N, C, H, W}, outScale, outOffset);
+
+  auto *in1 = mod_.createPlaceholder(in1Ty, "in1", false);
+  auto *in2 = mod_.createPlaceholder(in2Ty, "in2", false);
+
+  bindings_.allocate(in1)->getHandle<int8_t>().randomize(-10, 10,
+                                                         mod_.getPRNG());
+  bindings_.allocate(in2)->getHandle<int8_t>().randomize(-10, 10,
+                                                         mod_.getPRNG());
+  constexpr int axis = -1;
+  auto *floorDivBroadcast = F_->createNodeWithBroadcastOutTy<FloorDivNode>(
+      "floorDivBroadcast", axis, outTy, in1, in2);
+
+  auto *saveFloorDiv = F_->createSave("saveFloorDiv", floorDivBroadcast);
+
+  bindings_.allocate(saveFloorDiv->getPlaceholder());
+
+  auto Qin1H = bindings_.get(in1)->getHandle<int8_t>();
+  auto Qin2H = bindings_.get(in2)->getHandle<int8_t>();
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto resultFloorDiv =
+      bindings_.get(saveFloorDiv->getPlaceholder())->getHandle<int8_t>();
+
+  for (dim_t w = 0; w < W; w++) {
+    float b = quantization::dequantize(Qin2H.at({w}), {in2Scale, in2Offset});
+    for (dim_t n = 0; n < N; n++) {
+      for (dim_t c = 0; c < C; c++) {
+        for (dim_t h = 0; h < H; h++) {
+          float a = quantization::dequantize(Qin1H.at({n, c, h, w}),
+                                             {in1Scale, in1Offset});
+          int8_t floorDiv =
+              quantization::quantize(std::floor(a / b), {outScale, outOffset});
+
+          EXPECT_NEAR(floorDiv, resultFloorDiv.at({n, c, h, w}), 1);
+        }
+      }
+    }
+  }
+}
+
+// Test for elementwise ope with quantization and broadcast support
 TEST_P(OperatorTest, IntElementWiseBroadcast) {
   CHECK_IF_ENABLED();
 
@@ -8464,15 +8526,25 @@ TEST_P(OperatorTest, IntElementWiseBroadcast) {
   auto *divBroadcast = F_->createNodeWithBroadcastOutTy<DivNode>(
       "divBroadcast", axis, outTy, in1, in2);
 
+  auto *minBroadcast = F_->createNodeWithBroadcastOutTy<MinNode>(
+      "minBroadcast", axis, outTy, in1, in2);
+
+  auto *maxBroadcast = F_->createNodeWithBroadcastOutTy<MaxNode>(
+      "maxBroadcast", axis, outTy, in1, in2);
+
   auto *saveAdd = F_->createSave("saveAdd", addBroadcast);
   auto *saveSub = F_->createSave("saveSub", subBroadcast);
   auto *saveMul = F_->createSave("saveMul", mulBroadcast);
   auto *saveDiv = F_->createSave("saveDiv", divBroadcast);
+  auto *saveMin = F_->createSave("saveMin", minBroadcast);
+  auto *saveMax = F_->createSave("saveMax", maxBroadcast);
 
   bindings_.allocate(saveAdd->getPlaceholder());
   bindings_.allocate(saveSub->getPlaceholder());
   bindings_.allocate(saveMul->getPlaceholder());
   bindings_.allocate(saveDiv->getPlaceholder());
+  bindings_.allocate(saveMin->getPlaceholder());
+  bindings_.allocate(saveMax->getPlaceholder());
 
   auto Qin1H = bindings_.get(in1)->getHandle<int8_t>();
   auto Qin2H = bindings_.get(in2)->getHandle<int8_t>();
@@ -8488,6 +8560,10 @@ TEST_P(OperatorTest, IntElementWiseBroadcast) {
       bindings_.get(saveMul->getPlaceholder())->getHandle<int8_t>();
   auto resultDiv =
       bindings_.get(saveDiv->getPlaceholder())->getHandle<int8_t>();
+  auto resultMin =
+      bindings_.get(saveMin->getPlaceholder())->getHandle<int8_t>();
+  auto resultMax =
+      bindings_.get(saveMax->getPlaceholder())->getHandle<int8_t>();
 
   for (dim_t w = 0; w < W; w++) {
     float b = quantization::dequantize(Qin2H.at({w}), {in2Scale, in2Offset});
@@ -8500,10 +8576,17 @@ TEST_P(OperatorTest, IntElementWiseBroadcast) {
           int8_t sub = quantization::quantize((a - b), {outScale, outOffset});
           int8_t mul = quantization::quantize((a * b), {outScale, outOffset});
           int8_t div = quantization::quantize((a / b), {outScale, outOffset});
+          int8_t min =
+              quantization::quantize(std::min(a, b), {outScale, outOffset});
+          int8_t max =
+              quantization::quantize(std::max(a, b), {outScale, outOffset});
+
           EXPECT_NEAR(add, resultAdd.at({n, c, h, w}), 1);
           EXPECT_NEAR(sub, resultSub.at({n, c, h, w}), 1);
           EXPECT_NEAR(mul, resultMul.at({n, c, h, w}), 1);
           EXPECT_NEAR(div, resultDiv.at({n, c, h, w}), 1);
+          EXPECT_NEAR(min, resultMin.at({n, c, h, w}), 1);
+          EXPECT_NEAR(max, resultMax.at({n, c, h, w}), 1);
         }
       }
     }
