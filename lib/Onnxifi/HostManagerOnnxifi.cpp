@@ -252,6 +252,23 @@ onnxStatus HostManagerBackend::addNetwork(
   }
   cctx.saturateHost = GlowSaturateHost;
 
+  if (!GlowBackendSpecificOpts.empty()) {
+    llvm::StringRef opts(GlowBackendSpecificOpts);
+    llvm::SmallVector<llvm::StringRef, 4> splitOpts;
+    opts.split(splitOpts, ',');
+
+    for (const llvm::StringRef &opt : splitOpts) {
+      LOG(INFO) << "Adding backend specific option: " << opt.str();
+      auto keyValPair = opt.split('=');
+      if (keyValPair.second.empty()) {
+        LOG(ERROR) << "No '=' found in backend-specific opt " << opt.str();
+        return ONNXIFI_STATUS_INTERNAL_ERROR;
+      }
+      cctx.backendOpts.backendSpecificOpts.emplace(keyValPair.first,
+                                                   keyValPair.second);
+    }
+  }
+
   auto err = hostManager_->addNetwork(std::move(module), cctx);
 
   if (ERR_TO_BOOL(std::move(err))) {

@@ -73,6 +73,7 @@ bool GlowDisableNNPITransforms = false;
 bool GlowDisableNNPIPrivateTransforms = false;
 int32_t GlowNNPINumParallelChunks = 0;
 int32_t GlowNNPIModelParallelSplitAlignment = 1;
+std::string GlowBackendSpecificOpts = "";
 } // namespace onnxifi
 
 namespace runtime {
@@ -591,5 +592,14 @@ DEFINE_bool(glow_dump_backend_specific_ir_json, false,
 DEFINE_validator(glow_dump_backend_specific_ir_json,
                  [](const char * /*unused*/, bool value) {
                    glow::GlowDumpBackendSpecificIRJSON = value;
+                   return true;
+                 });
+
+DEFINE_string(glow_backend_specific_opts, "",
+              "Glow backend specific options. Comma separated list of "
+              "key=value pairs, e.g. key1=val1,key2=val2.");
+DEFINE_validator(glow_backend_specific_opts,
+                 [](const char *flagname, const std::string &value) {
+                   glow::onnxifi::GlowBackendSpecificOpts = value;
                    return true;
                  });
