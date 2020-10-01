@@ -150,6 +150,14 @@ class ONNXModelLoader
   Error loadConstant(const ONNX_NAMESPACE::NodeProto &op,
                      ArgumentDictionaryTy &dict);
 
+  /// Helper function for ONNX range operator
+  template <typename T>
+  Error getRange(const ONNX_NAMESPACE::NodeProto &op, Constant *constT);
+
+  /// Load Range ONNX operator
+  Error loadRange(const ONNX_NAMESPACE::NodeProto &op,
+                  ArgumentDictionaryTy &dict);
+
   /// Load Slice ONNX operator.
   Error loadSlice(const ONNX_NAMESPACE::NodeProto &op,
                   ArgumentDictionaryTy &dict);
