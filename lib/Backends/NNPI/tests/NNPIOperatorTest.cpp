@@ -47,6 +47,8 @@ struct BlacklistInitializer {
              TestBlacklist::AnyDeviceAnyEngine},
             {"Conv3DQuantizedTest_Int8_BiasInt8/0",
              TestBlacklist::AnyDeviceAnyEngine},
+            {"ConvertFrom_BoolTy_To_Int32ITy/0",
+             TestBlacklist::AnyDeviceAnyEngine},
             {"ConvertFrom_Float16Ty_To_Int32ITy/0",
              TestBlacklist::AnyDeviceAnyEngine},
             {"ConvertFrom_Float16Ty_To_Int32ITy_AndBack/0",

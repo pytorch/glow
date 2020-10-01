@@ -5139,6 +5139,7 @@ void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
   CONVERT(int64_t, float16_t, ElemKind::Int64ITy, ElemKind::Float16Ty)
   CONVERT(int64_t, bfloat16_t, ElemKind::Int64ITy, ElemKind::BFloat16Ty)
   CONVERT(int64_t, int32_t, ElemKind::Int64ITy, ElemKind::Int32ITy)
+  CONVERT(bool, int32_t, ElemKind::BoolTy, ElemKind::Int32ITy)
 #undef CONVERT
 
   if (srcElType == ElemKind::UInt8FusedQTy &&

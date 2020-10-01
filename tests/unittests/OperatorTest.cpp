@@ -16098,6 +16098,7 @@ TEST_CONVERT_TO(int64_t, int64_t, Int64ITy, Int64ITy)
 TEST_CONVERT_TO(bool, float, BoolTy, FloatTy)
 TEST_CONVERT_TO(bool, float16_t, BoolTy, Float16Ty)
 TEST_CONVERT_TO(bool, bfloat16_t, BoolTy, BFloat16Ty)
+TEST_CONVERT_TO(bool, int32_t, BoolTy, Int32ITy)
 
 #undef TEST_CONVERT_TO
 
