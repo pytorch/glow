@@ -58,7 +58,8 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
     int64_t dim = node->i(at::attr::dim);
     ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
                                fusedStack(inputMetas, dim));
-  } else if (symbol == "fb::embedding_bag_byte_rowwise_offsets") {
+  } else if (symbol == "fb::embedding_bag_byte_rowwise_offsets" ||
+             symbol == "quantized::embedding_bag_byte_rowwise_offsets") {
     ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
                                embeddingBagByteRowwiseOffsets(inputMetas));
   } else {
