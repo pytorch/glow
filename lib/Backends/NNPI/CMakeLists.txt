@@ -93,6 +93,14 @@ if(NOT NNPI_MG_LIB)
   message(FATAL_ERROR "nnpi_icecaps library not found at ${NNPI_MG_LIB_SEARCH_PATH}")
 endif()
 
+file (STRINGS "${NNPI_TRANSFORMER_LIB}" verString REGEX "DL VERSION: ([0-9]+.[0-9]+)" LIMIT_COUNT 1)
+string(REGEX MATCH "DL VERSION: ([0-9]+).[0-9]+.[0-9]+.[0-9]+" _ ${verString})
+set(NNPI_MAJOR_VERSION ${CMAKE_MATCH_1})
+string(REGEX MATCH "DL VERSION: [0-9]+.([0-9]+).[0-9]+.[0-9]+" _ ${verString})
+set(NNPI_MINOR_VERSION ${CMAKE_MATCH_1})
+
+message(STATUS "[NNPI] NNPI_MAJOR_VERSION          = ${NNPI_MAJOR_VERSION}")
+message(STATUS "[NNPI] NNPI_MINOR_VERSION          = ${NNPI_MINOR_VERSION}")
 message(STATUS "[NNPI] NNPI_API_DIR                = ${NNPI_API_DIR}")
 message(STATUS "[NNPI] NNPI_LIB_DIR                = ${NNPI_TRANSFORMER_LIB}")
 
@@ -112,6 +120,9 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${NNPI_MG_API}
 )
+
+add_definitions(-DNNPI_MAJOR_VERSION=${NNPI_MAJOR_VERSION})
+add_definitions(-DNNPI_MINOR_VERSION=${NNPI_MINOR_VERSION})
 
 SET_SOURCE_FILES_PROPERTIES(NNPIUtils_AVX512.cpp PROPERTIES COMPILE_FLAGS "-mavx512f -mavx512vl -mavx512bw")
 

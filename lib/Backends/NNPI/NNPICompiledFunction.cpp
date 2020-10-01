@@ -338,6 +338,11 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   if (!compilationOptions_.disableConstFolding) {
     optConf.constantFolding = 1;
   }
+#if NNPI_MINOR_VERSION >= 1 && NNPI_MINOR_VERSION < 1
+  config_.forceWeightsOutOfLLC = compilationOptions_.forceWeightsOutOfLLC;
+  config_.disableSlsAllLenOneCalcAtRunTime =
+      compilationOptions_.disableSlsAllLenOneCalcAtRunTime;
+#endif // NNPI < 1.1
 
   DBG_MEM_USAGE("NNPICompiledFunction call optimize <<");
   LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(nnpiNetworkOptimize(network_, &optConf),
