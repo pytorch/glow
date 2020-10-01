@@ -366,6 +366,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "BBoxTransform/0",
     "BasicFloorDivNetFloatVsFloat16/0",
     "ArithFloorDiv_float16_t/0",
+    "IntFloorDivBroadcast/0",
     "VectorNorm_BFloat16/0",
     "VectorNorm_Float16/0",
     "VectorNorm_Float16Ty/0"};
