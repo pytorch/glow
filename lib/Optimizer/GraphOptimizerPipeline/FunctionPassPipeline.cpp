@@ -167,6 +167,9 @@ createDefaultGraphOptimizationPassPipeline() {
       // Try to remove unnecessary Split-Concat operations
       {FunctionPassID::EliminateSliceConcat},
 
+      // Perform Common Subexpression Elimination.
+      {FunctionPassID::CSE},
+
       // Perform a round of Dead Code Elimination to cleanup the final pass.
       getDCEPassConfig(),
   };

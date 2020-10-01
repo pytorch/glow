@@ -736,6 +736,10 @@ TEST_F(NNPIOptPipelineTest, QuantizeFCDequantize) {
       ElemKind::Int8QTy, {1024, 1024}, 0.2, 0, "weights");
   auto *bias = F_->getParent()->createConstant(ElemKind::Int32QTy, {1024}, 0.2,
                                                0, "bias");
+  weights->getPayloadMutable().getHandle<int8_t>().randomize(-127, 127,
+                                                             mod_.getPRNG());
+  bias->getPayloadMutable().getHandle<int32_t>().randomize(-127, 127,
+                                                           mod_.getPRNG());
 
   auto outTy = mod_.uniqueType(ElemKind::Int8QTy, {32, 1024}, 0.2, 0);
   auto *quantized = F_->createQuantize("quantize", input, outTy);
@@ -748,6 +752,9 @@ TEST_F(NNPIOptPipelineTest, QuantizeFCDequantize) {
   cctx_.backendOpts.backendSpecificOpts["NNPINumParallelChunks"] =
       std::to_string(8);
   cloneAndCompile();
+
+  F_->dumpDAG("tmp0.dot");
+  optimizedF_->dumpDAG("tmp1.dot");
 
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::QuantizeNodeKind), 1);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::QuantizeNodeKind), 8);
@@ -818,7 +825,10 @@ TEST_F(NNPIOptPipelineTest, SwishSmallBatch) {
 TEST_F(NNPIOptPipelineTest, SoftMax) {
   auto *input0 =
       mod_.createPlaceholder(ElemKind::Float16Ty, {512, 2048}, "input", false);
-  auto selected = mod_.createConstant(ElemKind::Int64ITy, {512, 1}, "selected");
+  auto *selected =
+      mod_.createConstant(ElemKind::Int64ITy, {512, 1}, "selected");
+  selected->getPayloadMutable().getHandle<int64_t>().randomize(-10, 10,
+                                                               mod_.getPRNG());
   auto *SFMX = F_->createSoftMax("softmax", input0, selected);
   F_->createSave("ret", SFMX);
 
