@@ -1375,9 +1375,11 @@ Node *Function::createBroadcast(llvm::StringRef name, NodeValue input,
 }
 
 /// \returns true if \p T1 and T2 has the exact same type except for dimension
-/// \p dim.
+/// \p dim. It will log an error when returning false.
 static bool sameSameShapeExceptDim(TypeRef T1, TypeRef T2, unsigned dim) {
   if (T1->getElementType() != T2->getElementType()) {
+    LOG(ERROR) << "Different types " << (int)T1->getElementType() << " "
+               << (int)T2->getElementType();
     return false;
   }
 
@@ -1385,6 +1387,7 @@ static bool sameSameShapeExceptDim(TypeRef T1, TypeRef T2, unsigned dim) {
   auto D2 = T2->dims();
 
   if (D1.size() != D2.size()) {
+    LOG(ERROR) << "Different size " << D1.size() << " " << D2.size();
     return false;
   }
 
@@ -1395,6 +1398,8 @@ static bool sameSameShapeExceptDim(TypeRef T1, TypeRef T2, unsigned dim) {
     }
 
     if (D1[i] != D2[i]) {
+      LOG(ERROR) << "Different dimension at " << i << " " << D1[i] << " "
+                 << D2[i];
       return false;
     }
   }
