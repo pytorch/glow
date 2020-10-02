@@ -65,8 +65,12 @@ public:
   /// Cast operators.
   operator double() const { return double(operator float()); }
   operator float() const { return fp16_ieee_to_fp32_value(data_); }
-  operator int64_t() const { return static_cast<int64_t>(data_); }
-  operator int32_t() const { return static_cast<int32_t>(data_); }
+  operator int64_t() const {
+    return static_cast<int64_t>(fp16_ieee_to_fp32_value(data_));
+  }
+  operator int32_t() const {
+    return static_cast<int32_t>(fp16_ieee_to_fp32_value(data_));
+  }
 }; // End class float16.
 
 /// Allow float16_t to be passed to an ostream.
