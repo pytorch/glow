@@ -60,6 +60,7 @@ extern size_t GlowMaxActiveRequests;
 extern size_t GlowMaxActiveRequestsPerInstance;
 extern size_t GlowMaxQueueSize;
 extern size_t GlowExecutorThreads;
+extern std::string GlowBackendSpecificOpts;
 
 extern bool GlowDumpNNPICompilerData;
 extern bool GlowUsePerPartitionIcetConfig;
