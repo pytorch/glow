@@ -683,6 +683,8 @@ public:
       return isEqualImpl<uint8_t>(other, allowedError, verbose);
     case ElemKind::UInt4FusedFP16QTy:
       return isEqualImpl<uint8_t>(other, allowedError, verbose);
+    case ElemKind::UInt4FusedQTy:
+      return isEqualImpl<uint8_t>(other, allowedError, verbose);
     case ElemKind::BoolTy:
       return isEqualImpl<bool>(other, allowedError, verbose);
     }
@@ -1598,7 +1600,8 @@ private:
   /// \p T of a row \p rowIdx.
   template <typename T> ElemTy *getFusedRowScaleOffsetPtr(dim_t rowIdx) {
     switch (getElementType()) {
-    case ElemKind::UInt8FusedQTy: {
+    case ElemKind::UInt8FusedQTy:
+    case ElemKind::UInt4FusedQTy: {
       constexpr auto isFloat = std::is_same<float, T>::value;
       DCHECK(isFloat) << "Expected float scale/offset";
       break;

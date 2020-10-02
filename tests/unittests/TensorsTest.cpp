@@ -1339,6 +1339,7 @@ TEST(Tensor, typeSerialization) {
   testType(Type(ElemKind::UInt8FusedQTy, {1, 2, 3}, 1.5, 5));
   testType(Type(ElemKind::UInt8FusedFP16QTy, {1, 2, 3}, 1.6, 6));
   testType(Type(ElemKind::UInt4FusedFP16QTy, {1, 2, 3}, 1.7, 7));
+  testType(Type(ElemKind::UInt4FusedQTy, {1, 2, 3}, 1.7, 7));
   testType(Type(ElemKind::BoolTy, {1, 2, 3}));
 }
 

@@ -730,6 +730,8 @@ static size_t getNumDataColumnsFromFused(TypeRef type) {
     return n - 2 * sizeof(float16_t);
   case ElemKind::UInt4FusedFP16QTy:
     return (n - 2 * sizeof(float16_t)) * 2;
+  case ElemKind::UInt4FusedQTy:
+    return (n - 2 * sizeof(float)) * 2;
   default:
     llvm_unreachable("Not supported Fused ElemKind");
   }
