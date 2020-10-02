@@ -369,4 +369,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "IntFloorDivBroadcast/0",
     "VectorNorm_BFloat16/0",
     "VectorNorm_Float16/0",
-    "VectorNorm_Float16Ty/0"};
+    "VectorNorm_Float16Ty/0",
+    "BBoxTransform_Float/0",
+    "BBoxTransform_Float16/0",
+};

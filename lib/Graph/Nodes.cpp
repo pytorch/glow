@@ -2201,7 +2201,8 @@ bool BBoxTransformNode::verify() const {
   bool isValid = checkTypeIgnoreShape(rois, boxOut, this);
   isValid &= checkSameType(deltas, boxOut, this);
   isValid &= checkTypeIgnoreShape(imInfo, boxOut, this);
-  isValid &= checkType(rois, ElemKind::FloatTy, this);
+  // ROIs can be float32 or float16.
+  isValid &= checkType(rois, {ElemKind::FloatTy, ElemKind::Float16Ty}, this);
   isValid &= expectCompareTrue("Rois must be a 2D tensor", roisDims.size(),
                                size_t(2), this);
   isValid &=
