@@ -127,11 +127,14 @@ def to_glow(model, method_compile_spec):
         for k, v in method_compile_spec.items():
             if not isinstance(v, list):
                 method_compile_spec[k] = [v.spec]
+            else:
+                specs_list = [wrapper.spec for wrapper in v]
+                method_compile_spec[k] = specs_list
     elif isinstance(method_compile_spec, list):
-        method_compile_spec = [wrapper.spec for wrapper in method_compile_spec]
-        method_compile_spec = {"forward", method_compile_spec}
+        specs_list = [wrapper.spec for wrapper in method_compile_spec]
+        method_compile_spec = {"forward": specs_list}
     else:
-        method_compile_spec = {"forward", [method_compile_spec.spec]}
+        method_compile_spec = {"forward": [method_compile_spec.spec]}
 
     return torch._C._jit_to_backend("glow", model, method_compile_spec)
 
@@ -200,9 +203,13 @@ def to_glow_selective(model, specs_and_examples, inplace=False):
             assert (
                 len(per_module_info) == 1 and "forward" in per_module_info
             ), "Only forward method is supported by to_glow_selective for now"
-            (spec, example_inputs) = per_module_info["forward"]
+            info = per_module_info["forward"]
+            if not isinstance(info, list):
+                info = [info]
         elif isinstance(per_module_info, tuple):
-            (spec, example_inputs) = per_module_info
+            info = [per_module_info]
+        elif isinstance(per_module_info, list):
+            info = per_module_info
         else:
             raise ValueError(
                 """For each submodule, to_glow_selective expects \
@@ -212,7 +219,11 @@ def to_glow_selective(model, specs_and_examples, inplace=False):
                              method is assumed"""
             )
         submod = get_submodule(model, path)
+        spec_list = []
+        for info_tup in info:
+            (spec, example_inputs) = info_tup
+            spec_list.append(spec)
         submod = torch.jit.trace(submod, example_inputs)
-        submod = to_glow(submod, {"forward": spec})
+        submod = to_glow(submod, {"forward": spec_list})
         set_submodule(model, path, submod)
     return model
