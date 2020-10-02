@@ -68,6 +68,14 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("disableDumpGlowDag",
         []() { getPyTorchLoaderSettings().dumpGlowDag = false; });
 
+  /// Enable printing index of all jit node for debugging
+  m.def("enable_printing_jit_node_indices",
+        []() { getPyTorchLoaderSettings().printJITIndex = true; });
+
+  /// Disable printing index of all jit node for debugging
+  m.def("disable_printing_jit_node_indices",
+        []() { getPyTorchLoaderSettings().printJITIndex = false; });
+
   /// Enable converting fp32 ops to fp16.
   m.def("enable_convert_to_fp16",
         []() { getPyTorchLoaderSettings().convertToFP16 = true; });
