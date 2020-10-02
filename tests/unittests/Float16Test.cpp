@@ -98,3 +98,18 @@ TEST(Float16, le) {
   EXPECT_EQ(a <= b, float(a) <= float(b));
   EXPECT_TRUE(a <= b);
 }
+
+template <typename T> static void testConvertTo() {
+  float16 a = 19.3;
+  T b = static_cast<T>(19.3);
+  EXPECT_NEAR(T(a), b, 1);
+}
+
+#define TEST_CONVERT_TO(DEST_TYPE)                                             \
+  TEST(Float16, CONVERT_TO_##DEST_TYPE) { testConvertTo<DEST_TYPE>(); }
+TEST_CONVERT_TO(float)
+TEST_CONVERT_TO(double)
+TEST_CONVERT_TO(int32_t)
+TEST_CONVERT_TO(int64_t)
+
+#undef TEST_CONVERT_TO
