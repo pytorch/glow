@@ -324,6 +324,11 @@ void glowCustomFuseImpl(std::shared_ptr<torch::jit::Graph> graph,
     if (settings.fusionEndIndex >= 0 && i >= settings.fusionEndIndex) {
       indexBlacklistedNodes.insert(node);
     }
+    if (settings.printJITIndex) {
+      std::vector<const torch::jit::Node *> groups;
+      std::cout << "index: " << i;
+      node->print(std::cout, 1, &groups, false);
+    }
     i++;
   }
 

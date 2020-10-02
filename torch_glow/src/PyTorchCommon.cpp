@@ -42,6 +42,7 @@ DEFINE_bool(saturateHost, false, "See PyTorchLoaderSettings");
 
 DEFINE_int32(torch_glow_min_fusion_group_size, 1,
              "Minimum number of nodes in the glow fusion group");
+DEFINE_bool(printJITIndex, false, "Enable printing of jit node indexes");
 DEFINE_bool(dumpGlowDag, false, "See PyTorchLoaderSettings");
 DEFINE_bool(jitVsGlowCompare, false, "Enable per-group error check");
 DEFINE_bool(dumpFinalGlowGraph, false, "See PyTorchLoaderSettings");
@@ -238,6 +239,7 @@ void PyTorchLoaderSettings::initSettings() {
   minFusionGroupSize = FLAGS_torch_glow_min_fusion_group_size;
   dumpGlowDag = FLAGS_dumpGlowDag;
   jitVsGlowCompare = FLAGS_jitVsGlowCompare;
+  printJITIndex = FLAGS_printJITIndex;
   dumpFinalGlowGraph = FLAGS_dumpFinalGlowGraph;
   enableGlowTracing = FLAGS_enableGlowTracing;
   numTracesPerDump = FLAGS_numTracesPerDump;

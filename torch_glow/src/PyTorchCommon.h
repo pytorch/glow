@@ -89,6 +89,9 @@ public:
   bool get_convert_fused_to_fp16() { return convertFusedToFP16; }
   void set_convert_fused_to_fp16(bool val) { convertFusedToFP16 = val; }
 
+  /// Print all JIT node indexes for debugging use.
+  bool printJITIndex = false;
+
   /// Add clip operators after each fp16 ops during Glow compilation.
   bool clipFP16 = false;
 
