@@ -85,8 +85,23 @@ class TestSelectiveToGlow(unittest.TestCase):
         spec = GlowCompileSpec()
         spec.set(inputs, options)
 
+        # test interface with implicit "forward"
         glow_mod = torch_glow.to_glow_selective(
             model, {"foo.bar": (spec, (a, b)), "qux": (spec, (a, b))}
+        )
+
+        glow_mod = torch.jit.trace(glow_mod, (a, b))
+        glow_res = glow_mod(a, b)
+
+        assert torch.allclose(torch_res, glow_res)
+
+        # test interface with explicit "forward"
+        glow_mod = torch_glow.to_glow_selective(
+            model,
+            {
+                "foo.bar": {"forward": (spec, (a, b))},
+                "qux": {"forward": (spec, (a, b))},
+            },
         )
 
         glow_mod = torch.jit.trace(glow_mod, (a, b))

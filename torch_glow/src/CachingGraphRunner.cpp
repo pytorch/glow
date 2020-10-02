@@ -760,6 +760,7 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
     useMaxSizeCompilation_ = true;
     hash = reinterpret_cast<size_t>(this);
   } else {
+    useMaxSizeCompilation_ = false;
     torch::jit::Stack fakeStack = createFakeStackFromInputMeta(inputMeta);
     hash = hashTensorStack(fakeStack, inputMeta.size(), this);
   }
