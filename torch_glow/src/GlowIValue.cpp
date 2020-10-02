@@ -43,6 +43,8 @@ const char *GlowIValue::tagToStr(GlowIValue::Tag tag) {
     return "DoubleList";
   case GlowIValue::Tag::BoolList:
     return "BoolList";
+  case GlowIValue::Tag::NodeValueList:
+    return "NodeValueList";
   case GlowIValue::Tag::Tuple:
     return "Tuple";
   case GlowIValue::Tag::PTTensor:
@@ -68,6 +70,9 @@ void GlowIValue::reset() {
     break;
   case Tag::BoolList:
     delete payload_.asBoolList;
+    break;
+  case Tag::NodeValueList:
+    delete payload_.asNodeValueList;
     break;
   case Tag::Tuple:
     delete payload_.asTuple;
@@ -122,6 +127,7 @@ Expected<size_t> GlowIValue::hash(const GlowIValue &ival) {
   case GlowIValue::Tag::IntList:
   case GlowIValue::Tag::DoubleList:
   case GlowIValue::Tag::BoolList:
+  case GlowIValue::Tag::NodeValueList:
   case GlowIValue::Tag::Tuple:
   case GlowIValue::Tag::PTTensor:
   case GlowIValue::Tag::GenericMap:
@@ -165,6 +171,13 @@ bool GlowIValue::equal(const GlowIValue &ivalA, const GlowIValue &ivalB) {
     const std::vector<bool> &vecB = *EXIT_ON_ERR(ivalB.toBoolList());
     return vecA == vecB;
   }
+  case GlowIValue::Tag::NodeValueList: {
+    const std::vector<glow::NodeValue> &vecA =
+        *EXIT_ON_ERR(ivalA.toNodeValueList());
+    const std::vector<glow::NodeValue> &vecB =
+        *EXIT_ON_ERR(ivalB.toNodeValueList());
+    return vecA == vecB;
+  }
   case GlowIValue::Tag::Tuple: {
     const std::vector<GlowIValue> &vecA = *EXIT_ON_ERR(ivalA.toTuple());
     const std::vector<GlowIValue> &vecB = *EXIT_ON_ERR(ivalB.toTuple());
@@ -195,6 +208,7 @@ bool GlowIValue::isBool() const { return Tag::Bool == tag_; }
 bool GlowIValue::isIntList() const { return Tag::IntList == tag_; }
 bool GlowIValue::isDoubleList() const { return Tag::DoubleList == tag_; }
 bool GlowIValue::isBoolList() const { return Tag::BoolList == tag_; }
+bool GlowIValue::isNodeValueList() const { return Tag::NodeValueList == tag_; }
 bool GlowIValue::isTuple() const { return Tag::Tuple == tag_; }
 bool GlowIValue::isPTTensor() const { return Tag::PTTensor == tag_; }
 bool GlowIValue::isGenericMap() const { return Tag::GenericMap == tag_; }
@@ -258,6 +272,17 @@ Expected<std::vector<bool> *> GlowIValue::toBoolList() {
 Expected<const std::vector<bool> *> GlowIValue::toBoolList() const {
   ExpectTag(Tag::BoolList);
   return payload_.asBoolList;
+}
+
+Expected<std::vector<glow::NodeValue> *> GlowIValue::toNodeValueList() {
+  ExpectTag(Tag::NodeValueList);
+  return payload_.asNodeValueList;
+}
+
+Expected<const std::vector<glow::NodeValue> *>
+GlowIValue::toNodeValueList() const {
+  ExpectTag(Tag::NodeValueList);
+  return payload_.asNodeValueList;
 }
 
 Expected<std::vector<GlowIValue> *> GlowIValue::toTuple() {
@@ -350,6 +375,13 @@ void GlowIValue::fromBoolList(std::vector<bool> boolList) {
   tag_ = Tag::BoolList;
   payload_.asBoolList = new std::vector<bool>;
   std::swap(boolList, *payload_.asBoolList);
+}
+
+void GlowIValue::fromNodeValueList(std::vector<glow::NodeValue> nodeValueList) {
+  reset();
+  tag_ = Tag::NodeValueList;
+  payload_.asNodeValueList = new std::vector<glow::NodeValue>;
+  std::swap(nodeValueList, *payload_.asNodeValueList);
 }
 
 void GlowIValue::fromTuple(std::vector<GlowIValue> glowIValList) {
@@ -499,6 +531,17 @@ Expected<std::vector<double> *>
 iValToDoubleList(Expected<GlowIValue *> expectedIVal) {
   if (expectedIVal) {
     return (*expectedIVal)->toDoubleList();
+  } else {
+    return expectedIVal.takeError();
+  }
+}
+
+/// Unwrap a Expected<GlowIValue *> \p expectedIVal and call toNodeValueList,
+/// propogate any Errors.
+Expected<std::vector<glow::NodeValue> *>
+iValToNodeValueList(Expected<GlowIValue *> expectedIVal) {
+  if (expectedIVal) {
+    return (*expectedIVal)->toNodeValueList();
   } else {
     return expectedIVal.takeError();
   }

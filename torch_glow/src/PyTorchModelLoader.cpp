@@ -2220,43 +2220,59 @@ Error PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   // Requires -1 because this requires at least one input.
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
-  // Get the Tag of the first input to use for the whole list.
-  GlowIValue *firstInputIVal;
-  ASSIGN_VALUE_OR_RETURN_ERR(firstInputIVal, getGlowIValueForValue(inputs[0]));
-  auto tag = firstInputIVal->getTag();
-
   GlowIValue glowIVal;
-  if (tag == GlowIValue::Tag::Double) {
-    std::vector<double> doubles;
-    for (size_t i = 0; i < inputs.size(); ++i) {
-      double x;
-      ASSIGN_VALUE_OR_RETURN_ERR(
-          x, iValToDouble(getGlowIValueForValue(inputs[i])));
-      doubles.push_back(x);
-    }
-    glowIVal.fromDoubleList(std::move(doubles));
-  } else if (tag == GlowIValue::Tag::Int) {
-    std::vector<int64_t> ints;
-    for (size_t i = 0; i < inputs.size(); ++i) {
-      int x;
-      ASSIGN_VALUE_OR_RETURN_ERR(x,
-                                 iValToInt(getGlowIValueForValue(inputs[i])));
-      ints.push_back(x);
-    }
-    glowIVal.fromIntList(std::move(ints));
-  } else if (tag == GlowIValue::Tag::Bool) {
-    std::vector<bool> bools;
-    for (size_t i = 0; i < inputs.size(); ++i) {
-      bool x;
-      ASSIGN_VALUE_OR_RETURN_ERR(x,
-                                 iValToBool(getGlowIValueForValue(inputs[i])));
-      bools.push_back(x);
-    }
-    glowIVal.fromBoolList(std::move(bools));
-  } else {
-    RETURN_ERR("Encountered an unsupported GlowIValue type for ListConstruct");
-  }
+  // Get the Tag of the first input to use for the whole list.
+  if (hasGlowIValueForValue(inputs[0])) {
+    // If it is IValue
+    GlowIValue *firstInputIVal;
+    ASSIGN_VALUE_OR_RETURN_ERR(firstInputIVal,
+                               getGlowIValueForValue(inputs[0]));
+    auto tag = firstInputIVal->getTag();
 
+    if (tag == GlowIValue::Tag::Double) {
+      std::vector<double> doubles;
+      for (size_t i = 0; i < inputs.size(); ++i) {
+        double x;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            x, iValToDouble(getGlowIValueForValue(inputs[i])));
+        doubles.push_back(x);
+      }
+      glowIVal.fromDoubleList(std::move(doubles));
+    } else if (tag == GlowIValue::Tag::Int) {
+      std::vector<int64_t> ints;
+      for (size_t i = 0; i < inputs.size(); ++i) {
+        int x;
+        ASSIGN_VALUE_OR_RETURN_ERR(x,
+                                   iValToInt(getGlowIValueForValue(inputs[i])));
+        ints.push_back(x);
+      }
+      glowIVal.fromIntList(std::move(ints));
+    } else if (tag == GlowIValue::Tag::Bool) {
+      std::vector<bool> bools;
+      for (size_t i = 0; i < inputs.size(); ++i) {
+        bool x;
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            x, iValToBool(getGlowIValueForValue(inputs[i])));
+        bools.push_back(x);
+      }
+      glowIVal.fromBoolList(std::move(bools));
+    } else {
+      RETURN_ERR(
+          "Encountered an unsupported GlowIValue type for ListConstruct");
+    }
+  } else if (hasGlowNodeValueForValue(inputs[0])) {
+    // If it is a NodeValue, which we will store as a NodeValueList IValue.
+    std::vector<glow::NodeValue> nodeValues;
+    for (size_t i = 0; i < inputs.size(); i++) {
+      glow::NodeValue x;
+      ASSIGN_VALUE_OR_RETURN_ERR(x, getGlowNodeValueForValue(inputs[i]));
+      nodeValues.push_back(x);
+    }
+    glowIVal.fromNodeValueList(std::move(nodeValues));
+  } else {
+    // Should never reach here
+    RETURN_ERR("Encountered unknown JIT Value mapping");
+  }
   return addValueMapping(outputs[0], std::move(glowIVal));
 }
 
