@@ -5023,6 +5023,17 @@ PyTorchModelLoader::PyTorchModelLoader(
   auto loadFn = [&]() -> Error {
     auto graphInputValues = graph.inputs();
 
+    LOG(INFO) << "Using settings: " << settings.toString();
+
+    if (settings.dumpFinalGlowGraph || settings.dumpGlowDag) {
+      const std::string fname = "preLoadGlowGraph.ir";
+      LOG(INFO) << "Dumping pre load graph at " + fname;
+      std::ofstream out;
+      out.open(fname);
+      graph.print(out);
+      out.close();
+    }
+
     RETURN_ERR_IF_NOT(
         inputs.size() == graphInputValues.size() ||
             inputMeta.size() == graphInputValues.size(),
