@@ -13,6 +13,7 @@
 #include <torch/csrc/jit/passes/dead_code_elimination.h>
 #include <torch/csrc/jit/passes/freeze_module.h>
 #include <torch/csrc/jit/passes/inliner.h>
+#include <torch/csrc/jit/passes/lower_tuples.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
 #include <torch/csrc/jit/passes/utils/subgraph_utils.h>
 #include <torch/csrc/jit/runtime/custom_operator.h>
@@ -427,6 +428,7 @@ TorchGlowBackend::preprocess(c10::IValue mod,
     const auto &methodName = kv.key().toStringRef();
     auto method = m.get_method(methodName);
     auto graph = method.graph();
+    LowerAllTuples(graph);
     EliminateDeadCode(graph);
     EliminateCommonSubexpression(graph);
     ConstantPooling(graph);
@@ -528,8 +530,7 @@ TorchGlowBackend::execute(c10::IValue handle, c10::impl::GenericList inputs) {
   }
 
   c10::List<at::Tensor> output_list;
-  while (stack.size() > 0) {
-    auto value = torch::jit::pop(stack);
+  for (const auto &value : torch::jit::last(stack, stack.size())) {
     output_list.emplace_back(value.toTensor());
   }
   return c10::impl::toList(output_list);
