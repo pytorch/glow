@@ -16,7 +16,8 @@
 
 #include "GlowIValue.h"
 #include <ATen/ATen.h>
-// #include "glow/Support/Error.h"
+
+#include "glow/Runtime/HostManager/HostManager.h"
 
 #include <gtest/gtest.h>
 
@@ -152,6 +153,41 @@ TEST(GlowIValueTests, StringTest) {
   std::string *res;
   ASSIGN_VALUE_OR_FAIL_TEST(res, ival.toString());
   EXPECT_EQ(*res, "hello world");
+}
+
+TEST(GLOWIValueTests, NodeValueListTest) {
+  GlowIValue ival;
+  std::unique_ptr<Module> module = glow::make_unique<Module>();
+  glow::Tensor t1 = {1, 2, 3};
+  glow::Tensor t2 = {4, 5, 6, 7, 8, 9};
+  auto n1 = module->createConstant("c1", std::move(t1))->getOutput();
+  auto n2 = module->createConstant("c2", std::move(t2))->getOutput();
+
+  std::vector<glow::NodeValue> v;
+  v.push_back(n1);
+  v.push_back(n2);
+
+  ival.fromNodeValueList(v);
+  ASSERT_TRUE(ival.isNodeValueList());
+
+  std::vector<glow::NodeValue> *vRes;
+  ASSIGN_VALUE_OR_FAIL_TEST(vRes, ival.toNodeValueList());
+
+  EXPECT_EQ(vRes->size(), 2);
+  EXPECT_EQ((*vRes)[0].getNode()->getKind(), Kinded::Kind::ConstantKind);
+  EXPECT_EQ((*vRes)[1].getNode()->getKind(), Kinded::Kind::ConstantKind);
+
+  glow::Constant *c1 = llvm::dyn_cast<glow::Constant>((*vRes)[0].getNode());
+  glow::Constant *c2 = llvm::dyn_cast<glow::Constant>((*vRes)[1].getNode());
+  const auto h1 = c1->getPayload().getHandle<float>();
+  const auto h2 = c2->getPayload().getHandle<float>();
+
+  for (int i = 1; i <= 3; i++) {
+    EXPECT_EQ(h1.raw(i - 1), i);
+  }
+  for (int i = 4; i <= 9; i++) {
+    EXPECT_EQ(h2.raw(i - 4), i);
+  }
 }
 
 TEST(GlowIValueTests, PTTensorTest) {
