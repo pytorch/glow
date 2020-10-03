@@ -261,6 +261,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "less_int8/0",
     "Logit_Float/0",
     "Logit_Float16/0",
+    "LSTMUnitFP16/0",
     "matmulQuantized_InterpCompareParClone/0",
     "MaxPool/0",
     "ModuloInt32NoSignFollow/0",
