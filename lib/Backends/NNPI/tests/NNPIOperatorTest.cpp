@@ -105,6 +105,7 @@ struct BlacklistInitializer {
             {"LayerNorm_Float/0", TestBlacklist::AnyDeviceAnyEngine},
             {"LengthsSum/0", TestBlacklist::AnyDeviceAnyEngine},
             {"LengthsToRanges/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"LSTMUnitFP16/0", TestBlacklist::AnyDeviceAnyEngine},
             {"ModuloInt64NoSignFollow/0", TestBlacklist::AnyDeviceAnyEngine},
             {"ModuloInt64SignFollow/0", TestBlacklist::AnyDeviceAnyEngine},
             {"mul_int32/0", TestBlacklist::AnyDeviceAnyEngine},

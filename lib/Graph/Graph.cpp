@@ -3479,6 +3479,65 @@ void Function::createSimpleRNN(PlaceholderBindings &bindings,
   };
 }
 
+LSTMUnitNode *Function::createLSTMUnit(llvm::StringRef namePrefix,
+                                       NodeValue Input, NodeValue C) {
+
+  return addNode(new LSTMUnitNode(namePrefix, Input, C));
+}
+
+void Function::createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue input,
+                                 NodeValue Wx, NodeValue Wh, NodeValue Bx,
+                                 NodeValue Bh, NodeValue &Ht, NodeValue &Ct,
+                                 NodeValue &output, bool isBidirectional) {
+  std::string nameBase = namePrefix;
+  assert(isBidirectional == false && "bidirectional is not supported yet");
+  assert(input.dims().back() > 0 && "input dimensionality is zero");
+
+  auto name = [&nameBase](const char *s, int t) {
+    return strFormat("%s.%s_%d", nameBase.c_str(), s, t);
+  };
+  std::vector<NodeValue> inputs, outputs;
+  unsigned batchSize, hiddenSize, timeSteps;
+  batchSize = input.dims()[1];
+  hiddenSize = input.dims()[2];
+  timeSteps = input.dims()[0];
+  // Input gate:
+  //    I <- sigmoid(Wxi * x + Bxi + Whi * h + Bhi)
+  // Forget gate:
+  //    F <- sigmoid(Wxf * x + Bxf + Whf * h + Bhf)
+  // Cell gate:
+  //    G <- tanh(Wxg * x + Bxg + Whg * h + Bhg)
+  // Output gate:
+  //    O <- sigmoid(Wxo * x + Bxo + Who * h + Bho)
+  // Cell state:
+  //    C <- F . C + I . G
+  // Hidden state:
+  //    h <- O . tanh(C)
+
+  std::vector<Node *> outputNodes;
+  for (unsigned t = 0; t < timeSteps; t++) {
+    auto inputSliced = createSlice(name("slice", t), input, {t, 0, 0},
+                                   {t + 1, batchSize, hiddenSize})
+                           ->getResult();
+    inputSliced =
+        createReshape(name("reshape", t), inputSliced, {batchSize, hiddenSize});
+    auto *Result = createAdd(
+        name("add1", t), createFullyConnected(name("fc1", t), Ht, Wh, Bh),
+        createFullyConnected(name("fc2", t), inputSliced, Wx, Bx));
+
+    auto lstmUnitNode =
+        addNode(new LSTMUnitNode(name("lstm_unit", t), Result, Ct));
+    Ht = lstmUnitNode->getNthResult(0);
+    Ct = lstmUnitNode->getNthResult(1);
+
+    auto reshaped =
+        createReshape("output_reshape", Ht, {1, Ht.dims()[0], Ht.dims()[1]})
+            ->getResult();
+    outputs.push_back(reshaped);
+  }
+  output = createConcat("output_cat", outputs, 0)->getResult();
+};
+
 void Function::createLSTM(PlaceholderBindings &bindings,
                           llvm::StringRef namePrefix,
                           llvm::ArrayRef<NodeValue> inputs, unsigned batchSize,

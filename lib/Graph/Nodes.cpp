@@ -2369,6 +2369,26 @@ bool GemmNode::verify() const {
   return isValid;
 }
 
+bool LSTMUnitNode::verify() const {
+  bool isValid = true;
+  NodeValue C = getC();
+  auto cDim = C.dims();
+  NodeValue Input = getInput();
+  auto inputDim = Input.dims();
+
+  isValid &=
+      expectCompareTrue("Input must be 2D", inputDim.size(), size_t(2), this);
+  isValid &=
+      expectCompareTrue("Cell State must be 2D", cDim.size(), size_t(2), this);
+  isValid &= expectCompareTrue("Input dims[1] must be 4 * C dims[1]",
+                               inputDim[1], 4 * cDim[1], this);
+  isValid &=
+      expectCompareTrue("Input dims[0] must be must be the same to C dims[0]",
+                        inputDim[0], cDim[0], this);
+
+  return isValid;
+}
+
 bool FullyConnectedNode::verify() const {
   return verifyFullyConnected(getInput(), getWeights(), getBias(), getResult());
 }
