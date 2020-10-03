@@ -2266,6 +2266,71 @@ TEST_P(OperatorTest, replaceNaN_BFloat16) {
   testReplaceNaN<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty);
 }
 
+/// Reference ideal sigmoid implementation. Computes an fp32 sigmoid
+/// and casts the result to FP16.
+static float16_t refSigmoidFp16(float x) {
+  float res = 1 / (1 + exp(-x));
+
+  return (float16_t)res;
+}
+
+/// Reference ideal sigmoid implementation. Computes an fp32 sigmoid
+/// and casts the result to BFloat16.
+static bfloat16_t refSigmoidBFloat16(float x) {
+  float res = 1 / (1 + exp(-x));
+
+  return (bfloat16_t)res;
+}
+
+TEST_P(OperatorTest, LSTMUnitFP16) {
+  CHECK_IF_ENABLED();
+
+  unsigned minibatchSize = 2;
+  unsigned hiddenSize = 4;
+
+  // Input
+  auto *Input = mod_.createPlaceholder(
+      ElemKind::Float16Ty, {minibatchSize, 4 * hiddenSize}, "Input", false);
+  auto InputH = bindings_.allocate(Input)->getHandle<float16_t>();
+  for (unsigned i = 0; i < minibatchSize; i++) {
+    for (unsigned j = 0; j < hiddenSize * 4; j++) {
+      InputH.at({i, j}) = i * hiddenSize + (j % hiddenSize) + j / hiddenSize;
+    }
+  }
+
+  // Cell State
+  auto *C = mod_.createPlaceholder(ElemKind::Float16Ty,
+                                   {minibatchSize, hiddenSize}, "C", false);
+  auto CH = bindings_.allocate(C)->getHandle<float16_t>();
+  for (unsigned i = 0; i < minibatchSize * hiddenSize; i++) {
+    CH.raw(i) = i;
+  }
+
+  auto lstmUnitNode = F_->createLSTMUnit("lstm_unit", Input, C);
+
+  auto hRes = lstmUnitNode->getNthResult(0);
+  auto cRes = lstmUnitNode->getNthResult(1);
+
+  auto *hSave = F_->createSave("saveH", hRes);
+  auto *hTensor = bindings_.allocate(hSave->getPlaceholder());
+  auto *cSave = F_->createSave("saveC", cRes);
+  auto *cTensor = bindings_.allocate(cSave->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto hHandle = hTensor->getHandle<float16_t>();
+  auto cHandle = cTensor->getHandle<float16_t>();
+
+  for (dim_t i = 0; i < 8; i++) {
+    float cExpect = (float16_t)i * refSigmoidFp16(i + 1) +
+                    refSigmoidFp16(i) * (float16_t)std::tanh(i + 2);
+    float hExpect = (float16_t)std::tanh(cExpect) * refSigmoidFp16(i + 3);
+    EXPECT_NEAR(hHandle.raw(i), hExpect, 1E-5);
+    EXPECT_NEAR(cHandle.raw(i), cExpect, 1E-5);
+  }
+}
+
 TEST_P(OperatorTest, log) {
   CHECK_IF_ENABLED();
 
@@ -10489,22 +10554,6 @@ COMPARE_UNARY_OP_FUN(Tanh, 10, -10.0F, 10.0F)
 COMPARE_UNARY_OP_FUN(Log, 1000, 1.0F, 100.0F)
 COMPARE_UNARY_OP_FUN(Sigmoid, 10, -10.0F, 10.0F)
 #undef COMPARE_UNARY_OP_FUN
-
-/// Reference ideal sigmoid implementation. Computes an fp32 sigmoid
-/// and casts the result to FP16.
-static float16_t refSigmoidFp16(float x) {
-  float res = 1 / (1 + exp(-x));
-
-  return (float16_t)res;
-}
-
-/// Reference ideal sigmoid implementation. Computes an fp32 sigmoid
-/// and casts the result to BFloat16.
-static bfloat16_t refSigmoidBFloat16(float x) {
-  float res = 1 / (1 + exp(-x));
-
-  return (bfloat16_t)res;
-}
 
 /// Test to verify that the sigmoid implementation is equal to the
 /// Mirrored LUT implementation
