@@ -520,6 +520,7 @@ struct BlacklistInitializer {
             {"VectorNorm_BFloat16/0", TestBlacklist::AnyDeviceAnyEngine},
             {"VectorNorm_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
             {"VectorNorm_Float16Ty/0", TestBlacklist::AnyDeviceAnyEngine},
+            {"Gelu_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
             {"Transpose6Dims/0", TestBlacklist::AnyDeviceHWEngine},
         };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,

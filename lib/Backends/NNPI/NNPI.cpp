@@ -120,10 +120,13 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::LogNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
+    break;
   case Kinded::Kind::SplatNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
-         ElemKind::Int64ITy});
+         ElemKind::Int32ITy, ElemKind::Int64ITy});
     break;
   case Kinded::Kind::ExpNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
@@ -243,20 +246,78 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy});
     break;
   case Kinded::Kind::ConvertToNodeKind: {
-    auto isConversionSupportedFor = [](ElemKind kind) {
-      switch (kind) {
-      case ElemKind::FloatTy:
+    auto isConversionSupportedFor = [](ElemKind kindFrom, ElemKind kindTo) {
+      switch (kindFrom) {
+
       case ElemKind::Float16Ty:
-      case ElemKind::Int32ITy:
+        switch (kindTo) {
+        case ElemKind::FloatTy:
+        case ElemKind::Int8QTy:
+        case ElemKind::UInt8QTy:
+          return true;
+        default:
+          return false;
+        }
+        return false;
+
+      case ElemKind::FloatTy:
+        switch (kindTo) {
+        case ElemKind::Float16Ty:
+        case ElemKind::Int8QTy:
+        case ElemKind::UInt8QTy:
+          return true;
+        default:
+          return false;
+        }
+        return false;
+
       case ElemKind::Int64ITy:
+        switch (kindTo) {
+        case ElemKind::Int32ITy:
+        case ElemKind::FloatTy:
+        case ElemKind::Int8QTy:
+          return true;
+        default:
+          return false;
+        }
+        return false;
+
+      case ElemKind::Int32ITy:
+        switch (kindTo) {
+        case ElemKind::Int64ITy:
+        case ElemKind::FloatTy:
+        case ElemKind::Int8QTy:
+          return true;
+        default:
+          return false;
+        }
+        return false;
+
+      case ElemKind::Int32QTy:
+        switch (kindTo) {
+        case ElemKind::Float16Ty:
+          return true;
+        default:
+          return false;
+        }
+        return false;
+
+      case ElemKind::UInt8QTy:
+      case ElemKind::Int8QTy:
         return true;
+
+      case ElemKind::UInt8FusedQTy:
+        return (kindTo == ElemKind::Float16Ty);
+      case ElemKind::UInt8FusedFP16QTy:
+        return (kindTo == ElemKind::Float16Ty);
       default:
         return false;
       }
+      return false;
     };
     isNodePrecisionSupported =
-        isConversionSupportedFor(NI.getInElemTy(ConvertToNode::InputIdx)) &&
-        isConversionSupportedFor(NI.getOutElemTy(ConvertToNode::ResultIdx));
+        isConversionSupportedFor(NI.getInElemTy(ConvertToNode::InputIdx),
+                                 NI.getOutElemTy(ConvertToNode::ResultIdx));
     break;
   }
   case Kinded::Kind::FullyConnectedNodeKind:

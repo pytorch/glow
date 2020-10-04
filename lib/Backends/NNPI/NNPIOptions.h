@@ -345,6 +345,8 @@ public:
     INIT_NNPI_OPTIONS(iceBOPrio5, parameters);
     INIT_NNPI_OPTIONS(ddrBandwidth, parameters);
     INIT_NNPI_OPTIONS(disableSLSOffloadToIA, parameters);
+    INIT_NNPI_OPTIONS(forceWeightsOutOfLLC, parameters);
+    INIT_NNPI_OPTIONS(disableSlsAllLenOneCalcAtRunTime, parameters);
     INIT_NNPI_OPTIONS(lightCompilation, parameters);
     INIT_NNPI_OPTIONS(forceWeightsOutOfLLC, parameters);
     INIT_NNPI_OPTIONS(disableSlsAllLenOneCalcAtRunTime, parameters);
