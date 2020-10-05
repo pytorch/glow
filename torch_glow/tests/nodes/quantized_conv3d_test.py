@@ -1,11 +1,11 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import logging
 import unittest
 
 import torch
 from tests.utils import jitVsGlow
 
-import logging
 
 logger = logging.getLogger("quantized conv3d test")
 logger.setLevel(logging.INFO)
