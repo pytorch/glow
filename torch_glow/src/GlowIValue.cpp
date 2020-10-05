@@ -446,6 +446,8 @@ Error GlowIValue::fromIValue(const at::IValue &ival) {
   } else if (ival.isString()) {
     std::string str = ival.toStringRef();
     fromString(std::move(str));
+  } else if (ival.isDevice()) {
+    fromInt(0); // TODO: Properly handle device iVal
   } else if (ival.isGenericDict()) {
     const auto &genericDict = ival.toGenericDict();
     GlowIValueMap ivalMap;
