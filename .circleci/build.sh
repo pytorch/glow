@@ -156,6 +156,7 @@ elif [[ "$CIRCLE_JOB" == "PYTORCH" ]]; then
     git clone https://github.com/pytorch/pytorch.git --recursive --depth 1
     cd pytorch
     pip install -r requirements.txt
+    pip install parameterized
     BUILD_BINARY=OFF BUILD_TEST=0 BUILD_CAFFE2_OPS=1 USE_FBGEMM=ON python setup.py install
     cd ${GLOW_DIR}
     cd build

@@ -1,6 +1,7 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import os
 import sys
 
 import torch_glow
@@ -8,6 +9,26 @@ import torch
 
 GLOW_NODE_NAME = "glow::FusionGroup"
 SUBGRAPH_ATTR = "Subgraph"
+BACKEND_NAME_KEY = "BACKEND_NAME"
+
+
+def get_backend_name():
+    if BACKEND_NAME_KEY in os.environ:
+        return os.environ[BACKEND_NAME_KEY]
+    else:
+        return "Interpreter"
+
+
+def check_skip(case):
+    backend = get_backend_name()
+    supported = {"Interpreter"}
+    try:
+        supported = supported | case.supported_backends
+    except AttributeError:
+        pass
+
+    if backend not in supported:
+        case.skipTest("Skipping tests for backend: " + backend)
 
 
 def jitVsGlow(
@@ -20,7 +41,8 @@ def jitVsGlow(
     rtol=1e-3,
     black_list=None,
     use_script=False,
-    use_fp16=False
+    use_fp16=False,
+    backend_name=None,
 ):
     """
     Runs the given inputs *inputs on f both with and without lowering f to Glow,
@@ -37,6 +59,7 @@ def jitVsGlow(
             accept_all_ops=accept_all_ops,
             black_list=black_list,
             use_fp16=use_fp16,
+            backend_name=backend_name,
         )
     else:
         traceVsGlow(
@@ -50,6 +73,7 @@ def jitVsGlow(
             accept_all_ops=accept_all_ops,
             black_list=black_list,
             use_fp16=use_fp16,
+            backend_name=backend_name,
         )
 
 
@@ -129,7 +153,8 @@ def traceVsGlow(
     expected_fused_ops=None,
     accept_all_ops=False,
     black_list=None,
-    use_fp16=False
+    use_fp16=False,
+    backend_name=None,
 ):
     if black_list is None:
         black_list = []
@@ -144,8 +169,17 @@ def traceVsGlow(
 
         if use_fp16:
             torch_glow.enable_convert_to_fp16()
+            torch_glow.enable_convert_fused_to_fp16()
+            torch_glow.enable_clip_fp16()
         else:
             torch_glow.disable_convert_to_fp16()
+            torch_glow.disable_convert_fused_to_fp16()
+            torch_glow.disable_clip_fp16()
+
+        if backend_name:
+            torch_glow.setGlowBackend(backend_name)
+        else:
+            torch_glow.setGlowBackend("Interpreter")
 
         glow_trace = torch.jit.trace(f_glow, inputs, check_trace=check_trace)
         glow_res = glow_trace(*inputs)
@@ -162,6 +196,13 @@ def traceVsGlow(
         glow_graph = glow_trace.graph_for(*inputs)
         print("glow_graph,", glow_graph)
 
+        # need to explicitly clear settings to avoid carry-over static settings
+        torch_glow.disableFusionPass()
+        torch_glow.disable_convert_to_fp16()
+        torch_glow.disable_convert_fused_to_fp16()
+        torch_glow.disable_clip_fp16()
+        torch_glow.setGlowBackend("Interpreter")
+
     checkExpectedOps(glow_graph, expected_fused_ops, accept_all_ops)
     checkResult(torch_res, glow_res, atol, rtol)
 
@@ -174,7 +215,8 @@ def scriptVsGlow(
     expected_fused_ops=None,
     accept_all_ops=False,
     black_list=None,
-    use_fp16=False
+    use_fp16=False,
+    backend_name=None,
 ):
     if black_list is None:
         black_list = []
@@ -187,14 +229,30 @@ def scriptVsGlow(
 
         if use_fp16:
             torch_glow.enable_convert_to_fp16()
+            torch_glow.enable_convert_fused_to_fp16()
+            torch_glow.enable_clip_fp16()
         else:
             torch_glow.disable_convert_to_fp16()
+            torch_glow.disable_convert_fused_to_fp16()
+            torch_glow.disable_clip_fp16()
+
+        if backend_name:
+            torch_glow.setGlowBackend(backend_name)
+        else:
+            torch_glow.setGlowBackend("Interpreter")
 
         glow_trace = torch.jit.script(f)
         glow_res = glow_trace(*inputs)
 
         glow_graph = glow_trace.graph_for(*inputs)
         print("glow_graph,", glow_graph)
+
+        # need to explicitly clear settings to avoid carry-over static settings
+        torch_glow.disableFusionPass()
+        torch_glow.disable_convert_to_fp16()
+        torch_glow.disable_convert_fused_to_fp16()
+        torch_glow.disable_clip_fp16()
+        torch_glow.setGlowBackend("Interpreter")
 
     checkExpectedOps(glow_graph, expected_fused_ops, accept_all_ops)
     checkResult(torch_res, glow_res, atol, rtol)
