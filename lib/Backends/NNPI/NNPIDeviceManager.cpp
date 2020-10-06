@@ -188,6 +188,7 @@ void NNPIDeviceManager::addNetwork(const Module *module,
       functions_.erase(func.first);
       lock.unlock();
       readyCB(module, std::move(err));
+      return;
     }
   }
 
