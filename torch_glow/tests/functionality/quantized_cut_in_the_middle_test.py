@@ -42,6 +42,7 @@ class TestQuantizedCut(unittest.TestCase):
             # Cut using blacklist functionality
             blacklist = ["quantized::add_relu"]
             torch_glow.setFusionBlacklist(blacklist)
+            torch_glow.setGlowBackend("Interpreter")
             traced_model = torch.jit.trace(fun, (a, b, c, d))
             for node in traced_model.graph_for(a, b, c, d).nodes():
                 kind = node.kind()
