@@ -7662,3 +7662,30 @@ TEST_F(GraphOptz, OptConvertToDequantize) {
                                                        mod_.getPRNG());
   checkNumericalEquivalence(0.007f);
 }
+
+/// Test that Exp+ReduceSum+Div is replaced with SoftMax.
+TEST_F(GraphOptz, FoldExpSumDivIntoSoftmax) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 10},
+                                              "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  auto *exp = F_->createExp("exp", input);
+  auto *reduce_sum = F_->createBatchedReduceAdd("reduce_sum", exp, {1});
+  auto *div = F_->createNodeWithBroadcast<DivNode>("div", 1, exp, reduce_sum);
+  F_->createSave("save", div);
+
+  EXPECT_EQ(5, F_->getNodes().size());
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::FoldExpSumDivIntoSoftmax, getDCEPassConfig()});
+
+  EXPECT_EQ(2, optimizedF_->getNodes().size());
+
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::ExpNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::DivNodeKind));
+  EXPECT_EQ(0,
+            countNodeKind(optimizedF_, Kinded::Kind::BatchedReduceAddNodeKind));
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SoftMaxNodeKind));
+
+  checkNumericalEquivalence(1e-7f);
+}
