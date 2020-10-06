@@ -4801,13 +4801,36 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsetsHelper(
     return addValueMapping(outputs[0], glowConstant->getOutput());
   }
 
-  glow::NodeValue perSampleWeights = loadNodeValueOrCreateBroadcastedConstant(
-      inputs[EmbeddingBagByteRowwiseOffsetsInputs::per_sample_weights],
-      (is4Bit ? "EmbeddingBag4BitRowwiseOffsets.ones"
-              : "EmbeddingBagByteRowwiseOffsets.ones"),
-      glow::Type((is4Bit ? ElemKind::Float16Ty : ElemKind::FloatTy),
-                 {indices.dims()[0]}),
-      1.0);
+  glow::NodeValue perSampleWeights;
+  if (is4Bit) {
+    // Glow supported perSampleWeights is fp16 but PyTorch uses fp32,
+    // therefore the input needs to be cast.
+    auto node =
+        inputs[EmbeddingBagByteRowwiseOffsetsInputs::per_sample_weights];
+    if (hasGlowNodeValueForValue(node)) {
+      glow::NodeValue gnode;
+      ASSIGN_VALUE_OR_RETURN_ERR(gnode, getGlowNodeValueForValue(node));
+
+      perSampleWeights =
+          F_.createConvertTo(
+                "ConvertEmbeddingBag4BitRowwiseOffsetsPerSampleWeights", gnode,
+                ElemKind::Float16Ty)
+              ->getResult();
+    } else {
+      glow::Tensor t(ElemKind::Float16Ty, {indices.dims()[0]});
+      t.init(glow::Tensor::InitKind::Broadcast, 1.0, F_.getParent()->getPRNG());
+      perSampleWeights =
+          F_.getParent()
+              ->createConstant("EmbeddingBag4BitRowwiseOffsets.ones",
+                               std::move(t))
+              ->getOutput();
+    }
+  } else {
+    perSampleWeights = loadNodeValueOrCreateBroadcastedConstant(
+        inputs[EmbeddingBagByteRowwiseOffsetsInputs::per_sample_weights],
+        "EmbeddingBagByteRowwiseOffsets.ones",
+        glow::Type((ElemKind::FloatTy), {indices.dims()[0]}), 1.0);
+  }
 
   glow::Constant *weightConstant =
       llvm::dyn_cast<glow::Constant>(weight.getNode());
