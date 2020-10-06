@@ -690,7 +690,10 @@ void glowAOTFusionWithShapeInference(
           LOG(ERROR) << "Node " << node->kind().toQualString() << " input " << i
                      << " Not found in the shape map!";
         }
-        perGraphInputMeta.emplace_back(itr->second.dtype, itr->second.shape);
+        // Only support tensor input for now
+        // TODO Add support for other input types, e.g., tensor[]
+        perGraphInputMeta.emplace_back(itr->second.dtype,
+                                       itr->second.shape<TensorShape>());
       }
 
       e = runner->warmCache(perGraphInputMeta, runner->getSettings(),
