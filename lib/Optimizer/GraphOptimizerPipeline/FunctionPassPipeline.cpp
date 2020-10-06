@@ -141,6 +141,9 @@ createDefaultGraphOptimizationPassPipeline() {
       // Optimize reshapes introduced during above optimizations.
       {FunctionPassID::OptimizeReshape},
 
+      // Optimize exp + reduce sum + div into softmax
+      {FunctionPassID::OptimizeExpSumDiv},
+
       // Run a round of constant folding.
       {FunctionPassID::ConstantFold},
 

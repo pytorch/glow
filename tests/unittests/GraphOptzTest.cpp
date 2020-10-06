@@ -6080,3 +6080,31 @@ TEST_F(GraphOptz, lower1x1AdaptiveAvgPoolToAvgPool) {
   // Now compile/run/compare F_ and optimizedF_.
   checkNumericalEquivalence(1e-6);
 }
+
+/// Test that Exp+ReduceSum+Div is replaced with SoftMax.
+TEST_F(GraphOptz, OptimizeExpSumDivIntoSoftmax) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 10},
+                                              "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+  auto *exp = F_->createExp("exp", input);
+  auto *reduce_sum = F_->createBatchedReduceAdd("reduce_sum", exp, {1});
+  auto *div = F_->createNodeWithBroadcast<DivNode>("div", 1, exp, reduce_sum);
+  F_->createSave("save", div);
+
+  // Broadcasted DivNode introduced two more nodes: broadcast, tile
+  EXPECT_EQ(6, F_->getNodes().size());
+
+  optimizedF_ = optimizeFunction(
+      F_, {FunctionPassID::OptimizeExpSumDiv, getDCEPassConfig()});
+
+  EXPECT_EQ(2, optimizedF_->getNodes().size());
+
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::ExpNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::DivNodeKind));
+  EXPECT_EQ(0,
+            countNodeKind(optimizedF_, Kinded::Kind::BatchedReduceAddNodeKind));
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::SoftMaxNodeKind));
+
+  checkNumericalEquivalence(1e-7f);
+}

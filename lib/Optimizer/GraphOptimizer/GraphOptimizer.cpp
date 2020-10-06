@@ -5088,6 +5088,75 @@ bool QuantizeSwish::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Fold Exp + ReduceSum + Div into Softmax
+///    IN
+///     |
+///    Exp                IN
+///   /   \                |
+///  |  ReduceSum  -->  Softmax
+///   \   /                |
+///    Div                OUT
+///     |
+///    OUT
+bool OptimizeExpSumDiv::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    auto *EN = dyn_cast<ExpNode>(&N);
+    if (!EN || EN->getNumUsers() != 2) {
+      continue;
+    }
+
+    DivNode *DN;
+    BatchedReduceAddNode *RSN;
+    bool optimizationPossible = true;
+
+    for (auto &node : EN->getUsers()) {
+      auto *user = node.getUser();
+      if (isa<DivNode>(user)) {
+        DN = cast<DivNode>(user);
+      } else if (isa<BatchedReduceAddNode>(user)) {
+        RSN = cast<BatchedReduceAddNode>(user);
+      } else {
+        optimizationPossible = false;
+        break;
+      }
+    }
+
+    if (!optimizationPossible || RSN->getNumUsers() != 1) {
+      continue;
+    }
+
+    // DivNode is a broadcasted node when introduced two extra nodes
+    // for broadcasting and tiling. Ensure that these nodes exist in the
+    // graph.
+    auto *broadcastNode = getOnlyUser(*RSN);
+    if (broadcastNode == nullptr) {
+      continue;
+    }
+    auto *tileNode = getOnlyUser(*broadcastNode);
+    if (tileNode == nullptr) {
+      continue;
+    }
+    auto *tempDN = getOnlyUser(*tileNode);
+    // Ensure that the inputs to the DivNode are Exp and ReduceSum.
+    if (DN != tempDN) {
+      continue;
+    }
+
+    auto axes = EN->getInput().dims().vec();
+    axes.back() = 1;
+    auto *CN = F->getParent()->createConstant(glow::ElemKind::Int64ITy, axes,
+                                              "selected");
+
+    auto *SM = F->createSoftMax("softmax", EN->getInput(), CN);
+    DN->getResult().replaceAllUsesOfWith(SM);
+    changed = true;
+  }
+  return changed;
+}
+
 /// This funciton uses TypeAToTypeBFunctionConverter to do a whole graph
 /// demotion of Index type from INT64 to INT32.
 static void transformIndexTypeDemotion(const Backend &B, Function *F,
