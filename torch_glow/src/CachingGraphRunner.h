@@ -24,6 +24,7 @@
 #include <torch/csrc/jit/ir/ir.h>
 #include <torch/csrc/jit/serialization/import.h>
 
+#include "ShapeInferenceEngine.h"
 #include <shared_mutex>
 
 namespace glow {
@@ -78,8 +79,7 @@ class CachingGraphRunner {
   /// Here we assume this is only one corresponding Glow function.
   /// Mapping from hash of PyTorch inputs to PerGlowGraphShape for the Glow
   /// function that will run inputs matching that hash.
-  std::unordered_map<size_t, std::vector<std::vector<int64_t>>>
-      perGlowGraphShapeMap_;
+  std::unordered_map<size_t, MetaStack> perGlowGraphShapeMap_;
 
   /// In AOT flow, compile a single Glow function and use it for all input
   /// sizes. The PyTorch tensor inputs in this case should be smaller that the
@@ -136,9 +136,8 @@ class CachingGraphRunner {
   /// info is returned immediately. Otherwise this will run the shape inference
   /// engine, push the generated the output shape into \p perGlowGraphShapeMap_,
   /// and then \returns the output shape pointer.
-  Expected<std::vector<std::vector<int64_t>> *>
-  loadShape(const c10::ArrayRef<c10::IValue> &inputs,
-            TraceContext *traceContext);
+  Expected<MetaStack *> loadShape(const c10::ArrayRef<c10::IValue> &inputs,
+                                  TraceContext *traceContext);
 
   /// Given a PerGlowGraphInfo \p info for a subgraph that was previously
   /// loaded, this runs the Glow function that corresponds to that

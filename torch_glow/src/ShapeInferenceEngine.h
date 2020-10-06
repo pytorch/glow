@@ -17,8 +17,10 @@
 #ifndef GLOW_TORCH_GLOW_SRC_SHAPEINFERENCEENGINE_H
 #define GLOW_TORCH_GLOW_SRC_SHAPEINFERENCEENGINE_H
 
+#include "boost/variant.hpp"
 #include <string>
 #include <unordered_set>
+
 #include <vector>
 
 #include "glow/Support/Error.h"
@@ -29,13 +31,22 @@
 /// expected by PyTorch.
 namespace glow {
 
+typedef std::vector<int64_t> TensorShape;
+typedef std::vector<std::vector<int64_t>> TensorListShape;
+using ElemShape = boost::variant<TensorShape, TensorListShape>;
+
 struct VariableMeta {
-  /// Store shape info of Tensor, Scalar, and IntList
-  std::vector<int64_t> shape;
+  /// For Tensor, Tensor[], store the shape in \p listOfShape[0]
+  /// For tuple(Tensor, Tensor[], ...), store shapes in \p listOfShape
+  std::vector<ElemShape> listOfShape;
   /// Store Int and IntList value
   std::vector<int64_t> intValue;
   /// Data type
   c10::ScalarType dtype = c10::ScalarType::Float;
+
+  template <typename T> const T &shape() const {
+    return boost::get<T>(listOfShape[0]);
+  }
 };
 
 using MetaStack = std::vector<VariableMeta>;
@@ -47,7 +58,7 @@ public:
                        const std::string &fusionNodeSymbol = "ShapeInf");
 
   /// Get all VariableMeta for outputs of the given graph.
-  const std::vector<std::vector<int64_t>> &getGraphOutputShape();
+  const MetaStack &getGraphOutputShape();
 
   /// Get the Variable Map which uses const torch::jit::Value * as a key,
   /// VariableMeta as a value.
@@ -74,7 +85,7 @@ private:
   std::unordered_map<const torch::jit::Value *, VariableMeta> shapeMap_;
 
   /// Store shapes of all the outputs in a graph.
-  std::vector<std::vector<int64_t>> outputShape_;
+  MetaStack outputShape_;
 
   /// Offset flag for aten::embedding_bag and embedding_bag_byte_rowwise_offsets
   /// In Glow, \p hasEndOffset_ always true
@@ -89,8 +100,8 @@ private:
   void printShapeMap();
 
   /// Put shape info of actual graph inputs into \p shapeMap_.
-  Error getGraphIntputShape(const torch::jit::Graph &,
-                            const at::ArrayRef<torch::jit::IValue> &);
+  Error getGraphInputShape(const torch::jit::Graph &,
+                           const at::ArrayRef<torch::jit::IValue> &);
 
   /// Extract shape info of graph outputs from \p shapeMap_.
   void generateGraphOutputShape();
@@ -102,48 +113,45 @@ private:
   Error shapeOnNode(const torch::jit::Node *node);
 
   // Shape inference for prim::Constant
-  static Expected<std::vector<int64_t>>
-  primConstant(const torch::jit::Node *node);
+  static Expected<TensorShape> primConstant(const torch::jit::Node *node);
   // Shape inference for aten::add, aten::mul, aten::pow
-  static Expected<std::vector<int64_t>>
-  binaryOp(const MetaStack &variableMetas);
+  static Expected<TensorShape> binaryOp(const MetaStack &variableMetas);
   // Shape inference for aten::mm
-  static Expected<std::vector<int64_t>> mm(const MetaStack &variableMetas);
+  static Expected<TensorShape> mm(const MetaStack &variableMetas);
   // Shape inference for aten::bmm
-  static Expected<std::vector<int64_t>> bmm(const MetaStack &variableMetas);
+  static Expected<TensorShape> bmm(const MetaStack &variableMetas);
   // Shape inference for aten::addmm
-  static Expected<std::vector<int64_t>> addmm(const MetaStack &variableMetas);
+  static Expected<TensorShape> addmm(const MetaStack &variableMetas);
   // Shape inference for aten::t
-  static Expected<std::vector<int64_t>> t(const MetaStack &variableMetas);
+  static Expected<TensorShape> t(const MetaStack &variableMetas);
   // Shape inference for prim::ConstantChunk
-  static Expected<std::vector<std::vector<int64_t>>>
-  constantChunk(const MetaStack &variableMetas, int64_t chunks, int64_t dim);
+  static Expected<TensorListShape> constantChunk(const MetaStack &variableMetas,
+                                                 int64_t chunks, int64_t dim);
   // Shape inference for prim::FusedConcat
-  static Expected<std::vector<int64_t>>
-  fusedConcat(const MetaStack &variableMetas, int64_t dim);
+  static Expected<TensorShape> fusedConcat(const MetaStack &variableMetas,
+                                           int64_t dim);
   // Shape inference for prim::ListConstruct
-  static Expected<std::vector<int64_t>>
-  listConstruct(const MetaStack &variableMetas);
+  static Expected<TensorShape> listConstruct(const MetaStack &variableMetas);
   // Shape inference for aten::permute
-  static Expected<std::vector<int64_t>> permute(const MetaStack &variableMetas);
+  static Expected<TensorShape> permute(const MetaStack &variableMetas);
   // Shape inference for aten::reshape
-  static Expected<std::vector<int64_t>> reshape(const MetaStack &variableMetas);
+  static Expected<TensorShape> reshape(const MetaStack &variableMetas);
   // Shape inference for aten::slice
-  static Expected<std::vector<int64_t>> slice(const MetaStack &variableMetas);
+  static Expected<TensorShape> slice(const MetaStack &variableMetas);
   // Shape inference for aten::transpose
-  static Expected<std::vector<int64_t>>
-  transpose(const MetaStack &variableMetas);
+  static Expected<TensorShape> transpose(const MetaStack &variableMetas);
   // Shape inference for aten::flatten
-  static Expected<std::vector<int64_t>> flatten(const MetaStack &variableMetas);
+  static Expected<TensorShape> flatten(const MetaStack &variableMetas);
   // Shape inference for glow::fused_stack
-  static Expected<std::vector<int64_t>>
-  fusedStack(const MetaStack &variableMetas, int64_t dim);
+  static Expected<TensorShape> fusedStack(const MetaStack &variableMetas,
+                                          int64_t dim);
   // Shape inference for fb::embedding_bag_byte_rowwise_offsets
-  static Expected<std::vector<int64_t>>
+  static Expected<TensorShape>
   embeddingBagByteRowwiseOffsets(const MetaStack &variableMetas);
   // Shape inference for aten::embedding_bag
-  static Expected<std::vector<int64_t>>
-  embeddingBag(const MetaStack &variableMetas);
+  static Expected<TensorShape> embeddingBag(const MetaStack &variableMetas);
+  // Shape inference for aten::chuck
+  static Expected<TensorListShape> chunk(const MetaStack &variableMetas);
 };
 
 } // namespace glow
