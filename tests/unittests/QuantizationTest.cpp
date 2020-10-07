@@ -373,7 +373,7 @@ TEST(Quantization, quantizeTensorSymmetricPwr2Int32) {
 }
 
 /// Test 4-bit fused rowwise quantization.
-TEST(Quantization, fused4BitsRowwiseQuantizeTensor) {
+template <typename T> void fused4BitRowwiseQuantizationTest(ElemKind qTy) {
   // Create an FP32 tensor with 12 elements and initialize it
   // with numbers from the following test inputs here.
   // 1. Input that contains at least one +ve, one -ve and zero.
@@ -386,7 +386,8 @@ TEST(Quantization, fused4BitsRowwiseQuantizeTensor) {
   for (const auto &delta : deltas) {
     Tensor inputFP32(ElemKind::FloatTy, {2, 6});
     Tensor dequantized(ElemKind::FloatTy, {2, 6});
-    Tensor quantized(ElemKind::UInt4FusedFP16QTy, {2, 7}, /* dummy scale */ 1.0,
+    dim_t col = inputFP32.dims()[1] / 2 + 2 * sizeof(T);
+    Tensor quantized(qTy, {2, col}, /* dummy scale */ 1.0,
                      /* dummy offset */ 0);
     Handle<float> inputH = inputFP32.getHandle<float>();
     for (dim_t i = 0; i < 2; i++) {
@@ -395,8 +396,7 @@ TEST(Quantization, fused4BitsRowwiseQuantizeTensor) {
       }
     }
 
-    quantization::tensorFusedRowwiseQuantization<float16_t>(inputFP32,
-                                                            quantized);
+    quantization::tensorFusedRowwiseQuantization<T>(inputFP32, quantized);
     dequantized =
         quantization::tensor4BitsFusedRowwiseDequantization(quantized);
 
@@ -407,6 +407,16 @@ TEST(Quantization, fused4BitsRowwiseQuantizeTensor) {
       }
     }
   }
+}
+
+/// Test 4-bit fused rowwise fp32 scale/offset quantization.
+TEST(Quantization, fused4BitsFP32RowwiseQuantizeTensor) {
+  fused4BitRowwiseQuantizationTest<float>(ElemKind::UInt4FusedQTy);
+}
+
+/// Test 4-bit fused rowwise fp16 quantization.
+TEST(Quantization, fused4BitsFP16RowwiseQuantizeTensor) {
+  fused4BitRowwiseQuantizationTest<float16_t>(ElemKind::UInt4FusedFP16QTy);
 }
 
 /// When quantizing a scalar the quantization should not lose precision: the

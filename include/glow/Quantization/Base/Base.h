@@ -441,9 +441,9 @@ void tensorRowwiseQuantization(const Tensor &input, Tensor &output,
 /// |   .... int8 data ...    |   scale   |  offset   |
 /// |num_of_input_columns * 1B| sizeof(T) | sizeof(T) |
 /// For 4-bits quantization, in \p output, 1 byte will contain 2 quantized data.
-/// Template parameter \p T here must be float16_t.
-/// |   .... int4 data ...       | scale | offset |
-/// |num_of_input_columns * 0.5B |  2B   |   2B   |
+/// Template parameter \p T here could be either float or float16_t.
+/// |   .... int4 data ...       | scale        |   offset      |
+/// |num_of_input_columns * 0.5B |  sizeof(T)   |   sizeof(T)   |
 /// \pre input.dims().size() == 2
 /// \pre output.dims().size() == 2
 /// For 8-bits quantization:
@@ -464,11 +464,8 @@ void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output) {
     assert(input.dims()[1] + 2 * sizeof(T) == output.dims()[1] &&
            "Output must have 2*sizeof(T) more columns than input for 8-bits "
            "quantization.");
-  } else if (outputType == ElemKind::UInt4FusedFP16QTy) {
-    constexpr bool scaleIsFP16 = std::is_same<float16_t, T>::value;
-    (void)scaleIsFP16;
-    assert(scaleIsFP16 && "Only float16_t scale and offset are supported "
-                          "in 4-bit fused quantization");
+  } else if (outputType == ElemKind::UInt4FusedFP16QTy ||
+             outputType == ElemKind::UInt4FusedQTy) {
     assert(
         input.dims()[1] % 2 == 0 &&
         "4-bits fused quantization only works for the number of input column "
@@ -495,6 +492,7 @@ void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output) {
       range = 255.0;
       break;
     case ElemKind::UInt4FusedFP16QTy:
+    case ElemKind::UInt4FusedQTy:
       range = 15.0;
       break;
     default:
@@ -514,7 +512,8 @@ void tensorFusedRowwiseQuantization(const Tensor &input, Tensor &output) {
           outputType == ElemKind::UInt8FusedQTy) {
         destH.at({i, j}) = quantization::quantizeWithFloatOffset<uint8_t>(
             srcH.at({i, j}), scale, offset);
-      } else if (outputType == ElemKind::UInt4FusedFP16QTy) {
+      } else if (outputType == ElemKind::UInt4FusedFP16QTy ||
+                 outputType == ElemKind::UInt4FusedQTy) {
         uint8_t quantized = quantization::quantize4BitsWithFloatOffset(
             srcH.at({i, j}), scale, offset);
         if (j % 2 == 0) {
