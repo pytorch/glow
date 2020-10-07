@@ -4964,7 +4964,7 @@ BBoxTransformNode *Function::createBBoxTransform(
       rois.getType(), {deltasDims[0], deltasDims[1]});
   // Forcing roiBatchSplitsTy to always be Float.
   auto roiBatchSplitsTy =
-      getParent()->uniqueType(ElemKind::FloatTy, {imInfoDims[0]});
+      getParent()->uniqueType(rois.getElementType(), {imInfoDims[0]});
 
   return addNode(new BBoxTransformNode(
       name, boxOutTy, roiBatchSplitsTy, rois, deltas, imInfo, weights,

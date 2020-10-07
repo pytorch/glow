@@ -2218,6 +2218,9 @@ bool BBoxTransformNode::verify() const {
                                imInfoDims[1], dim_t(3), this);
   isValid &= expectCompareTrue("Rois and Deltas must have same 0 dimension",
                                roisDims[0], deltasDims[0], this);
+  isValid &= expectCompareTrue(
+      "Number of rois must be <= 2048 to be represented in FP16.", roisDims[0],
+      dim_t(2048), this, CompareOperatorLessEqual<dim_t>());
   isValid &= expectCompareTrue("Deltas must be divisible by box dimensions",
                                deltasDims[1] % expectedBoxDim, dim_t(0), this);
   isValid &= expectCompareTrue("Weights must be a 1D vector of length 4",

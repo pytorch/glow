@@ -2174,19 +2174,41 @@ public:
       weights[i] = glowWeights[i];
     }
 
-    return nnpiNetworkAddBBoxTransformOp(
-        importer.getNetwork(), glowBboxTransform->getName().begin(),
-        nodeValueName(glowBboxTransform->getRois()).c_str(),
-        nodeValueName(glowBboxTransform->getDeltas()).c_str(),
-        nodeValueName(glowBboxTransform->getImInfo()).c_str(),
-        nodeValueName(glowBboxTransform->getBoxOut()).c_str(),
-        nodeValueName(glowBboxTransform->getRoiBatchSplits()).c_str(), weights,
-        glowBboxTransform->getApplyScale(), glowBboxTransform->getRotated(),
-        glowBboxTransform->getAngleBoundOn(),
-        glowBboxTransform->getAngleBoundLo(),
-        glowBboxTransform->getAngleBoundHi(),
-        glowBboxTransform->getClipAngleThresh(),
-        glowBboxTransform->getLegacyPlusOne());
+    auto convertName = NNPIImporter::internalName_ +
+                       glowBboxTransform->getName().str() +
+                       "_RoiBatchSplits_ConvertToFP16";
+
+    std::string roiBatchSplitsFp32TensorName =
+        NNPIImporter::internalName_ + "roi_batch_splits_convert";
+
+    auto *roiBatchSplitsFP32Type = n->getParent()->getParent()->uniqueType(
+        ElemKind::FloatTy,
+        glowBboxTransform->getRoiBatchSplits().getType()->dims());
+
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(roiBatchSplitsFp32TensorName, roiBatchSplitsFP32Type),
+        "failed to create BBoxTransform RoiBatchSplits convert");
+
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        nnpiNetworkAddBBoxTransformOp(
+            importer.getNetwork(), glowBboxTransform->getName().begin(),
+            nodeValueName(glowBboxTransform->getRois()).c_str(),
+            nodeValueName(glowBboxTransform->getDeltas()).c_str(),
+            nodeValueName(glowBboxTransform->getImInfo()).c_str(),
+            nodeValueName(glowBboxTransform->getBoxOut()).c_str(),
+            roiBatchSplitsFp32TensorName.c_str(), weights,
+            glowBboxTransform->getApplyScale(), glowBboxTransform->getRotated(),
+            glowBboxTransform->getAngleBoundOn(),
+            glowBboxTransform->getAngleBoundLo(),
+            glowBboxTransform->getAngleBoundHi(),
+            glowBboxTransform->getClipAngleThresh(),
+            glowBboxTransform->getLegacyPlusOne()),
+        "Failed to add bboxTransform node");
+
+    return nnpiNetworkAddConvertOp(
+        importer.getNetwork(), convertName.c_str(),
+        roiBatchSplitsFp32TensorName.c_str(),
+        nodeValueName(glowBboxTransform->getRoiBatchSplits()).c_str());
   }
 };
 

@@ -1596,7 +1596,7 @@ static void testBBoxTransform(PlaceholderBindings &bindings, Module &mod,
   }
   std::cout << "Max diff: " << maxDiff << std::endl;
 }
-#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+
 TEST_P(OperatorTest, BBoxTransform_Float) {
   CHECK_IF_ENABLED();
   testBBoxTransform<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy, false,
@@ -1608,7 +1608,6 @@ TEST_P(OperatorTest, BBoxTransform_Float16) {
   testBBoxTransform<float16_t>(bindings_, mod_, *F_, EE_, ElemKind::Float16Ty,
                                false, false, false, 0, 0, 0, true);
 }
-#endif // NNPI >= 1.1
 
 // Helper to test SpaceToDepth using \p DTy.
 template <typename DataType>
