@@ -161,7 +161,7 @@ Error InferencePoolEnv::init(NNPIAdapterContainer *adapter,
     }
 
     // Create NNPI device network (deploy to device).
-    LOG_NNPI_INF_IF_ERROR_RETURN_LLVMERROR(
+    LOG_NNPI_INF_IF_ERROR_RETURN_FATAL_LLVMERROR(
         nnpiDeviceNetworkCreate(device, hostNetwork, pCfg, &deviceNetwork_),
         "Failed to create NNPI device network");
     DBG_MEM_USAGE("done nnpiDeviceNetworkCreate");

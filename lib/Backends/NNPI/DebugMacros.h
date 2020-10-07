@@ -171,6 +171,18 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
     }                                                                          \
   }
 
+#define LOG_NNPI_INF_IF_ERROR_RETURN_FATAL_LLVMERROR(exp, msg)                 \
+  {                                                                            \
+    NNPIInferenceErrorCode exp_res = (exp);                                    \
+    if (exp_res == NNPI_INF_INTERNAL_DRIVER_ERROR) {                           \
+      LOG(ERROR) << NNPI_INF_ERROR_MSG(exp_res, msg);                          \
+      RETURN_ERR(ErrorValue::ErrorCode::RUNTIME_DEVICE_NONRECOVERABLE, msg);   \
+    } else if (exp_res != NNPI_INF_NO_ERROR) {                                 \
+      LOG(ERROR) << NNPI_INF_ERROR_MSG(exp_res, msg);                          \
+      RETURN_ERR(msg);                                                         \
+    }                                                                          \
+  }
+
 #define LOG_NNPI_IF_ERROR_RETURN_VALUE(exp, msg)                               \
   {                                                                            \
     NNPIErrorCode exp_res = (exp);                                             \
