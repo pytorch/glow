@@ -2142,15 +2142,18 @@ getOutputTypeOfFusedRowwiseQuantizedSLS(Function *F, NodeValue data,
   // fused.
   CHECK(isFusedQuantizedElemKind(data.getElementType()))
       << "Must use a fused ElemKind for data.";
-  outDims[1] -= 2 * ((data.getElementType() == ElemKind::UInt8FusedQTy)
+  outDims[1] -= 2 * ((data.getElementType() == ElemKind::UInt8FusedQTy ||
+                      data.getElementType() == ElemKind::UInt4FusedQTy)
                          ? sizeof(float)
                          : sizeof(float16_t));
   // If using 4-bit quantization, then the input data has packed two 4-bit
   // elements into one byte, so we need to double the outDims.
-  if (data.getElementType() == ElemKind::UInt4FusedFP16QTy) {
+  if (data.getElementType() == ElemKind::UInt4FusedFP16QTy ||
+      data.getElementType() == ElemKind::UInt4FusedQTy) {
     outDims[1] *= 2;
   }
-  const ElemKind outputK = (data.getElementType() == ElemKind::UInt8FusedQTy)
+  const ElemKind outputK = (data.getElementType() == ElemKind::UInt8FusedQTy ||
+                            data.getElementType() == ElemKind::UInt4FusedQTy)
                                ? ElemKind::FloatTy
                                : ElemKind::Float16Ty;
   return F->getParent()->uniqueType(outputK, outDims);
@@ -2222,6 +2225,18 @@ static Constant *quantizeDataForFusedRowwiseQuantizedSparseLengthsWeightedSum(
     Constant *rwqData = F->getParent()->createConstant(
         precision, {fDims.first, outerDim}, 0.0, 0, "data");
     quantization::tensorFusedRowwiseQuantization<float16_t>(
+        fData, rwqData->getPayloadMutable());
+    return rwqData;
+  }
+  case ElemKind::UInt4FusedQTy: {
+    // We pack 4-bit values into bytes, so given the input size in float we
+    // divide by two and take the ceiling to make sure we have enough space for
+    // all elements.
+    const dim_t outerDim =
+        std::ceil(((float)fDims.second) / 2) + 2 * sizeof(float);
+    Constant *rwqData = F->getParent()->createConstant(
+        precision, {fDims.first, outerDim}, 0.0, 0, "data");
+    quantization::tensorFusedRowwiseQuantization<float>(
         fData, rwqData->getPayloadMutable());
     return rwqData;
   }
@@ -5260,6 +5275,11 @@ void Function::randomizeConstants(
           std::numeric_limits<uint8_t>::max(), getPRNG());
       break;
     case ElemKind::UInt4FusedFP16QTy:
+      payload.getHandle<uint8_t>().randomize(
+          std::numeric_limits<uint8_t>::lowest(),
+          std::numeric_limits<uint8_t>::max(), getPRNG());
+      break;
+    case ElemKind::UInt4FusedQTy:
       payload.getHandle<uint8_t>().randomize(
           std::numeric_limits<uint8_t>::lowest(),
           std::numeric_limits<uint8_t>::max(), getPRNG());
