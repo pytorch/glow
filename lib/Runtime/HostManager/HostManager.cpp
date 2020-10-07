@@ -500,6 +500,9 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
 
   auto err = provisioner_->provision(nodeList, *module, cctx);
   if (err) {
+    if (err.peekErrorValue()->isFatalError()) {
+      statsExporterRegistry_->setCounter(kDeviceFatalError, 1);
+    }
     {
       std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
       cleanupAddNetwork(names);
