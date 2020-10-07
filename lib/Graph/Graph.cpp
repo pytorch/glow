@@ -315,7 +315,7 @@ protected:
       os << "|";
       std::vector<std::string> names(N->getNumResults());
       for (size_t i = 0; i < names.size(); i++) {
-        names[i] = N->getOutputName(i).str();
+        names[i] = N->getOutputName(i);
       }
       dumpLabelForRow(names, os);
     }
@@ -421,7 +421,7 @@ class ModuleDottyPrinter : public AbstractDottyPrinter {
           continue;
 
         std::ostringstream edge;
-        edge << uniqueVertexName(to) << ":" << to->getOutputName(resNo).str()
+        edge << uniqueVertexName(to) << ":" << to->getOutputName(resNo)
              << " -> " << uniqueVertexName(F);
         dumpEdgeStyle(&N, i, to, edge);
         edges_.insert(edge.str());
@@ -5798,7 +5798,7 @@ class FunctionDottyPrinter : public AbstractDottyPrinter {
       size_t resNo = pred.getResNo();
       std::ostringstream edge;
       edge << pred.getNode()->getName().str() << ":"
-           << pred.getNode()->getOutputName(resNo).str() << " -> "
+           << pred.getNode()->getOutputName(resNo) << " -> "
            << N->getName().str() << ":w";
       dumpEdgeStyle(N, 0, pred, edge);
       edges_.insert(edge.str());
@@ -5810,8 +5810,8 @@ class FunctionDottyPrinter : public AbstractDottyPrinter {
       size_t resNo = N->getNthInput(i).getResNo();
 
       std::ostringstream edge;
-      edge << to->getName().str() << ":" << to->getOutputName(resNo).str()
-           << " -> " << N->getName().str() << ":" << N->getInputName(i);
+      edge << to->getName().str() << ":" << to->getOutputName(resNo) << " -> "
+           << N->getName().str() << ":" << N->getInputName(i);
       dumpEdgeStyle(N, i, to, edge);
       edges_.insert(edge.str());
 

@@ -163,7 +163,7 @@ void IntermediateLayerComparator::hookSingleNodeInPlace(
     std::list<Placeholder *> &hookPlaceholders) {
   std::string layerName = node.getName().str();
   for (unsigned i = 0; i < node.getNumResults(); ++i) {
-    std::string saveName = node.getOutputName(i).str();
+    std::string saveName = node.getOutputName(i);
     saveName += "_" + layerName + "_hook";
     SaveNode *save =
         node.getParent()->createSave(saveName, node.getNthResult(i));
@@ -251,7 +251,7 @@ void IntermediateLayerComparator::fillSingleLayerInputs(
       if (!llvm::isa<Placeholder>(inputNode)) {
         // If the input is placeholder the name stays the
         // same since these don't get hooked.
-        std::string outputName = inputNode->getOutputName(resNo).str();
+        std::string outputName = inputNode->getOutputName(resNo);
         hookedPlaceholderName =
             outputName + "_" + hookedPlaceholderName + "_hook";
       }

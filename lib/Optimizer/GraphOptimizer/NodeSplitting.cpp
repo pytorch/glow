@@ -493,7 +493,7 @@ verifySplitNodes(const Node *node, dim_t splitOutputIdx,
                      << inputRanges[idx].toString() << "\n";
       }
       for (unsigned idx = 0, e = clone->getNumResults(); idx < e; ++idx) {
-        llvm::errs() << clone->getOutputName(idx).str() << ": "
+        llvm::errs() << clone->getOutputName(idx) << ": "
                      << outputRanges[idx].toString() << "\n";
       }
       llvm::errs() << "Node description:\n";

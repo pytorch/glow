@@ -51,7 +51,7 @@ public:
   unsigned getNumInputs() const;
   std::string getInputName(unsigned idx) const;
   NodeValue getNthInput(unsigned idx);
-  llvm::StringRef getOutputName(unsigned idx) const;
+  std::string getOutputName(unsigned idx) const;
   bool hasSideEffects() const;
   bool isCanonical() const { return true; }
   bool isDataParallel() const { return false; }

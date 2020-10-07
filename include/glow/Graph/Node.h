@@ -90,7 +90,7 @@ public:
   NodeValue getNthInput(unsigned idx);
   const NodeValue getNthInput(unsigned idx) const;
   void setNthInput(unsigned idx, NodeValue val);
-  llvm::StringRef getOutputName(unsigned idx) const;
+  std::string getOutputName(unsigned idx) const;
   bool hasSideEffects() const;
   bool isArithmetic() const;
   bool isCanonical() const;
