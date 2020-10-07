@@ -2330,6 +2330,84 @@ TEST_P(OperatorTest, LSTMUnitFP16) {
   }
 }
 
+TEST_P(OperatorTest, PyTorchLSTMFP16) {
+  CHECK_IF_ENABLED();
+
+  unsigned minibatchSize = 2;
+  unsigned inputSize = 3;
+  unsigned hiddenSize = 4;
+  unsigned numSteps = 3;
+
+  // Input
+  auto *X = mod_.createPlaceholder(ElemKind::Float16Ty,
+                                   {numSteps, minibatchSize, inputSize},
+                                   "Input", false);
+  auto IH = bindings_.allocate(X)->getHandle<float16_t>();
+  for (unsigned i = 0; i < numSteps * minibatchSize * inputSize; i++) {
+    IH.raw(i) = 0.1 * i;
+  }
+
+  // Weights & Bias
+  Tensor tWx(ElemKind::Float16Ty, {inputSize, 4 * hiddenSize});
+  for (unsigned i = 0; i < inputSize * 4 * hiddenSize; i++) {
+    tWx.getHandle<float16_t>().raw(i) = 0.1 * i;
+  }
+  auto Wx = (mod_.createConstant("Wx", std::move(tWx)))->getOutput();
+
+  Tensor tWh(ElemKind::Float16Ty, {hiddenSize, 4 * hiddenSize});
+  for (unsigned i = 0; i < hiddenSize * 4 * hiddenSize; i++) {
+    tWh.getHandle<float16_t>().raw(i) = 0.1 * (i + 1);
+  }
+  auto Wh = (mod_.createConstant("Wh", std::move(tWh)))->getOutput();
+
+  Tensor tBx(ElemKind::Float16Ty, {4 * hiddenSize});
+  for (unsigned i = 0; i < 4 * hiddenSize; i++) {
+    tBx.getHandle<float16_t>().raw(i) = 0.1 * (i + 2);
+  }
+  auto Bx = (mod_.createConstant("Bx", std::move(tBx)))->getOutput();
+
+  Tensor tBh(ElemKind::Float16Ty, {4 * hiddenSize});
+  for (unsigned i = 0; i < 4 * hiddenSize; i++) {
+    tBh.getHandle<float16_t>().raw(i) = 0.1 * (i + 3);
+  }
+  auto Bh = (mod_.createConstant("Bh", std::move(tBh)))->getOutput();
+
+  // H & C
+  auto *H = mod_.createPlaceholder(ElemKind::Float16Ty,
+                                   {minibatchSize, hiddenSize}, "H", false);
+  auto *C = mod_.createPlaceholder(ElemKind::Float16Ty,
+                                   {minibatchSize, hiddenSize}, "C", false);
+
+  auto hH = bindings_.allocate(H)->getHandle<float16_t>();
+  auto hC = bindings_.allocate(C)->getHandle<float16_t>();
+  for (unsigned i = 0; i < minibatchSize * hiddenSize; i++) {
+    hH.raw(i) = 0.1 * (i + 4);
+    hC.raw(i) = 0.1 * (i + 5);
+  }
+
+  NodeValue nH = H, nC = C;
+  NodeValue output;
+  F_->createPyTorchLSTM("lstm", X, Wx, Wh, Bx, Bh, nH, nC, output, false);
+
+  auto *save = F_->createSave("save_output", output);
+  auto *saveTensor = bindings_.allocate(save->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto saveH = saveTensor->getHandle<float16_t>();
+
+  // expectOutput calculated by PyTorch Float32 using torch.nn.LSTM() with same
+  // input, weights, biases, h and c. Set eps to 1E-3 since OperatorTest could
+  // be Float16
+  float expectOutput[] = {0.9050, 0.9216, 0.9354, 0.9468, 0.9562, 0.9640,
+                          0.9704, 0.9758, 0.9866, 0.9890, 0.9910, 0.9926,
+                          0.9940, 0.9951, 0.9959, 0.9967, 0.9982, 0.9985,
+                          0.9988, 0.9990, 0.9992, 0.9993, 0.9995, 0.9996};
+  for (int i = 0; i < numSteps * minibatchSize * hiddenSize; i++) {
+    EXPECT_NEAR(saveH.raw(i), expectOutput[i], 1E-3);
+  }
+}
+
 TEST_P(OperatorTest, log) {
   CHECK_IF_ENABLED();
 
