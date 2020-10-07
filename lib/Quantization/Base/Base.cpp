@@ -196,20 +196,21 @@ Tensor dequantizeTensor(const Tensor &tensor, ElemKind floatKind) {
   return tmp;
 }
 
-Tensor tensor4BitsFusedRowwiseDequantization(const Tensor &input) {
+template <class T = float16_t>
+static Tensor tensor4BitsFusedRowwiseDequantizationUtil(const Tensor &input) {
   assert(input.dims().size() == 2 && "Input must be 2 dimensional.");
   // The output tensor should have the same raw as input tensor. Since the
   // quantized tensor is in the following format: | 4bit quantized data |
-  // float16_t scale | float16_t offset| The columns of dequantized float data
-  // should be (input.dims()[1] - 2*sizeof(float16_t)) * 2.
+  // T scale | T offset| The columns of dequantized float data
+  // should be (input.dims()[1] - 2*sizeof(T)) * 2.
   Tensor output(
       ElemKind::FloatTy,
-      {input.dims()[0], (dim_t)(input.dims()[1] - 2 * sizeof(float16_t)) * 2});
+      {input.dims()[0], (dim_t)(input.dims()[1] - 2 * sizeof(T)) * 2});
   auto srcH = input.getHandle<uint8_t>();
   auto destH = output.getHandle<float>();
   for (dim_t i = 0; i < input.dims()[0]; i++) {
-    float16_t scale, offset;
-    std::tie(scale, offset) = srcH.getFusedScaleOffsetFromRow<float16_t>(i);
+    T scale, offset;
+    std::tie(scale, offset) = srcH.getFusedScaleOffsetFromRow<T>(i);
     for (dim_t j = 0; j < output.dims()[1]; j++) {
       bool isMSB = (j % 2 == 1);
       destH.at({i, j}) = dequantize4BitWithFloatOffset(
@@ -218,6 +219,16 @@ Tensor tensor4BitsFusedRowwiseDequantization(const Tensor &input) {
     }
   }
   return output;
+}
+
+Tensor tensor4BitsFusedRowwiseDequantization(const Tensor &input) {
+  auto Ty = input.getType().getElementType();
+  assert((Ty == ElemKind::UInt4FusedFP16QTy || Ty == ElemKind::UInt4FusedQTy) &&
+         "Unsupported 4bits fused rw quantization type.");
+  if (Ty == ElemKind::UInt4FusedFP16QTy) {
+    return tensor4BitsFusedRowwiseDequantizationUtil<float16_t>(input);
+  }
+  return tensor4BitsFusedRowwiseDequantizationUtil<float>(input);
 }
 
 QuantizationTransform32To8 quantizeScaleOffset32To8(float scale,

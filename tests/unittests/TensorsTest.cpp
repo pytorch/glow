@@ -1279,6 +1279,11 @@ TEST(Tensor, GetFusedScaleOffset_UInt4FusedFP16QTy) {
   testGetSetFusedScaleOffset<float16_t>(ElemKind::UInt4FusedFP16QTy);
 }
 
+/// Test getting and setting fused scales and offsets from UInt4FusedQTy.
+TEST(Tensor, GetFusedScaleOffset_UInt4FusedQTy) {
+  testGetSetFusedScaleOffset<float>(ElemKind::UInt4FusedQTy);
+}
+
 /// Check if dump functions work for Tensor
 TEST(Tensor, dump) {
   Tensor T = {1.2f, 12.1f, 51.0f, 1515.2f};
