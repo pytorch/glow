@@ -382,6 +382,7 @@ private:
   template <typename T>
   void fwdROIAlignInstFloatImpl(glow::ROIAlignInst const *I);
 
+  template <typename T>
   void fwdBBoxTransformInstFloatImpl(glow::BBoxTransformInst const *I);
 
   template <typename T, typename AccumT>
