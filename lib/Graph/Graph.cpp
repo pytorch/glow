@@ -3512,9 +3512,9 @@ void Function::createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue input,
     return strFormat("%s.%s_%d", nameBase.c_str(), s, t);
   };
   std::vector<NodeValue> inputs, outputs;
-  unsigned batchSize, hiddenSize, timeSteps;
+  unsigned batchSize, inputSize, timeSteps;
   batchSize = input.dims()[1];
-  hiddenSize = input.dims()[2];
+  inputSize = input.dims()[2];
   timeSteps = input.dims()[0];
   // Input gate:
   //    I <- sigmoid(Wxi * x + Bxi + Whi * h + Bhi)
@@ -3532,10 +3532,10 @@ void Function::createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue input,
   std::vector<Node *> outputNodes;
   for (unsigned t = 0; t < timeSteps; t++) {
     auto inputSliced = createSlice(name("slice", t), input, {t, 0, 0},
-                                   {t + 1, batchSize, hiddenSize})
+                                   {t + 1, batchSize, inputSize})
                            ->getResult();
     inputSliced =
-        createReshape(name("reshape", t), inputSliced, {batchSize, hiddenSize});
+        createReshape(name("reshape", t), inputSliced, {batchSize, inputSize});
     auto *Result = createAdd(
         name("add1", t), createFullyConnected(name("fc1", t), Ht, Wh, Bh),
         createFullyConnected(name("fc2", t), inputSliced, Wx, Bx));
