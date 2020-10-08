@@ -977,18 +977,21 @@ private:
     auto const *myData = getUnsafePtr();
     auto const *otherData = other.getUnsafePtr();
     dim_t mismatchCount = 0;
-    for (size_t i = 0, e = getSizeInBytes(); i < e; i++) {
-      if (myData[i] != otherData[i]) {
-        if (!verbose) {
-          return false;
+
+    if (verbose) {
+      for (size_t i = 0, e = getSizeInBytes(); i < e; i++) {
+        if (myData[i] != otherData[i]) {
+          ++mismatchCount;
         }
-        ++mismatchCount;
       }
+      if (mismatchCount != 0) {
+        LOG(INFO) << "Tensors not bitwise equal: " << mismatchCount
+                  << " bytes out of " << getSizeInBytes() << " mismatched.";
+      }
+    } else {
+      mismatchCount = memcmp(myData, otherData, getSizeInBytes());
     }
-    if (mismatchCount != 0) {
-      LOG(INFO) << "Tensors not bitwise equal: " << mismatchCount
-                << " bytes out of " << getSizeInBytes() << " mismatched.";
-    }
+
     return mismatchCount == 0;
   }
 };
