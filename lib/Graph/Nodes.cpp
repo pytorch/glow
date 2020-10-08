@@ -2527,11 +2527,17 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os,
   case FusedActivation::RELU:
     os << "RELU";
     break;
+  case FusedActivation::CLIP:
+    os << "CLIP";
+    break;
   case FusedActivation::SIGMOID:
     os << "SIGMOID";
     break;
   case FusedActivation::TANH:
     os << "TANH";
+    break;
+  case FusedActivation::LEAKY_RELU:
+    os << "LEAKY_RELU";
     break;
   }
   return os;

@@ -69,6 +69,36 @@ bool CPUBackend::shouldLower(const Node *N) const {
   }
 }
 
+bool CPUBackend::supportsFusedActivation(Node *parent, Node *activation) const {
+  // CPU backend only supports fusing activations into Convolution.
+  if (parent->getKind() != Kinded::Kind::ConvolutionNodeKind) {
+    return false;
+  }
+
+  // Get activation output type.
+  assert(activation->getNumResults() == 1 &&
+         "Activation has multiple results!");
+  auto *actOutTy = activation->getNthResult(0).getType();
+
+  // Only the following activations can be fused.
+  // Additionally Tanh/Sigmoid are fused only for floating-point type. For
+  // quantized type Lookup Tables should be used instead.
+  switch (activation->getKind()) {
+  case Kinded::Kind::ReluNodeKind:
+    return true;
+  case Kinded::Kind::ClipNodeKind:
+    return true;
+  case Kinded::Kind::SigmoidNodeKind:
+    return actOutTy->isFPType();
+  case Kinded::Kind::TanhNodeKind:
+    return actOutTy->isFPType();
+  case Kinded::Kind::LeakyReluNodeKind:
+    return true;
+  default:
+    return false;
+  }
+}
+
 unsigned CPUBackend::numDevices() {
   return std::thread::hardware_concurrency();
 }

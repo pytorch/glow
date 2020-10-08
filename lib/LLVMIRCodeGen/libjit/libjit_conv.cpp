@@ -54,7 +54,8 @@ void libjit_quantized_conv2d_generic(
     const dim_t *strides, const dim_t *pads, dim_t group, int32_t outOffset,
     int32_t inOffset, int32_t filterOffset, int32_t biasOffset, int32_t biasPre,
     int32_t biasPost, int32_t biasScale, int32_t outPre, int32_t outPost,
-    int32_t outScale, unsigned depthUnroll, dim_t dilation) {
+    int32_t outScale, unsigned depthUnroll, dim_t dilation, int32_t actType,
+    const int32_t *actArgs) {
   dim_t inChannels = inWdims[3];
   dim_t outChannels = outWdims[3];
   dim_t inCperG = inChannels / group;
@@ -133,6 +134,8 @@ void libjit_quantized_conv2d_generic(
               // Scale the result back to the expected destination scale.
               int32_t scaledSum = libjit_scale_i32i8(sum[i], outPre, outPost,
                                                      outScale, outOffset);
+              scaledSum =
+                  libjit_activation_i32(scaledSum, outOffset, actType, actArgs);
               outW[libjit_getXYZW(outWdims, n, ax, ay, d + i)] =
                   libjit_clip(scaledSum);
             }
@@ -346,7 +349,8 @@ void libjit_conv2d_f(float *outW, const float *inW, const float *filterW,
                      const dim_t *inWdims, const dim_t *filterWdims,
                      const dim_t *biasWdims, const dim_t *kernelSizes,
                      const dim_t *strides, const dim_t *pads, dim_t group,
-                     unsigned depthUnroll, dim_t dilation) {
+                     unsigned depthUnroll, dim_t dilation, int32_t actType,
+                     const float *actArgs) {
   dim_t inChannels = inWdims[3];
   dim_t outChannels = outWdims[3];
   dim_t inCperG = inChannels / group;
@@ -377,6 +381,7 @@ void libjit_conv2d_f(float *outW, const float *inW, const float *filterW,
 
     // For each group of input channels:
     for (dim_t g = 0; g < group; g++) {
+
       // Process the body of the loop in tiles of "channel-block".
       for (dim_t cb = 0; cb < inCperG; cb += cbSize) {
 
@@ -387,6 +392,12 @@ void libjit_conv2d_f(float *outW, const float *inW, const float *filterW,
           // For each element in the convolution-filter:
           for (dim_t fx = 0; fx < kernel_h; fx++) {
             for (dim_t fy = 0; fy < kernel_w; fy++) {
+
+              // Flag to signal whether this is the last iteration in which we
+              // finalize the accumulation and is time to apply the activation.
+              bool lastSumIter = (fx == (kernel_h - 1)) &&
+                                 (fy == (kernel_w - 1)) &&
+                                 ((cb + cbSize) >= inCperG);
 
               // For each convolution 'jump' in the input tensor:
               for (dim_t outx = 0; outx < outWdims[1]; outx++) {
@@ -411,6 +422,16 @@ void libjit_conv2d_f(float *outW, const float *inW, const float *filterW,
                   // Ignore index access below zero (this is due to padding).
                   if (inx < 0 || iny < 0 || inx >= (sdim_t)inWdims[1] ||
                       iny >= (sdim_t)inWdims[2]) {
+                    // If this is the last iteration and we skip it we apply
+                    // the activation.
+                    if (actType && lastSumIter) {
+                      for (unsigned i = 0; i < depthUnroll; i++) {
+                        dim_t outIdx =
+                            libjit_getXYZW(outWdims, n, outx, outy, d + i);
+                        outW[outIdx] =
+                            libjit_activation_f(outW[outIdx], actType, actArgs);
+                      }
+                    }
                     continue;
                   }
 
@@ -446,8 +467,13 @@ void libjit_conv2d_f(float *outW, const float *inW, const float *filterW,
 
                   // Store the results to the output buffer.
                   for (unsigned i = 0; i < depthUnroll; i++) {
-                    outW[libjit_getXYZW(outWdims, n, outx, outy, d + i)] +=
-                        sum[i];
+                    dim_t outIdx =
+                        libjit_getXYZW(outWdims, n, outx, outy, d + i);
+                    float sumIter = outW[outIdx] + sum[i];
+                    if (actType && lastSumIter) {
+                      sumIter = libjit_activation_f(sumIter, actType, actArgs);
+                    }
+                    outW[outIdx] = sumIter;
                   }
                 }
               }
@@ -466,12 +492,13 @@ void libjit_conv2d_i8_i32(
     const dim_t *strides, const dim_t *pads, dim_t group, int32_t outOffset,
     int32_t inOffset, int32_t filterOffset, int32_t biasOffset, int32_t biasPre,
     int32_t biasPost, int32_t biasScale, int32_t outPre, int32_t outPost,
-    int32_t outScale, unsigned depthUnroll, dim_t dilation) {
+    int32_t outScale, unsigned depthUnroll, dim_t dilation, int32_t actType,
+    const int32_t *actArgs) {
   libjit_quantized_conv2d_generic<int8_t, int32_t>(
       outW, inW, filterW, biasW, outWdims, inWdims, filterWdims, biasWdims,
       kernelSizes, strides, pads, group, outOffset, inOffset, filterOffset,
       biasOffset, biasPre, biasPost, biasScale, outPre, outPost, outScale,
-      depthUnroll, dilation);
+      depthUnroll, dilation, actType, actArgs);
 }
 
 void libjit_conv2d_i8_i8(int8_t *outW, const int8_t *inW, const int8_t *filterW,
@@ -483,12 +510,13 @@ void libjit_conv2d_i8_i8(int8_t *outW, const int8_t *inW, const int8_t *filterW,
                          int32_t filterOffset, int32_t biasOffset,
                          int32_t biasPre, int32_t biasPost, int32_t biasScale,
                          int32_t outPre, int32_t outPost, int32_t outScale,
-                         unsigned depthUnroll, dim_t dilation) {
+                         unsigned depthUnroll, dim_t dilation, int32_t actType,
+                         const int32_t *actArgs) {
   libjit_quantized_conv2d_generic<int8_t, int8_t>(
       outW, inW, filterW, biasW, outWdims, inWdims, filterWdims, biasWdims,
       kernelSizes, strides, pads, group, outOffset, inOffset, filterOffset,
       biasOffset, biasPre, biasPost, biasScale, outPre, outPost, outScale,
-      depthUnroll, dilation);
+      depthUnroll, dilation, actType, actArgs);
 }
 
 void libjit_channelwise_quantized_conv2d_i8_i32(

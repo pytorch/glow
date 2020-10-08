@@ -91,6 +91,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "Dilation")
       .addMember(MEMBER_TYPE_INFO(ConvolutionLayout), "Layout")
       .addMember(MEMBER_TYPE_INFO(FusedActivation), "FusedActivation")
+      .addMember(MemberType::VectorFloat, "FusedActivationArgs")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"})
       .addGradientInstr({"Src", "Filter"}, {"Dest", "Src", "Filter", "Bias"});

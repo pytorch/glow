@@ -4928,36 +4928,36 @@ template <class T> bool fuseActivation(T *N, Function *F, const Backend *B) {
     return false;
   }
 
-  FusedActivation activationType;
   NodeValue activationNV;
   switch (activation->getKind()) {
   case Kinded::Kind::ReluNodeKind:
-    activationType = FusedActivation::RELU;
     activationNV = cast<ReluNode>(activation)->getResult();
+    N->setFusedActivation(FusedActivation::RELU);
+    break;
+  case Kinded::Kind::ClipNodeKind:
+    activationNV = cast<ClipNode>(activation)->getResult();
+    N->setFusedActivation(FusedActivation::CLIP);
+    N->setFusedActivationArgs({cast<ClipNode>(activation)->getMin(),
+                               cast<ClipNode>(activation)->getMax()});
     break;
   case Kinded::Kind::SigmoidNodeKind:
-    activationType = FusedActivation::SIGMOID;
     activationNV = cast<SigmoidNode>(activation)->getResult();
+    N->setFusedActivation(FusedActivation::SIGMOID);
     break;
   case Kinded::Kind::TanhNodeKind:
-    activationType = FusedActivation::TANH;
     activationNV = cast<TanhNode>(activation)->getResult();
+    N->setFusedActivation(FusedActivation::TANH);
+    break;
+  case Kinded::Kind::LeakyReluNodeKind:
+    activationNV = cast<LeakyReluNode>(activation)->getResult();
+    N->setFusedActivation(FusedActivation::LEAKY_RELU);
+    N->setFusedActivationArgs({cast<LeakyReluNode>(activation)->getAlpha()});
     break;
   default:
     return false;
   }
 
-  // currently not to support asymmetric quantization fusion.
-  if (N->getResult().getType()->isQuantizedType() &&
-      ((N->getResult().getType()->getOffset() != 0) ||
-       (activationNV.getType()->getOffset() != 0))) {
-    return false;
-  }
-
-  N->setFusedActivation(activationType);
-
-  // In only symmetric case, If Relu outScale is not equal to Conv outScale,
-  // Conv outScale is replaced by Relu outScale.
+  // Modify the node output type to that of the activation.
   if (!(activationNV.getType()->isEqual(N->getResult().getType()))) {
     N->getResult().setType(activationNV.getType());
   }

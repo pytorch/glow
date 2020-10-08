@@ -53,6 +53,9 @@ public:
 
   bool shouldLower(const Node *N) const override;
 
+  /// \returns whether the backend supports fusing \p activation into \p parent.
+  bool supportsFusedActivation(Node *parent, Node *activation) const override;
+
   runtime::DeviceManager *
   createDeviceManager(const runtime::DeviceConfig &deviceConfig) override {
     return createCPUDeviceManager(deviceConfig);
