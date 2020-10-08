@@ -281,7 +281,7 @@ class MockBackendCustomIRGen : public Backend {
           "CustomConvolutionInstruction", Dest__, Src, Filter, Bias,
           CN__->getKernels(), CN__->getStrides(), CN__->getPads(),
           CN__->getGroup(), CN__->getDilation(), CN__->getLayout(),
-          CN__->getFusedActivation());
+          CN__->getFusedActivation(), {});
       if (N->hasPredicate()) {
         V->setPredicate(irgen.valueForNode(N->getPredicate()));
       }
