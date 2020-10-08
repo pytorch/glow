@@ -108,7 +108,6 @@ Expected<std::vector<ElemTy>> getShape(const AttrType *arg,
 template <typename AttrType>
 Expected<std::vector<float>> getFloats(const AttrType *arg) {
   RETURN_ERR_IF_NOT(arg, "Node has no floats attribute with this name");
-  RETURN_ERR_IF_NOT(arg->floats_size() > 0, "Node has no floats values");
   std::vector<float> dim;
   for (auto i : arg->floats()) {
     dim.push_back(i);
