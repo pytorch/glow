@@ -76,8 +76,9 @@ bool CPUBackend::supportsFusedActivation(Node *parent, Node *activation) const {
   }
 
   // Get activation output type.
-  assert(activation->getNumResults() == 1 &&
-         "Activation has multiple results!");
+  if (activation->getNumResults() != 1) {
+    return false;
+  }
   auto *actOutTy = activation->getNthResult(0).getType();
 
   // Only the following activations can be fused.
