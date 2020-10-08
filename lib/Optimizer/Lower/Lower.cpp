@@ -1047,6 +1047,8 @@ static void lowerGroupConvolutionNode(Function *F, CompilationContext &cctx,
     convs.push_back(F->createConv(BNG.getName(), in_slice, filter_slice,
                                   bias_slice, outTy, kernels, strides, pads, 1,
                                   BNG.getDilation()));
+    convs.back().setFusedActivation(BNG.getFusedActivation());
+    convs.back().setFusedActivationArgs(BNG.getFusedActivationArgs());
   }
   auto *result = F->createConcat(BNG.getName(), convs, 3);
   replaceAllUsesOfWith(cctx.loweredInfoMap, BNG.getResult(), result);
@@ -1750,7 +1752,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(LSTMUnit);
   case Kinded::Kind::ConvolutionNodeKind: {
     ConvolutionNode *CN = cast<ConvolutionNode>(node);
-    if (CN->getGroup() > 1 && CN->hasFusedActivation()) {
+    if (CN->getGroup() > 1) {
       lowerGroupConvolutionNode(F, cctx, *CN);
       return true;
     }
