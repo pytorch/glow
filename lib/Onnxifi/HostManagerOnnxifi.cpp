@@ -271,8 +271,12 @@ onnxStatus HostManagerBackend::addNetwork(
 
   auto err = hostManager_->addNetwork(std::move(module), cctx);
 
-  if (ERR_TO_BOOL(std::move(err))) {
-    return ONNXIFI_STATUS_INTERNAL_ERROR;
+  if (err) {
+    if (err.peekErrorValue() && err.peekErrorValue()->isFatalError()) {
+      return ONNXIFI_STATUS_FATAL_ERROR;
+    } else {
+      return ONNXIFI_STATUS_INTERNAL_ERROR;
+    }
   }
 
   return ONNXIFI_STATUS_SUCCESS;
