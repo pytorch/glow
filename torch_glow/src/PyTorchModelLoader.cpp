@@ -1082,6 +1082,7 @@ Error PyTorchModelLoader::runAndRemapSingleNode(
   cctx.optimizationOpts.enableConstantFolding = false;
   cctx.backendOpts.collectConstants = true;
   cctx.verboseCompile = false;
+  cctx.optimizationOpts.enableConstantDeduplication = false;
   RETURN_IF_ERR(executeConstantFunction(*backend, *tmpF, bindings, cctx, true));
 
   // Remap result back to original jit graph
