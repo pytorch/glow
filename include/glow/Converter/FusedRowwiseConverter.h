@@ -22,8 +22,8 @@ class Function;
 struct PrecisionConfiguration;
 
 /// Converts all Fp16 scale/offset of a function \p F to Fp32. Now only support
-/// FusedSLWS's data param, from UInt8FusedFP16QTy/UInt4FusedFP16QTy to
-/// UInt8FusedQTy.
+/// FusedSLWS's data param, from UInt8FusedFP16QTy -> UInt8FusedQTy, and
+/// UInt4FusedFP16QTy -> UInt4FusedQTy
 void convertFunctionToFP32ScaleOffset(Function *F,
                                       const PrecisionConfiguration &precConfig);
 

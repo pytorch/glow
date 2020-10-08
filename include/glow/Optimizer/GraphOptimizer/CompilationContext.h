@@ -74,6 +74,9 @@ struct PrecisionConfiguration {
   /// Whether to convert UInt8FusedFP16QTy to UInt8FusedQTy in the Function.
   bool convert8BitFusedToFP32{false};
 
+  /// Whether to convert UInt4FusedFP16QTy to UInt4FusedQTy in the Function.
+  bool convert4BitFusedToFP32{false};
+
   /// Whether to convert indices in FusedRowwiseSLWS to Int64ITy.
   bool convertIndicesToInt64{false};
 
