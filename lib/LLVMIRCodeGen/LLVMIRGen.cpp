@@ -554,7 +554,7 @@ llvm::Value *LLVMIRGen::emitConstQuantActivationArgs(llvm::IRBuilder<> &builder,
     LOG(FATAL) << "Fused Tanh for quantized type not supported!";
     break;
   case FusedActivation::LEAKY_RELU: {
-    // For LeakyRelu we transform the alpha parameter into pre/pos/scale.
+    // For LeakyRelu we transform the alpha parameter into pre/post/scale.
     assert(actArgsF.size() == 1 &&
            "Invalid number of parameters for fused LeakyRelu activation!");
     float alpha = actArgsF[0];

@@ -1045,9 +1045,9 @@ static void lowerGroupConvolutionNode(Function *F, CompilationContext &cctx,
     auto *bias_slice = F->createSlice(BNG.getName(), bias, {groupId * outCperG},
                                       {(groupId + 1) * outCperG});
 
-    auto *conv = F->createConv(BNG.getName(), in_slice, filter_slice,
-                               bias_slice, outTy, kernels, strides, pads, 1,
-                               BNG.getDilation());
+    auto *conv =
+        F->createConv(BNG.getName(), in_slice, filter_slice, bias_slice, outTy,
+                      kernels, strides, pads, 1, BNG.getDilation());
     conv->setFusedActivation(BNG.getFusedActivation());
     conv->setFusedActivationArgs(BNG.getFusedActivationArgs());
     convs.push_back(conv);
