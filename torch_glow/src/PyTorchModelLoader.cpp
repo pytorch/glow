@@ -378,6 +378,21 @@ Error dumpOnnxModel(glow::Function &F, bool zipMode) {
   return err;
 }
 
+/// Indexes of aten::lstm inputs.
+struct LSTMInputs {
+  enum {
+    input = 0,
+    hx = 1,
+    params = 2,
+    has_biases = 3,
+    num_layers = 4,
+    dropout = 5,
+    train = 6,
+    bidirectional = 7,
+    batch_first = 8,
+  };
+};
+
 /// Indexes of aten::_convolution inputs.
 struct ConvInputs {
   enum {
@@ -907,6 +922,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadUpsampleNearest3D},
       {{"aten::view"}, &PyTorchModelLoader::loadView},
       {{"aten::_convolution"}, &PyTorchModelLoader::loadConvolution},
+      {{"aten::lstm"}, &PyTorchModelLoader::loadLSTM},
       {{"aten::conv2d"}, &PyTorchModelLoader::loadConv2D},
       {{"aten::batch_norm"}, &PyTorchModelLoader::loadBatchNorm},
       {{"aten::norm", "aten::frobenius_norm"}, &PyTorchModelLoader::loadNorm},
@@ -2788,6 +2804,101 @@ Error PyTorchModelLoader::loadReciprocal(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
   glow::PowNode *glowNode = F_.createPow("reciprocal", input, /*exp=*/-1);
   return addValueMapping(outputs[0], glowNode->getResult());
+}
+
+Error PyTorchModelLoader::loadLSTM(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 9, outputs, 3));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[LSTMInputs::input]));
+
+  std::vector<glow::NodeValue> *hx;
+
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      hx, iValToNodeValueList(getGlowIValueForValue(inputs[LSTMInputs::hx])));
+  auto h03D = (*hx)[0];
+  auto c03D = (*hx)[1];
+  unsigned hiddenSize = h03D.dims()[2];
+
+  bool hasBiases;
+  ASSIGN_VALUE_OR_RETURN_ERR(hasBiases, iValToBool(getGlowIValueForValue(
+                                            inputs[LSTMInputs::has_biases])));
+
+  unsigned numLayers;
+  ASSIGN_VALUE_OR_RETURN_ERR(numLayers, iValToInt(getGlowIValueForValue(
+                                            inputs[LSTMInputs::num_layers])));
+  RETURN_ERR_IF_NOT(numLayers == 1, "Stacked LSTM is not supported in Glow.");
+
+  float dropout;
+  ASSIGN_VALUE_OR_RETURN_ERR(dropout, iValToDouble(getGlowIValueForValue(
+                                          inputs[LSTMInputs::dropout])));
+  RETURN_ERR_IF_NOT(dropout == 0,
+                    "Dropout is not allowed for inference in Glow.");
+
+  bool train, bidirectional, batchFirst;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      train, iValToBool(getGlowIValueForValue(inputs[LSTMInputs::train])));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      bidirectional,
+      iValToBool(getGlowIValueForValue(inputs[LSTMInputs::bidirectional])));
+  ASSIGN_VALUE_OR_RETURN_ERR(batchFirst, iValToBool(getGlowIValueForValue(
+                                             inputs[LSTMInputs::batch_first])));
+
+  RETURN_ERR_IF_NOT(train == false,
+                    "Training is not supported for LSTM in Glow.");
+  // TODO Support bidirectional LSTM
+  RETURN_ERR_IF_NOT(bidirectional == false,
+                    "Bidirectional is not supported for LSTM in Glow.");
+
+  RETURN_ERR_IF_NOT(batchFirst == false,
+                    "batch_first is not supported for LSTM in Glow.");
+
+  // TODO We assert bidirectional == false and num_layer == 1,
+  // therefore h03D & c03D 's 1st dimension is always 1.
+  // Once bidirectional is supported, we need to modify here.
+  auto hn =
+      F_.createReshape("reshape_H0", h03D, {h03D.dims()[1], h03D.dims()[2]})
+          ->getResult();
+  auto cn =
+      F_.createReshape("reshape_C0", c03D, {c03D.dims()[1], c03D.dims()[2]})
+          ->getResult();
+
+  std::vector<glow::NodeValue> *params;
+
+  ASSIGN_VALUE_OR_RETURN_ERR(params, iValToNodeValueList(getGlowIValueForValue(
+                                         inputs[LSTMInputs::params])));
+
+  glow::Constant *Wx = llvm::dyn_cast<glow::Constant>((*params)[0].getNode());
+  glow::Constant *Wh = llvm::dyn_cast<glow::Constant>((*params)[1].getNode());
+  glow::Constant *Bx, *Bh;
+  if (hasBiases) {
+    Bx = llvm::dyn_cast<glow::Constant>((*params)[2].getNode());
+    Bh = llvm::dyn_cast<glow::Constant>((*params)[3].getNode());
+  } else {
+    // We create zero bias tensor with same to input element kind.
+    auto inputElemKind = input.getType()->getElementType();
+    glow::Tensor BxT(inputElemKind, {4 * hiddenSize});
+    glow::Tensor BhT(inputElemKind, {4 * hiddenSize});
+    BxT.zero();
+    BhT.zero();
+    Bx = F_.getParent()->createConstant("Bx_Zero_Constant", std::move(BxT));
+    Bh = F_.getParent()->createConstant("Bh_Zero_Constant", std::move(BhT));
+  }
+  // W need to be transposed, in pt it is hiddenSize * inputSize,
+  // in glow it is inputSize * hiddenSize.
+  auto WxTransposed = F_.createTranspose("Wx_Transposed", Wx, {1, 0});
+  auto WhTransposed = F_.createTranspose("Wh_Transposed", Wh, {1, 0});
+
+  NodeValue output;
+  F_.createPyTorchLSTM("lstm", input, WxTransposed, WhTransposed, Bx, Bh, hn,
+                       cn, output, bidirectional);
+  RETURN_IF_ERR(addValueMapping(outputs[0], output));
+  RETURN_IF_ERR(addValueMapping(outputs[1], hn));
+  RETURN_IF_ERR(addValueMapping(outputs[2], cn));
+  return Error::success();
 }
 
 Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
