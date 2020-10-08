@@ -1068,15 +1068,16 @@ TEST(Tensor, insertSlice) {
 
 /// Check that after converting to UInt8FusedQTy, the data, scale and offset are
 /// the same as original ones.
+template <class Ty>
 static void testConvertToUInt8FusedQTy(ElemKind fusedKind, dim_t row,
                                        dim_t col) {
   EXPECT_LT(row, 100);
   EXPECT_LT(col, 100);
   Tensor T(fusedKind, {row, col}, 1.0, 0);
-  auto dataCol = col - 2 * sizeof(float16_t);
+  auto dataCol = col - 2 * sizeof(Ty);
   auto TH = T.getHandle<uint8_t>();
   for (dim_t i = 0; i < row; i++) {
-    TH.setFusedScaleOffsetInRow<float16_t>(i, i, i);
+    TH.setFusedScaleOffsetInRow<Ty>(i, i, i);
     for (dim_t j = 0; j < dataCol; j++) {
       TH.at({i, j}) = i + j;
     }
@@ -1084,7 +1085,8 @@ static void testConvertToUInt8FusedQTy(ElemKind fusedKind, dim_t row,
 
   Tensor newT = T.getCopyConvertedToType(ElemKind::UInt8FusedQTy);
   auto newTH = newT.getHandle<uint8_t>();
-  bool is4Bit = fusedKind == ElemKind::UInt4FusedFP16QTy;
+  bool is4Bit = fusedKind == ElemKind::UInt4FusedFP16QTy ||
+                fusedKind == ElemKind::UInt4FusedQTy;
 
   // Check the converted dims.
   auto expectedCol = dataCol * (is4Bit ? 2 : 1) + 2 * sizeof(float);
@@ -1733,10 +1735,15 @@ TEST(Tensor, accessToRawBinaryFile) {
 
 /// Test convert UInt4FusedFP16QTy tensor to a UInt8FusedQTy tensor.
 TEST(Tensor, typeConvert_UInt4FusedFP16QTy_To_UInt8FusedQTY) {
-  testConvertToUInt8FusedQTy(ElemKind::UInt4FusedFP16QTy, 10, 10);
+  testConvertToUInt8FusedQTy<float16_t>(ElemKind::UInt4FusedFP16QTy, 10, 10);
 }
 
 /// Test convert UInt8FusedFP16QTy tensor to a UInt8FusedQTy tensor.
 TEST(Tensor, typeConvert_UInt8FusedFP16QTy_To_UInt8FusedQTy) {
-  testConvertToUInt8FusedQTy(ElemKind::UInt8FusedFP16QTy, 10, 10);
+  testConvertToUInt8FusedQTy<float16_t>(ElemKind::UInt8FusedFP16QTy, 10, 10);
+}
+
+/// Test convert UInt4FusedQTy tensor to a UInt8FusedQTy tensor.
+TEST(Tensor, typeConvert_UInt4FusedQTy_To_UInt8FusedQTy) {
+  testConvertToUInt8FusedQTy<float>(ElemKind::UInt4FusedQTy, 10, 10);
 }

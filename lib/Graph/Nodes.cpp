@@ -1578,7 +1578,8 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
       "Input data must be Fused Quantized type",
       isFusedQuantizedElemKind(data.getType()->getElementType()), true, parent);
   dim_t extraCols;
-  if (data.getType()->getElementType() == ElemKind::UInt8FusedQTy) {
+  if (data.getType()->getElementType() == ElemKind::UInt8FusedQTy ||
+      data.getType()->getElementType() == ElemKind::UInt4FusedQTy) {
     extraCols = 2 * sizeof(float);
   } else {
     extraCols = 2 * sizeof(float16_t);
@@ -1625,7 +1626,8 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
     // If using 4-bit quantization for embeddings then the input is packed into
     // two elements per byte.
     dim_t finalSize = result.dims()[1];
-    if (data.getType()->getElementType() == ElemKind::UInt4FusedFP16QTy) {
+    if (data.getType()->getElementType() == ElemKind::UInt4FusedFP16QTy ||
+        data.getType()->getElementType() == ElemKind::UInt4FusedQTy) {
       finalSize /= 2;
     }
     isValid &=
