@@ -82,9 +82,7 @@ def checkResult(torch_res, glow_res, atol, rtol):
         assert isinstance(torch_res, tuple) and isinstance(glow_res, tuple)
         assert len(torch_res) == len(glow_res)
         for i in range(len(torch_res)):
-            print("torch shape: {}".format(torch_res[i].shape), file=sys.stderr)
-            print("glow shape: {}".format(glow_res[i].shape), file=sys.stderr)
-            assert torch.allclose(torch_res[i], glow_res[i], atol=atol, rtol=rtol)
+            checkResult(torch_res[i], glow_res[i], atol, rtol)
     else:
         print("torch shape: {}".format(torch_res.shape), file=sys.stderr)
         print("glow shape: {}".format(glow_res.shape), file=sys.stderr)
