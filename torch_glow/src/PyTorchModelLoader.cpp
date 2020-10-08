@@ -1082,6 +1082,10 @@ Error PyTorchModelLoader::runAndRemapSingleNode(
   cctx.optimizationOpts.enableConstantFolding = false;
   cctx.backendOpts.collectConstants = true;
   cctx.verboseCompile = false;
+  // Avoid constant folding on the subgraph. Constatnt deduplication still
+  // happens when the full graph is being run. This helps speed up Glow
+  // compilation.
+  cctx.optimizationOpts.enableConstantDeduplication = false;
   RETURN_IF_ERR(executeConstantFunction(*backend, *tmpF, bindings, cctx, true));
 
   // Remap result back to original jit graph
