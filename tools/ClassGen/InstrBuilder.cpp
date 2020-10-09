@@ -558,3 +558,8 @@ InstrBuilder &InstrBuilder::addMember(MemberType type,
 
   return addMember(*typeInfo, name);
 }
+
+InstrBuilder &InstrBuilder::addFusedActivation() {
+  return addMember(MEMBER_TYPE_INFO(glow::FusedActivation), "FusedActivation")
+      .addMember(MemberType::VectorFloat, "FusedActivationArgs");
+}
