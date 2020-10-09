@@ -128,10 +128,10 @@ public:
   virtual ~LLVMBackend() override = default;
 
   /// \returns the LLVM target triple for the host.
-  static llvm::StringRef getHostTarget();
+  static std::string getHostTarget();
 
   /// \returns the LLVM CPU name for the host.
-  static llvm::StringRef getHostCPU();
+  static std::string getHostCPU();
 
   /// \returns the LLVM CPU feature list for the host.
   static llvm::SmallVector<std::string, 0> getHostFeatures();

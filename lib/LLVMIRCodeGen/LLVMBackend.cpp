@@ -555,15 +555,15 @@ LLVMBackendOptions::LLVMBackendOptions() {
 
 LLVMBackend::LLVMBackend() {}
 
-llvm::StringRef LLVMBackend::getHostTarget() {
+std::string LLVMBackend::getHostTarget() {
   return llvm::sys::getDefaultTargetTriple();
 }
 
-llvm::StringRef LLVMBackend::getHostCPU() {
+std::string LLVMBackend::getHostCPU() {
   auto cpu_name = llvm::sys::getHostCPUName();
   // Skip avx512 because LLVM does not support it well.
   cpu_name.consume_back("-avx512");
-  return cpu_name;
+  return cpu_name.str();
 }
 
 llvm::SmallVector<std::string, 0> LLVMBackend::getHostFeatures() {
