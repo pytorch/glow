@@ -2187,12 +2187,14 @@ bool BBoxTransformNode::verify() const {
   auto imInfo = getImInfo();
   auto boxOut = getBoxOut();
   auto weights = getWeights();
+  auto period = getAngleBoundHi() - getAngleBoundLo();
 
   auto roisDims = rois.dims();
   auto deltasDims = deltas.dims();
   auto imInfoDims = imInfo.dims();
 
   bool rotated = getRotated();
+  bool angleBoundOn = getAngleBoundOn();
   // BoxDim is of the format
   // <x1, y1, x2, y2, [optional_angle]>
   dim_t expectedBoxDim = rotated ? 5 : 4;
@@ -2227,8 +2229,12 @@ bool BBoxTransformNode::verify() const {
                                deltasDims[1] % expectedBoxDim, dim_t(0), this);
   isValid &= expectCompareTrue("Weights must be a 1D vector of length 4",
                                weights.size(), size_t(4), this);
-  isValid &= expectCompareTrue("Rotated bbox transform is not supported.",
-                               rotated, false, this);
+  if (rotated && angleBoundOn) {
+    isValid &= expectCompareTrue(
+        "The difference between angleBoundHi and angleBoundLo "
+        "should be greater than 0 and divisible by 180",
+        period > 0 && period % 180 == 0, true, this);
+  }
 
   return isValid;
 }
