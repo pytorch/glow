@@ -6101,13 +6101,104 @@ static void bbox_transform_upright(
   }
 }
 
+// Like bbox_transform_upright, but works on rotated boxes.
+// boxes: pixel coordinates of the bounding boxes
+//     size (M, 5), format [ctr_x; ctr_y; width; height; angle (in degrees)]
+// deltas: bounding box translations and scales
+//     size (M, 5), format [dx; dy; dw; dh; da]
+//     dx, dy: scale-invariant translation of the center of the bounding box
+//     dw, dh: log-space scaling of the width and height of the bounding box
+//     da: delta for angle in radians
+// return: pixel coordinates of the bounding boxes
+//     size (M, 5), format [ctr_x; ctr_y; width; height; angle (in degrees)]
+template <typename T>
+static void bbox_transform_rotated(
+    Handle<T> &boxesOut, const Handle<T> &boxes, const Handle<T> &deltas,
+    dim_t startRowBoxesOut, dim_t startColBoxesOut, dim_t startRowBoxes,
+    dim_t startColBoxes, dim_t startRowDeltas, dim_t startColDeltas, dim_t rows,
+    llvm::ArrayRef<float> weights, const T &bboxXformClip, T scaleBeforeInv,
+    const bool angleBoundOn, ssize_t angleBoundLo, ssize_t angleBoundHi) {
+
+  if (boxes.dims()[0] == 0) {
+    return;
+  }
+
+  const T PI = 3.1415926535897931;
+
+  std::vector<T> dx(rows), dy(rows), dw(rows), dh(rows), da(rows);
+  for (dim_t i = 0; i < rows; i++) {
+    dx[i] = deltas.at({startRowDeltas + i, startColDeltas}) / T(weights[0]);
+    dy[i] = deltas.at({startRowDeltas + i, startColDeltas + dim_t(1)}) /
+            T(weights[1]);
+    dw[i] =
+        std::min(deltas.at({startRowDeltas + i, startColDeltas + dim_t(2)}) /
+                     T(weights[2]),
+                 bboxXformClip);
+    dh[i] =
+        std::min(deltas.at({startRowDeltas + i, startColDeltas + dim_t(3)}) /
+                     T(weights[3]),
+                 bboxXformClip);
+    // Convert back to degrees
+    da[i] = deltas.at({startRowDeltas + i, startColDeltas + dim_t(4)}) *
+            T(180.0) / PI;
+  }
+
+  for (dim_t i = 0; i < rows; i++) {
+    // new ctr_x
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut}) =
+        dx[i] * boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)}) *
+            scaleBeforeInv +
+        boxes.at({startRowBoxes + i, startColBoxes}) * scaleBeforeInv;
+    // new ctr_y
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(1)}) =
+        dy[i] * boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)}) *
+            scaleBeforeInv +
+        boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) *
+            scaleBeforeInv;
+    // new width
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(2)}) =
+        T(std::exp(float(dw[i]))) *
+        boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)}) *
+        scaleBeforeInv;
+    // new height
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(3)}) =
+        T(std::exp(float(dh[i]))) *
+        boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)}) *
+        scaleBeforeInv;
+    // new angle
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(4)}) =
+        da[i] + boxes.at({startRowBoxes + i, startColBoxes + dim_t(4)});
+  }
+
+  if (angleBoundOn) {
+    const ssize_t period = angleBoundHi - angleBoundLo;
+
+    for (dim_t i = 0; i < rows; i++) {
+      if (ssize_t(boxesOut.at({startRowBoxesOut + i,
+                               startColBoxesOut + dim_t(4)})) < angleBoundLo) {
+        boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(4)}) +=
+            T(period);
+      } else if (ssize_t(boxesOut.at(
+                     {startRowBoxesOut + i, startColBoxesOut + dim_t(4)})) >
+                 angleBoundHi) {
+        boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(4)}) -=
+            T(period);
+      }
+    }
+  }
+}
+
 // Clip boxes to image boundaries
 // boxes: pixel coordinates of bounding box, size (M * 4)
 template <typename T>
 void clip_boxes_upright(Handle<T> &boxes, dim_t startRowBoxes,
                         dim_t startColBoxes, dim_t rows, int height, int width,
-                        T scaleAfter, bool legacyPlusOne = false) {
+                        T scaleAfter, bool legacyPlusOne = false,
+                        std::vector<dim_t> uprightRows = {}) {
   for (dim_t i = 0; i < rows; i++) {
+    if (uprightRows.size() == rows && !uprightRows[i]) {
+      continue;
+    }
     // x1 >= 0 && x1 < width
     boxes.at({startRowBoxes + i, startColBoxes}) =
         scaleAfter *
@@ -6136,6 +6227,67 @@ void clip_boxes_upright(Handle<T> &boxes, dim_t startRowBoxes,
   }
 }
 
+// Similar to clip_boxes_upright but handles rotated boxes with angle info.
+// boxes: size (M, 5), format [ctr_x; ctr_y; width; height; angle (in degrees)]
+//
+// Clipping is only performed for boxes that are almost upright
+// (within a given `angle_thresh` tolerance) to maintain backward compatibility
+// for non-rotated boxes.
+//
+// We don't clip rotated boxes due to a couple of reasons:
+// (1) There are potentially multiple ways to clip a rotated box to make it
+//     fit within the image.
+// (2) It's tricky to make the entire rectangular box fit within the image and
+//     still be able to not leave out pixels of interest.
+// Therefore, we rely on upstream ops like RoIAlignRotated safely handling this.
+template <typename T>
+void clip_boxes_rotated(Handle<T> &boxes, dim_t startRowBoxes,
+                        dim_t startColBoxes, dim_t rows, int imH, int imW,
+                        T scaleAfter, float angleThresh = 1.0,
+                        bool legacyPlusOne = false) {
+  std::vector<dim_t> uprightRows(rows, 0);
+  for (dim_t i = 0; i < rows; i++) {
+    if (std::abs(float(boxes.at(
+            {startRowBoxes + i, startColBoxes + dim_t(4)}))) <= angleThresh) {
+      const T ctrX = boxes.at({startRowBoxes + i, startColBoxes});
+      const T ctrY = boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)});
+      const T width = boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)});
+      const T height = boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)});
+      boxes.at({startRowBoxes + i, startColBoxes}) =
+          ctrX - (width - T(((legacyPlusOne) ? 1 : 0))) / T(2.0);
+      boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) =
+          ctrY - (height - T(((legacyPlusOne) ? 1 : 0))) / T(2.0);
+      boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)}) =
+          ctrX + (width - T(((legacyPlusOne) ? 1 : 0))) / T(2.0);
+      boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)}) =
+          ctrY + (height - T(((legacyPlusOne) ? 1 : 0))) / T(2.0);
+      uprightRows[i] = 1;
+    }
+  }
+  clip_boxes_upright(boxes, startRowBoxes, startColBoxes, rows, imH, imW,
+                     /* scaleAfter */ T(1.0), legacyPlusOne, uprightRows);
+
+  for (dim_t i = 0; i < rows; i++) {
+    if (uprightRows[i] == 1) {
+      const T x1 = boxes.at({startRowBoxes + i, startColBoxes});
+      const T y1 = boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)});
+      const T x2 = boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)});
+      const T y2 = boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)});
+      boxes.at({startRowBoxes + i, startColBoxes}) = (x1 + x2) / T(2.0);
+      boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) =
+          (y1 + y2) / T(2.0);
+      boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)}) =
+          x2 - x1 + T(((legacyPlusOne) ? 1 : 0));
+      boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)}) =
+          y2 - y1 + T(((legacyPlusOne) ? 1 : 0));
+    }
+
+    for (dim_t j = 0; j < 4; j++) {
+      boxes.at({startRowBoxes + i, startColBoxes + j}) *= scaleAfter;
+    }
+  }
+}
+
 template <typename T>
 void BoundInterpreterFunction::fwdBBoxTransformInstFloatImpl(
     glow::BBoxTransformInst const *I) {
@@ -6149,6 +6301,11 @@ void BoundInterpreterFunction::fwdBBoxTransformInstFloatImpl(
   auto weights = I->getWeights();
   const dim_t boxDim = I->getRotated() ? 5 : 4;
   auto applyScale = I->getApplyScale();
+  auto rotated = I->getRotated();
+  auto angleBoundOn = I->getAngleBoundOn();
+  auto angleBoundLo = I->getAngleBoundLo();
+  auto angleBoundHi = I->getAngleBoundHi();
+  auto angleThresh = I->getClipAngleThresh();
   auto legacyPlusOne = I->getLegacyPlusOne();
   const dim_t N = roiIn->dims()[0];
   const dim_t numClasses = deltaIn->dims()[1] / boxDim;
@@ -6199,13 +6356,22 @@ void BoundInterpreterFunction::fwdBBoxTransformInstFloatImpl(
     for (dim_t k = 0; k < numClasses; k++) {
       dim_t startRowDelta = offset;
       dim_t startColDelta = k * boxDim;
-      bbox_transform_upright<T>(boxOutH, roisH, deltasH, startRowDelta,
-                                startColDelta, startRowRoi, startColRoi,
-                                startRowDelta, startColDelta, rows, weights,
-                                bboxXformClip, scaleBeforeInv, legacyPlusOne);
-
-      clip_boxes_upright<T>(boxOutH, startRowDelta, startColDelta, rows, imgH,
-                            imgW, scaleAfter, legacyPlusOne);
+      if (rotated) {
+        bbox_transform_rotated<T>(boxOutH, roisH, deltasH, startRowDelta,
+                                  startColDelta, startRowRoi, startColRoi,
+                                  startRowDelta, startColDelta, rows, weights,
+                                  bboxXformClip, scaleBeforeInv, angleBoundOn,
+                                  angleBoundLo, angleBoundHi);
+        clip_boxes_rotated<T>(boxOutH, startRowDelta, startColDelta, rows, imgH,
+                              imgW, scaleAfter, angleThresh, legacyPlusOne);
+      } else {
+        bbox_transform_upright<T>(boxOutH, roisH, deltasH, startRowDelta,
+                                  startColDelta, startRowRoi, startColRoi,
+                                  startRowDelta, startColDelta, rows, weights,
+                                  bboxXformClip, scaleBeforeInv, legacyPlusOne);
+        clip_boxes_upright<T>(boxOutH, startRowDelta, startColDelta, rows, imgH,
+                              imgW, scaleAfter, legacyPlusOne);
+      }
     }
 
     offset += rows;
