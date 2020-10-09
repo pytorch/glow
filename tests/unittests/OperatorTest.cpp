@@ -1530,9 +1530,8 @@ TEST_P(OperatorTest, FP16RoiAlignRotatedBatchIndexInBoxesTensor) {
 template <typename DataType>
 static void testBBoxTransform(PlaceholderBindings &bindings, Module &mod,
                               Function &F, ExecutionEngine &EE, ElemKind ElemTy,
-                              bool applyScale, bool rotated, bool angleBoundOn,
-                              int64_t angleBoundLo, int64_t angleBoundHi,
-                              float clipAngleThresh, bool legacyPlusOne) {
+                              bool applyScale, bool legacyPlusOne,
+                              float absError) {
   llvm::SmallVector<dim_t, 2> roisDims = {5, 5};
   llvm::SmallVector<DataType, 25> rois = {
       0., 22.113754, 10.269318, 77.57481,   117.23254,
@@ -1576,8 +1575,9 @@ static void testBBoxTransform(PlaceholderBindings &bindings, Module &mod,
   bindings.allocate(IMINFO)->getHandle<DataType>() = imInfo;
 
   auto *BBTN = F.createBBoxTransform(
-      "bboxTransform", ROIS, DELTAS, IMINFO, weights, applyScale, rotated,
-      angleBoundOn, angleBoundLo, angleBoundHi, clipAngleThresh, legacyPlusOne);
+      "bboxTransform", ROIS, DELTAS, IMINFO, weights, applyScale,
+      /* rotated */ false, /* angleBoundOn */ false, /* angleBoundLo */ 0,
+      /* angleBoundHi */ 0, /* clipAngleThresh */ 0, legacyPlusOne);
 
   auto *save = F.createSave("save", BBTN->getBoxOut());
   auto *savePlaceholder = save->getPlaceholder();
@@ -1590,23 +1590,103 @@ static void testBBoxTransform(PlaceholderBindings &bindings, Module &mod,
   auto saveH = bindings.get(savePlaceholder)->getHandle<DataType>();
   float maxDiff = 0.0f;
   for (dim_t i = 0; i < expectedValues.size(); i++) {
-    EXPECT_NEAR(saveH.raw(i), expectedValues[i], 1);
+    EXPECT_NEAR(saveH.raw(i), expectedValues[i], absError);
     maxDiff =
         std::max(maxDiff, std::abs((float)(saveH.raw(i) - expectedValues[i])));
   }
-  std::cout << "Max diff: " << maxDiff << std::endl;
+  VLOG(2) << "Max diff: " << maxDiff;
 }
 
 TEST_P(OperatorTest, BBoxTransform_Float) {
   CHECK_IF_ENABLED();
-  testBBoxTransform<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy, false,
-                           false, false, 0, 0, 0, true);
+  testBBoxTransform<float>(bindings_, mod_, *F_, EE_, ElemKind::FloatTy,
+                           /* applyScale */ false,
+                           /* legacyPlusOne */ true, /* absError */ 0.1);
 }
 
 TEST_P(OperatorTest, BBoxTransform_Float16) {
   CHECK_IF_ENABLED();
   testBBoxTransform<float16_t>(bindings_, mod_, *F_, EE_, ElemKind::Float16Ty,
-                               false, false, false, 0, 0, 0, true);
+                               /* applyScale */ false,
+                               /* legacyPlusOne */ true, /* absError */ 1.0);
+}
+
+template <typename DataType>
+static void testBBoxTransformRotated(PlaceholderBindings &bindings, Module &mod,
+                                     Function &F, ExecutionEngine &EE,
+                                     ElemKind ElemTy, bool applyScale,
+                                     bool angleBoundOn, int64_t angleBoundLo,
+                                     int64_t angleBoundHi,
+                                     float clipAngleThresh, bool legacyPlusOne,
+                                     float absError) {
+  llvm::SmallVector<dim_t, 2> roisDims = {2, 6};
+  llvm::SmallVector<DataType, 12> rois = {
+      0., 63.52861,  78.48322, 107.24573, 1.7388153, 72.550606,
+      1., 142.78809, 53.0654,  9.154373,  58.370438, 72.550606};
+
+  llvm::SmallVector<dim_t, 2> deltasDims = {2, 5};
+  llvm::SmallVector<DataType, 10> deltas = {
+      -0.31072143, 1.9020474, 0.20086022, 0.49893576,  -0.06181559,
+      -0.6979074,  -2.205989, -0.573434,  -0.62059146, -0.50649583};
+
+  llvm::SmallVector<dim_t, 2> imInfoDims = {2, 3};
+  llvm::SmallVector<DataType, 6> imInfo = {263., 263., 0.7027847,
+                                           217., 217., 0.7027847};
+
+  std::vector<float> weights = {1.0, 1.0, 1.0, 1.0};
+
+  std::vector<DataType> expectedValues = {42.9791, 116.3806, 186.5478,  4.0749,
+                                          69.0088, 194.0839, -107.7131, 7.3412,
+                                          44.6531, 43.5305};
+
+  auto *ROIS = mod.createPlaceholder(ElemTy, roisDims, "rois", false);
+  bindings.allocate(ROIS)->getHandle<DataType>() = rois;
+
+  auto *DELTAS = mod.createPlaceholder(ElemTy, deltasDims, "deltas", false);
+  bindings.allocate(DELTAS)->getHandle<DataType>() = deltas;
+
+  auto *IMINFO = mod.createPlaceholder(ElemTy, imInfoDims, "imInfo", false);
+  bindings.allocate(IMINFO)->getHandle<DataType>() = imInfo;
+
+  auto *BBTN = F.createBBoxTransform("bboxTransform", ROIS, DELTAS, IMINFO,
+                                     weights, applyScale, /* rotated */ true,
+                                     angleBoundOn, angleBoundLo, angleBoundHi,
+                                     clipAngleThresh, legacyPlusOne);
+
+  auto *save = F.createSave("save", BBTN->getBoxOut());
+  auto *savePlaceholder = save->getPlaceholder();
+  bindings.allocate(savePlaceholder);
+
+  EE.compile(CompilationMode::Infer);
+
+  EE.run(bindings);
+
+  auto saveH = bindings.get(savePlaceholder)->getHandle<DataType>();
+  float maxDiff = 0.0f;
+  for (dim_t i = 0; i < expectedValues.size(); i++) {
+    EXPECT_NEAR(saveH.raw(i), expectedValues[i], absError);
+    maxDiff =
+        std::max(maxDiff, std::abs((float)(saveH.raw(i) - expectedValues[i])));
+  }
+  VLOG(2) << "Max diff: " << maxDiff;
+}
+
+TEST_P(OperatorTest, BBoxTransform_Rotated_Float) {
+  CHECK_IF_ENABLED();
+  testBBoxTransformRotated<float>(
+      bindings_, mod_, *F_, EE_, ElemKind::FloatTy,
+      /* applyScale */ false, /* angleBoundOn */ false, /* angleBoundLo */ -90,
+      /* angleBoundHi */ 90, /* clipAngleThresh */ 1.0,
+      /* legacyPlusOne */ true, /* absError */ 0.1);
+}
+
+TEST_P(OperatorTest, BBoxTransform_Rotated_Float16) {
+  CHECK_IF_ENABLED();
+  testBBoxTransformRotated<float16_t>(
+      bindings_, mod_, *F_, EE_, ElemKind::Float16Ty, /* applyScale */ false,
+      /* angleBoundOn */ false, /* angleBoundLo */ -90,
+      /* angleBoundHi */ 90, /* clipAngleThresh */ 1.0,
+      /* legacyPlusOne */ true, /* absError */ 1.0);
 }
 
 // Helper to test SpaceToDepth using \p DTy.

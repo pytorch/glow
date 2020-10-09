@@ -218,3 +218,186 @@ class TestBBoxTransform(unittest.TestCase):
             atol=1,
             rtol=1e-02,
         )
+
+    def test_bbox_transform_rotated_basic(self):
+        """Test of the _caffe2::BBoxTransform Node on Glow."""
+
+        def test_f(rois, deltas, im_info):
+            return torch.ops._caffe2.BBoxTransform(
+                rois,
+                deltas,
+                im_info,
+                weights=[1.0, 1.0, 1.0, 1.0],
+                apply_scale=False,
+                rotated=True,
+                angle_bound_on=False,
+                angle_bound_lo=-90,
+                angle_bound_hi=90,
+                clip_angle_thresh=1.0,
+                legacy_plus_one=False,
+            )
+
+        roi_counts, num_classes = ([1, 1], 1)
+        rois, deltas, im_info = create_bbox_transform_inputs(
+            roi_counts, num_classes, True
+        )
+        jitVsGlow(
+            test_f,
+            torch.tensor(rois),
+            torch.tensor(deltas),
+            torch.tensor(im_info),
+            expected_fused_ops={"_caffe2::BBoxTransform"},
+        )
+
+    def test_bbox_transform_rotated_angle_bound_on(self):
+        """Test of the _caffe2::BBoxTransform Node on Glow."""
+
+        def test_f(rois, deltas, im_info):
+            return torch.ops._caffe2.BBoxTransform(
+                rois,
+                deltas,
+                im_info,
+                weights=[1.0, 1.0, 1.0, 1.0],
+                apply_scale=False,
+                rotated=True,
+                angle_bound_on=True,
+                angle_bound_lo=-180,
+                angle_bound_hi=180,
+                clip_angle_thresh=1.0,
+                legacy_plus_one=False,
+            )
+
+        roi_counts, num_classes = ([5, 4, 3, 2, 1], 3)
+        rois, deltas, im_info = create_bbox_transform_inputs(
+            roi_counts, num_classes, True
+        )
+        jitVsGlow(
+            test_f,
+            torch.tensor(rois),
+            torch.tensor(deltas),
+            torch.tensor(im_info),
+            expected_fused_ops={"_caffe2::BBoxTransform"},
+        )
+
+    def test_bbox_transform_rotated_legacy_plus_one(self):
+        """Test of the _caffe2::BBoxTransform Node on Glow."""
+
+        def test_f(rois, deltas, im_info):
+            return torch.ops._caffe2.BBoxTransform(
+                rois,
+                deltas,
+                im_info,
+                weights=[1.0, 1.0, 1.0, 1.0],
+                apply_scale=False,
+                rotated=True,
+                angle_bound_on=False,
+                angle_bound_lo=-90,
+                angle_bound_hi=90,
+                clip_angle_thresh=1.0,
+                legacy_plus_one=True,
+            )
+
+        roi_counts, num_classes = ([5, 4, 3, 2, 1], 3)
+        rois, deltas, im_info = create_bbox_transform_inputs(
+            roi_counts, num_classes, True
+        )
+        jitVsGlow(
+            test_f,
+            torch.tensor(rois),
+            torch.tensor(deltas),
+            torch.tensor(im_info),
+            expected_fused_ops={"_caffe2::BBoxTransform"},
+        )
+
+    def test_bbox_transform_rotated_apply_scale(self):
+        """Test of the _caffe2::BBoxTransform Node on Glow."""
+
+        def test_f(rois, deltas, im_info):
+            return torch.ops._caffe2.BBoxTransform(
+                rois,
+                deltas,
+                im_info,
+                weights=[1.0, 1.0, 1.0, 1.0],
+                apply_scale=True,
+                rotated=True,
+                angle_bound_on=False,
+                angle_bound_lo=-90,
+                angle_bound_hi=90,
+                clip_angle_thresh=1.0,
+                legacy_plus_one=False,
+            )
+
+        roi_counts, num_classes = ([5, 4, 3, 2, 1], 3)
+        rois, deltas, im_info = create_bbox_transform_inputs(
+            roi_counts, num_classes, True
+        )
+        jitVsGlow(
+            test_f,
+            torch.tensor(rois),
+            torch.tensor(deltas),
+            torch.tensor(im_info),
+            expected_fused_ops={"_caffe2::BBoxTransform"},
+        )
+
+    def test_bbox_transform_rotated_weights(self):
+        """Test of the _caffe2::BBoxTransform Node on Glow."""
+
+        def test_f(rois, deltas, im_info):
+            return torch.ops._caffe2.BBoxTransform(
+                rois,
+                deltas,
+                im_info,
+                weights=[10.0, 10.0, 5.0, 5.0],
+                apply_scale=False,
+                rotated=True,
+                angle_bound_on=False,
+                angle_bound_lo=-90,
+                angle_bound_hi=90,
+                clip_angle_thresh=1.0,
+                legacy_plus_one=False,
+            )
+
+        roi_counts, num_classes = ([5, 4, 3, 2, 1], 3)
+        rois, deltas, im_info = create_bbox_transform_inputs(
+            roi_counts, num_classes, True
+        )
+        jitVsGlow(
+            test_f,
+            torch.tensor(rois),
+            torch.tensor(deltas),
+            torch.tensor(im_info),
+            expected_fused_ops={"_caffe2::BBoxTransform"},
+        )
+
+    def test_bbox_transform_rotated_fp16(self):
+        """Test of the _caffe2::BBoxTransform Node on Glow."""
+
+        def test_f(rois, deltas, im_info):
+            return torch.ops._caffe2.BBoxTransform(
+                rois,
+                deltas,
+                im_info,
+                weights=[1.0, 1.0, 1.0, 1.0],
+                apply_scale=False,
+                rotated=True,
+                angle_bound_on=False,
+                angle_bound_lo=-90,
+                angle_bound_hi=90,
+                clip_angle_thresh=1.0,
+                legacy_plus_one=False,
+            )
+
+        roi_counts, num_classes = ([5, 4, 3, 2, 1], 3)
+        rois, deltas, im_info = create_bbox_transform_inputs(
+            roi_counts, num_classes, True
+        )
+        jitVsGlow(
+            test_f,
+            torch.tensor(rois),
+            torch.tensor(deltas),
+            torch.tensor(im_info),
+            expected_fused_ops={"_caffe2::BBoxTransform"},
+            use_fp16=True,
+            atol=1,
+            rtol=1e-2,
+        )

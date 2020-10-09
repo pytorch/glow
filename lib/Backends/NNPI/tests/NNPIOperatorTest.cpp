@@ -296,8 +296,10 @@ struct BlacklistInitializer {
       {"FP16RoiAlignRotatedBatchIndexInBoxesTensor/0",
        TestBlacklist::AnyDeviceAnyEngine},
       {"BBoxTransform_Float/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"BBoxTransform_Rotated_Float/0", TestBlacklist::AnyDeviceAnyEngine},
 #if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 0
       {"BBoxTransform_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"BBoxTransform_Rotated_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
 #endif
       {"Abs_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Abs_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
