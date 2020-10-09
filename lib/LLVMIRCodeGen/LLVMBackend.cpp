@@ -528,21 +528,61 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
   }
 }
 
+/// Initialize the LLVM options using command line options.
+/// If target is not explicitly given we use the host attributes.
 LLVMBackendOptions::LLVMBackendOptions() {
-  // Initialize using command-line options by default.
-  arch_ = llvmArch;
-  target_ = llvmTarget;
-  cpu_ = llvmCPU;
+  if (llvmTarget.empty()) {
+    // Default values.
+    target_ = LLVMBackend::getHostTarget();
+    arch_ = llvmArch;
+    cpu_ = LLVMBackend::getHostCPU();
+    targetFeatures_ = LLVMBackend::getHostFeatures();
+  } else {
+    // Explicit values.
+    target_ = llvmTarget;
+    arch_ = llvmArch;
+    cpu_ = llvmCPU;
+    targetFeatures_.append(llvmTargetFeatures.begin(),
+                           llvmTargetFeatures.end());
+  }
   abi_ = llvmABI;
   floatABI_ = floatABI;
   codeModel_ = llvmCodeModel;
   bundleCodeModel_ = llvmBundleCodeModel;
   relocModel_ = llvmRelocModel;
   bundleAPI_ = bundleAPI;
-  targetFeatures_.append(llvmTargetFeatures.begin(), llvmTargetFeatures.end());
 }
 
 LLVMBackend::LLVMBackend() {}
+
+llvm::StringRef LLVMBackend::getHostTarget() {
+  return llvm::sys::getDefaultTargetTriple();
+}
+
+llvm::StringRef LLVMBackend::getHostCPU() {
+  auto cpu_name = llvm::sys::getHostCPUName();
+  // Skip avx512 because LLVM does not support it well.
+  cpu_name.consume_back("-avx512");
+  return cpu_name;
+}
+
+llvm::SmallVector<std::string, 0> LLVMBackend::getHostFeatures() {
+  llvm::SmallVector<std::string, 0> result;
+  llvm::StringMap<bool> hostFeatures;
+  if (llvm::sys::getHostCPUFeatures(hostFeatures)) {
+    for (auto &feature : hostFeatures) {
+      if (feature.second) {
+        llvm::StringRef fn = feature.first();
+        // Skip avx512 because LLVM does not support it well.
+        if (fn.startswith("avx512")) {
+          continue;
+        }
+        result.push_back(fn);
+      }
+    }
+  }
+  return result;
+}
 
 /// Emit the entry point for JIT called "jitmain".
 /// Function has the following API:
