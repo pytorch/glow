@@ -5160,9 +5160,7 @@ void glow::transformForPrecisionMode(const Backend &B, Function *F,
   }
 
   // Convert UInt4FusedFP16QTy/UInt8FusedFP16QTy to UInt8FusedQTy.
-  if ((precConfig.convert4BitFusedTo8Bit ||
-       precConfig.convert8BitFusedToFP32) &&
-      !precConfig.forceFP16AccumSLS) {
+  if (precConfig.convert4BitFusedToFP32 || precConfig.convert8BitFusedToFP32) {
     LOG_SCOPE(F->getLogContext(), "glow::convertFunctionToFP32ScaleOffset");
     convertFunctionToFP32ScaleOffset(F, precConfig);
   }
