@@ -61,6 +61,9 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
              symbol == "quantized::embedding_bag_byte_rowwise_offsets") {
     ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
                                embeddingBagByteRowwiseOffsets(inputMetas));
+  } else if (symbol == "quantized::embedding_bag_4bit_rowwise_offsets") {
+    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
+                               embeddingBag4BitRowwiseOffsets(inputMetas));
   } else {
     switch (kind) {
     case c10::prim::Constant: {
@@ -944,5 +947,37 @@ ShapeInferenceEngine::chunk(const MetaStack &variableMetas) {
     resShapes.emplace_back(shape);
   }
   return resShapes;
+}
+
+/*
+ * fb::embedding_bag_4bit_rowwise_offsets(Tensor weight,
+ *                                        Tensor indices,
+ *                                        Tensor offsets,
+ *                                        bool scale_grad_by_freq=False,
+ *                                        int mode=0,
+ *                                        bool sparse=False,
+ *                                        Tensor? per_sample_weights=None,
+ *                                        Tensor? compressed_indices_mapping,
+ *                                        bool include_last_offset=True)
+ *                                        -> Tensor;
+ */
+/// In glow, the include_last_offset is always True.
+Expected<std::vector<int64_t>>
+ShapeInferenceEngine::embeddingBag4BitRowwiseOffsets(
+    const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 9,
+      strFormat("Expected 9 inputs, got %zu.", variableMetas.size()));
+
+  /// variableMetas[0].shape[1] - 4 is to account for scale and offsets
+  /// Note: 2-byte fp16 scale and 2-byte zero_offset
+  /// *2 which accounts for the packed fp16 weights
+  const TensorShape &weightShape = variableMetas[0].shape<TensorShape>();
+  const TensorShape &offsetsShape = variableMetas[2].shape<TensorShape>();
+  std::vector<int64_t> shape = {offsetsShape[0] -
+                                    static_cast<int>(((hasEndOffset_) ? 1 : 0)),
+                                (weightShape[1] - 4) * 2};
+  return shape;
 }
 } // namespace glow

@@ -148,6 +148,9 @@ private:
   // Shape inference for fb::embedding_bag_byte_rowwise_offsets
   static Expected<TensorShape>
   embeddingBagByteRowwiseOffsets(const MetaStack &variableMetas);
+  // Shape inference for fb::embedding_bag_4bit_rowwise_offsets
+  static Expected<std::vector<int64_t>>
+  embeddingBag4BitRowwiseOffsets(const MetaStack &variableMetas);
   // Shape inference for aten::embedding_bag
   static Expected<TensorShape> embeddingBag(const MetaStack &variableMetas);
   // Shape inference for aten::chuck
