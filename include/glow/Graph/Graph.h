@@ -453,7 +453,7 @@ public:
              NodeValue bias, TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
              llvm::ArrayRef<unsigned_t> strides,
              llvm::ArrayRef<unsigned_t> pads, unsigned_t group,
-             unsigned_t dilation = 1,
+             llvm::ArrayRef<unsigned_t> dilation = {1, 1},
              ConvolutionLayout layout = ConvolutionLayout::NHWC);
 
   /// Creates a ConvolutionNode with the given \p name which convolves the 4D
@@ -470,7 +470,7 @@ public:
   createConv(llvm::StringRef name, NodeValue input, NodeValue filter,
              NodeValue bias, TypeRef outTy, unsigned_t kernel,
              unsigned_t stride, unsigned_t pad, unsigned_t group,
-             unsigned_t dilation = 1,
+             llvm::ArrayRef<unsigned_t> dilation = {1, 1},
              ConvolutionLayout layout = ConvolutionLayout::NHWC);
 
   /// Creates a Convolution3DNode with the given \p name which convolves the 5D
@@ -543,8 +543,8 @@ public:
       NodeValue filterScales, NodeValue filterOffsets, NodeValue biasScales,
       NodeValue biasOffsets, TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
       llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
-      unsigned_t group, unsigned_t dilation = 1, bool quantizeFilter = true,
-      bool quantizeBias = true,
+      unsigned_t group, llvm::ArrayRef<unsigned_t> dilation = {1, 1},
+      bool quantizeFilter = true, bool quantizeBias = true,
       quantization::Schema schema = quantization::Schema::Asymmetric,
       ElemKind filterElemQTy = ElemKind::Int8QTy,
       ElemKind biasElemQTy = ElemKind::Int32QTy);
@@ -560,7 +560,7 @@ public:
       llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
       TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
       llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
-      unsigned_t group, unsigned_t dilation = 1);
+      unsigned_t group, llvm::ArrayRef<unsigned_t> dilation = {1, 1});
 
   /// Creates a createConvTransposeNode with the given \p name which does
   /// transposed convolution of the 4D \p input with \p filter and \bias. \p
@@ -569,12 +569,11 @@ public:
   /// cell. \p pad defines how many zero padding cells should be added to the
   /// input during convolution. \p group defines the number of groups the input
   /// and output channels should be divided into and convolved separately.
-  ConvTransposeNode *createConvTranspose(llvm::StringRef name, NodeValue input,
-                                         NodeValue filter, NodeValue bias,
-                                         TypeRef outTy, unsigned_t kernel,
-                                         unsigned_t stride, unsigned_t pad,
-                                         unsigned_t group,
-                                         unsigned_t dilation = 1);
+  ConvTransposeNode *
+  createConvTranspose(llvm::StringRef name, NodeValue input, NodeValue filter,
+                      NodeValue bias, TypeRef outTy, unsigned_t kernel,
+                      unsigned_t stride, unsigned_t pad, unsigned_t group,
+                      llvm::ArrayRef<unsigned_t> dilation = {1, 1});
 
   /// Creates and \returns a ConvertTo Node with name \p name of \p input to
   /// output type \p outTy.
@@ -1619,7 +1618,7 @@ public:
                               llvm::ArrayRef<unsigned_t> kernels,
                               llvm::ArrayRef<unsigned_t> strides,
                               llvm::ArrayRef<unsigned_t> pads, unsigned_t group,
-                              unsigned_t dilation = 1,
+                              llvm::ArrayRef<unsigned_t> dilation = {1, 1},
                               ConvolutionLayout layout = NHWC);
 
   /// Creates a ConvolutionNode with the given \p name which convolves the 4D
@@ -1635,7 +1634,8 @@ public:
                               llvm::StringRef name, NodeValue input,
                               dim_t outChannels, unsigned_t kernel,
                               unsigned_t stride, unsigned_t pad,
-                              unsigned_t group, unsigned_t dilation = 1,
+                              unsigned_t group,
+                              llvm::ArrayRef<unsigned_t> dilation = {1, 1},
                               ConvolutionLayout layout = NHWC);
 
   /// Creates a Convolution3DNode with the given \p name which convolves the 5D
@@ -1677,7 +1677,7 @@ public:
       PlaceholderBindings &bindings, llvm::StringRef name, NodeValue input,
       dim_t outChannels, llvm::ArrayRef<unsigned_t> kernels,
       llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
-      unsigned_t group, unsigned_t dilation = 1);
+      unsigned_t group, llvm::ArrayRef<unsigned_t> dilation = {1, 1});
 
   /// Creates a ConvTransposeNode with the given \p name which does transposed
   /// convolution on the 4D \p input. \p kernel defines the size of the height
@@ -1686,12 +1686,11 @@ public:
   /// how many zero padding cells should be added to the input during
   /// convolution. \p group defines the number of groups the input and output
   /// channels should be divided into and convolved separately.
-  ConvTransposeNode *createConvTranspose(PlaceholderBindings &bindings,
-                                         llvm::StringRef name, NodeValue input,
-                                         dim_t outChannels, unsigned_t kernel,
-                                         unsigned_t stride, unsigned_t pad,
-                                         unsigned_t group,
-                                         unsigned_t dilation = 1);
+  ConvTransposeNode *
+  createConvTranspose(PlaceholderBindings &bindings, llvm::StringRef name,
+                      NodeValue input, dim_t outChannels, unsigned_t kernel,
+                      unsigned_t stride, unsigned_t pad, unsigned_t group,
+                      llvm::ArrayRef<unsigned_t> dilation = {1, 1});
 
   /// Creates and \returns a FullyConnectedNode with \p name, \p input, weights
   /// \p W, bias \p B. If \p input is not 2 dimensional then it is flattened

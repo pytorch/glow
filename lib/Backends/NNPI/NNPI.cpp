@@ -559,7 +559,9 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::ConvolutionNodeKind: {
     bool isDilated = false;
     const ConvolutionNode *convNode = llvm::dyn_cast<ConvolutionNode>(N);
-    if (convNode && convNode->getDilation() > 1) {
+    if (convNode && std::any_of(convNode->getDilation().begin(),
+                                convNode->getDilation().end(),
+                                [](unsigned_t i) { return i > 1; })) {
       isDilated = true;
     }
     return isDilated ||

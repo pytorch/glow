@@ -1427,9 +1427,7 @@ Error ONNXModelWriter::writeConvolution(const ConvolutionNode *node,
   addValueAttribute(proto, "strides", node->getStrides());
   addValueAttribute(proto, "pads", node->getPads());
   addValueAttribute(proto, "group", node->getGroup());
-  std::vector<unsigned_t> buffer(2, node->getDilation());
-  llvm::ArrayRef<unsigned_t> container(buffer);
-  addValueAttribute(proto, "dilations", container);
+  addValueAttribute(proto, "dilations", node->getDilation());
 
   const Node *input = node->getInput().getNode();
   if (const TransposeNode *TN = llvm::dyn_cast<TransposeNode>(input)) {

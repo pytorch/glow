@@ -138,7 +138,8 @@ static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
                               llvm::ArrayRef<unsigned_t> kernels,
                               llvm::ArrayRef<unsigned_t> strides,
                               llvm::ArrayRef<unsigned_t> pads, unsigned_t group,
-                              unsigned_t dilation, bool checkBiasType = true) {
+                              llvm::ArrayRef<unsigned_t> dilation,
+                              bool checkBiasType = true) {
   const Node *parent = dest.getNode();
   bool isValid = checkType(src, dest.getElementType(), parent);
   isValid &= checkType(src, filter.getElementType(), parent);
@@ -169,6 +170,8 @@ static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
                                parent, CompareOperatorGreaterEqual<dim_t>());
   isValid &= expectCompareTrue("channels number must be divisible by groups",
                                idim.c % group, dim_t(0), parent);
+  isValid &= expectCompareTrue("Dilation should have same length as Stride",
+                               dilation.size(), strides.size(), parent);
 
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides,
                                            pads, dilation);
@@ -260,7 +263,8 @@ static bool verifyConvTranspose(NodeValue src, NodeValue dest, NodeValue filter,
                                 llvm::ArrayRef<unsigned_t> kernels,
                                 llvm::ArrayRef<unsigned_t> strides,
                                 llvm::ArrayRef<unsigned_t> pads,
-                                unsigned_t group, unsigned_t dilation) {
+                                unsigned_t group,
+                                llvm::ArrayRef<unsigned_t> dilation) {
   const Node *parent = dest.getNode();
   bool isValid = checkType(src, dest.getElementType(), parent);
   isValid &= checkType(src, filter.getElementType(), parent);
@@ -282,6 +286,9 @@ static bool verifyConvTranspose(NodeValue src, NodeValue dest, NodeValue filter,
 
   isValid &= expectCompareTrue("channels number must be divisible by groups",
                                idim.c % group, dim_t(0), parent);
+
+  isValid &= expectCompareTrue("Dilation should have same length as Stride",
+                               dilation.size(), strides.size(), parent);
 
   auto outSz = calculateConvTransposeOutputDims(idim.h, idim.w, kernels,
                                                 strides, pads, dilation);
@@ -601,8 +608,11 @@ bool ChannelwiseQuantizedConvolutionNode::verify() const {
   if (isConv3D) {
     isValid = verifyConvolution3D(getInput(), getResult(), getFilter(),
                                   getBias(), Kernels_, Strides_, Pads_, Group_);
-    isValid &= expectCompareTrue("For Conv3D dilation must be 1", Dilation_,
-                                 unsigned_t(1), this);
+
+    if (!all_of(Dilation_.begin(), Dilation_.end(),
+                [](unsigned_t i) { return i == 1; })) {
+      report("For Conv3D dilation must be 1");
+    }
   } else {
     isValid = verifyConvolution<ShapeNHWC>(
         getInput(), getResult(), getFilter(), getBias(), Kernels_, Strides_,

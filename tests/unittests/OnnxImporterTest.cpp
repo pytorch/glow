@@ -956,6 +956,16 @@ TEST_F(OnnxImporterTest, importConv) {
 
 /// Test loading conv op from a ONNX model.
 /// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
+/// strides is {1, 1}, pads is {1, 1, 1, 1}, group is 1, dilation is {1, 2}.
+TEST_F(OnnxImporterTest, importConvNonSquareDilation) {
+  std::string filename("simpleConvNonSquareDilation.onnxtxt");
+  std::vector<dim_t> expectedDims = {1, 1, 4, 3};
+  std::vector<float> expectedValues = {3, 4, 3, 7, 12, 7, 13, 24, 13, 9, 16, 9};
+  convTestHelper(filename, expectedDims, expectedValues);
+}
+
+/// Test loading conv op from a ONNX model.
+/// The input is N*C*H*W (1*1*3*3), the kernels is {2, 2},
 /// strides is {1, 1}, auto_pad VALID (i.e. no padding), group is 1.
 TEST_F(OnnxImporterTest, importConvAutoPadValid) {
   std::string filename("simpleConvAutoPadValid.onnxtxt");
@@ -4152,7 +4162,7 @@ TEST_F(OnnxImporterTest, CustomGlowChannelwiseQuantizedGroupConvolution) {
   EXPECT_EQ(CN->getStrides().vec(), std::vector<unsigned_t>({1, 1}));
   EXPECT_EQ(CN->getPads().vec(), std::vector<unsigned_t>({0, 0, 0, 0}));
   EXPECT_EQ(CN->getGroup(), 2);
-  EXPECT_EQ(CN->getDilation(), 1);
+  EXPECT_EQ(CN->getDilation().vec(), std::vector<unsigned_t>({1, 1}));
 
   auto *QN = llvm::dyn_cast<QuantizeNode>(CN->getInput());
   ASSERT_TRUE(QN);
