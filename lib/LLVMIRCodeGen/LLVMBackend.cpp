@@ -544,6 +544,35 @@ LLVMBackendOptions::LLVMBackendOptions() {
 
 LLVMBackend::LLVMBackend() {}
 
+std::string LLVMBackend::getHostTarget() {
+  return llvm::sys::getDefaultTargetTriple();
+}
+
+std::string LLVMBackend::getHostCPU() {
+  auto cpu_name = llvm::sys::getHostCPUName();
+  // Skip avx512 because LLVM does not support it well.
+  cpu_name.consume_back("-avx512");
+  return cpu_name.str();
+}
+
+llvm::SmallVector<std::string, 0> LLVMBackend::getHostFeatures() {
+  llvm::SmallVector<std::string, 0> result;
+  llvm::StringMap<bool> hostFeatures;
+  if (llvm::sys::getHostCPUFeatures(hostFeatures)) {
+    for (auto &feature : hostFeatures) {
+      if (feature.second) {
+        llvm::StringRef fn = feature.first();
+        // Skip avx512 because LLVM does not support it well.
+        if (fn.startswith("avx512")) {
+          continue;
+        }
+        result.push_back(fn);
+      }
+    }
+  }
+  return result;
+}
+
 /// Emit the entry point for JIT called "jitmain".
 /// Function has the following API:
 /// int jitmain(uint8_t *baseConstantWeightVars,
