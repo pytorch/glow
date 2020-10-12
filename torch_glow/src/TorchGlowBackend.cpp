@@ -261,9 +261,10 @@ static void processConvPackedQParams(torch::jit::Graph &graph,
         overrideTensorGradient(t);
         paramConst = torch::jit::insertConstant(graph, t);
         node->outputs().at(1)->replaceAllUsesWith(paramConst);
-      } else { // TODO Handle bias-not-exists case
-        throw std::invalid_argument(
-            "Preprocess for empty bias is not yet supported.");
+      } else {
+        at::Tensor t = at::zeros(ptWeightTensor.size(0));
+        paramConst = torch::jit::insertConstant(graph, t);
+        node->outputs().at(1)->replaceAllUsesWith(paramConst);
       }
     } else if (node->kind() == torch::jit::Symbol::fromQualString(strFormat(
                                    "quantized::%s_stride", convType))) {
