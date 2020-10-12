@@ -528,29 +528,18 @@ bool LLVMBackend::isOpSupported(const NodeInfo &NI) const {
   }
 }
 
-/// Initialize the LLVM options using command line options.
-/// If target is not explicitly given we use the host attributes.
 LLVMBackendOptions::LLVMBackendOptions() {
-  if (llvmTarget.empty()) {
-    // Default values.
-    target_ = LLVMBackend::getHostTarget();
-    arch_ = llvmArch;
-    cpu_ = LLVMBackend::getHostCPU();
-    targetFeatures_ = LLVMBackend::getHostFeatures();
-  } else {
-    // Explicit values.
-    target_ = llvmTarget;
-    arch_ = llvmArch;
-    cpu_ = llvmCPU;
-    targetFeatures_.append(llvmTargetFeatures.begin(),
-                           llvmTargetFeatures.end());
-  }
+  // Initialize using command-line options by default.
+  arch_ = llvmArch;
+  target_ = llvmTarget;
+  cpu_ = llvmCPU;
   abi_ = llvmABI;
   floatABI_ = floatABI;
   codeModel_ = llvmCodeModel;
   bundleCodeModel_ = llvmBundleCodeModel;
   relocModel_ = llvmRelocModel;
   bundleAPI_ = bundleAPI;
+  targetFeatures_.append(llvmTargetFeatures.begin(), llvmTargetFeatures.end());
 }
 
 LLVMBackend::LLVMBackend() {}

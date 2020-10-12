@@ -89,16 +89,22 @@ void LLVMIRGen::initTargetMachine(const LLVMBackendOptions &opts) {
   if (!opts.getABIName().empty()) {
     targetOpts.MCOptions.ABIName = opts.getABIName();
   }
-
-  assert(!opts.getTarget().empty() && "LLVM target not provided!");
-
-  TM_.reset(llvm::EngineBuilder()
-                .setCodeModel(opts.getCodeModel())
-                .setRelocationModel(opts.getRelocModel())
-                .setTargetOptions(targetOpts)
-                .selectTarget(llvm::Triple(opts.getTarget()), opts.getArch(),
-                              opts.getCPU(), opts.getTargetFeatures()));
-
+  if (opts.getTarget().empty()) {
+    TM_.reset(llvm::EngineBuilder()
+                  .setCodeModel(opts.getCodeModel())
+                  .setRelocationModel(opts.getRelocModel())
+                  .setTargetOptions(targetOpts)
+                  .selectTarget(llvm::Triple(), opts.getArch(),
+                                LLVMBackend::getHostCPU(),
+                                LLVMBackend::getHostFeatures()));
+  } else {
+    TM_.reset(llvm::EngineBuilder()
+                  .setCodeModel(opts.getCodeModel())
+                  .setRelocationModel(opts.getRelocModel())
+                  .setTargetOptions(targetOpts)
+                  .selectTarget(llvm::Triple(opts.getTarget()), opts.getArch(),
+                                opts.getCPU(), opts.getTargetFeatures()));
+  }
   assert(TM_ && "Could not initialize the target machine");
 }
 
