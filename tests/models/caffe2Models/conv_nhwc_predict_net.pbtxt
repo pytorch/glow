@@ -25,5 +25,9 @@ op {
     name: "pad"
     i: 1
   }
+  arg {
+    name: "dilation"
+    i: 1
+  }
 }
 external_output: "conv_out"

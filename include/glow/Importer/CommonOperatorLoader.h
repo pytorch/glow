@@ -1611,6 +1611,30 @@ protected:
     // Return default value if can't find in the dict
     return defaultValue;
   }
+
+  static Expected<std::vector<unsigned_t>>
+  getDilations(ArgumentDictionaryTy &dict,
+               const std::vector<unsigned_t> &defaultValue) {
+    // For Caffe2 Model, `dilation` field can be either one integer or multiple
+    // integers (one for each axis). When it's one integer the field in the dict
+    // will be `dilation`. Otherwise, the field in the dict will be `dilations`.
+
+    // For Onnx Model, it can only be `dilations` and it must be a list of
+    // integers.
+    if (dict.count("dilation")) {
+      unsigned_t dilation;
+      ASSIGN_VALUE_OR_RETURN_ERR(dilation, loadInt(dict.at("dilation")));
+      return std::vector<unsigned_t>{dilation, dilation};
+    }
+    if (dict.count("dilations")) {
+      std::vector<unsigned_t> shape;
+      ASSIGN_VALUE_OR_RETURN_ERR(shape,
+                                 getShape<unsigned_t>(dict["dilations"]));
+      return shape;
+    }
+
+    return defaultValue;
+  }
 };
 
 } // namespace glow

@@ -89,7 +89,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads", /* addSetter */ true)
       .addMember(MemberType::Unsigned, "Group", /* addSetter */ true)
-      .addMember(MemberType::Unsigned, "Dilation")
+      .addMember(MemberType::VectorUnsigned, "Dilation")
       .addMember(MEMBER_TYPE_INFO(glow::ConvolutionLayout), "Layout")
       .addFusedActivation()
       .addResultFromCtorArg()
@@ -113,7 +113,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
-      .addMember(MemberType::Unsigned, "Dilation")
+      .addMember(MemberType::VectorUnsigned, "Dilation")
       .addResultFromCtorArg()
       .setDocstring(
           "Performs 2D Convolution using a given Input, Filter, and "
@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
-      .addMember(MemberType::Unsigned, "Dilation")
+      .addMember(MemberType::VectorUnsigned, "Dilation")
       .addResultFromCtorArg()
       .setDocstring("Performs 2D Transposed Convolution using a given Input,"
                     "Filter, and Bias tensors, as well as provided Kernels,"

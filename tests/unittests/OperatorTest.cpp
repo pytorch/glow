@@ -6311,6 +6311,42 @@ TEST_P(OperatorTest, convTest) {
   EXPECT_TRUE(expected.isEqual(*result));
 }
 
+// Conv2D test with non-square dilation
+TEST_P(OperatorTest, NonSquareDilationConv2D) {
+  CHECK_IF_ENABLED();
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "input", false);
+  auto IH = bindings_.allocate(input)->getHandle();
+  IH = {1, 1, 1, 1, 1, 1, 1, 1, 1};
+
+  auto filter =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 3, 3, 1}, "filter", false);
+  auto FH = bindings_.allocate(filter)->getHandle();
+  FH = {0, 0, 0, 1, 1, 1, 0, 0, 0};
+
+  auto *zeroBias =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1}, "bias", false);
+  bindings_.allocate(zeroBias)->zero();
+
+  auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 1, 3, 1});
+
+  ConvolutionNode *CN = F_->createConv(
+      "Conv", input, filter, zeroBias, outTy, /* kernel */ 3,
+      /* stride */ 1, /* pad */ 1, /* group */ 1, /* dilation */ {2, 1});
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder());
+
+  Tensor expected(outTy);
+  expected.getHandle() = {2, 3, 2};
+
+  EXPECT_TRUE(expected.isEqual(*result));
+}
+
 TEST_P(OperatorTest, convTest_Float16) {
   CHECK_IF_ENABLED();
   auto *input =
@@ -9038,6 +9074,50 @@ TEST_P(OperatorTest, sanityConvTranspose) {
   EXPECT_FLOAT_EQ(result.at({0, 3, 3, 1}), 55 + biasVal[1]);
 }
 
+// ConvTranspose with non-square dilation.
+TEST_P(OperatorTest, NonSquareDilationConvTranspose) {
+  CHECK_IF_ENABLED();
+
+  std::vector<unsigned_t> dilation = {1, 2};
+  auto *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 2, 2, 1}, "input", false);
+  bindings_.allocate(input)->getHandle() = {2., 3., 4., 5.};
+
+  auto *filter =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 2, 2, 1}, "filter", false);
+  bindings_.allocate(filter)->getHandle() = {2., 3., 4., 5., 6., 7., 8., 9.};
+
+  auto *bias = mod_.createPlaceholder(ElemKind::FloatTy, {2}, "bias", false);
+  bindings_.allocate(bias)->getHandle() = {0., 0.};
+
+  std::pair<dim_t, dim_t> outWH = calculateConvTransposeOutputDims(
+      2, 2, {2, 2}, {1, 1}, {0, 0, 0, 0}, dilation);
+  auto outTy =
+      mod_.uniqueType(ElemKind::FloatTy, {1, outWH.first, outWH.second, 2});
+
+  ConvTransposeNode *CN =
+      F_->createConvTranspose("ConvTranspose", input, filter, bias, outTy,
+                              {2, 2}, {1, 1}, {0, 0, 0, 0}, 1, dilation);
+
+  SaveNode *S = F_->createSave("save", CN);
+  bindings_.allocate(S->getPlaceholder());
+
+  ::glow::convertPlaceholdersToConstants(F_, bindings_,
+                                         {input, S->getPlaceholder()});
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto result = bindings_.get(S->getPlaceholder())->getHandle();
+  std::vector<dim_t> expectedDims = {1, 3, 4, 2};
+  ASSERT_TRUE(result.dims().vec() == expectedDims);
+  std::vector<float> expected = {4.,  12., 6.,  18., 6.,  14., 9.,  21.,
+                                 16., 40., 22., 54., 22., 46., 30., 62.,
+                                 16., 32., 20., 40., 20., 36., 25., 45.};
+  for (dim_t i = 0; i < result.size(); i++) {
+    EXPECT_FLOAT_EQ(result.raw(i), expected[i]);
+  }
+}
+
 /// ConvTranspose with multi-channel input/output and asymmetric kernel,
 /// strides, pads.
 TEST_P(OperatorTest, ConvTransposedAsymmetric) {
@@ -9120,7 +9200,7 @@ TEST_P(OperatorTest, ConvTransposedGroup) {
 
   ConvTransposeNode *CN =
       F_->createConvTranspose("ConvTranspose", input, filter, bias, outTy,
-                              {2, 2}, {2, 2}, {0, 0, 0, 0}, 2, 1);
+                              {2, 2}, {2, 2}, {0, 0, 0, 0}, /* group */ 2);
 
   SaveNode *S = F_->createSave("save", CN);
   bindings_.allocate(S->getPlaceholder());
@@ -9184,10 +9264,10 @@ static void convTransposeConvCompare(glow::PlaceholderBindings &bindings,
       mod.uniqueType(ElemKind::FloatTy, {1, outHW.first, outHW.second, 1});
 
   ConvolutionNode *CN = F->createConv("conv", input, filterConv, bias, outTy,
-                                      kernels, strides, Cpads, 1, 1);
+                                      kernels, strides, Cpads, /* group */ 1);
   ConvTransposeNode *DN =
       F->createConvTranspose("ConvTranspose", input, filterConvTr, bias, outTy,
-                             kernels, strides, pads, 1, 1);
+                             kernels, strides, pads, /* group */ 1);
 
   SaveNode *SC = F->createSave("saveC", CN);
   bindings.allocate(SC->getPlaceholder());
@@ -9200,7 +9280,7 @@ static void convTransposeConvCompare(glow::PlaceholderBindings &bindings,
   EE.compile(CompilationMode::Infer);
   EE.run(bindings);
 
-  outHW = calculateConvPoolOutputDims(idim, idim, kernels, strides, Cpads, 1);
+  outHW = calculateConvPoolOutputDims(idim, idim, kernels, strides, Cpads);
 
   auto resultConv = bindings.get(SC->getPlaceholder())->getHandle();
   auto resultConvTranspose = bindings.get(SD->getPlaceholder())->getHandle();
@@ -9300,7 +9380,7 @@ static void testChannelwiseQuantizedConv2D(
   std::vector<unsigned_t> strides = {1, 1};
   std::vector<unsigned_t> pads = {0, 0, 0, 0};
   dim_t group = 2;
-  dim_t dilation = 2;
+  std::vector<unsigned_t> dilation = {2, 2};
   dim_t qDim = 0;
   dim_t qStep = 1;
 
@@ -9417,8 +9497,8 @@ static void testChannelwiseQuantizedConv2D(
   ChannelwiseQuantizedConvolutionNode *outQ = F->createChannelwiseQuantizedConv(
       "CWQConv", inputQ, filterCWQ, biasCWQ, filterScalesCWQ, filterOffsetsCWQ,
       biasScalesCWQ, biasOffsetsCWQ, outQTy, kernels, strides, pads, group,
-      dilation, /* quantizeFilter */ true, /* quantizeBias */ true, schema,
-      elemQKind, biasElemQKind);
+      dilation, /* quantizeFilter */ true,
+      /* quantizeBias */ true, schema, elemQKind, biasElemQKind);
   DequantizeNode *out =
       F->createDequantize("dequantize", outQ, ElemKind::FloatTy);
   SaveNode *saveOut = F->createSave("saveOut", out);
@@ -9460,9 +9540,10 @@ static void testChannelwiseQuantizedConv2D(
 
 /// These unit tests prove that the bias quantization for low precision (Int8)
 /// requires a special handling because if we provide a quantized bias with
-/// implicit quantization parameters biasScales[i] = inputScale*filterScales[i]
-/// and biasOffsets[i]=0 does not work numerically due to BIAS DATA saturation.
-/// Therefore in the unit tests below we do not use the *_*FF tests.
+/// implicit quantization parameters biasScales[i] =
+/// inputScale*filterScales[i] and biasOffsets[i]=0 does not work numerically
+/// due to BIAS DATA saturation. Therefore in the unit tests below we do not
+/// use the *_*FF tests.
 TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt8_FFT, ElemKind::Int8QTy,
              ElemKind::Int8QTy, false, false, true)
 TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt8_FTF, ElemKind::Int8QTy,
@@ -9476,8 +9557,9 @@ TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt8_TTF, ElemKind::Int8QTy,
 TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt8_TTT, ElemKind::Int8QTy,
              ElemKind::Int8QTy, true, true, true)
 
-/// These unit tests prove that the bias quantization for high precision (Int32)
-/// can work without a special handling (implicit quantization parameters).
+/// These unit tests prove that the bias quantization for high precision
+/// (Int32) can work without a special handling (implicit quantization
+/// parameters).
 TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_FFF, ElemKind::Int8QTy,
              ElemKind::Int32QTy, false, false, false)
 TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_FFT, ElemKind::Int8QTy,
@@ -9513,7 +9595,7 @@ createAndInitBasicChannelwiseConv2DTest(glow::PlaceholderBindings &bindings,
   std::vector<unsigned_t> strides = {1, 1};
   std::vector<unsigned_t> pads = {0, 0, 0, 0};
   dim_t group = 2;
-  dim_t dilation = 2;
+  std::vector<unsigned_t> dilation = {2, 2};
 
   // Create input placeholder.
   auto *input =
@@ -9762,8 +9844,8 @@ TEST_P(OperatorTest, DilatedConvolution) {
 
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 4, 1, 1});
 
-  ConvolutionNode *CN =
-      F_->createConv("Conv", input, filter, zeroBias, outTy, 3, 1, 2, 1, 2);
+  ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
+                                       3, 1, 2, 1, {2, 2});
   SaveNode *S = F_->createSave("save", CN);
   bindings_.allocate(S->getPlaceholder());
 
@@ -9836,7 +9918,7 @@ void testChannelwiseQuantizedConv2DNonZero(glow::PlaceholderBindings &bindings,
   ChannelwiseQuantizedConvolutionNode *CQC = F->createChannelwiseQuantizedConv(
       "channelwiseQuantizedConv", qInput, filter, bias, filterScales,
       filterOffsets, /* biasScales */ nullptr, /* biasOffsets */ nullptr, outTy,
-      {2, 1}, {1, 1}, {0, 0, 0, 0}, groups, /* dilation */ 1,
+      {2, 1}, {1, 1}, {0, 0, 0, 0}, groups, /* dilation */ {1, 1},
       /* quantizeFilter */ false, quantizeBias);
 
   DequantizeNode *dq =
@@ -9907,8 +9989,8 @@ TEST_P(OperatorTest, GroupDilatedConvolution) {
 
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, {1, 4, 4, 2});
 
-  ConvolutionNode *CN =
-      F_->createConv("Conv", input, filter, zeroBias, outTy, 2, 1, 1, 2, 2);
+  ConvolutionNode *CN = F_->createConv("Conv", input, filter, zeroBias, outTy,
+                                       2, 1, 1, 2, {2, 2});
   SaveNode *S = F_->createSave("save", CN);
   bindings_.allocate(S->getPlaceholder());
 
@@ -11649,8 +11731,8 @@ TEST_P(OperatorTest, SigmoidOverflow) {
   }
 }
 
-/// This unit test exposes a problem with the CPU Sigmoid when stacking a higher
-/// number of operations for extreme input values which result in NaNs.
+/// This unit test exposes a problem with the CPU Sigmoid when stacking a
+/// higher number of operations for extreme input values which result in NaNs.
 TEST_P(OperatorTest, SigmoidOverflowCPUStacking) {
   CHECK_IF_ENABLED();
   dim_t size = 20;
@@ -12891,7 +12973,8 @@ TEST_P(OperatorTest, EmbeddingBag_1D_Float16_End_Offset) {
                               /* ndims */ 1, /* hasEndOffset */ true);
 }
 
-/// Test that EB is correctly supported in BFloat16Ty in 1D with an end offset.
+/// Test that EB is correctly supported in BFloat16Ty in 1D with an end
+/// offset.
 TEST_P(OperatorTest, EmbeddingBag_1D_BFloat16_End_Offset) {
   CHECK_IF_ENABLED();
   testEmbeddingBag<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
@@ -12923,7 +13006,8 @@ TEST_P(OperatorTest, EmbeddingBag_2D_Float16_End_Offset) {
                               /* ndims */ 2, /* hasEndOffset */ true);
 }
 
-/// Test that EB is correctly supported in BFloat16Ty in 2D with an end offset.
+/// Test that EB is correctly supported in BFloat16Ty in 2D with an end
+/// offset.
 TEST_P(OperatorTest, EmbeddingBag_2D_BFloat16_End_Offset) {
   CHECK_IF_ENABLED();
   testEmbeddingBag<bfloat16_t>(bindings_, mod_, F_, EE_, ElemKind::BFloat16Ty,
@@ -12931,8 +13015,8 @@ TEST_P(OperatorTest, EmbeddingBag_2D_BFloat16_End_Offset) {
                                /* ndims */ 2, /* hasEndOffset */ true);
 }
 
-/// Test that EB is correctly supported in FloatTy in 1D with an end offset and
-/// partial inputs.
+/// Test that EB is correctly supported in FloatTy in 1D with an end offset
+/// and partial inputs.
 TEST_P(OperatorTest, EmbeddingBag_1D_Float_End_Offset_Partial) {
   CHECK_IF_ENABLED();
   ASSERT_TRUE(EE_.getBackend(getBackendName()).supportsPartialTensors());
@@ -16232,7 +16316,8 @@ static void testBatchBoxCox(glow::PlaceholderBindings &bindings,
   lambda1H.randomize(1.0, 2.0, mod.getPRNG());
   lambda2H.randomize(1.0, maxLambda2, mod.getPRNG());
 
-  // Zero out every other element to lambda1 to test that case of the transform.
+  // Zero out every other element to lambda1 to test that case of the
+  // transform.
   for (dim_t i = 0; i < kCols; i += 2) {
     lambda1H.at({i}) = 0;
   }
@@ -16488,7 +16573,8 @@ static void testConvertToAndBack(glow::PlaceholderBindings &bindings_,
 TEST_CAST_2WAYS(float, float, FloatTy, FloatTy, /* castIsNoOp */ true)
 TEST_CAST_2WAYS(float, float16_t, FloatTy, Float16Ty, /* castIsNoOp */ false)
 // FIXME: Should this test succeed?
-TEST_CAST_2WAYS(float, bfloat16_t, FloatTy, BFloat16Ty, /* castIsNoOp */ false)
+TEST_CAST_2WAYS(float, bfloat16_t, FloatTy, BFloat16Ty,
+                /* castIsNoOp */ false)
 TEST_CAST_2WAYS(float, int32_t, FloatTy, Int32ITy, /* castIsNoOp */ false)
 TEST_CAST_2WAYS(float, int64_t, FloatTy, Int64ITy, /* castIsNoOp */ false)
 TEST_CAST_2WAYS(float16_t, float, Float16Ty, FloatTy, /* castIsNoOp */ true)
@@ -16551,8 +16637,8 @@ TEST_P(OperatorTest, ConvertFusedToFusedFP16) {
   EE_.compile(CompilationMode::Infer);
   EE_.run(bindings_);
 
-  // Dequantize the resulting RWQ w/ float16_t scale/offset, and compare to the
-  // original float data we started with.
+  // Dequantize the resulting RWQ w/ float16_t scale/offset, and compare to
+  // the original float data we started with.
   Tensor dequantResult =
       quantization::dequantizeTensor(*resultT, ElemKind::FloatTy);
   EXPECT_TRUE(dequantResult.isEqual(fData, 0.05));

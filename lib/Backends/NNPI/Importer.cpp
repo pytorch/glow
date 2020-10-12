@@ -581,7 +581,9 @@ public:
 
     ConvolutionNode *conv2DNode = llvm::dyn_cast<ConvolutionNode>(glowConv);
     if (conv2DNode) {
-      LOG_AND_RETURN_IF_NOT(ERROR, conv2DNode->getDilation() == 1,
+      LOG_AND_RETURN_IF_NOT(ERROR,
+                            conv2DNode->getDilation()[0] == 1 &&
+                                conv2DNode->getDilation()[1] == 1,
                             "Dilation is not supported", NNPI_INVALID_PARAM);
     }
     for (size_t i = 0; i < convDims; i++) {

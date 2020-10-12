@@ -36,6 +36,18 @@ class TestConv2d(unittest.TestCase):
             test_f, inputs, filters, bias, expected_fused_ops={"aten::_convolution"}
         )
 
+    def test_conv2d_non_square_dilation(self):
+        """Test of the PyTorch conv2d Node on Glow with non-square dilation."""
+
+        def test_f(inputs, filters):
+            conv = F.conv2d(inputs, filters, dilation=[1, 2])
+            return F.relu(conv)
+
+        inputs = torch.randn(1, 4, 5, 5)
+        filters = torch.randn(8, 4, 3, 3)
+
+        jitVsGlow(test_f, inputs, filters, expected_fused_ops={"aten::_convolution"})
+
     @unittest.skip(reason="not ready")
     def test_conv2d_param_sweep(self):
         """
