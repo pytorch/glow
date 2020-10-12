@@ -73,7 +73,7 @@ TEST_F(Caffe2ImporterTest, importExp) {
 
 /// Test loading conv op from a Caffe2 model.
 /// The input is N*C*H*W (1*1*3*3), the kernel is 2,
-/// stride is 1, pad is 1, group is 1.
+/// stride is 1, pad is 1, group is 1, dilation is 2.
 TEST_F(Caffe2ImporterTest, importConv) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
@@ -105,11 +105,10 @@ TEST_F(Caffe2ImporterTest, importConv) {
 
   EE.run(bindings);
   auto result = res->getHandle();
-  std::vector<dim_t> expectedDims = {1, 1, 4, 4};
-  std::vector<float> expectedValues = {2,  3,  5,  4,  5, 10, 14, 9,
-                                       11, 22, 26, 15, 8, 15, 17, 10};
+  std::vector<dim_t> expectedDims = {1, 1, 3, 3};
+  std::vector<float> expectedValues = {6, 10, 6, 10, 18, 10, 6, 10, 6};
   EXPECT_TRUE(result.dims().vec() == expectedDims);
-  for (size_t i = 0; i < 4 * 4; i++)
+  for (size_t i = 0; i < 3 * 3; i++)
     EXPECT_FLOAT_EQ(result.raw(i), expectedValues[i]);
 }
 
@@ -254,15 +253,16 @@ TEST_F(Caffe2ImporterTest, convGroupQuantized) {
   ASSERT_TRUE(groupwiseConv);
 
   // Check params.
-  std::vector<unsigned> expectedKernelsAndStrides = {1, 1};
+  std::vector<unsigned> expectedKernelsStridesAndDilation = {1, 1};
   std::vector<unsigned> expectedPads = {1, 1, 1, 1};
   EXPECT_EQ(groupwiseConv->getKernels(),
-            llvm::makeArrayRef(expectedKernelsAndStrides));
+            llvm::makeArrayRef(expectedKernelsStridesAndDilation));
   EXPECT_EQ(groupwiseConv->getStrides(),
-            llvm::makeArrayRef(expectedKernelsAndStrides));
+            llvm::makeArrayRef(expectedKernelsStridesAndDilation));
   EXPECT_EQ(groupwiseConv->getPads(), llvm::makeArrayRef(expectedPads));
   EXPECT_EQ(groupwiseConv->getGroup(), 2);
-  EXPECT_EQ(groupwiseConv->getDilation(), 1);
+  EXPECT_EQ(groupwiseConv->getDilation(),
+            llvm::makeArrayRef(expectedKernelsStridesAndDilation));
 
   // Check constant inputs.
   Constant *filterConstant =

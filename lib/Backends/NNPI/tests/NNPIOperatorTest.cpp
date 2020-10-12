@@ -480,6 +480,8 @@ struct BlacklistInitializer {
       {"VectorNorm_Float16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"VectorNorm_Float16Ty/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Transpose6Dims/0", TestBlacklist::AnyDeviceHWEngine},
+      {"NonSquareDilationConvTranspose/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"NonSquareDilationConv2D/0", TestBlacklist::AnyDeviceAnyEngine},
     };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);

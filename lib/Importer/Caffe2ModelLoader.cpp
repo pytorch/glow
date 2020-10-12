@@ -329,10 +329,9 @@ Error Caffe2ModelLoader::loadConv(const caffe2::OperatorDef &op,
   if (dict.count("order")) {
     ASSIGN_VALUE_OR_RETURN_ERR(order, loadStr(dict["order"]));
   }
-  unsigned_t dilation = 1;
-  if (dict.count("dilation")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(dilation, loadInt(dict["dilation"]));
-  }
+  std::vector<unsigned_t> dilations;
+  ASSIGN_VALUE_OR_RETURN_ERR(dilations,
+                             getDilations(dict, std::vector<unsigned_t>{1, 1}));
 
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
@@ -365,7 +364,7 @@ Error Caffe2ModelLoader::loadConv(const caffe2::OperatorDef &op,
   // Calculate the size and allocate the output buffer.
   ShapeNHWC idim = ShapeNHWC(finalInType->dims());
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides,
-                                           pads, dilation);
+                                           pads, dilations);
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
 
   // Try to find a loaded bias constant.
@@ -383,7 +382,7 @@ Error Caffe2ModelLoader::loadConv(const caffe2::OperatorDef &op,
   TypeRef outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
 
   Node *node = G_->createConv(opName, finalIn, w, bias, outTy, kernels, strides,
-                              pads, group, dilation);
+                              pads, group, dilations);
   if (op.type() == "ConvRelu") {
     node = G_->createRELU(opName + ".relu", node);
   }
@@ -419,10 +418,9 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
     ASSIGN_VALUE_OR_RETURN_ERR(quantizeGroupwise,
                                loadInt(dict["quantize_groupwise"]));
   }
-  unsigned_t dilation = 1;
-  if (dict.count("dilation")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(dilation, loadInt(dict["dilation"]));
-  }
+  std::vector<unsigned_t> dilations;
+  ASSIGN_VALUE_OR_RETURN_ERR(dilations,
+                             getDilations(dict, std::vector<unsigned_t>{1, 1}));
 
   // Group quantization only applies if there is more than one group.
   quantizeGroupwise &= group > 1;
@@ -461,7 +459,7 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
   // Calculate the size and allocate the output buffer.
   ShapeNHWC idim = ShapeNHWC(finalInType->dims());
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides,
-                                           pads, dilation);
+                                           pads, dilations);
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
 
   TypeRef outTy;
@@ -511,7 +509,7 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
     node = G_->createChannelwiseQuantizedConv(
         opName, finalIn, w, bias, wScales, wOffsets, /* biasScales */ nullptr,
         /* biasOffsets */ nullptr, outTy, kernels, strides, pads, group,
-        dilation, /* quantizeFilter */ true, /* quantizeBias */ false);
+        dilations, /* quantizeFilter */ true, /* quantizeBias */ false);
   } else {
     // If the bias isn't quantized for a non group quantized conv, quantize it.
     if (bias.getElementType() == ElemKind::FloatTy) {
@@ -524,7 +522,7 @@ Error Caffe2ModelLoader::loadConvQuantized(const caffe2::OperatorDef &op,
     }
 
     node = G_->createConv(opName, finalIn, w, bias, outTy, kernels, strides,
-                          pads, group, dilation);
+                          pads, group, dilations);
   }
 
   if (op.type() == "Int8ConvRelu") {
@@ -640,10 +638,9 @@ Error Caffe2ModelLoader::loadConvTranspose(const caffe2::OperatorDef &op,
   if (dict.count("order")) {
     ASSIGN_VALUE_OR_RETURN_ERR(order, loadStr(dict["order"]));
   }
-  unsigned_t dilation = 1;
-  if (dict.count("dilation")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(dilation, loadInt(dict["dilation"]));
-  }
+  std::vector<unsigned_t> dilations;
+  ASSIGN_VALUE_OR_RETURN_ERR(dilations,
+                             getDilations(dict, std::vector<unsigned_t>{1, 1}));
 
   NodeValue in;
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
@@ -676,7 +673,7 @@ Error Caffe2ModelLoader::loadConvTranspose(const caffe2::OperatorDef &op,
   // Calculate the size and allocate the output buffer.
   ShapeNHWC idim = ShapeNHWC(finalInType->dims());
   auto outSz = calculateConvTransposeOutputDims(idim.h, idim.w, kernels,
-                                                strides, pads, dilation);
+                                                strides, pads, dilations);
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
 
   // Try to find a loaded bias constant.
@@ -693,8 +690,9 @@ Error Caffe2ModelLoader::loadConvTranspose(const caffe2::OperatorDef &op,
 
   TypeRef outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
 
-  Node *node = G_->createConvTranspose(opName, finalIn, weight, bias, outTy,
-                                       kernels, strides, pads, group, dilation);
+  Node *node =
+      G_->createConvTranspose(opName, finalIn, weight, bias, outTy, kernels,
+                              strides, pads, group, dilations);
 
   if (order == "NCHW") {
     // Transpose the output back.

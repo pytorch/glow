@@ -1032,8 +1032,7 @@ getConv2DInputIdxAndMaps(const ConvolutionNode *node) {
   ShapeHW strides = ShapeHW(node->getStrides());
   PaddingTLBR pads(node->getPads());
   unsigned_t group = node->getGroup();
-  unsigned_t dilation = node->getDilation();
-  ShapeHW dilations = ShapeHW(llvm::ArrayRef<unsigned_t>({dilation, dilation}));
+  ShapeHW dilations = ShapeHW(node->getDilation());
   DimPads padsTB = {pads.top, pads.bottom};
   DimPads padsLR = {pads.left, pads.right};
 
@@ -1106,8 +1105,7 @@ void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
   ShapeHW kernels = ShapeHW(convOrigNode->getKernels());
   ShapeHW strides = ShapeHW(convOrigNode->getStrides());
   PaddingTLBR pads(convOrigNode->getPads());
-  unsigned_t dilation = convOrigNode->getDilation();
-  ShapeHW dilations = ShapeHW(llvm::ArrayRef<unsigned_t>({dilation, dilation}));
+  ShapeHW dilations = ShapeHW(convOrigNode->getDilation());
   DimPads padsTB = {pads.top, pads.bottom};
   DimPads padsLR = {pads.left, pads.right};
 

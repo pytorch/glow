@@ -538,7 +538,7 @@ void OpenCLFunction::executeNCHWConvolution(
   ShapeHW kdim(CC->getKernels());
   ShapeHW sdim(CC->getStrides());
   unsigned group = CC->getGroup();
-  unsigned dilation = CC->getDilation();
+  auto dilation = CC->getDilation();
   // So far, we don't support fast convolution kernel if group > 1.
   // For group convolution, the slow convolution kernel should be invoked.
   // The following debug checks should be removed once the group > 1 is
@@ -564,8 +564,8 @@ void OpenCLFunction::executeNCHWConvolution(
   addIntOption(options, "v_s_1", sdim.width);
 
   // Dilation.
-  addIntOption(options, "v_d_0", dilation);
-  addIntOption(options, "v_d_1", dilation);
+  addIntOption(options, "v_d_0", dilation[0]);
+  addIntOption(options, "v_d_1", dilation[1]);
 
   // Number of kernel input channels.
   addIntOption(options, "v_fin", fdim.c);
@@ -1164,6 +1164,7 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
     }
 
     if (auto *CC = dyn_cast<ConvolutionInst>(&I)) {
+      // For OpenCL backend, only NCHW convolution support non-square dilation
       if (CC->getLayout() == NCHW) {
         executeNCHWConvolution(CC, context, clBindings);
         continue;
@@ -1183,6 +1184,9 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       ShapeNHWC kernelSize(CC->getFilter()->getType()->dims());
       auto pads = PaddingTLBR(CC->getPads());
 
+      CHECK_EQ(CC->getDilation()[0], CC->getDilation()[1])
+          << "Currently not support non-square dilation here";
+
       const bool specialize = clSpecializeConvolution && !isQuantized;
       std::string src;
       if (specialize) {
@@ -1191,7 +1195,7 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
         std::vector<std::string> options;
         addIntOption(options, "CONVK_GROUP", CC->getGroup());
         addIntOption(options, "CONVK_BATCHES", idim.n);
-        addIntOption(options, "CONVK_DILATION", CC->getDilation());
+        addIntOption(options, "CONVK_DILATION", CC->getDilation()[0]);
         addIntOption(options, "CONVK_KERNEL_W", kdim.width);
         addIntOption(options, "CONVK_KERNEL_H", kdim.height);
         addIntOption(options, "CONVK_STRIDES_W", sdim.width);
@@ -1222,7 +1226,7 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
         setKernelArg(kernel, numArgs + 2, sdim);
         setKernelArg(kernel, numArgs + 3, pads);
         setKernelArg(kernel, numArgs + 4, CC->getGroup());
-        setKernelArg(kernel, numArgs + 5, CC->getDilation());
+        setKernelArg(kernel, numArgs + 5, CC->getDilation()[0]);
         setKernelArg(kernel, numArgs + 6, odim);
         setKernelArg(kernel, numArgs + 7, idim);
         setKernelArg(kernel, numArgs + 8, kernelSize);
@@ -1264,13 +1268,17 @@ Error OpenCLFunction::execute(ExecutionContext *context) {
       auto srcDim = ShapeNHWC(src->dims());
       auto filterGradDim = ShapeNHWC(filterGrad->dims());
       auto pads = PaddingTLBR(CG->getPads());
+
+      CHECK_EQ(CG->getDilation()[0], CG->getDilation()[1])
+          << "Currently not support non-square dilation.";
+
       ShapeHW kdim(CG->getKernels());
       ShapeHW sdim(CG->getStrides());
       setKernelArg(kernel, numArgs + 1, kdim);
       setKernelArg(kernel, numArgs + 2, sdim);
       setKernelArg(kernel, numArgs + 3, pads);
       setKernelArg(kernel, numArgs + 4, CG->getGroup());
-      setKernelArg(kernel, numArgs + 5, CG->getDilation());
+      setKernelArg(kernel, numArgs + 5, CG->getDilation()[0]);
       setKernelArg(kernel, numArgs + 6, srcDim);
       setKernelArg(kernel, numArgs + 7, destGradDim);
       setKernelArg(kernel, numArgs + 8, filterGradDim);
