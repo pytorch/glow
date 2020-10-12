@@ -58,33 +58,6 @@ llvm::cl::opt<bool>
 /// Limitation of number of arguments for `emitDataParallelKernel`.
 constexpr static size_t kArgLimit = 64;
 
-/// Generate the LLVM machine attribute list for the host.
-static llvm::SmallVector<std::string, 0> getHostMachineAttributes() {
-  llvm::SmallVector<std::string, 0> result;
-  llvm::StringMap<bool> hostFeatures;
-  if (llvm::sys::getHostCPUFeatures(hostFeatures)) {
-    for (auto &feature : hostFeatures) {
-      if (feature.second) {
-        llvm::StringRef fn = feature.first();
-        // Skip avx512 because LLVM does not support it well.
-        if (fn.startswith("avx512")) {
-          continue;
-        }
-        result.push_back(fn);
-      }
-    }
-  }
-  return result;
-}
-
-/// Returns the CPU hostname.
-static llvm::StringRef getHostCpuName() {
-  auto cpu_name = llvm::sys::getHostCPUName();
-  // Skip avx512 because LLVM does not support it well.
-  cpu_name.consume_back("-avx512");
-  return cpu_name;
-}
-
 /// Query the TargetMachine to get the pointer size in bits
 static unsigned getPointerNumBits(const llvm::TargetMachine &TM) {
   return TM.getPointerSize(0) * 8;
@@ -122,7 +95,8 @@ void LLVMIRGen::initTargetMachine(const LLVMBackendOptions &opts) {
                   .setRelocationModel(opts.getRelocModel())
                   .setTargetOptions(targetOpts)
                   .selectTarget(llvm::Triple(), opts.getArch(),
-                                getHostCpuName(), getHostMachineAttributes()));
+                                LLVMBackend::getHostCPU(),
+                                LLVMBackend::getHostFeatures()));
   } else {
     TM_.reset(llvm::EngineBuilder()
                   .setCodeModel(opts.getCodeModel())

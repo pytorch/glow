@@ -21,8 +21,8 @@ llvm::cl::OptionCategory &getLLVMBackendCat() {
   return cpuBackendCat;
 }
 
-llvm::cl::opt<std::string> llvmTarget("target",
-                                      llvm::cl::desc("LLVM target to be used"));
+llvm::cl::opt<std::string>
+    llvmTarget("target", llvm::cl::desc("LLVM target triple to be used"));
 
 llvm::cl::opt<std::string>
     llvmArch("march", llvm::cl::desc("LLVM architecture to be used"));

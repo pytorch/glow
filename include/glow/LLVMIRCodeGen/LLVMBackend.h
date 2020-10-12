@@ -35,7 +35,7 @@ class LLVMIRGen;
 /// LLVM backend options used to configure e.g. the LLVM TargetMachine, ORC JIT
 /// or BundleSaver.
 class LLVMBackendOptions {
-  /// Target used by this backend.
+  /// Target triple used by this backend.
   std::string target_;
   /// Arch used by this backend.
   std::string arch_;
@@ -58,9 +58,9 @@ class LLVMBackendOptions {
 
 public:
   LLVMBackendOptions();
-  /// \returns target used by this backend.
+  /// \returns target triple used by this backend.
   llvm::StringRef getTarget() const { return target_; }
-  /// Sets target used by this backend.
+  /// Sets target triple used by this backend.
   void setTarget(llvm::StringRef target) { target_ = target; }
   /// \returns arch used by this backend.
   llvm::StringRef getArch() const { return arch_; }
@@ -126,6 +126,15 @@ public:
   /// This is the implementation of the Backend interface.
   ///@{
   virtual ~LLVMBackend() override = default;
+
+  /// \returns the LLVM target triple for the host.
+  static std::string getHostTarget();
+
+  /// \returns the LLVM CPU name for the host.
+  static std::string getHostCPU();
+
+  /// \returns the LLVM CPU feature list for the host.
+  static llvm::SmallVector<std::string, 0> getHostFeatures();
 
   /// \returns LLVM backend options.
   const LLVMBackendOptions &getOptions() const { return options_; }
