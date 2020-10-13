@@ -15,7 +15,7 @@ namespace glow {
 class JITGraphRunner {
 public:
   JITGraphRunner(c10::IValue module, std::shared_ptr<torch::jit::Graph> graph,
-                 PyTorchLoaderSettings &settings);
+                 PyTorchLoaderSettings settings);
 
   torch::jit::Stack onExecute(c10::impl::GenericList inputs);
 

@@ -79,19 +79,19 @@ torch::jit::backend<TorchGlowBackend> &torchGlowBackend() {
 
 void registerTorchGlowBackendAndDeps() {
   (void)torchGlowBackend();
-  registerGlowCompileSpecCustomClass();
+  registerPyTorchGlowCustomClasses();
   registerGlowHelperOps();
 }
 
 static std::vector<glow::InputMeta>
-getInputMetas(const GlowCompileSpec &method_spec) {
+getInputMetas(const std::vector<c10::intrusive_ptr<InputSpec>> &inputSet) {
   std::vector<glow::InputMeta> inputMeta;
-  for (const auto &in : method_spec.inputs()) {
+  for (const auto &inputSpec : inputSet) {
     std::vector<glow::sdim_t> dims;
-    for (auto d : in.dims()) {
-      dims.emplace_back(static_cast<size_t>(d));
+    for (auto d : inputSpec->dims) {
+      dims.emplace_back(static_cast<glow::sdim_t>(d));
     }
-    inputMeta.emplace_back(in.type(), std::move(dims));
+    inputMeta.emplace_back(inputSpec->elem_type, std::move(dims));
   }
   return inputMeta;
 }
@@ -438,6 +438,59 @@ TorchGlowBackend::preprocess(c10::IValue mod,
   return m._ivalue();
 }
 
+void applySettingsOverrideFlagsToPyTorchLoaderSettings(
+    PyTorchLoaderSettings &settings) {
+  // TODO:
+}
+
+void applyCompilationGroupSettingsToPyTorchLoaderSettings(
+    PyTorchLoaderSettings &settings,
+    const CompilationGroupSettings &newSettings) {
+  if (newSettings.num_devices_to_use == -1) {
+    settings.saturateHost = true;
+  } else {
+    throw std::invalid_argument(
+        "Only num_devices_to_use=-1 supported currently");
+  }
+
+  settings.replicationCount = newSettings.replication_count;
+  settings.backendSpecificOpts = newSettings.backend_specific_opts;
+  settings.convertToFP16 = newSettings.convert_to_fp16;
+
+  // Ensure override flags are honored
+  applySettingsOverrideFlagsToPyTorchLoaderSettings(settings);
+}
+
+void applyCompilationSpecSettingsToPyTorchLoaderSettings(
+    PyTorchLoaderSettings &settings,
+    const CompilationSpecSettings &newSettings) {
+  settings.backendName = newSettings.glow_backend;
+  settings.enableDebugFuser = newSettings.enable_fuser;
+
+  // Ensure override flags are honored
+  applySettingsOverrideFlagsToPyTorchLoaderSettings(settings);
+}
+
+void applyFuserSettingsToPyTorchLoaderSettings(
+    PyTorchLoaderSettings &settings, const FuserSettings &newSettings) {
+  if (newSettings.min_fusion_group_size > 0) {
+    settings.minFusionGroupSize = newSettings.min_fusion_group_size;
+  }
+
+  if (newSettings.max_fusion_merge_size > 0) {
+    settings.maxFusionMergeSize = newSettings.max_fusion_merge_size;
+  }
+
+  settings.fusionStartIndex = newSettings.fusion_start_index;
+  settings.fusionEndIndex = newSettings.fusion_end_index;
+  for (const auto &symbol : newSettings.op_blacklist) {
+    settings.opBlacklist.insert(torch::jit::Symbol::fromQualString(symbol));
+  }
+
+  // Ensure override flags are honored
+  applySettingsOverrideFlagsToPyTorchLoaderSettings(settings);
+}
+
 c10::impl::GenericDict
 TorchGlowBackend::compile(c10::IValue processed,
                           c10::impl::GenericDict method_compile_spec) {
@@ -446,15 +499,46 @@ TorchGlowBackend::compile(c10::IValue processed,
 
   int64_t key = 0;
   // Compile each method
-  for (const auto &method : module.get_methods()) {
-    if (getPyTorchLoaderSettings().enableDebugFuser) {
+  for (const auto &kv : method_compile_spec) {
+    const auto methodName = kv.key().toString()->string();
+    const auto &method = module.get_method(methodName);
+
+    const CompilationSpec &spec = *kv.value().toCustomClass<CompilationSpec>();
+    if (auto err = spec.validate()) {
+      throw std::runtime_error(ERR_TO_STRING(std::move(err)));
+    }
+
+    PyTorchLoaderSettings baseSettings =
+        getGlobalPyTorchLoaderSettingsSnapshot();
+
+    // Apply settings from CompilationSpecSettings
+    applyCompilationSpecSettingsToPyTorchLoaderSettings(baseSettings,
+                                                        *spec.settings);
+
+    // Apply settings from FuserSettings
+    applyFuserSettingsToPyTorchLoaderSettings(baseSettings,
+                                              *spec.fuser_settings);
+
+    // Apply default CompilationGroupSettings
+    applyCompilationGroupSettingsToPyTorchLoaderSettings(
+        baseSettings, *spec.default_compilation_group_settings);
+
+    // TODO: can we delete this?
+    baseSettings.preCompilePyTorchModule = true;
+
+    // Override settings from gflags
+    applySettingsOverrideFlagsToPyTorchLoaderSettings(baseSettings);
+
+    if (baseSettings.enableDebugFuser) {
+      LOG(INFO) << "Using GlowFuser";
       auto graph = method.function().graph();
       // Run fusion flow using JIT graph runner
-      std::unique_ptr<JITGraphRunner> runner = std::make_unique<JITGraphRunner>(
-          processed, graph, getPyTorchLoaderSettings());
+      std::unique_ptr<JITGraphRunner> runner =
+          std::make_unique<JITGraphRunner>(processed, graph, baseSettings);
       handleToRunnerMap_.emplace(key,
                                  std::make_pair(nullptr, std::move(runner)));
     } else {
+      // TODO: can we copy this graph to avoid changing it?
       auto g = method.function().graph();
       // Remove "self" input
       CHECK(g->block()->inputs()[0]->uses().empty())
@@ -462,86 +546,79 @@ TorchGlowBackend::compile(c10::IValue processed,
       g->block()->eraseInput(0);
 
       // Create a corresponding runner and store {handle, runner} pair.
-      glow::getPyTorchLoaderSettings().preCompilePyTorchModule = true;
       std::unique_ptr<CachingGraphRunner> runner =
           std::make_unique<glow::CachingGraphRunner>(
-              g, glow::getHostManager(), glow::getPyTorchLoaderSettings());
+              g,
+              glow::getHostManager(baseSettings.backendName,
+                                   baseSettings.numDevices),
+              baseSettings);
 
-      // Find and parse method_compile_spec
-      c10::impl::GenericDict::iterator spec =
-          method_compile_spec.find(method.name());
-      CHECK(spec != method_compile_spec.end())
-          << "Could not find corresponding method_compile_spec for method: "
-          << method.name();
-      c10::IValue methodSpec = spec->value();
-      c10::impl::GenericList gcs(c10::AnyType::get());
-      try {
-        gcs = methodSpec.toList();
-      } catch (const std::exception &e) {
-        throw std::invalid_argument(
-            "method_compile_spec does not match GlowCompileSpec type.");
+      // Compile each compilation group
+      for (const auto &compilationGroup : spec.compilation_groups) {
+        // Apply CompilationGroupSettings settings
+        auto compilationGroupSettings = baseSettings;
+        applyCompilationGroupSettingsToPyTorchLoaderSettings(
+            compilationGroupSettings, *compilationGroup->settings);
+        // Compile each input set
+        for (const auto &inputSet : compilationGroup->input_sets) {
+          std::vector<glow::InputMeta> inputMeta = getInputMetas(inputSet);
+          auto e = runner->warmCache(inputMeta, compilationGroupSettings,
+                                     /*useMaxSizeCompilation*/ false);
+          CHECK(!(bool)e) << ERR_TO_STRING(std::move(e));
+        }
       }
 
-      // iterate list elements: get settings for each elem and compile
-      for (const auto &elem : gcs) {
-        GlowCompileSpec &spec =
-            *c10::IValue(elem).toCustomClass<GlowCompileSpec>();
-        std::vector<glow::InputMeta> inputMeta = getInputMetas(spec);
-        PyTorchLoaderSettings settings = spec.settings();
-        settings.preCompilePyTorchModule = true;
-
-        // Compile
-        auto e = runner->warmCache(inputMeta, settings,
-                                   /*useMaxSizeCompilation*/ false);
-        CHECK(!(bool)e) << ERR_TO_STRING(std::move(e));
-      }
-
-      // Bakcend is created on each to_backend call --> use simple
+      // Backend is created on each to_backend call --> use simple
       // consecutive keys for methods.
       handleToRunnerMap_.emplace(key,
                                  std::make_pair(std::move(runner), nullptr));
     }
-    handles.insert(method.name(), key++);
+    handles.insert(methodName, key++);
   }
   return c10::impl::toGenericDict(handles);
 }
 
 c10::impl::GenericList
 TorchGlowBackend::execute(c10::IValue handle, c10::impl::GenericList inputs) {
-  torch::jit::Stack stack;
 
   auto it = handleToRunnerMap_.find(handle.toInt());
-  Error err = glow::ErrorEmpty();
-  if (it != handleToRunnerMap_.end()) {
-    if (getPyTorchLoaderSettings().enableDebugFuser && it->second.second) {
-      stack = it->second.second->onExecute(inputs);
-    } else if (it->second.first) {
-      for (const auto &i : inputs) {
-        torch::jit::push(stack, i);
-      }
-      err = it->second.first->runOnly(stack);
-    }
-  } else {
+  if (it == handleToRunnerMap_.end()) {
     throw std::out_of_range("Could not find runner for handle " +
                             std::to_string(handle.toInt()));
   }
 
-  if (static_cast<bool>(err)) {
-    throw std::invalid_argument(ERR_TO_STRING(std::move(err)));
+  const auto &runnerPair = it->second;
+
+  torch::jit::Stack stack;
+
+  Error err = glow::ErrorEmpty();
+  if (runnerPair.first) {
+    for (const auto &i : inputs) {
+      torch::jit::push(stack, i);
+    }
+    err = it->second.first->runOnly(stack);
+  } else if (runnerPair.second) {
+    stack = it->second.second->onExecute(inputs);
+  } else {
+    throw std::runtime_error("Could not any type of runner for handle");
   }
 
-  c10::List<at::Tensor> output_list;
-  for (const auto &value : torch::jit::last(stack, stack.size())) {
-    output_list.emplace_back(value.toTensor());
+  if (static_cast<bool>(err)) {
+    throw std::runtime_error(ERR_TO_STRING(std::move(err)));
   }
-  return c10::impl::toList(output_list);
+
+  c10::List<at::Tensor> outputList;
+  for (const auto &value : torch::jit::last(stack, stack.size())) {
+    outputList.emplace_back(value.toTensor());
+  }
+  return c10::impl::toList(outputList);
 }
 
 JITGraphRunner::JITGraphRunner(c10::IValue module,
                                std::shared_ptr<torch::jit::Graph> graph,
-                               PyTorchLoaderSettings &settings)
+                               PyTorchLoaderSettings settings)
     : module_(module), graph_(graph), ptGraphExecutor_(graph, "forward"),
-      settings_(settings) {
+      settings_(std::move(settings)) {
   glow::registDefaultGlowFusionSymbolOnce();
   std::cout << "Running Glow Fusion Pass" << std::endl;
   std::unordered_set<torch::jit::NodeKind> supportedKinds;
@@ -578,7 +655,7 @@ JITGraphRunner::JITGraphRunner(c10::IValue module,
 }
 
 torch::jit::Stack JITGraphRunner::onExecute(c10::impl::GenericList inputs) {
-  assert(getPyTorchLoaderSettings().fusionPassEnabled == false);
+  CHECK_EQ(getGlobalPyTorchLoaderSettingsMutable().fusionPassEnabled, false);
   torch::jit::Stack stack;
   torch::jit::push(stack, module_);
   for (const auto &i : inputs) {

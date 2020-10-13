@@ -22,27 +22,25 @@
 #include "PyTorchCommon.h"
 
 namespace glow {
+/// Registers Glow's default symbol on the first call to this function.
+/// Later calls are NOP.
+void registDefaultGlowFusionSymbolOnce();
+
 /// Fuse nodes in \p graph that are supported by glow into a subgraph in a node
 /// with symbol \p kind. NOTE: kind must be registered with jit before calling
 /// this function.
-void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph, at::Symbol kind);
+void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph,
+                    const PyTorchLoaderSettings &settings, at::Symbol kind);
 
 /// Fuse nodes in \p graph that are supported by glow into a subgraph in Glow
 /// fusion group nodes using the settings in \p settings.
 void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph,
                     const PyTorchLoaderSettings &settings);
 
-/// Fuse nodes in \p graph that are supported by glow into a subgraph in Glow
-/// fusion group nodes.
-void glowCustomFuse(std::shared_ptr<torch::jit::Graph> graph);
-
-/// Registers Glow's default symbol on the first call to this function.
-/// Later calls are NOP.
-void registDefaultGlowFusionSymbolOnce();
-
 /// Fuse nodes in \p graph that have a kind in \p acceptableKinds into a
 /// subgraph in Glow fusion group nodes.
 void glowCustomFuseDebug(std::shared_ptr<torch::jit::Graph> graph,
+                         const PyTorchLoaderSettings &settings,
                          std::vector<std::string> acceptableKinds);
 } // namespace glow
 

@@ -38,8 +38,9 @@ class CachingGraphRunner {
   struct PerGlowGraphInfo {
 
     PerGlowGraphInfo() = delete;
-    PerGlowGraphInfo(const std::string func, const PyTorchLoaderSettings &set)
-        : functionName(func), settings(set) {}
+    PerGlowGraphInfo(const std::string &func,
+                     PyTorchLoaderSettings settingsParam)
+        : functionName(func), settings(std::move(settingsParam)) {}
 
     PerGlowGraphInfo(const PerGlowGraphInfo &) = delete;
     PerGlowGraphInfo &operator=(const PerGlowGraphInfo &) = delete;
@@ -157,19 +158,16 @@ class CachingGraphRunner {
   /// the stack.
   size_t hashTensorShape(const c10::ArrayRef<c10::IValue> &inputs) const;
 
-  /// Store the settings that were used to create the JIT subgraph that this
-  /// CachingGraphRunner owns.
-  PyTorchLoaderSettings settings_;
+  /// Settings used when compiling and running Glow graphs in cases where a
+  /// PyTorchLoaderSettings object isn't provided directly like when compiling
+  /// on the fly for new input shapes.
+  PyTorchLoaderSettings defaultSettings_;
 
-  /// Given a TraceContext \p traceContext, aggregate it with prvious
-  /// TraceContexts and if enough have been aggregated according to settings_
+  /// Given a TraceContext \p traceContext, aggregate it with previous
+  /// TraceContexts and if enough have been aggregated according to settings
   /// then dump them to file. If flush is true then dump aggregated traces to
   /// file no matter what.
   void aggregateAndDumpTraces(TraceContext *traceContext, bool flush = false);
-
-  /// Initialize the Glow compilation context \p cctx with \p settings
-  void initializeCompiliationContextFromSettings(
-      glow::CompilationContext &cctx, const PyTorchLoaderSettings &settings);
 
 public:
   CachingGraphRunner(std::shared_ptr<torch::jit::Graph> graph,
@@ -196,8 +194,6 @@ public:
   Error warmCache(const std::vector<InputMeta> &inputMeta,
                   const PyTorchLoaderSettings &settings,
                   bool useMaxSizeCompilation = true);
-
-  const PyTorchLoaderSettings &getSettings() const;
 };
 
 } // namespace glow
