@@ -54,8 +54,8 @@ void libjit_quantized_conv2d_generic(
     const dim_t *strides, const dim_t *pads, dim_t group, int32_t outOffset,
     int32_t inOffset, int32_t filterOffset, int32_t biasOffset, int32_t biasPre,
     int32_t biasPost, int32_t biasScale, int32_t outPre, int32_t outPost,
-    int32_t outScale, unsigned depthUnroll, const dim_t *dilation, int32_t actType,
-    const int32_t *actArgs) {
+    int32_t outScale, unsigned depthUnroll, const dim_t *dilation,
+    int32_t actType, const int32_t *actArgs) {
   dim_t inChannels = inWdims[3];
   dim_t outChannels = outWdims[3];
   dim_t inCperG = inChannels / group;
@@ -349,8 +349,8 @@ void libjit_conv2d_f(float *outW, const float *inW, const float *filterW,
                      const dim_t *inWdims, const dim_t *filterWdims,
                      const dim_t *biasWdims, const dim_t *kernelSizes,
                      const dim_t *strides, const dim_t *pads, dim_t group,
-                     unsigned depthUnroll, const dim_t *dilation, int32_t actType,
-                     const float *actArgs) {
+                     unsigned depthUnroll, const dim_t *dilation,
+                     int32_t actType, const float *actArgs) {
   dim_t inChannels = inWdims[3];
   dim_t outChannels = outWdims[3];
   dim_t inCperG = inChannels / group;
@@ -494,8 +494,8 @@ void libjit_conv2d_i8_i32(
     const dim_t *strides, const dim_t *pads, dim_t group, int32_t outOffset,
     int32_t inOffset, int32_t filterOffset, int32_t biasOffset, int32_t biasPre,
     int32_t biasPost, int32_t biasScale, int32_t outPre, int32_t outPost,
-    int32_t outScale, unsigned depthUnroll, const dim_t *dilation int32_t actType,
-    const int32_t *actArgs) {
+    int32_t outScale, unsigned depthUnroll,
+    const dim_t *dilation, int32_t actType, const int32_t *actArgs) {
   libjit_quantized_conv2d_generic<int8_t, int32_t>(
       outW, inW, filterW, biasW, outWdims, inWdims, filterWdims, biasWdims,
       kernelSizes, strides, pads, group, outOffset, inOffset, filterOffset,
@@ -512,8 +512,8 @@ void libjit_conv2d_i8_i8(int8_t *outW, const int8_t *inW, const int8_t *filterW,
                          int32_t filterOffset, int32_t biasOffset,
                          int32_t biasPre, int32_t biasPost, int32_t biasScale,
                          int32_t outPre, int32_t outPost, int32_t outScale,
-                         unsigned depthUnroll, const dim_t *dilation, int32_t actType,
-                         const int32_t *actArgs) {
+                         unsigned depthUnroll, const dim_t *dilation,
+                         int32_t actType, const int32_t *actArgs) {
   libjit_quantized_conv2d_generic<int8_t, int8_t>(
       outW, inW, filterW, biasW, outWdims, inWdims, filterWdims, biasWdims,
       kernelSizes, strides, pads, group, outOffset, inOffset, filterOffset,
