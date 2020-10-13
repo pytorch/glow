@@ -136,12 +136,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
     break;
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
   case Kinded::Kind::BBoxTransformNodeKind:
+    // RoiBatchSplits output should be FP16 in the Glow node and get
+    // converted explicitly to FP32 in NNPI importer.
     isNodePrecisionSupported =
-        NI.allInputsAndOutputsHaveSameElemKind(
-            {ElemKind::Float16Ty}, {},
-            {BBoxTransformNode::RoiBatchSplitsIdx}) &&
-        (NI.getOutElemTy(BBoxTransformNode::RoiBatchSplitsIdx) ==
-         ElemKind::FloatTy);
+        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
     break;
   case Kinded::Kind::ROIAlignNodeKind:
     isNodePrecisionSupported =
@@ -561,7 +559,9 @@ bool NNPIBackend::shouldLower(const Node *N) const {
   case Kinded::Kind::ConvolutionNodeKind: {
     bool isDilated = false;
     const ConvolutionNode *convNode = llvm::dyn_cast<ConvolutionNode>(N);
-    if (convNode && convNode->getDilation() > 1) {
+    if (convNode && std::any_of(convNode->getDilation().begin(),
+                                convNode->getDilation().end(),
+                                [](unsigned_t i) { return i > 1; })) {
       isDilated = true;
     }
     return isDilated ||

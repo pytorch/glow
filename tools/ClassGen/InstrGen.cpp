@@ -88,7 +88,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
-      .addMember(MemberType::Unsigned, "Dilation")
+      .addMember(MemberType::VectorUnsigned, "Dilation")
       .addMember(MEMBER_TYPE_INFO(ConvolutionLayout), "Layout")
       .addFusedActivation()
       .autoIRGen()
@@ -108,7 +108,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
-      .addMember(MemberType::Unsigned, "Dilation")
+      .addMember(MemberType::VectorUnsigned, "Dilation")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType,
                   {"Dest", "Src", "Filter", "ElemKind::Int8QTy"});
@@ -122,7 +122,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Strides")
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
-      .addMember(MemberType::Unsigned, "Dilation")
+      .addMember(MemberType::VectorUnsigned, "Dilation")
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src", "Filter"});
 

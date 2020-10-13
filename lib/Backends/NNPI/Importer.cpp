@@ -410,6 +410,9 @@ bool glow::NNPIImporter::isVariableUsingAlternativeLayout(Storage *v) {
     case Kinded::Kind::MaxPoolNodeKind:
       return true;
     case Kinded::Kind::FullyConnectedNodeKind:
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+    case Kinded::Kind::ROIAlignNodeKind:
+#endif
       return (v->getType()->dims().size() == 4);
     default: // Do nothing.
       break;
@@ -578,7 +581,9 @@ public:
 
     ConvolutionNode *conv2DNode = llvm::dyn_cast<ConvolutionNode>(glowConv);
     if (conv2DNode) {
-      LOG_AND_RETURN_IF_NOT(ERROR, conv2DNode->getDilation() == 1,
+      LOG_AND_RETURN_IF_NOT(ERROR,
+                            conv2DNode->getDilation()[0] == 1 &&
+                                conv2DNode->getDilation()[1] == 1,
                             "Dilation is not supported", NNPI_INVALID_PARAM);
     }
     for (size_t i = 0; i < convDims; i++) {
@@ -2174,19 +2179,41 @@ public:
       weights[i] = glowWeights[i];
     }
 
-    return nnpiNetworkAddBBoxTransformOp(
-        importer.getNetwork(), glowBboxTransform->getName().begin(),
-        nodeValueName(glowBboxTransform->getRois()).c_str(),
-        nodeValueName(glowBboxTransform->getDeltas()).c_str(),
-        nodeValueName(glowBboxTransform->getImInfo()).c_str(),
-        nodeValueName(glowBboxTransform->getBoxOut()).c_str(),
-        nodeValueName(glowBboxTransform->getRoiBatchSplits()).c_str(), weights,
-        glowBboxTransform->getApplyScale(), glowBboxTransform->getRotated(),
-        glowBboxTransform->getAngleBoundOn(),
-        glowBboxTransform->getAngleBoundLo(),
-        glowBboxTransform->getAngleBoundHi(),
-        glowBboxTransform->getClipAngleThresh(),
-        glowBboxTransform->getLegacyPlusOne());
+    auto convertName = NNPIImporter::internalName_ +
+                       glowBboxTransform->getName().str() +
+                       "_RoiBatchSplits_ConvertToFP16";
+
+    std::string roiBatchSplitsFp32TensorName =
+        NNPIImporter::internalName_ + "roi_batch_splits_convert";
+
+    auto *roiBatchSplitsFP32Type = n->getParent()->getParent()->uniqueType(
+        ElemKind::FloatTy,
+        glowBboxTransform->getRoiBatchSplits().getType()->dims());
+
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(roiBatchSplitsFp32TensorName, roiBatchSplitsFP32Type),
+        "failed to create BBoxTransform RoiBatchSplits convert");
+
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        nnpiNetworkAddBBoxTransformOp(
+            importer.getNetwork(), glowBboxTransform->getName().begin(),
+            nodeValueName(glowBboxTransform->getRois()).c_str(),
+            nodeValueName(glowBboxTransform->getDeltas()).c_str(),
+            nodeValueName(glowBboxTransform->getImInfo()).c_str(),
+            nodeValueName(glowBboxTransform->getBoxOut()).c_str(),
+            roiBatchSplitsFp32TensorName.c_str(), weights,
+            glowBboxTransform->getApplyScale(), glowBboxTransform->getRotated(),
+            glowBboxTransform->getAngleBoundOn(),
+            glowBboxTransform->getAngleBoundLo(),
+            glowBboxTransform->getAngleBoundHi(),
+            glowBboxTransform->getClipAngleThresh(),
+            glowBboxTransform->getLegacyPlusOne()),
+        "Failed to add bboxTransform node");
+
+    return nnpiNetworkAddConvertOp(
+        importer.getNetwork(), convertName.c_str(),
+        roiBatchSplitsFp32TensorName.c_str(),
+        nodeValueName(glowBboxTransform->getRoiBatchSplits()).c_str());
   }
 };
 
@@ -2197,11 +2224,25 @@ public:
     LOG_AND_RETURN_IF_NOT(ERROR, glowRoiAlign, "Bad node type",
                           NNPI_INVALID_PARAM);
 
-    // Batch Indices tensor dropped here, mode should always be "avg"
-    // "max" mode is not supported.
+    // Batch Indices tensor dropped here, mode should always be PoolingMode::AVG
+    // PoolingMode::MAX mode is not supported.
     importer.setUsedTensors({nodeValueName(glowRoiAlign->getFeatureMap()),
                              nodeValueName(glowRoiAlign->getBoxes())},
                             {nodeValueName(glowRoiAlign->getResult())});
+
+    // Set output of ROI to use NHWC.
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(nodeValueName(glowRoiAlign->getResult()),
+                          glowRoiAlign->getResult().getType(),
+                          /* alternativeLayout */ true),
+        "Failed to add tensor to NNPI");
+
+    // Set Feature Map to use NHWC.
+    LOG_NNPI_IF_ERROR_RETURN_VALUE(
+        importer.addValue(nodeValueName(glowRoiAlign->getFeatureMap()),
+                          glowRoiAlign->getFeatureMap().getType(),
+                          /* alternativeLayout */ true),
+        "Failed to add tensor to NNPI");
 
     auto mode = glowRoiAlign->getMode();
     LOG_AND_RETURN_IF_NOT(ERROR, mode == PoolingMode::AVG,
@@ -2330,7 +2371,7 @@ std::unordered_map<
     {"Logit", glow::make_unique<LogitNodeImporter>()},
     {"Modulo", glow::make_unique<ModuloNodeImporter>()},
     {"Swish", glow::make_unique<SwishNodeImporter>()},
-#if NNPI_MINOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+#if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
     {"ROIAlign", glow::make_unique<ROIAlignNodeImporter>()},
     {"BBoxTransform", glow::make_unique<BBoxTransformNodeImporter>()},
 #endif // NNPI >= 1.1

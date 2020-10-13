@@ -469,7 +469,7 @@ int run() {
     llvm::outs() << "Conversion of fused scales/offsets to fp16 enabled\n";
   }
   if (fuseScaleOffsetFp32Opt) {
-    precConfig.convert4BitFusedTo8Bit = fuseScaleOffsetFp32Opt;
+    precConfig.convert4BitFusedToFP32 = fuseScaleOffsetFp32Opt;
     precConfig.convert8BitFusedToFP32 = fuseScaleOffsetFp32Opt;
     llvm::outs()
         << "Conversion of fused scales/offsets to fp32 in frwqslws enabled\n";

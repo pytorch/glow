@@ -131,7 +131,8 @@ private:
   static Expected<TensorShape> fusedConcat(const MetaStack &variableMetas,
                                            int64_t dim);
   // Shape inference for prim::ListConstruct
-  static Expected<TensorShape> listConstruct(const MetaStack &variableMetas);
+  static Expected<TensorListShape>
+  listConstruct(const MetaStack &variableMetas);
   // Shape inference for aten::permute
   static Expected<TensorShape> permute(const MetaStack &variableMetas);
   // Shape inference for aten::reshape
@@ -148,10 +149,15 @@ private:
   // Shape inference for fb::embedding_bag_byte_rowwise_offsets
   static Expected<TensorShape>
   embeddingBagByteRowwiseOffsets(const MetaStack &variableMetas);
+  // Shape inference for fb::embedding_bag_4bit_rowwise_offsets
+  static Expected<TensorShape>
+  embeddingBag4BitRowwiseOffsets(const MetaStack &variableMetas);
   // Shape inference for aten::embedding_bag
   static Expected<TensorShape> embeddingBag(const MetaStack &variableMetas);
   // Shape inference for aten::chuck
   static Expected<TensorListShape> chunk(const MetaStack &variableMetas);
+  // Shape inference for aten::stack
+  static Expected<TensorShape> stack(const MetaStack &variableMetas);
 };
 
 } // namespace glow

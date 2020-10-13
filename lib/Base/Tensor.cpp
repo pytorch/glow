@@ -350,17 +350,21 @@ static bool isTiledImpl(const Tensor *tensor, unsigned_t axis, dim_t size,
   return true;
 }
 
-/// \returns a tensor with UInt8FusedQTy from \p T, whose type should be either
-/// UInt4FusedFP16QTy or UInt8FusedFP16QTy..
+/// \returns a tensor with UInt8FusedQTy from \p T, whose type should be
+/// UInt4FusedFP16QTy, UInt4FusedQTy, or UInt8FusedFP16QTy.
+template <class scaleOffsetTy = float16_t>
 static Tensor convertToUInt8FusedQTy(const Tensor *T) {
   const ElemKind origKind = T->getElementType();
-  // Supports UInt4FusedFP16QTy/UInt8FusedFP16QTy -> UInt8FusedQTy
+  // Supports UInt4FusedFP16QTy/UInt8FusedFP16QTy/UInt4FusedQTy -> UInt8FusedQTy
   DCHECK((origKind == ElemKind::UInt4FusedFP16QTy ||
+          origKind == ElemKind::UInt4FusedQTy ||
           origKind == ElemKind::UInt8FusedFP16QTy) &&
          T->dims().size() == 2)
-      << "UInt4FusedFP16QTy or UInt8FusedFP16QTy must be 2 dimensional.";
-  bool is4Bit = origKind == ElemKind::UInt4FusedFP16QTy;
-  const dim_t dataCol = T->dims()[1] - 2 * sizeof(float16);
+      << "UInt4FusedFP16QTy, UInt4FusedQTy or UInt8FusedFP16QTy must be 2 "
+         "dimensional.";
+  bool is4Bit = (origKind == ElemKind::UInt4FusedFP16QTy ||
+                 origKind == ElemKind::UInt4FusedQTy);
+  const dim_t dataCol = T->dims()[1] - 2 * sizeof(scaleOffsetTy);
   const dim_t numTotalRows = T->dims()[0];
   const dim_t numTotalColumns = dataCol * (is4Bit ? 2 : 1) + 2 * sizeof(float);
   Tensor tmp(ElemKind::UInt8FusedQTy, {numTotalRows, numTotalColumns}, 1.0, 0);
@@ -368,8 +372,9 @@ static Tensor convertToUInt8FusedQTy(const Tensor *T) {
   auto dstH = tmp.getHandle<uint8_t>();
   for (dim_t row = 0; row < T->dims()[0]; row++) {
     // Copy scale and offset from src to dst.
-    float16 scale, offset;
-    std::tie(scale, offset) = srcH.getFusedScaleOffsetFromRow<float16_t>(row);
+    scaleOffsetTy scale, offset;
+    std::tie(scale, offset) =
+        srcH.getFusedScaleOffsetFromRow<scaleOffsetTy>(row);
     dstH.setFusedScaleOffsetInRow<float>(row, static_cast<float>(scale),
                                          static_cast<float>(offset));
     for (dim_t column = 0; column < dataCol; column++) {
@@ -382,6 +387,32 @@ static Tensor convertToUInt8FusedQTy(const Tensor *T) {
       } else {
         dstH.at({row, column}) = srcH.at({row, column});
       }
+    }
+  }
+  return tmp;
+}
+
+/// \returns a tensor with UInt4FusedQTy from \p T, whose type should be
+/// UInt4FusedFP16QTy.
+static Tensor convertToUInt4FusedQTy(const Tensor *T) {
+  const ElemKind origKind = T->getElementType();
+  // Supports UInt4FusedFP16QTy -> UInt4FusedQTy.
+  DCHECK(origKind == ElemKind::UInt4FusedFP16QTy && T->dims().size() == 2)
+      << "UInt4FusedFP16QTy must be 2 dimensional.";
+  const dim_t dataCol = T->dims()[1] - 2 * sizeof(float16_t);
+  const dim_t numTotalRows = T->dims()[0];
+  const dim_t numTotalColumns = dataCol + 2 * sizeof(float);
+  Tensor tmp(ElemKind::UInt4FusedQTy, {numTotalRows, numTotalColumns}, 1.0, 0);
+  auto srcH = T->getHandle<uint8_t>();
+  auto dstH = tmp.getHandle<uint8_t>();
+  for (dim_t row = 0; row < T->dims()[0]; row++) {
+    // Copy scale and offset from src to dst.
+    float16_t scale, offset;
+    std::tie(scale, offset) = srcH.getFusedScaleOffsetFromRow<float16_t>(row);
+    dstH.setFusedScaleOffsetInRow<float>(row, static_cast<float>(scale),
+                                         static_cast<float>(offset));
+    for (dim_t column = 0; column < dataCol; column++) {
+      dstH.at({row, column}) = srcH.at({row, column});
     }
   }
   return tmp;
@@ -757,6 +788,10 @@ Tensor Tensor::getCopyConvertedToType(ElemKind newKind) const {
          (origKind == ElemKind::UInt8FusedFP16QTy &&
           newKind == ElemKind::UInt8FusedQTy) ||
          (origKind == ElemKind::UInt4FusedFP16QTy &&
+          newKind == ElemKind::UInt8FusedQTy) ||
+         (origKind == ElemKind::UInt4FusedFP16QTy &&
+          newKind == ElemKind::UInt4FusedQTy) ||
+         (origKind == ElemKind::UInt4FusedQTy &&
           newKind == ElemKind::UInt8FusedQTy))
       << "Conversion from " << Type::getElementName(origKind).str() << " to "
       << Type::getElementName(newKind).str() << " is not yet implemented";
@@ -811,9 +846,18 @@ Tensor Tensor::getCopyConvertedToType(ElemKind newKind) const {
   }
 
   // Handle Fused conversion.
-  if (origKind == ElemKind::UInt8FusedFP16QTy ||
-      origKind == ElemKind::UInt4FusedFP16QTy) {
-    return convertToUInt8FusedQTy(this);
+  if ((origKind == ElemKind::UInt8FusedFP16QTy ||
+       origKind == ElemKind::UInt4FusedFP16QTy) &&
+      newKind == ElemKind::UInt8FusedQTy) {
+    return convertToUInt8FusedQTy<float16_t>(this);
+  }
+  if (origKind == ElemKind::UInt4FusedQTy &&
+      newKind == ElemKind::UInt8FusedQTy) {
+    return convertToUInt8FusedQTy<float>(this);
+  }
+  if (origKind == ElemKind::UInt4FusedFP16QTy &&
+      newKind == ElemKind::UInt4FusedQTy) {
+    return convertToUInt4FusedQTy(this);
   }
 
   // Supports UInt8FusedQTy -> UInt8FusedFP16QTy.

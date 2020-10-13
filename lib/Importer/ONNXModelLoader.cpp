@@ -1080,13 +1080,13 @@ Expected<Pads> getPads(ArgumentDictionaryTy &dict,
 /// \p idim: input sizes (HW)
 static Expected<Pads> getConvTransposePadsfromOutput(
     ArgumentDictionaryTy &dict, llvm::ArrayRef<unsigned_t> kdim,
-    llvm::ArrayRef<unsigned_t> sdim, unsigned_t dilation,
+    llvm::ArrayRef<unsigned_t> sdim, llvm::ArrayRef<unsigned_t> dilation,
     llvm::ArrayRef<unsigned_t> idim, llvm::ArrayRef<unsigned_t> odim) {
 
   llvm::SmallVector<unsigned_t, 2> pdim(2); // Total Paddding, HW.
   for (size_t i = 0, e = pdim.size(); i < e; i++) {
     pdim[i] = sdim[i] * (idim[i] - 1) /* + output_padding[0]*/ +
-              ((kdim[i] - 1) * dilation + 1) - odim[i];
+              ((kdim[i] - 1) * dilation[i] + 1) - odim[i];
   }
 
   unsigned_t top, left, bottom, right;
@@ -1440,8 +1440,13 @@ Error ONNXModelLoader::loadConv1D(const ONNX_NAMESPACE::NodeProto &op,
     ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict.at("group")));
   }
 
-  unsigned_t dilation =
-      dict.count("dilations") ? dict.at("dilations")->ints(0) : 1;
+  std::vector<unsigned_t> dilations;
+  ASSIGN_VALUE_OR_RETURN_ERR(dilations,
+                             getDilations(dict, std::vector<unsigned_t>{1, 1}));
+  // Expand dilations to length 2 since Glow treat conv1D as conv2D
+  if (dilations.size() == 1) {
+    dilations.push_back(dilations[0]);
+  }
 
   // Load the inputs
   NodeValue in;
@@ -1498,11 +1503,11 @@ Error ONNXModelLoader::loadConv1D(const ONNX_NAMESPACE::NodeProto &op,
 
   ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict, kernelShape, strides, idimHW));
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides,
-                                           pads, dilation);
+                                           pads, dilations);
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
   auto *node = G_->createConv(opName, tr, filterTransposeNode, bias, outTy,
-                              kernelShape, strides, pads, group, dilation);
+                              kernelShape, strides, pads, group, dilations);
 
   auto *N = G_->createSqueeze(opName, node, 1 /*axes*/);
   // Transpose the output back
@@ -1536,25 +1541,14 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
     ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict.at("group")));
   }
 
-  unsigned_t dilation = 1;
-  if (dict.count("dilations")) {
-    std::vector<unsigned_t> dilations(2, 1);
-    ASSIGN_VALUE_OR_RETURN_ERR(dilations,
-                               getShape<unsigned_t>(dict["dilations"]));
-    RETURN_ERR_IF_NOT(
-        dilations.size() == 2,
-        opErrMsg(op, strFormat("Conv dilations must be specified for 2 axes "
-                               " found axes %zu",
-                               dilations.size())));
-    RETURN_ERR_IF_NOT(
-        dilations[1] == dilations[0],
-        opErrMsg(op,
-                 strFormat("Conv different dilation values %u and %u "
-                           " along different axes are not supported currently."
-                           " values must be same.",
-                           dilations[0], dilations[1])));
-    dilation = dilations[0];
-  }
+  std::vector<unsigned_t> dilations;
+  ASSIGN_VALUE_OR_RETURN_ERR(dilations,
+                             getDilations(dict, std::vector<unsigned_t>{1, 1}));
+  RETURN_ERR_IF_NOT(
+      dilations.size() == 2,
+      opErrMsg(op, strFormat("Conv dilations must be specified for 2 axes "
+                             " found axes %zu",
+                             dilations.size())));
 
   // Transpose the filter to the right format. Glow expects to read the
   // weights in the format CRSK. ONNX stores the operators as KCRS.
@@ -1619,12 +1613,12 @@ Error ONNXModelLoader::loadConv(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict, kernelShape, strides, idimHW));
 
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernelShape, strides,
-                                           pads, dilation);
+                                           pads, dilations);
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
 
   auto *node = G_->createConv(opName, tr, filterTransposeNode, bias, outTy,
-                              kernelShape, strides, pads, group, dilation);
+                              kernelShape, strides, pads, group, dilations);
 
   // Transpose the output back.
   auto *N = G_->createTranspose(opName, node, NHWC2NCHW);
@@ -1699,10 +1693,9 @@ Error ONNXModelLoader::loadChannelwiseQuantizedConvolution(
   unsigned_t group;
   ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict.at("group")));
 
-  unsigned_t dilation = 1;
-  if (dict.count("dilation")) {
-    ASSIGN_VALUE_OR_RETURN_ERR(dilation, loadInt(dict.at("dilation")));
-  }
+  std::vector<unsigned_t> dilations;
+  ASSIGN_VALUE_OR_RETURN_ERR(dilations,
+                             getDilations(dict, std::vector<unsigned_t>{1, 1}));
 
   float outScale;
   ASSIGN_VALUE_OR_RETURN_ERR(outScale, loadFloat(dict.at("out_scale")));
@@ -1722,7 +1715,7 @@ Error ONNXModelLoader::loadChannelwiseQuantizedConvolution(
   auto *node = G_->createChannelwiseQuantizedConv(
       opName, input, filterValue, biasValue, scalesValue, offsetsValue,
       /* biasScales */ nullptr, /* biasOffsets */ nullptr, outTy, kernels,
-      strides, pads, group, dilation, /* quantizeFilter */ true,
+      strides, pads, group, dilations, /* quantizeFilter */ true,
       /* quantizeBias */ false);
 
   return addNodeAsOutput(op, node);
@@ -1741,25 +1734,13 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
     ASSIGN_VALUE_OR_RETURN_ERR(group, loadInt(dict.at("group")));
   }
 
-  unsigned_t dilation = 1;
-  if (dict.count("dilations")) {
-    std::vector<unsigned_t> dilations;
-    ASSIGN_VALUE_OR_RETURN_ERR(dilations,
-                               getShape<unsigned_t>(dict["dilations"]));
-    RETURN_ERR_IF_NOT(dilations.size() == 2,
-                      opErrMsg(op, strFormat("ConvTranspose dilations must be "
-                                             "specified for 2 axes, found %zu ",
-                                             dilations.size())));
-    ;
-    RETURN_ERR_IF_NOT(
-        dilations[1] == dilations[0],
-        opErrMsg(op,
-                 strFormat("ConvTranspose different dilation values %u and %u "
-                           "along different axes "
-                           "are not supported currently. values must be same.",
-                           dilations[0], dilations[1])));
-    dilation = dilations[0];
-  }
+  std::vector<unsigned_t> dilations;
+  ASSIGN_VALUE_OR_RETURN_ERR(dilations,
+                             getDilations(dict, std::vector<unsigned_t>{1, 1}));
+  RETURN_ERR_IF_NOT(dilations.size() == 2,
+                    opErrMsg(op, strFormat("ConvTranspose dilations must be "
+                                           "specified for 2 axes, found %zu ",
+                                           dilations.size())));
 
   // Load the inputs
   NodeValue in;
@@ -1839,12 +1820,12 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
     ASSIGN_VALUE_OR_RETURN_ERR(outShape,
                                getShape<unsigned_t>(dict["output_shape"]));
     ASSIGN_VALUE_OR_RETURN_ERR(
-        pads, getConvTransposePadsfromOutput(dict, kernels, strides, dilation,
+        pads, getConvTransposePadsfromOutput(dict, kernels, strides, dilations,
                                              idimHW, outShape));
     outSz = {outShape[0], outShape[1]};
 
     std::pair<dim_t, dim_t> outSzTest = calculateConvTransposeOutputDims(
-        idim.h, idim.w, kernels, strides, pads, dilation);
+        idim.h, idim.w, kernels, strides, pads, dilations);
     RETURN_ERR_IF_NOT(
         (outShape[0] == outSzTest.first),
         opErrMsg(op, strFormat("ConvTranspose Expected %d /calculated %d "
@@ -1868,14 +1849,14 @@ Error ONNXModelLoader::loadConvTranspose(const ONNX_NAMESPACE::NodeProto &op,
     }
     ASSIGN_VALUE_OR_RETURN_ERR(pads, getPads(dict, kernels, strides, idimHW));
     outSz = calculateConvTransposeOutputDims(idim.h, idim.w, kernels, strides,
-                                             pads, dilation);
+                                             pads, dilations);
   }
   std::array<dim_t, 4> outDims = {{idim.n, outSz.first, outSz.second, depth}};
   auto outTy = mod_.uniqueType(ElemKind::FloatTy, outDims);
 
   auto *node =
       G_->createConvTranspose(opName, tr, filterTransposeNode, bias, outTy,
-                              kernels, strides, pads, group, dilation);
+                              kernels, strides, pads, group, dilations);
 
   // Transpose the output back.
   auto *N = G_->createTranspose(opName, node, NHWC2NCHW);

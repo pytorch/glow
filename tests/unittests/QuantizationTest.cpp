@@ -954,7 +954,7 @@ static void enableChannelwiseQuantizedConv2D(ElemKind qPrec, ElemKind qPrecBias,
   std::vector<unsigned_t> strides = {1, 1};
   std::vector<unsigned_t> pads = {0, 0, 0, 0};
   dim_t group = 2;
-  dim_t dilation = 1;
+  std::vector<unsigned_t> dilation = {1, 1};
 
   // Create input placeholder.
   auto *input =

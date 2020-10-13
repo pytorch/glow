@@ -52,6 +52,14 @@ public:
     *this = *this - b;
     return *this;
   }
+  float16 operator*=(const float16 &b) {
+    *this = *this * b;
+    return *this;
+  }
+  float16 operator/=(const float16 &b) {
+    *this = *this / b;
+    return *this;
+  }
 
   /// Comparisons.
   bool operator<(const float16 &b) const { return operator float() < float(b); }

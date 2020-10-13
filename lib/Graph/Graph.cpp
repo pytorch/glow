@@ -827,7 +827,8 @@ ConvolutionNode *Function::createConv(
     llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
     TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
     llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
-    unsigned_t group, unsigned_t dilation, ConvolutionLayout layout) {
+    unsigned_t group, llvm::ArrayRef<unsigned_t> dilation,
+    ConvolutionLayout layout) {
   assertConvDims(input, filter, bias, kernels, strides, pads, group);
   auto OT = getParent()->uniqueType(*outTy);
 
@@ -859,7 +860,8 @@ ConvolutionNode *Function::createConv(llvm::StringRef name, NodeValue input,
                                       NodeValue filter, NodeValue bias,
                                       TypeRef outTy, unsigned_t kernel,
                                       unsigned_t stride, unsigned_t pad,
-                                      unsigned_t group, unsigned_t dilation,
+                                      unsigned_t group,
+                                      llvm::ArrayRef<unsigned_t> dilation,
                                       ConvolutionLayout layout) {
   llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
@@ -917,7 +919,7 @@ ConvTransposeNode *Function::createConvTranspose(
     llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
     TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
     llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
-    unsigned_t group, unsigned_t dilation) {
+    unsigned_t group, llvm::ArrayRef<unsigned_t> dilation) {
   assertConvTransposeDims(input, filter, bias, kernels, strides, pads, group);
   auto OT = getParent()->uniqueType(*outTy);
   return addNode(new ConvTransposeNode(name, OT, input, filter, bias, kernels,
@@ -927,7 +929,7 @@ ConvTransposeNode *Function::createConvTranspose(
 ConvTransposeNode *Function::createConvTranspose(
     llvm::StringRef name, NodeValue input, NodeValue filter, NodeValue bias,
     TypeRef outTy, unsigned_t kernel, unsigned_t stride, unsigned_t pad,
-    unsigned_t group, unsigned_t dilation) {
+    unsigned_t group, llvm::ArrayRef<unsigned_t> dilation) {
   llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
   llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
@@ -2847,7 +2849,8 @@ ConvolutionNode *Function::createConv(
     PlaceholderBindings &bindings, llvm::StringRef name, NodeValue input,
     dim_t outChannels, llvm::ArrayRef<unsigned_t> kernels,
     llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
-    unsigned_t group, unsigned_t dilation, ConvolutionLayout layout) {
+    unsigned_t group, llvm::ArrayRef<unsigned_t> dilation,
+    ConvolutionLayout layout) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   ShapeHW kdim(kernels);
   PaddingTLBR pdim(pads);
@@ -2894,7 +2897,8 @@ ConvolutionNode *Function::createConv(PlaceholderBindings &bindings,
                                       llvm::StringRef name, NodeValue input,
                                       dim_t outChannels, unsigned_t kernel,
                                       unsigned_t stride, unsigned_t pad,
-                                      unsigned_t group, unsigned_t dilation,
+                                      unsigned_t group,
+                                      llvm::ArrayRef<unsigned_t> dilation,
                                       ConvolutionLayout layout) {
   llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
@@ -2967,7 +2971,7 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
     NodeValue filterScales, NodeValue filterOffsets, NodeValue biasScales,
     NodeValue biasOffsets, TypeRef outTy, llvm::ArrayRef<unsigned_t> kernels,
     llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
-    unsigned_t group, unsigned_t dilation, bool quantizeFilter,
+    unsigned_t group, llvm::ArrayRef<unsigned_t> dilation, bool quantizeFilter,
     bool quantizeBias, quantization::Schema schema, ElemKind filterElemQTy,
     ElemKind biasElemQTy) {
 
@@ -3128,7 +3132,7 @@ ConvTransposeNode *Function::createConvTranspose(
     PlaceholderBindings &bindings, llvm::StringRef name, NodeValue input,
     dim_t outChannels, llvm::ArrayRef<unsigned_t> kernels,
     llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
-    unsigned_t group, unsigned_t dilation) {
+    unsigned_t group, llvm::ArrayRef<unsigned_t> dilation) {
   ShapeNHWC idim = ShapeNHWC(input.dims());
   ShapeHW kdim(kernels);
   PaddingTLBR pdim(pads);
@@ -3175,7 +3179,7 @@ ConvTransposeNode *Function::createConvTranspose(
 ConvTransposeNode *Function::createConvTranspose(
     PlaceholderBindings &bindings, llvm::StringRef name, NodeValue input,
     dim_t outChannels, unsigned_t kernel, unsigned_t stride, unsigned_t pad,
-    unsigned_t group, unsigned_t dilation) {
+    unsigned_t group, llvm::ArrayRef<unsigned_t> dilation) {
   llvm::SmallVector<unsigned_t, 4> pads = {pad, pad, pad, pad};
   llvm::SmallVector<unsigned_t, 2> strides = {stride, stride};
   llvm::SmallVector<unsigned_t, 2> kernels = {kernel, kernel};
@@ -3512,9 +3516,9 @@ void Function::createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue input,
     return strFormat("%s.%s_%d", nameBase.c_str(), s, t);
   };
   std::vector<NodeValue> inputs, outputs;
-  unsigned batchSize, hiddenSize, timeSteps;
+  unsigned batchSize, inputSize, timeSteps;
   batchSize = input.dims()[1];
-  hiddenSize = input.dims()[2];
+  inputSize = input.dims()[2];
   timeSteps = input.dims()[0];
   // Input gate:
   //    I <- sigmoid(Wxi * x + Bxi + Whi * h + Bhi)
@@ -3532,10 +3536,10 @@ void Function::createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue input,
   std::vector<Node *> outputNodes;
   for (unsigned t = 0; t < timeSteps; t++) {
     auto inputSliced = createSlice(name("slice", t), input, {t, 0, 0},
-                                   {t + 1, batchSize, hiddenSize})
+                                   {t + 1, batchSize, inputSize})
                            ->getResult();
     inputSliced =
-        createReshape(name("reshape", t), inputSliced, {batchSize, hiddenSize});
+        createReshape(name("reshape", t), inputSliced, {batchSize, inputSize});
     auto *Result = createAdd(
         name("add1", t), createFullyConnected(name("fc1", t), Ht, Wh, Bh),
         createFullyConnected(name("fc2", t), inputSliced, Wx, Bx));
@@ -4964,7 +4968,7 @@ BBoxTransformNode *Function::createBBoxTransform(
       rois.getType(), {deltasDims[0], deltasDims[1]});
   // Forcing roiBatchSplitsTy to always be Float.
   auto roiBatchSplitsTy =
-      getParent()->uniqueType(ElemKind::FloatTy, {imInfoDims[0]});
+      getParent()->uniqueType(rois.getElementType(), {imInfoDims[0]});
 
   return addNode(new BBoxTransformNode(
       name, boxOutTy, roiBatchSplitsTy, rois, deltas, imInfo, weights,
@@ -5813,7 +5817,9 @@ bool isConvolutionSameAsFullyConnected(const ConvolutionNode *node,
   isSame &= (pads.top == 0) && (pads.left == 0) && (pads.bottom == 0) &&
             (pads.right == 0);
   isSame &= (group == 1);
-  isSame &= (dilation == 1);
+  isSame &= std::all_of(dilation.begin(), dilation.end(),
+                        [](unsigned_t i) { return i == 1; });
+
   if (enforceInput1x1) {
     auto inputDims = ShapeNHWC(node->getInput().getType()->dims());
     isSame &= (inputDims.h == 1) && (inputDims.w == 1);

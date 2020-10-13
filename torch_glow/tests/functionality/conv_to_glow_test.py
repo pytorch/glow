@@ -9,7 +9,7 @@ import unittest
 from collections import OrderedDict
 
 
-def create_model(x, relu):
+def create_model(x, relu, bias=True):
     """ x is an example input, relu is whether or not to include a fused relu"""
 
     with torch.no_grad():
@@ -17,7 +17,10 @@ def create_model(x, relu):
 
         conv_op = None
         if x_size == 4:
-            conv_op = torch.nn.Conv2d(3, 10, 3)
+            if bias:
+                conv_op = torch.nn.Conv2d(3, 10, 3)
+            else:
+                conv_op = torch.nn.Conv2d(3, 10, 3, bias=False)
         elif x_size == 5:
             conv_op = torch.nn.Conv3d(3, 10, 3)
         else:
@@ -25,7 +28,8 @@ def create_model(x, relu):
             exit(1)
 
         conv_op.weight.random_(-1, 1)
-        conv_op.bias.data.random_(-1, 1)
+        if bias:
+            conv_op.bias.data.random_(-1, 1)
 
         model = None
         if relu:
@@ -81,4 +85,9 @@ class TestConvToGlow(unittest.TestCase):
     def test_conv3d_relu_to_glow(self):
         x = torch.randn([1, 3, 30, 30, 30])
         m = create_model(x, True)
+        run_to_glow(m, x)
+
+    def test_conv2d_to_glow_empty_bias(self):
+        x = torch.randn([1, 3, 30, 30])
+        m = create_model(x, False, False)
         run_to_glow(m, x)

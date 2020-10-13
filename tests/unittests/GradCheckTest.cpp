@@ -526,8 +526,8 @@ TEST_P(GradCheck, gradientCheckGroupConv) {
   gradientCheckGroupConv(4, 2, EET_, EEI_);
 }
 
-static void gradientCheckDilatedConv(dim_t depth, dim_t group, dim_t dilation,
-                                     ExecutionEngine &EET_,
+static void gradientCheckDilatedConv(dim_t depth, dim_t group,
+                                     unsigned_t dilation, ExecutionEngine &EET_,
                                      ExecutionEngine &EEI_) {
   PlaceholderBindings bindings;
   dim_t numDim = 10;
@@ -545,8 +545,8 @@ static void gradientCheckDilatedConv(dim_t depth, dim_t group, dim_t dilation,
     Ex = mod.createPlaceholder(ElemKind::FloatTy, {1, numDim, numDim, depth},
                                "exp", false);
 
-    Node *O =
-        F->createConv(bindings, "conv", A, depth, 2, 1, 1, group, dilation);
+    Node *O = F->createConv(bindings, "conv", A, depth, 2, 1, 1, group,
+                            {dilation, dilation});
     O = F->createRegression("reg", O, Ex);
     result = F->createSave("ret", O);
   }

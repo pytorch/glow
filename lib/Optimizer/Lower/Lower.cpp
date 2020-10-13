@@ -1482,7 +1482,7 @@ static void lowerConvolution3DNode(Function *F, CompilationContext &cctx,
   llvm::ArrayRef<unsigned_t> istr = C3DN.getStrides();
   PaddingNFTBLR ipad(C3DN.getPads());
   auto group = C3DN.getGroup();
-  auto dilation = 1;
+  unsigned_t dilation = 1;
   auto layout = ConvolutionLayout::NHWC;
 
   // Loop over T IFM dimension and concat OFM slices
@@ -1532,7 +1532,7 @@ static void lowerConvolution3DNode(Function *F, CompilationContext &cctx,
                          static_cast<unsigned int>(ipad.left),
                          static_cast<unsigned int>(ipad.bottom),
                          static_cast<unsigned int>(ipad.right)},
-                        group, dilation, layout);
+                        group, {dilation, dilation}, layout);
 
       VLOG(5) << "Partial output: " << partialOutput->dims(0) << std::endl;
 

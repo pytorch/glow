@@ -720,6 +720,10 @@ void CachingGraphRunner::initializeCompiliationContextFromSettings(
   if (settings.saturateHost) {
     cctx.saturateHost = settings.saturateHost;
   }
+
+  if (!settings.backendSpecificOpts.empty()) {
+    cctx.backendOpts.backendSpecificOpts = settings.backendSpecificOpts;
+  }
 }
 
 Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,

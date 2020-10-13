@@ -72,6 +72,10 @@ DEFINE_bool(setIncludeLastOffsets, true, "See PyTorchLoaderSettings");
 DEFINE_bool(inferShapeForCompilation, false,
             "Infer shape for the entire model for compilation");
 DEFINE_bool(enableRemoveMutation, true, "See PyTorchLoaderSettings");
+DEFINE_string(backendSpecificOpts, "",
+              "Comma separated list of key=value for building the "
+              "BackendSpecificOptions map in BackendOptions in "
+              "CompilationContext.");
 
 namespace glow {
 
@@ -269,6 +273,21 @@ void PyTorchLoaderSettings::initSettings() {
     auto kindStrings = splitString(FLAGS_opBlacklist);
     for (const auto &kindString : kindStrings) {
       opBlacklist.insert(torch::jit::Symbol::fromQualString(kindString));
+    }
+  }
+
+  if (!FLAGS_backendSpecificOpts.empty()) {
+    llvm::StringRef opts(FLAGS_backendSpecificOpts);
+    llvm::SmallVector<llvm::StringRef, 4> splitOpts;
+    opts.split(splitOpts, ',');
+
+    for (const llvm::StringRef &opt : splitOpts) {
+      LOG(INFO) << "Adding backend specific option: " << opt.str();
+      auto keyValPair = opt.split('=');
+      if (keyValPair.second.empty()) {
+        LOG(ERROR) << "No '=' found in backend-specific opt " << opt.str();
+      }
+      backendSpecificOpts.emplace(keyValPair.first, keyValPair.second);
     }
   }
 }

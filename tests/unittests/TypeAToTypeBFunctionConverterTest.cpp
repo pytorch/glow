@@ -1547,8 +1547,9 @@ TEST(TypeAToTypeBFunctionConverter, DoNotConvertFloatBiasWithIntInput) {
 }
 
 /// Create a FRWQSLWS node with data type \p fusedKind and shape \p row and \p
-/// col, check if its data can be properly converted to UInt8FusedQTy, and its
-/// indices can be properly coverted to Int64.
+/// col, check if its data can be properly converted from UInt8FP16QTy to
+/// UInt8FusedQTy, or from UInt4FP16QTy to UInt4FusedQTy, and its indices can be
+/// properly coverted to Int64.
 static void testFRWQSLWSDataIndicesConvert(ElemKind fusedKind, dim_t row,
                                            dim_t col) {
   EXPECT_LT(row, 100);
@@ -1578,7 +1579,7 @@ static void testFRWQSLWSDataIndicesConvert(ElemKind fusedKind, dim_t row,
   size_t origSize = F->getNodes().size();
   CompilationContext cctx;
   PrecisionConfiguration &precConfig = cctx.precisionConfig;
-  precConfig.convert4BitFusedTo8Bit = true;
+  precConfig.convert4BitFusedToFP32 = true;
   precConfig.convert8BitFusedToFP32 = true;
   precConfig.convertIndicesToInt64 = true;
   precConfig.forceFP16AccumSLS = false;
@@ -1597,16 +1598,22 @@ static void testFRWQSLWSDataIndicesConvert(ElemKind fusedKind, dim_t row,
       llvm::dyn_cast<FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(
           S->getInput());
   ASSERT_NE(SLWS, nullptr);
-  EXPECT_EQ(SLWS->getData().getElementType(), ElemKind::UInt8FusedQTy);
+  if (fusedKind == ElemKind::UInt8FusedFP16QTy) {
+    EXPECT_EQ(SLWS->getData().getElementType(), ElemKind::UInt8FusedQTy);
+  } else {
+    EXPECT_EQ(SLWS->getData().getElementType(), ElemKind::UInt4FusedQTy);
+  }
   EXPECT_EQ(SLWS->getIndices().getElementType(), ElemKind::Int64ITy);
 
   EXPECT_TRUE(F->verify());
 }
 
+/// Testing converting UInt8FusedFP16QTy to UInt8FusedQTy.
 TEST(TypeAToTypeBFunctionConverter, FRWLWSConvert8Bit) {
   testFRWQSLWSDataIndicesConvert(ElemKind::UInt8FusedFP16QTy, 10, 10);
 }
 
+/// Testing converting UInt4FusedFP16QTy to UInt4FusedQTy.
 TEST(TypeAToTypeBFunctionConverter, FRWLWSConvert4Bit) {
   testFRWQSLWSDataIndicesConvert(ElemKind::UInt4FusedFP16QTy, 10, 10);
 }

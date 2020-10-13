@@ -520,7 +520,7 @@ TEST(exporter, ChannelwiseQuantizedConvolution) {
       "cqconv", input, weightsConstant, biasConstant, filterScalesConstant,
       filterOffsetsConstant, /* biasScales */ nullptr,
       /* biasOffsets */ nullptr, outTy, kernels, strides, pads, groups,
-      dilation);
+      {dilation, dilation});
 
   auto *save = F->createSave("save_out", cqConv);
 
@@ -606,7 +606,7 @@ TEST(exporter, QuantizedConvolution) {
       {batchSize, outSize.first, outSize.second, outChannels}, 3.8, 4);
 
   auto *qConv = F->createConv("qconv", input, weights, bias, outTy, kernels,
-                              strides, pads, groups, dilation);
+                              strides, pads, groups, {dilation, dilation});
 
   auto *save = F->createSave("save_out", qConv);
 

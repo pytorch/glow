@@ -499,6 +499,10 @@ private:
   /// \returns error on failure.
   Error loadFusedStack(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch LSTM node.
+  /// \returns error on failure.
+  Error loadLSTM(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch _convolution node.
   /// \returns error on failure.
   Error loadConvolution(const torch::jit::Node *ptNode);

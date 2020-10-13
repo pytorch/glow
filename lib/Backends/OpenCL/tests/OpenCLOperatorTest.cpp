@@ -175,6 +175,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Int8AvgPool3D/0",
     "FP16AvgPool3D/0",
     "LSTMUnitFP16/0",
+    "PyTorchLSTMFP16/0",
     "AdaptiveAvgPool/0",
     "FP16AdaptiveAvgPool/0",
     "Int8AdaptiveAvgPool/0",
@@ -581,7 +582,10 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Asin_Int8QTy/0",
     "Acos_Int8QTy/0",
     "Atan_Int8QTy/0",
-    "BBoxTransform/0",
+    "BBoxTransform_Float/0",
+    "BBoxTransform_Float16/0",
+    "BBoxTransform_Rotated_Float/0",
+    "BBoxTransform_Rotated_Float16/0",
     "BasicFloorDivNetFloatVsBFloat16/0",
     "BasicFloorDivNetFloatVsFloat16/0",
     "ArithFloorDiv_float/0",
@@ -589,4 +593,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "IntFloorDivBroadcast/0",
     "VectorNorm_BFloat16/0",
     "VectorNorm_Float16/0",
-    "VectorNorm_Float16Ty/0"};
+    "VectorNorm_Float16Ty/0",
+    "NonSquareDilationConvTranspose/0",
+    "NonSquareDilationConv2D/0"};

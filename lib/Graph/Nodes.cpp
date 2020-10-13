@@ -138,7 +138,8 @@ static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
                               llvm::ArrayRef<unsigned_t> kernels,
                               llvm::ArrayRef<unsigned_t> strides,
                               llvm::ArrayRef<unsigned_t> pads, unsigned_t group,
-                              unsigned_t dilation, bool checkBiasType = true) {
+                              llvm::ArrayRef<unsigned_t> dilation,
+                              bool checkBiasType = true) {
   const Node *parent = dest.getNode();
   bool isValid = checkType(src, dest.getElementType(), parent);
   isValid &= checkType(src, filter.getElementType(), parent);
@@ -169,6 +170,8 @@ static bool verifyConvolution(NodeValue src, NodeValue dest, NodeValue filter,
                                parent, CompareOperatorGreaterEqual<dim_t>());
   isValid &= expectCompareTrue("channels number must be divisible by groups",
                                idim.c % group, dim_t(0), parent);
+  isValid &= expectCompareTrue("Dilation should have same length as Stride",
+                               dilation.size(), strides.size(), parent);
 
   auto outSz = calculateConvPoolOutputDims(idim.h, idim.w, kernels, strides,
                                            pads, dilation);
@@ -260,7 +263,8 @@ static bool verifyConvTranspose(NodeValue src, NodeValue dest, NodeValue filter,
                                 llvm::ArrayRef<unsigned_t> kernels,
                                 llvm::ArrayRef<unsigned_t> strides,
                                 llvm::ArrayRef<unsigned_t> pads,
-                                unsigned_t group, unsigned_t dilation) {
+                                unsigned_t group,
+                                llvm::ArrayRef<unsigned_t> dilation) {
   const Node *parent = dest.getNode();
   bool isValid = checkType(src, dest.getElementType(), parent);
   isValid &= checkType(src, filter.getElementType(), parent);
@@ -282,6 +286,9 @@ static bool verifyConvTranspose(NodeValue src, NodeValue dest, NodeValue filter,
 
   isValid &= expectCompareTrue("channels number must be divisible by groups",
                                idim.c % group, dim_t(0), parent);
+
+  isValid &= expectCompareTrue("Dilation should have same length as Stride",
+                               dilation.size(), strides.size(), parent);
 
   auto outSz = calculateConvTransposeOutputDims(idim.h, idim.w, kernels,
                                                 strides, pads, dilation);
@@ -601,8 +608,11 @@ bool ChannelwiseQuantizedConvolutionNode::verify() const {
   if (isConv3D) {
     isValid = verifyConvolution3D(getInput(), getResult(), getFilter(),
                                   getBias(), Kernels_, Strides_, Pads_, Group_);
-    isValid &= expectCompareTrue("For Conv3D dilation must be 1", Dilation_,
-                                 unsigned_t(1), this);
+
+    if (!all_of(Dilation_.begin(), Dilation_.end(),
+                [](unsigned_t i) { return i == 1; })) {
+      report("For Conv3D dilation must be 1");
+    }
   } else {
     isValid = verifyConvolution<ShapeNHWC>(
         getInput(), getResult(), getFilter(), getBias(), Kernels_, Strides_,
@@ -1578,7 +1588,8 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
       "Input data must be Fused Quantized type",
       isFusedQuantizedElemKind(data.getType()->getElementType()), true, parent);
   dim_t extraCols;
-  if (data.getType()->getElementType() == ElemKind::UInt8FusedQTy) {
+  if (data.getType()->getElementType() == ElemKind::UInt8FusedQTy ||
+      data.getType()->getElementType() == ElemKind::UInt4FusedQTy) {
     extraCols = 2 * sizeof(float);
   } else {
     extraCols = 2 * sizeof(float16_t);
@@ -1625,7 +1636,8 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
     // If using 4-bit quantization for embeddings then the input is packed into
     // two elements per byte.
     dim_t finalSize = result.dims()[1];
-    if (data.getType()->getElementType() == ElemKind::UInt4FusedFP16QTy) {
+    if (data.getType()->getElementType() == ElemKind::UInt4FusedFP16QTy ||
+        data.getType()->getElementType() == ElemKind::UInt4FusedQTy) {
       finalSize /= 2;
     }
     isValid &=
@@ -2185,12 +2197,14 @@ bool BBoxTransformNode::verify() const {
   auto imInfo = getImInfo();
   auto boxOut = getBoxOut();
   auto weights = getWeights();
+  auto period = getAngleBoundHi() - getAngleBoundLo();
 
   auto roisDims = rois.dims();
   auto deltasDims = deltas.dims();
   auto imInfoDims = imInfo.dims();
 
   bool rotated = getRotated();
+  bool angleBoundOn = getAngleBoundOn();
   // BoxDim is of the format
   // <x1, y1, x2, y2, [optional_angle]>
   dim_t expectedBoxDim = rotated ? 5 : 4;
@@ -2218,12 +2232,19 @@ bool BBoxTransformNode::verify() const {
                                imInfoDims[1], dim_t(3), this);
   isValid &= expectCompareTrue("Rois and Deltas must have same 0 dimension",
                                roisDims[0], deltasDims[0], this);
+  isValid &= expectCompareTrue(
+      "Number of rois must be <= 2048 to be represented in FP16.", roisDims[0],
+      dim_t(2048), this, CompareOperatorLessEqual<dim_t>());
   isValid &= expectCompareTrue("Deltas must be divisible by box dimensions",
                                deltasDims[1] % expectedBoxDim, dim_t(0), this);
   isValid &= expectCompareTrue("Weights must be a 1D vector of length 4",
                                weights.size(), size_t(4), this);
-  isValid &= expectCompareTrue("Rotated bbox transform is not supported.",
-                               rotated, false, this);
+  if (rotated && angleBoundOn) {
+    isValid &= expectCompareTrue(
+        "The difference between angleBoundHi and angleBoundLo "
+        "should be greater than 0 and divisible by 180",
+        period > 0 && period % 180 == 0, true, this);
+  }
 
   return isValid;
 }

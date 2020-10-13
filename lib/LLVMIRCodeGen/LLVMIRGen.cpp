@@ -58,33 +58,6 @@ llvm::cl::opt<bool>
 /// Limitation of number of arguments for `emitDataParallelKernel`.
 constexpr static size_t kArgLimit = 64;
 
-/// Generate the LLVM machine attribute list for the host.
-static llvm::SmallVector<std::string, 0> getHostMachineAttributes() {
-  llvm::SmallVector<std::string, 0> result;
-  llvm::StringMap<bool> hostFeatures;
-  if (llvm::sys::getHostCPUFeatures(hostFeatures)) {
-    for (auto &feature : hostFeatures) {
-      if (feature.second) {
-        llvm::StringRef fn = feature.first();
-        // Skip avx512 because LLVM does not support it well.
-        if (fn.startswith("avx512")) {
-          continue;
-        }
-        result.push_back(fn);
-      }
-    }
-  }
-  return result;
-}
-
-/// Returns the CPU hostname.
-static llvm::StringRef getHostCpuName() {
-  auto cpu_name = llvm::sys::getHostCPUName();
-  // Skip avx512 because LLVM does not support it well.
-  cpu_name.consume_back("-avx512");
-  return cpu_name;
-}
-
 /// Query the TargetMachine to get the pointer size in bits
 static unsigned getPointerNumBits(const llvm::TargetMachine &TM) {
   return TM.getPointerSize(0) * 8;
@@ -122,7 +95,8 @@ void LLVMIRGen::initTargetMachine(const LLVMBackendOptions &opts) {
                   .setRelocationModel(opts.getRelocModel())
                   .setTargetOptions(targetOpts)
                   .selectTarget(llvm::Triple(), opts.getArch(),
-                                getHostCpuName(), getHostMachineAttributes()));
+                                LLVMBackend::getHostCPU(),
+                                LLVMBackend::getHostFeatures()));
   } else {
     TM_.reset(llvm::EngineBuilder()
                   .setCodeModel(opts.getCodeModel())
@@ -2153,7 +2127,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *strides = emitConstDimTArray(builder, CI->getStrides());
     auto *pads = emitConstDimTArray(builder, CI->getPads());
     auto *group = emitConstDimT(builder, CI->getGroup());
-    auto *dilation = emitConstDimT(builder, CI->getDilation());
+    auto *dilation = emitConstDimTArray(builder, CI->getDilation());
 
     auto destDepth = dest->dims()[3];
 
@@ -2252,7 +2226,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *strides = emitConstDimTArray(builder, CG->getStrides());
     auto *pads = emitConstDimTArray(builder, CG->getPads());
     auto *group = emitConstDimT(builder, CG->getGroup());
-    auto *dilation = emitConstDimT(builder, CG->getDilation());
+    auto *dilation = emitConstDimTArray(builder, CG->getDilation());
 
     auto *F = getFunction("convolution_grad", srcGrad->getElementType());
     createCall(builder, F,
@@ -2282,7 +2256,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *strides = emitConstDimTArray(builder, CI->getStrides());
     auto *pads = emitConstDimTArray(builder, CI->getPads());
     auto *group = emitConstDimT(builder, CI->getGroup());
-    auto *dilation = emitConstDimT(builder, CI->getDilation());
+    auto *dilation = emitConstDimTArray(builder, CI->getDilation());
 
     const char *kernelName = "conv_transpose";
 
@@ -2392,7 +2366,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *strides = emitConstDimTArray(builder, CQCI->getStrides());
     auto *pads = emitConstDimTArray(builder, CQCI->getPads());
     auto *group = emitConstDimT(builder, CQCI->getGroup());
-    auto *dilation = emitConstDimT(builder, CQCI->getDilation());
+    auto *dilation = emitConstDimTArray(builder, CQCI->getDilation());
 
     auto *destOffset = emitConstI32(builder, destTy->getOffset());
     auto *srcOffset = emitConstI32(builder, srcTy->getOffset());

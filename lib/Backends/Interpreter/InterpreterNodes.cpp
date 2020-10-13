@@ -216,7 +216,8 @@ template <typename ElemTy>
 void BoundInterpreterFunction::fwdConvolutionInstFloatImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
     llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
-    llvm::ArrayRef<unsigned_t> pads, size_t group, size_t dilation) {
+    llvm::ArrayRef<unsigned_t> pads, size_t group,
+    llvm::ArrayRef<unsigned_t> dilation) {
   staticAssertFloatingPointType(ElemTy);
 
   auto inW = getWeightHandle<ElemTy>(inV);
@@ -255,8 +256,8 @@ void BoundInterpreterFunction::fwdConvolutionInstFloatImpl(
             float sum = 0;
             for (dim_t fx = 0; fx < kdim.height; fx++) {
               for (dim_t fy = 0; fy < kdim.width; fy++) {
-                sdim_t ox = x + fx * dilation;
-                sdim_t oy = y + fy * dilation;
+                sdim_t ox = x + fx * dilation[0];
+                sdim_t oy = y + fy * dilation[1];
 
                 // Ignore index access below zero (this is due to padding).
                 if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
@@ -285,7 +286,8 @@ template <typename ElemTy, typename AccumulatorTy, typename BiasElemTy>
 void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
     llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
-    llvm::ArrayRef<unsigned_t> pads, size_t group, size_t dilation) {
+    llvm::ArrayRef<unsigned_t> pads, size_t group,
+    llvm::ArrayRef<unsigned_t> dilation) {
   auto inW = getWeightHandle<ElemTy>(inV);
   auto outW = getWeightHandle<ElemTy>(outV);
   auto filterW = getWeightHandle<ElemTy>(filterV);
@@ -339,8 +341,8 @@ void BoundInterpreterFunction::fwdConvolutionInstQuantizedImpl(
             AccumulatorTy sum = 0;
             for (dim_t fx = 0; fx < kdim.height; fx++) {
               for (dim_t fy = 0; fy < kdim.width; fy++) {
-                sdim_t ox = x + fx * dilation;
-                sdim_t oy = y + fy * dilation;
+                sdim_t ox = x + fx * dilation[0];
+                sdim_t oy = y + fy * dilation[1];
 
                 // Ignore index access below zero (this is due to padding).
                 if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
@@ -381,7 +383,8 @@ template <typename ElemTy>
 void BoundInterpreterFunction::fwdConvTransposeInstFloatImpl(
     Value *inV, Value *outV, Value *filterV, Value *biasV,
     llvm::ArrayRef<unsigned_t> kernelSizes, llvm::ArrayRef<unsigned_t> strides,
-    llvm::ArrayRef<unsigned_t> pads, size_t group, size_t dilation) {
+    llvm::ArrayRef<unsigned_t> pads, size_t group,
+    llvm::ArrayRef<unsigned_t> dilation) {
   staticAssertFloatingPointType(ElemTy);
 
   auto inW = getWeightHandle<ElemTy>(inV);
@@ -431,8 +434,8 @@ void BoundInterpreterFunction::fwdConvTransposeInstFloatImpl(
 
             for (dim_t kx = 0; kx < kdim.height; kx++) {
               for (dim_t ky = 0; ky < kdim.width; ky++) {
-                ssize_t ax = x + kx * dilation;
-                ssize_t ay = y + ky * dilation;
+                ssize_t ax = x + kx * dilation[0];
+                ssize_t ay = y + ky * dilation[1];
 
                 // Ignore index access below zero (this is due to padding).
                 if (ax < 0 || ay < 0 || ax >= ssize_t(odim.h) ||
@@ -502,7 +505,7 @@ void BoundInterpreterFunction::fwdConvolutionGradInst(
   auto biasG = getWeightHandle(I->getBiasGrad());
 
   size_t group = I->getGroup();
-  size_t dilation = I->getDilation();
+  auto dilation = I->getDilation();
 
   inG.clear();
   filterG.clear();
@@ -539,8 +542,8 @@ void BoundInterpreterFunction::fwdConvolutionGradInst(
             // For each element in the convolution-filter:
             for (dim_t fx = 0; fx < kdim.height; fx++) {
               for (dim_t fy = 0; fy < kdim.width; fy++) {
-                sdim_t ox = x + fx * dilation;
-                sdim_t oy = y + fy * dilation;
+                sdim_t ox = x + fx * dilation[0];
+                sdim_t oy = y + fy * dilation[1];
 
                 // Ignore index access below zero (this is due to padding).
                 if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
@@ -792,7 +795,7 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConv2DInstImpl(
   llvm::ArrayRef<unsigned_t> pads = I->getPads();
   llvm::ArrayRef<unsigned_t> strides = I->getStrides();
   dim_t group = I->getGroup();
-  dim_t dilation = I->getDilation();
+  llvm::ArrayRef<unsigned_t> dilation = I->getDilation();
 
   ShapeNHWC odim(outW.dims());
   ShapeNHWC idim(inW.dims());
@@ -839,8 +842,8 @@ void BoundInterpreterFunction::fwdChannelwiseQuantizedConv2DInstImpl(
             AccumulatorTy sum = 0;
             for (dim_t fx = 0; fx < kdim.height; fx++) {
               for (dim_t fy = 0; fy < kdim.width; fy++) {
-                sdim_t ox = x + fx * dilation;
-                sdim_t oy = y + fy * dilation;
+                sdim_t ox = x + fx * dilation[0];
+                sdim_t oy = y + fy * dilation[1];
 
                 // Ignore index access below zero (this is due to padding).
                 if (ox < 0 || oy < 0 || ox >= ssize_t(idim.h) ||
@@ -5157,6 +5160,13 @@ void BoundInterpreterFunction::fwdConvertToInst(const glow::ConvertToInst *I) {
     return;
   }
 
+  if (srcElType == ElemKind::UInt4FusedFP16QTy &&
+      destElType == ElemKind::UInt4FusedQTy) {
+    Tensor result = source->getCopyConvertedToType(ElemKind::UInt4FusedQTy);
+    dest->assign(&result);
+    return;
+  }
+
   llvm_unreachable("Type not supported");
 }
 
@@ -6024,110 +6034,264 @@ void BoundInterpreterFunction::fwdROIAlignInst(glow::ROIAlignInst const *I) {
 // see "Rich feature hierarchies for accurate object detection and semantic
 //     segmentation" Appendix C for more details
 // reference: detectron/lib/utils/boxes.py bbox_transform()
-static void
-bbox_transform_upright(Handle<float> &boxesOut, const Handle<float> &boxes,
-                       const Handle<float> &deltas, dim_t startRowBoxesOut,
-                       dim_t startColBoxesOut, dim_t startRowBoxes,
-                       dim_t startColBoxes, dim_t startRowDeltas,
-                       dim_t startColDeltas, dim_t rows, dim_t cols,
-                       llvm::ArrayRef<float> weights, const float bboxXformClip,
-                       float scaleBeforeInv, const bool legacyPlusOne = false) {
+template <typename T>
+static void bbox_transform_upright(
+    Handle<T> &boxesOut, const Handle<T> &boxes, const Handle<T> &deltas,
+    dim_t startRowBoxesOut, dim_t startColBoxesOut, dim_t startRowBoxes,
+    dim_t startColBoxes, dim_t startRowDeltas, dim_t startColDeltas, dim_t rows,
+    llvm::ArrayRef<float> weights, const T &bboxXformClip, T scaleBeforeInv,
+    const bool legacyPlusOne = false) {
 
   if (boxes.dims()[0] == 0) {
     return;
   }
 
-  std::vector<float> widths(rows), heights(rows), ctrX(rows), ctrY(rows);
+  std::vector<T> widths(rows), heights(rows), ctrX(rows), ctrY(rows);
   for (dim_t i = 0; i < rows; i++) {
     widths[i] = boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)}) *
                     scaleBeforeInv -
                 boxes.at({startRowBoxes + i, startColBoxes}) * scaleBeforeInv +
-                float(int(legacyPlusOne));
+                T(((legacyPlusOne) ? 1 : 0));
     heights[i] = boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)}) *
                      scaleBeforeInv -
                  boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) *
                      scaleBeforeInv +
-                 float(int(legacyPlusOne));
+                 T(((legacyPlusOne) ? 1 : 0));
 
     ctrX[i] = boxes.at({startRowBoxes + i, startColBoxes}) * scaleBeforeInv +
-              float(0.5) * widths[i];
+              T(0.5) * widths[i];
     ctrY[i] = boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) *
                   scaleBeforeInv +
-              float(0.5) * heights[i];
+              T(0.5) * heights[i];
   }
 
-  std::vector<float> dx(rows), dy(rows), dw(rows), dh(rows);
+  std::vector<T> dx(rows), dy(rows), dw(rows), dh(rows);
   for (dim_t i = 0; i < rows; i++) {
-    dx[i] = deltas.at({startRowDeltas + i, startColDeltas}) / weights[0];
-    dy[i] =
-        deltas.at({startRowDeltas + i, startColDeltas + dim_t(1)}) / weights[1];
-    dw[i] = std::min(
-        deltas.at({startRowDeltas + i, startColDeltas + dim_t(2)}) / weights[2],
-        bboxXformClip);
-    dh[i] = std::min(
-        deltas.at({startRowDeltas + i, startColDeltas + dim_t(3)}) / weights[3],
-        bboxXformClip);
+    dx[i] = deltas.at({startRowDeltas + i, startColDeltas}) / T(weights[0]);
+    dy[i] = deltas.at({startRowDeltas + i, startColDeltas + dim_t(1)}) /
+            T(weights[1]);
+    dw[i] =
+        std::min(deltas.at({startRowDeltas + i, startColDeltas + dim_t(2)}) /
+                     T(weights[2]),
+                 bboxXformClip);
+    dh[i] =
+        std::min(deltas.at({startRowDeltas + i, startColDeltas + dim_t(3)}) /
+                     T(weights[3]),
+                 bboxXformClip);
   }
 
-  std::vector<float> predCtrX(rows), predCtrY(rows), predW(rows), predH(rows);
+  std::vector<T> predCtrX(rows), predCtrY(rows), predW(rows), predH(rows);
   for (dim_t i = 0; i < rows; i++) {
     predCtrX[i] = dx[i] * widths[i] + ctrX[i];
     predCtrY[i] = dy[i] * heights[i] + ctrY[i];
-    predW[i] = std::exp(dw[i]) * widths[i];
-    predH[i] = std::exp(dh[i]) * heights[i];
+    predW[i] = T(std::exp(float(dw[i]))) * widths[i];
+    predH[i] = T(std::exp(float(dh[i]))) * heights[i];
   }
 
   for (dim_t i = 0; i < rows; i++) {
     // x1
     boxesOut.at({startRowBoxesOut + i, startColBoxesOut}) =
-        predCtrX[i] - float(0.5) * predW[i];
+        predCtrX[i] - T(0.5) * predW[i];
     // x2
     boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(1)}) =
-        predCtrY[i] - float(0.5) * predH[i];
+        predCtrY[i] - T(0.5) * predH[i];
     // y1
     boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(2)}) =
-        predCtrX[i] + float(0.5) * predW[i] - float(int(legacyPlusOne));
+        predCtrX[i] + T(0.5) * predW[i] - T(((legacyPlusOne) ? 1 : 0));
     // y2
     boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(3)}) =
-        predCtrY[i] + float(0.5) * predH[i] - float(int(legacyPlusOne));
+        predCtrY[i] + T(0.5) * predH[i] - T(((legacyPlusOne) ? 1 : 0));
+  }
+}
+
+// Like bbox_transform_upright, but works on rotated boxes.
+// boxes: pixel coordinates of the bounding boxes
+//     size (M, 5), format [ctr_x; ctr_y; width; height; angle (in degrees)]
+// deltas: bounding box translations and scales
+//     size (M, 5), format [dx; dy; dw; dh; da]
+//     dx, dy: scale-invariant translation of the center of the bounding box
+//     dw, dh: log-space scaling of the width and height of the bounding box
+//     da: delta for angle in radians
+// return: pixel coordinates of the bounding boxes
+//     size (M, 5), format [ctr_x; ctr_y; width; height; angle (in degrees)]
+template <typename T>
+static void bbox_transform_rotated(
+    Handle<T> &boxesOut, const Handle<T> &boxes, const Handle<T> &deltas,
+    dim_t startRowBoxesOut, dim_t startColBoxesOut, dim_t startRowBoxes,
+    dim_t startColBoxes, dim_t startRowDeltas, dim_t startColDeltas, dim_t rows,
+    llvm::ArrayRef<float> weights, const T &bboxXformClip, T scaleBeforeInv,
+    const bool angleBoundOn, ssize_t angleBoundLo, ssize_t angleBoundHi) {
+
+  if (boxes.dims()[0] == 0) {
+    return;
+  }
+
+  const T PI = 3.1415926535897931;
+
+  std::vector<T> dx(rows), dy(rows), dw(rows), dh(rows), da(rows);
+  for (dim_t i = 0; i < rows; i++) {
+    dx[i] = deltas.at({startRowDeltas + i, startColDeltas}) / T(weights[0]);
+    dy[i] = deltas.at({startRowDeltas + i, startColDeltas + dim_t(1)}) /
+            T(weights[1]);
+    dw[i] =
+        std::min(deltas.at({startRowDeltas + i, startColDeltas + dim_t(2)}) /
+                     T(weights[2]),
+                 bboxXformClip);
+    dh[i] =
+        std::min(deltas.at({startRowDeltas + i, startColDeltas + dim_t(3)}) /
+                     T(weights[3]),
+                 bboxXformClip);
+    // Convert back to degrees
+    da[i] = deltas.at({startRowDeltas + i, startColDeltas + dim_t(4)}) *
+            T(180.0) / PI;
+  }
+
+  for (dim_t i = 0; i < rows; i++) {
+    // new ctr_x
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut}) =
+        dx[i] * boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)}) *
+            scaleBeforeInv +
+        boxes.at({startRowBoxes + i, startColBoxes}) * scaleBeforeInv;
+    // new ctr_y
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(1)}) =
+        dy[i] * boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)}) *
+            scaleBeforeInv +
+        boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) *
+            scaleBeforeInv;
+    // new width
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(2)}) =
+        T(std::exp(float(dw[i]))) *
+        boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)}) *
+        scaleBeforeInv;
+    // new height
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(3)}) =
+        T(std::exp(float(dh[i]))) *
+        boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)}) *
+        scaleBeforeInv;
+    // new angle
+    boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(4)}) =
+        da[i] + boxes.at({startRowBoxes + i, startColBoxes + dim_t(4)});
+  }
+
+  if (angleBoundOn) {
+    const ssize_t period = angleBoundHi - angleBoundLo;
+
+    for (dim_t i = 0; i < rows; i++) {
+      if (ssize_t(boxesOut.at({startRowBoxesOut + i,
+                               startColBoxesOut + dim_t(4)})) < angleBoundLo) {
+        boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(4)}) +=
+            T(period);
+      } else if (ssize_t(boxesOut.at(
+                     {startRowBoxesOut + i, startColBoxesOut + dim_t(4)})) >
+                 angleBoundHi) {
+        boxesOut.at({startRowBoxesOut + i, startColBoxesOut + dim_t(4)}) -=
+            T(period);
+      }
+    }
   }
 }
 
 // Clip boxes to image boundaries
 // boxes: pixel coordinates of bounding box, size (M * 4)
-void clip_boxes_upright(Handle<float> &boxes, dim_t startRowBoxes,
-                        dim_t startColBoxes, dim_t rows, dim_t cols, int height,
-                        int width, float scaleAfter,
-                        bool legacyPlusOne = false) {
+template <typename T>
+void clip_boxes_upright(Handle<T> &boxes, dim_t startRowBoxes,
+                        dim_t startColBoxes, dim_t rows, int height, int width,
+                        T scaleAfter, bool legacyPlusOne = false,
+                        std::vector<dim_t> uprightRows = {}) {
   for (dim_t i = 0; i < rows; i++) {
+    if (uprightRows.size() == rows && !uprightRows[i]) {
+      continue;
+    }
     // x1 >= 0 && x1 < width
     boxes.at({startRowBoxes + i, startColBoxes}) =
         scaleAfter *
         std::max(std::min(boxes.at({startRowBoxes + i, startColBoxes}),
-                          float(width - int(legacyPlusOne))),
-                 float(0));
+                          T(width - int(((legacyPlusOne) ? 1 : 0)))),
+                 T(0));
     // y1 >= 0 && y1 < height
     boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) =
         scaleAfter * std::max(std::min(boxes.at({startRowBoxes + i,
                                                  startColBoxes + dim_t(1)}),
-                                       float(height - int(legacyPlusOne))),
-                              float(0));
+                                       T(height - ((legacyPlusOne) ? 1 : 0))),
+                              T(0));
 
     // x2 >= 0 && x2 < width
     boxes.at({startRowBoxes + i, startColBoxes + 2}) =
         scaleAfter * std::max(std::min(boxes.at({startRowBoxes + i,
                                                  startColBoxes + dim_t(2)}),
-                                       float(width - int(legacyPlusOne))),
-                              float(0));
+                                       T(width - ((legacyPlusOne) ? 1 : 0))),
+                              T(0));
     // y2 >= 0 && y2 < height
     boxes.at({startRowBoxes + i, startColBoxes + 3}) =
         scaleAfter * std::max(std::min(boxes.at({startRowBoxes + i,
                                                  startColBoxes + dim_t(3)}),
-                                       float(height - int(legacyPlusOne))),
-                              float(0));
+                                       T(height - ((legacyPlusOne) ? 1 : 0))),
+                              T(0));
   }
 }
 
+// Similar to clip_boxes_upright but handles rotated boxes with angle info.
+// boxes: size (M, 5), format [ctr_x; ctr_y; width; height; angle (in degrees)]
+//
+// Clipping is only performed for boxes that are almost upright
+// (within a given `angle_thresh` tolerance) to maintain backward compatibility
+// for non-rotated boxes.
+//
+// We don't clip rotated boxes due to a couple of reasons:
+// (1) There are potentially multiple ways to clip a rotated box to make it
+//     fit within the image.
+// (2) It's tricky to make the entire rectangular box fit within the image and
+//     still be able to not leave out pixels of interest.
+// Therefore, we rely on upstream ops like RoIAlignRotated safely handling this.
+template <typename T>
+void clip_boxes_rotated(Handle<T> &boxes, dim_t startRowBoxes,
+                        dim_t startColBoxes, dim_t rows, int imH, int imW,
+                        T scaleAfter, float angleThresh = 1.0,
+                        bool legacyPlusOne = false) {
+  std::vector<dim_t> uprightRows(rows, 0);
+  for (dim_t i = 0; i < rows; i++) {
+    if (std::abs(float(boxes.at(
+            {startRowBoxes + i, startColBoxes + dim_t(4)}))) <= angleThresh) {
+      const T ctrX = boxes.at({startRowBoxes + i, startColBoxes});
+      const T ctrY = boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)});
+      const T width = boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)});
+      const T height = boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)});
+      boxes.at({startRowBoxes + i, startColBoxes}) =
+          ctrX - (width - T(((legacyPlusOne) ? 1 : 0))) / T(2.0);
+      boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) =
+          ctrY - (height - T(((legacyPlusOne) ? 1 : 0))) / T(2.0);
+      boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)}) =
+          ctrX + (width - T(((legacyPlusOne) ? 1 : 0))) / T(2.0);
+      boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)}) =
+          ctrY + (height - T(((legacyPlusOne) ? 1 : 0))) / T(2.0);
+      uprightRows[i] = 1;
+    }
+  }
+  clip_boxes_upright(boxes, startRowBoxes, startColBoxes, rows, imH, imW,
+                     /* scaleAfter */ T(1.0), legacyPlusOne, uprightRows);
+
+  for (dim_t i = 0; i < rows; i++) {
+    if (uprightRows[i] == 1) {
+      const T x1 = boxes.at({startRowBoxes + i, startColBoxes});
+      const T y1 = boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)});
+      const T x2 = boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)});
+      const T y2 = boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)});
+      boxes.at({startRowBoxes + i, startColBoxes}) = (x1 + x2) / T(2.0);
+      boxes.at({startRowBoxes + i, startColBoxes + dim_t(1)}) =
+          (y1 + y2) / T(2.0);
+      boxes.at({startRowBoxes + i, startColBoxes + dim_t(2)}) =
+          x2 - x1 + T(((legacyPlusOne) ? 1 : 0));
+      boxes.at({startRowBoxes + i, startColBoxes + dim_t(3)}) =
+          y2 - y1 + T(((legacyPlusOne) ? 1 : 0));
+    }
+
+    for (dim_t j = 0; j < 4; j++) {
+      boxes.at({startRowBoxes + i, startColBoxes + j}) *= scaleAfter;
+    }
+  }
+}
+
+template <typename T>
 void BoundInterpreterFunction::fwdBBoxTransformInstFloatImpl(
     glow::BBoxTransformInst const *I) {
   auto roiIn = I->getRois();
@@ -6140,14 +6304,19 @@ void BoundInterpreterFunction::fwdBBoxTransformInstFloatImpl(
   auto weights = I->getWeights();
   const dim_t boxDim = I->getRotated() ? 5 : 4;
   auto applyScale = I->getApplyScale();
+  auto rotated = I->getRotated();
+  auto angleBoundOn = I->getAngleBoundOn();
+  auto angleBoundLo = I->getAngleBoundLo();
+  auto angleBoundHi = I->getAngleBoundHi();
+  auto angleThresh = I->getClipAngleThresh();
   auto legacyPlusOne = I->getLegacyPlusOne();
   const dim_t N = roiIn->dims()[0];
   const dim_t numClasses = deltaIn->dims()[1] / boxDim;
   const dim_t batchSize = imInfoIn->dims()[0];
 
-  auto roisH = getTensor(roiIn)->getHandle<float>();
-  auto deltasH = getTensor(deltaIn)->getHandle<float>();
-  auto roiBatchSplitsH = getTensor(roiBatchSplits)->getHandle<float>();
+  auto roisH = getTensor(roiIn)->getHandle<T>();
+  auto deltasH = getTensor(deltaIn)->getHandle<T>();
+  auto roiBatchSplitsH = getTensor(roiBatchSplits)->getHandle<T>();
 
   // Count the number of RoIs per batch
   std::vector<int> numRoisPerBatch(batchSize, 0);
@@ -6160,44 +6329,52 @@ void BoundInterpreterFunction::fwdBBoxTransformInstFloatImpl(
     }
   }
 
-  auto imInfoH = getTensor(imInfoIn)->getHandle<float>();
-  auto boxOutH = getTensor(boxOut)->getHandle<float>();
+  auto imInfoH = getTensor(imInfoIn)->getHandle<T>();
+  auto boxOutH = getTensor(boxOut)->getHandle<T>();
   getTensor(boxOut)->zero();
 
   // Default value for minimum bounding box width and height after bounding
   // box transformation (bbox_transform()) in log-space
-  const float bboxXformClip = std::log(1000.0 / 16.0);
+  const T bboxXformClip = std::log(1000.0 / 16.0);
 
   // We assume roiIn and deltaIn over multiple batches are grouped
   // together in increasing order as generated by GenerateProposalsOp
   dim_t offset = 0;
   for (dim_t i = 0; i < batchSize; ++i) {
     const dim_t numRois = numRoisPerBatch[i];
-    const float scaleBefore = imInfoH.at({i, 2});
-    const float scaleAfter = applyScale ? scaleBefore : 1.0;
-    dim_t imgH = dim_t(imInfoH.at({i, 0}) / scaleBefore + 0.5);
-    dim_t imgW = dim_t(imInfoH.at({i, 1}) / scaleBefore + 0.5);
+    const T scaleBefore = imInfoH.at({i, 2});
+    const T scaleAfter = applyScale ? scaleBefore : T(1.0);
+    dim_t imgH = dim_t(float(imInfoH.at({i, 0}) / scaleBefore) + 0.5);
+    dim_t imgW = dim_t(float(imInfoH.at({i, 1}) / scaleBefore) + 0.5);
 
     // Apply for the rectangle starting at (startRowRoi, startColRoi)
-    // with height (Rows) of unm_rois, and width (Cols) of boxDim.
+    // with height (Rows) of num_rois, and width (Cols) of boxDim.
     dim_t startRowRoi = offset;
     dim_t startColRoi = batchSize > 1 ? 1 : 0;
     dim_t rows = numRois;
-    dim_t cols = boxDim;
-    float scaleBeforeInv = 1 / scaleBefore;
+    T scaleBeforeInv = T(1) / scaleBefore;
 
     // scale before and after on the fly.
     // Do not apply scale for angle in rotated boxes
     for (dim_t k = 0; k < numClasses; k++) {
       dim_t startRowDelta = offset;
       dim_t startColDelta = k * boxDim;
-      bbox_transform_upright(boxOutH, roisH, deltasH, startRowDelta,
-                             startColDelta, startRowRoi, startColRoi,
-                             startRowDelta, startColDelta, rows, cols, weights,
-                             bboxXformClip, scaleBeforeInv, legacyPlusOne);
-
-      clip_boxes_upright(boxOutH, startRowDelta, startColDelta, rows, cols,
-                         imgH, imgW, scaleAfter, legacyPlusOne);
+      if (rotated) {
+        bbox_transform_rotated<T>(boxOutH, roisH, deltasH, startRowDelta,
+                                  startColDelta, startRowRoi, startColRoi,
+                                  startRowDelta, startColDelta, rows, weights,
+                                  bboxXformClip, scaleBeforeInv, angleBoundOn,
+                                  angleBoundLo, angleBoundHi);
+        clip_boxes_rotated<T>(boxOutH, startRowDelta, startColDelta, rows, imgH,
+                              imgW, scaleAfter, angleThresh, legacyPlusOne);
+      } else {
+        bbox_transform_upright<T>(boxOutH, roisH, deltasH, startRowDelta,
+                                  startColDelta, startRowRoi, startColRoi,
+                                  startRowDelta, startColDelta, rows, weights,
+                                  bboxXformClip, scaleBeforeInv, legacyPlusOne);
+        clip_boxes_upright<T>(boxOutH, startRowDelta, startColDelta, rows, imgH,
+                              imgW, scaleAfter, legacyPlusOne);
+      }
     }
 
     offset += rows;
@@ -6210,5 +6387,6 @@ void BoundInterpreterFunction::fwdBBoxTransformInstFloatImpl(
 
 void BoundInterpreterFunction::fwdBBoxTransformInst(
     glow::BBoxTransformInst const *I) {
-  fwdBBoxTransformInstFloatImpl(I);
+  dispatchFloatingPointImpl(fwdBBoxTransformInstFloatImpl,
+                            I->getRois()->getElementType(), I);
 }

@@ -61,6 +61,9 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
              symbol == "quantized::embedding_bag_byte_rowwise_offsets") {
     ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
                                embeddingBagByteRowwiseOffsets(inputMetas));
+  } else if (symbol == "quantized::embedding_bag_4bit_rowwise_offsets") {
+    ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
+                               embeddingBag4BitRowwiseOffsets(inputMetas));
   } else {
     switch (kind) {
     case c10::prim::Constant: {
@@ -125,7 +128,7 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       break;
     }
     case c10::prim::ListConstruct: {
-      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0],
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues,
                                  listConstruct(inputMetas));
       break;
     }
@@ -146,6 +149,10 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
                                  embeddingBag(inputMetas));
       break;
     }
+    case c10::aten::stack: {
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], stack(inputMetas));
+      break;
+    }
     default: {
       return MAKE_ERR(strFormat("Node's operator %s is not supported",
                                 kind.toQualString()));
@@ -158,9 +165,11 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
   /// If the output is TensorType, store the \p outputShapesOrValues
   /// into VariableMeta.listOfShape;
   /// Else store the \p outputShapesOrValues into VariableMeta.intValue.
-  /// For \p prim::ListConstruct, the output is a intList.
+  /// For \p prim::ListConstruct, if the output is a Scalar[], Bool[],
   /// Store the shape of \p outputShapesOrValues into VariableMeta.listOfShape
   /// store the value of \p outputShapesOrValues into VariableMeta.intValue
+  /// Else the output is Tensor[], Store the list of shape
+  /// \p outputShapesOrValues into VariableMeta.listOfShape
   /// For \p aten::embedding_bag, since the output is a std::tuple<Tensor,
   /// Tensor, Tensor, Tensor>(ret, offset2bag, bag_size, bag_size), and for now,
   /// only the ret tensor shape needed, the embeddingBag() only generate the ret
@@ -176,9 +185,19 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       shapeMap_[node->output()].intValue = std::move(outputShapesOrValues[0]);
     }
   } else if (kind == c10::prim::ListConstruct) {
-    shapeMap_[node->output()].listOfShape.emplace_back(
-        (TensorShape){static_cast<long>(outputShapesOrValues[0].size()), 1});
-    shapeMap_[node->output()].intValue = std::move(outputShapesOrValues[0]);
+    auto elem_type =
+        node->output()->type()->cast<c10::ListType>()->getElementType();
+    if (elem_type->kind() == at::TensorType::Kind ||
+        (elem_type->kind() == at::OptionalType::Kind &&
+         elem_type->cast<c10::OptionalType>()->getElementType()->kind() ==
+             at::TensorType::Kind)) {
+      shapeMap_[node->output()].listOfShape.emplace_back(
+          std::move(outputShapesOrValues));
+    } else {
+      shapeMap_[node->output()].listOfShape.emplace_back(
+          (TensorShape){static_cast<long>(outputShapesOrValues[0].size()), 1});
+      shapeMap_[node->output()].intValue = std::move(outputShapesOrValues[0]);
+    }
   } else if (kind == c10::aten::embedding_bag) {
     shapeMap_[node->output(0)].listOfShape.emplace_back(
         std::move(outputShapesOrValues[0]));
@@ -792,24 +811,33 @@ ShapeInferenceEngine::permute(const MetaStack &variableMetas) {
 }
 
 /**
- * prim::ListContruct(Scalar or Bool self, Scalar or Bool v1, Scalar or Bool v2,
- * ...) -> Scalar[] or Bool[]
+ * prim::ListContruct(Scalar/Bool/Tensor self, Scalar/Bool/Tensor v1,
+ * Scalar/Bool/Tensor v2, ...) -> Scalar[]/Bool[]/Tensor[]
  * variableMetas: 0: self, 1: v1, 2: v2, ...
  */
-Expected<TensorShape>
+Expected<TensorListShape>
 ShapeInferenceEngine::listConstruct(const MetaStack &variableMetas) {
 
   RETURN_ERR_IF_NOT(
       variableMetas.size() >= 1,
       strFormat("Expected at least 1 inputs, got %zu.", variableMetas.size()));
 
-  std::vector<int64_t> intValueList;
-  for (auto ele : variableMetas) {
-    RETURN_ERR_IF_NOT(ele.intValue.size() == 1,
-                      "Expected int type input in listConstruct.");
-    intValueList.emplace_back(ele.intValue[0]);
+  TensorListShape listValueOrShape(1);
+  if (variableMetas[0].intValue.size() == 1) {
+    // scalar or bool
+    for (auto ele : variableMetas) {
+      RETURN_ERR_IF_NOT(ele.intValue.size() == 1,
+                        "Expected int type input in listConstruct.");
+      listValueOrShape[0].emplace_back(ele.intValue[0]);
+    }
+  } else {
+    // tensor
+    listValueOrShape.resize(variableMetas.size());
+    for (int i = 0; i < variableMetas.size(); i++) {
+      listValueOrShape[i] = variableMetas[i].shape<TensorShape>();
+    }
   }
-  return intValueList;
+  return listValueOrShape;
 }
 
 /**
@@ -944,5 +972,65 @@ ShapeInferenceEngine::chunk(const MetaStack &variableMetas) {
     resShapes.emplace_back(shape);
   }
   return resShapes;
+}
+
+/*
+ * fb::embedding_bag_4bit_rowwise_offsets(Tensor weight,
+ *                                        Tensor indices,
+ *                                        Tensor offsets,
+ *                                        bool scale_grad_by_freq=False,
+ *                                        int mode=0,
+ *                                        bool sparse=False,
+ *                                        Tensor? per_sample_weights=None,
+ *                                        Tensor? compressed_indices_mapping,
+ *                                        bool include_last_offset=True)
+ *                                        -> Tensor;
+ */
+/// In glow, the include_last_offset is always True.
+Expected<TensorShape> ShapeInferenceEngine::embeddingBag4BitRowwiseOffsets(
+    const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 9,
+      strFormat("Expected 9 inputs, got %zu.", variableMetas.size()));
+
+  /// variableMetas[0].shape[1] - 4 is to account for scale and offsets
+  /// Note: 2-byte fp16 scale and 2-byte zero_offset
+  /// *2 which accounts for the packed fp16 weights
+  const TensorShape &weightShape = variableMetas[0].shape<TensorShape>();
+  const TensorShape &offsetsShape = variableMetas[2].shape<TensorShape>();
+  TensorShape shape = {offsetsShape[0] -
+                           static_cast<int>(((hasEndOffset_) ? 1 : 0)),
+                       (weightShape[1] - 4) * 2};
+  return shape;
+}
+
+/**
+ * aten::stack(Tensor[] tensors, int dim) -> Tensor
+ * refer to: https://pytorch.org/docs/stable/generated/torch.stack
+ */
+Expected<TensorShape>
+ShapeInferenceEngine::stack(const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2,
+      strFormat("Expected 2 input, got %zu.", variableMetas.size()));
+
+  const TensorListShape &shapes = variableMetas[0].shape<TensorListShape>();
+  TensorShape shape = shapes[0];
+
+  // Convert negtive dimension to positive, then check the dim range.
+  int64_t dim = variableMetas[1].intValue[0];
+  int64_t inDims = shape.size();
+  dim = at::maybe_wrap_dim(dim, inDims);
+
+  // Verify the shapes of all input tensors.
+  for (int i = 1; i < shapes.size(); i++) {
+    RETURN_ERR_IF_NOT(shape == shapes[i],
+                      "All tensors need to be of the same shape.");
+  }
+
+  shape.insert(shape.begin() + dim, shapes.size());
+  return shape;
 }
 } // namespace glow

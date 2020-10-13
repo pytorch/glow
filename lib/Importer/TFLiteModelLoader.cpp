@@ -1485,11 +1485,6 @@ Error TFLiteModelLoader::loadConv2D(const tflite::Operator *op,
     RETURN_ERR(opErrMsg(opInfo, "Padding parameter invalid!"));
   }
 
-  // TODO: Remove this when Conv2D supports multiple dilations.
-  RETURN_ERR_IF_NOT(dilations[0] == dilations[1],
-                    opErrMsg(opInfo, "Non square dilation not supported!"));
-  unsigned_t dilation = dilations[0];
-
   // There are TensorFlowLite models which have only the weights quantized
   // to INT8 (the rest of the operands being FLOAT32). Since Glow does not
   // support mixed precision operation we dequantize the weights.
@@ -1522,13 +1517,13 @@ Error TFLiteModelLoader::loadConv2D(const tflite::Operator *op,
     output = F_->createChannelwiseQuantizedConv(
         opInfo.name, input, filter, bias, filterScales, filterOffsets,
         biasScales, biasOffsets, outTy, kernels, strides, pads, /* group */ 1,
-        dilation, /* quantizeFilter */ false, /* quantizeBias */ false);
+        dilations, /* quantizeFilter */ false, /* quantizeBias */ false);
   } else {
     // Check bias quantization parameters.
     RETURN_IF_ERR(checkBiasQuantizationParams(mod_, input, filter, bias));
     // Create Convolution node.
     output = F_->createConv(opInfo.name, input, filter, bias, outTy, kernels,
-                            strides, pads, /* group */ 1, dilation);
+                            strides, pads, /* group */ 1, dilations);
   }
 
   RETURN_IF_ERR(addActivation(output, opts->fused_activation_function()));
@@ -1577,11 +1572,6 @@ Error TFLiteModelLoader::loadDepthwiseConv2D(const tflite::Operator *op,
   } else {
     RETURN_ERR(opErrMsg(opInfo, "Padding parameter invalid!"));
   }
-
-  // TODO: Remove this when Conv2D supports multiple dilations.
-  RETURN_ERR_IF_NOT(dilations[0] == dilations[1],
-                    opErrMsg(opInfo, "Non square dilation not supported!"));
-  unsigned_t dilation = dilations[0];
 
   // Convolution group is inputChannels / filterChannels = inputChannels.
   unsigned_t group = input.dims().back();
@@ -1641,14 +1631,14 @@ Error TFLiteModelLoader::loadDepthwiseConv2D(const tflite::Operator *op,
     // Create ChannelwiseQuantizedConvolution node.
     output = F_->createChannelwiseQuantizedConv(
         opInfo.name, input, filter, bias, filterScales, filterOffsets,
-        biasScales, biasOffsets, outTy, kernels, strides, pads, group, dilation,
-        /* quantizeFilter */ false, /* quantizeBias */ false);
+        biasScales, biasOffsets, outTy, kernels, strides, pads, group,
+        dilations, /* quantizeFilter */ false, /* quantizeBias */ false);
   } else {
     // Check bias quantization parameters.
     RETURN_IF_ERR(checkBiasQuantizationParams(mod_, input, filter, bias));
     // Create Convolution node.
     output = F_->createConv(opInfo.name, input, filter, bias, outTy, kernels,
-                            strides, pads, group, dilation);
+                            strides, pads, group, dilations);
   }
 
   RETURN_IF_ERR(addActivation(output, opts->fused_activation_function()));

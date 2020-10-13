@@ -57,10 +57,26 @@ TEST(Float16, mul) {
   EXPECT_EQ(a * b, float16(float(a) * float(b)));
 }
 
+TEST(Float16, mulEqual) {
+  float16 a = 3.5;
+  float16 b = 3.0;
+  float16 aMulB = a * b;
+  a *= b;
+  EXPECT_EQ(a, aMulB);
+}
+
 TEST(Float16, div) {
   float16 a = 16.5;
   float16 b = -3.0;
   EXPECT_EQ(a / b, float16(float(a) / float(b)));
+}
+
+TEST(Float16, divEqual) {
+  float16 a = 16.5;
+  float16 b = -3.0;
+  float16 aDivB = a / b;
+  a /= b;
+  EXPECT_EQ(a, aDivB);
 }
 
 TEST(Float16, gt) {

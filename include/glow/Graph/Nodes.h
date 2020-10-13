@@ -198,16 +198,16 @@ public:
 inline std::pair<dim_t, dim_t> calculateConvPoolOutputDims(
     size_t sx, size_t sy, llvm::ArrayRef<unsigned_t> kernels,
     llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
-    unsigned_t dilation = 1) {
+    llvm::ArrayRef<unsigned_t> dilation = {1, 1}) {
   PaddingTLBR pdim(pads);
   ShapeHW kdim(kernels);
   ShapeHW sdim(strides);
   size_t outsx = ((sx + pdim.top + pdim.bottom - kdim.height -
-                   (kdim.height - 1) * (dilation - 1)) /
+                   (kdim.height - 1) * (dilation[0] - 1)) /
                       sdim.height +
                   1);
   size_t outsy = ((sy + pdim.left + pdim.right - kdim.width -
-                   (kdim.width - 1) * (dilation - 1)) /
+                   (kdim.width - 1) * (dilation[1] - 1)) /
                       sdim.width +
                   1);
   return {outsx, outsy};
@@ -239,14 +239,14 @@ inline ShapeTHW calculate3DConvPoolOutputDims(
 inline std::pair<dim_t, dim_t> calculateConvTransposeOutputDims(
     size_t sx, size_t sy, llvm::ArrayRef<unsigned_t> kernels,
     llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
-    unsigned_t dilation = 1) {
+    llvm::ArrayRef<unsigned_t> dilation = {1, 1}) {
   PaddingTLBR pdim(pads);
   ShapeHW kdim(kernels);
   ShapeHW sdim(strides);
 
-  size_t outsx = (sx - 1) * sdim.height + (kdim.height - 1) * dilation + 1 -
+  size_t outsx = (sx - 1) * sdim.height + (kdim.height - 1) * dilation[0] + 1 -
                  pdim.top - pdim.bottom;
-  size_t outsy = (sy - 1) * sdim.width + (kdim.width - 1) * dilation + 1 -
+  size_t outsy = (sy - 1) * sdim.width + (kdim.width - 1) * dilation[1] + 1 -
                  pdim.left - pdim.right;
 
   return {outsx, outsy};

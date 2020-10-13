@@ -24,7 +24,7 @@ using namespace glow;
 /// Helper to pass over all Nodes in \p F and look for data param of
 /// FusedRowwiseSLWS with type UInt4FusedFP16QTy (if \p convertUInt4FP16 is
 /// true) or UInt8FusedFP16QTy (if \p convertUInt8FP16 is true), and convert
-/// them to UInt8FusedQTy.
+/// the scale/offset to fp32.
 static void convertFusedRowwiseQuantizedData(Function *F, bool convertUInt4FP16,
                                              bool convertUInt8FP16) {
   auto &mod = *F->getParent();
@@ -61,15 +61,13 @@ static void convertFusedRowwiseQuantizedData(Function *F, bool convertUInt4FP16,
     const auto &shape = data.dims();
     assert(shape.size() == 2 && "FusedRowwise Tensor must be 2D.");
 
-    // If a tensor is with ElemKind::UInt4FusedFP16QTy type, we need to double
-    // its data column (i.e. from 4bit->8bit). Also, the scale/offset is change
-    // from 2 bytes(float16) to 4 bytes(float32).
     const dim_t newCols =
-        (shape[1] - 2 * sizeof(float16_t)) *
-            (dataType == ElemKind::UInt4FusedFP16QTy ? 2 : 1) +
-        2 * sizeof(float);
-    auto OT =
-        mod.uniqueType(ElemKind::UInt8FusedQTy, {shape[0], newCols}, 1.0, 0);
+        (shape[1] - 2 * sizeof(float16_t)) + 2 * sizeof(float);
+
+    auto dT = (dataType == ElemKind::UInt8FusedFP16QTy)
+                  ? ElemKind::UInt8FusedQTy
+                  : ElemKind::UInt4FusedQTy;
+    auto OT = mod.uniqueType(dT, {shape[0], newCols}, 1.0, 0);
     ConvertToNode *CN =
         F->createConvertTo(data.getNode()->getName().str() + ".FP32", data, OT);
     node.setNthInput(idx, CN);
@@ -78,7 +76,7 @@ static void convertFusedRowwiseQuantizedData(Function *F, bool convertUInt4FP16,
 
 void glow::convertFunctionToFP32ScaleOffset(
     Function *F, const PrecisionConfiguration &precConfig) {
-  bool convertUInt4FP16 = precConfig.convert4BitFusedTo8Bit;
+  bool convertUInt4FP16 = precConfig.convert4BitFusedToFP32;
   bool convertUInt8FP16 = precConfig.convert8BitFusedToFP32;
   DCHECK(convertUInt4FP16 || convertUInt8FP16)
       << "Expect to convert at least one of UInt4FusedFP16QTy or "

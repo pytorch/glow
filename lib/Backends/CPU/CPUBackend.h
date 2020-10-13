@@ -31,7 +31,7 @@ class NodeInfo;
 
 class CPUBackend : public LLVMBackend {
 public:
-  CPUBackend() = default;
+  CPUBackend();
 
   /// @name Backend methods.
   /// This is the implementation of the Backend interface.
