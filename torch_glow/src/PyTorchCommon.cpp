@@ -307,7 +307,7 @@ std::string PyTorchLoaderSettings::toString() const {
   (stream) << #value << ": " << value << std::endl;
 
   std::stringstream s;
-
+  s << std::endl;
   INSERT_BOOL_TO_STREAM(convertToFP16, s);
   INSERT_BOOL_TO_STREAM(convertFusedToFP16, s);
   INSERT_BOOL_TO_STREAM(clipFP16, s);
