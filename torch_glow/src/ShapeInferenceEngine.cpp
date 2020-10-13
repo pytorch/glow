@@ -140,6 +140,10 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], reshape(inputMetas));
       break;
     }
+    case c10::aten::cat: {
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], cat(inputMetas));
+      break;
+    }
     case c10::aten::permute: {
       ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], permute(inputMetas));
       break;
@@ -557,6 +561,53 @@ ShapeInferenceEngine::transpose(const MetaStack &variableMetas) {
   dim1 = at::maybe_wrap_dim(dim1, inDims);
 
   std::swap(shape[dim0], shape[dim1]);
+
+  return shape;
+}
+
+/**
+ * aten::cat(Tensors tensors, int dim=0) => Tensor
+ * 0:variableMetas, 1: dim
+ * refer to https://pytorch.org/docs/master/generated/torch.cat
+ **/
+Expected<TensorShape>
+ShapeInferenceEngine::cat(const MetaStack &variableMetas) {
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2,
+      strFormat("Expected 2 inputs, got %zu.", variableMetas.size()));
+
+  const TensorListShape &tensorListShapes =
+      variableMetas[0].shape<TensorListShape>();
+  std::vector<int64_t> shape = tensorListShapes[0];
+
+  // Hanlde the single input case
+  if (tensorListShapes.size() == 1) {
+    return shape;
+  }
+
+  // Convert negtive dimension to positive, then check the dim range.
+  int64_t dim = variableMetas[1].intValue[0];
+  int64_t inDims = shape.size();
+  dim = at::maybe_wrap_dim(dim, inDims);
+
+  // Handle multiple input cases.
+  // Verify all inputs dimenions are the same execpt the dimension applies cat.
+  for (int i = 1; i < tensorListShapes.size(); ++i) {
+    RETURN_ERR_IF_NOT(inDims == tensorListShapes[i].size(),
+                      "All inputs must have the same number of dimensions.");
+    for (int j = 0; j < inDims; j++) {
+      if (j == dim) {
+        continue;
+      } else {
+        RETURN_ERR_IF_NOT(
+            shape[j] == tensorListShapes[i][j],
+            strFormat("Sizes of tensors must match except in dimension %zu.",
+                      dim));
+      }
+    }
+  }
+  for (int i = 1; i < tensorListShapes.size(); ++i)
+    shape[dim] += tensorListShapes[i][dim];
 
   return shape;
 }
