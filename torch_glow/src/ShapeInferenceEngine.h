@@ -139,6 +139,8 @@ private:
   static Expected<TensorShape> reshape(const MetaStack &variableMetas);
   // Shape inference for aten::slice
   static Expected<TensorShape> slice(const MetaStack &variableMetas);
+  // Shape inference for aten::cat
+  static Expected<TensorShape> cat(const MetaStack &variableMetas);
   // Shape inference for aten::transpose
   static Expected<TensorShape> transpose(const MetaStack &variableMetas);
   // Shape inference for aten::flatten
