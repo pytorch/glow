@@ -112,7 +112,8 @@ void registerGlowOp(const c10::Symbol &symbol) {
       symbol,
       [](const torch::jit::Node *node) -> torch::jit::Operation {
         std::string key = node->kind().toQualString();
-        if (getPyTorchLoaderSettings().inferShapeForCompilation) {
+        auto settings = getGlobalPyTorchLoaderSettingsSnapshot();
+        if (settings.inferShapeForCompilation) {
           // All Glow fusion nodes would have the same kind and there isn't a
           // good native way to differentiate them at runtime. Therefore we scan
           // the graph containing Glow fusion nodes and index each of them. The
@@ -135,12 +136,13 @@ void registerGlowOp(const c10::Symbol &symbol) {
         // empty one.
         if (!graphRunner) {
           graphRunner = std::make_unique<CachingGraphRunner>(
-              node->g(at::attr::Subgraph), getHostManager(),
-              getPyTorchLoaderSettings());
+              node->g(at::attr::Subgraph),
+              getHostManager(settings.backendName, settings.numDevices),
+              settings);
         }
 
-        return [graphRunner =
-                    std::move(graphRunner)](torch::jit::Stack *stack) {
+        return [graphRunner = std::move(graphRunner),
+                settings](torch::jit::Stack *stack) {
           Error err = Error::empty();
           // Store old Python signal handlers and install standard signal
           // handlers, so that it is possible to kill/interrupt the process if
@@ -154,7 +156,7 @@ void registerGlowOp(const c10::Symbol &symbol) {
             oldSigTermHandler = signal(SIGTERM, SIG_DFL);
           }
 
-          if (graphRunner->getSettings().preCompilePyTorchModule) {
+          if (settings.preCompilePyTorchModule) {
             err = graphRunner->runOnly(*stack);
           } else {
             err = graphRunner->run(*stack);
@@ -172,7 +174,7 @@ void registerGlowOp(const c10::Symbol &symbol) {
 
           if (static_cast<bool>(err)) {
             // PyTorch framework expects an exception been thrown here.
-            throw std::invalid_argument(ERR_TO_STRING(std::move(err)));
+            throw std::runtime_error(ERR_TO_STRING(std::move(err)));
           }
         };
       },
@@ -183,7 +185,8 @@ void registerGlowFusionPass(std::function<bool()> enablePassFn) {
   torch::jit::RegisterPass pass([enablePassFn = std::move(enablePassFn)](
                                     std::shared_ptr<torch::jit::Graph> &g) {
     if (enablePassFn()) {
-      glow::glowCustomFuse(g, getGlowSymbol());
+      auto settings = getGlobalPyTorchLoaderSettingsSnapshot();
+      glow::glowCustomFuse(g, settings, getGlowSymbol());
     }
   });
 }

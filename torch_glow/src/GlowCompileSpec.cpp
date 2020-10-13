@@ -2,143 +2,142 @@
 
 #include "GlowCompileSpec.h"
 #include "PyTorchCommon.h"
+#include "folly/json.h"
 #include <ATen/core/ivalue.h>
 #include <torch/custom_class.h>
 
 namespace glow {
+namespace {
 
-// tuple<tensor_element_type, tensor_dims>
-using SpecInputMetaSerializationType =
-    std::tuple<c10::ScalarType, std::vector<int64_t>>;
-
-SpecInputMeta::SpecInputMeta(const SpecInputMeta &other) {
-  type_ = other.type_;
-  dims_ = other.dims_;
+template <typename ClassType, typename RegistryType>
+static void addSerializationDefs(RegistryType &registry) {
+  registry.def_pickle(
+      [](const c10::intrusive_ptr<ClassType> &value)
+          -> std::string { // __getstate__
+        auto stringOrErr = value->toJson();
+        if (stringOrErr) {
+          return *stringOrErr;
+        } else {
+          const auto errString = ERR_TO_STRING(stringOrErr.takeError());
+          throw std::runtime_error(strFormat(
+              "Failed to serialize with error: %s", errString.c_str()));
+        }
+      },
+      [](std::string state) -> c10::intrusive_ptr<ClassType> { // __setstate__
+        auto value = c10::make_intrusive<ClassType>();
+        auto err = value->fromJson(state);
+        if (err) {
+          const auto errString = ERR_TO_STRING(std::move(err));
+          throw std::runtime_error(strFormat(
+              "Failed to deserialize with error: %s", errString.c_str()));
+        }
+        return value;
+      });
 }
+} // namespace
 
-SpecInputMeta::SpecInputMeta(const SpecInputMetaSerializationType &state) {
-  std::tie(type_, dims_) = state;
-}
+void registerPyTorchGlowCustomClasses() {
+#define ADD_BASIC_FIELD_DEFS(registry, ClassType, field_name)                  \
+  do {                                                                         \
+    (registry).def(strFormat("set_%s", #field_name),                           \
+                   &ClassType::set_##field_name);                              \
+    (registry).def(strFormat("get_%s", #field_name),                           \
+                   &ClassType::get_##field_name);                              \
+  } while (0)
 
-void SpecInputMeta::set(std::vector<int64_t> dims, c10::ScalarType type) {
-  type_ = type;
-  dims_ = dims;
-}
+#define ADD_MAP_FIELD_DEFS(registry, ClassType, field_name)                    \
+  do {                                                                         \
+    (registry).def(strFormat("%s_at", #field_name),                            \
+                   &ClassType::field_name##_at);                               \
+    (registry).def(strFormat("%s_insert", #field_name),                        \
+                   &ClassType::field_name##_insert);                           \
+  } while (0)
 
-void SpecInputMeta::set_same_as(const at::Tensor &t) {
-  if (t.is_quantized()) {
-    throw std::invalid_argument(
-        "Quantized PyTorch Tensor is not supported yet in GlowCompileSpec.");
-  }
-  type_ = t.scalar_type();
-  std::copy(t.sizes().begin(), t.sizes().end(), std::back_inserter(dims_));
-}
+#define ADD_VECTOR_FIELD_DEFS(registry, ClassType, field_name)                 \
+  do {                                                                         \
+    ADD_BASIC_FIELD_DEFS((registry), ClassType, field_name);                   \
+    (registry).def(strFormat("%s_at", #field_name),                            \
+                   &ClassType::field_name##_at);                               \
+    (registry).def(strFormat("%s_append", #field_name),                        \
+                   &ClassType::field_name##_append);                           \
+  } while (0)
 
-SpecInputMetaSerializationType SpecInputMeta::serializeToTuple() const {
-  return make_tuple(type_, dims_);
-}
+  // FuserSettings defs
+  static auto FuserSettings_registry =
+      torch::class_<FuserSettings>("glow", "FuserSettings").def(torch::init());
+  ADD_VECTOR_FIELD_DEFS(FuserSettings_registry, FuserSettings, op_blacklist);
+  ADD_BASIC_FIELD_DEFS(FuserSettings_registry, FuserSettings,
+                       min_fusion_group_size);
+  ADD_BASIC_FIELD_DEFS(FuserSettings_registry, FuserSettings,
+                       max_fusion_merge_size);
+  ADD_BASIC_FIELD_DEFS(FuserSettings_registry, FuserSettings,
+                       fusion_start_index);
+  ADD_BASIC_FIELD_DEFS(FuserSettings_registry, FuserSettings, fusion_end_index);
+  addSerializationDefs<FuserSettings>(FuserSettings_registry);
 
-void GlowCompileSpec::addInputTensor(std::vector<int64_t> dims,
-                                     c10::ScalarType type) {
-  inputs_.emplace_back(SpecInputMeta(std::move(dims), type));
-}
+  // CompilationGroupSettings defs
+  static auto CompilationGroupSettings_registry =
+      torch::class_<CompilationGroupSettings>("glow",
+                                              "CompilationGroupSettings")
+          .def(torch::init());
+  ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
+                       CompilationGroupSettings, convert_to_fp16);
+  ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
+                       CompilationGroupSettings, num_devices_to_use);
+  ADD_BASIC_FIELD_DEFS(CompilationGroupSettings_registry,
+                       CompilationGroupSettings, replication_count);
+  ADD_MAP_FIELD_DEFS(CompilationGroupSettings_registry,
+                     CompilationGroupSettings, backend_specific_opts);
+  addSerializationDefs<CompilationGroupSettings>(
+      CompilationGroupSettings_registry);
 
-void GlowCompileSpec::addInput(c10::intrusive_ptr<SpecInputMeta> input) {
-  inputs_.emplace_back(std::move(*input));
-}
+  // CompilationSpecSettings defs
+  static auto CompilationSpecSettings_registry =
+      torch::class_<CompilationSpecSettings>("glow", "CompilationSpecSettings")
+          .def(torch::init());
+  ADD_BASIC_FIELD_DEFS(CompilationSpecSettings_registry,
+                       CompilationSpecSettings, glow_backend);
+  ADD_BASIC_FIELD_DEFS(CompilationSpecSettings_registry,
+                       CompilationSpecSettings, enable_fuser);
+  addSerializationDefs<CompilationSpecSettings>(
+      CompilationSpecSettings_registry);
 
-void GlowCompileSpec::addInputs(
-    std::vector<c10::intrusive_ptr<SpecInputMeta>> inputs) {
-  for (auto m : inputs) {
-    inputs_.emplace_back(std::move(*m));
-  }
-}
-
-void registerGlowCompileSpecCustomClass() {
-  using SettingsSerializationType = torch::Dict<std::string, std::string>;
-  static auto glow_options_registry =
-      torch::class_<PyTorchLoaderSettings>("glow", "PyTorchLoaderSettings")
+  // InputSpec defs
+  static auto InputSpec_registry =
+      torch::class_<InputSpec>("glow", "InputSpec")
           .def(torch::init())
-          .def("get_backend_name", &PyTorchLoaderSettings::get_backend_name)
-          .def("set_backend_name", &PyTorchLoaderSettings::set_backend_name)
-          .def("get_convert_to_fp16",
-               &PyTorchLoaderSettings::get_convert_to_fp16)
-          .def("set_convert_to_fp16",
-               &PyTorchLoaderSettings::set_convert_to_fp16)
-          .def("get_convert_fused_to_fp16",
-               &PyTorchLoaderSettings::get_convert_fused_to_fp16)
-          .def("set_convert_to_fused_fp16",
-               &PyTorchLoaderSettings::set_convert_fused_to_fp16)
-          .def("get_replication_count",
-               &PyTorchLoaderSettings::get_replication_count)
-          .def("set_replication_count",
-               &PyTorchLoaderSettings::set_replication_count)
-          .def("get_saturate_host", &PyTorchLoaderSettings::get_saturate_host)
-          .def("set_saturate_host", &PyTorchLoaderSettings::set_saturate_host)
-          .def("get_randomize_constants",
-               &PyTorchLoaderSettings::get_randomize_constants)
-          .def("set_randomize_constants",
-               &PyTorchLoaderSettings::set_randomize_constants)
-          .def_pickle(
-              [](const c10::intrusive_ptr<PyTorchLoaderSettings> &options)
-                  -> SettingsSerializationType { // __getstate__
-                return options->serializeToDict();
-              },
-              [](SettingsSerializationType state)
-                  -> c10::intrusive_ptr<PyTorchLoaderSettings> { // __setstate__
-                return c10::make_intrusive<PyTorchLoaderSettings>(state);
-              });
+          .def("get_elem_type", &InputSpec::get_elem_type)
+          .def("get_dims", &InputSpec::get_dims)
+          .def("set", &InputSpec::set)
+          .def("set_same_as", &InputSpec::set_same_as);
+  addSerializationDefs<InputSpec>(InputSpec_registry);
 
-  static auto spec_input_meta_registry =
-      torch::class_<SpecInputMeta>("glow", "SpecInputMeta")
+  // CompilationGroup defs
+  static auto CompilationGroup_registry =
+      torch::class_<CompilationGroup>("glow", "CompilationGroup")
           .def(torch::init())
-          .def("set", &SpecInputMeta::set)
-          .def("set_same_as", &SpecInputMeta::set_same_as)
-          .def("type", &SpecInputMeta::type)
-          .def_pickle(
-              [](const c10::intrusive_ptr<SpecInputMeta> &sim)
-                  -> SpecInputMetaSerializationType { // __getstate__
-                return sim->serializeToTuple();
-              },
-              [](SpecInputMetaSerializationType state)
-                  -> c10::intrusive_ptr<SpecInputMeta> { // __setstate__
-                return c10::make_intrusive<SpecInputMeta>(state);
-              });
+          .def("get_input_sets", &CompilationGroup::get_input_sets)
+          .def("set_input_sets", &CompilationGroup::set_input_sets)
+          .def("input_sets_append", &CompilationGroup::input_sets_append);
+  ADD_BASIC_FIELD_DEFS(CompilationGroup_registry, CompilationGroup, settings);
+  addSerializationDefs<CompilationGroup>(CompilationGroup_registry);
 
-  using GcsSerializationType =
-      std::tuple<std::vector<SpecInputMetaSerializationType>,
-                 SettingsSerializationType>;
-  static auto glow_compile_spec_registry =
-      torch::class_<GlowCompileSpec>("glow", "GlowCompileSpec")
-          .def(torch::init())
-          .def("addInputTensor", &GlowCompileSpec::addInputTensor)
-          .def("addInput", &GlowCompileSpec::addInput)
-          .def("addInputs", &GlowCompileSpec::addInputs)
-          .def("set_settings", &GlowCompileSpec::set_settings)
-          .def_pickle(
-              [](const c10::intrusive_ptr<GlowCompileSpec> &gcs)
-                  -> GcsSerializationType { // __getstate__
-                std::vector<SpecInputMetaSerializationType> inputs;
-                for (const auto &meta : gcs->inputs()) {
-                  inputs.emplace_back(meta.serializeToTuple());
-                }
-                SettingsSerializationType settings = gcs->serialized_settings();
-                return std::make_tuple(inputs, settings);
-              },
-              [](GcsSerializationType state)
-                  -> c10::intrusive_ptr<GlowCompileSpec> { // __setstate__
-                std::vector<SpecInputMetaSerializationType> inputs;
-                SettingsSerializationType settings;
-                std::tie(inputs, settings) = state;
-                std::vector<SpecInputMeta> glowInputs;
-                for (auto inputState : inputs) {
-                  glowInputs.emplace_back(SpecInputMeta(inputState));
-                }
-                return c10::make_intrusive<GlowCompileSpec>(GlowCompileSpec(
-                    glowInputs, PyTorchLoaderSettings(settings)));
-              }
+  // CompilationSpec defs
+  static auto CompilationSpec_registry =
+      torch::class_<CompilationSpec>("glow", "CompilationSpec")
+          .def(torch::init());
+  ADD_VECTOR_FIELD_DEFS(CompilationSpec_registry, CompilationSpec,
+                        compilation_groups);
+  ADD_BASIC_FIELD_DEFS(CompilationSpec_registry, CompilationSpec, settings);
+  ADD_BASIC_FIELD_DEFS(CompilationSpec_registry, CompilationSpec,
+                       fuser_settings);
+  ADD_BASIC_FIELD_DEFS(CompilationSpec_registry, CompilationSpec,
+                       default_compilation_group_settings);
+  addSerializationDefs<CompilationSpec>(CompilationSpec_registry);
 
-          );
+#undef ADD_BASIC_FIELD_DEFS
+#undef ADD_MAP_FIELD_DEFS
+#undef ADD_VECTOR_FIELD_DEFS
 }
 
 } // namespace glow

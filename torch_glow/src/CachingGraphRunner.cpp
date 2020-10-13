@@ -64,6 +64,53 @@ createFakeStackFromInputMeta(const std::vector<InputMeta> &inputMeta) {
   }
   return stack;
 }
+
+/// Initialize the Glow compilation context \p cctx with \p settings
+void initializeCompiliationContextFromSettings(
+    glow::CompilationContext &cctx, const PyTorchLoaderSettings &settings) {
+  if (settings.convertToFP16) {
+    cctx.precisionConfig.convertToFP16 = settings.convertToFP16;
+    LOG(INFO) << "Conversion to fp16 enabled";
+  }
+  if (settings.convertPlaceholdersToFP16) {
+    cctx.precisionConfig.convertPlaceholdersToFP16 =
+        settings.convertFusedToFP16;
+    LOG(INFO) << "Conversion of Placeholders to fp16 enabled";
+  }
+  if (settings.convertConstantsToFP16) {
+    cctx.precisionConfig.convertConstantsToFP16 =
+        settings.convertConstantsToFP16;
+    LOG(INFO) << "Conversion of Constants to fp16 enabled";
+  }
+  if (settings.convertFusedToFP16) {
+    cctx.precisionConfig.convertFusedToFP16 = settings.convertFusedToFP16;
+    LOG(INFO) << "Conversion of fused scales/offsets to fp16 enabled";
+  }
+  if (settings.clipFP16) {
+    cctx.precisionConfig.clipFP16 = settings.clipFP16;
+    LOG(INFO) << "Clipping to fp16 enabled";
+  }
+  if (settings.clipFP16SkipInputs) {
+    cctx.precisionConfig.clipFP16SkipInputs = settings.clipFP16SkipInputs;
+    LOG(INFO) << "Skipping clipping for fp16 Node inputs fp16";
+  }
+  if (settings.forceFP16AccumSLS) {
+    cctx.precisionConfig.forceFP16AccumSLS = settings.forceFP16AccumSLS;
+    LOG(INFO) << "Forcing all SLS/SLWS ops to use FP16 accumulation enabled";
+  }
+
+  if (settings.dumpFinalGlowGraph) {
+    cctx.dumpFinalGraph = settings.dumpFinalGlowGraph;
+  }
+  if (settings.saturateHost) {
+    cctx.saturateHost = settings.saturateHost;
+  }
+
+  if (!settings.backendSpecificOpts.empty()) {
+    cctx.backendOpts.backendSpecificOpts = settings.backendSpecificOpts;
+  }
+}
+
 } // namespace
 
 // TODO: this should also return the list of TensorTypes used to compute the
@@ -122,7 +169,7 @@ size_t CachingGraphRunner::hashTensorShape(
 
 void CachingGraphRunner::aggregateAndDumpTraces(TraceContext *traceContext,
                                                 bool flush) {
-  size_t numTracesPerDump = settings_.numTracesPerDump;
+  size_t numTracesPerDump = defaultSettings_.numTracesPerDump;
   bool doDump = false;
   std::string filename;
   {
@@ -256,12 +303,12 @@ CachingGraphRunner::loadShape(const c10::ArrayRef<c10::IValue> &inputs,
 int64_t CachingGraphRunner::runOnJit(torch::jit::Stack &stack) {
   static std::mutex runJitLock;
   std::lock_guard<std::mutex> guard(runJitLock);
-  bool temp = getPyTorchLoaderSettings().fusionPassEnabled;
-  getPyTorchLoaderSettings().fusionPassEnabled = false;
+  bool temp = getGlobalPyTorchLoaderSettingsMutable().fusionPassEnabled;
+  getGlobalPyTorchLoaderSettingsMutable().fusionPassEnabled = false;
   int64_t startTime = TraceEvent::now();
   ptGraphExecutor_.run(stack);
   int64_t runTime = TraceEvent::now() - startTime;
-  getPyTorchLoaderSettings().fusionPassEnabled = temp;
+  getGlobalPyTorchLoaderSettingsMutable().fusionPassEnabled = temp;
   return runTime;
 }
 
@@ -498,7 +545,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "setOutputs");
 
   MetaStack *ptrOutputShape;
-  if (settings_.runShapeInference) {
+  if (defaultSettings_.runShapeInference) {
     /// load shape. If already existed, extracted directly, if not, run shape
     /// inference
     ASSIGN_VALUE_OR_RETURN_ERR(ptrOutputShape, loadShape(inputs, traceContext));
@@ -619,7 +666,7 @@ Error CachingGraphRunner::run(torch::jit::Stack &stack) {
   std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
 
   TraceContext *traceContext = nullptr;
-  if (getSettings().enableGlowTracing) {
+  if (defaultSettings_.enableGlowTracing) {
     ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
     traceContext = ctx->getTraceContext();
     traceContext->setThreadName("torch_glow");
@@ -629,7 +676,7 @@ Error CachingGraphRunner::run(torch::jit::Stack &stack) {
 
   std::shared_ptr<PerGlowGraphInfo> info;
   ASSIGN_VALUE_OR_RETURN_ERR(info,
-                             loadImpl(stack, getSettings(), traceContext));
+                             loadImpl(stack, defaultSettings_, traceContext));
   auto err = runImpl(*DCHECK_NOTNULL(info.get()), stack, ctx);
 
   // Reset the traceContext again in case it was changed during run.
@@ -662,9 +709,13 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
     info = it->second;
   }
 
+  CHECK(info);
+
+  const PyTorchLoaderSettings &settings = info->settings;
+
   std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
   TraceContext *traceContext = nullptr;
-  if (getSettings().enableGlowTracing) {
+  if (settings.enableGlowTracing) {
     ctx->setTraceContext(glow::make_unique<TraceContext>(TraceLevel::STANDARD));
     traceContext = ctx->getTraceContext();
     traceContext->setThreadName("torch_glow");
@@ -679,51 +730,6 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
 
   aggregateAndDumpTraces(traceContext);
   return err;
-}
-
-void CachingGraphRunner::initializeCompiliationContextFromSettings(
-    glow::CompilationContext &cctx, const PyTorchLoaderSettings &settings) {
-  if (settings.convertToFP16) {
-    cctx.precisionConfig.convertToFP16 = settings.convertToFP16;
-    LOG(INFO) << "Conversion to fp16 enabled";
-  }
-  if (settings.convertPlaceholdersToFP16) {
-    cctx.precisionConfig.convertPlaceholdersToFP16 =
-        settings.convertFusedToFP16;
-    LOG(INFO) << "Conversion of Placeholders to fp16 enabled";
-  }
-  if (settings.convertConstantsToFP16) {
-    cctx.precisionConfig.convertConstantsToFP16 =
-        settings.convertConstantsToFP16;
-    LOG(INFO) << "Conversion of Constants to fp16 enabled";
-  }
-  if (settings.convertFusedToFP16) {
-    cctx.precisionConfig.convertFusedToFP16 = settings.convertFusedToFP16;
-    LOG(INFO) << "Conversion of fused scales/offsets to fp16 enabled";
-  }
-  if (settings.clipFP16) {
-    cctx.precisionConfig.clipFP16 = settings.clipFP16;
-    LOG(INFO) << "Clipping to fp16 enabled";
-  }
-  if (settings.clipFP16SkipInputs) {
-    cctx.precisionConfig.clipFP16SkipInputs = settings.clipFP16SkipInputs;
-    LOG(INFO) << "Skipping clipping for fp16 Node inputs fp16";
-  }
-  if (settings.forceFP16AccumSLS) {
-    cctx.precisionConfig.forceFP16AccumSLS = settings.forceFP16AccumSLS;
-    LOG(INFO) << "Forcing all SLS/SLWS ops to use FP16 accumulation enabled";
-  }
-
-  if (settings.dumpFinalGlowGraph) {
-    cctx.dumpFinalGraph = settings.dumpFinalGlowGraph;
-  }
-  if (settings.saturateHost) {
-    cctx.saturateHost = settings.saturateHost;
-  }
-
-  if (!settings.backendSpecificOpts.empty()) {
-    cctx.backendOpts.backendSpecificOpts = settings.backendSpecificOpts;
-  }
 }
 
 Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
@@ -819,17 +825,14 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
   return Error::success();
 }
 
-const PyTorchLoaderSettings &CachingGraphRunner::getSettings() const {
-  return settings_;
-}
-
 CachingGraphRunner::CachingGraphRunner(
     std::shared_ptr<torch::jit::Graph> graph,
     std::shared_ptr<runtime::HostManager> hostManager,
-    PyTorchLoaderSettings settings)
+    PyTorchLoaderSettings defaultSettings)
     : graph_(graph), ptGraphExecutor_(graph, "forward"),
       hostManager_(hostManager),
-      backend_(*EXIT_ON_ERR(hostManager->getBackend())), settings_(settings) {
+      backend_(*EXIT_ON_ERR(hostManager->getBackend())),
+      defaultSettings_(std::move(defaultSettings)) {
   mergedTraceContext_ = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
 }
 

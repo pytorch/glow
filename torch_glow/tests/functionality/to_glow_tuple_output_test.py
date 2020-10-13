@@ -17,25 +17,29 @@ class Foo(torch.nn.Module):
 
 class TestToGlowTupleOutput(unittest.TestCase):
     def test_to_glow_tuple_output(self):
-        a = torch.randn(4)
+        input = torch.randn(4)
 
         model = Foo()
-        torch_resA = model(a)
-        (tx, ty) = torch_resA
 
-        metaA = torch_glow.InputMeta()
-        metaA.set_same_as(a)
-        inputA = [metaA]
+        spec = torch_glow.CompilationSpec()
+        spec.get_settings().set_glow_backend("Interpreter")
 
-        options = torch_glow.CompilationOptions()
-        options.backend = "Interpreter"
-        specA = torch_glow.GlowCompileSpec()
-        specA.set(inputA, options)
+        compilation_group = torch_glow.CompilationGroup()
+        spec.compilation_groups_append(compilation_group)
+
+        input_spec = torch_glow.InputSpec()
+        input_spec.set_same_as(input)
+
+        compilation_group.input_sets_append([input_spec])
 
         scripted_mod = torch.jit.script(model)
-        lowered_mod = torch_glow.to_glow(scripted_mod, [specA])
-        glow_resA = lowered_mod(a)
-        (gx, gy) = glow_resA
+        lowered_model = torch_glow.to_glow(scripted_mod, {"forward": spec})
+
+        # Run Glow model
+        (gx, gy) = lowered_model(input)
+
+        # Run reference model
+        (tx, ty) = model(input)
 
         assert torch.allclose(tx, gx)
         assert torch.allclose(ty, gy)
