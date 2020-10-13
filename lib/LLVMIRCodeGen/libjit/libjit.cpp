@@ -3194,6 +3194,12 @@ void libjit_convertTo_i32_b(int32_t *dstPtr, const bool *srcPtr,
                                                     numDims);
 }
 
+void libjit_convertTo_i32_f(int32_t *dstPtr, const float *srcPtr,
+                            const dim_t *dims, dim_t numDims) {
+  libjit_copy_kernel_with_conversion<int32_t, float>(dstPtr, srcPtr, dims,
+                                                     numDims);
+}
+
 /// Update min/max values \p compInfo and histogram \p existingHistogram with
 /// data collected from tensor \p inputTensor.
 /// Note: code ported from Profile.cpp: generateTensorHistogram
