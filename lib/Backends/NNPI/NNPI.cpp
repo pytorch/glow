@@ -215,8 +215,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   }
   case Kinded::Kind::Convolution3DNodeKind:
     if (!NI.getInTy(Convolution3DNode::InputIdx)->isQuantizedType()) {
-      isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
-          {ElemKind::FloatTy, ElemKind::Float16Ty});
+      isNodePrecisionSupported =
+          NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
     } else {
       isNodePrecisionSupported =
           NI.allInputsAndOutputsHaveSameElemKind(
@@ -224,6 +224,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
           ((NI.getInElemTy(Convolution3DNode::BiasIdx) == ElemKind::Int32QTy) ||
            (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::FloatTy));
     }
+    break;
   case Kinded::Kind::QuantizeNodeKind:
     isNodePrecisionSupported =
         (NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::FloatTy ||
