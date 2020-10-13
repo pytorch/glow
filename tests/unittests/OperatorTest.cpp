@@ -11628,8 +11628,8 @@ createAndInitConv2DWithActivation(glow::PlaceholderBindings &bindings,
   std::vector<unsigned_t> kernels = {2, 3};
   std::vector<unsigned_t> strides = {1, 1};
   std::vector<unsigned_t> pads = {2, 1, 3, 4};
-  dim_t group = 1;
-  dim_t dilation = 2;
+  unsigned_t group = 1;
+  std::vector<unsigned_t> dilation = {2, 2};
 
   // Create input placeholder.
   auto *input =
