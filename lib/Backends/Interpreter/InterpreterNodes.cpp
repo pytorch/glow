@@ -6350,7 +6350,7 @@ void BoundInterpreterFunction::fwdBBoxTransformInstFloatImpl(
     // Apply for the rectangle starting at (startRowRoi, startColRoi)
     // with height (Rows) of num_rois, and width (Cols) of boxDim.
     dim_t startRowRoi = offset;
-    dim_t startColRoi = batchSize > 1 ? 1 : 0;
+    dim_t startColRoi = roiIn->dims()[1] != boxDim ? 1 : 0;
     dim_t rows = numRois;
     T scaleBeforeInv = T(1) / scaleBefore;
 

@@ -2239,6 +2239,11 @@ bool BBoxTransformNode::verify() const {
                                deltasDims[1] % expectedBoxDim, dim_t(0), this);
   isValid &= expectCompareTrue("Weights must be a 1D vector of length 4",
                                weights.size(), size_t(4), this);
+  if (roisDims[1] == expectedBoxDim) {
+    isValid &= expectCompareTrue(
+        "The batch size should be 1 if there's no batch index in rois",
+        imInfoDims[0], dim_t(1), this);
+  }
   if (rotated && angleBoundOn) {
     isValid &= expectCompareTrue(
         "The difference between angleBoundHi and angleBoundLo "
