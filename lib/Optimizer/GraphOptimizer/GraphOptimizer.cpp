@@ -1060,6 +1060,70 @@ bool SinkCode::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Remove unnecessary padding and reduce filters for Convolution nodes with
+/// small input tensors.
+bool OptimizeSmallConv::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+    auto *CN = dyn_cast<ConvolutionNode>(&N);
+    if (!CN) {
+      continue;
+    }
+
+    // Consider a Convolution "small", if its output is 1x1.
+    // The transformation doesn't support dilation.
+    auto dilation = CN->getDilation();
+    ShapeNHWC odim(CN->getResult().dims());
+    if (odim.h > 1 || odim.w > 1 || !isUniformArray(dilation, 1u)) {
+      continue;
+    }
+
+    // Dealing with stride=1 Convoltuion nodes is generally easier, so try
+    // to canonicalize stride to 1 if possible.
+    ShapeNHWC idim(CN->getInput().dims());
+    std::vector<unsigned_t> strides(CN->getStrides());
+    std::vector<unsigned_t> kernels(CN->getKernels());
+    std::vector<unsigned_t> pads(CN->getPads());
+    auto newOutHW = calculateConvPoolOutputDims(idim.h, idim.w, kernels, {1, 1},
+                                                pads, dilation);
+    if (newOutHW.first == 1 && newOutHW.second == 1) {
+      strides = {1, 1};
+    }
+
+    // Slice off redundant filter parts.
+    auto filters = CN->getFilter();
+    auto *C = dyn_cast<Constant>(filters);
+    if (C && isUniformArray(llvm::makeArrayRef(strides), 1u) &&
+        !isUniformArray(llvm::makeArrayRef(pads), 0u)) {
+      ShapeNHWC fdim(filters.dims());
+      PaddingTLBR p(llvm::makeArrayRef(pads));
+      dim_t start[] = {0u, p.top, p.left, 0u};
+      dim_t end[] = {fdim.n, fdim.h - p.bottom, fdim.w - p.right, fdim.c};
+      auto *SN = F->createSlice(C->getName(), C, start, end);
+      filters = SN->getResult();
+      kernels = {unsigned_t(idim.h), unsigned_t(idim.w)};
+      pads = {0, 0, 0, 0};
+    }
+
+    // Check if this node needs any changes.
+    if (filters == CN->getFilter() &&
+        llvm::makeArrayRef(strides) == CN->getStrides()) {
+      continue;
+    }
+
+    auto *newCN =
+        F->createConv(CN->getName(), CN->getInput(), filters, CN->getBias(),
+                      CN->getResult().getType(), kernels, strides, pads,
+                      CN->getGroup(), dilation);
+
+    CN->getResult().replaceAllUsesOfWith(newCN->getResult());
+    changed = true;
+  }
+
+  return changed;
+}
+
 /// \returns True if node A may depend on the result of B. The relationship
 /// between the nodes does not have to be direct. For example, A can depend on
 /// X which depends on B. In that case the method needs to return True.
