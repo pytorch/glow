@@ -12,6 +12,7 @@ logger.setLevel(logging.INFO)
 
 
 class TestQuantizedConv3d(unittest.TestCase):
+    @unittest.skip(reason="Requires freezing")
     def test_quantized_conv3d_unpacked(self):
         """Basic test of the PyTorch quantize::conv3d Node with unpacked weights on Glow."""
 

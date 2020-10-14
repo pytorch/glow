@@ -109,6 +109,8 @@ void initializeCompiliationContextFromSettings(
   if (!settings.backendSpecificOpts.empty()) {
     cctx.backendOpts.backendSpecificOpts = settings.backendSpecificOpts;
   }
+
+  cctx.replicationCount = settings.replicationCount;
 }
 
 } // namespace

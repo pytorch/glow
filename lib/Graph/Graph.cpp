@@ -2998,13 +2998,6 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
       << "Unsupported element type for ChannelwiseQuantizedConvolution "
       << "filter: " << Type::getElementName(filterElemKind).str();
 
-  DCHECK(dyn_cast<Constant>(bias.getNode()))
-      << "Bias input to ChannelwiseQuantizedConvolutionNode must be a Constant";
-
-  DCHECK(dyn_cast<Constant>(filter.getNode()))
-      << "Filter input to ChannelwiseQuantizedConvolutionNode must be a "
-         "Constant";
-
   DCHECK(!filterScales.getNode() || dyn_cast<Constant>(filterScales.getNode()))
       << "Filter scales input to ChannelwiseQuantizedConvolutionNode must be "
          "null or Constant";
@@ -3035,6 +3028,9 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
         << "ChannelwiseQuantizedConvolution: If the input filter is "
         << "quantized then the filter scales/offsets must be provided!";
     Constant *filterC = dyn_cast<Constant>(filter.getNode());
+    DCHECK(filterC)
+        << "Filter input to ChannelwiseQuantizedConvolutionNode must be a "
+           "Constant to quantize it";
     Constant *filterScalesC = getParent()->createConstant(
         ElemKind::FloatTy, {numChannels}, "filterScales");
     Constant *filterOffsetsC = getParent()->createConstant(
@@ -3051,6 +3047,9 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
   // If input filter is FLOAT then quantize channel wise to filterElemQTy.
   if (quantizeFilter && filterElemKind == ElemKind::FloatTy) {
     Constant *filterC = dyn_cast<Constant>(filter.getNode());
+    DCHECK(filterC)
+        << "Filter input to ChannelwiseQuantizedConvolutionNode must be a "
+           "Constant to quantize it";
     Constant *filterCQ = getParent()->createConstant(
         filterElemQTy, filterC->getType()->dims(), 1.0, 0, "filter");
     Constant *filterScalesC = dyn_cast<Constant>(filterScales.getNode());
@@ -3069,6 +3068,9 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
   // biasScales[i] = inputScale * filterScales[i] and biasOffsets[i] = 0.
   if (!biasScales.getNode() || !biasOffsets.getNode()) {
     Constant *biasC = dyn_cast<Constant>(bias.getNode());
+    DCHECK(biasC)
+        << "Bias input to ChannelwiseQuantizedConvolutionNode must be a "
+           "Constant to quantize it";
     Constant *biasScalesC = getParent()->createConstant(
         ElemKind::FloatTy, {numChannels}, "biasScales");
     Constant *biasOffsetsC = getParent()->createConstant(
@@ -3111,6 +3113,9 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
   // If input bias is FLOAT then quantize channel wise to biasElemQTy.
   if (quantizeBias && biasElemKind == ElemKind::FloatTy) {
     Constant *biasC = dyn_cast<Constant>(bias.getNode());
+    DCHECK(biasC)
+        << "Bias input to ChannelwiseQuantizedConvolutionNode must be a "
+           "Constant to quantize it";
     Constant *biasCQ = getParent()->createConstant(
         biasElemQTy, biasC->getType()->dims(), 1.0, 0, "bias");
     Constant *biasScalesC = dyn_cast<Constant>(biasScales.getNode());
