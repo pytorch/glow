@@ -157,6 +157,10 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues[0], stack(inputMetas));
       break;
     }
+    case c10::prim::ListUnpack: {
+      ASSIGN_VALUE_OR_RETURN_ERR(outputShapesOrValues, listUnpack(inputMetas));
+      break;
+    }
     default: {
       return MAKE_ERR(strFormat("Node's operator %s is not supported",
                                 kind.toQualString()));
@@ -265,7 +269,6 @@ Error ShapeInferenceEngine::run() {
       "Number of inputs mismatch between Graph and actual inputs");
 
   /// Put graph input into shape mapping
-
   RETURN_IF_ERR(runRecursively(graph_, inputs_));
 
   /// Extract output from shape mapping
@@ -1083,5 +1086,25 @@ ShapeInferenceEngine::stack(const MetaStack &variableMetas) {
 
   shape.insert(shape.begin() + dim, shapes.size());
   return shape;
+}
+
+/**
+ * prim::ListUnpack(Tensor[] tensors) -> Tensor, ..., Tensor
+ */
+Expected<std::vector<TensorShape>>
+ShapeInferenceEngine::listUnpack(const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 1,
+      strFormat("Expected 1 input, got %zu.", variableMetas.size()));
+
+  std::vector<TensorShape> shapes;
+  const TensorListShape &t = variableMetas[0].shape<TensorListShape>();
+
+  for (int i = 0; i < t.size(); i++) {
+    shapes.emplace_back(t[i]);
+  }
+
+  return shapes;
 }
 } // namespace glow
