@@ -50,7 +50,7 @@ def generate_rois_rotated(roi_counts, im_dims):
 def create_bbox_transform_inputs(roi_counts, num_classes, rotated):
     batch_size = len(roi_counts)
     total_rois = sum(roi_counts)
-    im_dims = np.random.randint(100, 600, batch_size)
+    im_dims = np.random.randint(100, 200, batch_size)
     rois = (
         generate_rois_rotated(roi_counts, im_dims)
         if rotated
@@ -61,7 +61,7 @@ def create_bbox_transform_inputs(roi_counts, num_classes, rotated):
     im_info = np.zeros((batch_size, 3)).astype(np.float32)
     im_info[:, 0] = im_dims
     im_info[:, 1] = im_dims
-    im_info[:, 2] = np.random.random()
+    im_info[:, 2] = max(np.random.random(), 0.1)
     return rois, deltas, im_info
 
 
@@ -96,7 +96,7 @@ class TestBBoxTransform(unittest.TestCase):
             expected_fused_ops={"_caffe2::BBoxTransform"},
         )
 
-    def test_bbox_transform_basic_legacy_plus_one(self):
+    def test_bbox_transform_legacy_plus_one(self):
         """Test of the _caffe2::BBoxTransform Node on Glow."""
 
         def test_f(rois, deltas, im_info):
@@ -216,7 +216,7 @@ class TestBBoxTransform(unittest.TestCase):
             expected_fused_ops={"_caffe2::BBoxTransform"},
             use_fp16=True,
             atol=1,
-            rtol=1e-02,
+            rtol=1e-01,
         )
 
     def test_bbox_transform_rotated_basic(self):
@@ -399,5 +399,5 @@ class TestBBoxTransform(unittest.TestCase):
             expected_fused_ops={"_caffe2::BBoxTransform"},
             use_fp16=True,
             atol=1,
-            rtol=1e-2,
+            rtol=1e-01,
         )
