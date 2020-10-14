@@ -5112,16 +5112,17 @@ bool OptimizeExpSumDiv::run(Function *F, const CompilationContext &cctx) {
     BatchedReduceAddNode *RSN;
     bool optimizationPossible = true;
 
-    for (auto &node : EN->getUsers()) {
-      auto *user = node.getUser();
-      if (isa<DivNode>(user)) {
-        DN = cast<DivNode>(user);
-      } else if (isa<BatchedReduceAddNode>(user)) {
-        RSN = cast<BatchedReduceAddNode>(user);
-      } else {
-        optimizationPossible = false;
-        break;
-      }
+    auto *user1 = EN->getUsers().front().getUser();
+    auto *user2 = EN->getUsers().back().getUser();
+
+    if (isa<DivNode>(user1) && isa<BatchedReduceAddNode>(user2)) {
+      DN = cast<DivNode>(user1);
+      RSN = cast<BatchedReduceAddNode>(user2);
+    } else if (isa<DivNode>(user2) && isa<BatchedReduceAddNode>(user1)) {
+      DN = cast<DivNode>(user2);
+      RSN = cast<BatchedReduceAddNode>(user1);
+    } else {
+      optimizationPossible = false;
     }
 
     if (!optimizationPossible || RSN->getNumUsers() != 1) {
