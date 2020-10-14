@@ -1178,7 +1178,7 @@ convolution_i8K(__global cl_int8_t *dest, __global cl_int8_t *src,
         clip(round((float)(sum) * (matMulScale / destScale) + destOffset));
     if (fuseReLU) {
       dest[getNHWC(odim, n, ax, ay, d)] =
-          max(dest[getNHWC(odim, n, ax, ay, d)], (cl_int8_t)0);
+          max(dest[getNHWC(odim, n, ax, ay, d)], (cl_int8_t)destOffset);
     }
   }
 }
