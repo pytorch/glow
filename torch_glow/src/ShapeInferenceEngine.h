@@ -160,6 +160,9 @@ private:
   static Expected<TensorListShape> chunk(const MetaStack &variableMetas);
   // Shape inference for aten::stack
   static Expected<TensorShape> stack(const MetaStack &variableMetas);
+  // Shape inference for prim::listunpack
+  static Expected<std::vector<TensorShape>>
+  listUnpack(const MetaStack &variableMetas);
 };
 
 } // namespace glow
