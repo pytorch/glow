@@ -564,8 +564,14 @@ static bool verifyEmbeddingBag(NodeValue dest, NodeValue data,
                                NodeValue offsets) {
   bool isValid = checkType(dest, data.getElementType(), dest.getNode());
   isValid &= checkType(weights, data.getElementType(), dest.getNode());
-  isValid &= checkType(indices, ElemKind::Int64ITy, dest.getNode());
-  isValid &= checkType(offsets, ElemKind::Int64ITy, dest.getNode());
+  isValid &= checkType(
+      indices,
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+      dest.getNode());
+  isValid &= checkType(
+      offsets,
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+      dest.getNode());
   isValid &=
       expectCompareTrue("Indices must be a 1D vector", indices.dims().size(),
                         size_t(1), dest.getNode());
@@ -1603,10 +1609,13 @@ static bool verifyFusedRowwiseQuantizedSparseLengthsSum(
       indices,
       llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
       parent);
-  // For EmbeddingBagByteRowwiseOffsets lengths are really offsets and should be
-  // Int64ITy.
+  // For EmbeddingBagByteRowwiseOffsets lengths are really offsets and
+  // can be either Int64ITy or Int64ITy.
   if (isEmbeddingBagByteRowwiseOffsets) {
-    isValid &= checkType(lengths, ElemKind::Int64ITy, parent);
+    isValid &= checkType(
+        lengths,
+        llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}),
+        parent);
   } else {
     isValid &= checkType(lengths, ElemKind::Int32ITy, parent);
   }

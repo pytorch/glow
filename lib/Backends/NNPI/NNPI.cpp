@@ -401,8 +401,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         NI.allInputsAndOutputsHaveSameElemKind(
             {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy},
             {EmbeddingBagNode::IndicesIdx, EmbeddingBagNode::OffsetsIdx}) &&
-        (NI.getInElemTy(EmbeddingBagNode::IndicesIdx) == ElemKind::Int64ITy) &&
-        (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == ElemKind::Int64ITy);
+        (NI.getInElemTy(EmbeddingBagNode::IndicesIdx) == ElemKind::Int64ITy ||
+         NI.getInElemTy(EmbeddingBagNode::IndicesIdx) == ElemKind::Int32ITy) &&
+        (NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == ElemKind::Int64ITy ||
+         NI.getInElemTy(EmbeddingBagNode::OffsetsIdx) == ElemKind::Int32ITy);
     break;
   case Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind: {
     auto dataK = NI.getInElemTy(EmbeddingBagByteRowwiseOffsetsNode::DataIdx);
@@ -419,7 +421,9 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
          dataK == ElemKind::UInt8FusedFP16QTy ||
          dataK == ElemKind::UInt4FusedFP16QTy) &&
         (resultK == ElemKind::FloatTy || resultK == ElemKind::Float16Ty) &&
-        (indicesK == ElemKind::Int64ITy) && (offsetsK == ElemKind::Int64ITy);
+        (offsetsK == ElemKind::Int64ITy || offsetsK == ElemKind::Int32ITy) &&
+        (indicesK == ElemKind::Int64ITy || indicesK == ElemKind::Int32ITy);
+
     break;
   }
   case Kinded::Kind::FusedRowwiseQuantizedSparseLengthsSumNodeKind: {
