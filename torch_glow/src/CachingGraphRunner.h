@@ -152,7 +152,12 @@ class CachingGraphRunner {
   int64_t runOnJit(torch::jit::Stack &stack);
 
   /// Given a \p stack of inputs, computes the hash for the inputs on the stack.
-  size_t computeGraphHash(const c10::ArrayRef<c10::IValue> inputs) const;
+  size_t computeGraphHash(const c10::ArrayRef<c10::IValue> &inputs) const;
+
+  /// Given a \p stack of inputs, dumps parameters used in computing hash with
+  /// the inputs on the stack.
+  std::string
+  dumpGraphSignature(const c10::ArrayRef<c10::IValue> &inputs) const;
 
   /// Given a \p stack of inputs, computes the hash using the inputs shape on
   /// the stack.

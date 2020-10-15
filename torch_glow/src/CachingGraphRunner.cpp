@@ -118,7 +118,7 @@ void initializeCompiliationContextFromSettings(
 // TODO: this should also return the list of TensorTypes used to compute the
 // hash to check for equality. Will make a nicer wrapper for this in the future.
 size_t CachingGraphRunner::computeGraphHash(
-    const c10::ArrayRef<c10::IValue> inputs) const {
+    const c10::ArrayRef<c10::IValue> &inputs) const {
   // Start off hash with pointer to this CachingGraphRunner to avoid collisions
   // with Glow functions created by other CachingGraphRunners.
   size_t hash = reinterpret_cast<size_t>(this);
@@ -147,6 +147,28 @@ size_t CachingGraphRunner::computeGraphHash(
     } // else continue;;
   }
   return hash;
+}
+
+std::string CachingGraphRunner::dumpGraphSignature(
+    const c10::ArrayRef<c10::IValue> &inputs) const {
+  std::ostringstream oss;
+
+  // Capture (this) like hash computation
+  oss << std::hex << "this = " << this;
+
+  for (auto &input : inputs) {
+    if (input.isTensor()) {
+      oss << std::dec << ", Tensor[" << input.toTensor().sizes() << "]";
+    } else if (input.isBool()) {
+      oss << std::dec << ", bool(" << input.toBool() << ")";
+    } else if (input.isInt()) {
+      oss << std::dec << ", int(" << input.toInt() << ")";
+    } else if (input.isIntList()) {
+      std::vector<int64_t> inputList = input.toIntVector();
+      oss << std::dec << ", intList([" << inputList << "])";
+    } // else continue;;
+  }
+  return oss.str();
 }
 
 // Hashing input tensors using their shapes.
@@ -226,6 +248,9 @@ CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
   if (it != perGlowGraphInfoMap_.end()) {
     return it->second;
   }
+
+  LOG(INFO) << "Compiling graph for signature:\n" << dumpGraphSignature(stack);
+
   auto info = std::make_shared<PerGlowGraphInfo>(
       strFormat("pt_function_%lu", hash), settings);
 
@@ -286,6 +311,9 @@ CachingGraphRunner::loadShape(const c10::ArrayRef<c10::IValue> &inputs,
   if (it != perGlowGraphShapeMap_.end()) {
     return &(it->second);
   }
+
+  LOG(INFO) << "Compiling graph with tensor shape:\n"
+            << dumpGraphSignature(inputs);
 
   // If we don't have a shape info for this graph output with and the
   // given inputs then run shape inference, then push into the map.
