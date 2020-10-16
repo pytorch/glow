@@ -1002,6 +1002,7 @@ public:
     }
     }
     LOG(DFATAL) << "Cannot reach here.";
+    return NodeValue(); // Prevents a compilation warning.
   }
 };
 

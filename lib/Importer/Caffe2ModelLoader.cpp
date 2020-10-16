@@ -1957,8 +1957,10 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
 
       float scale;
       ASSIGN_VALUE_OR_RETURN_ERR(scale, loadFloat(dict["Y_scale"]));
+      (void)scale;
       int32_t offset;
       ASSIGN_VALUE_OR_RETURN_ERR(offset, loadInt(dict["Y_zero_point"]));
+      (void)offset;
       size_t i = 0;
       if (typeName == "Int8GivenTensorFill") {
         // Although in Caffe2 quantized model, the weights is int8 quantized,

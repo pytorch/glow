@@ -4211,9 +4211,9 @@ TEST_F(OnnxImporterTest, CustomGlowTopKQuantized) {
   }
 
   // Verify structure: PH -> TopK -> Save -> PH.
-  //                           \
-  //                            v
-  //                          Save -> PH
+  //                           |
+  //                           v
+  //                         Save -> PH
   EXPECT_EQ(mod.getPlaceholders().size(), 3);
   // TopK, Save nodes
   EXPECT_EQ(F->getNodes().size(), 3);
@@ -4968,7 +4968,7 @@ TEST(onnx, importNames) {
   vector<std::string> origNames = {"a__1",  "a__1", "a__3__3", "a__2",
                                    "a__1_", "a__b", "a"};
   auto *currNode = (Node *)getSaveNodeFromDest(graphOutputVar);
-  for (int i = 0; i < origNames.size(); i++) {
+  for (size_t i = 0; i < origNames.size(); i++) {
     auto *prevNode = currNode->getNthInput(0).getNode();
     // Make sure original names are retained in the legalized names.
     EXPECT_EQ(prevNode->getName().find(origNames[i]), 0);

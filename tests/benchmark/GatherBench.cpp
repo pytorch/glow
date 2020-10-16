@@ -174,7 +174,7 @@ public:
 
     // Add Gather nodes.
     for (auto &param : params_) {
-      for (int i = 0; i < param.numGatherNodes; i++) {
+      for (dim_t i = 0; i < param.numGatherNodes; i++) {
         addGatherNode(mod, fn, param);
       }
     }

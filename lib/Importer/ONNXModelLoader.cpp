@@ -2988,8 +2988,8 @@ Error ONNXModelLoader::loadExpand(const ONNX_NAMESPACE::NodeProto &op,
   ASSIGN_VALUE_OR_RETURN_ERR(in, getNodeValueByName(op.input(0)));
   ASSIGN_VALUE_OR_RETURN_ERR(repeats, getConstantByName(op.input(1)));
 
-  std::vector<int64_t> tiles;
-  helperSetter<int64_t, int64_t>(repeats, tiles);
+  std::vector<dim_t> tiles;
+  helperSetter<int64_t, dim_t>(repeats, tiles);
   auto inputDimSize = (size_t)in.dims().size();
   auto repeatSize = (size_t)tiles.size();
   if (repeatSize > inputDimSize) {
@@ -5436,7 +5436,7 @@ Error ONNXModelLoader::setupUpdatedTQPMap(
     auto nameOffsetPair = nameOffsetSplit.split(offsetSepSig);
     int32_t idx;
     ASSIGN_VALUE_OR_RETURN_ERR(idx, getIntFromStr(nameOffsetPair.second));
-    RETURN_ERR_IF_NOT(idx < updatedTQPs_.size(),
+    RETURN_ERR_IF_NOT(idx < int32_t(updatedTQPs_.size()),
                       strFormat("Provided offset index %d not inside size "
                                 "of updatedTQPs_ %lu",
                                 idx, updatedTQPs_.size()));

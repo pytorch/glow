@@ -2046,7 +2046,7 @@ void BoundInterpreterFunction::fwdGatherNDInstImpl(
   auto &indicesTy = indicesT->getType();
 
   // Get the last dimension of indices Tensor
-  const int64_t lastIndicesDimension =
+  const dim_t lastIndicesDimension =
       indicesTy.dims()[indicesTy.dims().size() - 1];
 
   size_t outP = 0;
@@ -2068,7 +2068,7 @@ void BoundInterpreterFunction::fwdGatherNDInstImpl(
   for (dim_t i = 0, end = numOfSlices; i < end; i++) {
     dim_t x = indicesT->getHandle<ElemTy>().raw(i * dataSliceSize);
 
-    for (size_t j = 1; j < lastIndicesDimension; j++) {
+    for (dim_t j = 1; j < lastIndicesDimension; j++) {
       x = (x * dataTy.dims()[j]) +
           indicesT->getHandle<ElemTy>().raw(i * dataSliceSize + j);
     }
@@ -5682,15 +5682,15 @@ void BoundInterpreterFunction::fwdAudioSpectrogramInstFloatImpl(
   auto fftImagOut = std::make_unique<float[]>(specLen);
 
   // Compute the spectrogram.
-  for (dim_t winIdx = 0; winIdx < windowCount; winIdx++) {
+  for (dim_t winIdx = 0; int64_t(winIdx) < windowCount; winIdx++) {
 
     // Windowing.
-    for (dim_t n = 0; n < windowSize; n++) {
+    for (int64_t n = 0; n < windowSize; n++) {
       winOut[n] = inputH.raw(winIdx * windowStride + n) * windowH.raw(n);
     }
 
     // Compute spectrum (perform FFT).
-    for (int k = 0; k < specLen; k++) {
+    for (dim_t k = 0; k < specLen; k++) {
       fftRealOut[k] = 0;
       fftImagOut[k] = 0;
       for (int n = 0; n < windowSize; n++) {
@@ -5751,11 +5751,12 @@ void BoundInterpreterFunction::fwdMFCCInstFloatImpl(glow::MFCCInst const *I) {
     // Apply Mel filter bank mapping. We use sqrt for the spectrogram since we
     // assume the spectrogram is a power value and not a magnitude.
     dim_t melBinCoeffIdx = 0;
-    for (dim_t melIdx = 0; melIdx < filterBankCount; melIdx++) {
+    for (int64_t melIdx = 0; melIdx < filterBankCount; melIdx++) {
       int32_t freqIdxStart = melRangesH.raw(2 * melIdx + 0);
       int32_t freqIdxStop = melRangesH.raw(2 * melIdx + 1);
       float melPwr = 0.0f;
-      for (dim_t freqIdx = freqIdxStart; freqIdx <= freqIdxStop; freqIdx++) {
+      for (dim_t freqIdx = freqIdxStart; int32_t(freqIdx) <= freqIdxStop;
+           freqIdx++) {
         melPwr += std::sqrt(spectrogramH.at({winIdx, freqIdx})) *
                   melWeightsH.raw(melBinCoeffIdx++);
       }
@@ -5763,7 +5764,7 @@ void BoundInterpreterFunction::fwdMFCCInstFloatImpl(glow::MFCCInst const *I) {
     }
 
     // Take logarithm in-place (avoid log(0)).
-    for (dim_t melIdx = 0; melIdx < filterBankCount; melIdx++) {
+    for (int64_t melIdx = 0; melIdx < filterBankCount; melIdx++) {
       float melPwr = melBuff[melIdx];
       melBuff[melIdx] = (melPwr == 0.0)
                             ? logf(std::numeric_limits<float>::min())
@@ -5771,9 +5772,9 @@ void BoundInterpreterFunction::fwdMFCCInstFloatImpl(glow::MFCCInst const *I) {
     }
 
     // Compute DCT transform.
-    for (dim_t k = 0; k < numCoefficients; k++) {
+    for (dim_t k = 0; int64_t(k) < numCoefficients; k++) {
       float dctOut = 0.0f;
-      for (dim_t n = 0; n < filterBankCount; n++) {
+      for (dim_t n = 0; int64_t(n) < filterBankCount; n++) {
         dctOut += dctMatH.at({k, n}) * melBuff[n];
       }
       coefficientsH.at({winIdx, k}) = dctOut;
