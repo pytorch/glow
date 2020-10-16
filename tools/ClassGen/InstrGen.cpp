@@ -109,6 +109,7 @@ int main(int argc, char **argv) {
       .addMember(MemberType::VectorUnsigned, "Pads")
       .addMember(MemberType::Unsigned, "Group")
       .addMember(MemberType::VectorUnsigned, "Dilation")
+      .addFusedActivation()
       .autoIRGen()
       .autoVerify(VerifyKind::SameElementType,
                   {"Dest", "Src", "Filter", "ElemKind::Int8QTy"});

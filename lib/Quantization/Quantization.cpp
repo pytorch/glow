@@ -886,6 +886,9 @@ public:
                 convNode->getGroup(), convNode->getDilation(),
                 /* quantizeFilter */ true, /* quantizeBias */ true, schema_,
                 quantizationPrecision_, quantizationPrecisionBias_);
+            convNodeCWQ->setFusedActivation(convNode->getFusedActivation());
+            convNodeCWQ->setFusedActivationArgs(
+                convNode->getFusedActivationArgs());
             result.replaceAllUsesOfWith(convNodeCWQ->getResult());
           }
         }

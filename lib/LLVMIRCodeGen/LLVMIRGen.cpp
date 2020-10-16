@@ -2390,13 +2390,17 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
                                    : "channelwise_quantized_conv2d",
                           {dest->getElementType(), bias->getElementType()});
 
+    auto *actType = emitConstI32(builder, CQCI->getFusedActivation());
+    auto *actArgsQuant = emitConstQuantActivationArgs(builder, CQCI);
+
     createCall(builder, F,
-               {destPtr,        srcPtr,        filterPtr,     biasPtr,
-                destDims,       srcDims,       filterDims,    biasDims,
-                kernels,        strides,       pads,          group,
-                dilation,       destOffset,    srcOffset,     filterOffsetsPtr,
-                biasOffsetsPtr, biasPrePtr,    biasPostPtr,   biasScalePtr,
-                outputPrePtr,   outputPostPtr, outputScalePtr});
+               {destPtr,        srcPtr,        filterPtr,      biasPtr,
+                destDims,       srcDims,       filterDims,     biasDims,
+                kernels,        strides,       pads,           group,
+                dilation,       destOffset,    srcOffset,      filterOffsetsPtr,
+                biasOffsetsPtr, biasPrePtr,    biasPostPtr,    biasScalePtr,
+                outputPrePtr,   outputPostPtr, outputScalePtr, actType,
+                actArgsQuant});
     break;
   }
 

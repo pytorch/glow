@@ -3125,7 +3125,8 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
   auto OT = getParent()->uniqueType(*outTy);
   return addNode(new ChannelwiseQuantizedConvolutionNode(
       name, OT, input, filter, bias, filterScales, filterOffsets, biasScales,
-      biasOffsets, kernels, strides, pads, group, dilation));
+      biasOffsets, kernels, strides, pads, group, dilation,
+      FusedActivation::NONE, {}));
 }
 
 ConvTransposeNode *Function::createConvTranspose(

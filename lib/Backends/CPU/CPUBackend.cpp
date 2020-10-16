@@ -80,8 +80,10 @@ bool CPUBackend::shouldLower(const Node *N) const {
 }
 
 bool CPUBackend::supportsFusedActivation(Node *parent, Node *activation) const {
-  // CPU backend only supports fusing activations into Convolution.
-  if (parent->getKind() != Kinded::Kind::ConvolutionNodeKind) {
+  // CPU backend only supports fusing activations into Convolution and
+  if (parent->getKind() != Kinded::Kind::ConvolutionNodeKind &&
+      parent->getKind() !=
+          Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind) {
     return false;
   }
 
