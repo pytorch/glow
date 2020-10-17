@@ -11693,6 +11693,30 @@ TEST_CONV2D_ACTIVATION(LEAKY_RELU, Int8QTy, 0.01)
 
 #undef TEST_CONV2D_ACTIVATION
 
+/// Check that CWQ Conv2D followed by activation works (whether fused or not).
+/// For this we compare with the Interpreter reference float implementation.
+#define TEST_CWQ_CONV2D_ACTIVATION(ACTIVATION, TYPE, TOL)                      \
+  TEST_P(OperatorStatelessTest, CWQConv2D_##ACTIVATION##_##TYPE) {             \
+    ENABLED_BACKENDS("CPU");                                                   \
+    compareAgainstInterpreter(                                                 \
+        getBackendName(),                                                      \
+        createAndInitConv2DWithActivation<FusedActivation::ACTIVATION>,        \
+        ElemKind::FloatTy, ElemKind::TYPE, TOL, parCloneCountOpt,              \
+        /* convertToRowwiseQuantization */ false,                              \
+        quantization::Schema::Asymmetric, /*biasElemKind*/ ElemKind::Int32QTy, \
+        /*forceFP16AccumSLS*/ false,                                           \
+        PrecisionConfiguration::Float16Format::None,                           \
+        /*convertToChannelwiseQuantization*/ true);                            \
+  }
+
+TEST_CWQ_CONV2D_ACTIVATION(RELU, Int8QTy, 0.01)
+TEST_CWQ_CONV2D_ACTIVATION(CLIP, Int8QTy, 0.01)
+TEST_CWQ_CONV2D_ACTIVATION(TANH, Int8QTy, 0.02)
+TEST_CWQ_CONV2D_ACTIVATION(SIGMOID, Int8QTy, 0.015)
+TEST_CWQ_CONV2D_ACTIVATION(LEAKY_RELU, Int8QTy, 0.01)
+
+#undef TEST_CWQ_CONV2D_ACTIVATION
+
 /// Check Non-cubic stride for conv3D.
 TEST_P(OperatorTest, NonCubicStrideConv3D) {
   CHECK_IF_ENABLED();

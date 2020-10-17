@@ -265,9 +265,17 @@ public:
   /// \returns whether the backend supports fusing \p activation into \p parent.
   bool supportsFusedActivation(Node *parent, Node *activation) const override {
     // Only support convolution+relu fusions for now.
-    bool V = parent->getKind() == Kinded::Kind::ConvolutionNodeKind &&
-             activation->getKind() == Kinded::Kind::ReluNodeKind;
-    return V;
+    if (!(parent->getKind() == Kinded::Kind::ConvolutionNodeKind &&
+          activation->getKind() == Kinded::Kind::ReluNodeKind)) {
+      return false;
+    }
+    // Only support Relu with symmetric activation.
+    if (parent->getNthResult(0).getType()->isQuantizedType() &&
+        ((parent->getNthResult(0).getType()->getOffset() != 0) ||
+         (activation->getNthResult(0).getType()->getOffset() != 0))) {
+      return false;
+    }
+    return true;
   }
 
 private:
