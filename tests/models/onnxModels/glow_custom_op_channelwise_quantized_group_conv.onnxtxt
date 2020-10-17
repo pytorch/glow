@@ -95,6 +95,15 @@ graph {
       ints: 1
       type: INTS
     }
+    attribute {
+      name: "FusedActivation"
+      s: "NONE"
+      type: STRING
+    }
+    attribute {
+      name: "FusedActivationArgs"
+      type: FLOATS
+    }
   }
   node {
     input: "channelwiseQuantizedConv"
