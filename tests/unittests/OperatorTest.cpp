@@ -2405,8 +2405,8 @@ TEST_P(OperatorTest, LSTMUnitFP16) {
     float cExpect = (float16_t)i * refSigmoidFp16(i + 1) +
                     refSigmoidFp16(i) * (float16_t)std::tanh(i + 2);
     float hExpect = (float16_t)std::tanh(cExpect) * refSigmoidFp16(i + 3);
-    EXPECT_NEAR(hHandle.raw(i), hExpect, 1E-5);
-    EXPECT_NEAR(cHandle.raw(i), cExpect, 1E-5);
+    EXPECT_NEAR(hHandle.raw(i), hExpect, 1E-3);
+    EXPECT_NEAR(cHandle.raw(i), cExpect, 1E-2);
   }
 }
 
@@ -2484,7 +2484,7 @@ TEST_P(OperatorTest, PyTorchLSTMFP16) {
                           0.9940, 0.9951, 0.9959, 0.9967, 0.9982, 0.9985,
                           0.9988, 0.9990, 0.9992, 0.9993, 0.9995, 0.9996};
   for (int i = 0; i < numSteps * minibatchSize * hiddenSize; i++) {
-    EXPECT_NEAR(saveH.raw(i), expectOutput[i], 1E-3);
+    EXPECT_NEAR(saveH.raw(i), expectOutput[i], 2E-3);
   }
 }
 
