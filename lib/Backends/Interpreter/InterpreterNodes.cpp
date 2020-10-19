@@ -1028,8 +1028,12 @@ static void fwdMaxPool(Tensor *inW, Tensor *outW, Tensor *argmaxW,
         sdim_t y = -sdim_t(pdim.left);
         for (dim_t ay = 0; ay < odim.w; y += sdim.width, ay++) {
 
+          // When the MaxPool window includes only padding pixels then for that
+          // window by convention we return 0.
           bool first = true;
-          T max_value = 0;
+          T max_value = outW->getType().isQuantizedType()
+                            ? static_cast<T>(outW->getType().getOffset())
+                            : static_cast<T>(0);
           dim_t argmaxNHWC = 0;
 
           for (dim_t fx = 0; fx < kdim.height; fx++) {
@@ -1146,8 +1150,11 @@ void BoundInterpreterFunction::fwdAvgPoolInstFloatImpl(const AvgPoolInst *I) {
               sum += float(inW.at({n, (dim_t)ox, (dim_t)oy, z}));
             }
           }
-          assert(filterArea != 0 && "filterArea can't be 0");
-          outW.at({n, ax, ay, z}) = ElemTy(sum / filterArea);
+          if (filterArea == 0) {
+            outW.at({n, ax, ay, z}) = ElemTy(0);
+          } else {
+            outW.at({n, ax, ay, z}) = ElemTy(sum / filterArea);
+          }
         } // W
       }   // H
     }     // C
@@ -1202,11 +1209,16 @@ void BoundInterpreterFunction::fwdAvgPoolInstI8Impl(const AvgPoolInst *I) {
               sum += inW.at({n, (dim_t)ox, (dim_t)oy, z}) - inQP.offset;
             }
           }
-          assert(filterArea != 0 && "filterArea can't be 0");
-          // Instead of dividing by filterArea, just change scale.
-          outW.at({n, ax, ay, z}) = quantization::clip<int32_t, int8_t>(
-              std::round(float(sum) * (inQP.scale / outQP.scale / filterArea) +
-                         outQP.offset));
+          if (filterArea == 0) {
+            outW.at({n, ax, ay, z}) =
+                quantization::clip<int32_t, int8_t>(outQP.offset);
+          } else {
+            // Instead of dividing by filterArea, just change scale.
+            outW.at({n, ax, ay, z}) =
+                quantization::clip<int32_t, int8_t>(std::round(
+                    float(sum) * (inQP.scale / outQP.scale / filterArea) +
+                    outQP.offset));
+          }
         } // W
       }   // H
     }     // C

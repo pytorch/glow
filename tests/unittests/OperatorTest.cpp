@@ -10585,6 +10585,77 @@ TEST_P(OperatorTest, AvgPoolCountExcludePads) {
   EXPECT_TRUE(out.isEqual(*result));
 }
 
+/// Create a simple AvgPool network with large pads.
+template <bool countIncludePads>
+static FunctionTensorPair
+createAndInitAvgPool2DLargePads(glow::PlaceholderBindings &bindings,
+                                glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::vector<dim_t> inputDims = {3, 4, 5, 6};
+  std::vector<unsigned_t> kernels = {2, 3};
+  std::vector<unsigned_t> strides = {1, 2};
+  std::vector<unsigned_t> pads = {4, 5, 6, 7};
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+  AvgPoolNode *pool =
+      F->createAvgPool("pool", input, kernels, strides, pads,
+                       ConvolutionLayout::NHWC, countIncludePads);
+  SaveNode *save = F->createSave("save", pool);
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+  return std::make_pair(F, resultTensor);
+}
+
+/// AvgPool2D tests with large pads.
+/// Compare with the Interpreter float implementation.
+#define TEST_AVG_POOL2D_LARGE_PADS(NAME, TYPE, COUNT_INCLUDE_PADS, TOL)        \
+  TEST_P(OperatorStatelessTest, AvgPool2DLargePads_##NAME) {                   \
+    CHECK_IF_ENABLED();                                                        \
+    compareAgainstInterpreter(                                                 \
+        getBackendName(), createAndInitAvgPool2DLargePads<COUNT_INCLUDE_PADS>, \
+        ElemKind::FloatTy, ElemKind::TYPE, TOL);                               \
+  }
+TEST_AVG_POOL2D_LARGE_PADS(FloatTy_CountIncludePads, FloatTy, true, 1e-5)
+TEST_AVG_POOL2D_LARGE_PADS(FloatTy_CountExcludePads, FloatTy, false, 1e-5)
+TEST_AVG_POOL2D_LARGE_PADS(Int8QTy_CountIncludePads, Int8QTy, true, 0.005)
+TEST_AVG_POOL2D_LARGE_PADS(Int8QTy_CountExcludePads, Int8QTy, false, 0.01)
+#undef TEST_AVG_POOL2D_LARGE_PADS
+
+/// Create a simple MaxPool network with large pads.
+static FunctionTensorPair
+createAndInitMaxPool2DLargePads(glow::PlaceholderBindings &bindings,
+                                glow::ExecutionEngine &EE) {
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+  std::vector<dim_t> inputDims = {3, 4, 5, 6};
+  std::vector<unsigned_t> kernels = {2, 3};
+  std::vector<unsigned_t> strides = {1, 2};
+  std::vector<unsigned_t> pads = {4, 5, 6, 7};
+  auto *input =
+      mod.createPlaceholder(ElemKind::FloatTy, inputDims, "input", false);
+  bindings.allocate(input)->getHandle<float>().randomize(-1.0, 1.0,
+                                                         mod.getPRNG());
+  MaxPoolNode *pool = F->createMaxPool("pool", input, kernels, strides, pads);
+  SaveNode *save = F->createSave("save", pool->getResult());
+  auto *resultTensor = bindings.allocate(save->getPlaceholder());
+  return std::make_pair(F, resultTensor);
+}
+
+/// MaxPool2D tests with large pads.
+/// Compare with the Interpreter float implementation.
+#define TEST_MAX_POOL2D_LARGE_PADS(NAME, TYPE, TOL)                            \
+  TEST_P(OperatorStatelessTest, MaxPool2DLargePads_##NAME) {                   \
+    CHECK_IF_ENABLED();                                                        \
+    compareAgainstInterpreter(getBackendName(),                                \
+                              createAndInitMaxPool2DLargePads,                 \
+                              ElemKind::FloatTy, ElemKind::TYPE, TOL);         \
+  }
+TEST_MAX_POOL2D_LARGE_PADS(FloatTy, FloatTy, 1e-5)
+TEST_MAX_POOL2D_LARGE_PADS(Int8QTy, Int8QTy, 0.005)
+#undef TEST_MAX_POOL2D_LARGE_PADS
+
 /// Verify that the AdaptiveAvgPool operator works correctly.
 TEST_P(OperatorTest, AdaptiveAvgPool) {
   CHECK_IF_ENABLED();
