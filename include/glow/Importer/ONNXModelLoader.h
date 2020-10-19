@@ -481,7 +481,8 @@ protected:
   /// Loads ModelProto from the file containing serialized protobuf.
   /// If \p zipMode then zip format will be expected/loaded.
   static Expected<ONNX_NAMESPACE::ModelProto>
-  loadProto(const std::string &filename, bool zipMode);
+  loadProto(const std::string &filename, bool zipMode,
+            const std::string *inputStringPtr);
 
   /// \returns Expected<ModelProto> if a ModelProto can be constructed from the
   /// in-memory serialized protobuf.
@@ -622,7 +623,8 @@ public:
                   BackendSpecificNodeInfo *perNodeOpts = nullptr,
                   bool disableConstFoldInLoader = false,
                   bool loadIntoExistingModule = false,
-                  const Backend *B = nullptr);
+                  const Backend *B = nullptr,
+                  const std::string *inputStringPtr = nullptr);
 
   /// Loads the ONNX model that's represented by a model description file,
   /// serialized in \p modelDescFilename and populates the network into \p mod.
@@ -649,7 +651,8 @@ public:
                   BackendSpecificNodeInfo *perNodeOpts = nullptr,
                   bool loadIntoExistingModule = false,
                   bool disableConstFoldInLoader = false,
-                  const Backend *B = nullptr);
+                  const Backend *B = nullptr,
+                  const std::string *inputStringPtr = nullptr);
 
 private:
   /// Per-node options that may be specified in a proto.
