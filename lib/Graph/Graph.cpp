@@ -1603,6 +1603,12 @@ ReshapeNode *Function::createFlatten(llvm::StringRef name, NodeValue input,
   return createReshape(name, input, {xDim.first, xDim.second});
 }
 
+ReshapeNode *Function::createFlattenV1(llvm::StringRef name, NodeValue input,
+                                       unsigned_t axis) {
+  auto xDim = collapseShape(input.getType()->dims(), axis);
+  return createReshape(name, input, {xDim.first, xDim.second});
+}
+
 void Function::createSplit(llvm::StringRef name, NodeValue input,
                            unsigned_t outputNum, unsigned_t axis,
                            llvm::ArrayRef<dim_t> split,
