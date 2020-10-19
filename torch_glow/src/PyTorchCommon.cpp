@@ -264,7 +264,6 @@ void PyTorchLoaderSettings::initSettings() {
   fusionStartIndex = FLAGS_fusionStartIndex;
   fusionEndIndex = FLAGS_fusionEndIndex;
   setIncludeLastOffsets = FLAGS_setIncludeLastOffsets;
-  inferShapeForCompilation = FLAGS_inferShapeForCompilation;
   enableRemoveMutation = FLAGS_enableRemoveMutation;
 
   if (!FLAGS_opBlacklist.empty()) {
@@ -319,7 +318,6 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(randomizeConstants, s);
   INSERT_VALUE_TO_STREAM(backendOptionsFile, s);
   INSERT_VALUE_TO_STREAM(replicationCount, s);
-  INSERT_BOOL_TO_STREAM(preCompilePyTorchModule, s);
   INSERT_BOOL_TO_STREAM(fusionPassEnabled, s);
   INSERT_BOOL_TO_STREAM(dumpGlowDag, s);
   INSERT_VALUE_TO_STREAM(minFusionGroupSize, s);
@@ -527,7 +525,6 @@ std::vector<glow::InputMeta> loadInputMeta(const std::string &raw_data) {
 void glowAOTFusionWithShapeInference(
     torch::jit::Module &model, const std::vector<glow::InputMeta> &inputMeta) {
   auto settings = glow::getGlobalPyTorchLoaderSettingsSnapshot();
-  settings.preCompilePyTorchModule = true;
 
   auto graph = model.get_method("forward").function().graph();
 
@@ -591,7 +588,7 @@ void glowAOTFusionWithShapeInference(
             return std::make_unique<glow::CachingGraphRunner>(
                 subgraph,
                 getHostManager(settings.backendName, settings.numDevices),
-                settings);
+                settings, /*useRunOnly*/ true);
           });
 
       std::vector<glow::InputMeta> perGraphInputMeta;
@@ -626,15 +623,13 @@ void glowAOTFusionWithShapeInference(
   }
 }
 
-void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr) {
+void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
+                   PyTorchLoaderSettings settings) {
   auto inputMeta = glow::loadInputMeta(inputMetaStr);
 
   if (FLAGS_inferShapeForCompilation) {
     return glowAOTFusionWithShapeInference(model, inputMeta);
   }
-
-  auto settings = glow::getGlobalPyTorchLoaderSettingsSnapshot();
-  settings.preCompilePyTorchModule = true;
 
   // We assume the model is flattened and only one graph will be lowered. In the
   // future we may need to support multiple graphs.
@@ -667,7 +662,7 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr) {
       glow::setGraphRunnerForKey(symbol.toQualString(), [subgraph, settings] {
         return std::make_unique<glow::CachingGraphRunner>(
             subgraph, getHostManager(settings.backendName, settings.numDevices),
-            settings);
+            settings, /*useRunOnly*/ true);
       });
 
   auto e = runner->warmCache(inputMeta, settings,
