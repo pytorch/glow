@@ -229,11 +229,6 @@ Expected<std::shared_ptr<CachingGraphRunner::PerGlowGraphInfo>>
 CachingGraphRunner::loadImpl(torch::jit::Stack &stack,
                              const PyTorchLoaderSettings &settings,
                              TraceContext *traceContext) {
-  if (settings.preCompilePyTorchModule) {
-    return MAKE_ERR(
-        "Calling JIT compilation when preCompilePyTorchModule is set");
-  }
-
   TRACE_EVENT_SCOPE(traceContext, TraceLevel::RUNTIME, "torch_glow::loadImpl");
   const auto inputs = torch::jit::last(stack, graph_->inputs().size());
 
@@ -693,6 +688,9 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
 }
 
 Error CachingGraphRunner::run(torch::jit::Stack &stack) {
+  if (useRunOnly_) {
+    return runOnly(stack);
+  }
   std::unique_ptr<ExecutionContext> ctx = glow::make_unique<ExecutionContext>();
 
   TraceContext *traceContext = nullptr;
@@ -781,13 +779,6 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
   TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME,
                     "torch_glow::warmCache");
 
-  // If this setting is missing we will not use pre compiled model at runtime,
-  // which will cause unexpected behaviors.
-  if (!settings.preCompilePyTorchModule) {
-    return MAKE_ERR(
-        "Calling AOT compilation when preCompilePyTorchModule is not set");
-  }
-
   // hash should be unique in the following mappings:
   // 1) perGlowGraphInfoMap_ - a specifc instance of a runner corresponds to
   //    a single graph (i.e. Glow fusion group) that may have multiple
@@ -858,11 +849,11 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
 CachingGraphRunner::CachingGraphRunner(
     std::shared_ptr<torch::jit::Graph> graph,
     std::shared_ptr<runtime::HostManager> hostManager,
-    PyTorchLoaderSettings defaultSettings)
+    PyTorchLoaderSettings defaultSettings, bool useRunOnly)
     : graph_(graph), ptGraphExecutor_(graph, "forward"),
       hostManager_(hostManager),
       backend_(*EXIT_ON_ERR(hostManager->getBackend())),
-      defaultSettings_(std::move(defaultSettings)) {
+      defaultSettings_(std::move(defaultSettings)), useRunOnly_(useRunOnly) {
   mergedTraceContext_ = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
 }
 

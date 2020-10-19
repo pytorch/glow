@@ -43,12 +43,6 @@ public:
 
   std::string toString() const;
 
-  /// This should be used with CachingGraphRunner::warmCache. When this flag is
-  /// enabled, it assumes the glow graph is compiled ahead of time instead of
-  /// at PyTorch JIT runtime. And the registered glow operator will run
-  /// the precompiled results directly.
-  bool preCompilePyTorchModule = false;
-
   /// Whether or not run the custom pass that fuses jit nodes into a glow node.
   bool fusionPassEnabled = false;
 
@@ -158,9 +152,6 @@ public:
   /// embedding-bag-like operators. This is default to true since it is
   /// currently a requirement if we want to support partial inputs
   bool setIncludeLastOffsets = true;
-
-  /// infer shape for entire model and run AOT compilation
-  bool inferShapeForCompilation = false;
 };
 
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
@@ -216,7 +207,8 @@ std::vector<glow::InputMeta> loadInputMeta(const std::string &raw_data);
 
 /// Lower a pytorch \p module to glow before execution. \p inputMetaStr is the
 /// raw string containing the meta data of the glow fuser node input.
-void glowAOTFusion(torch::jit::Module &module, const std::string &inputMetaStr);
+void glowAOTFusion(torch::jit::Module &module, const std::string &inputMetaStr,
+                   PyTorchLoaderSettings settings);
 
 /// Lower a pytorch \p module to glow before execution. \p inputMeta is a
 /// vector containing the meta data of the model inputs.
