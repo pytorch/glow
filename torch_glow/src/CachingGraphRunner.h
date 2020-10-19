@@ -121,6 +121,14 @@ class CachingGraphRunner {
   /// paddings during ExecutionContext building
   glow::Tensor zeroLengthSequence_;
 
+  /// Settings used when compiling and running Glow graphs in cases where a
+  /// PyTorchLoaderSettings object isn't provided directly like when compiling
+  /// on the fly for new input shapes.
+  PyTorchLoaderSettings defaultSettings_;
+
+  /// If true will call runOnly which skips input hashing and other costs.
+  bool useRunOnly_ = false;
+
   /// Given a PyTorch input stack \p stack, this generates a hash from the
   /// values on the stack and checks to see if a matching function was loaded
   /// previously. If a matching function was loaded previously then its cached
@@ -163,21 +171,19 @@ class CachingGraphRunner {
   /// the stack.
   size_t hashTensorShape(const c10::ArrayRef<c10::IValue> &inputs) const;
 
-  /// Settings used when compiling and running Glow graphs in cases where a
-  /// PyTorchLoaderSettings object isn't provided directly like when compiling
-  /// on the fly for new input shapes.
-  PyTorchLoaderSettings defaultSettings_;
-
   /// Given a TraceContext \p traceContext, aggregate it with previous
   /// TraceContexts and if enough have been aggregated according to settings
   /// then dump them to file. If flush is true then dump aggregated traces to
   /// file no matter what.
   void aggregateAndDumpTraces(TraceContext *traceContext, bool flush = false);
 
+  /// The Glow Function should've already been created. Returns an error if not.
+  Error runOnly(torch::jit::Stack &stack);
+
 public:
   CachingGraphRunner(std::shared_ptr<torch::jit::Graph> graph,
                      std::shared_ptr<runtime::HostManager> hostManager,
-                     PyTorchLoaderSettings settings);
+                     PyTorchLoaderSettings settings, bool useRunOnly = false);
 
   ~CachingGraphRunner();
 
@@ -186,9 +192,6 @@ public:
   /// with inputs matching the hash of those on the stack then this first loads
   /// it as a Glow Function and compiles. \returns error of failure.
   Error run(torch::jit::Stack &stack);
-
-  /// The Glow Function should've already been created. Returns an error if not.
-  Error runOnly(torch::jit::Stack &stack);
 
   /// Warm up the cache by compiling a Glow function and storing its info in
   /// perGlowGraphInfoMap_ with the hash computed using \p inputMeta. \p

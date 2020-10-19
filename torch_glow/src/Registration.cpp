@@ -111,38 +111,43 @@ void registerGlowOp(const c10::Symbol &symbol) {
   torch::jit::RegisterOperators op({torch::jit::Operator(
       symbol,
       [](const torch::jit::Node *node) -> torch::jit::Operation {
+        // NOTE: do not read or write global PyTorchLoaderSettings here for any
+        // AOT path, instead associate settings with the CachingGraphRunner
+        // created for the AOT case.
+
         std::string key = node->kind().toQualString();
-        auto settings = getGlobalPyTorchLoaderSettingsSnapshot();
-        if (settings.inferShapeForCompilation) {
+
+        // How to find a graphRunner:
+        // 1. See if a key based on fusion node symbol string has been
+        // registered, which is usually done in AOT fashion
+        // 2. Same as 1 but check if the key was registered with an index
+        // 3. Otherwise, create a new graphRunner for this graph
+        std::shared_ptr<CachingGraphRunner> graphRunner =
+            getGraphRunnerForKey(key);
+
+        if (!graphRunner) {
           // All Glow fusion nodes would have the same kind and there isn't a
           // good native way to differentiate them at runtime. Therefore we scan
           // the graph containing Glow fusion nodes and index each of them. The
           // index would be used as part of the key to find corresponding
           // cachingGraphRunner.
           int idx = findIndex(node);
-          key += std::to_string(idx);
-        }
-
-        // How to find a graphRunner:
-        // 1. See if a key based on fusion node symbol string has been
-        // registered, which is usually done in AOT fashion
-        // 2. If not, create a graphRunner with graph hash as a key
-        std::shared_ptr<CachingGraphRunner> graphRunner;
-        if (!graphRunner) {
-          graphRunner = getGraphRunnerForKey(key);
+          auto keyWithIndex = key + std::to_string(idx);
+          graphRunner = getGraphRunnerForKey(keyWithIndex);
         }
 
         // If no preloaded graph runner was created for this node, create a new
         // empty one.
         if (!graphRunner) {
+          auto settings = getGlobalPyTorchLoaderSettingsSnapshot();
           graphRunner = std::make_unique<CachingGraphRunner>(
               node->g(at::attr::Subgraph),
               getHostManager(settings.backendName, settings.numDevices),
               settings);
         }
 
-        return [graphRunner = std::move(graphRunner),
-                settings](torch::jit::Stack *stack) {
+        return [graphRunner =
+                    std::move(graphRunner)](torch::jit::Stack *stack) {
           Error err = Error::empty();
           // Store old Python signal handlers and install standard signal
           // handlers, so that it is possible to kill/interrupt the process if
@@ -156,11 +161,7 @@ void registerGlowOp(const c10::Symbol &symbol) {
             oldSigTermHandler = signal(SIGTERM, SIG_DFL);
           }
 
-          if (settings.preCompilePyTorchModule) {
-            err = graphRunner->runOnly(*stack);
-          } else {
-            err = graphRunner->run(*stack);
-          }
+          err = graphRunner->run(*stack);
 
           // Restore old signal handlers.
           if (oldSigIntHandler != nullptr && oldSigIntHandler != SIG_ERR &&

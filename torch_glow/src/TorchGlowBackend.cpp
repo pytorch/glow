@@ -523,9 +523,6 @@ TorchGlowBackend::compile(c10::IValue processed,
     applyCompilationGroupSettingsToPyTorchLoaderSettings(
         baseSettings, *spec.default_compilation_group_settings);
 
-    // TODO: can we delete this?
-    baseSettings.preCompilePyTorchModule = true;
-
     // Override settings from gflags
     applySettingsOverrideFlagsToPyTorchLoaderSettings(baseSettings);
 
@@ -551,7 +548,7 @@ TorchGlowBackend::compile(c10::IValue processed,
               g,
               glow::getHostManager(baseSettings.backendName,
                                    baseSettings.numDevices),
-              baseSettings);
+              baseSettings, /*useRunOnly*/ true);
 
       // Compile each compilation group
       for (const auto &compilationGroup : spec.compilation_groups) {
@@ -596,7 +593,7 @@ TorchGlowBackend::execute(c10::IValue handle, c10::impl::GenericList inputs) {
     for (const auto &i : inputs) {
       torch::jit::push(stack, i);
     }
-    err = it->second.first->runOnly(stack);
+    err = it->second.first->run(stack);
   } else if (runnerPair.second) {
     stack = it->second.second->onExecute(inputs);
   } else {
