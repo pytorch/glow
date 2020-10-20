@@ -79,3 +79,69 @@ class TestQuantizedMul(unittest.TestCase):
         y = torch.randn([1, 5, 1, 1])
 
         jitVsGlow(test_f, x, y, expected_fused_ops={"quantized::mul"})
+
+    def test_quantized_mul_positive_scalar(self):
+        """Test of PyTorch quantized::mul with scalar rhs Node on Glow."""
+
+        def test_f(a):
+            q = torch.nn.quantized.Quantize(
+                scale=0.05, zero_point=1, dtype=torch.quint8
+            )
+            dq = torch.nn.quantized.DeQuantize()
+            return dq(torch.ops.quantized.mul(q(a), 3.14))
+
+        x = torch.randn(1, 2, 3, 4)
+
+        jitVsGlow(test_f, x, expected_fused_ops={"quantized::mul"})
+
+    def test_quantized_mul_negative_scalar(self):
+        """Test of PyTorch quantized::mul with scalar rhs Node on Glow."""
+
+        def test_f(a):
+            q = torch.nn.quantized.Quantize(
+                scale=0.05, zero_point=2, dtype=torch.quint8
+            )
+            dq = torch.nn.quantized.DeQuantize()
+            return dq(torch.ops.quantized.mul(q(a), -3.14))
+
+        x = torch.randn(1, 2, 3, 4)
+
+        jitVsGlow(test_f, x, expected_fused_ops={"quantized::mul"})
+
+    def test_quantized_mul_zero_scalar(self):
+        """Test of PyTorch quantized::mul with scalar rhs Node on Glow."""
+
+        def test_f(a):
+            q = torch.nn.quantized.Quantize(
+                scale=0.05, zero_point=3, dtype=torch.quint8
+            )
+            dq = torch.nn.quantized.DeQuantize()
+            return dq(torch.ops.quantized.mul(q(a), 0.0))
+
+        x = torch.randn(1, 2, 3, 4)
+
+        jitVsGlow(test_f, x, expected_fused_ops={"quantized::mul"})
+
+    def test_quantized_mul_negative_int8_scalar(self):
+        """Test of PyTorch quantized::mul with int8 quantized scalar rhs Node on Glow."""
+
+        def test_f(a):
+            q = torch.nn.quantized.Quantize(scale=0.05, zero_point=4, dtype=torch.qint8)
+            dq = torch.nn.quantized.DeQuantize()
+            return dq(torch.ops.quantized.mul(q(a), -1.43))
+
+        x = torch.randn(1, 2, 3, 4)
+
+        jitVsGlow(test_f, x, expected_fused_ops={"quantized::mul"})
+
+    def test_quantized_mul_scalar_negative(self):
+        """Test of PyTorch quantized::mul_scalar with scalar rhs Node on Glow."""
+
+        def test_f(a):
+            q = torch.nn.quantized.Quantize(scale=0.05, zero_point=4, dtype=torch.qint8)
+            dq = torch.nn.quantized.DeQuantize()
+            return dq(torch.ops.quantized.mul_scalar(q(a), -3.41))
+
+        x = torch.randn(1, 2, 3, 4)
+
+        jitVsGlow(test_f, x, expected_fused_ops={"quantized::mul_scalar"})
