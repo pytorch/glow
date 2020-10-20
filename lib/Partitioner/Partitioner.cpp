@@ -1187,7 +1187,10 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
                   RowwiseQuantizedSparseLengthsWeightedSumNodeKind ||
           node.getKind() == glow::Kinded::Kind::SparseLengthsSumNodeKind ||
           node.getKind() ==
-              glow::Kinded::Kind::SparseLengthsWeightedSumNodeKind) {
+              glow::Kinded::Kind::SparseLengthsWeightedSumNodeKind ||
+          node.getKind() == glow::Kinded::Kind::EmbeddingBagNodeKind ||
+          node.getKind() ==
+              glow::Kinded::Kind::EmbeddingBagByteRowwiseOffsetsNodeKind) {
         funcName = std::string(F->getName());
         foundFunction = true;
         break;
@@ -1242,6 +1245,11 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
                    llvm::dyn_cast<RowwiseQuantizedSparseLengthsWeightedSumNode>(
                        &node)) {
       cloneSplatWeightsIfNecessary(SLWS, F);
+    } else if (auto *EBB = llvm::dyn_cast<EmbeddingBagNode>(&node)) {
+      cloneSplatWeightsIfNecessary(EBB, F);
+    } else if (auto *EBB =
+                   llvm::dyn_cast<EmbeddingBagByteRowwiseOffsetsNode>(&node)) {
+      cloneSplatWeightsIfNecessary(EBB, F);
     }
   }
 
@@ -1262,6 +1270,10 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
     RETURN_IF_ERR(appendSLSTable<SparseLengthsSumNode>(
         node, slsTables, doPerfModelBalance, backends[0]));
     RETURN_IF_ERR(appendSLSTable<SparseLengthsWeightedSumNode>(
+        node, slsTables, doPerfModelBalance, backends[0]));
+    RETURN_IF_ERR(appendSLSTable<EmbeddingBagNode>(
+        node, slsTables, doPerfModelBalance, backends[0]));
+    RETURN_IF_ERR(appendSLSTable<EmbeddingBagByteRowwiseOffsetsNode>(
         node, slsTables, doPerfModelBalance, backends[0]));
   }
 

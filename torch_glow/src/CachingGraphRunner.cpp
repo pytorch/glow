@@ -19,6 +19,7 @@
 #include <mutex>
 
 #include "glow/Exporter/ONNXModelWriter.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Support/Support.h"
 
 #include <c10/util/hash.h>
@@ -111,6 +112,26 @@ void initializeCompiliationContextFromSettings(
   }
 
   cctx.replicationCount = settings.replicationCount;
+
+  using namespace onnxifi;
+  if (GlowUseSparseNNPartitioningScheme) {
+    cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
+    cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
+        GlowSparseNNPartitioningAddSLSConcats;
+    cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel =
+        GlowSparseNNPartitioningBalancePerfModel;
+    cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS =
+        GlowSparseNNPartitioningPairLNWithSLS;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
+        GlowSparseNNPartitioningSchemeNumCards;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
+        GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresSLS =
+        GlowSparseNNPartitioningSchemeNumCoresSLS;
+    cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
+        GlowSparseNNPartitioningSchemeNumCoresOther;
+    LOG(INFO) << "Using SLS partitioning scheme";
+  }
 }
 
 } // namespace
