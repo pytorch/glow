@@ -34,28 +34,37 @@ namespace {
 /// inputTensorTypes, writes the function to file and reads it back using the
 /// ONNXModelWriter and ONNXModelReader respectively then \returns the
 /// reloaded function. \p useGlowCustomOps is used for determining the format
-/// for ONNXModelWriter to write with.
+/// for ONNXModelWriter to write with. \p useString is used to use strings
+/// rather than files for reading and writing functions.
 Expected<Function *> saveAndReloadFunction(
     Module &reloadMod, Function *F,
     llvm::ArrayRef<const char *> inputTensorNames,
     llvm::ArrayRef<TypeRef> inputTensorTypes, size_t irVer = 5,
     size_t opsetVer = 10, bool zipMode = false, bool useGlowCustomOps = false,
-    bool includeConstantData = true,
+    bool useString = false, bool includeConstantData = true,
     ConstantFoldingRecordMap *constFoldRecord = nullptr,
     CompilationContext *reloadCctx = nullptr,
     const BackendSpecificNodeInfo &backendSpecificNodeInfo = {},
     const OriginNameToTQPMap &originNameToTQPMap = {}) {
-  llvm::SmallString<64> path;
-  auto tempFileRes = llvm::sys::fs::createTemporaryFile(
-      "exporter", zipMode ? "output.zip" : "output.onnxtxt", path);
+  std::string outputString;
+  std::string outputFilename = zipMode ? "output.zip" : "output.onnxtxt";
 
-  RETURN_ERR_IF_NOT(tempFileRes.value() == 0,
-                    "Failed to create temp file to write into.");
+  if (!useString) {
+    llvm::SmallString<64> path;
 
-  std::string outputFilename(path.c_str());
+    auto tempFileRes =
+        llvm::sys::fs::createTemporaryFile("exporter", outputFilename, path);
+
+    RETURN_ERR_IF_NOT(tempFileRes.value() == 0,
+                      "Failed to create temp file to write into.");
+
+    outputFilename = path.c_str();
+  }
   ScopeGuard cleanup([&]() { llvm::sys::fs::remove(outputFilename); });
-
-  // Write model to file.
+  if (useString) {
+    cleanup.dismiss();
+  }
+  // Write model to file or string.
   {
     Error err = Error::empty();
     llvm::StringMap<std::string> extraMetadataProps;
@@ -65,7 +74,7 @@ Expected<Function *> saveAndReloadFunction(
         outputFilename, *F, irVer, opsetVer, &err, !zipMode, zipMode,
         useGlowCustomOps, includeConstantData, extraMetadataProps,
         constFoldRecord ? *constFoldRecord : ConstantFoldingRecordMap(),
-        backendSpecificNodeInfo);
+        backendSpecificNodeInfo, (useString) ? &outputString : nullptr);
     RETURN_IF_ERR(std::move(err));
   }
 
@@ -105,7 +114,9 @@ Expected<Function *> saveAndReloadFunction(
         outputFilename, inputTensorNames, inputTensorTypes, *R, &err, zipMode,
         reloadCctx ? &reloadCctx->backendOpts.backendSpecificNodeInfo : nullptr,
         /* disableConstFoldInLoader */ true,
-        /* loadIntoExistingModule */ !includeConstantData);
+        /* loadIntoExistingModule */ !includeConstantData,
+        /* Backend */ nullptr,
+        /* inputStringPtr */ (useString) ? &outputString : nullptr);
 
     if (err) {
       llvm::errs() << "ONNXModelLoader failed to reload model: "
@@ -140,7 +151,8 @@ Expected<Function *> saveAndReloadFunction(
 /// Loads model from ONNX format file \p name into glow Function.
 /// On success exports glow graph to the output file in "extended" ONNX format,
 /// i.e. some glow operators don't have presentation in vanilla ONNX standard.
-void testLoadAndSaveONNXModel(const std::string &name, bool zipMode) {
+void testLoadAndSaveONNXModel(const std::string &name, bool zipMode,
+                              bool useString) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
   Function *F = mod.createFunction("main");
@@ -166,7 +178,7 @@ void testLoadAndSaveONNXModel(const std::string &name, bool zipMode) {
 
   Module reloadMod;
   FAIL_TEST_IF_ERR(saveAndReloadFunction(reloadMod, F, {}, {}, irVer, opsetVer,
-                                         zipMode, useGlowCustomOps)
+                                         zipMode, useGlowCustomOps, useString)
                        .takeError());
 }
 
@@ -289,6 +301,7 @@ protected:
                      reloadMod, F_, {}, {}, 7, 9,
                      /* zipMode */ false,
                      /* useGlowCustomOps */ true,
+                     /* useString */ false,
                      /* includeConstantData */ false, &record, &reloadCctx,
                      cctx_.backendOpts.backendSpecificNodeInfo));
 
@@ -332,6 +345,7 @@ protected:
 
 TEST(exporter, onnxModels) {
   std::string inputDirectory(GLOW_DATA_PATH "tests/models/onnxModels");
+  std::cout << "inputDirectory: " << inputDirectory << std::endl;
   std::error_code code;
   for (llvm::sys::fs::directory_iterator dirIt(inputDirectory, code);
        !code && dirIt != llvm::sys::fs::directory_iterator();
@@ -463,8 +477,12 @@ TEST(exporter, onnxModels) {
     // Disable constant folding for these tests.
     setConstantFoldLoaderOpsFlag(false);
 
-    testLoadAndSaveONNXModel(dirIt->path(), /* zipMode */ true);
-    testLoadAndSaveONNXModel(dirIt->path(), /* zipMode */ false);
+    testLoadAndSaveONNXModel(dirIt->path(), /* zipMode */ true,
+                             /* useString */ false);
+    testLoadAndSaveONNXModel(dirIt->path(), /* zipMode */ false,
+                             /* useString */ false);
+    testLoadAndSaveONNXModel(dirIt->path(), /* zipMode */ false,
+                             /* useString */ true);
 
     // Reset the custom symbol used.
     if (customOnnxDefineSymbol) {
@@ -1084,6 +1102,7 @@ TEST(exporter, TestUniqueOffsetMapSerialization) {
       R, saveAndReloadFunction(reloadMod, F, {"input"}, {I->getType()}, 7, 9,
                                /* zipMode */ false,
                                /* useGlowCustomOps */ true,
+                               /* useString */ false,
                                /* includeConstantData */ true,
                                /* record */ nullptr, /* reloadCctx */ nullptr,
                                /* backendSpecificNodeInfo */ {},

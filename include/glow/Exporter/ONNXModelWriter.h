@@ -98,6 +98,9 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   /// Maps from all output PHs to the generated proto. It's used to buffer
   /// protos; later on written out in order based on \ref loadedPHNames_.
   std::unordered_map<const Placeholder *, ValueInfoType> outputValueInfos_;
+  /// Output string. Null value indicates that the output is to be written to a
+  /// file.
+  std::string *outputStringPtr_;
 
   /// Creates and \returns a new ValueInfoType for \p PH based on \p isInput.
   /// It's added either directy to \ref graphProto_, or to \ref inputValueInfos_
@@ -203,7 +206,8 @@ public:
                       llvm::StringMap<std::string>(),
                   const ConstantFoldingRecordMap &constFoldRecord =
                       ConstantFoldingRecordMap(),
-                  const BackendSpecificNodeInfo &backendSpecificNodeInfo = {});
+                  const BackendSpecificNodeInfo &backendSpecificNodeInfo = {},
+                  std::string *outputStringPtr = nullptr);
 
   /// Creates an ONNX model writer to serialize \p dagList into file
 
@@ -235,7 +239,8 @@ public:
           ConstantFoldingRecordMap(),
       const BackendSpecificNodeInfo &backendSpecificNodeInfo = {},
       const LoadedPlaceholderNameMap *loadedPHNames = nullptr,
-      const std::map<std::string, Type> *staticPlaceholderTypes = nullptr);
+      const std::map<std::string, Type> *staticPlaceholderTypes = nullptr,
+      std::string *outputStringPtr = nullptr);
 
 private:
   /// \returns error for the unexpected node kind.
