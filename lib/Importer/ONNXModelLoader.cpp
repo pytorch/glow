@@ -953,8 +953,12 @@ ONNXModelLoader::loadProto(const void *onnxModel, size_t onnxModelSize) {
 }
 
 Expected<ONNX_NAMESPACE::ModelProto>
-ONNXModelLoader::loadProto(const std::string &filename, bool zipMode) {
+ONNXModelLoader::loadProto(const std::string &filename, bool zipMode,
+                           const std::string *inputStringPtr) {
   if (zipMode) {
+    RETURN_ERR_IF_NOT(
+        inputStringPtr == nullptr,
+        "OnnxModelLoader load from string for zip mode not supported");
     ONNX_NAMESPACE::ModelProto MP;
     ZipReader zip(filename);
     std::string buffer;
@@ -974,26 +978,39 @@ ONNXModelLoader::loadProto(const std::string &filename, bool zipMode) {
   }
 
   std::ifstream ff(filename, std::ios::in | std::ios::binary);
-  RETURN_ERR_IF_NOT(ff,
-                    strFormat("Can't find the model or network files for %s.",
-                              filename.c_str()),
-                    ErrorValue::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
+  if (inputStringPtr == nullptr) {
+    RETURN_ERR_IF_NOT(ff,
+                      strFormat("Can't find the model or network files for %s.",
+                                filename.c_str()),
+                      ErrorValue::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
+  }
 
   // TODO: intend to find a way to reuse the following function later
   // for the text format onnx model:
   // bool ONNXModelLoader::loadProto(ONNX_NAMESPACE::GraphProto &net,
   //  google::protobuf::io::ZeroCopyInputStream &iStream)
   if (filename.find(".onnxtxt") != std::string::npos) {
-    std::string str((std::istreambuf_iterator<char>(ff)),
-                    std::istreambuf_iterator<char>());
     ONNX_NAMESPACE::ModelProto MP;
-    bool parseNet = google::protobuf::TextFormat::ParseFromString(str, &MP);
+    bool parseNet;
+    if (inputStringPtr == nullptr) {
+      std::string str((std::istreambuf_iterator<char>(ff)),
+                      std::istreambuf_iterator<char>());
+      parseNet = google::protobuf::TextFormat::ParseFromString(str, &MP);
+    } else {
+      parseNet =
+          google::protobuf::TextFormat::ParseFromString(*inputStringPtr, &MP);
+    }
 
     RETURN_ERR_IF_NOT(parseNet, "Failed to parse ModelProto",
                       ErrorValue::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
     return MP;
   }
 
+  if (inputStringPtr != nullptr) {
+    std::istringstream iss(*inputStringPtr);
+    google::protobuf::io::IstreamInputStream stringStream(&iss);
+    return loadProto(stringStream);
+  }
   google::protobuf::io::IstreamInputStream fileStream(&ff);
   return loadProto(fileStream);
 }
@@ -5084,7 +5101,8 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
                                  Error *errPtr, bool zipMode,
                                  BackendSpecificNodeInfo *perNodeOpts,
                                  bool disableConstFoldInLoader,
-                                 bool loadIntoExistingModule, const Backend *B)
+                                 bool loadIntoExistingModule, const Backend *B,
+                                 const std::string *inputStringPtr)
     : CommonOperatorLoader(tensorNames, types, &F, errPtr,
                            loadIntoExistingModule),
       perNodeOpts_(perNodeOpts), staticPlaceholderTypes_(nullptr) {
@@ -5099,7 +5117,8 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
 
   auto setup = [&]() -> Error {
     ONNX_NAMESPACE::ModelProto modelDef;
-    ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(modelDescFilename, zipMode));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        modelDef, loadProto(modelDescFilename, zipMode, inputStringPtr));
 
     RETURN_IF_ERR(loadModel(modelDef, tensorNames, types, B,
                             /* loadInputsAsPlaceholdersForOnnx */ true));
@@ -5310,7 +5329,7 @@ ONNXModelLoader::ONNXModelLoader(
     Module &mod, llvm::StringRef funName, PrePartitionedConfig *PPC,
     Error *errPtr, bool zipMode, BackendSpecificNodeInfo *perNodeOpts,
     bool loadIntoExistingModule, bool disableConstFoldInLoader,
-    const Backend *B)
+    const Backend *B, const std::string *inputStringPtr)
     : CommonOperatorLoader(tensorNames, types, mod, errPtr,
                            loadIntoExistingModule),
       perNodeOpts_(perNodeOpts), staticPlaceholderTypes_(nullptr) {
@@ -5325,7 +5344,8 @@ ONNXModelLoader::ONNXModelLoader(
 
   auto setup = [&]() -> Error {
     ONNX_NAMESPACE::ModelProto modelDef;
-    ASSIGN_VALUE_OR_RETURN_ERR(modelDef, loadProto(modelDescFilename, zipMode));
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        modelDef, loadProto(modelDescFilename, zipMode, inputStringPtr));
 
     auto numPartitionsOrErr = getIntMetadataProp(modelDef, "numPartitions");
     if (!numPartitionsOrErr) {

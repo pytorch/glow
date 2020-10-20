@@ -23,6 +23,8 @@
 #include <stack>
 
 #include "miniz.h"
+#include <google/protobuf/io/coded_stream.h>
+#include <google/protobuf/io/zero_copy_stream_impl_lite.h>
 
 using namespace glow::runtime;
 using google::protobuf::RepeatedPtrField;
@@ -829,6 +831,23 @@ void ONNXModelWriter::setupNewProto() {
   graphProtoRoot_ = graphProto_;
 }
 
+static Error writeModelToString(const ::google::protobuf::Message &modelProto,
+                                bool textMode, std::string *outputStringPtr) {
+  if (textMode) {
+    RETURN_ERR_IF_NOT(google::protobuf::TextFormat::PrintToString(
+                          modelProto, outputStringPtr),
+                      "Error writing to string");
+  } else {
+    ::google::protobuf::io::StringOutputStream zeroCopyOutput(outputStringPtr);
+    ::google::protobuf::io::CodedOutputStream codedOutput(&zeroCopyOutput);
+    modelProto.SerializeToCodedStream(&codedOutput);
+    RETURN_ERR_IF_NOT(!codedOutput.HadError(),
+                      "Can't write to the output string",
+                      ErrorValue::ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR);
+  }
+  return Error::success();
+}
+
 Error ONNXModelWriter::finalizeAndWriteProto(llvm::StringRef name) {
   // Nodes have been added in a reverse order from SaveNode up to the inputs,
   // we need to rearrange all nodes in the reverse order before serialization.
@@ -896,6 +915,9 @@ Error ONNXModelWriter::finalizeAndWriteProto(llvm::StringRef name) {
   }
 
   if (zipMode_) {
+    RETURN_ERR_IF_NOT(
+        outputStringPtr_ == nullptr,
+        "OnnxModelWriter write to string for zip mode not supported");
     const bool compressed = false;
     ZipWriter zip(&ff_, name);
     std::stringstream ss;
@@ -925,7 +947,11 @@ Error ONNXModelWriter::finalizeAndWriteProto(llvm::StringRef name) {
     ff_.close();
     return Error::success();
   } else {
-    return writeModel(modelProto_, textMode_);
+    if (outputStringPtr_ != nullptr) {
+      return writeModelToString(modelProto_, textMode_, outputStringPtr_);
+    } else {
+      return writeModel(modelProto_, textMode_);
+    }
   }
 }
 
@@ -935,7 +961,8 @@ ONNXModelWriter::ONNXModelWriter(
     bool useGlowCustomOps, bool includeConstantData,
     const llvm::StringMap<std::string> &extraMetadataProps,
     const ConstantFoldingRecordMap &constFoldRecord,
-    const BackendSpecificNodeInfo &backendSpecificNodeInfo)
+    const BackendSpecificNodeInfo &backendSpecificNodeInfo,
+    std::string *outputStringPtr)
     : CommonOperatorWriter(modelFilename, &F, errPtr), irVersion_(irVersion),
       opsetVersion_(opsetVersion), zipMode_(zipMode), textMode_(textMode),
       includeConstantData_(includeConstantData),
@@ -943,7 +970,8 @@ ONNXModelWriter::ONNXModelWriter(
       useGlowCustomOps_(useGlowCustomOps), dagMode_(false),
       constFoldRecord_(constFoldRecord),
       backendSpecificNodeInfo_(backendSpecificNodeInfo),
-      loadedPHNames_(nullptr), staticPlaceholderTypes_(nullptr) {
+      loadedPHNames_(nullptr), staticPlaceholderTypes_(nullptr),
+      outputStringPtr_(outputStringPtr) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
@@ -1062,7 +1090,8 @@ ONNXModelWriter::ONNXModelWriter(
     const ConstantFoldingRecordMap &constFoldRecord,
     const BackendSpecificNodeInfo &backendSpecificNodeInfo,
     const LoadedPlaceholderNameMap *loadedPHNames,
-    const std::map<std::string, Type> *staticPlaceholderTypes)
+    const std::map<std::string, Type> *staticPlaceholderTypes,
+    std::string *outputStringPtr)
     : CommonOperatorWriter(modelFilename, nullptr, errPtr),
       irVersion_(irVersion), opsetVersion_(opsetVersion), zipMode_(zipMode),
       textMode_(textMode), includeConstantData_(includeConstantData),
@@ -1070,7 +1099,8 @@ ONNXModelWriter::ONNXModelWriter(
       dagMode_(true), constFoldRecord_(constFoldRecord),
       backendSpecificNodeInfo_(backendSpecificNodeInfo),
       loadedPHNames_(loadedPHNames),
-      staticPlaceholderTypes_(staticPlaceholderTypes) {
+      staticPlaceholderTypes_(staticPlaceholderTypes),
+      outputStringPtr_(outputStringPtr) {
   // If errPtr already contains an error then don't continue with constructor.
   if (errPtr && *errPtr) {
     return;
