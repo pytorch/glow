@@ -266,6 +266,7 @@ static Error propagateBackendSpecificNodeInfo(
 
 Error Provisioner::provision(DAGListTy &networks, Module &module,
                              CompilationContext &cctx) {
+  VLOG(1) << "Started provisioner";
 
   // Check that the requested networks don't collide with the names of any other
   // networks being added.
@@ -319,6 +320,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
   auto deviceAssignments = generateDeviceAssignments(
       logicalDeviceSize, deviceMemoryMap, logicalDevices);
 
+  VLOG(1) << "Before device assignment";
   // Check for errors.
   if (!deviceAssignments) {
     // If and error occured, clean up provisioning state and return
@@ -363,6 +365,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
       }
     }
   }
+  VLOG(1) << "Before compile";
 
   // Compile and load.
   // This is done one logical device at a time. All functions in a logical
@@ -505,6 +508,8 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
         }
       }
     }
+    VLOG(1) << "After compile";
+
     // Now that the functions are compiled add them to their assigned device
     // then cleanup.
     std::promise<void> addPromise;
@@ -527,6 +532,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     for (auto &node : logicalDevices[logicalDevice]) {
       addedNetworks[physicalDevice].push_back(node->name);
     }
+    VLOG(1) << "Added networks";
 
     // Free up memory no longer needed by the compiledFunction.
     for (auto &func : compiledFunctions) {

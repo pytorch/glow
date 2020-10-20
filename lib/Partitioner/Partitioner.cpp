@@ -1470,10 +1470,12 @@ Expected<DAGListTy> Partitioner::partitionSparseNN(CompilationContext &cctx) {
 Expected<DAGListTy> Partitioner::partition(CompilationContext &cctx) {
   if (cctx.prepartitionedConfig &&
       cctx.prepartitionedConfig->funcs.size() != 0) {
+    VLOG(1) << "Using prepartitioned config";
     return setupPrepartitionedModule(cctx);
   }
 
   if (cctx.partitionConfig) {
+    VLOG(1) << "Using partition config";
     partitionConfig_ = *cctx.partitionConfig;
   }
 
@@ -1484,19 +1486,23 @@ Expected<DAGListTy> Partitioner::partition(CompilationContext &cctx) {
 
   if (!multiBackendNames_ &&
       cctx.optimizationOpts.useSparseNNPartitioningScheme) {
+    VLOG(1) << "Using SNN Partition Scheme";
     return partitionSparseNN(cctx);
   }
 
   if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {
     // Call quantization profiling partition flow.
+    VLOG(1) << "Using QuantProfile Partition";
     return quantizationProfilingPartition(cctx);
   }
 
   if (!multiBackendNames_ && glow::GlowEnableLoadBalancedPartitioning) {
     // Call load-balance partition flow.
+    VLOG(1) << "Using Load balance Partition";
     return loadBalancedPartition(cctx);
   }
 
+  VLOG(1) << "Using Heterogenous Partition";
   // Call heterogeneous partition flow.
   return heterogeneousPartition(cctx);
 }
