@@ -48,10 +48,13 @@ Error logicalDevicesValidation(
 Error memoryUsageValidation(
     const NodeToFunctionMap &partitions,
     const std::map<std::string, BackendInfo> &backendMap) {
+  VLOG(1) << "Entering mem validation";
   for (auto &func : partitions.getPartitions()) {
     auto backendName = partitions.getPartitionBackendName(func);
     auto usedMemSize = partitions.getGraphMemInfo(func).getTotalMemSize();
     auto availableMemSize = backendMap.at(backendName).memSize;
+    VLOG(1) << "Comparing " << usedMemSize << " " << availableMemSize << " for "
+            << backendName;
     if (usedMemSize > availableMemSize) {
       logPartitionInfo(partitions);
       RETURN_ERR(

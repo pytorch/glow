@@ -244,6 +244,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
 #ifdef FACEBOOK_INTERNAL
   LOG(INFO) << "Adding Glow network built with revision hash: " << revisionHash;
 #endif /* FACEBOOK_INTERNAL */
+  VLOG(1) << "addNetwork";
 
   ScopeGuard debugDumpDAGGuard([&]() {
     if (cctx.dumpFinalGraph) {
@@ -339,6 +340,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       }
     }
   }
+  VLOG(1) << "Before partitioner";
   Partitioner partitioner(module.get(), deviceInfo, skipOptimizations);
   if (cctx.enableP2P || cctx.enableDRT) {
     partitioner.setContextCount(cctx.maxActiveRequestsPerInstance);
@@ -347,6 +349,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   }
   DAGListTy nodeList;
   auto result = partitioner.partition(cctx);
+  VLOG(1) << "After partitioner";
   if (result) {
     nodeList = std::move(result.get());
   } else {
@@ -354,7 +357,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     cleanupAddNetwork(names);
     return result.takeError();
   }
-
+  VLOG(1) << "Before quantmode";
   if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {
     // Since for profiling the provisioner will be reset, we only allow one
     // network in one HM.
@@ -376,7 +379,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     provisioner_.reset(new Provisioner(devices_));
     executor_.reset(new ThreadPoolExecutor(devices_, config_.executorThreads));
   }
-
+  VLOG(1) << "Before replace dummy TQPs";
   // Now that we've partitioned and optimized, do some verification based on the
   // dummy mode we're using, if any.
   if (cctx.precisionConfig.replaceDummyTQPs ||
@@ -384,7 +387,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     RETURN_IF_ERR(module->verifyDummyQParams(
         cctx.precisionConfig.loadUniquedDummyQParams));
   }
-
+  VLOG(1) << "Before constant folding";
   // If we prevented constant modification then run constant folding with
   // recording now. Record so that if we are going to serialize we can embed the
   // constant folding subgraphs in the Glow ONNX model.
@@ -411,7 +414,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
               F->getName().str() + " for backend " + B.getBackendName());
     }
   }
-
+  VLOG(1) << "Before loading AOT";
   if (!cctx.loadingAOTModel) {
     if (cctx.callDAGOptimizer) {
 #if FACEBOOK_INTERNAL
@@ -426,6 +429,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     } else {
       // If not using the DAG optimizer, iterate over the DAGs and call
       // transformPostOptPipeline() on the Functions.
+      VLOG(1) << "No DAG optimizer";
       for (const auto &dag : nodeList) {
         for (auto &dagNode : dag.nodes) {
           Function *F = module->getFunction(dagNode->name);
@@ -447,7 +451,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       }
     }
   }
-
+  VLOG(1) << "Before serialize compile DAG";
   // If requested, serialize the resulting DAG that was just optimized and
   // partitioned.
   if (cctx.serializeCompiledDAG) {
@@ -502,7 +506,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   // Now that we've serialized the model if requested, cleanup the temporary
   // Functions and PHs used for constant folding.
   cleanupConstantFolding(*module, record);
-
+  VLOG(1) << "Before provisioning";
   auto err = provisioner_->provision(nodeList, *module, cctx);
   if (err) {
     if (err.peekErrorValue()->isFatalError()) {
@@ -515,7 +519,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     return err;
   }
   debugDumpDAGGuard.dismiss();
-
+  VLOG(1) << "Calculation of maxActiveRequests";
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
     /// Calculate networkMaxActive requests. Then update
@@ -556,6 +560,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   if (!cctx.skipModuleStrip) {
     module->strip();
   }
+  VLOG(1) << "Cleanup";
   auto sharedModule = std::shared_ptr<Module>(std::move(module));
   {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
@@ -567,7 +572,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     }
     cleanupAddNetwork(names);
   }
-
+  VLOG(1) << "After cleanup";
   return Error::success();
 }
 
