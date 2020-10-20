@@ -30,6 +30,10 @@ using namespace glow::runtime;
 using google::protobuf::RepeatedPtrField;
 
 namespace glow {
+#ifdef FACEBOOK_INTERNAL
+extern const char *revisionHash;
+#endif /* FACEBOOK_INTERNAL */
+
 namespace {
 template <bool IsInteger, bool IsEnum, typename T> struct AttributeAssigner {
   static void assign(ONNX_NAMESPACE::AttributeProto *attr, const T &container);
@@ -872,6 +876,10 @@ Error ONNXModelWriter::finalizeAndWriteProto(llvm::StringRef name) {
         i += k;
       }
     }
+  } else {
+#ifdef FACEBOOK_INTERNAL
+    addMetadataProp("GlowRevisionHash", revisionHash);
+#endif /* FACEBOOK_INTERNAL */
   }
 
   // If we have loadedPHNames_, then we buffered the non-static PH IO protobuf

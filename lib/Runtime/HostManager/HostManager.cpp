@@ -63,6 +63,7 @@ Error optimizeDAG(DAGListTy &nodeList, const Provisioner &provisioner,
                   Module &mod, const std::vector<DeviceInfo> &devices,
                   CompilationContext &cctx,
                   ConstantFoldingRecordMap &constFoldRecord);
+extern const char *revisionHash;
 #endif /* FACEBOOK_INTERNAL */
 } // namespace glow
 
@@ -240,6 +241,10 @@ void HostManager::cleanupAddNetwork(llvm::ArrayRef<std::string> names) {
 
 Error HostManager::addNetwork(std::unique_ptr<Module> module,
                               CompilationContext &cctx) {
+#ifdef FACEBOOK_INTERNAL
+  LOG(INFO) << "Adding Glow network built with revision hash: " << revisionHash;
+#endif /* FACEBOOK_INTERNAL */
+
   ScopeGuard debugDumpDAGGuard([&]() {
     if (cctx.dumpFinalGraph) {
       for (Function *F : module->getFunctions()) {
