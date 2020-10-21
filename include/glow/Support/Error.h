@@ -130,7 +130,7 @@
 #define RETURN_ERR_IF_NOT(p, ...)                                              \
   do {                                                                         \
     if (!(p)) {                                                                \
-      RETURN_ERR(__VA_ARGS__);                                                 \
+      return MAKE_ERR(__VA_ARGS__);                                            \
     }                                                                          \
   } while (0)
 

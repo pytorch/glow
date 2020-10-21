@@ -17,6 +17,8 @@
 #include "CachingGraphRunner.h"
 #include "GlowFuser.h"
 #include "PyTorchCommon.h"
+
+#include "glow/Runtime/ErrorReporter.h"
 #include "glow/Support/Error.h"
 
 #include <c10/util/hash.h>
@@ -173,7 +175,16 @@ void registerGlowOp(const c10::Symbol &symbol) {
             signal(SIGTERM, oldSigTermHandler);
           }
 
-          if (static_cast<bool>(err)) {
+          if (err) {
+            if (err.peekErrorValue()->isFatalError()) {
+              std::string msg = err.peekErrorValue()->logToString();
+              auto reporters = ErrorReporterRegistry::ErrorReporters();
+              if (reporters) {
+                reporters->report(msg);
+              }
+              LOG(FATAL) << "Non-recoverable device error: " << msg;
+            }
+
             // PyTorch framework expects an exception been thrown here.
             throw std::runtime_error(ERR_TO_STRING(std::move(err)));
           }
