@@ -3,8 +3,12 @@
 #include "GlowCompileSpec.h"
 #include "GlowFuser.h"
 #include "Registration.h"
+
+#include "glow/Runtime/ErrorReporter.h"
+
 #include <ATen/native/quantized/cpu/conv_packed_params.h>
 #include <ATen/native/quantized/cpu/packed_params.h>
+
 #include <torch/csrc/jit/backends/backend.h>
 #include <torch/csrc/jit/ir/alias_analysis.h>
 #include <torch/csrc/jit/ir/node_hashing.h>
@@ -559,9 +563,20 @@ TorchGlowBackend::compile(c10::IValue processed,
         // Compile each input set
         for (const auto &inputSet : compilationGroup->input_sets) {
           std::vector<glow::InputMeta> inputMeta = getInputMetas(inputSet);
-          auto e = runner->warmCache(inputMeta, compilationGroupSettings,
-                                     /*useMaxSizeCompilation*/ false);
-          CHECK(!(bool)e) << ERR_TO_STRING(std::move(e));
+          auto err = runner->warmCache(inputMeta, compilationGroupSettings,
+                                       /*useMaxSizeCompilation*/ false);
+
+          if (err) {
+            if (err.peekErrorValue()->isFatalError()) {
+              std::string msg = err.peekErrorValue()->logToString();
+              auto reporters = ErrorReporterRegistry::ErrorReporters();
+              if (reporters) {
+                reporters->report(msg);
+              }
+              LOG(FATAL) << "Non-recoverable device error: " << msg;
+            }
+            throw std::runtime_error(ERR_TO_STRING(std::move(err)));
+          }
         }
       }
 
@@ -600,7 +615,16 @@ TorchGlowBackend::execute(c10::IValue handle, c10::impl::GenericList inputs) {
     throw std::runtime_error("Could not any type of runner for handle");
   }
 
-  if (static_cast<bool>(err)) {
+  if (err) {
+    if (err.peekErrorValue()->isFatalError()) {
+      std::string msg = err.peekErrorValue()->logToString();
+      auto reporters = ErrorReporterRegistry::ErrorReporters();
+      if (reporters) {
+        reporters->report(msg);
+      }
+      LOG(FATAL) << "Non-recoverable device error: " << msg;
+    }
+
     throw std::runtime_error(ERR_TO_STRING(std::move(err)));
   }
 

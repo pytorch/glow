@@ -581,7 +581,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   TRACE_EVENT_BEGIN(traceContext, TraceLevel::RUNTIME, "runNetwork");
 
   int64_t glowRunStartTime = TraceEvent::now();
-  auto err = hostManager_->runNetworkBlocking(info.functionName, ctx);
+  RETURN_IF_ERR(hostManager_->runNetworkBlocking(info.functionName, ctx));
   int64_t glowRuningnTime = TraceEvent::now() - glowRunStartTime;
 
   // Reset the traceContext again in case it was changed during run.
@@ -705,7 +705,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "setOutputs");
 
   TRACE_EVENT_END(traceContext, TraceLevel::RUNTIME, "torch_glow::runImpl");
-  return err;
+  return Error::success();
 }
 
 Error CachingGraphRunner::run(torch::jit::Stack &stack) {
