@@ -384,6 +384,17 @@ Error dumpOnnxModel(glow::Function &F, bool zipMode) {
   return err;
 }
 
+/// Indexes of aten::zeros inputs.
+struct ZerosInputs {
+  enum {
+    size = 0,
+    dtype = 1,
+    layout = 2,
+    device = 3,
+    pin_memory = 4,
+  };
+};
+
 /// Indexes of aten::lstm inputs.
 struct LSTMInputs {
   enum {
@@ -863,6 +874,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"prim::NumToTensor"}, &PyTorchModelLoader::loadNumToTensor},
       {{"aten::Int"}, &PyTorchModelLoader::loadInt},
       {{"aten::arange"}, &PyTorchModelLoader::loadArange},
+      {{"aten::zeros"}, &PyTorchModelLoader::loadZeros},
       {{"aten::mul", "aten::mul_"}, &PyTorchModelLoader::loadMul},
       {{"aten::div", "aten::div_"}, &PyTorchModelLoader::loadDiv},
       {{"aten::floor_divide", "aten::floor_divide_"},
@@ -2510,6 +2522,33 @@ Error PyTorchModelLoader::loadInt(const torch::jit::Node *ptNode) {
   // When using NumToTensor, this int will transformed into int64 again.
   glowIVal.fromInt(value);
   RETURN_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
+}
+
+Error PyTorchModelLoader::loadZeros(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+
+  std::vector<int64_t> *inputSizePT;
+  ASSIGN_VALUE_OR_RETURN_ERR(inputSizePT, iValToIntList(getGlowIValueForValue(
+                                              inputs[ZerosInputs::size])));
+  std::vector<glow::dim_t> inputSizeGlow;
+  for (int i = 0; i < inputSizePT->size(); i++) {
+    inputSizeGlow.push_back(static_cast<glow::dim_t>((*inputSizePT)[i]));
+  }
+  llvm::ArrayRef<glow::dim_t> inputSizeArrayRef(inputSizeGlow);
+
+  int32_t dtype;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dtype, iValToInt(getGlowIValueForValue(inputs[ZerosInputs::dtype])));
+  auto glowElemKind = scalarTypeToElemKind(static_cast<c10::ScalarType>(dtype));
+
+  auto output =
+      F_.createSplat(
+            "zeros",
+            F_.getParent()->uniqueType(glowElemKind, inputSizeArrayRef), 0)
+          ->getResult();
+  return addValueMapping(outputs[0], output);
 }
 
 Error PyTorchModelLoader::loadArange(const torch::jit::Node *ptNode) {
