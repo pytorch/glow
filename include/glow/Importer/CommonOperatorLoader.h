@@ -66,7 +66,7 @@ class CommonOperatorLoader : public ProtobufLoader {
   loadWeight(const onnxTensorDescriptorV1 &in) {
     // Only support CPU memory tensors.
     if (in.memoryType != ONNXIFI_MEMORY_TYPE_CPU) {
-      RETURN_ERR("Only support CPU memory tensors.");
+      return MAKE_ERR("Only support CPU memory tensors.");
     }
 
     // Number of qparams in the onnxTensorDescriptor.
@@ -74,7 +74,7 @@ class CommonOperatorLoader : public ProtobufLoader {
 
     // Only support quantizationAxis=1 for now.
     if (qparams > 0 && in.quantizationAxis != 1) {
-      RETURN_ERR(strFormat(
+      return MAKE_ERR(strFormat(
           "Glow can only import quantized tensors with quantizationAxis=1 but "
           "the tensor %s has quantizationAxis=%u",
           in.name, in.quantizationAxis));
@@ -112,7 +112,7 @@ class CommonOperatorLoader : public ProtobufLoader {
               "Disallow overflow of loaded UINT64 data into Int64ITy.");
         }
       } else {
-        RETURN_ERR(strFormat(
+        return MAKE_ERR(strFormat(
             "Only float, index, and uint8 unquantized tensors are supported, "
             "got input with ONNXIFI_DATATYPE: %zu",
             static_cast<size_t>(in.dataType)));
@@ -191,9 +191,10 @@ class CommonOperatorLoader : public ProtobufLoader {
         *result.t = Tensor((void *)in.buffer, &result.type);
       }
     } else {
-      RETURN_ERR(strFormat("Only uint8, int32, and int8, quantized tensors are "
-                           "supported, got input with ONNXIFI_DATATYPE: %zu",
-                           static_cast<size_t>(in.dataType)));
+      return MAKE_ERR(
+          strFormat("Only uint8, int32, and int8, quantized tensors are "
+                    "supported, got input with ONNXIFI_DATATYPE: %zu",
+                    static_cast<size_t>(in.dataType)));
     }
 
     return Expected<LoadWeightResult>(std::move(result));
@@ -520,7 +521,7 @@ protected:
     } else if (typeName == "Max") {
       node = G_->createNodeWithBroadcast<MaxNode>(opName, -1, in0, in1);
     } else {
-      RETURN_ERR(opErrMsg(op, "Invalid min or max operator"));
+      return MAKE_ERR(opErrMsg(op, "Invalid min or max operator"));
     }
 
     RETURN_IF_ERR(addNodeAsOutput(op, node));
@@ -651,7 +652,7 @@ protected:
       } else if (typeName == "Div") {
         node = G_->createNodeWithBroadcast<DivNode>(opName, axis, in0, in1);
       } else {
-        RETURN_ERR("Unsupported arithmetic typeName");
+        return MAKE_ERR("Unsupported arithmetic typeName");
       }
     } else {
       if (typeName == "Mul") {
@@ -663,7 +664,7 @@ protected:
       } else if (typeName == "Div") {
         node = G_->createDiv(opName, in0, in1);
       } else {
-        RETURN_ERR("Unsupported arithmetic typeName");
+        return MAKE_ERR("Unsupported arithmetic typeName");
       }
     }
 
@@ -707,7 +708,7 @@ protected:
     std::vector<dim_t> requestedDims;
     if (op.input_size() > 1) {
       if (!getConstantByNameOrNull(op.input(1))) {
-        RETURN_ERR(opErrMsg(
+        return MAKE_ERR(opErrMsg(
             op,
             "Reshape: Non-constant shape tensors are unsupported by Glow."));
       }
@@ -731,8 +732,9 @@ protected:
         requestedDims.push_back(dim);
       }
     } else {
-      RETURN_ERR(opErrMsg(op, "Reshape: Missing output shape information for "
-                              "the Reshape operator."));
+      return MAKE_ERR(opErrMsg(op,
+                               "Reshape: Missing output shape information for "
+                               "the Reshape operator."));
     }
 
     // Compute the actual new shape
@@ -924,8 +926,8 @@ protected:
     if (axes.size() > 1) {
       auto it = std::unique(shapeAxes.begin(), shapeAxes.end());
       if (it != shapeAxes.end()) {
-        RETURN_ERR(opErrMsg(op, "ReduceOp Axes values are not unique."),
-                   ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
+        return MAKE_ERR(opErrMsg(op, "ReduceOp Axes values are not unique."),
+                        ErrorValue::ErrorCode::MODEL_LOADER_UNSUPPORTED_SHAPE);
       }
     }
 
@@ -946,7 +948,7 @@ protected:
     } else if (typeName == "ReduceMax") {
       node = G_->createBatchedReduceMax(opName, in, axes);
     } else {
-      RETURN_ERR("Unsupported Reduce Op " + typeName.str());
+      return MAKE_ERR("Unsupported Reduce Op " + typeName.str());
     }
 
     // Our batched reduce add/mean does not keep the dim; reshape if necessary.
@@ -1114,7 +1116,7 @@ protected:
 
   Error loadSparseToDense(const OpType &op, ArgumentDictionaryTy &dict) {
     if (op.input_size() != 3) {
-      RETURN_ERR(opErrMsg(
+      return MAKE_ERR(opErrMsg(
           op,
           strFormat(
               "SparseToDense operator must have three inputs, but found %d ",
@@ -1137,9 +1139,10 @@ protected:
   Error loadSparseToDenseMask(const OpType &op, ArgumentDictionaryTy &dict) {
     size_t inputSize = op.input_size();
     if (inputSize != 3 && inputSize != 4) {
-      RETURN_ERR(opErrMsg(op, strFormat("SparseToDenseMask operator must have "
-                                        "3 or 4 inputs, but found %zu ",
-                                        inputSize)));
+      return MAKE_ERR(
+          opErrMsg(op, strFormat("SparseToDenseMask operator must have "
+                                 "3 or 4 inputs, but found %zu ",
+                                 inputSize)));
     }
 
     NodeValue indices;
@@ -1273,7 +1276,7 @@ protected:
     } else if (typeName == "Xor") {
       N = G_->createNodeWithBroadcast<XorNode>(opName, axis, xNV, yNV);
     } else {
-      RETURN_ERR("Unsupported Logical Operator");
+      return MAKE_ERR("Unsupported Logical Operator");
     }
     RETURN_IF_ERR(addNodeAsOutput(op, N));
     return Error::success();

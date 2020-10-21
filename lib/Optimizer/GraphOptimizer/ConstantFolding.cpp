@@ -294,13 +294,13 @@ Error verifyConstantFunction(Backend &backend, Function &F,
       continue;
     }
     if (!N.hasOneUse()) {
-      RETURN_ERR("Expected constant operation");
+      return MAKE_ERR("Expected constant operation");
     }
     auto *SN = dyn_cast<SaveNode>(N.getUsers().begin()->getUser());
     if (SN && SN->getPlaceholder() == &N) {
       continue;
     }
-    RETURN_ERR("Expected constant operation");
+    return MAKE_ERR("Expected constant operation");
   }
   return Error::success();
 }

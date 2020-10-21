@@ -94,7 +94,7 @@ Error HabanaDeviceManager::init() {
   // Acquire a device to work with for the lifetime of this instance.
   synStatus status = synAcquireDevice(&deviceId_, nullptr);
   if (status != synSuccess) {
-    RETURN_ERR("Failed to acquire device");
+    return MAKE_ERR("Failed to acquire device");
   }
 
   numActiveDevices_++;
@@ -108,7 +108,7 @@ Error HabanaDeviceManager::init() {
   waitPool_ = glow::make_unique<ThreadPool>(numWaiters_);
 
   if (!runPool_ || !waitPool_) {
-    RETURN_ERR("Failed to create HabanaDeviceManager thread pools");
+    return MAKE_ERR("Failed to create HabanaDeviceManager thread pools");
   }
 
   return Error::success();

@@ -56,7 +56,7 @@ Expected<ONNX_NAMESPACE::ModelProto> loadProto(const std::string &filename) {
                       ErrorValue::ErrorCode::MODEL_LOADER_INVALID_PROTOBUF);
     return MP;
   }
-  RETURN_ERR("Can't load proto file");
+  return MAKE_ERR("Can't load proto file");
 }
 
 /// Saves ModelProto object \p model as onnxtxt model file \p filename

@@ -58,12 +58,6 @@
 /// Makes a new Error.
 #define MAKE_ERR(...) glow::detail::makeError(__FILE__, __LINE__, __VA_ARGS__)
 
-/// Makes a new Error and \returns that Error.
-#define RETURN_ERR(...)                                                        \
-  do {                                                                         \
-    return MAKE_ERR(__VA_ARGS__);                                              \
-  } while (0)
-
 /// Takes an Expected<T> \p rhsOrErr and if it is an Error then returns
 /// it, otherwise takes the value from rhsOrErr and assigns it to \p lhs.
 #define ASSIGN_VALUE_OR_RETURN_ERR(lhs, rhsOrErr)                              \

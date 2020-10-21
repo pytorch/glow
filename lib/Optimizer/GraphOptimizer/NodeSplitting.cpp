@@ -470,7 +470,7 @@ verifySplitParams(const Node *node, dim_t splitOutputIdx,
   // Verify original node.
   if (!node->verify()) {
     llvm::errs() << node->toString() << "\n";
-    RETURN_ERR("Invalid node given to node splitting procedure!");
+    return MAKE_ERR("Invalid node given to node splitting procedure!");
   }
 
   // Verify split dims.
@@ -666,7 +666,7 @@ verifySplitNodes(const Node *node, dim_t splitOutputIdx,
       }
       llvm::errs() << "Node description:\n";
       llvm::errs() << clone->toString() << "\n";
-      RETURN_ERR("Invalid node obtained during node splitting!");
+      return MAKE_ERR("Invalid node obtained during node splitting!");
     }
 
     // Early break.

@@ -68,7 +68,7 @@ Caffe2ModelLoader::createAndSetTensorType(const caffe2::TensorProto &in) {
   std::vector<dim_t> dim;
   for (auto d : in.dims()) {
     if (d == 0) {
-      RETURN_ERR("0 dimemsion is not supported");
+      return MAKE_ERR("0 dimemsion is not supported");
     }
     dim.push_back(d);
   }
@@ -89,7 +89,7 @@ Caffe2ModelLoader::createAndSetTensorType(const caffe2::TensorProto &in) {
   } else if (in.data_type() == caffe2::TensorProto::INT8) {
     result.t->reset(ElemKind::Int8QTy, dim, 1.0, 0);
   } else {
-    RETURN_ERR(
+    return MAKE_ERR(
         strFormat("FP32/16, Int32/64, Int8/Uint8 are supported. Got type"
                   " %s for tensor %s.",
                   caffe2::TensorProto_DataType_Name(in.data_type()).c_str(),
@@ -104,13 +104,13 @@ Caffe2ModelLoader::createAndSetTensorType(const caffe2::QTensorProto &in) {
   std::vector<dim_t> dim;
   for (auto d : in.dims()) {
     if (d == 0) {
-      RETURN_ERR("0 dimemsion qtensor is not supported");
+      return MAKE_ERR("0 dimemsion qtensor is not supported");
     }
     dim.push_back(d);
   }
 
   if (in.axis() != 1) {
-    RETURN_ERR("axis must be 1");
+    return MAKE_ERR("axis must be 1");
   }
 
   dim_t qparams = static_cast<dim_t>(in.scales().size());
@@ -171,7 +171,7 @@ Caffe2ModelLoader::createAndSetTensorType(const caffe2::QTensorProto &in) {
                                            scale, offset));
     result.t->reset(*outTy);
   } else {
-    RETURN_ERR("Only int8, uint8, and int32 qtensors are supported");
+    return MAKE_ERR("Only int8, uint8, and int32 qtensors are supported");
   }
 
   return Expected<LoadWeightResult>(std::move(result));
@@ -225,7 +225,7 @@ static Expected<unsigned_t> getChannel(ArgumentDictionaryTy &dict) {
   } else if (order == "NCHW") {
     return 1;
   }
-  RETURN_ERR("Invalid order field");
+  return MAKE_ERR("Invalid order field");
 }
 
 static Expected<std::vector<unsigned_t>> getSizeHW(ArgumentDictionaryTy &dict,
@@ -847,8 +847,9 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       // definition.
       if (static_cast<LegacyPaddingMode>(mode) ==
           LegacyPaddingMode::CAFFE_LEGACY_POOLING) {
-        RETURN_ERR(opErrMsg(op, "MaxPool nodes with legacy caffe padding are "
-                                "deprecated and not supported."));
+        return MAKE_ERR(opErrMsg(op,
+                                 "MaxPool nodes with legacy caffe padding are "
+                                 "deprecated and not supported."));
       }
     }
 
@@ -893,7 +894,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       } else if (llvm::isa<AvgPoolNode>(node)) {
         resIdx = AvgPoolNode::ResultIdx;
       } else {
-        RETURN_ERR("Expected either Max or Avg Pool.");
+        return MAKE_ERR("Expected either Max or Avg Pool.");
       }
       // Transpose the output back.
       node = G_->createTranspose(opName, node->getNthResult(resIdx), NHWC2NCHW);
@@ -1340,7 +1341,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
       break;
     }
     default:
-      RETURN_ERR(opErrMsg(op, "Unsupported Cast type."));
+      return MAKE_ERR(opErrMsg(op, "Unsupported Cast type."));
     }
 
     RETURN_IF_ERR(addNodeAsOutput(op, in));
@@ -1594,7 +1595,7 @@ Error Caffe2ModelLoader::loadOperator(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
-  RETURN_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
+  return MAKE_ERR(unexpectedNodeErrorMessage(op, "Unsupported operator."));
 }
 
 template <class TensorProtoType>
@@ -1829,7 +1830,8 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       RETURN_IF_ERR(
           fillTensor<int64_t>(T, ElemKind::Int64ITy, dim, values->ints()));
     } else {
-      RETURN_ERR(strFormat("Unhandled tensor fill type: %s", typeName.c_str()));
+      return MAKE_ERR(
+          strFormat("Unhandled tensor fill type: %s", typeName.c_str()));
     }
     RETURN_IF_ERR(createAndRegisterConstant(op.output().Get(0), std::move(T)));
     return Error::success();
@@ -2027,7 +2029,7 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
       break;
     }
     default:
-      RETURN_ERR("Unsupported datatype for ConstantFill.");
+      return MAKE_ERR("Unsupported datatype for ConstantFill.");
     }
 
     RETURN_IF_ERR(createAndRegisterConstant(name, std::move(T)));
@@ -2079,7 +2081,7 @@ Error Caffe2ModelLoader::loadWeight(const caffe2::OperatorDef &op) {
     return Error::success();
   }
 
-  RETURN_ERR(unexpectedNodeErrorMessage(op, "Unsupported weight kind"));
+  return MAKE_ERR(unexpectedNodeErrorMessage(op, "Unsupported weight kind"));
 }
 
 Error Caffe2ModelLoader::loadWeightsFromNet(caffe2::NetDef &net) {

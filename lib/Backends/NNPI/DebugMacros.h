@@ -144,7 +144,7 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
     NNPIErrorCode exp_res = (exp);                                             \
     if (exp_res != NNPI_NO_ERROR) {                                            \
       LOG(ERROR) << NNPI_ERROR_MSG(exp_res, msg);                              \
-      RETURN_ERR(msg);                                                         \
+      return MAKE_ERR(msg);                                                    \
     }                                                                          \
   }
 
@@ -167,7 +167,7 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
     NNPIInferenceErrorCode exp_res = (exp);                                    \
     if (exp_res != NNPI_INF_NO_ERROR) {                                        \
       LOG(ERROR) << NNPI_INF_ERROR_MSG(exp_res, msg);                          \
-      RETURN_ERR(msg);                                                         \
+      return MAKE_ERR(msg);                                                    \
     }                                                                          \
   }
 
@@ -176,10 +176,11 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
     NNPIInferenceErrorCode exp_res = (exp);                                    \
     if (exp_res == NNPI_INF_INTERNAL_DRIVER_ERROR) {                           \
       LOG(ERROR) << NNPI_INF_ERROR_MSG(exp_res, msg);                          \
-      RETURN_ERR(ErrorValue::ErrorCode::RUNTIME_DEVICE_NONRECOVERABLE, msg);   \
+      return MAKE_ERR(ErrorValue::ErrorCode::RUNTIME_DEVICE_NONRECOVERABLE,    \
+                      msg);                                                    \
     } else if (exp_res != NNPI_INF_NO_ERROR) {                                 \
       LOG(ERROR) << NNPI_INF_ERROR_MSG(exp_res, msg);                          \
-      RETURN_ERR(msg);                                                         \
+      return MAKE_ERR(msg);                                                    \
     }                                                                          \
   }
 
@@ -209,7 +210,7 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
     NNPIHandle exp_res = (exp);                                                \
     if (exp_res == NNPI_INVALID_NNPIHANDLE) {                                  \
       LOG(ERROR) << msg;                                                       \
-      RETURN_ERR(msg);                                                         \
+      return MAKE_ERR(msg);                                                    \
     }                                                                          \
   }
 
@@ -218,7 +219,7 @@ GetNNPIInferenceErrorDesc(NNPIInferenceErrorCode err) {
     bool exp_res = (exp);                                                      \
     if (!exp_res) {                                                            \
       LOG(ERROR) << msg;                                                       \
-      RETURN_ERR(msg);                                                         \
+      return MAKE_ERR(msg);                                                    \
     }                                                                          \
   }
 
