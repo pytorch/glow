@@ -51,7 +51,7 @@ Expected<float> to32Bit(Expected<double> expectedVal) {
   if (expectedVal) {
     return to32Bit(*expectedVal);
   } else {
-    return expectedVal.takeError();
+    RETURN_ERR(expectedVal.takeError());
   }
 }
 
@@ -116,7 +116,7 @@ expandIntIValIfNeeded(Expected<GlowIValue *> expectedGlowIVal, size_t size) {
   if (expectedGlowIVal) {
     return expandIntIValIfNeeded(**expectedGlowIVal, size);
   } else {
-    return expectedGlowIVal.takeError();
+    RETURN_ERR(expectedGlowIVal.takeError());
   }
 }
 
@@ -174,7 +174,7 @@ contractIntIValIfNeeded(Expected<GlowIValue *> expectedGlowIVal) {
   if (expectedGlowIVal) {
     return contractIntIValIfNeeded(**expectedGlowIVal);
   } else {
-    return expectedGlowIVal.takeError();
+    RETURN_ERR(expectedGlowIVal.takeError());
   }
 }
 
@@ -198,7 +198,7 @@ castVector(Expected<std::vector<OriginalT>> originalExpected) {
   if (originalExpected) {
     return castVector<T>(*originalExpected);
   } else {
-    return originalExpected.takeError();
+    RETURN_ERR(originalExpected.takeError());
   }
 }
 
@@ -218,7 +218,7 @@ Expected<T> static_cast_expected(Expected<OriginalT> originalExpected) {
   if (originalExpected) {
     return static_cast<T>(*originalExpected);
   } else {
-    return originalExpected.takeError();
+    RETURN_ERR(originalExpected.takeError());
   }
 }
 
@@ -1204,7 +1204,7 @@ Error PyTorchModelLoader::addValueMapping(const torch::jit::Value *value,
                                           glow::NodeValue nodeValue) {
   auto correctType =
       elemKindToScalarType(nodeValue.getType()->getElementType());
-  return addValueMapping(value, nodeValue, correctType);
+  RETURN_ERR(addValueMapping(value, nodeValue, correctType));
 }
 
 Error PyTorchModelLoader::removeValueMapping(const torch::jit::Value *value) {
@@ -1250,7 +1250,7 @@ Error PyTorchModelLoader::addValueMapping(const torch::jit::Value *value,
   auto correctType = c10::ScalarType::Undefined;
   // We dont propagate IValue's type unless the type is given,
   // since it has too many posibilities.
-  return addValueMapping(value, std::move(glowIValue), correctType);
+  RETURN_ERR(addValueMapping(value, std::move(glowIValue), correctType));
 }
 
 bool PyTorchModelLoader::hasGlowNodeValueForValue(
@@ -1633,7 +1633,7 @@ Error PyTorchModelLoader::loadQuantizedAdd(const torch::jit::Node *ptNode) {
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[QuantizedAddInputs::lhs]));
-  return addValueMapping(outputs[0], output, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Error PyTorchModelLoader::loadQuantizedAddRelu(const torch::jit::Node *ptNode) {
@@ -1672,7 +1672,7 @@ Error PyTorchModelLoader::loadQuantizedAddRelu(const torch::jit::Node *ptNode) {
   c10::ScalarType dtype;
   RETURN_IF_ERR(
       getCorrectTypeMapping(dtype, inputs[QuantizedAddReluInputs::lhs]));
-  return addValueMapping(outputs[0], output, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Error PyTorchModelLoader::loadQuantizedMul(const torch::jit::Node *ptNode) {
@@ -1745,8 +1745,7 @@ Error PyTorchModelLoader::loadQuantizedMul(const torch::jit::Node *ptNode) {
     c10::ScalarType dtype;
     RETURN_IF_ERR(
         getCorrectTypeMapping(dtype, inputs[QuantizedMulInputs::lhs]));
-    return addValueMapping(outputs[0], output, dtype);
-
+    RETURN_ERR(addValueMapping(outputs[0], output, dtype));
   } else {
     // Tensor * Tensor
     RETURN_ERR_IF_NOT(inputs.size() == 4,
@@ -1790,7 +1789,7 @@ Error PyTorchModelLoader::loadQuantizedMul(const torch::jit::Node *ptNode) {
     c10::ScalarType dtype;
     RETURN_IF_ERR(
         getCorrectTypeMapping(dtype, inputs[QuantizedMulInputs::lhs]));
-    return addValueMapping(outputs[0], output, dtype);
+    RETURN_ERR(addValueMapping(outputs[0], output, dtype));
   }
 }
 
@@ -1890,7 +1889,7 @@ Error PyTorchModelLoader::loadQuantizedLinear(const torch::jit::Node *ptNode) {
     output = F_.createReshape("expand", output, finalDims);
   }
 
-  return addValueMapping(outputs[0], output, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
@@ -1970,7 +1969,7 @@ Error PyTorchModelLoader::loadQuantizedLinearUnpacked(
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(
       dtype, inputs[QuantizedUnpackedLinearInputs::input]));
-  return addValueMapping(outputs[0], output, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Error PyTorchModelLoader::loadGlowFusedLinear(const torch::jit::Node *ptNode) {
@@ -2017,7 +2016,7 @@ Error PyTorchModelLoader::loadGlowFusedLinear(const torch::jit::Node *ptNode) {
                                                        matmulOutput, bias);
   }
 
-  return addValueMapping(outputs[0], output);
+  RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
 Expected<NodeValue> PyTorchModelLoader::loadNodeValueOrBroadcastedIValue(
@@ -2077,7 +2076,7 @@ Error PyTorchModelLoader::loadTypeAs(const torch::jit::Node *ptNode) {
 
   if (typeAsType->getElementType() == inputShape->getElementType()) {
     // nop conversion
-    return addValueMapping(outputs[0], dataValue);
+    RETURN_ERR(addValueMapping(outputs[0], dataValue));
   }
 
   auto outType = F_.getParent()->uniqueType(typeAsType->getElementType(),
@@ -2086,7 +2085,7 @@ Error PyTorchModelLoader::loadTypeAs(const torch::jit::Node *ptNode) {
   glow::ConvertToNode *glowNode =
       F_.createConvertTo("typeas", dataValue, outType);
 
-  return addValueMapping(outputs[0], glowNode->getResult());
+  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
 }
 
 Error PyTorchModelLoader::loadContiguous(const torch::jit::Node *ptNode) {
@@ -2103,7 +2102,7 @@ Error PyTorchModelLoader::loadContiguous(const torch::jit::Node *ptNode) {
   RETURN_ERR_IF_NOT(scalar == (int64_t)at::MemoryFormat::Contiguous,
                     glow::strFormat("Scalar must have value equal 0."));
 
-  return addValueMapping(outputs[0], dataValue);
+  RETURN_ERR(addValueMapping(outputs[0], dataValue));
 }
 
 Error PyTorchModelLoader::loadDetach(const torch::jit::Node *ptNode) {
@@ -2114,7 +2113,7 @@ Error PyTorchModelLoader::loadDetach(const torch::jit::Node *ptNode) {
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
-  return addValueMapping(outputs[0], input);
+  RETURN_ERR(addValueMapping(outputs[0], input));
 }
 
 template <typename GlowNode>
@@ -2155,7 +2154,7 @@ Error PyTorchModelLoader::loadMul(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       res, loadArithmeticNode<glow::MulNode>("mul", inputs[0], inputs[1]));
 
-  return addValueMapping(outputs[0], res);
+  RETURN_ERR(addValueMapping(outputs[0], res));
 }
 
 Error PyTorchModelLoader::loadDiv(const torch::jit::Node *ptNode) {
@@ -2167,7 +2166,7 @@ Error PyTorchModelLoader::loadDiv(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       res, loadArithmeticNode<glow::DivNode>("div", inputs[0], inputs[1]));
 
-  return addValueMapping(outputs[0], res);
+  RETURN_ERR(addValueMapping(outputs[0], res));
 }
 
 Error PyTorchModelLoader::loadFloorDiv(const torch::jit::Node *ptNode) {
@@ -2179,7 +2178,7 @@ Error PyTorchModelLoader::loadFloorDiv(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(res, loadArithmeticNode<glow::FloorDivNode>(
                                       "floor_divide", inputs[0], inputs[1]));
 
-  return addValueMapping(outputs[0], res);
+  RETURN_ERR(addValueMapping(outputs[0], res));
 }
 
 Error PyTorchModelLoader::loadAdd(const torch::jit::Node *ptNode) {
@@ -2198,7 +2197,7 @@ Error PyTorchModelLoader::loadAdd(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       res, loadArithmeticNode<glow::AddNode>("add", inputs[0], inputs[1]));
 
-  return addValueMapping(outputs[0], res);
+  RETURN_ERR(addValueMapping(outputs[0], res));
 }
 
 Error PyTorchModelLoader::loadSub(const torch::jit::Node *ptNode) {
@@ -2217,7 +2216,7 @@ Error PyTorchModelLoader::loadSub(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       res, loadArithmeticNode<glow::SubNode>("sub", inputs[0], inputs[1]));
 
-  return addValueMapping(outputs[0], res);
+  RETURN_ERR(addValueMapping(outputs[0], res));
 }
 
 Error PyTorchModelLoader::loadRsub(const torch::jit::Node *ptNode) {
@@ -2236,7 +2235,7 @@ Error PyTorchModelLoader::loadRsub(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(
       res, loadArithmeticNode<glow::SubNode>("sub", inputs[1], inputs[0]));
 
-  return addValueMapping(outputs[0], res);
+  RETURN_ERR(addValueMapping(outputs[0], res));
 }
 
 Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
@@ -2250,7 +2249,7 @@ Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
 
   glow::MaxNode *glowNode = F_.createMax("max", lhs, rhs);
-  return addValueMapping(outputs[0], glowNode->getResult());
+  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
 }
 
 Error PyTorchModelLoader::loadSize(const torch::jit::Node *ptNode) {
@@ -2281,7 +2280,7 @@ Error PyTorchModelLoader::loadSize(const torch::jit::Node *ptNode) {
   GlowIValue glowIVal;
   glowIVal.fromInt(input.dims()[dim]);
 
-  return addValueMapping(outputs[0], std::move(glowIVal));
+  RETURN_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
 }
 
 Error PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
@@ -2342,7 +2341,7 @@ Error PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
     // Should never reach here
     return MAKE_ERR("Encountered unknown JIT Value mapping");
   }
-  return addValueMapping(outputs[0], std::move(glowIVal));
+  RETURN_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
 }
 
 Error PyTorchModelLoader::loadFusedConcat(const torch::jit::Node *ptNode) {
@@ -2354,7 +2353,7 @@ Error PyTorchModelLoader::loadFusedConcat(const torch::jit::Node *ptNode) {
   if (inputs.size() == 1) {
     glow::NodeValue input;
     ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-    return addValueMapping(outputs[0], input);
+    RETURN_ERR(addValueMapping(outputs[0], input));
   }
 
   int64_t dim = ptNode->i(at::attr::dim);
@@ -2387,7 +2386,8 @@ Error PyTorchModelLoader::loadFusedConcat(const torch::jit::Node *ptNode) {
     glowInputs.push_back(std::move(glowInput));
   }
 
-  return addValueMapping(outputs[0], F_.createConcat("cat", glowInputs, dim));
+  RETURN_ERR(
+      addValueMapping(outputs[0], F_.createConcat("cat", glowInputs, dim)));
 }
 
 Error PyTorchModelLoader::loadFusedStack(const torch::jit::Node *ptNode) {
@@ -2399,7 +2399,7 @@ Error PyTorchModelLoader::loadFusedStack(const torch::jit::Node *ptNode) {
   if (inputs.size() == 1) {
     glow::NodeValue input;
     ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-    return addValueMapping(outputs[0], input);
+    RETURN_ERR(addValueMapping(outputs[0], input));
   }
 
   int64_t dim = ptNode->i(at::attr::dim);
@@ -2443,7 +2443,7 @@ Error PyTorchModelLoader::loadFusedStack(const torch::jit::Node *ptNode) {
   auto reshape =
       F_.createReshape("stack_reshape", concat, reshapeDims)->getResult();
 
-  return addValueMapping(outputs[0], reshape);
+  RETURN_ERR(addValueMapping(outputs[0], reshape));
 }
 
 Error PyTorchModelLoader::loadNumToTensor(const torch::jit::Node *ptNode) {
@@ -2473,7 +2473,7 @@ Error PyTorchModelLoader::loadNumToTensor(const torch::jit::Node *ptNode) {
   }
   auto output =
       F_.getParent()->createConstant("NumToTensor_output", std::move(t));
-  return addValueMapping(outputs[0], output);
+  RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
 Error PyTorchModelLoader::loadInt(const torch::jit::Node *ptNode) {
@@ -2509,7 +2509,7 @@ Error PyTorchModelLoader::loadInt(const torch::jit::Node *ptNode) {
   // No matter input is int32 or int64, it is int in glowIVal.
   // When using NumToTensor, this int will transformed into int64 again.
   glowIVal.fromInt(value);
-  return addValueMapping(outputs[0], std::move(glowIVal));
+  RETURN_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
 }
 
 Error PyTorchModelLoader::loadArange(const torch::jit::Node *ptNode) {
@@ -2562,7 +2562,7 @@ Error PyTorchModelLoader::loadArange(const torch::jit::Node *ptNode) {
     auto output = F_.getParent()->createConstant("Arange_output",
                                                  std::move(outputTensor));
     output->ensureIsOwned(); // Prevents heap use after free
-    return addValueMapping(ptNode->output(), output);
+    RETURN_ERR(addValueMapping(ptNode->output(), output));
   } else {
     int64_t start;
     int64_t end;
@@ -2590,7 +2590,7 @@ Error PyTorchModelLoader::loadArange(const torch::jit::Node *ptNode) {
     auto output = F_.getParent()->createConstant("Arange_output",
                                                  std::move(outputTensor));
     output->ensureIsOwned(); // Prevents heap use after free
-    return addValueMapping(ptNode->output(), output);
+    RETURN_ERR(addValueMapping(ptNode->output(), output));
   }
 }
 
@@ -2637,9 +2637,9 @@ Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[ReshapeInputs::input]));
-  return addValueMapping(
+  RETURN_ERR(addValueMapping(
       outputs[0], F_.createReshape("reshape", input, castVector<dim_t>(shape)),
-      dtype);
+      dtype));
 }
 
 Error PyTorchModelLoader::loadUpsampleNearest3D(
@@ -2693,8 +2693,8 @@ Error PyTorchModelLoader::loadUpsampleNearest3D(
   if (isUpsample2x) {
     c10::ScalarType dtype;
     RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-    return addValueMapping(
-        outputs[0], F_.createUpsample("upsample_nearest3d", input, 3), dtype);
+    RETURN_ERR(addValueMapping(
+        outputs[0], F_.createUpsample("upsample_nearest3d", input, 3), dtype));
   } else {
     // Otherwise revert to Glow ResizeNearest, which only can handle 4D tensors
     std::vector<glow::SliceNode *> splitOutputs;
@@ -2713,9 +2713,9 @@ Error PyTorchModelLoader::loadUpsampleNearest3D(
     }
     c10::ScalarType dtype;
     RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-    return addValueMapping(
+    RETURN_ERR(addValueMapping(
         outputs[0],
-        F_.createConcat("upsample_nearest3d_concat", concatInputs, 0), dtype);
+        F_.createConcat("upsample_nearest3d_concat", concatInputs, 0), dtype));
   }
 }
 
@@ -2736,7 +2736,7 @@ Error PyTorchModelLoader::loadFloor(const torch::jit::Node *ptNode) {
   auto *glowNode = F_.createFloor("floor", input);
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  return addValueMapping(outputs[0], glowNode->getResult(), dtype);
+  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult(), dtype));
 }
 
 Error PyTorchModelLoader::loadCeil(const torch::jit::Node *ptNode) {
@@ -2750,7 +2750,7 @@ Error PyTorchModelLoader::loadCeil(const torch::jit::Node *ptNode) {
   auto *glowNode = F_.createCeil("ceil", input);
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  return addValueMapping(outputs[0], glowNode->getResult(), dtype);
+  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult(), dtype));
 }
 
 Error PyTorchModelLoader::loadRelu(const torch::jit::Node *ptNode) {
@@ -2765,7 +2765,7 @@ Error PyTorchModelLoader::loadRelu(const torch::jit::Node *ptNode) {
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  return addValueMapping(outputs[0], glowNode->getResult(), dtype);
+  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult(), dtype));
 }
 
 Error PyTorchModelLoader::loadGelu(const torch::jit::Node *ptNode) {
@@ -2777,7 +2777,7 @@ Error PyTorchModelLoader::loadGelu(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
   auto output = F_.createGELU("gelu", input)->getNthResult(0);
-  return addValueMapping(outputs[0], output);
+  RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
 Error PyTorchModelLoader::loadTanh(const torch::jit::Node *ptNode) {
@@ -2789,7 +2789,7 @@ Error PyTorchModelLoader::loadTanh(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
   glow::TanhNode *glowNode = F_.createTanh("tanh", input);
-  return addValueMapping(outputs[0], glowNode->getResult());
+  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
 }
 
 Error PyTorchModelLoader::loadExp(const torch::jit::Node *ptNode) {
@@ -2801,7 +2801,7 @@ Error PyTorchModelLoader::loadExp(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
   glow::ExpNode *glowNode = F_.createExp("exp", input);
-  return addValueMapping(outputs[0], glowNode->getResult());
+  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
 }
 
 Error PyTorchModelLoader::loadPow(const torch::jit::Node *ptNode) {
@@ -2818,7 +2818,7 @@ Error PyTorchModelLoader::loadPow(const torch::jit::Node *ptNode) {
                              iValToDouble(getGlowIValueForValue(inputs[1])));
 
   glow::PowNode *glowNode = F_.createPow("pow", input, exponent);
-  return addValueMapping(outputs[0], glowNode->getResult());
+  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
 }
 
 Error PyTorchModelLoader::loadSqrt(const torch::jit::Node *ptNode) {
@@ -2830,7 +2830,7 @@ Error PyTorchModelLoader::loadSqrt(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
 
   glow::PowNode *glowNode = F_.createPow("sqrt", input, /*exp=*/0.5);
-  return addValueMapping(outputs[0], glowNode->getResult());
+  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
 }
 
 Error PyTorchModelLoader::loadSigmoid(const torch::jit::Node *ptNode) {
@@ -2844,7 +2844,7 @@ Error PyTorchModelLoader::loadSigmoid(const torch::jit::Node *ptNode) {
   glow::SigmoidNode *glowNode = F_.createSigmoid("sigmoid", input);
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  return addValueMapping(outputs[0], glowNode->getResult(), dtype);
+  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult(), dtype));
 }
 
 Error PyTorchModelLoader::loadReciprocal(const torch::jit::Node *ptNode) {
@@ -2855,7 +2855,7 @@ Error PyTorchModelLoader::loadReciprocal(const torch::jit::Node *ptNode) {
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
   glow::PowNode *glowNode = F_.createPow("reciprocal", input, /*exp=*/-1);
-  return addValueMapping(outputs[0], glowNode->getResult());
+  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
 }
 
 Error PyTorchModelLoader::loadLSTM(const torch::jit::Node *ptNode) {
@@ -3084,7 +3084,7 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
     output = F_.createTranspose("conv_output_transposed", conv->getResult(),
                                 NHWC2NCHW);
   }
-  return addValueMapping(outputs[0], output->getResult());
+  RETURN_ERR(addValueMapping(outputs[0], output->getResult()));
 }
 
 Error PyTorchModelLoader::loadConv2D(const torch::jit::Node *ptNode) {
@@ -3159,7 +3159,7 @@ Error PyTorchModelLoader::loadConv2D(const torch::jit::Node *ptNode) {
                     groups, dilations);
   glow::TransposeNode *output = F_.createTranspose(
       "conv_output_transposed", conv->getResult(), NHWC2NCHW);
-  return addValueMapping(outputs[0], output->getResult());
+  RETURN_ERR(addValueMapping(outputs[0], output->getResult()));
 }
 
 Error PyTorchModelLoader::loadLayerNorm(const torch::jit::Node *ptNode) {
@@ -3197,7 +3197,7 @@ Error PyTorchModelLoader::loadLayerNorm(const torch::jit::Node *ptNode) {
       F_.createLayerNormalization("layernorm", input, weight, bias, eps)
           ->getResult();
 
-  return addValueMapping(outputs[0], output);
+  RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
 Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
@@ -3280,7 +3280,7 @@ Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  return addValueMapping(outputs[0], output, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Expected<NodeValue>
@@ -3397,7 +3397,7 @@ Error PyTorchModelLoader::loadQuantizedBatchNorm2d(
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  return addValueMapping(outputs[0], output, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Error PyTorchModelLoader::loadQuantizedBatchNorm3d(
@@ -3409,7 +3409,7 @@ Error PyTorchModelLoader::loadQuantizedBatchNorm3d(
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  return addValueMapping(outputs[0], output, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Error PyTorchModelLoader::loadQuantizedBatchNorm3dRelu(
@@ -3422,7 +3422,7 @@ Error PyTorchModelLoader::loadQuantizedBatchNorm3dRelu(
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
   output = F_.createRELU("quantized_relu_after_bn", output);
-  return addValueMapping(outputs[0], output, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Error PyTorchModelLoader::loadDropout(const torch::jit::Node *ptNode) {
@@ -3440,7 +3440,7 @@ Error PyTorchModelLoader::loadDropout(const torch::jit::Node *ptNode) {
   RETURN_ERR_IF_NOT(!training, "Glow doesn't support dropout training yet");
 
   // Dropout not in training mode is a noop.
-  return addValueMapping(outputs[0], input);
+  RETURN_ERR(addValueMapping(outputs[0], input));
 }
 
 Error PyTorchModelLoader::loadQuantize(const torch::jit::Node *ptNode) {
@@ -3488,7 +3488,7 @@ Error PyTorchModelLoader::loadQuantize(const torch::jit::Node *ptNode) {
   }
   glow::QuantizeNode *qn = F_.createQuantize("quantize", input, outTy);
 
-  return addValueMapping(outputs[0], qn->getResult(), dtype);
+  RETURN_ERR(addValueMapping(outputs[0], qn->getResult(), dtype));
 }
 
 Error PyTorchModelLoader::loadDequantize(const torch::jit::Node *ptNode) {
@@ -3504,7 +3504,7 @@ Error PyTorchModelLoader::loadDequantize(const torch::jit::Node *ptNode) {
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  return addValueMapping(outputs[0], dn->getResult(), dtype);
+  RETURN_ERR(addValueMapping(outputs[0], dn->getResult(), dtype));
 }
 
 Error PyTorchModelLoader::loadQuantizedConvRelu(
@@ -3517,7 +3517,7 @@ Error PyTorchModelLoader::loadQuantizedConvRelu(
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  return addValueMapping(outputs[0], output, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Error PyTorchModelLoader::loadQuantizedConv(const torch::jit::Node *ptNode) {
@@ -3529,7 +3529,7 @@ Error PyTorchModelLoader::loadQuantizedConv(const torch::jit::Node *ptNode) {
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  return addValueMapping(outputs[0], output, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Error PyTorchModelLoader::loadQuantizedConvUnpacked(
@@ -3705,7 +3705,7 @@ Error PyTorchModelLoader::loadQuantizedConvUnpackedImpl(
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  return addValueMapping(outputs[0], output, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
@@ -3764,7 +3764,7 @@ Error PyTorchModelLoader::loadMaxPool2d(const torch::jit::Node *ptNode) {
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[MaxPoolInputs::input]));
-  return addValueMapping(outputs[0], output, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Expected<NodeValue>
@@ -3859,7 +3859,7 @@ Error PyTorchModelLoader::loadAvgPool2d(const torch::jit::Node *ptNode) {
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  return addValueMapping(outputs[0], output, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Error PyTorchModelLoader::loadAvgPool3d(const torch::jit::Node *ptNode) {
@@ -3870,7 +3870,7 @@ Error PyTorchModelLoader::loadAvgPool3d(const torch::jit::Node *ptNode) {
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  return addValueMapping(outputs[0], output, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Error PyTorchModelLoader::loadClamp(const torch::jit::Node *ptNode) {
@@ -3895,7 +3895,7 @@ Error PyTorchModelLoader::loadClamp(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(max, to32Bit(maxDouble));
 
   auto output = F_.createClip("clip", input, min, max);
-  return addValueMapping(outputs[0], output);
+  RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
 Error PyTorchModelLoader::loadAdaptiveAvgPool2d(
@@ -3939,7 +3939,7 @@ Error PyTorchModelLoader::loadAdaptiveAvgPool2d(
   c10::ScalarType dtype;
   RETURN_IF_ERR(
       getCorrectTypeMapping(dtype, inputs[AdaptiveAvgPoolInputs::input]));
-  return addValueMapping(outputs[0], output, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Error PyTorchModelLoader::loadT(const torch::jit::Node *ptNode) {
@@ -3961,7 +3961,7 @@ Error PyTorchModelLoader::loadT(const torch::jit::Node *ptNode) {
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  return addValueMapping(outputs[0], output, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Error PyTorchModelLoader::loadTranspose(const torch::jit::Node *ptNode) {
@@ -4013,7 +4013,7 @@ Error PyTorchModelLoader::loadTranspose(const torch::jit::Node *ptNode) {
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[TransposeInputs::input]));
-  return addValueMapping(outputs[0], output->getResult(), dtype);
+  RETURN_ERR(addValueMapping(outputs[0], output->getResult(), dtype));
 }
 
 Error PyTorchModelLoader::loadMin(const torch::jit::Node *ptNode) {
@@ -4027,7 +4027,7 @@ Error PyTorchModelLoader::loadMin(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
 
   auto output = F_.createMin("min", lhs, rhs);
-  return addValueMapping(outputs[0], output);
+  RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
 Error PyTorchModelLoader::loadMean(const torch::jit::Node *ptNode) {
@@ -4064,7 +4064,7 @@ Error PyTorchModelLoader::loadMean(const torch::jit::Node *ptNode) {
     }
   }
 
-  return addValueMapping(outputs[0], input);
+  RETURN_ERR(addValueMapping(outputs[0], input));
 }
 
 Error PyTorchModelLoader::loadNorm(const torch::jit::Node *ptNode) {
@@ -4126,7 +4126,7 @@ Error PyTorchModelLoader::loadNorm(const torch::jit::Node *ptNode) {
 
   auto output = F_.createVectorNorm("norm", input, axis, p);
 
-  return addValueMapping(outputs[0], output);
+  RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
 Expected<glow::NodeValue>
@@ -4246,7 +4246,7 @@ Error PyTorchModelLoader::loadMatMul(const torch::jit::Node *ptNode) {
   glow::NodeValue output;
   ASSIGN_VALUE_OR_RETURN_ERR(output, loadMatMulImpl(lhs, rhs));
 
-  return addValueMapping(outputs[0], output);
+  RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
 Error PyTorchModelLoader::loadMM(const torch::jit::Node *ptNode) {
@@ -4269,7 +4269,7 @@ Error PyTorchModelLoader::loadMM(const torch::jit::Node *ptNode) {
   }
 
   auto output = F_.createMatMul("mm", lhs, rhs)->getResult();
-  return addValueMapping(outputs[0], output);
+  RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
 Error PyTorchModelLoader::loadBmm(const torch::jit::Node *ptNode) {
@@ -4292,7 +4292,7 @@ Error PyTorchModelLoader::loadBmm(const torch::jit::Node *ptNode) {
   }
 
   auto output = F_.createBatchMatMul("bmm", lhs, rhs)->getResult();
-  return addValueMapping(outputs[0], output);
+  RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
 Error PyTorchModelLoader::loadAddMM(const torch::jit::Node *ptNode) {
@@ -4366,7 +4366,7 @@ Error PyTorchModelLoader::loadAddMM(const torch::jit::Node *ptNode) {
                                                        input, matmul)
                  ->getResult();
 
-  return addValueMapping(outputs[0], add);
+  RETURN_ERR(addValueMapping(outputs[0], add));
 }
 
 Error PyTorchModelLoader::loadPRelu(const torch::jit::Node *ptNode) {
@@ -4394,7 +4394,7 @@ Error PyTorchModelLoader::loadPRelu(const torch::jit::Node *ptNode) {
   int axis = targetDim.size() - weight.dims().size();
   auto *slope = F_.createBroadcast("broadcast", weight, targetDim, axis);
   auto *glowNode = F_.createPRELU("prelu", in, slope);
-  return addValueMapping(outputs[0], glowNode);
+  RETURN_ERR(addValueMapping(outputs[0], glowNode));
 }
 
 Error PyTorchModelLoader::loadSlice(const torch::jit::Node *ptNode) {
@@ -4434,7 +4434,7 @@ Error PyTorchModelLoader::loadSlice(const torch::jit::Node *ptNode) {
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[SliceInputs::input]));
-  return addValueMapping(outputs[0], glowNode, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], glowNode, dtype));
 }
 
 /// TODO: check Dtype is float (optional value).
@@ -4469,7 +4469,7 @@ Error PyTorchModelLoader::loadSoftMax(const torch::jit::Node *ptNode) {
   auto *SM = F_.createSoftMax("SoftMax", FN, selected);
   auto origInDims = in.getType()->dims();
   auto *glowNode = F_.createReshape("reshapeOutput", SM, origInDims);
-  return addValueMapping(outputs[0], glowNode);
+  RETURN_ERR(addValueMapping(outputs[0], glowNode));
 }
 
 Error PyTorchModelLoader::loadPermute(const torch::jit::Node *ptNode) {
@@ -4503,7 +4503,7 @@ Error PyTorchModelLoader::loadPermute(const torch::jit::Node *ptNode) {
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-  return addValueMapping(outputs[0], output, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], output, dtype));
 }
 
 Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
@@ -4522,7 +4522,7 @@ Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
   auto inputType = input.getType();
   auto glowElemKind = scalarTypeToElemKind(static_cast<c10::ScalarType>(dtype));
   if (glowElemKind == inputType->getElementType()) {
-    return addValueMapping(outputs[0], input);
+    RETURN_ERR(addValueMapping(outputs[0], input));
   }
   if (isQuantizedElemKind(glowElemKind) ||
       isQuantizedElemKind(inputType->getElementType())) {
@@ -4533,7 +4533,7 @@ Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
   auto outType = F_.getParent()->uniqueType(glowElemKind, inputType->dims());
   glow::ConvertToNode *toNode = F_.createConvertTo("to", input, outType);
 
-  return addValueMapping(outputs[0], toNode->getResult());
+  RETURN_ERR(addValueMapping(outputs[0], toNode->getResult()));
 }
 
 Error PyTorchModelLoader::loadMaskedFill(const torch::jit::Node *ptNode) {
@@ -4574,7 +4574,7 @@ Error PyTorchModelLoader::loadMaskedFill(const torch::jit::Node *ptNode) {
           ->getResult();
 
   auto out = F_.createSelect("masked_fill", mask, valueSplat, in);
-  return addValueMapping(outputs[0], out);
+  RETURN_ERR(addValueMapping(outputs[0], out));
 }
 
 Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
@@ -4630,7 +4630,7 @@ Error PyTorchModelLoader::loadFlatten(const torch::jit::Node *ptNode) {
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[FlattenInputs::input]));
-  return addValueMapping(outputs[0], res, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], res, dtype));
 }
 
 Error PyTorchModelLoader::loadSqueeze(const torch::jit::Node *ptNode) {
@@ -4668,7 +4668,7 @@ Error PyTorchModelLoader::loadSqueeze(const torch::jit::Node *ptNode) {
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[SqueezeInputs::input]));
-  return addValueMapping(outputs[0], res, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], res, dtype));
 }
 
 Error PyTorchModelLoader::loadUnsqueeze(const torch::jit::Node *ptNode) {
@@ -4696,7 +4696,7 @@ Error PyTorchModelLoader::loadUnsqueeze(const torch::jit::Node *ptNode) {
 
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[UnsqueezeInputs::input]));
-  return addValueMapping(outputs[0], res, dtype);
+  RETURN_ERR(addValueMapping(outputs[0], res, dtype));
 }
 
 Error PyTorchModelLoader::loadBatchPermutation(const torch::jit::Node *ptNode) {
@@ -4709,7 +4709,7 @@ Error PyTorchModelLoader::loadBatchPermutation(const torch::jit::Node *ptNode) {
   glow::NodeValue indices;
   ASSIGN_VALUE_OR_RETURN_ERR(indices, getGlowNodeValueForValue(inputs[1]));
   auto res = F_.createGather("BatchPermutation", input, indices)->getResult();
-  return addValueMapping(outputs[0], res);
+  RETURN_ERR(addValueMapping(outputs[0], res));
 }
 
 Error PyTorchModelLoader::loadTopK(const torch::jit::Node *ptNode) {
@@ -4878,7 +4878,7 @@ Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
     t.zero();
     glow::Constant *glowConstant =
         F_.getParent()->createConstant("EmptyEmbeddingBag", std::move(t));
-    return addValueMapping(outputs[0], glowConstant->getOutput());
+    RETURN_ERR(addValueMapping(outputs[0], glowConstant->getOutput()));
   }
 
   glow::NodeValue perSampleWeights = loadNodeValueOrCreateBroadcastedConstant(
@@ -4913,7 +4913,7 @@ Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
   auto *EB = F_.createEmbeddingBag("EmbeddingBag", weight, perSampleWeights,
                                    indices, offsets, includeLastOffset);
 
-  return addValueMapping(outputs[0], EB->getResult());
+  RETURN_ERR(addValueMapping(outputs[0], EB->getResult()));
 }
 
 Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsetsHelper(
@@ -4980,7 +4980,7 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsetsHelper(
     t.zero();
     glow::Constant *glowConstant = F_.getParent()->createConstant(
         "EmptyEmbeddingBagByteRowwiseOffsets", std::move(t));
-    return addValueMapping(outputs[0], glowConstant->getOutput());
+    RETURN_ERR(addValueMapping(outputs[0], glowConstant->getOutput()));
   }
 
   glow::NodeValue perSampleWeights;
@@ -5039,9 +5039,9 @@ Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsetsHelper(
   if (is4Bit) {
     auto *CT = F_.createConvertTo("ConvertEmbeddingBag4BitRowwiseOffsetsOutput",
                                   EB, ElemKind::FloatTy);
-    return addValueMapping(outputs[0], CT->getResult());
+    RETURN_ERR(addValueMapping(outputs[0], CT->getResult()));
   } else {
-    return addValueMapping(outputs[0], EB->getResult());
+    RETURN_ERR(addValueMapping(outputs[0], EB->getResult()));
   }
 }
 
@@ -5131,7 +5131,7 @@ Error PyTorchModelLoader::loadRoiAlignImpl(const torch::jit::Node *ptNode,
         F_.createTranspose("roi_align_output_transposed", output, NHWC2NCHW);
   }
 
-  return addValueMapping(outputs[0], output);
+  RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
 Error PyTorchModelLoader::loadRoiAlign(const torch::jit::Node *ptNode) {

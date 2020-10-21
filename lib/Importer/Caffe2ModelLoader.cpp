@@ -1616,7 +1616,7 @@ Error Caffe2ModelLoader::loadInputsWithTensorProtoType(
   if (auto resOrErr = createAndSetTensorType(in)) {
     loadRes = std::move(*resOrErr);
   } else {
-    return resOrErr.takeError();
+    RETURN_ERR(resOrErr.takeError());
   }
 
   bool multiQParamsLoaded = loadRes.scales || loadRes.offsets;
