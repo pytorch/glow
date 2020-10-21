@@ -121,9 +121,7 @@ Expected<DAG *> HostManager::getNetworkDAG(llvm::StringRef network) {
 Error HostManager::startDeviceTrace() {
   for (auto &dev : devices_) {
     Error err = dev.second->startDeviceTrace(hostTraceContext_.get());
-    if (err) {
-      return err;
-    }
+    RETURN_IF_ERR(err);
   }
   return Error::success();
 }
@@ -131,9 +129,7 @@ Error HostManager::startDeviceTrace() {
 Error HostManager::stopDeviceTrace() {
   for (auto &dev : devices_) {
     Error err = dev.second->stopDeviceTrace(hostTraceContext_.get());
-    if (err) {
-      return err;
-    }
+    RETURN_IF_ERR(err);
   }
   return Error::success();
 }
@@ -336,7 +332,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
           std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
           cleanupAddNetwork(names);
         }
-        return err;
+        RETURN_ERR(err);
       }
     }
   }
@@ -355,7 +351,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
   } else {
     std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
     cleanupAddNetwork(names);
-    return result.takeError();
+    RETURN_ERR(result.takeError());
   }
   VLOG(1) << "Before quantmode";
   if (cctx.precisionConfig.quantMode == QuantizationMode::Profile) {
@@ -423,7 +419,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       if (optDagErr) {
         std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
         cleanupAddNetwork(names);
-        return optDagErr;
+        RETURN_ERR(optDagErr);
       }
 #endif /* FACEBOOK_INTERNAL */
     } else {
@@ -516,7 +512,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       std::unique_lock<std::shared_timed_mutex> networkLock(networkLock_);
       cleanupAddNetwork(names);
     }
-    return err;
+    RETURN_ERR(err);
   }
   debugDumpDAGGuard.dismiss();
   VLOG(1) << "Calculation of maxActiveRequests";
@@ -634,7 +630,7 @@ Error HostManager::removeNetwork(llvm::StringRef networkName) {
   }
   networks_.erase(networkIterator);
   exportMemoryCounters();
-  return err.get();
+  RETURN_ERR(err.get());
 }
 
 bool HostManager::networkAdded(llvm::StringRef networkName) {
@@ -666,7 +662,7 @@ Error HostManager::clearHost() {
   statsExporterRegistry_->setCounter(kDeviceMemoryAvailable, 0);
   statsExporterRegistry_->setCounter(kDeviceMemoryMax, 0);
 
-  return errContainer.get();
+  RETURN_ERR(errContainer.get());
 }
 
 Error HostManager::runNetworkBlocking(llvm::StringRef networkName,

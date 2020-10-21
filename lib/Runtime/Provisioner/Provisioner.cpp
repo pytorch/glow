@@ -326,7 +326,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     // If and error occured, clean up provisioning state and return
     // the error.
     cleanupProvision(localActiveNames, {});
-    return deviceAssignments.takeError();
+    RETURN_ERR(deviceAssignments.takeError());
   }
   auto assignments = std::move(*deviceAssignments);
 
@@ -428,7 +428,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
               backends_[deviceBackendName]->compile(clonedFunction, options);
           if (!compiledOrErr2) {
             cleanupProvision(localActiveNames, {});
-            return compiledOrErr2.takeError();
+            RETURN_ERR(compiledOrErr2.takeError());
           }
           auto compiled2 = std::move(*compiledOrErr2);
           functionMap.emplace(replicatedName, compiled2.get());
@@ -470,7 +470,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
           // If and error occured, clean up provisioning state and return
           // the error.
           cleanupProvision(localActiveNames, {});
-          return compiledOrErr.takeError();
+          RETURN_ERR(compiledOrErr.takeError());
         }
         auto compiled = std::move(*compiledOrErr);
 
@@ -582,7 +582,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
     auto err = loader->loadNextWeight();
     if (err) {
       cleanupProvision(localActiveNames, addedNetworks);
-      return err;
+      RETURN_ERR(err);
     }
     std::string weightName = loader->getName();
     // Load weights while there are weights to be loaded.
@@ -642,7 +642,7 @@ Error Provisioner::provision(DAGListTy &networks, Module &module,
       err = loader->loadNextWeight();
       if (err) {
         cleanupProvision(localActiveNames, addedNetworks);
-        return err;
+        RETURN_ERR(err);
       }
       weightName = loader->getName();
       // Remove PH from map, this way we can know that we've added all static
