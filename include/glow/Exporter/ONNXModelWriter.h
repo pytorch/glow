@@ -245,8 +245,9 @@ public:
 private:
   /// \returns error for the unexpected node kind.
   static Error writeUnexpectedKind(const Node *node) {
-    RETURN_ERR(strFormat("Glow can not export node %s, unsupported kind: %s.",
-                         node->getName().str().c_str(), node->getKindName()));
+    return MAKE_ERR(
+        strFormat("Glow can not export node %s, unsupported kind: %s.",
+                  node->getName().str().c_str(), node->getKindName()));
   }
 
   /// Declares the overriden all pure virtual methods, declared in base class.

@@ -906,8 +906,8 @@ Error ONNXModelWriter::finalizeAndWriteProto(llvm::StringRef name) {
       } else if (outputValueInfos_.count(PH)) {
         orderedOutputs[orderIdx] = PH;
       } else {
-        RETURN_ERR("PH must either be in inputs or outputs: " +
-                   PH->getName().str());
+        return MAKE_ERR("PH must either be in inputs or outputs: " +
+                        PH->getName().str());
       }
     }
 
@@ -1330,8 +1330,8 @@ Error ONNXModelWriter::writePad(const PadNode *node, GraphType &graph) {
     addValueAttribute(proto, "mode", std::string("edge"));
     break;
   default:
-    RETURN_ERR("Pad: Invalid mode",
-               ErrorValue::ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR);
+    return MAKE_ERR("Pad: Invalid mode",
+                    ErrorValue::ErrorCode::MODEL_WRITER_SERIALIZATION_ERROR);
   }
 
   addValueAttribute(proto, "pads", node->getPads());
@@ -1708,7 +1708,7 @@ Error ONNXModelWriter::writePow(const PowNode *node, GraphType &graph) {
     } else if (value == 2.0f) {
       proto->set_op_type("Sqr");
     } else {
-      RETURN_ERR("Splat Node Value is invalid.");
+      return MAKE_ERR("Splat Node Value is invalid.");
     }
     break;
   }
@@ -1805,7 +1805,7 @@ Error ONNXModelWriter::writePRelu(const PReluNode *node, GraphType &graph) {
     proto->add_input(RN->getInput().getNode()->getName());
     reportedNodes_.insert(RN);
   } else {
-    RETURN_ERR("Can't find Splat/Reshape Node as part of PRelu Node.");
+    return MAKE_ERR("Can't find Splat/Reshape Node as part of PRelu Node.");
   }
 
   outputsToProto(node, graph, proto);
@@ -2352,7 +2352,7 @@ Error ONNXModelWriter::writeIntLookupTable(const IntLookupTableNode *node,
         proto, "values",
         llvm::ArrayRef<int8_t>(begin, begin + handle.actualSize()));
   } else {
-    RETURN_ERR("Mapping must be a constant type.");
+    return MAKE_ERR("Mapping must be a constant type.");
   }
 
   return writeAllWithNode("IntLookupTable", node, graph, proto);
@@ -2405,7 +2405,7 @@ Error ONNXModelWriter::writeFullyConnected(const FullyConnectedNode *node,
   proto->set_op_type("FullyConnected");
 
   if (node->getInput().dims().size() != 2) {
-    RETURN_ERR("Don't support input dim other than 2");
+    return MAKE_ERR("Don't support input dim other than 2");
   }
   proto->add_input(node->getInput().getNode()->getName());
   proto->add_input(node->getWeights().getNode()->getName());

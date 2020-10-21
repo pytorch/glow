@@ -127,7 +127,7 @@ Error LLVMCompiledFunction::execute(ExecutionContext *context) {
     funcPtr(runtimeBundle_.getConstants(), baseMutableWeightVarsAddress,
             baseActivationsAddress);
   } else {
-    RETURN_ERR("Error getting address");
+    return MAKE_ERR("Error getting address");
   }
 
   {
