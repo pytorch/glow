@@ -35,11 +35,12 @@ Error logicalDevicesValidation(
     auto backendNum = backendMap.at(backendName).num;
     if (partitionsNum[backendName].size() > backendNum) {
       logPartitionInfo(partitions);
-      RETURN_ERR(llvm::formatv(
-                     "Partition failed: the number of given({0}) devices({1}) "
-                     "is fewer than the required minimal partitions({2}).",
-                     backendName, backendNum, partitionsNum[backendName].size())
-                     .str());
+      return MAKE_ERR(
+          llvm::formatv(
+              "Partition failed: the number of given({0}) devices({1}) "
+              "is fewer than the required minimal partitions({2}).",
+              backendName, backendNum, partitionsNum[backendName].size())
+              .str());
     }
   }
   return Error::success();
@@ -57,7 +58,7 @@ Error memoryUsageValidation(
             << backendName;
     if (usedMemSize > availableMemSize) {
       logPartitionInfo(partitions);
-      RETURN_ERR(
+      return MAKE_ERR(
           llvm::formatv("Partition failed: the memory usage({0}) of one "
                         "partition exceeds "
                         "the available memory({1}) of given devices({2}).",

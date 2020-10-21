@@ -104,7 +104,7 @@ Expected<std::vector<int64_t>> expandIntIValIfNeeded(const GlowIValue &glowIVal,
 
   // Any other type of GlowIValue is invalid.
   else {
-    RETURN_ERR(
+    return MAKE_ERR(
         strFormat("Unexpected GlowIValue type: %s", glowIVal.getTagString()));
   }
 }
@@ -162,7 +162,7 @@ Expected<int64_t> contractIntIValIfNeeded(const GlowIValue &glowIVal) {
 
   // Any other type of GlowIValue is invalid.
   else {
-    RETURN_ERR(
+    return MAKE_ERR(
         strFormat("Unexpected GlowIValue type: %s", glowIVal.getTagString()));
   }
 }
@@ -1288,12 +1288,12 @@ Expected<glow::NodeValue>
 PyTorchModelLoader::getGlowNodeValueForValue(const torch::jit::Value *value) {
   auto it = valueMap_.find(value);
   if (it == valueMap_.end()) {
-    RETURN_ERR(glow::strFormat("No mapping found fo Value %s",
-                               value->debugNameBase().c_str()));
+    return MAKE_ERR(glow::strFormat("No mapping found fo Value %s",
+                                    value->debugNameBase().c_str()));
   }
   auto &mappingValue = it->second;
   if (mappingValue.getMappingType() == ValueMappingType::IValue) {
-    RETURN_ERR(glow::strFormat(
+    return MAKE_ERR(glow::strFormat(
         "Found a GlowIValue instead of a NodeValue for this Value: %s",
         value->debugNameBase().c_str()));
   }
@@ -1305,12 +1305,12 @@ Expected<glow::GlowIValue *>
 PyTorchModelLoader::getGlowIValueForValue(const torch::jit::Value *value) {
   auto it = valueMap_.find(value);
   if (it == valueMap_.end()) {
-    RETURN_ERR(glow::strFormat("No mapping found fo Value %s",
-                               value->debugNameBase().c_str()));
+    return MAKE_ERR(glow::strFormat("No mapping found fo Value %s",
+                                    value->debugNameBase().c_str()));
   }
   auto &mappingValue = it->second;
   if (mappingValue.getMappingType() != ValueMappingType::IValue) {
-    RETURN_ERR(glow::strFormat(
+    return MAKE_ERR(glow::strFormat(
         "Found a NodeValue instead of a GlowIValue for this Value: %s",
         value->debugNameBase().c_str()));
   }
@@ -2326,7 +2326,7 @@ Error PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
       }
       glowIVal.fromBoolList(std::move(bools));
     } else {
-      RETURN_ERR(
+      return MAKE_ERR(
           "Encountered an unsupported GlowIValue type for ListConstruct");
     }
   } else if (hasGlowNodeValueForValue(inputs[0])) {
@@ -2340,7 +2340,7 @@ Error PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
     glowIVal.fromNodeValueList(std::move(nodeValues));
   } else {
     // Should never reach here
-    RETURN_ERR("Encountered unknown JIT Value mapping");
+    return MAKE_ERR("Encountered unknown JIT Value mapping");
   }
   return addValueMapping(outputs[0], std::move(glowIVal));
 }
@@ -2467,7 +2467,7 @@ Error PyTorchModelLoader::loadNumToTensor(const torch::jit::Node *ptNode) {
     t.init(glow::Tensor::InitKind::Broadcast, input, F_.getParent()->getPRNG());
   } else {
     // Not a number
-    RETURN_ERR(strFormat(
+    return MAKE_ERR(strFormat(
         "Expected integer/double GlowIValue type in NumToTensor, but get: %s",
         glowIValue->getTagString()));
   }
@@ -2503,7 +2503,7 @@ Error PyTorchModelLoader::loadInt(const torch::jit::Node *ptNode) {
     auto value_f = intConstant->getPayload().getHandle<float>().at({0});
     value = static_cast<int>(value_f);
   } else {
-    RETURN_ERR("Expected integer/float tensor in loadInt");
+    return MAKE_ERR("Expected integer/float tensor in loadInt");
   }
   glow::GlowIValue glowIVal;
   // No matter input is int32 or int64, it is int in glowIVal.
@@ -3956,7 +3956,7 @@ Error PyTorchModelLoader::loadT(const torch::jit::Node *ptNode) {
   } else if (input.dims().size() == 2) {
     output = F_.createTranspose("transpose", input, {1, 0});
   } else {
-    RETURN_ERR("Transpose requires input to have rank <= 2");
+    return MAKE_ERR("Transpose requires input to have rank <= 2");
   }
 
   c10::ScalarType dtype;
@@ -4060,7 +4060,7 @@ Error PyTorchModelLoader::loadMean(const torch::jit::Node *ptNode) {
     ASSIGN_VALUE_OR_RETURN_ERR(keepdims, iValToBool(getGlowIValueForValue(
                                              inputs[MeanInputs::keepdims])));
     if (keepdims == true) {
-      RETURN_ERR("We don't currently support keeping dims");
+      return MAKE_ERR("We don't currently support keeping dims");
     }
   }
 
@@ -4104,7 +4104,7 @@ Error PyTorchModelLoader::loadNorm(const torch::jit::Node *ptNode) {
     ASSIGN_VALUE_OR_RETURN_ERR(pVal, getGlowIValueForValue(inputs[1]));
     // check if p is int
     if (!pVal->isInt()) {
-      RETURN_ERR("We only support p as an integer input");
+      return MAKE_ERR("We only support p as an integer input");
     } else {
       ASSIGN_VALUE_OR_RETURN_ERR(p, iValToInt(pVal));
       // check if p is set to 2s
@@ -4261,11 +4261,11 @@ Error PyTorchModelLoader::loadMM(const torch::jit::Node *ptNode) {
 
   // Check dimensions of inputs
   if (lhs.dims().size() != 2 || rhs.dims().size() != 2) {
-    RETURN_ERR("aten::mm expects 2D matrices");
+    return MAKE_ERR("aten::mm expects 2D matrices");
   }
 
   if (lhs.dims()[1] != rhs.dims()[0]) {
-    RETURN_ERR("aten::mm does not broadcast");
+    return MAKE_ERR("aten::mm does not broadcast");
   }
 
   auto output = F_.createMatMul("mm", lhs, rhs)->getResult();
@@ -4284,11 +4284,11 @@ Error PyTorchModelLoader::loadBmm(const torch::jit::Node *ptNode) {
 
   // Check dimensions of inputs
   if (lhs.dims().size() != 3 || rhs.dims().size() != 3) {
-    RETURN_ERR("aten::bmm expects 3D tensors");
+    return MAKE_ERR("aten::bmm expects 3D tensors");
   }
 
   if (lhs.dims()[2] != rhs.dims()[1]) {
-    RETURN_ERR("aten::bmm does not broadcast");
+    return MAKE_ERR("aten::bmm does not broadcast");
   }
 
   auto output = F_.createBatchMatMul("bmm", lhs, rhs)->getResult();
@@ -4346,11 +4346,11 @@ Error PyTorchModelLoader::loadAddMM(const torch::jit::Node *ptNode) {
 
   // Check dimensions of mat1 and mat2
   if (mat1.dims().size() != 2 || mat2.dims().size() != 2) {
-    RETURN_ERR("aten::addmm expects 2D matrices");
+    return MAKE_ERR("aten::addmm expects 2D matrices");
   }
 
   if (mat1.dims()[1] != mat2.dims()[0]) {
-    RETURN_ERR("aten::addmm does not broadcast mat1 or mat2");
+    return MAKE_ERR("aten::addmm does not broadcast mat1 or mat2");
   }
 
   auto matmul = F_.createMatMul("mm", mat1, mat2)->getResult();
@@ -4528,7 +4528,7 @@ Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
       isQuantizedElemKind(inputType->getElementType())) {
     // We currently dont support aten::to to quantized tensors
     // Unless input dtype == output dtype
-    RETURN_ERR("Detected quantized type for aten::to node.");
+    return MAKE_ERR("Detected quantized type for aten::to node.");
   }
   auto outType = F_.getParent()->uniqueType(glowElemKind, inputType->dims());
   glow::ConvertToNode *toNode = F_.createConvertTo("to", input, outType);
@@ -5487,7 +5487,7 @@ ValueMapping::ValueMapping(GlowIValue glowIValue) {
 
 Expected<NodeValue> ValueMapping::getMappedNodeValue() {
   if (mappingType_ == ValueMappingType::IValue) {
-    RETURN_ERR("ValueMapping doesn't contain a NodeValue");
+    return MAKE_ERR("ValueMapping doesn't contain a NodeValue");
   } else {
     return nodeValue_;
   }
@@ -5497,7 +5497,7 @@ Expected<GlowIValue *> ValueMapping::getMappedGlowIValue() {
   if (mappingType_ == ValueMappingType::IValue) {
     return glowIValue_.get();
   } else {
-    RETURN_ERR("ValueMapping doesn't contain a GlowIValue");
+    return MAKE_ERR("ValueMapping doesn't contain a GlowIValue");
   }
 }
 
@@ -5505,7 +5505,7 @@ Expected<const GlowIValue *> ValueMapping::getMappedGlowIValue() const {
   if (mappingType_ == ValueMappingType::IValue) {
     return glowIValue_.get();
   } else {
-    RETURN_ERR("ValueMapping doesn't contain a GlowIValue");
+    return MAKE_ERR("ValueMapping doesn't contain a GlowIValue");
   }
 }
 
