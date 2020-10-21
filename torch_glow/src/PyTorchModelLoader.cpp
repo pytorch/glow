@@ -2901,52 +2901,68 @@ Error PyTorchModelLoader::loadLSTM(const torch::jit::Node *ptNode) {
 
   RETURN_ERR_IF_NOT(train == false,
                     "Training is not supported for LSTM in Glow.");
-  // TODO Support bidirectional LSTM
-  RETURN_ERR_IF_NOT(bidirectional == false,
-                    "Bidirectional is not supported for LSTM in Glow.");
 
   RETURN_ERR_IF_NOT(batchFirst == false,
                     "batch_first is not supported for LSTM in Glow.");
 
-  // TODO We assert bidirectional == false and num_layer == 1,
-  // therefore h03D & c03D 's 1st dimension is always 1.
-  // Once bidirectional is supported, we need to modify here.
-  auto hn =
-      F_.createReshape("reshape_H0", h03D, {h03D.dims()[1], h03D.dims()[2]})
-          ->getResult();
-  auto cn =
-      F_.createReshape("reshape_C0", c03D, {c03D.dims()[1], c03D.dims()[2]})
-          ->getResult();
-
+  NodeValue hn, cn;
   std::vector<glow::NodeValue> *params;
 
   ASSIGN_VALUE_OR_RETURN_ERR(params, iValToNodeValueList(getGlowIValueForValue(
                                          inputs[LSTMInputs::params])));
 
-  glow::Constant *Wx = llvm::dyn_cast<glow::Constant>((*params)[0].getNode());
-  glow::Constant *Wh = llvm::dyn_cast<glow::Constant>((*params)[1].getNode());
-  glow::Constant *Bx, *Bh;
-  if (hasBiases) {
-    Bx = llvm::dyn_cast<glow::Constant>((*params)[2].getNode());
-    Bh = llvm::dyn_cast<glow::Constant>((*params)[3].getNode());
-  } else {
-    // We create zero bias tensor with same to input element kind.
-    auto inputElemKind = input.getType()->getElementType();
-    glow::Tensor BxT(inputElemKind, {4 * hiddenSize});
-    glow::Tensor BhT(inputElemKind, {4 * hiddenSize});
-    BxT.zero();
-    BhT.zero();
-    Bx = F_.getParent()->createConstant("Bx_Zero_Constant", std::move(BxT));
-    Bh = F_.getParent()->createConstant("Bh_Zero_Constant", std::move(BhT));
-  }
-  // W need to be transposed, in pt it is hiddenSize * inputSize,
-  // in glow it is inputSize * hiddenSize.
-  auto WxTransposed = F_.createTranspose("Wx_Transposed", Wx, {1, 0});
-  auto WhTransposed = F_.createTranspose("Wh_Transposed", Wh, {1, 0});
+  glow::dim_t paramsIdx = 0;
+  auto inputElemKind = input.getType()->getElementType();
+  auto getBias = [&](std::string constantName = "constant") {
+    glow::Constant *res;
+    if (hasBiases) {
+      res = llvm::dyn_cast<glow::Constant>((*params)[paramsIdx++].getNode());
+    } else {
+      glow::Tensor t(inputElemKind, {4 * hiddenSize});
+      t.zero();
+      res = F_.getParent()->createConstant(constantName, std::move(t));
+    }
+    return res;
+  };
+  glow::Constant *Wx =
+      llvm::dyn_cast<glow::Constant>((*params)[paramsIdx++].getNode());
+  glow::Constant *Wh =
+      llvm::dyn_cast<glow::Constant>((*params)[paramsIdx++].getNode());
+  glow::Constant *Bx = getBias("Bx_Constant"), *Bh = getBias("Bh_Constant");
 
   NodeValue output;
-  F_.createPyTorchLSTM("lstm", input, WxTransposed, WhTransposed, Bx, Bh, hn,
-                       cn, output, bidirectional);
+  // W need to be transposed, in pt it is hiddenSize * inputSize,
+  // in glow it is inputSize * hiddenSize.
+  auto WxTransposed =
+      F_.createTranspose("Wx_Transposed", Wx, {1, 0})->getResult();
+  auto WhTransposed =
+      F_.createTranspose("Wh_Transposed", Wh, {1, 0})->getResult();
+  if (bidirectional) {
+    hn = h03D;
+    cn = c03D;
+    glow::Constant *WxR =
+        llvm::dyn_cast<glow::Constant>((*params)[paramsIdx++].getNode());
+    glow::Constant *WhR =
+        llvm::dyn_cast<glow::Constant>((*params)[paramsIdx++].getNode());
+    glow::Constant *BxR = getBias("Bx_Reversed_Constant"),
+                   *BhR = getBias("Bh_Reversed_Constant");
+
+    // Same transpose for bidirectional LSTM's reversed weights
+    auto WxRTransposed =
+        F_.createTranspose("WxR_Transposed", WxR, {1, 0})->getResult();
+    auto WhRTransposed =
+        F_.createTranspose("WhR_Transposed", WhR, {1, 0})->getResult();
+    F_.createPyTorchLSTM("lstm", input, WxTransposed, WhTransposed, Bx, Bh, hn,
+                         cn, output, bidirectional, WxRTransposed,
+                         WhRTransposed, BxR, BhR);
+  } else {
+    hn = F_.createReshape("reshape_H0", h03D, {h03D.dims()[1], h03D.dims()[2]})
+             ->getResult();
+    cn = F_.createReshape("reshape_C0", c03D, {c03D.dims()[1], c03D.dims()[2]})
+             ->getResult();
+    F_.createPyTorchLSTM("lstm", input, WxTransposed, WhTransposed, Bx, Bh, hn,
+                         cn, output, bidirectional);
+  }
   RETURN_IF_ERR(addValueMapping(outputs[0], output));
   RETURN_IF_ERR(addValueMapping(outputs[1], hn));
   RETURN_IF_ERR(addValueMapping(outputs[2], cn));
