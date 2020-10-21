@@ -1029,6 +1029,41 @@ ShapeInferenceEngine::chunk(const MetaStack &variableMetas) {
 }
 
 /*
+ * quantized::unpacked_quantized_linear(Tensor a_quant, Tensor w_quant, Tensor "
+      "b, float r_scale, int r_zero_point) -> Tensor";
+
+Input: (N, *, in_features) where * means any number of
+additional dimensions
+Weight: (out_features, in_features)
+Bias: (out_features)
+Output: (N, *, out_features)
+
+ */
+Expected<TensorShape> ShapeInferenceEngine::glow_unpacked_quantized_linear(
+    const MetaStack &variableMetas) {
+  TensorShape output;
+  const TensorShape &inputShape = variableMetas[0].shape<TensorShape>();
+  const int64_t &weightShape = variableMetas[1].shape<TensorShape>()[0];
+  const int64_t &biasDimension = variableMetas[2].shape<TensorShape>()[0];
+
+  RETURN_ERR_IF_NOT(
+      weightShape == biasDimension,
+      "Expected biasDimension and weightShape's second element to be same");
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 5,
+      strFormat("Expected 5 inputs,got %zu", variableMetas.size()));
+
+  std::copy(inputShape.begin(), inputShape.end(), output.begin());
+  // Replace last element with biasDimension
+  if (output.size() > 0) {
+    output.back() = biasDimension;
+  }
+
+  return output;
+}
+
+/*
  * fb::embedding_bag_4bit_rowwise_offsets(Tensor weight,
  *                                        Tensor indices,
  *                                        Tensor offsets,

@@ -1,6 +1,4 @@
 # isort:skip_file
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 import os
 import sys
 
@@ -10,18 +8,16 @@ import torch
 GLOW_NODE_NAME = "glow::FusionGroup"
 SUBGRAPH_ATTR = "Subgraph"
 BACKEND_NAME_KEY = "BACKEND_NAME"
+INTERPRETER = "Interpreter"
 
 
 def get_backend_name():
-    if BACKEND_NAME_KEY in os.environ:
-        return os.environ[BACKEND_NAME_KEY]
-    else:
-        return "Interpreter"
+    return os.environ.get(BACKEND_NAME_KEY, INTERPRETER)
 
 
 def check_skip(case):
     backend = get_backend_name()
-    supported = {"Interpreter"}
+    supported = {INTERPRETER}
     try:
         supported = supported | case.supported_backends
     except AttributeError:
@@ -177,7 +173,7 @@ def traceVsGlow(
         if backend_name:
             torch_glow.setGlowBackend(backend_name)
         else:
-            torch_glow.setGlowBackend("Interpreter")
+            torch_glow.setGlowBackend(INTERPRETER)
 
         glow_trace = torch.jit.trace(f_glow, inputs, check_trace=check_trace)
         glow_res = glow_trace(*inputs)
@@ -199,7 +195,7 @@ def traceVsGlow(
         torch_glow.disable_convert_to_fp16()
         torch_glow.disable_convert_fused_to_fp16()
         torch_glow.disable_clip_fp16()
-        torch_glow.setGlowBackend("Interpreter")
+        torch_glow.setGlowBackend(INTERPRETER)
 
     checkExpectedOps(glow_graph, expected_fused_ops, accept_all_ops)
     checkResult(torch_res, glow_res, atol, rtol)
@@ -237,7 +233,7 @@ def scriptVsGlow(
         if backend_name:
             torch_glow.setGlowBackend(backend_name)
         else:
-            torch_glow.setGlowBackend("Interpreter")
+            torch_glow.setGlowBackend(INTERPRETER)
 
         glow_trace = torch.jit.script(f)
         glow_res = glow_trace(*inputs)
@@ -250,7 +246,7 @@ def scriptVsGlow(
         torch_glow.disable_convert_to_fp16()
         torch_glow.disable_convert_fused_to_fp16()
         torch_glow.disable_clip_fp16()
-        torch_glow.setGlowBackend("Interpreter")
+        torch_glow.setGlowBackend(INTERPRETER)
 
     checkExpectedOps(glow_graph, expected_fused_ops, accept_all_ops)
     checkResult(torch_res, glow_res, atol, rtol)
