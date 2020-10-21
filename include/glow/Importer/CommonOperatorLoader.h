@@ -1535,7 +1535,7 @@ protected:
       if (auto resOrErr = loadWeight(weightDescriptors[i])) {
         loadResult = std::move(*resOrErr);
       } else {
-        return resOrErr.takeError();
+        RETURN_ERR(resOrErr.takeError());
       }
 
       // If the weight is offline create a static placeholder, otherwise create

@@ -89,6 +89,16 @@
     }                                                                          \
   } while (0)
 
+/// Takes an Error, adds stack information to it, and returns it unconditionally
+#define RETURN_ERR(err)                                                        \
+  do {                                                                         \
+    auto errV = std::forward<glow::detail::GlowError>(err);                    \
+    static_assert(glow::detail::IsError<decltype(errV)>::value,                \
+                  "Expected value to be a Error");                             \
+    errV.addToStack(__FILE__, __LINE__);                                       \
+    return std::forward<Error>(errV);                                          \
+  } while (0)
+
 /// Takes an Error and returns it if it's not success.
 #define RETURN_IF_ERR(err)                                                     \
   do {                                                                         \
