@@ -270,16 +270,17 @@ onnxStatus HostManagerBackend::addNetwork(
   }
 
   auto err = hostManager_->addNetwork(std::move(module), cctx);
+  auto errorCode = ONNXIFI_STATUS_SUCCESS;
 
   if (err) {
     if (err.peekErrorValue() && err.peekErrorValue()->isFatalError()) {
-      return ONNXIFI_STATUS_FATAL_ERROR;
+      errorCode = ONNXIFI_STATUS_FATAL_ERROR;
     } else {
-      return ONNXIFI_STATUS_INTERNAL_ERROR;
+      errorCode = ONNXIFI_STATUS_INTERNAL_ERROR;
     }
+    LOG(ERROR) << ERR_TO_STRING(std::move(err));
   }
-
-  return ONNXIFI_STATUS_SUCCESS;
+  return errorCode;
 }
 
 onnxStatus HostManagerBackend::removeNetwork(const Graph *graph) {
