@@ -63,6 +63,11 @@ PYBIND11_MODULE(_torch_glow, m) {
     getGlobalPyTorchLoaderSettingsMutable().fusionPassEnabled = false;
   });
 
+  /// Get status of converting PyTorch subgraphs to Glow Functions.
+  m.def("getFusionPassEnabled", []() {
+    return getGlobalPyTorchLoaderSettingsMutable().fusionPassEnabled;
+  });
+
   /// Enable dumping Glow DAG to file after model loading finishes.
   m.def("enableDumpGlowDag",
         []() { getGlobalPyTorchLoaderSettingsMutable().dumpGlowDag = true; });
@@ -89,13 +94,21 @@ PYBIND11_MODULE(_torch_glow, m) {
     getGlobalPyTorchLoaderSettingsMutable().convertToFP16 = false;
   });
 
-  /// Enable converting fp32 ops to fp16.
+  /// Get status of converting fp32 ops to fp16.
+  m.def("get_convert_to_fp16",
+        []() { return getGlobalPyTorchLoaderSettingsMutable().convertToFP16; });
+
+  /// Enable clipping of fp16.
   m.def("enable_clip_fp16",
         []() { getGlobalPyTorchLoaderSettingsMutable().clipFP16 = true; });
 
-  /// Disable converting fp32 ops to fp16.
+  /// Disable clipping of fp16.
   m.def("disable_clip_fp16",
         []() { getGlobalPyTorchLoaderSettingsMutable().clipFP16 = false; });
+
+  /// Get status of clipping fp16.
+  m.def("get_clip_fp16",
+        []() { return getGlobalPyTorchLoaderSettingsMutable().clipFP16; });
 
   /// Enable converting fp32 fused ops to fp16.
   m.def("enable_convert_fused_to_fp16", []() {
@@ -105,6 +118,11 @@ PYBIND11_MODULE(_torch_glow, m) {
   /// Disable converting fp32 fused ops to fp16.
   m.def("disable_convert_fused_to_fp16", []() {
     getGlobalPyTorchLoaderSettingsMutable().convertFusedToFP16 = false;
+  });
+
+  /// Get status of converting fp32 fused ops to fp16.
+  m.def("get_convert_fused_to_fp16", []() {
+    return getGlobalPyTorchLoaderSettingsMutable().convertFusedToFP16;
   });
 
   /// Enable dumping the final Glow dag after compilation.
@@ -209,6 +227,15 @@ PYBIND11_MODULE(_torch_glow, m) {
     for (const auto &kind : blacklist) {
       bl.insert(torch::jit::Symbol::fromQualString(kind));
     }
+  });
+
+  /// Get the fusion blacklist.
+  m.def("getFusionBlacklist", []() {
+    auto &symbols = getGlobalPyTorchLoaderSettingsMutable().opBlacklist;
+    std::vector<std::string> strings;
+    std::transform(symbols.begin(), symbols.end(), std::back_inserter(strings),
+                   [](torch::jit::Symbol s) { return s.toQualString(); });
+    return strings;
   });
 
   /// Clear the fusion blacklist.

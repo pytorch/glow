@@ -1,5 +1,6 @@
 // Copyright 2004-present Facebook. All Rights Reserved.
 #include "TorchGlowBackend.h"
+#include "FuseKnownPatterns.h"
 #include "GlowCompileSpec.h"
 #include "GlowFuser.h"
 #include "Registration.h"
@@ -417,6 +418,7 @@ TorchGlowBackend::preprocess(c10::IValue mod,
     const auto &methodName = kv.key().toStringRef();
     auto method = m.get_method(methodName);
     auto graph = method.graph();
+    detail::fuseConcat(graph);
     torch::jit::Inline(*graph);
     RewriteQuantPackedParamOps(graph);
     glow::Error err = ProcessPackedParams(*graph, m._ivalue());

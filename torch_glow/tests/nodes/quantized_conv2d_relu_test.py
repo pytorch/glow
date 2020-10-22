@@ -4,7 +4,7 @@ import unittest
 from collections import OrderedDict
 
 import torch
-from tests.utils import jitVsGlow
+from tests import utils
 
 
 class TestQuantizedConv2dRelu(unittest.TestCase):
@@ -49,14 +49,15 @@ class TestQuantizedConv2dRelu(unittest.TestCase):
             torch.quantization.prepare(model, inplace=True)
             torch.quantization.convert(model, inplace=True)
 
-            jitVsGlow(
+            utils.compare_tracing_methods(
                 model,
                 x,
-                expected_fused_ops={
+                fusible_ops={
                     "aten::quantize_per_tensor",
                     "quantized::conv2d_relu",
                     "aten::dequantize",
                 },
+                skip_to_glow=True,
             )
 
     def test_quantized_conv2d_relu_packed_groupwise(self):
@@ -105,9 +106,10 @@ class TestQuantizedConv2dRelu(unittest.TestCase):
             torch.quantization.prepare(model, inplace=True)
             torch.quantization.convert(model, inplace=True)
 
-            jitVsGlow(
+            utils.compare_tracing_methods(
                 model,
                 x,
-                expected_fused_ops={"quantized::conv2d_relu"},
-                black_list=["aten::quantize_per_tensor", "aten::dequantize"],
+                fusible_ops={"quantized::conv2d_relu"},
+                fusion_blocklist=["aten::quantize_per_tensor", "aten::dequantize"],
+                skip_to_glow=True,
             )

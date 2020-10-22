@@ -4,7 +4,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import torch_glow
 import torch
 
-from tests.utils import GLOW_NODE_NAME, SUBGRAPH_ATTR
+from tests.utils import GLOW_FUSION_GROUP
 import unittest
 
 
@@ -40,7 +40,7 @@ class TestMinGraphSize(unittest.TestCase):
 
         fusion_nodes = 0
         for node in jit_f_graph.nodes():
-            if node.kind() == GLOW_NODE_NAME:
+            if node.kind() == GLOW_FUSION_GROUP:
                 fusion_nodes += 1
 
         assert fusion_nodes == 2, "Expected smallest fusion group to not be created"
