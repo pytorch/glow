@@ -3586,6 +3586,14 @@ static bool disallowQuantParamChange(const NodeValue &NV) {
 /// When quantized operators and Clips are used together, we can often merge the
 /// Clip range and the Quantized range and remove the Clip.
 bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  // All of the optimizations here depend on the quantization parameters. If
+  // we've loaded dummy qparams then none should be performed.
+  if (cctx.precisionConfig.loadUniquedDummyQParams) {
+    return false;
+  }
+
   bool changed = false;
 
   // Change a quantized result type qResult to account for the range from clip.
@@ -3623,10 +3631,6 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
     return true;
   };
 
-  const bool disallowNewQuantParams =
-      cctx.optimizationOpts.enableQuantParamChanges &&
-      !cctx.precisionConfig.loadUniquedDummyQParams;
-
   for (Node &node : F->getNodes()) {
     // Clip(Dequantize(Node)) -> Dequantize(Node)
     if (ClipNode *clip = dyn_cast<ClipNode>(&node)) {
@@ -3642,8 +3646,9 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
           DQN->getNumUsers() != 1 || qResult.getNode()->getNumUsers() != 1;
 
       // Try to update the quantize's type, otherwise skip this one.
-      if (!updateQuantizeNodeType(F, qResult, clip, skipIfQuantParamChange,
-                                  disallowNewQuantParams)) {
+      if (!updateQuantizeNodeType(
+              F, qResult, clip, skipIfQuantParamChange,
+              cctx.optimizationOpts.enableQuantParamChanges)) {
         continue;
       }
 
@@ -3666,9 +3671,9 @@ bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
       const bool skipIfQuantParamChange = isUsedByNodeWithSideEffects(QN);
 
       // Try to update the quantize's type, otherwise skip this one.
-      if (!updateQuantizeNodeType(F, QN->getResult(), clip,
-                                  skipIfQuantParamChange,
-                                  disallowNewQuantParams)) {
+      if (!updateQuantizeNodeType(
+              F, QN->getResult(), clip, skipIfQuantParamChange,
+              cctx.optimizationOpts.enableQuantParamChanges)) {
         continue;
       }
 
@@ -4349,7 +4354,10 @@ bool OptimizeQuantization::run(Function *F, const CompilationContext &cctx) {
     } // Handle RescaleQuantizedNode
   }   // For each item in the worklist.
 
-  changed |= optimizeQuantizedMaxSplat(F);
+  // This pass is based on real qparams, so skip this opt if using dummies.
+  if (!cctx.precisionConfig.loadUniquedDummyQParams) {
+    changed |= optimizeQuantizedMaxSplat(F);
+  }
 
   // If nothing has changed then sink rescale quantization nodes.
   if (!changed) {
@@ -4967,7 +4975,7 @@ template <class T> bool fuseActivation(T *N, Function *F, const Backend *B) {
   return true;
 }
 
-static bool foldActivations(Function *F, CompilationContext &cctx,
+static bool foldActivations(Function *F, const CompilationContext &cctx,
                             const Backend *B) {
   bool changed = false;
   for (auto &node : F->getNodes()) {
@@ -4979,7 +4987,7 @@ static bool foldActivations(Function *F, CompilationContext &cctx,
   return changed;
 }
 
-void glow::fold(Function *F, CompilationContext &cctx, const Backend *B) {
+void glow::fold(Function *F, const CompilationContext &cctx, const Backend *B) {
   LOG_SCOPE(F->getLogContext(), "glow::fold")
 
   FunctionPassManager FPM("FoldFPM", createDefaultFoldPassPipeline());
@@ -4988,7 +4996,8 @@ void glow::fold(Function *F, CompilationContext &cctx, const Backend *B) {
   foldActivations(F, cctx, B);
 }
 
-void glow::optimize(Function *F, CompilationContext &cctx, const Backend &B) {
+void glow::optimize(Function *F, const CompilationContext &cctx,
+                    const Backend &B) {
   LOG_SCOPE(F->getLogContext(), "glow::optimize")
 
   FunctionPassManager FPM("TargetDependentGraphOptzFPM",
@@ -4996,7 +5005,7 @@ void glow::optimize(Function *F, CompilationContext &cctx, const Backend &B) {
   FPM.run(F, cctx);
 }
 
-void glow::optimize(Function *F, CompilationContext &cctx) {
+void glow::optimize(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), "glow::optimize")
 
   // Indicates if the given function is completely loaded. A temporary

@@ -55,12 +55,12 @@ static bool functionContainsNode(const Function *F, const Node *N) {
 /// \p pass is empty then the whole default optimization pipeline is run.
 /// Otherwise only \p pipeline is used.
 static Function *
-optimizeFunction(Function *F,
-                 std::initializer_list<FunctionPassConfig> configs = {},
-                 const CompilationContext cctx = CompilationContext()) {
+optimizeFunctionForTest(Function *F,
+                        std::initializer_list<FunctionPassConfig> configs = {},
+                        const CompilationContext &cctx = CompilationContext()) {
   auto *G = F->clone(F->getName().str() + "_optimized");
   if (configs.size() == 0) {
-    ::glow::optimize(G, CompilationMode::Infer);
+    ::glow::optimize(G, cctx);
     return G;
   }
   FunctionPassManager FPM("TestFPM", configs);
@@ -92,7 +92,7 @@ TEST_F(GraphOptz, OptimizeClipFunnel) {
 
   EXPECT_EQ(F_->getNodes().size(), 11);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
   EXPECT_EQ(optimizedF_->getNodes().size(), 2);
 
   // Find clip node in the optimized graph.
@@ -193,7 +193,7 @@ TEST_F(GraphOptz, SkipReshapeSinkBatchNorm) {
       F_->createBatchNormalization(bindings_, "batch", RS, 1, 0.0001, 0.9);
   F_->createSave("ret", BN);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
   EXPECT_EQ(F_->toString(/* skipUsersForStorage */ false, /* skipName */ true),
             optimizedF_->toString(/* skipUsersForStorage */ false,
                                   /* skipName */ true));
@@ -212,7 +212,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvAndReshapeNHWC) {
 
   EXPECT_EQ(F_->getNodes().size(), 4);
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
   EXPECT_EQ(optimizedF_->getNodes().size(), 3);
 
   ASSERT_EQ(A->getNumUsers(), 2);
@@ -242,7 +242,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvAndReshapeNHWC2) {
 
   EXPECT_EQ(F_->getNodes().size(), 4);
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
   EXPECT_EQ(optimizedF_->getNodes().size(), 3);
 
   ASSERT_EQ(A->getNumUsers(), 2);
@@ -273,7 +273,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvAndReshapeNHWCneg) {
 
   EXPECT_EQ(F_->getNodes().size(), 4);
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
   EXPECT_EQ(optimizedF_->getNodes().size(), 4);
 
   ASSERT_EQ(A->getNumUsers(), 2);
@@ -312,7 +312,7 @@ TEST_F(GraphOptz, sinkReshapeBelowBatchNormAndDoNotFuseConvBatchNorm) {
 
   EXPECT_EQ(F_->getNodes().size(), 4);
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
   EXPECT_EQ(optimizedF_->getNodes().size(), 4);
 
   ASSERT_EQ(A->getNumUsers(), 2);
@@ -342,7 +342,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConv) {
 
   EXPECT_EQ(F_->getNodes().size(), 3);
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
   EXPECT_EQ(optimizedF_->getNodes().size(), 2);
 
   ASSERT_EQ(A->getNumUsers(), 2);
@@ -382,7 +382,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvMultiple) {
   // Conv's Filter and Bias, plus BN's Scale, Bias, Mean, and Var.
   EXPECT_EQ(mod_.getConstants().size(), 6);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   // BatchNorm should have been merged into the Conv.
   EXPECT_EQ(optimizedF_->getNodes().size(), 4);
@@ -419,7 +419,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvFP16) {
   EXPECT_EQ(F_->getNodes().size(), 3);
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   EXPECT_EQ(optimizedF_->getNodes().size(), 2);
 
@@ -467,7 +467,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithTransposedWeights) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchNormalizationNodeKind), 1);
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {input});
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   EXPECT_EQ(optimizedF_->getNodes().size(), 2);
   EXPECT_EQ(
@@ -503,7 +503,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvWithReshapeConst) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchNormalizationNodeKind), 1);
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {input});
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   EXPECT_EQ(optimizedF_->getNodes().size(), 2);
   EXPECT_EQ(
@@ -595,7 +595,7 @@ TEST_F(GraphOptz, MergeBatchNormalizationWithArithmeticChainTest) {
   // Compile.
   EXPECT_EQ(F_->getNodes().size(), 6);
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {input});
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
   EXPECT_EQ(optimizedF_->getNodes().size(), 2);
 
   Constant *cs, *cb;
@@ -672,7 +672,7 @@ TEST_F(GraphOptz, FoldArithmeticChainAfterConvIntoBatchNorm) {
   // Compile.
   EXPECT_EQ(F_->getNodes().size(), 6);
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
   EXPECT_EQ(optimizedF_->getNodes().size(), 3);
 
   auto *opt_res = findFunctionNodeByName<SaveNode>(optimizedF_, res->getName());
@@ -732,7 +732,7 @@ TEST_F(GraphOptz, cseRespectsPredicates) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SaveNodeKind), 2);
 
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   // Two RELUS and two Saves should still be there.
   EXPECT_EQ(F_->getNodes().size(), 4);
@@ -754,7 +754,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButConvReused) {
   F_->createSave("convSave", CV);
 
   EXPECT_EQ(F_->getNodes().size(), 4);
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
   // Make sure the structure of the graph did not change, since the convolution
   // node is used more than once.
   EXPECT_EQ(optimizedF_->getNodes().size(), 4);
@@ -793,7 +793,7 @@ TEST_F(GraphOptz, optimizeBatchNormAfterConvButVarReused) {
   auto *filterSaveNode = F_->createSave("filter", CV->getFilter());
 
   EXPECT_EQ(F_->getNodes().size(), 4);
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
   ASSERT_EQ(A->getNumUsers(), 2);
 
   auto *optimizedF_ret =
@@ -1017,7 +1017,7 @@ TEST_P(GraphOptzSinkTransposeBelowParametrized,
   EXPECT_EQ(F_->getNodes().size(), 3);
   EXPECT_EQ(IN.dims(), llvm::makeArrayRef(transposedDims));
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
   O = llvm::dyn_cast<SaveNode>(std::find_if(
       optimizedF_->getNodes().begin(), optimizedF_->getNodes().end(),
       [](const auto &N) { return N.getKind() == Kinded::Kind::SaveNodeKind; }));
@@ -1111,7 +1111,7 @@ TEST_F(GraphOptz, SinkTransposeBelowDequantize) {
   auto *deq = F_->createDequantize("dequantize", transpose, ElemKind::FloatTy);
   SaveNode *O = F_->createSave("out", deq);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   EXPECT_EQ(F_->getNodes().size(), 5);
   EXPECT_EQ(optimizedF_->getNodes().size(), 5);
@@ -1134,7 +1134,7 @@ TEST_F(GraphOptz, SinkTransposeBelowPRelu) {
   auto *transpose = F_->createTranspose("transpose", prelu, NHWC2NCHW);
   SaveNode *O = F_->createSave("out", transpose);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   EXPECT_EQ(F_->getNodes().size(), 3);
   EXPECT_EQ(optimizedF_->getNodes().size(), 3);
@@ -1200,7 +1200,7 @@ TEST_F(GraphOptz, cancelTwoTransposes) {
   EXPECT_EQ(K->getInput().dims(), llvm::makeArrayRef(origDims));
   EXPECT_EQ(F_->getNodes().size(), 4);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   EXPECT_EQ(optimizedF_->getNodes().size(), 2);
 
@@ -1332,7 +1332,7 @@ TEST_F(GraphOptz, mergeNonInverseTransposes) {
 
   EXPECT_EQ(F_->getNodes().size(), 5);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
   // Find save node in the optimized graph.
   for (auto &N : optimizedF_->getNodes()) {
     if (N.getKind() == Kinded::Kind::SaveNodeKind) {
@@ -1414,7 +1414,7 @@ TEST_F(GraphOptz, sinkTransposeBelowArithmeticNodesWithConstantOperand) {
 
   EXPECT_EQ(F_->getNodes().size(), 6);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   // Find the SaveNodes of the optimized graph.
   for (auto &N : optimizedF_->getNodes()) {
@@ -1906,7 +1906,7 @@ TEST_F(GraphOptz, ZeroArithmetic) {
 
   EXPECT_EQ(O->getInput().getNode(), input);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   bindings_.allocate(mod_.getPlaceholders());
   bindings_.get(input)->getHandle().randomize(-1.0, 1.0, mod_.getPRNG());
@@ -1930,7 +1930,7 @@ TEST_F(GraphOptz, ZeroArithmeticMultiResNode) {
   // There should be 6 nodes: 2 Saves, Add, Sub, Splat and TopK.
   EXPECT_EQ(F_->getNodes().size(), 6);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   // Now there should only be 3 nodes: TopK and 2 Saves.
   EXPECT_EQ(optimizedF_->getNodes().size(), 3);
@@ -1997,7 +1997,7 @@ TEST_F(GraphOptz, ArithmeticIdentitiesOne) {
   // Splat, Div, Mul, Save.
   EXPECT_EQ(F_->getNodes().size(), 4);
   // Save optimized function for future comparision
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   // The expression evaluates to "I", so Save is only node left.
   EXPECT_EQ(optimizedF_->getNodes().size(), 1);
@@ -3090,7 +3090,7 @@ TEST_F(GraphOptz, eliminateNoop) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::AvgPoolNodeKind), 1);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MaxPoolNodeKind), 1);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   // Check that all nodes except for Save are eliminated.
   EXPECT_EQ(optimizedF_->getNodes().size(), 1);
@@ -3185,7 +3185,7 @@ static void testConcatElim(Module &mod, Function *F, Function *&optimizedF,
 
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 10);
 
-  optimizedF = optimizeFunction(F);
+  optimizedF = optimizeFunctionForTest(F);
 
   // Check that either the concat and slices are gone if the optimization was
   // applicable, or otherwise that they're still there.
@@ -3253,7 +3253,7 @@ TEST_F(GraphOptz, concatArithElim) {
   auto *cc = F_->createConcat("merge", inputs, 0);
   F_->createSave("save", cc);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 10);
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   // Check that the concat node is gone.
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 0);
@@ -3292,7 +3292,7 @@ static void testConcatSliceElim(Module &mod, Function *F, Function *&optimizedF,
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), N);
   EXPECT_EQ(countNodeKind(F, Kinded::Kind::ConcatNodeKind), 1);
 
-  optimizedF = optimizeFunction(F);
+  optimizedF = optimizeFunctionForTest(F);
 
   // Check that the concat and slices are gone.
   EXPECT_EQ(countNodeKind(optimizedF, Kinded::Kind::ConcatNodeKind), 0);
@@ -3340,7 +3340,7 @@ TEST_F(GraphOptz, concatSliceElimMultiConcat) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 2);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 4);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   // Check that one concat and slices are gone.
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
@@ -3934,7 +3934,7 @@ TEST_F(GraphOptz, sinkBatchNormBelowSlice) {
 
   EXPECT_EQ(F_->getNodes().size(), 4);
   ::glow::convertPlaceholdersToConstants(F_, bindings_, {});
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
   EXPECT_EQ(optimizedF_->getNodes().size(), 4);
 
   // BatchNorm should have sunk below the first Slice, but not the second one,
@@ -4055,7 +4055,7 @@ TEST_F(GraphOptz, nopRelu) {
   auto *relu = F_->createRELU("relu", in);
   F_->createSave("save", relu);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   EXPECT_EQ(optimizedF_->getNodes().size(), 1);
 
@@ -4853,7 +4853,7 @@ TEST_F(GraphOptz, SinkClipBelowReshape) {
   ReshapeNode *reshape = F_->createReshape("reshape", clip, {2, 5});
   SaveNode *save = F_->createSave("save", reshape);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   // Same number of nodes, just swapped order.
   EXPECT_EQ(F_->getNodes().size(), 3);
@@ -4925,7 +4925,7 @@ static void foldConvTransposeAddIntoBiasAdd(PlaceholderBindings &bindings,
   bindings.allocate(save->getPlaceholder());
 
   EXPECT_EQ(F->getNodes().size(), 3);
-  optF = optimizeFunction(F);
+  optF = optimizeFunctionForTest(F);
   EXPECT_EQ(optF->getNodes().size(), 2);
 
   const SaveNode *optSave =
@@ -5027,7 +5027,7 @@ TEST_F(GraphOptz, FoldSlicesIntoConstantsTest) {
   SaveNode *SN1 = F_->createSave("save1", S1);
   SaveNode *SN2 = F_->createSave("save2", S2);
 
-  optimizedF_ = optimizeFunction(
+  optimizedF_ = optimizeFunctionForTest(
       F_, {FunctionPassID::FoldSlicesIntoConstants, getDCEPassConfig()});
 
   SaveNode *optSN1 =
@@ -5065,7 +5065,7 @@ TEST_F(GraphOptz, RaiseClipsAboveShapeNodesTest) {
   SaveNode *save2 = F_->createSave("save2", CN);
 
   optimizedF_ =
-      optimizeFunction(F_, {FunctionPassID::RaiseClipsAboveShapeNodes});
+      optimizeFunctionForTest(F_, {FunctionPassID::RaiseClipsAboveShapeNodes});
 
   SaveNode *optSave1 =
       llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(save1->getName()));
@@ -5120,7 +5120,7 @@ static void testOptimizeDequantizeClip(PlaceholderBindings &bindings,
 
   CompilationContext cctx;
   cctx.optimizationOpts.enableQuantParamChanges = true;
-  optF = optimizeFunction(
+  optF = optimizeFunctionForTest(
       F, {FunctionPassID::OptimizeQuantizeClip, getDCEPassConfig()}, cctx);
 
   EXPECT_EQ(countNodeKind(optF, Kinded::Kind::ClipNodeKind), 0);
@@ -5178,7 +5178,7 @@ static void testOptimizeClipQuantize(PlaceholderBindings &bindings, Module &mod,
 
   CompilationContext cctx;
   cctx.optimizationOpts.enableQuantParamChanges = enableQuantParamChanges;
-  optF = optimizeFunction(
+  optF = optimizeFunctionForTest(
       F, {FunctionPassID::OptimizeQuantizeClip, getDCEPassConfig()}, cctx);
 
   EXPECT_EQ(countNodeKind(optF, Kinded::Kind::ClipNodeKind), 0);
@@ -5233,9 +5233,9 @@ TEST_F(GraphOptz, OptimizeOutIntermediateConversionsTest) {
       F_->createDequantize("dequantize", QN, ElemKind::FloatTy);
   F_->createSave("save", DN);
 
-  optimizedF_ =
-      optimizeFunction(F_, {FunctionPassID::OptimizeOutIntermediateConversions,
-                            getDCEPassConfig()});
+  optimizedF_ = optimizeFunctionForTest(
+      F_,
+      {FunctionPassID::OptimizeOutIntermediateConversions, getDCEPassConfig()});
 
   // Now check that the ConvertToNode has been eliminated.
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConvertToNodeKind), 0);
@@ -5259,7 +5259,7 @@ TEST_F(GraphOptz, ClipReluClipElimTest) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 2);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 1);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   // Remove one of the clips and the relu.
   EXPECT_EQ(optimizedF_->getNodes().size(), 2);
@@ -5293,7 +5293,7 @@ TEST_F(GraphOptz, OptimizeQuantFCFloatReluTest) {
   auto *RN = F_->createRELU("relu", DN);
   auto *SN = F_->createSave("save", RN);
 
-  optimizedF_ = optimizeFunction(
+  optimizedF_ = optimizeFunctionForTest(
       F_, {FunctionPassID::OptimizeQuantFCFloatRelu, getDCEPassConfig()});
 
   SaveNode *optSN =
@@ -5347,7 +5347,7 @@ TEST_F(GraphOptz, OptimizeConcatQuantFCFloatReluTest) {
   auto *RN = F_->createRELU("relu", CN);
   auto *SN = F_->createSave("save", RN);
 
-  optimizedF_ = optimizeFunction(
+  optimizedF_ = optimizeFunctionForTest(
       F_, {FunctionPassID::OptimizeQuantFCFloatRelu, getDCEPassConfig()});
 
   SaveNode *optSN =
@@ -5398,7 +5398,7 @@ TEST_F(GraphOptz, OptimizeDequantConcatQuant) {
                                                 offset));
   auto *SN = F_->createSave("save", RN);
 
-  optimizedF_ = optimizeFunction(
+  optimizedF_ = optimizeFunctionForTest(
       F_, {FunctionPassID::OptimizeConcatQuantization, getDCEPassConfig()});
 
   SaveNode *optSN =
@@ -5443,7 +5443,7 @@ TEST_F(GraphOptz, SinkDequantizeBelowConcatTest) {
   ConcatNode *concat = F_->createConcat("concat", inputs, 0);
   SaveNode *SN = F_->createSave("ret", concat);
 
-  optimizedF_ = optimizeFunction(
+  optimizedF_ = optimizeFunctionForTest(
       F_, {FunctionPassID::SinkConversions, getDCEPassConfig()});
 
   // Concat, dequantize, save.
@@ -5486,7 +5486,7 @@ TEST_F(GraphOptz, SinkQuantizeBelowConcatTest) {
   ConcatNode *concat = F_->createConcat("concat", inputs, 0);
   SaveNode *SN = F_->createSave("ret", concat);
 
-  optimizedF_ = optimizeFunction(
+  optimizedF_ = optimizeFunctionForTest(
       F_, {FunctionPassID::SinkConversions, getDCEPassConfig()});
 
   // Concat, quantize, save.
@@ -5522,7 +5522,7 @@ TEST_F(GraphOptz, ClipReluTest) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ClipNodeKind), 1);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ReluNodeKind), 1);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   // Removed the relu
   EXPECT_EQ(optimizedF_->getNodes().size(), 2);
@@ -5581,10 +5581,11 @@ TEST_F(GraphOptz, SinkConcatBelowQuantize) {
   QuantizeNode *QN = F_->createQuantize("quantize", concat, QTy);
   SaveNode *SN = F_->createSave("ret", QN);
 
-  optimizedF_ = optimizeFunction(F_, {FunctionPassID::SinkConcatBelowQuantize,
-                                      {FunctionPassID::OptimizeQuantization,
-                                       ConvergenceMode::UntilFixedPoint},
-                                      getDCEPassConfig()});
+  optimizedF_ = optimizeFunctionForTest(
+      F_,
+      {FunctionPassID::SinkConcatBelowQuantize,
+       {FunctionPassID::OptimizeQuantization, ConvergenceMode::UntilFixedPoint},
+       getDCEPassConfig()});
 
   EXPECT_EQ(optimizedF_->getNodes().size(), 4);
   EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::ConcatNodeKind), 1);
@@ -5658,7 +5659,7 @@ TEST_F(GraphOptz, EliminateSliceConcatTest) {
 
   EXPECT_EQ(F_->getNodes().size(), 11);
 
-  optimizedF_ = optimizeFunction(
+  optimizedF_ = optimizeFunctionForTest(
       F_, {FunctionPassID::EliminateSliceConcat, getDCEPassConfig()});
 
   EXPECT_EQ(optimizedF_->getNodes().size(), 10);
@@ -5709,7 +5710,7 @@ TEST_F(GraphOptz, EliminateSliceConcatWithReshapeTest) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 7);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 2);
 
-  optimizedF_ = optimizeFunction(
+  optimizedF_ = optimizeFunctionForTest(
       F_, {FunctionPassID::EliminateSliceConcat, getDCEPassConfig()});
 
   EXPECT_EQ(optimizedF_->getNodes().size(), 9);
@@ -5739,7 +5740,7 @@ TEST_F(GraphOptz, EliminateSliceConcatWithReshapeTestNoChange) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 3);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::ConcatNodeKind), 1);
 
-  optimizedF_ = optimizeFunction(
+  optimizedF_ = optimizeFunctionForTest(
       F_, {FunctionPassID::EliminateSliceConcat, getDCEPassConfig()});
 
   EXPECT_EQ(optimizedF_->getNodes().size(), 5);
@@ -5778,7 +5779,7 @@ TEST_F(GraphOptz, constantFoldPreventedNoop) {
   // Check that both Constants are protected and no change is made to the
   // Function during optimization.
   EXPECT_EQ(constModPreventer.getMapping().size(), 2);
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
   EXPECT_EQ(F_->toString(/* skipUsersForStorage */ false,
                          /* skipName */ true),
             optimizedF_->toString(/* skipUsersForStorage */ false,
@@ -5788,7 +5789,7 @@ TEST_F(GraphOptz, constantFoldPreventedNoop) {
   constModPreventer.deactivateAndCleanup();
   EXPECT_TRUE(cctx_.optimizationOpts.enableConstantFolding);
   mod_.eraseFunction(optimizedF_);
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   // After constant folding, left with just two Saves, one Add.
   EXPECT_EQ(optimizedF_->getNodes().size(), 3);
@@ -5895,7 +5896,7 @@ TEST_F(GraphOptz, foldMulAddIntoLayerNorm) {
       F_->createNodeWithBroadcast<AddNode>("add", /* axis */ -1, MN, addC);
   F_->createSave("save", AN);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   // Because Mul and Add are folded in, they should not exist anymore, nor
   // should tiles that expand them to match the output of LN.
@@ -5932,7 +5933,7 @@ TEST_F(GraphOptz, foldMulAddIntoLayerNormNoBatch) {
       F_->createNodeWithBroadcast<AddNode>("add", /* axis */ -1, MN, addC);
   F_->createSave("save", AN);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   // Because Mul and Add are folded in, they should not exist anymore, nor
   // should tiles that expand them to match the output of LN.
@@ -5998,8 +5999,8 @@ TEST_F(GraphOptz, DequantSwishQuantOpt) {
       F_->createDequantize("deq_final", QN, ElemKind::Float16Ty);
   F_->createSave("ret", finalDN);
 
-  optimizedF_ =
-      optimizeFunction(F_, {FunctionPassID::QuantizeSwish, getDCEPassConfig()});
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::QuantizeSwish, getDCEPassConfig()});
 
   // Swish, Dequant, Save
   EXPECT_EQ(optimizedF_->getNodes().size(), 3);
@@ -6048,7 +6049,7 @@ TEST_F(GraphOptz, DisallowChangeQuantParamWithConcatInput) {
   ConcatNode *CN = F_->createConcat("concat", {PH1, quant}, 0);
   F_->createSave("save", CN);
 
-  optimizedF_ = optimizeFunction(F_);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   // Expect the graph didn't change at all, since we disallowed it due to the
   // fact that we disallowed Quantize(Clip) to be merged into Quantize', ssince
@@ -6085,4 +6086,21 @@ TEST_F(GraphOptz, lower1x1AdaptiveAvgPoolToAvgPool) {
 
   // Now compile/run/compare F_ and optimizedF_.
   checkNumericalEquivalence(1e-6);
+}
+
+/// Skip Reshape sinking below BatchNorm when inapplicable.
+TEST_F(GraphOptz, SkipDummyQParamOpts) {
+  Placeholder *A = mod_.createPlaceholder(ElemKind::FloatTy, {5}, "A", false);
+  ClipNode *CN = F_->createClip("clip", A, -1000.f, 1000.f);
+  QuantizeNode *QN = F_->createQuantize(
+      "quantize", CN, mod_.uniqueType(ElemKind::Int8QTy, {5}, 0.3, 5));
+  F_->createSave("ret", QN);
+
+  CompilationContext cctx;
+  cctx.precisionConfig.loadUniquedDummyQParams = true;
+
+  optimizedF_ = optimizeFunctionForTest(F_, {}, cctx);
+  EXPECT_EQ(F_->toString(/* skipUsersForStorage */ false, /* skipName */ true),
+            optimizedF_->toString(/* skipUsersForStorage */ false,
+                                  /* skipName */ true));
 }
