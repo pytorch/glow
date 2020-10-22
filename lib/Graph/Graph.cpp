@@ -3509,21 +3509,49 @@ LSTMUnitNode *Function::createLSTMUnit(llvm::StringRef namePrefix,
   return addNode(new LSTMUnitNode(namePrefix, Input, C));
 }
 
-void Function::createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue input,
-                                 NodeValue Wx, NodeValue Wh, NodeValue Bx,
-                                 NodeValue Bh, NodeValue &Ht, NodeValue &Ct,
-                                 NodeValue &output, bool isBidirectional) {
-  std::string nameBase = namePrefix;
-  assert(isBidirectional == false && "bidirectional is not supported yet");
-  assert(input.dims().back() > 0 && "input dimensionality is zero");
+template <class T>
+std::vector<NodeValue> Function::createSingleDirectionLSTM(
+    std::string nameBase, T inputItr, const int timeSteps, NodeValue Wx,
+    NodeValue Wh, NodeValue Bx, NodeValue Bh, NodeValue &H, NodeValue &C) {
 
+  std::vector<NodeValue> Hs;
   auto name = [&nameBase](const char *s, int t) {
     return strFormat("%s.%s_%d", nameBase.c_str(), s, t);
   };
+  for (unsigned t = 0; t < timeSteps; t++, inputItr++) {
+
+    auto *result = createAdd(
+        name("add", t), createFullyConnected(name("fc_1", t), H, Wh, Bh),
+        createFullyConnected(name("fc_2", t), *inputItr, Wx, Bx));
+
+    auto lstmUnitNode =
+        addNode(new LSTMUnitNode(name("lstm_unit", t), result, C));
+    H = lstmUnitNode->getNthResult(0);
+    C = lstmUnitNode->getNthResult(1);
+
+    Hs.push_back(
+        createReshape(name("H_reshape", t), H, {1, H.dims()[0], H.dims()[1]})
+            ->getResult());
+  }
+  return Hs;
+}
+
+void Function::createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue input,
+                                 NodeValue Wx, NodeValue Wh, NodeValue Bx,
+                                 NodeValue Bh, NodeValue &Ht, NodeValue &Ct,
+                                 NodeValue &output, bool isBidirectional,
+                                 NodeValue WxR, NodeValue WhR, NodeValue BxR,
+                                 NodeValue BhR) {
+  std::string nameBase = namePrefix;
+  assert(input.dims().back() > 0 && "input dimensionality is zero");
+  assert((!isBidirectional || WxR != nullptr) &&
+         "Bidirectional LSTM must provide reverse weights & biases");
+
   std::vector<NodeValue> inputs, outputs;
-  unsigned batchSize, inputSize, timeSteps;
+  unsigned batchSize, inputSize, timeSteps, hiddenSize;
   batchSize = input.dims()[1];
   inputSize = input.dims()[2];
+  hiddenSize = Wh.dims()[0];
   timeSteps = input.dims()[0];
   // Input gate:
   //    I <- sigmoid(Wxi * x + Bxi + Whi * h + Bhi)
@@ -3538,28 +3566,79 @@ void Function::createPyTorchLSTM(llvm::StringRef namePrefix, NodeValue input,
   // Hidden state:
   //    h <- O . tanh(C)
 
-  std::vector<Node *> outputNodes;
+  auto name = [&nameBase](const char *s, int t) {
+    return strFormat("%s.%s_%d", nameBase.c_str(), s, t);
+  };
   for (unsigned t = 0; t < timeSteps; t++) {
     auto inputSliced = createSlice(name("slice", t), input, {t, 0, 0},
                                    {t + 1, batchSize, inputSize})
                            ->getResult();
     inputSliced =
-        createReshape(name("reshape", t), inputSliced, {batchSize, inputSize});
-    auto *Result = createAdd(
-        name("add1", t), createFullyConnected(name("fc1", t), Ht, Wh, Bh),
-        createFullyConnected(name("fc2", t), inputSliced, Wx, Bx));
-
-    auto lstmUnitNode =
-        addNode(new LSTMUnitNode(name("lstm_unit", t), Result, Ct));
-    Ht = lstmUnitNode->getNthResult(0);
-    Ct = lstmUnitNode->getNthResult(1);
-
-    auto reshaped =
-        createReshape("output_reshape", Ht, {1, Ht.dims()[0], Ht.dims()[1]})
+        createReshape(name("reshape", t), inputSliced, {batchSize, inputSize})
             ->getResult();
-    outputs.push_back(reshaped);
+    inputs.push_back(inputSliced);
   }
-  output = createConcat("output_cat", outputs, 0)->getResult();
+  if (isBidirectional) {
+    // For bidirectional LSTM, we split H and C to two part, each direction a
+    // part. For each part we calculate them separately.
+    NodeValue Hforward, Hbackward, Cforward, Cbackward;
+    Hforward = createReshape("reshape_hforward",
+                             createSlice("slice_hforward", Ht, {0, 0, 0},
+                                         {1, batchSize, hiddenSize}),
+                             {batchSize, hiddenSize})
+                   ->getResult();
+    Hbackward = createReshape("reshape_hbackward",
+                              createSlice("slice_hbackward", Ht, {1, 0, 0},
+                                          {2, batchSize, hiddenSize}),
+                              {batchSize, hiddenSize})
+                    ->getResult();
+    Cforward = createReshape("reshape_cforward",
+                             createSlice("slice_cforward", Ct, {0, 0, 0},
+                                         {1, batchSize, hiddenSize}),
+                             {batchSize, hiddenSize})
+                   ->getResult();
+    Cbackward = createReshape("reshape_cbackward",
+                              createSlice("slice_cbackward", Ct, {1, 0, 0},
+                                          {2, batchSize, hiddenSize}),
+                              {batchSize, hiddenSize})
+                    ->getResult();
+
+    auto outputForwards =
+        createSingleDirectionLSTM<std::vector<NodeValue>::iterator>(
+            nameBase + "_lstm_forward", inputs.begin(), timeSteps, Wx, Wh, Bx,
+            Bh, Hforward, Cforward);
+    auto outputBackwards =
+        createSingleDirectionLSTM<std::vector<NodeValue>::reverse_iterator>(
+            nameBase + "_lstm_backward", inputs.rbegin(), timeSteps, WxR, WhR,
+            BxR, BhR, Hbackward, Cbackward);
+    std::reverse(outputBackwards.begin(), outputBackwards.end());
+    NodeValue outputForward = createConcat(
+        nameBase + "_lstm_forward_output_concat", outputForwards, 0);
+    NodeValue outputBackward = createConcat(
+        nameBase + "_lstm_backward_output_concat", outputBackwards, 0);
+    output =
+        createConcat("final_output_concat", {outputForward, outputBackward}, 2)
+            ->getResult();
+
+    auto reshape2dto3d = [=](NodeValue n, std::string nameStr) {
+      return createReshape(nameStr, n, {1, n.dims()[0], n.dims()[1]});
+    };
+    Ht = createConcat("Ht_Concat",
+                      {reshape2dto3d(Hforward, "final_Hforward_reshape"),
+                       reshape2dto3d(Hbackward, "final_Hbackward_reshape")},
+                      0)
+             ->getResult();
+    Ct = createConcat("Ct_Concat",
+                      {reshape2dto3d(Cforward, "final_Cforward_reshape"),
+                       reshape2dto3d(Cbackward, "final_Cbackward_reshape")},
+                      0)
+             ->getResult();
+
+  } else {
+    auto outputs = createSingleDirectionLSTM<std::vector<NodeValue>::iterator>(
+        nameBase + "_lstm", inputs.begin(), timeSteps, Wx, Wh, Bx, Bh, Ht, Ct);
+    output = createConcat(nameBase + "_lstm_output_concat", outputs, 0);
+  }
 };
 
 void Function::createLSTM(PlaceholderBindings &bindings,
