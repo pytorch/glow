@@ -10290,6 +10290,147 @@ TEST_P(OperatorTest, FP16BatchNorm2D) {
   EXPECT_TRUE(out.isEqual(*result));
 }
 
+/// 2D Batch Normalization in Int8
+TEST_P(OperatorTest, Int8BatchNorm2D) {
+  CHECK_IF_ENABLED();
+
+  auto constFunc = [=](unsigned_t sz, std::string name,
+                       std::vector<float> vals) {
+    auto t = Tensor(ElemKind::Float16Ty, {sz});
+    for (dim_t i = 0; i < sz; i++) {
+      t.getHandle<float16_t>().raw(i) = vals[i];
+    }
+    auto *c = mod_.createConstant(name, std::move(t));
+    return c;
+  };
+
+  // input
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {1, 1, 3, 3}, 1, 0,
+                                       "input", false);
+  bindings_.allocate(input)->getHandle<int8_t>() = {1, 1, 1, 1, 1, 1, 1, 1, 1};
+  auto *bias = constFunc(1, "batchnorm_bias", {0.0});
+  auto *scale = constFunc(1, "batchnorm_weights", {1.0});
+  auto *mean = constFunc(1, "running_mean", {0.0});
+  auto *variance = constFunc(1, "running_var", {1.0});
+  unsigned_t channelIdx = 1;
+  float epsilon = 0.0;
+  float momentum = 1.0;
+
+  auto *op = F_->createBatchNormalization("int8_batch_norm2d", input, bias,
+                                          scale, mean, variance, channelIdx,
+                                          epsilon, momentum);
+  auto *S = F_->createSave("save", op);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  auto *result = bindings_.get(S->getPlaceholder());
+  Tensor out(ElemKind::Int8QTy, {1, 1, 3, 3}, 1, 0);
+  out.getHandle<int8_t>() = {1, 1, 1, 1, 1, 1, 1, 1, 1};
+  EXPECT_TRUE(out.isEqual(*result));
+}
+
+/// 3D Batch Normalization in Float16
+TEST_P(OperatorTest, FP16BatchNorm3D) {
+  CHECK_IF_ENABLED();
+
+  auto constFunc = [=](unsigned_t sz, std::string name,
+                       std::vector<float> vals) {
+    auto t = Tensor(ElemKind::Float16Ty, {sz});
+    for (dim_t i = 0; i < sz; i++) {
+      t.getHandle<float16_t>().raw(i) = vals[i];
+    }
+    auto *c = mod_.createConstant(name, std::move(t));
+    return c;
+  };
+
+  // input
+  auto *input = mod_.createPlaceholder(ElemKind::Float16Ty, {1, 1, 2, 3, 3},
+                                       "input", false); // NCTHW
+  auto *inputTensor = bindings_.allocate(input);
+  for (size_t i = 0; i < 2 * 3 * 3; i++) {
+    inputTensor->getHandle<float16_t>().raw(i) = 1.0;
+  }
+
+  auto *bias = constFunc(1, "batchnorm_bias", {0.0});
+  auto *scale = constFunc(1, "batchnorm_weights", {1.0});
+  auto *mean = constFunc(1, "running_mean", {0.0});
+  auto *variance = constFunc(1, "running_var", {1.0});
+  unsigned_t channelIdx = 1;
+  float epsilon = 0.0;
+  float momentum = 1.0;
+
+  auto *op = F_->createBatchNormalization("fp16_batch_norm3d", input, bias,
+                                          scale, mean, variance, channelIdx,
+                                          epsilon, momentum);
+  auto *S = F_->createSave("save", op);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<float16_t>();
+
+  Tensor outTensor(ElemKind::Float16Ty, {1, 1, 2, 3, 3});
+  for (size_t i = 0; i < 2 * 3 * 3; i++) {
+    outTensor.getHandle<float16_t>().raw(i) = 1.0;
+  }
+  for (size_t i = 0; i < 2 * 3 * 3; i++) {
+    EXPECT_EQ(result.raw(i), outTensor.getHandle<float16_t>().raw(i));
+  }
+}
+
+/// 3D Batch Normalization in Float16
+TEST_P(OperatorTest, Int8BatchNorm3D) {
+  CHECK_IF_ENABLED();
+
+  auto constFunc = [=](unsigned_t sz, std::string name,
+                       std::vector<float> vals) {
+    auto t = Tensor(ElemKind::Float16Ty, {sz});
+    for (dim_t i = 0; i < sz; i++) {
+      t.getHandle<float16_t>().raw(i) = vals[i];
+    }
+    auto *c = mod_.createConstant(name, std::move(t));
+    return c;
+  };
+
+  // input
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {1, 1, 2, 3, 3}, // NCTHW
+                             1, 0, // scale, offset
+                             "input", false);
+  auto *inputTensor = bindings_.allocate(input);
+  for (size_t i = 0; i < 2 * 3 * 3; i++) {
+    inputTensor->getHandle<int8_t>().raw(i) = 1;
+  }
+
+  auto *bias = constFunc(1, "batchnorm_bias", {0.0});
+  auto *scale = constFunc(1, "batchnorm_weights", {1.0});
+  auto *mean = constFunc(1, "running_mean", {0.0});
+  auto *variance = constFunc(1, "running_var", {1.0});
+  unsigned_t channelIdx = 1;
+  float epsilon = 0.0;
+  float momentum = 1.0;
+
+  auto *op = F_->createBatchNormalization("int8_batch_norm3d", input, bias,
+                                          scale, mean, variance, channelIdx,
+                                          epsilon, momentum);
+  auto *S = F_->createSave("save", op);
+  bindings_.allocate(S->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+  auto result = bindings_.get(S->getPlaceholder())->getHandle<int8_t>();
+
+  Tensor outTensor(ElemKind::Int8QTy, {1, 1, 2, 3, 3}, 1, 0);
+  for (size_t i = 0; i < 2 * 3 * 3; i++) {
+    outTensor.getHandle<int8_t>().raw(i) = 1;
+  }
+  for (size_t i = 0; i < 2 * 3 * 3; i++) {
+    EXPECT_EQ(result.raw(i), outTensor.getHandle<int8_t>().raw(i));
+  }
+}
+
 /// Check non-square padding for AveragePool. The first pool op has non-square
 /// padding, while the second one has zero padding. The second pool op's input
 /// is the same as the first one's after-padding input. All other parameters

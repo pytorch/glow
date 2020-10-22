@@ -178,6 +178,8 @@ struct BlacklistInitializer {
       {"ArithSub_int32_t/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ArithSub_int64_t/0", TestBlacklist::AnyDeviceAnyEngine},
       {"BatchNorm_Float/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"FP16BatchNorm3D/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"Int8BatchNorm3D/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceMin_Int32/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceMin_Int64/0", TestBlacklist::AnyDeviceAnyEngine},
       {"batchedReduceMax_Int32/0", TestBlacklist::AnyDeviceAnyEngine},

@@ -31,4 +31,6 @@ std::set<std::string> glow::backendTestBlacklist = {
     "EmbeddingBagByteRowwiseOffsets_Float_End_Offset_Partial/0",
     "EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat_End_Offset_Partial/0",
     "EmbeddingBagByteRowwiseOffsets_Float16_AccumFloat16_End_Offset_Partial/0",
+    "Int8BatchNorm2D/0",
+    "Int8BatchNorm3D/0",
 };
