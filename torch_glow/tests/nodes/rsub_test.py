@@ -3,74 +3,47 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import unittest
 
 import torch
-from tests.utils import jitVsGlow
+from parameterized import parameterized
+from tests import utils
+
+
+class SimpleRsubModel(torch.nn.Module):
+    def __init__(self):
+        super(SimpleRsubModel, self).__init__()
+
+    def forward(self, tensor, other):
+        if other.size() == torch.Size([]):
+            return torch.rsub((tensor * tensor), other.item())
+        else:
+            third = torch.rsub(tensor, other)
+            return torch.rsub(third, third)
 
 
 class TestRsub(unittest.TestCase):
-    def test_rsub_basic(self):
-        """Basic test of the PyTorch rsub Node on Glow."""
-
-        def test_f(a, b):
-            c = torch.rsub(a, b)
-            return torch.rsub(c, c)
-
-        x = torch.randn(4)
-        y = torch.randn(4)
-
-        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::rsub"})
-
-    def test_rsub_broadcast_1(self):
-        """Test of the PyTorch rsub Node on Glow with broadcasting."""
-
-        def test_f(a, b):
-            c = torch.rsub(a, b)
-            return torch.rsub(c, c)
-
-        x = torch.randn(8, 3, 4, 2)
-        y = torch.randn(4, 2)
-
-        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::rsub"})
-
-    def test_rsub_broadcast_2(self):
-        """Test of the PyTorch rsub Node on Glow with broadcasting."""
-
-        def test_f(a, b):
-            c = torch.rsub(a, b)
-            return torch.rsub(c, c)
-
-        x = torch.randn(8, 3, 4, 2)
-        y = torch.randn(1, 2)
-
-        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::rsub"})
-
-    def test_rsub_broadcast_3(self):
-        """Test of the PyTorch rsub Node on Glow with broadcasting."""
-
-        def test_f(a, b):
-            c = torch.rsub(a, b)
-            return torch.rsub(c, c)
-
-        x = torch.randn(4, 2)
-        y = torch.randn(8, 3, 4, 2)
-
-        jitVsGlow(test_f, x, y, expected_fused_ops={"aten::rsub"})
-
-    def test_rsub_float(self):
-        """Test of the PyTorch aten::rsub Node with a float argument"""
-
-        def test_f(a):
-            return torch.rsub((a * a), 3.9)
-
-        x = torch.randn(4)
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::rsub"})
-
-    def test_rsub_int(self):
-        """Test of the PyTorch aten::rsub Node with an int argument"""
-
-        def test_f(a):
-            return torch.rsub((a * a), 20)
-
-        x = torch.randn(4)
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::rsub"})
+    @parameterized.expand(
+        [
+            ("basic", SimpleRsubModel(), torch.randn(4), torch.randn(4)),
+            (
+                "broadcast",
+                SimpleRsubModel(),
+                torch.randn(8, 3, 4, 2),
+                torch.randn(4, 2),
+            ),
+            (
+                "broadcast",
+                SimpleRsubModel(),
+                torch.randn(8, 3, 4, 2),
+                torch.randn(1, 2),
+            ),
+            (
+                "broadcast",
+                SimpleRsubModel(),
+                torch.randn(4, 2),
+                torch.randn(8, 3, 4, 2),
+            ),
+            ("float", SimpleRsubModel(), torch.randn(4), torch.tensor(13.293)),
+            ("int", SimpleRsubModel(), torch.randn(4), torch.tensor(4)),
+        ]
+    )
+    def test_rsub(self, _, module, tensor, other):
+        utils.compare_tracing_methods(module, tensor, other, fusible_ops={"aten::rsub"})

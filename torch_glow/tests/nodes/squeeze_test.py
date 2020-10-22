@@ -3,48 +3,42 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import unittest
 
 import torch
-from tests.utils import jitVsGlow
+from parameterized import parameterized
+from tests import utils
+
+
+class SimpleSqueezeModel(torch.nn.Module):
+    def __init__(self, dimension=None, inplace=False):
+        super(SimpleSqueezeModel, self).__init__()
+        self.dimension = dimension
+        self.inplace = inplace
+
+    def forward(self, tensor):
+        if self.inplace:
+            tensor = tensor + tensor
+            if self.dimension:
+                return tensor.squeeze_(self.dimension)
+            else:
+                return tensor.squeeze_()
+        else:
+            if self.dimension:
+                return torch.squeeze(tensor + tensor, self.dimension)
+            else:
+                return torch.squeeze(tensor + tensor)
 
 
 class TestSqueeze(unittest.TestCase):
-    def test_squeeze_basic(self):
-        """Test of the PyTorch aten::squeeze Node on Glow."""
-
-        def test_f(a):
-            return torch.squeeze(a + a)
-
-        x = torch.randn(1, 3, 1, 2, 5, 1)
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::squeeze"})
-
-    def test_squeeze_with_dim(self):
-        """Test of the PyTorch aten::squeeze Node on Glow."""
-
-        def test_f(a):
-            return torch.squeeze(a + a, 2)
-
-        x = torch.randn(1, 3, 1, 2, 5, 1)
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::squeeze"})
-
-    def test_squeeze_with_negative_dim(self):
-        """Test of the PyTorch aten::squeeze Node on Glow."""
-
-        def test_f(a):
-            return torch.squeeze(a + a, -1)
-
-        x = torch.randn(1, 3, 1, 2, 5, 1)
-
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::squeeze"})
-
-    def test_squeeze_inplace(self):
-        """Test of the PyTorch aten::squeeze_ Node on Glow."""
-
-        def test_f(a):
-            b = a + a
-            return b.squeeze_()
-
-        x = torch.randn(1, 3, 1, 2, 5, 1)
-
-        # Expect fuser to out-of-place the operator
-        jitVsGlow(test_f, x, expected_fused_ops={"aten::squeeze"})
+    @parameterized.expand(
+        [
+            ("basic", SimpleSqueezeModel(), torch.randn(1, 3, 1, 2, 5, 1)),
+            ("with_dim", SimpleSqueezeModel(2), torch.randn(1, 3, 1, 2, 5, 1)),
+            ("with_neg_dim", SimpleSqueezeModel(-1), torch.randn(1, 3, 1, 2, 5, 1)),
+            (
+                "inplace",
+                SimpleSqueezeModel(inplace=True),
+                torch.randn(1, 3, 1, 2, 5, 1),
+            ),
+        ]
+    )
+    def test_squeeze(self, _, module, tensor):
+        utils.compare_tracing_methods(module, tensor)

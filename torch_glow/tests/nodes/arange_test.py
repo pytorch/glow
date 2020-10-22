@@ -3,7 +3,22 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import unittest
 
 import torch
-from tests.utils import jitVsGlow
+from parameterized import parameterized
+from tests import utils
+
+
+class SimpleArangeModule(torch.nn.Module):
+    def __init__(self, end, start=0, step=1):
+        super(SimpleArangeModule, self).__init__()
+        self.start = start
+        self.end = end
+        self.step = step
+
+    def forward(self, dummy):
+        start = self.start(dummy) if callable(self.start) else self.start
+        end = self.end(dummy) if callable(self.end) else self.end
+        step = self.step(dummy) if callable(self.step) else self.step
+        return torch.arange(start=start, end=end, step=step)
 
 
 class TestArange(unittest.TestCase):
@@ -16,47 +31,28 @@ class TestArange(unittest.TestCase):
     happening. Otherwise, there would be nothing to fuse.
     """
 
-    def test_arange_simple(self):
+    @parameterized.expand(
+        [
+            ("simple", SimpleArangeModule(end=lambda x: x.size(0)), torch.randn(10)),
+            (
+                "all_args",
+                SimpleArangeModule(start=lambda x: x.size(0), end=30, step=1),
+                torch.randn(10),
+            ),
+            (
+                "floats",
+                SimpleArangeModule(start=lambda x: x.size(0), end=30.5, step=0.8),
+                torch.randn(10),
+            ),
+            (
+                "negative_step",
+                SimpleArangeModule(
+                    start=lambda x: x.size(0), end=lambda x: x.size(1), step=-1.2
+                ),
+                torch.randn(10, 2),
+            ),
+        ]
+    )
+    def test_arange(self, _, module, dummy):
         """Testing arange with minimum parameters"""
-
-        def test_f(dummy):
-            return torch.arange(dummy.size(0))
-
-        dummy = torch.randn(10)
-        jitVsGlow(test_f, dummy, expected_fused_ops={"aten::arange"})
-
-    def test_arange_multiple_args(self):
-        """Testing arange with multiple parameters"""
-
-        def test_f(dummy):
-            return torch.arange(dummy.size(0), end=30)
-
-        dummy = torch.randn(10)
-        jitVsGlow(test_f, dummy, expected_fused_ops={"aten::arange"})
-
-    def test_arange_with_all_args(self):
-        """Testing arange with all args provided"""
-
-        def test_f(dummy):
-            return torch.arange(dummy.size(0), 30, 1)
-
-        dummy = torch.randn(10)
-        jitVsGlow(test_f, dummy, expected_fused_ops={"aten::arange"})
-
-    def test_arange_with_floats(self):
-        """Testing arange with all floats as input"""
-
-        def test_f(dummy):
-            return torch.arange(dummy.size(0), 30.5, 0.8)
-
-        dummy = torch.randn(10)
-        jitVsGlow(test_f, dummy, expected_fused_ops={"aten::arange"})
-
-    def test_arange_with_negative_step(self):
-        """Testing arange with negative step"""
-
-        def test_f(dummy):
-            return torch.arange(dummy.size(0), dummy.size(1), -1.2)
-
-        dummy = torch.randn(10, 2)
-        jitVsGlow(test_f, dummy, expected_fused_ops={"aten::arange"})
+        utils.compare_tracing_methods(module, dummy, fusible_ops={"aten::arange"})

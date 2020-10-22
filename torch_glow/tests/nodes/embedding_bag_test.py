@@ -5,7 +5,8 @@ import unittest
 import numpy as np
 import torch
 from parameterized import parameterized
-from tests.utils import check_skip, get_backend_name, jitVsGlow
+from tests import utils
+from tests.utils import DEFAULT_BACKEND, check_skip
 
 
 class TestEmbeddingBag(unittest.TestCase):
@@ -16,24 +17,28 @@ class TestEmbeddingBag(unittest.TestCase):
 
         check_skip(self)
 
-        def embedding_bag_basic(input, offsets, per_sample_weights):
-            weight = torch.FloatTensor([[1, 2.3, 3], [4, 5.1, 6.3]])
-            embedding_sum = torch.nn.EmbeddingBag.from_pretrained(weight, mode="sum")
-            # in jit mode we need to discard the end offset
-            a = embedding_sum(input, offsets[:-1])
-            b = embedding_sum(input, offsets[:-1], per_sample_weights)
-            return a, b
+        class TestModule(torch.nn.Module):
+            def forward(self, input, offsets, per_sample_weights):
+                weight = torch.FloatTensor([[1, 2.3, 3], [4, 5.1, 6.3]])
+                embedding_sum = torch.nn.EmbeddingBag.from_pretrained(
+                    weight, mode="sum"
+                )
+                # in jit mode we need to discard the end offset
+                a = embedding_sum(input, offsets[:-1])
+                b = embedding_sum(input, offsets[:-1], per_sample_weights)
+                return a, b
 
         input = torch.LongTensor([1, 0, 0, 1, 1])
         offsets = torch.LongTensor([0, 1, 5])  # final item is endOffset
         per_sample_weights = torch.FloatTensor([1, 2, 3, 4, 5])
 
-        jitVsGlow(
-            embedding_bag_basic,
+        utils.compare_tracing_methods(
+            TestModule(),
             input,
             offsets,
             per_sample_weights,
-            expected_fused_ops={"aten::embedding_bag"},
+            fusible_ops={"aten::embedding_bag"},
+            skip_to_glow=True,  # to_glow doesn't support include_last_offset=False
         )
 
 
@@ -48,7 +53,7 @@ class TestQuantizedEmbeddingBag(unittest.TestCase):
                     bits="_4bit" if is4bit else "_byte",
                     weighted="_weighted" if is_weighted else "",
                     fp16="_fp16" if use_fp16 else "",
-                    backend="_" + get_backend_name(),
+                    backend="_" + DEFAULT_BACKEND,
                 ),
                 num_lengths,
                 is4bit,
@@ -123,20 +128,19 @@ class TestQuantizedEmbeddingBag(unittest.TestCase):
 
         m = TestModule(q_weights, is4bit, per_sample_weights if is_weighted else None)
 
-        jitVsGlow(
-            m.forward,
+        utils.compare_tracing_methods(
+            m,
             indices,
             offsets,
-            expected_fused_ops={
+            fusible_ops={
                 "quantized::embedding_bag_4bit_rowwise_offsets"
                 if is4bit
                 else "quantized::embedding_bag_byte_rowwise_offsets"
             },
-            use_fp16=use_fp16,
+            fp16=use_fp16,
             # FP16 version is known to yeild different results, so our
             # test here is mainly focusing on the flow rather than actual
             # accuracy. There will be additional coverage on accuracy of
             # the lowered modules
-            atol=0.02 if is4bit or use_fp16 else 5e-4,
-            backend_name=get_backend_name(),
+            atol=0.02 if (is4bit or use_fp16) else 5e-4,
         )

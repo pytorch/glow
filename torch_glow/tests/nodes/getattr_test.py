@@ -3,7 +3,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import torch_glow
 import torch
-from tests.utils import GLOW_NODE_NAME, SUBGRAPH_ATTR
+from tests.utils import GLOW_FUSION_GROUP, SUBGRAPH_ATTR
 import unittest
 
 
@@ -35,7 +35,7 @@ class TestGetAttr(unittest.TestCase):
                 assert (
                     kind != "prim::GetAttr"
                 ), "Expected all prim::GetAttrsGlow to be in Glow subgraph"
-                if kind == GLOW_NODE_NAME:
+                if kind == GLOW_FUSION_GROUP:
                     glow_subgraph = node.g(SUBGRAPH_ATTR)
                     for node in glow_subgraph.nodes():
                         if node.kind() == "prim::GetAttr":

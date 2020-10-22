@@ -4,7 +4,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import torch_glow
 import torch
 
-from tests.utils import GLOW_NODE_NAME, SUBGRAPH_ATTR
+from tests.utils import GLOW_FUSION_GROUP, SUBGRAPH_ATTR
 import unittest
 
 
@@ -28,7 +28,7 @@ class TestBlackList(unittest.TestCase):
         fused_add = False
         fused_sub = False
         for node in jit_f_graph.nodes():
-            if node.kind() == GLOW_NODE_NAME:
+            if node.kind() == GLOW_FUSION_GROUP:
                 glow_subgraph = node.g(SUBGRAPH_ATTR)
                 for node in glow_subgraph.nodes():
                     if node.kind() == "aten::add":
@@ -71,7 +71,7 @@ class TestBlackList(unittest.TestCase):
         fused_muls = 0
         fused_divs = 0
         for node in jit_f_graph.nodes():
-            if node.kind() == GLOW_NODE_NAME:
+            if node.kind() == GLOW_FUSION_GROUP:
                 glow_subgraph = node.g(SUBGRAPH_ATTR)
                 for node in glow_subgraph.nodes():
                     if node.kind() == "aten::mul":
