@@ -4,7 +4,12 @@ import unittest
 
 import torch
 import torch.nn.functional as F
-from tests.utils import jitVsGlow
+from tests import utils
+
+
+class SimpleGeluModule(torch.nn.Module):
+    def forward(self, tensor):
+        return F.gelu(tensor + tensor)
 
 
 class TestGelu(unittest.TestCase):
@@ -14,12 +19,12 @@ class TestGelu(unittest.TestCase):
         def test_f(a):
             return F.gelu(a + a)
 
-        for i in range(100):
+        for _ in range(100):
             x = torch.randn(10)
-            jitVsGlow(
-                test_f,
+            utils.compare_tracing_methods(
+                SimpleGeluModule(),
                 x,
                 check_trace=False,
                 atol=1e-3,
-                expected_fused_ops={"aten::gelu"},
+                fusible_ops={"aten::gelu"},
             )

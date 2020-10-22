@@ -3,69 +3,56 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import unittest
 
 import torch
-from tests.utils import jitVsGlow
+from parameterized import parameterized
+from tests import utils
+
+
+class SimpleMaskedFillModule(torch.nn.Module):
+    def __init__(self, inplace=False):
+        super(SimpleMaskedFillModule, self).__init__()
+        self.inplace = inplace
+
+    def forward(self, tensor, mask):
+        if self.inplace:
+            other = tensor + tensor
+            other.masked_fill_(mask, 42.0)
+            return other
+        else:
+            return torch.masked_fill(tensor + tensor, mask, 42.0)
 
 
 class TestMaskedFill(unittest.TestCase):
-    def test_masked_fill_basic(self):
-        """Test of the PyTorch aten::masked_fill op on Glow."""
-
-        def masked_fill(a, mask):
-            return torch.masked_fill(a + a, mask, 42.0)
-
-        x = torch.randn([3])
-        m = torch.tensor([True, False, True], dtype=torch.bool)
-
-        jitVsGlow(masked_fill, x, m, expected_fused_ops={"aten::masked_fill"})
-
-    def test_masked_fill_broadcasted(self):
-        """Test of the PyTorch aten::masked_fill op on Glow with a
-        broadcasted mask"""
-
-        def masked_fill(a, mask):
-            return torch.masked_fill(a + a, mask, 42.0)
-
-        x = torch.randn([4, 1, 3])
-        m = torch.tensor([True, False, True], dtype=torch.bool)
-
-        jitVsGlow(masked_fill, x, m, expected_fused_ops={"aten::masked_fill"})
-
-    def test_masked_fill_broadcasted_unit_dim(self):
-        """Test of the PyTorch aten::masked_fill op on Glow with a
-        broadcasted mask where the mask's size contains a leading 1"""
-
-        def masked_fill(a, mask):
-            return torch.masked_fill(a + a, mask, 42.0)
-
-        x = torch.randn([4, 1, 3])
-        m = torch.tensor([[True, False, True]], dtype=torch.bool)
-
-        jitVsGlow(masked_fill, x, m, expected_fused_ops={"aten::masked_fill"})
-
-    def test_masked_fill_broadcasted_multi_dim(self):
-        """Test of the PyTorch aten::masked_fill op on Glow with a
-        broadcasted mask where the mask's size has a non 1 lead dim"""
-
-        def masked_fill(a, mask):
-            return torch.masked_fill(a + a, mask, 42.0)
-
-        x = torch.randn([2, 4, 3, 3])
-        m = torch.tensor(
-            [[[[True, False, True]]], [[[True, False, True]]]], dtype=torch.bool
+    @parameterized.expand(
+        [
+            (
+                "basic",
+                SimpleMaskedFillModule(),
+                torch.randn([3]),
+                torch.tensor([True, False, True], dtype=torch.bool),
+            ),
+            (
+                "broadcasted_unit_dim",
+                SimpleMaskedFillModule(),
+                torch.randn([4, 1, 3]),
+                torch.tensor([True, True, True], dtype=torch.bool),
+            ),
+            (
+                "broadcasted_multi_dim",
+                SimpleMaskedFillModule(),
+                torch.randn([2, 4, 3, 3]),
+                torch.tensor(
+                    [[[[True, False, True]]], [[[True, False, True]]]], dtype=torch.bool
+                ),
+            ),
+            (
+                "inplace",
+                SimpleMaskedFillModule(True),
+                torch.randn([3]),
+                torch.tensor([True, False, True], dtype=torch.bool),
+            ),
+        ]
+    )
+    def test_masked_fill(self, _, module, tensor, mask):
+        utils.compare_tracing_methods(
+            module, tensor, mask, fusible_ops={"aten::masked_fill"}
         )
-
-        jitVsGlow(masked_fill, x, m, expected_fused_ops={"aten::masked_fill"})
-
-    def test_masked_fill_inplace(self):
-        """Test of the PyTorch aten::masked_fill_ op on Glow"""
-
-        def masked_fill(a, mask):
-            b = a + a
-            b.masked_fill_(mask, 42.0)
-            return b
-
-        x = torch.randn([3])
-        m = torch.tensor([True, False, True], dtype=torch.bool)
-
-        # Expect fuser to out-of-place the operator
-        jitVsGlow(masked_fill, x, m, expected_fused_ops={"aten::masked_fill"})
