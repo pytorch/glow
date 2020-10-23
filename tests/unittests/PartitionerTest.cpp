@@ -353,8 +353,8 @@ TEST_F(PartitionerTest, Basic1) {
   Tensor test =
       bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
   EXPECT_TRUE(ref.isEqual(test, 0.0f));
-  verifyDAGSerialization(*dagList, EEP.getModule(), bindings_, {"input"}, "ret",
-                         devices, {&in}, ref);
+  verifyDAGSerialization(dagList.get(), EEP.getModule(), bindings_, {"input"},
+                         "ret", devices, {&in}, ref);
 }
 
 /// This one tests the model with this feature: after BFS, there is one level,
@@ -712,7 +712,8 @@ static void createSimpleModule(Module &mod) {
 }
 
 static void createSimpleSparseNNModule(Module &mod, bool shareSplatWeights,
-                                       bool addClipAndLayerNorm) {
+                                       bool addClipAndLayerNorm,
+                                       dim_t numFCLayers) {
   mod.clear();
   auto *F = mod.createFunction("test");
 
@@ -776,10 +777,12 @@ static void createSimpleSparseNNModule(Module &mod, bool shareSplatWeights,
   Node *cur = (Node *)concat;
 
   // Create FC portion
-  for (dim_t layer = 0; layer < 4; layer++) {
+  for (dim_t layer = 0; layer < numFCLayers; layer++) {
     Tensor FCWeights(ElemKind::FloatTy, {15 * tableWidth, 15 * tableWidth});
+    FCWeights.getHandle().randomize(-0.5, 0.5, mod.getPRNG());
     Constant *weights = mod.createConstant("FCWeights", FCWeights);
     Tensor FCBias(ElemKind::FloatTy, {15 * tableWidth});
+    FCBias.getHandle().randomize(-0.5, 0.5, mod.getPRNG());
     Constant *bias = mod.createConstant("FCBias", FCBias);
 
     auto *FC = F->createFullyConnected("FC", cur, weights, bias);
@@ -804,83 +807,100 @@ static bool findNodeInFunction(const Function *func,
 /// To check if the generated DAG is correct for the SparseNN Partiton
 /// unnittests. The network used for check is generated from function static
 /// void createSimpleSparseNNModule(Module &mod).
-static void sparseNNPartitionValidation(const DAGListTy &dagList, Module &mod,
+static void sparseNNPartitionValidation(const DAGListTy &dagList,
+                                        uint64_t deviceMemory, Module &mod,
                                         bool shareSplatWeights,
                                         bool addClipAndLayerNorm,
                                         bool pairLNWithSLS) {
   int numOfCPUBackends = 0;
   int numOfSLSNodes = 0;
   int numOfFCNodes = 0;
+  std::unordered_set<uint64_t> slsPartitionSizes;
+  uint64_t nonSlsPartitionSize = 0;
   for (auto &dag : dagList) {
     for (auto &node : dag.nodes) {
-      if (node->backendName == "CPU") {
-        numOfCPUBackends++;
-        auto *func = mod.getFunction(node->name);
-        if (findNodeInFunction(
-                func,
-                Kinded::Kind::
-                    FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind)) {
-          numOfSLSNodes++;
-          EXPECT_EQ(node->logicalDevices.size(), 1);
-          if (shareSplatWeights) {
-            for (const Node &N : func->getNodes()) {
-              if (const auto *SLWS = llvm::dyn_cast<
-                      FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(&N)) {
-                EXPECT_TRUE(llvm::isa<SplatNode>(SLWS->getWeights()));
-              }
+      ASSERT_TRUE(node->backendName == "CPU");
+      numOfCPUBackends++;
+      auto *func = mod.getFunction(node->name);
+      GraphMemInfo memInfo = getFunctionMemory(func);
+      if (findNodeInFunction(
+              func,
+              Kinded::Kind::
+                  FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind)) {
+        numOfSLSNodes++;
+        slsPartitionSizes.insert(memInfo.getTotalMemSize());
+        EXPECT_EQ(node->logicalDevices.size(), 1);
+        if (shareSplatWeights) {
+          for (const Node &N : func->getNodes()) {
+            if (const auto *SLWS = llvm::dyn_cast<
+                    FusedRowwiseQuantizedSparseLengthsWeightedSumNode>(&N)) {
+              EXPECT_TRUE(llvm::isa<SplatNode>(SLWS->getWeights()));
             }
           }
-          if (addClipAndLayerNorm && pairLNWithSLS) {
-            EXPECT_TRUE(findNodeInFunction(
-                func, Kinded::Kind::LayerNormalizationNodeKind));
-            EXPECT_TRUE(findNodeInFunction(func, Kinded::Kind::ClipNodeKind));
-          }
-        } else if (findNodeInFunction(func,
-                                      Kinded::Kind::FullyConnectedNodeKind)) {
-          numOfFCNodes++;
-          EXPECT_EQ(node->logicalDevices.size(), 3);
-          if (addClipAndLayerNorm && !pairLNWithSLS) {
-            EXPECT_TRUE(findNodeInFunction(
-                func, Kinded::Kind::LayerNormalizationNodeKind));
-            EXPECT_TRUE(findNodeInFunction(func, Kinded::Kind::ClipNodeKind));
-          }
         }
+        if (addClipAndLayerNorm && pairLNWithSLS) {
+          EXPECT_TRUE(findNodeInFunction(
+              func, Kinded::Kind::LayerNormalizationNodeKind));
+          EXPECT_TRUE(findNodeInFunction(func, Kinded::Kind::ClipNodeKind));
+        }
+      } else if (findNodeInFunction(func,
+                                    Kinded::Kind::FullyConnectedNodeKind)) {
+        nonSlsPartitionSize = memInfo.getTotalMemSize();
+        numOfFCNodes++;
+        EXPECT_EQ(node->logicalDevices.size(), 3);
+        if (addClipAndLayerNorm && !pairLNWithSLS) {
+          EXPECT_TRUE(findNodeInFunction(
+              func, Kinded::Kind::LayerNormalizationNodeKind));
+          EXPECT_TRUE(findNodeInFunction(func, Kinded::Kind::ClipNodeKind));
+        }
+      } else {
+        FAIL() << "Unexpected partition";
       }
     }
   }
+
   // 4 partitions (3 SLS + 1 FC)
   EXPECT_EQ(numOfCPUBackends, 4);
   EXPECT_EQ(numOfSLSNodes, 3);
   EXPECT_EQ(numOfFCNodes, 1);
+  for (uint64_t slsPartitionSize : slsPartitionSizes) {
+    EXPECT_LE(slsPartitionSize + nonSlsPartitionSize, deviceMemory);
+  }
 }
 
 static void testSimpleSparseNNPartitioning(Module &mod, bool shareSplatWeights,
                                            bool concatSLSOutputs,
                                            bool balancePerfModel,
                                            bool addClipAndLayerNorm,
-                                           bool pairLNWithSLS) {
-  createSimpleSparseNNModule(mod, shareSplatWeights, addClipAndLayerNorm);
+                                           bool pairLNWithSLS,
+                                           bool forceFailure = false) {
+  createSimpleSparseNNModule(mod, shareSplatWeights, addClipAndLayerNorm,
+                             forceFailure ? 5 : 4);
   BackendWithoutSub backend1, backend2, backend3;
   std::vector<Backend *> backends;
   backends.emplace_back(&backend1);
   backends.emplace_back(&backend2);
   backends.emplace_back(&backend3);
+  const uint64_t deviceMemory = 1250000;
   std::vector<DeviceInfo> devices = {
-      {1200000, "CPU"}, {1200000, "CPU"}, {1200000, "CPU"}};
+      {deviceMemory, "CPU"}, {deviceMemory, "CPU"}, {deviceMemory, "CPU"}};
   Partitioner partitioner(&mod, devices, backends);
   CompilationContext cctx;
   cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
   cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards = 3;
-  cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard = 200;
   cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats = concatSLSOutputs;
   cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel = balancePerfModel;
   cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS = pairLNWithSLS;
-  auto dagList = partitioner.partition(cctx);
-  ASSERT_TRUE((bool)dagList);
+  Expected<DAGListTy> dagList = partitioner.partition(cctx);
+  bool failed = ERR_TO_BOOL(dagList.takeError());
+  if (forceFailure) {
+    EXPECT_TRUE(failed);
+    return;
+  }
   EXPECT_EQ(mod.getFunctions().size(), 4);
   EXPECT_EQ(dagList->size(), 1);
   ASSERT_TRUE(checkSaveNode(mod));
-  sparseNNPartitionValidation(dagList.get(), mod, shareSplatWeights,
+  sparseNNPartitionValidation(*dagList, deviceMemory, mod, shareSplatWeights,
                               addClipAndLayerNorm, pairLNWithSLS);
   mod.clear();
 }
@@ -946,6 +966,17 @@ TEST_F(PartitionerTest, SimpleSparseNNPartitioningBalancePerfModel) {
                                  /*balancePerfModel*/ true,
                                  /*addClipAndLayerNorm*/ true,
                                  /*pairLNWithSLS*/ false);
+}
+
+/// This test checks that we fail partitioning when we have a SLSPartition and
+/// NonSLSPartition that, when summed together, cannot fit inside a device.
+TEST_F(PartitionerTest, SimpleSparseNNPartitioningExpectFailure) {
+  testSimpleSparseNNPartitioning(mod_, /*shareSplatWeights*/ false,
+                                 /*concatSLSOutputs*/ false,
+                                 /*balancePerfModel*/ false,
+                                 /*addClipAndLayerNorm*/ true,
+                                 /*pairLNWithSLS*/ true,
+                                 /*forceFailure*/ true);
 }
 
 /// To check if the generated DAG is correct for the Heterogeneous Partiton
