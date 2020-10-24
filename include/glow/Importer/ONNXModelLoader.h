@@ -44,7 +44,7 @@ namespace glow {
 /// Loads tensor \p T from the input \p in. \p useGlowCustomOps changes the
 /// format for doc_string format for adding meta information.
 Error loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
-                 bool useGlowCustomOps = false);
+                 bool useGlowCustomOps = false, const std::string &data = "");
 
 /// Parses as input file name \p fileName which is an ONNX file
 /// and \returns a parsed GraphProto.
