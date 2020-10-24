@@ -333,6 +333,8 @@ private:
   void fwdLengthsSumInstFloatImpl(const LengthsSumInst *I);
 
   template <typename ElemTy> void fwdGatherInstImpl(const GatherInst *I);
+  template <typename IndexTy>
+  void fwdGatherElementsInstImpl(const GatherElementsInst *I);
   template <typename ElemTy>
   void fwdGatherRangesInstImpl(const GatherRangesInst *I);
   template <typename ElemTy>

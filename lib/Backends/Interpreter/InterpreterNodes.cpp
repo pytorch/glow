@@ -2035,6 +2035,79 @@ void BoundInterpreterFunction::fwdGatherInst(const glow::GatherInst *I) {
   }
 }
 
+//===----------------------------------------------------------------------===//
+//                      Gather Elements
+//===----------------------------------------------------------------------===//
+
+template <typename IndexTy>
+void BoundInterpreterFunction::fwdGatherElementsInstImpl(
+    const glow::GatherElementsInst *I) {
+  Tensor *outT = getTensor(I->getDest());
+  Tensor *dataT = getTensor(I->getData());
+  auto dataDims = dataT->getType().dims();
+  Tensor *indicesT = getTensor(I->getIndices());
+  auto indicesDims = indicesT->getType().dims();
+  const auto axis = I->getAxis();
+  const auto numElems = outT->getRealNumElements();
+  auto ndims = indicesDims.size();
+
+  std::vector<dim_t> ind_dim_off(ndims);
+  std::vector<dim_t> data_dim_off(ndims);
+
+  ind_dim_off[0] = 1;
+  data_dim_off[0] = 1;
+  for (dim_t i = 1; i < ndims; i++) {
+    ind_dim_off[i] =
+        std::accumulate(indicesDims.begin() + ndims - i, indicesDims.end(), 1,
+                        std::multiplies<dim_t>());
+    data_dim_off[i] =
+        std::accumulate(dataDims.begin() + ndims - i, dataDims.end(), 1,
+                        std::multiplies<dim_t>());
+  }
+
+  const auto axisPos = ndims - 1 - axis;
+  const auto elemSize = dataT->getType().getElementSize();
+  // Loop over number of elements in indices
+  for (size_t idx = 0; idx < numElems; idx++) {
+    unsigned_t offset = 0;
+    // Loop over number of dimensions to calculate offset
+    for (dim_t i = 0; i < ndims; i++) {
+      // Calculate axis index i.e. (i, j, k)
+      const dim_t dim_idx =
+          static_cast<dim_t>(std::floor(idx / ind_dim_off[i])) %
+          indicesDims[ndims - (i + 1)];
+      offset += (axisPos != i) * dim_idx * data_dim_off[i];
+    }
+    auto indIdx = indicesT->getHandle<IndexTy>().raw(idx);
+    assert(indIdx < 0 ? -indIdx <= dataDims[axis]
+                      : indIdx < dataDims[axis] &&
+                            "[GatherElements] Got out of bounds index");
+    // In case of negative indices
+    if (indIdx < 0) {
+      indIdx += dataDims[axis];
+    }
+    const auto dataRawIdx = indIdx * data_dim_off[axisPos] + offset;
+    std::copy(&dataT->getUnsafePtr()[dataRawIdx * elemSize],
+              &dataT->getUnsafePtr()[(dataRawIdx + 1) * elemSize],
+              &outT->getUnsafePtr()[idx * elemSize]);
+  }
+}
+
+void BoundInterpreterFunction::fwdGatherElementsInst(
+    const glow::GatherElementsInst *I) {
+  switch (I->getIndices()->getElementType()) {
+  case ElemKind::Int64ITy:
+    fwdGatherElementsInstImpl<int64_t>(I);
+    break;
+  case ElemKind::Int32ITy:
+    fwdGatherElementsInstImpl<int32_t>(I);
+    break;
+  default:
+    llvm_unreachable("[GatherElements] Unsupported type for indices input of "
+                     "GatherElements.");
+  }
+}
+
 template <typename ElemTy>
 void BoundInterpreterFunction::fwdGatherRangesInstImpl(
     const glow::GatherRangesInst *I) {

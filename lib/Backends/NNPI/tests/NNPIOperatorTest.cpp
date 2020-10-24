@@ -455,6 +455,7 @@ struct BlacklistInitializer {
       {"replaceNaN_BFloat16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"sliceConcatVectors_BFloat16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"GatherDataBFloat16IdxInt64/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"GatherElements/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ConvertFrom_BFloat16Ty_To_BFloat16Ty_AndBack/0",
        TestBlacklist::AnyDeviceAnyEngine},
       {"ConvertFrom_Float16Ty_To_BFloat16Ty_AndBack/0",

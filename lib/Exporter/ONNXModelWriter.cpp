@@ -1825,6 +1825,11 @@ Error ONNXModelWriter::writeGather(const GatherNode *node, GraphType &graph) {
   }
 }
 
+Error ONNXModelWriter::writeGatherElements(const GatherElementsNode *node,
+                                           GraphType &graph) {
+  RETURN_ERR(MAKE_ERR("Op gather_elements not supported."));
+}
+
 Error ONNXModelWriter::writeMatMul(const MatMulNode *node, GraphType &graph) {
   return writeMatMulKind(node, graph, "MatMul");
 }

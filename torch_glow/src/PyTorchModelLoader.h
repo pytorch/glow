@@ -535,6 +535,10 @@ private:
   /// \returns error on failure.
   Error loadQuantizedBatchNorm3dRelu(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::gather node.
+  /// \returns error on failure.
+  Error loadGatherElements(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch aten::layer_norm node.
   /// \returns error on failure.
   Error loadLayerNorm(const torch::jit::Node *ptNode);

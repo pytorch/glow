@@ -1903,6 +1903,17 @@ bool GatherNode::verify() const {
   return isValid;
 }
 
+bool GatherElementsNode::verify() const {
+  bool isValid = checkType(getResult(), getData().getElementType(), this);
+  isValid &= checkType(
+      getIndices(),
+      llvm::ArrayRef<ElemKind>({ElemKind::Int64ITy, ElemKind::Int32ITy}), this);
+  isValid &= expectCompareTrue("Mismatching number of dimensions",
+                               getResult().dims().size(),
+                               getIndices().dims().size(), this);
+  return isValid;
+}
+
 bool GatherRangesNode::verify() const {
   bool isValid = expectCompareTrue("Data must be 1D", getData().dims().size(),
                                    size_t(1), this);

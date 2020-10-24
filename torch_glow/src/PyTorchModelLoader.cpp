@@ -933,6 +933,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::reshape"}, &PyTorchModelLoader::loadReshape},
       {{"aten::upsample_nearest3d"},
        &PyTorchModelLoader::loadUpsampleNearest3D},
+      {{"aten::gather"}, &PyTorchModelLoader::loadGatherElements},
       {{"aten::view"}, &PyTorchModelLoader::loadView},
       {{"aten::_convolution"}, &PyTorchModelLoader::loadConvolution},
       {{"aten::lstm"}, &PyTorchModelLoader::loadLSTM},
@@ -3140,6 +3141,30 @@ Error PyTorchModelLoader::loadConvolution(const torch::jit::Node *ptNode) {
                                 NHWC2NCHW);
   }
   RETURN_ERR(addValueMapping(outputs[0], output->getResult()));
+}
+
+Error PyTorchModelLoader::loadGatherElements(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  NodeValue input, indices;
+  int64_t rawAxis;
+  bool sparse_grad;
+
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -4, outputs, 1));
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+  ASSIGN_VALUE_OR_RETURN_ERR(rawAxis,
+                             iValToInt(getGlowIValueForValue(inputs[1])));
+  ASSIGN_VALUE_OR_RETURN_ERR(indices, getGlowNodeValueForValue(inputs[2]));
+  ASSIGN_VALUE_OR_RETURN_ERR(sparse_grad,
+                             iValToBool(getGlowIValueForValue(inputs[3])));
+  RETURN_ERR_IF_NOT(!sparse_grad, "Currently only supports sparse_grad=false");
+  const auto inputRank = input.dims().size();
+  RETURN_ERR_IF_NOT(rawAxis < 0 ? rawAxis >= -inputRank : rawAxis < inputRank,
+                    "axis must be < input rank or >= neg input rank");
+  const unsigned_t axis = (rawAxis < 0) ? rawAxis + inputRank : rawAxis;
+  return addValueMapping(
+      outputs[0],
+      F_.createGatherElements("GatherElements", input, indices, axis));
 }
 
 Error PyTorchModelLoader::loadConv2D(const torch::jit::Node *ptNode) {
