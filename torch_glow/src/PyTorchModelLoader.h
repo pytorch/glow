@@ -517,6 +517,10 @@ private:
   /// \returns error on failure.
   Error loadExp(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch constant_pad_nd node.
+  /// \returns error on failure.
+  Error loadConstantPadND(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch pow node.
   /// \returns error on failure.
   Error loadPow(const torch::jit::Node *ptNode);

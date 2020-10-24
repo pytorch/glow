@@ -987,6 +987,14 @@ struct CompareInputs {
   };
 };
 
+/// Indexes used for aten::constant_pad_nd inputs
+struct ConstantPadNDInputs {
+  enum {
+    input = 0,
+    pads,
+  };
+};
+
 } // namespace
 
 // static
@@ -1022,6 +1030,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::min"}, &PyTorchModelLoader::loadMin},
       {{"aten::max"}, &PyTorchModelLoader::loadMax},
       {{"aten::exp"}, &PyTorchModelLoader::loadExp},
+      {{"aten::constant_pad_nd"}, &PyTorchModelLoader::loadConstantPadND},
       {{"prim::FusedConcat"}, &PyTorchModelLoader::loadFusedConcat},
       {{"glow::fused_stack"}, &PyTorchModelLoader::loadFusedStack},
       {{"glow::fused_broadcast_cat"},
@@ -3455,6 +3464,63 @@ Error PyTorchModelLoader::loadExp(const torch::jit::Node *ptNode) {
 
   glow::ExpNode *glowNode = F_.createExp("exp", input);
   RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
+}
+
+Error PyTorchModelLoader::loadConstantPadND(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[ConstantPadNDInputs::input]));
+
+  std::vector<int64_t> *pads;
+  ASSIGN_VALUE_OR_RETURN_ERR(pads, iValToIntList(getGlowIValueForValue(
+                                       inputs[ConstantPadNDInputs::pads])));
+  RETURN_ERR_IF_NOT(pads->size() % 2 == 0,
+                    "The size of the pads vector should be evenly divisble by "
+                    "2 in aten::constant_pad_nd");
+
+  GlowIValue *valueIVal;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      valueIVal, getGlowIValueForValue(ptNode->namedInput("value")));
+  // Default value is 0
+  float value = 0.f;
+  if (valueIVal->getTag() == GlowIValue::Tag::Double) {
+    double valueDouble = 0.0;
+    ASSIGN_VALUE_OR_RETURN_ERR(valueDouble, iValToDouble(valueIVal));
+    value = static_cast<float>(valueDouble);
+  }
+
+  // Convert pads from torch to glow format
+  const auto nDims = input.dims().size();
+  const auto inputDims = input.dims();
+  std::vector<int> glowPads(nDims * 2, 0);
+  for (size_t i = 0; i < pads->size(); ++i) {
+    if (i % 2 == 0) {
+      glowPads[nDims - (i / 2) - 1] = static_cast<int>((*pads)[i]);
+    } else {
+      glowPads[nDims - ((i - 1) / 2) + nDims - 1] =
+          static_cast<int>((*pads)[i]);
+    }
+  }
+
+  // Calculate output tensor dims
+  std::vector<dim_t> outDims;
+  for (unsigned_t i = 0; i < nDims; ++i) {
+    int64_t new_dim = inputDims[i] + glowPads[i] + glowPads[i + nDims];
+    RETURN_ERR_IF_NOT(new_dim > 0,
+                      "The padding can't remove all elements of a dimension");
+    outDims.push_back(new_dim);
+  }
+
+  auto outTy =
+      F_.getParent()->uniqueType(input.getType()->getElementType(), outDims);
+
+  return addValueMapping(
+      outputs[0], F_.createPad("constant_pad_nd", input, outTy,
+                               /* mode = "CONSTANT" = */ 0, glowPads, value));
 }
 
 Error PyTorchModelLoader::loadPow(const torch::jit::Node *ptNode) {
