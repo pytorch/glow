@@ -936,6 +936,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub},
       {{"aten::rsub"}, &PyTorchModelLoader::loadRsub},
       {{"aten::log"}, &PyTorchModelLoader::loadLog},
+      {{"aten::sum"}, &PyTorchModelLoader::loadSum},
       {{"aten::sigmoid", "aten::sigmoid_"}, &PyTorchModelLoader::loadSigmoid},
       {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu},
       {{"aten::gelu"}, &PyTorchModelLoader::loadGelu},
@@ -2413,6 +2414,96 @@ Error PyTorchModelLoader::loadLog(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(glowInput, getGlowNodeValueForValue(inputs[0]));
 
   return addValueMapping(outputs[0], F_.createLog("log", glowInput));
+}
+
+Error PyTorchModelLoader::loadSum(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  GlowIValue *dtypeIVal = nullptr;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dtypeIVal, getGlowIValueForValue(ptNode->namedInput("dtype")));
+
+  std::vector<int64_t> *axes;
+  std::vector<unsigned_t> glowAxes;
+
+  bool keepDim = false;
+  bool needsFlatten = false;
+  // Load torch.sum(input, dtype)
+  if (inputs.size() == 2) {
+    glowAxes.push_back(0);
+    needsFlatten = true;
+  } else {
+    // Load torch.sum(input, axis, keepdim, dtype)
+    ASSIGN_VALUE_OR_RETURN_ERR(axes,
+                               iValToIntList(getGlowIValueForValue(inputs[1])));
+    RETURN_ERR_IF_NOT(axes->size() == 1,
+                      "Only a single axis is supported for aten::sum.");
+
+    GlowIValue *keepDimIVal;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        keepDimIVal, getGlowIValueForValue(ptNode->namedInput("keepdim")));
+    if (keepDimIVal->getTag() != GlowIValue::Tag::None) {
+      ASSIGN_VALUE_OR_RETURN_ERR(keepDim, iValToBool(keepDimIVal));
+    }
+
+    const auto inputRank = input.getType()->dims().size();
+    for (auto axis : *axes) {
+      RETURN_ERR_IF_NOT((axis < 0 ? axis >= -inputRank : axis < inputRank),
+                        "Axis must be in the range [-r, r-1] for aten::sum.");
+      // Convert negative axes to corresponding positive axes
+      if (axis < 0) {
+        axis += inputRank;
+      }
+      glowAxes.push_back(static_cast<unsigned_t>(axis));
+    }
+  }
+
+  const bool needsConvertTo = dtypeIVal->getTag() != GlowIValue::Tag::None;
+  ConvertToNode *toNode = nullptr;
+  if (needsConvertTo) {
+    int32_t dtype;
+    ASSIGN_VALUE_OR_RETURN_ERR(dtype, iValToInt(dtypeIVal));
+    auto glowElemKind =
+        scalarTypeToElemKind(static_cast<c10::ScalarType>(dtype));
+    auto toType =
+        F_.getParent()->uniqueType(glowElemKind, input.getType()->dims());
+    toNode = F_.createConvertTo("to", input, toType);
+  }
+
+  ReshapeNode *flattenNode = nullptr;
+  if (needsFlatten) {
+    flattenNode = F_.createFlatten(
+        "flatten", needsConvertTo ? static_cast<NodeValue>(toNode) : input,
+        needsConvertTo ? toNode->getResult().getType()->dims().size()
+                       : input.dims().size());
+  }
+
+  auto batchedReduceAddNode = F_.createBatchedReduceAdd(
+      "sum",
+      needsFlatten ? static_cast<NodeValue>(flattenNode)
+                   : needsConvertTo ? static_cast<NodeValue>(toNode) : input,
+      glowAxes);
+
+  if (!keepDim) {
+    return addValueMapping(outputs[0], batchedReduceAddNode);
+  } else {
+    // If keepDim is true we need to insert the removed dimension(s) manually by
+    // reshaping
+    std::vector<dim_t> shape =
+        batchedReduceAddNode->getResult().getType()->dims();
+    std::sort(glowAxes.begin(), glowAxes.end());
+    for (const auto &axis : glowAxes) {
+      shape.insert(shape.begin() + axis, static_cast<dim_t>(1));
+    }
+    auto reshapeNode = F_.createReshape("reshape", batchedReduceAddNode, shape);
+    return addValueMapping(outputs[0], reshapeNode);
+  }
 }
 
 Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
