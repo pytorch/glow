@@ -2428,6 +2428,33 @@ void BoundInterpreterFunction::fwdResizeBilinearInst(
   dispatchImpl(fwdResizeBilinearInstImpl, I->getSrc()->getElementType(), I);
 }
 
+template <typename ElemTy>
+void BoundInterpreterFunction::fwdTrilIndicesInstImpl(
+    const glow::TrilIndicesInst *I) {
+  Tensor *outT = getTensor(I->getDest());
+  const auto numElems = outT->getRealNumElements();
+  const auto rows = I->getRow();
+  const auto cols = I->getColumn();
+  const auto offset = I->getOffset();
+
+  ElemTy idx = 0;
+  for (ElemTy i = 0; i < rows; ++i) {
+    for (ElemTy j = 0; j < cols; ++j) {
+      if (i + offset >= j) {
+        reinterpret_cast<ElemTy *>(outT->getUnsafePtr())[idx] = i;
+        reinterpret_cast<ElemTy *>(outT->getUnsafePtr())[(numElems / 2) + idx] =
+            j;
+        idx++;
+      }
+    }
+  }
+}
+
+void BoundInterpreterFunction::fwdTrilIndicesInst(
+    const glow::TrilIndicesInst *I) {
+  fwdTrilIndicesInstImpl<int64_t>(I);
+}
+
 //===----------------------------------------------------------------------===//
 //                      Local Response Normalization
 //===----------------------------------------------------------------------===//

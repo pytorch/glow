@@ -109,6 +109,9 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
          ElemKind::Int8QTy, ElemKind::Int16QTy, ElemKind::Int32QTy,
          ElemKind::Int32ITy, ElemKind::Int64ITy});
 
+  case Kinded::Kind::TrilIndicesNodeKind:
+    return true;
+
   case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:

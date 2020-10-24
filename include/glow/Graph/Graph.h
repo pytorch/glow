@@ -1513,6 +1513,13 @@ public:
   ResizeBilinearNode *createResizeBilinear(llvm::StringRef name,
                                            NodeValue input, TypeRef outTy);
 
+  // Return the indices of the elements in the lower triangular part of a row by
+  // column matrix. Offset specifies how many diagonals below or above
+  // the main diagonal to exclude or include, depending on whether its value is
+  // negative or positive respectively.
+  TrilIndicesNode *createTrilIndices(llvm::StringRef name, glow::unsigned_t row,
+                                     glow::unsigned_t column, int64_t offset);
+
   /// Create quantization node which transforms floating point tensor to a
   /// quantized one with given Scale and Offset. Scale and Offset params are
   /// part of the \p outTy.

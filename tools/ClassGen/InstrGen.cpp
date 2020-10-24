@@ -976,6 +976,14 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::SameElementType, {"Dest", "Src"})
       .autoIRGen();
 
+  BB.newInstr("TrilIndices")
+      .addOperand("Dest", OperandKind::Out)
+      .addMember(MemberType::Unsigned, "Row")
+      .addMember(MemberType::Unsigned, "Column")
+      .addMember(MemberType::Int64, "Offset")
+      .autoVerify(VerifyKind::NoVerify)
+      .autoIRGen();
+
   //===--------------------------------------------------------------------===//
   //                Reorder transformations
   //===--------------------------------------------------------------------===//

@@ -1110,6 +1110,23 @@ int main(int argc, char **argv) {
           "neighbor interpolation. The Output tensor is of shape "
           "floor(input_dimension * scale)");
 
+  BB.newNode("TrilIndices")
+      .addMember(MemberType::Unsigned, "Row")
+      .addMember(MemberType::Unsigned, "Column")
+      .addMember(MemberType::Int64, "Offset")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Returns the indices of the lower triangular part of a "
+          "matrix with dimensions Row by Column. If Offset is 0 (default "
+          "value), the indices of the elements below the main diagonal are "
+          "returned (including the main diagonal). If Offset is positive, "
+          "Offset diagonals above the main "
+          "diagonal are also included. If Offset is negative, Offset diagonals "
+          "below the main diagonal are excluded. The first dimension "
+          "of the output tensor contains the row indices, while the "
+          "second dimension contains the column indices of the selected "
+          "elements.");
+
   //===--------------------------------------------------------------------===//
   //                Reorder transformations
   //===--------------------------------------------------------------------===//
