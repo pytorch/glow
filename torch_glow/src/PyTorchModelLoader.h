@@ -485,6 +485,22 @@ private:
   /// \returns error on failure.
   Error loadPow(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch xor node.
+  /// \returns error on failure.
+  Error loadLogicalXor(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch or node.
+  /// \returns error on failure.
+  Error loadLogicalOr(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch and node.
+  /// \returns error on failure.
+  Error loadLogicalAnd(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch not node.
+  /// \returns error on failure.
+  Error loadLogicalNot(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch sqrt node.
   /// \returns error on failure.
   Error loadSqrt(const torch::jit::Node *ptNode);
