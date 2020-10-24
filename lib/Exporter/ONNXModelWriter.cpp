@@ -1901,6 +1901,11 @@ Error ONNXModelWriter::writeResizeBilinear(const ResizeBilinearNode *node,
   return Error::success();
 }
 
+Error ONNXModelWriter::writeTrilIndices(const TrilIndicesNode *node,
+                                        GraphType &graph) {
+  RETURN_ERR(MAKE_ERR("tril_indices op not supported."));
+}
+
 Error ONNXModelWriter::writeSoftMax(const SoftMaxNode *node, GraphType &graph) {
   auto *proto = graph.add_node();
   proto->set_name(node->getName());

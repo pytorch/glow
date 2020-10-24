@@ -396,4 +396,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Upsample_Nearest1D_Float/0",
     "Upsample_Nearest1D_Float16/0",
     "Upsample_Nearest1D_Int8/0",
+    "trilIndicesBasic/0",
+    "trilIndicesNegativeOffset/0",
+    "trilIndicesPositiveOffset/0",
 };

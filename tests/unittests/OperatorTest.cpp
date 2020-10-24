@@ -2251,6 +2251,48 @@ TEST_P(OperatorTest, ResizeBilinear_Int32_outTy) {
                               true);
 }
 
+template <typename IndexType>
+void trilIndicesTest(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                     glow::Function *F, glow::ExecutionEngine &EE, unsigned row,
+                     unsigned col, int64_t offset, const Tensor &expectedT) {
+  auto *R = F->createTrilIndices("tril_indices", row, col, offset);
+  auto *result = F->createSave("save", R);
+
+  bindings.allocate(result->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor *resultT = bindings.get(result->getPlaceholder());
+  EXPECT_TRUE(resultT->isEqual(expectedT));
+}
+
+TEST_P(OperatorTest, trilIndicesBasic) {
+  CHECK_IF_ENABLED();
+  Tensor expectedT(ElemKind::Int64ITy, {2, 15});
+  expectedT.getHandle<int64_t>() = {0, 1, 1, 2, 2, 2, 3, 3, 3, 3,
+                                    4, 4, 4, 4, 4, 0, 0, 1, 0, 1,
+                                    2, 0, 1, 2, 3, 0, 1, 2, 3, 4};
+  trilIndicesTest<int64_t>(bindings_, mod_, F_, EE_, 5, 5, 0, expectedT);
+}
+
+TEST_P(OperatorTest, trilIndicesNegativeOffset) {
+  CHECK_IF_ENABLED();
+  Tensor expectedT(ElemKind::Int64ITy, {2, 3});
+  expectedT.getHandle<int64_t>() = {48, 49, 49, 0, 0, 1};
+  trilIndicesTest<int64_t>(bindings_, mod_, F_, EE_, 50, 27, -48, expectedT);
+}
+
+TEST_P(OperatorTest, trilIndicesPositiveOffset) {
+  CHECK_IF_ENABLED();
+  Tensor expectedT(ElemKind::Int64ITy, {2, 30});
+  expectedT.getHandle<int64_t>() = {
+      0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3,
+      3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 0, 1, 2, 3, 0, 1, 2, 3, 4, 0,
+      1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6, 7};
+  trilIndicesTest<int64_t>(bindings_, mod_, F_, EE_, 5, 13, 3, expectedT);
+}
+
 TEST_P(OperatorTest, pow) {
   CHECK_IF_ENABLED();
 

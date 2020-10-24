@@ -2725,6 +2725,26 @@ ResizeBilinearNode *Function::createResizeBilinear(llvm::StringRef name,
   return addNode(new ResizeBilinearNode(name, outTy, input, scales));
 }
 
+TrilIndicesNode *Function::createTrilIndices(llvm::StringRef name,
+                                             glow::unsigned_t row,
+                                             glow::unsigned_t column,
+                                             int64_t offset) {
+  dim_t outDims1 = 0;
+  for (int64_t i = 0; i < column; ++i) {
+    auto value = row - i;
+    if (value + offset <= 0) {
+      break;
+    }
+    outDims1 += std::max(
+        std::min(static_cast<dim_t>(value + offset), static_cast<dim_t>(row)),
+        static_cast<dim_t>(0));
+  }
+
+  std::vector<dim_t> outDims = {2, outDims1};
+  auto outTy = getParent()->uniqueType(ElemKind::Int64ITy, outDims);
+  return addNode(new TrilIndicesNode(name, outTy, row, column, offset));
+}
+
 QuantizeNode *Function::createQuantize(llvm::StringRef name, NodeValue input,
                                        TypeRef outTy) {
   assert(input.getType()->isFPType() && "Input must be a floating type");

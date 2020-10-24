@@ -130,6 +130,9 @@ bool Interpreter::isOpSupported(const NodeInfo &NI) const {
     return isNodePrecisionSupported;
   }
 
+  case Kinded::Kind::TrilIndicesNodeKind:
+    return true;
+
   case Kinded::Kind::AvgPoolNodeKind:
   case Kinded::Kind::AdaptiveAvgPoolNodeKind:
   case Kinded::Kind::BatchedReduceAddNodeKind:

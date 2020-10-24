@@ -530,6 +530,9 @@ struct BlacklistInitializer {
 #endif
       {"Erf_FloatTy/0", TestBlacklist::AnyDeviceAnyEngine},
       {"Erf_Int8QTy/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"TrilIndices/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"trilIndicesNegativeOffset/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"trilIndicesPositiveOffset/0", TestBlacklist::AnyDeviceAnyEngine},
     };
     TestBlacklist::prepareBlacklist(testBlacklistedSetups,
                                     backendTestBlacklist);

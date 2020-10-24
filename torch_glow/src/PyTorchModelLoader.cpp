@@ -987,6 +987,14 @@ struct CompareInputs {
   };
 };
 
+struct TrilIndicesInputs {
+  enum {
+    row = 0,
+    col,
+    offset,
+  };
+};
+
 } // namespace
 
 // static
@@ -1075,6 +1083,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::quantize_per_tensor"}, &PyTorchModelLoader::loadQuantize},
       {{"aten::dequantize"}, &PyTorchModelLoader::loadDequantize},
       {{"aten::size"}, &PyTorchModelLoader::loadSize},
+      {{"aten::tril_indices"}, &PyTorchModelLoader::loadTrilIndices},
       {{"prim::ListConstruct"}, &PyTorchModelLoader::loadListConstruct},
       {{"aten::reciprocal", "aten::reciprocal_"},
        &PyTorchModelLoader::loadReciprocal},
@@ -2706,6 +2715,29 @@ Error PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
     return MAKE_ERR("Encountered unknown JIT Value mapping");
   }
   RETURN_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
+}
+
+Error PyTorchModelLoader::loadTrilIndices(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+
+  glow::unsigned_t row, col;
+  int64_t offset;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      row, iValToInt(getGlowIValueForValue(inputs[TrilIndicesInputs::row])));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      col, iValToInt(getGlowIValueForValue(inputs[TrilIndicesInputs::col])));
+  ASSIGN_VALUE_OR_RETURN_ERR(offset, iValToInt(getGlowIValueForValue(
+                                         inputs[TrilIndicesInputs::offset])));
+
+  if (offset < 0) {
+    RETURN_ERR_IF_NOT(std::abs(offset) < row,
+                      "abs(Offset) must be <= Row if offset is negative for "
+                      "aten::tril_indices");
+  }
+
+  return addValueMapping(
+      outputs[0], F_.createTrilIndices("tril_indices", row, col, offset));
 }
 
 /// Mirroring the implementation in

@@ -2081,6 +2081,15 @@ bool ResizeBilinearNode::verify() const {
   return isValid;
 }
 
+bool TrilIndicesNode::verify() const {
+  bool isValid = true;
+  const auto offset = getOffset();
+  if (offset < 0) {
+    isValid = std::abs(offset) < getRow();
+  }
+  return isValid;
+}
+
 bool NonMaxSuppressionNode::verify() const {
   NodeValue boxes = getBoxes();
   NodeValue scores = getScores();

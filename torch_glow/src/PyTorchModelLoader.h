@@ -605,6 +605,10 @@ private:
   /// \returns error on failure.
   Error loadQuantizedBatchNorm3dRelu(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::tril_indices node.
+  /// \returns error on failure.
+  Error loadTrilIndices(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch aten::layer_norm node.
   /// \returns error on failure.
   Error loadLayerNorm(const torch::jit::Node *ptNode);

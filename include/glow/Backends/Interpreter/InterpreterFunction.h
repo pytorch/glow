@@ -257,6 +257,9 @@ private:
   template <typename ElemTy>
   void fwdResizeBilinearInstImpl(const ResizeBilinearInst *I);
 
+  template <typename ElemTy>
+  void fwdTrilIndicesInstImpl(const TrilIndicesInst *I);
+
   template <typename ElemTy> void fwdSigmoidInstFloatImpl(const SigmoidInst *I);
 
   template <typename ElemTy> void fwdTanhInstFloatImpl(const TanhInst *I);
