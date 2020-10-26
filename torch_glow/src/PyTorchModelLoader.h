@@ -457,6 +457,10 @@ private:
   /// \returns error on failure.
   Error loadRsub(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch log node.
+  /// \returns error on failure.
+  Error loadLog(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch max node.
   /// \returns error on failure.
   Error loadMax(const torch::jit::Node *ptNode);
