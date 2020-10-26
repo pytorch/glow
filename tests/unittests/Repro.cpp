@@ -316,7 +316,7 @@ public:
     }
 
     std::stringstream ss;
-    ss << "weight_" << i_++;
+    ss << "weight_" << i_;
     largeBuffer_ = zip_->getRecord(ss.str());
     ::ONNX_NAMESPACE::TensorProto t;
     t.ParseFromString(largeBuffer_);
@@ -332,8 +332,17 @@ public:
     }
     auto ty = typeInfo_[currentBlobName_];
 
+    ss.str("");
+    ss << "data_" << i_++;
+    largeBuffer_.clear();
+    if (zip_->hasRecord(ss.str())) {
+      largeBuffer_ = zip_->getRecord(ss.str());
+      LOG(INFO) << "Read weight data " << ss.str() << " of size "
+                << largeBuffer_.size();
+    }
     currentTensor_.reset(new ::glow::Tensor());
-    RETURN_IF_ERR(::glow::loadTensor(t, currentTensor_.get()));
+    RETURN_IF_ERR(::glow::loadTensor(t, currentTensor_.get(),
+                                     /*useGlowCustomOps*/ false, largeBuffer_));
     CHECK(currentTensor_->getType().isEqual(ty))
         << "Mismatched tensor type: " << currentTensor_->getType().toString()
         << " vs " << ty.toString();

@@ -540,7 +540,7 @@ void glow::fillPlaceholders(const std::string &fileName,
 
 /// Loads tensor \p T from the input \p in.
 Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
-                       bool useGlowCustomOps) {
+                       bool useGlowCustomOps, const std::string &data) {
   std::vector<dim_t> dim;
   for (auto d : in.dims()) {
     dim.push_back(d);
@@ -555,8 +555,9 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
       for (auto f : in.float_data()) {
         TH.raw(i++) = f;
       }
-    } else if (in.has_raw_data()) {
-      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+    } else if (in.has_raw_data() || !data.empty()) {
+      std::istringstream inStream(data.empty() ? in.raw_data() : data,
+                                  std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(float));
     } else {
       return MAKE_ERR("Unsupported Tensor format for FLOAT, name: " + in.name(),
@@ -564,8 +565,9 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::FLOAT16) {
     T->reset(ElemKind::Float16Ty, dim);
-    if (in.has_raw_data()) {
-      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+    if (in.has_raw_data() || !data.empty()) {
+      std::istringstream inStream(data.empty() ? in.raw_data() : data,
+                                  std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * (sizeof(float) / 2));
     } else {
       return MAKE_ERR("Unsupported Tensor format for FLOAT16, name: " +
@@ -574,8 +576,9 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::BFLOAT16) {
     T->reset(ElemKind::BFloat16Ty, dim);
-    if (in.has_raw_data()) {
-      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+    if (in.has_raw_data() || !data.empty()) {
+      std::istringstream inStream(data.empty() ? in.raw_data() : data,
+                                  std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * (sizeof(float) / 2));
     } else {
       return MAKE_ERR("Unsupported Tensor format for BFLOAT16, name: " +
@@ -591,8 +594,9 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
       for (auto f : in.int64_data()) {
         TH.raw(i++) = f;
       }
-    } else if (in.has_raw_data()) {
-      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+    } else if (in.has_raw_data() || !data.empty()) {
+      std::istringstream inStream(data.empty() ? in.raw_data() : data,
+                                  std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(int64_t));
     } else {
       return MAKE_ERR("Unsupported Tensor format for INT64, name: " + in.name(),
@@ -604,8 +608,9 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
         ty, parseTypeFromDocString(in.doc_string(), dim, useGlowCustomOps));
     T->reset(ty);
 
-    if (in.has_raw_data()) {
-      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+    if (in.has_raw_data() || !data.empty()) {
+      std::istringstream inStream(data.empty() ? in.raw_data() : data,
+                                  std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(int8_t));
     } else {
       return MAKE_ERR("Unsupported Tensor format for INT8, name: " + in.name(),
@@ -617,8 +622,9 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
         ty, parseTypeFromDocString(in.doc_string(), dim, useGlowCustomOps));
     T->reset(ty);
 
-    if (in.has_raw_data()) {
-      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+    if (in.has_raw_data() || !data.empty()) {
+      std::istringstream inStream(data.empty() ? in.raw_data() : data,
+                                  std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(int16_t));
     } else {
       return MAKE_ERR("Unsupported Tensor format for INT16, name: " + in.name(),
@@ -642,8 +648,9 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
       for (auto f : in.int32_data()) {
         TH.raw(i++) = f;
       }
-    } else if (in.has_raw_data()) {
-      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+    } else if (in.has_raw_data() || !data.empty()) {
+      std::istringstream inStream(data.empty() ? in.raw_data() : data,
+                                  std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(int32_t));
     } else {
       return MAKE_ERR("Unsupported Tensor format for INT32, name: " + in.name(),
@@ -655,8 +662,9 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
         ty, parseTypeFromDocString(in.doc_string(), dim, useGlowCustomOps));
     T->reset(ty);
 
-    if (in.has_raw_data()) {
-      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+    if (in.has_raw_data() || !data.empty()) {
+      std::istringstream inStream(data.empty() ? in.raw_data() : data,
+                                  std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(uint8_t));
     } else {
       return MAKE_ERR("Unsupported Tensor format for UINT8, name: " + in.name(),
@@ -664,8 +672,9 @@ Error glow::loadTensor(const ONNX_NAMESPACE::TensorProto &in, Tensor *T,
     }
   } else if (in.data_type() == ONNX_NAMESPACE::TensorProto::BOOL) {
     T->reset(ElemKind::BoolTy, dim);
-    if (in.has_raw_data()) {
-      std::istringstream inStream(in.raw_data(), std::stringstream::binary);
+    if (in.has_raw_data() || !data.empty()) {
+      std::istringstream inStream(data.empty() ? in.raw_data() : data,
+                                  std::stringstream::binary);
       inStream.read(T->getUnsafePtr(), T->size() * sizeof(bool));
     } else if (in.int32_data_size() > 0) {
       // Some ONNX models use int32_data to initialize bool type (e.g., when
