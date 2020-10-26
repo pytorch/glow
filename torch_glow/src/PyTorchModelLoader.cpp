@@ -882,6 +882,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::add", "aten::add_"}, &PyTorchModelLoader::loadAdd},
       {{"aten::sub", "aten::sub_"}, &PyTorchModelLoader::loadSub},
       {{"aten::rsub"}, &PyTorchModelLoader::loadRsub},
+      {{"aten::log"}, &PyTorchModelLoader::loadLog},
       {{"aten::sigmoid", "aten::sigmoid_"}, &PyTorchModelLoader::loadSigmoid},
       {{"aten::relu", "aten::relu_"}, &PyTorchModelLoader::loadRelu},
       {{"aten::gelu"}, &PyTorchModelLoader::loadGelu},
@@ -2248,6 +2249,17 @@ Error PyTorchModelLoader::loadRsub(const torch::jit::Node *ptNode) {
       res, loadArithmeticNode<glow::SubNode>("sub", inputs[1], inputs[0]));
 
   RETURN_ERR(addValueMapping(outputs[0], res));
+}
+
+Error PyTorchModelLoader::loadLog(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue glowInput;
+  ASSIGN_VALUE_OR_RETURN_ERR(glowInput, getGlowNodeValueForValue(inputs[0]));
+
+  return addValueMapping(outputs[0], F_.createLog("log", glowInput));
 }
 
 Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
