@@ -800,6 +800,19 @@ struct EmbeddingBagInputs {
   };
 };
 
+/// Indexes of fb::glow_embedding_bag inputs.
+struct GlowEmbeddingBagInputs {
+  enum {
+    indices,
+    offsets,
+    weight_qualname,
+    num_embeddings,
+    embedding_dim,
+    per_sample_weights,
+    include_last_offset,
+  };
+};
+
 /// Indexes used for quantized::embedding_bag_byte_rowwise_offsets inputs.
 struct EmbeddingBagByteRowwiseOffsetsInputs {
   enum {
@@ -967,6 +980,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::to"}, &PyTorchModelLoader::loadTo},
       {{"prim::ConstantChunk"}, &PyTorchModelLoader::loadConstantChunk},
       {{"aten::embedding_bag"}, &PyTorchModelLoader::loadEmbeddingBag},
+      {{"fb::glow_embedding_bag"}, &PyTorchModelLoader::loadGlowEmbeddingBag},
       {{"_caffe2::BatchPermutation"},
        &PyTorchModelLoader::loadBatchPermutation},
       {{"quantized::embedding_bag_byte_rowwise_offsets"},
@@ -5036,6 +5050,67 @@ Error PyTorchModelLoader::loadEmbeddingBag(const torch::jit::Node *ptNode) {
                                    indices, offsets, includeLastOffset);
 
   RETURN_ERR(addValueMapping(outputs[0], EB->getResult()));
+}
+
+Error PyTorchModelLoader::loadGlowEmbeddingBag(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 7, outputs, 1));
+  // get the shape (num_embeddings, embedding_dim) and qualName for the
+  // embeddingBag, and create placeholder node
+  glow::dim_t numEmbedding;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      numEmbedding, iValToInt(getGlowIValueForValue(
+                        inputs[GlowEmbeddingBagInputs::num_embeddings])));
+  glow::dim_t embeddingDim;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      embeddingDim, iValToInt(getGlowIValueForValue(
+                        inputs[GlowEmbeddingBagInputs::embedding_dim])));
+  std::string *weightQualName;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      weightQualName, iValToString(getGlowIValueForValue(
+                          inputs[GlowEmbeddingBagInputs::weight_qualname])));
+  std::vector<glow::dim_t> dims{numEmbedding, embeddingDim};
+  glow::Type t(ElemKind::FloatTy, dims);
+  glow::Placeholder *ph =
+      F_.getParent()->createPlaceholder(&t, *weightQualName,
+                                        /*isTrainable*/ false);
+  ph->setStatic(true);
+  glow::NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      indices,
+      getGlowNodeValueForValue(inputs[GlowEmbeddingBagInputs::indices]));
+  glow::NodeValue offsets;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      offsets,
+      getGlowNodeValueForValue(inputs[GlowEmbeddingBagInputs::offsets]));
+
+  // If no indices are provided, replace the op with a zero Constant.
+  if (indices.dims()[0] == 0) {
+    glow::Tensor t(
+        ElemKind::FloatTy,
+        {offsets.dims()[0] > 0 ? offsets.dims()[0] - 1 : 0, embeddingDim});
+    t.zero();
+    glow::Constant *glowConstant =
+        F_.getParent()->createConstant("EmptyEmbeddingBag", std::move(t));
+    return addValueMapping(outputs[0], glowConstant->getOutput());
+  }
+
+  bool includeLastOffset;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      includeLastOffset,
+      iValToBool(getGlowIValueForValue(
+          inputs[GlowEmbeddingBagInputs::include_last_offset])));
+  RETURN_ERR_IF_NOT(includeLastOffset,
+                    "Currently only support include_last_offset='True'");
+  glow::NodeValue perSampleWeights = loadNodeValueOrCreateBroadcastedConstant(
+      inputs[GlowEmbeddingBagInputs::per_sample_weights], "EmbeddingBag.ones",
+      glow::Type(ElemKind::Int64ITy, {indices.dims()[0]}), 1.0);
+
+  auto *EB = F_.createEmbeddingBag("GlowEmbeddingBag", ph->getOutput(),
+                                   perSampleWeights, indices, offsets,
+                                   includeLastOffset);
+  return addValueMapping(outputs[0], EB->getResult());
 }
 
 Error PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsetsHelper(
