@@ -41,15 +41,16 @@ struct DeviceInfo;
 using ConstantFoldingRecordMap = llvm::DenseMap<Constant *, SaveNode *>;
 
 /// Perform optimizations on the graph representation.
-void optimize(Function *F, CompilationContext &cctx);
+void optimize(Function *F, const CompilationContext &cctx);
 void optimize(Function *F, CompilationMode mode);
-void optimize(Function *F, CompilationContext &cctx, const Backend &B);
+void optimize(Function *F, const CompilationContext &cctx, const Backend &B);
 
 /// Delete unused Constants from \p mod.
 void deleteUnusedConstants(Module &mod);
 
 /// Fold nodes that were expressed lowered in the input model.
-void fold(Function *F, CompilationContext &cctx, const Backend *B = nullptr);
+void fold(Function *F, const CompilationContext &cctx,
+          const Backend *B = nullptr);
 
 /// Performs the actual constant quantization in function \p F.
 void convertQuantizedConstants(Function *F, CompilationContext &cctx);
