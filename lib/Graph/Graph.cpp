@@ -3087,15 +3087,9 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
           biasTQP = specializeBiasQuantizationParams(
               biasTQP, inputTQP, filterTQP, schema, biasElemQTy);
         } else {
-#if 0
           // Specialize bias and weights quantization parameters.
           specializeBiasWeightsQuantizationParams(biasTQP, inputTQP, filterTQP,
                                                   schema, biasElemQTy);
-#else
-          // Specialize only bias quantization parameters.
-          biasTQP = specializeBiasQuantizationParams(
-              biasTQP, inputTQP, filterTQP, schema, biasElemQTy);
-#endif
         }
         biasScalesH.raw(idx) = biasTQP.scale;
         biasOffsetsH.raw(idx) = biasTQP.offset;
