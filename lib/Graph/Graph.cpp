@@ -3077,6 +3077,7 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
           biasOffsetsC->getPayloadMutable(), schema, biasElemQTy, qDim, qStep);
       // Specialize the bias channelwise TensorQuantizationParams.
       for (dim_t idx = 0; idx < numChannels; idx++) {
+#if 0
         TensorQuantizationParams biasTQP = {biasScalesH.raw(idx),
                                             biasOffsetsH.raw(idx)};
         TensorQuantizationParams inputTQP = {inputScale, inputOffset};
@@ -3095,6 +3096,15 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
         biasOffsetsH.raw(idx) = biasTQP.offset;
         filterScalesH.raw(idx) = filterTQP.scale;
         filterOffsetsH.raw(idx) = filterTQP.offset;
+#else
+        auto biasTQPNew = specializeBiasQuantizationParams(
+          {biasScalesH.raw(idx), biasOffsetsH.raw(idx)},
+          {inputScale, inputOffset},
+          {filterScalesH.raw(idx), filterOffsetsH.raw(idx)}, schema,
+          biasElemQTy);
+        biasScalesH.raw(idx) = biasTQPNew.scale;
+        biasOffsetsH.raw(idx) = biasTQPNew.offset;
+#endif
       }
     } else {
       // Set implicit bias channelwise TensorQuantizationParams.
