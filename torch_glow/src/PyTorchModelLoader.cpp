@@ -1715,9 +1715,32 @@ Error PyTorchModelLoader::loadQuantizedMul(const torch::jit::Node *ptNode) {
     float rhsFloat;
     glow::NodeValue output;
 
-    ASSIGN_VALUE_OR_RETURN_ERR(rhsFloat,
-                               iValToDouble(getGlowIValueForValue(
-                                   inputs[QuantizedMulScalarInputs::rhs])));
+    // rhs should be either a Double IValue or a Constant NodeValue which is a
+    // Double Scalar.
+    if (hasGlowIValueForValue(inputs[QuantizedMulScalarInputs::rhs])) {
+      ASSIGN_VALUE_OR_RETURN_ERR(rhsFloat,
+                                 iValToDouble(getGlowIValueForValue(
+                                     inputs[QuantizedMulScalarInputs::rhs])));
+    } else {
+      glow::NodeValue rhsNodeValue;
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          rhsNodeValue,
+          getGlowNodeValueForValue(inputs[QuantizedMulScalarInputs::rhs]));
+
+      auto rhsElementType = rhsNodeValue.getType()->getElementType();
+      size_t rhsSize = rhsNodeValue.getType()->size();
+
+      RETURN_ERR_IF_NOT(
+          rhsNodeValue.getNode()->getKind() == Kinded::Kind::ConstantKind,
+          "Expect rhs of quantized mul to be scalar or constant.");
+      RETURN_ERR_IF_NOT(rhsElementType == glow::ElemKind::FloatTy,
+                        "Expect rhs constant data type to be float.");
+      RETURN_ERR_IF_NOT(rhsSize == 1, "Expect rhs constant to be a scalar");
+
+      glow::Constant *rhsConstant =
+          llvm::dyn_cast<glow::Constant>(rhsNodeValue.getNode());
+      rhsFloat = rhsConstant->getPayload().getHandle<float>().at({0});
+    }
     if (rhsFloat == 0) {
       // If mul's rhs is 0, we do not calc but just create a all-0-constant
       glow::Tensor t(glow::ElemKind::Int8QTy, lhs.dims(), 1.0, 0);
@@ -1744,9 +1767,15 @@ Error PyTorchModelLoader::loadQuantizedMul(const torch::jit::Node *ptNode) {
       }
 
       auto rhsTy = glow::Type(inputElemKind, lhs.dims(), rhsScale, 0);
-      glow::NodeValue rhs = loadNodeValueOrCreateBroadcastedConstant(
-          inputs[QuantizedMulScalarInputs::rhs], "mul_scalar_rhs", rhsTy,
-          rhsQVal);
+      glow::Tensor t(rhsTy);
+      t.init(glow::Tensor::InitKind::Broadcast, rhsQVal,
+             F_.getParent()->getPRNG());
+
+      glow::NodeValue rhs =
+          F_.getParent()
+              ->createConstant("quantized_mul_scalar_rhs_constant",
+                               std::move(t))
+              ->getOutput();
 
       auto outTy = F_.getParent()->uniqueType(ElemKind::Int8QTy, lhs.dims(),
                                               outScale, outOffset);
