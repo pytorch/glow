@@ -1244,6 +1244,27 @@ static void lowerBatchedReduceMeanNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, BRM.getResult(), DN);
 }
 
+static void
+lowerBatchedReduceSumSquareNode(Function *F, CompilationContext &cctx,
+                                const BatchedReduceSumSquareNode &BR) {
+  LOG_SCOPE(F->getLogContext(), "lowerBatchReduceSumSquareNode")
+
+  auto input = BR.getBatch();
+
+  auto axis = BR.getAxis();
+  assert(axis < input.dims().size() &&
+         "Axis to remove must fit inside dimensions of the provided dims.");
+
+  // Lower to mul + reduceAdd.
+  MulNode *mul =
+      F->createMul(BR.getName().str() + "_mul", input.getType(), input, input);
+
+  auto *BRA = F->createBatchedReduceAdd(BR.getName().str() + ".reduceAdd",
+                                        BR.getResult().getType(), mul, axis);
+
+  replaceAllUsesOfWith(cctx.loweredInfoMap, BR.getResult(), BRA);
+}
+
 static void lowerVectorNormNode(Function *F, CompilationContext &cctx,
                                 const VectorNormNode &VN) {
   LOG_SCOPE(F->getLogContext(), "lowerVectorNormNode")
@@ -1763,6 +1784,7 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(BatchNormalizationGrad);
     CASE_LOWER(SigmoidCrossEntropyWithLogits);
     CASE_LOWER(BatchedReduceMean);
+    CASE_LOWER(BatchedReduceSumSquare);
     CASE_LOWER(VectorNorm);
     CASE_LOWER(Bucketize);
     CASE_LOWER(ChannelShuffle);

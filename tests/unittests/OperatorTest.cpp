@@ -3118,6 +3118,38 @@ TEST_P(OperatorStatelessTest, ParallelBatchMatMul_Int8) {
       ElemKind::Int8QTy, 0.002f, parCloneCountOpt);
 }
 
+/// Helper to test BatchedReduceSumSquare using \p DTy.
+template <typename DataType>
+static void testBatchedReduceSumSquare(glow::PlaceholderBindings &bindings,
+                                       glow::Module &mod, glow::Function *F,
+                                       glow::ExecutionEngine &EE,
+                                       ElemKind DTy) {
+  auto *batch = mod.createPlaceholder(DTy, {2, 4}, "batch", false);
+  bindings.allocate(batch)->getHandle<DataType>() = {10, 20, 30, 40,
+                                                     1,  2,  3,  4};
+
+  auto *R =
+      F->createBatchedReduceSumSquare("reduce.sumsquare", batch, /* axis */ 0);
+
+  auto *save = F->createSave("save", R);
+  auto *result = bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+
+  Tensor expected(DTy, {4});
+  expected.getHandle<DataType>() = {101, 404, 909, 1616};
+  EXPECT_TRUE(result->isEqual(expected));
+}
+
+/// Test that BatchedReduceSumSquare is correctly supported in FloatTy.
+TEST_P(OperatorTest, batchedReduceSumSquare_Float) {
+  CHECK_IF_ENABLED();
+
+  testBatchedReduceSumSquare<float>(bindings_, mod_, F_, EE_,
+                                    ElemKind::FloatTy);
+}
+
 /// Helper to test BatchedReduceAdd using \p DTy.
 template <typename DataType>
 static void testBatchedReduceAdd(glow::PlaceholderBindings &bindings,
