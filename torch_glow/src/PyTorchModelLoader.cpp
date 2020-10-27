@@ -5618,6 +5618,103 @@ PyTorchModelLoader::PyTorchModelLoader(
   }
 }
 
+/*static*/
+Error PyTorchModelLoader::loadJITGraphWithParameters(
+    glow::Function &F, const torch::jit::Graph &graph,
+    const at::ArrayRef<torch::jit::IValue> inputs,
+    const std::vector<torch::jit::IValue> &parameters,
+    std::vector<glow::Placeholder *> &inputPlaceholders,
+    std::vector<glow::Placeholder *> &outputPlaceholders,
+    bool check_ops = true) {
+  Error error = Error::empty();
+  PyTorchModelLoader loader(F, graph, parameters, inputPlaceholders,
+                            outputPlaceholders, error, inputs, check_ops);
+  return error;
+}
+
+PyTorchModelLoader::PyTorchModelLoader(
+    glow::Function &F, const torch::jit::Graph &graph,
+    const std::vector<torch::jit::IValue> &parameters,
+    std::vector<glow::Placeholder *> &inputPlaceholders,
+    std::vector<glow::Placeholder *> &outputPlaceholders, Error &error,
+    const at::ArrayRef<torch::jit::IValue> inputs, bool check_ops)
+    : F_(F), inputs_(inputs) {
+
+  auto setup = [&]() -> Error {
+    auto graphInputValues = graph.inputs();
+    RETURN_ERR_IF_NOT(
+        inputs.size() + parameters.size() == graphInputValues.size(),
+        glow::strFormat("Number of Graph inputs %lu must match the "
+                        "number of placeholders %lu + number of "
+                        "provided inputs %lu.",
+                        graphInputValues.size(), parameters.size(),
+                        inputs.size()));
+
+    size_t graphIdx = 0;
+
+    if (check_ops) {
+      int unsupported_ops = 0;
+      // Print all unsupported glow nodes.
+      for (const auto &node : graph.nodes()) {
+        if (!isNodeSupported(node)) {
+          unsupported_ops++;
+          std::cerr << "Unsupported operation : " << node->kind().toQualString()
+                    << std::endl;
+        }
+      }
+      RETURN_ERR_IF_NOT(
+          !unsupported_ops,
+          strFormat("%d operations not supported.", unsupported_ops));
+    }
+
+    // Create Glow Placeholders for inputs.
+    for (size_t i = 0; i < inputs.size(); ++i, ++graphIdx) {
+      const torch::jit::Value *inputValue = graphInputValues[graphIdx];
+      const c10::IValue inputIValue = inputs.at(i);
+      GlowIValue glowIVal;
+      RETURN_IF_ERR(glowIVal.fromIValue(inputIValue));
+      if (glowIVal.isTensor()) {
+        glow::Tensor *t;
+        ASSIGN_VALUE_OR_RETURN_ERR(t, glowIVal.toTensor());
+        glow::Placeholder *ph = F_.getParent()->createPlaceholder(
+            &t->getType(), "input", /*isTrainable*/ false);
+        RETURN_IF_ERR(addValueMapping(inputValue, ph->getOutput()));
+        inputPlaceholders.push_back(ph);
+        inputPlaceholdersReverseIndex_[ph] = i;
+      } else {
+        RETURN_IF_ERR(addValueMapping(inputValue, std::move(glowIVal)));
+      }
+    }
+
+    // Create Constants for parameters
+    for (size_t i = 0; i < parameters.size(); ++i, ++graphIdx) {
+      DCHECK(parameters[i].isTensor()) << "Expecting parameters to be Tensor";
+      glow::Constant *C = F_.getParent()->createConstant(
+          "parameter", ptTensorToGlowTensor(parameters[i].toTensor()));
+      C->ensureIsOwned();
+
+      RETURN_IF_ERR(
+          addValueMapping(graphInputValues[graphIdx], C->getOutput()));
+    }
+
+    RETURN_IF_ERR(loadNodes(graph));
+
+    // Create Glow Placeholders for outputs.
+    for (const torch::jit::Value *output : graph.outputs()) {
+      glow::NodeValue outputNodeValue;
+      // Only allow tensor outputs from Glow subgraph.
+      ASSIGN_VALUE_OR_RETURN_ERR(outputNodeValue,
+                                 getGlowNodeValueForValue(output));
+      auto *save = F_.createSave("save", outputNodeValue);
+      outputPlaceholders.push_back(save->getPlaceholder());
+    }
+
+    return Error::success();
+  };
+
+  error = setup();
+}
+
 ValueMappingType ValueMapping::getMappingType() const { return mappingType_; }
 
 c10::ScalarType ValueMapping::getCorrectType() const { return correctType_; }

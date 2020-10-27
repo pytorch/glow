@@ -197,6 +197,17 @@ public:
                const at::ArrayRef<torch::jit::IValue> inputs,
                const std::vector<InputMeta> &inputMeta);
 
+  /// Takes a glow::Function \p F, a jit::Graph \p subgraph to load, \p inputs
+  /// as graph external inputs, and \parameters as known tensors. Output
+  /// parameters \p inputPlaceholders and \p outputPlaceholders are filled out.
+  /// \returns error on failure.
+  static Error loadJITGraphWithParameters(
+      glow::Function &F, const torch::jit::Graph &graph,
+      const at::ArrayRef<torch::jit::IValue> inputs,
+      const std::vector<torch::jit::IValue> &parameters,
+      std::vector<glow::Placeholder *> &inputPlaceholders,
+      std::vector<glow::Placeholder *> &outputPlaceholders, bool check_ops);
+
 private:
   /// Takes a glow::Function \p F, a jit::Graph \p graph to load, and a
   /// stack of \p inputs for the graph to be loaded. Parameter \p settings
@@ -209,6 +220,19 @@ private:
                      Error &error, const PyTorchLoaderSettings &settings,
                      const at::ArrayRef<torch::jit::IValue> inputs,
                      const std::vector<InputMeta> &inputMeta = {});
+
+  /// Takes a glow::Function \p F, a jit::Graph \p graph to load, and a
+  /// graph \p inputs and placeholders \p parameters. Output parameters \p
+  /// inputPlaceholders and \p outputPlaceholders are filled out.
+  /// This is only used for standalone execution of saved model with external
+  /// inputs.
+  PyTorchModelLoader(glow::Function &F, const torch::jit::Graph &graph,
+                     const std::vector<torch::jit::IValue> &parameters,
+                     std::vector<glow::Placeholder *> &inputPlaceholders,
+                     std::vector<glow::Placeholder *> &outputPlaceholders,
+                     Error &error,
+                     const at::ArrayRef<torch::jit::IValue> inputs,
+                     bool check_ops);
 
   /// Build mapping from jit symbols to function that loads nodes of that kind.
   static const MappingOfMemberFunctions buildSymbolsMapping();
