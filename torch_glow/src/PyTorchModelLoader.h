@@ -395,6 +395,10 @@ private:
   /// \returns error on failure.
   Error loadNodes(const torch::jit::Graph &graph);
 
+  /// Convert a PyTorch GenerictList iValue \p iVal to glow ivalue and return
+  /// it.
+  Expected<GlowIValue> getGenerictList(const torch::jit::IValue &iVal);
+
   /// Load a PyTorch Constant node as a Glow Constant.
   /// \returns error on failure.
   Error loadConstant(const torch::jit::Node *ptNode);
