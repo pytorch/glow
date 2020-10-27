@@ -9578,6 +9578,88 @@ TEST_CWQCONV(ChannelwiseQuantizedConv2D_Int8_BiasInt32_TTT, ElemKind::Int8QTy,
              ElemKind::Int32QTy, true, true, true)
 #undef TEST_CWQCONV
 
+/// Test ChannelwiseQuantizedConv2D corner case with INT32 bias with
+/// very small filter data which would cause a bias up-shift and saturation
+/// if not properly handled. This kind of corner case is very commonly found
+/// in numerically ill-defined depthwise convolutions in MobileNet.
+TEST_P(OperatorTest, ChannelwiseQuantizedConv2D_Int32Bias_CornerCase) {
+  CHECK_IF_ENABLED();
+
+  std::vector<dim_t> inputDims = {1, 5, 5, 8};
+  std::vector<dim_t> filterDims = {8, 3, 3, 1};
+  std::vector<dim_t> biasDims = {8};
+  std::vector<dim_t> outputDims = {1, 5, 5, 8};
+  std::vector<unsigned_t> kernels = {3, 3};
+  std::vector<unsigned_t> strides = {1, 1};
+  std::vector<unsigned_t> pads = {1, 1, 1, 1};
+  dim_t group = 8;
+  std::vector<unsigned_t> dilation = {1, 1};
+  ElemKind elemQKind = ElemKind::Int8QTy;
+  ElemKind biasElemQKind = ElemKind::Int32QTy;
+  quantization::Schema schema = quantization::Schema::Asymmetric;
+
+  // Create input placeholder.
+  auto *inputF =
+      mod_.createPlaceholder(ElemKind::FloatTy, inputDims, "inputF", false);
+  bindings_.allocate(inputF)->getHandle<float>().randomize(-1.0, 1.0,
+                                                           mod_.getPRNG());
+
+  // Quantize input.
+  auto inputTQP =
+      quantization::chooseQuantizationParams({-1.0, 1.0}, schema, elemQKind);
+  auto *inputQTy =
+      mod_.uniqueType(elemQKind, inputDims, inputTQP.scale, inputTQP.offset);
+  auto *inputQ = F_->createQuantize("inputQ", inputF, inputQTy);
+
+  // Create float filter constant.
+  auto *filterF = mod_.createConstant(ElemKind::FloatTy, filterDims, "filterF");
+  filterF->getPayloadMutable().getHandle<float>().randomize(-1e-5, 1e-5,
+                                                            mod_.getPRNG());
+
+  // Create float bias constant.
+  auto *biasF = mod_.createConstant(ElemKind::FloatTy, biasDims, "biasF");
+  biasF->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                          mod_.getPRNG());
+
+  // Create ChannelwiseQuantizedConvolution and Dequantize.
+  auto outputTQP =
+      quantization::chooseQuantizationParams({-1.0, 1.0}, schema, elemQKind);
+  auto *outQTy =
+      mod_.uniqueType(elemQKind, outputDims, outputTQP.scale, outputTQP.offset);
+  ChannelwiseQuantizedConvolutionNode *outQ =
+      F_->createChannelwiseQuantizedConv(
+          "CWQConv", inputQ, filterF, biasF, nullptr, nullptr, nullptr, nullptr,
+          outQTy, kernels, strides, pads, group, dilation,
+          /* quantizeFilter */ true,
+          /* quantizeBias */ true, schema, elemQKind, biasElemQKind);
+  DequantizeNode *out =
+      F_->createDequantize("dequantize", outQ, ElemKind::FloatTy);
+  SaveNode *saveOut = F_->createSave("saveOut", out);
+  bindings_.allocate(saveOut->getPlaceholder());
+
+  // Check bias/filter quantization parameters.
+  float inputScale = inputTQP.scale;
+  auto *biasScalesC = llvm::dyn_cast<Constant>(outQ->getBiasScales().getNode());
+  EXPECT_TRUE(biasScalesC);
+  auto biasScalesH = biasScalesC->getPayload().getHandle<float>();
+  auto *filterScalesC =
+      llvm::dyn_cast<Constant>(outQ->getFilterScales().getNode());
+  EXPECT_TRUE(filterScalesC);
+  auto filterScalesH = filterScalesC->getPayload().getHandle<float>();
+  auto *biasOffsetsC =
+      llvm::dyn_cast<Constant>(outQ->getBiasOffsets().getNode());
+  EXPECT_TRUE(biasOffsetsC);
+  auto biasOffsetsH = biasOffsetsC->getPayload().getHandle<int32_t>();
+  for (dim_t idx = 0; idx < biasScalesH.size(); idx++) {
+    EXPECT_EQ(biasOffsetsH.raw(idx), 0);
+    EXPECT_EQ(biasScalesH.raw(idx), inputScale * filterScalesH.raw(idx));
+  }
+
+  // Compile and run.
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+}
+
 /// Utility function to test numerically the ChannelwiseQuantizedConvolution2D
 /// against Interpreter implementation.
 static FunctionTensorPair

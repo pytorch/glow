@@ -361,6 +361,17 @@ specializeBiasQuantizationParams(const TensorQuantizationParams &biasTQP,
                                  const TensorQuantizationParams &weightsTQP,
                                  Schema schema, ElemKind biasQTy);
 
+/// Function similar to \ref specializeBiasQuantizationParams with the main
+/// distinction that this function is also allowed to change the quantization
+/// parameters of the weights. The modification is done in place. This function
+/// is used for per-channel quantization. When the requested bias precision is
+/// INT32 this function ensures that bias_scale = input_scale * weights_scale
+/// while making sure the bias data is not saturated by changing both the bias
+/// and weights quantization parameters.
+void specializeBiasWeightsQuantizationParams(
+    TensorQuantizationParams &biasTQP, const TensorQuantizationParams &inputTQP,
+    TensorQuantizationParams &weightsTQP, Schema schema, ElemKind biasQTy);
+
 /// \returns an int8 vector mapping from the \p inTy to the \p outTy given the
 /// function \p f.
 /// \pre inTy and outTy should be Int8QTy.

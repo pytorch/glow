@@ -574,18 +574,51 @@ specializeBiasQuantizationParams(const TensorQuantizationParams &biasTQP,
     biasOffset = 0;
   }
   // Choose bias scale. We try to force the bias scale value to the product
-  // scaleInput * scaleWeights but only if the resulting scale is larger
+  // inputScale * weightsScale but only if the resulting scale is larger
   // (in order to avoid bias data saturation).
-  float scaleInput = inputTQP.scale;
-  float scaleWeights = weightsTQP.scale;
+  float inputScale = inputTQP.scale;
+  float weightsScale = weightsTQP.scale;
   float biasScale = biasTQP.scale;
-  if (scaleInput * scaleWeights > biasScale) {
-    biasScale = scaleInput * scaleWeights;
+  if (inputScale * weightsScale >= biasScale) {
+    biasScale = inputScale * weightsScale;
   }
   // Validate new bias TQP and return.
   TensorQuantizationParams biasTQPNew = {biasScale, biasOffset};
   validateQuantizationParams(biasTQPNew, schema, biasQTy);
   return biasTQPNew;
+}
+
+void specializeBiasWeightsQuantizationParams(
+    TensorQuantizationParams &biasTQP, const TensorQuantizationParams &inputTQP,
+    TensorQuantizationParams &weightsTQP, Schema schema, ElemKind biasQTy) {
+  // Choose bias offset. For int32 bias we always force offset 0 in order
+  // to simplify the implementation since the dynamic range allows it.
+  if (biasQTy == ElemKind::Int32QTy) {
+    biasTQP.offset = 0;
+  }
+  // Choose bias scale. We try to force the bias scale value to the product
+  // inputScale * weightsScale but only if the resulting scale is larger
+  // (in order to avoid bias data saturation). Otherwise, for INT32 bias
+  // only, we change the weightsScale to enforce the equality.
+  float inputScale = inputTQP.scale;
+  float weightsScale = weightsTQP.scale;
+  float biasScale = biasTQP.scale;
+  if (inputScale * weightsScale >= biasScale) {
+    biasScale = inputScale * weightsScale;
+  } else {
+    if (biasQTy == ElemKind::Int32QTy) {
+      weightsScale = biasScale / inputScale;
+      biasScale = inputScale * weightsScale;
+    }
+  }
+  biasTQP.scale = biasScale;
+  weightsTQP.scale = weightsScale;
+  // Validate new bias and weights TQP.
+  if (biasQTy == ElemKind::Int32QTy) {
+    assert((biasTQP.scale == (inputTQP.scale * weightsTQP.scale)) &&
+           "Bias scale invalid!");
+  }
+  validateQuantizationParams(biasTQP, schema, biasQTy);
 }
 
 std::vector<int8_t> createMapping(TypeRef inTy, TypeRef outTy,
