@@ -644,6 +644,10 @@ private:
   /// \returns error on failure.
   Error loadSoftMax(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch Abs node.
+  /// \returns error on failure.
+  Error loadAbs(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch flatten node.
   /// \returns error on failure.
   Error loadFlatten(const torch::jit::Node *ptNode);

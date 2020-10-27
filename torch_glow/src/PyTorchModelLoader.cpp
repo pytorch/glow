@@ -931,6 +931,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::adaptive_avg_pool2d"},
        &PyTorchModelLoader::loadAdaptiveAvgPool2d},
       {{"aten::reshape"}, &PyTorchModelLoader::loadReshape},
+      {{"aten::abs"}, &PyTorchModelLoader::loadAbs},
       {{"aten::upsample_nearest3d"},
        &PyTorchModelLoader::loadUpsampleNearest3D},
       {{"aten::view"}, &PyTorchModelLoader::loadView},
@@ -4069,6 +4070,18 @@ Error PyTorchModelLoader::loadTranspose(const torch::jit::Node *ptNode) {
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[TransposeInputs::input]));
   RETURN_ERR(addValueMapping(outputs[0], output->getResult(), dtype));
+}
+
+Error PyTorchModelLoader::loadAbs(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue in;
+  ASSIGN_VALUE_OR_RETURN_ERR(in, getGlowNodeValueForValue(inputs[0]));
+
+  auto *resultNode = F_.createAbs("Abs", in);
+  return addValueMapping(outputs[0], resultNode);
 }
 
 Error PyTorchModelLoader::loadMin(const torch::jit::Node *ptNode) {
