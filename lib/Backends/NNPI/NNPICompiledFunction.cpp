@@ -94,6 +94,10 @@ Error NNPICompiledFunction::updateCompilationConfigFromOptions(
   config_.enableLightweightCompilation = compilationOptions.lightCompilation;
   config_.dumpDotFiles = compilationOptions.dumpDotFiles;
 
+  config_.forceWeightsOutOfLLC = compilationOptions.forceWeightsOutOfLLC;
+  config_.disableSlsAllLenOneCalcAtRunTime =
+      compilationOptions.disableSlsAllLenOneCalcAtRunTime;
+
   return Error::success();
 }
 
@@ -338,11 +342,6 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   if (!compilationOptions_.disableConstFolding) {
     optConf.constantFolding = 1;
   }
-#if NNPI_MINOR_VERSION >= 1 && NNPI_MINOR_VERSION < 1
-  config_.forceWeightsOutOfLLC = compilationOptions_.forceWeightsOutOfLLC;
-  config_.disableSlsAllLenOneCalcAtRunTime =
-      compilationOptions_.disableSlsAllLenOneCalcAtRunTime;
-#endif // NNPI < 1.1
 
   DBG_MEM_USAGE("NNPICompiledFunction call optimize <<");
   LOG_NNPI_IF_ERROR_RETURN_LLVMERROR(nnpiNetworkOptimize(network_, &optConf),
@@ -384,8 +383,6 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
   }
 
   if (compilationOptions_.useIceT || compilationOptions_.inferOnDevice) {
-    static std::mutex compileMutex;
-    std::lock_guard<std::mutex> guard(compileMutex);
     if (compilationFileName_.empty()) // Compile to memory.
     {
       NNPIStream outFileStream;

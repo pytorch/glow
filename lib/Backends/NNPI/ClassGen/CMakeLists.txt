@@ -13,4 +13,5 @@
 
 set(VERIF_FILENAME NNPISpecificNodesVerification.h)
 configure_file(${VERIF_FILENAME} ${GLOW_BINARY_DIR}/glow/${VERIF_FILENAME} COPYONLY)
+configure_file(NNPISpecificTypes.h ${GLOW_BINARY_DIR}/glow/NNPISpecificTypes.h COPYONLY)
 
