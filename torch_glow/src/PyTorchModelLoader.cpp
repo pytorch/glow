@@ -4859,6 +4859,55 @@ Error PyTorchModelLoader::loadConstantChunk(const torch::jit::Node *ptNode) {
   return Error::success();
 }
 
+Expected<GlowIValue>
+PyTorchModelLoader::getGenerictList(const torch::jit::IValue &iVal) {
+  auto iValList = iVal.toListRef();
+  GlowIValue glowIVal;
+  if (iValList[0].isTensor()) {
+    std::vector<NodeValue> constantNodeValueList;
+    for (const auto &v : iValList) {
+      RETURN_ERR_IF_NOT(v.isTensor(),
+                        strFormat("Expect all ival in a PyTorch GenericList to "
+                                  "be Tensor, but got %s.",
+                                  v.tagKind().c_str()));
+      glow::Tensor glowTensor =
+          ptTensorToGlowTensor(v.toTensor().contiguous()).clone();
+      auto glowConstantNodeValue =
+          F_.getParent()
+              ->createConstant("GenericList_created_constant",
+                               std::move(glowTensor))
+              ->getOutput();
+      constantNodeValueList.push_back(glowConstantNodeValue);
+    }
+    glowIVal.fromNodeValueList(constantNodeValueList);
+  } else if (iValList[0].isInt()) {
+    std::vector<int64_t> intList;
+    for (auto v : iValList) {
+      RETURN_ERR_IF_NOT(
+          v.isInt(),
+          strFormat(
+              "Expect all ival in a PyTorch GenericList to be Int, but got %s.",
+              v.tagKind().c_str()));
+      intList.push_back(v.toInt());
+    }
+    glowIVal.fromIntList(intList);
+  } else if (iValList[0].isDouble()) {
+    std::vector<double> doubleList;
+    for (auto v : iValList) {
+      RETURN_ERR_IF_NOT(v.isDouble(),
+                        strFormat("Expect all ival in a PyTorch GenericList to "
+                                  "be Double, but got %s.",
+                                  v.tagKind().c_str()));
+      doubleList.push_back(v.toDouble());
+    }
+    glowIVal.fromDoubleList(doubleList);
+  } else {
+    return MAKE_ERR(strFormat("Not supported GenericList data type: %s.",
+                              iValList[0].tagKind().c_str()));
+  }
+  return glowIVal;
+}
+
 Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
@@ -4870,8 +4919,14 @@ Error PyTorchModelLoader::loadConstant(const torch::jit::Node *ptNode) {
   const torch::jit::IValue iVal = *optionalIValue;
 
   GlowIValue glowIVal;
-  RETURN_IF_ERR(glowIVal.fromIValue(iVal));
-
+  // If iVal is a Generic list, it need to be handled separately.
+  // Everything inside of a Generic should be same type.
+  if (iVal.isList() &&
+      !(iVal.isDoubleList() || iVal.isIntList() || iVal.isBoolList())) {
+    ASSIGN_VALUE_OR_RETURN_ERR(glowIVal, getGenerictList(iVal));
+  } else {
+    RETURN_IF_ERR(glowIVal.fromIValue(iVal));
+  }
   // Consider empty lists as not existing because for example MaxPool2d
   // requires this.
   if (glowIVal.isIntList()) {
