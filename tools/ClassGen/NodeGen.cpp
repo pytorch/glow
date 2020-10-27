@@ -652,6 +652,15 @@ int main(int argc, char **argv) {
                     "tensor that has the same dimensions as the input tensor "
                     "without the first dimension.");
 
+  BB.newNode("BatchedReduceSumSquare")
+      .addInput("Batch")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Accumulates squares of all of the layers in the batch and produce a "
+          "tensor that has the same dimensions as the input tensor "
+          "without the first dimension.");
+
   BB.newNode("BatchedReduceMean")
       .addInput("Batch")
       .addMember(MemberType::VectorUnsigned, "Axes")

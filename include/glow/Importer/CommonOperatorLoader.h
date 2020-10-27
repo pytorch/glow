@@ -1088,6 +1088,8 @@ protected:
       node = G_->createBatchedReduceMax(opName, in, axes);
     } else if (typeName == "ReduceProd") {
       node = G_->createBatchedReduceProd(opName, in, axes);
+    } else if (typeName == "ReduceSumSquare") {
+      node = G_->createBatchedReduceSumSquare(opName, in, axes);
     } else {
       return MAKE_ERR("Unsupported Reduce Op " + typeName.str());
     }
