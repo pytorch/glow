@@ -339,7 +339,8 @@ chooseQuantizationParams(TensorProfilingParams profParams,
 /// for nodes like Convolution and FullyConnected given the initially computed
 /// parameters \p biasTQP and the parameters of the input \p inputTQP and the
 /// weights \p weightsTQP, for given quantization schema \p schema and bias type
-/// \p biasQTy. The bias operand requires a more thoughtful quantization since
+/// \p biasQTy. The parameter \p biasZero provides the information whether bias
+/// data is zero. The bias operand requires a more thoughtful quantization since
 /// every bias value has a higher impact on the precision of the output value
 /// than any particular weight value. The specialization logic is:
 /// - for INT32 bias quantization: since the dynamic range of INT32 is large we
@@ -359,7 +360,8 @@ TensorQuantizationParams
 specializeBiasQuantizationParams(const TensorQuantizationParams &biasTQP,
                                  const TensorQuantizationParams &inputTQP,
                                  const TensorQuantizationParams &weightsTQP,
-                                 Schema schema, ElemKind biasQTy);
+                                 Schema schema, ElemKind biasQTy,
+                                 bool biasZero = false);
 
 /// Function similar to \ref specializeBiasQuantizationParams with the main
 /// distinction that this function is also allowed to change the quantization
@@ -370,7 +372,8 @@ specializeBiasQuantizationParams(const TensorQuantizationParams &biasTQP,
 /// and weights quantization parameters.
 void specializeBiasWeightsQuantizationParams(
     TensorQuantizationParams &biasTQP, const TensorQuantizationParams &inputTQP,
-    TensorQuantizationParams &weightsTQP, Schema schema, ElemKind biasQTy);
+    TensorQuantizationParams &weightsTQP, Schema schema, ElemKind biasQTy,
+    bool biasZero = false);
 
 /// \returns an int8 vector mapping from the \p inTy to the \p outTy given the
 /// function \p f.

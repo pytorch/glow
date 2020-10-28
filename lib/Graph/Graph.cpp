@@ -3071,12 +3071,14 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
     auto inputScale = input.getType()->getScale();
     auto inputOffset = input.getType()->getOffset();
     if (biasElemKind == ElemKind::FloatTy) {
+      auto biasH = biasC->getPayload().getHandle<float>();
       // Get bias channelwise TensorQuantizationParams.
       quantization::getTensorQuantizationParams(
           biasC->getPayload(), biasScalesC->getPayloadMutable(),
           biasOffsetsC->getPayloadMutable(), schema, biasElemQTy, qDim, qStep);
       // Specialize the bias channelwise TensorQuantizationParams.
       for (dim_t idx = 0; idx < numChannels; idx++) {
+        bool biasZero = (biasH.raw(idx) == 0.f);
         TensorQuantizationParams biasTQP = {biasScalesH.raw(idx),
                                             biasOffsetsH.raw(idx)};
         TensorQuantizationParams inputTQP = {inputScale, inputOffset};
@@ -3085,11 +3087,11 @@ ChannelwiseQuantizedConvolutionNode *Function::createChannelwiseQuantizedConv(
         if (filterQParamsGiven) {
           // Specialize only bias quantization parameters.
           biasTQP = specializeBiasQuantizationParams(
-              biasTQP, inputTQP, filterTQP, schema, biasElemQTy);
+              biasTQP, inputTQP, filterTQP, schema, biasElemQTy, biasZero);
         } else {
           // Specialize bias and weights quantization parameters.
-          specializeBiasWeightsQuantizationParams(biasTQP, inputTQP, filterTQP,
-                                                  schema, biasElemQTy);
+          specializeBiasWeightsQuantizationParams(
+              biasTQP, inputTQP, filterTQP, schema, biasElemQTy, biasZero);
         }
         biasScalesH.raw(idx) = biasTQP.scale;
         biasOffsetsH.raw(idx) = biasTQP.offset;

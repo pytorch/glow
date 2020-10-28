@@ -566,7 +566,8 @@ TensorQuantizationParams
 specializeBiasQuantizationParams(const TensorQuantizationParams &biasTQP,
                                  const TensorQuantizationParams &inputTQP,
                                  const TensorQuantizationParams &weightsTQP,
-                                 Schema schema, ElemKind biasQTy) {
+                                 Schema schema, ElemKind biasQTy,
+                                 bool biasZero) {
   // Choose bias offset. For int32 bias we always force offset 0 in order
   // to simplify the implementation since the dynamic range allows it.
   int32_t biasOffset = biasTQP.offset;
@@ -579,7 +580,7 @@ specializeBiasQuantizationParams(const TensorQuantizationParams &biasTQP,
   float inputScale = inputTQP.scale;
   float weightsScale = weightsTQP.scale;
   float biasScale = biasTQP.scale;
-  if (inputScale * weightsScale >= biasScale) {
+  if (inputScale * weightsScale >= biasScale || biasZero) {
     biasScale = inputScale * weightsScale;
   }
   // Validate new bias TQP and return.
@@ -590,7 +591,8 @@ specializeBiasQuantizationParams(const TensorQuantizationParams &biasTQP,
 
 void specializeBiasWeightsQuantizationParams(
     TensorQuantizationParams &biasTQP, const TensorQuantizationParams &inputTQP,
-    TensorQuantizationParams &weightsTQP, Schema schema, ElemKind biasQTy) {
+    TensorQuantizationParams &weightsTQP, Schema schema, ElemKind biasQTy,
+    bool biasZero) {
   // Choose bias offset. For int32 bias we always force offset 0 in order
   // to simplify the implementation since the dynamic range allows it.
   if (biasQTy == ElemKind::Int32QTy) {
@@ -603,7 +605,7 @@ void specializeBiasWeightsQuantizationParams(
   float inputScale = inputTQP.scale;
   float weightsScale = weightsTQP.scale;
   float biasScale = biasTQP.scale;
-  if (inputScale * weightsScale >= biasScale) {
+  if (inputScale * weightsScale >= biasScale || biasZero) {
     biasScale = inputScale * weightsScale;
   } else {
     if (biasQTy == ElemKind::Int32QTy) {
