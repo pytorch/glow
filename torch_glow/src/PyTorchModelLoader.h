@@ -352,6 +352,10 @@ private:
   // \returns error on failure.
   Error loadEmbeddingBag(const torch::jit::Node *ptNode);
 
+  // Load a PyTorch fb::glow_embedding_bag node.
+  // \returns error on failure.
+  Error loadGlowEmbeddingBag(const torch::jit::Node *ptNode);
+
   /// Load a _caffe2::BatchPermutation node.
   Error loadBatchPermutation(const torch::jit::Node *ptNode);
 
