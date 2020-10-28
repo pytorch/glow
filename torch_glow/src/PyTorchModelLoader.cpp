@@ -3465,7 +3465,7 @@ PyTorchModelLoader::loadQuantizedBatchNormImpl(const torch::jit::Node *ptNode,
         F_.createReshape("bn3d_quant_NCTHW2NCHW", input, twoDDims);
 
     glow::DequantizeNode *dq = F_.createDequantize(
-        "bn3d_quant_dequantize", input_reshape, ElemKind::Float16Ty);
+        "bn3d_quant_dequantize", input_reshape, ElemKind::FloatTy);
 
     glow::BatchNormalizationNode *bn =
         F_.createBatchNormalization("bn3d_quant", dq, biasC, weightsC, meanC,
@@ -3483,7 +3483,7 @@ PyTorchModelLoader::loadQuantizedBatchNormImpl(const torch::jit::Node *ptNode,
 
   } else {
 
-    glow::DequantizeNode *dq = F_.createDequantize("bn2d_quant_dequantize",
+    glow::DequantizeNode *dq = F_.createDequantize("bn3d_quant_dequantize",
                                                    input, ElemKind::Float16Ty);
 
     glow::BatchNormalizationNode *bn =
