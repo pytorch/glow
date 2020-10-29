@@ -43,6 +43,7 @@
 #include <queue>
 #include <shared_mutex>
 
+constexpr uint64_t P2PInputLimit = 256;
 using namespace glow;
 using namespace runtime;
 
@@ -311,6 +312,10 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       info.nonSupportedNodes =
           devices_[device]->getParamByName("nonSupportedNodes");
       info.supportedNodes = devices_[device]->getParamByName("supportedNodes");
+      // If p2p is enabled update the inputCount limit.
+      if (cctx.enableP2P) {
+        info.inputCountMax = P2PInputLimit;
+      }
       deviceInfo.push_back(info);
     }
   }

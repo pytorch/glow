@@ -38,6 +38,9 @@ struct GraphMemInfo {
   // The number of contexts reserved on the device, this affecting input/out
   // memory useage.
   unsigned contextCount;
+  // Count of inputs to the graph, this is needed to calculate p2p resource
+  // consumption.
+  unsigned inputCount{0};
 
   GraphMemInfo()
       : inMemSize(0), outMemSize(0), constMemSize(0), contextCount(1){};
@@ -71,6 +74,8 @@ struct BackendInfo {
   size_t num = 0;
   /// The memory constraints for this backend.
   uint64_t memSize;
+  /// Maximum amount of input resources defaults to 0 if there is no limit.
+  uint64_t inputCountMax{0};
   /// The following peakCompute, peakDramBw, peakSramBw, peakPCIeBw are from
   /// DeviceInfo_. Available SRAM capacity in bytes.
   uint64_t sramCapacity;
