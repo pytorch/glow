@@ -377,6 +377,7 @@ void Partitioner::genBackendMap(
       // is the same.
       // TODO : will improve the algorithm for different memory size.
       backendInfo.memSize = deviceInfo_[i].availableMemory;
+      backendInfo.inputCountMax = deviceInfo_[i].inputCountMax;
       backendInfo.peakDramBw = deviceInfo_[i].peakDramBw;
       backendInfo.peakSramBw = deviceInfo_[i].peakSramBw;
       backendInfo.sramCapacity = deviceInfo_[i].sramCapacity;
@@ -627,6 +628,7 @@ Expected<DAGListTy> Partitioner::loadBalancedPartition(CompilationContext &cctx,
   partitionMap.clearLogicalDeviceID();
   logicalDeviceID_ = assignLogicalDeviceID(partitionMap, backendMap_);
   RETURN_IF_ERR(logicalDevicesValidation(partitionMap, backendMap_));
+  RETURN_IF_ERR(resourceCountValidation(partitionMap, backendMap_));
 
   partitions =
       doPartitioning(origName, {F_}, module_, partitionMap, /* saveDAG */ true,
@@ -902,6 +904,7 @@ Partitioner::partitionFromConfig(const PartitionConfig &partitionConfig,
   }
 
   RETURN_IF_ERR(logicalDevicesValidation(partitionMap, backendMap_));
+  RETURN_IF_ERR(resourceCountValidation(partitionMap, backendMap_));
 
   // Do partition.
   partitions = doPartitioning(F->getName(), {F}, module_, partitionMap,
@@ -976,6 +979,7 @@ Partitioner::setupPrepartitionedModule(CompilationContext &cctx) {
     }
   }
   RETURN_IF_ERR(logicalDevicesValidation(partitionMap, backendMap_));
+  RETURN_IF_ERR(resourceCountValidation(partitionMap, backendMap_));
 
   // Copy in or validate all members of the PPC.
   RETURN_ERR_IF_NOT(

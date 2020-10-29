@@ -46,6 +46,52 @@ Error logicalDevicesValidation(
   return Error::success();
 }
 
+Error resourceCountValidation(
+    const NodeToFunctionMap &partitions,
+    const std::map<std::string, BackendInfo> &backendMap) {
+  VLOG(1) << "Entering resource count validation";
+  std::map<DeviceIDTy, uint64_t> logicalIDInputResources;
+  // We are assuming the same resource limit for all devices.
+  // Since we do not support P2P for heterogenous devices we do not run this
+  // check for heterogeneous partitioning.
+  uint64_t availableInputResources = 0;
+  for (auto &func : partitions.getPartitions()) {
+    auto logicalDeviceList = partitions.getLogicalDeviceIDList(func);
+    auto backendName = partitions.getPartitionBackendName(func);
+    auto graphMem = partitions.getGraphMemInfo(func);
+    auto inputCount = graphMem.inputCount;
+    if (!availableInputResources) {
+      availableInputResources = backendMap.at(backendName).inputCountMax;
+    }
+    // For each logicalDevice add the input resources used.
+    for (auto dev : logicalDeviceList) {
+      if (!logicalIDInputResources.count(dev)) {
+        logicalIDInputResources[dev] = 0;
+      }
+      logicalIDInputResources[dev] += inputCount;
+    }
+  }
+
+  // If availableInputResources is not 0 check that we are below the limit.
+  if (availableInputResources) {
+    for (auto &resourceCount : logicalIDInputResources) {
+      VLOG(1) << "Checking logical device " << resourceCount.first
+              << " resource count: " << resourceCount.second
+              << "is less than: " << availableInputResources << "\n";
+      if (resourceCount.second > availableInputResources) {
+        return MAKE_ERR(
+            llvm::formatv(
+                "Partition failed: the resource count usage({0}) of one "
+                "partition exceeds "
+                "the available resource count ({1}).",
+                resourceCount.second, availableInputResources)
+                .str());
+      }
+    }
+  }
+  return Error::success();
+}
+
 Error memoryUsageValidation(
     const NodeToFunctionMap &partitions,
     const std::map<std::string, BackendInfo> &backendMap) {

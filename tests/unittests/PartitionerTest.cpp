@@ -1992,3 +1992,39 @@ TEST_F(PartitionerTest, RecordedConstantFolding) {
       bindings_.get(bindings_.getPlaceholderByNameSlow("ret"))->clone();
   EXPECT_TRUE(ref.isEqual(test, 0.0f));
 }
+
+/// This test verifies that resourceCount is being checked correctly, we set the
+/// resourceCount to 1 and expect an error.
+TEST_F(PartitionerTest, resourceCountValidationTest) {
+  auto *input1 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input1", false);
+  auto *input2 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input2", false);
+  auto *input3 =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 10}, "input3", false);
+  auto *add1 = F_->createAdd("add1", input1, input2);
+  auto *add2 = F_->createAdd("add2", add1, input3);
+  auto *sub1 = F_->createSub("sub1", add1, add2);
+  F_->createSave("save", sub1);
+
+  std::vector<DeviceInfo> devices = {{3072, "Interpreter", {}},
+                                     {3072, "Interpreter", {}}};
+
+  devices[0].inputCountMax = 1;
+  devices[1].inputCountMax = 1;
+  // User-defined partition: p1->p2, p2->p1.
+  PartitionConfig partitionConfig;
+  partitionConfig.funcName = "main";
+  partitionConfig.numOfPartitions = 2;
+  BackendHints bh1, bh2;
+  bh1.executionUnits = 2;
+  bh2.executionUnits = 3;
+  partitionConfig.backendHints = {bh1, bh2};
+  partitionConfig.backendNames = {"Interpreter", "Interpreter"};
+  partitionConfig.partitionNames = {"p1", "p2"};
+  partitionConfig.nodeToPartition = {{"add2", 0}};
+  auto partitioner = Partitioner(&mod_, devices, false, partitionConfig);
+  CompilationContext cctx;
+  auto dagList = partitioner.partition(cctx);
+  EXPECT_TRUE(ERR_TO_BOOL(dagList.takeError()));
+}
