@@ -946,8 +946,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadAdaptiveAvgPool2d},
       {{"aten::reshape"}, &PyTorchModelLoader::loadReshape},
       {{"aten::abs"}, &PyTorchModelLoader::loadAbs},
-      {{"aten::upsample_nearest3d"},
-       &PyTorchModelLoader::loadUpsampleNearest3D},
+      {{"aten::upsample_nearest3d"}, &PyTorchModelLoader::loadUpsampleNearest},
+      {{"aten::upsample_nearest2d"}, &PyTorchModelLoader::loadUpsampleNearest},
       {{"aten::view"}, &PyTorchModelLoader::loadView},
       {{"aten::_convolution"}, &PyTorchModelLoader::loadConvolution},
       {{"aten::lstm"}, &PyTorchModelLoader::loadLSTM},
@@ -2737,80 +2737,121 @@ Error PyTorchModelLoader::loadReshape(const torch::jit::Node *ptNode) {
       dtype));
 }
 
-Error PyTorchModelLoader::loadUpsampleNearest3D(
-    const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadUpsampleNearest(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_ERR_IF_NOT(
-      inputs.size() == 3 || inputs.size() == 5,
-      glow::strFormat("Expected 3 or 5 arguments.  Got %zu.", inputs.size()));
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, inputs.size(), outputs, 1));
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
-  RETURN_ERR_IF_NOT(input.dims().size() == 5, "Expecting 5D input Tensor");
+
+  // dimSize = 4 for Upsample 2D and dimSize = 5 for Upsample 3D
+  auto dimSize = input.dims().size();
+  RETURN_ERR_IF_NOT(dimSize == 4 || dimSize == 5,
+                    "Expecting 4D or 5D input Tensor");
+
+  // inputs can be (inputTensor, outputSize, outputScale) or (inputTensor,
+  // outputSize, outputScale_d (for 3D), outputScale_w, outputScale_h)
+  RETURN_ERR_IF_NOT(inputs.size() == 3 || inputs.size() == dimSize,
+                    glow::strFormat("Expected 3 or %zu arguments.  Got %zu.",
+                                    dimSize, inputs.size()));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, inputs.size(), outputs, 1));
 
   std::vector<int64_t> outputSizeBuf;
   std::vector<int64_t> *outputSize;
   glow::GlowIValue *outputSizeIValue;
   ASSIGN_VALUE_OR_RETURN_ERR(outputSizeIValue,
                              getGlowIValueForValue(inputs[1]));
+
+  // outputSize is not specified then we should read outputScale instead
   if (!outputSizeIValue->isNone()) {
     // Explicit output size in upsample call.
     ASSIGN_VALUE_OR_RETURN_ERR(outputSize,
                                iValToIntList(getGlowIValueForValue(inputs[1])));
-    RETURN_ERR_IF_NOT((*outputSize).size() == 3, "Expecting 3D output size");
+    RETURN_ERR_IF_NOT(
+        (*outputSize).size() == dimSize - 2,
+        glow::strFormat("Expecting %zuD output size", dimSize - 2));
   } else {
     // Node specifies scale factor.  Compute output size.
-    RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
     std::vector<double> *scaleFactors;
-    ASSIGN_VALUE_OR_RETURN_ERR(
-        scaleFactors, iValToDoubleList(getGlowIValueForValue(inputs[2])));
-    RETURN_ERR_IF_NOT(scaleFactors->size() == 3,
-                      glow::strFormat("Expected 3 scale factors.  Got %zu.",
-                                      scaleFactors->size()));
-    for (int i = 0; i < 3; ++i) {
-      outputSizeBuf.push_back(input.dims()[i + 2] * scaleFactors->at(i));
+
+    // outputScale is a tuple
+    if (inputs.size() == 3) {
+      ASSIGN_VALUE_OR_RETURN_ERR(
+          scaleFactors, iValToDoubleList(getGlowIValueForValue(inputs[2])));
+      RETURN_ERR_IF_NOT(scaleFactors->size() == dimSize - 2,
+                        glow::strFormat("Expected %zu scale factors.  Got %zu.",
+                                        dimSize - 2, scaleFactors->size()));
+      for (int i = 0; i < dimSize - 2; ++i) {
+        outputSizeBuf.push_back(input.dims()[i + 2] * scaleFactors->at(i));
+      }
+    } else { // outputScale is a separate value for each dim
+      double scaleFactor;
+      for (int i = 2; i < dimSize; i++) {
+        ASSIGN_VALUE_OR_RETURN_ERR(
+            scaleFactor, iValToDouble(getGlowIValueForValue(inputs[2])));
+        outputSizeBuf.push_back(input.dims()[i] * scaleFactor);
+      }
     }
+
     outputSize = &outputSizeBuf;
   }
 
-  dim_t ia = input.dims()[0];
-  dim_t ib = input.dims()[1];
-  dim_t ix = input.dims()[2];
-  dim_t iy = input.dims()[3];
-  dim_t iz = input.dims()[4];
-  dim_t ox = (dim_t)(*outputSize)[0];
-  dim_t oy = (dim_t)(*outputSize)[1];
-  dim_t oz = (dim_t)(*outputSize)[2];
+  // Upsample 3D
+  if (dimSize == 5) {
+    dim_t ia = input.dims()[0];
+    dim_t ib = input.dims()[1];
+    dim_t ix = input.dims()[2];
+    dim_t iy = input.dims()[3];
+    dim_t iz = input.dims()[4];
+    dim_t ox = (dim_t)(*outputSize)[0];
+    dim_t oy = (dim_t)(*outputSize)[1];
+    dim_t oz = (dim_t)(*outputSize)[2];
 
-  // Special case when output size is 2x input in all 3 dims
-  bool isUpsample2x = (ox == 2 * ix) && (oy == 2 * iy) && (oz == 2 * iz);
-  if (isUpsample2x) {
-    c10::ScalarType dtype;
-    RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
-    RETURN_ERR(addValueMapping(
-        outputs[0], F_.createUpsample("upsample_nearest3d", input, 3), dtype));
-  } else {
-    // Otherwise revert to Glow ResizeNearest, which only can handle 4D tensors
-    std::vector<glow::SliceNode *> splitOutputs;
-    std::vector<glow::NodeValue> concatInputs;
-    F_.createSplit("upsample_nearest3d_split", input, ia, 0, {}, splitOutputs);
-    for (auto &splitOutput : splitOutputs) {
-      auto *reshape1 = F_.createReshape("upsample_nearest3d_reshape1",
-                                        splitOutput, {ib, ix, iy, iz});
-      auto resizeTy = F_.getParent()->uniqueTypeWithNewShape(input.getType(),
-                                                             {ib, ox, oy, oz});
-      auto *resize = F_.createResizeNearest("upsample_nearest3d_resize",
-                                            reshape1, resizeTy);
-      auto *reshape2 = F_.createReshape("upsample_nearest3d_reshape2", resize,
-                                        {1, ib, ox, oy, oz});
-      concatInputs.push_back(reshape2);
+    // Special case when output size is 2x input in all 3 dims
+    bool isUpsample2x = (ox == 2 * ix) && (oy == 2 * iy) && (oz == 2 * iz);
+    if (isUpsample2x) {
+      c10::ScalarType dtype;
+      RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+      RETURN_ERR(addValueMapping(
+          outputs[0], F_.createUpsample("upsample_nearest3d", input, 3),
+          dtype));
+    } else {
+      // Otherwise revert to Glow ResizeNearest, which only can handle 4D
+      // tensors
+      std::vector<glow::SliceNode *> splitOutputs;
+      std::vector<glow::NodeValue> concatInputs;
+      F_.createSplit("upsample_nearest3d_split", input, ia, 0, {},
+                     splitOutputs);
+      for (auto &splitOutput : splitOutputs) {
+        auto *reshape1 = F_.createReshape("upsample_nearest3d_reshape1",
+                                          splitOutput, {ib, ix, iy, iz});
+        auto resizeTy = F_.getParent()->uniqueTypeWithNewShape(
+            input.getType(), {ib, ox, oy, oz});
+        auto *resize = F_.createResizeNearest("upsample_nearest3d_resize",
+                                              reshape1, resizeTy);
+        auto *reshape2 = F_.createReshape("upsample_nearest3d_reshape2", resize,
+                                          {1, ib, ox, oy, oz});
+        concatInputs.push_back(reshape2);
+      }
+      c10::ScalarType dtype;
+      RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
+      RETURN_ERR(addValueMapping(
+          outputs[0],
+          F_.createConcat("upsample_nearest3d_concat", concatInputs, 0),
+          dtype));
     }
+  } else { // Upsample 2D
+    dim_t iN = input.dims()[0];
+    dim_t iC = input.dims()[1];
+    dim_t oH = (dim_t)(*outputSize)[0];
+    dim_t oW = (dim_t)(*outputSize)[1];
+
+    TypeRef outTy = F_.getParent()->uniqueTypeWithNewShape(input.getType(),
+                                                           {iN, iC, oH, oW});
     c10::ScalarType dtype;
     RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[0]));
     RETURN_ERR(addValueMapping(
-        outputs[0],
-        F_.createConcat("upsample_nearest3d_concat", concatInputs, 0), dtype));
+        outputs[0], F_.createResizeNearest("upsample_nearest2d", input, outTy),
+        dtype));
   }
 }
 
