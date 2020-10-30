@@ -1,9 +1,7 @@
 import collections
 import copy
 from typing import List
-
 import torch
-
 
 __all__ = [
     "to_glow",
@@ -23,16 +21,13 @@ InputSpec = torch.classes.glow.InputSpec
 CompilationSpecSettings = torch.classes.glow.CompilationSpecSettings
 FuserSettings = torch.classes.glow.FuserSettings
 
-
 def input_spec_from_tensor(tensor: torch.Tensor) -> InputSpec:
     input_spec = InputSpec()
     input_spec.set_same_as(tensor)
     return input_spec
 
-
 def input_specs_from_tensors(tensors: List[torch.Tensor]) -> List[InputSpec]:
     return [input_spec_from_tensor(tensor) for tensor in tensors]
-
 
 def to_glow(model, method_compile_spec):
     r"""Lower a model to Glow
@@ -57,7 +52,6 @@ def to_glow(model, method_compile_spec):
 
     return torch._C._jit_to_backend("glow", model, method_compile_spec)
 
-
 def check_module_names(module_names):
     """Checks that module names don't overlap at all"""
     assert "" not in module_names, "Use to_glow to lower top level module"
@@ -70,7 +64,6 @@ def check_module_names(module_names):
             ), f"Can't to_glow a module nested inside another to_glow module, \
                     found {path2} inside of {path1}"
 
-
 def get_submodule(mod, path):
     path = path.split(".")
     assert len(path) > 0
@@ -78,7 +71,6 @@ def get_submodule(mod, path):
     for item in path:
         found_mod = getattr(found_mod, item)
     return found_mod
-
 
 def set_submodule(mod, path, submod):
     path = path.split(".")
@@ -88,7 +80,6 @@ def set_submodule(mod, path, submod):
         found_mod = getattr(found_mod, item)
     setattr(found_mod, path[-1], submod)
     pass
-
 
 def to_glow_selective(model, specs_and_examples, inplace=False):
     r"""Selectively lowers submodules of the given module to Glow.
