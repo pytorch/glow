@@ -783,6 +783,7 @@ Error CachingGraphRunner::runOnly(torch::jit::Stack &stack) {
 
 Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
                                     const PyTorchLoaderSettings &settings,
+                                    runtime::DeferredWeightLoader *loader,
                                     bool useMaxSizeCompilation) {
   if (!hostManager_) {
     return MAKE_ERR("Host manager is null!");
@@ -852,6 +853,7 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
 
   glow::CompilationContext cctx;
   initializeCompiliationContextFromSettings(cctx, settings);
+  cctx.deferredWeightLoader = loader;
 
   TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(glowModule), cctx));

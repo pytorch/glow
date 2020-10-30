@@ -201,6 +201,7 @@ public:
   /// upper-bound on the input sizes (smaller inputs will be padded by Glow.)
   Error warmCache(const std::vector<InputMeta> &inputMeta,
                   const PyTorchLoaderSettings &settings,
+                  runtime::DeferredWeightLoader *loader,
                   bool useMaxSizeCompilation = true);
 };
 
