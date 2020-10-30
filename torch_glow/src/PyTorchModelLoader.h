@@ -700,9 +700,9 @@ private:
   /// \returns error on failure.
   Error loadReshape(const torch::jit::Node *ptNode);
 
-  /// Load a PyTorch aten::upsample_nearest3d node.
+  /// Load a PyTorch aten::upsample_nearest3d or aten::upsample_nearest2d node.
   /// \returns error on failure.
-  Error loadUpsampleNearest3D(const torch::jit::Node *ptNode);
+  Error loadUpsampleNearest(const torch::jit::Node *ptNode);
 
   /// Load a PyTorch aten::view node.
   /// \returns error on failure.
