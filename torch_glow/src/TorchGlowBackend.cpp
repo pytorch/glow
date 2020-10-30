@@ -565,8 +565,9 @@ TorchGlowBackend::compile(c10::IValue processed,
         // Compile each input set
         for (const auto &inputSet : compilationGroup->input_sets) {
           std::vector<glow::InputMeta> inputMeta = getInputMetas(inputSet);
-          auto err = runner->warmCache(inputMeta, compilationGroupSettings,
-                                       /*useMaxSizeCompilation*/ false);
+          auto err =
+              runner->warmCache(inputMeta, compilationGroupSettings, nullptr,
+                                /*useMaxSizeCompilation*/ false);
 
           if (err) {
             if (err.peekErrorValue()->isFatalError()) {
