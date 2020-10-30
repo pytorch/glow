@@ -607,7 +607,7 @@ void glowAOTFusionWithShapeInference(
                                        itr->second.shape<TensorShape>());
       }
 
-      e = runner->warmCache(perGraphInputMeta, settings,
+      e = runner->warmCache(perGraphInputMeta, settings, nullptr,
                             /*useMaxSizeCompilation*/ true);
       if (e) {
         // If the graph is already compiled previously, warmCache() will report
@@ -624,6 +624,7 @@ void glowAOTFusionWithShapeInference(
 }
 
 void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
+                   runtime::DeferredWeightLoader *loader,
                    PyTorchLoaderSettings settings) {
   auto inputMeta = glow::loadInputMeta(inputMetaStr);
 
@@ -665,7 +666,7 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
             settings, /*useRunOnly*/ true);
       });
 
-  auto e = runner->warmCache(inputMeta, settings,
+  auto e = runner->warmCache(inputMeta, settings, loader,
                              /*useMaxSizeCompilation*/ true);
   if (e) {
     // If the graph is already compiled previously, warmCache() will report
