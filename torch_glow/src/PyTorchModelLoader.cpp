@@ -913,6 +913,10 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::ceil"}, &PyTorchModelLoader::loadCeil},
       {{"aten::mean"}, &PyTorchModelLoader::loadMean},
       {{"aten::pow"}, &PyTorchModelLoader::loadPow},
+      {{"aten::logical_xor"}, &PyTorchModelLoader::loadLogicalXor},
+      {{"aten::logical_or"}, &PyTorchModelLoader::loadLogicalOr},
+      {{"aten::logical_and"}, &PyTorchModelLoader::loadLogicalAnd},
+      {{"aten::logical_not"}, &PyTorchModelLoader::loadLogicalNot},
       {{"aten::dropout", "aten::dropout_"}, &PyTorchModelLoader::loadDropout},
       {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt},
       {{"aten::clamp"}, &PyTorchModelLoader::loadClamp},
@@ -2955,6 +2959,53 @@ Error PyTorchModelLoader::loadPow(const torch::jit::Node *ptNode) {
 
   glow::PowNode *glowNode = F_.createPow("pow", input, exponent);
   RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
+}
+
+Error PyTorchModelLoader::loadLogicalXor(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue res;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      res, loadArithmeticNode<XorNode>("logical_xor", inputs[0], inputs[1]));
+
+  RETURN_ERR(addValueMapping(outputs[0], res));
+}
+
+Error PyTorchModelLoader::loadLogicalOr(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue res;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      res, loadArithmeticNode<OrNode>("logical_or", inputs[0], inputs[1]));
+
+  RETURN_ERR(addValueMapping(outputs[0], res));
+}
+
+Error PyTorchModelLoader::loadLogicalAnd(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue res;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      res, loadArithmeticNode<AndNode>("logical_and", inputs[0], inputs[1]));
+
+  RETURN_ERR(addValueMapping(outputs[0], res));
+}
+
+Error PyTorchModelLoader::loadLogicalNot(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue glowInput;
+  ASSIGN_VALUE_OR_RETURN_ERR(glowInput, getGlowNodeValueForValue(inputs[0]));
+
+  return addValueMapping(outputs[0], F_.createNot("logical_not", glowInput));
 }
 
 Error PyTorchModelLoader::loadSqrt(const torch::jit::Node *ptNode) {

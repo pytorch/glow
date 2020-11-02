@@ -92,15 +92,23 @@ def assert_equivalent(result, other_result, atol=5e-4, rtol=1e-3):
             assert_equivalent(a, b, atol=atol, rtol=rtol)
             for a, b in zip(result, other_result)
         )
-    elif torch.allclose(result, other_result, atol, rtol):
-        return True
+    elif other_result.dtype == torch.bool:
+        diff = torch.eq(result, other_result)
+        if torch.all(diff):
+            return True
+        else:
+            error = f"Diff:{diff}\n"
+            raise AssertionError(error)
     else:
-        diff = torch.abs(result - other_result)
-        error = f"First result:\n{result}\n"
-        error += f"Second result:\n{other_result}\n"
-        error += f"Diff:\n{diff}\n"
-        error += f"Max diff:\n{torch.max(diff)}"
-        raise AssertionError(error)
+        if torch.allclose(result, other_result, atol, rtol):
+            return True
+        else:
+            diff = torch.abs(result - other_result)
+            error = f"First result:\n{result}\n"
+            error += f"Second result:\n{other_result}\n"
+            error += f"Diff:\n{diff}\n"
+            error += f"Max diff:\n{torch.max(diff)}"
+            raise AssertionError(error)
 
 
 def compare_tracing_methods(
