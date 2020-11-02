@@ -435,7 +435,6 @@ TorchGlowBackend::preprocess(c10::IValue mod,
     const auto &methodName = kv.key().toStringRef();
     auto method = m.get_method(methodName);
     auto graph = method.graph();
-    LowerAllTuples(graph);
     EliminateDeadCode(graph);
     EliminateCommonSubexpression(graph);
     ConstantPooling(graph);
@@ -500,7 +499,7 @@ void applyFuserSettingsToPyTorchLoaderSettings(
 c10::impl::GenericDict
 TorchGlowBackend::compile(c10::IValue processed,
                           c10::impl::GenericDict method_compile_spec) {
-  auto module = processed.toModule();
+  auto module = processed.toModule().clone();
   auto handles = c10::Dict<std::string, int64_t>();
 
   int64_t key = 0;
@@ -543,6 +542,7 @@ TorchGlowBackend::compile(c10::IValue processed,
     } else {
       // TODO: can we copy this graph to avoid changing it?
       auto g = method.function().graph();
+      LowerAllTuples(g);
       // Remove "self" input
       CHECK(g->block()->inputs()[0]->uses().empty())
           << "self must have no uses in order to lower to Glow.";

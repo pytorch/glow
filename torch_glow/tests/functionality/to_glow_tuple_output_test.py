@@ -1,9 +1,11 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import io
 import unittest
 
 import torch
 import torch_glow
+from tests.utils import assertModulesEqual
 
 
 class TwoTupleModule(torch.nn.Module):
@@ -55,6 +57,13 @@ class TestToGlowTupleOutput(unittest.TestCase):
 
         for (gi, ti) in zip(g, t):
             self.assertTrue(torch.allclose(gi, ti))
+
+        # test module ser/de with tuple output
+        buffer = io.BytesIO()
+        torch.jit.save(lowered_model, buffer)
+        buffer.seek(0)
+        loaded_model = torch.jit.load(buffer)
+        assertModulesEqual(self, lowered_model, loaded_model)
 
     def test_to_glow_one_tuple_output(self):
         self.tuple_test_helper(OneTupleModule)
