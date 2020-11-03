@@ -1,6 +1,7 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 from copy import deepcopy
+import itertools
 import os
 
 import torch_glow
@@ -189,3 +190,9 @@ def assert_fused(fused_graph, *ops, accept_any=False, strict=False):
 
 def graph_contains_str(graph, substr):
     return graph.str().find(substr) >= 0
+
+
+# Verifies equal modules for save-load tests.
+def assertModulesEqual(case, mod1, mod2, message=None):
+    for p1, p2 in itertools.zip_longest(mod1.parameters(), mod2.parameters()):
+        case.assertTrue(p1.equal(p2), message)
