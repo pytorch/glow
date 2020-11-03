@@ -987,6 +987,15 @@ struct CompareInputs {
   };
 };
 
+/// Indexes used for aten::index_put inputs
+struct IndexPutInputs {
+  enum {
+    input = 0,
+    indices,
+    value,
+  };
+};
+
 } // namespace
 
 // static
@@ -1037,6 +1046,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::logical_and", "aten::__iand__"},
        &PyTorchModelLoader::loadLogicalAnd},
       {{"aten::logical_not"}, &PyTorchModelLoader::loadLogicalNot},
+      {{"aten::index_put_", "aten::index_put"},
+       &PyTorchModelLoader::loadIndexPut},
       {{"aten::dropout", "aten::dropout_"}, &PyTorchModelLoader::loadDropout},
       {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt},
       {{"aten::le", "aten::le_"}, &PyTorchModelLoader::loadCmp<CmpLTENode>},
@@ -3525,6 +3536,52 @@ Error PyTorchModelLoader::loadLogicalNot(const torch::jit::Node *ptNode) {
   ASSIGN_VALUE_OR_RETURN_ERR(glowInput, getGlowNodeValueForValue(inputs[0]));
 
   return addValueMapping(outputs[0], F_.createNot("logical_not", glowInput));
+}
+
+Error PyTorchModelLoader::loadIndexPut(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[IndexPutInputs::input]));
+  std::vector<glow::NodeValue> *indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(indices, iValToNodeValueList(getGlowIValueForValue(
+                                          inputs[IndexPutInputs::indices])));
+  glow::NodeValue value;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      value, getGlowNodeValueForValue(inputs[IndexPutInputs::value]));
+
+  auto *concatNode = F_.createConcat("concat", *indices, 0);
+  auto *reshapeNode =
+      F_.createReshape("reshape", concatNode->getResult(),
+                       {indices->size(), (*indices)[0].dims()[0]});
+  auto transposeNode =
+      F_.createTranspose("transpose", reshapeNode->getResult(), {1, 0})
+          ->getResult();
+
+  bool cumulative = false;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      cumulative,
+      iValToBool(getGlowIValueForValue(ptNode->namedInput("accumulate"))));
+
+  auto expectedValueDims =
+      input.dims().drop_front(transposeNode.dims()[1]).vec();
+  expectedValueDims.insert(expectedValueDims.begin(), transposeNode.dims()[0]);
+  glow::Tensor t(value.getElementType(), expectedValueDims);
+  auto *valueConstant =
+      F_.getParent()->createConstant("valueConstant", std::move(t));
+  value = F_.broadcastInputs(/* axis */ -1, {value, valueConstant})[0];
+
+  const bool needsValueReshape = transposeNode.dims()[0] != value.dims()[0];
+  if (needsValueReshape) {
+    value = F_.createReshape("reshape", value, expectedValueDims)->getResult();
+  }
+
+  auto *scatterNode = F_.createScatterData("scatter_data", input, transposeNode,
+                                           value, cumulative);
+
+  RETURN_ERR(addValueMapping(outputs[0], scatterNode));
 }
 
 Error PyTorchModelLoader::loadSqrt(const torch::jit::Node *ptNode) {
