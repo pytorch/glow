@@ -1417,6 +1417,15 @@ Expected<bool> NNPIBackend::transformPostLowering(
   }
 
   bool changed = removeClipsBlockingFusion(F);
+  auto it =
+      cctx.backendOpts.backendSpecificOpts.find("NNPI_ZeroScaleFP16Replace");
+  if (it != cctx.backendOpts.backendSpecificOpts.end() && it->second == "1") {
+    FunctionPassManager FPM(
+        "NNPI_ZeroScaleFP16Replace",
+        {FunctionPassID::ReplaceZeroScaleFP16QuantNodes, getDCEPassConfig()},
+        this);
+    changed |= FPM.run(F, cctx);
+  }
   changed |= lowerRequiredNodes(F, cctx);
 
 #if FACEBOOK_INTERNAL

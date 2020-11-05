@@ -6104,3 +6104,51 @@ TEST_F(GraphOptz, SkipDummyQParamOpts) {
             optimizedF_->toString(/* skipUsersForStorage */ false,
                                   /* skipName */ true));
 }
+
+/// Check that we replace a Node with 0.f scale in fp16 with a splat correctly.
+TEST_F(GraphOptz, ZeroScaleFP16QuantOpt) {
+  auto *LHS = mod_.createPlaceholder(ElemKind::FloatTy, {20, 30}, "LHS", false);
+  auto *RHSQ = mod_.createPlaceholder(ElemKind::Int8QTy, {20, 30}, 0.1f, 10,
+                                      "LHS", false);
+
+  // scale = 1e-9 underflows fp16 and so this opt applies.
+  auto *LHSQTy = mod_.uniqueType(ElemKind::Int8QTy, {20, 30}, 1e-9, 10);
+  auto *LHSQ = F_->createQuantize("LHSQ", LHS, LHSQTy);
+
+  auto *A = F_->createAdd("add", RHSQ->getOutput().getType(), LHSQ, RHSQ);
+  auto *Q = F_->createDequantize("deq", A, ElemKind::FloatTy);
+  F_->createSave("save", Q);
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::ReplaceZeroScaleFP16QuantNodes, getDCEPassConfig()});
+
+  SaveNode *save = nullptr;
+  for (auto &N : optimizedF_->getNodes()) {
+    if (N.getKind() == Kinded::Kind::SaveNodeKind) {
+      save = llvm::dyn_cast<SaveNode>(&N);
+      break;
+    }
+  }
+  ASSERT_TRUE(save);
+
+  DequantizeNode *optQ = llvm::dyn_cast<DequantizeNode>(save->getInput());
+  ASSERT_TRUE(optQ);
+  AddNode *optA = llvm::dyn_cast<AddNode>(optQ->getInput());
+  ASSERT_TRUE(A);
+
+  SplatNode *splat = llvm::dyn_cast<SplatNode>(optA->getLHS());
+  ASSERT_TRUE(splat);
+  EXPECT_EQ(splat->getValue(), 0.f);
+  const TypeRef optLHSQTy = splat->getResult().getType();
+  EXPECT_EQ(optLHSQTy->getScale(), 1.f);
+  EXPECT_EQ(optLHSQTy->getOffset(), 0);
+  EXPECT_EQ(optLHSQTy->getElementType(), LHSQTy->getElementType());
+  EXPECT_EQ(optLHSQTy->dims(), LHSQTy->dims());
+
+  bindings_.allocate(LHS)->getHandle<float>().randomize(-10.f, 10.f,
+                                                        mod_.getPRNG());
+  bindings_.allocate(RHSQ)->getHandle<int8_t>().randomize(-128, 127,
+                                                          mod_.getPRNG());
+
+  checkNumericalEquivalence(0.f);
+}
