@@ -798,12 +798,13 @@ public:
   /// of the input \p input along the given axis \p axis.
   FlipNode *createFlip(llvm::StringRef name, NodeValue input, unsigned_t axis);
 
-  /// Create a series of nodes that implement a Broadcast operation. The \p
-  /// input Tensor is broadcasted based on \p newShape and along the \p axis,
-  /// which defines the offset from the leading dimension under which
-  /// broadcasting is performed.
-  Node *createBroadcast(llvm::StringRef name, NodeValue input,
-                        UnsignedArrayRef newShape, unsigned_t axis);
+  /// Create a Broadcast node that broadcasting the \p input Tensor based on
+  /// \p newShape and along the \p axis, which defines the offset between the
+  /// input dim and the newShape.
+  /// e.g. For input: [3] and newShape: [2, 3, 2], the axis will be 1.
+  ///      For input: [3] and newShape: [2, 2, 3], the axis will be 2.
+  BroadcastNode *createBroadcast(llvm::StringRef name, NodeValue input,
+                                 UnsignedArrayRef newShape, unsigned_t axis);
 
   /// Create concat node which concatenates input tensors along \p dimension.
   ConcatNode *createConcat(llvm::StringRef name,

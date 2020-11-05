@@ -4044,7 +4044,6 @@ TEST_P(OperatorTest, broadcast) {
     EXPECT_EQ(broadcastedBHandle.dims()[i], dims_A[i]);
     EXPECT_EQ(broadcastedQBHandle.dims()[i], dims_A[i]);
   }
-
   // Look at the two values in X_B and verify in the three dimensions it was
   // broadcasted that the values were correctly broadcasted.
   const dim_t k_B = 0;
