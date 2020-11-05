@@ -313,7 +313,7 @@ template <class OpType>
 static void
 importArithMultiBroadcastTest(std::string fileName,
                               llvm::ArrayRef<dim_t> inputShape, bool multi,
-                              int numLeftTile, int numRightTile,
+                              bool leftBroadcast, bool rightBroadcast,
                               const std::function<float(float, float)> &op) {
   ExecutionEngine EE{};
   auto &mod = EE.getModule();
@@ -335,39 +335,18 @@ importArithMultiBroadcastTest(std::string fileName,
     updateInputPlaceholdersByName(bindings, &mod, {"data"}, {&data});
   }
   // ONNX importer loads an arithmetic node and inserts:
-  // - a Reshape node for each broadcasted operand
-  // - a Tile node for each boardcasted dimension
   // Check the graph structure
   auto *saveNode = getSaveNodeFromDest(graphOutputVar);
   auto *node = saveNode->getInput().getNode();
   auto *opNode = llvm::dyn_cast<OpType>(node);
   EXPECT_NE(nullptr, opNode);
 
-  // Left operand (numLeftTile dimensions to broadcast)
-  if (numLeftTile > 0) {
-    TileNode *tileNode = llvm::dyn_cast<TileNode>(opNode->getLHS().getNode());
-    EXPECT_NE(nullptr, tileNode);
-    for (int i = 1; i < numLeftTile; i++) {
-      tileNode = llvm::dyn_cast<TileNode>(tileNode->getInput().getNode());
-      EXPECT_NE(nullptr, tileNode);
-    }
-    auto *reshapeNode =
-        llvm::dyn_cast<ReshapeNode>(tileNode->getInput().getNode());
-    EXPECT_NE(nullptr, reshapeNode);
-  }
-
-  // Right operand (numRightTile dimensions to broadcast)
-  if (numRightTile > 0) {
-    TileNode *tileNode = llvm::dyn_cast<TileNode>(opNode->getRHS().getNode());
-    EXPECT_NE(nullptr, tileNode);
-    for (int i = 1; i < numRightTile; i++) {
-      tileNode = llvm::dyn_cast<TileNode>(tileNode->getInput().getNode());
-      EXPECT_NE(nullptr, tileNode);
-    }
-    auto *reshapeNode =
-        llvm::dyn_cast<ReshapeNode>(tileNode->getInput().getNode());
-    EXPECT_NE(nullptr, reshapeNode);
-  }
+  BroadcastNode *leftBN =
+      llvm::dyn_cast<BroadcastNode>(opNode->getLHS().getNode());
+  BroadcastNode *rightBN =
+      llvm::dyn_cast<BroadcastNode>(opNode->getRHS().getNode());
+  EXPECT_NE(leftBroadcast, leftBN == nullptr);
+  EXPECT_NE(rightBroadcast, rightBN == nullptr);
 
   // Compile&run the graph, and check the output
   EE.compile(CompilationMode::Infer);
@@ -564,73 +543,85 @@ TEST_F(OnnxImporterTest, leakyReluDefault) {
 
 TEST_F(OnnxImporterTest, importAddMultiBroadcastOp7) {
   importArithMultiBroadcastTest<AddNode>(
-      "addMultiBroadcastOp7.onnxtxt", {1, 3, 1, 2}, true, 1, 2,
+      "addMultiBroadcastOp7.onnxtxt", {1, 3, 1, 2}, /* multi */ true,
+      /* leftBroadcast */ true, /* rightBroadcast */ true,
       [](float a, float b) { return a + b; });
 }
 
 TEST_F(OnnxImporterTest, importAddUniBroadcastOp6NoAxis) {
   importArithMultiBroadcastTest<AddNode>(
-      "addUniBroadcastOp6NoAxis.onnxtxt", {1, 3, 4, 2}, false, 0, 2,
+      "addUniBroadcastOp6NoAxis.onnxtxt", {1, 3, 4, 2}, /* multi */ false,
+      /* leftBroadcast */ false, /* rightBroadcast */ true,
       [](float a, float b) { return a + b; });
 }
 
 TEST_F(OnnxImporterTest, importAddUniBroadcastOp6Axis) {
   importArithMultiBroadcastTest<AddNode>(
-      "addUniBroadcastOp6Axis.onnxtxt", {1, 3, 4, 2}, false, 0, 2,
+      "addUniBroadcastOp6Axis.onnxtxt", {1, 3, 4, 2}, /* multi */ false,
+      /* leftBroadcast */ false, /* rightBroadcast */ true,
       [](float a, float b) { return a + b; });
 }
 
 TEST_F(OnnxImporterTest, importSubMultiBroadcastOp7) {
   importArithMultiBroadcastTest<SubNode>(
-      "subMultiBroadcastOp7.onnxtxt", {1, 3, 1, 2}, true, 1, 2,
+      "subMultiBroadcastOp7.onnxtxt", {1, 3, 1, 2}, /* multi */ true,
+      /* leftBroadcast */ true, /* rightBroadcast */ true,
       [](float a, float b) { return a - b; });
 }
 
 TEST_F(OnnxImporterTest, importSubUniBroadcastOp6NoAxis) {
   importArithMultiBroadcastTest<SubNode>(
-      "subUniBroadcastOp6NoAxis.onnxtxt", {1, 3, 4, 2}, false, 0, 2,
+      "subUniBroadcastOp6NoAxis.onnxtxt", {1, 3, 4, 2}, /* multi */ false,
+      /* leftBroadcast */ false, /* rightBroadcast */ true,
       [](float a, float b) { return a - b; });
 }
 
 TEST_F(OnnxImporterTest, importSubUniBroadcastOp6Axis) {
   importArithMultiBroadcastTest<SubNode>(
-      "subUniBroadcastOp6Axis.onnxtxt", {1, 3, 4, 2}, false, 0, 2,
+      "subUniBroadcastOp6Axis.onnxtxt", {1, 3, 4, 2}, /* multi */ false,
+      /* leftBroadcast */ false, /* rightBroadcast */ true,
       [](float a, float b) { return a - b; });
 }
 
 TEST_F(OnnxImporterTest, importMulMultiBroadcastOp7) {
   importArithMultiBroadcastTest<MulNode>(
-      "mulMultiBroadcastOp7.onnxtxt", {1, 3, 1, 2}, true, 1, 2,
+      "mulMultiBroadcastOp7.onnxtxt", {1, 3, 1, 2}, /* multi */ true,
+      /* leftBroadcast */ true, /* rightBroadcast */ true,
       [](float a, float b) { return a * b; });
 }
 
 TEST_F(OnnxImporterTest, importMulUniBroadcastOp6NoAxis) {
   importArithMultiBroadcastTest<MulNode>(
-      "mulUniBroadcastOp6NoAxis.onnxtxt", {1, 3, 4, 2}, false, 0, 2,
+      "mulUniBroadcastOp6NoAxis.onnxtxt", {1, 3, 4, 2}, /* multi */ false,
+      /* leftBroadcast */ false, /* rightBroadcast */ true,
       [](float a, float b) { return a * b; });
 }
 
 TEST_F(OnnxImporterTest, importMulUniBroadcastOp6Axis) {
   importArithMultiBroadcastTest<MulNode>(
-      "mulUniBroadcastOp6Axis.onnxtxt", {1, 3, 4, 2}, false, 0, 2,
+      "mulUniBroadcastOp6Axis.onnxtxt", {1, 3, 4, 2}, /* multi */ false,
+      /* leftBroadcast */ false, /* rightBroadcast */ true,
       [](float a, float b) { return a * b; });
 }
 
 TEST_F(OnnxImporterTest, importDivMultiBroadcastOp7) {
   importArithMultiBroadcastTest<DivNode>(
-      "divMultiBroadcastOp7.onnxtxt", {1, 3, 1, 2}, true, 1, 2,
+      "divMultiBroadcastOp7.onnxtxt", {1, 3, 1, 2}, /* multi */ true,
+      /* leftBroadcast */ true, /* rightBroadcast */ true,
       [](float a, float b) { return a / b; });
 }
 
 TEST_F(OnnxImporterTest, importDivUniBroadcastOp6NoAxis) {
   importArithMultiBroadcastTest<DivNode>(
-      "divUniBroadcastOp6NoAxis.onnxtxt", {1, 3, 4, 2}, false, 0, 2,
+      "divUniBroadcastOp6NoAxis.onnxtxt", {1, 3, 4, 2}, /* multi */ false,
+      /* leftBroadcast */ false, /* rightBroadcast */ true,
       [](float a, float b) { return a / b; });
 }
 
 TEST_F(OnnxImporterTest, importDivUniBroadcastOp6Axis) {
   importArithMultiBroadcastTest<DivNode>(
-      "divUniBroadcastOp6Axis.onnxtxt", {1, 3, 4, 2}, false, 0, 2,
+      "divUniBroadcastOp6Axis.onnxtxt", {1, 3, 4, 2}, /* multi */ false,
+      /* leftBroadcast */ false, /* rightBroadcast */ true,
       [](float a, float b) { return a / b; });
 }
 

@@ -75,6 +75,9 @@ Expected<Function *> saveAndReloadFunction(
         useGlowCustomOps, includeConstantData, extraMetadataProps,
         constFoldRecord ? *constFoldRecord : ConstantFoldingRecordMap(),
         backendSpecificNodeInfo, (useString) ? &outputString : nullptr);
+    if (err) {
+      llvm::errs() << "Failed to write model\n";
+    }
     RETURN_IF_ERR(std::move(err));
   }
 
@@ -388,7 +391,6 @@ TEST(exporter, onnxModels) {
         name.find("NonMaxSuppression.onnxtxt") != std::string::npos ||
         name.find("NonMaxSuppressionSSD.onnxtxt") != std::string::npos ||
         name.find("ROIAlign_onnx.onnxtxt") != std::string::npos ||
-        name.find("Less.onnxtxt") != std::string::npos ||
         name.find("Asin.onnxtxt") != std::string::npos ||
         name.find("Acos.onnxtxt") != std::string::npos ||
         name.find("Atan.onnxtxt") != std::string::npos ||

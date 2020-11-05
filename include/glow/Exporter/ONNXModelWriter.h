@@ -162,6 +162,10 @@ class ONNXModelWriter : public CommonOperatorWriter<ONNX_TRAITS> {
   /// (i.e. both input and an output for Functions in \ref functionsFromDAG_).
   bool isIntermediatePHForDAG(const Placeholder *PH);
 
+  /// \returns True if the operator with the name \p typeName has support for
+  /// multidirectional broadcasting.
+  bool hasMultidirectionalBroadcast(const llvm::StringRef typeName);
+
 public:
   /// Inserts the mapping in \p map into \p extraMetadataProps. \returns an
   /// error if the key already exists for the map in \p extraMetadataProps.

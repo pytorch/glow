@@ -2144,41 +2144,36 @@ TEST_F(Caffe2ImporterTest, elementwiseLinear) {
   //            X           w            b
   //            |           |            |
   //            |           v            v
-  //            |        Reshape      Reshape
+  //            |       Broadcast    Broadcast
   //            |           |            |
-  //            |           v            v
-  //            |         Tile         Tile
-  //            |         /             /
-  //            v  v------             /
-  //            Mul                   /
-  //             |   /---------------
+  //            |           |            |
+  //            |           /            /
+  //            v  v-------             /
+  //            Mul                    /
+  //             |   /----------------
   //             v  v
   //             Add
   //              |
   //              v
   //             Save
 
-  EXPECT_EQ(F->getNodes().size(), 7);
+  EXPECT_EQ(F->getNodes().size(), 5);
   auto *save = getSaveNodeFromDest(output);
   auto *add = llvm::dyn_cast<AddNode>(save->getInput().getNode());
   ASSERT_TRUE(add);
   auto *mul = llvm::dyn_cast<MulNode>(add->getLHS().getNode());
   ASSERT_TRUE(mul);
-  auto *bTile = llvm::dyn_cast<TileNode>(add->getRHS().getNode());
-  ASSERT_TRUE(bTile);
-  EXPECT_EQ(bTile->getAxis(), 1);
+  auto *bBN = llvm::dyn_cast<BroadcastNode>(add->getRHS().getNode());
+  ASSERT_TRUE(bBN);
+  EXPECT_EQ(bBN->getAxis(), 0);
   auto *XPH = llvm::dyn_cast<Placeholder>(mul->getRHS().getNode());
   EXPECT_EQ(XPH, mod.getPlaceholderByNameSlow("X"));
-  auto *wTile = llvm::dyn_cast<TileNode>(mul->getLHS().getNode());
-  ASSERT_TRUE(wTile);
-  EXPECT_EQ(wTile->getAxis(), 1);
-  auto *bReshape = llvm::dyn_cast<ReshapeNode>(bTile->getInput().getNode());
-  ASSERT_TRUE(bReshape);
-  auto *wReshape = llvm::dyn_cast<ReshapeNode>(wTile->getInput().getNode());
-  ASSERT_TRUE(wReshape);
-  auto *wPH = llvm::dyn_cast<Placeholder>(wReshape->getInput().getNode());
+  auto *wBN = llvm::dyn_cast<BroadcastNode>(mul->getLHS().getNode());
+  ASSERT_TRUE(wBN);
+  EXPECT_EQ(wBN->getAxis(), 0);
+  auto *wPH = llvm::dyn_cast<Placeholder>(wBN->getInput().getNode());
   EXPECT_EQ(wPH, mod.getPlaceholderByNameSlow("w"));
-  auto *bPH = llvm::dyn_cast<Placeholder>(bReshape->getInput().getNode());
+  auto *bPH = llvm::dyn_cast<Placeholder>(bBN->getInput().getNode());
   EXPECT_EQ(bPH, mod.getPlaceholderByNameSlow("b"));
 
   // We have three inputs and one output.
@@ -2224,41 +2219,36 @@ TEST_F(Caffe2ImporterTest, elementwiseLinearUnspecifiedAxis) {
   //            X           w            b
   //            |           |            |
   //            |           v            v
-  //            |        Reshape      Reshape
+  //            |       Broadcast    Broadcast
   //            |           |            |
-  //            |           v            v
-  //            |         Tile         Tile
-  //            |         /             /
-  //            v  v------             /
-  //            Mul                   /
-  //             |   /---------------
+  //            |           |            |
+  //            |           /            /
+  //            v  v-------             /
+  //            Mul                    /
+  //             |   /----------------
   //             v  v
   //             Add
   //              |
   //              v
   //             Save
 
-  EXPECT_EQ(F->getNodes().size(), 7);
+  EXPECT_EQ(F->getNodes().size(), 5);
   auto *save = getSaveNodeFromDest(output);
   auto *add = llvm::dyn_cast<AddNode>(save->getInput().getNode());
   ASSERT_TRUE(add);
   auto *mul = llvm::dyn_cast<MulNode>(add->getLHS().getNode());
   ASSERT_TRUE(mul);
-  auto *bTile = llvm::dyn_cast<TileNode>(add->getRHS().getNode());
-  ASSERT_TRUE(bTile);
-  EXPECT_EQ(bTile->getAxis(), 0);
+  auto *bBN = llvm::dyn_cast<BroadcastNode>(add->getRHS().getNode());
+  ASSERT_TRUE(bBN);
+  EXPECT_EQ(bBN->getAxis(), 1);
   auto *XPH = llvm::dyn_cast<Placeholder>(mul->getRHS().getNode());
   EXPECT_EQ(XPH, mod.getPlaceholderByNameSlow("X"));
-  auto *wTile = llvm::dyn_cast<TileNode>(mul->getLHS().getNode());
-  ASSERT_TRUE(wTile);
-  EXPECT_EQ(wTile->getAxis(), 0);
-  auto *bReshape = llvm::dyn_cast<ReshapeNode>(bTile->getInput().getNode());
-  ASSERT_TRUE(bReshape);
-  auto *wReshape = llvm::dyn_cast<ReshapeNode>(wTile->getInput().getNode());
-  ASSERT_TRUE(wReshape);
-  auto *wPH = llvm::dyn_cast<Placeholder>(wReshape->getInput().getNode());
+  auto *wBN = llvm::dyn_cast<BroadcastNode>(mul->getLHS().getNode());
+  ASSERT_TRUE(wBN);
+  EXPECT_EQ(wBN->getAxis(), 1);
+  auto *wPH = llvm::dyn_cast<Placeholder>(wBN->getInput().getNode());
   EXPECT_EQ(wPH, mod.getPlaceholderByNameSlow("w"));
-  auto *bPH = llvm::dyn_cast<Placeholder>(bReshape->getInput().getNode());
+  auto *bPH = llvm::dyn_cast<Placeholder>(bBN->getInput().getNode());
   EXPECT_EQ(bPH, mod.getPlaceholderByNameSlow("b"));
 
   // We have three inputs and one output.
@@ -2304,41 +2294,36 @@ TEST_F(Caffe2ImporterTest, elementwiseImplicitBroadcast) {
   //            X           w            b
   //            |           |            |
   //            |           v            v
-  //            |        Reshape      Reshape
+  //            |       Broadcast    Broadcast
   //            |           |            |
-  //            |           v            v
-  //            |         Tile         Tile
-  //            |         /             /
-  //            v  v------             /
-  //            Mul                   /
-  //             |   /---------------
+  //            |           |            |
+  //            |           /            /
+  //            v  v-------             /
+  //            Mul                    /
+  //             |   /----------------
   //             v  v
   //             Add
   //              |
   //              v
   //             Save
 
-  EXPECT_EQ(F->getNodes().size(), 7);
+  EXPECT_EQ(F->getNodes().size(), 5);
   auto *save = getSaveNodeFromDest(output);
   auto *add = llvm::dyn_cast<AddNode>(save->getInput().getNode());
   ASSERT_TRUE(add);
   auto *mul = llvm::dyn_cast<MulNode>(add->getLHS().getNode());
   ASSERT_TRUE(mul);
-  auto *bTile = llvm::dyn_cast<TileNode>(add->getRHS().getNode());
-  ASSERT_TRUE(bTile);
-  EXPECT_EQ(bTile->getAxis(), 0);
+  auto *bBN = llvm::dyn_cast<BroadcastNode>(add->getRHS().getNode());
+  ASSERT_TRUE(bBN);
+  EXPECT_EQ(bBN->getAxis(), 1);
   auto *XPH = llvm::dyn_cast<Placeholder>(mul->getLHS().getNode());
   EXPECT_EQ(XPH, mod.getPlaceholderByNameSlow("X"));
-  auto *wTile = llvm::dyn_cast<TileNode>(mul->getRHS().getNode());
-  ASSERT_TRUE(wTile);
-  EXPECT_EQ(wTile->getAxis(), 0);
-  auto *bReshape = llvm::dyn_cast<ReshapeNode>(bTile->getInput().getNode());
-  ASSERT_TRUE(bReshape);
-  auto *wReshape = llvm::dyn_cast<ReshapeNode>(wTile->getInput().getNode());
-  ASSERT_TRUE(wReshape);
-  auto *wPH = llvm::dyn_cast<Placeholder>(wReshape->getInput().getNode());
+  auto *wBN = llvm::dyn_cast<BroadcastNode>(mul->getRHS().getNode());
+  ASSERT_TRUE(wBN);
+  EXPECT_EQ(wBN->getAxis(), 1);
+  auto *wPH = llvm::dyn_cast<Placeholder>(wBN->getInput().getNode());
   EXPECT_EQ(wPH, mod.getPlaceholderByNameSlow("w"));
-  auto *bPH = llvm::dyn_cast<Placeholder>(bReshape->getInput().getNode());
+  auto *bPH = llvm::dyn_cast<Placeholder>(bBN->getInput().getNode());
   EXPECT_EQ(bPH, mod.getPlaceholderByNameSlow("b"));
 
   // We have three inputs and one output.

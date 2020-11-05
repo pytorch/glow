@@ -2506,6 +2506,26 @@ bool BatchBoxCoxNode::verify() const {
   return isValid;
 }
 
+bool BroadcastNode::verify() const {
+  const auto inputDims = getInput().dims();
+  const auto axis = getAxis();
+  const auto targetDims = getTargetDim();
+  bool isValid = (axis + inputDims.size() <= targetDims.size());
+
+  // Iterate over the new shape; if the original shape had a dimension here
+  // (when considering the axis) then verify the dimension either matches the
+  // new shape (no action taken) or == 1 (broadcast in that direction).
+  for (dim_t i = 0; i < targetDims.size(); i++) {
+    if (i >= axis && i < inputDims.size() + axis) {
+      const int origIdx = i - axis;
+      isValid &=
+          (inputDims[origIdx] == targetDims[i] || inputDims[origIdx] == 1);
+    }
+  }
+
+  return isValid;
+}
+
 bool ModuloNode::verify() const { return getDivisor() >= 1; }
 
 //===----------------------------------------------------------------------===//

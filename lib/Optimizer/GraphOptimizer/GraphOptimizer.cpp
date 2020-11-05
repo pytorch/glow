@@ -4821,26 +4821,29 @@ bool FoldElemKindConversionIntoOutputs::run(Function *F,
   return changed;
 }
 
-/// Broadcasts are implemented via a series of Tiles. This helper unwinds them
-/// -- it \returns an original Node starting from \p N that was broadcasted from
-/// the 0th dimension up until \p endDim. Strips off base Reshape as well if
-/// there was one used before tiling.
+/// Broadcasts are implemented via as BroadcastNode. This helper unwinds
+/// BroadcastNode -- it \returns the original Node before the broadcasting \p N
+/// if the broadcast takes place between the 0th dimension to \p endDim.
+/// Otherwise, \p return nullptr.
 static NodeValue unwindBroadcast(NodeValue N, unsigned_t endDim) {
-  while (TileNode *TN = dyn_cast<TileNode>(N)) {
-    // Check that the axis of the current Tile is inside of the expected
-    // provided endDim.
-    if (TN->getAxis() >= endDim) {
+  if (auto *BN = dyn_cast<BroadcastNode>(N)) {
+    const auto newShape = BN->getTargetDim();
+    const auto axis = BN->getAxis();
+    const auto &origDims = BN->getInput().dims();
+
+    if (origDims.size() + axis != newShape.size()) {
       return nullptr;
     }
-    // Applicable only if original dim is 1 in the Broadcast's Tile.
-    if (TN->getInput().dims()[TN->getAxis()] != 1) {
-      return nullptr;
+
+    for (dim_t i = endDim; i < newShape.size(); i++) {
+      if (!(i >= axis && origDims[i - axis] == newShape[i])) {
+        return nullptr;
+      }
     }
-    N = TN->getInput();
+
+    return BN->getInput();
   }
-  if (ReshapeNode *RN = dyn_cast<ReshapeNode>(N)) {
-    return RN->getInput();
-  }
+
   return N;
 }
 
@@ -4855,7 +4858,6 @@ bool FoldLayerNormArithmetic::run(Function *F, const CompilationContext &cctx) {
     if (!isa<MulNode>(&N) && !isa<AddNode>(&N)) {
       continue;
     }
-
     // Currently only support floating point, as otherwise there will be
     // quantization parameter mismatches.
     if (!isFloatElemKind(N.getElementType(ArithmeticNode::ResultIdx))) {
