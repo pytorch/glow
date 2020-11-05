@@ -896,11 +896,16 @@ bool ONNXModelLoader::hasMultidirectionalBroadcast(
     const llvm::StringRef typeName) {
   // Before opset 7, broadcasting was unidirectional.
   if (opsetVersion_ > 6) {
+    // List of ops that support multidirectional broadcast can be found at
+    // https://github.com/onnx/onnx/blob/master/docs/Broadcasting.md
     if ((typeName == "Add") || (typeName == "Sub") || (typeName == "Mul") ||
-        (typeName == "Div")) {
+        (typeName == "Div") || (typeName == "Equal") ||
+        (typeName == "Greater") || (typeName == "Less") ||
+        (typeName == "Max") || (typeName == "Mean") || (typeName == "Min") ||
+        (typeName == "Mul") || (typeName == "Or") || (typeName == "Pow") ||
+        (typeName == "Sum") || (typeName == "Xor")) {
       return true;
     }
-    // TODO: some other operators also support multidirectional broadcasting.
   }
   return false;
 }
@@ -4590,8 +4595,7 @@ Error ONNXModelLoader::loadOperator(const ONNX_NAMESPACE::NodeProto &op) {
   if (typeName == "Clip") {
     return loadClip(op, dict);
   }
-  // Glow specific operators
-  if (typeName == "CmpEQ") {
+  if (typeName == "Equal") {
     return loadCmpEQ(op, dict);
   }
   if (typeName == "CmpLTE") {
@@ -5142,10 +5146,8 @@ ONNXModelLoader::ONNXModelLoader(const std::string &modelDescFilename,
     ONNX_NAMESPACE::ModelProto modelDef;
     ASSIGN_VALUE_OR_RETURN_ERR(
         modelDef, loadProto(modelDescFilename, zipMode, inputStringPtr));
-
     RETURN_IF_ERR(loadModel(modelDef, tensorNames, types, B,
                             /* loadInputsAsPlaceholdersForOnnx */ true));
-
     return Error::success();
   };
 

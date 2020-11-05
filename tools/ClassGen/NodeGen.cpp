@@ -1110,6 +1110,15 @@ int main(int argc, char **argv) {
           "neighbor interpolation. The Output tensor is of shape "
           "floor(input_dimension * scale)");
 
+  BB.newNode("Broadcast")
+      .addInput("Input")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addMember(MemberType::VectorDimT, "TargetDim")
+      .addResultFromCtorArg()
+      .setDocstring(
+          "Broadcast the Input tensor to TargetDim using Axis to indicate the "
+          "offset between Input dimension and TargetDim");
+
   //===--------------------------------------------------------------------===//
   //                Reorder transformations
   //===--------------------------------------------------------------------===//
