@@ -374,6 +374,21 @@ private:
   Error loadEmbeddingBagByteRowwiseOffsetsHelper(const torch::jit::Node *ptNode,
                                                  bool is4Bit = false);
 
+  // Load a PyTorch fb::glow_embedding_bag_byte_rowwise_offsets node.
+  // \returns error on failure.
+  Error loadGlowEmbeddingBagByteRowwiseOffsets(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch fb::glow_embedding_bag_4bit_rowwise_offsets node.
+  // \returns error on failure.
+  Error loadGlowEmbeddingBag4bitRowwiseOffsets(const torch::jit::Node *ptNode);
+
+  // Helper function that implements the loading logic for
+  // fb::glow_embedding_bag_byte_rowwise_offsets and
+  // fb::glow_embedding_bag_4bit_rowwise_offsets
+  // \returns error on failure
+  Error loadRowwiseQuantizedEmbeddingBagHelper(const torch::jit::Node *ptNode,
+                                               bool is4Bit = false);
+
   // Load a PyTorch _caffe2::RoIAlign op.
   // \returns error on failure.
   Error loadRoiAlign(const torch::jit::Node *ptNode);
