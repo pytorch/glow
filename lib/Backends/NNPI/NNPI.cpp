@@ -1149,6 +1149,19 @@ static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts) {
 
 Expected<std::unique_ptr<CompiledFunction>>
 NNPIBackend::compile(Function *F, const BackendOptions &opts) const {
+  // Do some verification prior to final compilation. Check that for all
+  // non-fused qparams, scales are not zero after FP16 conversion.
+  for (const Node &N : F->getNodes()) {
+    for (size_t i = 0, e = N.getNumResults(); i < e; i++) {
+      const TypeRef resTy = N.getNthResult(i).getType();
+      if (resTy->isQuantizedType() && !resTy->isFusedQuantizedType()) {
+        RETURN_ERR_IF_NOT(float(float16_t(resTy->getScale())) != 0.f,
+                          "Quantized type in node has zero FP16 scale: " +
+                              N.getDebugDesc());
+      }
+    }
+  }
+
   std::unique_ptr<NNPICompiledFunction> compiledFunc =
       glow::make_unique<NNPICompiledFunction>(F);
   auto compileHasError = compiledFunc->compile(F, opts);
