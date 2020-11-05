@@ -823,6 +823,7 @@ struct EmbeddingBagByteRowwiseOffsetsInputs {
     mode,
     sparse,
     per_sample_weights,
+    compressed_indices_mapping,
     include_last_offset,
   };
 };
