@@ -731,6 +731,26 @@ private:
   /// \returns error on failure.
   Error loadReshape(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::cos node.
+  /// \returns error on failure.
+  Error loadCos(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::sin node.
+  /// \returns error on failure.
+  Error loadSin(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::acos node.
+  /// \returns error on failure.
+  Error loadAcos(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::asin node.
+  /// \returns error on failure.
+  Error loadAsin(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::atan node.
+  /// \returns error on failure.
+  Error loadAtan(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch aten::upsample_nearest3d or aten::upsample_nearest2d node.
   /// \returns error on failure.
   Error loadUpsampleNearest(const torch::jit::Node *ptNode);

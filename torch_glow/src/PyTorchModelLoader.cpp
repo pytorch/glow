@@ -920,6 +920,11 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::dropout", "aten::dropout_"}, &PyTorchModelLoader::loadDropout},
       {{"aten::sqrt", "aten::sqrt_"}, &PyTorchModelLoader::loadSqrt},
       {{"aten::clamp"}, &PyTorchModelLoader::loadClamp},
+      {{"aten::cos"}, &PyTorchModelLoader::loadCos},
+      {{"aten::sin"}, &PyTorchModelLoader::loadSin},
+      {{"aten::acos"}, &PyTorchModelLoader::loadAcos},
+      {{"aten::asin"}, &PyTorchModelLoader::loadAsin},
+      {{"aten::atan"}, &PyTorchModelLoader::loadAtan},
       {{"quantized::add"}, &PyTorchModelLoader::loadQuantizedAdd},
       {{"quantized::add_relu"}, &PyTorchModelLoader::loadQuantizedAddRelu},
       {{"quantized::mul"}, &PyTorchModelLoader::loadQuantizedMul},
@@ -2520,6 +2525,61 @@ Error PyTorchModelLoader::loadFusedStack(const torch::jit::Node *ptNode) {
       F_.createReshape("stack_reshape", concat, reshapeDims)->getResult();
 
   RETURN_ERR(addValueMapping(outputs[0], reshape));
+}
+
+Error PyTorchModelLoader::loadCos(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  return addValueMapping(outputs[0], F_.createCos("Cos", input));
+}
+
+Error PyTorchModelLoader::loadSin(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  return addValueMapping(outputs[0], F_.createSin("Sin", input));
+}
+
+Error PyTorchModelLoader::loadAcos(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  return addValueMapping(outputs[0], F_.createAcos("Acos", input));
+}
+
+Error PyTorchModelLoader::loadAsin(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  return addValueMapping(outputs[0], F_.createAsin("Asin", input));
+}
+
+Error PyTorchModelLoader::loadAtan(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  return addValueMapping(outputs[0], F_.createAtan("Atan", input));
 }
 
 Error PyTorchModelLoader::loadNumToTensor(const torch::jit::Node *ptNode) {
