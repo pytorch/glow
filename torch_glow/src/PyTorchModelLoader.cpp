@@ -843,6 +843,15 @@ struct EmbeddingBag4BitRowwiseOffsetsInputs {
   };
 };
 
+/// Indexes used for fb::equally_split inputs.
+struct EquallySplitInputs {
+  enum {
+    input = 0,
+    num_split,
+    dim,
+  };
+};
+
 /// Indexes used for _caffe2::RoIAlign inputs
 struct RoiAlignInputs {
   enum {
@@ -1006,6 +1015,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets},
       {{"fb::embedding_bag_4bit_rowwise_offsets"},
        &PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets},
+      {{"fb::equally_split"}, &PyTorchModelLoader::loadEquallySplit},
       {{"_caffe2::RoIAlign"}, &PyTorchModelLoader::loadRoiAlign},
       {{"_caffe2::RoIAlignRotated"}, &PyTorchModelLoader::loadRoiAlignRotated},
       {{"_caffe2::BBoxTransform"}, &PyTorchModelLoader::loadBBoxTransform},
@@ -5570,6 +5580,35 @@ Error PyTorchModelLoader::loadGlowEmbeddingBagByteRowwiseOffsets(
 Error PyTorchModelLoader::loadGlowEmbeddingBag4bitRowwiseOffsets(
     const torch::jit::Node *ptNode) {
   return loadRowwiseQuantizedEmbeddingBagHelper(ptNode, true);
+}
+
+Error PyTorchModelLoader::loadEquallySplit(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[EquallySplitInputs::input]));
+
+  int num_split;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      num_split,
+      iValToInt(getGlowIValueForValue(inputs[EquallySplitInputs::num_split])));
+  int dim;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dim, iValToInt(getGlowIValueForValue(inputs[EquallySplitInputs::dim])));
+
+  std::vector<glow::SliceNode *> splitOutputs;
+  F_.createSplit("EquallySplit", input, num_split, dim, {}, splitOutputs);
+  std::vector<glow::NodeValue> nodeValues;
+  for (size_t i = 0; i < splitOutputs.size(); ++i) {
+    nodeValues.push_back(splitOutputs[i]->getResult());
+  }
+  GlowIValue glowIVal;
+  glowIVal.fromNodeValueList(std::move(nodeValues));
+
+  RETURN_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
 }
 
 Error PyTorchModelLoader::loadRoiAlignImpl(const torch::jit::Node *ptNode,
