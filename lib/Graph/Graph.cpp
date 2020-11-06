@@ -1659,7 +1659,9 @@ UNARY_ARITHMETIC_FUN_DEF(Cos)
   NODE_NAME_##Node *Function::create##NODE_NAME_(                              \
       llvm::StringRef name, TypeRef T, NodeValue LHS, NodeValue RHS) {         \
     DCHECK(LHS.dims() == RHS.dims())                                           \
-        << "Invalid operand shapes " << LHS.dims() << " vs " << RHS.dims();    \
+        << "Invalid operand shapes LHS:" << LHS.getNode()->getName().str()     \
+        << " RHS: " << RHS.getNode()->getName().str() << " " << LHS.dims()     \
+        << " vs " << RHS.dims();                                               \
     TypeRef OT = getParent()->uniqueType(*T);                                  \
     return addNode(new NODE_NAME_##Node(name, OT, LHS, RHS));                  \
   }
