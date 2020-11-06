@@ -120,10 +120,13 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::LogNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
+    isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
+        {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy});
+    break;
   case Kinded::Kind::SplatNodeKind:
     isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
         {ElemKind::FloatTy, ElemKind::Float16Ty, ElemKind::Int8QTy,
-         ElemKind::Int64ITy});
+         ElemKind::Int32ITy, ElemKind::Int64ITy});
     break;
   case Kinded::Kind::ExpNodeKind:
   case Kinded::Kind::LocalResponseNormalizationNodeKind:
@@ -135,6 +138,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int32ITy});
     break;
 #if NNPI_MAJOR_VERSION >= 1 && NNPI_MINOR_VERSION >= 1
+  case Kinded::Kind::NNPILookupTableNodeKind:
+  case Kinded::Kind::IntLookupTableNodeKind:
+    isNodePrecisionSupported = true;
+    break;
   case Kinded::Kind::BBoxTransformNodeKind:
     // RoiBatchSplits output should be FP16 in the Glow node and get
     // converted explicitly to FP32 in NNPI importer.
@@ -215,8 +222,8 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
   }
   case Kinded::Kind::Convolution3DNodeKind:
     if (!NI.getInTy(Convolution3DNode::InputIdx)->isQuantizedType()) {
-      isNodePrecisionSupported = NI.allInputsAndOutputsHaveSameElemKind(
-          {ElemKind::FloatTy, ElemKind::Float16Ty});
+      isNodePrecisionSupported =
+          NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
     } else {
       isNodePrecisionSupported =
           NI.allInputsAndOutputsHaveSameElemKind(
@@ -224,6 +231,7 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
           ((NI.getInElemTy(Convolution3DNode::BiasIdx) == ElemKind::Int32QTy) ||
            (NI.getInElemTy(ConvolutionNode::BiasIdx) == ElemKind::FloatTy));
     }
+    break;
   case Kinded::Kind::QuantizeNodeKind:
     isNodePrecisionSupported =
         (NI.getInElemTy(QuantizeNode::InputIdx) == ElemKind::FloatTy ||
@@ -241,20 +249,80 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Int8QTy});
     break;
   case Kinded::Kind::ConvertToNodeKind: {
-    auto isConversionSupportedFor = [](ElemKind kind) {
-      switch (kind) {
-      case ElemKind::FloatTy:
+    auto isConversionSupportedFor = [](ElemKind kindFrom, ElemKind kindTo) {
+      switch (kindFrom) {
+
       case ElemKind::Float16Ty:
-      case ElemKind::Int32ITy:
+        switch (kindTo) {
+        case ElemKind::FloatTy:
+        case ElemKind::Int8QTy:
+        case ElemKind::UInt8QTy:
+        case ElemKind::BoolTy:
+          return true;
+        default:
+          return false;
+        }
+        return false;
+
+      case ElemKind::FloatTy:
+        switch (kindTo) {
+        case ElemKind::Float16Ty:
+        case ElemKind::Int8QTy:
+        case ElemKind::UInt8QTy:
+        case ElemKind::BoolTy:
+          return true;
+        default:
+          return false;
+        }
+        return false;
+
       case ElemKind::Int64ITy:
+        switch (kindTo) {
+        case ElemKind::Int32ITy:
+        case ElemKind::FloatTy:
+        case ElemKind::Int8QTy:
+          return true;
+        default:
+          return false;
+        }
+        return false;
+
+      case ElemKind::Int32ITy:
+        switch (kindTo) {
+        case ElemKind::Int64ITy:
+        case ElemKind::FloatTy:
+        case ElemKind::Int8QTy:
+          return true;
+        default:
+          return false;
+        }
+        return false;
+
+      case ElemKind::Int32QTy:
+        switch (kindTo) {
+        case ElemKind::Float16Ty:
+          return true;
+        default:
+          return false;
+        }
+        return false;
+
+      case ElemKind::UInt8QTy:
+      case ElemKind::Int8QTy:
         return true;
+
+      case ElemKind::UInt8FusedQTy:
+        return (kindTo == ElemKind::Float16Ty);
+      case ElemKind::UInt8FusedFP16QTy:
+        return (kindTo == ElemKind::Float16Ty);
       default:
         return false;
       }
+      return false;
     };
     isNodePrecisionSupported =
-        isConversionSupportedFor(NI.getInElemTy(ConvertToNode::InputIdx)) &&
-        isConversionSupportedFor(NI.getOutElemTy(ConvertToNode::ResultIdx));
+        isConversionSupportedFor(NI.getInElemTy(ConvertToNode::InputIdx),
+                                 NI.getOutElemTy(ConvertToNode::ResultIdx));
     break;
   }
   case Kinded::Kind::FullyConnectedNodeKind:
@@ -534,6 +602,10 @@ static NodeSupportLevels isNodeSupported(const NodeInfo &NI) {
         (NI.getOutElemTy(ArgMaxNode::ResultIdx) == ElemKind::Int64ITy);
     break;
   case Kinded::Kind::LogitNodeKind:
+    isNodePrecisionSupported =
+        NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
+    break;
+  case Kinded::Kind::LSTMUnitNodeKind:
     isNodePrecisionSupported =
         NI.allInputsAndOutputsHaveSameElemKind({ElemKind::Float16Ty});
     break;
