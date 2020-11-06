@@ -6069,6 +6069,9 @@ TEST_F(GraphOptz, ConvertFullyConnectedToConvolutionOpt) {
   ASSERT_TRUE(conv);
   ReshapeNode *reshapeFilter = llvm::dyn_cast<ReshapeNode>(conv->getFilter());
   ASSERT_TRUE(reshapeFilter);
+  TransposeNode *transpFilter =
+      llvm::dyn_cast<TransposeNode>(reshapeFilter->getInput());
+  ASSERT_TRUE(transpFilter);
   ReshapeNode *reshapeInput = llvm::dyn_cast<ReshapeNode>(conv->getInput());
   ASSERT_TRUE(reshapeInput);
 
