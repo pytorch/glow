@@ -5894,18 +5894,25 @@ TEST_F(GraphOptz, foldMulAddIntoLayerNorm) {
   Constant *addC = mod_.createConstant("addC", std::move(addT));
   AddNode *AN =
       F_->createNodeWithBroadcast<AddNode>("add", /* axis */ -1, MN, addC);
-  F_->createSave("save", AN);
+
+  // This MulNode has a Placeholder as RHS and shouldn't be fused into LayerNorm
+  auto *mulIn =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 10, 20}, "in", false);
+  MN = F_->createNodeWithBroadcast<MulNode>("mul_not_fuse", /* axis */ -1, AN,
+                                            mulIn);
+  F_->createSave("save", MN);
 
   optimizedF_ = optimizeFunctionForTest(F_);
 
   // Because Mul and Add are folded in, they should not exist anymore, nor
   // should tiles that expand them to match the output of LN.
-  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MulNodeKind));
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::MulNodeKind));
   EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::AddNodeKind));
-  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::TileNodeKind));
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::BroadcastNodeKind));
 
   // Now compile/run/compare F_ and optimizedF_.
   bindings_.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
+  bindings_.allocate(mulIn)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
   checkNumericalEquivalence(1e-6);
 }
 
@@ -6103,4 +6110,55 @@ TEST_F(GraphOptz, SkipDummyQParamOpts) {
   EXPECT_EQ(F_->toString(/* skipUsersForStorage */ false, /* skipName */ true),
             optimizedF_->toString(/* skipUsersForStorage */ false,
                                   /* skipName */ true));
+}
+
+/// Test that Min -> Max is correctly folded into Clip
+TEST_F(GraphOptz, foldMinMaxtoClipTest) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 5},
+                                              "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+
+  auto *minFirstSplat = F_->createSplat("min_first_splat", input->getType(), 5);
+  auto *maxFirstSplat =
+      F_->createSplat("max_first_splat", input->getType(), -2);
+  auto *minFirst = F_->createMin("min_first", input, minFirstSplat);
+  auto *maxFirst = F_->createMax("max_first", maxFirstSplat, minFirst);
+
+  auto *minSecondSplat = F_->createSplat(
+      "min_second_splat",
+      F_->getParent()->uniqueTypeWithNewShape(input->getType(), {3, 1, 1}), 3);
+  auto *maxSecondSplat =
+      F_->createSplat("max_second_splat", input->getType(), 1);
+  auto *maxSecond = F_->createMax("max_second", maxFirst, maxSecondSplat);
+  auto *minSecond = F_->createNodeWithBroadcast<MinNode>(
+      "min_second", /* axis */ -1, maxSecond, minSecondSplat);
+  SaveNode *save = F_->createSave("save", minSecond);
+  bindings_.allocate(save->getPlaceholder());
+
+  // Need to run OptimizeArithmeticNodes first to move constant operators in
+  // communative nodes to RHS.
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::OptimizeArithmeticNodes,
+           FunctionPassID::FoldMinMaxtoClip, getDCEPassConfig()});
+
+  EXPECT_EQ(4, optimizedF_->getNodes().size());
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MinNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MaxNodeKind));
+
+  // Get SaveNode in optimizedF_
+  save = llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName("save_save"));
+  // Check min and max of the second ClipNode
+  ClipNode *CN = llvm::dyn_cast<ClipNode>(save->getInput().getNode());
+  EXPECT_EQ(1, CN->getMin());
+  EXPECT_EQ(3, CN->getMax());
+
+  // There's a BroadcastNode in between the first and the second ClipNode
+  BroadcastNode *BN = llvm::dyn_cast<BroadcastNode>(CN->getInput().getNode());
+  // Check min and max of the first ClipNode
+  CN = llvm::dyn_cast<ClipNode>(BN->getInput().getNode());
+  EXPECT_EQ(-2, CN->getMin());
+  EXPECT_EQ(5, CN->getMax());
+
+  checkNumericalEquivalence();
 }
