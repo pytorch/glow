@@ -5117,7 +5117,7 @@ bool QuantizeSwish::run(Function *F, const CompilationContext &cctx) {
 ///
 /// ClipNode's min will be the SplatNode (maxSN) connected to the MaxNode.
 /// ClipNode's max will be the SplatNode (minSN) connected to the MinNode.
-bool FoldMinMaxtoClip::run(Function *F, const CompilationContext &cctx) {
+bool FoldMinMaxToClip::run(Function *F, const CompilationContext &cctx) {
   LOG_SCOPE(F->getLogContext(), getName());
 
   bool changed = false;
@@ -5193,6 +5193,58 @@ bool FoldMinMaxtoClip::run(Function *F, const CompilationContext &cctx) {
                                  resultNV.getType(),
                                  /* min */ minValue, /* max */ maxValue);
     resultNV.replaceAllUsesOfWith(CN->getResult());
+    changed = true;
+  }
+
+  return changed;
+}
+
+/// Look for qparams with scale (when casted to fp16) == 0 and replace them with
+/// zero Splats.
+bool ReplaceZeroScaleFP16QuantNodes::run(Function *F,
+                                         const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  // Cannot run this opt if we're using dummy qparams.
+  if (cctx.precisionConfig.loadUniquedDummyQParams) {
+    return false;
+  }
+
+  bool changed = false;
+  // Since we will be adding in new SplatNodes, reverse iterate to be safe.
+  auto &nodes = F->getNodes();
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
+    Node *N = &*it;
+    // For now only support nodes with single outputs.
+    if (N->getNumResults() != 1) {
+      continue;
+    }
+    NodeValue resNV = N->getNthResult(0);
+    const TypeRef resTy = resNV.getType();
+    if (resTy->isFusedQuantizedType() || !resTy->isQuantizedType()) {
+      continue;
+    }
+
+    // Check if we have a scale of 0.f when it's casted to FP16.
+    if (float(float16_t(resTy->getScale())) != 0.f) {
+      continue;
+    }
+
+    // Skip if used by node with side effects, since we cannot change the
+    // qparams in such cases.
+    if (isUsedByNodeWithSideEffects(N)) {
+      continue;
+    }
+
+    // This NodeValue has scale = 0.f, which means the equivalent float result
+    // will always be equal to 0.f. So create a splat with value 0.f, scale 1.f,
+    // offset 0 instead.
+    auto splatTy = F->getParent()->uniqueType(resTy->getElementType(),
+                                              resTy->dims(), 1.f, 0);
+    auto *SN = F->createSplat(N->getName().str() + ".splatted", splatTy, 0.f);
+
+    // Note: must use type unsafe replace because we've changed the qparams.
+    resNV.typeUnsafeReplaceAllUsesOfWith(SN->getResult());
     changed = true;
   }
 
