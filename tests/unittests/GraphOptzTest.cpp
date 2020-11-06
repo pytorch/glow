@@ -6029,6 +6029,57 @@ TEST_F(GraphOptz, DequantSwishQuantOpt) {
   checkNumericalEquivalence(0.025f);
 }
 
+/// Test the conversion of FullyConnected to 1x1 Convolution.
+TEST_F(GraphOptz, ConvertFullyConnectedToConvolutionOpt) {
+
+  const std::vector<dim_t> inpDims = {3, 5};
+  const std::vector<dim_t> weightsDims = {5, 7};
+  const std::vector<dim_t> biasDims = {7};
+
+  // Create graph.
+  Placeholder *input =
+      mod_.createPlaceholder(ElemKind::FloatTy, inpDims, "input", false);
+  Placeholder *weights =
+      mod_.createPlaceholder(ElemKind::FloatTy, weightsDims, "weights", false);
+  Placeholder *bias =
+      mod_.createPlaceholder(ElemKind::FloatTy, biasDims, "bias", false);
+  FullyConnectedNode *FCN =
+      F_->createFullyConnected("fc", input, weights, bias);
+  F_->createSave("save", FCN);
+
+  // Optimize graph.
+  optimizedF_ = optimizeFunctionForTest(
+      F_,
+      {FunctionPassID::ConvertFullyConnectedToConvolution, getDCEPassConfig()});
+
+  // Check optimized graph.
+  EXPECT_EQ(optimizedF_->getNodes().size(), 6);
+  SaveNode *save = nullptr;
+  for (auto &N : optimizedF_->getNodes()) {
+    if (N.getKind() == Kinded::Kind::SaveNodeKind) {
+      save = llvm::dyn_cast<SaveNode>(&N);
+      break;
+    }
+  }
+  ASSERT_TRUE(save);
+  ReshapeNode *reshapeOut = llvm::dyn_cast<ReshapeNode>(save->getInput());
+  ASSERT_TRUE(reshapeOut);
+  ConvolutionNode *conv =
+      llvm::dyn_cast<ConvolutionNode>(reshapeOut->getInput());
+  ASSERT_TRUE(conv);
+  ReshapeNode *reshapeFilter = llvm::dyn_cast<ReshapeNode>(conv->getFilter());
+  ASSERT_TRUE(reshapeFilter);
+  ReshapeNode *reshapeInput = llvm::dyn_cast<ReshapeNode>(conv->getInput());
+  ASSERT_TRUE(reshapeInput);
+
+  // Check numerical equivalence.
+  bindings_.allocate(mod_.getPlaceholders());
+  bindings_.get(input)->getHandle<float>().randomize(-1, 1, mod_.getPRNG());
+  bindings_.get(weights)->getHandle<float>().randomize(-1, 1, mod_.getPRNG());
+  bindings_.get(bias)->getHandle<float>().randomize(-1, 1, mod_.getPRNG());
+  checkNumericalEquivalence(1e-8);
+}
+
 /// Test that when we have Concat({X, Quantize(Clip)}), that we don't optimize
 /// to Concat({X, Quantize'}), since Quantize' will have different quantization
 /// parameters and therefore won't have the same quantization parameters as X.

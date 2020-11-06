@@ -5100,6 +5100,57 @@ bool QuantizeSwish::run(Function *F, const CompilationContext &cctx) {
   return changed;
 }
 
+/// Convert a FullyConnected node to a 1x1 Convolution.
+bool ConvertFullyConnectedToConvolution::run(Function *F,
+                                             const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+
+    auto *FCN = dyn_cast<FullyConnectedNode>(&N);
+    if (!FCN) {
+      continue;
+    }
+
+    NodeValue output = FCN->getResult();
+    NodeValue input = FCN->getInput();
+    NodeValue filter = FCN->getWeights();
+    NodeValue bias = FCN->getBias();
+
+    // Reshape input from 2D to 4D.
+    auto inpDims = ShapeHW(input.getType()->dims());
+    std::vector<dim_t> inpDimsCN = {inpDims.height, 1, 1, inpDims.width};
+    input = F->createReshape(FCN->getName(), input, inpDimsCN);
+
+    // Transpose filter and reshape from 2D to 4D.
+    filter = F->createTranspose(FCN->getName(), filter, {1, 0});
+    auto filterDims = ShapeHW(filter.getType()->dims());
+    std::vector<dim_t> filterDimsCN = {filterDims.height, 1, 1,
+                                       filterDims.width};
+    filter = F->createReshape(FCN->getName(), filter, filterDimsCN);
+
+    // Create Conv2D node with same output type but 4D shape.
+    auto outDims = ShapeHW(output.getType()->dims());
+    std::vector<dim_t> outDimsCN = {outDims.height, 1, 1, outDims.width};
+    auto outTyCN =
+        F->getParent()->uniqueTypeWithNewShape(output.getType(), outDimsCN);
+    NodeValue outputCN =
+        F->createConv(FCN->getName(), input, filter, bias, outTyCN,
+                      /* kernels */ {1, 1},
+                      /* strides */ {1, 1},
+                      /* pads */ {0, 0, 0, 0},
+                      /* group */ 1);
+
+    // Reshape the 4D output back to its original 2D shape.
+    outputCN =
+        F->createReshape(FCN->getName(), outputCN, output.getType()->dims());
+    FCN->getResult().replaceAllUsesOfWith(outputCN);
+    changed = true;
+  }
+  return changed;
+}
+
 /// This funciton uses TypeAToTypeBFunctionConverter to do a whole graph
 /// demotion of Index type from INT64 to INT32.
 static void transformIndexTypeDemotion(const Backend &B, Function *F,
