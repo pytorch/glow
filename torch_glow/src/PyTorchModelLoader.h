@@ -367,6 +367,10 @@ private:
   // \returns error on failure.
   Error loadEmbeddingBag4BitRowwiseOffsets(const torch::jit::Node *ptNode);
 
+  // Load a PyTorch fb::equally_split.
+  // \returns error on failure.
+  Error loadEquallySplit(const torch::jit::Node *ptNode);
+
   // Helper function that implements the loading logic for
   // fb::embedding_bag_4bit_rowwise_offsets and
   // fb::embedding_bag_byte_rowwise_offsets.
