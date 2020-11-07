@@ -1003,6 +1003,12 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "Index")
       .autoVerify(VerifyKind::NoVerify);
 
+  BB.newInstr("Instrument")
+      .addMember(MEMBER_TYPE_INFO(glow::Instruction *), "InstrRef")
+      .addMember(MemberType::Unsigned, "ID")
+      .addMember(MemberType::Boolean, "Begin")
+      .autoVerify(VerifyKind::NoVerify);
+
   //===--------------------------------------------------------------------===//
   //             Instructions used for quantization
   //===--------------------------------------------------------------------===//

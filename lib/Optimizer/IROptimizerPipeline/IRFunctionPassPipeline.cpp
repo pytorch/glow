@@ -101,6 +101,10 @@ createDefaultIRFunctionOptimizationPipeline() {
     // Run debug instrumentation only if necessary.
     pipeline->pushBack(IRFunctionPassID::DebugInstrument);
   }
+  if (instrumentIR) {
+    // Run IR instrumentation only if necessary.
+    pipeline->pushBack(IRFunctionPassID::IRInstrument);
+  }
   // Always run a verifier at the end.
   pipeline->pushBack(IRFunctionPassID::IRVerify);
   // If requested, dump IR to stdout for debugging.

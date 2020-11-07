@@ -117,7 +117,6 @@ static bool performDebugInstrumentation(IRFunction &M) {
     for (unsigned opIdx = 0; opIdx < I->getNumOperands(); ++opIdx) {
       const auto &op = I->getOperand(opIdx);
       const std::string opName = I->getOperandName(opIdx).str();
-      const std::string opValueName = op.first->getName();
       const std::string opTypeName = op.first->getType()->toString();
 
       // DebugPrint instruction name for this operand.
@@ -181,10 +180,121 @@ static bool performDebugInstrumentation(IRFunction &M) {
   return changed;
 }
 
+static bool performIRInstrumentation(IRFunction &M) {
+
+  // Open instrument info file.
+  std::string instrumentInfoPath = "instrument.info";
+  std::ofstream instrumentInfoFile;
+  instrumentInfoFile.open(instrumentInfoPath, std::ios::out | std::ios::trunc);
+  unsigned instructionID = 0;
+
+  // Instrument instructions.
+  bool changed = false;
+  auto &instrs = M.getInstrs();
+  for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
+    auto *I = &*it;
+    auto next = std::next(it);
+
+    // If current instruction is not one of the provided in the list, skip it.
+    if (!instrumentIROnly.empty()) {
+      if (std::find_if(instrumentIROnly.begin(), instrumentIROnly.end(),
+                       [&](const std::string &name) -> bool {
+                         return I->getName().contains(name);
+                       }) == instrumentIROnly.end()) {
+        it = next;
+        continue;
+      }
+    }
+
+    // Do not instrument other debug or memory related instructions.
+    if (isa<DebugPrintInst>(I) || isa<AllocActivationInst>(I) ||
+        isa<DeallocActivationInst>(I) || isa<TensorViewInst>(I)) {
+      it = next;
+      continue;
+    }
+
+    // Add instrumentation before instruction.
+    std::string instrName = I->getName().str();
+    auto *instrBefore = new InstrumentInst("instrument.before." + instrName,
+                                           I, instructionID, true);
+    M.insertInstruction(I, instrBefore);
+
+    // Add instrumentation after instruction.
+    auto *instrAfter = new InstrumentInst("instrument.after." + instrName,
+                                          I, instructionID, false);
+    if (next == e) {
+      M.insertInstruction(instrAfter);
+    } else {
+      M.insertInstruction(&*next, instrAfter);
+    }
+
+    // Print instruction info.
+    instrumentInfoFile << "\n";
+    instrumentInfoFile << "ID  : " << instructionID << "\n";
+    instrumentInfoFile << "Type: " << I->getKindName() << "\n";
+    instrumentInfoFile << "Name: " << instrName << "\n";
+
+    // Get maximum operand name length for pretty print.
+    size_t opNameLenMax = 0;
+    for (unsigned opIdx = 0; opIdx < I->getNumOperands(); ++opIdx) {
+      auto opNameLen = I->getOperandName(opIdx).size();
+      opNameLenMax = std::max(opNameLen, opNameLenMax);
+    }
+
+    // Print input operands.
+    unsigned inputIdx = 0;
+    for (unsigned opIdx = 0; opIdx < I->getNumOperands(); ++opIdx) {
+      const auto &op = I->getOperand(opIdx);
+      if (op.second == OperandKind::Out) {
+        continue;
+      }
+      const std::string opName = I->getOperandName(opIdx).str();
+      const std::string opTypeName = op.first->getType()->toString();
+      unsigned spacing = std::max(opNameLenMax + 2, size_t(10));
+      std::string format = "In [%d] ";
+      format += "%-" + std::to_string(spacing) + "s ";
+      format += "%s\n";
+      instrumentInfoFile << strFormat(format.c_str(), inputIdx,
+                                 (opName + ":").c_str(), opTypeName.c_str());
+      inputIdx++;
+    }
+
+    // Print output operands.
+    unsigned outputIdx = 0;
+    for (unsigned opIdx = 0; opIdx < I->getNumOperands(); ++opIdx) {
+      const auto &op = I->getOperand(opIdx);
+      if (op.second == OperandKind::In) {
+        continue;
+      }
+      const std::string opName = I->getOperandName(opIdx).str();
+      const std::string opTypeName = op.first->getType()->toString();
+      unsigned spacing = std::max(opNameLenMax + 2, size_t(10));
+      std::string format = "Out[%d] ";
+      format += "%-" + std::to_string(spacing) + "s ";
+      format += "%s\n";
+      instrumentInfoFile << strFormat(format.c_str(), outputIdx,
+                                 (opName + ":").c_str(), opTypeName.c_str());
+      outputIdx++;
+    }
+
+    instructionID++;
+    changed = true;
+    it = next;
+  }
+
+  // Close instrumentation info file.
+  instrumentInfoFile.close();
+
+  return changed;
+}
+
 namespace glow {
 namespace ir {
 bool DebugInstrument::run(IRFunction *M, const CompilationContext &cctx) {
   return performDebugInstrumentation(*M);
+}
+bool IRInstrument::run(IRFunction *M, const CompilationContext &cctx) {
+  return performIRInstrumentation(*M);
 }
 } // namespace ir
 } // namespace glow

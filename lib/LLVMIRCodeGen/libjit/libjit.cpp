@@ -3503,4 +3503,15 @@ void libjit_mfcc_f(void *scratch, float *coefficients, const float *spectrogram,
     spectrogram += winSize;
   }
 }
+
+extern void glow_instrument_begin(int32_t ID, int32_t inpNum, uint8_t **inpAddr, int32_t *inpSize);
+void libjit_instrument_begin(int32_t ID, int32_t inpNum, uint8_t **inpAddr, int32_t *inpSize) {
+  glow_instrument_begin(ID, inpNum, inpAddr, inpSize);
+}
+
+extern void glow_instrument_end(int32_t ID, int32_t outNum, uint8_t **outAddr, int32_t *outSize);
+void libjit_instrument_end(int32_t ID, int32_t outNum, uint8_t **outAddr, int32_t *outSize) {
+  glow_instrument_end(ID, outNum, outAddr, outSize);
+}
+
 } // extern "C"

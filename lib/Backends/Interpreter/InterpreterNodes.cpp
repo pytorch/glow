@@ -5023,6 +5023,10 @@ void BoundInterpreterFunction::fwdTraceEventInst(const TraceEventInst *I) {
                       .count();
 }
 
+void BoundInterpreterFunction::fwdInstrumentInst(const InstrumentInst *I) {
+  llvm_unreachable("Instrument instruction not implemented on Interpreter!");
+}
+
 //===----------------------------------------------------------------------===//
 //                Instructions used by Quantization
 //===----------------------------------------------------------------------===//

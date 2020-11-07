@@ -3180,6 +3180,64 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     break;
   }
 
+  case Kinded::Kind::InstrumentInstKind: {
+    auto *instrumentI = llvm::cast<InstrumentInst>(I);
+
+    // Instruction being instrumented.
+    Instruction * instrRef = instrumentI->getInstrRef();
+
+    // Emit instruction ID and name.
+    auto *ID = emitConstI32(builder, instrumentI->getID());
+
+    if (instrumentI->getBegin()) {
+
+      // Input operands addresses and sizes.
+      std::vector<llvm::Value *> inpAddrArray;
+      std::vector<llvm::Constant *> inpSizeArray;
+
+      // Emit addresses and sizes for the input operands of the
+      // instruction being instrumented.
+      for (unsigned opIdx = 0; opIdx < instrRef->getNumOperands(); ++opIdx) {
+        const auto &op = instrRef->getOperand(opIdx);
+        if (op.second != OperandKind::Out) {
+          inpAddrArray.push_back(emitValueAddress(builder, op.first));
+          inpSizeArray.push_back(llvm::ConstantInt::get(builder.getInt32Ty(), op.first->getType()->getSizeInBytes()));
+        }
+      }
+
+      auto *inpNum = emitConstI32(builder, inpAddrArray.size());
+      auto *inpAddr = llvm::ConstantPointerNull::get(builder.getInt8PtrTy()->getPointerTo());
+      auto *inpSize = emitConstArray(builder, inpSizeArray, builder.getInt32Ty());
+
+      auto *F = getFunction("instrument_begin");
+      createCall(builder, F, {ID, inpNum, inpAddr, inpSize});
+
+    } else {
+
+      // Output operands addresses and sizes.
+      std::vector<llvm::Value *> outAddrArray;
+      std::vector<llvm::Constant *> outSizeArray;
+
+      // Emit addresses and sizes for the output operands of the
+      // instruction being instrumented.
+      for (unsigned opIdx = 0; opIdx < instrRef->getNumOperands(); ++opIdx) {
+        const auto &op = instrRef->getOperand(opIdx);
+        if (op.second != OperandKind::In) {
+          outAddrArray.push_back(emitValueAddress(builder, op.first));
+          outSizeArray.push_back(llvm::ConstantInt::get(builder.getInt32Ty(), op.first->getType()->getSizeInBytes()));
+        }
+      }
+
+      auto *outNum = emitConstI32(builder, outAddrArray.size());
+      auto *outAddr = llvm::ConstantPointerNull::get(builder.getInt8PtrTy()->getPointerTo());
+      auto *outSize = emitConstArray(builder, outSizeArray, builder.getInt32Ty());
+
+      auto *F = getFunction("instrument_end");
+      createCall(builder, F, {ID, outNum, outAddr, outSize});
+    }
+    break;
+  }
+
   case Kinded::Kind::TraceEventInstKind: {
     auto *TEI = llvm::cast<TraceEventInst>(I);
     auto *data = TEI->getData();
