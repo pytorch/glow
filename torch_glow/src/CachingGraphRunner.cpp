@@ -608,6 +608,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
     auto &output = outputs[i];
     auto ptTensor = output.toTensor();
 
+    // Convert the output to the correct dtype if necessary.
     if (ptTensor.is_quantized()) {
       c10::ScalarType dtype = outputCorrectType_[i];
       if (dtype == c10::ScalarType::QUInt8 || dtype == c10::ScalarType::QInt8) {
@@ -618,6 +619,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       }
     }
 
+    // Write the output from Glow to ONNX if necessary.
     if (settings.writeToOnnx) {
       glow::Tensor glowT = ptTensorToGlowTensor(ptTensor);
       auto *onnxT = outputG.add_initializer();
@@ -625,6 +627,8 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       ONNXModelWriter::writeTensor(glowT, onnxT, /*useGlowCustomOps*/ true);
     }
 
+    // Write the output from the JIT output (not from Glow) to ONNX if
+    // necessary.
     if (settings.writeToOnnx) {
       auto &jitOutput = torch::jit::peek(copyStack, i, outputs.size());
       auto jitPtTensor = jitOutput.toTensor().contiguous();
@@ -635,6 +639,8 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
                                    /*useGlowCustomOps*/ true);
     }
 
+    // Run shape inference and slice out the correct size of the Glow output if
+    // necessary.
     if (settings.runShapeInference) {
       if (i < (*ptrOutputShape).size()) {
         // Assuming all the outputs are tensors for now
@@ -645,6 +651,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       }
     }
 
+    // Run comparison between Glow and JIT outputs
     if (settings.jitVsGlowCompare) {
       glow::Tensor glowT = ptTensorToGlowTensor(ptTensor);
       auto &jitOutput = torch::jit::peek(copyStack, i, outputs.size());
