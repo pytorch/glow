@@ -154,6 +154,13 @@ public:
   bool setIncludeLastOffsets = true;
 };
 
+/// Represents different possible output types from to_glow modules.
+enum class GraphOutputType {
+  TENSORS,      // Single tensor or multiple tensors
+  TENSOR_TUPLE, // Single tuple of tensors
+  TENSOR_LIST,  // Single list of tensors
+};
+
 /// Given a PyTorch ScalarType \p ty, \returns a matching Glow ElemKind.
 ElemKind scalarTypeToElemKind(c10::ScalarType ty);
 
