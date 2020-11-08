@@ -753,13 +753,12 @@ static void moveInterval(Intervals &from, Intervals &to, Interval &interval) {
 /// If fixUpFirstUseIfNoDef is required in other situations, that means the
 /// input IR is wrong and that we have a bug somewhere else.
 static void replaceAllUsesInsideIntervalWith(
-    Value *val, Value *with, const Interval &liveInterval, IRFunction &M,
-    const LiveIntervalsInstructionNumbering &instrNumbering,
+    IRBuilder &B, Value *val, Value *with, const Interval &liveInterval,
+    IRFunction &M, const LiveIntervalsInstructionNumbering &instrNumbering,
     bool fixUpFirstUseIfNoDef) {
   auto &instrs = M.getInstrs();
   auto valOrigin = getOrigin(val);
   unsigned instIdx = 0;
-  IRBuilder B(&M);
   bool sawDefinitionBeforeFirstUse = false;
   Instruction *firstUse = nullptr;
   for (auto it = instrNumbering.getInstr(liveInterval.begin_)->getIterator(),
@@ -870,6 +869,8 @@ namespace {
 class BufferSharingOptimizer {
   /// Current function.
   IRFunction &M_;
+  /// Current IRBuilder
+  IRBuilder &builder_;
   /// The instruction numbering to be used.
   const LiveIntervalsInstructionNumbering &instrNumbering_;
   /// Current instruction.
@@ -1006,12 +1007,13 @@ class BufferSharingOptimizer {
 public:
   /// Initialize the state of the shared buffers optimizer.
   BufferSharingOptimizer(
-      IRFunction &M, LiveIntervalsMap &intervalsMap,
+      IRFunction &M, IRBuilder &builder, LiveIntervalsMap &intervalsMap,
       const LiveIntervalsInstructionNumbering &instrNumbering,
       Instruction *instr, size_t instrIdx, Value *dest, Value *src)
-      : M_(M), instrNumbering_(instrNumbering), instr_(instr),
-        instrIdx_(instrIdx), src_(src), dest_(dest), srcOrigin_(getOrigin(src)),
-        destOrigin_(getOrigin(dest)), srcIntervals_(intervalsMap[srcOrigin_]),
+      : M_(M), builder_(builder), instrNumbering_(instrNumbering),
+        instr_(instr), instrIdx_(instrIdx), src_(src), dest_(dest),
+        srcOrigin_(getOrigin(src)), destOrigin_(getOrigin(dest)),
+        srcIntervals_(intervalsMap[srcOrigin_]),
         destIntervals_(intervalsMap[destOrigin_]) {
     // Bail if information about live intervals is not known.
     assert(!srcIntervals_.empty() &&
@@ -1091,8 +1093,9 @@ public:
                << " as a buffer for " << oldBuffer->getName() << "\n"
                << "in live interval " << oldInterval << "\n");
     // Replace oldBuffer with newBuffer.
-    replaceAllUsesInsideIntervalWith(oldBuffer, newBuffer, oldInterval, M,
-                                     instrNumbering_, fixUpFirstUseIfNoDef);
+    replaceAllUsesInsideIntervalWith(builder_, oldBuffer, newBuffer,
+                                     oldInterval, M, instrNumbering_,
+                                     fixUpFirstUseIfNoDef);
     if (isCopyPropagation()) {
       // This is a copy propagation.
       // Merge the old interval with the new one.
@@ -1115,7 +1118,7 @@ public:
 /// of the X may be enclosed into a live interval of Y because they have
 /// the same value after the copy instruction.
 static bool tryToShareBuffersForInstr(
-    LiveIntervalsMap &intervalsMap,
+    IRBuilder &builder, LiveIntervalsMap &intervalsMap,
     const LiveIntervalsInstructionNumbering &instrNumbering, Instruction *I,
     unsigned instIdx) {
   IRFunction &M = *I->getParent();
@@ -1157,8 +1160,8 @@ static bool tryToShareBuffersForInstr(
       }
 
       // The buffers can be reused in principle, thus try to share the buffers.
-      BufferSharingOptimizer opt(M, intervalsMap, instrNumbering, I, instIdx,
-                                 dest, src);
+      BufferSharingOptimizer opt(M, builder, intervalsMap, instrNumbering, I,
+                                 instIdx, dest, src);
       if (opt.tryToShareBuffers()) {
         return true;
       }
@@ -1190,6 +1193,7 @@ static bool shareBuffers(IRFunction &M) {
   // modified by any instruction that used it as an @out or @inout
   // parameter.
   auto &instrs = M.getInstrs();
+  IRBuilder B(&M);
 
   // For each instruction, in reverse order.
   for (auto it = instrs.rbegin(), e = instrs.rend(); it != e; ++it) {
@@ -1200,7 +1204,7 @@ static bool shareBuffers(IRFunction &M) {
     }
     // Try to reuse the operand memory buffers.
     changed |=
-        tryToShareBuffersForInstr(intervalsMap, instrNumbering, I, instIdx);
+        tryToShareBuffersForInstr(B, intervalsMap, instrNumbering, I, instIdx);
   }
 
   // Fix eventual issues with allocs and deallocs that shareBuffers may
