@@ -24,7 +24,7 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const Type &type) {
 
   if (type.isQuantizedType()) {
     os << "[S:";
-    llvm::write_double(os, type.getScale(), llvm::FloatStyle::Fixed, 4);
+    llvm::write_double(os, type.getScale(), llvm::FloatStyle::Fixed, 9);
     os << " O:";
     os << type.getOffset();
     os << ']';

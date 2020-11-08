@@ -5210,6 +5210,36 @@ bool ReplaceZeroScaleFP16QuantNodes::run(Function *F,
     return false;
   }
 
+  auto processNV = [](Function *F, NodeValue resNV) {
+    const TypeRef resTy = resNV.getType();
+    if (resTy->isFusedQuantizedType() || !resTy->isQuantizedType()) {
+      return false;
+    }
+
+    // Check if we have a scale that's below the minimum allowed FP16 val.
+    if (resTy->getScale() >= minScaleFP16) {
+      return false;
+    }
+
+    // Skip if used by node with side effects, since we cannot change the
+    // qparams in such cases.
+    if (isUsedByNodeWithSideEffects(resNV.getNode())) {
+      return false;
+    }
+
+    // This NodeValue has scale = 0.f, which means the equivalent float result
+    // will always be equal to 0.f. So create a splat with value 0.f, scale 1.f,
+    // offset 0 instead.
+    auto splatTy = F->getParent()->uniqueType(resTy->getElementType(),
+                                              resTy->dims(), 1.f, 0);
+    auto *SN = F->createSplat(resNV.getNode()->getName().str() + ".splatted",
+                              splatTy, 0.f);
+
+    // Note: must use type unsafe replace because we've changed the qparams.
+    resNV.typeUnsafeReplaceAllUsesOfWith(SN->getResult(), F);
+    return true;
+  };
+
   bool changed = false;
   // Since we will be adding in new SplatNodes, reverse iterate to be safe.
   auto &nodes = F->getNodes();
@@ -5220,32 +5250,13 @@ bool ReplaceZeroScaleFP16QuantNodes::run(Function *F,
       continue;
     }
     NodeValue resNV = N->getNthResult(0);
-    const TypeRef resTy = resNV.getType();
-    if (resTy->isFusedQuantizedType() || !resTy->isQuantizedType()) {
-      continue;
-    }
-
-    // Check if we have a scale of 0.f when it's casted to FP16.
-    if (float(float16_t(resTy->getScale())) != 0.f) {
-      continue;
-    }
-
-    // Skip if used by node with side effects, since we cannot change the
-    // qparams in such cases.
-    if (isUsedByNodeWithSideEffects(N)) {
-      continue;
-    }
-
-    // This NodeValue has scale = 0.f, which means the equivalent float result
-    // will always be equal to 0.f. So create a splat with value 0.f, scale 1.f,
-    // offset 0 instead.
-    auto splatTy = F->getParent()->uniqueType(resTy->getElementType(),
-                                              resTy->dims(), 1.f, 0);
-    auto *SN = F->createSplat(N->getName().str() + ".splatted", splatTy, 0.f);
-
-    // Note: must use type unsafe replace because we've changed the qparams.
-    resNV.typeUnsafeReplaceAllUsesOfWith(SN->getResult());
-    changed = true;
+    changed |= processNV(F, resNV);
+  }
+  for (Placeholder *PH : F->findPlaceholders()) {
+    changed |= processNV(F, PH->getOutput());
+  }
+  for (Constant *C : F->findConstants()) {
+    changed |= processNV(F, C->getOutput());
   }
 
   return changed;
