@@ -275,10 +275,16 @@ onnxStatus HostManagerBackend::addNetwork(
   if (err) {
     if (err.peekErrorValue() && err.peekErrorValue()->isFatalError()) {
       errorCode = ONNXIFI_STATUS_FATAL_ERROR;
+      std::string msg = err.peekErrorValue()->logToString();
+      auto reporters = ErrorReporterRegistry::ErrorReporters();
+      if (reporters) {
+        reporters->report(msg);
+      }
+      LOG(FATAL) << "Non-recoverable device error when adding network: " << msg;
     } else {
       errorCode = ONNXIFI_STATUS_INTERNAL_ERROR;
+      LOG(ERROR) << ERR_TO_STRING(std::move(err));
     }
-    LOG(ERROR) << ERR_TO_STRING(std::move(err));
   }
   return errorCode;
 }
@@ -405,7 +411,8 @@ onnxStatus HostManagerGraph::run(std::unique_ptr<ExecutionContext> ctx,
             if (reporters) {
               reporters->report(msg);
             }
-            LOG(FATAL) << "Non-recoverable device error: " << msg;
+            LOG(FATAL) << "Non-recoverable device error when running network: "
+                       << msg;
           }
           outputEvent->setMessage(ERR_TO_STRING(std::move(err)));
           outputEvent->signal(ONNXIFI_STATUS_INTERNAL_ERROR);
