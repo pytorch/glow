@@ -242,11 +242,12 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                                Error *errPtr, bool loadIntoExistingModule,
                                OriginNameToTQPMap *originNameToTQPMap,
                                bool loadUniquedDummyQParams,
-                               bool replaceDummyTQPs)
+                               bool replaceDummyTQPs, bool zeroScaleFP16Clip)
     : G_(nullptr), mod_(mod), loadIntoExistingModule_(loadIntoExistingModule),
       originNameToTQPMap_(originNameToTQPMap),
       loadUniquedDummyQParams_(loadUniquedDummyQParams),
-      replaceDummyTQPs_(replaceDummyTQPs) {
+      replaceDummyTQPs_(replaceDummyTQPs),
+      zeroScaleFP16Clip_(zeroScaleFP16Clip) {
   setupLoader(tensorNames, types, errPtr);
 }
 
@@ -255,12 +256,13 @@ ProtobufLoader::ProtobufLoader(llvm::ArrayRef<const char *> tensorNames,
                                Error *errPtr, bool loadIntoExistingModule,
                                OriginNameToTQPMap *originNameToTQPMap,
                                bool loadUniquedDummyQParams,
-                               bool replaceDummyTQPs)
+                               bool replaceDummyTQPs, bool zeroScaleFP16Clip)
     : G_(F), mod_(*F->getParent()),
       loadIntoExistingModule_(loadIntoExistingModule),
       originNameToTQPMap_(originNameToTQPMap),
       loadUniquedDummyQParams_(loadUniquedDummyQParams),
-      replaceDummyTQPs_(replaceDummyTQPs) {
+      replaceDummyTQPs_(replaceDummyTQPs),
+      zeroScaleFP16Clip_(zeroScaleFP16Clip) {
   setupLoader(tensorNames, types, errPtr);
 }
 
@@ -335,6 +337,10 @@ Expected<TypeRef> ProtobufLoader::loadQuantTy(const std::string &name,
   // If we don't have a map to track dummy unique offsets to loader names, then
   // just load as normal with the actual scale/offset we loaded.
   if (!loadUniquedDummyQParams_) {
+    if (zeroScaleFP16Clip_ && scale < kMinScaleFP16) {
+      scale = kMinScaleFP16;
+    }
+
     if (originNameToTQPMap_) {
       bool inserted =
           originNameToTQPMap_

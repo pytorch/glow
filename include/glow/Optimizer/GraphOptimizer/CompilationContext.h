@@ -115,6 +115,10 @@ struct PrecisionConfiguration {
   /// instead track origin of quantization params in \ref originNameToTQPMap.
   bool loadUniquedDummyQParams{false};
 
+  /// If true, when scales for qparams are loaded, they are clipped to
+  /// kMinScaleFP16 if below kMinScaleFP16.
+  bool zeroScaleFP16Clip{false};
+
   /// If true, then the model that is loaded is expected to have been originally
   /// serialized with dummy quantization parameters, and was replaced with
   /// actual quantization parameters when loaded in this compilation context.
