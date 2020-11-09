@@ -6164,7 +6164,7 @@ TEST_F(GraphOptz, foldMinMaxToClipTest) {
 }
 
 /// Check that we replace a Node with 0.f scale in fp16 with a splat correctly.
-TEST_F(GraphOptz, ZeroScaleFP16QuantOpt) {
+TEST_F(GraphOptz, ReplaceZeroScaleFP16QuantOpt) {
   auto *LHS = mod_.createPlaceholder(ElemKind::FloatTy, {20, 30}, "LHS", false);
   auto *RHSQ = mod_.createPlaceholder(ElemKind::Int8QTy, {20, 30}, 0.1f, 10,
                                       "LHS", false);
@@ -6208,5 +6208,70 @@ TEST_F(GraphOptz, ZeroScaleFP16QuantOpt) {
   bindings_.allocate(RHSQ)->getHandle<int8_t>().randomize(-128, 127,
                                                           mod_.getPRNG());
 
+  checkNumericalEquivalence(0.f);
+}
+
+/// Same as GraphOptz, but when running numerical equivalence use the CPU
+/// backend instead of Interpreter.
+class GraphOptzOnCPU : public GraphOptz {
+public:
+  GraphOptzOnCPU() : GraphOptz("CPU") {}
+#ifndef GLOW_WITH_CPU
+  virtual void checkNumericalEquivalence(float allowedError = 0.0001) override {
+    LOG(INFO) << "Skipping numerical equivalence check as the CPU backend is "
+                 "not built.";
+  }
+#endif /* GLOW_WITH_CPU */
+};
+
+/// Check that we replace a Node with 0.f scale in fp16 with a splat
+/// correctly. Note that when running this on the Interpreter backend (i.e. with
+/// the GraphOptz fixure) there are numerical differences because the
+/// Interpreter backend does not handle tiny scales correctly. Hence, for now
+/// run on the CPU backend for comparison. TODO to fix the Interpreter Int8 FC
+/// impl to handle correctly.
+TEST_F(GraphOptzOnCPU, ReplaceZeroScaleFP16QuantConstOpt) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {1, 1}, 1.0, 0, "input", false);
+  // scale = 1e-9 underflows fp16 and so this opt applies.
+  auto *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {1, 1}, 1e-9, 0, "weights");
+  weights->getPayloadMutable().getHandle<int8_t>().randomize(-128, 127,
+                                                             mod_.getPRNG());
+  auto *bias = mod_.createConstant(ElemKind::Int8QTy, {1}, 1.0, 0, "bias");
+  bias->getPayloadMutable().getHandle<int8_t>().randomize(-128, 127,
+                                                          mod_.getPRNG());
+  auto *FC = F_->createFullyConnected("fc", input, weights, bias);
+  auto *DQ = F_->createDequantize("dq", FC, ElemKind::FloatTy);
+  F_->createSave("save", DQ);
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::ReplaceZeroScaleFP16QuantNodes, getDCEPassConfig()});
+
+  SaveNode *save = nullptr;
+  for (auto &N : optimizedF_->getNodes()) {
+    if (N.getKind() == Kinded::Kind::SaveNodeKind) {
+      save = llvm::dyn_cast<SaveNode>(&N);
+      break;
+    }
+  }
+  ASSERT_TRUE(save);
+
+  auto *optDQ = llvm::dyn_cast<DequantizeNode>(save->getInput());
+  ASSERT_TRUE(optDQ);
+  auto *optFC = llvm::dyn_cast<FullyConnectedNode>(optDQ->getInput());
+  ASSERT_TRUE(optFC);
+
+  SplatNode *splat = llvm::dyn_cast<SplatNode>(optFC->getWeights());
+  ASSERT_TRUE(splat);
+  EXPECT_EQ(splat->getValue(), 0.f);
+  const TypeRef splatQTy = splat->getResult().getType();
+  EXPECT_EQ(splatQTy->getScale(), 1.f);
+  EXPECT_EQ(splatQTy->getOffset(), 0);
+  EXPECT_EQ(splatQTy->getElementType(), weights->getOutput().getElementType());
+  EXPECT_EQ(splatQTy->dims(), weights->getOutput().dims());
+
+  bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127,
+                                                           mod_.getPRNG());
   checkNumericalEquivalence(0.f);
 }
