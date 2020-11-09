@@ -174,8 +174,8 @@ public:
                (unsigned int)(conv_param.pad[2]),
                (unsigned int)(conv_param.pad[3])},
               (unsigned int)(conv_param.G),
-              (unsigned int)(conv_param.dilation[0]));
-
+              {(unsigned int)(conv_param.dilation[0]),
+               (unsigned int)(conv_param.dilation[1])});
           cur[core] = conv[core * input_shapes_.size() + conv_ops];
           conv_ops += 1;
         }
