@@ -42,6 +42,7 @@ extern bool GlowSaveOnnxifiDAG;
 extern bool GlowSaveOnnxifiIO;
 extern bool GlowDelayAndRecordConstantModification;
 extern bool GlowUseTrackedDummyQuantParams;
+extern bool GlowClipZeroScaleFP16;
 extern bool GlowEnablePartialTensors;
 extern bool GlowUseCustomOpsForExport;
 extern bool GlowUseSparseNNPartitioningScheme;

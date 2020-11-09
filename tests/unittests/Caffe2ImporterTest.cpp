@@ -3702,3 +3702,60 @@ TEST_F(Caffe2ImporterTest, importInt8ConvReluTrackedDummyQParams) {
 TEST_F(Caffe2ImporterTest, importInt8ConvReluTrackedRealQParams) {
   testImportTrackedQParams(/* loadUniquedDummyQParams */ false);
 }
+
+/// Check that we clip a Node with 0.f scale to kMinScaleFP16 correctly.
+TEST_F(Caffe2ImporterTest, ClipZeroScaleFP16QuantOpt) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/int8sumrelu_tiny_scale_pred_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/int8sumrelu_tiny_scale_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Tensor data(ElemKind::Int8QTy, {4, 2}, 1.f, 0);
+    Caffe2ModelLoader caffe2LD(
+        NetDescFilename, NetWeightFilename, {"gpu_0/data_0"}, {&data.getType()},
+        *F, /* errPtr */ nullptr, /* originNameToTQPMap */ nullptr,
+        /* loadUniquedDummyQParams */ false,
+        /* zeroScaleFP16Clip */ true);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"gpu_0/data_0"}, {&data});
+  }
+
+  // High level check on the content of the graph. We should have
+  // input-=> add => relu => save
+  // const/
+  EXPECT_EQ(F->getNodes().size(), 3);
+  auto *save = getSaveNodeFromDest(output);
+
+  // Verify that the structure is as expected *except* that the tiny scales that
+  // are loaded have been replaced by kMinScaleFP16.
+  auto *relu = llvm::dyn_cast<ReluNode>(save->getInput().getNode());
+  ASSERT_TRUE(relu);
+  EXPECT_EQ(relu->getResult().getType()->getScale(), kMinScaleFP16);
+  EXPECT_EQ(relu->getResult().getType()->getOffset(), 5 - UINT8_TO_INT8_SHIFT);
+  auto *add = llvm::dyn_cast<AddNode>(relu->getInput().getNode());
+  ASSERT_TRUE(add);
+  EXPECT_EQ(add->getResult().getType()->getScale(), kMinScaleFP16);
+  EXPECT_EQ(add->getResult().getType()->getOffset(), 5 - UINT8_TO_INT8_SHIFT);
+  auto *input = llvm::dyn_cast<Placeholder>(add->getLHS().getNode());
+  ASSERT_TRUE(input);
+  auto *val = llvm::dyn_cast<Constant>(add->getRHS().getNode());
+  ASSERT_TRUE(val);
+  EXPECT_EQ(val->getOutput().getType()->getScale(), kMinScaleFP16);
+  EXPECT_EQ(val->getOutput().getType()->getOffset(), 13 - UINT8_TO_INT8_SHIFT);
+
+  EE.compile(CompilationMode::Infer);
+}

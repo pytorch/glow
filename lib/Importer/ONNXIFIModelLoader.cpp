@@ -54,7 +54,8 @@ Expected<std::unique_ptr<ONNXIFIModelLoader>> ONNXIFIModelLoader::parse(
         model, modelSize, weightsCount, weightDescriptors, mod, netName,
         cctx.prepartitionedConfig, &loaderConstructionErr, constFoldInLoader,
         cctx.precisionConfig.originNameToTQPMap,
-        cctx.precisionConfig.loadUniquedDummyQParams));
+        cctx.precisionConfig.loadUniquedDummyQParams,
+        cctx.precisionConfig.zeroScaleFP16Clip));
     if (loaderConstructionErr) {
       return std::move(loaderConstructionErr);
     }

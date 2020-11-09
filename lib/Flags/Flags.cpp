@@ -61,6 +61,7 @@ size_t GlowMaxQueueSize = 100;
 size_t GlowExecutorThreads = 10;
 bool GlowDelayAndRecordConstantModification = false;
 bool GlowUseTrackedDummyQuantParams = false;
+bool GlowClipZeroScaleFP16 = false;
 std::string GlowOnnxifiBackend = "";
 bool GlowSaveOnnxifiModel = false;
 bool GlowSaveOnnxifiIO = false;
@@ -297,6 +298,14 @@ DEFINE_bool(glow_use_tracked_dummy_quant_params, false,
 DEFINE_validator(glow_use_tracked_dummy_quant_params,
                  [](const char *flagname, bool value) {
                    glow::onnxifi::GlowUseTrackedDummyQuantParams = value;
+                   return true;
+                 });
+
+DEFINE_bool(glow_clip_zero_scale_fp16, false,
+            "Whether to clip qparam scales below 1/65504 to that val.");
+DEFINE_validator(glow_clip_zero_scale_fp16,
+                 [](const char *flagname, bool value) {
+                   glow::onnxifi::GlowClipZeroScaleFP16 = value;
                    return true;
                  });
 

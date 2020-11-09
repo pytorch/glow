@@ -230,6 +230,9 @@ protected:
   /// Whether to try to replace dummy TQPs found during loading with real
   /// updated ones in \ref updatedTQPs_.
   bool replaceDummyTQPs_{false};
+  /// If true, when scales for qparams are loaded, they are clipped to
+  /// kMinScaleFP16 if below kMinScaleFP16.
+  bool zeroScaleFP16Clip_{false};
 
   // Delete all Constants that have no users. This is useful because some
   // Constants may have been copied and modified during loading instead of used
@@ -317,7 +320,7 @@ public:
                  Error *errPtr = nullptr, bool loadIntoExistingModule = false,
                  OriginNameToTQPMap *originNameToTQPMap = nullptr,
                  bool loadUniquedDummyQParams = false,
-                 bool replaceDummyTQPs = false);
+                 bool replaceDummyTQPs = false, bool zeroScaleFP16Clip = false);
 
   /// Constructs new ProtobufLoader object. It will populate the network into
   /// \p mod. The list \p types and \p names are used to initialize the inputs
@@ -331,7 +334,7 @@ public:
                  Error *errPtr = nullptr, bool loadIntoExistingModule = false,
                  OriginNameToTQPMap *originNameToTQPMap = nullptr,
                  bool loadUniquedDummyQParams = false,
-                 bool replaceDummyTQPs = false);
+                 bool replaceDummyTQPs = false, bool zeroScaleFP16Clip = false);
 
   ProtobufLoader(const ProtobufLoader &other) = delete;
   ProtobufLoader &operator=(const ProtobufLoader &) = delete;
