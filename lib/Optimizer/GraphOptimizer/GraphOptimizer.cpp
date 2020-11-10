@@ -5108,7 +5108,6 @@ bool ConvertFullyConnectedToConvolution::run(Function *F,
 
   bool changed = false;
   for (auto &N : F->getNodes()) {
-
     auto *FCN = dyn_cast<FullyConnectedNode>(&N);
     if (!FCN) {
       continue;
@@ -5173,7 +5172,6 @@ bool FoldMinMaxToClip::run(Function *F, const CompilationContext &cctx) {
 
   bool changed = false;
   for (auto &N : F->getNodes()) {
-
     MaxNode *maxNode = dyn_cast<MaxNode>(&N);
     MinNode *minNode = dyn_cast<MinNode>(&N);
     NodeValue otherInput;
