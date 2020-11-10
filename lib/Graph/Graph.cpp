@@ -5217,6 +5217,7 @@ Constant *Module::getConstantByName(llvm::StringRef name) const {
 
 void Function::randomizeConstants(
     const std::map<Kinded::Kind, std::set<unsigned>> &ignoredConstants) {
+  LOG(INFO) << "Randomize Constants............";
   for (Constant *c : getParent()->getConstants()) {
     bool usedHere = false;
     bool usedElsewhere = false;
