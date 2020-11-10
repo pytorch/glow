@@ -6010,6 +6010,12 @@ PyTorchModelLoader::PyTorchModelLoader(
     }
 
     if (settings.writeToOnnx) {
+      RETURN_ERR_IF_NOT(
+          settings.randomizeConstants || settings.writeWithoutRandomize,
+          "Write to Onnx without randomizing constants is not allowed! To "
+          "allow this set flag `writeWithoutRandomize`.");
+      LOG_IF(WARNING, !settings.randomizeConstants)
+          << "Write to Onnx without randomize constants!!!";
       RETURN_IF_ERR(dumpOnnxModel(F, settings.onnxZipMode));
     }
 

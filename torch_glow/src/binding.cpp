@@ -191,6 +191,16 @@ PYBIND11_MODULE(_torch_glow, m) {
     getGlobalPyTorchLoaderSettingsMutable().randomizeConstants = false;
   });
 
+  /// Enable writing to Onnx without randomizing constants.
+  m.def("enable_write_without_randomize", []() {
+    getGlobalPyTorchLoaderSettingsMutable().writeWithoutRandomize = true;
+  });
+
+  /// Disable writing to Onnx without randomizing constants.
+  m.def("disable_write_without_randomize", []() {
+    getGlobalPyTorchLoaderSettingsMutable().writeWithoutRandomize = false;
+  });
+
   /// Enable check Glow vs jit correctness.
   m.def("enable_jit_vs_glow_compare", []() {
     getGlobalPyTorchLoaderSettingsMutable().jitVsGlowCompare = true;

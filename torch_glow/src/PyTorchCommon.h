@@ -136,6 +136,11 @@ public:
   /// PyTorchModelLoader.
   bool randomizeConstants = false;
 
+  // If true then writing to Onnx without randomizing the constants is allowed.
+  // Otherwise, program will be abort if trying to write to Onnx without
+  // randomizing the constants.
+  bool writeWithoutRandomize = false;
+
   /// Name of the Glow backend to use.
   std::string backendName = "Interpreter";
 

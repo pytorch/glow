@@ -65,6 +65,7 @@ DEFINE_bool(onnxZipMode, false, "See PyTorchLoaderSettings");
 DEFINE_int32(maxActiveRequests, 250,
              "Max number of active requests before HostManager starts queuing");
 DEFINE_bool(randomizeConstants, false, "See PyTorchLoaderSettings");
+DEFINE_bool(writeWithoutRandomize, false, "See PyTorchLoaderSettings");
 DEFINE_bool(runShapeInference, false, "See PyTorchLoaderSettings");
 DEFINE_int32(fusionStartIndex, -1, "See PyTorchLoaderSettings");
 DEFINE_int32(fusionEndIndex, -1, "See PyTorchLoaderSettings");
@@ -258,6 +259,7 @@ void PyTorchLoaderSettings::initSettings() {
   writeToOnnx = FLAGS_writeToOnnx;
   onnxZipMode = FLAGS_onnxZipMode;
   randomizeConstants = FLAGS_randomizeConstants;
+  writeWithoutRandomize = FLAGS_writeWithoutRandomize;
   backendName = FLAGS_torch_glow_backend;
   numDevices = FLAGS_torch_glow_num_devices;
   runShapeInference = FLAGS_runShapeInference;
@@ -315,7 +317,6 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(convertConstantsToFP16, s);
   INSERT_BOOL_TO_STREAM(forceFP16AccumSLS, s);
   INSERT_BOOL_TO_STREAM(saturateHost, s);
-  INSERT_BOOL_TO_STREAM(randomizeConstants, s);
   INSERT_VALUE_TO_STREAM(backendOptionsFile, s);
   INSERT_VALUE_TO_STREAM(replicationCount, s);
   INSERT_BOOL_TO_STREAM(fusionPassEnabled, s);
@@ -332,6 +333,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(onnxZipMode, s);
   INSERT_BOOL_TO_STREAM(jitVsGlowCompare, s);
   INSERT_BOOL_TO_STREAM(randomizeConstants, s);
+  INSERT_BOOL_TO_STREAM(writeWithoutRandomize, s);
   INSERT_VALUE_TO_STREAM(backendName, s);
   INSERT_VALUE_TO_STREAM(numDevices, s);
   INSERT_BOOL_TO_STREAM(runShapeInference, s);
