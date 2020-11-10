@@ -223,9 +223,11 @@ protected:
                        Error *errPtr = nullptr,
                        bool loadIntoExistingModule = false,
                        OriginNameToTQPMap *originNameToTQPMap = nullptr,
-                       bool loadUniquedDummyQParams = false)
+                       bool loadUniquedDummyQParams = false,
+                       bool zeroScaleFP16Clip = false)
       : ProtobufLoader(names, types, F, errPtr, loadIntoExistingModule,
-                       originNameToTQPMap, loadUniquedDummyQParams) {}
+                       originNameToTQPMap, loadUniquedDummyQParams,
+                       /* replaceDummyTQPs */ false, zeroScaleFP16Clip) {}
 
   CommonOperatorLoader(llvm::ArrayRef<const char *> names,
                        llvm::ArrayRef<TypeRef> types, Module &mod,
@@ -233,10 +235,11 @@ protected:
                        bool loadIntoExistingModule = false,
                        OriginNameToTQPMap *originNameToTQPMap = nullptr,
                        bool loadUniquedDummyQParams = false,
-                       bool replaceDummyTQPs = false)
+                       bool replaceDummyTQPs = false,
+                       bool zeroScaleFP16Clip = false)
       : ProtobufLoader(names, types, mod, errPtr, loadIntoExistingModule,
                        originNameToTQPMap, loadUniquedDummyQParams,
-                       replaceDummyTQPs) {}
+                       replaceDummyTQPs, zeroScaleFP16Clip) {}
 
   using ArgumentDictionaryTy =
       std::unordered_map<std::string, const AttrType *>;

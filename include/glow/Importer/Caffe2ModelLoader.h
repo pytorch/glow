@@ -143,7 +143,8 @@ class Caffe2ModelLoader
                     runtime::PrePartitionedConfig *PPC, Error *errPtr = nullptr,
                     bool constFoldInLoader = true,
                     OriginNameToTQPMap *originNameToTQPMap = nullptr,
-                    bool loadUniquedDummyQParams = false);
+                    bool loadUniquedDummyQParams = false,
+                    bool zeroScaleFP16Clip = false);
 
   friend class ONNXIFIModelLoader;
 
@@ -179,7 +180,8 @@ public:
                     llvm::ArrayRef<TypeRef> types, Function &F,
                     Error *errPtr = nullptr,
                     OriginNameToTQPMap *originNameToTQPMap = nullptr,
-                    bool loadUniquedDummyQParams = false);
+                    bool loadUniquedDummyQParams = false,
+                    bool zeroScaleFP16Clip = false);
 
   /// Loads the caffe2 model that's represented by a network description file,
   /// serialized in \p netDescFilename, and weights file, serialized in

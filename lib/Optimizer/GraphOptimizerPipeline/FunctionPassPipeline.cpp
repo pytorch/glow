@@ -190,6 +190,11 @@ createFP16GraphOptimizationPassPipeline() {
 
 std::unique_ptr<FunctionPassPipeline> createDefaultFoldPassPipeline() {
   std::initializer_list<FunctionPassConfig> configs{
+      // Optimize arithmetic nodes based on algebraic identities.
+      // In this function, constant operators in communative nodes are moved to
+      // the RHS. Some folding functions depend on this. (e.g. FoldMinMaxToClip)
+      {FunctionPassID::OptimizeArithmeticNodes},
+
       // Get Reshape nodes merged into constants to simplify folding.
       {FunctionPassID::OptimizeReshape},
 
@@ -201,6 +206,9 @@ std::unique_ptr<FunctionPassPipeline> createDefaultFoldPassPipeline() {
 
       // Fold MatMul->Add into FullyConnected.
       {FunctionPassID::FoldMatMulAddIntoFullyConnected},
+
+      // Fold Min + Max to Clip
+      {FunctionPassID::FoldMinMaxToClip},
 
       // Perform Dead Code Elimination.
       getDCEPassConfig(),

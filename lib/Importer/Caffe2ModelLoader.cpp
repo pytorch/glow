@@ -2096,16 +2096,15 @@ Caffe2ModelLoader::Caffe2ModelLoader(Function &F, Error *errPtr)
   deleteUnusedConstants();
 }
 
-Caffe2ModelLoader::Caffe2ModelLoader(const std::string &netDescFilename,
-                                     const std::string &netWeightFilename,
-                                     llvm::ArrayRef<const char *> names,
-                                     llvm::ArrayRef<TypeRef> types, Function &F,
-                                     Error *errPtr,
-                                     OriginNameToTQPMap *originNameToTQPMap,
-                                     bool loadUniquedDummyQParams)
+Caffe2ModelLoader::Caffe2ModelLoader(
+    const std::string &netDescFilename, const std::string &netWeightFilename,
+    llvm::ArrayRef<const char *> names, llvm::ArrayRef<TypeRef> types,
+    Function &F, Error *errPtr, OriginNameToTQPMap *originNameToTQPMap,
+    bool loadUniquedDummyQParams, bool zeroScaleFP16Clip)
     : CommonOperatorLoader(names, types, &F, errPtr,
                            /* loadIntoExistingModule */ false,
-                           originNameToTQPMap, loadUniquedDummyQParams) {
+                           originNameToTQPMap, loadUniquedDummyQParams,
+                           zeroScaleFP16Clip) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;
@@ -2304,10 +2303,12 @@ Caffe2ModelLoader::Caffe2ModelLoader(
     const onnxTensorDescriptorV1 *weightDescriptors, Module &mod,
     llvm::StringRef funNamePrefix, runtime::PrePartitionedConfig *PPC,
     Error *errPtr, bool constFoldInLoader,
-    OriginNameToTQPMap *originNameToTQPMap, bool loadUniquedDummyQParams)
+    OriginNameToTQPMap *originNameToTQPMap, bool loadUniquedDummyQParams,
+    bool zeroScaleFP16Clip)
     : CommonOperatorLoader({}, {}, mod, errPtr,
                            /* loadIntoExistingModule */ false,
-                           originNameToTQPMap, loadUniquedDummyQParams) {
+                           originNameToTQPMap, loadUniquedDummyQParams,
+                           /* replaceDummyTQPs */ false, zeroScaleFP16Clip) {
   // if errPtr already contains an error then don't continue with constructor
   if (errPtr && *errPtr) {
     return;

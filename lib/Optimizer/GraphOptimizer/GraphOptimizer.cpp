@@ -4824,7 +4824,7 @@ bool FoldElemKindConversionIntoOutputs::run(Function *F,
 /// Broadcasts are implemented via as BroadcastNode. This helper unwinds
 /// BroadcastNode -- it \returns the original Node before the broadcasting \p N
 /// if the broadcast takes place between the 0th dimension to \p endDim.
-/// Otherwise, \p return nullptr.
+/// Otherwise, \p return \p N.
 static NodeValue unwindBroadcast(NodeValue N, unsigned_t endDim) {
   if (auto *BN = dyn_cast<BroadcastNode>(N)) {
     const auto newShape = BN->getTargetDim();
@@ -4832,12 +4832,12 @@ static NodeValue unwindBroadcast(NodeValue N, unsigned_t endDim) {
     const auto &origDims = BN->getInput().dims();
 
     if (origDims.size() + axis != newShape.size()) {
-      return nullptr;
+      return N;
     }
 
     for (dim_t i = endDim; i < newShape.size(); i++) {
       if (!(i >= axis && origDims[i - axis] == newShape[i])) {
-        return nullptr;
+        return N;
       }
     }
 
@@ -4876,7 +4876,8 @@ bool FoldLayerNormArithmetic::run(Function *F, const CompilationContext &cctx) {
     NodeValue RHS = unwindBroadcast(N.getNthInput(ArithmeticNode::RHSIdx),
                                     LN->getResult().dims().size() -
                                         LN->getScale().dims().size());
-    if (!RHS.getNode()) {
+
+    if (!isa<SplatNode>(RHS) && !isa<Constant>(RHS)) {
       continue;
     }
 
@@ -5148,6 +5149,168 @@ bool ConvertFullyConnectedToConvolution::run(Function *F,
     FCN->getResult().replaceAllUsesOfWith(outputCN);
     changed = true;
   }
+  return changed;
+}
+
+/// Fold Min -> Max or Max -> Min to Clip
+/// We need to place this function after `OptimizeArithmeticNodes` in which the
+/// constant operator in commutative nodes is moved to the RHS, so that we can
+/// assume SplatNode is on the RHS of MinNode (MaxNode).
+/// Only if it's the following structure we do this optimization
+///
+///   someOtherInput  SplatNode
+///              \     /
+///  SplatNode   MinNode (MaxNode)
+///         \     /
+///         MaxNode (MinNode)
+///            |
+///           Out
+///
+/// ClipNode's min will be the SplatNode (maxSN) connected to the MaxNode.
+/// ClipNode's max will be the SplatNode (minSN) connected to the MinNode.
+bool FoldMinMaxToClip::run(Function *F, const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  bool changed = false;
+  for (auto &N : F->getNodes()) {
+
+    MaxNode *maxNode = dyn_cast<MaxNode>(&N);
+    MinNode *minNode = dyn_cast<MinNode>(&N);
+    NodeValue otherInput;
+    NodeValue resultNV;
+    SplatNode *minSN = nullptr;
+    SplatNode *maxSN = nullptr;
+
+    // We assume SplatNode is on the RHS.
+    // If currect node is MinNode
+    //  - try casting the input to MaxNode and SplatNode.
+    //  - If LHS of MinNode is MaxNode
+    //    - try casting RHS of maxNode to SplatNode.
+    if (minNode) {
+      resultNV = minNode->getResult();
+      maxNode = dyn_cast<MaxNode>(
+          unwindBroadcast(minNode->getLHS(), minNode->getLHS().dims().size()));
+      minSN = dyn_cast<SplatNode>(
+          unwindBroadcast(minNode->getRHS(), minNode->getRHS().dims().size()));
+
+      if (maxNode) {
+        maxSN = dyn_cast<SplatNode>(unwindBroadcast(
+            maxNode->getRHS(), maxNode->getRHS().dims().size()));
+        otherInput =
+            unwindBroadcast(maxNode->getLHS(), maxNode->getLHS().dims().size());
+      }
+    } else if (maxNode) { // vice versa for MaxNode
+      resultNV = maxNode->getResult();
+      minNode = dyn_cast<MinNode>(
+          unwindBroadcast(maxNode->getLHS(), maxNode->getLHS().dims().size()));
+      maxSN = dyn_cast<SplatNode>(
+          unwindBroadcast(maxNode->getRHS(), maxNode->getRHS().dims().size()));
+
+      if (minNode) {
+        minSN = dyn_cast<SplatNode>(unwindBroadcast(
+            minNode->getRHS(), minNode->getRHS().dims().size()));
+        otherInput =
+            unwindBroadcast(minNode->getLHS(), minNode->getLHS().dims().size());
+      }
+    }
+
+    // If any of these is nullptr, it means the structure is not the same as
+    // above example.
+    if (!(minNode && maxNode && minSN && maxSN)) {
+      continue;
+    }
+
+    // If minSN is smaller than maxSN, which is really weird because every entry
+    // of the result will be a same number. In this case, we don't fold them.
+    if (minSN->getValue() < maxSN->getValue()) {
+      DLOG(INFO) << "Catch a combination of MinNode and MaxNode while MinSplat "
+                    "is smaller than MaxSplat, which would make all entries of "
+                    "the result tensor to be the same!";
+      continue;
+    }
+
+    // The second node is broadcasted and we need to broadcast the otherInput.
+    if (otherInput.dims() != resultNV.dims()) {
+      otherInput = F->createBroadcast(
+          otherInput.getNode()->getName().str() + ".broadcast", otherInput,
+          resultNV.dims(), resultNV.dims().size() - otherInput.dims().size());
+    }
+
+    // MinSN is the SplatNode input of MinNode while MaxSN is the SplatNode
+    // input of MaxNode. MinSN should be greater than MaxSN so we put MaxSN as
+    // the min of ClipNode.
+    auto minValue = maxSN->getValue();
+    auto maxValue = minSN->getValue();
+    ClipNode *CN = F->createClip(resultNV.getNode()->getName(), otherInput,
+                                 resultNV.getType(),
+                                 /* min */ minValue, /* max */ maxValue);
+    resultNV.replaceAllUsesOfWith(CN->getResult());
+    changed = true;
+  }
+
+  return changed;
+}
+
+/// Look for qparams with scale (when casted to fp16) == 0 and replace them with
+/// zero Splats.
+bool ReplaceZeroScaleFP16QuantNodes::run(Function *F,
+                                         const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  // Cannot run this opt if we're using dummy qparams.
+  if (cctx.precisionConfig.loadUniquedDummyQParams) {
+    return false;
+  }
+
+  auto processNV = [](Function *F, NodeValue resNV) {
+    const TypeRef resTy = resNV.getType();
+    if (resTy->isFusedQuantizedType() || !resTy->isQuantizedType()) {
+      return false;
+    }
+
+    // Check if we have a scale that's below the minimum allowed FP16 val.
+    if (resTy->getScale() >= kMinScaleFP16) {
+      return false;
+    }
+
+    // Skip if used by node with side effects, since we cannot change the
+    // qparams in such cases.
+    if (isUsedByNodeWithSideEffects(resNV.getNode())) {
+      return false;
+    }
+
+    // This NodeValue has scale = 0.f, which means the equivalent float result
+    // will always be equal to 0.f. So create a splat with value 0.f, scale 1.f,
+    // offset 0 instead.
+    auto splatTy = F->getParent()->uniqueType(resTy->getElementType(),
+                                              resTy->dims(), 1.f, 0);
+    auto *SN = F->createSplat(resNV.getNode()->getName().str() + ".splatted",
+                              splatTy, 0.f);
+
+    // Note: must use type unsafe replace because we've changed the qparams.
+    resNV.typeUnsafeReplaceAllUsesOfWith(SN->getResult(), F);
+    return true;
+  };
+
+  bool changed = false;
+  // Since we will be adding in new SplatNodes, reverse iterate to be safe.
+  auto &nodes = F->getNodes();
+  for (auto it = nodes.rbegin(), e = nodes.rend(); it != e; it++) {
+    Node *N = &*it;
+    // For now only support nodes with single outputs.
+    if (N->getNumResults() != 1) {
+      continue;
+    }
+    NodeValue resNV = N->getNthResult(0);
+    changed |= processNV(F, resNV);
+  }
+  for (Placeholder *PH : F->findPlaceholders()) {
+    changed |= processNV(F, PH->getOutput());
+  }
+  for (Constant *C : F->findConstants()) {
+    changed |= processNV(F, C->getOutput());
+  }
+
   return changed;
 }
 

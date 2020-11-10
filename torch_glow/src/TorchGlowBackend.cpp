@@ -75,6 +75,83 @@ void registerGlowHelperOps() {
       "float r_scale, int r_zero_point) -> Tensor";
   registerDummyOperatorWithSchema(conv3dReluSymbol);
 }
+
+/// Checks that all inputs are tensors and all outputs are either tensors or a
+/// single tuple or list of tensors. \returns an error if any of these are
+/// false otherwise returns the GraphOutputType describing the output.
+Expected<GraphOutputType>
+checkGraphInputsAndOutputs(const torch::jit::Graph &graph) {
+  const auto inputs = graph.inputs();
+  const auto outputs = graph.outputs();
+
+  // Start at 1 since 0 is always self
+  for (auto i = 1; i < inputs.size(); ++i) {
+    const auto *in = inputs[i];
+    const auto inKind = in->type()->kind();
+    if (inKind != torch::jit::TypeKind::TensorType) {
+      return MAKE_ERR(
+          strFormat("Glow only accepts Tensor inputs but %dth input is a %s",
+                    int(i), c10::typeKindToString(inKind)));
+    }
+  }
+
+  // If there is only one output check that it's a tensor or a tuple or list of
+  // tensors.
+  if (outputs.size() == 1) {
+    const auto outTy = outputs[0]->type();
+    if (outTy->kind() == torch::jit::TypeKind::TensorType) {
+      return GraphOutputType::TENSORS;
+    } else if (outTy->kind() == torch::jit::TypeKind::TupleType) {
+      const auto containedTys = outTy->containedTypes();
+      for (auto i = 0; i < containedTys.size(); ++i) {
+        RETURN_ERR_IF_NOT(
+            containedTys[i]->kind() == torch::jit::TypeKind::TensorType,
+            strFormat("Expected tuple output to contain only tensors but "
+                      "element at position %i is a %s",
+                      int(i), c10::typeKindToString(containedTys[i]->kind())));
+      }
+      return GraphOutputType::TENSOR_TUPLE;
+    } else if (outTy->kind() == torch::jit::TypeKind::TensorType) {
+      const auto containedTys = outTy->containedTypes();
+      for (auto i = 0; i < containedTys.size(); ++i) {
+        RETURN_ERR_IF_NOT(
+            containedTys[i]->kind() == torch::jit::TypeKind::TensorType,
+            strFormat("Expected list output to contain only tensors but "
+                      "element at position %i is a %s",
+                      int(i), c10::typeKindToString(containedTys[i]->kind())));
+      }
+      return GraphOutputType::TENSOR_LIST;
+    } else {
+      return MAKE_ERR(strFormat("Found unsupported output kind %s",
+                                c10::typeKindToString(outTy->kind())));
+    }
+  }
+
+  // For multiple output graphs, check that all outputs are tensors.
+  for (auto i = 0; i < outputs.size(); ++i) {
+    const auto outTy = outputs[i]->type();
+    RETURN_ERR_IF_NOT(
+        outTy->kind() == torch::jit::TypeKind::TensorType,
+        strFormat("Expected multi-output graph to have only tensor outputs but "
+                  "output at position %i is a %s",
+                  int(i), c10::typeKindToString(outTy->kind())));
+  }
+
+  return GraphOutputType::TENSORS;
+}
+
+Error checkForFatalError(Error err) {
+  if (!err || !err.peekErrorValue()->isFatalError()) {
+    return err;
+  }
+
+  std::string msg = ERR_TO_STRING(std::move(err));
+  if (auto reporters = ErrorReporterRegistry::ErrorReporters()) {
+    reporters->report(msg);
+  }
+  LOG(FATAL) << "Non-recoverable device error: " << msg;
+}
+
 } // namespace
 
 torch::jit::backend<TorchGlowBackend> &torchGlowBackend() {
@@ -321,9 +398,9 @@ static bool hasLinearUnpackQParamUser(const torch::jit::Node *node) {
   return false;
 }
 
-static void processLinearPackedQParams(torch::jit::Graph &graph,
-                                       const c10::IValue &ival,
-                                       torch::jit::Node *paramsNode) {
+static Error processLinearPackedQParams(torch::jit::Graph &graph,
+                                        const c10::IValue &ival,
+                                        torch::jit::Node *paramsNode) {
   auto packed_params = ival.toCustomClass<LinearPackedParamsBase>();
   torch::jit::WithInsertPoint guard(paramsNode);
   auto node = paramsNode->output()->uses()[0].user;
@@ -343,10 +420,10 @@ static void processLinearPackedQParams(torch::jit::Graph &graph,
       paramConst = torch::jit::insertConstant(graph, t);
       node->outputs().at(1)->replaceAllUsesWith(paramConst);
     } else { // TODO Handle bias-not-exists case
-      throw std::invalid_argument(
-          "Preprocess for empty bias is not yet supported.");
+      return MAKE_ERR("Preprocess for empty bias is not yet supported.");
     }
   }
+  return Error::success();
 }
 
 static Error ProcessPackedParams(torch::jit::Graph &graph,
@@ -397,7 +474,7 @@ static Error ProcessPackedParams(torch::jit::Graph &graph,
       } else if (hasConvUnpackQParamUser<3>(node)) {
         processConvPackedQParams<3>(graph, ival, node);
       } else if (hasLinearUnpackQParamUser(node)) {
-        processLinearPackedQParams(graph, ival, node);
+        RETURN_IF_ERR(processLinearPackedQParams(graph, ival, node));
       } else {
         objectTree[outputValue] =
             std::make_pair(&ival.toObjectRef(), newNameHierarchy);
@@ -410,52 +487,23 @@ static Error ProcessPackedParams(torch::jit::Graph &graph,
 c10::IValue
 TorchGlowBackend::preprocess(c10::IValue mod,
                              c10::impl::GenericDict method_compile_spec) {
-  torch::jit::Module m = mod.toModule();
-  m.eval();
-
-  // Unpack qparams
-  for (const auto &kv : method_compile_spec) {
-    const auto &methodName = kv.key().toStringRef();
-    auto method = m.get_method(methodName);
-    auto graph = method.graph();
-    detail::fuseConcat(graph);
-    torch::jit::Inline(*graph);
-    RewriteQuantPackedParamOps(graph);
-    glow::Error err = ProcessPackedParams(*graph, m._ivalue());
-    if (static_cast<bool>(err)) {
-      throw std::invalid_argument(ERR_TO_STRING(std::move(err)));
-    }
-  }
-
-  // Freeze
-  m = torch::jit::freeze_module(m);
-
-  // Cleanup JIT graphs
-  for (const auto &kv : method_compile_spec) {
-    const auto &methodName = kv.key().toStringRef();
-    auto method = m.get_method(methodName);
-    auto graph = method.graph();
-    EliminateDeadCode(graph);
-    EliminateCommonSubexpression(graph);
-    ConstantPooling(graph);
-  }
-
-  return m._ivalue();
+  // We do nothing in the preprocess, instead we do them in compile()
+  return mod;
 }
 
-void applySettingsOverrideFlagsToPyTorchLoaderSettings(
+Error applySettingsOverrideFlagsToPyTorchLoaderSettings(
     PyTorchLoaderSettings &settings) {
   // TODO:
+  return Error::success();
 }
 
-void applyCompilationGroupSettingsToPyTorchLoaderSettings(
+Error applyCompilationGroupSettingsToPyTorchLoaderSettings(
     PyTorchLoaderSettings &settings,
     const CompilationGroupSettings &newSettings) {
   if (newSettings.num_devices_to_use == -1) {
     settings.saturateHost = true;
   } else {
-    throw std::invalid_argument(
-        "Only num_devices_to_use=-1 supported currently");
+    return MAKE_ERR("Only num_devices_to_use=-1 supported currently");
   }
 
   settings.replicationCount = newSettings.replication_count;
@@ -463,20 +511,22 @@ void applyCompilationGroupSettingsToPyTorchLoaderSettings(
   settings.convertToFP16 = newSettings.convert_to_fp16;
 
   // Ensure override flags are honored
-  applySettingsOverrideFlagsToPyTorchLoaderSettings(settings);
+  RETURN_IF_ERR(applySettingsOverrideFlagsToPyTorchLoaderSettings(settings));
+  return Error::success();
 }
 
-void applyCompilationSpecSettingsToPyTorchLoaderSettings(
+Error applyCompilationSpecSettingsToPyTorchLoaderSettings(
     PyTorchLoaderSettings &settings,
     const CompilationSpecSettings &newSettings) {
   settings.backendName = newSettings.glow_backend;
   settings.enableDebugFuser = newSettings.enable_fuser;
 
   // Ensure override flags are honored
-  applySettingsOverrideFlagsToPyTorchLoaderSettings(settings);
+  RETURN_IF_ERR(applySettingsOverrideFlagsToPyTorchLoaderSettings(settings));
+  return Error::success();
 }
 
-void applyFuserSettingsToPyTorchLoaderSettings(
+Error applyFuserSettingsToPyTorchLoaderSettings(
     PyTorchLoaderSettings &settings, const FuserSettings &newSettings) {
   if (newSettings.min_fusion_group_size > 0) {
     settings.minFusionGroupSize = newSettings.min_fusion_group_size;
@@ -493,103 +543,180 @@ void applyFuserSettingsToPyTorchLoaderSettings(
   }
 
   // Ensure override flags are honored
-  applySettingsOverrideFlagsToPyTorchLoaderSettings(settings);
+  RETURN_IF_ERR(applySettingsOverrideFlagsToPyTorchLoaderSettings(settings));
+  return Error::success();
+}
+
+/// Implementation of to_backend compile method for Glow. \returns a map from
+/// function name in the preprocessed module to the CachingGraphRunner or
+/// JITGraphRunner depending on settings for each method or if an
+/// error occurs then returns and Error which is converted to an exception for
+/// handling within PyTorch.
+static Expected<std::unordered_map<
+    std::string, std::pair<std::unique_ptr<CachingGraphRunner>,
+                           std::unique_ptr<JITGraphRunner>>>>
+compileImpl(const torch::jit::Module &origModule,
+            const c10::impl::GenericDict &method_compile_spec) {
+
+  std::unordered_map<std::string, std::pair<std::unique_ptr<CachingGraphRunner>,
+                                            std::unique_ptr<JITGraphRunner>>>
+      methodToRunnerMap;
+  std::unordered_map<std::string, std::shared_ptr<torch::jit::Graph>>
+      nameToOrigGraph;
+
+  for (const auto &kv : method_compile_spec) {
+    const auto &methodName = kv.key().toStringRef();
+    auto method = origModule.get_method(methodName);
+    auto graph = method.graph();
+    nameToOrigGraph[methodName] = graph->copy();
+
+    GraphOutputType graphOutputType;
+    ASSIGN_VALUE_OR_RETURN_ERR(graphOutputType,
+                               checkGraphInputsAndOutputs(*graph));
+
+    // Output lists no supported yet
+    if (graphOutputType == GraphOutputType::TENSOR_LIST) {
+      return MAKE_ERR("Tensor list output not supported.");
+    }
+
+    detail::fuseConcat(graph);
+    torch::jit::Inline(*graph);
+    RewriteQuantPackedParamOps(graph);
+    RETURN_IF_ERR(ProcessPackedParams(*graph, origModule._ivalue()));
+  }
+
+  // Freeze
+  auto preprocModule = torch::jit::freeze_module(origModule);
+
+  // Cleanup JIT graphs
+  for (const auto &kv : method_compile_spec) {
+    const auto &methodName = kv.key().toStringRef();
+    auto method = preprocModule.get_method(methodName);
+    auto graph = method.graph();
+    EliminateDeadCode(graph);
+    EliminateCommonSubexpression(graph);
+    ConstantPooling(graph);
+  }
+
+  // Compile each method
+  for (const auto &kv : method_compile_spec) {
+    const auto methodName = kv.key().toString()->string();
+    const auto &method = preprocModule.get_method(methodName);
+    auto it = nameToOrigGraph.find(methodName);
+    CHECK(it != nameToOrigGraph.end())
+        << "Cannot find corresponding original graph for graph: " << methodName;
+    auto origGraph = it->second;
+
+    const CompilationSpec &spec = *kv.value().toCustomClass<CompilationSpec>();
+    RETURN_IF_ERR(spec.validate());
+
+    PyTorchLoaderSettings baseSettings =
+        getGlobalPyTorchLoaderSettingsSnapshot();
+
+    // Apply settings from CompilationSpecSettings
+    RETURN_IF_ERR(applyCompilationSpecSettingsToPyTorchLoaderSettings(
+        baseSettings, *spec.settings));
+
+    // Apply settings from FuserSettings
+    RETURN_IF_ERR(applyFuserSettingsToPyTorchLoaderSettings(
+        baseSettings, *spec.fuser_settings));
+
+    // Apply default CompilationGroupSettings
+    RETURN_IF_ERR(applyCompilationGroupSettingsToPyTorchLoaderSettings(
+        baseSettings, *spec.default_compilation_group_settings));
+
+    // Override settings from gflags
+    RETURN_IF_ERR(
+        applySettingsOverrideFlagsToPyTorchLoaderSettings(baseSettings));
+
+    auto graph = method.function().graph();
+    graph = graph->copy();
+
+    GraphOutputType graphOutputType;
+    ASSIGN_VALUE_OR_RETURN_ERR(graphOutputType,
+                               checkGraphInputsAndOutputs(*graph));
+
+    // Output lists no supported yet
+    if (graphOutputType == GraphOutputType::TENSOR_LIST) {
+      return MAKE_ERR("Tensor list output not supported.");
+    }
+
+    LowerAllTuples(graph);
+
+    if (baseSettings.enableDebugFuser) {
+      LOG(WARNING) << "TorchGlowBackend using GlowFuser";
+
+      // Run fusion flow using JIT graph runner
+      std::unique_ptr<JITGraphRunner> runner = std::make_unique<JITGraphRunner>(
+          preprocModule._ivalue(), graph, baseSettings);
+      methodToRunnerMap.emplace(methodName,
+                                std::make_pair(nullptr, std::move(runner)));
+    } else {
+      LOG(INFO) << "TorchGlowBackend using CachingGraphRunner";
+      // Remove "self" input
+      RETURN_ERR_IF_NOT(graph->block()->inputs()[0]->uses().empty(),
+                        "self must have no uses in order to lower to Glow.");
+      graph->block()->eraseInput(0);
+
+      // Create a corresponding runner and store {handle, runner} pair.
+      std::unique_ptr<CachingGraphRunner> runner =
+          std::make_unique<glow::CachingGraphRunner>(
+              graph,
+              glow::getHostManager(baseSettings.backendName,
+                                   baseSettings.numDevices),
+              baseSettings, /*useRunOnly*/ true, origGraph,
+              origModule._ivalue());
+
+      // Compile each compilation group
+      for (const auto &compilationGroup : spec.compilation_groups) {
+        // Apply CompilationGroupSettings settings
+        auto compilationGroupSettings = baseSettings;
+        RETURN_IF_ERR(applyCompilationGroupSettingsToPyTorchLoaderSettings(
+            compilationGroupSettings, *compilationGroup->settings));
+        // Compile each input set
+        for (const auto &inputSet : compilationGroup->input_sets) {
+          std::vector<glow::InputMeta> inputMeta = getInputMetas(inputSet);
+          auto err = runner->warmCache(inputMeta, compilationGroupSettings,
+                                       /*loader*/ nullptr,
+                                       /*useMaxSizeCompilation*/ false);
+          err = checkForFatalError(std::move(err));
+          RETURN_IF_ERR(err);
+        }
+      }
+      methodToRunnerMap.emplace(methodName,
+                                std::make_pair(std::move(runner), nullptr));
+    }
+  }
+
+  return methodToRunnerMap;
 }
 
 c10::impl::GenericDict
 TorchGlowBackend::compile(c10::IValue processed,
                           c10::impl::GenericDict method_compile_spec) {
   auto module = processed.toModule().clone();
-  auto handles = c10::Dict<std::string, int64_t>();
 
-  int64_t key = 0;
-  // Compile each method
-  for (const auto &kv : method_compile_spec) {
-    const auto methodName = kv.key().toString()->string();
-    const auto &method = module.get_method(methodName);
+  module.eval();
+  auto runnersOrErr = compileImpl(module, method_compile_spec);
 
-    const CompilationSpec &spec = *kv.value().toCustomClass<CompilationSpec>();
-    if (auto err = spec.validate()) {
-      throw std::runtime_error(ERR_TO_STRING(std::move(err)));
-    }
-
-    PyTorchLoaderSettings baseSettings =
-        getGlobalPyTorchLoaderSettingsSnapshot();
-
-    // Apply settings from CompilationSpecSettings
-    applyCompilationSpecSettingsToPyTorchLoaderSettings(baseSettings,
-                                                        *spec.settings);
-
-    // Apply settings from FuserSettings
-    applyFuserSettingsToPyTorchLoaderSettings(baseSettings,
-                                              *spec.fuser_settings);
-
-    // Apply default CompilationGroupSettings
-    applyCompilationGroupSettingsToPyTorchLoaderSettings(
-        baseSettings, *spec.default_compilation_group_settings);
-
-    // Override settings from gflags
-    applySettingsOverrideFlagsToPyTorchLoaderSettings(baseSettings);
-
-    if (baseSettings.enableDebugFuser) {
-      LOG(INFO) << "Using GlowFuser";
-      auto graph = method.function().graph();
-      // Run fusion flow using JIT graph runner
-      std::unique_ptr<JITGraphRunner> runner =
-          std::make_unique<JITGraphRunner>(processed, graph, baseSettings);
-      handleToRunnerMap_.emplace(key,
-                                 std::make_pair(nullptr, std::move(runner)));
-    } else {
-      // TODO: can we copy this graph to avoid changing it?
-      auto g = method.function().graph();
-      LowerAllTuples(g);
-      // Remove "self" input
-      CHECK(g->block()->inputs()[0]->uses().empty())
-          << "self must have no uses in order to lower to Glow.";
-      g->block()->eraseInput(0);
-
-      // Create a corresponding runner and store {handle, runner} pair.
-      std::unique_ptr<CachingGraphRunner> runner =
-          std::make_unique<glow::CachingGraphRunner>(
-              g,
-              glow::getHostManager(baseSettings.backendName,
-                                   baseSettings.numDevices),
-              baseSettings, /*useRunOnly*/ true);
-
-      // Compile each compilation group
-      for (const auto &compilationGroup : spec.compilation_groups) {
-        // Apply CompilationGroupSettings settings
-        auto compilationGroupSettings = baseSettings;
-        applyCompilationGroupSettingsToPyTorchLoaderSettings(
-            compilationGroupSettings, *compilationGroup->settings);
-        // Compile each input set
-        for (const auto &inputSet : compilationGroup->input_sets) {
-          std::vector<glow::InputMeta> inputMeta = getInputMetas(inputSet);
-          auto err =
-              runner->warmCache(inputMeta, compilationGroupSettings, nullptr,
-                                /*useMaxSizeCompilation*/ false);
-
-          if (err) {
-            if (err.peekErrorValue()->isFatalError()) {
-              std::string msg = err.peekErrorValue()->logToString();
-              auto reporters = ErrorReporterRegistry::ErrorReporters();
-              if (reporters) {
-                reporters->report(msg);
-              }
-              LOG(FATAL) << "Non-recoverable device error: " << msg;
-            }
-            throw std::runtime_error(ERR_TO_STRING(std::move(err)));
-          }
-        }
-      }
-
-      // Backend is created on each to_backend call --> use simple
-      // consecutive keys for methods.
-      handleToRunnerMap_.emplace(key,
-                                 std::make_pair(std::move(runner), nullptr));
-    }
-    handles.insert(methodName, key++);
+  if (!runnersOrErr) {
+    auto err = runnersOrErr.takeError();
+    err = checkForFatalError(std::move(err));
+    throw std::runtime_error(ERR_TO_STRING(std::move(err)));
   }
+
+  auto handles = c10::Dict<std::string, int64_t>();
+  int64_t nextHandle = 0;
+
+  // Backend is created on each to_backend call --> use simple
+  // consecutive keys for methods.
+  for (auto &methodNameAndRunner : *runnersOrErr) {
+    handles.insert(methodNameAndRunner.first, nextHandle);
+    handleToRunnerMap_.emplace(nextHandle,
+                               std::move(methodNameAndRunner.second));
+    nextHandle++;
+  }
+
   return c10::impl::toGenericDict(handles);
 }
 
@@ -619,15 +746,7 @@ TorchGlowBackend::execute(c10::IValue handle, c10::impl::GenericList inputs) {
   }
 
   if (err) {
-    if (err.peekErrorValue()->isFatalError()) {
-      std::string msg = err.peekErrorValue()->logToString();
-      auto reporters = ErrorReporterRegistry::ErrorReporters();
-      if (reporters) {
-        reporters->report(msg);
-      }
-      LOG(FATAL) << "Non-recoverable device error: " << msg;
-    }
-
+    err = checkForFatalError(std::move(err));
     throw std::runtime_error(ERR_TO_STRING(std::move(err)));
   }
 

@@ -5894,18 +5894,25 @@ TEST_F(GraphOptz, foldMulAddIntoLayerNorm) {
   Constant *addC = mod_.createConstant("addC", std::move(addT));
   AddNode *AN =
       F_->createNodeWithBroadcast<AddNode>("add", /* axis */ -1, MN, addC);
-  F_->createSave("save", AN);
+
+  // This MulNode has a Placeholder as RHS and shouldn't be fused into LayerNorm
+  auto *mulIn =
+      mod_.createPlaceholder(ElemKind::FloatTy, {1, 1, 10, 20}, "in", false);
+  MN = F_->createNodeWithBroadcast<MulNode>("mul_not_fuse", /* axis */ -1, AN,
+                                            mulIn);
+  F_->createSave("save", MN);
 
   optimizedF_ = optimizeFunctionForTest(F_);
 
   // Because Mul and Add are folded in, they should not exist anymore, nor
   // should tiles that expand them to match the output of LN.
-  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MulNodeKind));
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::MulNodeKind));
   EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::AddNodeKind));
-  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::TileNodeKind));
+  EXPECT_EQ(1, countNodeKind(optimizedF_, Kinded::Kind::BroadcastNodeKind));
 
   // Now compile/run/compare F_ and optimizedF_.
   bindings_.allocate(input)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
+  bindings_.allocate(mulIn)->getHandle().randomize(0.0f, 1.0f, mod_.getPRNG());
   checkNumericalEquivalence(1e-6);
 }
 
@@ -6157,4 +6164,168 @@ TEST_F(GraphOptz, SkipDummyQParamOpts) {
   EXPECT_EQ(F_->toString(/* skipUsersForStorage */ false, /* skipName */ true),
             optimizedF_->toString(/* skipUsersForStorage */ false,
                                   /* skipName */ true));
+}
+
+/// Test that Min -> Max is correctly folded into Clip
+TEST_F(GraphOptz, foldMinMaxToClipTest) {
+  Placeholder *input = mod_.createPlaceholder(ElemKind::FloatTy, {1, 5, 5},
+                                              "input", /* isTrainable */ false);
+  bindings_.allocate(input)->getHandle<float>().randomize(-10, 10,
+                                                          mod_.getPRNG());
+
+  auto *minFirstSplat = F_->createSplat("min_first_splat", input->getType(), 5);
+  auto *maxFirstSplat =
+      F_->createSplat("max_first_splat", input->getType(), -2);
+  auto *minFirst = F_->createMin("min_first", input, minFirstSplat);
+  auto *maxFirst = F_->createMax("max_first", maxFirstSplat, minFirst);
+
+  auto *minSecondSplat = F_->createSplat(
+      "min_second_splat",
+      F_->getParent()->uniqueTypeWithNewShape(input->getType(), {3, 1, 1}), 3);
+  auto *maxSecondSplat =
+      F_->createSplat("max_second_splat", input->getType(), 1);
+  auto *maxSecond = F_->createMax("max_second", maxFirst, maxSecondSplat);
+  auto *minSecond = F_->createNodeWithBroadcast<MinNode>(
+      "min_second", /* axis */ -1, maxSecond, minSecondSplat);
+  SaveNode *save = F_->createSave("save", minSecond);
+  bindings_.allocate(save->getPlaceholder());
+
+  // Need to run OptimizeArithmeticNodes first to move constant operators in
+  // communative nodes to RHS.
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::OptimizeArithmeticNodes,
+           FunctionPassID::FoldMinMaxToClip, getDCEPassConfig()});
+
+  EXPECT_EQ(4, optimizedF_->getNodes().size());
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MinNodeKind));
+  EXPECT_EQ(0, countNodeKind(optimizedF_, Kinded::Kind::MaxNodeKind));
+
+  // Get SaveNode in optimizedF_
+  save = llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName("save_save"));
+  // Check min and max of the second ClipNode
+  ClipNode *CN = llvm::dyn_cast<ClipNode>(save->getInput().getNode());
+  EXPECT_EQ(1, CN->getMin());
+  EXPECT_EQ(3, CN->getMax());
+
+  // There's a BroadcastNode in between the first and the second ClipNode
+  BroadcastNode *BN = llvm::dyn_cast<BroadcastNode>(CN->getInput().getNode());
+  // Check min and max of the first ClipNode
+  CN = llvm::dyn_cast<ClipNode>(BN->getInput().getNode());
+  EXPECT_EQ(-2, CN->getMin());
+  EXPECT_EQ(5, CN->getMax());
+
+  checkNumericalEquivalence();
+}
+
+/// Check that we replace a Node with 0.f scale in fp16 with a splat correctly.
+TEST_F(GraphOptz, ReplaceZeroScaleFP16QuantOpt) {
+  auto *LHS = mod_.createPlaceholder(ElemKind::FloatTy, {20, 30}, "LHS", false);
+  auto *RHSQ = mod_.createPlaceholder(ElemKind::Int8QTy, {20, 30}, 0.1f, 10,
+                                      "LHS", false);
+
+  // scale = 1e-9 underflows fp16 and so this opt applies.
+  auto *LHSQTy = mod_.uniqueType(ElemKind::Int8QTy, {20, 30}, 1e-9, 10);
+  auto *LHSQ = F_->createQuantize("LHSQ", LHS, LHSQTy);
+
+  auto *A = F_->createAdd("add", RHSQ->getOutput().getType(), LHSQ, RHSQ);
+  auto *Q = F_->createDequantize("deq", A, ElemKind::FloatTy);
+  F_->createSave("save", Q);
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::ReplaceZeroScaleFP16QuantNodes, getDCEPassConfig()});
+
+  SaveNode *save = nullptr;
+  for (auto &N : optimizedF_->getNodes()) {
+    if (N.getKind() == Kinded::Kind::SaveNodeKind) {
+      save = llvm::dyn_cast<SaveNode>(&N);
+      break;
+    }
+  }
+  ASSERT_TRUE(save);
+
+  DequantizeNode *optQ = llvm::dyn_cast<DequantizeNode>(save->getInput());
+  ASSERT_TRUE(optQ);
+  AddNode *optA = llvm::dyn_cast<AddNode>(optQ->getInput());
+  ASSERT_TRUE(A);
+
+  SplatNode *splat = llvm::dyn_cast<SplatNode>(optA->getLHS());
+  ASSERT_TRUE(splat);
+  EXPECT_EQ(splat->getValue(), 0.f);
+  const TypeRef optLHSQTy = splat->getResult().getType();
+  EXPECT_EQ(optLHSQTy->getScale(), 1.f);
+  EXPECT_EQ(optLHSQTy->getOffset(), 0);
+  EXPECT_EQ(optLHSQTy->getElementType(), LHSQTy->getElementType());
+  EXPECT_EQ(optLHSQTy->dims(), LHSQTy->dims());
+
+  bindings_.allocate(LHS)->getHandle<float>().randomize(-10.f, 10.f,
+                                                        mod_.getPRNG());
+  bindings_.allocate(RHSQ)->getHandle<int8_t>().randomize(-128, 127,
+                                                          mod_.getPRNG());
+
+  checkNumericalEquivalence(0.f);
+}
+
+/// Same as GraphOptz, but when running numerical equivalence use the CPU
+/// backend instead of Interpreter.
+class GraphOptzOnCPU : public GraphOptz {
+public:
+  GraphOptzOnCPU() : GraphOptz("CPU") {}
+#ifndef GLOW_WITH_CPU
+  virtual void checkNumericalEquivalence(float allowedError = 0.0001) override {
+    LOG(INFO) << "Skipping numerical equivalence check as the CPU backend is "
+                 "not built.";
+  }
+#endif /* GLOW_WITH_CPU */
+};
+
+/// Check that we replace a Node with 0.f scale in fp16 with a splat
+/// correctly. Note that when running this on the Interpreter backend (i.e. with
+/// the GraphOptz fixure) there are numerical differences because the
+/// Interpreter backend does not handle tiny scales correctly. Hence, for now
+/// run on the CPU backend for comparison. TODO to fix the Interpreter Int8 FC
+/// impl to handle correctly.
+TEST_F(GraphOptzOnCPU, ReplaceZeroScaleFP16QuantConstOpt) {
+  auto *input =
+      mod_.createPlaceholder(ElemKind::Int8QTy, {1, 1}, 1.0, 0, "input", false);
+  // scale = 1e-9 underflows fp16 and so this opt applies.
+  auto *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {1, 1}, 1e-9, 0, "weights");
+  weights->getPayloadMutable().getHandle<int8_t>().randomize(-128, 127,
+                                                             mod_.getPRNG());
+  auto *bias = mod_.createConstant(ElemKind::Int8QTy, {1}, 1.0, 0, "bias");
+  bias->getPayloadMutable().getHandle<int8_t>().randomize(-128, 127,
+                                                          mod_.getPRNG());
+  auto *FC = F_->createFullyConnected("fc", input, weights, bias);
+  auto *DQ = F_->createDequantize("dq", FC, ElemKind::FloatTy);
+  F_->createSave("save", DQ);
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::ReplaceZeroScaleFP16QuantNodes, getDCEPassConfig()});
+
+  SaveNode *save = nullptr;
+  for (auto &N : optimizedF_->getNodes()) {
+    if (N.getKind() == Kinded::Kind::SaveNodeKind) {
+      save = llvm::dyn_cast<SaveNode>(&N);
+      break;
+    }
+  }
+  ASSERT_TRUE(save);
+
+  auto *optDQ = llvm::dyn_cast<DequantizeNode>(save->getInput());
+  ASSERT_TRUE(optDQ);
+  auto *optFC = llvm::dyn_cast<FullyConnectedNode>(optDQ->getInput());
+  ASSERT_TRUE(optFC);
+
+  SplatNode *splat = llvm::dyn_cast<SplatNode>(optFC->getWeights());
+  ASSERT_TRUE(splat);
+  EXPECT_EQ(splat->getValue(), 0.f);
+  const TypeRef splatQTy = splat->getResult().getType();
+  EXPECT_EQ(splatQTy->getScale(), 1.f);
+  EXPECT_EQ(splatQTy->getOffset(), 0);
+  EXPECT_EQ(splatQTy->getElementType(), weights->getOutput().getElementType());
+  EXPECT_EQ(splatQTy->dims(), weights->getOutput().dims());
+
+  bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127,
+                                                           mod_.getPRNG());
+  checkNumericalEquivalence(0.f);
 }
