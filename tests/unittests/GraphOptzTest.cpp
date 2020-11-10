@@ -6275,3 +6275,54 @@ TEST_F(GraphOptzOnCPU, ReplaceZeroScaleFP16QuantConstOpt) {
                                                            mod_.getPRNG());
   checkNumericalEquivalence(0.f);
 }
+
+TEST_F(GraphOptz, TestEliminateClipsOutsideFP16Range) {
+  Placeholder *A = mod_.createPlaceholder(ElemKind::Float16Ty, {5}, "A", false);
+  ClipNode *CN1 = F_->createClipMinMaxFP16("clip1", A);
+  ClipNode *CN2 = F_->createClip("clip2", A, kMinFP16, kMaxFP16 - 1.f);
+  QuantizeNode *QN1 = F_->createQuantize(
+      "q1", CN1, mod_.uniqueType(ElemKind::Int8QTy, {5}, 0.3, 5));
+  QuantizeNode *QN2 = F_->createQuantize(
+      "q2", CN2, mod_.uniqueType(ElemKind::Int8QTy, {5}, 0.3, 5));
+  AddNode *AN = F_->createAdd("add", QN1, QN2);
+  DequantizeNode *DN = F_->createDequantize("dq", AN, ElemKind::Float16Ty);
+  ClipNode *CN3 = F_->createClipMinMaxFP16("clip3", DN);
+  F_->createSave("ret", CN3);
+
+  CompilationContext cctx;
+  cctx.precisionConfig.clipQuantRangeToFP16 = true;
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::EliminateClipsOutsideFP16Range, getDCEPassConfig()},
+      cctx);
+
+  SaveNode *save = nullptr;
+  for (auto &N : optimizedF_->getNodes()) {
+    if (N.getKind() == Kinded::Kind::SaveNodeKind) {
+      save = llvm::dyn_cast<SaveNode>(&N);
+      break;
+    }
+  }
+  ASSERT_TRUE(save);
+
+  auto *optDQ = llvm::dyn_cast<DequantizeNode>(save->getInput());
+  ASSERT_TRUE(optDQ);
+  auto *optAN = llvm::dyn_cast<AddNode>(optDQ->getInput());
+  ASSERT_TRUE(optAN);
+
+  auto *optQN1 = llvm::dyn_cast<QuantizeNode>(optAN->getLHS());
+  ASSERT_TRUE(optQN1);
+  EXPECT_EQ(optQN1->getInput(), A->getOutput());
+
+  auto *optQN2 = llvm::dyn_cast<QuantizeNode>(optAN->getRHS());
+  ASSERT_TRUE(optQN2);
+  auto *optCN2 = llvm::dyn_cast<ClipNode>(optQN2->getInput());
+  ASSERT_TRUE(optCN2);
+  EXPECT_EQ(optCN2->getMin(), CN2->getMin());
+  EXPECT_EQ(optCN2->getMax(), CN2->getMax());
+  EXPECT_EQ(optCN2->getInput(), A->getOutput());
+
+  bindings_.allocate(A)->getHandle<float16_t>().randomize(-128, 127,
+                                                          mod_.getPRNG());
+  checkNumericalEquivalence(0.f);
+}

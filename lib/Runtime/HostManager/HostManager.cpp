@@ -471,6 +471,9 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
         RETURN_IF_ERR(ONNXModelWriter::insertLoaderNameUniqueOffsetMetadata(
             extraMetadataProps, *cctx.precisionConfig.originNameToTQPMap));
       }
+      if (cctx.precisionConfig.clipQuantRangeToFP16) {
+        extraMetadataProps[clipQuantRangeToFP16Key] = "1";
+      }
       Error writeErr = Error::empty();
       ONNXModelWriter onnxWR(
           loc, nodeList, 7, 9, &writeErr,

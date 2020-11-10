@@ -545,7 +545,8 @@ protected:
                   bool constFoldInLoader = true,
                   BackendSpecificNodeInfo *perNodeOpts = nullptr,
                   std::map<std::string, Type> *staticPlaceholderTypes = nullptr,
-                  bool replaceDummyTQPs = false);
+                  bool replaceDummyTQPs = false,
+                  bool clipQuantRangeToFP16 = false);
 
   friend class ONNXIFIModelLoader;
 

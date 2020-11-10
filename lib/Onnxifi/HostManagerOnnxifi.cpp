@@ -317,6 +317,8 @@ onnxStatus HostManagerGraph::initGraph(
     cctx.precisionConfig.loadUniquedDummyQParams = true;
   }
   cctx.precisionConfig.zeroScaleFP16Clip = GlowClipZeroScaleFP16;
+  cctx.precisionConfig.clipQuantRangeToFP16 = GlowClipQuantRangeToFP16;
+
   std::map<std::string, Type> staticPlaceholderTypes;
 
   std::unique_ptr<ONNXIFIModelLoader> loader;

@@ -124,6 +124,10 @@ struct PrecisionConfiguration {
   /// actual quantization parameters when loaded in this compilation context.
   bool replaceDummyTQPs{false};
 
+  /// If true, then we can safely assume that all qparams (even dummy qparams)
+  /// are clipped inside the FP16 range.
+  bool clipQuantRangeToFP16{false};
+
   /// Converts a float16 \p format into an ElemKind.
   static ElemKind getElementType(Float16Format format) {
     switch (format) {
@@ -388,6 +392,11 @@ struct CompilationContext {
         !precisionConfig.loadUniquedDummyQParams ||
             precisionConfig.originNameToTQPMap,
         "If loading unique dummy QParams, must have valid originNameToTQPMap");
+
+    RETURN_ERR_IF_NOT(!precisionConfig.clipQuantRangeToFP16 ||
+                          precisionConfig.convertToFP16,
+                      "Assuming quant ranges are clipped to fp16 should only "
+                      "be done along with fp16 conversion.");
 
     return Error::success();
   }

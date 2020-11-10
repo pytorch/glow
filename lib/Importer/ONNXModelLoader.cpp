@@ -17,6 +17,7 @@
 #include "glow/Importer/ONNXModelLoader.h"
 
 #include "glow/Base/Tensor.h"
+#include "glow/Flags/Flags.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Importer/Caffe2ModelLoader.h"
@@ -855,6 +856,11 @@ Error ONNXModelLoader::loadInputs(ONNX_NAMESPACE::GraphProto &net,
 
     // We must not have the input created yet, so do so.
     if (loadInputsAsPlaceholdersForOnnx) {
+      RETURN_ERR_IF_NOT(!clipQuantRangeToFP16_ || !ty.isQuantizedType() ||
+                            ty.isFusedQuantizedType(),
+                        "Do not support clipQuantRangeToFP16 with unfused "
+                        "quantized input Placeholders: " +
+                            in.name());
       Placeholder *inPH;
       ASSIGN_VALUE_OR_RETURN_ERR(
           inPH, createAndRegisterPlaceholder(in.name(), mod_.uniqueType(ty),
@@ -5313,7 +5319,8 @@ Error ONNXModelLoader::setupUpdatedTQPMap(
   Error err(Error::success());
   Module dummyMod;
   Caffe2ModelLoader tmpLoader(qParamC2ProtoStr, weightsCount, weightDescriptors,
-                              dummyMod, &err, &originNameToTQPMap);
+                              dummyMod, &err, &originNameToTQPMap,
+                              clipQuantRangeToFP16_);
   RETURN_IF_ERR(err);
 
   // Now parse the originNameToUniqueOffsetMappingStr to find the original C2
@@ -5437,12 +5444,14 @@ ONNXModelLoader::ONNXModelLoader(
     llvm::StringRef funName, PrePartitionedConfig *PPC,
     bool loadInputsAsPlaceholdersForOnnx, Error *errPtr, bool constFoldInLoader,
     BackendSpecificNodeInfo *perNodeOpts,
-    std::map<std::string, Type> *staticPlaceholderTypes, bool replaceDummyTQPs)
+    std::map<std::string, Type> *staticPlaceholderTypes, bool replaceDummyTQPs,
+    bool clipQuantRangeToFP16)
     : CommonOperatorLoader({}, {}, mod, errPtr,
                            /* loadIntoExistingModule */ true,
                            /* originNameToTQPMap */ nullptr,
                            /* loadUniquedDummyQParams */ false,
-                           replaceDummyTQPs),
+                           replaceDummyTQPs, /* zeroScaleFP16Clip */ false,
+                           clipQuantRangeToFP16),
       perNodeOpts_(perNodeOpts),
       staticPlaceholderTypes_(staticPlaceholderTypes) {
   // if errPtr already contains an error then don't continue with constructor
@@ -5462,6 +5471,18 @@ ONNXModelLoader::ONNXModelLoader(
     // If we're going to be replacing dummy TQPs then setup the updated TQP map,
     // which is used later on when loading each op.
     if (replaceDummyTQPs_) {
+      // Check if the model has specified that clipQuantRangeToFP16 should be
+      // overridden via the clipQuantRangeToFP16Key metadata prop. Do this
+      // before updating TQP map, because this will affect the qparams loaded.
+      for (const auto &keyVal : modelDef.metadata_props()) {
+        if (keyVal.key() == clipQuantRangeToFP16Key && keyVal.value() == "1") {
+          LOG(INFO) << "ONNXModelLoader found enabled "
+                    << clipQuantRangeToFP16Key;
+          clipQuantRangeToFP16_ = true;
+          break;
+        }
+      }
+
       RETURN_IF_ERR(
           setupUpdatedTQPMap(modelDef, weightsCount, weightDescriptors));
     }

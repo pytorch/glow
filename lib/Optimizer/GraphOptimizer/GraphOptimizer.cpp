@@ -3583,6 +3583,59 @@ static bool disallowQuantParamChange(const NodeValue &NV) {
   return false;
 }
 
+/// This is a specialized pass to use where we assume that quantized ranges are
+/// all inside the FP16 range. This means that if we have any clips outside the
+/// FP16 range we can safely remove them if adjacent to a quantized op.
+bool EliminateClipsOutsideFP16Range::run(Function *F,
+                                         const CompilationContext &cctx) {
+  LOG_SCOPE(F->getLogContext(), getName());
+
+  if (!cctx.precisionConfig.clipQuantRangeToFP16) {
+    return false;
+  }
+
+  bool changed = false;
+  for (Node &node : F->getNodes()) {
+    // Clip(Dequantize(Node)) -> Dequantize(Node)
+    if (ClipNode *clip = dyn_cast<ClipNode>(&node)) {
+      DequantizeNode *DQN = dyn_cast<DequantizeNode>(clip->getInput());
+      if (!DQN) {
+        continue;
+      }
+
+      // Can only eliminate the clip if its outside the FP16 range.
+      if (clip->getMin() > kMinFP16 || clip->getMax() < kMaxFP16) {
+        continue;
+      }
+
+      // We can safely skip the Clip at this point.
+      clip->getResult().replaceAllUsesOfWith(DQN->getResult());
+      changed = true;
+      continue;
+    }
+
+    // Quantize(Clip(Node)) -> Quantize(Node)
+    if (QuantizeNode *QN = dyn_cast<QuantizeNode>(&node)) {
+      ClipNode *clip = dyn_cast<ClipNode>(QN->getInput());
+      if (!clip) {
+        continue;
+      }
+
+      // Can only eliminate the clip if its outside the FP16 range.
+      if (clip->getMin() > kMinFP16 || clip->getMax() < kMaxFP16) {
+        continue;
+      }
+
+      // We can safely skip the Clip at this point.
+      QN->setNthInput(QuantizeNode::InputIdx, clip->getInput());
+      changed = true;
+      continue;
+    }
+  }
+
+  return changed;
+}
+
 /// When quantized operators and Clips are used together, we can often merge the
 /// Clip range and the Quantized range and remove the Clip.
 bool OptimizeQuantizeClip::run(Function *F, const CompilationContext &cctx) {
