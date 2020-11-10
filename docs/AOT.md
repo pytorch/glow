@@ -83,7 +83,7 @@ will be used in the form shown above:
 - For **Caffe2** models the user must also explicitly provide the description
 of the input tensors which are not part of model. The option `model-input` will be used
 to specify the name, type and shape for each model input. The model input names can be
-deduced by inspecting the model with [Netron](https://lutzroeder.github.io/netron/).
+deduced by inspecting the model with [Netron](http://netron.app).
 The option can be used multiple times to describe each model input separately:
   ```
   model-compiler -backend=CPU -model=<caffe2-model-path> -emit-bundle=<bundle-dir>  \
@@ -450,7 +450,7 @@ It is possible to control the relocation model with the command line option
 undefined (that is, marked as symbols and not as actual sizes) within the model. In the ONNX proto
 description the symbolic sizes are marked with `dim_param` while the actual sizes
 are marked with `dim_value`. For example, when inspecting an image classification
-model with [Netron](https://lutzroeder.github.io/netron/) one might see that the
+model with [Netron](http://netron.app) one might see that the
 input tensor size is defined as `None x 3 x 224 x 224` where `None` is the undefined
 size (symbol) associated with the batch size of the model. Glow cannot compile a
 model with undefined sizes, therefore the user must assign manually the actual
@@ -757,7 +757,7 @@ output tensors from the `mutableWeight` buffer.
 
 A very popular tool for visualizing the original model before compiling with Glow is **Netron** which
 has:
-- an online browser version [here](https://lutzroeder.github.io/netron/) (drag & drop a model into the browser window).
+- an online browser version [here](http://netron.app) (drag & drop a model into the browser window).
 - an offline standalone version [here](https://github.com/lutzroeder/netron) (drag & drop a model into the GUI window).
 
 ### Convert models
