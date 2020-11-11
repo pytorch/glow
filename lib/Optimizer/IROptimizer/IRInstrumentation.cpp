@@ -276,16 +276,16 @@ static bool performIRInstrumentation(IRFunction &M) {
     // Add instrumentation before instruction.
     auto *scratchTy = M.getGraph()->getParent()->uniqueType(
         ElemKind::Int8QTy, {scratchSize}, 0.0, 0);
-    auto *allocScratch = new AllocActivationInst(
-        "instrument.alloc." + instrName, scratchTy);
-    auto *instrBefore = new InstrumentInst("instrument.before." + instrName,
-                                           allocScratch, I, instructionID, true);
+    auto *allocScratch =
+        new AllocActivationInst("instrument.alloc." + instrName, scratchTy);
+    auto *instrBefore = new InstrumentInst(
+        "instrument.before." + instrName, allocScratch, I, instructionID, true);
     M.insertInstruction(I, instrBefore);
     M.insertInstruction(instrBefore, allocScratch);
 
     // Add instrumentation after instruction.
-    auto *instrAfter = new InstrumentInst("instrument.after." + instrName,
-                                          allocScratch, I, instructionID, false);
+    auto *instrAfter = new InstrumentInst(
+        "instrument.after." + instrName, allocScratch, I, instructionID, false);
     auto *deallocScratch = new DeallocActivationInst(
         "instrument.dealloc." + instrName, allocScratch);
     if (next == e) {
