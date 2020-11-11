@@ -1003,7 +1003,13 @@ int main(int argc, char **argv) {
       .addMember(MemberType::Unsigned, "Index")
       .autoVerify(VerifyKind::NoVerify);
 
+  /// Instruction used to instrument other instructions. InstrRef is a reference
+  /// of the instruction being instrumented, ID is an unique identifier assigned
+  /// to the instrumented instruction and Begin is whether the instance begins
+  /// or ends the instrumentation. Scratch is an operand used to temporarily
+  /// store context information about the instrumented instruction.
   BB.newInstr("Instrument")
+      .addOperand("Scratch", OperandKind::Out)
       .addMember(MEMBER_TYPE_INFO(glow::Instruction *), "InstrRef")
       .addMember(MemberType::Unsigned, "ID")
       .addMember(MemberType::Boolean, "Begin")

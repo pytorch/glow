@@ -3504,14 +3504,22 @@ void libjit_mfcc_f(void *scratch, float *coefficients, const float *spectrogram,
   }
 }
 
-extern void glow_instrument_begin(int32_t ID, int32_t inpNum, uint8_t **inpAddr, int32_t *inpSize);
-void libjit_instrument_begin(int32_t ID, int32_t inpNum, uint8_t **inpAddr, int32_t *inpSize) {
-  glow_instrument_begin(ID, inpNum, inpAddr, inpSize);
+/// Glow IR begin instrumentation external callback.
+void glow_instrument_begin(int id, int type, int inpNum, uint8_t **inpAddr,
+                           int *inpSize);
+__attribute__((noinline))
+void libjit_instrument_begin(int id, int type, int inpNum, uint8_t **inpAddr,
+                             int *inpSize) {
+  glow_instrument_begin(id, type, inpNum, inpAddr, inpSize);
 }
 
-extern void glow_instrument_end(int32_t ID, int32_t outNum, uint8_t **outAddr, int32_t *outSize);
-void libjit_instrument_end(int32_t ID, int32_t outNum, uint8_t **outAddr, int32_t *outSize) {
-  glow_instrument_end(ID, outNum, outAddr, outSize);
+/// Glow IR end instrumentation external callback.
+void glow_instrument_end(int id, int type, int outNum, uint8_t **outAddr,
+                         int *outSize);
+__attribute__((noinline))
+void libjit_instrument_end(int id, int type, int outNum, uint8_t **outAddr,
+                           int *outSize) {
+  glow_instrument_end(id, type, outNum, outAddr, outSize);
 }
 
 } // extern "C"

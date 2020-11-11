@@ -61,8 +61,9 @@ static bool performDebugInstrumentation(IRFunction &M) {
   bool debugInfoWrite = (debugFormat != "console");
 
   // Open debug info file.
-  std::string debugInfoPath =
-      debugDir + llvm::sys::path::get_separator().str() + "debug.info";
+  std::string debugInfoPath = debugDir +
+                              llvm::sys::path::get_separator().str() +
+                              "instrument-debug.info";
   unsigned fileDumpIdx = 0;
   std::ofstream debugInfoFile;
   if (debugInfoWrite) {
@@ -80,7 +81,7 @@ static bool performDebugInstrumentation(IRFunction &M) {
     if (!instrumentDebugOnly.empty()) {
       if (std::find_if(instrumentDebugOnly.begin(), instrumentDebugOnly.end(),
                        [&](const std::string &name) -> bool {
-                         return I->getName().contains(name);
+                         return I->getName().equals(name);
                        }) == instrumentDebugOnly.end()) {
         it = next;
         continue;
@@ -183,7 +184,7 @@ static bool performDebugInstrumentation(IRFunction &M) {
 static bool performIRInstrumentation(IRFunction &M) {
 
   // Open instrument info file.
-  std::string instrumentInfoPath = "instrument.info";
+  std::string instrumentInfoPath = "instrument-ir.info";
   std::ofstream instrumentInfoFile;
   instrumentInfoFile.open(instrumentInfoPath, std::ios::out | std::ios::trunc);
   unsigned instructionID = 0;
@@ -194,12 +195,13 @@ static bool performIRInstrumentation(IRFunction &M) {
   for (auto it = instrs.begin(), e = instrs.end(); it != e;) {
     auto *I = &*it;
     auto next = std::next(it);
+    std::string instrName = I->getName().str();
 
     // If current instruction is not one of the provided in the list, skip it.
     if (!instrumentIROnly.empty()) {
       if (std::find_if(instrumentIROnly.begin(), instrumentIROnly.end(),
                        [&](const std::string &name) -> bool {
-                         return I->getName().contains(name);
+                         return I->getName().equals(name);
                        }) == instrumentIROnly.end()) {
         it = next;
         continue;
@@ -213,26 +215,11 @@ static bool performIRInstrumentation(IRFunction &M) {
       continue;
     }
 
-    // Add instrumentation before instruction.
-    std::string instrName = I->getName().str();
-    auto *instrBefore = new InstrumentInst("instrument.before." + instrName,
-                                           I, instructionID, true);
-    M.insertInstruction(I, instrBefore);
-
-    // Add instrumentation after instruction.
-    auto *instrAfter = new InstrumentInst("instrument.after." + instrName,
-                                          I, instructionID, false);
-    if (next == e) {
-      M.insertInstruction(instrAfter);
-    } else {
-      M.insertInstruction(&*next, instrAfter);
-    }
-
     // Print instruction info.
-    instrumentInfoFile << "\n";
-    instrumentInfoFile << "ID  : " << instructionID << "\n";
-    instrumentInfoFile << "Type: " << I->getKindName() << "\n";
-    instrumentInfoFile << "Name: " << instrName << "\n";
+    instrumentInfoFile << "ID   : " << instructionID << "\n";
+    instrumentInfoFile << "Type : " << (unsigned)(I->getKind()) << " ("
+                       << I->getKindName() << ")\n";
+    instrumentInfoFile << "Name : " << instrName << "\n";
 
     // Get maximum operand name length for pretty print.
     size_t opNameLenMax = 0;
@@ -242,7 +229,7 @@ static bool performIRInstrumentation(IRFunction &M) {
     }
 
     // Print input operands.
-    unsigned inputIdx = 0;
+    unsigned inputNum = 0;
     for (unsigned opIdx = 0; opIdx < I->getNumOperands(); ++opIdx) {
       const auto &op = I->getOperand(opIdx);
       if (op.second == OperandKind::Out) {
@@ -251,16 +238,16 @@ static bool performIRInstrumentation(IRFunction &M) {
       const std::string opName = I->getOperandName(opIdx).str();
       const std::string opTypeName = op.first->getType()->toString();
       unsigned spacing = std::max(opNameLenMax + 2, size_t(10));
-      std::string format = "In [%d] ";
+      std::string format = "Inp[%d] ";
       format += "%-" + std::to_string(spacing) + "s ";
       format += "%s\n";
-      instrumentInfoFile << strFormat(format.c_str(), inputIdx,
-                                 (opName + ":").c_str(), opTypeName.c_str());
-      inputIdx++;
+      instrumentInfoFile << strFormat(
+          format.c_str(), inputNum, (opName + ":").c_str(), opTypeName.c_str());
+      inputNum++;
     }
 
     // Print output operands.
-    unsigned outputIdx = 0;
+    unsigned outputNum = 0;
     for (unsigned opIdx = 0; opIdx < I->getNumOperands(); ++opIdx) {
       const auto &op = I->getOperand(opIdx);
       if (op.second == OperandKind::In) {
@@ -272,9 +259,41 @@ static bool performIRInstrumentation(IRFunction &M) {
       std::string format = "Out[%d] ";
       format += "%-" + std::to_string(spacing) + "s ";
       format += "%s\n";
-      instrumentInfoFile << strFormat(format.c_str(), outputIdx,
-                                 (opName + ":").c_str(), opTypeName.c_str());
-      outputIdx++;
+      instrumentInfoFile << strFormat(format.c_str(), outputNum,
+                                      (opName + ":").c_str(),
+                                      opTypeName.c_str());
+      outputNum++;
+    }
+    instrumentInfoFile << "\n";
+
+    // Scratch allocation size for the instrumentation. We allocate one common
+    // buffer to hold the addresses of the input or output operands. We allocate
+    // 8 bytes for each address to make sure it fits any target architecture.
+    // The allocated size must be strictly positive.
+    unsigned scratchSize = std::max(inputNum, outputNum) * sizeof(uint64_t);
+    scratchSize = std::max(1u, scratchSize);
+
+    // Add instrumentation before instruction.
+    auto *scratchTy = M.getGraph()->getParent()->uniqueType(
+        ElemKind::Int8QTy, {scratchSize}, 0.0, 0);
+    auto *allocScratch = new AllocActivationInst(
+        "instrument.alloc." + instrName, scratchTy);
+    auto *instrBefore = new InstrumentInst("instrument.before." + instrName,
+                                           allocScratch, I, instructionID, true);
+    M.insertInstruction(I, instrBefore);
+    M.insertInstruction(instrBefore, allocScratch);
+
+    // Add instrumentation after instruction.
+    auto *instrAfter = new InstrumentInst("instrument.after." + instrName,
+                                          allocScratch, I, instructionID, false);
+    auto *deallocScratch = new DeallocActivationInst(
+        "instrument.dealloc." + instrName, allocScratch);
+    if (next == e) {
+      M.insertInstruction(instrAfter);
+      M.insertInstruction(deallocScratch);
+    } else {
+      M.insertInstruction(&*next, deallocScratch);
+      M.insertInstruction(deallocScratch, instrAfter);
     }
 
     instructionID++;

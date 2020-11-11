@@ -65,6 +65,5 @@ llvm::cl::opt<bool>
 
 llvm::cl::list<std::string> instrumentIROnly(
     "instrument-ir-only",
-    llvm::cl::desc(
-        "Instrument the IR but only the listed instructions names"),
+    llvm::cl::desc("Instrument the IR but only the listed instructions names"),
     llvm::cl::CommaSeparated, llvm::cl::cat(IROptimizerCat));

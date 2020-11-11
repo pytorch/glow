@@ -3182,12 +3182,24 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::InstrumentInstKind: {
     auto *instrumentI = llvm::cast<InstrumentInst>(I);
+    auto *scratch = instrumentI->getScratch();
 
     // Instruction being instrumented.
-    Instruction * instrRef = instrumentI->getInstrRef();
+    Instruction *instrRef = instrumentI->getInstrRef();
 
-    // Emit instruction ID and name.
-    auto *ID = emitConstI32(builder, instrumentI->getID());
+    // Emit instruction ID and instruction type.
+    llvm::Type *intTy =
+        llvm::Type::getIntNTy(getLLVMContext(), getLibjitIntWidth());
+    auto *ID = llvm::ConstantInt::get(intTy, instrumentI->getID());
+    auto *type = llvm::ConstantInt::get(intTy, (int)(instrRef->getKind()));
+
+    // Emit scratch address as uint8_t**.
+    auto *scratchPtr = emitValueAddress(builder, scratch);
+    scratchPtr = builder.CreateBitCast(scratchPtr,
+                                       builder.getInt8PtrTy()->getPointerTo());
+
+    // Print the IR instrumentation callback API.
+    printInstrumentIR_ = true;
 
     if (instrumentI->getBegin()) {
 
@@ -3197,20 +3209,40 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
       // Emit addresses and sizes for the input operands of the
       // instruction being instrumented.
-      for (unsigned opIdx = 0; opIdx < instrRef->getNumOperands(); ++opIdx) {
+      for (size_t opIdx = 0; opIdx < instrRef->getNumOperands(); ++opIdx) {
         const auto &op = instrRef->getOperand(opIdx);
-        if (op.second != OperandKind::Out) {
-          inpAddrArray.push_back(emitValueAddress(builder, op.first));
-          inpSizeArray.push_back(llvm::ConstantInt::get(builder.getInt32Ty(), op.first->getType()->getSizeInBytes()));
+        if (op.second == OperandKind::Out) {
+          continue;
         }
+        // Emit operand address as uint8_t* variable.
+        auto *inpAddr = emitValueAddress(builder, op.first);
+        inpAddr = builder.CreateBitCast(inpAddr, builder.getInt8PtrTy());
+        inpAddrArray.push_back(inpAddr);
+        // Emit operand size in bytes as int constant.
+        auto *inpSize = llvm::ConstantInt::get(
+            intTy, op.first->getType()->getSizeInBytes());
+        inpSizeArray.push_back(inpSize);
       }
 
-      auto *inpNum = emitConstI32(builder, inpAddrArray.size());
-      auto *inpAddr = llvm::ConstantPointerNull::get(builder.getInt8PtrTy()->getPointerTo());
-      auto *inpSize = emitConstArray(builder, inpSizeArray, builder.getInt32Ty());
+      // Write the addresses of the input operands in the scratch.
+      assert(scratch->getSizeInBytes() >=
+                 inpAddrArray.size() * sizeof(uint64_t) &&
+             "Not enough scratch memory allocated for instrumentation!");
+      auto sizeTTy = builder.getIntNTy(getLibjitSizeTWidth());
+      for (size_t inpIdx = 0; inpIdx < inpAddrArray.size(); ++inpIdx) {
+        auto *storeIdx = llvm::ConstantInt::get(sizeTTy, inpIdx);
+        auto *storeAddr = builder.CreateGEP(scratchPtr, storeIdx);
+        builder.CreateStore(inpAddrArray[inpIdx], storeAddr);
+      }
 
+      // Emit call arguments.
+      auto *inpNum = llvm::ConstantInt::get(intTy, inpAddrArray.size());
+      auto *inpAddr = scratchPtr;
+      auto *inpSize = emitConstArray(builder, inpSizeArray, intTy);
+
+      // Create callback call.
       auto *F = getFunction("instrument_begin");
-      createCall(builder, F, {ID, inpNum, inpAddr, inpSize});
+      createCall(builder, F, {ID, type, inpNum, inpAddr, inpSize});
 
     } else {
 
@@ -3220,20 +3252,40 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
       // Emit addresses and sizes for the output operands of the
       // instruction being instrumented.
-      for (unsigned opIdx = 0; opIdx < instrRef->getNumOperands(); ++opIdx) {
+      for (size_t opIdx = 0; opIdx < instrRef->getNumOperands(); ++opIdx) {
         const auto &op = instrRef->getOperand(opIdx);
-        if (op.second != OperandKind::In) {
-          outAddrArray.push_back(emitValueAddress(builder, op.first));
-          outSizeArray.push_back(llvm::ConstantInt::get(builder.getInt32Ty(), op.first->getType()->getSizeInBytes()));
+        if (op.second == OperandKind::In) {
+          continue;
         }
+        // Emit operand address as uint8_t* variable.
+        auto *outAddr = emitValueAddress(builder, op.first);
+        outAddr = builder.CreateBitCast(outAddr, builder.getInt8PtrTy());
+        outAddrArray.push_back(outAddr);
+        // Emit operand size in bytes as int constant.
+        auto *outSize = llvm::ConstantInt::get(
+            intTy, op.first->getType()->getSizeInBytes());
+        outSizeArray.push_back(outSize);
       }
 
-      auto *outNum = emitConstI32(builder, outAddrArray.size());
-      auto *outAddr = llvm::ConstantPointerNull::get(builder.getInt8PtrTy()->getPointerTo());
-      auto *outSize = emitConstArray(builder, outSizeArray, builder.getInt32Ty());
+      // Write the addresses of the output operands in the scratch.
+      assert(scratch->getSizeInBytes() >=
+                 outAddrArray.size() * sizeof(uint64_t) &&
+             "Not enough scratch memory allocated for instrumentation!");
+      auto sizeTTy = builder.getIntNTy(getLibjitSizeTWidth());
+      for (size_t outIdx = 0; outIdx < outAddrArray.size(); ++outIdx) {
+        auto *storeIdx = llvm::ConstantInt::get(sizeTTy, outIdx);
+        auto *storeAddr = builder.CreateGEP(scratchPtr, storeIdx);
+        builder.CreateStore(outAddrArray[outIdx], storeAddr);
+      }
 
+      // Emit call arguments.
+      auto *outNum = llvm::ConstantInt::get(intTy, outAddrArray.size());
+      auto *outAddr = scratchPtr;
+      auto *outSize = emitConstArray(builder, outSizeArray, intTy);
+
+      // Create callback call.
       auto *F = getFunction("instrument_end");
-      createCall(builder, F, {ID, outNum, outAddr, outSize});
+      createCall(builder, F, {ID, type, outNum, outAddr, outSize});
     }
     break;
   }
@@ -3439,4 +3491,51 @@ bool LLVMIRGen::canBePartOfDataParallelKernel(
   return I->isDataParallel();
 }
 
-std::string LLVMIRGen::getBundleHeaderExtra() const { return ""; }
+/// Extra bundle header file content with the IR instrumentation callback API.
+static const char *instrumentIRApi =
+    R"RAW(
+// -----------------------------------------------------------------------------
+// Callback function used for Glow IR instruction instrumentation:
+// - This callback is called by the bundle BEFORE executing each instruction.
+// - This callback must be defined by the bundle user application.
+// ARGUMENTS:
+//   id      - instruction instance ID
+//   type    - instruction type
+//   inpNum  - number of input operands
+//   inpAddr - input operands addresses
+//   inpSize - input operands sizes in bytes
+// NOTES:
+// - This callback uses C linkage therefore if the callback is implemented in a
+//   .cpp file you must enclose the implementation in extern "C" {}.
+// - Look in the metafile "instrument-ir.info" generated during compile-time
+//   to see more information about the instrumented instructions.
+// -----------------------------------------------------------------------------
+void glow_instrument_begin(int id, int type, int inpNum, uint8_t **inpAddr, int *inpSize);
+
+// -----------------------------------------------------------------------------
+// Callback function used for Glow IR instruction instrumentation:
+// - This callback is called by the bundle AFTER executing each instruction.
+// - This callback must be defined by the bundle user application.
+// ARGUMENTS:
+//   id      - instruction instance ID
+//   type    - instruction type
+//   outNum  - number of output operands
+//   outAddr - output operands addresses
+//   outSize - output operands sizes in bytes
+// NOTES:
+// - This callback uses C linkage therefore if the callback is implemented in a
+//   .cpp file you must enclose the implementation in extern "C" {}.
+// - Look in the metafile "instrument-ir.info" generated during compile-time
+//   to see more information about the instrumented instructions.
+// -----------------------------------------------------------------------------
+void glow_instrument_end(int id, int type, int outNum, uint8_t **outAddr, int *outSize);
+)RAW";
+
+std::string LLVMIRGen::getBundleHeaderExtra() const {
+  std::string headerExtra = "";
+  // Print IR instrumentation callback API.
+  if (printInstrumentIR_) {
+    headerExtra += std::string(instrumentIRApi);
+  }
+  return headerExtra;
+}

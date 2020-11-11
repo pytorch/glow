@@ -165,6 +165,9 @@ protected:
   /// the bitcode.
   llvm::StringRef libjitBC_;
 
+  /// Whether to print the IR instrumentation callback API.
+  bool printInstrumentIR_{false};
+
   /// Generates LLVM IR that computes the address of \p val using \p builder.
   /// The address type is specified by \p ptrTy.
   virtual llvm::Value *emitValueAddress(llvm::IRBuilder<> &builder,
