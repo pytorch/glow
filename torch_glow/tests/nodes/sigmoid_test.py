@@ -1,11 +1,11 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import torch
-
-from tests import utils
-from parameterized import parameterized
 import unittest
+
+import torch
+from parameterized import parameterized
+from tests import utils
 
 
 class SimpleSigmoidModel(torch.nn.Module):

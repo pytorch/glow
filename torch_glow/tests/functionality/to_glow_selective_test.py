@@ -3,8 +3,8 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import unittest
 
-import torch_glow
 import torch
+import torch_glow
 
 
 class Qux(torch.nn.Module):

@@ -1,13 +1,13 @@
 # isort:skip_file
 from __future__ import absolute_import, division, print_function, unicode_literals
-from copy import deepcopy
+
 import itertools
 import os
-
-import torch_glow
-import torch
-
 from contextlib import contextmanager
+from copy import deepcopy
+
+import torch
+import torch_glow
 
 GLOW_FUSION_GROUP = "glow::FusionGroup"
 SUBGRAPH_ATTR = "Subgraph"

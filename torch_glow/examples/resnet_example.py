@@ -3,8 +3,8 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 
 import argparse
 
-import torch_glow
 import torch
+import torch_glow
 import utils.torchvision_fake.resnet as resnet
 import utils.torchvision_fake.transforms as torchvisionTransforms
 from PIL import Image
