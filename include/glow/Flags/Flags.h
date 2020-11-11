@@ -42,6 +42,7 @@ extern bool GlowSaveOnnxifiDAG;
 extern bool GlowSaveOnnxifiIO;
 extern bool GlowDelayAndRecordConstantModification;
 extern bool GlowUseTrackedDummyQuantParams;
+extern bool GlowClipQuantRangeToFP16;
 extern bool GlowClipZeroScaleFP16;
 extern bool GlowEnablePartialTensors;
 extern bool GlowUseCustomOpsForExport;
@@ -102,5 +103,8 @@ DECLARE_bool(glow_global_fused_scale_offset_fp16);
 DECLARE_int32(glow_snn_partitioning_kbytes_per_card);
 DECLARE_int32(glow_snn_partitioning_num_cores_sls);
 DECLARE_int32(glow_snn_partitioning_num_cores_other);
+
+/// Signifiers for flags which we may load from e.g. a proto.
+constexpr char clipQuantRangeToFP16Key[] = "GlowLoader_clipQuantRangeToFP16";
 
 #endif /* GLOW_FLAGS_FLAGS_H */

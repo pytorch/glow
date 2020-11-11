@@ -51,6 +51,54 @@ struct LoadWeightResult {
   Type type;
 };
 
+#define dispatchQuantizedImpl(functionName, elemTy, ...)                       \
+  switch (elemTy) {                                                            \
+  case ElemKind::Int8QTy:                                                      \
+    functionName<int8_t>(__VA_ARGS__);                                         \
+    break;                                                                     \
+  case ElemKind::Int16QTy:                                                     \
+    functionName<int16_t>(__VA_ARGS__);                                        \
+    break;                                                                     \
+  case ElemKind::Int32QTy:                                                     \
+    functionName<int32_t>(__VA_ARGS__);                                        \
+    break;                                                                     \
+  default:                                                                     \
+    llvm_unreachable("Type is not supported");                                 \
+  }
+
+template <typename eTy>
+void rescaleQTensor(const Tensor &oldT, Tensor &rescaledT, float newMin,
+                    float newMax) {
+  const Type &oldTy = oldT.getType();
+  const TensorQuantizationParams oldQParams = {oldTy.getScale(),
+                                               oldTy.getOffset()};
+  const TensorQuantizationParams newQParams = chooseQuantizationParams(
+      {newMin, newMax}, quantization::Asymmetric, oldTy.getElementType());
+
+  // Setup Tensor to copy rescaled Tensor into.
+  Type rescaledTy(oldTy.getElementType(), oldTy.dims(), newQParams.scale,
+                  newQParams.offset);
+  rescaledT.reset(rescaledTy);
+
+  auto srcH = oldT.getHandle<eTy>();
+  auto destH = rescaledT.getHandle<eTy>();
+  for (size_t i = 0, e = destH.size(); i < e; ++i) {
+    float val = quantization::dequantize(srcH.raw(i), oldQParams);
+    destH.raw(i) = quantization::quantize(val, newQParams);
+  }
+}
+
+/// Given \p result, rescale it given \p newMin and \p newMax.
+template <typename eTy>
+void rescaleQTensorResult(LoadWeightResult &result, float newMin,
+                          float newMax) {
+  // Get new type based on newMin/newMax and old elem kind.
+  auto rescaledT = glow::make_unique<Tensor>();
+  rescaleQTensor<eTy>(*result.t, *rescaledT, newMin, newMax);
+  result.t = std::move(rescaledT);
+  result.type = result.t->getType();
+}
+
 /// Contains loaders for operators, which are common to ONNX and Caffe2
 /// formats. Every loader method adds necessary nodes to property G_, which
 /// is inherited from ProtobufLoader class, therefore modifying the class
@@ -157,8 +205,10 @@ class CommonOperatorLoader : public ProtobufLoader {
     if (in.dataType == ONNXIFI_DATATYPE_UINT8) {
       TypeRef outTy;
       ASSIGN_VALUE_OR_RETURN_ERR(
-          outTy, ProtobufLoader::loadQuantTy(in.name, ElemKind::Int8QTy, dims,
-                                             scale, offset));
+          outTy, ProtobufLoader::loadQuantTy(
+                     in.name, ElemKind::Int8QTy, dims, scale, offset,
+                     /* shiftUInt8ToInt8 */ true,
+                     /* skipClipQuantRangeToFP16 */ true));
       // Must copy the weights here because we will need to modify them by
       // adjusting for UINT8_TO_INT8_SHIFT.
       result.type = *outTy;
@@ -174,8 +224,10 @@ class CommonOperatorLoader : public ProtobufLoader {
     } else if (in.dataType == ONNXIFI_DATATYPE_INT32) {
       TypeRef outTy;
       ASSIGN_VALUE_OR_RETURN_ERR(
-          outTy, ProtobufLoader::loadQuantTy(in.name, ElemKind::Int32QTy, dims,
-                                             scale, offset));
+          outTy, ProtobufLoader::loadQuantTy(
+                     in.name, ElemKind::Int32QTy, dims, scale, offset,
+                     /* shiftUInt8ToInt8 */ true,
+                     /* skipClipQuantRangeToFP16 */ true));
       result.type = *outTy;
       if (!in.isOffline) {
         *result.t = Tensor((void *)in.buffer, &result.type);
@@ -183,9 +235,10 @@ class CommonOperatorLoader : public ProtobufLoader {
     } else if (in.dataType == ONNXIFI_DATATYPE_INT8) {
       TypeRef outTy;
       ASSIGN_VALUE_OR_RETURN_ERR(
-          outTy, ProtobufLoader::loadQuantTy(in.name, ElemKind::Int8QTy, dims,
-                                             scale, offset,
-                                             /* shiftUInt8ToInt8 */ false));
+          outTy, ProtobufLoader::loadQuantTy(
+                     in.name, ElemKind::Int8QTy, dims, scale, offset,
+                     /* shiftUInt8ToInt8 */ false,
+                     /* skipClipQuantRangeToFP16 */ true));
       result.type = *outTy;
       if (!in.isOffline) {
         *result.t = Tensor((void *)in.buffer, &result.type);
@@ -195,6 +248,31 @@ class CommonOperatorLoader : public ProtobufLoader {
           strFormat("Only uint8, int32, and int8, quantized tensors are "
                     "supported, got input with ONNXIFI_DATATYPE: %zu",
                     static_cast<size_t>(in.dataType)));
+    }
+
+    // If we're clipping quantized ranges tp FP16, then we need to rescale the
+    // Tensor and update its type, plus the type in result.
+    if (clipQuantRangeToFP16_) {
+      const ElemKind k = result.type.getElementType();
+      const auto qMinMax = getQuantizedValueRange(scale, offset, k);
+      const float newMin = std::max(qMinMax.first, kMinFP16);
+      const float newMax = std::min(qMinMax.second, kMaxFP16);
+
+      // If min or max are clipped then create a new Tensor with the adjusted
+      // type, and rescale its payload.
+      if (newMin != qMinMax.first || newMax != qMinMax.second) {
+        RETURN_ERR_IF_NOT(
+            !in.isOffline,
+            strFormat("For clipQuantRangeToFP16, currently do "
+                      "not support offline quantizated weights: %s",
+                      in.name));
+        RETURN_ERR_IF_NOT(!result.offsets && !result.scales,
+                          strFormat("For clipQuantRangeToFP16, currently do "
+                                    "not support multiple qparams: %s",
+                                    in.name));
+
+        dispatchQuantizedImpl(rescaleQTensorResult, k, result, newMin, newMax);
+      }
     }
 
     return Expected<LoadWeightResult>(std::move(result));
@@ -224,22 +302,23 @@ protected:
                        bool loadIntoExistingModule = false,
                        OriginNameToTQPMap *originNameToTQPMap = nullptr,
                        bool loadUniquedDummyQParams = false,
-                       bool zeroScaleFP16Clip = false)
+                       bool zeroScaleFP16Clip = false,
+                       bool clipQuantRangeToFP16 = false)
       : ProtobufLoader(names, types, F, errPtr, loadIntoExistingModule,
                        originNameToTQPMap, loadUniquedDummyQParams,
-                       /* replaceDummyTQPs */ false, zeroScaleFP16Clip) {}
+                       /* replaceDummyTQPs */ false, zeroScaleFP16Clip,
+                       clipQuantRangeToFP16) {}
 
-  CommonOperatorLoader(llvm::ArrayRef<const char *> names,
-                       llvm::ArrayRef<TypeRef> types, Module &mod,
-                       Error *errPtr = nullptr,
-                       bool loadIntoExistingModule = false,
-                       OriginNameToTQPMap *originNameToTQPMap = nullptr,
-                       bool loadUniquedDummyQParams = false,
-                       bool replaceDummyTQPs = false,
-                       bool zeroScaleFP16Clip = false)
+  CommonOperatorLoader(
+      llvm::ArrayRef<const char *> names, llvm::ArrayRef<TypeRef> types,
+      Module &mod, Error *errPtr = nullptr, bool loadIntoExistingModule = false,
+      OriginNameToTQPMap *originNameToTQPMap = nullptr,
+      bool loadUniquedDummyQParams = false, bool replaceDummyTQPs = false,
+      bool zeroScaleFP16Clip = false, bool clipQuantRangeToFP16 = false)
       : ProtobufLoader(names, types, mod, errPtr, loadIntoExistingModule,
                        originNameToTQPMap, loadUniquedDummyQParams,
-                       replaceDummyTQPs, zeroScaleFP16Clip) {}
+                       replaceDummyTQPs, zeroScaleFP16Clip,
+                       clipQuantRangeToFP16) {}
 
   using ArgumentDictionaryTy =
       std::unordered_map<std::string, const AttrType *>;
@@ -259,7 +338,8 @@ protected:
   /// \returns a new TypeRef given \p k and \p dims.
   Expected<TypeRef> loadQuantTy(const std::string &name, ElemKind k,
                                 llvm::ArrayRef<dim_t> dims,
-                                ArgumentDictionaryTy &dict) {
+                                ArgumentDictionaryTy &dict,
+                                bool skipClipQuantRangeToFP16 = false) {
     RETURN_ERR_IF_NOT(dict.count("Y_scale"),
                       "missing Y_scale for quantized output type for " + name);
     RETURN_ERR_IF_NOT(dict.count("Y_zero_point"),
@@ -271,7 +351,9 @@ protected:
     int32_t offset;
     ASSIGN_VALUE_OR_RETURN_ERR(offset, loadInt(dict["Y_zero_point"]));
 
-    return ProtobufLoader::loadQuantTy(name, k, dims, scale, offset);
+    return ProtobufLoader::loadQuantTy(name, k, dims, scale, offset,
+                                       /* shiftUInt8ToInt8 */ true,
+                                       skipClipQuantRangeToFP16);
   }
 
   /// \returns True if the operator has broadcasting activated.
@@ -1544,6 +1626,13 @@ protected:
       // If the weight is offline create a static placeholder, otherwise create
       // a constant.
       if (weightDescriptors[i].isOffline) {
+        RETURN_ERR_IF_NOT(
+            !clipQuantRangeToFP16_ ||
+                !loadResult.t->getType().isQuantizedType() ||
+                loadResult.t->getType().isFusedQuantizedType(),
+            strFormat("Do not support clipQuantRangeToFP16 with unfused "
+                      "quantized input Placeholders: %s",
+                      name));
         Placeholder *pl;
         ASSIGN_VALUE_OR_RETURN_ERR(
             pl, createAndRegisterPlaceholder(name, &loadResult.type,

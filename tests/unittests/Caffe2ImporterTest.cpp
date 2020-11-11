@@ -3759,3 +3759,65 @@ TEST_F(Caffe2ImporterTest, ClipZeroScaleFP16QuantOpt) {
 
   EE.compile(CompilationMode::Infer);
 }
+
+/// Check that we clip a Node with 0.f scale to kMinScaleFP16 correctly.
+TEST_F(Caffe2ImporterTest, ClipLargeQRangeToFP16) {
+  ExecutionEngine EE{};
+  auto &mod = EE.getModule();
+  Function *F = mod.createFunction("main");
+
+  std::string NetDescFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/int8sumrelu_large_range_pred_net.pbtxt");
+  std::string NetWeightFilename(
+      GLOW_DATA_PATH
+      "tests/models/caffe2Models/int8sumrelu_large_range_init_net.pbtxt");
+
+  Placeholder *output;
+  PlaceholderBindings bindings;
+
+  // Destroy the loader after the graph is loaded since the following execution
+  // will not depend on anything from the loader.
+  {
+    Tensor data(ElemKind::FloatTy, {4, 2});
+    Caffe2ModelLoader caffe2LD(
+        NetDescFilename, NetWeightFilename, {"gpu_0/data_0"}, {&data.getType()},
+        *F, /* errPtr */ nullptr, /* originNameToTQPMap */ nullptr,
+        /* loadUniquedDummyQParams */ false,
+        /* zeroScaleFP16Clip */ false, /* clipQuantRangeToFP16 */ true);
+    output = EXIT_ON_ERR(caffe2LD.getSingleOutput());
+
+    bindings.allocate(mod.getPlaceholders());
+    updateInputPlaceholdersByName(bindings, &mod, {"gpu_0/data_0"}, {&data});
+  }
+
+  // High level check on the content of the graph. We should have
+  // input=> quant-=> add => relu => save
+  //         const/
+  EXPECT_EQ(F->getNodes().size(), 4);
+  auto *save = getSaveNodeFromDest(output);
+
+  auto clippedQP = quantization::chooseQuantizationParams({kMinFP16, kMaxFP16});
+
+  // Verify that the structure is as expected *except* that the range is
+  // adjusted for clipping to fp16.
+  auto *relu = llvm::dyn_cast<ReluNode>(save->getInput().getNode());
+  ASSERT_TRUE(relu);
+  EXPECT_EQ(relu->getResult().getType()->getScale(), clippedQP.scale);
+  EXPECT_EQ(relu->getResult().getType()->getOffset(), clippedQP.offset);
+  auto *add = llvm::dyn_cast<AddNode>(relu->getInput().getNode());
+  ASSERT_TRUE(add);
+  EXPECT_EQ(add->getResult().getType()->getScale(), clippedQP.scale);
+  EXPECT_EQ(add->getResult().getType()->getOffset(), clippedQP.offset);
+  auto *quant = llvm::dyn_cast<QuantizeNode>(add->getLHS().getNode());
+  ASSERT_TRUE(quant);
+  EXPECT_EQ(quant->getResult().getType()->getScale(), 1.f);
+  EXPECT_EQ(quant->getResult().getType()->getOffset(), 0 - UINT8_TO_INT8_SHIFT);
+  EXPECT_TRUE(llvm::isa<Placeholder>(quant->getInput().getNode()));
+  auto *C = llvm::dyn_cast<Constant>(add->getRHS().getNode());
+  ASSERT_TRUE(C);
+  EXPECT_EQ(C->getOutput().getType()->getScale(), clippedQP.scale);
+  EXPECT_EQ(C->getOutput().getType()->getOffset(), clippedQP.offset);
+
+  EE.compile(CompilationMode::Infer);
+}

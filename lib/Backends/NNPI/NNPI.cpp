@@ -1255,7 +1255,7 @@ NNPIBackend::getOptimizationPipeline() const {
   // not want to undo that by sinking Nodes back together.
   pipeline->removeAllInstancesOfPass(FunctionPassID::SinkCode);
 
-  // Quantize Swish when wrapped inS Quantize/Dequantize.
+  // Quantize Swish when wrapped in Quantize/Dequantize.
   pipeline->pushBack(FunctionPassID::QuantizeSwish);
 
   // Raise Clips above Shape Nodes (e.g. Reshape) to try to ensure fusion
@@ -1269,6 +1269,7 @@ NNPIBackend::getOptimizationPipeline() const {
 
   // Now that we've raised clips up try to optimize quantize-clip combos again.
   pipeline->pushBack(FunctionPassID::OptimizeQuantizeClip);
+  pipeline->pushBack(FunctionPassID::EliminateClipsOutsideFP16Range);
 
   // Now try to eliminate any redundant Clips.
   pipeline->pushBack(FunctionPassID::OptimizeClips);
@@ -1309,6 +1310,7 @@ NNPIBackend::getOptimizationPipeline() const {
   // Now try to also optimize clips next to quantizes since we raised quantizes
   // above concats.
   pipeline->pushBack(FunctionPassID::OptimizeQuantizeClip);
+  pipeline->pushBack(FunctionPassID::EliminateClipsOutsideFP16Range);
 
   // Now try to sink conversions below concats again in case the concat quantize
   // sinking didn't help.

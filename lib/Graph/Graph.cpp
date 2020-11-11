@@ -2758,16 +2758,14 @@ ClipNode *Function::createClip(llvm::StringRef name, NodeValue input, float min,
 
 ClipNode *Function::createClipMinMaxFP16(llvm::StringRef name,
                                          NodeValue input) {
-  constexpr float float16Min = -65504.0f;
-  constexpr float float16Max = 65504.0f;
-  return createClip(name, input, float16Min, float16Max);
+  return createClip(name, input, kMinFP16, kMaxFP16);
 }
 
 ClipNode *Function::createClipMinMaxBFloat16(llvm::StringRef name,
                                              NodeValue input) {
-  constexpr float float16Min = FLT_MIN;
-  constexpr float float16Max = FLT_MAX;
-  return createClip(name, input, float16Min, float16Max);
+  constexpr float bfloat16Min = FLT_MIN;
+  constexpr float bfloat16Max = FLT_MAX;
+  return createClip(name, input, bfloat16Min, bfloat16Max);
 }
 
 //===----------------------------------------------------------------------===//

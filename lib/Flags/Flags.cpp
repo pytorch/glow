@@ -62,6 +62,7 @@ size_t GlowExecutorThreads = 10;
 bool GlowDelayAndRecordConstantModification = false;
 bool GlowUseTrackedDummyQuantParams = false;
 bool GlowClipZeroScaleFP16 = false;
+bool GlowClipQuantRangeToFP16 = false;
 std::string GlowOnnxifiBackend = "";
 bool GlowSaveOnnxifiModel = false;
 bool GlowSaveOnnxifiIO = false;
@@ -306,6 +307,14 @@ DEFINE_bool(glow_clip_zero_scale_fp16, false,
 DEFINE_validator(glow_clip_zero_scale_fp16,
                  [](const char *flagname, bool value) {
                    glow::onnxifi::GlowClipZeroScaleFP16 = value;
+                   return true;
+                 });
+
+DEFINE_bool(glow_clip_quant_range_to_fp16, false,
+            "Whether to clip quantization parameters inside the fp16 range.");
+DEFINE_validator(glow_clip_quant_range_to_fp16,
+                 [](const char *flagname, bool value) {
+                   glow::onnxifi::GlowClipQuantRangeToFP16 = value;
                    return true;
                  });
 
