@@ -538,21 +538,37 @@ with the option `-instrument-debug-format=<format>`:
 - A flexible option for debugging is to instrument the IR by using the option `-instrument-ir`
 which instruments the Glow instructions by adding callbacks before and after the execution of
 each instruction. The callbacks have the following API:
-  ```c++
-  void glow_instrument_begin(int id, int type, int inpNum, uint8_t **inpAddr, int *inpSize);
-  void glow_instrument_end  (int id, int type, int outNum, uint8_t **outAddr, int *outSize);
-  ```
+    ```c++
+    void glow_instrument_begin(int id, int type, int inpNum, uint8_t **inpAddr, int *inpSize);
+    void glow_instrument_end  (int id, int type, int outNum, uint8_t **outAddr, int *outSize);
+    ```
   The prototype and more details about these callbacks are automatically printed in the bundle
 header file. These callbacks must be implemented by the bundle user application. A separate
 meta file `instrument-ir.info` is dumped at compile-time which provides more information about
 the instrumented instructions and makes the association between the callback IDs and the
-instructions being instrumented. This instrumentation method allows:
+instructions being instrumented. The `instrument-ir.info` meta file might look like this:
+    ```
+    ID   : 0
+    Type : 108 (quantize)
+    Name : Conv_MobilenetV1_MobilenetV1_Conv2d_0_Conv2D__2_quantize
+    Inp[0] Src:       float<1 x 224 x 224 x 3>
+    Out[0] Dest:      i8[S:0.0156 O:0][-2.000,1.984]<1 x 224 x 224 x 3>
+    
+    ID   : 1
+    Type : 5 (convolution)
+    Name : Conv_MobilenetV1_MobilenetV1_Conv2d_0_Conv2D__2
+    Inp[0] Src:       i8[S:0.0156 O:0][-2.000,1.984]<1 x 224 x 224 x 3>
+    Inp[1] Filter:    i8[S:0.0312 O:0][-4.000,3.969]<32 x 3 x 3 x 3>
+    Inp[2] Bias:      i32[S:0.0005 O:0][-1048576.000,1048576.000]<32>
+    Out[0] Dest:      i8[S:0.2500 O:0][-32.000,31.750]<1 x 112 x 112 x 32>
+  ```
+  This instrumentation method allows:
   - Target specific **profiling** by implementing the callbacks to use target specific clocks or
     time measurement routines.
   - Target specific **data dumping** mechanisms by implementing the callbacks to use target
     specific dumping routines, e.g. serial connection or others.
   - General **debugging** by allowing conditional breakpoints before/after each instruction.
-This option is currently available only for the LLVM based backends.
+  This option is currently available only for the LLVM based backends.
 
 
 ## Bundle memory layout
