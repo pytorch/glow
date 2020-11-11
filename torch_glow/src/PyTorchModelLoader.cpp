@@ -362,8 +362,6 @@ bool isQParamWeightNode(const torch::jit::Node *node) {
   const auto userKind = uses[0].user->kind();
 
   if (packedQuantNodeKinds.count(userKind)) {
-    DCHECK_EQ(uses.size(), 1) << "Expected packed quantization parameters to "
-                                 "only be used by one node";
     return true;
   }
 
