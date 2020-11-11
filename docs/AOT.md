@@ -542,7 +542,7 @@ each instruction. The callbacks have the following API:
   void glow_instrument_begin(int id, int type, int inpNum, uint8_t **inpAddr, int *inpSize);
   void glow_instrument_end  (int id, int type, int outNum, uint8_t **outAddr, int *outSize);
   ```
-The prototype and more details about these callbacks are automatically printed in the bundle
+  The prototype and more details about these callbacks are automatically printed in the bundle
 header file. These callbacks must be implemented by the bundle user application. A separate
 meta file `instrument-ir.info` is dumped at compile-time which provides more information about
 the instrumented instructions and makes the association between the callback IDs and the
@@ -551,7 +551,7 @@ instructions being instrumented. This instrumentation method allows:
     time measurement routines.
   - Target specific **data dumping** mechanisms by implementing the callbacks to use target
     specific dumping routines, e.g. serial connection or others.
-  - General debugging by allowing conditional breakpoints before/after each instruction.
+  - General **debugging** by allowing conditional breakpoints before/after each instruction.
 This option is currently available only for the LLVM based backends.
 
 
