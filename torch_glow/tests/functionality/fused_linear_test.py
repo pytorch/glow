@@ -35,5 +35,6 @@ class TestFuseLinear(unittest.TestCase):
         """Test Glow's fuseBranchedLinearPattern JIT pass"""
         graph = torch._C.parse_ir(graph_str)
         assert not graph_contains_str(graph, "glow::fused_linear")
+        print(graph.__class__)
         torch_glow.fuseBranchedLinearPattern_(graph)
         assert graph_contains_str(graph, "glow::fused_linear")
