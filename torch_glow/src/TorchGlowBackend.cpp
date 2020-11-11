@@ -15,6 +15,7 @@
 #include <torch/csrc/jit/ir/node_hashing.h>
 #include <torch/csrc/jit/passes/common_subexpression_elimination.h>
 #include <torch/csrc/jit/passes/constant_pooling.h>
+#include <torch/csrc/jit/passes/constant_propagation.h>
 #include <torch/csrc/jit/passes/dead_code_elimination.h>
 #include <torch/csrc/jit/passes/freeze_module.h>
 #include <torch/csrc/jit/passes/inliner.h>
@@ -595,6 +596,7 @@ compileImpl(const torch::jit::Module &origModule,
     auto graph = method.graph();
     EliminateDeadCode(graph);
     EliminateCommonSubexpression(graph);
+    ConstantPropagation(graph);
     ConstantPooling(graph);
   }
 
