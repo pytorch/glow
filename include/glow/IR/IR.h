@@ -192,6 +192,12 @@ public:
   /// \returns the number of operands.
   unsigned getNumOperands() const { return ops_.size(); }
 
+  /// \returns the number of input operands (includes In and InOut operands).
+  unsigned getNumInputs() const;
+
+  /// \returns the number of output operands (includes Out and InOut operands).
+  unsigned getNumOutputs() const;
+
   /// \returns the operands of the instruction.
   llvm::ArrayRef<Operand> getOperands() const { return ops_; }
 

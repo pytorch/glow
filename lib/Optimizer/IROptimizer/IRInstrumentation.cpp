@@ -267,36 +267,36 @@ static bool performIRInstrumentation(IRFunction &M) {
     }
     instrumentInfoFile << "\n";
 
-    // Scratch allocation size for the instrumentation. We allocate one common
-    // buffer to hold the addresses of the input or output operands. We allocate
-    // 8 bytes for each address to make sure it fits any target architecture.
-    // The allocated size must be strictly positive.
-    unsigned scratchSize = std::max(inputNum, outputNum) * sizeof(uint64_t);
-    scratchSize = std::max(1u, scratchSize);
+    // Allocation size for the instrumentation. We allocate one buffer to hold
+    // the addresses and the sizes for all the input and output operands. We
+    // allocate 8 bytes (int64) for each address and size to make sure it fits
+    // any target architecture. Allocation size must be strictly positive.
+    unsigned allocSize = (inputNum + outputNum) * 2 * sizeof(int64_t);
+    allocSize = std::max(1u, allocSize);
 
     // Add instrumentation before instruction.
-    auto *scratchTy = M.getGraph()->getParent()->uniqueType(
-        ElemKind::Int8QTy, {scratchSize}, 0.0, 0);
-    auto *allocScratch =
-        new AllocActivationInst("instrument.alloc." + instrName, scratchTy);
+    auto *allocTy = M.getGraph()->getParent()->uniqueType(ElemKind::Int8QTy,
+                                                          {allocSize}, 0.0, 0);
+    auto *instrAlloc =
+        new AllocActivationInst("instrument.alloc." + instrName, allocTy);
     auto *instrBefore =
-        new InstrumentInst("instrument.before." + instrName, allocScratch, I,
+        new InstrumentInst("instrument.before." + instrName, instrAlloc, I,
                            instructionID, InstrumentKind::Before);
     M.insertInstruction(I, instrBefore);
-    M.insertInstruction(instrBefore, allocScratch);
+    M.insertInstruction(instrBefore, instrAlloc);
 
     // Add instrumentation after instruction.
     auto *instrAfter =
-        new InstrumentInst("instrument.after." + instrName, allocScratch, I,
+        new InstrumentInst("instrument.after." + instrName, instrAlloc, I,
                            instructionID, InstrumentKind::After);
-    auto *deallocScratch = new DeallocActivationInst(
-        "instrument.dealloc." + instrName, allocScratch);
+    auto *instrDealloc = new DeallocActivationInst(
+        "instrument.dealloc." + instrName, instrAlloc);
     if (next == e) {
       M.insertInstruction(instrAfter);
-      M.insertInstruction(deallocScratch);
+      M.insertInstruction(instrDealloc);
     } else {
-      M.insertInstruction(&*next, deallocScratch);
-      M.insertInstruction(deallocScratch, instrAfter);
+      M.insertInstruction(&*next, instrDealloc);
+      M.insertInstruction(instrDealloc, instrAfter);
     }
 
     instructionID++;

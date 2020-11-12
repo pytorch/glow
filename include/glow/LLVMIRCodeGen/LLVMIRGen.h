@@ -219,6 +219,13 @@ protected:
   llvm::Value *emitConstArray(llvm::IRBuilder<> &builder,
                               llvm::ArrayRef<llvm::Constant *> vals,
                               llvm::Type *elemTy);
+
+  /// Generates LLVM IR to store all the LLVM IR values \p vals consecutively
+  /// starting with the base pointer given by \p basePtr. The LLVM IR values
+  /// \p vals must have same type T and the type of the base must be T*.
+  void emitArrayStore(llvm::IRBuilder<> &builder,
+                      llvm::ArrayRef<llvm::Value *> vals, llvm::Value *basePtr);
+
   /// Generates LLVM IR that computes the dimensions of \p val using \p builder.
   /// The result type is "size_t*".
   llvm::Value *emitValueDims(llvm::IRBuilder<> &builder,

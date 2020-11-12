@@ -102,6 +102,26 @@ Instruction::Operand Instruction::getOperand(unsigned idx) const {
   return ops_[idx];
 }
 
+unsigned Instruction::getNumInputs() const {
+  unsigned numInputs = 0;
+  for (const auto &op : ops_) {
+    if (op.second != OperandKind::Out) {
+      numInputs++;
+    }
+  }
+  return numInputs;
+}
+
+unsigned Instruction::getNumOutputs() const {
+  unsigned numOutputs = 0;
+  for (const auto &op : ops_) {
+    if (op.second != OperandKind::In) {
+      numOutputs++;
+    }
+  }
+  return numOutputs;
+}
+
 llvm::StringRef Instruction::getOperandName(unsigned idx) const {
   switch (getKind()) {
 #define DEF_INSTR(CLASS, NAME)                                                 \

@@ -539,8 +539,8 @@ with the option `-instrument-debug-format=<format>`:
 which instruments the Glow instructions by adding callbacks before and after the execution of
 each instruction. The callbacks have the following API:
     ```c++
-    void glow_instrument_begin(int id, int kind, int inpNum, uint8_t **inpAddr, int *inpSize);
-    void glow_instrument_end  (int id, int kind, int outNum, uint8_t **outAddr, int *outSize);
+    void glow_instrument_before(int id, int kind, int opInp, int opOut, uint8_t **opAddr, int *opSize);
+    void glow_instrument_after (int id, int kind, int opInp, int opOut, uint8_t **opAddr, int *opSize);
     ```
   The prototype and more details about these callbacks are automatically printed in the bundle
 header file. These callbacks must be implemented by the bundle user application. A separate
