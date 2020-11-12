@@ -492,6 +492,16 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const IRFunction &irf);
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const IRFunction *irf);
 
+/// IR instrumentation kind.
+enum class InstrumentKind : unsigned char {
+  /// Instrumentation before an instruction is executed.
+  Before,
+  /// Instrumentation after an instruction is executed.
+  After,
+};
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, InstrumentKind kind);
+
 } // namespace glow
 
 #endif // GLOW_IR_IR_H

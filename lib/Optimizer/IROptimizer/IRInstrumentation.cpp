@@ -87,8 +87,8 @@ static bool performDebugInstrumentation(IRFunction &M) {
         continue;
       }
     }
-    if (isa<DebugPrintInst>(I) || isa<AllocActivationInst>(I) ||
-        isa<DeallocActivationInst>(I)) {
+    if (isa<DebugPrintInst>(I) || isa<InstrumentInst>(I) ||
+        isa<AllocActivationInst>(I) || isa<DeallocActivationInst>(I)) {
       it = next;
       continue;
     }
@@ -103,7 +103,7 @@ static bool performDebugInstrumentation(IRFunction &M) {
     std::string instrName = I->getName().str();
     if (debugInfoWrite) {
       debugInfoFile << "\n";
-      debugInfoFile << "Type: " << I->getKindName() << "\n";
+      debugInfoFile << "Kind: " << I->getKindName() << "\n";
       debugInfoFile << "Name: " << instrName << "\n";
     }
 
@@ -209,15 +209,16 @@ static bool performIRInstrumentation(IRFunction &M) {
     }
 
     // Do not instrument other debug or memory related instructions.
-    if (isa<DebugPrintInst>(I) || isa<AllocActivationInst>(I) ||
-        isa<DeallocActivationInst>(I) || isa<TensorViewInst>(I)) {
+    if (isa<DebugPrintInst>(I) || isa<InstrumentInst>(I) ||
+        isa<AllocActivationInst>(I) || isa<DeallocActivationInst>(I) ||
+        isa<TensorViewInst>(I)) {
       it = next;
       continue;
     }
 
     // Print instruction info.
     instrumentInfoFile << "ID   : " << instructionID << "\n";
-    instrumentInfoFile << "Type : " << (unsigned)(I->getKind()) << " ("
+    instrumentInfoFile << "Kind : " << (unsigned)(I->getKind()) << " ("
                        << I->getKindName() << ")\n";
     instrumentInfoFile << "Name : " << instrName << "\n";
 
@@ -278,14 +279,16 @@ static bool performIRInstrumentation(IRFunction &M) {
         ElemKind::Int8QTy, {scratchSize}, 0.0, 0);
     auto *allocScratch =
         new AllocActivationInst("instrument.alloc." + instrName, scratchTy);
-    auto *instrBefore = new InstrumentInst(
-        "instrument.before." + instrName, allocScratch, I, instructionID, true);
+    auto *instrBefore =
+        new InstrumentInst("instrument.before." + instrName, allocScratch, I,
+                           instructionID, InstrumentKind::Before);
     M.insertInstruction(I, instrBefore);
     M.insertInstruction(instrBefore, allocScratch);
 
     // Add instrumentation after instruction.
-    auto *instrAfter = new InstrumentInst(
-        "instrument.after." + instrName, allocScratch, I, instructionID, false);
+    auto *instrAfter =
+        new InstrumentInst("instrument.after." + instrName, allocScratch, I,
+                           instructionID, InstrumentKind::After);
     auto *deallocScratch = new DeallocActivationInst(
         "instrument.dealloc." + instrName, allocScratch);
     if (next == e) {

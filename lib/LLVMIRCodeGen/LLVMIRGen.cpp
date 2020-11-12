@@ -3182,7 +3182,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
 
   case Kinded::Kind::InstrumentInstKind: {
     auto *instrumentI = llvm::cast<InstrumentInst>(I);
-    auto *scratch = instrumentI->getScratch();
+    auto *scratch = instrumentI->getOperandsAddr();
 
     // Instruction being instrumented.
     Instruction *instrRef = instrumentI->getInstrRef();
@@ -3201,7 +3201,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     // Print the IR instrumentation callback API.
     printInstrumentIR_ = true;
 
-    if (instrumentI->getBegin()) {
+    // Generate instrumentation.
+    auto instrumentKind = instrumentI->getInstrumentKind();
+    if (instrumentKind == InstrumentKind::Before) {
 
       // Input operands addresses and sizes.
       std::vector<llvm::Value *> inpAddrArray;
@@ -3244,7 +3246,7 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       auto *F = getFunction("instrument_begin");
       createCall(builder, F, {ID, type, inpNum, inpAddr, inpSize});
 
-    } else {
+    } else if (instrumentKind == InstrumentKind::After) {
 
       // Output operands addresses and sizes.
       std::vector<llvm::Value *> outAddrArray;
@@ -3286,6 +3288,9 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
       // Create callback call.
       auto *F = getFunction("instrument_end");
       createCall(builder, F, {ID, type, outNum, outAddr, outSize});
+
+    } else {
+      llvm_unreachable("Instrumentation kind not supported!");
     }
     break;
   }
@@ -3500,7 +3505,7 @@ static const char *instrumentIRApi =
 // - This callback must be defined by the bundle user application.
 // ARGUMENTS:
 //   id      - instruction instance ID
-//   type    - instruction type
+//   kind    - instruction kind (type)
 //   inpNum  - number of input operands
 //   inpAddr - input operands addresses
 //   inpSize - input operands sizes in bytes
@@ -3510,7 +3515,7 @@ static const char *instrumentIRApi =
 // - Look in the metafile "instrument-ir.info" generated during compile-time
 //   to see more information about the instrumented instructions.
 // -----------------------------------------------------------------------------
-void glow_instrument_begin(int id, int type, int inpNum, uint8_t **inpAddr, int *inpSize);
+void glow_instrument_begin(int id, int kind, int inpNum, uint8_t **inpAddr, int *inpSize);
 
 // -----------------------------------------------------------------------------
 // Callback function used for Glow IR instruction instrumentation:
@@ -3518,7 +3523,7 @@ void glow_instrument_begin(int id, int type, int inpNum, uint8_t **inpAddr, int 
 // - This callback must be defined by the bundle user application.
 // ARGUMENTS:
 //   id      - instruction instance ID
-//   type    - instruction type
+//   kind    - instruction kind (type)
 //   outNum  - number of output operands
 //   outAddr - output operands addresses
 //   outSize - output operands sizes in bytes
@@ -3528,7 +3533,7 @@ void glow_instrument_begin(int id, int type, int inpNum, uint8_t **inpAddr, int 
 // - Look in the metafile "instrument-ir.info" generated during compile-time
 //   to see more information about the instrumented instructions.
 // -----------------------------------------------------------------------------
-void glow_instrument_end(int id, int type, int outNum, uint8_t **outAddr, int *outSize);
+void glow_instrument_end(int id, int kind, int outNum, uint8_t **outAddr, int *outSize);
 )RAW";
 
 std::string LLVMIRGen::getBundleHeaderExtra() const {

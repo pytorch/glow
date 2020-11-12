@@ -747,4 +747,18 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &os, const IRFunction *irf) {
   irf->dump(os);
   return os;
 }
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, InstrumentKind kind) {
+  switch (kind) {
+  case InstrumentKind::Before:
+    os << "Before";
+    break;
+  case InstrumentKind::After:
+    os << "After";
+    break;
+  default:
+    llvm_unreachable("Unknown instrumentation kind");
+  }
+  return os;
+}
 } // namespace glow

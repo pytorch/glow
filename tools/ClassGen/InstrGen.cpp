@@ -1004,15 +1004,15 @@ int main(int argc, char **argv) {
       .autoVerify(VerifyKind::NoVerify);
 
   /// Instruction used to instrument other instructions. InstrRef is a reference
-  /// of the instruction being instrumented, ID is an unique identifier assigned
-  /// to the instrumented instruction and Begin is whether the instance begins
-  /// or ends the instrumentation. Scratch is an operand used to temporarily
-  /// store context information about the instrumented instruction.
+  /// of the instruction being instrumented, ID is a unique identifier assigned
+  /// to the instrumented instruction and InstrumentKind is the instrumentation
+  /// kind/type. OperandsAddr is a temporary buffer used to store the addresses
+  /// of the operands of the instrumented instruction.
   BB.newInstr("Instrument")
-      .addOperand("Scratch", OperandKind::Out)
+      .addOperand("OperandsAddr", OperandKind::Out)
       .addMember(MEMBER_TYPE_INFO(glow::Instruction *), "InstrRef")
       .addMember(MemberType::Unsigned, "ID")
-      .addMember(MemberType::Boolean, "Begin")
+      .addMember(MEMBER_TYPE_INFO(glow::InstrumentKind), "InstrumentKind")
       .autoVerify(VerifyKind::NoVerify);
 
   //===--------------------------------------------------------------------===//
