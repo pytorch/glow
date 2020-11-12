@@ -484,11 +484,60 @@ static Error ProcessPackedParams(torch::jit::Graph &graph,
   return Error::success();
 }
 
+/// Implementation of to_backend preprocess method for Glow. \returns the
+/// preprocessed Module if successful or an Error otherwise which is converted
+/// to an exception for handling within PyTorch.
+static Expected<torch::jit::Module>
+preprocessImpl(torch::jit::Module origModule,
+               c10::impl::GenericDict method_compile_spec) {
+  // Preprocess each method
+  for (const auto &kv : method_compile_spec) {
+    const auto &methodName = kv.key().toStringRef();
+    auto method = origModule.get_method(methodName);
+    auto graph = method.graph();
+
+    GraphOutputType graphOutputType;
+    ASSIGN_VALUE_OR_RETURN_ERR(graphOutputType,
+                               checkGraphInputsAndOutputs(*graph));
+
+    // Output lists no supported yet
+    if (graphOutputType == GraphOutputType::TENSOR_LIST) {
+      return MAKE_ERR("Tensor list output not supported.");
+    }
+
+    detail::fuseConcat(graph);
+    torch::jit::Inline(*graph);
+    RewriteQuantPackedParamOps(graph);
+    RETURN_IF_ERR(ProcessPackedParams(*graph, origModule._ivalue()));
+  }
+
+  // Freeze
+  auto preprocModule = torch::jit::freeze_module(origModule);
+
+  // Cleanup JIT graphs
+  for (const auto &kv : method_compile_spec) {
+    const auto &methodName = kv.key().toStringRef();
+    auto method = preprocModule.get_method(methodName);
+    auto graph = method.graph();
+    EliminateDeadCode(graph);
+    EliminateCommonSubexpression(graph);
+    ConstantPooling(graph);
+  }
+
+  return preprocModule;
+}
+
 c10::IValue
 TorchGlowBackend::preprocess(c10::IValue mod,
                              c10::impl::GenericDict method_compile_spec) {
-  // We do nothing in the preprocess, instead we do them in compile()
-  return mod;
+
+  torch::jit::Module origModule = mod.toModule();
+  origModule.eval();
+  auto resOrErr = preprocessImpl(origModule, method_compile_spec);
+  if (!resOrErr) {
+    throw std::runtime_error(ERR_TO_STRING(resOrErr.takeError()));
+  }
+  return resOrErr->_ivalue();
 }
 
 Error applySettingsOverrideFlagsToPyTorchLoaderSettings(
@@ -555,57 +604,17 @@ Error applyFuserSettingsToPyTorchLoaderSettings(
 static Expected<std::unordered_map<
     std::string, std::pair<std::unique_ptr<CachingGraphRunner>,
                            std::unique_ptr<JITGraphRunner>>>>
-compileImpl(const torch::jit::Module &origModule,
+compileImpl(const torch::jit::Module &module,
             const c10::impl::GenericDict &method_compile_spec) {
 
   std::unordered_map<std::string, std::pair<std::unique_ptr<CachingGraphRunner>,
                                             std::unique_ptr<JITGraphRunner>>>
       methodToRunnerMap;
-  std::unordered_map<std::string, std::shared_ptr<torch::jit::Graph>>
-      nameToOrigGraph;
-
-  for (const auto &kv : method_compile_spec) {
-    const auto &methodName = kv.key().toStringRef();
-    auto method = origModule.get_method(methodName);
-    auto graph = method.graph();
-    nameToOrigGraph[methodName] = graph->copy();
-
-    GraphOutputType graphOutputType;
-    ASSIGN_VALUE_OR_RETURN_ERR(graphOutputType,
-                               checkGraphInputsAndOutputs(*graph));
-
-    // Output lists no supported yet
-    if (graphOutputType == GraphOutputType::TENSOR_LIST) {
-      return MAKE_ERR("Tensor list output not supported.");
-    }
-
-    detail::fuseConcat(graph);
-    torch::jit::Inline(*graph);
-    RewriteQuantPackedParamOps(graph);
-    RETURN_IF_ERR(ProcessPackedParams(*graph, origModule._ivalue()));
-  }
-
-  // Freeze
-  auto preprocModule = torch::jit::freeze_module(origModule);
-
-  // Cleanup JIT graphs
-  for (const auto &kv : method_compile_spec) {
-    const auto &methodName = kv.key().toStringRef();
-    auto method = preprocModule.get_method(methodName);
-    auto graph = method.graph();
-    EliminateDeadCode(graph);
-    EliminateCommonSubexpression(graph);
-    ConstantPooling(graph);
-  }
 
   // Compile each method
   for (const auto &kv : method_compile_spec) {
     const auto methodName = kv.key().toString()->string();
-    const auto &method = preprocModule.get_method(methodName);
-    auto it = nameToOrigGraph.find(methodName);
-    CHECK(it != nameToOrigGraph.end())
-        << "Cannot find corresponding original graph for graph: " << methodName;
-    auto origGraph = it->second;
+    const auto &method = module.get_method(methodName);
 
     const CompilationSpec &spec = *kv.value().toCustomClass<CompilationSpec>();
     RETURN_IF_ERR(spec.validate());
@@ -648,7 +657,7 @@ compileImpl(const torch::jit::Module &origModule,
 
       // Run fusion flow using JIT graph runner
       std::unique_ptr<JITGraphRunner> runner = std::make_unique<JITGraphRunner>(
-          preprocModule._ivalue(), graph, baseSettings);
+          module._ivalue(), graph, baseSettings);
       methodToRunnerMap.emplace(methodName,
                                 std::make_pair(nullptr, std::move(runner)));
     } else {
@@ -664,8 +673,7 @@ compileImpl(const torch::jit::Module &origModule,
               graph,
               glow::getHostManager(baseSettings.backendName,
                                    baseSettings.numDevices),
-              baseSettings, /*useRunOnly*/ true, origGraph,
-              origModule._ivalue());
+              baseSettings, /*useRunOnly*/ true);
 
       // Compile each compilation group
       for (const auto &compilationGroup : spec.compilation_groups) {
@@ -696,7 +704,6 @@ TorchGlowBackend::compile(c10::IValue processed,
                           c10::impl::GenericDict method_compile_spec) {
   auto module = processed.toModule().clone();
 
-  module.eval();
   auto runnersOrErr = compileImpl(module, method_compile_spec);
 
   if (!runnersOrErr) {

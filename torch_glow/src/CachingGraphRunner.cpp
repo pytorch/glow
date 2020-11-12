@@ -351,8 +351,7 @@ int64_t CachingGraphRunner::runOnJit(torch::jit::Stack &stack) {
   std::lock_guard<std::mutex> guard(runJitLock);
   bool temp = getGlobalPyTorchLoaderSettingsMutable().fusionPassEnabled;
   getGlobalPyTorchLoaderSettingsMutable().fusionPassEnabled = false;
-  int64_t startTime;
-  startTime = TraceEvent::now();
+  int64_t startTime = TraceEvent::now();
   ptGraphExecutor_.run(stack);
   int64_t runTime = TraceEvent::now() - startTime;
   getGlobalPyTorchLoaderSettingsMutable().fusionPassEnabled = temp;
@@ -415,12 +414,6 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
   // Run the subgraph using JIT for comparison with Glow.
   torch::jit::Stack copyStack;
   if (settings.writeToOnnx || settings.jitVsGlowCompare) {
-
-    // We will use original graph for runOnJit, which means the first input
-    // should be module.
-    if (origGraph_ != nullptr) {
-      copyStack.push_back(module_);
-    }
     for (auto &ival : stack) {
       if (ival.isTensor()) {
         copyStack.push_back(ival.deepcopy());
@@ -886,18 +879,11 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
 CachingGraphRunner::CachingGraphRunner(
     std::shared_ptr<torch::jit::Graph> graph,
     std::shared_ptr<runtime::HostManager> hostManager,
-    PyTorchLoaderSettings defaultSettings, bool useRunOnly,
-    std::shared_ptr<torch::jit::Graph> origGraph, c10::IValue module)
-    : graph_(graph), origGraph_(origGraph), ptGraphExecutor_(graph, "forward"),
-      module_(module), hostManager_(hostManager),
+    PyTorchLoaderSettings defaultSettings, bool useRunOnly)
+    : graph_(graph), ptGraphExecutor_(graph, "forward"),
+      hostManager_(hostManager),
       backend_(*EXIT_ON_ERR(hostManager->getBackend())),
       defaultSettings_(std::move(defaultSettings)), useRunOnly_(useRunOnly) {
-
-  if (origGraph_ != nullptr) {
-    ptGraphExecutor_ = torch::jit::GraphExecutor(origGraph_, "forward");
-  } else {
-    ptGraphExecutor_ = torch::jit::GraphExecutor(graph_, "forward");
-  }
   mergedTraceContext_ = glow::make_unique<TraceContext>(TraceLevel::STANDARD);
 }
 
