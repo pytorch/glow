@@ -20,6 +20,7 @@
 
 #include "glow/Exporter/ONNXModelWriter.h"
 #include "glow/Flags/Flags.h"
+#include "glow/Runtime/DeferredWeightLoader.h"
 #include "glow/Support/Support.h"
 
 #include <c10/util/hash.h>
@@ -860,7 +861,23 @@ Error CachingGraphRunner::warmCache(const std::vector<InputMeta> &inputMeta,
 
   glow::CompilationContext cctx;
   initializeCompiliationContextFromSettings(cctx, settings);
-  cctx.deferredWeightLoader = loader;
+
+  if (loader) {
+    std::map<std::string, Type> staticPlaceholderTypes;
+    for (auto *PH : glowModule->getPlaceholders()) {
+      if (PH->isStatic()) {
+        staticPlaceholderTypes[std::string(PH->getName())] = *PH->getType();
+      }
+    }
+    loader->setTypeInfo(std::move(staticPlaceholderTypes));
+
+    cctx.deferredWeightLoader = loader;
+
+    // Signal that we want to fold convertTo and Quantize into static
+    // Placeholders. Also want to do this for AOT optimization even if we don't
+    // have a deferred blob reader present.
+    cctx.optimizationOpts.foldStaticPlaceholderConversions = true;
+  }
 
   TRACE_EVENT_BEGIN(traceContext.get(), TraceLevel::RUNTIME, "addNetwork");
   RETURN_IF_ERR(hostManager_->addNetwork(std::move(glowModule), cctx));

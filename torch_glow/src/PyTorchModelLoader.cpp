@@ -5331,7 +5331,7 @@ Error PyTorchModelLoader::loadGlowEmbeddingBag(const torch::jit::Node *ptNode) {
                     "Currently only support include_last_offset='True'");
   glow::NodeValue perSampleWeights = loadNodeValueOrCreateBroadcastedConstant(
       inputs[GlowEmbeddingBagInputs::per_sample_weights], "EmbeddingBag.ones",
-      glow::Type(ElemKind::Int64ITy, {indices.dims()[0]}), 1.0);
+      glow::Type(ElemKind::FloatTy, {indices.dims()[0]}), 1.0);
 
   auto *EB = F_.createEmbeddingBag("GlowEmbeddingBag", ph->getOutput(),
                                    perSampleWeights, indices, offsets,
