@@ -801,13 +801,21 @@ struct EmbeddingBagInputs {
 /// Indexes of fb::glow_embedding_bag inputs.
 struct GlowEmbeddingBagInputs {
   enum {
-    indices,
+    indices = 0,
     offsets,
     weight_qualname,
     num_embeddings,
     embedding_dim,
     per_sample_weights,
     include_last_offset,
+  };
+};
+
+/// Indexes of fb::lengths_range inputs.
+struct LengthsRangeInputs {
+  enum {
+    lengths = 0,
+    shapes,
   };
 };
 
@@ -841,12 +849,20 @@ struct EmbeddingBag4BitRowwiseOffsetsInputs {
   };
 };
 
-/// Indexes used for fb::equally_split inputs.
-struct EquallySplitInputs {
+/// Indexes used for glow::fused_split inputs.
+struct FusedSplitInputs {
   enum {
     input = 0,
     num_split,
     dim,
+  };
+};
+
+/// Indexes used for fb::fast_gather inputs.
+struct FastGatherInputs {
+  enum {
+    input = 0,
+    indices,
   };
 };
 
@@ -948,6 +964,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadQuantizedConvReluUnpacked},
       {{"glow::unpacked_quantized_linear"},
        &PyTorchModelLoader::loadQuantizedLinearUnpacked},
+      {{"glow::fused_split"}, &PyTorchModelLoader::loadFusedSplit},
       {{"quantized::linear"}, &PyTorchModelLoader::loadQuantizedLinear},
       {{"quantized::conv2d"}, &PyTorchModelLoader::loadQuantizedConv},
       {{"quantized::conv3d"}, &PyTorchModelLoader::loadQuantizedConv},
@@ -1003,6 +1020,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadGlowEmbeddingBagByteRowwiseOffsets},
       {{"fb::glow_embedding_bag_4bit_rowwise_offsets"},
        &PyTorchModelLoader::loadGlowEmbeddingBag4bitRowwiseOffsets},
+      // Disabled for now since this node needs extra information
+      //{{"fb::lengths_range"}, &PyTorchModelLoader::loadLengthsRange},
       {{"_caffe2::BatchPermutation"},
        &PyTorchModelLoader::loadBatchPermutation},
       {{"quantized::embedding_bag_byte_rowwise_offsets"},
@@ -1013,7 +1032,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadEmbeddingBagByteRowwiseOffsets},
       {{"fb::embedding_bag_4bit_rowwise_offsets"},
        &PyTorchModelLoader::loadEmbeddingBag4BitRowwiseOffsets},
-      {{"fb::equally_split"}, &PyTorchModelLoader::loadEquallySplit},
+      {{"fb::fast_gather"}, &PyTorchModelLoader::loadFastGather},
       {{"_caffe2::RoIAlign"}, &PyTorchModelLoader::loadRoiAlign},
       {{"_caffe2::RoIAlignRotated"}, &PyTorchModelLoader::loadRoiAlignRotated},
       {{"_caffe2::BBoxTransform"}, &PyTorchModelLoader::loadBBoxTransform},
@@ -5580,33 +5599,69 @@ Error PyTorchModelLoader::loadGlowEmbeddingBag4bitRowwiseOffsets(
   return loadRowwiseQuantizedEmbeddingBagHelper(ptNode, true);
 }
 
-Error PyTorchModelLoader::loadEquallySplit(const torch::jit::Node *ptNode) {
+Error PyTorchModelLoader::loadFusedSplit(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, -1));
 
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      input, getGlowNodeValueForValue(inputs[EquallySplitInputs::input]));
+      input, getGlowNodeValueForValue(inputs[FusedSplitInputs::input]));
 
   int num_split;
   ASSIGN_VALUE_OR_RETURN_ERR(
       num_split,
-      iValToInt(getGlowIValueForValue(inputs[EquallySplitInputs::num_split])));
+      iValToInt(getGlowIValueForValue(inputs[FusedSplitInputs::num_split])));
+
+  RETURN_ERR_IF_NOT(num_split == outputs.size(),
+                    "Number of splits not equal to output size!");
+
   int dim;
   ASSIGN_VALUE_OR_RETURN_ERR(
-      dim, iValToInt(getGlowIValueForValue(inputs[EquallySplitInputs::dim])));
+      dim, iValToInt(getGlowIValueForValue(inputs[FusedSplitInputs::dim])));
 
   std::vector<glow::SliceNode *> splitOutputs;
   F_.createSplit("EquallySplit", input, num_split, dim, {}, splitOutputs);
-  std::vector<glow::NodeValue> nodeValues;
   for (size_t i = 0; i < splitOutputs.size(); ++i) {
-    nodeValues.push_back(splitOutputs[i]->getResult());
+    RETURN_IF_ERR(addValueMapping(outputs[i], splitOutputs[i]->getResult()));
   }
-  GlowIValue glowIVal;
-  glowIVal.fromNodeValueList(std::move(nodeValues));
+  return Error::success();
+}
 
-  RETURN_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
+Error PyTorchModelLoader::loadFastGather(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[FastGatherInputs::input]));
+
+  glow::NodeValue indices;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      indices, getGlowNodeValueForValue(inputs[FastGatherInputs::indices]));
+
+  auto *g = F_.createGather("FastGather", input, indices);
+
+  RETURN_ERR(addValueMapping(outputs[0], g->getResult()));
+}
+
+Error PyTorchModelLoader::loadLengthsRange(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue lengths;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      lengths, getGlowNodeValueForValue(inputs[LengthsRangeInputs::lengths]));
+
+  GlowIValue *shapes;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      shapes, getGlowIValueForValue(inputs[LengthsRangeInputs::shapes]));
+  RETURN_ERR_IF_NOT(shapes->isNone() == true, "Expects shapes to be None");
+  // TODO: fix UINT_MAX
+  auto *LRF = F_.createLengthsRangeFill("LengthsRange", lengths, UINT_MAX);
+  RETURN_ERR(addValueMapping(outputs[0], LRF->getResult()));
 }
 
 Error PyTorchModelLoader::loadRoiAlignImpl(const torch::jit::Node *ptNode,

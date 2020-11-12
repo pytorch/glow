@@ -369,7 +369,11 @@ private:
 
   // Load a PyTorch fb::equally_split.
   // \returns error on failure.
-  Error loadEquallySplit(const torch::jit::Node *ptNode);
+  Error loadFusedSplit(const torch::jit::Node *ptNode);
+
+  // Load a PyTorch fb::fast_gather.
+  // \returns error on failure.
+  Error loadFastGather(const torch::jit::Node *ptNode);
 
   // Helper function that implements the loading logic for
   // fb::embedding_bag_4bit_rowwise_offsets and
@@ -392,6 +396,10 @@ private:
   // \returns error on failure
   Error loadRowwiseQuantizedEmbeddingBagHelper(const torch::jit::Node *ptNode,
                                                bool is4Bit = false);
+
+  // Load a PyTorch fb::lengths_range node.
+  // \returns error on failure.
+  Error loadLengthsRange(const torch::jit::Node *ptNode);
 
   // Load a PyTorch _caffe2::RoIAlign op.
   // \returns error on failure.
