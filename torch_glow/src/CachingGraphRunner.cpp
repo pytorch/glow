@@ -445,6 +445,14 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       glow::TypeRef ty = ph->getType();
 
       auto ptTensor = input.toTensor();
+
+      // Make sure the runtime pytorch tensor type matches the placeholder
+      CHECK(ty->getElementType() ==
+            scalarTypeToElemKind(ptTensor.scalar_type()))
+          << "Found type mismatch for input #" << placeholderI
+          << ": pytorch tensor is " << ptTensor.toString() << ", ph type is "
+          << ty->toString();
+
       bool needClone = false;
 
       if (ptTensor.is_quantized()) {
