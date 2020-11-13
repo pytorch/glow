@@ -4902,10 +4902,10 @@ bool FoldElemKindConversionIntoOutputs::run(Function *F,
   return changed;
 }
 
-/// Broadcasts are implemented via as BroadcastNode. This helper unwinds
-/// BroadcastNode -- it \returns the original Node before the broadcasting \p N
-/// if the broadcast takes place between the 0th dimension to \p endDim.
-/// Otherwise, \p return \p N.
+/// Broadcasts are implemented via 1) Reshape followed by a series of Tiles 2)
+/// BroadcastNode. This helper unwinds Broadcast operation -- it \returns the
+/// original Node before the broadcasting \p N if the broadcast takes place
+/// between the 0th dimension to \p endDim. Otherwise, \p return \p N.
 static NodeValue unwindBroadcast(NodeValue N, unsigned_t endDim) {
   if (auto *BN = dyn_cast<BroadcastNode>(N)) {
     const auto newShape = BN->getTargetDim();
@@ -4923,6 +4923,22 @@ static NodeValue unwindBroadcast(NodeValue N, unsigned_t endDim) {
     }
 
     return BN->getInput();
+  } else {
+    while (TileNode *TN = dyn_cast<TileNode>(N)) {
+      // Check that the axis of the current Tile is inside of the expected
+      // provided endDim.
+      if (TN->getAxis() >= endDim) {
+        return N;
+      }
+      // Applicable only if original dim is 1 in the Broadcast's Tile.
+      if (TN->getInput().dims()[TN->getAxis()] != 1) {
+        return N;
+      }
+      N = TN->getInput();
+    }
+    if (ReshapeNode *RN = dyn_cast<ReshapeNode>(N)) {
+      return RN->getInput();
+    }
   }
 
   return N;
