@@ -478,11 +478,11 @@ llvm::Value *LLVMIRGen::emitConstArray(llvm::IRBuilder<> &builder,
 
 void LLVMIRGen::emitArrayStore(llvm::IRBuilder<> &builder,
                                llvm::ArrayRef<llvm::Value *> vals,
-                               llvm::Value *basePtr) {
+                               llvm::Value *basePtr, unsigned baseIdx) {
   for (size_t idx = 0, end = vals.size(); idx < end; ++idx) {
     assert(vals[idx]->getType()->getPointerTo() == basePtr->getType() &&
            "Mismatch between pointer and value type!");
-    auto *storeIdx = builder.getInt32(idx);
+    auto *storeIdx = builder.getInt32(idx + baseIdx);
     auto *storeAddr = builder.CreateGEP(basePtr, storeIdx);
     builder.CreateStore(vals[idx], storeAddr);
   }

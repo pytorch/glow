@@ -221,10 +221,12 @@ protected:
                               llvm::Type *elemTy);
 
   /// Generates LLVM IR to store all the LLVM IR values \p vals consecutively
-  /// starting with the base pointer given by \p basePtr. The LLVM IR values
-  /// \p vals must have same type T and the type of the base must be T*.
+  /// starting with the base pointer given by \p basePtr and the relative base
+  /// index \p baseIdx. The LLVM IR values \p vals must have same type T and the
+  /// type of the base pointer must be T*.
   void emitArrayStore(llvm::IRBuilder<> &builder,
-                      llvm::ArrayRef<llvm::Value *> vals, llvm::Value *basePtr);
+                      llvm::ArrayRef<llvm::Value *> vals, llvm::Value *basePtr,
+                      unsigned baseIdx = 0);
 
   /// Generates LLVM IR that computes the dimensions of \p val using \p builder.
   /// The result type is "size_t*".
