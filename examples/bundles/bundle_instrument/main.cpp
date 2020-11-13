@@ -252,7 +252,6 @@ void dumpToFile(void *data, int len, char *fileName) {
   if (!fh) {
     printf("ERROR: Error opening file!");
   }
-  printf("Dumping %d bytes ... \n", len);
   size_t lenWrite = fwrite(data, 1, len, fh);
   if (len != lenWrite) {
     printf("ERROR: Error writing to file!");
@@ -264,32 +263,49 @@ void dumpToFile(void *data, int len, char *fileName) {
 #error "INSTRUMENT_IR_DIR not defined"
 #endif
 
-extern "C" {
-
+// Variables used to store the dump file names.
 char filename[1000];
 int buffIdx = 0;
 
+// Variables to check the number of instructions and dumps.
+int instrNum = 0;
+int buffNum = 0;
+
+extern "C" {
 // We dump the same binary content as the -instrument-debug which dumps
 // binaries with names dataxxxx.bin starting with the output operands and then
 // the input operands.
-void glow_instrument_before(int id, int kind, int opInp, int opOut, uint8_t **opAddr, int *opSize) {
+void glow_instrument_before(int id, int kind, int opInp, int opOut,
+                            uint8_t **opAddr, int *opSize) {
+  // Check instruction ID.
+  if (id != instrNum) {
+    printf("ERROR: Instruction ID mismatch!\n");
+  }
   // Dump the input operands.
   buffIdx += opOut;
   for (size_t idx = 0; idx < opInp; idx++) {
     sprintf(filename, "%s/data%04d.bin", INSTRUMENT_IR_DIR, buffIdx);
     buffIdx++;
     dumpToFile(opAddr[idx], opSize[idx], filename);
+    buffNum++;
   }
   buffIdx -= opInp;
   buffIdx -= opOut;
 }
 
-void glow_instrument_after(int id, int kind, int opInp, int opOut, uint8_t **opAddr, int *opSize) {
+void glow_instrument_after(int id, int kind, int opInp, int opOut,
+                           uint8_t **opAddr, int *opSize) {
+  // Check instruction ID.
+  if (id != instrNum) {
+    printf("ERROR: Instruction ID mismatch!\n");
+  }
+  instrNum++;
   // Dump the output operands.
   for (size_t idx = 0; idx < opOut; idx++) {
     sprintf(filename, "%s/data%04d.bin", INSTRUMENT_IR_DIR, buffIdx);
     buffIdx++;
     dumpToFile(opAddr[opInp + idx], opSize[opInp + idx], filename);
+    buffNum++;
   }
   buffIdx += opInp;
 }
@@ -312,6 +328,10 @@ int main(int argc, char **argv) {
   if (errCode != GLOW_SUCCESS) {
     printf("Error running bundle: error code %d\n", errCode);
   }
+
+  // Check number of dumps.
+  printf("Number of instructions: %d\n", instrNum);
+  printf("Number of data dumps: %d\n", buffNum);
 
   // Print results.
   printResults();
