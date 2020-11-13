@@ -109,6 +109,7 @@ std::set<std::string> glow::backendTestBlacklist = {
     "BatchSparseToDense_Float/0",
     "BatchSparseToDense_Float16/0",
     "BatchSparseToDense_Float_Int32_Int32/0",
+    "batchedReduceProdDims01/0",
     "Gelu_Float16/0",
     "ReluSimple_Float16/0",
     "PReluSimple_Float16/0",

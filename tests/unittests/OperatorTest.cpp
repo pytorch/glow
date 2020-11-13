@@ -3592,6 +3592,144 @@ TEST_P(OperatorTest, batchedReduceSumSquare_Float) {
 }
 
 /// Helper to test BatchedReduceAdd using \p DTy.
+template <Kinded::Kind op = Kinded::Kind::BatchedReduceAddNodeKind>
+static void
+testBatchedReduceMulti(glow::PlaceholderBindings &bindings, glow::Module &mod,
+                       glow::Function *F, glow::ExecutionEngine &EE,
+                       llvm::ArrayRef<dim_t> shape,
+                       llvm::ArrayRef<unsigned_t> axes, Tensor &expected) {
+  size_t size = 1;
+  for (const auto &dim : shape) {
+    size *= dim;
+  }
+
+  float factor = (op == Kinded::Kind::BatchedReduceProdNodeKind) ? 0.2 : 1;
+  float offset = (op == Kinded::Kind::BatchedReduceProdNodeKind) ? 0.2 : 0;
+
+  auto *batch = mod.createPlaceholder(ElemKind::FloatTy, shape, "batch", false);
+  auto IH = bindings.allocate(batch)->getHandle();
+  for (size_t i = 0; i < size; i++) {
+    IH.raw(i) = offset + i * factor;
+  }
+
+  Node *R = nullptr;
+  if (op == Kinded::Kind::BatchedReduceAddNodeKind) {
+    R = F->createBatchedReduceAdd("reduce", batch, axes);
+  }
+  if (op == Kinded::Kind::BatchedReduceProdNodeKind) {
+    R = F->createBatchedReduceProd("reduce", batch, axes);
+  }
+  if (op == Kinded::Kind::BatchedReduceSumSquareNodeKind) {
+    R = F->createBatchedReduceSumSquare("reduce", batch, axes);
+  }
+  if (op == Kinded::Kind::BatchedReduceMeanNodeKind) {
+    R = F->createBatchedReduceMean("reduce", batch, axes);
+  }
+  CHECK(R) << "Unrecognized Reduce operator";
+
+  auto *save = F->createSave("save", R);
+  auto *result = bindings.allocate(save->getPlaceholder());
+
+  EE.compile(CompilationMode::Infer);
+  EE.run(bindings);
+  if (op == Kinded::Kind::BatchedReduceProdNodeKind) {
+    EXPECT_TRUE(result->isEqual(expected, 0.6));
+  } else {
+    EXPECT_TRUE(result->isEqual(expected));
+  }
+}
+
+/// Test reduction of multiple dimensions.
+TEST_P(OperatorTest, batchedReduceAddDims13) {
+  CHECK_IF_ENABLED();
+  Tensor expected(ElemKind::FloatTy, {2, 4});
+  expected.getHandle<float>() = {330, 405, 480, 555, 1230, 1305, 1380, 1455};
+  testBatchedReduceMulti(bindings_, mod_, F_, EE_, {2, 3, 4, 5}, {1, 3},
+                         expected);
+}
+
+/// Test reduction of multiple dimensions.
+TEST_P(OperatorTest, batchedReduceAddDims03) {
+  CHECK_IF_ENABLED();
+  Tensor expected(ElemKind::FloatTy, {3, 4});
+  expected.getHandle<float>() = {320, 370, 420, 470, 520, 570,
+                                 620, 670, 720, 770, 820, 870};
+  testBatchedReduceMulti(bindings_, mod_, F_, EE_, {2, 3, 4, 5}, {0, 3},
+                         expected);
+}
+
+/// Test reduction of multiple dimensions.
+TEST_P(OperatorTest, batchedReduceAddDims23) {
+  CHECK_IF_ENABLED();
+  Tensor expected(ElemKind::FloatTy, {2, 3});
+  expected.getHandle<float>() = {190, 590, 990, 1390, 1790, 2190};
+  testBatchedReduceMulti(bindings_, mod_, F_, EE_, {2, 3, 4, 5}, {2, 3},
+                         expected);
+}
+
+/// Test reduction of multiple dimensions.
+TEST_P(OperatorTest, batchedReduceAddDims01) {
+  CHECK_IF_ENABLED();
+  Tensor expected(ElemKind::FloatTy, {4, 5});
+  expected.getHandle<float>() = {300, 306, 312, 318, 324, 330, 336,
+                                 342, 348, 354, 360, 366, 372, 378,
+                                 384, 390, 396, 402, 408, 414};
+  testBatchedReduceMulti(bindings_, mod_, F_, EE_, {2, 3, 4, 5}, {0, 1},
+                         expected);
+}
+
+/// Test reduction of multiple dimensions.
+TEST_P(OperatorTest, batchedReduceAddDims013) {
+  CHECK_IF_ENABLED();
+  Tensor expected(ElemKind::FloatTy, {4});
+  expected.getHandle<float>() = {1560, 1710, 1860, 2010};
+  testBatchedReduceMulti(bindings_, mod_, F_, EE_, {2, 3, 4, 5}, {0, 1, 3},
+                         expected);
+}
+
+/// Test reduction of multiple dimensions.
+TEST_P(OperatorTest, batchedReduceAddDims0123) {
+  CHECK_IF_ENABLED();
+  Tensor expected(ElemKind::FloatTy, {});
+  expected.getHandle<float>() = {7140};
+  testBatchedReduceMulti(bindings_, mod_, F_, EE_, {2, 3, 4, 5}, {0, 1, 2, 3},
+                         expected);
+}
+
+/// Test reduction of multiple dimensions.
+TEST_P(OperatorTest, batchedReduceProdDims01) {
+  CHECK_IF_ENABLED();
+  Tensor expected(ElemKind::FloatTy, {4, 5});
+  expected.getHandle<float>() = {
+      27499.155264,   61332.074496,   102271.208256,  151145.938944,  208845.,
+      276318.941184,  354582.639936,  444717.858816,  547875.849024,  665280.,
+      798228.535104,  948097.253376,  1116342.317376, 1304503.087104, 1514205.,
+      1747162.497024, 2005181.994816, 2290164.903936, 2604110.693184, 2949120.};
+  testBatchedReduceMulti<Kinded::Kind::BatchedReduceProdNodeKind>(
+      bindings_, mod_, F_, EE_, {2, 3, 4, 5}, {0, 1}, expected);
+}
+
+/// Test reduction of multiple dimensions.
+TEST_P(OperatorTest, batchedReduceMeanDims03) {
+  CHECK_IF_ENABLED();
+  Tensor expected(ElemKind::FloatTy, {3, 4});
+  expected.getHandle<float>() = {32., 37., 42., 47., 52., 57.,
+                                 62., 67., 72., 77., 82., 87.};
+  testBatchedReduceMulti<Kinded::Kind::BatchedReduceMeanNodeKind>(
+      bindings_, mod_, F_, EE_, {2, 3, 4, 5}, {0, 3}, expected);
+}
+
+/// Test reduction of multiple dimensions.
+TEST_P(OperatorTest, batchedReduceSumSquareDims13) {
+  CHECK_IF_ENABLED();
+  Tensor expected(ElemKind::FloatTy, {2, 4});
+  expected.getHandle<float>() = {11290,  14965,  19390,  24565,
+                                 104890, 117565, 130990, 145165};
+  testBatchedReduceMulti<Kinded::Kind::BatchedReduceSumSquareNodeKind>(
+      bindings_, mod_, F_, EE_, {2, 3, 4, 5}, {1, 3}, expected);
+}
+
+/// Helper to test BatchedReduceAdd using \p DTy.
 template <typename DataType>
 static void testBatchedReduceAdd(glow::PlaceholderBindings &bindings,
                                  glow::Module &mod, glow::Function *F,

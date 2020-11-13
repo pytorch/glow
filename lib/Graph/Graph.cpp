@@ -19,6 +19,7 @@
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/PlaceholderBindings.h"
 #include "glow/Graph/TensorLayout.h"
+#include "glow/Graph/Utils.h"
 #include "glow/Graph/VerifierHelper.h"
 #include "glow/Quantization/Base/Base.h"
 #include "glow/Support/Support.h"
@@ -582,26 +583,6 @@ TypeRef Module::uniqueType(const Type &T) {
 }
 
 TypeRef Module::getVoidTy() { return uniqueType(Type()); }
-
-/// \returns a ShapeVector of rank axes.size() less than the input \p dims,
-/// where the provided \p axes dimensions are removed from the shape.
-static ShapeVector getNewShapeWithoutAxes(llvm::ArrayRef<dim_t> dims,
-                                          llvm::ArrayRef<unsigned_t> axes) {
-  assert(axes.size() <= dims.size() &&
-         "Cannot remove more dimensions than exist.");
-  ShapeVector newDims(dims.begin(), dims.end());
-  ShapeVector shapeAxes(axes.begin(), axes.end());
-
-  // Sort so that looping erase below doesn't fail.
-  std::sort(shapeAxes.rbegin(), shapeAxes.rend());
-
-  for (const auto &axis : shapeAxes) {
-    assert(axis <= dims.size() &&
-           "Axis to remove must fit inside dimensions of the provided dims.");
-    newDims.erase(newDims.begin() + axis);
-  }
-  return newDims;
-}
 
 //===----------------------------------------------------------------------===//
 //                       Node builders
@@ -2128,19 +2109,20 @@ BatchMatMulNode *Function::createBatchMatMul(llvm::StringRef name,
 BatchedReduceAddNode *
 Function::createBatchedReduceAdd(llvm::StringRef name, TypeRef outTy,
                                  NodeValue batch,
-                                 llvm::ArrayRef<unsigned_t> axes) {
-  assert(axes.size() == 1 && "Only supporting single reduction for now.");
-  auto axis = axes[0];
-
+                                 llvm::ArrayRef<unsigned_t> axesRef) {
   // Calculate the expected total number of elements in the output tensor
   // based on the number of elements in the batch divided by the axis
   // dimension.
-  const size_t outNumElements = batch.getType()->size() / batch.dims()[axis];
+  std::vector<unsigned_t> axes(axesRef);
+  std::sort(axes.begin(), axes.end());
+
+  size_t reduceSize = getDimSizeOfAxes(batch.dims(), axes);
+  const size_t outNumElements = batch.getType()->size() / reduceSize;
   (void)outNumElements;
   assert(outTy->size() == outNumElements &&
          "Incorrect number of elements in the output type.");
   auto OT = getParent()->uniqueType(*outTy);
-  return addNode(new BatchedReduceAddNode(name, OT, batch, axis));
+  return addNode(new BatchedReduceAddNode(name, OT, batch, axes));
 }
 
 BatchedReduceSumSquareNode *
@@ -2154,19 +2136,20 @@ Function::createBatchedReduceSumSquare(llvm::StringRef name, NodeValue batch,
 BatchedReduceSumSquareNode *
 Function::createBatchedReduceSumSquare(llvm::StringRef name, TypeRef outTy,
                                        NodeValue batch,
-                                       llvm::ArrayRef<unsigned_t> axes) {
-  assert(axes.size() == 1 && "Only supporting single reduction for now.");
-  auto axis = axes[0];
-
+                                       llvm::ArrayRef<unsigned_t> axesRef) {
   // Calculate the expected total number of elements in the output tensor
   // based on the number of elements in the batch divided by the axis
   // dimension.
-  const size_t outNumElements = batch.getType()->size() / batch.dims()[axis];
+  std::vector<unsigned_t> axes(axesRef);
+  std::sort(axes.begin(), axes.end());
+
+  size_t reduceSize = getDimSizeOfAxes(batch.dims(), axes);
+  const size_t outNumElements = batch.getType()->size() / reduceSize;
   (void)outNumElements;
   assert(outTy->size() == outNumElements &&
          "Incorrect number of elements in the output type.");
   auto OT = getParent()->uniqueType(*outTy);
-  return addNode(new BatchedReduceSumSquareNode(name, OT, batch, axis));
+  return addNode(new BatchedReduceSumSquareNode(name, OT, batch, axes));
 }
 
 BatchedReduceAddNode *
@@ -2231,19 +2214,20 @@ Function::createBatchedReduceMax(llvm::StringRef name, NodeValue batch,
 BatchedReduceProdNode *
 Function::createBatchedReduceProd(llvm::StringRef name, TypeRef outTy,
                                   NodeValue batch,
-                                  llvm::ArrayRef<unsigned_t> axes) {
-  assert(axes.size() == 1 && "Only supporting single reduction for now.");
-  auto axis = axes[0];
-
+                                  llvm::ArrayRef<unsigned_t> axesRef) {
   // Calculate the expected total number of elements in the output tensor
   // based on the number of elements in the batch divided by the axis
   // dimension.
-  const size_t outNumElements = batch.getType()->size() / batch.dims()[axis];
+  std::vector<unsigned_t> axes(axesRef);
+  std::sort(axes.begin(), axes.end());
+
+  size_t reduceSize = getDimSizeOfAxes(batch.dims(), axes);
+  const size_t outNumElements = batch.getType()->size() / reduceSize;
   (void)outNumElements;
   assert(outTy->size() == outNumElements &&
          "Incorrect number of elements in the output type.");
   auto OT = getParent()->uniqueType(*outTy);
-  return addNode(new BatchedReduceProdNode(name, OT, batch, axis));
+  return addNode(new BatchedReduceProdNode(name, OT, batch, axes));
 }
 
 BatchedReduceProdNode *

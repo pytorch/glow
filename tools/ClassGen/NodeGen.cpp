@@ -740,7 +740,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("BatchedReduceAdd")
       .addInput("Batch")
-      .addMember(MemberType::Unsigned, "Axis")
+      .addMember(MemberType::VectorUnsigned, "Axes")
       .addResultFromCtorArg()
       .setDocstring("Accumulates all of the layers in the batch and produce a "
                     "tensor that has the same dimensions as the input tensor "
@@ -748,7 +748,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("BatchedReduceSumSquare")
       .addInput("Batch")
-      .addMember(MemberType::Unsigned, "Axis")
+      .addMember(MemberType::VectorUnsigned, "Axes")
       .addResultFromCtorArg()
       .setDocstring(
           "Accumulates squares of all of the layers in the batch and produce a "
@@ -778,7 +778,7 @@ int main(int argc, char **argv) {
 
   BB.newNode("BatchedReduceProd")
       .addInput("Batch")
-      .addMember(MemberType::Unsigned, "Axis")
+      .addMember(MemberType::VectorUnsigned, "Axes")
       .addResultFromCtorArg()
       .setDocstring("Accumulates the product all of the layers in the batch "
                     " and produce a tensor that has the same dimensions as "

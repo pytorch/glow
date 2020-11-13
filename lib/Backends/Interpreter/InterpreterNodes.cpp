@@ -4761,11 +4761,14 @@ DEFINE_REDUCEADDPROD_INST_IMPL(ReduceProd, 1, *, InstFloatImpl)
 void BoundInterpreterFunction::fwdBatchedReduceAddInst(
     const glow::BatchedReduceAddInst *I) {
   static_assert(max_tensor_dimensions == 6,
-                "Loops below assume max_tensor_dimensions = 6.");
+                "ReduceAdd: supporting up to 6D tensors only.");
 
   auto *batch = I->getBatch();
   auto *dest = I->getDest();
-  const auto axis = I->getAxis();
+  const auto axis = I->getAxes()[0];
+
+  assert(I->getAxes().size() == 1 &&
+         "ReduceAdd: supporting reduction of a single axis only.");
 
   // Initialize both expanded batch and dest dims to the expanded batch
   // dims. This allows us below to iterate over the tensor regardless of its
@@ -4839,11 +4842,14 @@ void BoundInterpreterFunction::fwdBatchedReduceAddInst(
 void BoundInterpreterFunction::fwdBatchedReduceProdInst(
     const glow::BatchedReduceProdInst *I) {
   static_assert(max_tensor_dimensions == 6,
-                "Loops below assume max_tensor_dimensions = 6.");
+                "ReduceProd: supporting up to 6D tensors only.");
 
   auto *batch = I->getBatch();
   auto *dest = I->getDest();
-  const auto axis = I->getAxis();
+  const auto axis = I->getAxes()[0];
+
+  assert(I->getAxes().size() == 1 &&
+         "ReduceAdd: supporting reduction of a single axis only.");
 
   // Initialize both expanded batch and dest dims to the expanded batch
   // dims. This allows us below to iterate over the tensor regardless of its

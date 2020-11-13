@@ -2204,11 +2204,14 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *batch = BR->getBatch();
     auto *destPtr = emitValueAddress(builder, dest);
     auto *batchPtr = emitValueAddress(builder, batch);
-    auto *axis = emitConstDimT(builder, BR->getAxis());
+    auto *axis = emitConstDimT(builder, BR->getAxes()[0]);
+
+    assert(BR->getAxes().size() == 1 &&
+           "ReduceAdd: supporting reduction of a single axis only.");
 
     ShapeVector eBatchDims = expandDimsToMax(batch->dims());
     ShapeVector eDestDims = eBatchDims;
-    eDestDims[BR->getAxis()] = 1;
+    eDestDims[BR->getAxes()[0]] = 1;
 
     auto *batchDims =
         emitConstDimTArray(builder, llvm::makeArrayRef(eBatchDims));
@@ -2252,11 +2255,14 @@ void LLVMIRGen::generateLLVMIRForInstr(llvm::IRBuilder<> &builder,
     auto *batch = BR->getBatch();
     auto *destPtr = emitValueAddress(builder, dest);
     auto *batchPtr = emitValueAddress(builder, batch);
-    auto *axis = emitConstDimT(builder, BR->getAxis());
+    auto *axis = emitConstDimT(builder, BR->getAxes()[0]);
+
+    assert(BR->getAxes().size() == 1 &&
+           "ReduceProd: supporting reduction of a single axis only.");
 
     ShapeVector eBatchDims = expandDimsToMax(batch->dims());
     ShapeVector eDestDims = eBatchDims;
-    eDestDims[BR->getAxis()] = 1;
+    eDestDims[BR->getAxes()[0]] = 1;
 
     auto *batchDims =
         emitConstDimTArray(builder, llvm::makeArrayRef(eBatchDims));

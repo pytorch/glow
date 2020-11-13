@@ -26,6 +26,19 @@
 
 namespace glow {
 
+/// \returns a ShapeVector of rank axes.size() less than the input \p dims,
+/// where the provided \p axes are removed from the shape.
+ShapeVector getNewShapeWithoutAxes(llvm::ArrayRef<dim_t> dims,
+                                   llvm::ArrayRef<unsigned_t> axes);
+
+/// Reshape by combining consecutive \p size axes starting from \p axis.
+ShapeVector getNewShapeCombineAxes(llvm::ArrayRef<dim_t> dims, unsigned_t axis,
+                                   size_t size);
+
+/// Get total size of the selected axes \p axes from dimensions \p dim.
+size_t getDimSizeOfAxes(llvm::ArrayRef<dim_t> dims,
+                        llvm::ArrayRef<unsigned_t> axes);
+
 /// A helper class for ordering the nodes in a post-order order.
 struct PostOrderVisitor : NodeWalker {
   /// A post-order list of nodes.

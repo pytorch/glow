@@ -7078,8 +7078,11 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
       }
       case Kinded::Kind::BatchedReduceAddNodeKind: {
         BatchedReduceAddNode *BR = llvm::cast<BatchedReduceAddNode>(curNode);
+        RETURN_ERR_IF_NOT(BR->getAxes().size() == 1,
+                          "Parallelization for BatchedReduceAdd only supported "
+                          "for single axis.");
         splitDims[BatchedReduceAddNode::BatchIdx] =
-            (BR->getAxis() == 0) ? 1 : 0;
+            (BR->getAxes()[0] == 0) ? 1 : 0;
         ASSIGN_VALUE_OR_RETURN_ERR(
             CN, parallelizeAndReplaceNode(
                     F, curNode, curNumOfChunks, BatchedReduceAddNode::BatchIdx,

@@ -21,6 +21,7 @@
 #include "glow/Graph/Node.h"
 #include "glow/Graph/Nodes.h"
 #include "glow/Graph/TensorLayout.h"
+#include "glow/Graph/Utils.h"
 #include "glow/Optimizer/GraphOptimizer/FunctionPasses.h"
 #include "glow/Optimizer/GraphOptimizer/GraphOptimizer.h"
 #include "glow/Quantization/Quantization.h"
@@ -1400,13 +1401,35 @@ static void lowerChannelShuffleNode(Function *F, CompilationContext &cctx,
   replaceAllUsesOfWith(cctx.loweredInfoMap, CSN.getResult(), R2);
 }
 
+template <typename T>
+Node *reduceMultiAxesOpsHelper(Function *F, CompilationContext &cctx,
+                               const T &RN) {
+  std::vector<unsigned_t> axes = RN.getAxes();
+  std::sort(axes.rbegin(), axes.rend());
+  Node *nRN = RN.getBatch().getNode();
+  auto inTy = RN.getBatch().getType();
+  for (const auto axis : axes) {
+    auto outDims = getNewShapeWithoutAxes(inTy->dims(), axis);
+    auto OT = F->getParent()->uniqueTypeWithNewShape(inTy, outDims);
+    nRN = F->addNode(new T(RN.getName().str() + ".axis" + std::to_string(axis),
+                           OT, nRN, {axis}));
+    inTy = nRN->getNthResult(0).getType();
+  }
+  return nRN;
+}
+
 static void lowerBatchedReduceMeanNode(Function *F, CompilationContext &cctx,
                                        const BatchedReduceMeanNode &BRM) {
-  LOG_SCOPE(F->getLogContext(), "lowerBatchedReduceMeanNode")
+  LOG_SCOPE(F->getLogContext(), "lowerBatchReduceMeanNode")
 
   auto input = BRM.getBatch();
 
-  assert((BRM.getAxes().size() == 1) && "Only supporting single reduction.");
+  if (BRM.getAxes().size() > 1) {
+    auto *nRN = reduceMultiAxesOpsHelper(F, cctx, BRM);
+    replaceAllUsesOfWith(cctx.loweredInfoMap, BRM.getResult(),
+                         nRN->getNthResult(0));
+    return;
+  }
 
   auto axis = BRM.getAxes()[0];
 
@@ -1445,22 +1468,37 @@ static void lowerBatchedReduceMeanNode(Function *F, CompilationContext &cctx,
 static void
 lowerBatchedReduceSumSquareNode(Function *F, CompilationContext &cctx,
                                 const BatchedReduceSumSquareNode &BR) {
-  LOG_SCOPE(F->getLogContext(), "lowerBatchedReduceSumSquareNode")
-
-  auto input = BR.getBatch();
-
-  auto axis = BR.getAxis();
-  assert(axis < input.dims().size() &&
-         "Axis to remove must fit inside dimensions of the provided dims.");
+  LOG_SCOPE(F->getLogContext(), "lowerBatchReduceSumSquareNode")
 
   // Lower to mul + reduceAdd.
-  MulNode *mul =
-      F->createMul(BR.getName().str() + "_mul", input.getType(), input, input);
-
-  auto *BRA = F->createBatchedReduceAdd(BR.getName().str() + ".reduceAdd",
-                                        BR.getResult().getType(), mul, axis);
-
+  auto *in = BR.getBatch().getNode();
+  MulNode *mul = F->createMul(BR.getName().str() + "_mul", in, in);
+  auto BRA =
+      F->createBatchedReduceAdd(BR.getName().str() + ".reduceAdd",
+                                BR.getResult().getType(), mul, BR.getAxes());
   replaceAllUsesOfWith(cctx.loweredInfoMap, BR.getResult(), BRA);
+}
+
+// Lower Reduce w/ multiple axes to a reduce w/ single axis.
+static void lowerBatchedReduceAddNode(Function *F, CompilationContext &cctx,
+                                      const BatchedReduceAddNode &RN) {
+  if (RN.getAxes().size() == 1) {
+    return;
+  }
+  Node *nRN = reduceMultiAxesOpsHelper(F, cctx, RN);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, RN.getResult(),
+                       nRN->getNthResult(0));
+}
+
+// Lower Reduce w/ multiple axes to a reduce w/ single axis.
+static void lowerBatchedReduceProdNode(Function *F, CompilationContext &cctx,
+                                       const BatchedReduceProdNode &RN) {
+  if (RN.getAxes().size() == 1) {
+    return;
+  }
+  auto *nRN = reduceMultiAxesOpsHelper(F, cctx, RN);
+  replaceAllUsesOfWith(cctx.loweredInfoMap, RN.getResult(),
+                       nRN->getNthResult(0));
 }
 
 static void lowerVectorNormNode(Function *F, CompilationContext &cctx,
@@ -2038,6 +2076,8 @@ bool glow::lowerNode(Function *F, Node *node, CompilationContext &cctx) {
     CASE_LOWER(BatchNormalizationGrad);
     CASE_LOWER(SigmoidCrossEntropyWithLogits);
     CASE_LOWER(BatchedReduceMean);
+    CASE_LOWER(BatchedReduceAdd);
+    CASE_LOWER(BatchedReduceProd);
     CASE_LOWER(BatchedReduceSumSquare);
     CASE_LOWER(VectorNorm);
     CASE_LOWER(Bucketize);
