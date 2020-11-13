@@ -1436,11 +1436,38 @@ bool ConvertBroadcastedBatchMatMul::run(Function *F,
     NodeValue LHS = BMMN->getLHS();
     NodeValue RHS = BMMN->getRHS();
 
-    // If RHS is a Tile along axis 0 and the input's dims()[0] == 1, then the
-    // RHS is fully broadcasted and we can perform the optimization.
+    // If RHS is a Tile/Broadcast along axis 0 and the input's dims()[0] == 1,
+    // then the RHS is fully broadcasted and we can perform the optimization.
     TileNode *TN = dyn_cast<TileNode>(RHS);
-    if (!TN || TN->getAxis() != 0 || TN->getInput().dims()[0] != 1) {
+    BroadcastNode *BN = dyn_cast<BroadcastNode>(RHS);
+    if (!TN && !BN) {
       continue;
+    }
+    const unsigned_t axis = TN ? TN->getAxis() : BN->getAxis();
+    const dim_t dim0 = TN ? TN->getInput().dims()[0] : BN->getInput().dims()[0];
+    if (axis != 0 || dim0 != 1) {
+      continue;
+    }
+
+    // If this is a Broadcast, check if the first dimension is the only one
+    // that's tiled. If so, then we can treat this as the same as a
+    // Tile. Otherwise we must keep around a Broadcast for everything but the
+    // first dimension.
+    NodeValue singleTileNV;
+    if (BN) {
+      ShapeVector newBNDims(BN->getResult().dims().begin(),
+                            BN->getResult().dims().end());
+      newBNDims[0] = 1;
+      if (!BN->getInput().dims().equals(newBNDims)) {
+        BroadcastNode *newBN = F->createBroadcast(BN->getName(), BN->getInput(),
+                                                  newBNDims, /* axis */ 0);
+        singleTileNV = newBN->getResult();
+      } else {
+        // This Broadcast is equivalent to a Tile.
+        singleTileNV = BN->getInput();
+      }
+    } else {
+      singleTileNV = TN->getInput();
     }
 
     // Can now convert the broadcasted BatchMatMul to a MatMul.
@@ -1460,7 +1487,7 @@ bool ConvertBroadcastedBatchMatMul::run(Function *F,
         F->createReshape(name.str() + ".reshapeLHS", LHS, {numBatches * N, M});
     // Squeeze out the first dimension of the original Tile's input.
     ReshapeNode *squeezedRHS =
-        F->createSqueeze(name.str() + ".squeezedRHS", TN->getInput(), {0});
+        F->createSqueeze(name.str() + ".squeezedRHS", singleTileNV, {0});
 
     // Perform a normal matmul, implementing the batch matmul.
     MatMulNode *MMN = F->createMatMul(name, reshapeLHS, squeezedRHS);
@@ -3186,7 +3213,8 @@ bool EliminateNoop::run(Function *F, const CompilationContext &cctx) {
 
     // For some nodes it's enough just to compare input and output types to
     // determine if they are noop.
-    if (isa<PadNode>(&node) || isa<SliceNode>(&node) || isa<TileNode>(&node)) {
+    if (isa<PadNode>(&node) || isa<SliceNode>(&node) || isa<TileNode>(&node) ||
+        isa<BroadcastNode>(&node)) {
       return input.getType() == output.getType();
     }
 

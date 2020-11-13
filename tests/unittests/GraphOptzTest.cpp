@@ -4014,8 +4014,9 @@ TEST_F(GraphOptz, convertReduceMean2AvgPool) {
 /// Test Broadcasted RHS BatchMatMul is converted correctly to a single MatMul.
 TEST_F(GraphOptz, convertBroadcastedBatchMatMulToMatMul) {
   auto *lhs =
-      mod_.createPlaceholder(ElemKind::FloatTy, {2, 3, 2}, "lhs", false);
-  auto *rhs = mod_.createPlaceholder(ElemKind::FloatTy, {2, 1}, "rhs", false);
+      mod_.createPlaceholder(ElemKind::FloatTy, {6, 10, 4}, "lhs", false);
+  auto *rhs = mod_.createConstant(ElemKind::FloatTy, {4, 8}, "rhs");
+  rhs->getPayloadMutable().getHandle().randomize(-10, 10, mod_.getPRNG());
   auto *BMMN = F_->createBatchMatMul("BMM", lhs, rhs);
   F_->createSave("save", BMMN);
 
@@ -4023,11 +4024,45 @@ TEST_F(GraphOptz, convertBroadcastedBatchMatMulToMatMul) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchMatMulNodeKind), 1);
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MatMulNodeKind), 0);
 
-  ::glow::optimize(F_, CompilationMode::Infer);
+  optimizedF_ = optimizeFunctionForTest(F_);
 
   // Optimization should replace the BatchMatMul with a single MatMul.
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MatMulNodeKind), 1);
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchMatMulNodeKind), 0);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::MatMulNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::BatchMatMulNodeKind), 0);
+
+  bindings_.allocate(lhs)->getHandle().randomize(-10, 10, mod_.getPRNG());
+
+  checkNumericalEquivalence(0.f);
+}
+
+/// Test Broadcasted RHS BatchMatMul is converted correctly to a single MatMul,
+/// where RHS is broadcasted in multiple dimensions.
+TEST_F(GraphOptz, convertMultiBroadcastedBatchMatMulToMatMul) {
+  auto *lhs =
+      mod_.createPlaceholder(ElemKind::FloatTy, {5, 10, 4}, "lhs", false);
+  auto *rhs = mod_.createConstant(ElemKind::FloatTy, {1, 1, 6}, "rhs");
+  rhs->getPayloadMutable().getHandle().randomize(-10, 10, mod_.getPRNG());
+  auto *BN = F_->createBroadcast("broadcast", rhs, {5, 4, 6}, /* axis */ 0);
+  auto *BMMN = F_->createBatchMatMul("BMM", lhs, BN);
+  F_->createSave("save", BMMN);
+
+  // Start with a BatchMatMul, not a MatMul, as well as a broadcast.
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BatchMatMulNodeKind), 1);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::MatMulNodeKind), 0);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::BroadcastNodeKind), 1);
+
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::ConvertBroadcastedBatchMatMul, getDCEPassConfig()});
+
+  // Optimization should replace the BatchMatMul with a single MatMul, as well
+  // as include a broadcast leftover.
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::MatMulNodeKind), 1);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::BatchMatMulNodeKind), 0);
+  EXPECT_EQ(countNodeKind(optimizedF_, Kinded::Kind::BroadcastNodeKind), 1);
+
+  bindings_.allocate(lhs)->getHandle().randomize(-10, 10, mod_.getPRNG());
+
+  checkNumericalEquivalence(0.f);
 }
 
 TEST_F(GraphOptz, dceQuantization) {

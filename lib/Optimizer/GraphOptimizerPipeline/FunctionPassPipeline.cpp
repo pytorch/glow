@@ -108,6 +108,9 @@ createDefaultGraphOptimizationPassPipeline() {
       // Convert BatchMatMuls with a broadcasted RHS to a single MatMul.
       {FunctionPassID::ConvertBroadcastedBatchMatMul},
 
+      // Eliminate nodes which do not do anything.
+      {FunctionPassID::EliminateNoop},
+
       // Perform Common Subexpression Elimination.
       {FunctionPassID::CSE},
 
