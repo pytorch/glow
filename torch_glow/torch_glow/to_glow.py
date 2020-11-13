@@ -115,10 +115,17 @@ def to_glow_selective(model, specs_and_examples, inplace=False):
     check_module_names(list(specs_and_examples.keys()))
     if not inplace:
         model = copy.deepcopy(model)
+    if isinstance(model, torch.jit._script.RecursiveScriptModule):
+        for path, spec in specs_and_examples.items():
 
-    for path, (spec, example_inputs) in specs_and_examples.items():
-        submod = get_submodule(model, path)
-        submod = torch.jit.trace(submod, example_inputs)
-        submod = to_glow(submod, {"forward": spec})
-        set_submodule(model, path, submod)
+            def _to_glow(submod):
+                return to_glow(submod, {"forward": spec})
+
+            model = torch._C._jit_to_backend_selective(model, _to_glow, [path])
+    else:
+        for path, (spec, example_inputs) in specs_and_examples.items():
+            submod = get_submodule(model, path)
+            submod = torch.jit.trace(submod, example_inputs)
+            submod = to_glow(submod, {"forward": spec})
+            set_submodule(model, path, submod)
     return model
