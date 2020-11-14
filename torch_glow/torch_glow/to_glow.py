@@ -117,6 +117,8 @@ def to_glow_selective(model, specs_and_examples, inplace=False):
         model = copy.deepcopy(model)
     if isinstance(model, torch.jit._script.RecursiveScriptModule):
         for path, spec in specs_and_examples.items():
+            if isinstance(spec, tuple) and len(spec) == 2:
+                spec, example_inputs = spec
 
             def _to_glow(submod):
                 return to_glow(submod, {"forward": spec})
