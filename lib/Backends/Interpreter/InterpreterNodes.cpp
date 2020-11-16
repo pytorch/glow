@@ -5024,7 +5024,10 @@ void BoundInterpreterFunction::fwdTraceEventInst(const TraceEventInst *I) {
 }
 
 void BoundInterpreterFunction::fwdInstrumentInst(const InstrumentInst *I) {
-  llvm_unreachable("Instrument instruction not implemented on Interpreter!");
+  // The instrument instruction is not implemented on the Interpreter backend.
+  // We cannot throw error though because the Interpreter can be potentially
+  // used when constant folding parts of the graph while compiling for the
+  // CPU backend with IR instrumentation.
 }
 
 //===----------------------------------------------------------------------===//
