@@ -690,6 +690,10 @@ private:
   /// \returns error on failure.
   Error loadTranspose(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch aten::copy/aten::copy_ node.
+  /// \returns error on failure.
+  Error loadCopy(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch mean node.
   /// \returns error on failure.
   Error loadMean(const torch::jit::Node *ptNode);

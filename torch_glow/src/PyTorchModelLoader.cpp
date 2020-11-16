@@ -987,6 +987,14 @@ struct CompareInputs {
   };
 };
 
+/// Indexes used for aten::copy inputs
+struct CopyInputs {
+  enum {
+    lhs = 0,
+    rhs,
+  };
+};
+
 } // namespace
 
 // static
@@ -1019,6 +1027,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::permute"}, &PyTorchModelLoader::loadPermute},
       {{"aten::transpose", "aten::transpose_"},
        &PyTorchModelLoader::loadTranspose},
+      {{"aten::copy", "aten::copy_"}, &PyTorchModelLoader::loadCopy},
       {{"aten::min"}, &PyTorchModelLoader::loadMin},
       {{"aten::max"}, &PyTorchModelLoader::loadMax},
       {{"aten::exp"}, &PyTorchModelLoader::loadExp},
@@ -4798,6 +4807,41 @@ Error PyTorchModelLoader::loadTranspose(const torch::jit::Node *ptNode) {
   c10::ScalarType dtype;
   RETURN_IF_ERR(getCorrectTypeMapping(dtype, inputs[TransposeInputs::input]));
   RETURN_ERR(addValueMapping(outputs[0], output->getResult(), dtype));
+}
+
+Error PyTorchModelLoader::loadCopy(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue lhs, rhs;
+  ASSIGN_VALUE_OR_RETURN_ERR(lhs,
+                             getGlowNodeValueForValue(inputs[CopyInputs::lhs]));
+  ASSIGN_VALUE_OR_RETURN_ERR(rhs,
+                             getGlowNodeValueForValue(inputs[CopyInputs::rhs]));
+
+  bool nonBlocking = false;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      nonBlocking,
+      iValToBool(getGlowIValueForValue(ptNode->namedInput("non_blocking"))));
+  RETURN_ERR_IF_NOT(nonBlocking == false,
+                    "non_blocking == True for aten::copy_ not supported.");
+
+  auto output = rhs;
+  const bool needsConvertTo =
+      lhs.getType()->getElementType() != rhs.getType()->getElementType();
+  // Handle case where lhs and rhs have different datatypes
+  if (needsConvertTo) {
+    output = F_.createConvertTo("convert_to", output, lhs.getElementType());
+  }
+
+  // Handle case where rhs needs to be broadcasted to match lhs
+  if (lhs.getType()->dims() != rhs.getType()->dims()) {
+    output = F_.broadcastInputs(/* axis */ -1, {lhs, output})[1];
+  }
+
+  RETURN_ERR(addValueMapping(outputs[0], output));
 }
 
 Error PyTorchModelLoader::loadAbs(const torch::jit::Node *ptNode) {
