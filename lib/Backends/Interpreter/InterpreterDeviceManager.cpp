@@ -30,14 +30,14 @@ static llvm::cl::OptionCategory
 static llvm::cl::opt<unsigned, /* ExternalStorage */ true> interpreterMaxMemOpt(
     "interpreter-memory",
     llvm::cl::desc("Interpreter DeviceManager maximum memory in kilobytes"),
-    llvm::cl::location(GlowInterpreterMemory),
+    llvm::cl::location(flags::InterpreterMemory),
     llvm::cl::cat(InterpreterBackendCat));
 
 DeviceManager *createInterpreterDeviceManager(const DeviceConfig &config) {
-  if (GlowInterpreterMemory) {
-    // Convert command line GlowInterpreterMemory to bytes from kilobytes.
+  if (flags::InterpreterMemory) {
+    // Convert command line InterpreterMemory to bytes from kilobytes.
     auto configNew = config;
-    configNew.setDeviceMemory(uint64_t{GlowInterpreterMemory} * 1024);
+    configNew.setDeviceMemory(uint64_t{flags::InterpreterMemory} * 1024);
     return new InterpreterDeviceManager(configNew);
   }
   return new InterpreterDeviceManager(config);

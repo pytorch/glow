@@ -76,10 +76,10 @@ bool NNPIBackend::acceptForExecution(const NodeInfo &NI) const {
   // data inputs.
   switch (NI.getKind()) {
   case Kinded::Kind::SparseLengthsSumNodeKind:
-    return GlowNNPIAcceptUnarySLS ||
+    return nnpi::flags::AcceptUnarySLS ||
            !isUnaryLookup(NI.getInTy(SparseLengthsSumNode::DataIdx));
   case Kinded::Kind::SparseLengthsWeightedSumNodeKind:
-    return GlowNNPIAcceptUnarySLS ||
+    return nnpi::flags::AcceptUnarySLS ||
            !isUnaryLookup(NI.getInTy(SparseLengthsWeightedSumNode::DataIdx));
 
   default:
@@ -1156,7 +1156,7 @@ static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts) {
         F, numChunks, parOpts, opts.backendSpecificNodeInfo));
   } else {
     // Check for basic parallelization based on specified degree of parallelism.
-    defaultNumParallelChunks = glow::onnxifi::GlowNNPINumParallelChunks;
+    defaultNumParallelChunks = glow::nnpi::flags::NumParallelChunks;
 
     // GlowNNPINumParallelChunks set via flags takes precedence over backend
     // options in cctx.
@@ -1186,7 +1186,7 @@ static Expected<bool> parallelizeFunction(Function *F, BackendOptions &opts) {
   }
 
   int32_t defaultModelParallelSplitAlignment =
-      glow::onnxifi::GlowNNPIModelParallelSplitAlignment;
+      glow::nnpi::flags::ModelParallelSplitAlignment;
 
   // GlowNNPIModelParallelSplitAlignment set via flags takes precedence over
   // backend options in cctx.
@@ -1330,7 +1330,7 @@ bool NNPIBackend::lowerRequiredNodes(Function *F,
     bool shouldLowerNode = isNodeSupported(NI) == NodeSupportLevels::SUPPORTED;
     switch (N.getKind()) {
     case Kinded::Kind::BatchMatMulNodeKind:
-      shouldLowerNode |= GlowNNPILowerAllBatchMatMul;
+      shouldLowerNode |= nnpi::flags::LowerAllBatchMatMul;
       break;
     case Kinded::Kind::ConvertToNodeKind: {
       shouldLowerNode = false;
@@ -1486,7 +1486,7 @@ Expected<bool> NNPIBackend::transformPostLowering(
   kindSet.insert(Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind);
   kindSet.insert(Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind);
 
-  if (glow::onnxifi::GlowDisableNNPITransforms) {
+  if (glow::nnpi::flags::DisableTransforms) {
     return false;
   }
 
@@ -1503,7 +1503,7 @@ Expected<bool> NNPIBackend::transformPostLowering(
   changed |= lowerRequiredNodes(F, cctx);
 
 #if FACEBOOK_INTERNAL
-  if (glow::onnxifi::GlowDisableNNPIPrivateTransforms) {
+  if (glow::nnpi::flags::DisablePrivateTransforms) {
     return changed;
   }
   changed |= transformPrivate(F, cctx);

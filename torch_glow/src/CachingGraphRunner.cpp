@@ -114,23 +114,22 @@ void initializeCompiliationContextFromSettings(
 
   cctx.replicationCount = settings.replicationCount;
 
-  using namespace onnxifi;
-  if (GlowUseSparseNNPartitioningScheme) {
+  if (glow::flags::UseSparseNNPartitioningScheme) {
     cctx.optimizationOpts.useSparseNNPartitioningScheme = true;
     cctx.optimizationOpts.sparseNNPartitioningAddSLSConcats =
-        GlowSparseNNPartitioningAddSLSConcats;
+        glow::flags::SparseNNPartitioningAddSLSConcats;
     cctx.optimizationOpts.sparseNNPartitioningBalancePerfModel =
-        GlowSparseNNPartitioningBalancePerfModel;
+        glow::flags::SparseNNPartitioningBalancePerfModel;
     cctx.optimizationOpts.sparseNNPartitioningPairLNWithSLS =
-        GlowSparseNNPartitioningPairLNWithSLS;
+        glow::flags::SparseNNPartitioningPairLNWithSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCards =
-        GlowSparseNNPartitioningSchemeNumCards;
+        glow::flags::SparseNNPartitioningSchemeNumCards;
     cctx.optimizationOpts.sparseNNPartitioningSchemeSLSTableKBytesPerCard =
-        GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard;
+        glow::flags::SparseNNPartitioningSchemeSLSTableKBytesPerCard;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresSLS =
-        GlowSparseNNPartitioningSchemeNumCoresSLS;
+        glow::flags::SparseNNPartitioningSchemeNumCoresSLS;
     cctx.optimizationOpts.sparseNNPartitioningSchemeNumCoresOther =
-        GlowSparseNNPartitioningSchemeNumCoresOther;
+        glow::flags::SparseNNPartitioningSchemeNumCoresOther;
     LOG(INFO) << "Using SLS partitioning scheme";
   }
 }

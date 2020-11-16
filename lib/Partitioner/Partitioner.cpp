@@ -35,21 +35,23 @@ static llvm::cl::opt<bool, /* ExternalStorage */ true>
         llvm::cl::desc(
             "Enable a partitioner pass to optimize for "
             "load balance in addition to memory capacity constraints"),
-        llvm::cl::location(GlowEnableLoadBalancedPartitioning));
+        llvm::cl::location(glow::flags::EnableLoadBalancedPartitioning));
 } // namespace glow
 
 /// -log-partition - Command line option to dump Partitioner logs.
 static llvm::cl::OptionCategory PartitionerCat("Glow Partitioner Options");
-static llvm::cl::opt<bool, /* ExternalStorage */ true> logPartition(
-    "log-partition", llvm::cl::desc("Enable logging partition info"),
-    llvm::cl::location(glow::GlowLogPartition), llvm::cl::cat(PartitionerCat));
+static llvm::cl::opt<bool, /* ExternalStorage */ true>
+    logPartition("log-partition",
+                 llvm::cl::desc("Enable logging partition info"),
+                 llvm::cl::location(glow::flags::LogPartition),
+                 llvm::cl::cat(PartitionerCat));
 
 /// -dump-partition - Command line option to dump the graph of each partitions
 /// by calling F->dumpDAG().
 static llvm::cl::opt<bool, /* ExternalStorage */ true>
     dumpPartition("dump-partition",
                   llvm::cl::desc("Enable dumping the graph of each partitions"),
-                  llvm::cl::location(glow::GlowDumpPartition),
+                  llvm::cl::location(glow::flags::DumpPartition),
                   llvm::cl::cat(PartitionerCat));
 
 using namespace glow;
@@ -1522,7 +1524,7 @@ Expected<DAGListTy> Partitioner::partition(CompilationContext &cctx) {
     return quantizationProfilingPartition(cctx);
   }
 
-  if (!multiBackendNames_ && glow::GlowEnableLoadBalancedPartitioning) {
+  if (!multiBackendNames_ && glow::flags::EnableLoadBalancedPartitioning) {
     // Call load-balance partition flow.
     VLOG(1) << "Using Load balance Partition";
     return loadBalancedPartition(cctx);

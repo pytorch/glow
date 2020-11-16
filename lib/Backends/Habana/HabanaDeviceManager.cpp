@@ -37,7 +37,7 @@ namespace runtime {
 static llvm::cl::opt<unsigned, /* ExternalStorage */ true> GlowHabanaMemoryOpt(
     "glow-habana-memory",
     llvm::cl::desc("Amount of DRAM to allocate per Habana device in kilobytes"),
-    llvm::cl::location(GlowHabanaMemory));
+    llvm::cl::location(flags::HabanaMemory));
 
 DeviceManager *createHabanaDeviceManager(const DeviceConfig &config) {
   return new HabanaDeviceManager(config);
@@ -117,13 +117,13 @@ Error HabanaDeviceManager::init() {
 Error HabanaDeviceManager::updateMemoryUsage() {
   // TODO: Use synGetMemInfo once implemented.
 
-  // Use GlowHabanaMemory if it is defined from GFLAGS or llvm params,
+  // Use HabanaMemory if it is defined from GFLAGS or llvm params,
   // otherwise, fall back to what config says.
   uint64_t defaultMemory = 7 << 20;
-  if (GlowHabanaMemory == defaultMemory && config_.getDeviceMemory() != 0) {
+  if (flags::HabanaMemory == defaultMemory && config_.getDeviceMemory() != 0) {
     totalMemory_ = config_.getDeviceMemory();
   } else {
-    totalMemory_ = uint64_t{GlowHabanaMemory} * 1024;
+    totalMemory_ = uint64_t{flags::HabanaMemory} * 1024;
   }
   freeMemory_ = totalMemory_;
 
