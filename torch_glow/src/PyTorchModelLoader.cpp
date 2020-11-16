@@ -888,6 +888,15 @@ struct EmbeddingInputs {
   };
 };
 
+/// Indexes of aten::split inputs.
+struct SplitInputs {
+  enum {
+    input = 0,
+    split = 1,
+    axis = 2,
+  };
+};
+
 /// Indexes of aten::embedding_bag inputs.
 struct EmbeddingBagInputs {
   enum {
@@ -1126,6 +1135,8 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"aten::dequantize"}, &PyTorchModelLoader::loadDequantize},
       {{"aten::size"}, &PyTorchModelLoader::loadSize},
       {{"prim::ListConstruct"}, &PyTorchModelLoader::loadListConstruct},
+      {{"prim::ListUnpack"}, &PyTorchModelLoader::loadListUnpack},
+      {{"aten::split"}, &PyTorchModelLoader::loadSplit},
       {{"aten::reciprocal", "aten::reciprocal_"},
        &PyTorchModelLoader::loadReciprocal},
       {{"aten::adaptive_avg_pool2d"},
@@ -2788,6 +2799,99 @@ Error PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
   RETURN_ERR(addValueMapping(outputs[0], std::move(glowIVal)));
 }
 
+Error PyTorchModelLoader::loadListUnpack(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 1, outputs, -1));
+
+  std::vector<NodeValue> *inputNodeVals;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      inputNodeVals, iValToNodeValueList(getGlowIValueForValue(inputs[0])));
+
+  RETURN_ERR_IF_NOT(inputNodeVals->size() == outputs.size(),
+                    "[ListUnpack] Input size must equal output size");
+
+  for (size_t i = 0; i < inputNodeVals->size(); ++i) {
+    RETURN_IF_ERR(addValueMapping(outputs[i], (*inputNodeVals)[i]));
+  }
+
+  return Error::success();
+}
+
+Error PyTorchModelLoader::loadSplit(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, -1));
+
+  glow::NodeValue input;
+  if (hasGlowNodeValueForValue(inputs[0])) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        input, getGlowNodeValueForValue(inputs[SplitInputs::input]));
+  } else {
+    return MAKE_ERR("[Split] Input data must be a tensor.");
+  }
+
+  GlowIValue *splitIVal;
+  ASSIGN_VALUE_OR_RETURN_ERR(splitIVal,
+                             getGlowIValueForValue(inputs[SplitInputs::split]));
+
+  int64_t axis;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      axis, iValToInt(getGlowIValueForValue(inputs[SplitInputs::axis])));
+
+  // Handle scenario when dim is negative
+  if (axis < 0) {
+    axis = input.dims().size() + axis;
+  }
+
+  dim_t numOutputs;
+  std::vector<dim_t> split;
+  if (splitIVal->getTag() == GlowIValue::Tag::Int) {
+    // When given an integer try to divide tensor into equal splits as best as
+    // possible.
+    int64_t splitInt;
+    ASSIGN_VALUE_OR_RETURN_ERR(splitInt, iValToInt(splitIVal));
+
+    const auto axisDim = input.dims()[axis];
+    if (splitInt < 1) {
+      return MAKE_ERR(
+          "[Split] Single `split` integer value must be greater than zero.");
+    } else if (splitInt > axisDim) {
+      return MAKE_ERR("[Split] Single `split` integer value must be less "
+                      "than input_dims[axis]");
+    }
+    auto splitDimT = static_cast<dim_t>(splitInt);
+
+    dim_t quotient = axisDim / splitDimT; // Calculate best split size
+    dim_t rem = axisDim % splitDimT; // Calculate remainder from best split size
+
+    // Fill the split vector with repeated values of the quotient
+    split.resize(quotient);
+    std::fill(split.begin(), split.begin() + quotient, splitDimT);
+    // If there is a remainder add it to the last dimension of `split`
+    if (rem > 0) {
+      split.push_back(rem);
+    }
+    numOutputs = split.size();
+  } else {
+    return MAKE_ERR(
+        "[Split] Currently only supports a single integer value for `split`.");
+  }
+
+  std::vector<SliceNode *> outNodes;
+  F_.createSplit("split", input, numOutputs, axis, split, outNodes);
+
+  // Get NodeValues from SliceNodes
+  std::vector<NodeValue> results;
+  for (auto &node : outNodes) {
+    results.push_back(node->getResult());
+  }
+  GlowIValue outList;
+  outList.fromNodeValueList(results);
+
+  return addValueMapping(outputs[0], std::move(outList));
+}
 /// Mirroring the implementation in
 /// caffe2/aten/src/ATen/native/TypeProperties.cpp
 static inline c10::ScalarType promote_skip_undefined(c10::ScalarType a,

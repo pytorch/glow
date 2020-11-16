@@ -772,6 +772,14 @@ private:
   /// \returns error on failure.
   Error loadListConstruct(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch prim::ListUnpack node.
+  /// \returns error on failure.
+  Error loadListUnpack(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch prim::split node.
+  /// \returns error on failure.
+  Error loadSplit(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch aten::Int node.
   /// \returns error on failure.
   Error loadInt(const torch::jit::Node *ptNode);
