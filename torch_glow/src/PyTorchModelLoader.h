@@ -103,6 +103,9 @@ public:
   /// accessed by custom operator loaders.
   glow::Function &F_;
 
+  /// Settings used during model loading.
+  const PyTorchLoaderSettings &settings_;
+
 private:
   /// Map from input placeholders to their location on the input stack.
   std::unordered_map<glow::Placeholder *, size_t>

@@ -339,4 +339,16 @@ PYBIND11_MODULE(_torch_glow, m) {
   m.def("disable_debug_fuser", []() {
     getGlobalPyTorchLoaderSettingsMutable().enableDebugFuser = false;
   });
+
+  /// Enable continuously verifying Glow graph during model loading
+  m.def("enable_debug_continuously_verify_during_model_loading", []() {
+    getGlobalPyTorchLoaderSettingsMutable()
+        .debugContinuouslyVerifyDuringModelLoading = true;
+  });
+
+  /// Disable continuously verifying Glow graph during model loading
+  m.def("disable_debug_continuously_verify_during_model_loading", []() {
+    getGlobalPyTorchLoaderSettingsMutable()
+        .debugContinuouslyVerifyDuringModelLoading = false;
+  });
 }

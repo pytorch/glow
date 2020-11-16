@@ -77,6 +77,8 @@ DEFINE_string(backendSpecificOpts, "",
               "Comma separated list of key=value for building the "
               "BackendSpecificOptions map in BackendOptions in "
               "CompilationContext.");
+DEFINE_bool(debugContinuouslyVerifyDuringModelLoading, false,
+            "See PyTorchLoaderSettings");
 
 namespace glow {
 namespace {
@@ -267,6 +269,8 @@ void PyTorchLoaderSettings::initSettings() {
   fusionEndIndex = FLAGS_fusionEndIndex;
   setIncludeLastOffsets = FLAGS_setIncludeLastOffsets;
   enableRemoveMutation = FLAGS_enableRemoveMutation;
+  debugContinuouslyVerifyDuringModelLoading =
+      FLAGS_debugContinuouslyVerifyDuringModelLoading;
 
   if (!FLAGS_opBlacklist.empty()) {
     auto kindStrings = splitString(FLAGS_opBlacklist);
@@ -339,6 +343,7 @@ std::string PyTorchLoaderSettings::toString() const {
   INSERT_BOOL_TO_STREAM(runShapeInference, s);
   INSERT_BOOL_TO_STREAM(setIncludeLastOffsets, s);
   INSERT_BOOL_TO_STREAM(enableDebugFuser, s);
+  INSERT_BOOL_TO_STREAM(debugContinuouslyVerifyDuringModelLoading, s);
 
   if (opBlacklist.size() > 0) {
     s << "opBlacklist: [";
