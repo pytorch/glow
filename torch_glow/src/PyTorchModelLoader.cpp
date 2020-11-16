@@ -987,6 +987,22 @@ struct CompareInputs {
   };
 };
 
+/// Indexes used for the basic version of aten::max
+struct MaxInputsBasic {
+  enum {
+    input = 0,
+    rhs,
+  };
+};
+
+/// Indexes used for aten::max(input, axis, keepdim)
+struct MaxInputsAxis {
+  enum {
+    input = 0,
+    axis,
+  };
+};
+
 } // namespace
 
 // static
@@ -2604,16 +2620,41 @@ Error PyTorchModelLoader::loadSum(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadMax(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -2, outputs, -1));
 
-  glow::NodeValue lhs;
-  ASSIGN_VALUE_OR_RETURN_ERR(lhs, getGlowNodeValueForValue(inputs[0]));
-  glow::NodeValue rhs;
-  ASSIGN_VALUE_OR_RETURN_ERR(rhs, getGlowNodeValueForValue(inputs[1]));
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      input, getGlowNodeValueForValue(inputs[MaxInputsBasic::input]));
 
-  glow::MaxNode *glowNode =
-      F_.createNodeWithBroadcast<MaxNode>("max", -1, lhs, rhs);
-  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
+  if (inputs.size() == 2) {
+    glow::NodeValue rhs;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        rhs, getGlowNodeValueForValue(inputs[MaxInputsBasic::rhs]));
+
+    glow::MaxNode *glowNode = F_.createMax("max", input, rhs);
+    RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
+  } else {
+    int64_t axis;
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        axis, iValToInt(getGlowIValueForValue(inputs[MaxInputsAxis::axis])));
+    if (axis < 0)
+      axis = input.dims().size() + axis;
+
+    bool keepdim = false;
+    ASSIGN_VALUE_OR_RETURN_ERR(keepdim, iValToBool(getGlowIValueForValue(
+                                            ptNode->namedInput("keepdim"))));
+    glow::NodeValue maxNode = F_.createBatchedReduceMax(
+        "reduce_max", input, {static_cast<unsigned_t>(axis)});
+    glow::NodeValue argMaxNode =
+        F_.createArgMax("arg_max", input, axis, keepdim);
+
+    if (keepdim) {
+      maxNode = F_.createExpandDims("expand_dims", maxNode, axis);
+    }
+
+    RETURN_IF_ERR(addValueMapping(outputs[0], maxNode));
+    RETURN_ERR(addValueMapping(outputs[1], argMaxNode));
+  }
 }
 
 Error PyTorchModelLoader::loadSize(const torch::jit::Node *ptNode) {
