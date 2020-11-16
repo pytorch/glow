@@ -428,4 +428,5 @@ std::set<std::string> glow::backendTestBlacklist = {
     "Atan_Int8QTy/0",
     "BBoxTransform/0",
     "NonSquareDilationConvTranspose/0",
-    "NonSquareDilationConv2D/0"};
+    "NonSquareDilationConv2D/0",
+    "batchedReduceAdd_Int32ITy/0"};

@@ -481,6 +481,7 @@ struct BlacklistInitializer {
       {"LSTMUnitFP16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"PyTorchLSTMFP16/0", TestBlacklist::AnyDeviceAnyEngine},
       {"ConvertFrom_FloatTy_To_BoolTy/0", TestBlacklist::AnyDeviceAnyEngine},
+      {"batchedReduceAdd_Int32ITy/0", TestBlacklist::AnyDeviceAnyEngine},
 #endif
 #if NNPI_MAJOR_VERSION == 1 && NNPI_MINOR_VERSION == 1
       {"LSTMUnitFP16/0", TestBlacklist::AnyDeviceAnyEngine},

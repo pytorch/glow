@@ -3161,6 +3161,12 @@ TEST_P(OperatorTest, batchedReduceAdd_BFloat16) {
                                    ElemKind::BFloat16Ty);
 }
 
+/// Test that BatchedReduceAdd is correctly supported in Int32ITy.
+TEST_P(OperatorTest, batchedReduceAdd_Int32ITy) {
+  CHECK_IF_ENABLED();
+  testBatchedReduceAdd<int>(bindings_, mod_, F_, EE_, ElemKind::Int32ITy);
+}
+
 /// Test that BatchedReduceAdd works correctly reducing the outermost axis.
 TEST_P(OperatorTest, batchedReduceAdd_outerAxis) {
   CHECK_IF_ENABLED();
