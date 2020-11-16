@@ -1137,6 +1137,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"prim::ListConstruct"}, &PyTorchModelLoader::loadListConstruct},
       {{"prim::ListUnpack"}, &PyTorchModelLoader::loadListUnpack},
       {{"aten::split"}, &PyTorchModelLoader::loadSplit},
+      {{"aten::unbind"}, &PyTorchModelLoader::loadUnbind},
       {{"aten::reciprocal", "aten::reciprocal_"},
        &PyTorchModelLoader::loadReciprocal},
       {{"aten::adaptive_avg_pool2d"},
@@ -2903,6 +2904,49 @@ static inline c10::ScalarType promote_skip_undefined(c10::ScalarType a,
     return a;
   }
   return c10::promoteTypes(a, b);
+}
+
+Error PyTorchModelLoader::loadUnbind(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+
+  int64_t axis;
+  ASSIGN_VALUE_OR_RETURN_ERR(axis, iValToInt(getGlowIValueForValue(inputs[1])));
+
+  auto dims = input.dims();
+  const auto numOutputs = dims[axis];
+  std::vector<dim_t> split;
+  split.resize(numOutputs);
+  std::fill(split.begin(), split.end(), 1);
+
+  std::vector<SliceNode *> outNodes;
+  F_.createSplit("split", input, numOutputs, axis, split, outNodes);
+
+  // Remove the unary dimension if there is one.
+  std::vector<dim_t> outDims;
+  bool needsReshape = false;
+  for (auto dim : outNodes[0]->getResult().dims()) {
+    if (dim != 1) {
+      outDims.push_back(dim);
+    } else {
+      needsReshape = true;
+    }
+  }
+  // Get NodeValues from SliceNodes
+  std::vector<NodeValue> results;
+  for (auto &node : outNodes) {
+    results.push_back(
+        needsReshape ? F_.createReshape("Reshape", node, outDims)->getResult()
+                     : node->getResult());
+  }
+  GlowIValue outList;
+  outList.fromNodeValueList(results);
+
+  RETURN_ERR(addValueMapping(outputs[0], std::move(outList)));
 }
 
 /// Helper function to support upcasting in concat, we calculate the higher

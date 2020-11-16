@@ -780,6 +780,10 @@ private:
   /// \returns error on failure.
   Error loadSplit(const torch::jit::Node *ptNode);
 
+  /// Load a PyTorch unbind node.
+  /// \returns error on failure.
+  Error loadUnbind(const torch::jit::Node *ptNode);
+
   /// Load a PyTorch aten::Int node.
   /// \returns error on failure.
   Error loadInt(const torch::jit::Node *ptNode);
