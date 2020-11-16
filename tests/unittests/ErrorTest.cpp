@@ -198,3 +198,12 @@ TEST(Error, WarningString) {
   EXPECT_NE(str.find("Warning"), std::string::npos)
       << "Expect warning to be present in message";
 }
+
+TEST(Error, StackMessages) {
+  const char *msg = "some message";
+  auto err = MAKE_ERR(msg);
+  ADD_MESSAGE_TO_ERR_STACK(err, "banana");
+  auto str = ERR_TO_STRING(std::move(err));
+  EXPECT_NE(str.find("banana"), std::string::npos)
+      << "Expect stack message to be present in message";
+}

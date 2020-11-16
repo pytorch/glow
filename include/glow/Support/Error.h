@@ -138,6 +138,10 @@
     }                                                                          \
   } while (0)
 
+/// Takes an Error if it's not success then adds the given message to the stack.
+#define ADD_MESSAGE_TO_ERR_STACK(err, msg)                                     \
+  (err).addToStack(__FILE__, __LINE__, msg)
+
 namespace glow {
 
 /// Forward declarations.
@@ -252,6 +256,20 @@ void exitOnError(const char *fileName, size_t lineNumber, GlowError error);
 /// method.
 class GlowErrorValue final {
 public:
+  struct StackEntry {
+    std::string fileName;
+    size_t lineNumber;
+    std::string message;
+
+    StackEntry(const std::string &fileNameParam, size_t lineNumberParam)
+        : fileName(fileNameParam), lineNumber(lineNumberParam) {}
+
+    StackEntry(const std::string &fileNameParam, size_t lineNumberParam,
+               const std::string &messageParam)
+        : fileName(fileNameParam), lineNumber(lineNumberParam),
+          message(messageParam) {}
+  };
+
   /// An enumeration of error codes representing various possible errors that
   /// could occur.
   /// NOTE: when updating this enum, also update errorCodeToString function
@@ -317,15 +335,24 @@ public:
     if (!message_.empty()) {
       os << "\n" << mType << " message: " << message_;
     }
-    os << "\n" << mType << " return stack:\n";
+    os << "\n\n" << mType << " return stack:";
     for (const auto &p : stack_) {
-      os << p.first.c_str() << ":" << p.second << "\n";
+      os << "\n----------------------------------------------------------------"
+            "----------------";
+      os << "\n" << p.fileName.c_str() << ":" << p.lineNumber;
+      if (!p.message.empty()) {
+        os << " with message:\n";
+        os << p.message;
+      }
     }
+    os << "\n----------------------------------------------------------------"
+          "----------------";
   }
 
   /// Add \p filename and \p lineNumber to the ErrorValue's stack for logging.
-  void addToStack(const std::string &fileName, size_t lineNumber) {
-    stack_.push_back({fileName, lineNumber});
+  void addToStack(const std::string &fileName, size_t lineNumber,
+                  const std::string &message = "") {
+    stack_.emplace_back(fileName, lineNumber, message);
   }
 
   /// If \p warning is true then the log message will replace "Error" with
@@ -354,9 +381,9 @@ private:
 
   /// Optional message associated with the error.
   std::string message_;
-  /// The filename and line number of all places that created, forwarded, and
-  /// destroyed the ErrorValue.
-  std::vector<std::pair<std::string, size_t>> stack_;
+  /// The (filename, line number, optional message) of all places that created,
+  /// forwarded, and destroyed the ErrorValue.
+  std::vector<StackEntry> stack_;
   /// Optional error code associated with the error.
   ErrorCode ec_ = ErrorCode::UNKNOWN;
 };
@@ -449,9 +476,10 @@ public:
 
   /// Add \p filename and \p lineNumber to the contained ErrorValue's stack for
   /// logging.
-  void addToStack(const std::string &fileName, size_t lineNumber) {
+  void addToStack(const std::string &fileName, size_t lineNumber,
+                  const std::string &message = "") {
     if (hasErrorValue()) {
-      errorValue_->addToStack(fileName, lineNumber);
+      errorValue_->addToStack(fileName, lineNumber, message);
     }
   }
 
@@ -644,9 +672,10 @@ class GlowExpected final
 
   /// Add \p filename and \p lineNumber to the contained ErrorValue's stack for
   /// logging.
-  void addToStack(const std::string &fileName, size_t lineNumber) {
+  void addToStack(const std::string &fileName, size_t lineNumber,
+                  const std::string &message = "") {
     if (getIsError()) {
-      payload_.asErrorValue.get()->addToStack(fileName, lineNumber);
+      payload_.asErrorValue.get()->addToStack(fileName, lineNumber, message);
     }
   }
 
