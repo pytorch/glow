@@ -157,6 +157,11 @@ public:
   /// embedding-bag-like operators. This is default to true since it is
   /// currently a requirement if we want to support partial inputs
   bool setIncludeLastOffsets = true;
+
+  /// Call Glow's Function verifier after loading each JIT node to catch any
+  /// Glow graph errors as soon as possible during loading. This is disabled by
+  /// default because it can slow down model loading.
+  bool debugContinuouslyVerifyDuringModelLoading = false;
 };
 
 /// Represents different possible output types from to_glow modules.

@@ -368,6 +368,13 @@ bool isQParamWeightNode(const torch::jit::Node *node) {
   return false;
 }
 
+/// \returns string representation of JIT node \p node.
+std::string jitNodeToString(const torch::jit::Node *node) {
+  std::stringstream ss;
+  ss << *node;
+  return ss.str();
+}
+
 /// Writes the given Function \p F to file using ONNXModelWriter. If \p zipMode
 /// is set then zipMode will be used for the writer. \returns an Error if one
 /// occurred.
@@ -1199,7 +1206,7 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
   auto &nodelist = F_.getNodes();
   int nodeIdx = 0;
   // Nodes are topologically sorted.
-  for (const auto &node : graph.nodes()) {
+  for (const auto *node : graph.nodes()) {
     const auto kind = node->kind();
     // prim::GetAttr is loaded separately.
     if (kind == torch::jit::prim::GetAttr) {
@@ -1210,9 +1217,17 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
 
     RETURN_ERR_IF_NOT(it != mapping.end(),
                       glow::strFormat("Node kind %s is not supported by Glow",
-                                      node->kind().toDisplayString()));
+                                      kind.toDisplayString()));
 
     RETURN_IF_ERR((this->*it->second.loadFn)(node));
+
+    if (settings_.debugContinuouslyVerifyDuringModelLoading) {
+      if (!F_.verify()) {
+        return MAKE_ERR(
+            strFormat("Failed Function verification while loading node %s",
+                      jitNodeToString(node).c_str()));
+      }
+    }
 
     auto nodeItr = nodelist.begin();
     for (int j = 0; j < nodeIdx; j++) {
@@ -1229,6 +1244,14 @@ Error PyTorchModelLoader::loadNodes(const torch::jit::Graph &graph) {
       }
       nodeIdx++;
       nodeItr++;
+    }
+
+    if (settings_.debugContinuouslyVerifyDuringModelLoading) {
+      if (!F_.verify()) {
+        return MAKE_ERR(strFormat("Failed Function verification after constant "
+                                  "propagation while loading node %s",
+                                  jitNodeToString(node).c_str()));
+      }
     }
   }
 
@@ -5932,13 +5955,13 @@ PyTorchModelLoader::PyTorchModelLoader(
     const PyTorchLoaderSettings &settings,
     const at::ArrayRef<torch::jit::IValue> inputs,
     const std::vector<InputMeta> &inputMeta)
-    : F_(F), inputs_(inputs) {
+    : F_(F), settings_(settings), inputs_(inputs) {
   auto loadFn = [&]() -> Error {
     auto graphInputValues = graph.inputs();
 
-    LOG(INFO) << "Using settings: " << settings.toString();
+    LOG(INFO) << "Using settings: " << settings_.toString();
 
-    if (settings.dumpFinalGlowGraph || settings.dumpGlowDag) {
+    if (settings_.dumpFinalGlowGraph || settings_.dumpGlowDag) {
       const std::string fname = "preLoadGlowGraph.ir";
       LOG(INFO) << "Dumping pre load graph at " + fname;
       std::ofstream out;
@@ -6038,6 +6061,13 @@ PyTorchModelLoader::PyTorchModelLoader(
       c10::ScalarType outputScalarType;
       RETURN_IF_ERR(getCorrectTypeMapping(outputScalarType, output));
       outputCorrectType.push_back(outputScalarType);
+
+      if (settings_.debugContinuouslyVerifyDuringModelLoading) {
+        if (!F_.verify()) {
+          return MAKE_ERR(
+              "Failed Function verification while loading graph outputs.");
+        }
+      }
     }
 
     // When randomizing constants in graphs, don't randomize scales/offsets for
@@ -6054,22 +6084,29 @@ PyTorchModelLoader::PyTorchModelLoader(
               RowwiseQuantizedFullyConnectedNode::InputIndices::ScalesIdx}},
         };
 
-    if (settings.randomizeConstants) {
+    if (settings_.randomizeConstants) {
       F_.randomizeConstants(randomizeConstantsIgnoreSet);
     }
 
-    if (settings.dumpGlowDag) {
+    if (!F_.verify()) {
+      return MAKE_ERR(
+          "Failed Function verification after loading JIT graph. Enable the "
+          "debugContinuouslyVerifyDuringModelLoading setting and run again to "
+          "see which JIT node causes the failure.");
+    }
+
+    if (settings_.dumpGlowDag) {
       F_.dumpDAG(strFormat("%s.dot", F_.getName().data()));
     }
 
-    if (settings.writeToOnnx) {
+    if (settings_.writeToOnnx) {
       RETURN_ERR_IF_NOT(
-          settings.randomizeConstants || settings.writeWithoutRandomize,
+          settings_.randomizeConstants || settings_.writeWithoutRandomize,
           "Write to Onnx without randomizing constants is not allowed! To "
           "allow this set flag `writeWithoutRandomize`.");
-      LOG_IF(WARNING, !settings.randomizeConstants)
+      LOG_IF(WARNING, !settings_.randomizeConstants)
           << "Write to Onnx without randomize constants!!!";
-      RETURN_IF_ERR(dumpOnnxModel(F, settings.onnxZipMode));
+      RETURN_IF_ERR(dumpOnnxModel(F, settings_.onnxZipMode));
     }
 
     return Error::success();
@@ -6077,8 +6114,7 @@ PyTorchModelLoader::PyTorchModelLoader(
   error = loadFn();
 
   if (error) {
-    std::cerr << "Encountered error while loading graph:" << std::endl
-              << graph << std::endl;
+    LOG(ERROR) << "Encountered an error while loading JIT graph:\n" << graph;
   }
 }
 
