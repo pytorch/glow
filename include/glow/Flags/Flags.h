@@ -19,81 +19,127 @@
 #include <gflags/gflags.h>
 
 namespace glow {
+namespace flags {
+
+// Generic Constants
+extern int32_t NumDevices;
+extern bool SaturateHost;
+extern bool EnableQuantParamChanges;
+extern size_t MaxActiveRequests;
+extern size_t MaxActiveRequestsPerInstance;
+extern size_t MaxQueueSize;
+extern size_t ExecutorThreads;
+extern bool DelayAndRecordConstantModification;
+extern bool UseTrackedDummyQuantParams;
+extern bool EnablePartialTensors;
+extern bool UseCustomOpsForExport;
+extern std::string BackendSpecificOpts;
+extern bool EnableLoadBalancedPartitioning;
+
+// FP16 Constants
+extern bool ConvertToFP16;
+extern bool ConvertPlaceholdersToFP16;
+extern bool ConvertConstantsToFP16;
+extern bool ConvertFusedScaleOffsetToFP16;
+extern bool ClipToFP16;
+extern bool SkipInputsOnClipToFP16;
+extern bool ForceSLSToFP16Accum;
+extern bool ClipZeroScaleFP16;
+extern bool ClipQuantRangeToFP16;
+
+// Debug Constants
+extern int32_t NumDebugTracesPerDump;
+extern bool DumpDebugTraces;
+extern bool LogPartition;
+extern bool DumpPartition;
+extern bool DumpCompilationLog;
+extern bool DumpBackendSpecificIRJSON;
+extern bool DumpGraph;
+extern std::string DumpGraphPath;
+extern bool DumpInitialLoadedGraph;
+
+// Sparse NN Partitioning Scheme Constants
+extern int32_t SparseNNPartitioningSchemeNumCards;
+extern int64_t SparseNNPartitioningSchemeSLSTableKBytesPerCard;
+extern int32_t SparseNNPartitioningSchemeNumCoresSLS;
+extern int32_t SparseNNPartitioningSchemeNumCoresOther;
+extern bool UseSparseNNPartitioningScheme;
+extern bool SparseNNPartitioningAddSLSConcats;
+extern bool SparseNNPartitioningBalancePerfModel;
+extern bool SparseNNPartitioningPairLNWithSLS;
+
+// Dag Optimizer Constants
+extern bool UseDAGOptimizer;
+extern bool UseDAGOptimizerAOT;
+extern int32_t DAGOptimizerNumParallelChunks;
+extern std::string DAGOptimizerPlacementTaggingAlgorithm;
+extern std::string DAGOptimizerParallelizationTaggingAlgorithm;
+
+} // namespace flags
+} // namespace glow
+
+#ifdef GLOW_WITH_NNPI
+
+namespace glow {
+namespace nnpi {
+namespace flags {
+extern int32_t ModelParallelSplitAlignment;
+extern int32_t NumParallelChunks;
+extern bool LowerAllBatchMatMul;
+extern bool AcceptUnarySLS;
+extern bool SpecializeAllOneSLS;
+extern bool DisableTransforms;
+extern bool DisablePrivateTransforms;
+extern bool DumpCompilerData;
+extern bool UsePerPartitionIcetConfig;
+} // namespace flags
+} // namespace nnpi
+} // namespace glow
+
+#endif
+
+namespace glow {
+namespace torch_glow {
+namespace flags {
+extern bool ImaginaryFlag; // Placeholder Flag
+}
+} // namespace torch_glow
+} // namespace glow
+
+namespace glow {
 namespace onnxifi {
-extern int32_t GlowNumDevices;
-extern int32_t GlowSparseNNPartitioningSchemeNumCards;
-extern int64_t GlowSparseNNPartitioningSchemeSLSTableKBytesPerCard;
-extern int32_t GlowSparseNNPartitioningSchemeNumCoresSLS;
-extern int32_t GlowSparseNNPartitioningSchemeNumCoresOther;
-extern bool GlowDumpDebugTraces;
-extern int32_t GlowNumDebugTracesPerDump;
-extern std::string GlowOnnxifiBackend;
-extern bool GlowFP16;
-extern bool GlowFP16Placeholders;
-extern bool GlowFP16Constants;
-extern bool GlowFusedScaleOffsetFP16;
-extern bool GlowForceSLSAccumFP16;
-extern bool GlowClipFP16;
-extern bool GlowClipFP16SkipInputs;
-extern bool GlowEnableQuantParamChanges;
-extern bool GlowSaturateHost;
-extern bool GlowSaveOnnxifiModel;
-extern bool GlowSaveOnnxifiDAG;
-extern bool GlowSaveOnnxifiIO;
-extern bool GlowDelayAndRecordConstantModification;
-extern bool GlowUseTrackedDummyQuantParams;
-extern bool GlowClipQuantRangeToFP16;
-extern bool GlowClipZeroScaleFP16;
-extern bool GlowEnablePartialTensors;
-extern bool GlowUseCustomOpsForExport;
-extern bool GlowUseSparseNNPartitioningScheme;
-extern bool GlowSparseNNPartitioningAddSLSConcats;
-extern bool GlowSparseNNPartitioningBalancePerfModel;
-extern bool GlowSparseNNPartitioningPairLNWithSLS;
-extern bool GlowDumpGraph;
-extern std::string GlowDumpGraphPath;
-extern bool GlowDumpInitialLoadedGraph;
-extern bool GlowUseDAGOptimizer;
-extern bool GlowUseDAGOptimizerAOT;
-extern std::string GlowDAGOptimizerPlacementTaggingAlgorithm;
-extern std::string GlowDAGOptimizerParallelizationTaggingAlgorithm;
-extern int32_t GlowDAGOptimizerNumParallelChunks;
-extern size_t GlowMaxActiveRequests;
-extern size_t GlowMaxActiveRequestsPerInstance;
-extern size_t GlowMaxQueueSize;
-extern size_t GlowExecutorThreads;
-extern std::string GlowBackendSpecificOpts;
-
-extern bool GlowDumpNNPICompilerData;
-extern bool GlowUsePerPartitionIcetConfig;
-extern bool GlowDisableNNPITransforms;
-extern bool GlowDisableNNPIPrivateTransforms;
-extern int32_t GlowNNPINumParallelChunks;
-extern int32_t GlowNNPIModelParallelSplitAlignment;
-
+namespace flags {
+extern std::string BackendName;
+extern bool SaveModel;
+extern bool SaveIO;
+extern bool SaveDAG;
+} // namespace flags
 } // namespace onnxifi
+} // namespace glow
 
-extern bool GlowEnableLoadBalancedPartitioning;
-extern bool GlowNNPILowerAllBatchMatMul;
-extern bool GlowNNPIAcceptUnarySLS;
-extern bool GlowNNPISpecializeAllOneSLS;
-
+namespace glow {
 namespace runtime {
-extern unsigned GlowInterpreterMemory;
-extern unsigned GlowCPUMemory;
-extern unsigned GlowHabanaMemory;
-extern unsigned GlowNNPIMemory;
-extern unsigned GlowNNPITimeout;
-extern bool GlowEnableDRT;
-extern bool GlowEnableP2P;
-extern unsigned GlowDeviceInitTimeoutMs;
-extern std::string GlowAvailableDevices;
-} // namespace runtime
+namespace flags {
+#ifdef GLOW_WITH_CPU
+extern unsigned CPUMemory;
+#endif
 
-extern bool GlowDumpCompilationLog;
-extern bool GlowDumpBackendSpecificIRJSON;
-extern bool GlowLogPartition;
-extern bool GlowDumpPartition;
+#ifdef GLOW_WITH_HABANA
+extern unsigned HabanaMemory;
+#endif
+
+#ifdef GLOW_WITH_NNPI
+extern unsigned NNPIMemory;
+extern unsigned NNPITimeout;
+#endif
+
+extern std::string AvailableDevices;
+extern unsigned InterpreterMemory;
+extern bool EnableP2P;
+extern bool EnableDRT;
+extern unsigned DeviceInitTimeoutMs;
+} // namespace flags
+} // namespace runtime
 } // namespace glow
 
 /// Flags which may have their default values overridden:

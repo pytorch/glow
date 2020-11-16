@@ -291,14 +291,14 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
                          std::to_string(opts.backendHints.executionUnits));
   }
 
-  if (glow::onnxifi::GlowDumpNNPICompilerData) {
+  if (glow::nnpi::flags::DumpCompilerData) {
     const std::string icetFName =
         std::string("icet_file_") + F->getName().str();
     insertOptLogOverride(*F, newOpts.backendSpecificOpts, "NNPI_CompiledFile",
                          icetFName);
   }
 
-  if (glow::onnxifi::GlowUsePerPartitionIcetConfig) {
+  if (glow::nnpi::flags::UsePerPartitionIcetConfig) {
     const std::string icetConfigFName =
         std::string("icet_config_") + F->getName().str() + std::string(".json");
     insertOptLogOverride(*F, newOpts.backendSpecificOpts,
@@ -421,7 +421,8 @@ Error NNPICompiledFunction::compile(Function *F, const BackendOptions &opts) {
 
     // Update compilation info after NNPI compilation.
     if (compilationOptions_.dumpCompilationInfo ||
-        compilationOptions_.lightCompilation || GlowDumpBackendSpecificIRJSON) {
+        compilationOptions_.lightCompilation ||
+        flags::DumpBackendSpecificIRJSON) {
       if (!updateCompilationInfo()) {
         // Only issuing a warning (soft fail)
         LOG(WARNING) << "Failed to update NNPI compilation info";

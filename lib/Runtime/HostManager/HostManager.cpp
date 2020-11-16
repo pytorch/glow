@@ -79,14 +79,14 @@ llvm::cl::opt<std::string> loadDeviceConfigsFileOpt(
 llvm::cl::opt<bool, /* ExternalStorage */ true>
     enableDRT("enable-DRT", llvm::cl::desc("Enabled DRT support"),
               llvm::cl::Optional,
-              llvm::cl::location(glow::runtime::GlowEnableDRT),
+              llvm::cl::location(glow::runtime::flags::EnableDRT),
               llvm::cl::cat(hostManagerCat));
 
 /// Allows enabling P2P support.
 llvm::cl::opt<bool, /* ExternalStorage */ true>
     enableP2P("enable-P2P", llvm::cl::desc("Enabled P2P support"),
               llvm::cl::Optional,
-              llvm::cl::location(glow::runtime::GlowEnableP2P),
+              llvm::cl::location(glow::runtime::flags::EnableP2P),
               llvm::cl::cat(hostManagerCat));
 
 HostManager::HostManager() : HostManager(HostConfig{}) {}
@@ -161,7 +161,7 @@ Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
       devPromise.set_value(std::move(err));
     });
     if (devFuture.wait_for(std::chrono::milliseconds(
-            GlowDeviceInitTimeoutMs)) != std::future_status::timeout) {
+            flags::DeviceInitTimeoutMs)) != std::future_status::timeout) {
       RETURN_IF_ERR(devFuture.get());
     } else {
       // Device initialization is taking longer than expected, return an error.
@@ -176,10 +176,11 @@ Error HostManager::init(std::vector<std::unique_ptr<DeviceConfig>> configs) {
   executor_.reset(
       new ThreadPoolExecutor(devices_, config_.executorThreads, "HostManager"));
   exportMemoryCounters();
-  if (GlowAvailableDevices.length()) {
+  if (flags::AvailableDevices.length()) {
     std::vector<unsigned> devices;
-    folly::split<char, std::string, unsigned>(',', GlowAvailableDevices,
-                                              devices, /* ignoreEmpty */ true);
+    folly::split<char, std::string, unsigned>(',', flags::AvailableDevices,
+                                              devices,
+                                              /* ignoreEmpty */ true);
     std::vector<runtime::DeviceIDTy> convertedDevs(devices.begin(),
                                                    devices.end());
     setAvailableDevices(convertedDevs);
@@ -554,8 +555,8 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       // Note: currently getNextNetworkExecutionState assumes that pool size is
       // >= currentInFlight requests, so we set pool size to maxActiveRequests.
       executor_->createPool(node.root.get(), config_.maxActiveRequests,
-                            cctx.enableP2P || GlowEnableP2P,
-                            cctx.enableDRT || GlowEnableDRT);
+                            cctx.enableP2P || flags::EnableP2P,
+                            cctx.enableDRT || flags::EnableDRT);
     }
   }
   // Clear constants contents from the module then put it in a

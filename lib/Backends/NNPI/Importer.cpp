@@ -45,7 +45,7 @@ static std::string nodeValueName(const glow::NodeValue &nv) {
 
 NNPIErrorCode glow::NNPIImporter::convertLengthsModeToLengthType(
     glow::LengthsMode mode, NNPI_LENGTH_TYPE &lengthType) {
-  if (!GlowNNPISpecializeAllOneSLS) {
+  if (!nnpi::flags::SpecializeAllOneSLS) {
     mode = LengthsMode::Variable;
   }
   switch (mode) {
@@ -1364,7 +1364,7 @@ public:
         nodeValueName(glowSLS->getData()).c_str(),
         nodeValueName(glowSLS->getResult()).c_str(), NULL,
         nodeValueName(glowSLS->getIndices()).c_str(),
-        nodeValueName(glowSLS->getLengths()).c_str(), false, false,
+        nodeValueName(glowSLS->getLengths()).c_str(), 0, 0,
         glowSLS->getAvgLength(), lengthType);
   }
 };
@@ -1397,7 +1397,7 @@ public:
         nodeValueName(glowSLWS->getResult()).c_str(),
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
-        nodeValueName(glowSLWS->getLengths()).c_str(), false, false,
+        nodeValueName(glowSLWS->getLengths()).c_str(), 0, 0,
         glowSLWS->getAvgLength(), lengthType);
   }
 };
@@ -1436,7 +1436,7 @@ public:
         nodeValueName(glowEmbeddingBag->getResult()).c_str(),
         nodeValueName(glowEmbeddingBag->getWeights()).c_str(),
         nodeValueName(glowEmbeddingBag->getIndices()).c_str(),
-        nodeValueName(glowEmbeddingBag->getOffsets()).c_str(), false, true,
+        nodeValueName(glowEmbeddingBag->getOffsets()).c_str(), 0, 1,
         glowEmbeddingBag->getAvgLength(), lengthType);
   }
 };
@@ -1479,7 +1479,7 @@ public:
         nodeValueName(glowEBBRO->getResult()).c_str(),
         nodeValueName(glowEBBRO->getWeights()).c_str(),
         nodeValueName(glowEBBRO->getIndices()).c_str(),
-        nodeValueName(glowEBBRO->getOffsets()).c_str(), usFp32Accum, true,
+        nodeValueName(glowEBBRO->getOffsets()).c_str(), usFp32Accum, 1,
         glowEBBRO->getAvgLength(), lengthType);
   }
 };
@@ -1826,7 +1826,7 @@ public:
         nodeValueName(glowSLWS->getResult()).c_str(),
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
-        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, false,
+        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, 0,
         glowSLWS->getAvgLength(), lengthType);
   }
 };
@@ -1862,7 +1862,7 @@ public:
         nodeValueName(glowSLWS->getData()).c_str(),
         nodeValueName(glowSLWS->getResult()).c_str(), NULL,
         nodeValueName(glowSLWS->getIndices()).c_str(),
-        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, false,
+        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, 0,
         glowSLWS->getAvgLength(), lengthType);
   }
 };
@@ -1900,7 +1900,7 @@ public:
         nodeValueName(glowSLWS->getResult()).c_str(),
         nodeValueName(glowSLWS->getWeights()).c_str(),
         nodeValueName(glowSLWS->getIndices()).c_str(),
-        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, false,
+        nodeValueName(glowSLWS->getLengths()).c_str(), usFp32Accum, 0,
         glowSLWS->getAvgLength(), lengthType);
   }
 };

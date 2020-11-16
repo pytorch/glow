@@ -35,9 +35,9 @@ namespace glow {
 namespace onnxifi {
 
 static llvm::cl::opt<std::string, /*external storage*/ true>
-    GlowOnnxifiBackendOpt("glow-onnxifi-backend",
-                          llvm::cl::desc("Glow backend used for ONNXIFI"),
-                          llvm::cl::location(GlowOnnxifiBackend));
+    GlowOnnxifiBackendOpt(
+        "glow-onnxifi-backend", llvm::cl::desc("Glow backend used for ONNXIFI"),
+        llvm::cl::location(glow::onnxifi::flags::BackendName));
 
 } // namespace onnxifi
 } // namespace glow
@@ -86,8 +86,9 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
       return ONNXIFI_STATUS_FALLBACK;
     }
 
-    auto backendName =
-        GlowOnnxifiBackend.empty() ? "Interpreter" : GlowOnnxifiBackend;
+    auto backendName = glow::onnxifi::flags::BackendName.empty()
+                           ? "Interpreter"
+                           : glow::onnxifi::flags::BackendName;
     LOG(INFO) << "ONNXIFI: Executing on " << backendName << " Glow backend";
     auto *quantizationBackendC2 =
         manager.createBackend(backendName,
@@ -96,7 +97,7 @@ GLOW_ONNXIFI_LIBRARY_FUNCTION_WRAPPER(onnxGetBackendIDs)(
   } else {
     *numBackends = 2;
 
-    auto backendName = GlowOnnxifiBackend;
+    auto backendName = glow::onnxifi::flags::BackendName;
 
     if (backendName.empty()) {
       if (withNNPI) {
