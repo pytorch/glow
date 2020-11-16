@@ -60,8 +60,16 @@ class CachingGraphRunner {
   /// for.
   std::shared_ptr<torch::jit::Graph> graph_;
 
+  /// The PyTorch JIT Graph that this CachingGraphRunner caches for before
+  /// any preprocessing is done. Used for running on JIT later.
+  std::shared_ptr<torch::jit::Graph> origGraph_;
+
   /// GraphExecutor used to execute graph_ on PyTorch for debugging purposes.
   torch::jit::GraphExecutor ptGraphExecutor_;
+
+  /// The PyTorch module of the graph.
+  /// It is used as first input when running origGraph_ on JIT.
+  c10::IValue module_;
 
   /// The HostManager used to store and run Glow graphs.
   std::shared_ptr<runtime::HostManager> hostManager_;
@@ -183,7 +191,9 @@ class CachingGraphRunner {
 public:
   CachingGraphRunner(std::shared_ptr<torch::jit::Graph> graph,
                      std::shared_ptr<runtime::HostManager> hostManager,
-                     PyTorchLoaderSettings settings, bool useRunOnly = false);
+                     PyTorchLoaderSettings settings, bool useRunOnly = false,
+                     std::shared_ptr<torch::jit::Graph> origGraph = nullptr,
+                     c10::IValue module = c10::IValue());
 
   ~CachingGraphRunner();
 
