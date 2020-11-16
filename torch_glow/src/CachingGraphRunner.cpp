@@ -453,6 +453,7 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
       glow::TypeRef ty = ph->getType();
 
       auto ptTensor = input.toTensor();
+
       bool needClone = false;
 
       if (ptTensor.is_quantized()) {
@@ -460,6 +461,18 @@ Error CachingGraphRunner::runImpl(const PerGlowGraphInfo &info,
         // We need to clone a new tensor here since
         // convertQuantizedToDtype might create a temporary tensor
         needClone = true;
+      }
+
+      // Make sure the runtime pytorch tensor type matches the placeholder.
+      // Note this needs to be placed after convertQuantizedToDtype to correctly
+      // handle quantized types.
+      if (ty->getElementType() !=
+          scalarTypeToElemKind(ptTensor.scalar_type())) {
+        std::stringstream ss;
+        ss << "Found type mismatch for input #" << placeholderI
+           << ": pytorch tensor is " << ptTensor.toString() << ", ph type is "
+           << ty->toString();
+        return MAKE_ERR(ss.str());
       }
 
       if (!ptTensor.is_contiguous()) {
