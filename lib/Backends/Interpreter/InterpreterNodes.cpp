@@ -3822,6 +3822,49 @@ void BoundInterpreterFunction::fwdBatchedReduceAddInst(
                             eBatchDims, eDestDims);
 }
 
+void BoundInterpreterFunction::fwdBatchedReduceAndInst(
+    const glow::BatchedReduceAndInst *I) {
+  auto *batch = I->getBatch();
+  auto *dest = I->getDest();
+  const unsigned_t axis = I->getAxis();
+  // Initialize both expanded batch and dest dims to the expanded batch
+  // dims. This allows us below to iterate over the tensor regardless of its
+  // shape using max_tensor_dimensions loops below.
+  ShapeVector eBatchDims = expandDimsToMax(batch->dims());
+  ShapeVector eDestDims = eBatchDims;
+  // Set the destination axis dimension (the one we are reducing) to 1.
+  eDestDims[axis] = 1;
+
+  // Get unowned handles of the batch and dest with these new expanded dims.
+  auto eBatch = getTensor(batch)->getUnowned(eBatchDims);
+  auto eDest = getTensor(dest)->getUnowned(eDestDims);
+  auto eBatchH = eBatch.getHandle<bool>();
+  auto eDestH = eDest.getHandle<bool>();
+  eDestH.clear();
+
+  // We can use this loop for all shapes. Use the same indices for both the
+  // batch and dest, except for setting the axis index in the dest to 0.
+  for (dim_t x = 0; x < eBatchDims[0]; x++) {
+    for (dim_t y = 0; y < eBatchDims[1]; y++) {
+      for (dim_t z = 0; z < eBatchDims[2]; z++) {
+        for (dim_t w = 0; w < eBatchDims[3]; w++) {
+          for (dim_t q = 0; q < eBatchDims[4]; q++) {
+            for (dim_t r = 0; r < eBatchDims[5]; r++) {
+              dim_t destIndices[] = {x, y, z, w, q, r};
+              if (destIndices[axis] == 0) {
+                eDestH.at(destIndices) = true;
+              }
+              destIndices[axis] = 0;
+              eDestH.at(destIndices) =
+                  eDestH.at(destIndices) && eBatchH.at({x, y, z, w, q, r});
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 /// Macro to define ReduceMin/Max kernel implementation.
 #define DEFINE_REDUCEMINMAX_INST_IMPL(func, compare)                           \
   template <typename ElemTy>                                                   \

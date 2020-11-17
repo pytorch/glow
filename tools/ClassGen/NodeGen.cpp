@@ -635,6 +635,16 @@ int main(int argc, char **argv) {
                     "tensor that has the same dimensions as the input tensor "
                     "without the first dimension.");
 
+  BB.newNode("BatchedReduceAnd")
+      .addInput("Batch")
+      .addMember(MemberType::Unsigned, "Axis")
+      .addResultFromCtorArg()
+      .setDocstring("Performs a logical `and` operation of all of the layers "
+                    "in the batch along the axis"
+                    "dimensions and produces a tensor that has the same "
+                    "dimensions as the input"
+                    "tensor without the Axis dimension.");
+
   BB.newNode("BatchedReduceMean")
       .addInput("Batch")
       .addMember(MemberType::VectorUnsigned, "Axes")

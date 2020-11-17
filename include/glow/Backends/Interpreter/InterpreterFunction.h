@@ -316,6 +316,9 @@ private:
                                         const ShapeVector &eDestDims);
 
   template <typename ElemTy>
+  void fwdBatchedReduceAndInst(const BatchedReduceAndInst *I);
+
+  template <typename ElemTy>
   void fwdBatchedReduceMinInstImpl(Value *batch, Value *dest,
                                    const ShapeVector &eBatchDims,
                                    const ShapeVector &eDestDims, ElemTy max);

@@ -1521,6 +1521,11 @@ Error ONNXModelWriter::writeBatchedReduceAdd(const BatchedReduceAddNode *node,
   return Error::success();
 }
 
+Error ONNXModelWriter::writeBatchedReduceAnd(const BatchedReduceAndNode *node,
+                                             GraphType &graph) {
+  return MAKE_ERR("BatchedReduceAnd not implemented for ONNX yet.");
+}
+
 Error ONNXModelWriter::writeBatchedReduceMax(const BatchedReduceMaxNode *node,
                                              GraphType &graph) {
   auto *proto = graph.add_node();

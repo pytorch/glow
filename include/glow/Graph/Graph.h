@@ -1139,6 +1139,19 @@ public:
                                                TypeRef outTy, NodeValue batch,
                                                llvm::ArrayRef<unsigned_t> axes);
 
+  /// Create a node, performing BatchedReduceAnd operation. Output type is
+  /// based on the input \p batch type with dimensions specified with \p axes
+  /// removed.
+  BatchedReduceAndNode *createBatchedReduceAnd(llvm::StringRef name,
+                                               NodeValue batch,
+                                               llvm::ArrayRef<unsigned_t> axes);
+
+  /// Create a node, performing BatchedReduceAnd operation. Output type
+  /// matches input \p outTy type.
+  BatchedReduceAndNode *createBatchedReduceAnd(llvm::StringRef name,
+                                               TypeRef outTy, NodeValue batch,
+                                               llvm::ArrayRef<unsigned_t> axes);
+
   /// Create a node, performing BatchedReduceMin operation. Output type is
   /// based on the input \p batch type with dimensions specified with \p axes
   /// removed.
