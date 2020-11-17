@@ -813,6 +813,10 @@ private:
   /// Load a PyTorch aten::to node.
   /// \returns error on failure.
   Error loadTo(const torch::jit::Node *ptNode);
+
+  /// Load a PyTorch aten::all node.
+  /// \returns error on failure.
+  Error loadAll(const torch::jit::Node *ptNode);
 };
 
 } // namespace glow
