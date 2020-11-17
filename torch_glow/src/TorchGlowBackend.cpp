@@ -13,12 +13,15 @@
 #include <torch/csrc/jit/backends/backend.h>
 #include <torch/csrc/jit/ir/alias_analysis.h>
 #include <torch/csrc/jit/ir/node_hashing.h>
+#include <torch/csrc/jit/passes/canonicalize_graph_fuser_ops.h>
+#include <torch/csrc/jit/passes/clear_profiling.h>
 #include <torch/csrc/jit/passes/common_subexpression_elimination.h>
 #include <torch/csrc/jit/passes/constant_pooling.h>
 #include <torch/csrc/jit/passes/dead_code_elimination.h>
 #include <torch/csrc/jit/passes/freeze_module.h>
 #include <torch/csrc/jit/passes/inliner.h>
 #include <torch/csrc/jit/passes/lower_tuples.h>
+#include <torch/csrc/jit/passes/remove_mutation.h>
 #include <torch/csrc/jit/passes/subgraph_rewrite.h>
 #include <torch/csrc/jit/passes/utils/subgraph_utils.h>
 #include <torch/csrc/jit/runtime/custom_operator.h>
@@ -564,11 +567,12 @@ compileImpl(const torch::jit::Module &origModule,
   std::unordered_map<std::string, std::shared_ptr<torch::jit::Graph>>
       nameToOrigGraph;
 
+  // Check input and outputs types of each method and inline and remove profiled
+  // shapes (this must happen before other optimizations)
   for (const auto &kv : method_compile_spec) {
     const auto &methodName = kv.key().toStringRef();
     auto method = origModule.get_method(methodName);
     auto graph = method.graph();
-    nameToOrigGraph[methodName] = graph->copy();
 
     GraphOutputType graphOutputType;
     ASSIGN_VALUE_OR_RETURN_ERR(graphOutputType,
@@ -579,26 +583,43 @@ compileImpl(const torch::jit::Module &origModule,
       return MAKE_ERR("Tensor list output not supported.");
     }
 
-    detail::fuseConcat(graph);
     torch::jit::Inline(*graph);
+    torch::jit::ClearProfilingInformation(graph);
+    torch::jit::EraseShapeInformation(graph);
+    nameToOrigGraph[methodName] = graph->copy();
+  }
+
+  // JIT graph optimizations before freezing
+  for (const auto &kv : method_compile_spec) {
+    const auto &methodName = kv.key().toStringRef();
+    auto method = origModule.get_method(methodName);
+    auto graph = method.graph();
+
     RewriteQuantPackedParamOps(graph);
     RETURN_IF_ERR(ProcessPackedParams(*graph, origModule._ivalue()));
   }
 
   // Freeze
-  auto preprocModule = torch::jit::freeze_module(origModule);
+  auto frozenModule = torch::jit::freeze_module(origModule);
 
   // Cleanup JIT graphs
   for (const auto &kv : method_compile_spec) {
     const auto &methodName = kv.key().toStringRef();
-    auto method = preprocModule.get_method(methodName);
+    auto method = frozenModule.get_method(methodName);
     auto graph = method.graph();
-    EliminateDeadCode(graph);
+
+    torch::jit::RemoveListMutation(graph);
+    torch::jit::RemoveTensorMutation(graph);
+
+    detail::fuseConcat(graph);
+    torch::jit::CanonicalizeOps(graph);
     EliminateCommonSubexpression(graph);
     ConstantPooling(graph);
+    // EliminateDeadCode should be last
+    EliminateDeadCode(graph);
   }
 
-  auto compileModule = preprocModule.clone();
+  auto compileModule = frozenModule.clone();
   // Compile each method
   for (const auto &kv : method_compile_spec) {
     const auto methodName = kv.key().toString()->string();
@@ -632,15 +653,6 @@ compileImpl(const torch::jit::Module &origModule,
 
     auto graph = method.function().graph();
     graph = graph->copy();
-
-    GraphOutputType graphOutputType;
-    ASSIGN_VALUE_OR_RETURN_ERR(graphOutputType,
-                               checkGraphInputsAndOutputs(*graph));
-
-    // Output lists no supported yet
-    if (graphOutputType == GraphOutputType::TENSOR_LIST) {
-      return MAKE_ERR("Tensor list output not supported.");
-    }
 
     LowerAllTuples(graph);
 
