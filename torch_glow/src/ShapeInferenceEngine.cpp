@@ -12,12 +12,46 @@
 #include "glow/Support/Error.h"
 #include "glow/Support/Support.h"
 
+DEFINE_string(shapeInferenceOpBlocklist, "", "Ops to skip shape inference");
+
 namespace glow {
+
+static std::vector<std::string> splitStr(const std::string &s,
+                                         const char delimiter = ',') {
+  std::vector<std::string> substrings;
+  size_t start = 0;
+  bool lastWasSplit = true;
+  for (size_t i = 0; i < s.size(); i++) {
+    if (lastWasSplit && s[i] == ' ') {
+      start = i + 1;
+      continue;
+    }
+    lastWasSplit = false;
+    if (s[i] == delimiter) {
+      substrings.push_back(s.substr(start, i - start));
+      start = i + 1;
+      lastWasSplit = true;
+    }
+  }
+
+  if (start < s.size() - 1) {
+    substrings.push_back(s.substr(start, s.size() - start));
+  }
+
+  return substrings;
+}
 
 ShapeInferenceEngine::ShapeInferenceEngine(
     const torch::jit::Graph &graph, const at::ArrayRef<at::IValue> &inputs,
     const std::string &fusionNodeSymbol)
-    : graph_(graph), inputs_(inputs), fusionNodeSymbol_(fusionNodeSymbol){};
+    : graph_(graph), inputs_(inputs), fusionNodeSymbol_(fusionNodeSymbol) {
+  if (!FLAGS_shapeInferenceOpBlocklist.empty()) {
+    auto ret = splitStr(FLAGS_shapeInferenceOpBlocklist);
+    for (const auto &s : ret) {
+      blockList_.insert(s);
+    }
+  }
+};
 
 void ShapeInferenceEngine::getNodeInputShape(const torch::jit::Node *node,
                                              MetaStack &inputMetas) {
@@ -42,6 +76,12 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
   /// Get op symbol
   const auto kind = node->kind();
   const std::string symbol = kind.toQualString();
+  if (blockList_.count(symbol)) {
+    // Skip shape inference for this node. If other nodes have dependency
+    // on this one then later their shape inference would fail explicitly.
+    LOG_FIRST_N(INFO, 1) << "Skip shape inference for " << symbol;
+    return Error::success();
+  }
   /// Extract shapes of inputs from shape mapping
   MetaStack inputMetas;
 
@@ -66,7 +106,9 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
                                embeddingBag4BitRowwiseOffsets(inputMetas));
   } else if (symbol == "glow::unpacked_quantized_linear") {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput,
-                               glow_unpacked_quantized_linear(inputMetas));
+                               glowUnpackedQuantizedLinear(inputMetas));
+  } else if (symbol == "fb::lengths_to_offsets") {
+    ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, lengthsToOffsets(inputMetas));
   } else {
     switch (kind) {
     case c10::prim::Constant: {
@@ -157,6 +199,10 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, stack(inputMetas));
       break;
     }
+    case c10::aten::to: {
+      ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, to(inputMetas));
+      break;
+    }
     case c10::prim::ListUnpack: {
       ASSIGN_VALUE_OR_RETURN_ERR(tensorListOutput, listUnpack(inputMetas));
       break;
@@ -236,7 +282,7 @@ Error ShapeInferenceEngine::runRecursively(
     const torch::jit::Graph &graph,
     const at::ArrayRef<torch::jit::IValue> &inputs) {
   // Populate input shapes
-  RETURN_IF_ERR(getGraphInputShape(graph, inputs));
+  RETURN_IF_ERR(getGraphInputShapeType(graph, inputs));
 
   /// Run shape inference for each node
   for (auto *node : graph.nodes()) {
@@ -281,7 +327,12 @@ Error ShapeInferenceEngine::run() {
   /// Put graph input into shape mapping
   RETURN_IF_ERR(runRecursively(graph_, inputs_));
   /// Extract output from shape mapping
-  generateGraphOutputShape();
+  if (!blockList_.empty()) {
+    LOG(INFO)
+        << "Skip generating graph output shapes since there are nodes blocked.";
+  } else {
+    generateGraphOutputShape();
+  }
   return Error::success();
 }
 
@@ -314,7 +365,7 @@ void ShapeInferenceEngine::printShapeMap() {
 /// Else if the input is intlist, store the intlist, and set shape as [sizeof
 /// intlist, 1]
 /// Else return an error
-Error ShapeInferenceEngine::getGraphInputShape(
+Error ShapeInferenceEngine::getGraphInputShapeType(
     const torch::jit::Graph &graph,
     const at::ArrayRef<torch::jit::IValue> &inputs) {
   for (auto i = 0; i < inputs.size(); i++) {
@@ -322,23 +373,28 @@ Error ShapeInferenceEngine::getGraphInputShape(
     auto input = inputs[i];
     TensorShape shape = {};
     std::vector<int64_t> intValue = {};
+    c10::ScalarType dtype;
 
     if (input.isTensor()) {
       auto ptTensor = input.toTensor();
       for (auto s : ptTensor.sizes()) {
         shape.emplace_back(s);
       }
+      dtype = ptTensor.scalar_type();
     } else if (input.isBool() || input.isInt()) {
       shape = {1};
       intValue = {input.toInt()};
+      dtype = input.isBool() ? c10::ScalarType::Bool : c10::ScalarType::Int;
     } else if (input.isIntList()) {
       intValue = input.toIntVector();
       shape = {static_cast<long>(intValue.size()), 1};
+      dtype = c10::ScalarType::Int;
     } else {
       return MAKE_ERR("Input type doesn't support yet.");
     }
     shapeMap_[gInName].listOfShape.emplace_back(std::move(shape));
     shapeMap_[gInName].intValue = intValue;
+    shapeMap_[gInName].dtype = dtype;
   }
   return Error::success();
 }
@@ -1129,7 +1185,7 @@ Bias: (out_features)
 Output: (N, *, out_features)
 
  */
-Expected<TensorOutput> ShapeInferenceEngine::glow_unpacked_quantized_linear(
+Expected<TensorOutput> ShapeInferenceEngine::glowUnpackedQuantizedLinear(
     const MetaStack &variableMetas) {
   RETURN_ERR_IF_NOT(
       variableMetas.size() == 5,
@@ -1236,6 +1292,52 @@ ShapeInferenceEngine::listUnpack(const MetaStack &variableMetas) {
 
   TensorListOutput output;
   output.shape = shapes;
+  output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+/*
+ * aten::to(Tensor input, int dtype, bool non_block, bool copy,
+ * MemoryFormat? memory_format) -> Tensor
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::to(const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 5,
+      strFormat("Expected 5 input, got %zu.", variableMetas.size()));
+
+  const TensorShape &t = variableMetas[0].shape<TensorShape>(); // input shape
+  int32_t dtype = variableMetas[1].intValue[0];
+
+  TensorOutput output;
+  output.shape = t;
+  output.dtype = static_cast<c10::ScalarType>(dtype);
+  return output;
+}
+
+/*
+ * fb::lengths_to_offsets(Tensor lengths, bool include_last_offset) -> Tensor,
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::lengthsToOffsets(const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 2,
+      strFormat("Expected 2 input, got %zu.", variableMetas.size()));
+
+  const TensorShape &t = variableMetas[0].shape<TensorShape>(); // input shape
+  RETURN_ERR_IF_NOT(t.size() == 1,
+                    strFormat("Expected input dim is 1, got %zu.", t.size()));
+
+  bool include_last_offset = variableMetas[1].intValue[0];
+  RETURN_ERR_IF_NOT(include_last_offset == true,
+                    strFormat("Expected include_last_offset is true, got %d.",
+                              include_last_offset));
+
+  TensorOutput output;
+  output.shape = t;
+  output.shape[0] += 1; // include last offset
   output.dtype = variableMetas[0].dtype;
   return output;
 }

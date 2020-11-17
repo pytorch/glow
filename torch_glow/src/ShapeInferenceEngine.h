@@ -94,6 +94,9 @@ private:
   /// integers in a graph.
   std::unordered_map<const torch::jit::Value *, VariableMeta> shapeMap_;
 
+  /// A set containing all ops that should be skipped during shape inference
+  std::unordered_set<std::string> blockList_;
+
   /// Store shapes of all the outputs in a graph.
   MetaStack outputShape_;
 
@@ -109,9 +112,9 @@ private:
   /// %5: [2 4]
   void printShapeMap();
 
-  /// Put shape info of actual graph inputs into \p shapeMap_.
-  Error getGraphInputShape(const torch::jit::Graph &,
-                           const at::ArrayRef<torch::jit::IValue> &);
+  /// Put shape/type info of actual graph inputs into \p shapeMap_.
+  Error getGraphInputShapeType(const torch::jit::Graph &,
+                               const at::ArrayRef<torch::jit::IValue> &);
 
   /// Extract shape info of graph outputs from \p shapeMap_.
   void generateGraphOutputShape();
@@ -166,7 +169,7 @@ private:
   embeddingBag4BitRowwiseOffsets(const MetaStack &variableMetas);
   // Shape inference for quantized::linear
   static Expected<TensorOutput>
-  glow_unpacked_quantized_linear(const MetaStack &variableMetas);
+  glowUnpackedQuantizedLinear(const MetaStack &variableMetas);
   // Shape inference for aten::embedding_bag
   static Expected<TensorOutput> embeddingBag(const MetaStack &variableMetas);
   // Shape inference for aten::chuck
@@ -175,6 +178,11 @@ private:
   static Expected<TensorOutput> stack(const MetaStack &variableMetas);
   // Shape inference for prim::listunpack
   static Expected<TensorListOutput> listUnpack(const MetaStack &variableMetas);
+  // Shape inference for aten::to
+  static Expected<TensorOutput> to(const MetaStack &variableMetas);
+  // Shape inference for fb::lengths_to_offsets
+  static Expected<TensorOutput>
+  lengthsToOffsets(const MetaStack &variableMetas);
 };
 
 } // namespace glow
