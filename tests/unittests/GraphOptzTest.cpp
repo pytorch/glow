@@ -5356,6 +5356,56 @@ TEST_F(GraphOptz, OptimizeQuantFCFloatReluTest) {
   checkNumericalEquivalence();
 }
 
+/// Test that we can find a non-quantized relu and fuse it up into a quant FC
+/// even when setting dummy qparams to true.
+TEST_F(GraphOptz, OptimizeDummyQuantFCFloatReluTest) {
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32}, 1.0, 0,
+                                       "input", false);
+  auto *weights =
+      mod_.createConstant(ElemKind::Int8QTy, {32, 32}, 1.0, 0, "weights");
+  auto *bias = mod_.createConstant(ElemKind::Int32QTy, {32}, 1.0, 0, "bias");
+  auto *addW =
+      mod_.createPlaceholder(ElemKind::FloatTy, {2, 32}, "addw", false);
+  auto *FC = F_->createFullyConnected("fc", input, weights, bias);
+  auto *DN = F_->createDequantize("dq", FC, ElemKind::FloatTy);
+  auto *RN = F_->createRELU("relu", DN);
+  auto *AN = F_->createAdd("add", RN, addW);
+  auto *SN = F_->createSave("save", AN);
+
+  CompilationContext cctx;
+  cctx.precisionConfig.loadUniquedDummyQParams = true;
+  optimizedF_ = optimizeFunctionForTest(
+      F_, {FunctionPassID::OptimizeQuantFCFloatRelu, getDCEPassConfig()}, cctx);
+
+  SaveNode *optSN =
+      llvm::dyn_cast<SaveNode>(optimizedF_->getNodeByName(SN->getName()));
+  ASSERT_TRUE(optSN);
+
+  AddNode *optAN = llvm::dyn_cast<AddNode>(optSN->getInput());
+  ASSERT_TRUE(optAN);
+  DequantizeNode *optDN = llvm::dyn_cast<DequantizeNode>(optAN->getLHS());
+  ASSERT_TRUE(optDN);
+  ReluNode *optRN = llvm::dyn_cast<ReluNode>(optDN->getInput());
+  ASSERT_TRUE(optRN);
+  auto rangeRN = optRN->getResult().getType()->getQuantizedValueRange();
+  FullyConnectedNode *optFC =
+      llvm::dyn_cast<FullyConnectedNode>(optRN->getInput());
+  ASSERT_TRUE(optFC);
+  auto rangeFC = optFC->getResult().getType()->getQuantizedValueRange();
+  EXPECT_EQ(rangeRN.first, rangeFC.first);
+  EXPECT_EQ(rangeRN.second, rangeFC.second);
+
+  bindings_.allocate(input)->getHandle<int8_t>().randomize(-128, 127,
+                                                           mod_.getPRNG());
+  bindings_.allocate(addW)->getHandle<float>().randomize(-128, 127,
+                                                         mod_.getPRNG());
+  weights->getPayloadMutable().getHandle<int8_t>().randomize(-128, 127,
+                                                             mod_.getPRNG());
+  bias->getPayloadMutable().getHandle<int32_t>().randomize(-128, 127,
+                                                           mod_.getPRNG());
+  checkNumericalEquivalence();
+}
+
 /// Test that we can find a non-quantized relu and fuse it up into a series of
 /// concatenated quant FCs.
 TEST_F(GraphOptz, OptimizeConcatQuantFCFloatReluTest) {
@@ -6360,4 +6410,28 @@ TEST_F(GraphOptz, TestEliminateClipsOutsideFP16Range) {
   bindings_.allocate(A)->getHandle<float16_t>().randomize(-128, 127,
                                                           mod_.getPRNG());
   checkNumericalEquivalence(0.f);
+}
+
+TEST_F(GraphOptz, TestUpdateQuantReluTypes) {
+  auto *input = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32}, 0.11, -1,
+                                       "input", false);
+  auto *weights = mod_.createPlaceholder(ElemKind::Int8QTy, {32, 32}, 0.2, 3,
+                                         "weights", false);
+  auto *bias =
+      mod_.createPlaceholder(ElemKind::Int32QTy, {32}, 0.01, 2, "bias", false);
+  auto *addW = mod_.createPlaceholder(ElemKind::Int8QTy, {2, 32}, 0.3, -4,
+                                      "addw", false);
+
+  auto *fc = F_->createFullyConnected("fc", input, weights, bias);
+  auto *qRelu = F_->createRELU("relu", fc->getResult());
+  auto *qAdd = F_->createAdd("add", qRelu, addW);
+  F_->createSave("save", qAdd);
+
+  updateQuantReluTypes(F_);
+
+  const auto fcRange = fc->getResult().getType()->getQuantizedValueRange();
+  const auto reluRange = qRelu->getResult().getType()->getQuantizedValueRange();
+  EXPECT_NE(reluRange.first, fcRange.first);
+  EXPECT_EQ(reluRange.first, 0);
+  EXPECT_EQ(reluRange.second, fcRange.second);
 }

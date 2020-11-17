@@ -197,6 +197,11 @@ parallelizeOps(Function *F,
                const llvm::DenseMap<Node *, ParallelTransformKind> &parOpts,
                size_t numOfChunks = 1, size_t modelParallelSplitAlignment = 1);
 
+/// Update quantized Relu output types found in \p F that have negative min to
+/// have min of zero. This normally happens during graph optz, but during AOT
+/// the qparams can not be calculated AOT because all qparams are dummies.
+void updateQuantReluTypes(Function *F);
+
 } // namespace glow
 
 #endif // GLOW_OPTIMIZER_GRAPHOPTIMIZER_GRAPHOPTIMIZER_H
