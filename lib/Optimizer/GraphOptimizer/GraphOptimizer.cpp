@@ -3856,8 +3856,7 @@ bool OptimizeQuantFCFloatRelu::run(Function *F,
 
   // This opt implies there to be changes to quantization, because we create an
   // int relu that was previously float.
-  if (!cctx.optimizationOpts.enableQuantParamChanges ||
-      cctx.precisionConfig.loadUniquedDummyQParams) {
+  if (!cctx.optimizationOpts.enableQuantParamChanges) {
     return false;
   }
 
@@ -3912,14 +3911,36 @@ bool OptimizeQuantFCFloatRelu::run(Function *F,
       continue;
     }
 
+    // If the quant FC is used by nodes with side effects then skip, since we
+    // may be changing the user's input qparam type.
+    bool skip = false;
+    for (FullyConnectedNode *FC : nodesToFuse) {
+      if (isUsedByNodeWithSideEffects(FC)) {
+        skip = true;
+        break;
+      }
+    }
+    if (skip) {
+      continue;
+    }
+
     // Now add quantized relus onto all of the FCs.
     for (FullyConnectedNode *FC : nodesToFuse) {
       const TypeRef FCTy = FC->getResult().getType();
-      // Use the same type as the FC for the Relu but with 0 as min.
-      const auto qParams = quantization::chooseQuantizationParams(
-          {0, FCTy->getQuantizedValueRange().second});
-      const TypeRef qReluTy = F->getParent()->uniqueType(
-          FCTy->getElementType(), FCTy->dims(), qParams.scale, qParams.offset);
+      TypeRef qReluTy = nullptr;
+      if (cctx.precisionConfig.loadUniquedDummyQParams) {
+        // Reuse the FC type, since we don't know its actual qparams during AOT
+        // optimization. When we the actual type later before deploying, we will
+        // do a final processing pass to set min to 0 via updateReluTypes().
+        qReluTy = FCTy;
+      } else {
+        // Use the same type as the FC for the Relu but with 0 as min.
+        const auto qParams = quantization::chooseQuantizationParams(
+            {0, FCTy->getQuantizedValueRange().second});
+        qReluTy =
+            F->getParent()->uniqueType(FCTy->getElementType(), FCTy->dims(),
+                                       qParams.scale, qParams.offset);
+      }
       ReluNode *qRelu = F->createRELU(relu->getName().str() + "_quant",
                                       FC->getResult(), qReluTy);
       FC->getResult().typeUnsafeReplaceAllUsesOfWith(qRelu->getResult(), F,
@@ -6191,4 +6212,27 @@ Expected<std::unordered_map<Node *, ConcatNode *>> glow::parallelizeOps(
                     "Not all Nodes specified in parOpts were processed.");
 
   return replacedMap;
+}
+
+void glow::updateQuantReluTypes(Function *F) {
+  for (Node &N : F->getNodes()) {
+    // Look for quantized Relus that have negative min, and update their min to
+    // be zero.
+    auto *RN = llvm::dyn_cast<ReluNode>(&N);
+    if (!RN || !RN->getResult().getType()->isQuantizedType() ||
+        isUsedByNodeWithSideEffects(RN)) {
+      continue;
+    }
+    const TypeRef RNTy = RN->getResult().getType();
+
+    const auto qRange = RNTy->getQuantizedValueRange();
+    if (qRange.first >= 0) {
+      continue;
+    }
+    const auto qParams =
+        quantization::chooseQuantizationParams({0, qRange.second});
+    const TypeRef qReluTy = F->getParent()->uniqueType(
+        RNTy->getElementType(), RNTy->dims(), qParams.scale, qParams.offset);
+    RN->setType(ReluNode::ResultIdx, qReluTy);
+  }
 }

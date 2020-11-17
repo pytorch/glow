@@ -381,6 +381,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     provisioner_.reset(new Provisioner(devices_));
     executor_.reset(new ThreadPoolExecutor(devices_, config_.executorThreads));
   }
+
   VLOG(1) << "Before replace dummy TQPs";
   // Now that we've partitioned and optimized, do some verification based on the
   // dummy mode we're using, if any.
@@ -389,6 +390,17 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
     RETURN_IF_ERR(module->verifyDummyQParams(
         cctx.precisionConfig.loadUniquedDummyQParams));
   }
+
+  // If we are loading an AOT model where we are replacing dummy TQPs, then we
+  // may need to update Relu output types on FCs, since they should be set to
+  // use zero as min but the correct qparams could not be calculated AOT.
+  if (cctx.loadingAOTModel && cctx.precisionConfig.replaceDummyTQPs) {
+    LOG(INFO) << "Updating quantized Relu types given real TQPs";
+    for (Function *F : module->getFunctions()) {
+      updateQuantReluTypes(F);
+    }
+  }
+
   VLOG(1) << "Before constant folding";
   // If we prevented constant modification then run constant folding with
   // recording now. Record so that if we are going to serialize we can embed the
@@ -453,6 +465,7 @@ Error HostManager::addNetwork(std::unique_ptr<Module> module,
       }
     }
   }
+
   VLOG(1) << "Before serialize compile DAG";
   // If requested, serialize the resulting DAG that was just optimized and
   // partitioned.
