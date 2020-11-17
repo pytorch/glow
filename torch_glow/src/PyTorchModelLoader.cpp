@@ -4413,6 +4413,7 @@ Error PyTorchModelLoader::loadNorm(const torch::jit::Node *ptNode) {
 
   int64_t axis;
   int64_t p;
+  int64_t keepDimIndex = 0;
 
   GlowIValue *pOrAxis;
   ASSIGN_VALUE_OR_RETURN_ERR(pOrAxis, getGlowIValueForValue(inputs[1]));
@@ -4428,6 +4429,7 @@ Error PyTorchModelLoader::loadNorm(const torch::jit::Node *ptNode) {
                                       axisList->size()));
     axis = axisList->front();
     p = 2;
+    keepDimIndex = 2;
   } else {
     // With p in torch.norm(input, p,  dim), inputs[1] is the int representing p
     GlowIValue *pVal;
@@ -4452,11 +4454,26 @@ Error PyTorchModelLoader::loadNorm(const torch::jit::Node *ptNode) {
                                       "of axis, but got dimension size = %lu",
                                       axisList->size()));
     axis = axisList->front();
+    keepDimIndex = 3;
   }
 
-  auto output = F_.createVectorNorm("norm", input, axis, p);
+  bool keepDims;
+  GlowIValue *keepDimsVal;
+  ASSIGN_VALUE_OR_RETURN_ERR(keepDimsVal,
+                             getGlowIValueForValue(inputs[keepDimIndex]));
+  ASSIGN_VALUE_OR_RETURN_ERR(keepDims, iValToBool(keepDimsVal));
 
-  RETURN_ERR(addValueMapping(outputs[0], output));
+  auto output = F_.createVectorNorm("norm", input, axis, p);
+  if (!keepDims) {
+    RETURN_ERR(addValueMapping(outputs[0], output));
+  } else {
+    // If keepDim is true we need to insert the removed dimension(s) manually by
+    // reshaping
+    std::vector<dim_t> shape = output->getResult().getType()->dims();
+    shape.insert(shape.begin() + axis, static_cast<dim_t>(1));
+    auto reshapeNode = F_.createReshape("reshape", output, shape);
+    RETURN_ERR(addValueMapping(outputs[0], reshapeNode));
+  }
 }
 
 Expected<glow::NodeValue>
