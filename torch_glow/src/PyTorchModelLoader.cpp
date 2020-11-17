@@ -1149,6 +1149,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
        &PyTorchModelLoader::loadMaskedFill},
       {{"aten::prelu"}, &PyTorchModelLoader::loadPRelu},
       {{"aten::slice"}, &PyTorchModelLoader::loadSlice},
+      {{"aten::index"}, &PyTorchModelLoader::loadIndex},
       {{"aten::softmax"}, &PyTorchModelLoader::loadSoftMax},
       {{"aten::topk"}, &PyTorchModelLoader::loadTopK},
       {{"aten::to"}, &PyTorchModelLoader::loadTo},
@@ -2683,9 +2684,25 @@ Error PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
   auto outputs = ptNode->outputs();
   // Requires -1 because this requires at least one input.
   RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -1, outputs, 1));
+
+  bool hasNodeValue = false, hasIValue = false;
+  for (size_t i = 0; i < inputs.size(); ++i) {
+    if (hasGlowIValueForValue(inputs[i])) {
+      GlowIValue *ival;
+      ASSIGN_VALUE_OR_RETURN_ERR(ival, getGlowIValueForValue(inputs[i]));
+      if (ival->getTag() == GlowIValue::Tag::None)
+        hasIValue = true;
+    } else if (hasGlowNodeValueForValue(inputs[i])) {
+      hasNodeValue = true;
+    } else {
+      assert(false && "Unreachable");
+    }
+  }
+  bool containsNone = hasIValue && hasNodeValue;
+
   GlowIValue glowIVal;
   // Get the Tag of the first input to use for the whole list.
-  if (hasGlowIValueForValue(inputs[0])) {
+  if (hasGlowIValueForValue(inputs[0]) && !containsNone) {
     // If it is IValue
     GlowIValue *firstInputIVal;
     ASSIGN_VALUE_OR_RETURN_ERR(firstInputIVal,
@@ -2723,14 +2740,30 @@ Error PyTorchModelLoader::loadListConstruct(const torch::jit::Node *ptNode) {
       return MAKE_ERR(
           "Encountered an unsupported GlowIValue type for ListConstruct");
     }
-  } else if (hasGlowNodeValueForValue(inputs[0])) {
-    // If it is a NodeValue, which we will store as a NodeValueList IValue.
+  } else if (hasGlowNodeValueForValue(inputs[0]) || containsNone) {
     std::vector<glow::NodeValue> nodeValues;
-    for (size_t i = 0; i < inputs.size(); i++) {
-      glow::NodeValue x;
-      ASSIGN_VALUE_OR_RETURN_ERR(x, getGlowNodeValueForValue(inputs[i]));
-      nodeValues.push_back(x);
+    std::vector<int64_t> noneIndices;
+    for (size_t i = 0; i < inputs.size(); ++i) {
+      if (hasGlowIValueForValue(inputs[i])) {
+        GlowIValue *ival;
+        ASSIGN_VALUE_OR_RETURN_ERR(ival, getGlowIValueForValue(inputs[i]));
+        if (ival->getTag() == GlowIValue::Tag::None) {
+          auto t = glow::Tensor();
+          auto constant =
+              F_.getParent()
+                  ->createConstant("dummy_" + std::to_string(i), std::move(t))
+                  ->getOutput();
+          nodeValues.push_back(constant);
+        } else {
+          assert(false && "Expected IValue with tag None");
+        }
+      } else {
+        glow::NodeValue x;
+        ASSIGN_VALUE_OR_RETURN_ERR(x, getGlowNodeValueForValue(inputs[i]));
+        nodeValues.push_back(x);
+      }
     }
+
     glowIVal.fromNodeValueList(std::move(nodeValues));
   } else {
     // Should never reach here
@@ -5270,6 +5303,164 @@ Error PyTorchModelLoader::loadSlice(const torch::jit::Node *ptNode) {
   RETURN_ERR(addValueMapping(outputs[0], glowNode, dtype));
 }
 
+Error PyTorchModelLoader::loadIndex(const torch::jit::Node *ptNode) {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 2, outputs, 1));
+
+  glow::NodeValue input;
+  std::vector<glow::NodeValue> *inputIndices;
+  ASSIGN_VALUE_OR_RETURN_ERR(input, getGlowNodeValueForValue(inputs[0]));
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      inputIndices, iValToNodeValueList(getGlowIValueForValue(inputs[1])));
+
+  const auto dims = input.getType()->dims();
+
+  std::vector<glow::unsigned_t> sliceAxes;
+  std::vector<glow::unsigned_t> indexAxes;
+  std::vector<glow::NodeValue> indices;
+  size_t actualIdx = 0;
+  for (auto it = inputIndices->begin(); it != inputIndices->end(); ++it) {
+    // Check if dummy tensor
+    if (it->getType()->numSizes_ == 0) {
+      sliceAxes.push_back(actualIdx);
+    } else {
+      indexAxes.push_back(actualIdx);
+      indices.push_back(std::move(*it));
+    }
+    actualIdx++;
+  }
+  auto advIdxIndices = indexAxes;
+  const auto advIdxCount = advIdxIndices.size();
+
+  bool needsTranspose = sliceAxes.size() != 0;
+  // Uses result of actualIdx from previous loop
+  for (auto i = actualIdx; i < dims.size(); ++i) {
+    sliceAxes.push_back(i);
+  }
+
+  bool indicesTogether = true;
+  for (size_t i = 0; i < indexAxes.size() - 1; ++i) {
+    indicesTogether = indexAxes[i + 1] - indexAxes[i] == 1;
+    if (!indicesTogether) {
+      break;
+    }
+  }
+
+  const auto numIndices = indices.size();
+  indexAxes.insert(indexAxes.end(), sliceAxes.begin(), sliceAxes.end());
+
+  glow::TransposeNode *transNode = nullptr;
+  if (needsTranspose) {
+    transNode = F_.createTranspose("transpose", input, indexAxes);
+  }
+
+  auto flattenNode = F_.createFlatten(
+      "flatten", needsTranspose ? static_cast<NodeValue>(transNode) : input,
+      numIndices);
+
+  std::vector<int64_t> inputDimsI64(dims.begin(), dims.end());
+  std::vector<glow::NodeValue> dimConstantList;
+  for (size_t i = 0; i < inputDimsI64.size(); ++i) {
+    glow::Tensor t(F_.getParent()->uniqueType(ElemKind::Int64ITy, {1}));
+    t.getHandle<int64_t>() = inputDimsI64[i];
+    auto *shapeConstant = F_.getParent()->createConstant(
+        "shapeConstant" + std::to_string(i), std::move(t));
+    dimConstantList.push_back(std::move(shapeConstant));
+  }
+
+  auto cumAdvIndex = (*inputIndices)[advIdxIndices[advIdxIndices.size() - 1]];
+  auto multiplier = dimConstantList[advIdxIndices[advIdxIndices.size() - 1]];
+  for (int64_t i = advIdxCount - 2; i > -1; --i) {
+    auto adv_index =
+        F_.createNodeWithBroadcast<MulNode>(
+              "mul", -1, (*inputIndices)[advIdxIndices[i]], multiplier)
+            ->getResult();
+
+    cumAdvIndex =
+        F_.createNodeWithBroadcast<AddNode>("add", -1, cumAdvIndex, adv_index)
+            ->getResult();
+
+    multiplier = F_.createNodeWithBroadcast<MulNode>(
+                       "mul", -1, multiplier, dimConstantList[advIdxIndices[i]])
+                     ->getResult();
+  }
+
+  auto *gatherNode =
+      F_.createGather("gather", flattenNode->getResult(), cumAdvIndex);
+
+  std::vector<unsigned_t> check;
+  for (int i = advIdxIndices[0];
+       i < advIdxIndices[advIdxIndices.size() - 1] + 1; ++i) {
+    check.push_back(i);
+  }
+
+  const bool consecutiveIndices = advIdxIndices == check;
+  glow::NodeValue output;
+  if (consecutiveIndices) {
+    const auto nElems =
+        std::accumulate(gatherNode->getResult().getType()->dims().begin(),
+                        gatherNode->getResult().getType()->dims().end(), 1,
+                        std::multiplies<dim_t>());
+    std::vector<dim_t> foldedAdvIdxShape;
+    dim_t product = 1;
+    for (int i = 0; i < sliceAxes.size(); ++i) {
+      const auto value = input.dims()[sliceAxes[i]];
+      foldedAdvIdxShape.push_back(value);
+      product *= value;
+    }
+    const auto firstDim = nElems / product;
+    foldedAdvIdxShape.insert(foldedAdvIdxShape.begin(), firstDim);
+
+    auto *reshapeNode =
+        F_.createReshape("reshape", gatherNode->getResult(), foldedAdvIdxShape);
+
+    std::vector<unsigned_t> advIdxPermute;
+    for (unsigned_t i = 1; i < advIdxIndices[0] + 1; ++i) {
+      advIdxPermute.push_back(i);
+    }
+    advIdxPermute.push_back(0);
+    for (unsigned_t i = advIdxIndices[0] + 1;
+         i < input.dims().size() - advIdxCount + 1; ++i) {
+      advIdxPermute.push_back(i);
+    }
+
+    auto *transposeNode = F_.createTranspose(
+        "transpose", reshapeNode->getResult(), advIdxPermute);
+
+    std::vector<dim_t> finalShape;
+    for (int i = 0; i < advIdxIndices[0]; ++i) {
+      finalShape.push_back(input.dims()[i]);
+    }
+    for (dim_t i = 0; i < cumAdvIndex.dims().size(); ++i) {
+      finalShape.push_back(cumAdvIndex.dims()[i]);
+    }
+    for (int i = advIdxIndices[0]; i < input.dims().size(); ++i) {
+      if (std::find(advIdxIndices.begin(), advIdxIndices.end(), i) ==
+          advIdxIndices.end()) {
+        finalShape.push_back(input.dims()[i]);
+      }
+    }
+
+    output = F_.createReshape("reshape", transposeNode->getResult(), finalShape)
+                 ->getResult();
+  } else {
+    std::vector<dim_t> finalShape;
+    for (dim_t i = 0; i < cumAdvIndex.dims().size(); ++i) {
+      finalShape.push_back(cumAdvIndex.dims()[i]);
+    }
+    for (int i = 0; i < sliceAxes.size(); ++i) {
+      finalShape.push_back(input.dims()[sliceAxes[i]]);
+    }
+
+    output = F_.createReshape("reshape", gatherNode->getResult(), finalShape)
+                 ->getResult();
+  }
+
+  return addValueMapping(outputs[0], output);
+}
+
 /// TODO: check Dtype is float (optional value).
 Error PyTorchModelLoader::loadSoftMax(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
@@ -5717,17 +5908,25 @@ Error PyTorchModelLoader::loadConstantChunk(const torch::jit::Node *ptNode) {
 
 Expected<GlowIValue>
 PyTorchModelLoader::getGenerictList(const torch::jit::IValue &iVal) {
+  std::cout << ">>>>>>>>>>> ENTERING getGenerictList >>>>>>>>>>>>>>\n ";
+
   auto iValList = iVal.toListRef();
   GlowIValue glowIVal;
-  if (iValList[0].isTensor()) {
+  if (iValList[0].isTensor() || iValList[0].isNone()) {
     std::vector<NodeValue> constantNodeValueList;
     for (const auto &v : iValList) {
-      RETURN_ERR_IF_NOT(v.isTensor(),
+      RETURN_ERR_IF_NOT(v.isTensor() || v.isNone(),
                         strFormat("Expect all ival in a PyTorch GenericList to "
                                   "be Tensor, but got %s.",
                                   v.tagKind().c_str()));
-      glow::Tensor glowTensor =
-          ptTensorToGlowTensor(v.toTensor().contiguous()).clone();
+
+      glow::Tensor glowTensor;
+      // If None is found in the list, insert a dummy tensor
+      if (v.isNone()) {
+        glowTensor = glow::Tensor();
+      } else {
+        glowTensor = ptTensorToGlowTensor(v.toTensor().contiguous()).clone();
+      }
       auto glowConstantNodeValue =
           F_.getParent()
               ->createConstant("GenericList_created_constant",
