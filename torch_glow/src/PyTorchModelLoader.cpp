@@ -3535,11 +3535,6 @@ Error PyTorchModelLoader::loadBatchNorm(const torch::jit::Node *ptNode) {
                                            inputs[BatchNormInputs::training])));
   RETURN_ERR_IF_NOT(training == false, "Don't support BatchNorm training yet.");
 
-  RETURN_ERR_IF_NOT(
-      input.dims().size() == numDims + 2,
-      glow::strFormat("Number input dimensions must be equal to %d, got %lu",
-                      numDims + 2, input.dims().size()));
-
   size_t numChannels = input.dims()[1];
   glow::NodeValue weights = loadNodeValueOrCreateBroadcastedConstant(
       inputs[BatchNormInputs::weights], "weight",
