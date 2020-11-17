@@ -82,13 +82,13 @@ class CachingGraphRunner {
 
   /// Mapping from hash of PyTorch inputs to PerGlowGraphInfo for the Glow
   /// function that will run inputs matching that hash.
-  std::unordered_map<size_t, std::shared_ptr<PerGlowGraphInfo>>
+  std::unordered_map<InputMetaStack, std::shared_ptr<PerGlowGraphInfo>>
       perGlowGraphInfoMap_;
 
   /// Here we assume this is only one corresponding Glow function.
   /// Mapping from hash of PyTorch inputs to PerGlowGraphShape for the Glow
   /// function that will run inputs matching that hash.
-  std::unordered_map<size_t, MetaStack> perGlowGraphShapeMap_;
+  std::unordered_map<InputMetaStack, MetaStack> perGlowGraphShapeMap_;
 
   /// In AOT flow, compile a single Glow function and use it for all input
   /// sizes. The PyTorch tensor inputs in this case should be smaller that the
@@ -167,18 +167,6 @@ class CachingGraphRunner {
   /// debugging purposes only. \returns how long running took in usecs.
   int64_t runOnJit(torch::jit::Stack &stack);
 
-  /// Given a \p stack of inputs, computes the hash for the inputs on the stack.
-  size_t computeGraphHash(const c10::ArrayRef<c10::IValue> &inputs) const;
-
-  /// Given a \p stack of inputs, dumps parameters used in computing hash with
-  /// the inputs on the stack.
-  std::string
-  dumpGraphSignature(const c10::ArrayRef<c10::IValue> &inputs) const;
-
-  /// Given a \p stack of inputs, computes the hash using the inputs shape on
-  /// the stack.
-  size_t hashTensorShape(const c10::ArrayRef<c10::IValue> &inputs) const;
-
   /// Given a TraceContext \p traceContext, aggregate it with previous
   /// TraceContexts and if enough have been aggregated according to settings
   /// then dump them to file. If flush is true then dump aggregated traces to
@@ -204,12 +192,12 @@ public:
   Error run(torch::jit::Stack &stack);
 
   /// Warm up the cache by compiling a Glow function and storing its info in
-  /// perGlowGraphInfoMap_ with the hash computed using \p inputMeta. \p
-  /// inputMeta is used to pass Glow shapes and types (Only tensors are valid
+  /// perGlowGraphInfoMap_ with the hash computed using \p metaStack. \p
+  /// metaStack is used to pass Glow shapes and types (Only tensors are valid
   /// inputs). \p settings enable different settings for each compilation.
   /// If \p useMaxSizeCompilation , compile only a single Glow graph with an
   /// upper-bound on the input sizes (smaller inputs will be padded by Glow.)
-  Error warmCache(const std::vector<InputMeta> &inputMeta,
+  Error warmCache(const InputMetaStack &metaStack,
                   const PyTorchLoaderSettings &settings,
                   runtime::DeferredWeightLoader *loader,
                   bool useMaxSizeCompilation = true);

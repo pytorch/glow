@@ -218,10 +218,6 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor);
 /// matching type.
 at::Tensor glowTypeToEmptyPTTensor(const glow::Type &glowType);
 
-/// Load the \p InputMeta data contains Glow fusion node's input size and type
-/// info from \p raw_data stored in string format.
-std::vector<glow::InputMeta> loadInputMeta(const std::string &raw_data);
-
 /// Lower a pytorch \p module to glow before execution. \p inputMetaStr is the
 /// raw string containing the meta data of the glow fuser node input.
 void glowAOTFusion(torch::jit::Module &module, const std::string &inputMetaStr,

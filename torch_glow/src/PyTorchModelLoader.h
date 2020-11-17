@@ -17,6 +17,7 @@
 #ifndef GLOW_TORCH_GLOW_SRC_PYTORCHMODELLOADER_H
 #define GLOW_TORCH_GLOW_SRC_PYTORCHMODELLOADER_H
 
+#include "InputMeta.h"
 #include "PyTorchCommon.h"
 
 #include "GlowIValue.h"
@@ -79,21 +80,6 @@ public:
 
   /// \returns the mapped GlowIValue if one is mapped otherwise return an error.
   Expected<const GlowIValue *> getMappedGlowIValue() const;
-};
-
-// Input's shape and type
-struct InputMeta {
-  c10::ScalarType type;
-  std::vector<glow::sdim_t> dims;
-
-  InputMeta(c10::ScalarType type_, std::vector<glow::sdim_t> &&dims_) {
-    type = type_;
-    dims = dims_;
-  }
-  InputMeta(c10::ScalarType type_, const std::vector<glow::sdim_t> &dims_) {
-    type = type_;
-    dims = dims_;
-  }
 };
 
 /// Loads PyTorch JIT IR graphs as a Glow Function.
@@ -198,7 +184,7 @@ public:
                std::vector<c10::ScalarType> &outputCorrectType,
                const PyTorchLoaderSettings &settings,
                const at::ArrayRef<torch::jit::IValue> inputs,
-               const std::vector<InputMeta> &inputMeta);
+               const InputMetaStack &metaStack);
 
 private:
   /// Takes a glow::Function \p F, a jit::Graph \p graph to load, and a
@@ -211,7 +197,7 @@ private:
                      std::vector<c10::ScalarType> &outputCorrectType,
                      Error &error, const PyTorchLoaderSettings &settings,
                      const at::ArrayRef<torch::jit::IValue> inputs,
-                     const std::vector<InputMeta> &inputMeta = {});
+                     const InputMetaStack &metaStack = InputMetaStack());
 
   /// Build mapping from jit symbols to function that loads nodes of that kind.
   static const MappingOfMemberFunctions buildSymbolsMapping();

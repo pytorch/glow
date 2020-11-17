@@ -5939,11 +5939,11 @@ Error PyTorchModelLoader::loadJITGraph(
     std::vector<c10::ScalarType> &outputCorrectType,
     const PyTorchLoaderSettings &settings,
     const at::ArrayRef<torch::jit::IValue> inputs,
-    const std::vector<InputMeta> &inputMeta) {
+    const InputMetaStack &metaStack) {
   Error error = Error::empty();
   PyTorchModelLoader loader(F, graph, inputPlaceholders, outputPlaceholders,
                             outputCorrectType, error, settings, inputs,
-                            inputMeta);
+                            metaStack);
   return error;
 }
 
@@ -5954,7 +5954,7 @@ PyTorchModelLoader::PyTorchModelLoader(
     std::vector<c10::ScalarType> &outputCorrectType, Error &error,
     const PyTorchLoaderSettings &settings,
     const at::ArrayRef<torch::jit::IValue> inputs,
-    const std::vector<InputMeta> &inputMeta)
+    const InputMetaStack &metaStack)
     : F_(F), settings_(settings), inputs_(inputs) {
   auto loadFn = [&]() -> Error {
     auto graphInputValues = graph.inputs();
@@ -5972,7 +5972,7 @@ PyTorchModelLoader::PyTorchModelLoader(
 
     RETURN_ERR_IF_NOT(
         inputs.size() == graphInputValues.size() ||
-            inputMeta.size() == graphInputValues.size(),
+            metaStack.inputMetas.size() == graphInputValues.size(),
         glow::strFormat("Number of Graph inputs %lu must match the "
                         "number of provided inputs %lu.",
                         graphInputValues.size(), inputs.size()));
@@ -5981,12 +5981,12 @@ PyTorchModelLoader::PyTorchModelLoader(
       const torch::jit::Value *inputValue = graphInputValues[i];
       c10::ScalarType inputScalarType;
       glow::Placeholder *ph;
-      if (!inputMeta.empty()) {
+      if (!metaStack.inputMetas.empty()) {
         if (inputValue->type()->kind() == c10::TypeKind::TensorType) {
-          inputScalarType = inputMeta[i].type;
+          inputScalarType = metaStack.inputMetas[i].type;
           glow::ElemKind elemKind;
-          if (inputMeta[i].type != at::kQUInt8) {
-            elemKind = scalarTypeToElemKind(inputMeta[i].type);
+          if (metaStack.inputMetas[i].type != at::kQUInt8) {
+            elemKind = scalarTypeToElemKind(metaStack.inputMetas[i].type);
           } else {
             elemKind = ElemKind::Int8QTy;
           }
@@ -5994,7 +5994,7 @@ PyTorchModelLoader::PyTorchModelLoader(
           // TODO: Change Glow Type to use sdim_t to be consistent
           // with other places.
           std::vector<glow::dim_t> dims;
-          for (auto d : inputMeta[i].dims) {
+          for (auto d : metaStack.inputMetas[i].dims) {
             dims.push_back(static_cast<glow::dim_t>(d));
           }
           glow::Type t(elemKind, dims);

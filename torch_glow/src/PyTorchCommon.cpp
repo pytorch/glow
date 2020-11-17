@@ -500,37 +500,12 @@ glow::Tensor ptTensorToGlowTensor(const at::Tensor &ptTensor) {
   }
 }
 
-std::vector<glow::InputMeta> loadInputMeta(const std::string &raw_data) {
-  if (raw_data.empty()) {
-    return {};
-  }
-  auto inputMeta = std::vector<glow::InputMeta>();
-  std::stringstream ss_raw(raw_data);
-
-  std::string line;
-  while (std::getline(ss_raw, line)) {
-    std::vector<glow::sdim_t> dims;
-    std::stringstream ss(line);
-    ss.ignore();
-    for (int i; ss >> i;) {
-      dims.push_back(i);
-      if (ss.peek() == ',' || ss.peek() == '[' || ss.peek() == ']') {
-        ss.ignore();
-      }
-    }
-    std::getline(ss_raw, line);
-    c10::ScalarType t = static_cast<c10::ScalarType>(std::stoi(line));
-    inputMeta.emplace_back(t, std::move(dims));
-  }
-  return inputMeta;
-}
-
 // Similar to glowAOTFusion() however supports multiple Glow subgraphs and
 // runners. We'd still need both since in some cases we may not be able to infer
 // the entire model and would leverage glowAOTFusion() to run the partially
 // lowered model.
-void glowAOTFusionWithShapeInference(
-    torch::jit::Module &model, const std::vector<glow::InputMeta> &inputMeta) {
+void glowAOTFusionWithShapeInference(torch::jit::Module &model,
+                                     const InputMetaStack &metaStack) {
   auto settings = glow::getGlobalPyTorchLoaderSettingsSnapshot();
 
   auto graph = model.get_method("forward").function().graph();
@@ -544,12 +519,12 @@ void glowAOTFusionWithShapeInference(
   // model and expect the model can be lowered. However there
   // are cases where we cannot lower the entire model.
   // There could be multiple fused graphs and the inputs to
-  // each fused graph could be different from the inputMeta user
+  // each fused graph could be different from the metaStack user
   // provided. Therefore we leverage shape inference to populate
   // shape and type information over the entire model so we
   // could lower whatever we want.
   std::vector<torch::jit::IValue> inputs;
-  for (const auto &i : inputMeta) {
+  for (const auto &i : metaStack.inputMetas) {
     inputs.push_back(
         torch::empty(i.dims, torch::TensorOptions().dtype(i.type)));
   }
@@ -598,7 +573,7 @@ void glowAOTFusionWithShapeInference(
                 settings, /*useRunOnly*/ true);
           });
 
-      std::vector<glow::InputMeta> perGraphInputMeta;
+      InputMetaStack metaStackForCompilation;
       auto graphInputValues = subgraph->inputs();
 
       for (size_t i = 0; i < graphInputValues.size(); ++i) {
@@ -610,11 +585,11 @@ void glowAOTFusionWithShapeInference(
         }
         // Only support tensor input for now
         // TODO Add support for other input types, e.g., tensor[]
-        perGraphInputMeta.emplace_back(itr->second.dtype,
-                                       itr->second.shape<TensorShape>());
+        metaStackForCompilation.inputMetas.emplace_back(
+            itr->second.dtype, itr->second.shape<TensorShape>());
       }
 
-      e = runner->warmCache(perGraphInputMeta, settings, nullptr,
+      e = runner->warmCache(metaStackForCompilation, settings, nullptr,
                             /*useMaxSizeCompilation*/ true);
       if (e) {
         // If the graph is already compiled previously, warmCache() will report
@@ -633,10 +608,10 @@ void glowAOTFusionWithShapeInference(
 void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
                    runtime::DeferredWeightLoader *loader,
                    PyTorchLoaderSettings settings) {
-  auto inputMeta = glow::loadInputMeta(inputMetaStr);
+  InputMetaStack metaStack = glow::loadInputMeta(inputMetaStr);
 
   if (FLAGS_inferShapeForCompilation) {
-    return glowAOTFusionWithShapeInference(model, inputMeta);
+    return glowAOTFusionWithShapeInference(model, metaStack);
   }
 
   // We assume the model is flattened and only one graph will be lowered. In the
@@ -673,7 +648,7 @@ void glowAOTFusion(torch::jit::Module &model, const std::string &inputMetaStr,
             settings, /*useRunOnly*/ true);
       });
 
-  auto e = runner->warmCache(inputMeta, settings, loader,
+  auto e = runner->warmCache(metaStack, settings, loader,
                              /*useMaxSizeCompilation*/ true);
   if (e) {
     // If the graph is already compiled previously, warmCache() will report

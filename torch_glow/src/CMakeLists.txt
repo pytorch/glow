@@ -27,6 +27,7 @@ add_library(PyTorchModelLoader
                      GlowFuser.cpp
                      FuseKnownPatterns.cpp
                      GlowIValue.cpp
+                     InputMeta.cpp
                      PyTorchCommon.cpp
                      Registration.cpp
                      PyTorchModelLoader.cpp

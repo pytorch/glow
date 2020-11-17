@@ -3,6 +3,7 @@
 #include "FuseKnownPatterns.h"
 #include "GlowCompileSpec.h"
 #include "GlowFuser.h"
+#include "InputMeta.h"
 #include "Registration.h"
 
 #include "glow/Runtime/ErrorReporter.h"
@@ -166,19 +167,6 @@ void registerTorchGlowBackendAndDeps() {
   (void)torchGlowBackend();
   registerPyTorchGlowCustomClasses();
   registerGlowHelperOps();
-}
-
-static std::vector<glow::InputMeta>
-getInputMetas(const std::vector<c10::intrusive_ptr<InputSpec>> &inputSet) {
-  std::vector<glow::InputMeta> inputMeta;
-  for (const auto &inputSpec : inputSet) {
-    std::vector<glow::sdim_t> dims;
-    for (auto d : inputSpec->dims) {
-      dims.emplace_back(static_cast<glow::sdim_t>(d));
-    }
-    inputMeta.emplace_back(inputSpec->elem_type, std::move(dims));
-  }
-  return inputMeta;
 }
 
 /// Unpacks conv2d and linear packed parameters and replaces
@@ -688,8 +676,8 @@ compileImpl(const torch::jit::Module &origModule,
             compilationGroupSettings, *compilationGroup->settings));
         // Compile each input set
         for (const auto &inputSet : compilationGroup->input_sets) {
-          std::vector<glow::InputMeta> inputMeta = getInputMetas(inputSet);
-          auto err = runner->warmCache(inputMeta, compilationGroupSettings,
+          InputMetaStack metaStack = getInputMetas(inputSet);
+          auto err = runner->warmCache(metaStack, compilationGroupSettings,
                                        /*loader*/ nullptr,
                                        /*useMaxSizeCompilation*/ false);
           err = checkForFatalError(std::move(err));
