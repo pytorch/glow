@@ -4839,15 +4839,19 @@ Error PyTorchModelLoader::loadPermute(const torch::jit::Node *ptNode) {
 Error PyTorchModelLoader::loadTo(const torch::jit::Node *ptNode) {
   auto inputs = ptNode->inputs();
   auto outputs = ptNode->outputs();
-  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 5, outputs, 1));
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, -5, outputs, 1));
 
   glow::NodeValue input;
   ASSIGN_VALUE_OR_RETURN_ERR(input,
                              getGlowNodeValueForValue(inputs[ToInputs::input]));
 
   int32_t dtype;
-  ASSIGN_VALUE_OR_RETURN_ERR(
-      dtype, iValToInt(getGlowIValueForValue(inputs[ToInputs::dtype])));
+  if (inputs.size() == 5 || inputs.size() == 8) {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        dtype, iValToInt(getGlowIValueForValue(inputs[ToInputs::dtype])));
+  } else {
+    return MAKE_ERR("Unsupported version of aten::to.");
+  }
 
   auto inputType = input.getType();
   auto glowElemKind = scalarTypeToElemKind(static_cast<c10::ScalarType>(dtype));
