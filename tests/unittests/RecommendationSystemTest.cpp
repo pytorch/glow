@@ -143,7 +143,7 @@ llvm::cl::opt<bool> fuseScaleOffsetFp32Opt(
     "glow_global_fused_scale_offset_fp32",
     llvm::cl::desc(
         "Enable converting scale/offset in sls's input data from fp16 to fp32"),
-    llvm::cl::Optional, llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
+    llvm::cl::init(false), llvm::cl::cat(recSysTestCat));
 } // namespace
 
 class TestDeferredWeightLoader : public DeferredWeightLoader {
@@ -862,7 +862,8 @@ protected:
           Kinded::Kind::FusedRowwiseQuantizedSparseLengthsWeightedSumNodeKind);
       precConfig_.precisionModeKindSet.insert(
           Kinded::Kind::RowwiseQuantizedFullyConnectedNodeKind);
-    } else if (fuseScaleOffsetFp32Opt) {
+    }
+    if (fuseScaleOffsetFp32Opt) {
       precConfig_.convert4BitFusedToFP32 = fuseScaleOffsetFp32Opt;
       precConfig_.convert8BitFusedToFP32 = fuseScaleOffsetFp32Opt;
     }
