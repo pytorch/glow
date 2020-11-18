@@ -161,9 +161,9 @@ private:
   // Shape inference for glow::fused_stack
   static Expected<TensorOutput> fusedStack(const MetaStack &variableMetas,
                                            int64_t dim);
-  // Shape inference for fb::embedding_bag_byte_rowwise_offsets
+  // Shape inference for quantized::embedding_bag_byte_rowwise_offsets
   static Expected<TensorOutput>
-  embeddingBagByteRowwiseOffsets(const MetaStack &variableMetas);
+  quantizedEmbeddingBagByteRowwiseOffsets(const MetaStack &variableMetas);
   // Shape inference for fb::embedding_bag_4bit_rowwise_offsets
   static Expected<TensorOutput>
   embeddingBag4BitRowwiseOffsets(const MetaStack &variableMetas);

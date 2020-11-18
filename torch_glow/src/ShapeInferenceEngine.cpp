@@ -97,10 +97,9 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
   if (symbol == "glow::fused_stack") {
     int64_t dim = node->i(at::attr::dim);
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, fusedStack(inputMetas, dim));
-  } else if (symbol == "fb::embedding_bag_byte_rowwise_offsets" ||
-             symbol == "quantized::embedding_bag_byte_rowwise_offsets") {
-    ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput,
-                               embeddingBagByteRowwiseOffsets(inputMetas));
+  } else if (symbol == "quantized::embedding_bag_byte_rowwise_offsets") {
+    ASSIGN_VALUE_OR_RETURN_ERR(
+        tensorOutput, quantizedEmbeddingBagByteRowwiseOffsets(inputMetas));
   } else if (symbol == "quantized::embedding_bag_4bit_rowwise_offsets") {
     ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput,
                                embeddingBag4BitRowwiseOffsets(inputMetas));
@@ -1103,23 +1102,25 @@ ShapeInferenceEngine::embeddingBag(const MetaStack &variableMetas) {
 }
 
 /**
- * fb::embedding_bag_byte_rowwise_offsets(Tensor weight,
+ * quantized::embedding_bag_byte_rowwise_offsets(Tensor weight,
  *                                        Tensor indices,
  *                                        Tensor offsets,
  *                                        bool scale_grad_by_freq=False,
  *                                        int mode=0,
  *                                        bool sparse=False,
  *                                        Tensor? per_sample_weights=None,
+ *                                        Tensor? compressed_indices_mapping,
  *                                        bool include_last_offset=True)
  *                                        -> Tensor;
  */
 /// In glow, the include_last_offset is always True.
-Expected<TensorOutput> ShapeInferenceEngine::embeddingBagByteRowwiseOffsets(
+Expected<TensorOutput>
+ShapeInferenceEngine::quantizedEmbeddingBagByteRowwiseOffsets(
     const MetaStack &variableMetas) {
 
   RETURN_ERR_IF_NOT(
-      variableMetas.size() == 8,
-      strFormat("Expected 8 inputs, got %zu.", variableMetas.size()));
+      variableMetas.size() == 9,
+      strFormat("Expected 9 inputs, got %zu.", variableMetas.size()));
 
   const TensorShape &t0 = variableMetas[0].shape<TensorShape>();
 
