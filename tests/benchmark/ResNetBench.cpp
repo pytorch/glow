@@ -140,13 +140,14 @@ private:
   const Block block_;
   const unsigned_t groups_;
   const unsigned_t widthPerGroup_;
-  const unsigned_t dilation_ = 1;
+  const llvm::ArrayRef<unsigned_t> dilation_ = {1, 1};
   const unsigned_t inPlanes_ = 64;
   const std::vector<unsigned_t> layers_;
 
   NodeValue createConv(NodeValue input, unsigned_t outChannels,
                        unsigned_t kernel, unsigned_t stride = 1,
-                       unsigned_t pad = 0, unsigned_t dilation = 1,
+                       unsigned_t pad = 0,
+                       llvm::ArrayRef<unsigned_t> dilation = {1, 1},
                        unsigned_t groups = 1, bool fp = false) {
 
     if (fpEverywhere) {
@@ -210,9 +211,9 @@ private:
 
   NodeValue conv3x3(NodeValue input, unsigned_t outPlanes,
                     unsigned_t stride = 1, unsigned_t groups = 1,
-                    unsigned_t dilation = 1) {
-    return createConv(input, outPlanes, /*kernel*/ 3, stride, /*pad*/ dilation,
-                      dilation, groups);
+                    llvm::ArrayRef<unsigned_t> dilation = {1, 1}) {
+    return createConv(input, outPlanes, /*kernel*/ 3, stride,
+                      /*pad*/ dilation[0], dilation, groups);
   }
 
   NodeValue conv1x1(NodeValue input, unsigned_t outPlanes,
@@ -253,7 +254,8 @@ private:
 
   NodeValue makeBlock(NodeValue input, NodeValue residual, unsigned_t planes,
                       unsigned_t stride = 1, unsigned_t groups = 1,
-                      unsigned_t baseWidth = 64, unsigned_t dilation = 1) {
+                      unsigned_t baseWidth = 64,
+                      llvm::ArrayRef<unsigned_t> dilation = {1, 1}) {
     unsigned_t expansion = getExpansion(block_);
     NodeValue next = input;
     if (block_ == Block::Bottleneck) {
@@ -319,7 +321,7 @@ public:
     next = F_->createTranspose("NCHW2NHWC", next, NCHW2NHWC);
     next =
         createConv(next, /*outChannels*/ inPlanes_, /*kernel*/ 7, /*stride*/ 2,
-                   /*pad*/ 3, /*dilation*/ 1, /*groups*/ 1, /*fp*/ true);
+                   /*pad*/ 3, /*dilation*/ {1, 1}, /*groups*/ 1, /*fp*/ true);
     next = createBN(next);
     next = createRelu(next);
     next = F_->createMaxPool("maxpool", next, /*kernel*/ 3, /*sride*/ 2,
