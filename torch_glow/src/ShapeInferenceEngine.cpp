@@ -202,6 +202,10 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
       ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, to(inputMetas));
       break;
     }
+    case c10::prim::dtype: {
+      ASSIGN_VALUE_OR_RETURN_ERR(tensorOutput, primDtype(inputMetas));
+      break;
+    }
     case c10::prim::ListUnpack: {
       ASSIGN_VALUE_OR_RETURN_ERR(tensorListOutput, listUnpack(inputMetas));
       break;
@@ -229,7 +233,7 @@ Error ShapeInferenceEngine::shapeOnNode(const torch::jit::Node *node) {
   /// shape.
   /// For \p c10::aten::chunk, the output is tensor[],
   /// Store the shapes \p outputShapesOrValues into VariableMeta.listOfShape
-  if (kind == c10::prim::Constant) {
+  if (kind == c10::prim::Constant || kind == c10::prim::dtype) {
     if (node->output()->type()->isSubtypeOf(at::TensorType::get())) {
       shapeMap_[node->output()].listOfShape.emplace_back(
           std::move(tensorOutput.shape));
@@ -1340,6 +1344,24 @@ ShapeInferenceEngine::lengthsToOffsets(const MetaStack &variableMetas) {
   output.shape = t;
   output.shape[0] += 1; // include last offset
   output.dtype = variableMetas[0].dtype;
+  return output;
+}
+
+/*
+ * prim::dtype(Tensor input) -> Int,
+ */
+Expected<TensorOutput>
+ShapeInferenceEngine::primDtype(const MetaStack &variableMetas) {
+
+  RETURN_ERR_IF_NOT(
+      variableMetas.size() == 1,
+      strFormat("Expected 1 input, got %zu.", variableMetas.size()));
+
+  int dtype = static_cast<int>(variableMetas[0].dtype);
+
+  TensorOutput output;
+  output.shape = {dtype};
+  output.dtype = c10::ScalarType::Int;
   return output;
 }
 } // namespace glow
