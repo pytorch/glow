@@ -19,7 +19,6 @@
 #include "glow/Runtime/RuntimeTypes.h"
 #include "glow/Support/ZipUtils.h"
 
-#include <float.h>
 #include <stack>
 
 #include "miniz.h"
@@ -33,6 +32,8 @@ namespace glow {
 #ifdef FACEBOOK_INTERNAL
 extern const char *revisionHash;
 #endif /* FACEBOOK_INTERNAL */
+
+#define NUM_FLOAT_DIGS 30
 
 namespace {
 template <bool IsInteger, bool IsEnum, typename T> struct AttributeAssigner {
@@ -1140,7 +1141,7 @@ ONNXModelWriter::convertType(const Type &glowType) {
 template <typename T>
 static void addQuantParamsToDocString(T *out, const Type &type) {
   addAttrToDocString(out, qScaleSignifier,
-                     strFormat("%.*f", DBL_DIG - 1, type.getScale()));
+                     strFormat("%.*f", NUM_FLOAT_DIGS, type.getScale()));
   addAttrToDocString(out, qOffsetSignifier, std::to_string(type.getOffset()));
 }
 
@@ -1162,13 +1163,12 @@ void ONNXModelWriter::writeTensor(const Tensor &T, TensorType *out,
   }
 
   if (type.isQuantizedType()) {
-    // Note the use of DBL_DIG is to ensure all digits of the scale are printed.
     if (useGlowCustomOps) {
       addQuantParamsToDocString(out, type);
     } else {
       // Format is ElemKind:scale:offset.
       out->set_doc_string(strFormat("%s:%.*f:%d", type.getElementName().data(),
-                                    DBL_DIG - 1, T.getType().getScale(),
+                                    NUM_FLOAT_DIGS, T.getType().getScale(),
                                     T.getType().getOffset()));
     }
   }
