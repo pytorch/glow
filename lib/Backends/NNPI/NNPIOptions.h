@@ -457,7 +457,7 @@ public:
       "\n 3 = All commands and pre/post processing are disabled.",
       "NNPI_DISABLE_COMMANDS", "0");
 
-  /// Inference timeout threshold. Default UINT32_MAX means infinity.
+  /// Inference timeout threshold in us. Default UINT32_MAX means infinity.
   unsigned inferTimeout{UINT32_MAX};
 
   NNPIDeviceOptions(const llvm::StringMap<std::string> &parameters) {

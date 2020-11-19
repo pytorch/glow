@@ -65,8 +65,8 @@ NNPIDeviceManager::NNPIDeviceManager(
   if (deviceOptions_->deviceId >= 0) {
     deviceId_ = static_cast<unsigned>(deviceOptions_->deviceId);
   }
-  if (flags::NNPITimeout != 0) {
-    deviceOptions_->inferTimeout = flags::NNPITimeout;
+  if (flags::NNPITimeoutMs != 0) {
+    deviceOptions_->inferTimeout = flags::NNPITimeoutMs * 1000;
   }
 }
 

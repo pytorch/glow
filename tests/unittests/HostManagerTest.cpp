@@ -920,7 +920,7 @@ TEST_P(HostManagerTest, testTimeout) {
       GTEST_SKIP();
     }
     // Set the timeout to very short so we fail intentionally.
-    glow::runtime::flags::NNPITimeout = 1;
+    glow::runtime::flags::NNPITimeoutMs = 1;
   }
 #endif
 

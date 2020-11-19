@@ -130,7 +130,7 @@ extern unsigned HabanaMemory;
 
 #ifdef GLOW_WITH_NNPI
 extern unsigned NNPIMemory;
-extern unsigned NNPITimeout;
+extern unsigned NNPITimeoutMs;
 #endif
 
 extern std::string AvailableDevices;

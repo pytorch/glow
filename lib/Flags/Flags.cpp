@@ -138,7 +138,7 @@ unsigned HabanaMemory = 7 << 20;
 
 #ifdef GLOW_WITH_NNPI
 unsigned NNPIMemory = 16 << 20;
-unsigned NNPITimeout = 0;
+unsigned NNPITimeoutMs = 0;
 #endif
 
 std::string AvailableDevices = "";
@@ -549,11 +549,11 @@ DEFINE_validator(glow_nnpi_memory, [](const char *, int32_t val) {
   glow::runtime::flags::NNPIMemory = val;
   return true;
 });
-DEFINE_int32(glow_nnpi_timeout_ms, glow::runtime::flags::NNPITimeout,
+DEFINE_int32(glow_nnpi_timeout_ms, glow::runtime::flags::NNPITimeoutMs,
              "Timeout threshold for inferecnce in milliseconds. Default 0 "
              "means infinity");
 DEFINE_validator(glow_nnpi_timeout_ms, [](const char *, int32_t val) {
-  glow::runtime::flags::NNPITimeout = val;
+  glow::runtime::flags::NNPITimeoutMs = val;
   return true;
 });
 #endif /* GLOW_WITH_NNPI */
