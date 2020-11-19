@@ -493,8 +493,10 @@ chooseQuantizationParams(TensorProfilingParams profParams, Schema schema,
     // Number of quantized bins. Default value from TVM / MXNet.
     const size_t numQuantizedBins = 255;
 
-    // Check symmetric schema.
-    const bool symmetric = (schema != Asymmetric);
+    // Set symmetric, only if schema is Symmetric or SymmetricWithPower2Scale
+    const bool symmetric =
+        (schema == quantization::Schema::Symmetric ||
+         schema == quantization::Schema::SymmetricWithPower2Scale);
 
     // Optimize the range.
     FloatRange rangeOpt =

@@ -277,16 +277,26 @@ TEST(Quantization, quantScaleOffsetPower2Scale) {
 }
 
 template <class qtype>
-void quantizeTensorTest(ElemKind qTy, quantization::Schema schema) {
-  // Map float [0.0; 6.0] to a quantized type using its entire value range.
+void quantizeTensorTest(
+    ElemKind qTy, quantization::Schema schema,
+    quantization::Calibration calibration = quantization::Calibration::None) {
+  dim_t N = 256;
+  float maxValue = 255.0;
+  if (qTy == ElemKind::Int8QTy) {
+    N = 6;
+    maxValue = 5.0;
+    calibration = quantization::Calibration::None;
+  }
+  // Map float [0.0; maxValue] to a quantized type using its entire value range.
+  std::vector<float> hist(N, 1);
   TensorQuantizationParams quantParams =
-      chooseQuantizationParams({0.0, 6.0}, schema, qTy);
+      chooseQuantizationParams({0.0, maxValue, hist}, schema, qTy, calibration);
 
-  // Create an FP32 tensor with 6 elements and initialize it with numbers from 0
-  // to 5.
-  Tensor inputFP32(ElemKind::FloatTy, {6});
+  // Create an FP32 tensor with N elements and initialize it with numbers from 0
+  // to maxValue.
+  Tensor inputFP32(ElemKind::FloatTy, {N});
   Handle<float> THFP32 = inputFP32.getHandle<float>();
-  for (unsigned i = 0; i < 6; ++i) {
+  for (unsigned i = 0; i < N; ++i) {
     THFP32.at({i}) = i * 1.0f;
   }
 
@@ -296,17 +306,17 @@ void quantizeTensorTest(ElemKind qTy, quantization::Schema schema) {
   // Check that the dequantized result is close to the original values before
   // the quantization.
   Handle<qtype> THquantizedFP32 = quantizedFP32.getHandle<qtype>();
-  for (unsigned i = 0; i < 6; ++i) {
+  for (unsigned i = 0; i < N; ++i) {
     EXPECT_NEAR(THFP32.at({i}),
                 quantization::dequantize(THquantizedFP32.at({i}), quantParams),
                 0.05f);
   }
 
-  // Create an FP16 tensor with 6 elements and initialize it with numbers from 0
-  // to 5.
-  Tensor inputFP16(ElemKind::Float16Ty, {6});
+  // Create an FP16 tensor with N elements and initialize it with numbers from 0
+  // to maxValue.
+  Tensor inputFP16(ElemKind::Float16Ty, {N});
   Handle<float16> THFP16 = inputFP16.getHandle<float16>();
-  for (unsigned i = 0; i < 6; ++i) {
+  for (unsigned i = 0; i < N; ++i) {
     THFP16.at({i}) = i * 1.0f;
   }
 
@@ -316,7 +326,7 @@ void quantizeTensorTest(ElemKind qTy, quantization::Schema schema) {
   // Check that the dequantized result is close to the original values before
   // the quantization.
   Handle<qtype> THquantizedFP16 = quantizedFP16.getHandle<qtype>();
-  for (unsigned i = 0; i < 6; ++i) {
+  for (unsigned i = 0; i < N; ++i) {
     EXPECT_NEAR(THFP16.at({i}),
                 quantization::dequantize(THquantizedFP16.at({i}), quantParams),
                 0.05f);
@@ -325,51 +335,62 @@ void quantizeTensorTest(ElemKind qTy, quantization::Schema schema) {
 
 TEST(Quantization, quantizeTensorAsymmetricInt8) {
   quantizeTensorTest<int8_t>(ElemKind::Int8QTy,
-                             quantization::Schema::Asymmetric);
+                             quantization::Schema::Asymmetric,
+                             quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorAsymmetricInt16) {
   quantizeTensorTest<int16_t>(ElemKind::Int16QTy,
-                              quantization::Schema::Asymmetric);
+                              quantization::Schema::Asymmetric,
+                              quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorAsymmetricInt32) {
   quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
-                              quantization::Schema::Asymmetric);
+                              quantization::Schema::Asymmetric,
+                              quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorSymmetricInt8) {
-  quantizeTensorTest<int8_t>(ElemKind::Int8QTy,
-                             quantization::Schema::Symmetric);
+  quantizeTensorTest<int8_t>(ElemKind::Int8QTy, quantization::Schema::Symmetric,
+                             quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorSymmetricInt16) {
   quantizeTensorTest<int16_t>(ElemKind::Int16QTy,
-                              quantization::Schema::Symmetric);
+                              quantization::Schema::Symmetric,
+                              quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorSymmetricInt32) {
   quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
-                              quantization::Schema::Symmetric);
+                              quantization::Schema::Symmetric,
+                              quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorSymmetricUInt8) {
   quantizeTensorTest<int8_t>(ElemKind::Int8QTy,
-                             quantization::Schema::SymmetricWithUnsigned);
+                             quantization::Schema::SymmetricWithUnsigned,
+                             quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorSymmetricUInt16) {
   quantizeTensorTest<int16_t>(ElemKind::Int16QTy,
-                              quantization::Schema::SymmetricWithUnsigned);
+                              quantization::Schema::SymmetricWithUnsigned,
+                              quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorSymmetricUInt32) {
   quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
-                              quantization::Schema::SymmetricWithUnsigned);
+                              quantization::Schema::SymmetricWithUnsigned,
+                              quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorSymmetricPwr2Int8) {
   quantizeTensorTest<int8_t>(ElemKind::Int8QTy,
-                             quantization::Schema::SymmetricWithPower2Scale);
+                             quantization::Schema::SymmetricWithPower2Scale,
+                             quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorSymmetricPwr2Int16) {
   quantizeTensorTest<int16_t>(ElemKind::Int16QTy,
-                              quantization::Schema::SymmetricWithPower2Scale);
+                              quantization::Schema::SymmetricWithPower2Scale,
+                              quantization::Calibration::KLMinimization);
 }
 TEST(Quantization, quantizeTensorSymmetricPwr2Int32) {
   quantizeTensorTest<int32_t>(ElemKind::Int32QTy,
-                              quantization::Schema::SymmetricWithPower2Scale);
+                              quantization::Schema::SymmetricWithPower2Scale,
+                              quantization::Calibration::KLMinimization);
 }
 
 /// Test 4-bit fused rowwise quantization.
