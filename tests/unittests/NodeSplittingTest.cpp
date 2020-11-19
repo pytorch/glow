@@ -467,6 +467,276 @@ TEST_F(NodeSplitting, Conv2D_NoSplit) {
 }
 
 ///===---------------------------------------------------------------------===//
+///                         ChannelwiseQuantizedConv2D
+///===---------------------------------------------------------------------===//
+/// Utility function to create a simple network with a CWQConv2D node using
+/// the function \p F and the bindings \p bindings.
+static Node *createCWQConv2D(
+    Function *F, PlaceholderBindings &bindings, llvm::ArrayRef<dim_t> inputDims,
+    llvm::ArrayRef<dim_t> filterDims, llvm::ArrayRef<dim_t> biasDims,
+    llvm::ArrayRef<dim_t> outputDims, llvm::ArrayRef<unsigned_t> kernels,
+    llvm::ArrayRef<unsigned_t> strides, llvm::ArrayRef<unsigned_t> pads,
+    dim_t group, llvm::ArrayRef<unsigned_t> dilation) {
+  // Create quantized input placeholder.
+  auto &mod = *(F->getParent());
+  auto *inputQ = mod.createPlaceholder(ElemKind::Int8QTy, inputDims, 1.0, 0,
+                                       "inputQ", false);
+  bindings.allocate(inputQ)->getHandle<int8_t>().randomize(-128, 127,
+                                                           mod.getPRNG());
+  // Create float filter constant.
+  auto *filterF = mod.createConstant(ElemKind::FloatTy, filterDims, "filterF");
+  filterF->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                            mod.getPRNG());
+  // Create float bias constant.
+  auto *biasF = mod.createConstant(ElemKind::FloatTy, biasDims, "biasF");
+  biasF->getPayloadMutable().getHandle<float>().randomize(-1.0, 1.0,
+                                                          mod.getPRNG());
+  // Create ChannelwiseQuantizedConv2D.
+  auto *outTy = mod.uniqueType(ElemKind::Int8QTy, outputDims, 1.0, 0);
+  auto *conv = F->createChannelwiseQuantizedConv(
+      "cwqconv", inputQ, filterF, biasF,
+      /* filterScales */ nullptr, /* filterOffsets */ nullptr,
+      /* biasScales */ nullptr, /* biasOffsets */ nullptr, outTy, kernels,
+      strides, pads, group, dilation,
+      /* quantizeFilter */ true, /* quantizeBias */ true);
+  SaveNode *save = F->createSave("save", conv);
+  bindings.allocate(save->getPlaceholder());
+  return conv;
+}
+
+/// Utility function to test splitting a basic CWQConv2D node along the
+/// dimensions \p splitDims in the given number chunks \p numChunks. The split
+/// is done implicitly relative to the Conv2D output operand.
+static void splitCWQConv2DBasic(Function *F, Function *&optF,
+                                PlaceholderBindings &bindings,
+                                CompilationContext &cctx,
+                                llvm::ArrayRef<size_t> splitDims,
+                                llvm::ArrayRef<dim_t> numChunks) {
+  Node *node = createCWQConv2D(F, bindings,
+                               /* inputDims */ {5, 7, 8, 2},
+                               /* filterDims */ {8, 2, 2, 1},
+                               /* biasDims */ {8},
+                               /* outputDims */ {5, 6, 7, 8},
+                               /* kernels */ {2, 2},
+                               /* strides */ {1, 1},
+                               /* pads */ {0, 0, 0, 0},
+                               /* group */ 2,
+                               /* dilation */ {1, 1});
+
+  // Save current function state as reference.
+  optF = F->clone(F->getName().str() + "_optimized");
+
+  // Split node.
+  auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
+  runDCEPass(F, cctx);
+
+  // Compute total number of chunks.
+  dim_t totNumChunks = 1;
+  for (auto numChunk : numChunks) {
+    totNumChunks *= numChunk;
+  }
+
+  // Check node count.
+  EXPECT_EQ(splitNodes.size(), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 7 * totNumChunks);
+  EXPECT_EQ(
+      countNodeKind(F, Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind),
+      totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
+}
+
+/// Test splitting a CWQConv2D along dimension N, H, W or C.
+/// Not all the combinations are allowed when splitting along C.
+#define TEST_CWQCONV2D_BASIC_SPLIT(splitDim, numChunks)                        \
+  TEST_F(NodeSplitting, CWQConv2D_Basic_Dim##splitDim##_Chunks##numChunks) {   \
+    splitCWQConv2DBasic(F_, optimizedF_, bindings_, cctx_,                     \
+                        {ShapeNHWC::Dim##splitDim}, {numChunks});              \
+    checkNumericalEquivalence(0);                                              \
+  }
+TEST_CWQCONV2D_BASIC_SPLIT(N, 2)
+TEST_CWQCONV2D_BASIC_SPLIT(N, 3)
+TEST_CWQCONV2D_BASIC_SPLIT(N, 4)
+TEST_CWQCONV2D_BASIC_SPLIT(N, 5)
+TEST_CWQCONV2D_BASIC_SPLIT(H, 2)
+TEST_CWQCONV2D_BASIC_SPLIT(H, 3)
+TEST_CWQCONV2D_BASIC_SPLIT(H, 4)
+TEST_CWQCONV2D_BASIC_SPLIT(H, 5)
+TEST_CWQCONV2D_BASIC_SPLIT(H, 6)
+TEST_CWQCONV2D_BASIC_SPLIT(W, 2)
+TEST_CWQCONV2D_BASIC_SPLIT(W, 3)
+TEST_CWQCONV2D_BASIC_SPLIT(W, 4)
+TEST_CWQCONV2D_BASIC_SPLIT(W, 5)
+TEST_CWQCONV2D_BASIC_SPLIT(W, 6)
+TEST_CWQCONV2D_BASIC_SPLIT(W, 7)
+TEST_CWQCONV2D_BASIC_SPLIT(C, 2)
+TEST_CWQCONV2D_BASIC_SPLIT(C, 4)
+TEST_CWQCONV2D_BASIC_SPLIT(C, 8)
+#undef TEST_CWQCONV2D_BASIC_SPLIT
+
+/// Test splitting a CWQConv2D along dimensions N, H.
+TEST_F(NodeSplitting, CWQConv2D_Basic_DimNH_Chunks4) {
+  splitCWQConv2DBasic(F_, optimizedF_, bindings_, cctx_,
+                      {ShapeNHWC::DimN, ShapeNHWC::DimH}, {2, 2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a CWQConv2D along dimensions N, H, W.
+TEST_F(NodeSplitting, CWQConv2D_Basic_DimNHW_Chunks8) {
+  splitCWQConv2DBasic(F_, optimizedF_, bindings_, cctx_,
+                      {ShapeNHWC::DimN, ShapeNHWC::DimH, ShapeNHWC::DimW},
+                      {2, 2, 2});
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a CWQConv2D along dimensions N, H, W, C.
+TEST_F(NodeSplitting, CWQConv2D_Basic_DimNHWC_Chunks16) {
+  splitCWQConv2DBasic(
+      F_, optimizedF_, bindings_, cctx_,
+      {ShapeNHWC::DimN, ShapeNHWC::DimH, ShapeNHWC::DimW, ShapeNHWC::DimC},
+      {2, 2, 2, 2});
+  checkNumericalEquivalence(0);
+}
+
+/// Utility function to test splitting a CWQConv2D node with non-zero padding
+/// along the dimensions \p splitDims in the given number chunks \p numChunks.
+/// The split is done implicitly relative to the Conv2D output operand.
+static void splitCWQConv2DNonZeroPad(Function *F, Function *&optF,
+                                     PlaceholderBindings &bindings,
+                                     CompilationContext &cctx,
+                                     llvm::ArrayRef<size_t> splitDims,
+                                     llvm::ArrayRef<dim_t> numChunks) {
+  Node *node = createCWQConv2D(F, bindings,
+                               /* inputDims */ {1, 8, 9, 1},
+                               /* filterDims */ {1, 2, 3, 1},
+                               /* biasDims */ {1},
+                               /* outputDims */ {1, 11, 10, 1},
+                               /* kernels */ {2, 3},
+                               /* strides */ {1, 1},
+                               /* pads */ {2, 1, 3, 4},
+                               /* group */ 1,
+                               /* dilation */ {2, 2});
+
+  // Save current function state as reference.
+  optF = F->clone(F->getName().str() + "_optimized");
+
+  // Split node.
+  auto splitOption = SplitNodeByNumChunks(splitDims, numChunks);
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
+  runDCEPass(F, cctx);
+
+  // Compute total number of chunks.
+  dim_t totNumChunks = 1;
+  for (auto numChunk : numChunks) {
+    totNumChunks *= numChunk;
+  }
+
+  // Check node count.
+  EXPECT_EQ(splitNodes.size(), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 7 * totNumChunks);
+  EXPECT_EQ(
+      countNodeKind(F, Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind),
+      totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
+}
+
+/// Test splitting a CWQConv2D with padding along dimension N, H, W or C.
+#define TEST_CWQCONV2D_NONZEROPAD_SPLIT(splitDim, numChunks)                   \
+  TEST_F(NodeSplitting,                                                        \
+         CWQConv2D_NonZeroPad_Dim##splitDim##_Chunks##numChunks) {             \
+    splitCWQConv2DNonZeroPad(F_, optimizedF_, bindings_, cctx_,                \
+                             {ShapeNHWC::Dim##splitDim}, {numChunks});         \
+    checkNumericalEquivalence(0);                                              \
+  }
+TEST_CWQCONV2D_NONZEROPAD_SPLIT(H, 2)
+TEST_CWQCONV2D_NONZEROPAD_SPLIT(H, 3)
+TEST_CWQCONV2D_NONZEROPAD_SPLIT(W, 2)
+TEST_CWQCONV2D_NONZEROPAD_SPLIT(W, 3)
+#undef TEST_CWQCONV2D_NONZEROPAD_SPLIT
+
+/// Test splitting a CWQConv2D with padding along dimensions H, W.
+TEST_F(NodeSplitting, CWQConv2D_NonZeroPad_DimHW_Chunks9) {
+  splitCWQConv2DNonZeroPad(F_, optimizedF_, bindings_, cctx_,
+                           {ShapeNHWC::DimH, ShapeNHWC::DimW}, {3, 3});
+  checkNumericalEquivalence(0);
+}
+
+/// Utility function to test splitting a group CWQConv2D node along dimension C
+/// in \p numChunks having the given number of \p inputChannels,
+/// \p outputChannels and the given \p group. The split is done implicitly
+/// relative to the Conv2D output operand.
+static void splitCWQConv2DGrouped(Function *F, Function *&optF,
+                                  PlaceholderBindings &bindings,
+                                  CompilationContext &cctx, dim_t inputChannels,
+                                  dim_t outputChannels, dim_t group,
+                                  dim_t numChunks) {
+  dim_t filterChannels = inputChannels / group;
+  dim_t filterNum = outputChannels;
+  Node *node =
+      createCWQConv2D(F, bindings,
+                      /* inputDims */ {1, 2, 2, inputChannels},
+                      /* filterDims */ {filterNum, 2, 2, filterChannels},
+                      /* biasDims */ {outputChannels},
+                      /* outputDims */ {1, 1, 1, outputChannels},
+                      /* kernels */ {2, 2},
+                      /* strides */ {1, 1},
+                      /* pads */ {0, 0, 0, 0},
+                      /* group */ group,
+                      /* dilation */ {1, 1});
+
+  // Save current function state as reference.
+  optF = F->clone(F->getName().str() + "_optimized");
+
+  // Split node.
+  auto splitOption = SplitNodeByNumChunks({ShapeNHWC::DimC}, {numChunks});
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
+  runDCEPass(F, cctx);
+
+  // Check node count.
+  EXPECT_EQ(splitNodes.size(), numChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 7 * numChunks);
+  EXPECT_EQ(
+      countNodeKind(F, Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind),
+      numChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), numChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
+}
+
+/// Test splitting a grouped Conv2D along dimension C.
+#define TEST_CWQCONV2D_GROUP_SPLIT(IC, OC, G, chunks)                          \
+  TEST_F(                                                                      \
+      NodeSplitting,                                                           \
+      CWQConv2D_Group_DimC_InpC##IC##_OutC##OC##_Group##G##_Chunks##chunks) {  \
+    splitCWQConv2DGrouped(F_, optimizedF_, bindings_, cctx_, IC, OC, G,        \
+                          chunks);                                             \
+    checkNumericalEquivalence(0);                                              \
+  }
+TEST_CWQCONV2D_GROUP_SPLIT(8, 8, 2, 2)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 8, 2, 4)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 8, 2, 8)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 8, 4, 2)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 8, 4, 4)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 8, 4, 8)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 8, 8, 2)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 8, 8, 4)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 8, 8, 8)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 16, 2, 2)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 16, 2, 4)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 16, 2, 8)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 16, 4, 2)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 16, 4, 4)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 16, 4, 8)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 16, 8, 2)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 16, 8, 4)
+TEST_CWQCONV2D_GROUP_SPLIT(8, 16, 8, 8)
+#undef TEST_CWQCONV2D_GROUP_SPLIT
+
+///===---------------------------------------------------------------------===//
 ///                                   MaxPool
 ///===---------------------------------------------------------------------===//
 /// Utility function to create a simple network with a single MaxPool node using
@@ -1457,7 +1727,7 @@ TEST_F(NodeSplitting, UnaryOps) {
   bindings_.allocate(input)->getHandle<float>().randomize(-10.0, 10.0,
                                                           mod_.getPRNG());
   Node *relu = F_->createRELU("relu", input);
-  Node *leakyRelu = F_->createLeakyRelu("leakyrelu", relu, /* alpha */ 0.1);
+  Node *leakyRelu = F_->createLeakyRELU("leakyrelu", relu, 0.1);
   Node *clip = F_->createClip("clip", leakyRelu, 1.0, 10.0);
   Node *tanh = F_->createTanh("tanh", clip);
   Node *sigmoid = F_->createSigmoid("sigmoid", tanh);
@@ -1502,9 +1772,9 @@ TEST_F(NodeSplitting, UnaryOps) {
   EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::RescaleQuantizedNodeKind));
   EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::DequantizeNodeKind));
   EXPECT_EQ(2, countNodeKind(F_, Kinded::Kind::ConvertToNodeKind));
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 10 * 2);
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 10 * 2);
-  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 10);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::SliceNodeKind), 11 * 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::InsertTensorNodeKind), 11 * 2);
+  EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 11);
   checkNumericalEquivalence(0);
 }
 

@@ -16,8 +16,8 @@
 #ifndef GLOW_BASE_SLICERANGE_H
 #define GLOW_BASE_SLICERANGE_H
 
-#include "glow/Graph/Graph.h"
 #include "glow/Base/Type.h"
+#include "glow/Graph/Graph.h"
 
 #include <algorithm>
 #include <unordered_map>

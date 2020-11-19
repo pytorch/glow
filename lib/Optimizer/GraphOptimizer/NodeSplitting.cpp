@@ -855,9 +855,9 @@ getConvInputChannelCheckedRange(const DimRange &outputSliceRange,
 ///===---------------------------------------------------------------------===//
 ///                                   Conv2D
 ///===---------------------------------------------------------------------===//
-template <typename Shape>
+template <typename ConvNodeTy, typename Shape>
 static std::vector<OpIdxAndMap>
-getConv2DInputIdxAndMaps(const ConvolutionNode *node) {
+getConv2DInputIdxAndMaps(const ConvNodeTy *node) {
 
   ShapeHW kernels = ShapeHW(node->getKernels());
   ShapeHW strides = ShapeHW(node->getStrides());
@@ -918,17 +918,32 @@ getConv2DInputIdxAndMaps(const ConvolutionNode *node) {
   };
 
   // Return input indices and maps.
-  return {{ConvolutionNode::InputIdx, inputSliceRangeMap},
-          {ConvolutionNode::FilterIdx, filterSliceRangeMap},
-          {ConvolutionNode::BiasIdx, biasSliceRangeMap}};
+  if (std::is_same<ConvNodeTy, ConvolutionNode>::value) {
+    return {{ConvolutionNode::InputIdx, inputSliceRangeMap},
+            {ConvolutionNode::FilterIdx, filterSliceRangeMap},
+            {ConvolutionNode::BiasIdx, biasSliceRangeMap}};
+  } else if (std::is_same<ConvNodeTy,
+                          ChannelwiseQuantizedConvolutionNode>::value) {
+    return {
+        {ChannelwiseQuantizedConvolutionNode::InputIdx, inputSliceRangeMap},
+        {ChannelwiseQuantizedConvolutionNode::FilterIdx, filterSliceRangeMap},
+        {ChannelwiseQuantizedConvolutionNode::BiasIdx, biasSliceRangeMap},
+        {ChannelwiseQuantizedConvolutionNode::FilterScalesIdx,
+         biasSliceRangeMap},
+        {ChannelwiseQuantizedConvolutionNode::FilterOffsetsIdx,
+         biasSliceRangeMap},
+        {ChannelwiseQuantizedConvolutionNode::BiasScalesIdx, biasSliceRangeMap},
+        {ChannelwiseQuantizedConvolutionNode::BiasOffsetsIdx,
+         biasSliceRangeMap}};
+  }
 }
 
-template <typename Shape>
+template <typename ConvNodeTy, typename Shape>
 void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
                              const std::vector<SliceRange> &inputSliceRanges,
                              const std::vector<SliceRange> &outputSliceRanges) {
-  auto *convOrigNode = dyn_cast<ConvolutionNode>(origNode);
-  auto *convSplitNode = dyn_cast<ConvolutionNode>(splitNode);
+  auto *convOrigNode = dyn_cast<ConvNodeTy>(origNode);
+  auto *convSplitNode = dyn_cast<ConvNodeTy>(splitNode);
   if (!(convOrigNode && convSplitNode)) {
     return;
   }
@@ -941,7 +956,7 @@ void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
   DimPads padsLR = {pads.left, pads.right};
 
   // Get paddings for split node.
-  auto outputSliceRange = outputSliceRanges[ConvolutionNode::ResultIdx];
+  auto outputSliceRange = outputSliceRanges[ConvNodeTy::ResultIdx];
   auto inputRange = SliceRange(convOrigNode->getInput().getType());
   auto checkedRangeAndPadsH = getConvInputCheckedRangeAndPads(
       outputSliceRange[Shape::DimH], inputRange[Shape::DimH], kernels.height,
@@ -962,10 +977,10 @@ void Conv2DSplitNodeModifier(const Node *origNode, Node *splitNode,
 
   // Modify group for split node.
   dim_t outputChannels =
-      SliceRange(convOrigNode->getType(ConvolutionNode::ResultIdx))
+      SliceRange(convOrigNode->getType(ConvNodeTy::ResultIdx))
           .getDimSize(Shape::DimC);
   dim_t outputSliceChannels =
-      SliceRange(convSplitNode->getType(ConvolutionNode::ResultIdx))
+      SliceRange(convSplitNode->getType(ConvNodeTy::ResultIdx))
           .getDimSize(Shape::DimC);
   auto group = convOrigNode->getGroup();
 
@@ -1223,8 +1238,21 @@ glow::splitNode(Node *node, const SplitNodeOption *splitOption,
   case Kinded::Kind::ConvolutionNodeKind: {
     return splitAndReplaceNode(
         node, splitOption, splitConstraint, ConvolutionNode::ResultIdx,
-        getConv2DInputIdxAndMaps<ShapeNHWC>(dyn_cast<ConvolutionNode>(node)),
-        {}, Conv2DSplitNodeModifier<ShapeNHWC>);
+        getConv2DInputIdxAndMaps<ConvolutionNode, ShapeNHWC>(
+            dyn_cast<ConvolutionNode>(node)),
+        {}, Conv2DSplitNodeModifier<ConvolutionNode, ShapeNHWC>);
+  }
+
+  case Kinded::Kind::ChannelwiseQuantizedConvolutionNodeKind: {
+    return splitAndReplaceNode(
+        node, splitOption, splitConstraint,
+        ChannelwiseQuantizedConvolutionNode::ResultIdx,
+        getConv2DInputIdxAndMaps<ChannelwiseQuantizedConvolutionNode,
+                                 ShapeNHWC>(
+            dyn_cast<ChannelwiseQuantizedConvolutionNode>(node)),
+        {},
+        Conv2DSplitNodeModifier<ChannelwiseQuantizedConvolutionNode,
+                                ShapeNHWC>);
   }
 
   case Kinded::Kind::MaxPoolNodeKind: {

@@ -111,8 +111,8 @@ int main(int argc, char **argv) {
       .addInput("BiasOffsets")
       .addMember(MemberType::VectorUnsigned, "Kernels")
       .addMember(MemberType::VectorUnsigned, "Strides")
-      .addMember(MemberType::VectorUnsigned, "Pads")
-      .addMember(MemberType::Unsigned, "Group")
+      .addMember(MemberType::VectorUnsigned, "Pads", /* addSetter */ true)
+      .addMember(MemberType::Unsigned, "Group", /* addSetter */ true)
       .addMember(MemberType::VectorUnsigned, "Dilation")
       .addResultFromCtorArg()
       .setDocstring(
