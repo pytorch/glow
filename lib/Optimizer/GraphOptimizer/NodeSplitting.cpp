@@ -28,7 +28,7 @@ using llvm::dyn_cast;
 ///===---------------------------------------------------------------------===//
 ///                              SplitNodeOption
 ///===---------------------------------------------------------------------===//
-size_t SplitNodeOption::getSplitDimIdx(dim_t splitDim) const {
+size_t SplitNodeOptionOrthogonal::getSplitDimIdx(dim_t splitDim) const {
   auto splitDimsIt = std::find(splitDims_.begin(), splitDims_.end(), splitDim);
   CHECK(splitDimsIt != splitDims_.end())
       << "Split dimension '" << splitDim
@@ -162,7 +162,7 @@ std::vector<dim_t> SplitNodeByChunkWeights::splitAlongDim(size_t dim,
 /// dimension \p dim using the split option \p splitOption.
 static std::vector<SliceRange>
 splitSliceRanges(const std::vector<SliceRange> &ranges, size_t dim,
-                 const SplitNodeOption *splitOption) {
+                 const SplitNodeOptionOrthogonal *splitOption) {
   std::vector<SliceRange> outRanges;
   for (const auto &range : ranges) {
 
@@ -542,7 +542,12 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
 
   // Explicit split dims for this node.
   if (splitOption) {
-    splitDims = splitOption->getSplitDims();
+    // We use explicit split dims only for orthogonal option.
+    auto *splitOptionOrthogonal =
+        dynamic_cast<const SplitNodeOptionOrthogonal *>(splitOption);
+    if (splitOptionOrthogonal) {
+      splitDims = splitOptionOrthogonal->getSplitDims();
+    }
   }
 
   // Verify split parameters.
@@ -559,10 +564,31 @@ static Expected<std::vector<Node *>> splitAndReplaceNode(
   // which meets the constraint.
   if (splitOption) {
 
-    // Split along all the given dimensions using the given option.
-    for (size_t splitDim : splitDims) {
-      splitOutputSlices =
-          splitSliceRanges(splitOutputSlices, splitDim, splitOption);
+    // Orthogonal: Split along all the given dimensions using the given option.
+    // Non-orthogonal: Use the raw slice ranges explicitly provided.
+    auto *splitOptionOrthogonal =
+        dynamic_cast<const SplitNodeOptionOrthogonal *>(splitOption);
+    if (splitOptionOrthogonal) {
+      for (size_t splitDim : splitDims) {
+        splitOutputSlices = splitSliceRanges(splitOutputSlices, splitDim,
+                                             splitOptionOrthogonal);
+      }
+    } else {
+      // Set raw slice ranges.
+      auto *splitOptionRaw =
+          dynamic_cast<const SplitNodeBySliceRanges *>(splitOption);
+      RETURN_ERR_IF_NOT(splitOptionRaw,
+                        "Non orthogonal split option not supported!");
+      splitOutputSlices = splitOptionRaw->getSliceRanges();
+      // We verify that the explicitly provided slice ranges are valid.
+      for (const auto &sliceRange : splitOutputSlices) {
+        RETURN_ERR_IF_NOT(
+            sliceRange.getNumDims() == splitOutputRange.getNumDims(),
+            "Non orthogonal slice range rank not equal to output rank!");
+        RETURN_ERR_IF_NOT(
+            sliceRange.isIncludedBy(splitOutputRange),
+            "Non orthogonal slice range exceed the output operand range!");
+      }
     }
 
     // Verify split nodes.
@@ -1440,18 +1466,23 @@ glow::splitNodes(Function *F, const SplitNodeConstraint &splitConstraint) {
 ///                            splitNodeRecursively
 ///===---------------------------------------------------------------------===//
 #if 0
-// TODO1: Create two types of split options: orthogonal and non-orthogonal.
-// TODO2: We must add logic for using this split option using raw slice ranges.
-// TODO3: For this option we must add a verification that all the slice ranges
+
+// TODO1: For raw option we must add a verification that all the slice ranges
 //        cover the entire output operand.
+// TODO2: Do not insert Slice nodes for inputs which are used entirely!
 
 Expected<SplitNodeMap>
 glow::splitNodeRecursively(Node *node,
                            const SplitNodeOption *splitOption,
                            const SplitNodeConstraint *splitConstraint,
                            unsigned maxDepth) {
-
+  // Create split map.
   SplitNodeMap splitMap;
+
+  // Early return if depth is 0.
+  if (maxDepth == 0) {
+    return splitMap;
+  }
 
   // We can do the splitting if at least the option or the constraint is given.
   RETURN_ERR_IF_NOT(
@@ -1517,4 +1548,19 @@ glow::splitNodeRecursively(Node *node,
 
   return splitMap;
 }
+
+Expected<SplitNodeMap>
+glow::splitNodeRecursively(Node *node,
+                           const SplitNodeOption &splitOption,
+                           unsigned maxDepth) {
+  return splitNodeRecursively(node, &splitOption, nullptr, maxDepth);
+}
+
+Expected<SplitNodeMap>
+glow::splitNodeRecursively(Node *node,
+                           const SplitNodeConstraint &splitConstraint,
+                           unsigned maxDepth) {
+  return splitNodeRecursively(node, nullptr, &splitConstraint, maxDepth);
+}
+
 #endif

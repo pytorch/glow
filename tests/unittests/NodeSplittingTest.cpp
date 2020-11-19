@@ -1779,6 +1779,91 @@ TEST_F(NodeSplitting, UnaryOps) {
 }
 
 ///===---------------------------------------------------------------------===//
+///                            Non-Orthogonal Split
+///===---------------------------------------------------------------------===//
+/// Utility function to test splitting a Conv2D non-orthogonally based on given
+/// raw \p sliceRanges.
+static void splitConv2DNonOrthogonal(Function *F, Function *&optF,
+                                     PlaceholderBindings &bindings,
+                                     CompilationContext &cctx,
+                                     llvm::ArrayRef<SliceRange> sliceRanges) {
+  Node *node = createConv2D(F, bindings,
+                            /* inputDims */ {5, 4, 4, 7},
+                            /* filterDims */ {8, 3, 3, 7},
+                            /* biasDims */ {8},
+                            /* outputDims */ {5, 4, 4, 8},
+                            /* kernels */ {3, 3},
+                            /* strides */ {1, 1},
+                            /* pads */ {1, 1, 1, 1},
+                            /* group */ 1,
+                            /* dilation */ {1, 1});
+
+  // Save current function state as reference.
+  optF = F->clone(F->getName().str() + "_optimized");
+
+  // Split node.
+  auto splitOption = SplitNodeBySliceRanges(sliceRanges);
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_FAIL_TEST(splitNodes, ::glow::splitNode(node, splitOption));
+  runDCEPass(F, cctx);
+
+  // Check node count.
+  dim_t totNumChunks = sliceRanges.size();
+  EXPECT_EQ(splitNodes.size(), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::SliceNodeKind), 3 * totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::ConvolutionNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::InsertTensorNodeKind), totNumChunks);
+  EXPECT_EQ(countNodeKind(F, Kinded::Kind::TouchNodeKind), 1);
+}
+
+/// Test splitting a Conv2D non-orthogonally along N dimension.
+TEST_F(NodeSplitting, Conv2D_NonOrthogonal_DimN) {
+  std::vector<SliceRange> sliceRanges = {
+      SliceRange({{0, 4}, {0, 4}, {0, 4}, {0, 8}}),
+      SliceRange({{2, 5}, {0, 4}, {0, 4}, {0, 8}})};
+  splitConv2DNonOrthogonal(F_, optimizedF_, bindings_, cctx_, sliceRanges);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a Conv2D non-orthogonally along H dimension.
+TEST_F(NodeSplitting, Conv2D_NonOrthogonal_DimH) {
+  std::vector<SliceRange> sliceRanges = {
+      SliceRange({{0, 5}, {0, 3}, {0, 4}, {0, 8}}),
+      SliceRange({{0, 5}, {2, 4}, {0, 4}, {0, 8}})};
+  splitConv2DNonOrthogonal(F_, optimizedF_, bindings_, cctx_, sliceRanges);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a Conv2D non-orthogonally along W dimension.
+TEST_F(NodeSplitting, Conv2D_NonOrthogonal_DimW) {
+  std::vector<SliceRange> sliceRanges = {
+      SliceRange({{0, 5}, {0, 4}, {0, 3}, {0, 8}}),
+      SliceRange({{0, 5}, {0, 4}, {2, 4}, {0, 8}})};
+  splitConv2DNonOrthogonal(F_, optimizedF_, bindings_, cctx_, sliceRanges);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a Conv2D non-orthogonally along C dimension.
+TEST_F(NodeSplitting, Conv2D_NonOrthogonal_DimC) {
+  std::vector<SliceRange> sliceRanges = {
+      SliceRange({{0, 5}, {0, 4}, {0, 4}, {0, 6}}),
+      SliceRange({{0, 5}, {0, 4}, {0, 4}, {2, 8}})};
+  splitConv2DNonOrthogonal(F_, optimizedF_, bindings_, cctx_, sliceRanges);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a Conv2D non-orthogonally along H and W dimensions.
+TEST_F(NodeSplitting, Conv2D_NonOrthogonal_DimHW) {
+  std::vector<SliceRange> sliceRanges = {
+      SliceRange({{0, 5}, {0, 3}, {0, 3}, {0, 8}}),
+      SliceRange({{0, 5}, {0, 3}, {1, 4}, {0, 8}}),
+      SliceRange({{0, 5}, {1, 4}, {0, 3}, {0, 8}}),
+      SliceRange({{0, 5}, {1, 4}, {1, 4}, {0, 8}})};
+  splitConv2DNonOrthogonal(F_, optimizedF_, bindings_, cctx_, sliceRanges);
+  checkNumericalEquivalence(0);
+}
+
+///===---------------------------------------------------------------------===//
 ///                            splitNodeRecursively
 ///===---------------------------------------------------------------------===//
 #if 0

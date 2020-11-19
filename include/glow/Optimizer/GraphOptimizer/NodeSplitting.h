@@ -36,13 +36,20 @@ namespace glow {
 /// output operand of a node. If a node has multiple output operands then the
 /// option commonly refers to the first output operand.
 class SplitNodeOption {
+public:
+  /// Dtor.
+  virtual ~SplitNodeOption() = default;
+};
+
+/// Orthogonal generic split node option.
+class SplitNodeOptionOrthogonal : public SplitNodeOption {
 
   /// All the dimensions of a tensor used for splitting in increasing order.
   llvm::SmallVector<size_t, max_tensor_dimensions> splitDims_;
 
 public:
   /// Ctor.
-  SplitNodeOption(llvm::ArrayRef<size_t> splitDims)
+  SplitNodeOptionOrthogonal(llvm::ArrayRef<size_t> splitDims)
       : splitDims_(splitDims.begin(), splitDims.end()) {}
 
   /// \returns the split dims.
@@ -56,16 +63,16 @@ public:
   virtual std::vector<dim_t> splitAlongDim(size_t dim, dim_t dimSize) const = 0;
 
   /// Dtor.
-  virtual ~SplitNodeOption() = default;
+  virtual ~SplitNodeOptionOrthogonal() = default;
 };
 
-/// Split option used for splitting a node along the dimensions \ref splitDims
+/// Orthogonal split option for splitting a node along dimensions \ref splitDims
 /// with the given number of chunks \ref numChunks for each dimension. Since the
 /// split does not always result in equal chunks, you can choose to start the
 /// splitting with the bigger chunks first (one unit bigger than the others) by
 /// using the flag \ref bigChunksFirst. The number of chunks for each dimension
 /// must be lower than the respective dimension size, otherwise error is thrown.
-class SplitNodeByNumChunks : public SplitNodeOption {
+class SplitNodeByNumChunks : public SplitNodeOptionOrthogonal {
 
   /// Number of chunks for each split dimension.
   llvm::SmallVector<dim_t, max_tensor_dimensions> numChunks_;
@@ -78,7 +85,7 @@ public:
   SplitNodeByNumChunks(llvm::ArrayRef<size_t> splitDims,
                        llvm::ArrayRef<dim_t> numChunks,
                        bool bigChunksFirst = true)
-      : SplitNodeOption(splitDims),
+      : SplitNodeOptionOrthogonal(splitDims),
         numChunks_(numChunks.begin(), numChunks.end()),
         bigChunksFirst_(bigChunksFirst) {
     CHECK_EQ(splitDims.size(), numChunks.size())
@@ -90,7 +97,7 @@ public:
   std::vector<dim_t> splitAlongDim(size_t dim, dim_t dimSize) const override;
 };
 
-/// Split option used for splitting a node along the dimensions \ref splitDims
+/// Orthogonal split option for splitting a node along dimensions \ref splitDims
 /// with the given chunk sizes \ref chunkSizes for each dimension such that each
 /// chunk obtained during splitting has a size along a given split dimension
 /// at most equal to the given chunk size along that respective dimension.
@@ -98,7 +105,7 @@ public:
 /// start the splitting with the bigger chunks first by using the flag
 /// \p bigChunksFirst. The chunk size for each dimension must be lower than the
 /// respective dimension size, otherwise error is thrown.
-class SplitNodeByChunkSize : public SplitNodeOption {
+class SplitNodeByChunkSize : public SplitNodeOptionOrthogonal {
 
   /// Chunk size for each split dimension.
   llvm::SmallVector<dim_t, max_tensor_dimensions> chunkSizes_;
@@ -111,7 +118,7 @@ public:
   SplitNodeByChunkSize(llvm::ArrayRef<size_t> splitDims,
                        llvm::ArrayRef<dim_t> chunkSizes,
                        bool bigChunksFirst = true)
-      : SplitNodeOption(splitDims),
+      : SplitNodeOptionOrthogonal(splitDims),
         chunkSizes_(chunkSizes.begin(), chunkSizes.end()),
         bigChunksFirst_(bigChunksFirst) {
     CHECK_EQ(splitDims.size(), chunkSizes.size())
@@ -123,12 +130,12 @@ public:
   std::vector<dim_t> splitAlongDim(size_t dim, dim_t dimSize) const override;
 };
 
-/// Split option used for splitting a node along the dimensions \ref splitDims
+/// Orthogonal split option for splitting a node along dimensions \ref splitDims
 /// with the exact array of chunk sizes \ref chunkSizes for each dimension.
 /// The chunk sizes must be strictly positive and the sum of the chunk sizes
 /// for each dimension must be equal to the respective dimension size, otherwise
 /// error is thrown.
-class SplitNodeByChunkSizes : public SplitNodeOption {
+class SplitNodeByChunkSizes : public SplitNodeOptionOrthogonal {
 
   /// Array of chunk sizes for each split dimension.
   llvm::SmallVector<std::vector<dim_t>, max_tensor_dimensions> chunkSizes_;
@@ -137,7 +144,7 @@ public:
   /// Ctor.
   SplitNodeByChunkSizes(llvm::ArrayRef<size_t> splitDims,
                         llvm::ArrayRef<std::vector<dim_t>> chunkSizes)
-      : SplitNodeOption(splitDims),
+      : SplitNodeOptionOrthogonal(splitDims),
         chunkSizes_(chunkSizes.begin(), chunkSizes.end()) {
     CHECK_EQ(splitDims.size(), chunkSizes.size())
         << "Mismatch between 'splitDims' and 'chunkSizes' array sizes!";
@@ -148,7 +155,7 @@ public:
   std::vector<dim_t> splitAlongDim(size_t dim, dim_t dimSize) const override;
 };
 
-/// Split option used for splitting a node along the dimensions \ref splitDims
+/// Orthogonal split option for splitting a node along dimensions \ref splitDims
 /// with the given chunk weights \ref chunkWeights for each dimension such that
 /// the resulting chunk sizes after splitting will be proportional to the
 /// chunk weights. The chunk weights must be strictly positive and are NOT
@@ -157,7 +164,7 @@ public:
 /// error is thrown. For example when splitting a 1D tensor with size 10 along
 /// the dimension 0 using the weights {1, 4} we obtain two slices with sizes
 /// {2, 8}.
-class SplitNodeByChunkWeights : public SplitNodeOption {
+class SplitNodeByChunkWeights : public SplitNodeOptionOrthogonal {
 
   /// Array of chunk weights for each split dimension.
   llvm::SmallVector<std::vector<float>, max_tensor_dimensions> chunkWeights_;
@@ -166,7 +173,7 @@ public:
   /// Ctor.
   SplitNodeByChunkWeights(llvm::ArrayRef<size_t> splitDims,
                           llvm::ArrayRef<std::vector<float>> chunkWeights)
-      : SplitNodeOption(splitDims),
+      : SplitNodeOptionOrthogonal(splitDims),
         chunkWeights_(chunkWeights.begin(), chunkWeights.end()) {
     CHECK_EQ(splitDims.size(), chunkWeights.size())
         << "Mismatch between 'splitDims' and 'chunkWeights' array sizes!";
@@ -177,12 +184,13 @@ public:
   std::vector<dim_t> splitAlongDim(size_t dim, dim_t dimSize) const override;
 };
 
-#if 0
-/// Option to split non-orthogonally using raw slice ranges which are allowed to
-/// overlap but must cover the entire output operand of the node being split.
+/// Non-orthogonal split option based on raw slice ranges defined for the output
+/// operand of a node. The slice ranges are allowed to overlap but must cover
+/// the entire output operand of the node being split. This is the most flexible
+/// and generic split option.
 class SplitNodeBySliceRanges : public SplitNodeOption {
 
-  /// Array of slice ranges.
+  /// Array of raw slice ranges.
   std::vector<SliceRange> sliceRanges_;
 
 public:
@@ -190,11 +198,9 @@ public:
   SplitNodeBySliceRanges(llvm::ArrayRef<SliceRange> sliceRanges)
       : sliceRanges_(sliceRanges) {}
 
-  /// \returns the slice ranges obtained by splitting the given slice range
-  /// \p sliceRange using the specific parameters of this option.
-  std::vector<SliceRange> split(const SliceRange &sliceRange) const override;
+  /// \returns the raw slice ranges.
+  llvm::ArrayRef<SliceRange> getSliceRanges() const { return sliceRanges_; }
 };
-#endif
 
 ///===---------------------------------------------------------------------===//
 ///                             SplitNodeConstraint
@@ -307,11 +313,23 @@ Expected<SplitNodeMap> splitNodes(Function *F,
 ///                            splitNodeRecursively
 ///===---------------------------------------------------------------------===//
 #if 0
+
 Expected<SplitNodeMap>
 splitNodeRecursively(Node *node,
                      const SplitNodeOption *splitOption,
                      const SplitNodeConstraint *splitConstraint,
                      unsigned maxDepth);
+
+Expected<SplitNodeMap>
+splitNodeRecursively(Node *node,
+                     const SplitNodeOption &splitOption,
+                     unsigned maxDepth);
+
+Expected<SplitNodeMap>
+splitNodeRecursively(Node *node,
+                     const SplitNodeConstraint &splitConstraint,
+                     unsigned maxDepth);
+
 #endif
 
 } // namespace glow
