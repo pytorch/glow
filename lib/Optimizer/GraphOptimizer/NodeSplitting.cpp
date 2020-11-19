@@ -22,176 +22,7 @@
 #include <vector>
 
 using namespace glow;
-using llvm::cast;
 using llvm::dyn_cast;
-using llvm::isa;
-
-namespace {
-///===---------------------------------------------------------------------===//
-///                                SliceRange
-///===---------------------------------------------------------------------===//
-/// Dimension range representing a contiguous [start, stop) index interval with
-/// start index included and stop index excluded, along some tensor dimension.
-/// The indices are assumed to be 0 based (C indexing).
-using DimRange = std::pair<dim_t, dim_t>;
-
-/// Dimension paddings representing a virtual padding before/after a given
-/// dimension range.
-using DimPads = std::pair<dim_t, dim_t>;
-
-/// Slice range utility class representing the ranges for all the dimensions
-/// of a slice obtained by extraction from a larger tensor.
-class SliceRange {
-
-  /// Vector of ranges for all the dimensions of a slice.
-  std::vector<DimRange> ranges_;
-
-public:
-  SliceRange() = default;
-
-  /// Ctor.
-  explicit SliceRange(std::vector<DimRange> ranges) { ranges_ = ranges; }
-
-  /// Ctor.
-  explicit SliceRange(TypeRef type) {
-    for (auto size : type->dims()) {
-      ranges_.emplace_back(0, size);
-    }
-  }
-
-  /// \returns the dimension ranges.
-  llvm::ArrayRef<DimRange> getRanges() const { return ranges_; }
-
-  /// \returns the start values of the dimension ranges.
-  std::vector<dim_t> getStarts() const {
-    std::vector<dim_t> starts(ranges_.size());
-    for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
-      starts[dim] = ranges_[dim].first;
-    }
-    return starts;
-  }
-
-  /// \returns the sizes of the dimension ranges.
-  std::vector<dim_t> getSizes() const {
-    std::vector<dim_t> sizes(ranges_.size());
-    for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
-      sizes[dim] = ranges_[dim].second - ranges_[dim].first;
-    }
-    return sizes;
-  }
-
-  /// \returns the number of dimensions.
-  size_t getNumDims() const { return ranges_.size(); }
-
-  /// \returns a mutable range for the given dimension \p dim.
-  DimRange &operator[](size_t dim) {
-    DCHECK_LT(dim, ranges_.size()) << "Invalid dimension!";
-    return ranges_[dim];
-  }
-
-  /// \returns an immutable range for the given dimension \p dim.
-  const DimRange &operator[](size_t dim) const {
-    DCHECK_LT(dim, ranges_.size()) << "Invalid dimension!";
-    return ranges_[dim];
-  }
-
-  /// \returns whether this slice range is equal to \p other.
-  bool operator==(const SliceRange &other) const {
-    auto rangesOther = other.getRanges();
-    if (ranges_.size() != rangesOther.size()) {
-      return false;
-    }
-    for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
-      if (ranges_[dim] != rangesOther[dim]) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /// \returns the range size along dimension \p dim.
-  dim_t getDimSize(size_t dim) const {
-    DCHECK_LT(dim, ranges_.size()) << "Invalid dimension!";
-    return ranges_[dim].second - ranges_[dim].first;
-  }
-
-  /// \returns a slice range by extracting the dimension ranges between
-  /// \p dimStart and \p dimStop (both included).
-  SliceRange extractRanges(size_t dimStart, size_t dimStop) const {
-    DCHECK_LT(dimStart, ranges_.size()) << "Invalid start dimension!";
-    DCHECK_LT(dimStop, ranges_.size()) << "Invalid stop dimension!";
-    DCHECK_LE(dimStart, dimStop) << "Invalid start/stop dimension!";
-    std::vector<DimRange> dimRanges(ranges_.cbegin() + dimStart,
-                                    ranges_.cbegin() + dimStop + 1);
-    return SliceRange(dimRanges);
-  }
-
-  /// \returns a slice range by shuffling the dimension ranges using the
-  /// indices \p shuffle. The flag \p invert allows optionally to invert
-  /// the shuffle permutation before using it.
-  SliceRange shuffleRanges(llvm::ArrayRef<size_t> shuffle,
-                           bool invert = false) const {
-    DCHECK_EQ(ranges_.size(), shuffle.size())
-        << "Mismatch between ranges and shuffle sizes!";
-    std::vector<DimRange> dimRanges(ranges_.size());
-    for (size_t idx = 0, e = ranges_.size(); idx < e; ++idx) {
-      size_t dimInp = invert ? idx : shuffle[idx];
-      size_t dimOut = invert ? shuffle[idx] : idx;
-      DCHECK_LT(dimInp, ranges_.size()) << "Invalid input shuffle index!";
-      DCHECK_LT(dimOut, ranges_.size()) << "Invalid output shuffle index!";
-      dimRanges[dimOut] = ranges_[dimInp];
-    }
-    return SliceRange(dimRanges);
-  }
-
-  /// \returns whether this slice range is empty.
-  bool isEmpty() const {
-    if (!ranges_.size()) {
-      return true;
-    }
-    for (const auto &range : ranges_) {
-      if (!(range.first < range.second)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /// \returns whether both ends of the range for a given dimension \p dim are
-  /// aligned to \p align. For example the range [4, 8) is aligned to 4.
-  bool isDimRangeAligned(size_t dim, dim_t align) const {
-    DCHECK_LT(dim, ranges_.size()) << "Invalid dimension!";
-    return (ranges_[dim].first % align == 0) &&
-           (ranges_[dim].second % align == 0);
-  }
-
-  /// \returns whether this slice range is included by \p other.
-  bool isIncludedBy(const SliceRange &other) const {
-    auto rangesOther = other.getRanges();
-    if (ranges_.size() != rangesOther.size()) {
-      return false;
-    }
-    for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
-      if (!((rangesOther[dim].first <= ranges_[dim].first) &&
-            (ranges_[dim].second <= rangesOther[dim].second))) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /// \returns a textual representation of this slice range.
-  std::string toString() const {
-    std::string storage;
-    llvm::raw_string_ostream os(storage);
-    for (size_t dim = 0, e = ranges_.size(); dim < e; ++dim) {
-      os << getDimSize(dim) << "[" << ranges_[dim].first << ":"
-         << ranges_[dim].second << ") ";
-    }
-    return os.str();
-  }
-};
-} // namespace
 
 ///===---------------------------------------------------------------------===//
 ///                              SplitNodeOption
@@ -1470,6 +1301,7 @@ glow::splitNode(Node *node, const SplitNodeOption *splitOption,
   }
 
   case Kinded::Kind::ReluNodeKind:
+  case Kinded::Kind::LeakyReluNodeKind:
   case Kinded::Kind::ClipNodeKind:
   case Kinded::Kind::TanhNodeKind:
   case Kinded::Kind::SigmoidNodeKind:
@@ -1576,3 +1408,86 @@ glow::splitNodes(Function *F, const SplitNodeConstraint &splitConstraint) {
   RETURN_ERR_IF_NOT(F->verify(), "Function is not valid after node splitting!");
   return splitMap;
 }
+
+///===---------------------------------------------------------------------===//
+///                            splitNodeRecursively
+///===---------------------------------------------------------------------===//
+#if 0
+// TODO1: Create two types of split options: orthogonal and non-orthogonal.
+// TODO2: We must add logic for using this split option using raw slice ranges.
+// TODO3: For this option we must add a verification that all the slice ranges
+//        cover the entire output operand.
+
+Expected<SplitNodeMap>
+glow::splitNodeRecursively(Node *node,
+                           const SplitNodeOption *splitOption,
+                           const SplitNodeConstraint *splitConstraint,
+                           unsigned maxDepth) {
+
+  SplitNodeMap splitMap;
+
+  // We can do the splitting if at least the option or the constraint is given.
+  RETURN_ERR_IF_NOT(
+      splitOption || splitConstraint,
+      "At least the split option or the split constraint must be given!");
+
+  // Split starting node.
+  std::vector<Node *> splitNodes;
+  ASSIGN_VALUE_OR_RETURN_ERR(splitNodes,
+                             splitNode(node, splitOption, splitConstraint));
+  splitMap[node] = splitNodes;
+
+  // If starting node was not split then return.
+  if (!splitNodes.size()) {
+    return splitMap;
+  }
+
+  // --------------------------------------------------------------------------
+  for (auto splitNode: splitNodes) {
+    std::cout << "Split node: " << splitNode->getName().str() << "\n";
+  }
+  std::cout << "\n";
+  // --------------------------------------------------------------------------
+
+  // Iterate through all of the split nodes inputs.
+  for (unsigned inputIdx = 0; inputIdx < node->getNumInputs(); inputIdx++) {
+
+    // Find Slice nodes and ranges for the current input.
+    std::vector<SliceRange> inputRanges;
+    NodeValue sliceInputNodeValue = nullptr;
+    for (const Node *splitNode: splitNodes) {
+      SliceNode *sliceNode = dyn_cast<SliceNode>(splitNode->getNthInput(inputIdx).getNode());
+      assert(sliceNode && "SliceNode not found for split node input!");
+      inputRanges.push_back(SliceRange(sliceNode));
+      if (!sliceInputNodeValue.getNode()) {
+        sliceInputNodeValue = sliceNode->getInput();
+      } else {
+        assert(sliceInputNodeValue == sliceNode->getInput() && "SliceNodes do not have a common input!"); 
+      }
+    }
+
+    // Slice input node value.
+    std::cout << "Slice input node: " << sliceInputNodeValue.getNode()->getName().str() << "\n";
+    std::cout << "Range for input " << inputIdx << "\n";
+    for (auto range: inputRanges) {
+      std::cout << range.toString() << "\n";
+    }
+
+    // If the node value which is sliced has other consumers than the SliceNodes
+    // inserted during splitting then we do not split the node which produces
+    // that node value.
+    if (sliceInputNodeValue.getNumUsers() > splitNodes.size()) {
+      std::cout << "We are not splitting this node!!\n";
+      continue;
+    }
+
+    // Split the input node of the SliceNodes using same slice ranges.
+    SplitNodeBySliceRanges splitOption = SplitNodeBySliceRanges(inputRanges);
+    Node *sliceInputNode = sliceInputNodeValue.getNode();
+    ASSIGN_VALUE_OR_RETURN_ERR(splitMap[sliceInputNode],
+                               splitNode(sliceInputNode, &splitOption, nullptr));
+  }
+
+  return splitMap;
+}
+#endif

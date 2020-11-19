@@ -16,6 +16,7 @@
 #ifndef GLOW_OPTIMIZER_GRAPHOPTIMIZER_NODESPLITTING_H
 #define GLOW_OPTIMIZER_GRAPHOPTIMIZER_NODESPLITTING_H
 
+#include "glow/Base/SliceRange.h"
 #include "glow/Base/Type.h"
 #include "glow/Graph/Graph.h"
 #include "glow/Graph/Node.h"
@@ -176,6 +177,25 @@ public:
   std::vector<dim_t> splitAlongDim(size_t dim, dim_t dimSize) const override;
 };
 
+#if 0
+/// Option to split non-orthogonally using raw slice ranges which are allowed to
+/// overlap but must cover the entire output operand of the node being split.
+class SplitNodeBySliceRanges : public SplitNodeOption {
+
+  /// Array of slice ranges.
+  std::vector<SliceRange> sliceRanges_;
+
+public:
+  /// Ctor.
+  SplitNodeBySliceRanges(llvm::ArrayRef<SliceRange> sliceRanges)
+      : sliceRanges_(sliceRanges) {}
+
+  /// \returns the slice ranges obtained by splitting the given slice range
+  /// \p sliceRange using the specific parameters of this option.
+  std::vector<SliceRange> split(const SliceRange &sliceRange) const override;
+};
+#endif
+
 ///===---------------------------------------------------------------------===//
 ///                             SplitNodeConstraint
 ///===---------------------------------------------------------------------===//
@@ -282,6 +302,17 @@ Expected<SplitNodeMap> splitNodes(Function *F,
 /// nodes which were actually split.
 Expected<SplitNodeMap> splitNodes(Function *F,
                                   const SplitNodeConstraint &splitConstraint);
+
+///===---------------------------------------------------------------------===//
+///                            splitNodeRecursively
+///===---------------------------------------------------------------------===//
+#if 0
+Expected<SplitNodeMap>
+splitNodeRecursively(Node *node,
+                     const SplitNodeOption *splitOption,
+                     const SplitNodeConstraint *splitConstraint,
+                     unsigned maxDepth);
+#endif
 
 } // namespace glow
 

@@ -1458,7 +1458,8 @@ TEST_F(NodeSplitting, UnaryOps) {
   bindings_.allocate(input)->getHandle<float>().randomize(-10.0, 10.0,
                                                           mod_.getPRNG());
   Node *relu = F_->createRELU("relu", input);
-  Node *clip = F_->createClip("clip", relu, 1.0, 10.0);
+  Node *leakyRelu = F_->createLeakyRelu("leakyrelu", relu, /* alpha */ 0.1);
+  Node *clip = F_->createClip("clip", leakyRelu, 1.0, 10.0);
   Node *tanh = F_->createTanh("tanh", clip);
   Node *sigmoid = F_->createSigmoid("sigmoid", tanh);
   Node *log = F_->createLog("log", sigmoid);
@@ -1507,3 +1508,37 @@ TEST_F(NodeSplitting, UnaryOps) {
   EXPECT_EQ(countNodeKind(F_, Kinded::Kind::TouchNodeKind), 10);
   checkNumericalEquivalence(0);
 }
+
+///===---------------------------------------------------------------------===//
+///                            splitNodeRecursively
+///===---------------------------------------------------------------------===//
+#if 0
+TEST_F(NodeSplitting, SimpleNetworkSplitRecursively) {
+  Node *node = createConv2D(F_, bindings_,
+                            /* inputDims */ {5, 7, 8, 2},
+                            /* filterDims */ {8, 2, 2, 1},
+                            /* biasDims */ {8},
+                            /* outputDims */ {5, 6, 7, 8},
+                            /* kernels */ {2, 2},
+                            /* strides */ {1, 1},
+                            /* pads */ {0, 0, 0, 0},
+                            /* group */ 2,
+                            /* dilation */ 1);
+
+  // Save current function state as reference.
+  optimizedF_ = F_->clone(F_->getName().str() + "_optimized");
+
+  F_->dumpDAG("graph_orig.dot");
+
+  // Split node recursively.
+  auto splitOption = SplitNodeByNumChunks({0}, {2});
+  SplitNodeMap splitMap;
+  ASSIGN_VALUE_OR_FAIL_TEST(
+      splitMap, ::glow::splitNodeRecursively(node, &splitOption, nullptr, 1));
+  runDCEPass(F_, cctx_);
+
+  F_->dumpDAG("graph_split.dot");
+
+  checkNumericalEquivalence(0);
+}
+#endif
