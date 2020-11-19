@@ -5023,6 +5023,13 @@ void BoundInterpreterFunction::fwdTraceEventInst(const TraceEventInst *I) {
                       .count();
 }
 
+void BoundInterpreterFunction::fwdInstrumentInst(const InstrumentInst *I) {
+  // The instrument instruction is not implemented on the Interpreter backend.
+  // We cannot throw error though because the Interpreter can be potentially
+  // used when constant folding parts of the graph while compiling for the
+  // CPU backend with IR instrumentation.
+}
+
 //===----------------------------------------------------------------------===//
 //                Instructions used by Quantization
 //===----------------------------------------------------------------------===//
