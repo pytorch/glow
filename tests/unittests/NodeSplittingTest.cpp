@@ -1863,6 +1863,44 @@ TEST_F(NodeSplitting, Conv2D_NonOrthogonal_DimHW) {
   checkNumericalEquivalence(0);
 }
 
+/// Test splitting a Conv2D non-orthogonally along H, W and C dimensions.
+TEST_F(NodeSplitting, Conv2D_NonOrthogonal_DimHWC) {
+  std::vector<SliceRange> sliceRanges = {
+      SliceRange({{0, 5}, {0, 3}, {0, 3}, {0, 6}}),
+      SliceRange({{0, 5}, {0, 3}, {1, 4}, {0, 6}}),
+      SliceRange({{0, 5}, {1, 4}, {0, 3}, {0, 6}}),
+      SliceRange({{0, 5}, {1, 4}, {1, 4}, {0, 6}}),
+      SliceRange({{0, 5}, {0, 3}, {0, 3}, {2, 8}}),
+      SliceRange({{0, 5}, {0, 3}, {1, 4}, {2, 8}}),
+      SliceRange({{0, 5}, {1, 4}, {0, 3}, {2, 8}}),
+      SliceRange({{0, 5}, {1, 4}, {1, 4}, {2, 8}})};
+  splitConv2DNonOrthogonal(F_, optimizedF_, bindings_, cctx_, sliceRanges);
+  checkNumericalEquivalence(0);
+}
+
+/// Test splitting a Conv2D non-orthogonally along N, H, W and C dimensions.
+TEST_F(NodeSplitting, Conv2D_NonOrthogonal_DimNHWC) {
+  std::vector<SliceRange> sliceRanges = {
+      SliceRange({{0, 4}, {0, 3}, {0, 3}, {0, 6}}),
+      SliceRange({{0, 4}, {0, 3}, {1, 4}, {0, 6}}),
+      SliceRange({{0, 4}, {1, 4}, {0, 3}, {0, 6}}),
+      SliceRange({{0, 4}, {1, 4}, {1, 4}, {0, 6}}),
+      SliceRange({{0, 4}, {0, 3}, {0, 3}, {2, 8}}),
+      SliceRange({{0, 4}, {0, 3}, {1, 4}, {2, 8}}),
+      SliceRange({{0, 4}, {1, 4}, {0, 3}, {2, 8}}),
+      SliceRange({{0, 4}, {1, 4}, {1, 4}, {2, 8}}),
+      SliceRange({{2, 5}, {0, 3}, {0, 3}, {0, 6}}),
+      SliceRange({{2, 5}, {0, 3}, {1, 4}, {0, 6}}),
+      SliceRange({{2, 5}, {1, 4}, {0, 3}, {0, 6}}),
+      SliceRange({{2, 5}, {1, 4}, {1, 4}, {0, 6}}),
+      SliceRange({{2, 5}, {0, 3}, {0, 3}, {2, 8}}),
+      SliceRange({{2, 5}, {0, 3}, {1, 4}, {2, 8}}),
+      SliceRange({{2, 5}, {1, 4}, {0, 3}, {2, 8}}),
+      SliceRange({{2, 5}, {1, 4}, {1, 4}, {2, 8}})};
+  splitConv2DNonOrthogonal(F_, optimizedF_, bindings_, cctx_, sliceRanges);
+  checkNumericalEquivalence(0);
+}
+
 ///===---------------------------------------------------------------------===//
 ///                            splitNodeRecursively
 ///===---------------------------------------------------------------------===//
