@@ -4864,6 +4864,34 @@ static void gatherFloatInputTest(glow::PlaceholderBindings &bindings,
   EXPECT_TRUE(resultT->isEqual(expectedT));
 }
 
+TEST_P(OperatorTest, GatherDataNonZeroDim) {
+  auto *data = mod_.createPlaceholder(ElemKind::FloatTy, {3, 3}, "data", false);
+  auto dimension = 1;
+  auto *indices =
+      mod_.createPlaceholder(ElemKind::Int64ITy, {2}, "indices", false);
+
+  bindings_.allocate(data)->getHandle<float>() = {
+      1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
+  };
+
+  bindings_.allocate(indices)->getHandle<int64_t>() = {0l, 2l};
+
+  auto *R = F_->createGather("gather", data, indices, dimension);
+
+  auto *result = F_->createSave("save", R);
+
+  bindings_.allocate(result->getPlaceholder());
+
+  EE_.compile(CompilationMode::Infer);
+  EE_.run(bindings_);
+
+  Tensor *resultT = bindings_.get(result->getPlaceholder());
+  Tensor expectedT(ElemKind::FloatTy, {3, 2});
+  expectedT.getHandle<float>() = {1.0, 3.0, 4.0, 6.0, 7.0, 9.0};
+
+  EXPECT_TRUE(resultT->isEqual(expectedT));
+}
+
 /// Test that Gather works with Float data and Int32 indices.
 TEST_P(OperatorTest, GatherDataFloatIdxInt32) {
   CHECK_IF_ENABLED();

@@ -805,6 +805,15 @@ struct EmbeddingBagInputs {
   };
 };
 
+/// Indexes of aten::index_select inputs.
+struct IndexSelectInputs {
+  enum {
+    input = 0,
+    dimension,
+    index,
+  };
+};
+
 /// Indexes of fb::glow_embedding_bag inputs.
 struct GlowEmbeddingBagInputs {
   enum {
@@ -1043,6 +1052,7 @@ PyTorchModelLoader::buildSymbolsMapping() {
       {{"_caffe2::RoIAlign"}, &PyTorchModelLoader::loadRoiAlign},
       {{"_caffe2::RoIAlignRotated"}, &PyTorchModelLoader::loadRoiAlignRotated},
       {{"_caffe2::BBoxTransform"}, &PyTorchModelLoader::loadBBoxTransform},
+      {{"aten::index_select"}, &PyTorchModelLoader::loadIndexSelect},
   });
 
   // Add in custom operator loaders.
@@ -2319,6 +2329,41 @@ Error PyTorchModelLoader::loadAdd(const torch::jit::Node *ptNode) {
       res, loadArithmeticNode<glow::AddNode>("add", inputs[0], inputs[1]));
 
   RETURN_ERR(addValueMapping(outputs[0], res));
+}
+
+Error PyTorchModelLoader::loadIndexSelect(
+    const torch::jit::Node *ptNode) noexcept {
+  auto inputs = ptNode->inputs();
+  auto outputs = ptNode->outputs();
+  RETURN_IF_ERR(checkInputAndOutputSizes(inputs, 3, outputs, 1));
+
+  glow::NodeValue inputInput;
+  glow::NodeValue indexInput;
+
+  const torch::jit::Value *input = inputs[IndexSelectInputs::input];
+  int64_t dimension = 0;
+  const torch::jit::Value *index = inputs[IndexSelectInputs::index];
+
+  ASSIGN_VALUE_OR_RETURN_ERR(
+      dimension,
+      iValToInt(getGlowIValueForValue(inputs[IndexSelectInputs::dimension])));
+
+  ASSIGN_VALUE_OR_RETURN_ERR(inputInput, getGlowNodeValueForValue(input));
+  ASSIGN_VALUE_OR_RETURN_ERR(indexInput, getGlowNodeValueForValue(index));
+
+  size_t indexSize = indexInput.getType()->dims().size();
+  RETURN_ERR_IF_NOT(
+      indexInput.getType()->dims().size() == 1,
+      glow::strFormat("Index must be a 1-D tensor. dims: %ld", indexSize));
+
+  RETURN_ERR_IF_NOT(indexInput.getType()->getElementType() ==
+                        ElemKind::Int64ITy,
+                    "Index must be a LongTensor");
+
+  GatherNode *glowNode =
+      F_.createGather("index_select", inputInput, indexInput, dimension);
+
+  RETURN_ERR(addValueMapping(outputs[0], glowNode->getResult()));
 }
 
 Error PyTorchModelLoader::loadSub(const torch::jit::Node *ptNode) {
